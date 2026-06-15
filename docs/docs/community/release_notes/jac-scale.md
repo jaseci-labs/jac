@@ -2,7 +2,19 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.25 (Latest Release)
+## jac-scale 0.2.26 (Latest Release)
+
+### New Features
+
+- **Cross-pod cache consistency**: in multi-pod deployments, a write on one pod now evicts the affected node from sibling pods' in-memory caches over Redis, so they no longer serve stale graph reads.
+- **Lazy read-repair and quarantine auto-retry in the Mongo backend**: Documents whose archetypes declare `__jac_schema__` drift rules are repaired on load and the upgraded form is written back with compare-and-set on the stored fingerprint, so concurrent writers on older app versions safely win and the document repairs again on its next read. Quarantined documents are now stamped with a machine-readable `reason_code` (`CLASS_MISSING`, `FIELD_RECONSTRUCT`, `DESER_ERROR`, `CASCADE`), and at backend startup a capped auto-retry re-attempts the quarantined docs the new deploy plausibly fixed (newly registered classes, aliases, or drift rules) ("deploy the fix and the data heals itself"), with `jac db recover-all` remaining as the manual override.
+- **Feature: In-admin "Signal self-check" health card**: A new **Operations -> Self-Check** page in the jac-scale admin dashboard answers "why is observability/health broken?" without a kubeconfig. `GET /admin/ops/health` returns, per signal (traces, logs, metrics, mongo, redis, admin API), a `{status, chain[]}` causal chain where each step is `{name, ok, detail}`, evaluated **short-circuit** so the first red link IS the diagnosis - e.g. "jac-scale[tracing] importable (HAS_OTEL): no" pinpoints a missing tracing extra that makes the Traces page return `count:0`, and "Mongo ping reachable: failed" explains an `/admin/login` returning SPA HTML instead of JSON. Every check is an in-process read (`HAS_OTEL`, config, `self.server`) or a best-effort ~2s backend probe wrapped in try/except, so a dead Tempo/Loki/Prometheus/Mongo/Redis renders a red row, never a 500. The page renders each chain as a vertical green-check / red-x stepper with the first failing step highlighted. Registered on both the monolith server and the microservice gateway. No Kubernetes API access and no RBAC.
+
+### Bug Fixes
+
+- **Fix: No duplicate startup banner in dev mode**: The jac-scale server  no longer prints its own banner (which advertised the API port as the URL to open) when a dev client is running; the main banner shows the correct URLs.
+
+## jac-scale 0.2.25
 
 ### Breaking Changes
 

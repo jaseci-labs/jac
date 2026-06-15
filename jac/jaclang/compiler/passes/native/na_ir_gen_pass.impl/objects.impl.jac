@@ -372,16 +372,6 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
             if fname in ancestor_defaults {
                 field_default_map[fname] = ancestor_defaults[fname];
             }
-            # Propagate Jac-level type AST from ancestor
-            if ancestor_name in self.field_type_node
-            and fname in self.field_type_node[ancestor_name] {
-                if arch_name not in self.field_type_node {
-                    self.field_type_node[arch_name] = {};
-                }
-                self.field_type_node[arch_name][fname] = self.field_type_node[
-                    ancestor_name
-                ][fname];
-            }
         }
     }
     # Add own fields from ArchHas nodes
@@ -398,11 +388,6 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                     if var.type_tag is not None {
                         # HasVar.type is checker-stamped; lower it directly.
                         ftype = self._resolve_jac_type(var);
-                        # Track Jac-level type AST for nested type resolution
-                        if arch_name not in self.field_type_node {
-                            self.field_type_node[arch_name] = {};
-                        }
-                        self.field_type_node[arch_name][fname] = var.type_tag.tag;
                         # Track enum-typed fields
                         ftag_name = self._get_name(var.type_tag.tag);
                         if ftag_name is not None and ftag_name in self.enum_types {
@@ -827,9 +812,17 @@ impl NaIRGenPass._codegen_event_method(arch_name: str, method: uni.Ability) -> N
     self._self_arch = saved_self_arch;
 }
 
-"""Generate object instantiation: allocate struct, init fields, call postinit."""
-impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
-    type_name = self._get_name(nd.target);
+"""Generate object instantiation: allocate struct, init fields, call postinit.
+
+`nd` is normally a `FuncCall` (`Edge(args)`); it may also be a bare archetype
+`Name` (`Edge`), which constructs a DEFAULT instance (no args) -- the form a
+typed edge connect `a +>: Edge :+> b` uses, which would otherwise codegen to no
+value and silently drop the edge (issue #6642)."""
+impl NaIRGenPass._codegen_instantiation(
+    nd: (uni.FuncCall | uni.Name)
+) -> (ir.Value | None) {
+    _is_call = isinstance(nd, uni.FuncCall);
+    type_name = self._get_name(nd.target if _is_call else nd);
     if type_name is None or type_name not in self.struct_types {
         return None;
     }
@@ -909,9 +902,23 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), _tt_idx)],
             name="type_tag.slot"
         );
-        self.builder.store(
-            ir.Constant(ir.IntType(64), self.osp_tags.get(type_name, 0)), _tt_slot
-        );
+        # The tag VALUE is the globally-stable content hash of the archetype
+        # name -- the same number `_register_osp_tags` records in `osp_tags`.
+        # A module that merely CONSTRUCTS an OSP node but uses no OSP itself
+        # (no spawn/visit/connect/edge-ref) leaves `osp_tags` empty, since
+        # tag-table population is gated on OSP usage so a construct-only
+        # consumer skips the kernel (#6642 Blocker 2). The instance it builds
+        # is still handed to OSP-using code (e.g. an imported module that
+        # spawns on it), so its tag must be the real stable hash, not 0 --
+        # otherwise the kernel's `tag_of` reads 0 and `node_desc(0)` returns a
+        # null descriptor mid-walk (#6683). Recompute the stable hash directly
+        # (a pure name-derived value, no kernel needed) when `osp_tags` has no
+        # entry, so the written tag matches what every OSP-using module derives.
+        _tt_val = self.osp_tags.get(type_name);
+        if _tt_val is None {
+            _tt_val = self._stable_osp_tag(type_name);
+        }
+        self.builder.store(ir.Constant(ir.IntType(64), _tt_val), _tt_slot);
         # Graph-arena lifetime: an OSP instance is a graph location, referenced
         # by the walk as a borrowed `any` handle (boxed pointer) inside the
         # kernel's work-stack / scope lists. Those lists retain/release the boxed
@@ -950,7 +957,7 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
     field_defaults = self.struct_field_defaults.get(type_name, {});
     # Track which fields were explicitly set
     set_fields: set[str] = set();
-    params = nd.params or [];
+    params = (nd.params or []) if _is_call else [];
     for param in params {
         if isinstance(param, uni.KWPair) {
             key_name = param.key.sym_name if param.key else None;
@@ -1607,6 +1614,16 @@ impl NaIRGenPass._codegen_field_access(
     field_indices = self.struct_field_indices.get(type_name);
     if field_indices is None or field_name not in field_indices {
         return None;
+    }
+    # An OSP edge-ref / node-ref yields its elements as i64 handles (the
+    # `ptrtoint` of the archetype pointer; issue #6646). When the checker
+    # resolved the receiver to an archetype struct but the value arrived as a
+    # raw handle, recover the typed pointer so the field GEP resolves -- instead
+    # of crashing on a non-pointer GEP or being dropped to E5090.
+    if isinstance(obj_val.type, ir.IntType) and (type_name in self.struct_types) {
+        obj_val = self.builder.inttoptr(
+            obj_val, self.struct_types[type_name].as_pointer(), name="osp.handle.ptr"
+        );
     }
     # AttributeError: check for null pointer (None) before accessing field
     if isinstance(obj_val.type, ir.PointerType) {

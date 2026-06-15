@@ -113,6 +113,26 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
             _coerce_native_module(self.ir_in);
         }
     }
+    # Phase 9: declaratively-unsupported constructs (disqualifier nodes,
+    # structural match patterns, non-allowlisted Python imports) are
+    # rejected by the central capability authority BEFORE emission starts.
+    # This point is post-auto-promotion, so coerced modules are covered.
+    # Codegen-time E5090s below remain only for value- and shape-conditional
+    # gaps the emitter discovers (plus safety-net fallbacks).
+    import from jaclang.compiler.passes.main.capability_check_pass {
+        native_capability_violations
+    }
+    _viols = native_capability_violations(self.ir_in);
+    for (_vnode, _vkind, _vname, _vhelp) in _viols {
+        self.emit(
+            E5090, node_override=_vnode, kind=_vkind, name=_vname, help_text=_vhelp
+        );
+    }
+    if _viols {
+        # No emission for a module the capability authority rejected: a
+        # partial binary would be silently wrong.
+        return self.ir_in;
+    }
     # Emit reference counting helper functions (must be first)
     self._emit_rc_helpers();
     # Process C library imports: import from "libname" { def ...; }
@@ -138,6 +158,8 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
             self._codegen_ability(stmt);
         } elif isinstance(stmt, uni.ModuleCode) {
             self._codegen_entry(stmt);
+        } elif isinstance(stmt, uni.Test) {
+            self._codegen_test(stmt);
         }
     }
     # Store LLVM module on AST
@@ -226,7 +248,8 @@ impl NaIRGenPass._export_native_layout -> None {
         NativeFieldInfo,
         NativeEnumLayout,
         NativeFuncLayout,
-        NativeTupleLayout
+        NativeTupleLayout,
+        NativeTestLayout
     }
     layout = NativeModuleLayout();
     # Structs
@@ -365,6 +388,12 @@ impl NaIRGenPass._export_native_layout -> None {
     # List element types
     for (ename, ltype) in self.list_types.items() {
         layout.list_elem_types[f"List.{ename}"] = ename;
+    }
+    # Test blocks
+    for (tname, tsymbol, tdesc, tline) in self.native_tests {
+        layout.tests.append(
+            NativeTestLayout(name=tname, symbol=tsymbol, description=tdesc, line=tline)
+        );
     }
     self.ir_in.gen.native_layout = layout;
 }
@@ -524,6 +553,9 @@ impl NaIRGenPass._register_imported_struct_types -> None {
 
     # Store transitive source strings on the manifest so _codegen_entry can
     # emit __jac_glob_init_<safe_name>() calls for ALL linked modules.
+    # Hand the module universe to the foreign declaration model (Phase 8).
+    self._foreign_modules = [m for (_s, m) in imported_mods];
+
     for (src_mod_str, _) in imported_mods {
         if src_mod_str not in manifest.native_transitive_sources {
             manifest.native_transitive_sources.append(src_mod_str);
@@ -538,6 +570,22 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     # ── Phase 1a: register ALL struct names (empty identified types) ─────────
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_type_names(imported_mod);
+    }
+    # ── Phase 1a.4: import each module's archetype hierarchy (issue #6659) ────
+    # Copy class_parents / MRO from each imported module's registry so the
+    # consumer can flatten an imported subtype's inherited fields (a consumer's
+    # own registry never sees imported archetypes' base classes).
+    for (_, imported_mod) in imported_mods {
+        self._register_imported_hierarchy(imported_mod);
+    }
+    # ── Phase 1a.5: mark imported OSP archetypes (issue #6642 Blocker 2) ──────
+    # Before bodies are laid out, so an imported node/walker/edge reserves the
+    # OSP header (vtable + __type_tag) matching its defining module and gets its
+    # globally-stable tag. Tags are content hashes (see _register_osp_tags), so
+    # a library and any importer agree regardless of what else either defines --
+    # no sorted-order fragility, materialization is always sound.
+    for (_, imported_mod) in imported_mods {
+        self._register_imported_osp_archetypes(imported_mod);
     }
     # ── Phase 1b: fill ALL struct bodies, enums, globals ─────────────────────
     for (_, imported_mod) in imported_mods {
@@ -604,6 +652,15 @@ impl NaIRGenPass._walk_imported_module_types(imported_mod: uni.Module) -> None {
         }
         if isinstance(stmt, uni.Archetype) {
             self._register_imported_archetype(stmt);
+            # Record imported OSP archetypes (walker/node/edge) so spawn /
+            # connect / edge-ref lowering can E5090 with help naming the
+            # defining module — cross-module OSP materialization is #6146
+            # Phases 3-4 territory; until then it must fail loudly and
+            # diagnosably rather than as a generic unsupported-op (#6636).
+            _aname = stmt.name.value if stmt.name else None;
+            if (_aname is not None) and (stmt.arch_kind is not None) {
+                self.imported_osp_archs[_aname] = (stmt.arch_kind, imported_mod.name);
+            }
         } elif isinstance(stmt, uni.Enum) {
             self._codegen_enum(stmt);
         } elif isinstance(stmt, uni.GlobalVars) {
@@ -656,6 +713,61 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
             if stmt.signature is not None
             and isinstance(stmt.signature, uni.FuncSignature) {
                 self._forward_declare_method(aname, stmt);
+            } elif isinstance(stmt.signature, uni.EventSignature)
+            and (aname in self.osp_arch_kind) {
+                # An imported OSP event ability (`can ... with T entry`): the
+                # body is linked from the defining module, but the consumer must
+                # forward-declare it and build its kernel dispatch thunk so its
+                # descriptor can route to it across the module boundary (issue
+                # #6642 Blocker 2). Mirrors the local Pass-3 handling.
+                self._forward_declare_event_method(aname, stmt);
+                self._emit_osp_thunk(aname, stmt);
+            }
+        }
+    }
+}
+
+"""Make the consumer's LayoutRegistry aware of an imported module's archetype
+hierarchy, and record every imported archetype's AST in `arch_ast_map`.
+
+A module's LayoutRegistry is built from that module's OWN sub-nodes, so a
+consumer never sees an imported archetype's base classes -- `_mro_of` returns a
+single-element MRO and `_codegen_archetype` flattens NO inherited fields, making
+an inherited field of an imported subtype invisible (read returns null, write
+raised E5090; issue #6659 Bug 2). The defining module already computed the
+correct hierarchy + C3 MRO in its own registry, so copy those entries across
+(never overwriting a local archetype's). Field layouts are NOT copied -- the
+consumer rebuilds LLVM struct bodies itself in `_codegen_archetype` -- only the
+parent/MRO relations the layout flatten needs. Must run before imported struct
+bodies are filled (Phase 1b)."""
+impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None {
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    _imp_reg = get_layout_registry(imported_mod, self.prog);
+    _cons_reg = get_layout_registry(self.ir_in, self.prog);
+    for (_name, _parents) in _imp_reg.class_parents.items() {
+        if _name not in _cons_reg.class_parents {
+            _cons_reg.class_parents[_name] = _parents;
+        }
+    }
+    for (_name, _mro) in _imp_reg.mro_order.items() {
+        if _name not in _cons_reg.mro_order {
+            _cons_reg.mro_order[_name] = _mro;
+        }
+    }
+    # arch_ast_map for every imported archetype (any kind) so the ancestor-first
+    # layout in _register_imported_archetype can reach an imported base's AST,
+    # even one defined in a different imported module.
+    for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
+        if (
+            isinstance(stmt, uni.ContextAwareNode)
+            and stmt.code_context == CodeContext.CLIENT
+        ) {
+            continue;
+        }
+        if isinstance(stmt, uni.Archetype) {
+            _aname = stmt.name.value if stmt.name else None;
+            if (_aname is not None) and (_aname not in self.arch_ast_map) {
+                self.arch_ast_map[_aname] = stmt;
             }
         }
     }
@@ -677,6 +789,27 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
     }
     # Guard: skip body fill if already done (e.g., called twice due to multiple
     # import paths, or after Phase 1a + Phase 1b sequencing).
+    if aname in self._struct_bodies_done {
+        return;
+    }
+    # Lay out imported ANCESTORS before this subtype: _codegen_archetype flattens
+    # an ancestor's fields by reading its already-built field indices, so an
+    # imported base must be emitted first regardless of source order across
+    # modules. The MRO is now correct (see _register_imported_hierarchy); recurse
+    # into any ancestor whose AST we imported and have not yet laid out. The
+    # _struct_bodies_done guard makes this safe against re-entry (issue #6659).
+    for _anc in self._mro_of(aname) {
+        if (
+            _anc != aname
+            and _anc in self.arch_ast_map
+            and _anc not in self._struct_bodies_done
+        ) {
+            _anc_arch = self.arch_ast_map[_anc];
+            if isinstance(_anc_arch, uni.Archetype) {
+                self._register_imported_archetype(_anc_arch);
+            }
+        }
+    }
     if aname in self._struct_bodies_done {
         return;
     }
@@ -738,13 +871,6 @@ Extracts library paths for loading and forward-declares
 extern symbols from the clib declarations.
 """
 impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
-    # The native-stdlib legality table lives in the capability authority
-    # (Phase 9); this post-coercion point enforces it because
-    # auto-promotion makes imports native-context after CapabilityCheckPass
-    # runs.
-    import from jaclang.compiler.passes.main.capability_check_pass {
-        NATIVE_SUPPORTED_STDLIB
-    }
     # Collect imports from top-level and inside na {} blocks
     imports = [
         s
@@ -756,44 +882,19 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         if not stmt.clib_decls {
             if stmt.items {
                 for item in stmt.items {
-                    # Legality is the capability authority's call (Phase 9);
-                    # this post-coercion point only enforces and tracks.
+                    # Legality is the capability authority's call (Phase 9):
+                    # native_capability_violations rejects non-allowlisted
+                    # Python imports before emission ever starts (issue
+                    # #6357), so by the time this runs every plain import is
+                    # either supported or non-native. Track the supported
+                    # ones so member intercepts know they were imported -
+                    # grows with the Python-congruent stdlib roadmap (#6404).
                     import from jaclang.compiler.passes.main.capability_check_pass {
                         classify_native_import
                     }
                     (mod_name, _supported) = classify_native_import(item);
                     if _supported {
-                        # A stdlib module the native backend lowers (its members
-                        # are intercepted in codegen). Track it so those
-                        # intercepts know it was imported. Grows with the
-                        # Python-congruent stdlib roadmap (issue #6404).
                         self._native_stdlib_modules.add(mod_name);
-                    } elif mod_name is not None
-                    and stmt.code_context == CodeContext.NATIVE {
-                        # A plain `import math;` carries a ModulePath item and no
-                        # from_loc. Native compilation cannot import arbitrary
-                        # Python modules: the import is dropped, then attribute
-                        # access on the module name (`math.pi`) lowers to nothing
-                        # and the binary prints empty/garbage. Reject it loudly
-                        # instead of emitting a silently-wrong binary (issue
-                        # #6357). The NATIVE-context guard matters because this
-                        # pass also runs over ordinary .jac modules in the
-                        # standard pipeline, where a Python import is valid and
-                        # SERVER-context -- only `.na.jac` modules and `na {}`
-                        # blocks make a bare Python import an error. C libraries
-                        # (`import from "lib" {...}`) and other native modules
-                        # (`import from mod {...}`) carry a from_loc and are
-                        # handled below / by interop resolution.
-                        _supported = ", ".join(
-                            f"`import {m}`" for m in sorted(NATIVE_SUPPORTED_STDLIB)
-                        );
-                        self.emit(
-                            E5090,
-                            node_override=item,
-                            kind="Python module import",
-                            name=mod_name,
-                            help_text=f"Native compilation supports these stdlib imports: {_supported}; C-library imports (`import from \"lib\" {{...}}`); and other native (.na.jac) modules (`import from mod {{...}}`). Move Python-dependent code to a @sv/Python context."
-                        );
                     }
                 }
             }

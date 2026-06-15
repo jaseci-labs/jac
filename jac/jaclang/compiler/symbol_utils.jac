@@ -19,6 +19,7 @@ enum CallKind {
     METHOD = "method",  # obj.method(...)
     INSTANTIATION = "instantiation",  # Foo(...) where Foo is a class/archetype
     BUILTIN = "builtin",  # len(...)/print(...): registry builtin, unshadowed
+    CLIB = "clib",  # foreign function declared by a C-library import block
     FUNCTION = "function"  # free function / ability / indirect / unknown
 }
 
@@ -90,6 +91,25 @@ def classify_call(nd: uni.FuncCall) -> CallKind {
     }
     # (2) A resolved user symbol shadows any builtin/class name.
     sym = resolve_expr_symbol(nd.target);
+    # (2a) A FUNCTION declared inside a C-library import block is a
+    # foreign call - the Phase 8 CallInfo seam (kind == CLIB) that the
+    # foreign marshalling plan hangs off. A clib-declared struct's
+    # constructor call is still an INSTANTIATION (the struct is laid out
+    # and allocated locally; only functions cross the C boundary).
+    if sym is not None
+    and sym.decl is not None
+    and sym.sym_type not in (
+        SymbolType.OBJECT_ARCH,
+        SymbolType.NODE_ARCH,
+        SymbolType.EDGE_ARCH,
+        SymbolType.WALKER_ARCH,
+        SymbolType.ENUM_ARCH
+    ) {
+        _imp = sym.decl.find_parent_of_type(uni.Import);
+        if _imp is not None and _imp.clib_decls {
+            return CallKind.CLIB;
+        }
+    }
     if sym is not None and _is_user_symbol(sym) {
         if sym.sym_type in (
             SymbolType.OBJECT_ARCH,

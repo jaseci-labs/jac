@@ -160,13 +160,26 @@ def:pub IconButtonExample() -> JsxElement {
     </Button>;
 }
 
-# Radix trigger - no forwardRef, apply buttonVariants() directly
+# Radix trigger styled directly with buttonVariants() - simplest icon-trigger form
 def:pub RadixTriggerExample() -> JsxElement {
     return <DropdownMenuTrigger className={buttonVariants().call(None, {"variant": "ghost", "size": "icon"})}>
         <HugeiconsIcon icon={MoreVerticalIcon} strokeWidth={2} className="size-4" />
     </DropdownMenuTrigger>;
 }
 ```
+
+## ⚠ `asChild` triggers and ref forwarding (silent no-open bug)
+
+`<DialogTrigger asChild={True}>`, `<DropdownMenuTrigger asChild={True}>`, `<PopoverTrigger asChild={True}>`, etc. render their **child** as the trigger and attach a positioning-anchor ref to it. The installed `components/ui/` primitives handle this. But if the child is a **hand-written composite of your own**, it MUST declare a trailing `ref: Ref[...]` parameter (which lowers to React `forwardRef`) - otherwise the anchor ref lands nowhere and the menu/popover/dialog **silently never opens**. No compile error, no console error.
+
+```jac
+# Usable as an asChild trigger child - the trailing ref param forwards the anchor
+def:pub MyMenuButton(label: str, ref: Ref[HTMLButtonElement]) -> JsxElement {
+    return <button ref={ref} className="...">{label}</button>;
+}
+```
+
+Prefer the installed `Button` (already handles this) or style the trigger directly with `buttonVariants()` as above. See `jac-npm-packages` for ref-forwarding details and its known `jac check` false positives.
 
 ## Theming
 
@@ -186,47 +199,17 @@ The `[jac-shadcn]` block in `jac.toml` is the source of truth (no longer just sc
 [jac-shadcn]
 style = "nova"        # nova | vega | maia | lyra | mira  (--style also restyles installed components)
 baseColor = "neutral" # neutral | stone | zinc | gray
-theme = "rose"        # accent: neutral, stone, zinc, gray, amber, blue, cyan, emerald,
-                      #   fuchsia, green, indigo, lime, orange, pink, purple, red, rose,
-                      #   sky, teal, violet, yellow
-font = "inter"        # figtree (default), inter, geist, geist-mono, roboto, raleway,
-                      #   dm-sans, public-sans, outfit, noto-sans, nunito-sans, jetbrains-mono
+theme = "rose"        # accent: any base color or amber/blue/cyan/emerald/fuchsia/green/indigo/lime/orange/pink/purple/red/rose/sky/teal/violet/yellow
+font = "inter"        # figtree (default), inter, geist, geist-mono, roboto, raleway, dm-sans, public-sans, outfit, noto-sans, nunito-sans, jetbrains-mono
 radius = "default"    # default | none | small | medium | large
 menuAccent = "subtle" # subtle | bold
 ```
 
 `jac retheme --font <name>` patches `[dependencies.npm]` automatically - no manual font package edit, and `jac install` runs before `jac start --dev`.
 
-### Understanding / hand-editing the generated CSS
+### The generated CSS
 
-`global.css` defines CSS variables in OKLCH (`oklch(lightness chroma hue)`) under `:root` and `.dark`, then registers them in an `@theme inline` block. Key variables:
-
-| Variable | Purpose |
-|----------|---------|
-| `--background` / `--foreground` | Page background and default text |
-| `--primary` / `--primary-foreground` | Primary buttons and actions |
-| `--secondary` / `--secondary-foreground` | Secondary actions |
-| `--muted` / `--muted-foreground` | Muted/disabled states |
-| `--accent` / `--accent-foreground` | Hover and accent states |
-| `--destructive` | Error and destructive actions |
-| `--card` / `--card-foreground` | Card surfaces |
-| `--border` | Default border color |
-| `--radius` | Base radius; `rounded-sm/md/lg/xl` derive from it |
-| `--sidebar*` | Sidebar background/text/active/hover colors |
-
-To add a **custom** color the generator doesn't emit, define it in `:root`/`.dark` and register it in `@theme inline` (remember a later `jac retheme` regenerates the file and drops it):
-
-```css
-:root { --warning: oklch(0.84 0.16 84); --warning-foreground: oklch(0.28 0.07 46); }
-.dark { --warning: oklch(0.41 0.11 46); --warning-foreground: oklch(0.99 0.02 95); }
-@theme inline { --color-warning: var(--warning); --color-warning-foreground: var(--warning-foreground); }
-```
-
-```jac
-def:pub WarningAlert() -> JsxElement {
-    return <div className="bg-warning text-warning-foreground">Warning</div>;
-}
-```
+`global.css` defines OKLCH CSS variables (`--background`, `--primary`, `--muted-foreground`, `--radius`, `--sidebar*`, ...) under `:root`/`.dark` and registers them in an `@theme inline` block - this is what the semantic Tailwind classes resolve to. To add a custom color the generator doesn't emit, define the variable in `:root`/`.dark` and register it in `@theme inline` (a later `jac retheme` regenerates the file and drops it). See `jac-cl-styling` for the token names to use in `className`.
 
 ## Complete example
 
@@ -253,9 +236,7 @@ def:pub EventListPage() -> JsxElement {
     }
 
     if loading {
-        return <div className="flex items-center justify-center p-8">
-            <Spinner />
-        </div>;
+        return <div className="flex items-center justify-center p-8"><Spinner /></div>;
     }
 
     return <div className="flex flex-col gap-6 p-6">
@@ -269,32 +250,23 @@ def:pub EventListPage() -> JsxElement {
                     </Button>
                 </DialogTrigger>
                 <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Create Event</DialogTitle>
-                    </DialogHeader>
+                    <DialogHeader><DialogTitle>Create Event</DialogTitle></DialogHeader>
                 </DialogContent>
             </Dialog>
         </div>
         <Card>
-            <CardHeader>
-                <CardTitle>Upcoming Events</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>Upcoming Events</CardTitle></CardHeader>
             <CardContent>
                 <Table>
                     <TableHeader>
-                        <TableRow>
-                            <TableHead>Name</TableHead>
-                            <TableHead>Status</TableHead>
-                        </TableRow>
+                        <TableRow><TableHead>Name</TableHead><TableHead>Status</TableHead></TableRow>
                     </TableHeader>
                     <TableBody>
                         {for e in events {
                             if e != None {
                                 <TableRow key={e["id"]}>
                                     <TableCell>{e["name"]}</TableCell>
-                                    <TableCell>
-                                        <Badge variant="outline">{e["status"]}</Badge>
-                                    </TableCell>
+                                    <TableCell><Badge variant="outline">{e["status"]}</Badge></TableCell>
                                 </TableRow>
                             }
                         }}

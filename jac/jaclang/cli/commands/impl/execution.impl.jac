@@ -368,7 +368,8 @@ impl start(
     }
     # Initialize HMR if dev mode enabled
     hot_reloader = None;
-    vite_process = None;
+    # Filled by on_ready; read by the shutdown paths.
+    vite_holder: list = [];
     if dev {
         # Auto-install watchdog if not available
         if not _ensure_watchdog_installed() {
@@ -412,34 +413,41 @@ impl start(
                     hot_reloader.record_error(str(filename), str(e));
                 }
             }
-            vite_process = _start_vite_dev_server(base, vite_port, server.port);
         }
     }
-    # Pass startup banner callback so it's printed AFTER compilation/bundling completes
-    # The actual_port parameter receives the port that was actually bound (may differ if original was in use)
-    # In dev mode with client, vite_port is separate from API port
-    try {
-        server.start(
+    # Vite starts after the API's port is known so the proxy is wired right;
+    # skip_port keeps Vite off that port (on_ready fires before the API binds).
+    def _announce_ready(actual_port: int) {
+        primary_port = actual_port;
+        if dev and not no_client {
+            free_vite_port = _find_free_port(vite_port, skip_port=actual_port);
+            (started_vite, bound_port) = _start_vite_dev_server(
+                base, free_vite_port, actual_port
+            );
+            if started_vite {
+                vite_holder.append(started_vite);
+            }
+            primary_port = bound_port;
+        }
+        _print_startup_message(
             dev=dev,
             no_client=no_client,
-            on_ready=lambda actual_port :
-                _print_startup_message(
-                    dev=dev,
-                    no_client=no_client,
-                    primary_port=vite_port if (dev and not no_client) else actual_port,
-                    api_port=actual_port,
-                    base_path=base
-                )
+            primary_port=primary_port,
+            api_port=actual_port,
+            base_path=base
         );
+    }
+    try {
+        server.start(dev=dev, no_client=no_client, on_ready=_announce_ready);
         return 0;
     } except KeyboardInterrupt {
         console.print('\nShutting down...');
         if hot_reloader {
             hot_reloader.stop();
         }
-        if vite_process {
-            vite_process.terminate();
-            vite_process.wait(timeout=5);
+        for started_vite in vite_holder {
+            started_vite.terminate();
+            started_vite.wait(timeout=5);
         }
         mach.close();
         return 0;
@@ -450,8 +458,8 @@ impl start(
         if hot_reloader {
             hot_reloader.stop();
         }
-        if vite_process {
-            vite_process.terminate();
+        for started_vite in vite_holder {
+            started_vite.terminate();
         }
         mach.close();
         return 1;
@@ -576,8 +584,8 @@ def _print_startup_message(
         console.print("  🚀 Server ready", style="bold green");
         console.print();
         console.print("  Mode: Development (with HMR)", style="muted");
-        console.print(f"    Vite:  http://localhost:{primary_port}/", style="muted");
-        console.print(f"    API:   http://localhost:{api_port}/", style="muted");
+        console.print(f"    App:  http://localhost:{primary_port}/", style="muted");
+        console.print(f"    API:  http://localhost:{api_port}/", style="muted");
         console.print();
         # Count and show watching files
         file_count = _count_jac_files(base_path);
@@ -604,7 +612,32 @@ def _print_startup_message(
     console.print();
 }
 
-"""Start Vite dev server for HMR mode."""
+"""First free 0.0.0.0 port from `start`, never `skip_port`."""
+def _find_free_port(start: int, skip_port: int = 0) -> int {
+    import socket;
+    candidate = start;
+    for _ in range(50) {
+        if candidate != skip_port {
+            try {
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe {
+                    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
+                    probe.bind(('0.0.0.0', candidate));
+                }
+                return candidate;
+            } except OSError {
+                ;
+            }
+        }
+        candidate += 1;
+    }
+    console.warning(
+        f"[Vite] No free port found in {start}-{start + 49}; falling back."
+    );
+    # Never hand back skip_port — Vite would steal the API's not-yet-bound port.
+    return start if start != skip_port else start + 50;
+}
+
+"""Start Vite dev server for HMR mode. Returns (process, bound_port)."""
 def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> any {
     import from pathlib { Path }
 
@@ -627,15 +660,16 @@ def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> any
         }
 
         # Start the dev server (messages handled by bundler)
-        return bundler.start_dev_server(vite_port, suppress_initial_output=True);
+        process = bundler.start_dev_server(vite_port, suppress_initial_output=True);
+        return (process, bundler.dev_server_port or vite_port);
     } except ImportError as e {
         console.error(
             f"[Vite] Warning: jac-client not installed, skipping Vite dev server: {e}"
         );
-        return None;
+        return (None, vite_port);
     } except Exception as e {
         console.error(f"[Vite] Warning: Could not start Vite dev server: {e}");
-        return None;
+        return (None, vite_port);
     }
 }
 

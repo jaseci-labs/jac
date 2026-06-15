@@ -2,7 +2,31 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.16.2 (Latest Release)
+## jaclang 0.16.3 (Latest Release)
+
+### New Features
+
+- **Declarative schema repair for persisted archetypes (`__jac_schema__`)**: Nodes and edges can now declare how their stored shape evolved by defining a `static def __jac_schema__() -> None;` whose body calls the new ambient builders: `schema_was("old.mod.Name")` for class renames, `schema_alias("name", stored="username")` for field renames, `schema_drop("legacy")` for removed fields, and `schema_upgrade(fn, when=pred)` for arbitrary transforms. Rules are validated against the live fields at registration and applied automatically when old documents load: renamed fields are repaired in place, removed/unknown field values are preserved in a `__jac_attic__` sub-document instead of silently dropped, aliased fields dual-write their old stored name so old app versions keep reading during rolling deploys, and fields added after a document was written are backfilled from their defaults (fixing a latent `AttributeError` on `default_factory` fields). The `JAC_SCHEMA_REPAIR` environment variable gates the engine (`repair`/`detect`/`off`), and `jac db schema rules` lists the registered rules.
+- **`test` blocks run natively in the na codespace**: a `test` in a `.na.jac` module or inline `na {}` block compiles to native code, executes via the JIT under `jac test`, and reports through the standard test pipeline with source-located assertion failures. (jaseci-labs/jaseci#6599)
+
+### Bug Fixes
+
+- **Fix: Jac `or`/`and` with `getattr`/`dict.get` defaults no longer emit invalid JS**: `getattr(obj, key, default)` and `dict.get(key, default)` lower to nullish coalescing (`??`). When that result is combined with Jac `or` or `and` (lowered to `||`/`&&`), the unparenthesized `??` subexpression produced a JavaScript `SyntaxError`. ES codegen now parenthesizes the `??` default so `||`/`&&` chains compile and run correctly.
+- **Fix: Port collisions no longer break the dev server**: Vite starts after the API server resolves its port, so the proxy always targets the real API even when ports collide. The startup banner shows the actually-bound ports.
+- **Perf**: fixed a regression that made compiling and starting plain Jac programs roughly 2-3x slower and use about twice the memory. Type checking now runs only when it is actually needed (native and client builds, or `jac check`), so a normal `jac run` no longer pays for it. Restores first-install, startup, and memory back to previous levels. (jaseci-labs/jaseci#6621)
+
+### Refactors
+
+- **Analysis centralization (train 6)**: the JIR-carries-semantics question is measured and decided (semantic annotations stay recompute-on-load; warm cache hits already skip analysis entirely, with numbers recorded in the architecture spec); foreign calls now classify centrally as `CallKind.CLIB` - the seam the Phase 8 marshalling plan builds on. (jaseci-labs/jaseci#6542)
+- **Analysis centralization (train 7)**: the native foreign (clib) boundary now has a single owner. A central foreign declaration model (`compiler/targets/foreign.jac`) owns the declared struct vocabulary and C data layouts; foreign call marshalling plans (struct classification, coerce expansion, sret promotion) are decided by `classify_foreign_fn` in the pure target ABI library, with the backend reduced to LLVM materialization. The backend's `field_type_node` annotation-AST cache is deleted and the purity ratchet tightens. Also pins the type registry's bootstrap compile order via a module-level checker import, keeping first-use compilation memory flat. (jaseci-labs/jaseci#6542)
+- **Analysis centralization (train 8)**: the foreign declaration model now owns declared clib function signatures (`collect_foreign_fns`; the backend's `_clib_type_name` annotation walker is deleted); declaratively-unsupported native constructs (disqualifier nodes, structural match patterns, non-allowlisted Python imports) are rejected by a single pre-codegen capability sweep instead of scattered mid-emission checks; and the ES backend's primitive dispatch reads checker-stamped `Expr.type` instead of re-running inference at codegen, with two typed-tree stamp gaps (resolved bare names, `CfgExpr` narrowing wrappers) closed at the source - which also drops cold-bootstrap compile cost (~10% wall, ~0.6GB peak). (jaseci-labs/jaseci#6542)
+
+### Documentation
+
+- **Generated AGENTS.md covers the full dev loop**: projects created with `jac create` now point coding agents at `jac start` for running fullstack apps and `jac browse` for headless-browser QA, alongside `jac check` and `jac run`.
+- **Agent skill guides overhauled (22 → 35)**: 17 verified accuracy fixes across the existing `jac guide` set (typed-edge syntax, generic-entry semantics, native stdlib/subset claims, impl-file layouts, endpoint auth/isolation semantics, `Ref[T]` refs, and more), plus 13 new guides - testing, debugging, jac.toml config, a project-kinds router, microservices, deployment, client JS interop, desktop, mobile, C-ABI shared libraries, wasm, Python interop, and concurrency. Every ```jac example in every guide now passes `jac check`, and related doc/CLI corrections (including the broken `jac create` hint flags) ride along.
+
+## jaclang 0.16.2
 
 ### New Features
 

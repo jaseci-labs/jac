@@ -334,6 +334,11 @@ impl JacAPIServerCore.start(
 impl JacAPIServerCore._print_startup_banner(dev: bool, no_client: bool) -> None {
     import from importlib.metadata { version as pkg_version }
 
+    # Dev+client: skip — self.port is the API; the on_ready banner has the real URLs.
+    if dev and not no_client {
+        return;
+    }
+
     # Print header
     try {
         version = pkg_version('jaclang');
@@ -634,6 +639,7 @@ impl JacAPIServerCore._register_endpoints -> None {
     self.register_llm_telemetry_endpoints();
     self.register_logs_endpoints();
     self.register_traces_endpoints();
+    self.register_ops_endpoints();
     # User-defined endpoints (walkers, functions, webhooks)
     self.register_walkers_endpoints();
     self.register_functions_endpoints();

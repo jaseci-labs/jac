@@ -16,6 +16,56 @@ AAPCS is Phase 2; off-x86_64 targets keep the legacy path in
 `_declare_clib_ability`.
 """
 
+"""The memoized foreign declaration model (Phase 8): clib struct shapes
+collected centrally over this pass's module universe. The memo is keyed
+on the universe size because the universe grows mid-transform: the entry
+module's clib imports are processed (Phase 0) before
+_register_imported_struct_types assembles _foreign_modules, so a model
+built early for an entry-declared function must be rebuilt once the
+transitively imported modules join the universe."""
+impl NaIRGenPass._foreign_model -> dict {
+    import from jaclang.compiler.targets.foreign { collect_foreign_structs }
+    universe = [self.ir_in] + self._foreign_modules;
+    if self._foreign_structs is None or self._foreign_model_nmods != len(universe) {
+        self._foreign_structs = collect_foreign_structs(universe);
+        self._foreign_model_nmods = len(universe);
+    }
+    return self._foreign_structs;
+}
+
+"""The memoized foreign function declarations (Phase 8): clib signature
+names collected centrally over this pass's module universe, keyed on the
+universe size for the same mid-transform growth reason as
+_foreign_model."""
+impl NaIRGenPass._foreign_fns -> dict {
+    import from jaclang.compiler.targets.foreign { collect_foreign_fns }
+    universe = [self.ir_in] + self._foreign_modules;
+    if self._foreign_fn_decls is None or self._foreign_fns_nmods != len(universe) {
+        self._foreign_fn_decls = collect_foreign_fns(universe);
+        self._foreign_fns_nmods = len(universe);
+    }
+    return self._foreign_fn_decls;
+}
+
+"""Ordered (field_name, nested_struct_name | None) pairs for a clib
+struct, from the foreign declaration model - the single answer to
+'which fields are nested clib structs'. Position in this list IS the
+field's GEP index in both the Jac struct and the C-laid-out struct:
+the model's order and the backend's struct_field_indices both derive
+from the declaration's has-var order. The copiers address both
+representations by this position, so the invariant is asserted here
+(the shared chokepoint) rather than trusted silently."""
+impl NaIRGenPass._foreign_fields_of(name: str) -> list {
+    model = self._foreign_model();
+    indices = self.struct_field_indices.get(name, {});
+    out: list = [];
+    for (i, (fn, tn)) in enumerate(model.get(name, [])) {
+        assert fn not in indices or indices[fn] == i , f"foreign field order mismatch for {name}.{fn}";
+        out.append((fn, tn if (tn is not None and tn in model) else None));
+    }
+    return out;
+}
+
 """Compute the C in-memory layout of a clib struct.
 
 Returns (size, align, scalars) where scalars is a flat list of
@@ -23,44 +73,11 @@ Returns (size, align, scalars) where scalars is a flat list of
 layout matches the C ABI rather than the Jac pointer-nested representation.
 """
 impl NaIRGenPass._clib_struct_layout(name: str) -> tuple {
-    indices = self.struct_field_indices.get(name, {});
-    ftypes = self.struct_field_types.get(name, {});
-    fnodes = self.field_type_node.get(name, {});
-    idx_to_name: dict[(int, str)] = {};
-    for (fn, ix) in indices.items() {
-        idx_to_name[ix] = fn;
-    }
-    offset = 0;
-    max_align = 1;
-    scalars: list = [];
-    for ix in sorted(idx_to_name.keys()) {
-        fn = idx_to_name[ix];
-        tname: (str | None) = None;
-        if fn in fnodes {
-            tname = self._get_name(fnodes[fn]);
-        }
-        if tname is not None and tname in self.clib_struct_names {
-            (sz, al, subs) = self._clib_struct_layout(tname);
-        } else {
-            import from jaclang.compiler.targets.abi { scalar_layout }
-            (sz, al, subs) = scalar_layout(ftypes.get(fn));
-        }
-        if al > 0 and (offset % al) != 0 {
-            offset += al - (offset % al);
-        }
-        for (so, isf, b) in subs {
-            scalars.append((offset + so, isf, b));
-        }
-        offset += sz;
-        if al > max_align {
-            max_align = al;
-        }
-    }
-    size = offset;
-    if max_align > 0 and (size % max_align) != 0 {
-        size += max_align - (size % max_align);
-    }
-    return (size, max_align, scalars);
+    # The C layout is the foreign declaration model's job (Phase 8); the
+    # pass only supplies its module universe (entry + transitive native
+    # imports, assembled in _register_imported_struct_types).
+    import from jaclang.compiler.targets.foreign { foreign_struct_layout }
+    return foreign_struct_layout(self._foreign_model(), name);
 }
 
 """Classify a clib struct for the active target's C ABI.
@@ -85,26 +102,10 @@ impl NaIRGenPass._classify_clib_struct(name: str) -> dict {
     return classify_struct(size, align, scalars, str(self.llvm_module.triple or ""));
 }
 
-"""Name of the (struct) type an annotation refers to, or None."""
-impl NaIRGenPass._clib_type_name(type_expr: (uni.UniNode | None)) -> (str | None) {
-    if type_expr is None {
-        return None;
-    }
-    if isinstance(type_expr, uni.Name) {
-        return type_expr.value;
-    }
-    if type_expr?.value and isinstance(type_expr?.value, str) {
-        return type_expr.value;
-    }
-    return None;
-}
-
 """True if a clib struct has a field whose type is itself a clib struct."""
 impl NaIRGenPass._clib_has_nested(name: str) -> bool {
-    fnodes = self.field_type_node.get(name, {});
-    for (_fn, node) in fnodes.items() {
-        tn = self._get_name(node);
-        if tn is not None and tn in self.clib_struct_names {
+    for (_fn, nested) in self._foreign_fields_of(name) {
+        if nested is not None {
             return True;
         }
     }
@@ -127,19 +128,11 @@ impl NaIRGenPass._clib_c_type(name: str) -> ir.Type {
     }
     ct = self.llvm_module.context.get_identified_type(key);
     self.struct_types[key] = ct;
-    indices = self.struct_field_indices.get(name, {});
     ftypes = self.struct_field_types.get(name, {});
-    fnodes = self.field_type_node.get(name, {});
-    idx_to_name: dict[(int, str)] = {};
-    for (fn, ix) in indices.items() {
-        idx_to_name[ix] = fn;
-    }
     body: list = [];
-    for ix in sorted(idx_to_name.keys()) {
-        fn = idx_to_name[ix];
-        tn = self._get_name(fnodes[fn]) if fn in fnodes else None;
-        if tn is not None and tn in self.clib_struct_names {
-            body.append(self._clib_c_type(tn));
+    for (fn, nested) in self._foreign_fields_of(name) {
+        if nested is not None {
+            body.append(self._clib_c_type(nested));
         } else {
             body.append(ftypes.get(fn, ir.IntType(64)));
         }
@@ -190,15 +183,7 @@ impl NaIRGenPass._clib_alloc_box(name: str) -> ir.Value {
 impl NaIRGenPass._clib_copy_jac_to_c(
     jac_ptr: ir.Value, c_ptr: ir.Value, name: str
 ) -> None {
-    indices = self.struct_field_indices.get(name, {});
-    fnodes = self.field_type_node.get(name, {});
-    idx_to_name: dict[(int, str)] = {};
-    for (fn, ix) in indices.items() {
-        idx_to_name[ix] = fn;
-    }
-    for ix in sorted(idx_to_name.keys()) {
-        fn = idx_to_name[ix];
-        tn = self._get_name(fnodes[fn]) if fn in fnodes else None;
+    for (ix, (fn, tn)) in enumerate(self._foreign_fields_of(name)) {
         jac_field = self.builder.gep(
             jac_ptr,
             [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), ix)],
@@ -209,7 +194,7 @@ impl NaIRGenPass._clib_copy_jac_to_c(
             [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), ix)],
             name="clib.j2c.cf"
         );
-        if tn is not None and tn in self.clib_struct_names {
+        if tn is not None {
             sub_jac = self.builder.load(jac_field, name="clib.j2c.subptr");
             self._clib_copy_jac_to_c(sub_jac, c_field, tn);
         } else {
@@ -223,15 +208,7 @@ impl NaIRGenPass._clib_copy_jac_to_c(
 impl NaIRGenPass._clib_copy_c_to_jac(
     c_ptr: ir.Value, jac_ptr: ir.Value, name: str
 ) -> None {
-    indices = self.struct_field_indices.get(name, {});
-    fnodes = self.field_type_node.get(name, {});
-    idx_to_name: dict[(int, str)] = {};
-    for (fn, ix) in indices.items() {
-        idx_to_name[ix] = fn;
-    }
-    for ix in sorted(idx_to_name.keys()) {
-        fn = idx_to_name[ix];
-        tn = self._get_name(fnodes[fn]) if fn in fnodes else None;
+    for (ix, (fn, tn)) in enumerate(self._foreign_fields_of(name)) {
         c_field = self.builder.gep(
             c_ptr,
             [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), ix)],
@@ -242,7 +219,7 @@ impl NaIRGenPass._clib_copy_c_to_jac(
             [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), ix)],
             name="clib.c2j.jf"
         );
-        if tn is not None and tn in self.clib_struct_names {
+        if tn is not None {
             sub_box = self._clib_alloc_box(tn);
             self._clib_copy_c_to_jac(c_field, sub_box, tn);
             self.builder.store(sub_box, jac_field);

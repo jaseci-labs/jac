@@ -9,8 +9,18 @@ import from jaclang.compiler.targets.abi {
     classify_struct,
     classify_struct_sysv,
     classify_struct_aapcs,
-    scalar_layout
+    scalar_layout,
+    classify_foreign_fn
 }
+
+# Foreign struct model shaped like targets.foreign.collect_foreign_structs
+# output: V2 rides SSE registers, Big is MEMORY class (3 eightbytes).
+glob FN_STRUCTS: dict = {
+         "V2": [("x", "f64"), ("y", "f64")],
+         "Big": [("a", "i64"), ("b", "i64"), ("c", "i64")],
+
+     },
+     SYSV: str = "x86_64-unknown-linux-gnu";
 
 test "scalar layout primitives" {
     assert scalar_layout(ir.DoubleType()) == (8, 8, [(0, True, 64)]);
@@ -106,4 +116,49 @@ test "empty struct is trivial on both abis" {
     a = classify_struct_aapcs(0, 1, []);
     assert not s["memory"] and s["coerce"] == [];
     assert not a["memory"] and a["coerce"] == [];
+}
+
+test "foreign fn plan is none without by-value structs" {
+    plan = classify_foreign_fn(FN_STRUCTS, [("x", "f64"), ("s", "str")], "i64", SYSV);
+    assert plan is None;
+}
+
+test "foreign fn register struct param expands coerce slots" {
+    plan = classify_foreign_fn(FN_STRUCTS, [("v", "V2"), ("k", "i64")], None, SYSV);
+    assert plan is not None;
+    assert not plan["sret"];
+    (vp, kp) = plan["params"];
+    assert vp["kind"] == "struct_reg" and vp["argpos"] == 0;
+    assert len(vp["coerce"]) == 2;
+    assert kp["kind"] == "scalar" and kp["tname"] == "i64";
+    # Two coerce pieces then the scalar: argpos skips the expansion.
+    assert kp["argpos"] == 2;
+    assert plan["sig"][0][0] == "coerce" and plan["sig"][2] == ("scalar", 1);
+    assert plan["ret"]["kind"] == "scalar" and plan["sig_ret"] == ("scalar", );
+}
+
+test "foreign fn memory return promotes sret and shifts argpos" {
+    plan = classify_foreign_fn(FN_STRUCTS, [("n", "i32")], "Big", SYSV);
+    assert plan is not None;
+    assert plan["sret"];
+    assert plan["ret"]["kind"] == "sret" and plan["ret"]["sname"] == "Big";
+    assert plan["sig"][0] == ("sretptr", "Big");
+    assert plan["sig_ret"] == ("void", );
+    # The lone scalar parameter sits after the hidden sret pointer.
+    assert plan["params"][0]["argpos"] == 1;
+}
+
+test "foreign fn memory param is a byval struct pointer" {
+    plan = classify_foreign_fn(FN_STRUCTS, [("b", "Big")], "f64", SYSV);
+    assert plan is not None and not plan["sret"];
+    bp = plan["params"][0];
+    assert bp["kind"] == "struct_mem" and bp["byval"];
+    assert plan["sig"][0] == ("structptr", "Big");
+}
+
+test "foreign fn unnamed params get positional names" {
+    plan = classify_foreign_fn(FN_STRUCTS, [(None, "V2"), (None, "i64")], None, SYSV);
+    assert plan is not None;
+    assert plan["params"][0]["pname"] == "arg0";
+    assert plan["params"][1]["pname"] == "arg1";
 }

@@ -186,14 +186,45 @@ impl JacNode.get_edges(
     edges: OrderedDict[(EdgeAnchor, EdgeArchetype)] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
-        for anchor in nanch.edges {
+        # Snapshot: resolve_ref may prune nanch.edges while healing a dangler.
+        for stub in `list(nanch.edges) {
+            `edge = resolve_ref(stub, nanch);
+            if `edge is None {
+                continue;  # dangling edge doc: healed (pruned + quarantined)
+            }
+            source = resolve_ref(`edge.source, `edge);
+            target = resolve_ref(`edge.target, `edge);
+            if source is None or target is None {
+                # Edge points at a ghost endpoint. Prune the dead edge ONLY if
+                # that endpoint is genuinely gone; a recoverable (quarantined)
+                # endpoint keeps its edge so `jac db recover` can restore it.
+                gmem = JacRuntimeInterface.get_context().mem;
+                # Prune the dead edge if EITHER missing endpoint is genuinely
+                # gone. resolve_ref already filed a DANGLING_REF row for the
+                # missing endpoint; is_recoverable_quarantine excludes those,
+                # so that fresh row does not poison this check into skipping
+                # the prune. An endpoint that is only recoverable-quarantined
+                # (schema drift) keeps its edge for `jac db recover`.
+                dead = (
+                    (
+                        source is None
+                        and not gmem.is_recoverable_quarantine(`edge.source.id)
+                    )
+                    or (
+                        target is None
+                        and not gmem.is_recoverable_quarantine(`edge.target.id)
+                    )
+                );
+                if dead {
+                    gmem.quarantine_ref(nanch, `edge);
+                }
+                continue;
+            }
             effective_dir = EdgeDir.ANY
-                if anchor.is_undirected
+                if `edge.is_undirected
                 else destination.direction;
             if (
-                (source := anchor.source)
-                and (target := anchor.target)
-                and destination.edge_filter(anchor.archetype)
+                destination.edge_filter(`edge.archetype)
                 and source.archetype
                 and target.archetype
             ) {
@@ -203,7 +234,7 @@ impl JacNode.get_edges(
                     and destination.node_filter(target.archetype)
                     and JacRuntimeInterface.check_read_access(target)
                 ) {
-                    edges[anchor] = anchor.archetype;
+                    edges[`edge] = `edge.archetype;
                 }
                 if (
                     (effective_dir in [EdgeDir.IN, EdgeDir.ANY])
@@ -211,7 +242,7 @@ impl JacNode.get_edges(
                     and destination.node_filter(source.archetype)
                     and JacRuntimeInterface.check_read_access(source)
                 ) {
-                    edges[anchor] = anchor.archetype;
+                    edges[`edge] = `edge.archetype;
                 }
             }
         }
@@ -229,14 +260,43 @@ impl JacNode.get_edges_with_node(
     loc: OrderedDict[((NodeAnchor | EdgeAnchor), (NodeArchetype | EdgeArchetype))] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
-        for anchor in nanch.edges {
+        for stub in `list(nanch.edges) {
+            `edge = resolve_ref(stub, nanch);
+            if `edge is None {
+                continue;
+            }
+            source = resolve_ref(`edge.source, `edge);
+            target = resolve_ref(`edge.target, `edge);
+            if source is None or target is None {
+                # Edge points at a ghost endpoint; prune only if genuinely gone
+                # (a recoverable quarantined endpoint keeps its edge).
+                gmem = JacRuntimeInterface.get_context().mem;
+                # Prune the dead edge if EITHER missing endpoint is genuinely
+                # gone. resolve_ref already filed a DANGLING_REF row for the
+                # missing endpoint; is_recoverable_quarantine excludes those,
+                # so that fresh row does not poison this check into skipping
+                # the prune. An endpoint that is only recoverable-quarantined
+                # (schema drift) keeps its edge for `jac db recover`.
+                dead = (
+                    (
+                        source is None
+                        and not gmem.is_recoverable_quarantine(`edge.source.id)
+                    )
+                    or (
+                        target is None
+                        and not gmem.is_recoverable_quarantine(`edge.target.id)
+                    )
+                );
+                if dead {
+                    gmem.quarantine_ref(nanch, `edge);
+                }
+                continue;
+            }
             effective_dir = EdgeDir.ANY
-                if anchor.is_undirected
+                if `edge.is_undirected
                 else destination.direction;
             if (
-                (source := anchor.source)
-                and (target := anchor.target)
-                and destination.edge_filter(anchor.archetype)
+                destination.edge_filter(`edge.archetype)
                 and source.archetype
                 and target.archetype
             ) {
@@ -246,7 +306,7 @@ impl JacNode.get_edges_with_node(
                     and destination.node_filter(target.archetype)
                     and JacRuntimeInterface.check_read_access(target)
                 ) {
-                    loc[anchor] = anchor.archetype;
+                    loc[`edge] = `edge.archetype;
                     loc[target] = target.archetype;
                 }
                 if (
@@ -255,7 +315,7 @@ impl JacNode.get_edges_with_node(
                     and destination.node_filter(source.archetype)
                     and JacRuntimeInterface.check_read_access(source)
                 ) {
-                    loc[anchor] = anchor.archetype;
+                    loc[`edge] = `edge.archetype;
                     loc[source] = source.archetype;
                 }
             }
@@ -272,14 +332,43 @@ impl JacNode.edges_to_nodes(
     nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
-        for anchor in nanch.edges {
+        for stub in `list(nanch.edges) {
+            `edge = resolve_ref(stub, nanch);
+            if `edge is None {
+                continue;
+            }
+            source = resolve_ref(`edge.source, `edge);
+            target = resolve_ref(`edge.target, `edge);
+            if source is None or target is None {
+                # Edge points at a ghost endpoint; prune only if genuinely gone
+                # (a recoverable quarantined endpoint keeps its edge).
+                gmem = JacRuntimeInterface.get_context().mem;
+                # Prune the dead edge if EITHER missing endpoint is genuinely
+                # gone. resolve_ref already filed a DANGLING_REF row for the
+                # missing endpoint; is_recoverable_quarantine excludes those,
+                # so that fresh row does not poison this check into skipping
+                # the prune. An endpoint that is only recoverable-quarantined
+                # (schema drift) keeps its edge for `jac db recover`.
+                dead = (
+                    (
+                        source is None
+                        and not gmem.is_recoverable_quarantine(`edge.source.id)
+                    )
+                    or (
+                        target is None
+                        and not gmem.is_recoverable_quarantine(`edge.target.id)
+                    )
+                );
+                if dead {
+                    gmem.quarantine_ref(nanch, `edge);
+                }
+                continue;
+            }
             effective_dir = EdgeDir.ANY
-                if anchor.is_undirected
+                if `edge.is_undirected
                 else destination.direction;
             if (
-                (source := anchor.source)
-                and (target := anchor.target)
-                and destination.edge_filter(anchor.archetype)
+                destination.edge_filter(`edge.archetype)
                 and source.archetype
                 and target.archetype
             ) {
@@ -994,6 +1083,11 @@ impl JacBasics.run_test(
             mod_name = mod_name[:-4];
             if mod_name.endswith('.test') {
                 mod_name = mod_name[:-5];
+            } elif mod_name.endswith('.na') or mod_name.endswith('.sv') {
+                # Compound codespace suffix: foo.na.jac imports as module
+                # 'foo' (the importer resolves the stem back to the file);
+                # leaving the '.na' makes jac_import read it as a package path.
+                mod_name = mod_name[:-3];
             }
             JacTestCheck.reset();
             JacRuntimeInterface.jac_import(target=mod_name, base_path=base);
@@ -1053,8 +1147,13 @@ impl JacBasics.run_test(
                         f"\n\n\t\t* Inside {root_dir}/{file} *"
                     );
                     JacTestCheck.reset();
+                    mod_target = file[:-4];
+                    if mod_target.endswith('.na') or mod_target.endswith('.sv') {
+                        # Compound codespace suffix (see single-file branch).
+                        mod_target = mod_target[:-3];
+                    }
                     JacRuntimeInterface.jac_import(
-                        target=file[:-4], base_path=root_dir
+                        target=mod_target, base_path=root_dir
                     );
                     JacTestCheck.run_test(
                         xit, maxfail, verbose, os.path.abspath(file), func_name
@@ -2467,6 +2566,15 @@ impl JacRuntimeInterface.store(
 ) -> any {
     import from jaclang.runtimelib.storage { LocalStorage }
     return LocalStorage(base_path=base_path, create_dirs=create_dirs);
+}
+
+"""Core default: no plugin backend, so the runtime falls back to SqliteMemory.
+
+    A DB-backend plugin overrides this hookimpl to return its own
+    PersistentMemory; firstresult means a non-None return wins.
+    """
+impl JacRuntimeInterface.get_persistent_memory(config: dict) -> any {
+    return None;
 }
 
 """Get or create the JacCompiler singleton.

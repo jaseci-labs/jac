@@ -307,6 +307,11 @@ impl UnparsePass.exit_archetype(nd: uni.Archetype) -> None {
     if nd.base_classes {
         parts.append("(" + self._comma_sep(nd.base_classes) + ")");
     }
+    if nd.src_endpoint and nd.tgt_endpoint {
+        parts.append(
+            ": " + nd.src_endpoint.gen.jac + " --> " + nd.tgt_endpoint.gen.jac
+        );
+    }
     if nd.body {
         if isinstance(nd.body, uni.ImplDef) {
             parts.append(";");
