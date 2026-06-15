@@ -1,6 +1,6 @@
 ---
 name: jac-sv-microservices
-description: Splitting a Jac backend into microservices with `sv import` - compile-time HTTP client stubs between server modules, provider discovery (JAC_SV_<MOD>_URL, auto-spawn), remote walker spawns, boundary types, the gateway mode. Load when one server module must call another deployed as its own service. Pair with `jac-sv-endpoints` (the endpoints being called), `jac-sv-deploy` (k8s).
+description: Splitting a Jac backend into microservices with `sv import` - compile-time HTTP client stubs between server modules, provider discovery (JAC_SV_<MOD>_URL, auto-spawn), remote walker spawns, boundary types, streaming pass-through, the gateway mode. Load when one server module must call another deployed as its own service. Pair with `jac-sv-endpoints`, `jac-sv-deploy` (k8s), `jac-sv-streaming` (SSE across services).
 ---
 
 `sv import from <module> { ... }` between two **server** modules does not load the provider into the consumer's process. The compiler generates HTTP client stubs: calling `add(1, 2)` issues `POST /function/add` against the provider's URL; the source still reads like a normal import. The same code runs as a monolith, a one-command local cluster, or N Kubernetes deployments - the split happens at deploy time, not source time.
@@ -34,6 +34,8 @@ curl -X POST http://localhost:8002/function/sum_list \
   -H "Content-Type: application/json" -d '{"numbers":[1,2,3,4,5]}'
 ```
 
+**sv-to-sv function stubs are SYNCHRONOUS** - call them like local functions, no `await` (the stub blocks on the HTTP hop and resolves directly to the typed result). This is the opposite of cl-to-sv stubs, which are async and must be awaited (`jac-fullstack-patterns`).
+
 **Providers MUST be `def:pub` / `walker:pub`.** Non-pub symbols are not callable across the boundary - the stub compiles fine, then the call fails at runtime with `sv-to-sv RPC 'math_service.secret_op' failed: Unauthorized` (plain/`:priv` endpoints are JWT-gated; the hop forwards the inbound `Authorization` header but anonymous chains have none). Verified live.
 
 ## Discovery chain (first match wins)
@@ -66,6 +68,7 @@ Keyword args map to `has` fields; `isinstance(rg, Greet)` works. This is sv-to-s
 ## Boundary types
 
 **Cross the wire:** `obj` types (recursively hydrated - list them in the `sv import` alongside the function/walker), `enum`s (by name), primitives, `list[T]`, `dict[K, V]`, `None`.
+**Streams cross live:** calling a provider's streaming endpoint (`-> Generator`) through the stub returns a LIVE generator - iterate and re-yield to forward frames unbuffered (the gateway pattern in `jac-sv-streaming`).
 **Don't:** node/edge anchors, closures, file/DB handles. Pass `jid(node)` strings and re-resolve with `jobj` on the other side.
 
 Failures surface at the call site as `RuntimeError`: `sv-to-sv RPC '<module>.<func>' failed: <reason>` (functions) / `sv-to-sv walker spawn '<module>.<walker>' failed: <reason>` (walkers). Catch where you want graceful degradation; transport failures are retried with backoff behind a per-provider circuit breaker.
@@ -81,4 +84,5 @@ Failures surface at the call site as `RuntimeError`: `sv-to-sv RPC '<module>.<fu
 - **`Error: No jac.toml found`** - `jac start <relative-path>` needs a `jac.toml` in the cwd.
 - **`{"detail": "Invalid anchor id ..."}` 500s** = stale persisted anchors after a schema change - stop, `rm -rf .jac/data/`, restart (not sv-specific; full story in `jac-sv-persistence`).
 - Auto-spawn waits ~15s for the sibling's health check - on slow machines or cold caches it can fail-fast spuriously. Start the provider yourself and use `JAC_SV_<MOD>_URL` (this also gives you separate logs per service).
+- Auto-spawn port collisions (something else squatting in 18000-18999) break discovery the same way - pin the provider URL explicitly (`JAC_SV_ANALYTICS_URL=http://127.0.0.1:18999 jac start ...`) instead of fighting the spawner.
 - Multi-host = env-var wiring, always. Auto-spawned siblings can never serve another machine.

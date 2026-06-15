@@ -394,6 +394,10 @@ impl ExecutionManager.execute_function_sync(
         }
         return await self._finalize_call_response(call_state, result);
     } except Exception as e {
+        # Abort-on-error: a failed call must not half-mutate the graph.
+        # Discard its uncommitted unit of work instead of leaving it in
+        # the shared working set for the next commit to flush (#6619).
+        ctx.mem.abort();
         return {'error': str(e)};
     } finally {
         ctx.call_state.reset(call_token);
@@ -420,6 +424,10 @@ impl ExecutionManager.execute_function_async(
         result = await func(**args);
         return await self._finalize_call_response(call_state, result);
     } except Exception as e {
+        # Abort-on-error: a failed call must not half-mutate the graph.
+        # Discard its uncommitted unit of work instead of leaving it in
+        # the shared working set for the next commit to flush (#6619).
+        ctx.mem.abort();
         return {'error': str(e)};
     } finally {
         ctx.call_state.reset(call_token);
@@ -481,6 +489,10 @@ impl ExecutionManager.spawn_walker_sync(
         return await self._finalize_call_response(call_state, result);
     } except Exception as e {
         import traceback;
+        # Abort-on-error: a failed walker must not half-mutate the graph.
+        # Discard its uncommitted unit of work instead of leaving it in
+        # the shared working set for the next commit to flush (#6619).
+        ctx.mem.abort();
         return {'error': str(e), 'traceback': traceback.format_exc()};
     } finally {
         ctx.call_state.reset(call_token);
@@ -524,6 +536,10 @@ impl ExecutionManager.spawn_walker_async(
         return await self._finalize_call_response(call_state, result);
     } except Exception as e {
         import traceback;
+        # Abort-on-error: a failed walker must not half-mutate the graph.
+        # Discard its uncommitted unit of work instead of leaving it in
+        # the shared working set for the next commit to flush (#6619).
+        ctx.mem.abort();
         return {'error': str(e), 'traceback': traceback.format_exc()};
     } finally {
         ctx.call_state.reset(call_token);

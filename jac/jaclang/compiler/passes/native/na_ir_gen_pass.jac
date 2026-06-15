@@ -118,6 +118,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _foreign_modules: list = [],
         _foreign_structs: (dict | None) = None,
         _foreign_model_nmods: int = -1,
+        _foreign_fn_decls: (dict | None) = None,
+        _foreign_fns_nmods: int = -1,
         # Per-clib-function System V ABI plan (Phase 1 ABI lowering).
         # name -> {"params": [plan...], "ret": plan, "sret": bool}. This is the
         # single source of truth for how a foreign call is marshalled — it
@@ -194,6 +196,22 @@ obj NaIRGenPass(ModuleCodegenPass) {
         #   reads back the values reported during the walk (#6146).
         osp_reports_field: dict[str, int] = {},
         osp_thunk_funcs: dict[str, ir.Function] = {},
+        # Counter for unique link-private names of imported-walker dispatch
+        # thunks, so a consumer's thunk never collides with the library's
+        # own `__ospthunk` symbol at link time (issue #6642 Blocker 2).
+        _osp_thunk_uid: int = 0,
+        # Dense per-compile index of each OSP archetype into this module's
+        # descriptor / is_a tables. Distinct from osp_tags, which holds the
+        # GLOBALLY-STABLE hash tag stored in instances / edges / dispatch slots;
+        # the runtime callbacks translate a stable tag to a local index via the
+        # __ospHASH table so cross-module dispatch agrees (issue #6642).
+        osp_local_idx: dict[str, int] = {},
+        # OSP archetypes IMPORTED from another native module: name ->
+        #   (arch_kind, defining module name). Cross-module OSP lowering is
+        #   not supported until #6146 Phases 3-4 (tag numbering and the
+        #   __osp_setup tables are per-module), so spawn/connect/edge-ref on
+        #   these must E5090 with help naming the import (issue #6636).
+        imported_osp_archs: dict[str, tuple] = {},
         # The native-context osp_kernel module AST registered into this program
         # (None until _register_osp_kernel_module runs); NativeCompilePass links
         # its IR + glob-init.
@@ -208,6 +226,29 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # that spawn lowering calls, so descriptors/_walk_stack exist regardless
         # of whether the program ran through a `with entry`.
         _osp_ensure_fn: (object | None) = None,
+        # __osp_kernel_inited (i8, weak): SHARED run-once guard for the OSP kernel
+        # glob-init. The kernel's adjacency / walk-stack globals (_e_src, ...) are
+        # link-merged singletons shared by every module, but __osp_setup +
+        # __osp_inited are per-module (internal). Routing the kernel glob-init
+        # through this one weak flag keeps it from re-running per module and
+        # wiping a graph an earlier module built (the cross-module spawn bug).
+        _osp_kernel_inited_gv: (object | None) = None,
+        # The kernel glob-init Function (`__jac_glob_init_osp_kernel`), stashed by
+        # _emit_osp_setup. _codegen_entry guards the program-entry call to it by
+        # IDENTITY against this, not by re-matching the symbol name — so the guard
+        # can never silently drift from the symbol the kernel link produces (a
+        # name mismatch surfaces as a loud undefined-symbol link error instead).
+        _osp_kernel_glob_init_fn: (object | None) = None,
+        # __osp_filter_type(list, node_tag) -> list: filters edge-ref neighbor
+        # handles by node type via the is_a callback (`[--> [?:Area]]`); built
+        # once in _emit_osp_setup alongside the runtime callbacks (issue #6642).
+        _osp_filter_fn: (object | None) = None,
+        # __osp_h2i(stable_tag) -> i64 and __osp_is_a(t, b) -> i1: the stable-tag
+        # -> local-index translation and the subtype query, emitted in
+        # _emit_osp_setup and reused by the callbacks and the filter so
+        # cross-module dispatch agrees on globally-stable hash tags (#6642).
+        _osp_h2i_fn: (object | None) = None,
+        _osp_is_a_fn: (object | None) = None,
         # Tuple support (Phase 9)
         tuple_types: dict[str, object] = {},
         # Global variable support (Phase 11)
@@ -339,6 +380,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Print support
     def _get_printf -> ir.Function;
     def _emit_print(nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None);
+    def _jacval_tags_for_type(name: str) -> list[int];
     def _get_fmt_string(fmt: str) -> ir.GlobalVariable;
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
@@ -446,13 +489,18 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _walk_imported_module_types(imported_mod: uni.Module) -> None;
     def _walk_imported_module_type_names(imported_mod: uni.Module) -> None;
     def _walk_imported_module_abilities(imported_mod: uni.Module) -> None;
+    def _register_imported_hierarchy(imported_mod: uni.Module) -> None;
     def _register_imported_archetype(arch: uni.Archetype) -> None;
     def _forward_declare_archetype_methods(arch: uni.Archetype) -> None;
     def _register_imported_globals(nd: uni.GlobalVars, source_path: str = "") -> None;
     def _forward_declare_imported_ability(nd: uni.Ability) -> None;
     def _register_archetypes(module: uni.Module) -> None;
     # Object-Spatial kernel lowering (Phase 4 / issue #6146)
+    def _stable_osp_tag(name: str) -> int;
     def _register_osp_tags(archetypes: list[uni.Archetype]) -> None;
+    def _register_imported_osp_archetypes(imported_mod: uni.Module) -> None;
+    def _module_uses_osp(module: uni.Module) -> bool;
+    def _xmod_osp_help(names: list) -> (str | None);
     def _register_osp_kernel_module -> None;
     def _emit_osp_thunk(arch_name: str, method: uni.Ability) -> None;
     def _osp_trigger_names(nd: (uni.UniNode | None)) -> list[str];
@@ -466,7 +514,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _osp_build_slot_list(pairs: list) -> ir.Value;
     def _osp_collect_slots(arch_name: str, is_entry: bool) -> list;
+    def _osp_emit_h2i_fn(hash_global: ir.GlobalVariable, n: int) -> ir.Function;
     def _osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> dict;
+    def _osp_emit_filter_fn(
+        isa_global: ir.GlobalVariable, n: int
+    ) -> (ir.Function | None);
+
     def _osp_isa_bases(arch_name: str) -> list[int];
     def _codegen_archetype(nd: uni.Archetype) -> None;
     def _forward_declare_method(arch_name: str, method: uni.Ability) -> None;
@@ -500,7 +553,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _osp_generic_edge -> (ir.Value | None);
     def _spawn_operand_name(nd: uni.UniNode) -> (str | None);
     def _is_walker_arch(name: str) -> bool;
-    def _codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None);
+    def _codegen_instantiation(nd: (uni.FuncCall | uni.Name)) -> (ir.Value | None);
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_field_access(
         obj_val: ir.Value, field_name: str, type_name: str
@@ -796,14 +849,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _clib_struct_layout(name: str) -> tuple;
     # Memoized foreign declaration model over this pass's module universe.
     def _foreign_model -> dict;
+    # Memoized foreign function declarations (name -> {"params", "ret"}).
+    def _foreign_fns -> dict;
     # Ordered (field_name, nested_struct_name | None) pairs for a clib struct.
     def _foreign_fields_of(name: str) -> list;
     # Classify a clib struct for the active target's C ABI (dispatches to the
     # System V or AAPCS variant) into either MEMORY (indirect) or register
     # coerce types.
     def _classify_clib_struct(name: str) -> dict;
-    # Name of the (struct) type an annotation refers to, or None.
-    def _clib_type_name(type_expr: (uni.UniNode | None)) -> (str | None);
     # True if the clib struct has a field that is itself a clib struct.
     def _clib_has_nested(name: str) -> bool;
     # C-laid-out LLVM type for a clib struct (nested clib structs inlined).

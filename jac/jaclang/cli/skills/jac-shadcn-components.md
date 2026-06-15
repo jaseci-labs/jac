@@ -1,6 +1,6 @@
 ---
 name: jac-shadcn-components
-description: Building with jac-shadcn primitives (delivered by the jac-super plugin) - getting components with `jac add --shadcn`, import paths, component selection, composition, styling, icons, and theming with `jac retheme`. Load when generating components for a project that has components/ui/ or a [jac-shadcn] section in jac.toml. Pair with jac-cl-components (component shape) and jac-cl-organization (file layout).
+description: Building with jac-shadcn primitives (delivered by the jac-super plugin) - getting components with `jac add --shadcn`, import paths, component selection, composition, styling, icons, and theming with `jac retheme`. Pair with `jac-shadcn-blocks` for design constants and composition patterns. Load when generating components for a project that has components/ui/ or a [jac-shadcn] section in jac.toml.
 ---
 
 shadcn primitives in Jac are delivered by the **jac-super** plugin. A jac-shadcn project (`jac create --use jac-shadcn`, or any project with a `[jac-shadcn]` section in `jac.toml`) keeps the primitives in `components/ui/`.
@@ -95,7 +95,7 @@ Most filenames are the kebab-case of the component (`alert-dialog` → import `"
 | Hover detail card | `HoverCard` + `HoverCardTrigger` + `HoverCardContent` (file `hover-card`) |
 | Loading skeleton | `Skeleton` |
 | Loading spinner | `Spinner` |
-| Empty state | `Empty` |
+| Empty state | `Empty` + `EmptyHeader` + `EmptyMedia` + `EmptyTitle` + `EmptyDescription` + `EmptyContent` |
 | Alert / banner | `Alert` + `AlertTitle` + `AlertDescription` |
 | Toast / notification | `Toaster` (mount once at app root); call `toast(...)` from `"sonner"` |
 | Progress bar | `Progress` |
@@ -129,10 +129,11 @@ Violations cause accessibility errors or runtime white screens.
 - **`AlertDialog` requires both `AlertDialogAction` and `AlertDialogCancel`** in the footer.
 - **`ButtonGroup` uses nested `<ButtonGroup>` for gaps** between sections; `<ButtonGroupSeparator>` for subtle 1px dividers only.
 - **`Field` + `FieldLabel` for form fields** - never raw `<div className="flex flex-col gap-2">` with a plain `<label>`.
+- **`Tooltip` must be wrapped in `<TooltipProvider>`** - usually at app root or `Layout.cl.jac`.
 
 ## Styling rules
 
-- **Semantic colors only.** `bg-primary`, `text-muted-foreground`, `border-border`, `bg-card`. Never `bg-blue-500`, `text-gray-600`.
+- **Semantic colors only.** `bg-primary`, `text-muted-foreground`, `border-border`, `bg-card`. Never `bg-blue-500`, `text-gray-600`. Never `opacity-70` to dim text - use `text-muted-foreground` instead (opacity tricks break dark mode).
 - **No `space-x-*` or `space-y-*`.** Use `flex gap-*` or `flex flex-col gap-*`.
 - **Equal width + height → `size-*`.** `size-10` not `w-10 h-10`.
 - **No `dark:` overrides.** CSS variables handle light/dark automatically.
@@ -207,9 +208,112 @@ menuAccent = "subtle" # subtle | bold
 
 `jac retheme --font <name>` patches `[dependencies.npm]` automatically - no manual font package edit, and `jac install` runs before `jac start --dev`.
 
-### The generated CSS
+### baseColor vs theme
 
-`global.css` defines OKLCH CSS variables (`--background`, `--primary`, `--muted-foreground`, `--radius`, `--sidebar*`, ...) under `:root`/`.dark` and registers them in an `@theme inline` block - this is what the semantic Tailwind classes resolve to. To add a custom color the generator doesn't emit, define the variable in `:root`/`.dark` and register it in `@theme inline` (a later `jac retheme` regenerates the file and drops it). See `jac-cl-styling` for the token names to use in `className`.
+**baseColor** sets the gray palette of the entire UI: backgrounds, borders, muted text, card surfaces, and secondary states. Think of it as the "temperature" of the neutral shades.
+
+| baseColor | Tone | Use when |
+|---|---|---|
+| neutral | Pure gray (default) | Most apps - safe universal choice |
+| stone | Warm gray | Organic, earthy, warm brands |
+| zinc | Cool gray | Technical, cold, developer tools |
+| gray | Mid gray | Clean, slightly warm neutral |
+
+**theme** is the accent/brand color layered on top of baseColor. It sets only `--primary`, chart highlight colors, and `--sidebar-primary`. These two are independent: `baseColor=neutral + theme=amber` = gray UI with amber buttons.
+
+### Theme reference
+
+| Theme | Visual feel | Best for |
+|---|---|---|
+| neutral | Monochrome, no accent | Minimal tools, content-first apps |
+| stone | Neutral warm tone | Subtle warmth, organic brands |
+| zinc | Neutral cool tone | Cool/technical feel |
+| gray | Mid neutral tone | Clean, versatile |
+| amber | Warm orange-yellow | E-commerce, food, productivity |
+| orange | Bold orange | Energy, sports, bold consumer apps |
+| yellow | Bright yellow | Education, children, playful apps |
+| lime | Fresh lime-green | Environmental, health, food |
+| green | Classic green | Finance, health, success states |
+| emerald | Rich emerald-green | Health, wellness, sustainability |
+| teal | Teal/cyan-green | Healthcare, professional services |
+| cyan | Bright cyan | Tech, data visualization, modern SaaS |
+| sky | Light blue | Travel, cloud, open/airy feel |
+| blue | Classic blue | Enterprise, finance, trusted services |
+| indigo | Deep indigo/purple-blue | Developer tools, analytics, B2B SaaS |
+| violet | Vibrant violet | Creative tech, AI products |
+| purple | Deep purple | Premium, luxury, creative |
+| fuchsia | Hot pink-purple | Fashion, beauty, bold consumer |
+| pink | Soft pink | Lifestyle, wellness, social |
+| rose | Rose pink | Romantic, lifestyle, friendly apps |
+| red | Bold red | Alerts-heavy tools, bold brands |
+
+### Font reference
+
+| Font | Feel | Best for |
+|---|---|---|
+| figtree | Warm, friendly, modern | Default - most apps |
+| inter | Professional, neutral | SaaS, enterprise, dashboards |
+| geist | Clean technical, Vercel-like | Developer tools, API products |
+| geist-mono | Monospace, code-oriented | Code editors, terminal apps |
+| roboto | Neutral, Material-like | Familiar, widely readable |
+| raleway | Elegant, light weight | Portfolio, creative, luxury |
+| dm-sans | Modern, geometric | Startup, modern SaaS |
+| public-sans | Clean, government-like | Government, civic, structured |
+| outfit | Friendly, rounded | Mobile apps, consumer products |
+| noto-sans | Universal, multilingual | Apps needing broad language support |
+| nunito-sans | Rounded, approachable | Children, education, accessibility |
+| jetbrains-mono | Developer monospace | IDE-like tools, code display |
+
+### Full retheme flag reference
+
+```bash
+# Apply all 6 design choices in one command:
+jac retheme --style nova --baseColor neutral --theme indigo --font inter --radius default --menuAccent subtle
+
+# All supported flags (any combination, all optional):
+# --style       nova | vega | maia | lyra | mira
+# --baseColor   neutral | stone | zinc | gray        (NOT --base-color)
+# --theme       <any theme name from table above>
+# --font        <any font name from table above>
+# --radius      default | none | small | medium | large
+# --menuAccent  subtle | bold                        (NOT --menu-accent)
+# skip --menuColor: field exists but CSS generation ignores it (no visual effect)
+```
+
+> **Flag names are camelCase** - matching jac.toml key names exactly: `--baseColor` not `--base-color`, `--menuAccent` not `--menu-accent`. Kebab-case variants are not recognized.
+>
+> **menuColor: exclude from retheme calls.** The `--menuColor` flag and `menuColor` jac.toml field exist, but `resolve_css_vars()` in jac-super does not process them. Any value set has zero CSS effect. Leave as default until jac-super ships support.
+
+### Understanding / hand-editing the generated CSS
+
+`global.css` defines CSS variables in OKLCH (`oklch(lightness chroma hue)`) under `:root` and `.dark`, then registers them in an `@theme inline` block. Key variables:
+
+| Variable | Purpose |
+|---|---|
+| `--background` / `--foreground` | Page background and default text |
+| `--primary` / `--primary-foreground` | Primary buttons and actions |
+| `--secondary` / `--secondary-foreground` | Secondary actions |
+| `--muted` / `--muted-foreground` | Muted/disabled states |
+| `--accent` / `--accent-foreground` | Hover and accent states |
+| `--destructive` | Error and destructive actions |
+| `--card` / `--card-foreground` | Card surfaces |
+| `--border` | Default border color |
+| `--radius` | Base radius; `rounded-sm/md/lg/xl` derive from it |
+| `--sidebar*` | Sidebar background/text/active/hover colors |
+
+To add a custom color the generator doesn't emit, define it in `:root`/`.dark` and register it in `@theme inline` (a later `jac retheme` regenerates the file and drops it):
+
+```css
+:root { --warning: oklch(0.84 0.16 84); --warning-foreground: oklch(0.28 0.07 46); }
+.dark { --warning: oklch(0.41 0.11 46); --warning-foreground: oklch(0.99 0.02 95); }
+@theme inline { --color-warning: var(--warning); --color-warning-foreground: var(--warning-foreground); }
+```
+
+```jac
+def:pub WarningAlert() -> JsxElement {
+    return <div className="bg-warning text-warning-foreground">Warning</div>;
+}
+```
 
 ## Complete example
 
@@ -287,9 +391,64 @@ def:pub EventListPage() -> JsxElement {
 - **Build high-level components in `components/`** (e.g., `EventCard.cl.jac`, `EventsPage.cl.jac`) that compose the primitives. Never add page logic to `components/ui/` files, and never edit those files - they're managed by the registry.
 - **Theme with `jac retheme`, not by editing `global.css`** (a retheme overwrites it). Don't recreate or hand-edit `jac.toml`'s `[jac-shadcn]`/`[dependencies.npm]` - `jac add`/`jac retheme` manage them.
 
+## Peer dependency chains
+
+`jac add --shadcn` auto-resolves peer dependencies via BFS. When calling `jac add`, list only primaries - never list peer components manually.
+
+| Primary | Auto-installed peers |
+|---|---|
+| sidebar | button, input, separator, sheet, skeleton, tooltip |
+| command | dialog |
+| dialog | button |
+| sheet | button |
+| pagination | button |
+| calendar | button |
+| toggle-group | toggle |
+| input-group | button, input, textarea |
+| field | label, separator |
+| item | separator |
+| button-group | separator |
+
+## Extended component exports
+
+These exports exist in the registry but are not listed in the component selection table above.
+
+| Component | Additional exports |
+|---|---|
+| `Card` | `CardAction` - action slot in the card header (top-right area) |
+| `Avatar` | `AvatarBadge` (status dot overlay), `AvatarGroup` + `AvatarGroupCount` (stacked group) |
+| `Combobox` | `ComboboxChips`, `ComboboxChip`, `ComboboxChipsInput`, `ComboboxClear`, `useComboboxAnchor` - multi-select chip pattern |
+| `InputGroup` | `InputGroupButton` (button slot), `InputGroupText` (text slot), `InputGroupTextarea` (textarea slot) |
+| `Dialog` | `showCloseButton` prop on `DialogContent` (defaults `True`) |
+| `Sheet` | `showCloseButton` prop on `SheetContent` (defaults `False`) |
+| `AlertDialog` | `size` prop on `AlertDialogContent` |
+| `Item` | `ItemGroup`, `ItemSeparator`, `ItemMedia`, `ItemContent`, `ItemTitle`, `ItemDescription`, `ItemActions`, `ItemHeader`, `ItemFooter` - full slot composition for list rows |
+| `ButtonGroup` | `ButtonGroupText` (text separator slot) |
+| `Kbd` | `KbdGroup` (grouped key sequence) |
+| `NativeSelect` | `NativeSelectOptGroup` (option group) |
+
+## Jac-shadcn gotchas
+
+Consolidated quick-reference. See Import patterns and component selection sections for full details.
+
+**Sidebar className spread** - Never pass `className` directly to `SidebarMenuButton`, `SidebarMenuAction`, `SidebarGroup`, `SidebarMenuItem`, or `SidebarTrigger`. The prop spreads after computed base classes, overriding them. Use a wrapping `<div>` for layout overrides instead.
+
+**Never edit files in `components/ui/`** - Managed by `jac add --shadcn` and `jac remove --shadcn`. Manual edits are silently overwritten on next run.
+
+**Import paths must be quoted strings.** Unquoted hyphens cause a parse error. Underscores in the module path silently resolve to nothing.
+
+```
+import from ".ui.dropdown-menu" { DropdownMenu }   # correct - quoted, hyphenated
+import from .ui.dropdown-menu { DropdownMenu }      # WRONG - unquoted, parse error
+import from ".ui.dropdown_menu" { DropdownMenu }    # WRONG - underscore, resolves to nothing
+```
+
+**File name vs import path:** `jac add --shadcn dropdown-menu` installs as `dropdown-menu.cl.jac`. The import path uses the same hyphenated name: `import from ".ui.dropdown-menu"`. Do not convert hyphens to underscores in either the filename or the import path.
+
 ## See also
 
 - `jac-cl-components` - component shape, `has` state, event handlers, JSX rules
 - `jac-cl-organization` - file layout, hook pattern, when to extract
 - `jac-cl-styling` - conditional classes, cn() usage, semantic color tokens
 - `jac-npm-packages` - note: in jac-shadcn projects npm deps are managed by `jac add`/`jac retheme`
+- `jac-shadcn-blocks` - design system constants, anti-patterns, and composition pattern skeletons

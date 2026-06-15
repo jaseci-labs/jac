@@ -1,6 +1,6 @@
 ---
 name: jac-config
-description: The jac.toml control plane - every section ([project], [dependencies], [serve], [run], [check.lint], [test], [scripts], [environments], [plugins.*], [npm], [jacpack]), ${VAR} interpolation, profiles via JAC_PROFILE, .jacignore, and the CLI verbs that manage it (jac config/add/install/remove/update/script/plugins). Load before editing jac.toml or wiring project settings, dependencies, scripts, or environment profiles.
+description: The jac.toml control plane - every section ([project], [dependencies], [serve], [run], [check.lint], [test], [scripts], [environments], [plugins.*] incl. app_meta_data, [jac-shadcn], [npm], [jacpack]), ${VAR} interpolation, profiles via JAC_PROFILE, .jacignore, and the CLI verbs that manage it (jac config/add/install/remove/update/script/plugins). Load before editing jac.toml or wiring project settings, dependencies, scripts, or environment profiles.
 ---
 
 `jac.toml` is the single config file (think `pyproject.toml` + `package.json`). Commands find it by walking up from cwd. Generate it with `jac create`, then edit sections directly or via `jac config set` / `jac add` - hand-editing is normal and expected.
@@ -9,7 +9,7 @@ description: The jac.toml control plane - every section ([project], [dependencie
 
 | Section | Purpose |
 |---|---|
-| `[project]` | name (required), version, description, **`entry-point`** (default for `jac run`/`jac start`, defaults to `main.jac`), `jac-version` compiler pin; publishing fields (`license`, `readme`, `requires-python`, `classifiers`, `authors`) feed `jac bundle` (see `jac-packaging`) |
+| `[project]` | name (required), version, description, **`entry-point`** (default for `jac run`/`jac start`, defaults to `main.jac`), **`kind`** (project kind that makes a bare `jac run` execute / serve / build the project - empty = inferred from the entry-point codespace; see `jac-project-kinds`), `jac-version` compiler pin; publishing fields (`license`, `readme`, `requires-python`, `classifiers`, `authors`) feed `jac bundle` (see `jac-packaging`) |
 | `[dependencies]` | PyPI packages + Jac plugins, pip-style specs (`requests = ">=2.28.0"`) |
 | `[dependencies.npm]` / `[dependencies.npm.dev]` | npm packages for client code (see `jac-npm-packages`) |
 | `[dependencies.git]` | `mylib = { git = "https://...", branch = "main" }` |
@@ -23,6 +23,8 @@ description: The jac.toml control plane - every section ([project], [dependencie
 | `[scripts]` | named command shortcuts run via `jac script <name>` |
 | `[environments]` / `[environment]` | per-profile overrides (below) |
 | `[plugins]` | `enabled` / `disabled` lists; `[plugins.<name>.*]` plugin settings (byllm models, scale server, client paths/vite) |
+| `[plugins.client.app_meta_data]` | served page's head/SEO config: `title`, `description`, `keywords`, `author`, `theme_color`, `icon` |
+| `[jac-shadcn]` | theme config (`style`, `baseColor`, `theme`, `font`, `radius`) managed by `jac add --shadcn` / `jac retheme` - don't hand-edit (see `jac-shadcn-components`) |
 | `[npm]` | npm-publish overrides: `name = "@scope/pkg"`, `entry` (see `jac-packaging`) |
 | `[jacpack]` | marks the project as a `jac create` template (see `jac-scaffold`) |
 

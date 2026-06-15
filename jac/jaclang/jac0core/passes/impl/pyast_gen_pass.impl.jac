@@ -2901,13 +2901,28 @@ impl PyastGenPass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {
 }
 
 impl PyastGenPass.exit_multi_string(nd: uni.MultiString) -> None {
-    def get_pieces(str_seq: Sequence) -> list[(str | ast3.AST)] {
-        pieces: list[(str | ast3.AST)] = [];
+    if (
+        (len(nd.strings) == 1)
+        and isinstance(nd.strings[0], uni.FString)
+        and nd.strings[0].gen.py_ast
+    ) {
+        nd.gen.py_ast = nd.strings[0].gen.py_ast;
+        return;
+    }
+    def get_pieces(str_seq: Sequence) -> list[(str | bytes | ast3.AST)] {
+        pieces: list[(str | bytes | ast3.AST)] = [];
         for i in str_seq {
             if isinstance(i, uni.String) {
                 pieces.append(i.lit_value);
             } elif isinstance(i, (uni.FString, uni.ExprStmt)) {
-                pieces.append(self.py_ast_val(i));
+                py_val = self.py_ast_val(i);
+                if isinstance(py_val, ast3.JoinedStr) {
+                    for v in py_val.values {
+                        pieces.append(cast(ast3.expr, v));
+                    }
+                } else {
+                    pieces.append(py_val);
+                }
             } elif (
                 isinstance(i, uni.Token) and (i.name in [Tok.LBRACE, Tok.RBRACE])
             ) {
@@ -2943,16 +2958,30 @@ impl PyastGenPass.exit_multi_string(nd: uni.MultiString) -> None {
             combined_multi[i] = self.sync(ast3.Constant(value=val));
         }
     }
-    if (
-        (len(combined_multi) > 1) or not isinstance(combined_multi[0], ast3.Constant)
-    ) {
+    merged: list[ast3.AST] = [];
+    for val in combined_multi {
+        if (
+            merged
+            and isinstance(val, ast3.Constant)
+            and isinstance(val.value, str)
+            and isinstance(merged[-1], ast3.Constant)
+            and isinstance(merged[-1].value, str)
+        ) {
+            merged[-1] = self.sync(ast3.Constant(value=merged[-1].value + val.value));
+        } else {
+            merged.append(val);
+        }
+    }
+    if not merged {
+        nd.gen.py_ast = [self.sync(ast3.Constant(value=''))];
+    } elif (len(merged) == 1 and isinstance(merged[0], ast3.Constant)) {
+        nd.gen.py_ast = [merged[0]];
+    } else {
         nd.gen.py_ast = [
             self.sync(
-                ast3.JoinedStr(values=[cast(ast3.expr, nd) for nd in combined_multi])
+                ast3.JoinedStr(values=[cast(ast3.expr, piece) for piece in merged])
             )
         ];
-    } else {
-        nd.gen.py_ast = [combined_multi[0]];
     }
 }
 

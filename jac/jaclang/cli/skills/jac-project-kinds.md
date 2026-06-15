@@ -5,6 +5,8 @@ description: Choosing the right guides for what you're building - maps every Jac
 
 Jac compiles one language to three runtimes - Python bytecode (server `sv`), JavaScript (client `cl`), and native machine code (`na`, which also targets WebAssembly). Every project kind is a combination of those blocks. Find your kind, run its verbs, load its guides (`jac guide <name>`).
 
+**`jac run` is kind-aware.** Set `kind` under `[project]` in `jac.toml` (or let it be inferred from the entry-point codespace), and a bare `jac run` in the project does the right thing for that kind: *execute* runnable kinds (cli, native-app), *serve* server kinds (api-service, fullstack, ...), or *build* artifact kinds (native-binary, shared-library, pypi/npm packages). `jac run --show` prints the resolved plan (kind, action, and the equivalent primitive command) without running it. The explicit per-kind verbs in the table below remain the underlying primitives.
+
 ## Routing table
 
 | Kind | What it is | Build / run | Plugins | Load these guides |
@@ -27,7 +29,7 @@ Jac compiles one language to three runtimes - Python bytecode (server `sv`), Jav
 - Bootstrapping a project: `jac-scaffold`. Configuring it (`jac.toml`, deps, scripts, profiles): `jac-config`.
 - Data modeling on the graph: `jac-node-edge-patterns` + `jac-walker-patterns`; typed state: `jac-has-fields`.
 - LLM-powered functions in any kind: `jac-by-llm`. Calling Python libs / being called from Python: `jac-python-interop`. Parallelism: `jac-concurrency`.
-- Client work beyond components: `jac-cl-organization`, `jac-cl-styling`, `jac-cl-auth`, `jac-cl-js-interop`, `jac-npm-packages` (consuming), `jac-shadcn-components`.
+- Client work beyond components: `jac-cl-organization`, `jac-cl-styling`, `jac-cl-auth`, `jac-cl-js-interop`, `jac-npm-packages` (consuming), `jac-shadcn-components`, `jac-shadcn-blocks`.
 - Production server concerns: `jac-sv-deploy` (scale/k8s/secrets), `jac-sv-persistence` (schema evolution).
 
 ## The loop for every kind

@@ -15,6 +15,23 @@ impl primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None) {
     return None;
 }
 
+impl expr_primitive_name(prog: object, expr_node: uni.UniNode) -> str {
+    # Stamp first: Expr.type is the evaluator's own memoization, so a
+    # present stamp IS the authority's answer (and the cheap path).
+    _ty = expr_node?.type;
+    if _ty is None {
+        try {
+            _te = prog.get_type_evaluator();
+            if _te {
+                _ty = _te.get_type_of_expression(expr_node);
+            }
+        } except Exception {
+            _ty = None;
+        }
+    }
+    return primitive_type_name_of(_ty) or "";
+}
+
 # Generator / Iterator return-type helpers.
 """Type args of Generator/AsyncGenerator/AwaitableGenerator, or None."""
 impl get_generator_type_args(

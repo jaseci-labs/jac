@@ -165,6 +165,10 @@ def unbox_jacval(jv: JacVal) -> object {
         st_ptr = ctypes.cast(jv.payload, ctypes.POINTER(SetStruct));
         n = st_ptr.contents.len;
         return {st_ptr.contents.elems[i] for i in range(n)};
+    } elif jv.tag == 7 {
+        # bool: kept distinct from int (tag 0) so it round-trips as True/False
+        # rather than 1/0, matching the Python reference exactly.
+        return jv.payload != 0;
     }
     return None;
 }
