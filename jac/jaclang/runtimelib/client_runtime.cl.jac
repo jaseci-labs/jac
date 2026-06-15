@@ -72,19 +72,15 @@ import from jaclang.runtimelib.client_runtime_core {
     __jacInstallErrorHandlers as ___jacInstallErrorHandlers
 }
 
-glob:pub navigate = _navigate,
-     __createJacSchema = ___createJacSchema,
+# Internal compiler/runtime helpers (`__`-prefixed): emitted into and consumed
+# only by generated code, never referenced from user `.cl.jac`, so a `glob`
+# re-export (whose type is inference-only) is fine here. The public surface
+# below is re-exported as typed `def`s instead -- see the note there.
+glob:pub __createJacSchema = ___createJacSchema,
      __jacSpawn = ___jacSpawn,
-     jacSpawn = _jacSpawn,
      __jacCallFunction = ___jacCallFunction,
      __normalizeIdentity = ___normalizeIdentity,
      __normalizeCredential = ___normalizeCredential,
-     jacSignup = _jacSignup,
-     jacLogin = _jacLogin,
-     jacLogout = _jacLogout,
-     jacIsLoggedIn = _jacIsLoggedIn,
-     jacSsoLogin = _jacSsoLogin,
-     jacSetToken = _jacSetToken,
      __jacClearCache = ___jacClearCache,
      __jacDesktopBroker = ___jacDesktopBroker,
      __jacPollBrokerSession = ___jacPollBrokerSession,
@@ -106,6 +102,35 @@ glob:pub navigate = _navigate,
      __overlaps = ___overlaps,
      __jacReportError = ___jacReportError,
      __jacInstallErrorHandlers = ___jacInstallErrorHandlers;
+
+# --- Public API: typed forwarding re-exports --------------------------------
+# These re-export the core's public surface as `def`s rather than `glob`
+# aliases. A `glob X = _X` re-export only acquires its type via *inference*, so
+# when this runtime is compiled with `type_check=False` (the bundler and cl-test
+# pipelines do exactly that) and cached, the alias's type decays to `Unknown`
+# for any downstream module that type-checks against it. A `def` declaration
+# carries its signature at *parse* time, so importers of `@jac/runtime` keep the
+# real types (e.g. `jacIsLoggedIn -> bool`). The framework-agnostic bodies stay
+# in `client_runtime_core`; these forward to them (see the impl file).
+def:pub navigate(path: str) -> None;
+def:pub jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
+async def:pub jacSignup(
+    identities_or_username: (str | list),
+    credential_or_password: (str | dict),
+    profile: (dict | None) = None
+) -> dict;
+
+async def:pub jacLogin(
+    identity_or_username: (str | dict), credential_or_password: (str | dict)
+) -> bool;
+
+def:pub jacLogout -> None;
+def:pub jacIsLoggedIn -> bool;
+async def:pub jacSsoLogin(
+    platform: str, api_base: str = "", operation: str = "login"
+) -> bool;
+
+def:pub jacSetToken(token: str) -> None;
 
 # --- React-specific surface -------------------------------------------------
 def:pub __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement;

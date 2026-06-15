@@ -1,3 +1,45 @@
+# --- Public API forwarders to the framework-agnostic core -------------------
+# Thin pass-throughs so `@jac/runtime` exposes the core auth/nav/spawn surface
+# as typed functions (the bodies live in `client_runtime_core`). See the typed
+# re-export note in `client_runtime.cl.jac`.
+impl navigate(path: str) -> None {
+    _navigate(path);
+}
+
+impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
+    return _jacSpawn(left, right, fields);
+}
+
+impl jacSignup(
+    identities_or_username: (str | list),
+    credential_or_password: (str | dict),
+    profile: (dict | None) = None
+) -> dict {
+    return await _jacSignup(identities_or_username, credential_or_password, profile);
+}
+
+impl jacLogin(
+    identity_or_username: (str | dict), credential_or_password: (str | dict)
+) -> bool {
+    return await _jacLogin(identity_or_username, credential_or_password);
+}
+
+impl jacLogout -> None {
+    _jacLogout();
+}
+
+impl jacIsLoggedIn -> bool {
+    return _jacIsLoggedIn();
+}
+
+impl jacSsoLogin(platform: str, api_base: str = "", operation: str = "login") -> bool {
+    return await _jacSsoLogin(platform, api_base, operation);
+}
+
+impl jacSetToken(token: str) -> None {
+    _jacSetToken(token);
+}
+
 impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
     if tag == None {
         tag = React.Fragment;
