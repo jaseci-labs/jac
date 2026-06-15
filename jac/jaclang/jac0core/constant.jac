@@ -139,6 +139,24 @@ enum SymbolAccess {
     }
 }
 
+"""Where a symbol's runtime binding lives (storage class).
+
+Computed centrally from the symbol table so backends never re-derive
+scoping facts (see analysis-centralization-plan, Phase 2).
+"""
+enum SymbolStorage {
+    LOCAL = 'local',
+    PARAM = 'param',
+    MODULE_GLOBAL = 'module_global',
+    CAPTURED = 'captured',
+    CLASS_FIELD = 'class_field',
+    with entry {
+        def __str__(self: SymbolStorage) -> str {
+            return self.value;
+        }
+    }
+}
+
 """Token constants for the lexer."""
 class Tokens(StrEnum) {
     with entry {

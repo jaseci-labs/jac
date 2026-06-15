@@ -12,7 +12,7 @@ impl SemanticAnalysisPass.enter_archetype(
             i.from_walker = True;
         }
     }
-    if (nd.arch_type.name == Tok.KW_WALKER) {
+    if (nd.arch_kind == "walker") {
         inform_from_walker(nd);
         for i in self.get_all_sub_nodes(nd, uni.Ability) {
             if isinstance(i.body, uni.ImplDef) {

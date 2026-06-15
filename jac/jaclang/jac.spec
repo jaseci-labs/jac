@@ -451,7 +451,8 @@ import_items ::=
 
 archetype ::=
     ("@" atomic_chain)* "async"? access_tag (NAME | KWESC_NAME) ("[" type_params "]")?
-    ("(" (atomic_chain ("," atomic_chain)*)? ")")? ("{" archetype_member* "}" | ";")
+    ("(" (atomic_chain ("," atomic_chain)*)? ")")?
+    (":" atomic_chain "-->" atomic_chain)? ("{" archetype_member* "}" | ";")
 
 archetype_member ::=
     STRING? (

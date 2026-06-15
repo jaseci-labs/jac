@@ -91,7 +91,6 @@ test "l3 fetch counter" {
         anchor = r.__jac__;
         anchor.persistent = True;
         mem.put(anchor);
-        mem.sync();
         mem.__mem__.clear();
         mem.get(anchor.id);  # Cache miss, hits DB
         assert mem.l3_fetch_count == 1;
@@ -164,9 +163,20 @@ test "concurrent edge adds merged in sqlite sync" {
         eb.id = uuid4();
         b.edges.append(eb);
 
-        # Commit A then B — B must not overwrite A's edge
-        mem_a.sync();
-        mem_b.sync();
+        # Commit A then B through apply() (mirroring the runtime's collect
+        # pass) — B must not overwrite A's edge.
+        import from jaclang.runtimelib.changeset { ChangeSet }
+        def _flush_edges(mem: SqliteMemory, nd: NodeAnchor) {
+            cs = ChangeSet();
+            delta = nd.edge_delta();
+            assert delta is not None;
+            cs.record_edge_delta(nd, list(delta[0]), list(delta[1]));
+            cs.intents[nd.id].fields = set();
+            applied = mem.apply(cs);
+            assert applied.ok() , f"apply failed: {applied.failed}";
+        }
+        _flush_edges(mem_a, a);
+        _flush_edges(mem_b, b);
         mem_a.close();
         mem_b.close();
 

@@ -92,6 +92,8 @@ impl __getattr__(name: str) -> object {
         return _get_llm();
     } elif (name == 'archetype_alias') {
         return _get_archetype_alias();
+    } elif (name in ('schema_was', 'schema_alias', 'schema_drop', 'schema_upgrade')) {
+        return _get_schema_builder(name);
     }
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}");
 }
@@ -133,6 +135,22 @@ impl _get_archetype_alias -> Callable[..., any] {
         return decorator;
     }
     return factory;
+}
+
+"""Get a schema-rule builder (schema_was/schema_alias/schema_drop/
+schema_upgrade) lazily.
+
+Same call-time-deferred pattern as `archetype_alias`: the schema_rules
+module is imported only when the builder actually fires (inside an
+executing `__jac_schema__` during class registration), keeping the
+builtin module's import preamble free of runtimelib init-order races.
+"""
+impl _get_schema_builder(name: str) -> Callable[..., any] {
+    def builder(*args: any, **kwargs: any) -> any {
+        import jaclang.runtimelib.schema_rules as _rules;
+        return getattr(_rules, name)(*args, **kwargs);
+    }
+    return builder;
 }
 
 """Get save lazily."""

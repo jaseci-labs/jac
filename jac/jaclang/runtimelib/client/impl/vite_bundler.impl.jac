@@ -517,6 +517,7 @@ function jacMobileCompiledReload() {
         );
         config_content = f'''import {{ defineConfig }} from "vite";
 import path from "path";
+import fs from "fs";
 import {{ fileURLToPath }} from "url";
 {imports_section}const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const buildDir = path.resolve(__dirname, "..");
@@ -550,6 +551,21 @@ function jacErrorReporter() {{
     }},
   }};
 }}
+
+// Vite plugin: write the bound dev-server port for the jac CLI to read
+function jacPortReporter() {{
+  return {{
+    name: "jac-port-reporter",
+    configureServer(server) {{
+      server.httpServer?.once("listening", () => {{
+        const addr = server.httpServer.address();
+        if (addr && typeof addr === "object") {{
+          fs.writeFileSync(path.resolve(buildDir, ".dev-port"), String(addr.port));
+        }}
+      }});
+    }},
+  }};
+}}
 {mobile_compiled_block}
 /**
  * Vite DEV configuration for HMR mode
@@ -561,7 +577,8 @@ export default defineConfig({{
 {define_str}
   }},
   plugins: [
-    jacErrorReporter(),{mobile_plug_in}{(newline + plugins_str + newline + '  ')
+    jacErrorReporter(),
+    jacPortReporter(),{mobile_plug_in}{(newline + plugins_str + newline + '  ')
             if plugins_str
             else ''}],
   root: buildDir,
@@ -964,6 +981,8 @@ impl ViteBundler.init(
     self.config_loader = JacClientConfig(project_dir);
     # Set output_dir after config_loader is initialized so _get_client_dir works
     self.output_dir = output_dir or (self._get_client_dir() / 'dist');
+    # The port the dev server actually bound (Vite auto-increments past busy ports).
+    self.dev_server_port = 0;
 }
 
 """Create config files from jac.toml [plugins.client.configs].
@@ -1185,6 +1204,9 @@ impl ViteBundler.start_dev_server(
         config_rel = dev_config;
     }
     command = _build_vite_dev_command(config_rel, port, host=host);
+    # Fallback; only the output-capture path overwrites this with the bound port.
+    self.dev_server_port = port;
+    (build_dir / '.dev-port').unlink(missing_ok=True);
     if suppress_initial_output {
         process = self._start_vite_with_output_capture(command, build_dir, sys);
     } else {
@@ -1291,6 +1313,7 @@ impl ViteBundler._start_vite_with_output_capture(
     self: ViteBundler, command: list[str], build_dir: Path, sys_module: any
 ) -> any {
     import threading;
+    import time;
     process = subprocess.Popen(
         command,
         cwd=build_dir,
@@ -1309,6 +1332,20 @@ impl ViteBundler._start_vite_with_output_capture(
     # Wait for Vite to be ready
     is_ready = ready_event.wait(timeout=VITE_READY_TIMEOUT_SECONDS);
     if is_ready {
+        # The jac-port-reporter plugin writes the bound port on "listening",
+        # which fires just before the ready log; poll briefly to be safe.
+        port_file = build_dir / '.dev-port';
+        for _ in range(40) {
+            if port_file.exists() {
+                break;
+            }
+            time.sleep(0.05);
+        }
+        try {
+            self.dev_server_port = int(port_file.read_text().strip());
+        } except (OSError, ValueError) {
+            ;  # Keep the requested-port fallback set by start_dev_server.
+        }
         console.print("  ✔ Vite dev server ready", style="success");
     } else {
         # Check if process exited (crashed) or just timed out

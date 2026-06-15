@@ -5,6 +5,18 @@ import from jac_scale.microservices.runtime.tracing {
     end_memory_span
 }
 
+"""Deserialize a cached doc and stamp the per-field hash snapshot, exactly
+like L3 loads do. An anchor entering L1 from L2 must be diffable by
+derive_dirty_fields(); without the snapshot the collect pass is blind to
+its field mutations for the rest of the request."""
+def _deserialize_cached(data: dict) -> (Anchor | None) {
+    anchor = Serializer.deserialize(data);
+    if anchor is not None {
+        snapshot_field_hashes(anchor);
+    }
+    return anchor;
+}
+
 """Post-initialization: connect to Redis using a process-level shared client."""
 impl RedisBackend.postinit -> None {
     if self.redis_url is None {
@@ -61,7 +73,7 @@ impl RedisBackend.get(id: UUID) -> (Anchor | None) {
             return None;
         }
         data = json.loads(raw);
-        return Serializer.deserialize(data);
+        return _deserialize_cached(data);
     } except Exception as e {
         logger.debug(f"Redis get failed: {e}");
         return None;
@@ -202,7 +214,7 @@ impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
             if raw {
                 try {
                     data = json.loads(raw);
-                    anchor = Serializer.deserialize(data);
+                    anchor = _deserialize_cached(data);
                     if anchor {
                         result[id] = anchor;
                     }
@@ -257,6 +269,28 @@ impl RedisBackend.invalidate(id: UUID) -> None {
     self.delete(id);
 }
 
+"""Best-effort PUBLISH of a cross-pod L1 eviction; gated by config."""
+impl RedisBackend.publish_invalidation(
+    anchor_id: str, origin_l1_id: (str | None) = None
+) -> None {
+    if self.redis_client is None {
+        return;
+    }
+    try {
+        db_config = _get_db_config();
+        if not db_config.get('redis_l1_invalidation_enabled', True) {
+            return;
+        }
+        channel = (
+            db_config.get('redis_l1_invalidation_channel')
+            or DEFAULT_INVALIDATION_CHANNEL
+        );
+        self.redis_client.publish(channel, build_message(anchor_id, origin_l1_id));
+    } except Exception as e {
+        logger.debug(f"Redis publish_invalidation failed: {e}");
+    }
+}
+
 """Get anchor by UUID using native redis.asyncio (no asyncio.to_thread)."""
 impl RedisBackend.aget(id: UUID) -> (Anchor | None) {
     import from jac_scale._optdeps.redis { AsyncRedis, HAS_REDIS }
@@ -279,7 +313,7 @@ impl RedisBackend.aget(id: UUID) -> (Anchor | None) {
             return None;
         }
         data = json.loads(raw);
-        return Serializer.deserialize(data);
+        return _deserialize_cached(data);
     } except Exception as e {
         logger.debug(f"Redis async get failed: {e}");
         return None;

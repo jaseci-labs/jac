@@ -566,6 +566,129 @@ test "single-`props` component definition warns W5015" {
     );
 }
 
+test "props-destructured component direct calls preserve wrapping and spreads" {
+    es_ast = compile_to_esast(fixture_path("component_direct_call_props_wrap.cl.jac"));
+
+    funcs: dict[str, es.FunctionDeclaration] = {};
+    for nd in es_ast.body {
+        if isinstance(nd, es.FunctionDeclaration) and nd.id {
+            funcs[nd.id.name] = nd;
+        }
+    }
+
+    greeting = funcs["Greeting"];
+    assert len(greeting.params) == 1;
+    assert isinstance(greeting.params[0], es.Identifier);
+    assert greeting.params[0].name == "props";
+
+    direct_pos_ret = funcs["direct_pos"].body.body[0];
+    assert isinstance(direct_pos_ret, es.ReturnStatement);
+    direct_pos_call = direct_pos_ret.argument;
+    assert isinstance(direct_pos_call, es.CallExpression);
+    assert len(direct_pos_call.arguments) == 1;
+    assert isinstance(direct_pos_call.arguments[0], es.ObjectExpression);
+
+    direct_single_ret = funcs["direct_single_object"].body.body[0];
+    assert isinstance(direct_single_ret, es.ReturnStatement);
+    direct_single_call = direct_single_ret.argument;
+    assert isinstance(direct_single_call, es.CallExpression);
+    assert isinstance(direct_single_call.arguments[0], es.ObjectExpression);
+    direct_single_props = direct_single_call.arguments[0].properties;
+    assert len(direct_single_props) == 1;
+    assert isinstance(direct_single_props[0], es.Property);
+    assert isinstance(direct_single_props[0].key, es.Identifier);
+    assert direct_single_props[0].key.name == "payload";
+
+    direct_spread_ret = funcs["direct_spread"].body.body[0];
+    assert isinstance(direct_spread_ret, es.ReturnStatement);
+    direct_spread_call = direct_spread_ret.argument;
+    assert isinstance(direct_spread_call, es.CallExpression);
+    assert isinstance(direct_spread_call.callee, es.ArrowFunctionExpression);
+    assert isinstance(direct_spread_call.arguments[0], es.ArrayExpression);
+    spread_elems = direct_spread_call.arguments[0].elements;
+    assert len(spread_elems) == 1;
+    assert isinstance(spread_elems[0], es.SpreadElement);
+
+    direct_mixed_ret = funcs["direct_mixed_spread"].body.body[0];
+    assert isinstance(direct_mixed_ret, es.ReturnStatement);
+    direct_mixed_call = direct_mixed_ret.argument;
+    assert isinstance(direct_mixed_call, es.CallExpression);
+    assert isinstance(direct_mixed_call.arguments[0], es.ArrayExpression);
+    mixed_elems = direct_mixed_call.arguments[0].elements;
+    assert len(mixed_elems) == 2;
+    assert isinstance(mixed_elems[0], es.Literal);
+    assert isinstance(mixed_elems[1], es.SpreadElement);
+
+    passthrough_ret = funcs["passthrough_bundle"].body.body[0];
+    assert isinstance(passthrough_ret, es.ReturnStatement);
+    passthrough_call = passthrough_ret.argument;
+    assert isinstance(passthrough_call, es.CallExpression);
+    assert isinstance(passthrough_call.arguments[0], es.Identifier);
+
+    plain_spread_ret = funcs["plain_spread"].body.body[0];
+    assert isinstance(plain_spread_ret, es.ReturnStatement);
+    plain_spread_call = plain_spread_ret.argument;
+    assert isinstance(plain_spread_call, es.CallExpression);
+    assert len(plain_spread_call.arguments) == 1;
+    assert isinstance(plain_spread_call.arguments[0], es.SpreadElement);
+}
+
+test "conditional JSX returns still trigger props-destructure lowering" {
+    es_ast = compile_to_esast(fixture_path("component_conditional_jsx_return.cl.jac"));
+
+    funcs: dict[str, es.FunctionDeclaration] = {};
+    for nd in es_ast.body {
+        if isinstance(nd, es.FunctionDeclaration) and nd.id {
+            funcs[nd.id.name] = nd;
+        }
+    }
+
+    # Both components have JSX returns nested inside if/else/match; they must
+    # still lower to a single `props` parameter plus destructure preamble.
+    conditional = funcs["ConditionalGreeting"];
+    assert len(conditional.params) == 1;
+    assert isinstance(conditional.params[0], es.Identifier);
+    assert conditional.params[0].name == "props";
+
+    match_greeting = funcs["MatchGreeting"];
+    assert len(match_greeting.params) == 1;
+    assert isinstance(match_greeting.params[0], es.Identifier);
+    assert match_greeting.params[0].name == "props";
+
+    # Direct call site must wrap positional args into a props object.
+    direct_ret = funcs["direct_call_conditional"].body.body[0];
+    assert isinstance(direct_ret, es.ReturnStatement);
+    direct_call = direct_ret.argument;
+    assert isinstance(direct_call, es.CallExpression);
+    assert len(direct_call.arguments) == 1;
+    assert isinstance(direct_call.arguments[0], es.ObjectExpression);
+    direct_props = direct_call.arguments[0].properties;
+    assert len(direct_props) == 2;
+}
+
+test "union JsxElement return type still triggers props-destructure lowering" {
+    es_ast = compile_to_esast(fixture_path("component_union_jsx_return.cl.jac"));
+
+    funcs: dict[str, es.FunctionDeclaration] = {};
+    for nd in es_ast.body {
+        if isinstance(nd, es.FunctionDeclaration) and nd.id {
+            funcs[nd.id.name] = nd;
+        }
+    }
+
+    error_banner = funcs["ErrorBanner"];
+    assert len(error_banner.params) == 1;
+    assert isinstance(error_banner.params[0], es.Identifier);
+    assert error_banner.params[0].name == "props";
+
+    direct_ret = funcs["direct_call"].body.body[0];
+    assert isinstance(direct_ret, es.ReturnStatement);
+    direct_call = direct_ret.argument;
+    assert isinstance(direct_call, es.CallExpression);
+    assert len(direct_call.arguments) == 1;
+    assert isinstance(direct_call.arguments[0], es.ObjectExpression);
+}
+
 test "components with JSX slots compile to function declarations" {
     # `def:pub Name(...) -> JsxElement { return ... }` is the universal
     # component shape. JSX `{...}` slots in child position with statement

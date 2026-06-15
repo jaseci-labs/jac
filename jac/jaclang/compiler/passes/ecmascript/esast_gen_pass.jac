@@ -226,14 +226,12 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         # portable kernel (not `__jacSpawn` RPC). Triggers kernel + descriptor
         # injection in exit_module. `_osp_slots` collects one record per OSP
         # ability: {owner, kind, name, trigger_names (list, empty = untyped),
-        # is_entry}. `_osp_arch_names` is the set of local node/edge/walker
-        # archetypes that need a compile-time type tag.
+        # is_entry}.
         needs_osp_kernel: bool = False,
         # Set when a connect op / edge ref is lowered: pulls in the cl OSP graph
         # runtime (`__ospConn` / `__ospRefs`).
         needs_osp_graph: bool = False,
         _osp_slots: list[dict] = [],
-        _osp_arch_names: list[str] = [],
         # Memoized {archetype name -> kind} for every local walker/node/edge in a
         # module that has local OSP (any event ability). Includes edge types with
         # no abilities (e.g. used only in connects/refs) so they still get a type
@@ -478,6 +476,17 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
     def _ability_from_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
+    def _return_type_includes_jsx_element(rt: uni.Expr) -> bool;
+    def _component_call_abi(ability_node: uni.Ability) -> str;
+    def _build_props_spread_component_call(
+        nd: uni.FuncCall,
+        callee_expr: es.Expression,
+        ability_node: uni.Ability,
+        args: list[(es.Expression | es.SpreadElement)],
+        props: list[(es.Property | es.SpreadElement)]
+    ) -> es.Expression;
+
+    def _pos_params_from_ability(ability_node: uni.Ability) -> list[uni.ParamVar];
     def _param_names_from_ability(ability_node: uni.Ability) -> list[str];
     def _param_type_map_from_ability(ability_node: uni.Ability) -> dict[(str, str)];
     def _wrap_to_wire_if_boundary(

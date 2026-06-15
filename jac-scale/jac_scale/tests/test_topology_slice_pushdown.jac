@@ -100,7 +100,6 @@ def _make_scale_memory -> tuple {
     mem.l2 = redis_be;
     mem.l3 = mongo;
     mem._cache_available = True;
-    mongo.set_memory_ref(mem.__mem__);
     return (mem, mongo, redis_be);
 }
 

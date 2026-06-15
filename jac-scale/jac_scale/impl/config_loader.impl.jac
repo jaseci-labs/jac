@@ -27,7 +27,10 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'redis_eviction_samples': 5,
             'redis_default_ttl': 3600,
             'redis_max_connections': 20,
-            'redis_enable_keyspace_notifications': False
+            'redis_enable_keyspace_notifications': False,
+            # Cross-pod L1 cache invalidation.
+            'redis_l1_invalidation_enabled': True,
+            'redis_l1_invalidation_channel': 'jac:anchor:invalidate'
         },
         'kubernetes': {
             'app_name': 'jaseci',
@@ -207,6 +210,12 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] 
         'redis_max_connections': int(db_config.get('redis_max_connections', 20)),
         'redis_enable_keyspace_notifications': db_config.get(
             'redis_enable_keyspace_notifications', False
+        ),
+        'redis_l1_invalidation_enabled': db_config.get(
+            'redis_l1_invalidation_enabled', True
+        ),
+        'redis_l1_invalidation_channel': db_config.get(
+            'redis_l1_invalidation_channel', 'jac:anchor:invalidate'
         )
     };
 }
@@ -225,6 +234,9 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any
     k8s_config['monitoring_enabled'] = monitoring['enabled'];
     k8s_config['k8s_metrics_enabled'] = monitoring['k8s_metrics_enabled'];
     k8s_config['prometheus_admin_password'] = monitoring['prometheus_admin_password'];
+    # Admin username so Prometheus can Basic-Auth scrape the admin-protected
+    # /metrics endpoint (must match what the metrics handler validates).
+    k8s_config['admin_username'] = self.get_admin_config().get('username', 'admin');
     # Convert to dict using KubernetesConfig.from_dict() which handles all defaults
     import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
     k8s_config_obj = KubernetesConfig.from_dict(KubernetesConfig, k8s_config);
