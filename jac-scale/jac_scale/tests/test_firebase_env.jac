@@ -125,3 +125,62 @@ test "storage subsystem env overrides FIREBASE_PROJECT_ID" {
     );
     assert storage.project_id == "storage-project";
 }
+
+
+test "GCS storage type accepts FIREBASE-aliased env vars" {
+    # Building a GCS storage with only FIREBASE_* vars set must still resolve
+    # bucket, prefix, and public_read via the GCS<->FIREBASE alias.
+    storage = _mock_storage_factory_get_default(
+        {
+            "JAC_STORAGE_TYPE": "gcs",
+            "JAC_STORAGE_FIREBASE_BUCKET": "aliased-bucket",
+            "JAC_STORAGE_FIREBASE_PREFIX": "aliased/",
+            "JAC_STORAGE_FIREBASE_PUBLIC_READ": "true"
+        }
+    );
+    assert storage.bucket == "aliased-bucket";
+    assert storage.prefix == "aliased";  # constructor strips surrounding slashes
+    assert storage.public_read == True;
+}
+
+
+def _mock_storage_factory_with_toml(env: dict[str, str], toml: any) -> any {
+    cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+    env_patcher = patch.dict("os.environ", env, clear=True);
+    gcs_req_patcher = patch(
+        "jac_scale.storage.gcs_storage.require_google_cloud_storage"
+    );
+    gcs_client_patcher = patch(
+        "jac_scale.storage.gcs_storage.StorageClient",
+        return_value=MagicMock(bucket=MagicMock(return_value=MagicMock()))
+    );
+
+    mock_cfg = cfg_patcher.start();
+    env_patcher.start();
+    gcs_req_patcher.start();
+    gcs_client_patcher.start();
+    try {
+        mock_cfg.return_value = toml;
+        return StorageFactory.get_default();
+    } finally {
+        gcs_client_patcher.stop();
+        gcs_req_patcher.stop();
+        env_patcher.stop();
+        cfg_patcher.stop();
+    }
+}
+
+
+test "public_read env aliases override jac.toml storage section" {
+    # Regression: with a [storage] table present, public_read alias must still
+    # apply (the old presence-based guard silently dropped it).
+    toml = MagicMock();
+    toml.storage = MagicMock(
+        bucket="toml-bucket", prefix="", project_id=None, public_read=False
+    );
+    storage = _mock_storage_factory_with_toml(
+        {"JAC_STORAGE_TYPE": "gcs", "JAC_STORAGE_FIREBASE_PUBLIC_READ": "true"}, toml
+    );
+    assert storage.public_read == True;
+    assert storage.bucket == "toml-bucket";
+}

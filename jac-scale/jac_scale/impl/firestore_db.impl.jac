@@ -3,168 +3,249 @@ import from uuid { uuid4 }
 import from jac_scale._db_helpers { _validate_not_read_only }
 
 # ===== FIRESTORE HELPERS =====
-
 """Generate Firestore collection name with db namespace."""
 def _firestore_collection_name(db_name: str, col_name: str) -> str {
     return f"{db_name}__{col_name}";
 }
 
-"""Convert a Firestore document snapshot to a plain dict (with _id injected)."""
+"""Convert a Firestore document snapshot into a kvstore document."""
 def _firestore_snapshot_to_doc(snapshot: any) -> dict | None {
-    if not snapshot.exists {
+    if not (snapshot and snapshot.exists) {
         return None;
     }
-    doc = snapshot.to_dict();
-    doc['_id'] = snapshot.id;
-    return doc;
+
+    data = snapshot.to_dict() or {};
+    data['_id'] = snapshot.id;
+    return data;
 }
 
-"""Extract document ID from a document dict (_id field or None)."""
+"""Return the explicit Firestore document ID from a document, if provided."""
 def _firestore_document_id(document: dict) -> str | None {
-    return document.get('_id') or document.get('id');
+    if (doc_id := document.get('_id')) is None {
+        return None;
+    }
+    return str(doc_id);
 }
 
-"""Return a copy of a document dict without the _id field (Firestore stores ID in metadata)."""
+"""Strip kvstore-managed _id before writing a Firestore document."""
 def _firestore_document_body(document: dict) -> dict {
     body = document.copy();
-    body.pop('_id', None);
-    body.pop('id', None);
+    if '_id' in body {
+        del body['_id'];
+    }
     return body;
 }
 
-"""Resolve the fields to write from a MongoDB-style update_data dict.
-
-Supports `$set` operator (merges the sub-dict) or plain dict (replaces entire doc).
-"""
+"""Convert Mongo-style update payloads into Firestore field updates."""
 def _firestore_update_fields(update_data: dict) -> dict {
-    if '$set' in update_data {
-        fields = {};
-        for (k, v) in update_data['$set'].items() {
-            fields[k] = v;
-        }
-        # Handle other operators by merging them in
-        for (op, sub) in update_data.items() {
-            if op.startswith('$') and op != '$set' {
-                if isinstance(sub, dict) {
-                    for (k, v) in sub.items() {
-                        fields[k] = v;
-                    }
-                }
-            }
-        }
-        return fields;
+    fields = update_data['$set'].copy()
+        if '$set' in update_data
+        else update_data.copy();
+    if '_id' in fields {
+        del fields['_id'];
     }
-    return update_data;
+    return fields;
 }
 
-"""Apply a single field filter to a Firestore query.
+glob _FIRESTORE_OPERATOR_MAP: dict[str, str] = {
+         '$eq': '==',
+         '$ne': '!=',
+         '$gt': '>',
+         '$gte': '>=',
+         '$lt': '<',
+         '$lte': '<=',
+         '$in': 'in',
+         '$nin': 'not-in'
+     },
+     _FIRESTORE_BATCH_LIMIT: int = 500;
 
-Translates MongoDB-style operators ($gt, $gte, $lt, $lte, $ne, $in, $nin)
-to Firestore where() calls."""
+"""Apply a single Firestore field filter using the keyword-arg API."""
 def _apply_firestore_field_filter(
-    query: any, field_name: str, field_value: any
-) -> any {
-    if isinstance(field_value, dict) {
-        for (op, val) in field_value.items() {
-            query = _apply_firestore_field_value(query, field_name, op, val);
-        }
-    } else {
-        query = query.where(filter=FieldFilter(field_name, '==', field_value));
-    }
-    return query;
-}
-
-"""Map a single MongoDB operator to a Firestore FieldFilter."""
-def _apply_firestore_field_value(
-    query: any, field_name: str, op: str, val: any
+    query: any, field_name: str, op: str, value: any
 ) -> any {
     import from google.cloud.firestore_v1 { FieldFilter }
-    op_map = {
-        '$gt': '>',
-        '$gte': '>=',
-        '$lt': '<',
-        '$lte': '<=',
-        '$ne': '!=',
-        '$in': 'in',
-        '$nin': 'not-in'
-    };
-    if op in op_map {
-        return query.where(filter=FieldFilter(field_name, op_map[op], val));
-    }
-    return query;
+    return query.where(filter=FieldFilter(field_name, op, value));
 }
 
-"""Apply a MongoDB-style filter dict to a Firestore query."""
-def _apply_firestore_filters(query: any, filter: dict) -> any {
-    import from google.cloud.firestore_v1 { FieldFilter }
-    current_query = query;
-    for (field_name, field_value) in filter.items() {
-        if isinstance(field_value, dict) {
-            for (op, val) in field_value.items() {
-                op_map = {
-                    '$gt': '>',
-                    '$gte': '>=',
-                    '$lt': '<',
-                    '$lte': '<=',
-                    '$ne': '!=',
-                    '$in': 'in',
-                    '$nin': 'not-in'
-                };
-                if op in op_map {
-                    current_query = current_query.where(
-                        filter=FieldFilter(field_name, op_map[op], val)
-                    );
-                }
+"""Apply a single Firestore field filter from a kvstore filter value."""
+def _apply_firestore_field_value(query: any, field_name: str, value: any) -> any {
+    if isinstance(value, dict) {
+        current_query = query;
+        for (operator, operator_value) in value.items() {
+            if operator not in _FIRESTORE_OPERATOR_MAP {
+                raise ValueError(f'Unsupported Firestore filter operator: {operator}');
             }
+            current_query = _apply_firestore_field_filter(
+                current_query,
+                field_name,
+                _FIRESTORE_OPERATOR_MAP[operator],
+                operator_value
+            );
+        }
+        return current_query;
+    }
+
+    return _apply_firestore_field_filter(query, field_name, '==', value);
+}
+
+"""Apply kvstore filters to a Firestore query."""
+def _apply_firestore_filters(query: any, filter: dict) -> any {
+    current_query = query;
+
+    for (field_name, value) in filter.items() {
+        if field_name == '$and' {
+            for clause in value {
+                current_query = _apply_firestore_filters(current_query, clause);
+            }
+        } elif field_name == '$or' {
+            raise NotImplementedError(
+                'Firestore kvstore does not support $or filters. '
+                'Restructure the query or run multiple finds.'
+            );
+        } elif field_name == '_id' {
+            raise NotImplementedError(
+                'Filtering by _id is not supported for Firestore queries. '
+                'Use get(), find_by_id(), update_by_id(), or delete_by_id() instead.'
+            );
         } else {
-            current_query = current_query.where(
-                filter=FieldFilter(field_name, '==', field_value)
+            current_query = _apply_firestore_field_value(
+                current_query, field_name, value
             );
         }
     }
+
     return current_query;
 }
 
-"""Commit current batch and return a fresh one if BATCH_LIMIT writes are pending."""
+"""Parse a Mongo-style projection into a Firestore projection plan.
+
+Returns None when no projection is requested. Otherwise a dict with:
+  'mode'   : 'include' or 'exclude'
+  'fields' : the non-_id field names to include (include) or strip (exclude)
+  'drop_id': whether _id should be removed from the result
+
+Firestore has no server-side field exclusion, so exclusion is applied
+client-side after the read; inclusion uses query.select() for a smaller,
+cheaper read. Mixing inclusion and exclusion (other than _id) raises, matching
+pymongo's projection rules.
+"""
+def _firestore_projection_plan(projection: dict | None) -> dict | None {
+    if not projection {
+        return None;
+    }
+    drop_id = projection.get('_id', 1) in (0, False);
+    include_fields: list = [];
+    exclude_fields: list = [];
+    for (field, flag) in projection.items() {
+        if field == '_id' {
+            continue;
+        }
+        if flag in (0, False) {
+            exclude_fields.append(field);
+        } else {
+            include_fields.append(field);
+        }
+    }
+    if include_fields and exclude_fields {
+        raise ValueError(
+            'Cannot mix inclusion and exclusion in a projection (except _id).'
+        );
+    }
+    if include_fields {
+        return {'mode': 'include', 'fields': include_fields, 'drop_id': drop_id};
+    }
+    return {'mode': 'exclude', 'fields': exclude_fields, 'drop_id': drop_id};
+}
+
+"""Apply an inclusion projection to a Firestore query via query.select().
+
+Exclusion projections have no server-side equivalent and are handled
+client-side in _project_firestore_doc, so they pass through untouched here."""
+def _apply_firestore_projection(query: any, plan: dict | None) -> any {
+    if plan is not None and plan['mode'] == 'include' and plan['fields'] {
+        return query.select(plan['fields']);
+    }
+    return query;
+}
+
+"""Shape a Firestore document dict to match a projection plan.
+
+For inclusion, keeps only the requested fields (plus _id unless suppressed).
+For exclusion, removes the listed fields. _id is dropped when the projection
+set _id: 0. Returns the doc unchanged when no projection is in effect."""
+def _project_firestore_doc(doc: dict | None, plan: dict | None) -> dict | None {
+    if doc is None or plan is None {
+        return doc;
+    }
+    if plan['mode'] == 'include' {
+        result: dict = {};
+        for field in plan['fields'] {
+            if field in doc {
+                result[field] = doc[field];
+            }
+        }
+        if not plan['drop_id'] and '_id' in doc {
+            result['_id'] = doc['_id'];
+        }
+        return result;
+    }
+    for field in plan['fields'] {
+        if field in doc {
+            del doc[field];
+        }
+    }
+    if plan['drop_id'] and '_id' in doc {
+        del doc['_id'];
+    }
+    return doc;
+}
+
+"""Bump pending count and flush the Firestore batch when the limit is reached."""
 def _firestore_batch_after_write(
     client: any, batch: any, pending: int
-) -> tuple {
-    BATCH_LIMIT = 499;
+) -> tuple[any, int] {
     pending += 1;
-    if pending >= BATCH_LIMIT {
+    if pending >= _FIRESTORE_BATCH_LIMIT {
         batch.commit();
         return (client.batch(), 0);
     }
     return (batch, pending);
 }
 
-"""Commit the final batch if there are any pending writes."""
+"""Commit a partially filled Firestore batch."""
 def _firestore_batch_finalize(batch: any, pending: int) {
     if pending > 0 {
         batch.commit();
     }
 }
 
-"""Build a seed document from a filter + update_data for upsert operations."""
+"""Build a best-effort Firestore document for upsert from filter + update.
+
+Note: callers pass this to set(merge=True), which deep-merges nested dicts by
+key — not dotted-path semantics. For the kvstore-style flat documents this API
+targets, that is correct; callers with nested update payloads should be aware
+of the difference from Firestore's update() dotted-path expansion.
+"""
 def _firestore_seed_document(filter: dict, update_data: dict) -> dict {
-    seed = {};
-    for (k, v) in filter.items() {
-        if not k.startswith('$') {
-            seed[k] = v;
+    seed: dict = {};
+
+    for (field_name, value) in filter.items() {
+        if field_name.startswith('$') {
+            continue;
+        }
+        if not isinstance(value, dict) {
+            seed[field_name] = value;
         }
     }
-    update_fields = _firestore_update_fields(update_data);
-    seed.update(update_fields);
+
+    seed.update(_firestore_update_fields(update_data));
     return seed;
 }
 
 
 # ===== FIRESTORE_DB IMPLEMENTATIONS =====
-
 impl FirestoreDb._get_firestore_collection(col_name: str) -> any {
-    return self.client.collection(
-        _firestore_collection_name(self.db_name, col_name)
-    );
+    return self.client.collection(_firestore_collection_name(self.db_name, col_name));
 }
 
 impl FirestoreDb.get(key: str, col_name: str = 'default') -> dict | None {
@@ -197,11 +278,14 @@ impl FirestoreDb.exists(key: str, col_name: str = 'default') -> bool {
 impl FirestoreDb.find_one(
     col_name: str, filter: dict, projection: dict | None = None
 ) -> dict | None {
-    query = _apply_firestore_filters(
-        self._get_firestore_collection(col_name), filter
-    );
+    plan = _firestore_projection_plan(projection);
+    query = _apply_firestore_filters(self._get_firestore_collection(col_name), filter);
+    query = _apply_firestore_projection(query, plan);
     results = list(query.limit(1).stream());
-    return _firestore_snapshot_to_doc(results[0]) if results else None;
+    if not results {
+        return None;
+    }
+    return _project_firestore_doc(_firestore_snapshot_to_doc(results[0]), plan);
 }
 
 impl FirestoreDb.find(
@@ -210,24 +294,22 @@ impl FirestoreDb.find(
     projection: dict | None = None,
     limit: int | None = None
 ) -> list {
-    query = _apply_firestore_filters(
-        self._get_firestore_collection(col_name), filter
-    );
+    plan = _firestore_projection_plan(projection);
+    query = _apply_firestore_filters(self._get_firestore_collection(col_name), filter);
+    query = _apply_firestore_projection(query, plan);
     if limit is not None {
         query = query.limit(limit);
     }
     results: list = [];
     for snapshot in query.stream() {
         if (doc := _firestore_snapshot_to_doc(snapshot)) is not None {
-            results.append(doc);
+            results.append(_project_firestore_doc(doc, plan));
         }
     }
     return results;
 }
 
-impl FirestoreDb.insert_one(
-    col_name: str, document: dict
-) -> InsertResult {
+impl FirestoreDb.insert_one(col_name: str, document: dict) -> InsertResult {
     _validate_not_read_only(col_name);
     doc_id = _firestore_document_id(document) or str(uuid4());
     self._get_firestore_collection(col_name).document(doc_id).set(
@@ -240,9 +322,7 @@ impl FirestoreDb.update_one(
     col_name: str, filter: dict, update_data: dict, upsert_mode: bool = False
 ) -> UpdateResult {
     _validate_not_read_only(col_name);
-    query = _apply_firestore_filters(
-        self._get_firestore_collection(col_name), filter
-    );
+    query = _apply_firestore_filters(self._get_firestore_collection(col_name), filter);
     results = list(query.limit(1).stream());
     update_fields = _firestore_update_fields(update_data);
 
@@ -264,13 +344,9 @@ impl FirestoreDb.update_one(
     return UpdateResult(matched_count=1, modified_count=1);
 }
 
-impl FirestoreDb.delete_one(
-    col_name: str, filter: dict
-) -> DeleteResult {
+impl FirestoreDb.delete_one(col_name: str, filter: dict) -> DeleteResult {
     _validate_not_read_only(col_name);
-    query = _apply_firestore_filters(
-        self._get_firestore_collection(col_name), filter
-    );
+    query = _apply_firestore_filters(self._get_firestore_collection(col_name), filter);
     results = list(query.limit(1).stream());
     if not results {
         return DeleteResult(deleted_count=0);
@@ -279,9 +355,7 @@ impl FirestoreDb.delete_one(
     return DeleteResult(deleted_count=1);
 }
 
-impl FirestoreDb.insert_many(
-    col_name: str, documents: list
-) -> InsertManyResult {
+impl FirestoreDb.insert_many(col_name: str, documents: list) -> InsertManyResult {
     _validate_not_read_only(col_name);
     inserted_ids: list = [];
     batch = self.client.batch();
@@ -294,9 +368,7 @@ impl FirestoreDb.insert_many(
             self._get_firestore_collection(col_name).document(doc_id),
             _firestore_document_body(document)
         );
-        (batch, pending) = _firestore_batch_after_write(
-            self.client, batch, pending
-        );
+        (batch, pending) = _firestore_batch_after_write(self.client, batch, pending);
     }
 
     _firestore_batch_finalize(batch, pending);
@@ -307,9 +379,7 @@ impl FirestoreDb.update_many(
     col_name: str, filter: dict, update_data: dict, upsert_mode: bool = False
 ) -> UpdateResult {
     _validate_not_read_only(col_name);
-    query = _apply_firestore_filters(
-        self._get_firestore_collection(col_name), filter
-    );
+    query = _apply_firestore_filters(self._get_firestore_collection(col_name), filter);
     update_fields = _firestore_update_fields(update_data);
 
     # Stream matches straight into batches rather than materializing the
@@ -324,9 +394,7 @@ impl FirestoreDb.update_many(
             update_fields
         );
         modified_count += 1;
-        (batch, pending) = _firestore_batch_after_write(
-            self.client, batch, pending
-        );
+        (batch, pending) = _firestore_batch_after_write(self.client, batch, pending);
     }
 
     if modified_count == 0 {
@@ -342,18 +410,12 @@ impl FirestoreDb.update_many(
     }
 
     _firestore_batch_finalize(batch, pending);
-    return UpdateResult(
-        matched_count=modified_count, modified_count=modified_count
-    );
+    return UpdateResult(matched_count=modified_count, modified_count=modified_count);
 }
 
-impl FirestoreDb.delete_many(
-    col_name: str, filter: dict
-) -> DeleteResult {
+impl FirestoreDb.delete_many(col_name: str, filter: dict) -> DeleteResult {
     _validate_not_read_only(col_name);
-    query = _apply_firestore_filters(
-        self._get_firestore_collection(col_name), filter
-    );
+    query = _apply_firestore_filters(self._get_firestore_collection(col_name), filter);
 
     # Stream matches straight into batches rather than materializing the
     # whole result set: memory stays bounded to one batch (500 writes).
@@ -362,13 +424,9 @@ impl FirestoreDb.delete_many(
     deleted_count = 0;
 
     for snapshot in query.stream() {
-        batch.delete(
-            self._get_firestore_collection(col_name).document(snapshot.id)
-        );
+        batch.delete(self._get_firestore_collection(col_name).document(snapshot.id));
         deleted_count += 1;
-        (batch, pending) = _firestore_batch_after_write(
-            self.client, batch, pending
-        );
+        (batch, pending) = _firestore_batch_after_write(self.client, batch, pending);
     }
 
     _firestore_batch_finalize(batch, pending);

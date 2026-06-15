@@ -219,7 +219,11 @@ obj Db {
     def exists(key: str, col_name: str = 'default') -> bool abs;
 
     # ===== DOCUMENT-STORE METHODS =====
-    """Find one document matching filter."""
+    """Find one document matching filter.
+
+    `projection` follows the same pymongo semantics as `find` (see below),
+    including the Firestore-specific notes.
+    """
     def find_one(
         col_name: str, filter: dict, projection: dict | None = None
     ) -> dict | None abs;
@@ -227,7 +231,13 @@ obj Db {
     """Find all documents matching filter.
 
     `projection` follows pymongo semantics: `{field: 1}` to include, `{field: 0}`
-    to exclude. Passing None returns all fields.
+    to exclude. Passing None returns all fields. Mixing include and exclude
+    (other than suppressing `_id`) raises ValueError.
+
+    For Firestore, inclusion projections push down to the server via
+    `query.select()` (fewer fields over the wire); exclusion projections have no
+    server-side equivalent, so the full document is read and the listed fields
+    are stripped client-side. Either way the returned shape matches MongoDB.
 
     Pass `limit` to cap the number of results. For Firestore this is important:
     the backend materializes results into a list, so an unbounded find streams

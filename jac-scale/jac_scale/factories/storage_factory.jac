@@ -10,9 +10,26 @@ import from jac_scale.firebase_env {
 
 enum StorageType { LOCAL = "local", S3 = "s3", GCS = "gcs", FIREBASE = "firebase" }
 
+"""Read a JAC_STORAGE_<prefix>_<suffix> env var, aliasing GCS<->FIREBASE.
+
+The active prefix wins; if its var is unset, the other prefix is tried so a
+single GCS or FIREBASE env var configures either storage type. Returns None
+when neither is set.
+"""
+def _resolve_storage_env(suffix: str, env_prefix: str) -> (str | None) {
+    other_prefix = "FIREBASE" if env_prefix == "GCS" else "GCS";
+    for p in [env_prefix, other_prefix] {
+        val = os.environ.get(f"JAC_STORAGE_{p}_{suffix}");
+        if val {
+            return val;
+        }
+    }
+    return None;
+}
+
 """Factory for creating storage instances.
 
-Configuration priority: jac.toml > environment variable > default
+Configuration priority: environment variable > jac.toml > default
 
 In jac.toml:
     [storage]
@@ -145,29 +162,20 @@ class StorageFactory {
                 storage_config["project_id"] = jac_config.storage.project_id;
                 storage_config["public_read"] = jac_config.storage.public_read;
             }
+            # Env vars override jac.toml; GCS and FIREBASE vars alias each other
+            # so a single set configures either storage type (see
+            # _resolve_storage_env and resolve_firebase_project_id).
             env_prefix = "GCS" if storage_type == StorageType.GCS else "FIREBASE";
-            if (bucket_env := os.environ.get(f"JAC_STORAGE_{env_prefix}_BUCKET")) {
+            other_prefix = "FIREBASE" if env_prefix == "GCS" else "GCS";
+            if (bucket_env := _resolve_storage_env("BUCKET", env_prefix)) {
                 storage_config["bucket"] = bucket_env;
             }
-            if (prefix_env := os.environ.get(f"JAC_STORAGE_{env_prefix}_PREFIX")) {
+            if (prefix_env := _resolve_storage_env("PREFIX", env_prefix)) {
                 storage_config["prefix"] = prefix_env;
             }
-            if (
-                public_env := os.environ.get(f"JAC_STORAGE_{env_prefix}_PUBLIC_READ")
-            ) {
+            if (public_env := _resolve_storage_env("PUBLIC_READ", env_prefix)) {
                 storage_config["public_read"] = public_env.lower() == "true";
             }
-            # Allow GCS and FIREBASE env vars to cross-populate bucket/prefix.
-            for (field, env_suffix) in [('bucket', 'BUCKET'), ('prefix', 'PREFIX')] {
-                if not storage_config.get(field) {
-                    alias_val = os.environ.get(f"JAC_STORAGE_FIREBASE_{env_suffix}")
-                    or os.environ.get(f"JAC_STORAGE_GCS_{env_suffix}");
-                    if alias_val {
-                        storage_config[field] = alias_val;
-                    }
-                }
-            }
-            other_prefix = "FIREBASE" if env_prefix == "GCS" else "GCS";
             if (
                 resolved_project := resolve_firebase_project_id(
                     [
@@ -180,13 +188,6 @@ class StorageFactory {
                 )
             ) {
                 storage_config['project_id'] = resolved_project;
-            }
-            if "public_read" not in storage_config {
-                public_alias = os.environ.get("JAC_STORAGE_FIREBASE_PUBLIC_READ")
-                or os.environ.get("JAC_STORAGE_GCS_PUBLIC_READ");
-                if public_alias {
-                    storage_config["public_read"] = public_alias.lower() == "true";
-                }
             }
         }
 

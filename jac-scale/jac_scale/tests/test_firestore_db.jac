@@ -101,7 +101,8 @@ obj _FakeFieldFilter {
 obj _FakeQuery {
     has collection: _FakeCollection,
         filters: list = [],
-        limit_count: int | None = None;
+        limit_count: int | None = None,
+        select_fields: (list | None) = None;
 
     def where(
         field_path: str = '',
@@ -124,13 +125,27 @@ obj _FakeQuery {
         return _FakeQuery(
             collection=self.collection,
             filters=next_filters,
-            limit_count=self.limit_count
+            limit_count=self.limit_count,
+            select_fields=self.select_fields
         );
     }
 
     def limit(count: int) -> _FakeQuery {
         return _FakeQuery(
-            collection=self.collection, filters=self.filters, limit_count=count
+            collection=self.collection,
+            filters=self.filters,
+            limit_count=count,
+            select_fields=self.select_fields
+        );
+    }
+
+    """Model Firestore server-side field projection."""
+    def select(field_paths: list) -> _FakeQuery {
+        return _FakeQuery(
+            collection=self.collection,
+            filters=self.filters,
+            limit_count=self.limit_count,
+            select_fields=list(field_paths)
         );
     }
 
@@ -147,7 +162,17 @@ obj _FakeQuery {
                 }
             }
             if matched {
-                results.append(_FakeDocSnapshot(id=doc_id, data=_copy_doc(doc)));
+                data = _copy_doc(doc);
+                if self.select_fields is not None and data is not None {
+                    projected: dict = {};
+                    for (k, v) in data.items() {
+                        if k in self.select_fields {
+                            projected[k] = v;
+                        }
+                    }
+                    data = projected;
+                }
+                results.append(_FakeDocSnapshot(id=doc_id, data=data));
             }
         }
         if self.limit_count is not None {
@@ -179,6 +204,10 @@ obj _FakeCollection {
 
     def limit(count: int) -> _FakeQuery {
         return _FakeQuery(collection=self, limit_count=count);
+    }
+
+    def select(field_paths: list) -> _FakeQuery {
+        return _FakeQuery(collection=self, select_fields=list(field_paths));
     }
 
     def stream -> list {
@@ -294,6 +323,48 @@ test "firestore kvstore operations" {
     assert db.find_by_id('profiles', profile.inserted_id)['status'] == 'active';
     assert db.delete_by_id('profiles', profile.inserted_id).deleted_count == 1;
     assert db.find_by_id('profiles', profile.inserted_id) is None;
+}
+
+
+test "firestore find honors projection" {
+    client = _FakeFirestoreClient();
+    db = Db(client=client, db_name='app', db_type=DatabaseType.FIRESTORE);
+
+    db.insert_one('users', {'_id': 'u1', 'name': 'Alice', 'role': 'admin', 'age': 30});
+    db.insert_one('users', {'_id': 'u2', 'name': 'Bob', 'role': 'user', 'age': 25});
+
+    # Inclusion: only the requested fields, plus _id by default.
+    assert db.find_one('users', {'name': 'Alice'}, {'name': 1}) == {
+        'name': 'Alice',
+        '_id': 'u1'
+    };
+
+    # Inclusion with _id suppressed.
+    assert db.find_one('users', {'name': 'Alice'}, {'name': 1, '_id': 0}) == {
+        'name': 'Alice'
+    };
+
+    # Exclusion: everything except the listed fields.
+    assert db.find_one('users', {'name': 'Bob'}, {'age': 0, 'role': 0}) == {
+        'name': 'Bob',
+        '_id': 'u2'
+    };
+
+    # Projection applies across find() too.
+    rows = list(db.find('users', {}, {'role': 1, '_id': 0}));
+    assert sorted([r['role'] for r in rows]) == ['admin', 'user'];
+    for r in rows {
+        assert set(r.keys()) == {'role'};
+    }
+
+    # Mixing inclusion and exclusion is rejected, matching pymongo.
+    raised = False;
+    try {
+        db.find('users', {}, {'name': 1, 'age': 0});
+    } except ValueError {
+        raised = True;
+    }
+    assert raised , 'Expected ValueError when mixing include and exclude';
 }
 
 

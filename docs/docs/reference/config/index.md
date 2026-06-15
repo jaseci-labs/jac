@@ -774,10 +774,10 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 |----------|-------------|
 | `MONGODB_URI` | MongoDB connection URI |
 | `REDIS_URL` | Redis connection URL |
-| `FIRESTORE_PROJECT_ID` | Firestore / Firebase project ID used by `kvstore(db_type="firestore")` |
-| `FIREBASE_PROJECT_ID` | Shared Firebase project ID fallback (Auth SSO, Firestore, Storage) |
+| `FIRESTORE_PROJECT_ID` | Firestore / Firebase project ID |
+| `FIREBASE_PROJECT_ID` | Shared Firebase project ID fallback for Auth SSO, Firestore, Storage |
 
-Subsystem-specific project ID vars (`FIREBASE_AUTH_PROJECT_ID`, `FIRESTORE_PROJECT_ID`, `JAC_STORAGE_FIREBASE_PROJECT_ID`, `JAC_STORAGE_GCS_PROJECT_ID`) override `FIREBASE_PROJECT_ID` when set.
+Project ID vars (`FIREBASE_AUTH_PROJECT_ID`, `FIRESTORE_PROJECT_ID`, `JAC_STORAGE_FIREBASE_PROJECT_ID`, `JAC_STORAGE_GCS_PROJECT_ID`) override `FIREBASE_PROJECT_ID` when set.
 
 ### jac-scale: Authentication
 
