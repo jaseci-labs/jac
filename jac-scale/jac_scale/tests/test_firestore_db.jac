@@ -98,6 +98,20 @@ obj _FakeFieldFilter {
 }
 
 
+obj _FakeCountSnapshot {
+    has value: int;
+}
+
+
+obj _FakeAggregateQuery {
+    has query: _FakeQuery;
+
+    def get -> list {
+        return [[_FakeCountSnapshot(value=len(self.query.stream()))]];
+    }
+}
+
+
 obj _FakeQuery {
     has collection: _FakeCollection,
         filters: list = [],
@@ -147,6 +161,10 @@ obj _FakeQuery {
             limit_count=self.limit_count,
             select_fields=list(field_paths)
         );
+    }
+
+    def count -> _FakeAggregateQuery {
+        return _FakeAggregateQuery(query=self);
     }
 
     def stream -> list {
@@ -212,6 +230,10 @@ obj _FakeCollection {
 
     def stream -> list {
         return _FakeQuery(collection=self).stream();
+    }
+
+    def count -> _FakeAggregateQuery {
+        return _FakeQuery(collection=self).count();
     }
 }
 
@@ -298,6 +320,10 @@ test "firestore kvstore operations" {
     assert len(admins) == 2;
     assert db.find_one('users', {'name': 'Alice'})['role'] == 'admin';
     assert len(list(db.find('users', {'age': {'$gte': 25}}))) == 2;
+    assert db.count_documents('users', {}) == 4;
+    assert db.count_documents('users', {'role': 'admin'}) == 2;
+    assert db.count_documents('users', {'name': 'Bob'}) == 1;
+    assert db.count_documents('users', {'name': 'Missing'}) == 0;
 
     assert db.update_one(
         'users', {'name': 'Alice'}, {'$set': {'status': 'active'}}

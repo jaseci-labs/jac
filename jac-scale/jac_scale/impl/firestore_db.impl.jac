@@ -330,6 +330,12 @@ impl FirestoreDb.find(
     return results;
 }
 
+impl FirestoreDb.count_documents(col_name: str, filter: dict) -> int {
+    query = _apply_firestore_filters(self._get_firestore_collection(col_name), filter);
+    results = query.count().get();
+    return results[0][0].value;
+}
+
 impl FirestoreDb.insert_one(col_name: str, document: dict) -> InsertResult {
     _validate_not_read_only(col_name);
     doc_id = _firestore_document_id(document) or str(uuid4());
