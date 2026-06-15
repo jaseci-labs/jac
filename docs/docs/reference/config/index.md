@@ -228,12 +228,16 @@ Defaults for `jac test`:
 
 ```toml
 [test]
-directory = ""          # Test directory (empty = current directory)
+directory = ""          # Scopes no-argument `jac test` discovery (empty = walk project root)
 filter = ""             # Filter pattern
 verbose = false         # Verbose output
 fail_fast = false       # Stop on first failure
 max_failures = 0        # Max failures (0 = unlimited)
 ```
+
+When `directory` is set, `jac test` with no file argument collects tests only
+from that directory (resolved against the project root), so application modules
+whose top-level `with entry` runs on import are not pulled into test collection.
 
 ---
 

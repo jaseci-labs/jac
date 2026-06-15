@@ -53,7 +53,12 @@ import from jaclang.jac0core.constructs {
     WalkerAnchor,
     WalkerArchetype
 }
-import from jaclang.jac0core.modresolver { infer_language }
+import from jaclang.jac0core.modresolver {
+    infer_language,
+    find_jac_project_root,
+    push_import_base,
+    pop_import_base
+}
 import from jaclang.jac0core.mtp { MTIR, Info, MTRuntime }
 import from jaclang.jac0core { plugin }
 import type from http.server { BaseHTTPRequestHandler }
