@@ -3,105 +3,24 @@
 Mirrors the pipeline in native_desktop_target.impl.jac with two divergences:
   - The host uses cef.na.jac (CEF Chromium) instead of webview.na.jac
   - The CEF runtime bundle is staged alongside dist/
-Steps 1–4 (Vite build, config load, output dir prep, dist staging) are
-shared with the native target and are reimplemented here inline to avoid
-tight coupling between the two target implementations.
+Shared build steps live in desktop_build.jac.
 """
 import os;
 import shutil;
 import json;
-import hashlib;
 import subprocess;
 import stat;
-import sys;
 import sysconfig;
 import from pathlib { Path }
 import from typing { Optional }
 import from jaclang.cli.console { console }
-
-"""Locate the shipped native/cef assets (binding + fetch tooling).
-
-native/cef lives inside this package, two dirs up from this targets module
-(jac_desktop/targets/ -> jac_desktop/native/cef). Verified by the presence
-of cef.na.jac; walks up as a fallback for unusual layouts.
-"""
-def _find_cef_dir -> Path {
-    here = Path(os.path.abspath(__file__)).parent;
-    candidates = [here.parent / "native" / "cef", here / "native" / "cef"];
-    p = here;
-    for _ in range(6) {
-        candidates.append(p / "native" / "cef");
-        p = p.parent;
-    }
-    for cand in candidates {
-        if (cand / "cef.na.jac").exists() {
-            return cand;
-        }
-    }
-    raise RuntimeError("jac-desktop: native/cef assets not found in the package.");
-}
-
-"""Locate the shipped native/webview assets (for oauth_broker source).
-
-The oauth_broker.jac is shared between both targets — it lives under
-native/webview/ next to the native target's binding.
-"""
-def _find_webview_dir -> Path {
-    here = Path(os.path.abspath(__file__)).parent;
-    candidates = [here.parent / "native" / "webview", here / "native" / "webview"];
-    p = here;
-    for _ in range(6) {
-        candidates.append(p / "native" / "webview");
-        p = p.parent;
-    }
-    for cand in candidates {
-        if (cand / "webview.na.jac").exists() {
-            return cand;
-        }
-    }
-    raise RuntimeError("jac-desktop: native/webview assets not found in the package.");
-}
-
-"""Add $ORIGIN + the build-time libpython directory to the host ELF RUNPATH.
-
-nacompile links libpython by soname (e.g. libpython3.14.so.1.0). CEF/webview
-shims resolve via $ORIGIN; libpython usually lives in the Python LIBDIR and
-must be on the loader path. Without this, moving the binary or building on a
-different Python version yields 'cannot open shared object file'.
-"""
-def _patch_host_rpath(binary: Path) -> None {
-    libdir = sysconfig.get_config_var("LIBDIR") or "";
-    if not libdir {
-        return;
-    }
-    patchelf = shutil.which("patchelf");
-    if not patchelf {
-        console.print(
-            "  [yellow]patchelf not found; libpython must be on LD_LIBRARY_PATH at runtime[/yellow]"
-        );
-        return;
-    }
-    rpath = f"$ORIGIN:{libdir}";
-    res = subprocess.run([patchelf, "--set-rpath", rpath, str(binary)]);
-    if res.returncode != 0 {
-        console.print(
-            "  [yellow]patchelf rpath patch failed; rebuild on this machine if the binary won't start[/yellow]"
-        );
-    }
-}
-
-"""Resolve the jac CLI for nacompile."""
-def _jac_bin -> str {
-    # Prefer jac beside the running interpreter (editable venv installs).
-    cand = Path(os.path.dirname(os.sys.executable)) / "jac";
-    if cand.exists() {
-        return str(cand);
-    }
-    found = shutil.which("jac");
-    if found {
-        return found;
-    }
-    raise RuntimeError("jac CLI not found on PATH.");
+import from jac_desktop.targets.desktop_build {
+    _find_cef_dir,
+    _jac_bin,
+    _libpython_soname,
+    _loopback_serve_py,
+    _patch_host_rpath,
+    _stage_oauth_broker,
 }
 
 """Ensure the CEF binary distribution is staged (fetch it on first use)."""
@@ -173,54 +92,15 @@ def _ensure_cef_subprocess(cef_dir: Path) -> Path {
     return helper;
 }
 
-"""Generate the CEF native host source (`host.na.jac`): embed CPython, serve
-`dist/` on loopback through the OAuth/session broker, and render it in CEF.
-
-Mirrors the native target host (`native_desktop_target.impl.jac`) but swaps
-the renderer FFI for `cef.na.jac` and adds CEF subprocess handling.
-
-Lifecycle order (must match `cef.na.jac`):
-  1. cef_execute_subprocess() — exit early in CEF subprocesses
-  2. cef_startup() — must run before any Python threads (CEF main-thread rule)
-  3. Py_Initialize + loopback server
-  4. cef_open_browser() — create the window after URL is known
-  5. cef_run_loop() with GIL released
+"""Generate the CEF native host source (`host.na.jac`).
 
 Bootstrap JS (window.__JAC_DESKTOP__, window.__JAC_BROKER__) is injected in
-cef.na.jac's on_context_created handler, not in this host.
+cef_dispatch.na.jac's on_context_created handler, not in this host.
 """
 def _generate_host_source(
     libpy: str, title: str, width: int, height: int, app_name: str, cache_path: str,
 ) -> str {
-    pref_port = 49152 + (int(hashlib.sha1(app_name.encode()).hexdigest(), 16) % 16000);
-    serve_py = (
-        "import os, socketserver, threading, importlib.util\n"
-        "_exe = os.path.realpath('/proc/self/exe')\n"
-        "_root = os.path.dirname(_exe)\n"
-        "_dir = os.path.join(_root, 'dist')\n"
-        "_spec = importlib.util.spec_from_file_location("
-        "'oauth_broker', os.path.join(_root, 'oauth_broker.py'))\n"
-        "_broker = importlib.util.module_from_spec(_spec)\n"
-        "_spec.loader.exec_module(_broker)\n"
-        "_data = os.environ.get('JAC_DATA_PATH', _root)\n"
-        "_store = _broker.SessionStore("
-        "os.path.join(_data, '.jac', 'desktop', 'session.json'))\n"
-        "_H = _broker.make_handler(_dir, _store)\n"
-        "socketserver.TCPServer.allow_reuse_address = True\n"
-        f"_pref = {pref_port}\n"
-        "_srv = None; _port = None\n"
-        "for _i in range(64):\n"
-        "    try:\n"
-        "        _srv = socketserver.TCPServer(('127.0.0.1', _pref + _i), _H)\n"
-        "        _port = _pref + _i; break\n"
-        "    except OSError:\n"
-        "        continue\n"
-        "if _srv is None:\n"
-        "    _srv = socketserver.TCPServer(('127.0.0.1', 0), _H)\n"
-        "    _port = _srv.server_address[1]\n"
-        "threading.Thread(target=_srv.serve_forever, daemon=True).start()\n"
-        "print('JAC_DESKTOP_SERVING http://127.0.0.1:' + str(_port) + '/', flush=True)\n"
-    );
+    serve_py = _loopback_serve_py(app_name);
     return (
         '"""Generated CEF desktop host - do not edit (jac-desktop)."""\n'
         "import sys;\n"
@@ -273,16 +153,9 @@ def _generate_host_source(
     );
 }
 
-"""Stage the CEF runtime bundle alongside dist/ in the output directory.
-
-Copies libcef.so, companion GPU libs, ICU data, V8 snapshot, .pak files,
-locales/, and chrome-sandbox. Warns if chrome-sandbox lacks setuid root.
-"""
+"""Stage the CEF runtime bundle alongside dist/ in the output directory."""
 def _stage_cef_runtime(cef_dist: Path, out_dir: Path) {
-    # Core library.
     shutil.copy2(cef_dist / "libcef.so", out_dir / "libcef.so");
-
-    # Companion GPU libraries (SwiftShader needed for software Vulkan fallback).
     for name in [
         "libEGL.so",
         "libGLESv2.so",
@@ -294,31 +167,22 @@ def _stage_cef_runtime(cef_dist: Path, out_dir: Path) {
             shutil.copy2(src, out_dir / name);
         }
     }
-
-    # Data files.
     for name in ["icudtl.dat", "v8_context_snapshot.bin"] {
         src = cef_dist / name;
         if src.exists() {
             shutil.copy2(src, out_dir / name);
         }
     }
-
-    # .pak resource files.
     for pak in cef_dist.glob("*.pak") {
         shutil.copy2(pak, out_dir / pak.name);
     }
-
-    # Locales directory.
     locales_src = cef_dist / "locales";
     if locales_src.exists() {
         shutil.copytree(locales_src, out_dir / "locales");
     }
-
-    # chrome-sandbox (setuid helper).
     sandbox_src = cef_dist / "chrome-sandbox";
     if sandbox_src.exists() {
         shutil.copy2(sandbox_src, out_dir / "chrome-sandbox");
-        # Check for setuid root.
         mode = os.stat(out_dir / "chrome-sandbox").st_mode;
         if not (mode & stat.S_ISUID) {
             console.print(
@@ -341,30 +205,24 @@ impl CefDesktopTarget.build(
 ) -> Path {
     import from jac_desktop.config_loader { get_desktop_config }
 
-    # 1. Build the cl bundle with the standard Vite pipeline (WebTarget).
     console.print("\n🖥️  Building CEF desktop app (Chromium)", style="bold");
     web_bundle = super.build(entry_file, project_dir, platform);
     dist_dir = web_bundle.parent;
 
-    # 2. Desktop window config from [plugins.desktop].
     cfg = get_desktop_config(project_dir);
     ident = cfg.get_identity();
     win = cfg.get_window_config();
     app_name = ident.name or "app";
 
-    # 3. Prepare a clean output dir.
     out_dir = project_dir / self.output_dir;
     if out_dir.exists() {
         shutil.rmtree(out_dir);
     }
     out_dir.mkdir(parents=True, exist_ok=True);
 
-    # 4. Stage the served bundle + the CEF binding + the CEF runtime.
     shutil.copytree(dist_dir, out_dir / "dist");
 
-    # CEF binding + dispatch helper (built on first use against the staged CEF dist).
     cef_dir = _find_cef_dir();
-    # Minimal fontconfig avoids Arch's broken 48-guessfamily.conf stalling Chromium init.
     fonts_conf = cef_dir / "minimal-fonts.conf";
     if fonts_conf.exists() {
         shutil.copy2(fonts_conf, out_dir / "minimal-fonts.conf");
@@ -376,30 +234,17 @@ impl CefDesktopTarget.build(
     shutil.copy2(cef_subprocess, out_dir / "cef-subprocess");
     (out_dir / "cef-subprocess").chmod(0o755);
     shutil.copy2(cef_dir / "cef.na.jac", out_dir / "cef.na.jac");
-
-    # CEF runtime bundle (libcef.so + resources).
     _stage_cef_runtime(cef_dist, out_dir);
+    _stage_oauth_broker(out_dir);
 
-    # Transpile the shared oauth_broker (same as native target).
-    webview_dir = _find_webview_dir();
-    broker_src = webview_dir.parent / "oauth_broker.jac";
-    console.print(
-        "  Transpiling oauth_broker.jac -> oauth_broker.py...", style="muted"
-    );
-    broker_res = subprocess.run(
-        [_jac_bin(), "jac2py", str(broker_src)], capture_output=True, text=True
-    );
-    if broker_res.returncode != 0 {
-        raise RuntimeError("oauth_broker transpile failed:\n" + broker_res.stderr);
-    }
-    (out_dir / "oauth_broker.py").write_text(broker_res.stdout);
-
-    # 5. Generate + compile the CEF native host (jac nacompile, same as native target).
-    libpy = sysconfig.get_config_var("INSTSONAME")
-    or f"libpython{sys.version_info.major}.{sys.version_info.minor}.so.1.0";
     cache_path = str(project_dir / ".jac" / "desktop" / "cef-cache" / str(app_name));
     host_src = _generate_host_source(
-        libpy, win.title or app_name, win.width, win.height, str(app_name), cache_path,
+        _libpython_soname(),
+        win.title or app_name,
+        win.width,
+        win.height,
+        str(app_name),
+        cache_path,
     );
     (out_dir / "host.na.jac").write_text(host_src);
 
@@ -427,7 +272,6 @@ impl CefDesktopTarget.start(
         prev = env.get("LD_LIBRARY_PATH", "");
         env["LD_LIBRARY_PATH"] = libdir if not prev else f"{libdir}:{prev}";
     }
-    # CEF on Linux: software GL by default; platform auto-detected by the C shim.
     env.setdefault("LIBGL_ALWAYS_SOFTWARE", "1");
     env.setdefault("GALLIUM_DRIVER", "llvmpipe");
     fonts_conf = binary.parent / "minimal-fonts.conf";

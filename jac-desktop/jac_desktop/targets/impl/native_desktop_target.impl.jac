@@ -2,69 +2,18 @@
 import os;
 import shutil;
 import json;
-import hashlib;
 import subprocess;
-import sys;
 import sysconfig;
 import from pathlib { Path }
 import from typing { Optional }
 import from jaclang.cli.console { console }
-
-"""Locate the shipped native/webview assets (binding + build tooling).
-
-native/webview lives inside this package, two dirs up from this targets module
-(jac_desktop/targets/ -> jac_desktop/native/webview). Verified by the presence
-of webview.na.jac; walks up as a fallback for unusual layouts.
-"""
-def _find_webview_dir -> Path {
-    here = Path(os.path.abspath(__file__)).parent;
-    candidates = [here.parent / "native" / "webview", here / "native" / "webview"];
-    p = here;
-    for _ in range(6) {
-        candidates.append(p / "native" / "webview");
-        p = p.parent;
-    }
-    for cand in candidates {
-        if (cand / "webview.na.jac").exists() {
-            return cand;
-        }
-    }
-    raise RuntimeError("jac-desktop: native/webview assets not found in the package.");
-}
-
-"""Add $ORIGIN + libpython LIBDIR to the host ELF RUNPATH (see cef target)."""
-def _patch_host_rpath(binary: Path) -> None {
-    libdir = sysconfig.get_config_var("LIBDIR") or "";
-    if not libdir {
-        return;
-    }
-    patchelf = shutil.which("patchelf");
-    if not patchelf {
-        console.print(
-            "  [yellow]patchelf not found; libpython must be on LD_LIBRARY_PATH at runtime[/yellow]"
-        );
-        return;
-    }
-    rpath = f"$ORIGIN:{libdir}";
-    res = subprocess.run([patchelf, "--set-rpath", rpath, str(binary)]);
-    if res.returncode != 0 {
-        console.print(
-            "  [yellow]patchelf rpath patch failed; rebuild on this machine if the binary won't start[/yellow]"
-        );
-    }
-}
-
-"""Resolve the jac CLI for nacompile (we're running under it)."""
-def _jac_bin -> str {
-    found = shutil.which("jac");
-    if found {
-        return found;
-    }
-    cand = Path(os.path.dirname(os.sys.executable)) / "jac";
-    if cand.exists() {
-        return str(cand);
-    }
-    raise RuntimeError("jac CLI not found on PATH.");
+import from jac_desktop.targets.desktop_build {
+    _find_webview_dir,
+    _jac_bin,
+    _libpython_soname,
+    _loopback_serve_py,
+    _patch_host_rpath,
+    _stage_oauth_broker,
 }
 
 """Ensure libwebview.so exists beside the binding (build it on first use)."""
@@ -84,65 +33,12 @@ def _ensure_libwebview(webview_dir: Path) -> Path {
     return lib;
 }
 
-"""Generate the native host source: embed CPython, serve `dist/` (resolved next
-to the binary via /proc/self/exe) on loopback through the OAuth/session broker,
-and render it in the webview.
-
-The loopback server is the `oauth_broker` module staged beside the binary, not a
-bare SimpleHTTPRequestHandler: it serves the bundle AND exposes /__jac/* routes
-that broker SSO logins through the system browser (see oauth_broker.py).
-
-The server binds a *stable* loopback port derived deterministically from the app
-name (with SO_REUSEADDR + a small fallback scan), so the webview origin -- and
-therefore its localStorage partition -- is the same on every launch. WebKitGTK
-persists localStorage per-origin to disk (`http_127.0.0.1_<port>.localstorage`),
-so a stable origin makes login (and all other client state) survive a restart
-without any token re-injection. A document-start bootstrap only flags desktop
-mode + the broker prefix for the SPA."""
+"""Generate the native host source: embed CPython, serve `dist/` on loopback,
+and render it in the webview."""
 def _generate_host_source(
     libpy: str, title: str, width: int, height: int, app_name: str
 ) -> str {
-    # Deterministic per-app port in the dynamic/private range (49152-65215) so
-    # the same app reuses the same origin across launches; computed at build
-    # time so the host needs no hashing at runtime.
-    pref_port = 49152 + (int(hashlib.sha1(app_name.encode()).hexdigest(), 16) % 16000);
-    serve_py = (
-        "import os, socketserver, threading, importlib.util\n"
-        "_exe = os.path.realpath('/proc/self/exe')\n"
-        "_root = os.path.dirname(_exe)\n"
-        "_dir = os.path.join(_root, 'dist')\n"
-        "_spec = importlib.util.spec_from_file_location("
-        "'oauth_broker', os.path.join(_root, 'oauth_broker.py'))\n"
-        "_broker = importlib.util.module_from_spec(_spec)\n"
-        "_spec.loader.exec_module(_broker)\n"
-        # Persist the session under the user data dir (JAC_DATA_PATH honored),
-        # never inside the web-served dist/ tree.
-        "_data = os.environ.get('JAC_DATA_PATH', _root)\n"
-        "_store = _broker.SessionStore("
-        "os.path.join(_data, '.jac', 'desktop', 'session.json'))\n"
-        "_H = _broker.make_handler(_dir, _store)\n"
-        # Stable origin: rebind the same deterministic port each launch
-        # (SO_REUSEADDR clears TIME_WAIT); fall back through a small scan, then
-        # to an ephemeral port only if the whole range is contended.
-        "socketserver.TCPServer.allow_reuse_address = True\n"
-        f"_pref = {pref_port}\n"
-        "_srv = None; _port = None\n"
-        "for _i in range(64):\n"
-        "    try:\n"
-        "        _srv = socketserver.TCPServer(('127.0.0.1', _pref + _i), _H)\n"
-        "        _port = _pref + _i; break\n"
-        "    except OSError:\n"
-        "        continue\n"
-        "if _srv is None:\n"
-        "    _srv = socketserver.TCPServer(('127.0.0.1', 0), _H)\n"
-        "    _port = _srv.server_address[1]\n"
-        "threading.Thread(target=_srv.serve_forever, daemon=True).start()\n"
-        "print('JAC_DESKTOP_SERVING http://127.0.0.1:' + str(_port) + '/', flush=True)\n"
-    );
-    # Runs at document-start (before the SPA's own scripts) on every full load.
-    # Just flags desktop mode + the broker prefix so the SPA can detect the shell
-    # and drive /__jac/oauth/*. Token persistence is handled by the stable origin
-    # (localStorage survives restarts), not by re-injection.
+    serve_py = _loopback_serve_py(app_name);
     bootstrap_js = (
         "(function(){try{"
         "window.__JAC_DESKTOP__=true;window.__JAC_BROKER__='/__jac';"
@@ -168,9 +64,9 @@ def _generate_host_source(
         "with entry {\n"
         "    Py_Initialize();\n"
         "    PyRun_SimpleString(SERVE_PY);\n"
-        "    main_mod = PyImport_AddModule(\"__main__\");\n"
+        '    main_mod = PyImport_AddModule("__main__");\n'
         "    d = PyModule_GetDict(main_mod);\n"
-        "    port = PyLong_AsLong(PyRun_String(\"_port\", PY_EVAL, d, d));\n"
+        '    port = PyLong_AsLong(PyRun_String("_port", PY_EVAL, d, d));\n'
         "    url = f\"http://127.0.0.1:{port}/\";\n"
         "    wv = new_webview(False);\n"
         f"    wv.title({json.dumps(title, ensure_ascii=False)});\n"
@@ -192,53 +88,30 @@ impl NativeDesktopTarget.build(
 ) -> Path {
     import from jac_desktop.config_loader { get_desktop_config }
 
-    # 1. Build the cl bundle with the standard Vite pipeline (WebTarget).
     console.print("\n🖥️  Building desktop app (Jac-native webview)", style="bold");
     web_bundle = super.build(entry_file, project_dir, platform);
-    dist_dir = web_bundle.parent;  # .jac/client/dist
+    dist_dir = web_bundle.parent;
 
-    # 2. Desktop window config from [plugins.desktop].
     cfg = get_desktop_config(project_dir);
     ident = cfg.get_identity();
     win = cfg.get_window_config();
     app_name = ident.name or "app";
 
-    # 3. Prepare a clean output dir beside the dist.
     out_dir = project_dir / self.output_dir;
     if out_dir.exists() {
         shutil.rmtree(out_dir);
     }
     out_dir.mkdir(parents=True, exist_ok=True);
 
-    # 4. Stage the served bundle + the native engine wrapper.
     shutil.copytree(dist_dir, out_dir / "dist");
     webview_dir = _find_webview_dir();
     lib = _ensure_libwebview(webview_dir);
     shutil.copy2(lib, out_dir / "libwebview.so");
     shutil.copy2(webview_dir / "webview.na.jac", out_dir / "webview.na.jac");
-    # The loopback OAuth/session broker is exec'd by the embedded CPython at
-    # runtime (see _generate_host_source). That interpreter has only the stdlib
-    # (no jaclang), so transpile the Jac source to dependency-free Python and
-    # ship the result beside the binary.
-    broker_src = webview_dir.parent / "oauth_broker.jac";
-    console.print(
-        "  Transpiling oauth_broker.jac -> oauth_broker.py...", style="muted"
-    );
-    broker_res = subprocess.run(
-        [_jac_bin(), "jac2py", str(broker_src)], capture_output=True, text=True
-    );
-    if broker_res.returncode != 0 {
-        raise RuntimeError("oauth_broker transpile failed:\n" + broker_res.stderr);
-    }
-    (out_dir / "oauth_broker.py").write_text(broker_res.stdout);
+    _stage_oauth_broker(out_dir);
 
-    # 5. Generate + compile the native host into the output dir.
-    libpy = str(
-        sysconfig.get_config_var("INSTSONAME")
-        or f"libpython{sys.version_info.major}.{sys.version_info.minor}.so.1.0"
-    );
     host_src = _generate_host_source(
-        libpy, win.title or app_name, win.width, win.height, str(app_name)
+        _libpython_soname(), win.title or app_name, win.width, win.height, str(app_name)
     );
     (out_dir / "host.na.jac").write_text(host_src);
 
@@ -266,7 +139,6 @@ impl NativeDesktopTarget.start(
         prev = env.get("LD_LIBRARY_PATH", "");
         env["LD_LIBRARY_PATH"] = libdir if not prev else f"{libdir}:{prev}";
     }
-    # WebKitGTK on WSL/headless-ish setups: prefer X11 + software paths.
     env.setdefault("GDK_BACKEND", "x11");
     env.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     env.setdefault("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
@@ -281,8 +153,6 @@ impl NativeDesktopTarget.start(
 impl NativeDesktopTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
-    # MVP: build + run (no HMR yet). HMR dev (native window -> Vite dev server)
-    # is a follow-up.
     console.print(
         "  desktop --dev: building and launching (HMR not yet wired)", style="muted"
     );
