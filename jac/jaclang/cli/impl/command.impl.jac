@@ -13,7 +13,8 @@ impl Arg.create(
     short: str | None = None,
     choices: list[any] | None = None,
     required: bool = False,
-    metavar: str | None = None
+    metavar: str | None = None,
+    dest: str | None = None
 ) -> Arg {
     # Auto-generate short flag from first character if not provided
     auto_short = short;
@@ -33,7 +34,8 @@ impl Arg.create(
         short=auto_short,
         choices=choices,
         required=required,
-        metavar=metavar
+        metavar=metavar,
+        dest=dest
     );
 }
 
