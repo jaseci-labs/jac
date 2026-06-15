@@ -814,6 +814,7 @@ impl _parse_toml_data(
             requires_python=proj.get("requires-python", ""),
             jac_version=proj.get("jac-version", ""),
             entry_point=proj.get("entry-point", "main.jac"),
+            kind=proj.get("kind", ""),
             urls=proj.get("urls", {}),
             include=_parse_include(proj.get("include", {}))
         );

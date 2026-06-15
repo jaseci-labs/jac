@@ -8,6 +8,9 @@ Every example below was run against the current toolchain. Install once and foll
 pip install jaseci
 ```
 
+!!! tip "`jac run` is kind-aware"
+    Set `kind` under `[project]` in `jac.toml` (or let it be inferred from the entry-point's codespace), and a bare `jac run` does the right thing for that kind: **execute** runnable kinds (`cli`, `native-app`), **serve** server kinds (`api-service`, `fullstack`, ...), or **build** artifact kinds (`native-binary`, `shared-library`, `pypi-package`, `npm-package`). `jac run --show` prints the resolved plan and the equivalent primitive command without running it. The explicit verbs shown in each recipe below are those primitives.
+
 ## The recipes at a glance
 
 Jac gives you three runtime targets -- server (`sv`), client (`cl`), and native (`na`) -- plus a few ways to **serve**, **package**, or wrap them in a **shell**. Everything below is a *combination* of those building blocks, not a separate mode. The grid shows which blocks each recipe uses; each recipe's exact command is in its section below.
