@@ -81,3 +81,9 @@ CLAUDE.local.md
 jactastic/**
 .mcp.json
 .gstack/
+
+# NA TUI build artifacts (built via jac-super/jac_super/ai_tui_na/build.sh)
+jac-super/jac_super/ai_tui_na/bin/
+jac-super/jac_super/ai_tui_na/proto/rawmode_proto
+jac-super/jac_super/ai_tui_na/proto/libtui_helpers.so
+jac-super/jac_super/ai_tui_na/*.so

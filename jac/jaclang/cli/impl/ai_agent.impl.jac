@@ -333,11 +333,8 @@ impl _count_diags(diags: list) -> tuple[int, int] {
     return (n_err, len(diags) - n_err);
 }
 
-"""True when the agent may print to the terminal (plain REPL, not TUI)."""
+"""True when the agent may print to the terminal."""
 impl _term_output_enabled -> bool {
-    if agent.cfg.tui_active {
-        return False;
-    }
     return sys.stdout.isatty() and os.environ.get("TERM", "") not in {"", "dumb"};
 }
 
@@ -2728,7 +2725,6 @@ failed turn reports its error but does not abort the session.
 
 When `req.ui` is set, hands off to `_run_ui_server`: launches the bundled Jac
 web app as a subprocess and opens it in the browser instead of the REPL.
-`--tui` is handled by jac-super's `run_ai_agent` hook when installed.
 """
 impl run_agent(req: object) -> int {
     global agent_model;
@@ -2743,9 +2739,6 @@ impl run_agent(req: object) -> int {
     # else here (model build, banner, REPL) applies to the parent process.
     if bool(r?.ui) {
         return _run_ui_server(r);
-    }
-    if bool(r?.tui) {
-        console.warning("`--tui` requires jac-super. Falling back to plain session.");
     }
     agent.cfg.yolo_mode = not r.safe;
     agent.cfg.verbose = not bool(r?.quiet);
@@ -2870,11 +2863,6 @@ impl ui_configure -> None {
     agent.cfg.yolo_mode = True;
     agent.cfg.verbose = True;
     agent.cfg.show_stats = True;
-    # When launched by `jac ai --tui`, suppress server-side terminal rendering
-    # so only the TUI Ink client renders output.
-    if os.environ.get("JAC_AI_TUI") == "1" {
-        agent.cfg.tui_active = True;
-    }
     agent.bus.active_feed = True;
     model_flag = os.environ.get("JAC_AI_UI_MODEL") or "";
     n_ctx = 0;
