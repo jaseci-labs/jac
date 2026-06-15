@@ -1,25 +1,29 @@
-"""Performance Analyst page (A-07): the deterministic incident digest.
+"""Performance Report page (A-07): the deterministic system report.
 
-Renders the reduce-before-the-model funnel output from /admin/analyst/digest -
-ranked metric symptoms (current vs baseline), slow-trace exemplars, and grouped
-error signatures - all pre-aggregated server-side. No model output yet; this is
-the substrate the REASON stage (A-07.b) will explain. Purely presentational:
-every number/string is computed by the backend.
+Renders /admin/report - an industry-standard performance report built entirely
+server-side from the in-cluster Prometheus / Tempo / Loki: health + top-line
+RED (req/s, error rate, p95), per-pod USE (CPU / memory / restarts), the
+slowest traces with their critical paths, and grouped error signatures. Every
+number here is a fact - no model produces them. The "Analysis & Recommendations"
+card at the top is the ONLY AI part: an optional, BYO-token second opinion that
+reads this report.
 """
 
-cl import from "lucide-react" { Activity, RefreshCw, AlertTriangle, Timer, Bug, Sparkles }
+cl import from "lucide-react" {
+    Activity, RefreshCw, AlertTriangle, Timer, Bug, Sparkles, Cpu, Server
+}
 
 cl {
     import from react { useEffect }
     import from ....components.common.Button { Button }
     import from ....context.AuthContext { useAuth }
-    import from ....services.analystService { getAnalystDigest, analyzeIncident }
+    import from ....services.analystService { getReport, analyzeIncident }
 
     def:pub AnalystPage -> JsxElement {
         has isLoading: bool = True,
             ok: bool = True,
             reason: str = "",
-            digest: dict = {},
+            rpt: dict = {},
             apiKey: str = "",
             model: str = "",
             analyzing: bool = False,
@@ -30,14 +34,14 @@ cl {
 
         async def load {
             isLoading = True;
-            res = await getAnalystDigest(auth["authToken"]);
+            res = await getReport(auth["authToken"]);
             if res["ok"] and res["data"] {
-                digest = res["data"];
+                rpt = res["data"];
                 ok = True;
             } else {
                 ok = False;
                 err = res["error"] or {};
-                reason = err["message"] or "Analyst digest unavailable";
+                reason = err["message"] or "Performance report unavailable";
             }
             isLoading = False;
         }
@@ -58,27 +62,25 @@ cl {
                 }
             } else {
                 err = res["error"] or {};
-                analysisErr = err["message"] or "Diagnosis failed";
+                analysisErr = err["message"] or "Analysis failed";
             }
             analyzing = False;
         }
 
         useEffect(lambda { load(); }, []);
 
-        def fmtDelta(d: float) -> str {
-            sign = "+" if d >= 0 else "";
-            return sign + str(d) + "%";
-        }
-
-        symptoms = (digest["symptoms"] if digest else []) or [];
-        exemplars = (digest["exemplar_traces"] if digest else []) or [];
-        errors = (digest["error_signatures"] if digest else []) or [];
-        hasAny = bool(len(symptoms)) or bool(len(exemplars)) or bool(len(errors));
+        health = (rpt["health"] if rpt else {}) or {};
+        pods = (rpt["pods"] if rpt else []) or [];
+        slow = (rpt["slow_traces"] if rpt else []) or [];
+        errors = (rpt["errors"] if rpt else []) or [];
 
         sectionCls = "bg-surface border border-line rounded-lg overflow-hidden shadow-sm";
         headCls = "flex items-center gap-2 px-4 py-3 border-b border-line";
         thCls = "text-left text-xs text-faint font-medium px-4 py-2";
         tdCls = "px-4 py-2 text-sm text-fg tabular-nums";
+        statCls = "px-4 py-3 bg-surface";
+        labelCls = "text-xs text-faint";
+        valCls = "text-base font-semibold text-fg tabular-nums";
 
         return
             <div className="space-y-4">
@@ -86,9 +88,11 @@ cl {
                     <div className="flex items-center gap-2.5">
                         <Activity className="w-5 h-5 text-accent"/>
                         <h1 className="text-lg font-semibold text-fg">
-                            Performance Analyst
+                            Performance Report
                         </h1>
-                        <span className="text-xs text-faint">incident digest</span>
+                        <span className="text-xs text-faint">
+                            {("status: " + str(health["status"])) if health else "system"}
+                        </span>
                     </div>
                     <Button variant="secondary" onClick={lambda { load(); }}>
                         <RefreshCw className="w-3.5 h-3.5"/>
@@ -100,7 +104,7 @@ cl {
                     <div className={headCls}>
                         <Sparkles className="w-4 h-4 text-accent"/>
                         <h2 className="text-sm font-medium text-fg">
-                            Diagnose (BYO token)
+                            Analysis and Recommendations (AI, BYO token)
                         </h2>
                     </div>
                     <div className="p-4 space-y-3">
@@ -114,7 +118,7 @@ cl {
                             />
                             <input
                                 type="text"
-                                placeholder="model (default claude-haiku-4-5)"
+                                placeholder="model (e.g. gpt-4o-mini)"
                                 value={model}
                                 onChange={lambda e: any { model = e.target.value; }}
                                 className="sm:w-56 bg-surface-2 border border-line rounded px-3 py-1.5 text-sm text-fg"
@@ -125,13 +129,13 @@ cl {
                                 disabled={analyzing or (not apiKey)}
                             >
                                 <Sparkles className="w-3.5 h-3.5"/>
-                                {"Diagnosing..." if analyzing else "Diagnose"}
+                                {"Analyzing..." if analyzing else "Analyze"}
                             </Button>
                         </div>
                         <p className="text-xs text-faint">
-                            Runs one small-model call over the digest below. Your
-                            key is used for this request only and is never stored
-                            server-side.
+                            Optional second opinion: one small-model call reads the
+                            report below and suggests a likely root cause. Your key
+                            is used for this request only and is never stored.
                         </p>
                         {bool(analysisErr)
                         and <div className="text-sm text-warning">
@@ -165,7 +169,7 @@ cl {
                 </div>
 
                 {isLoading
-                and <p className="text-sm text-muted px-1">Building digest...</p>}
+                and <p className="text-sm text-muted px-1">Building report...</p>}
 
                 {(not isLoading) and (not ok)
                 and <div className="bg-surface border border-line rounded-lg p-4 text-sm text-warning">
@@ -173,50 +177,80 @@ cl {
                     {reason}
                 </div>}
 
-                {(not isLoading) and ok and (not hasAny)
-                and <div className="bg-surface border border-line rounded-lg p-4 text-sm text-muted">
-                    No anomalies detected (or signals unavailable off-cluster).
-                    The digest is empty - nothing to reason over right now.
-                </div>}
-
-                {(not isLoading) and ok and bool(len(symptoms))
+                {(not isLoading) and ok and bool(health)
                 and <div className={sectionCls}>
                     <div className={headCls}>
                         <Activity className="w-4 h-4 text-accent"/>
+                        <h2 className="text-sm font-medium text-fg">Health</h2>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-line">
+                        <div className={statCls}>
+                            <div className={labelCls}>Status</div>
+                            <div className={valCls}>{str(health["status"])}</div>
+                        </div>
+                        <div className={statCls}>
+                            <div className={labelCls}>Req/s</div>
+                            <div className={valCls}>{str(health["req_per_s"])}</div>
+                        </div>
+                        <div className={statCls}>
+                            <div className={labelCls}>Error ratio</div>
+                            <div className={valCls}>{str(health["error_rate"])}</div>
+                        </div>
+                        <div className={statCls}>
+                            <div className={labelCls}>p95 (s)</div>
+                            <div className={valCls}>{str(health["p95_latency_s"])}</div>
+                        </div>
+                        <div className={statCls}>
+                            <div className={labelCls}>Pods (run/pend/fail)</div>
+                            <div className={valCls}>
+                                {str(health["pods_running"]) + "/" + str(health["pods_pending"]) + "/" + str(health["pods_failed"])}
+                            </div>
+                        </div>
+                        <div className={statCls}>
+                            <div className={labelCls}>Nodes ready</div>
+                            <div className={valCls}>{str(health["nodes_ready"])}</div>
+                        </div>
+                    </div>
+                </div>}
+
+                {(not isLoading) and ok and bool(len(pods))
+                and <div className={sectionCls}>
+                    <div className={headCls}>
+                        <Cpu className="w-4 h-4 text-accent"/>
                         <h2 className="text-sm font-medium text-fg">
-                            Metric symptoms (vs baseline)
+                            Pod resource usage
                         </h2>
                     </div>
                     <table className="w-full">
                         <thead className="bg-surface-2">
                             <tr>
-                                <th className={thCls}>Signal</th>
-                                <th className={thCls}>Baseline</th>
-                                <th className={thCls}>Current</th>
-                                <th className={thCls}>Change</th>
+                                <th className={thCls}>Pod</th>
+                                <th className={thCls}>Status</th>
+                                <th className={thCls}>CPU (cores)</th>
+                                <th className={thCls}>Mem (MB)</th>
+                                <th className={thCls}>Restarts</th>
                             </tr>
                         </thead>
                         <tbody>
                             {[
-                                <tr key={s["name"]} className="border-t border-line">
-                                    <td className={tdCls}>{s["name"]}</td>
-                                    <td className={tdCls}>{str(s["baseline"])}</td>
-                                    <td className={tdCls}>{str(s["current"])}</td>
-                                    <td className={tdCls + " text-accent"}>
-                                        {fmtDelta(s["delta_pct"])}
-                                    </td>
-                                </tr> for s in symptoms
+                                <tr key={p["pod"]} className="border-t border-line">
+                                    <td className={tdCls + " font-mono text-xs"}>{p["pod"]}</td>
+                                    <td className={tdCls}>{str(p["status"])}</td>
+                                    <td className={tdCls}>{str(p["cpu_cores"])}</td>
+                                    <td className={tdCls}>{str(p["mem_mb"])}</td>
+                                    <td className={tdCls}>{str(p["restarts"])}</td>
+                                </tr> for p in pods
                             ]}
                         </tbody>
                     </table>
                 </div>}
 
-                {(not isLoading) and ok and bool(len(exemplars))
+                {(not isLoading) and ok and bool(len(slow))
                 and <div className={sectionCls}>
                     <div className={headCls}>
                         <Timer className="w-4 h-4 text-accent"/>
                         <h2 className="text-sm font-medium text-fg">
-                            Slow-trace exemplars
+                            Slowest traces (critical path)
                         </h2>
                     </div>
                     <table className="w-full">
@@ -224,6 +258,7 @@ cl {
                             <tr>
                                 <th className={thCls}>Trace ID</th>
                                 <th className={thCls}>Total (ms)</th>
+                                <th className={thCls}>Top hop (self ms)</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -233,7 +268,10 @@ cl {
                                         {t["trace_id"]}
                                     </td>
                                     <td className={tdCls}>{str(t["total_ms"])}</td>
-                                </tr> for t in exemplars
+                                    <td className={tdCls + " text-muted"}>
+                                        {(str((t["critical_path"] or [{}])[0]["span_name"]) + " (" + str((t["critical_path"] or [{}])[0]["self_ms"]) + ")") if bool(len(t["critical_path"] or [])) else "-"}
+                                    </td>
+                                </tr> for t in slow
                             ]}
                         </tbody>
                     </table>
