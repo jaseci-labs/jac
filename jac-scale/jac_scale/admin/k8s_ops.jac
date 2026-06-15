@@ -49,9 +49,9 @@ def _ensure_config -> bool {
     if _config_loaded {
         return _config_ok;
     }
-    _config_loaded = True;
     if not k8s_available() {
         _config_ok = False;
+        _config_loaded = True;
         return False;
     }
     try {
@@ -61,6 +61,8 @@ def _ensure_config -> bool {
         logger.warning(f"in-cluster config load failed: {e}");
         _config_ok = False;
     }
+    # Set last so a racing first call can't read a half-set _config_ok.
+    _config_loaded = True;
     return _config_ok;
 }
 

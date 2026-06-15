@@ -17,7 +17,8 @@ which is the SA an unconfigured pod runs as.
 
 # Read-only verbs for the deploy-health / endpoints / events / image-
 # freshness pages. pods/log is included for a future tail; events surface
-# OOMKilled / scheduling pressure.
+# OOMKilled / scheduling pressure. configmaps excluded (may hold sensitive
+# config; no ops page reads them).
 glob OPS_READ_RULES: list = [
          {
              "apiGroups": [""],
@@ -27,8 +28,7 @@ glob OPS_READ_RULES: list = [
                  "services",
                  "endpoints",
                  "persistentvolumeclaims",
-                 "events",
-                 "configmaps"
+                 "events"
              ],
              "verbs": ["get", "list", "watch"]
          },
@@ -62,7 +62,7 @@ glob OPS_READ_RULES: list = [
          {
              "apiGroups": ["apps"],
              "resources": ["deployments", "deployments/scale"],
-             "verbs": ["get", "patch", "update"]
+             "verbs": ["patch", "update"]
          },
          {"apiGroups": [""], "resources": ["pods"], "verbs": ["delete"]},
          {
@@ -73,7 +73,7 @@ glob OPS_READ_RULES: list = [
          {
              "apiGroups": ["networking.k8s.io"],
              "resources": ["ingresses"],
-             "verbs": ["get", "patch", "update"]
+             "verbs": ["patch", "update"]
          }
      ];
 
