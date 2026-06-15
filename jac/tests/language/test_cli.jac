@@ -1378,6 +1378,23 @@ test "jac install -e links all packages for space-separated and repeated flag fo
     }
 }
 
+test "jac install <pkg> routes package names through argparse" {
+    # Verifies CLI wiring: argparse maps positional args into packages,
+    # bypasses jac.toml, and --dry-run keeps it network/disk-free.
+    with tempfile.TemporaryDirectory() as tmp {
+        result = subprocess.run(
+            ["jac", "install", "numpy", "pandas", "--dry-run"],
+            capture_output=True,
+            text=True,
+            cwd=str(tmp)
+        );
+        combined = result.stdout + result.stderr;
+        assert result.returncode == 0 , f"Expected exit 0:\n{combined}";
+        assert "No jac.toml found" not in combined;
+        assert "Dry run complete" in combined;
+    }
+}
+
 # --- TestConfigCommand tests ---
 test "config groups" {
     tmp_path = tempfile.mkdtemp();
