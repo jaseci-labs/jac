@@ -6,7 +6,19 @@ import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import jaclang.compiler.passes.ecmascript.estree as es;
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
+import from jaclang.compiler.passes.ecmascript.backends.react { ReactBackend }
 import from jaclang.jac0core.program { JacProgram }
+
+"""Signals-style test backend: wraps a reactive read as `name()` so the
+value-read seam (contract §4.1.1) can be audited without a real Solid backend.
+React/Preact lower the same read to a bare identifier (a no-op)."""
+obj _WrapReadBackend(ReactBackend) {
+    def lower_state_read(name: str) -> es.Expression;
+}
+
+impl _WrapReadBackend.lower_state_read(name: str) -> es.Expression {
+    return es.CallExpression(callee=es.Identifier(name=name), arguments=[]);
+}
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURES = os.path.join(
@@ -43,6 +55,22 @@ def compile_to_esast(filename: str) -> es.Program {
     es_ir = es_pass.ir_out;
 
     assert hasattr(es_ir.gen, "es_ast") , "es_ast attribute missing";
+    assert isinstance(es_ir.gen.es_ast, es.Program);
+    return es_ir.gen.es_ast;
+}
+
+"""Compile Jac source to an ESTree program with an explicit FrameworkBackend."""
+def compile_to_esast_with_backend(filename: str, backend: object) -> es.Program {
+    prog = JacProgram();
+    ir = prog.compile(file_path=filename, no_cgen=True);
+
+    assert not prog.errors_had , (
+        f"Compilation errors in {filename}: {[str(e) for e in prog.errors_had]}"
+    );
+
+    es_pass = EsastGenPass(ir_in=ir, prog=prog, backend=backend);
+    es_ir = es_pass.ir_out;
+
     assert isinstance(es_ir.gen.es_ast, es.Program);
     return es_ir.gen.es_ast;
 }
@@ -315,6 +343,56 @@ test "reactive state scoping across functions" {
     assert "const [cart, setCart] = useState([])" in js_code;
     assert "setCart(useCart())" not in js_code;
     assert "let cart = useCart()" in js_code;
+}
+
+test "react read seam lowers a reactive read to a bare identifier (#6677)" {
+    # The #6677 contract: lower_state_read(name) -> bare Identifier on hooks
+    # backends. This is the no-op that keeps React/Preact output byte-identical.
+    read_node = ReactBackend().lower_state_read("count");
+    assert isinstance(read_node, es.Identifier) , "react read seam must return an Identifier";
+    assert read_node.name == "count";
+}
+
+test "react read seam keeps reactive reads unwrapped (zero-diff)" {
+    # Under React the value-read seam must not alter reactive reads anywhere.
+    js_code = es_to_js(
+        compile_to_esast_with_backend(
+            fixture_path("reactive_read_audit.cl.jac"), ReactBackend()
+        )
+    );
+    assert "let doubled = (count + count)" in js_code;
+    assert 'let info = {"count": count}' in js_code;
+    assert "[count]" in js_code , "JSX child read stays a bare identifier";
+    assert "count()" not in js_code , "React must never wrap a reactive read";
+}
+
+test "read seam wraps only value positions under a signals backend" {
+    # Contract §4.1.1 audit, made executable with a signals-style backend that
+    # wraps reads as `count()`. Value positions MUST wrap; write targets,
+    # property keys, and string literals MUST NOT.
+    js_code = es_to_js(
+        compile_to_esast_with_backend(
+            fixture_path("reactive_read_audit.cl.jac"), _WrapReadBackend()
+        )
+    );
+
+    # Value positions wrap.
+    assert "let doubled = (count() + count())" in js_code , "RHS reads should wrap";
+    assert "let nested = [count(), (count() + 1)]" in js_code , "list reads should wrap";
+    assert "[count()]" in js_code , "JSX child read should wrap";
+
+    # Dict value wraps; the string key is a Literal, never the Name seam.
+    assert 'let info = {"count": count()}' in js_code , "dict value wraps, key untouched";
+
+    # Write target lowers to its setter — never an assignment to a call.
+    assert "setCount((count() + 1))" in js_code , "write target uses setter; RHS read wraps";
+    assert "count() =" not in js_code , "a reactive write target must not be wrapped";
+
+    # Member property keys and attribute string literals are reconstructed from
+    # sym_name / literals and must stay untouched.
+    assert "items[0].count" in js_code , "member property must not wrap";
+    assert ".count()" not in js_code , "member property key must not become a call";
+    assert 'data-count": "count"' in js_code , "attribute string literal untouched";
 }
 
 test "reactive writes transform inside nested and deferred closures" {

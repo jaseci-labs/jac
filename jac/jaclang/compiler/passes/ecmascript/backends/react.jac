@@ -18,6 +18,7 @@ obj ReactBackend(FrameworkBackend) {
     def lower_state_update(u: StateUpdate) -> es.Expression;
     def lower_effect(e: Effect) -> list[es.Statement];
     def lower_async_boundary(a: AsyncBoundary) -> es.Expression;
+    def lower_state_read(name: str) -> es.Expression;
     def state_field_symbols(s: StateField) -> list[str];
     def ref_field_symbols(r: RefField) -> list[str];
     def effect_symbols(e: Effect) -> list[str];

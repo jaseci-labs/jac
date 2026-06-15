@@ -23,6 +23,9 @@ obj FrameworkBackend {
     def lower_state_update(u: StateUpdate) -> es.Expression;
     def lower_effect(e: Effect) -> list[es.Statement];
     def lower_async_boundary(a: AsyncBoundary) -> es.Expression;
+    # Read seam (#6677) — lower a reactive value read at a value position.
+    # No-op on hooks backends (bare identifier); signals backends wrap (`x()`).
+    def lower_state_read(name: str) -> es.Expression;
     # Runtime symbols required by each lower_* (for import injection)
     def state_field_symbols(s: StateField) -> list[str];
     def ref_field_symbols(r: RefField) -> list[str];

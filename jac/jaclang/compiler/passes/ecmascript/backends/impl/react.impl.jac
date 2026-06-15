@@ -145,6 +145,16 @@ impl ReactBackend.lower_ref_field(r: RefField) -> list[es.Statement] {
     return [es.VariableDeclaration(declarations=[ref_declarator], kind='const')];
 }
 
+"""Lower a reactive value read — bare identifier on hooks backends.
+
+Addresses issue #6677: `lower_state_read(name: str) -> es.Expression` is the
+value-read seam. React/Preact re-render on state change, so a reactive read is
+just the variable itself (this no-op keeps their output byte-identical); signals
+backends (Solid) override this to wrap the read as `name()`."""
+impl ReactBackend.lower_state_read(name: str) -> es.Expression {
+    return es.Identifier(name=name);
+}
+
 """Lower a state update to `setName(value)` (or `setName(name + value)`)."""
 impl ReactBackend.lower_state_update(u: StateUpdate) -> es.Expression {
     setter_name = self._get_setter_name(u.name);

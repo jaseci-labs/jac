@@ -219,6 +219,19 @@ impl EsastGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
 
 """Process name/identifier."""
 impl EsastGenPass.exit_name(nd: uni.Name) -> None {
+    # Reactive value read (#6677): delegate to the backend so signals targets can
+    # wrap the read (`count()`). No-op (bare identifier) on hooks backends, so this
+    # is byte-identical for React/Preact. Most non-value sites (write targets,
+    # property keys, bindings) reconstruct from `sym_name` and never consume this
+    # `es_ast`, so gating on `reactive_vars` membership alone is safe — see
+    # _planning/reactivity-contract.md §4.1.
+    if nd.sym_name in self.reactive_vars {
+        self._ensure_backend();
+        nd.gen.es_ast = self.sync_loc(
+            self.backend.lower_state_read(nd.sym_name), jac_node=nd
+        );
+        return;
+    }
     name_map = {'None': 'null', 'True': 'true', 'False': 'false', 'self': 'this'};
     name = name_map.get(nd.sym_name, nd.sym_name);
     identifier = self.sync_loc(es.Identifier(name=name), jac_node=nd);
