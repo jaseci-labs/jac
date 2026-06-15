@@ -565,6 +565,29 @@ test "nacompile rejects clib decl with an unknown type (no silent i64)" {
     )}";
 }
 
+# Parity: the same silent-i64 hazard exists for a NON-clib native def. A
+# `.na.jac` signature whose annotation names an unresolved type used to get
+# only a W2001 warning at `jac check` and a wrong-ABI binary at nacompile. The
+# front-end now blocks it with E2018 too (same as the clib path), via the
+# canonical `in_native_context()` check — not just at codegen.
+test "check rejects a native def with an unknown parameter type" {
+    prog = check_na_inline(
+        "native_unknown_param", "def takes_unknown(x: uint32_t) -> int { return 0; }\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown native param type 'uint32_t', got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "check rejects a native def with an unknown return type" {
+    prog = check_na_inline(
+        "native_unknown_ret", "def make_it(x: int) -> some_handle { return x; }\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown native return type 'some_handle', got: {fmt_errors(
+        prog
+    )}";
+}
+
 # Negative control: a clib decl whose param/return types ARE recognized
 # (primitive `f64`, and a struct declared in the same block) must compile
 # cleanly — no E2018 false positive, no E5090.
