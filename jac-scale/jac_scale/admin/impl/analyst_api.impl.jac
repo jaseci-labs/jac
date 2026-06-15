@@ -73,9 +73,10 @@ impl JacAPIServerAnalyst.register_analyst_endpoints -> None {
         )
     );
 
-    # POST /admin/analyst/analyze - the REASON stage. Builds the same digest,
-    # then runs ONE small-model call over it. BYO token: the LLM api_key is in
-    # the request body, used for this call only, never stored.
+    # POST /admin/analyst/analyze - the REASON stage. Builds the full
+    # performance report, then runs ONE small-model call over it to suggest a
+    # root cause. BYO token: the LLM api_key is in the request body, used for
+    # this call only, never stored.
     async def analyze_handler(request: Request) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
@@ -103,30 +104,27 @@ impl JacAPIServerAnalyst.register_analyst_endpoints -> None {
         model = str(
             body.get("model", "") or analyst_cfg.get("model", "") or "claude-haiku-4-5"
         ).strip();
-        baseline = str(body.get("baseline", "") or "1h").strip();
         try {
-            digest = await build_digest(
-                baseline_offset=baseline, trigger_kind="on_demand"
-            );
+            rpt = await build_report();
         } except Exception as e {
-            logger.warning(f"analyst: digest build failed: {e}");
+            logger.warning(f"analyst: report build failed: {e}");
             return JSONResponse(
                 status_code=500,
                 content={
                     "ok": False,
-                    "error": {"message": "Digest build failed", "detail": str(e)}
+                    "error": {"message": "Report build failed", "detail": str(e)}
                 }
             );
         }
-        digest_dict = digest.to_dict();
+        report_dict = rpt.to_dict();
         # diagnose() is sync (litellm); run it off the event loop. It never
         # raises - provider/parse failures come back as analysis.error.
-        analysis: any = await asyncio.to_thread(diagnose, digest_dict, model, api_key);
+        analysis: any = await asyncio.to_thread(diagnose, report_dict, model, api_key);
         return JSONResponse(
             content={
                 "ok": True,
                 "data": {
-                    "digest": digest_dict,
+                    "report": report_dict,
                     "analysis": analysis.to_dict(),
                     "model": model
                 }
