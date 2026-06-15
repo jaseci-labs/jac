@@ -20,6 +20,19 @@ impl _WrapReadBackend.lower_state_read(name: str) -> es.Expression {
     return es.CallExpression(callee=es.Identifier(name=name), arguments=[]);
 }
 
+"""Signals-style test backend: thunks a dynamic JSX position as `__view(expr)`
+so the view seam (contract §4.2) can be audited without a real Solid backend.
+The `__view(...)` marker is a test sentinel (not real Solid output); it makes the
+routing observable and unambiguous against event handlers, which stay unwrapped.
+React/Preact lower the same positions to the bare expr (a no-op)."""
+obj _ThunkViewBackend(ReactBackend) {
+    def lower_view_expr(expr: es.Expression) -> es.Expression;
+}
+
+impl _ThunkViewBackend.lower_view_expr(expr: es.Expression) -> es.Expression {
+    return es.CallExpression(callee=es.Identifier(name="__view"), arguments=[expr]);
+}
+
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
@@ -393,6 +406,48 @@ test "read seam wraps only value positions under a signals backend" {
     assert "items[0].count" in js_code , "member property must not wrap";
     assert ".count()" not in js_code , "member property key must not become a call";
     assert 'data-count": "count"' in js_code , "attribute string literal untouched";
+}
+
+test "react view seam returns the expression unchanged (zero-diff)" {
+    # Contract §4.2: lower_view_expr is identity on hooks backends.
+    expr = es.Identifier(name="count");
+    out = ReactBackend().lower_view_expr(expr);
+    assert out is expr , "react view seam must return the same expression node";
+}
+
+test "react view seam keeps dynamic JSX unwrapped (zero-diff)" {
+    # Under React the dynamic-view seam must not alter JSX children or attributes.
+    js_code = es_to_js(
+        compile_to_esast_with_backend(
+            fixture_path("reactive_view_audit.cl.jac"), ReactBackend()
+        )
+    );
+    assert "__view(" not in js_code , "React must never thunk a dynamic JSX position";
+    assert '"value": count' in js_code , "dynamic attribute stays a bare read";
+    assert "[count]" in js_code , "dynamic JSX child stays a bare read";
+}
+
+test "view seam thunks only dynamic positions under a signals backend" {
+    # Contract §4.2 audit, made executable with a thunking backend that wraps a
+    # dynamic JSX position as `__view(expr)`. Dynamic child + dynamic attribute
+    # value MUST route through the seam; event handlers and static literals MUST NOT.
+    js_code = es_to_js(
+        compile_to_esast_with_backend(
+            fixture_path("reactive_view_audit.cl.jac"), _ThunkViewBackend()
+        )
+    );
+
+    # Dynamic attribute value and dynamic child route through the seam.
+    assert '"value": __view(count)' in js_code , "dynamic attribute value should thunk";
+    assert "[__view(count)]" in js_code , "dynamic JSX child should thunk";
+
+    # Event handler is emitted as-is — never view-wrapped.
+    assert '"onClick":' in js_code , "event handler attribute is still emitted";
+    assert '"onClick": __view(' not in js_code , "event handler must not be view-wrapped";
+
+    # Static string literal bypasses the seam entirely.
+    assert '"type": "text"' in js_code , "static literal attribute untouched";
+    assert "__view(\"text\")" not in js_code , "static literal must not thunk";
 }
 
 test "reactive writes transform inside nested and deferred closures" {

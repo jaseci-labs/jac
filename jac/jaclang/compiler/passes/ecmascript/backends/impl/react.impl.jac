@@ -155,6 +155,16 @@ impl ReactBackend.lower_state_read(name: str) -> es.Expression {
     return es.Identifier(name=name);
 }
 
+"""Lower a dynamic JSX position — unchanged on hooks backends.
+
+React/Preact re-render, so a dynamic child/attribute value needs no thunk; this
+identity no-op keeps their JSX output byte-identical. Signals backends (Solid)
+override this to wrap the expression in a thunk (`() => expr`) so the JSX runtime
+can re-read it reactively."""
+impl ReactBackend.lower_view_expr(expr: es.Expression) -> es.Expression {
+    return expr;
+}
+
 """Lower a state update to `setName(value)` (or `setName(name + value)`)."""
 impl ReactBackend.lower_state_update(u: StateUpdate) -> es.Expression {
     setter_name = self._get_setter_name(u.name);

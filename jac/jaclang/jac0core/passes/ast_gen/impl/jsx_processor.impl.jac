@@ -213,6 +213,23 @@ impl EsJsxProcessor.normal_attribute(
     } else {
         value_expr = nd.value.gen.es_ast
         or self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd.value);
+        # View seam (contract §4.2): a dynamic attribute value `attr={expr}` routes
+        # through the backend (no-op on hooks; thunk on signals). Event handlers
+        # (`on[A-Z]…`, the React DOM convention: `onClick`, `onInput`) are emitted
+        # as-is and never wrapped — wrapping a handler would defer the callback
+        # itself, not a reactive read. NOTE the heuristic's fragility (contract
+        # §4.2): it keys on an uppercase third char, so a lowercase custom prop
+        # like `onfoo` is NOT recognized as a handler and gets thunked.
+        attr_name = nd.name.value;
+        is_event = attr_name.startswith('on')
+        and len(attr_name) > 2
+        and attr_name[2].isupper();
+        if not is_event {
+            self.pass_ref._ensure_backend();
+            value_expr = self.pass_ref.sync_loc(
+                self.pass_ref.backend.lower_view_expr(value_expr), jac_node=nd.value
+            );
+        }
     }
     prop = self.pass_ref.sync_loc(
         es.Property(
@@ -248,6 +265,12 @@ impl EsJsxProcessor.expression(
     expr: Expression = cast('Expression', nd.expr.gen.es_ast)
         if (nd.expr and nd.expr.gen.es_ast)
         else self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd.expr);
+    # View seam (contract §4.2): a dynamic JSX child `{expr}` routes through the
+    # backend. No-op on hooks backends; signals backends thunk it (`() => expr`).
+    self.pass_ref._ensure_backend();
+    expr = self.pass_ref.sync_loc(
+        self.pass_ref.backend.lower_view_expr(expr), jac_node=nd
+    );
     nd.gen.es_ast = expr;
     return expr;
 }

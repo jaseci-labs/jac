@@ -26,6 +26,9 @@ obj FrameworkBackend {
     # Read seam (#6677) — lower a reactive value read at a value position.
     # No-op on hooks backends (bare identifier); signals backends wrap (`x()`).
     def lower_state_read(name: str) -> es.Expression;
+    # View seam — lower a dynamic JSX position (expression child / dynamic
+    # attribute value). No-op on hooks backends; signals backends thunk (`() => expr`).
+    def lower_view_expr(expr: es.Expression) -> es.Expression;
     # Runtime symbols required by each lower_* (for import injection)
     def state_field_symbols(s: StateField) -> list[str];
     def ref_field_symbols(r: RefField) -> list[str];
