@@ -1049,7 +1049,9 @@ obj KubernetesTarget(DeploymentTarget) {
                     }
                 ]
             },
-            # Prometheus — allow grafana to query on port 9090
+            # Prometheus — allow grafana and the main app to query on port 9090.
+            # The main app reads Prometheus directly for the admin Deployments
+            # view, so it needs ingress here alongside Grafana.
             {
                 'name': f"{app_name}-prometheus-network-policy",
                 'pod_selector': {'matchLabels': {'app': f"{app_name}-prometheus"}},
@@ -1060,7 +1062,8 @@ obj KubernetesTarget(DeploymentTarget) {
                                 'podSelector': {
                                     'matchLabels': {'app': f"{app_name}-grafana"}
                                 }
-                            }
+                            },
+                            {'podSelector': {'matchLabels': {'app': app_name}}}
                         ],
                         'ports': [{'protocol': 'TCP', 'port': 9090}]
                     }
@@ -1389,6 +1392,11 @@ obj KubernetesTarget(DeploymentTarget) {
 
             # 3. Load environment variables
             self.env_list = load_env_variables(app_config.code_folder);
+            # Inject K8S_APP_NAME / K8S_NAMESPACE so in-pod code (admin
+            # deployments view, monitoring helpers) can resolve sibling
+            # services like {app_name}-prometheus-service without guessing.
+            self.env_list.append({"name": "K8S_APP_NAME", "value": app_name});
+            self.env_list.append({"name": "K8S_NAMESPACE", "value": namespace});
             details["load_env_variables"] = "Successful";
 
             # 3b. Create K8s Secret from resolved secrets if configured

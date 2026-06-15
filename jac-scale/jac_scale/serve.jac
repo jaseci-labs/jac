@@ -37,6 +37,7 @@ import from jaclang.cli.banners { JAC_DISCORD_URL }
 import from fastapi { WebSocket, WebSocketDisconnect }  # jac:runtime
 import from jac_scale.admin.admin_portal { JacAPIServerAdmin }
 import from jac_scale.admin.llm_telemetry { JacAPIServerLLMTelemetry }
+import from jac_scale.admin.workloads { JacAPIServerWorkloads }
 import from jac_scale.admin.logs { JacAPIServerLogs }
 import from jac_scale.admin.traces { JacAPIServerTraces }
 import from jac_scale.admin.ops { JacAPIServerOps }
@@ -230,7 +231,7 @@ obj JacAPIServerStatic {
 }
 
 """Composed JacAPIServer class combining all mixins with JServer base."""
-obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerScheduler, JacAPIServerEmailer, JServer) {
+obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerScheduler, JacAPIServerEmailer, JServer) {
     # HMR (Hot Module Replacement) support fields
     has _hmr_pending: bool = False,
         _hot_reloader: any | None = None,
