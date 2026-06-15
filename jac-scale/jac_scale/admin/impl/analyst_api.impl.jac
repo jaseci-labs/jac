@@ -18,6 +18,7 @@ import from fastapi { Request }
 import from fastapi.responses { JSONResponse }
 import from jac_scale.jserver.jserver { HTTPMethod, JEndPoint }
 import from jac_scale.admin.analyst_assemble { build_digest }
+import from jac_scale.admin.analyst_report_assemble { build_report }
 import from jac_scale.admin.analyst_reason { diagnose }
 import from jac_scale.config_loader { get_scale_config }
 
@@ -147,6 +148,50 @@ impl JacAPIServerAnalyst.register_analyst_endpoints -> None {
                 "supplied per-request in the body (BYO token) and never stored. "
                 "Body: {api_key (required), model (optional), baseline "
                 "(optional, default 1h)}."
+            )
+        )
+    );
+
+    # GET /admin/report - the full deterministic performance report (health +
+    # per-pod USE + slow traces + errors). No model is invoked; this is the
+    # industry-standard report the Reports page renders. The AI Analysis
+    # section is the separate /analyze call layered on top.
+    async def report_handler(request: Request) -> JSONResponse {
+        auth_error = self.require_admin(request.headers.get("Authorization"));
+        if auth_error {
+            return JSONResponse(
+                status_code=auth_error.meta.extra.get("http_status", 403),
+                content={"ok": False, "error": {"message": "Unauthorized"}}
+            );
+        }
+        try {
+            rpt = await build_report();
+        } except Exception as e {
+            logger.warning(f"analyst: report build failed: {e}");
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "ok": False,
+                    "error": {"message": "Report build failed", "detail": str(e)}
+                }
+            );
+        }
+        return JSONResponse(content={"ok": True, "data": rpt.to_dict()});
+    }
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path="/admin/report",
+            callback=report_handler,
+            parameters=[],
+            response_model=None,
+            tags=["Analyst"],
+            summary="System performance report",
+            description=(
+                "Deterministic, industry-standard performance report (health + "
+                "RED + per-pod USE + slow-trace critical paths + error "
+                "signatures) from the in-cluster Prometheus / Tempo / Loki. No "
+                "model invoked - the numbers are facts, not generated."
             )
         )
     );
