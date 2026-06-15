@@ -85,3 +85,25 @@ def osp_wrap1(x: int) -> list {
     out.append(x);
     return out;
 }
+
+"""Disconnect the edge identified by `edge_handle` (the `ptrtoint`'d edge
+object) -- the native lowering of `del e` on an edge. Drops the matching row
+from every parallel adjacency list so the edge no longer joins its endpoints;
+returns 1 if a row was removed, 0 if no edge with that handle was recorded.
+Each connect records exactly one row per edge handle, so at most one matches."""
+def osp_disconnect(edge_handle: int) -> int {
+    i = 0;
+    n = len(_e_handle);
+    while i < n {
+        if _e_handle[i] == edge_handle {
+            _e_src.pop(i);
+            _e_tgt.pop(i);
+            _e_undir.pop(i);
+            _e_tag.pop(i);
+            _e_handle.pop(i);
+            return 1;
+        }
+        i = i + 1;
+    }
+    return 0;
+}

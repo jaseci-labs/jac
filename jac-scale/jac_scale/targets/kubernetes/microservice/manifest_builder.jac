@@ -82,6 +82,28 @@ obj MicroserviceManifestBuilder {
         if ingress is not None {
             bundle["ingress"] = ingress;
         }
+        # Ops Console: read-only namespace Role + RoleBinding on the
+        # gateway SA (opt-in). Mutation verbs only when ops_console_mutations.
+        if getattr(self.k8s_config, "ops_console", False) {
+            import from jac_scale.targets.kubernetes.microservice.ops_rbac {
+                build_ops_rbac
+            }
+            bundle["ops_rbac"] = build_ops_rbac(
+                self.k8s_config.app_name,
+                self.k8s_config.namespace,
+                self._service_account_name(),
+                bool(getattr(self.k8s_config, "ops_console_mutations", False))
+            );
+        } elif getattr(self.k8s_config, "ops_console_mutations", False) {
+            # Mutations need the parent flag; warn instead of shipping no Role.
+            if self.logger {
+                self.logger.warning(
+                    "[plugins.scale.kubernetes].ops_console_mutations is set but "
+                    "ops_console is false; no Ops Console RBAC will be provisioned. "
+                    "Set ops_console = true to enable it."
+                );
+            }
+        }
         return bundle;
     }
 

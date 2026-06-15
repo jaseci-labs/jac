@@ -476,6 +476,17 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
     def _ability_from_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
+    def _return_type_includes_jsx_element(rt: uni.Expr) -> bool;
+    def _component_call_abi(ability_node: uni.Ability) -> str;
+    def _build_props_spread_component_call(
+        nd: uni.FuncCall,
+        callee_expr: es.Expression,
+        ability_node: uni.Ability,
+        args: list[(es.Expression | es.SpreadElement)],
+        props: list[(es.Property | es.SpreadElement)]
+    ) -> es.Expression;
+
+    def _pos_params_from_ability(ability_node: uni.Ability) -> list[uni.ParamVar];
     def _param_names_from_ability(ability_node: uni.Ability) -> list[str];
     def _param_type_map_from_ability(ability_node: uni.Ability) -> dict[(str, str)];
     def _wrap_to_wire_if_boundary(

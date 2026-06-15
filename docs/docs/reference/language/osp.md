@@ -228,6 +228,48 @@ with entry {
 }
 ```
 
+### 4 Typed Edge Endpoints
+
+By default an edge can connect *any* node types, so a neighbour traversal such as `[here ->:Friend:->]` has element type `any` and needs a `[?:Type]` filter before you can read a field off the result. You can instead declare the **source** and **target** node types an edge connects, after a `:`, using the traversal arrow so it reads like the navigation it enables:
+
+```jac
+node Profile { has name: str = ""; }
+node Tweet { has content: str = ""; }
+
+edge Follow: Profile --> Profile {}      # Profile → Profile
+edge Post: Profile --> Tweet {}          # Profile → Tweet
+```
+
+With endpoints declared, a neighbour traversal **infers the declared node type** -- no `[?:Type]` filter needed:
+
+```jac
+with entry {
+    me = Profile(name="me");
+    following = [me ->:Follow:->];   # inferred list[Profile] (target)
+    followers = [me <-:Follow:<-];   # inferred list[Profile] (source)
+    my_tweets = [me ->:Post:->];     # inferred list[Tweet]
+
+    # The element type is concrete, so field access resolves statically
+    # (and compiles on the native backend) -- no filter required:
+    if following {
+        print(following[0].name);
+    }
+}
+```
+
+An outgoing traversal (`->:Edge:->`) narrows to the **target** type; an incoming traversal (`<-:Edge:<-`) narrows to the **source** type. A `[?:Sub]` filter can still narrow *further* to a subtype.
+
+Typed endpoints are **opt-in and gradual**: an untyped `edge Link {}` keeps `any → any` connectivity and `list[any]` traversal results, so existing code is unaffected. The endpoint type is a **bound** -- `Profile` *or a subtype* -- so subclass-heterogeneous graphs stay valid.
+
+The `()` after the name remains reserved for **edge inheritance**, orthogonal to the endpoints. A subtype edge inherits its base edge's endpoints unless it re-declares them:
+
+```jac
+edge TimedFollow(Follow) { has at: str = ""; }          # inherits Profile → Profile
+edge BlockedFollow(Follow): Profile --> Profile {}      # re-declares its endpoints
+```
+
+The endpoint clause is only valid on an `edge`; placing it on a `node`, `walker`, or `obj` is a compile error (`E2027`).
+
 ---
 
 ## Walkers
@@ -903,6 +945,9 @@ walker FilteredWalker {
     }
 }
 ```
+
+!!! tip "Skip the `[?:Type]` filter"
+    If an edge declares its endpoint node types (see [Typed Edge Endpoints](#4-typed-edge-endpoints)), a neighbour traversal already infers the concrete node type, so the trailing `[?:Type]` filter is only needed to narrow *further* to a subtype.
 
 ### 3 Entry and Exit Events
 

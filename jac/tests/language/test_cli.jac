@@ -201,7 +201,10 @@ test "jac cli run python file" {
     assert "10" in stdout_value;
 }
 
-test "jac run with no filename reports missing required argument" {
+test "jac run with no filename and no resolvable entry errors cleanly" {
+    # `jac run` with no file is now project-aware: it climbs to the nearest
+    # jac.toml and dispatches on the project kind. JAC_ROOT's project declares
+    # no entry-point, so this must fail with a clear message (not a crash).
     env = dict(os.environ);
     env["PYTHONPATH"] = JAC_ROOT;
     result = subprocess.run(
@@ -216,8 +219,8 @@ test "jac run with no filename reports missing required argument" {
     assert result.returncode != 0 , (
         f"Expected non-zero exit for bare jac run; got:\n{combined}"
     );
-    assert "required: filename" in combined , (
-        f"Expected missing filename error; got:\n{combined}"
+    assert ("entry-point" in combined) or ("jac.toml" in combined) , (
+        f"Expected a project-aware run error; got:\n{combined}"
     );
     assert "NoneType" not in combined , (
         f"Should not crash with TypeError; got:\n{combined}"
@@ -2330,6 +2333,58 @@ test "jir cache preserves impl defined instance variables" {
         ]}";
     }
 }
+
+"""Regression: JIR-reloaded FuncCall must keep its postinit fields.
+
+jaseci-labs/jaseci#6656 (Ask #2): the JIR reader builds nodes via
+`cls.__new__(cls)`, skipping postinit, then re-seeds postinit defaults per
+node type. FuncCall's `callee_decl`/`call_kind` had no such branch, so a
+FuncCall reloaded from JIR had no attribute at all -- native and client/JS
+codegen, which read `.callee_decl` off the call node, then crashed with
+`'FuncCall' object has no attribute 'callee_decl'` on a warm build.
+"""
+test "jir reload preserves FuncCall callee_decl and call_kind" {
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.jac0core { unitree as uni }
+    import from jaclang.jac0core.jir_passes { JirWriter, JirReader }
+
+    with tempfile.TemporaryDirectory() as tmpdir {
+        src = os.path.join(tmpdir, "calls.jac");
+        with open(src, "w") as f {
+            f.write(
+                "def helper(x: int) -> int { return x + 1; }\n"
+                "def caller(x: int) -> int { return helper(x) + helper(x); }\n"
+            );
+        }
+        mod = JacProgram().compile(file_path=src);
+        fresh = mod.get_all_sub_nodes(uni.FuncCall);
+        assert len(fresh) >= 2 , f"expected FuncCalls in fresh AST, got {len(fresh)}";
+        for fc in fresh {
+            assert hasattr(fc, "callee_decl");
+            assert hasattr(fc, "call_kind");
+        }
+        # Round-trip the module AST through JIR and re-check.
+        reloaded = JirReader().read_module(JirWriter().write_module(mod));
+        assert reloaded is not None , "JIR reload returned None";
+        reborn = reloaded.get_all_sub_nodes(uni.FuncCall);
+        assert len(reborn) == len(fresh) , (
+            f"FuncCall count changed across JIR roundtrip: "
+            f"{len(fresh)} -> {len(reborn)}"
+        );
+        for fc in reborn {
+            # The crux: the attribute must exist (seeded to None), not be absent.
+            assert hasattr(fc, "callee_decl") , (
+                "JIR-reloaded FuncCall lost `callee_decl` (#6656 Ask #2)"
+            );
+            assert hasattr(fc, "call_kind") , (
+                "JIR-reloaded FuncCall lost `call_kind` (#6656 Ask #2)"
+            );
+            assert fc.callee_decl is None;
+            assert fc.call_kind is None;
+        }
+    }
+}
+
 
 """Regression: JIR cache must compute MRO for subtype checking.
 

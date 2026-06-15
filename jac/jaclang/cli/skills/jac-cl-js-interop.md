@@ -1,6 +1,6 @@
 ---
 name: jac-cl-js-interop
-description: JavaScript interop in client Jac - the `new()` builtin for browser constructors (WebSocket, URL, Date, CustomEvent), `.call(None, ...)` for callbacks, `glob` module state, browser globals (localStorage, window, document), polling/debounce/RAF recipes, and debugging compiled output. Load when client code needs a browser API that isn't a React pattern.
+description: JavaScript interop in client Jac - the `new()` builtin for browser constructors (WebSocket, URL, Date, CustomEvent), `.call(None, ...)` for callbacks, `glob` module state, browser globals (localStorage, window, document), polling/debounce/RAF recipes, jac2js gotchas (chr(10) newlines, let-scoping/TDZ), and debugging compiled output. Load when client code needs a browser API that isn't a React pattern.
 ---
 
 Client Jac compiles to JavaScript, so the whole browser API surface is reachable - but a few idioms differ from both Python and JS. The three you cannot guess: `new(Cls, ...)`, `.call(None, ...)`, and `glob` module state.
@@ -67,6 +67,8 @@ def:pub sendWs(action: str, data: any) {
 
 URL building: `wss:` when `window.location.protocol == "https:"`, else `ws:`; append tokens with `encodeURIComponent`.
 
+Consuming a server-sent-event stream (raw `fetch` + `resp.body.getReader()` against a streaming `def:pub`) is covered in `jac-sv-streaming`.
+
 ## CustomEvent - cross-component bus
 
 Dispatch: `window.dispatchEvent(new(CustomEvent, "theme-change", {"detail": {"theme": t}}));`. Listen in a single manual `useEffect` (so add/remove share the handler closure - see the entry/exit split warning in `jac-cl-components`):
@@ -92,8 +94,23 @@ useEffect(lambda {
 
 ## String gotchas
 
-- **Newlines:** literal `"\n"` may not survive compilation - use `glob _NL: str = String.fromCharCode(10);` then `text.split(_NL)` / `lines.join(_NL)`.
+- **Newlines:** jac2js emits a literal `"\n"` as a backslash-n in cl code - declare `glob _NL: str = chr(10);` once and use `text.split(_NL)` / `lines.join(_NL)` (blank-line separator: `_NL + _NL`). `String.fromCharCode(10)` works too; `chr(10)` is the standard spelling.
 - **Quotes in f-strings:** f-strings with embedded quotes can miscompile - prefer concatenation: `cmd = "[ -f \"" + path + "\" ]";`. F-strings are fine for simple `f"Count: {count}"`.
+
+## jac2js `let` scoping - assign before you branch
+
+A variable whose FIRST assignment sits inside an `if`/`else` body compiles to a block-scoped `let` inside that branch, so any use after the branch is a silent runtime crash (TDZ `ReferenceError`) - nothing at compile time. Give the variable its first assignment BEFORE the branch:
+
+```
+# FRAGILE - first assignment inside the branches emits a block-scoped `let`
+if triple { j = i + 3; }
+else { j = i + 1; }
+chunk = src[i:j];                  # ReferenceError: j is not defined
+
+# CORRECT - first assignment before/instead of the branch
+j = i + 3 if triple else i + 1;
+chunk = src[i:j];
+```
 
 ## Debugging compiled output
 

@@ -695,6 +695,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E2083 = _err(
          "E2083", Category.SEMANTIC, "'disengage' is only valid inside a walker ability"
      ),
+     E2027 = _err(
+         "E2027",
+         Category.SEMANTIC,
+         "Endpoint clause ': Src --> Tgt' is only valid on an 'edge' archetype, not on {arch_type} '{name}'"
+     ),
      # Def-impl match errors
      E2009 = _err(
          "E2009",
@@ -818,6 +823,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "for a value ref. It lowers to React's 'useRef', so a bare "
          "declaration has no ref object to hold — '.current' would never be "
          "defined. This mirrors how every other 'has'-field carries a value."
+     ),
+     E2026 = _err(
+         "E2026",
+         Category.SEMANTIC,
+         "Definition '{name}' in .impl.jac file is not linked to its declaration stub. "
+         "Use an `impl` block instead of a bare re-declaration.",
+         help="In Jac, implementation files use `impl Name {{ ... }}` or `impl Name(...) {{ ... }}` blocks to provide bodies for declaration stubs. A bare re-declaration in a `.impl.jac` file is treated as a separate definition and will not be linked to the stub."
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)

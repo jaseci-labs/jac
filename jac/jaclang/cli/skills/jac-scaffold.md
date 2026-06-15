@@ -56,7 +56,7 @@ After `jac create`:
 2. Add any additional npm deps to `jac.toml` (see `jac-npm-packages` skill for format)
 3. `jac install` - run after all jac.toml changes are final
 4. **Verify the scaffold compiles**: `jac check .` (then `jac run main.jac` for backend projects)
-5. `jac start --dev` (background, for hot reload). `jac start` defaults to `main.jac` (the `[project] entry-point`), so the filename is optional. NOT `jac serve` (deprecated).
+5. **Run the project**: a bare `jac run` (no filename) dispatches on the project's `kind` in `jac.toml` - execute / serve / build as appropriate (`jac run --show` prints the plan first). For fullstack, `jac start --dev` runs the server with hot reload. NOT `jac serve` (deprecated).
 6. QA in a headless browser with `jac browse`: `jac browse open localhost:8000`, `jac browse snapshot`, `jac browse click @e5`, `jac browse close`. See `jac-fullstack-patterns` for the full loop.
 
 ## Make your own template

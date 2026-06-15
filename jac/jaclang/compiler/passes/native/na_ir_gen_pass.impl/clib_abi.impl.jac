@@ -33,6 +33,20 @@ impl NaIRGenPass._foreign_model -> dict {
     return self._foreign_structs;
 }
 
+"""The memoized foreign function declarations (Phase 8): clib signature
+names collected centrally over this pass's module universe, keyed on the
+universe size for the same mid-transform growth reason as
+_foreign_model."""
+impl NaIRGenPass._foreign_fns -> dict {
+    import from jaclang.compiler.targets.foreign { collect_foreign_fns }
+    universe = [self.ir_in] + self._foreign_modules;
+    if self._foreign_fn_decls is None or self._foreign_fns_nmods != len(universe) {
+        self._foreign_fn_decls = collect_foreign_fns(universe);
+        self._foreign_fns_nmods = len(universe);
+    }
+    return self._foreign_fn_decls;
+}
+
 """Ordered (field_name, nested_struct_name | None) pairs for a clib
 struct, from the foreign declaration model - the single answer to
 'which fields are nested clib structs'. Position in this list IS the
@@ -86,20 +100,6 @@ impl NaIRGenPass._classify_clib_struct(name: str) -> dict {
     import from jaclang.compiler.targets.abi { classify_struct }
     (size, align, scalars) = self._clib_struct_layout(name);
     return classify_struct(size, align, scalars, str(self.llvm_module.triple or ""));
-}
-
-"""Name of the (struct) type an annotation refers to, or None."""
-impl NaIRGenPass._clib_type_name(type_expr: (uni.UniNode | None)) -> (str | None) {
-    if type_expr is None {
-        return None;
-    }
-    if isinstance(type_expr, uni.Name) {
-        return type_expr.value;
-    }
-    if type_expr?.value and isinstance(type_expr?.value, str) {
-        return type_expr.value;
-    }
-    return None;
 }
 
 """True if a clib struct has a field whose type is itself a clib struct."""
