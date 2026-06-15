@@ -204,6 +204,11 @@ def _write_frame(pipe: any, frame: dict) {
 }
 
 def _dispatch_cmd(line: str, proc: any, stop_evt: any) {
+    # Resolve the UI bridge in this helper's own scope. `run_tui_session()`
+    # imports these names lazily for its nested closures, but this dispatcher is
+    # module-level and is also called from the cmd-reader thread.
+    import from jaclang.cli.ai_agent { ui_send, ui_stop, ui_reset, ui_apply_settings }
+
     if line.startswith("SEND:") {
         prompt = line[5:];
         try {
