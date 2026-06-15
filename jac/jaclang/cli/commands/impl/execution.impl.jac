@@ -80,9 +80,139 @@ def _populate_native_argv(engine: object, argv: list[str]) -> None {
     engine._jac_argv_refs = (c_strings, c_argv);
 }
 
+"""Print a resolved project run plan (the `jac run --show` output)."""
+def _print_plan(plan: object) {
+    console.print(f"project kind : {plan.kind}");
+    console.print(f"action       : {plan.action}");
+    console.print(f"summary      : {plan.summary}");
+    if plan.entry_path {
+        console.print(f"entry-point  : {plan.entry_path}");
+    }
+    console.print(f"equivalent   : {plan.command_line()}");
+    if plan.requires_plugin {
+        console.print(f"requires     : {plan.requires_plugin} plugin");
+    }
+}
+
+"""Execute a resolved project run plan by delegating to the primitive command."""
+def _execute_plan(
+    plan: object,
+    main: bool,
+    cache: bool,
+    autonative: bool,
+    diagnostics: str,
+    args: list
+) -> int {
+    if plan.action == "execute" {
+        # native-app (.na.jac) and cli (.jac) both flow through the normal
+        # file-run path; the existing logic picks native JIT vs interpreted.
+        return run(
+            filename=plan.entry_path,
+            main=main,
+            cache=cache,
+            autonative=autonative,
+            diagnostics=diagnostics,
+            args=args
+        );
+    }
+    if plan.action == "serve" {
+        if "client" in plan.flags {
+            # desktop/mobile webview kinds: only the plugin's start/build
+            # extension can honor --client. Don't silently serve a bare server.
+            console.error(
+                f"Project kind '{plan.kind}' runs via the {plan.requires_plugin} "
+                f"plugin. Install it, then: {plan.command_line()}"
+            );
+            return 1;
+        }
+        return start(
+            filename=plan.entry_path,
+            no_client=plan.flags.get("no_client", False),
+            dev=plan.flags.get("dev", False)
+        );
+    }
+    if plan.action == "build" {
+        if plan.verb == "nacompile" {
+            import from jaclang.cli.commands.nacompile { nacompile }
+            out = plan.flags.get("output", "");
+            if out {
+                # Ensure the artifact's parent dir exists (e.g. dist/); the
+                # native linker writes the output file without creating it.
+                out_dir = os.path.dirname(out);
+                if out_dir {
+                    os.makedirs(out_dir, exist_ok=True);
+                }
+            }
+            return nacompile(
+                filename=plan.entry_path,
+                output=out,
+                shared=plan.flags.get("shared", False)
+            );
+        }
+        if plan.verb == "bundle" {
+            import from jaclang.cli.commands.project { bundle }
+            return bundle(target=plan.flags.get("target", "wheel"));
+        }
+        # build verbs provided only by a plugin (e.g. mobile via jac-client).
+        console.error(
+            f"Project kind '{plan.kind}' builds via the {plan.requires_plugin} "
+            f"plugin. Install it, then: {plan.command_line()}"
+        );
+        return 1;
+    }
+    console.error(f"Unsupported run action '{plan.action}' for kind '{plan.kind}'.");
+    return 1;
+}
+
+"""Dispatch `jac run` with no explicit file based on the project's kind."""
+def _run_project(
+    show: bool, main: bool, cache: bool, autonative: bool, diagnostics: str, args: list
+) -> int {
+    import from pathlib { Path }
+    import from jaclang.project.config { get_config }
+    import from jaclang.project.kinds { plan_project_run, is_valid_kind, VALID_KINDS }
+    cfg = get_config(start_path=Path.cwd(), force_discover=True);
+    if cfg is None {
+        console.error(
+            "No file given and no jac.toml found.\n"
+            "  Usage: jac run <file.jac>, or run inside a Jac project directory."
+        );
+        return 1;
+    }
+    if cfg.project.kind and not is_valid_kind(cfg.project.kind) {
+        console.error(
+            f"Unknown [project] kind '{cfg.project.kind}'.\n"
+            f"  Valid kinds: {', '.join(VALID_KINDS)}"
+        );
+        return 1;
+    }
+    project_root = str(cfg.project_root) if cfg.project_root else os.getcwd();
+    plan = plan_project_run(cfg, project_root);
+    if plan is None {
+        console.error(
+            "Could not resolve an entry-point for this project.\n"
+            f"  Set [project] entry-point in jac.toml (project root: {project_root})."
+        );
+        return 1;
+    }
+    if show {
+        _print_plan(plan);
+        return 0;
+    }
+    return _execute_plan(
+        plan,
+        main=main,
+        cache=cache,
+        autonative=autonative,
+        diagnostics=diagnostics,
+        args=args
+    );
+}
+
 """Run the specified .jac file."""
 impl run(
-    filename: str,
+    filename: str = "",
+    show: bool = False,
     main: bool = True,
     cache: bool = True,
     autonative: bool = False,
@@ -91,6 +221,22 @@ impl run(
 ) -> int {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jaclang.project.config { get_config }
+    # No explicit file: dispatch on the project's kind (jac.toml). `jac run`
+    # then executes, serves, or builds the project as appropriate.
+    if not filename {
+        return _run_project(
+            show=show,
+            main=main,
+            cache=cache,
+            autonative=autonative,
+            diagnostics=diagnostics,
+            args=args
+        );
+    }
+    if show {
+        console.print(f"jac run {filename}  ->  execute (explicit file)");
+        return 0;
+    }
     # Re-discover config from the file's directory (handles absolute paths)
     _discover_config_from_file(filename);
     # --no-cache: wipe all .jac_ir/ cache directories under the file's source tree.
