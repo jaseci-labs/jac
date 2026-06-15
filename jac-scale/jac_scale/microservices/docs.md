@@ -343,6 +343,40 @@ name = "pending-jobs"
 metadata = { serverAddress = "http://prometheus:9090", metricName = "llm_queue_depth", threshold = "5", query = "sum(llm_queue_depth)" }
 ```
 
+#### Redis trigger with TriggerAuthentication
+
+Use the `auth.secret_refs` field to wire a Kubernetes Secret into a KEDA `TriggerAuthentication` resource. jac-scale creates the `TriggerAuthentication` before the `ScaledObject` so KEDA's admission validation always finds it.
+
+`secret_refs` keys are the KEDA scaler parameter names (e.g. `password`, `username`). Each value points to a secret name and key within that secret.
+
+```toml
+[plugins.scale.kubernetes]
+autoscaler_engine = "keda"
+
+[plugins.scale.microservices.services.my_service.hpa]
+min = 1
+max = 4
+
+[[plugins.scale.microservices.services.my_service.triggers]]
+type = "redis"
+name = "my-queue"
+
+[plugins.scale.microservices.services.my_service.triggers.metadata]
+address    = "redis-service.default.svc:6379"
+listName   = "my-list"
+listLength = "5"
+
+[plugins.scale.microservices.services.my_service.triggers.auth.secret_refs]
+password = { name = "redis-secret", key = "password" }
+username = { name = "redis-secret", key = "username" }
+```
+
+This produces a `TriggerAuthentication` named `my-queue-trigger-auth` in the same namespace, and the `ScaledObject` trigger carries an `authenticationRef` pointing to it.
+
+**Address format:** always use the fully qualified service name (`{service}.{namespace}.svc`) in the `address` field. The KEDA operator runs in its own namespace (`keda`) and short service names only resolve within the same namespace, causing a DNS lookup failure at scale evaluation time.
+
+**Scaling formula:** KEDA divides the current list length by `listLength` to get the desired replica count. With `listLength = "5"` and 20 items in the list, KEDA targets 4 replicas (capped at `max`).
+
 ### Rolling deploy, autoscaling, drain
 
 Every Deployment gets `RollingUpdate { maxSurge: 1, maxUnavailable: 0 }`,
@@ -354,6 +388,10 @@ completes with zero non-2xx responses.
 Each service also gets an autoscaler (an HPA by default, or a KEDA `ScaledObject`
 when `autoscaler_engine = "keda"` is set in `[plugins.scale.kubernetes]`) and a
 PDB (`maxUnavailable=1`). Opt out per-service with `hpa.enabled = false` / `pdb.enabled = false`.
+
+**KEDA scale-down timing:** the observed scale-down time is the sum of `autoscaler_cooldown` (KEDA's inactivity window) plus the Kubernetes HPA stabilization window (default 5 minutes). Setting `autoscaler_cooldown = 60` does not mean pods are removed after 60 seconds; Kubernetes will still wait out its own stabilization window on top. To get faster scale-down, reduce `autoscaler_cooldown` and also patch the HPA stabilization window via `keda.sh/downscale-stabilization` annotation, or accept the default 5-minute floor.
+
+**`autoscaler_polling_interval` only applies with scale-to-zero:** KEDA emits an advisory when `pollingInterval` is set but `min_replicas > 0` and `idle_replicas` is not set. The polling interval only affects how quickly KEDA evaluates triggers when scaling down to zero replicas. For normal min/max autoscaling, the Kubernetes HPA control loop governs the evaluation cadence instead.
 
 ### Ingress
 
