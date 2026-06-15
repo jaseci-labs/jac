@@ -48,6 +48,7 @@ obj UniNode {
     has _sub_node_tab: dict[(type, list[UniNode])] { getter; }
 
     def _construct_sub_node_tab -> None;
+    def _invalidate_sub_node_tab -> None;
 
     has sym_tab: UniScopeNode { getter; }
 
@@ -67,7 +68,7 @@ obj UniNode {
     def set_parent(parent: UniNode) -> UniNode;
     def resolve_tok_range -> tuple[(Token, Token)];
     def gen_token(name: Tok, value: (str | None) = None) -> Token;
-    def get_all_sub_nodes[T](typ: type[T], brute_force: bool = True) -> list[T];
+    def get_all_sub_nodes[T](typ: type[T]) -> list[T];
     def find_parent_of_type[T](typ: type[T]) -> (T | None);
     def parent_of_type[T](typ: type[T]) -> T;
     def in_client_context -> bool;
@@ -573,7 +574,9 @@ obj Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImplN
     has name: Name,
         arch_type: Token,
         base_classes: (Sequence[Expr] | None),
-        type_params: (Sequence[TypeParam] | None) = None;
+        type_params: (Sequence[TypeParam] | None) = None,
+        src_endpoint: (Expr | None) = None,
+        tgt_endpoint: (Expr | None) = None;
 
     def postinit -> None;
     def _get_impl_resolved_body -> list;

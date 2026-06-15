@@ -36,6 +36,21 @@ def list_guides -> list[Guide];
 """Return a single guide by name, or None when it is not bundled."""
 def get_guide(name: str) -> Guide | None;
 
+"""Return the listing group for a guide name (e.g. "Language", "Server").
+
+Resolution order: explicit name map, then prefix rules (jac-sv-*, jac-cl-*,
+jac-native*), then "Other" -- every guide always belongs to some group.
+"""
+def guide_group(name: str) -> str;
+
+"""Return every bundled guide bucketed by group, in display order.
+
+Groups appear in the curated GUIDE_GROUP_ORDER; empty groups are omitted.
+Guides within a group are alphabetical, except "Start here" which keeps its
+curated reading order.
+"""
+def grouped_guides -> list[tuple[str, list[Guide]]];
+
 """Return guides whose name, description, or body contains `query` (case-insensitive)."""
 def search_guides(query: str) -> list[Guide];
 

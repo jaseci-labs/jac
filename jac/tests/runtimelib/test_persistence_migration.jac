@@ -17,8 +17,40 @@ import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from typing { cast }
 import from jaclang.jac0core.archetype { NodeAnchor, Root }
+import from jaclang.runtimelib.changeset {
+    ChangeSet,
+    derive_dirty_fields,
+    snapshot_field_hashes
+}
 import from jaclang.runtimelib.memory { SqliteMemory }
 import from jaclang.runtimelib.serializer { Serializer }
+
+
+"""Flush this store's working set through apply(), mirroring the runtime's
+collect pass (TieredMemory.commit) at backend granularity: creates for
+never-persisted anchors, dirty-field updates for loaded ones, then
+re-baseline change tracking so the next flush sees them clean."""
+def _flush(mem: SqliteMemory) {
+    cs = ChangeSet();
+    for anchor in list(mem.__mem__.values()) {
+        if not anchor.persistent or not anchor.is_populated() {
+            continue;
+        }
+        if anchor.hash == 0 {
+            cs.record_create(anchor);
+        } else {
+            dirty = derive_dirty_fields(anchor);
+            if dirty {
+                cs.record_update(anchor, dirty);
+            }
+        }
+    }
+    mem.apply(cs);
+    for intent in cs.intents.values() {
+        intent.anchor.hash = Serializer._compute_hash(intent.anchor);
+        snapshot_field_hashes(intent.anchor);
+    }
+}
 
 
 obj _DemoArchV1(Root) {
@@ -100,6 +132,7 @@ test "put then get round-trips an anchor through JSON" {
         anchor = NodeAnchor(archetype=root_arch, edges=[]);
         anchor.persistent = True;
         mem.put(anchor);
+        _flush(mem);
         anchor_id = anchor.id;
         mem.close();
         # Reopen a fresh memory over the same DB and fetch the anchor
@@ -130,6 +163,7 @@ test "stored data is JSON text, not pickle bytes" {
         anchor = NodeAnchor(archetype=Root(), edges=[]);
         anchor.persistent = True;
         mem.put(anchor);
+        _flush(mem);
         mem.close();
         conn = sqlite3.connect(db_path);
         cursor = conn.execute("SELECT data FROM anchors LIMIT 1");
@@ -230,7 +264,7 @@ test "field hashes are snapshotted on DB load" {
         anchor = NodeAnchor(archetype=arch, edges=[]);
         anchor.persistent = True;
         mem1.put(anchor);
-        mem1.sync();
+        _flush(mem1);
         anchor_id = anchor.id;
         mem1.close();
         mem2 = SqliteMemory(path=db_path);
@@ -254,7 +288,7 @@ test "read-only walker sync does not clobber a concurrent write" {
         anchor = NodeAnchor(archetype=arch_init, edges=[]);
         anchor.persistent = True;
         mem_init.put(anchor);
-        mem_init.sync();
+        _flush(mem_init);
         anchor_id = anchor.id;
         mem_init.close();
         # Walker A loads the anchor — stale snapshot established, never modified
@@ -266,10 +300,10 @@ test "read-only walker sync does not clobber a concurrent write" {
         fresh = mem_b.get(anchor_id);
         assert fresh is not None;
         cast(_SyncProfile, fresh.archetype).name = "written_by_B";
-        mem_b.sync();
+        _flush(mem_b);
         mem_b.close();
         # Walker A syncs with its stale snapshot — must NOT overwrite B's write
-        mem_a.sync();
+        _flush(mem_a);
         mem_a.close();
         mem_verify = SqliteMemory(path=db_path);
         final = mem_verify.get(anchor_id);
@@ -292,7 +326,7 @@ test "sync merges only dirty fields, preserving concurrent writes to other field
         anchor = NodeAnchor(archetype=arch_init, edges=[]);
         anchor.persistent = True;
         mem_init.put(anchor);
-        mem_init.sync();
+        _flush(mem_init);
         anchor_id = anchor.id;
         mem_init.close();
         # Walker A loads — will only write count
@@ -304,11 +338,11 @@ test "sync merges only dirty fields, preserving concurrent writes to other field
         anchor_b = mem_b.get(anchor_id);
         assert anchor_b is not None;
         cast(_SyncProfile, anchor_b.archetype).name = "name_from_B";
-        mem_b.sync();
+        _flush(mem_b);
         mem_b.close();
         # Walker A sets only count then commits
         cast(_SyncProfile, anchor_a.archetype).count = 42;
-        mem_a.sync();
+        _flush(mem_a);
         mem_a.close();
         # Both changes must survive: name from B, count from A
         mem_verify = SqliteMemory(path=db_path);
@@ -335,7 +369,7 @@ test "in-place list mutation is detected dirty and flushed to DB" {
         anchor = NodeAnchor(archetype=arch_init, edges=[]);
         anchor.persistent = True;
         mem1.put(anchor);
-        mem1.sync();
+        _flush(mem1);
         anchor_id = anchor.id;
         mem1.close();
         # Load, mutate the list in-place (bypasses __setattr__)
@@ -343,7 +377,7 @@ test "in-place list mutation is detected dirty and flushed to DB" {
         loaded = mem2.get(anchor_id);
         assert loaded is not None;
         cast(_SyncProfile, loaded.archetype).tags.append("b");
-        mem2.sync();
+        _flush(mem2);
         mem2.close();
         mem3 = SqliteMemory(path=db_path);
         final = mem3.get(anchor_id);

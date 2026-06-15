@@ -241,7 +241,7 @@ jac create [-h] [-f] [-u USE] [-l] [name]
 | `name` | Project name (creates folder with this name) | Current directory name |
 | `-f, --force` | Overwrite existing project | `False` |
 | `-u, --use` | Jacpac template: registered name, file path, or URL | `default` |
-| `-l, --list-jacpacks` | List available jacpack templates | `False` |
+| `-l, --list_jacpacks` | List available jacpack templates | `False` |
 
 **Examples:**
 
@@ -263,7 +263,7 @@ jac create myapp --use ./my-template/
 jac create myapp --use https://example.com/template.jacpack
 
 # List available jacpack templates
-jac create --list-jacpacks
+jac create --list_jacpacks
 
 # Force overwrite existing
 jac create myapp --force
@@ -583,7 +583,7 @@ For a complete walkthrough, see the [Debugging in VS Code Tutorial](../../tutori
 Drive a headless Chrome/Chromium over the Chrome DevTools Protocol (CDP): navigate, interact with elements, inspect the page, and capture screenshots. The driver is zero-dependency -- it speaks CDP over a hand-rolled WebSocket, so no Playwright or Selenium install is required. Interactions use real CDP input events (trusted clicks and keystrokes), not JavaScript injection.
 
 ```bash
-jac browse <action> [args ...] [-s SESSION]
+jac browse <action> [args ...] [-s SESSION] [--viewport WxH]
 ```
 
 | Option | Description | Default |
@@ -591,6 +591,7 @@ jac browse <action> [args ...] [-s SESSION]
 | `action` | The action to perform (see table below) | Required |
 | `args` | Action-specific arguments (selector, url, text, path, ...) | `[]` |
 | `-s, --session` | Session name; each session is an isolated browser instance | `default` |
+| `--viewport` | Browser window size as `WIDTHxHEIGHT` (applied at `open`) | `1280x720` |
 
 **Actions:**
 
@@ -604,6 +605,9 @@ jac browse <action> [args ...] [-s SESSION]
 | `press` | `<key>` | Press a named key or character (`Enter`, `Tab`, `Ctrl+A`, ...) |
 | `get` | `url\|title\|text [selector]` | Read a page property (`get text` needs a selector) |
 | `eval` | `<expression>` | Run JavaScript and return the result as JSON |
+| `wait` | `<ms\|selector>` | Sleep for a duration, or wait until a selector is actionable |
+| `scroll` | `<up\|down\|left\|right\|top\|bottom\|selector> [px]` | Scroll the page, or scroll an element into view |
+| `console` | `[--clear]` | Print buffered console/log/exception output since page load |
 | `snapshot` | | Print the accessibility tree with `@e1`/`@e2` refs on interactive nodes |
 | `screenshot` | `[path]` | Capture the page as PNG (defaults to the cache directory) |
 | `state` | `save\|load <path>` | Save or restore cookies + localStorage as JSON |
@@ -618,7 +622,7 @@ A launched browser stays alive between CLI calls -- each invocation reconnects t
 
 **Refs vs. selectors:**
 
-`click`, `type`, and `fill` accept either a CSS selector (`#email`, `button.primary`) or an `@ref` produced by `snapshot`. CSS selectors auto-wait until the element is visible and position-stable before acting.
+`click`, `type`, and `fill` accept either a CSS selector (`#email`, `button.primary`) or an `@ref` produced by `snapshot`. Both auto-wait until the element is actionable: it is scrolled into view and must be visible, position-stable, inside the viewport, and the top element at the click point. If any of those cannot be satisfied (e.g. the point lands offscreen or another element covers the target), the command fails with an error instead of silently doing nothing.
 
 **Environment variables:**
 
@@ -650,6 +654,16 @@ jac browse press Enter
 
 # Run JavaScript
 jac browse eval "document.querySelectorAll('a').length"
+
+# Wait for an app to mount, then read its console output
+jac browse wait '#app'
+jac browse console
+#   [log] booted in 312ms
+#   [warning] Each child in a list should have a unique "key" prop.
+
+# Scroll for screenshot framing
+jac browse scroll down
+jac browse scroll '#pricing'
 
 # Capture a screenshot
 jac browse screenshot ./page.png
@@ -912,6 +926,70 @@ Or, when some rows are still stuck (often because the class involved isn't cover
 │ 902b14ee… │ deserialize raised: ValueError: bad enum value │
 └───────────┴─────────────────────────────────────────────────┘
 ```
+
+### jac db fsck
+
+Scan the backend for referential-integrity violations: **dangling references** (a node citing an edge document that no longer exists, or an edge citing a missing endpoint node) and **orphans** (an unreferenced edge, or an edgeless non-root node). Read-only by default, so it is safe to run as a monitoring probe.
+
+```bash
+jac db fsck --app app.jac
+```
+
+**Output:**
+
+```
+Jac DB fsck: /tmp/myapp/.jac/data/app.db
+[INFO] dangling refs : 19   (8 document(s) cite a missing referent)
+[INFO] orphan edges  : 3
+[INFO] orphan nodes  : 11
+[INFO] Run `jac db fsck repair` to heal danglers and collect orphans.
+```
+
+Pass `repair` to act on the findings. Dangling citations are pruned and each missing referent is filed into the quarantine store under the `DANGLING_REF` reason code (visible via `jac db quarantine list`); orphans are collected. On SQLite the whole repair runs inside one `BEGIN IMMEDIATE` transaction, so a `fsck repair` is itself crash-atomic.
+
+```bash
+jac db fsck repair --app app.jac
+```
+
+**Output:**
+
+```
+✔ repaired: pruned 19 citation(s), quarantined 19 dangler(s) under DANGLING_REF, collected 14 orphan(s).
+```
+
+A clean database reports nothing to do:
+
+```
+✔ Clean: no referential-integrity violations.
+```
+
+> Most danglers are healed automatically the first time a traversal touches them (see [Persistence → Dangling references](../persistence.md#dangling-references-and-read-path-healing)). `jac db fsck` is the offline backstop: it heals references no live request has hit yet, and surfaces orphan garbage for collection.
+
+### jac db schema rules
+
+List every registered [`__jac_schema__` drift rule](../persistence.md#declared-drift-rules-__jac_schema__) along with the active `JAC_SCHEMA_REPAIR` mode. The app is imported first (same `--app` / cwd discovery as the other subcommands), which is what runs the `__jac_schema__` hooks and registers the rules.
+
+```bash
+jac db schema rules --app app.jac
+```
+
+**Output:**
+
+```
+Registered schema drift rules
+[INFO] JAC_SCHEMA_REPAIR mode: repair
+                    Rules
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ archetype       ┃ rule    ┃ detail                ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━┩
+│ __main__.User   │ was     │ myapp.models.OldUser  │
+│ __main__.User   │ alias   │ username -> name      │
+│ __main__.User   │ drop    │ legacy_bio            │
+│ __main__.User   │ upgrade │ split_tags            │
+└─────────────────┴─────────┴───────────────────────┘
+```
+
+Useful as a pre-deploy sanity check: it confirms which renames, drops, and upgrade callbacks will apply when old documents load, and which repair mode the process will run under.
 
 ### Typical rescue workflow
 

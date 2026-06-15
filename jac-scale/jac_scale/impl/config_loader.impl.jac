@@ -27,7 +27,10 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'redis_eviction_samples': 5,
             'redis_default_ttl': 3600,
             'redis_max_connections': 20,
-            'redis_enable_keyspace_notifications': False
+            'redis_enable_keyspace_notifications': False,
+            # Cross-pod L1 cache invalidation.
+            'redis_l1_invalidation_enabled': True,
+            'redis_l1_invalidation_channel': 'jac:anchor:invalidate'
         },
         'kubernetes': {
             'app_name': 'jaseci',
@@ -207,6 +210,12 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] 
         'redis_max_connections': int(db_config.get('redis_max_connections', 20)),
         'redis_enable_keyspace_notifications': db_config.get(
             'redis_enable_keyspace_notifications', False
+        ),
+        'redis_l1_invalidation_enabled': db_config.get(
+            'redis_l1_invalidation_enabled', True
+        ),
+        'redis_l1_invalidation_channel': db_config.get(
+            'redis_l1_invalidation_channel', 'jac:anchor:invalidate'
         )
     };
 }
