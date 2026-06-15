@@ -41,6 +41,9 @@ def _matches_filter(doc: dict, field_path: str, op_string: str, value: any) -> b
 }
 
 
+class _FakeAlreadyExists(Exception) {}
+
+
 obj _FakeDocSnapshot {
     has id: str,
         data: dict | None = None,
@@ -74,6 +77,13 @@ obj _FakeDocRef {
         } else {
             self.collection.docs[self.id] = _copy_doc(data) or {};
         }
+    }
+
+    def create(data: dict) {
+        if self.id in self.collection.docs {
+            raise _FakeAlreadyExists(f'Document {self.id} already exists');
+        }
+        self.set(data);
     }
 
     def update(data: dict) {
@@ -245,6 +255,12 @@ obj _FakeBatch {
         self.ops.append({'kind': 'set', 'ref': doc_ref, 'data': _copy_doc(data) or {}});
     }
 
+    def create(doc_ref: _FakeDocRef, data: dict) {
+        self.ops.append(
+            {'kind': 'create', 'ref': doc_ref, 'data': _copy_doc(data) or {}}
+        );
+    }
+
     def update(doc_ref: _FakeDocRef, data: dict) {
         self.ops.append(
             {'kind': 'update', 'ref': doc_ref, 'data': _copy_doc(data) or {}}
@@ -256,8 +272,22 @@ obj _FakeBatch {
     }
 
     def commit {
+        pending_create_ids: set = set();
+        for op in self.ops {
+            if op['kind'] == 'create' {
+                doc_id = op['ref'].id;
+                if (
+                    doc_id in pending_create_ids or doc_id in op['ref'].collection.docs
+                ) {
+                    raise _FakeAlreadyExists(f'Document {doc_id} already exists');
+                }
+                pending_create_ids.add(doc_id);
+            }
+        }
         for op in self.ops {
             if op['kind'] == 'set' {
+                op['ref'].set(op['data']);
+            } elif op['kind'] == 'create' {
                 op['ref'].set(op['data']);
             } elif op['kind'] == 'update' {
                 op['ref'].update(op['data']);
@@ -351,6 +381,41 @@ test "firestore kvstore operations" {
     assert db.delete_by_id('profiles', profile.inserted_id).deleted_count == 1;
     assert db.find_by_id('profiles', profile.inserted_id) is None;
     assert db.delete_by_id('profiles', profile.inserted_id).deleted_count == 0;
+}
+
+
+test "firestore insert_one rejects duplicate explicit _id" {
+    client = _FakeFirestoreClient();
+    db = FirestoreDb(client=client, db_name='app');
+
+    db.insert_one('users', {'_id': 'u1', 'name': 'Alice'});
+    raised = False;
+    try {
+        db.insert_one('users', {'_id': 'u1', 'name': 'Eve'});
+    } except _FakeAlreadyExists {
+        raised = True;
+    }
+    assert raised;
+    assert db.find_by_id('users', 'u1')['name'] == 'Alice';
+}
+
+
+test "firestore insert_many rejects duplicate explicit _id" {
+    client = _FakeFirestoreClient();
+    db = FirestoreDb(client=client, db_name='app');
+
+    db.insert_one('users', {'_id': 'u1', 'name': 'Alice'});
+    raised = False;
+    try {
+        db.insert_many(
+            'users', [{'_id': 'u2', 'name': 'Bob'}, {'_id': 'u1', 'name': 'Eve'}]
+        );
+    } except _FakeAlreadyExists {
+        raised = True;
+    }
+    assert raised;
+    assert db.find_by_id('users', 'u1')['name'] == 'Alice';
+    assert db.find_by_id('users', 'u2') is None;
 }
 
 

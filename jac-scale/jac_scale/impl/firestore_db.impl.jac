@@ -343,7 +343,7 @@ impl FirestoreDb.count_documents(col_name: str, filter: dict) -> int {
 impl FirestoreDb.insert_one(col_name: str, document: dict) -> InsertResult {
     _validate_not_read_only(col_name);
     doc_id = _firestore_document_id(document) or str(uuid4());
-    self._get_firestore_collection(col_name).document(doc_id).set(
+    self._get_firestore_collection(col_name).document(doc_id).create(
         _firestore_document_body(document)
     );
     return InsertResult(inserted_id=doc_id);
@@ -395,7 +395,7 @@ impl FirestoreDb.insert_many(col_name: str, documents: list) -> InsertManyResult
     for document in documents {
         doc_id = _firestore_document_id(document) or str(uuid4());
         inserted_ids.append(doc_id);
-        batch.set(
+        batch.create(
             self._get_firestore_collection(col_name).document(doc_id),
             _firestore_document_body(document)
         );
