@@ -3,8 +3,8 @@
 import os;
 import unittest.mock;
 import from jac_scale.config_loader { get_scale_config, reset_scale_config }
-import from jac_scale.db { Db }
 import from jac_scale.factories.database_factory { DatabaseType, _resolve_uri }
+import from jac_scale.firestore_db { FirestoreDb }
 import from jac_scale.lib { kvstore }
 
 
@@ -270,7 +270,7 @@ obj _FakeFirestoreClient {
 
 test "firestore kvstore operations" {
     client = _FakeFirestoreClient();
-    db = Db(client=client, db_name='app', db_type=DatabaseType.FIRESTORE);
+    db = FirestoreDb(client=client, db_name='app');
 
     assert db.set('session:1', {'user_id': '42'}, 'sessions') == 'session:1';
     assert db.get('session:1', 'sessions')['user_id'] == '42';
@@ -328,7 +328,7 @@ test "firestore kvstore operations" {
 
 test "firestore find honors projection" {
     client = _FakeFirestoreClient();
-    db = Db(client=client, db_name='app', db_type=DatabaseType.FIRESTORE);
+    db = FirestoreDb(client=client, db_name='app');
 
     db.insert_one('users', {'_id': 'u1', 'name': 'Alice', 'role': 'admin', 'age': 30});
     db.insert_one('users', {'_id': 'u2', 'name': 'Bob', 'role': 'user', 'age': 25});
@@ -382,34 +382,14 @@ test "kvstore routes firestore through pooled client helper" {
 }
 
 
-test "firestore rejects redis methods and graph persistence" {
-    db = Db(
-        client=_FakeFirestoreClient(), db_name='app', db_type=DatabaseType.FIRESTORE
-    );
+test "firestore returns None for redis-only methods and graph persistence" {
+    db = FirestoreDb(client=_FakeFirestoreClient(), db_name='app');
 
-    raised = False;
-    try {
-        db.set_with_ttl('key', {'v': 1}, ttl=60);
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , 'Expected NotImplementedError for set_with_ttl on firestore';
-
-    raised = False;
-    try {
-        db.incr('counter');
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , 'Expected NotImplementedError for incr on firestore';
-
-    raised = False;
-    try {
-        db.find_nodes('TestNode');
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , 'Expected NotImplementedError for find_nodes on firestore';
+    # Redis-only and Mongo-only abilities are not overridden by FirestoreDb, so
+    # the abstract Db default applies and the call returns None.
+    assert db.set_with_ttl('key', {'v': 1}, ttl=60) is None;
+    assert db.incr('counter') is None;
+    assert db.find_nodes('TestNode') is None;
 }
 
 

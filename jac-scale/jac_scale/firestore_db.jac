@@ -20,7 +20,6 @@ obj FirestoreDb(Db) {
     def set(key: str, value: dict, col_name: str = 'default') -> str;
     def delete(key: str, col_name: str = 'default') -> int;
     def exists(key: str, col_name: str = 'default') -> bool;
-
     def find_one(
         col_name: str, filter: dict, projection: dict | None = None
     ) -> dict | None;
@@ -33,23 +32,18 @@ obj FirestoreDb(Db) {
     ) -> list;
 
     def insert_one(col_name: str, document: dict) -> InsertResult;
-
     def update_one(
         col_name: str, filter: dict, update_data: dict, upsert_mode: bool = False
     ) -> UpdateResult;
 
     def delete_one(col_name: str, filter: dict) -> DeleteResult;
-
     def insert_many(col_name: str, documents: list) -> InsertManyResult;
-
     def update_many(
         col_name: str, filter: dict, update_data: dict, upsert_mode: bool = False
     ) -> UpdateResult;
 
     def delete_many(col_name: str, filter: dict) -> DeleteResult;
-
     def find_by_id(col_name: str, id: str) -> dict | None;
-
     def update_by_id(
         col_name: str, id: str, update_data: dict, upsert_mode: bool = False
     ) -> UpdateResult;
