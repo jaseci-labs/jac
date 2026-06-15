@@ -66,6 +66,7 @@ name = "myapp"
 version = "1.0.0"
 description = "My Jac application"
 entry-point = "main.jac"
+kind = "api-service"   # drives `jac run` (omit to infer from the entry-point)
 jac-version = ">=0.15.0"
 
 # Publishing metadata -- only needed to run `jac bundle`
@@ -87,6 +88,7 @@ repository = "https://github.com/user/repo"
 | `version` | string | Semantic version (default: `0.1.0`) |
 | `description` | string | One-line summary (also shown on PyPI) |
 | `entry-point` | string | Main file for `jac run` (default: `main.jac`) |
+| `kind` | string | Project kind that drives `jac run` dispatch (execute / serve / build). Empty = inferred from the entry-point codespace. One of: `cli`, `native-app`, `native-binary`, `shared-library`, `api-service`, `microservices`, `pypi-package`, `npm-package`, `fullstack`, `wasm`, `desktop`, `mobile` |
 | `jac-version` | string | Required Jac compiler version |
 | `license` | string | SPDX license identifier (e.g. `"MIT"`) |
 | `readme` | string | Path to README file (default: `README.md`) |

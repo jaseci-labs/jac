@@ -3087,6 +3087,12 @@ impl TypeEvaluator._in_native_context -> bool {
     if cur is None or not isinstance(cur, uni.UniNode) {
         return False;
     }
+    # An explicit `na { ... }` block is native regardless of file extension —
+    # use the canonical ancestor walk so a fixture or app written as `.jac`
+    # gets the same native ABI/coercion rules as a whole `.na.jac` module.
+    if cur.in_native_context() {
+        return True;
+    }
     mod = cur.find_parent_of_type(uni.Module);
     if mod is None or mod.loc is None {
         return False;
@@ -3206,6 +3212,14 @@ impl TypeEvaluator.assign_type(
             return True;
         }
         if isinstance(dest_type, types.TypeVarType) {
+            return True;
+        }
+        # Native lowers `any` to a tagged `JacVal` union and unboxes it to the
+        # destination type at the coercion seam (`_unbox_from_jacval`), so
+        # `any -> concrete` is a real runtime coercion here, not a silent leak.
+        # Restore gradual typing in native code to keep e.g. `z: int = a`
+        # (a: any) congruent with the sv pathway (#6421).
+        if self._in_native_context() {
             return True;
         }
         return False;

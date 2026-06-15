@@ -5,6 +5,8 @@ description: Choosing the right guides for what you're building - maps every Jac
 
 Jac compiles one language to three runtimes - Python bytecode (server `sv`), JavaScript (client `cl`), and native machine code (`na`, which also targets WebAssembly). Every project kind is a combination of those blocks. Find your kind, run its verbs, load its guides (`jac guide <name>`).
 
+**`jac run` is kind-aware.** Set `kind` under `[project]` in `jac.toml` (or let it be inferred from the entry-point codespace), and a bare `jac run` in the project does the right thing for that kind: *execute* runnable kinds (cli, native-app), *serve* server kinds (api-service, fullstack, ...), or *build* artifact kinds (native-binary, shared-library, pypi/npm packages). `jac run --show` prints the resolved plan (kind, action, and the equivalent primitive command) without running it. The explicit per-kind verbs in the table below remain the underlying primitives.
+
 ## Routing table
 
 | Kind | What it is | Build / run | Plugins | Load these guides |
