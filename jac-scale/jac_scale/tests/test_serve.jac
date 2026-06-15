@@ -2544,3 +2544,64 @@ test "jwt middleware: per-user isolation and token rejection" {
         client.close();
     }
 }
+
+# =============================================================================
+# GROUP 9: GUEST-ROOT REPAIR (jac-scale / SqliteIdentityStorage path)
+# =============================================================================
+"""Verify that JacScaleUserManager.ensure_root_id self-heals a stale guest root_id.
+
+This is the jac-scale counterpart to the jaclang test
+'guest root auto-recovers when stored anchor is missing' in
+jac/tests/runtimelib/test_serve.jac.  That test corrupts the old SQLite
+`users` table directly; this one corrupts SqliteIdentityStorage, which is
+the storage layer actually used by jac-scale at runtime.
+
+We use make_client() rather than instantiating JacScaleUserManager directly
+so that the full jac module graph (including base-class impl files that provide
+_root_anchor_exists / _create_root_id) is loaded before we exercise the repair.
+"""
+test "jac-scale guest root auto-recovers when stored anchor is missing" {
+    import from uuid { UUID, uuid4 }
+    import from jaclang { JacRuntime as Jac }
+    import from jaclang.jac0core.constant { Constants as Con }
+
+    client = make_client();
+    try {
+        user_mgr = client.server.user_manager;
+
+        # Guest user already exists (make_client creates it).  Record the
+        # root_id that was persisted at creation time.
+        guest = user_mgr._identity_storage.find_user_by_identity(Con.GUEST.value);
+        assert guest is not None , "Guest user must exist after make_client";
+        guest_user_id = guest["user_id"];
+        original_root_id = guest["root_id"];
+
+        # Corrupt storage: replace root_id with a UUID that has no anchor.
+        missing_root_id = uuid4().hex;
+        user_mgr._identity_storage.update_user_fields(
+            guest_user_id, {"root_id": missing_root_id}
+        );
+
+        # ensure_root_id must detect the missing anchor and repair it.
+        repaired_root_id = user_mgr.ensure_root_id(Con.GUEST.value);
+
+        assert repaired_root_id is not None , "ensure_root_id should return a non-None root_id";
+        assert repaired_root_id != missing_root_id , "Repaired id must differ from the stale id";
+        assert repaired_root_id != original_root_id , "Repaired id must be freshly created";
+
+        # Storage must now reflect the repaired root_id.
+        persisted = user_mgr._identity_storage.find_user_by_identity(Con.GUEST.value);
+        assert persisted is not None;
+        assert persisted["root_id"] == repaired_root_id , (
+            f"Storage not updated: expected {repaired_root_id}, got {persisted[
+                'root_id'
+            ]}"
+        );
+
+        # The new anchor must exist in the active execution context's memory.
+        anchor = Jac.get_context().mem.get(UUID(repaired_root_id));
+        assert anchor is not None , "New root anchor must be reachable in memory";
+    } finally {
+        client.close();
+    }
+}
