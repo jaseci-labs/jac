@@ -190,7 +190,7 @@ test "pushdown sends a data.archetype filter to mongo and fetches only matches" 
             r +>:BasicMOwns:+> n;
             nodes.append(n);
         }
-        ctx.mem.sync();
+        ctx.mem.commit();
         _chill(ctx, [n.__jac__.id for n in nodes]);
         ctx.mem.l3 = spy;
 
@@ -238,7 +238,7 @@ test "compound and complex predicates translate to mongo filters" {
             r +>:CompMOwns:+> n;
             nodes.append(n);
         }
-        ctx.mem.sync();
+        ctx.mem.commit();
         ids = [n.__jac__.id for n in nodes];
         ctx.mem.l3 = spy;
 
@@ -297,7 +297,7 @@ test "hybrid evaluates fresh L1 nodes locally and pushes only cold ids" {
             r +>:HybMOwns:+> n;
             nodes.append(n);
         }
-        ctx.mem.sync();
+        ctx.mem.commit();
 
         # Even-indexed evict to cold (their synced value is authoritative);
         # odd-indexed stay resident in L1.
