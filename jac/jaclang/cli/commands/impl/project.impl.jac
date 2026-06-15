@@ -451,7 +451,8 @@ impl install(
             sys.executable,
             "-m",
             "pip",
-            "install"
+            "install",
+            "--upgrade"
         ] + install_flags + packages;
         if verbose {
             console.print(f"  Running: {' '.join(cmd)}", style="muted");
@@ -463,6 +464,9 @@ impl install(
             return 1;
         }
         if dry_run {
+            if result.stdout {
+                console.print(result.stdout, style="dim");
+            }
             console.success("Dry run complete (nothing installed).");
             return 0;
         }

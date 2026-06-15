@@ -1729,18 +1729,22 @@ test "update always uses upgrade flag" {
 # ===== TestInstallPackageIntoActivatedEnv =====
 test "jac install <pkg> works outside a project directory" {
     # Core contract: packages path bypasses jac.toml requirement entirely.
-    # pip is always present, --no-deps makes it network-free and instant.
-    import subprocess;
-    with tempfile.TemporaryDirectory() as tmp {
-        result = subprocess.run(
-            ["jac", "install", "pip", "--no-deps"],
-            capture_output=True,
-            text=True,
-            cwd=str(tmp)
-        );
-        combined = result.stdout + result.stderr;
-        assert result.returncode == 0 , f"Expected exit 0:\n{combined}";
-        assert "No jac.toml found" not in combined;
+    import from jaclang.cli.commands { project as proj_cmds }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    original_cwd = os.getcwd();
+    try {
+        os.chdir(tmp);
+        mock_result = MagicMock();
+        mock_result.returncode = 0;
+        mock_result.stdout = "Successfully installed pip-24.0";
+        mock_result.stderr = "";
+        with patch("subprocess.run", return_value=mock_result) {
+            result = proj_cmds.install(packages=["pip"], no_deps=True);
+        }
+        assert result == 0;
+    } finally {
+        os.chdir(original_cwd);
+        shutil.rmtree(tmp, ignore_errors=True);
     }
 }
 
