@@ -4104,6 +4104,32 @@ def _find_cfg_node_for(at_node: uni.UniNode) -> uni.UniCFGNode | None {
     return None;
 }
 
+"""True when `at_node` reads from a loop's pre-body region (the iterable/target
+of a `for`, the condition of a `while`, or the iter/condition/count_by of a
+range-`for`). Such reads execute in the pre-loop state, so they must use
+pre-loop narrowing (back-edges skipped) rather than the post-loop union. Reads
+inside the loop body or in the post-loop successor are not pre-body reads."""
+def _is_loop_prebody_read(at_node: uni.UniNode, header: uni.UniCFGNode) -> bool {
+    roots: list = [];
+    if isinstance(header, uni.InForStmt) {
+        roots = [header.target, header.collection];
+    } elif isinstance(header, uni.WhileStmt) {
+        roots = [header.condition];
+    } elif isinstance(header, uni.IterForStmt) {
+        roots = [header.iter, header.condition, header.count_by];
+    } else {
+        return False;
+    }
+    cur = at_node;
+    while cur is not None and cur is not header {
+        if cur in roots {
+            return True;
+        }
+        cur = cur.parent;
+    }
+    return False;
+}
+
 """Get the narrowed type of a symbol at the given AST node via CFG walk."""
 impl TypeEvaluator.get_narrowed_type(
     symbol: uni.Symbol, at_node: uni.UniNode
@@ -4133,7 +4159,10 @@ impl TypeEvaluator.get_narrowed_type(
         );
         flow_node = _find_cfg_node_for(at_node);
         if flow_node is not None {
-            return self._get_type_from_flow_node(narrowing_target, flow_node, set());
+            prebody = flow_node if _is_loop_prebody_read(at_node, flow_node) else None;
+            return self._get_type_from_flow_node(
+                narrowing_target, flow_node, set(), prebody
+            );
         }
         return None;
     } finally {
@@ -4166,7 +4195,10 @@ impl TypeEvaluator.get_narrowed_type_for_expr(
         );
         flow_node = _find_cfg_node_for(at_node);
         if flow_node is not None {
-            return self._get_type_from_flow_node(narrowing_target, flow_node, set());
+            prebody = flow_node if _is_loop_prebody_read(at_node, flow_node) else None;
+            return self._get_type_from_flow_node(
+                narrowing_target, flow_node, set(), prebody
+            );
         }
         return None;
     } finally {
@@ -4180,40 +4212,82 @@ Backward walk over bb_in with an affected_symbols fast path: predecessors
 that neither narrow nor assign the target are skipped without recursion.
 """
 impl TypeEvaluator._get_type_from_flow_node(
-    target: NarrowingTarget, flow_node: uni.UniCFGNode, visited: set
+    target: NarrowingTarget,
+    flow_node: uni.UniCFGNode,
+    visited: set,
+    prebody_header: uni.UniCFGNode | None = None
 ) -> TypeBase | None {
     import from jaclang.compiler.type_system.type_evaluator { NarrowingTarget }
     key = target.key;
+    # A read from a loop's pre-body region (iterable/condition) executes in the
+    # pre-loop state: skip body back-edges so only pre-loop narrowing survives.
+    # Distinct cache namespace ("prebody") so it never collides with the
+    # post-loop union computed for the same header.
+    is_prebody = prebody_header is not None and flow_node is prebody_header;
+    cache_tag = "prebody" if is_prebody else "join";
     # Keyed by (flow_node, symbol) when a symbol is available so that
     # different scopes with the same name don't collide; otherwise keyed
     # by the reference string (expression-based narrowing).
-    cache_key = (id(flow_node), id(target.symbol))
+    cache_key = (id(flow_node), id(target.symbol), cache_tag)
         if target.symbol is not None
-        else (id(flow_node), key);
-    if cache_key in self._flow_node_type_cache {
-        return self._flow_node_type_cache[cache_key];
+        else (id(flow_node), key, cache_tag);
+    if self._flow_cache_has(cache_key) {
+        return self._flow_cache_get(cache_key);
+    }
+    # Loop back-edge re-entry: a body predecessor recursed into this still-in-
+    # progress loop header. Return the partial union published so far instead
+    # of recursing (Pyright-style incomplete type). Checked before the `visited`
+    # cut so the back-edge is broken by the partial, not collapsed to None.
+    if cache_key in self._flow_loop_pending {
+        return self._flow_loop_pending[cache_key];
     }
     flow_node_id = id(flow_node);
     if flow_node_id in visited {
-        # Cycle (loop back-edge): conservative None.
+        # Cycle (non-loop back-edge): conservative None.
         return None;
     }
     # Cap recursion depth in pathological graphs.
     if len(visited) > 64 {
-        self._flow_node_type_cache[cache_key] = None;
+        self._flow_cache_put(cache_key, None);
         return None;
+    }
+    if not flow_node.bb_in {
+        self._flow_cache_put(cache_key, None);
+        return None;
+    }
+    # Loop headers double as the post-loop join (the successor statement reads
+    # through this same node). Compute the join as the fixed-point union of the
+    # pre-loop edge AND every body back-edge, so in-loop assignments survive the
+    # join. Condition narrowing (`while x:`) is applied by the caller frame on
+    # the header->body edge. A pre-body read instead uses pre-loop-only narrowing.
+    if isinstance(flow_node, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt)) {
+        if is_prebody {
+            visited.add(flow_node_id);
+            result = self._loop_prebody_type(target, flow_node, visited);
+            self._flow_cache_put(cache_key, result);
+            visited.discard(flow_node_id);
+            return result;
+        }
+        return self._get_loop_header_type(target, flow_node, cache_key, visited);
     }
     visited.add(flow_node_id);
-    if not flow_node.bb_in {
-        self._flow_node_type_cache[cache_key] = None;
-        visited.discard(flow_node_id);
-        return None;
-    }
-    # Loop headers: skip back-edges from the loop body so pre-loop
-    # narrowing survives the join.
-    is_loop_header: bool = isinstance(
-        flow_node, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt)
-    );
+    result = self._merge_flow_preds(target, flow_node, visited);
+    self._flow_cache_put(cache_key, result);
+    visited.discard(flow_node_id);
+    return result;
+}
+
+"""Per-predecessor backward merge for a single flow node (no caching/cycle
+handling -- the caller owns those). Returns the narrowed type or None to widen.
+"""
+impl TypeEvaluator._merge_flow_preds(
+    target: NarrowingTarget,
+    flow_node: uni.UniCFGNode,
+    visited: set,
+    skip_loop_backedges: bool = False
+) -> TypeBase | None {
+    import from jaclang.compiler.type_system.type_evaluator { NarrowingTarget }
+    key = target.key;
     incoming_types: list[TypeBase] = [];
     has_unnarrowed_pred: bool = False;
     for pred in flow_node.bb_in {
@@ -4221,23 +4295,25 @@ impl TypeEvaluator._get_type_from_flow_node(
             has_unnarrowed_pred = True;
             continue;
         }
-        # Wrapper CfgExpr around a nested BoolExpr has no real inflow
-        # (real flow is patched to inner operands); skip to avoid widening.
-        if isinstance(pred, uni.CfgExpr) and not pred.bb_in {
-            continue;
-        }
-        if is_loop_header {
+        # Pre-body read of a loop header: skip predecessors that come from
+        # inside the loop body (back-edges) so only pre-loop narrowing survives.
+        if skip_loop_backedges {
             ancestor: uni.UniNode | None = None;
             if isinstance(flow_node, uni.InForStmt) {
                 ancestor = pred.find_parent_of_type(uni.InForStmt);
             } elif isinstance(flow_node, uni.IterForStmt) {
                 ancestor = pred.find_parent_of_type(uni.IterForStmt);
-            } else {
+            } elif isinstance(flow_node, uni.WhileStmt) {
                 ancestor = pred.find_parent_of_type(uni.WhileStmt);
             }
             if ancestor is flow_node {
                 continue;
             }
+        }
+        # Wrapper CfgExpr around a nested BoolExpr has no real inflow
+        # (real flow is patched to inner operands); skip to avoid widening.
+        if isinstance(pred, uni.CfgExpr) and not pred.bb_in {
+            continue;
         }
 
         # Fast path: predecessor neither narrows nor assigns this key.
@@ -4471,9 +4547,128 @@ impl TypeEvaluator._get_type_from_flow_node(
     } else {
         result = self._union_narrowed_types(incoming_types);
     }
-    self._flow_node_type_cache[cache_key] = result;
-    visited.discard(flow_node_id);
     return result;
+}
+
+"""Fixed-point narrowed type for a loop-header node: the union of the pre-loop
+edge and all body back-edges, iterated until stable. Back-edge cycles resolve
+via `_flow_loop_pending` returning the partial union computed so far.
+"""
+impl TypeEvaluator._get_loop_header_type(
+    target: NarrowingTarget, flow_node: uni.UniCFGNode, cache_key: tuple, visited: set
+) -> TypeBase | None {
+    # Iterate at most once per antecedent (Pyright's maxAttemptCount), with a
+    # hard ceiling for pathological graphs that never converge.
+    max_attempts = max(1, len(flow_node.bb_in));
+    if max_attempts > 256 {
+        max_attempts = 256;
+    }
+    flow_node_id = id(flow_node);
+    # Seed the published partial with the PRE-LOOP narrowed type (back-edges
+    # skipped). A back-edge re-entry (an in-body read of the target) then sees
+    # the value the variable holds entering the loop, on which the caller still
+    # applies loop-condition narrowing and assignment barriers. When the body
+    # never reassigns the target, every back-edge carries this same value, so
+    # the union collapses to the pre-loop type instead of widening back to the
+    # declared type. Falls back to the declared type when pre-loop narrowing
+    # widened (None).
+    seed_visited = set();
+    seed_visited.add(flow_node_id);
+    pre_loop_type = self._loop_prebody_type(target, flow_node, seed_visited);
+    self._flow_loop_pending[cache_key] = pre_loop_type
+        if pre_loop_type is not None
+        else target.declared_type;
+    self._flow_loop_depth += 1;
+    # Staged keys already present belong to an enclosing loop header; preserve
+    # them and only roll back keys this header stages during its own attempts.
+    outer_staged = set(self._flow_loop_staging.keys());
+    result: TypeBase | None = None;
+    prev_repr: str | None = None;
+    try {
+        attempts = 0;
+        while attempts < max_attempts {
+            attempts += 1;
+            # Discard this header's staged intermediate writes from the prior
+            # attempt so only the converged attempt's entries flush durably.
+            for staged_key in list(self._flow_loop_staging.keys()) {
+                if staged_key not in outer_staged {
+                    self._flow_loop_staging.pop(staged_key, None);
+                }
+            }
+            # Fresh visited containing only the header: the outer walk reached
+            # this header THROUGH body nodes (which are in `visited`), but the
+            # header's body re-evaluation must be able to re-enter those body
+            # nodes via the back-edge. The header-cycle itself is broken by
+            # `_flow_loop_pending`, not by `visited`, so dropping the outer
+            # body entries is safe; depth is still bounded by the recursion cap.
+            inner_visited = set();
+            inner_visited.add(flow_node_id);
+            new_result = self._merge_flow_preds(target, flow_node, inner_visited);
+            result = new_result;
+            new_repr = str(new_result) if new_result is not None else None;
+            # Converged: the published partial stopped changing.
+            if attempts > 1 and new_repr == prev_repr {
+                break;
+            }
+            prev_repr = new_repr;
+            self._flow_loop_pending[cache_key] = new_result;
+        }
+    } finally {
+        self._flow_loop_pending.pop(cache_key, None);
+        # Drop this header's staged body-node entries (incomplete partials);
+        # only the converged header value below is durable.
+        for staged_key in list(self._flow_loop_staging.keys()) {
+            if staged_key not in outer_staged {
+                self._flow_loop_staging.pop(staged_key, None);
+            }
+        }
+        self._flow_loop_depth -= 1;
+    }
+    # The converged header type is final regardless of nesting depth -- commit it
+    # durably so later reads through this loop join reuse it.
+    self._flow_node_type_cache[cache_key] = result;
+    return result;
+}
+
+"""Pre-loop narrowed type at a loop header: merge only the pre-loop
+predecessors (body back-edges skipped). Used for reads in the loop's
+iterable/condition, which run before any iteration."""
+impl TypeEvaluator._loop_prebody_type(
+    target: NarrowingTarget, flow_node: uni.UniCFGNode, visited: set
+) -> TypeBase | None {
+    return self._merge_flow_preds(target, flow_node, visited, skip_loop_backedges=True);
+}
+
+"""True when `cache_key` has a usable entry in the staged (loop-iteration) or
+durable flow cache."""
+impl TypeEvaluator._flow_cache_has(cache_key: tuple) -> bool {
+    if self._flow_loop_depth > 0 and cache_key in self._flow_loop_staging {
+        return True;
+    }
+    return cache_key in self._flow_node_type_cache;
+}
+
+"""Read the staged/durable flow cache. Staged writes (made during a loop-header
+fixed point) shadow the durable cache. Call only when `_flow_cache_has` is True."""
+impl TypeEvaluator._flow_cache_get(cache_key: tuple) -> TypeBase | None {
+    if self._flow_loop_depth > 0 and cache_key in self._flow_loop_staging {
+        return self._flow_loop_staging[cache_key];
+    }
+    return self._flow_node_type_cache.get(cache_key);
+}
+
+"""Write the flow cache. While inside a loop-header fixed point, writes are
+staged (never durable): the intermediate types computed for body nodes during
+iteration reflect incomplete partials, so they must NOT poison the durable
+cache. Only the loop header's own converged value is committed durably (by
+`_get_loop_header_type` once depth returns to 0); body nodes are recomputed
+fresh on later real queries."""
+impl TypeEvaluator._flow_cache_put(cache_key: tuple, value: TypeBase | None) -> None {
+    if self._flow_loop_depth > 0 {
+        self._flow_loop_staging[cache_key] = value;
+        return;
+    }
+    self._flow_node_type_cache[cache_key] = value;
 }
 
 """Classify a CFG edge from an IfStmt predecessor to a successor as true/false."""

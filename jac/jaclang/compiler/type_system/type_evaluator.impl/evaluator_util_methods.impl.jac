@@ -1051,6 +1051,14 @@ impl TypeEvaluator._collect_typevars_from_base(
 impl TypeEvaluator.emit_diag(
     diag: DiagnosticInfo, nd: uni.UniNode, **kwargs: object
 ) -> None {
+    # Suppress diagnostics raised while a loop-header narrowing fixed point is
+    # in progress: it re-evaluates body expressions against incomplete partial
+    # types (e.g. `cur.prev` when `cur` is still the un-narrowed seed), which
+    # would emit spurious errors. The main checker walk re-checks those
+    # expressions against the converged types and emits any real diagnostics.
+    if self._flow_loop_depth > 0 {
+        return;
+    }
     if self._pass is not None {
         self._pass.emit(diag, node_override=nd, **kwargs);
     }

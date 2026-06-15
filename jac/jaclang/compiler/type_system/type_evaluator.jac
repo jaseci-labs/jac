@@ -261,6 +261,16 @@ obj TypeEvaluator {
         _flow_node_type_cache: dict[tuple, types.TypeBase | None] = {},
         _flow_pending_symbols: set[int] by postinit,
         _flow_pending_keys: set[str] by postinit,
+        # Loop-header fixed-point narrowing (Pyright-style incomplete types).
+        # `_flow_loop_pending` maps an in-progress loop header's cache_key to the
+        # partial union computed so far; a back-edge re-entry returns that partial
+        # instead of recursing. `_flow_loop_depth` counts nested in-progress
+        # headers; while > 0, cache writes are staged in `_flow_loop_staging` and
+        # flushed to `_flow_node_type_cache` only once the outermost header
+        # converges, so incomplete partials never leak into the durable cache.
+        _flow_loop_pending: dict[tuple, types.TypeBase | None] = {},
+        _flow_loop_staging: dict[tuple, types.TypeBase | None] = {},
+        _flow_loop_depth: int = 0,
         _module_type_cache: dict[str, types.ModuleType] = {},
         # Cache for `_is_strict_site` keyed by `id(module)`. Maps to True
         # when the module is Jac source (Layer 2 strict-Any applies),
@@ -714,9 +724,33 @@ obj TypeEvaluator {
     ) -> TypeBase | None;
 
     def _get_type_from_flow_node(
+        target: NarrowingTarget,
+        flow_node: uni.UniCFGNode,
+        visited: set,
+        prebody_header: uni.UniCFGNode | None = None
+    ) -> TypeBase | None;
+
+    def _get_loop_header_type(
+        target: NarrowingTarget,
+        flow_node: uni.UniCFGNode,
+        cache_key: tuple,
+        visited: set
+    ) -> TypeBase | None;
+
+    def _loop_prebody_type(
         target: NarrowingTarget, flow_node: uni.UniCFGNode, visited: set
     ) -> TypeBase | None;
 
+    def _merge_flow_preds(
+        target: NarrowingTarget,
+        flow_node: uni.UniCFGNode,
+        visited: set,
+        skip_loop_backedges: bool = False
+    ) -> TypeBase | None;
+
+    def _flow_cache_has(cache_key: tuple) -> bool;
+    def _flow_cache_get(cache_key: tuple) -> TypeBase | None;
+    def _flow_cache_put(cache_key: tuple, value: TypeBase | None) -> None;
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;
     # --- Shared narrowing utilities ---
     def _find_predicate_for(
