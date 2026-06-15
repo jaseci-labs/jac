@@ -300,6 +300,7 @@ test "firestore kvstore operations" {
     assert db.exists('session:1', 'sessions') is True;
     assert db.delete('session:1', 'sessions') == 1;
     assert db.get('session:1', 'sessions') is None;
+    assert db.delete('session:1', 'sessions') == 0;
 
     alice = db.insert_one('users', {'name': 'Alice', 'role': 'admin'});
     bob = db.insert_one('users', {'name': 'Bob', 'role': 'user', 'age': 25});
@@ -349,6 +350,7 @@ test "firestore kvstore operations" {
     assert db.find_by_id('profiles', profile.inserted_id)['status'] == 'active';
     assert db.delete_by_id('profiles', profile.inserted_id).deleted_count == 1;
     assert db.find_by_id('profiles', profile.inserted_id) is None;
+    assert db.delete_by_id('profiles', profile.inserted_id).deleted_count == 0;
 }
 
 

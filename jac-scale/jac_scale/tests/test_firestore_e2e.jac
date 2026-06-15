@@ -79,9 +79,8 @@ test "firestore e2e: set, get, exists, delete lifecycle" {
     assert db.get('user:1', col) is None;
     assert db.exists('user:1', col) is False;
 
-    # Delete non-existent — Firestore delete() is a no-op on missing docs,
-    # so we return 1 optimistically (saves a billed read).
-    assert db.delete('user:1', col) == 1;
+    # Delete non-existent returns 0, matching MongoDb semantics.
+    assert db.delete('user:1', col) == 0;
 }
 
 
@@ -110,6 +109,7 @@ test "firestore e2e: insert_one, find_by_id, update_by_id, delete_by_id" {
     deleted = db.delete_by_id(col, 'doc1');
     assert deleted.deleted_count == 1;
     assert db.find_by_id(col, 'doc1') is None;
+    assert db.delete_by_id(col, 'doc1').deleted_count == 0;
 }
 
 

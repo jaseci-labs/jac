@@ -263,6 +263,15 @@ def _firestore_seed_document(filter: dict, update_data: dict) -> dict {
     return seed;
 }
 
+"""Delete a Firestore document when present; return 1 if deleted, else 0."""
+def _firestore_delete_doc_ref(doc_ref: any) -> int {
+    if not doc_ref.get().exists {
+        return 0;
+    }
+    doc_ref.delete();
+    return 1;
+}
+
 
 # ===== FIRESTORE_DB IMPLEMENTATIONS =====
 impl FirestoreDb._get_firestore_collection(col_name: str) -> any {
@@ -283,13 +292,8 @@ impl FirestoreDb.set(key: str, value: dict, col_name: str = 'default') -> str {
 
 impl FirestoreDb.delete(key: str, col_name: str = 'default') -> int {
     _validate_not_read_only(col_name);
-    # Firestore delete() is a no-op when the document doesn't exist (no error
-    # thrown), so we skip the pre-read and return 1 optimistically.  This
-    # saves one billed read per call.  Callers that need an exact count
-    # should call exists() first.
     doc_ref = self._get_firestore_collection(col_name).document(key);
-    doc_ref.delete();
-    return 1;
+    return _firestore_delete_doc_ref(doc_ref);
 }
 
 impl FirestoreDb.exists(key: str, col_name: str = 'default') -> bool {
@@ -484,11 +488,6 @@ impl FirestoreDb.update_by_id(
 
 impl FirestoreDb.delete_by_id(col_name: str, id: str) -> DeleteResult {
     _validate_not_read_only(col_name);
-    # Firestore delete() is a no-op when the document doesn't exist (no error
-    # thrown), so we skip the pre-read and return 1 optimistically.  This
-    # saves one billed read per call.  Callers that need an exact count
-    # should call find_by_id() first.
     doc_ref = self._get_firestore_collection(col_name).document(id);
-    doc_ref.delete();
-    return DeleteResult(deleted_count=1);
+    return DeleteResult(deleted_count=_firestore_delete_doc_ref(doc_ref));
 }

@@ -210,9 +210,7 @@ obj Db {
 """
     def set(key: str, value: dict, col_name: str = 'default') -> str abs;
 
-    """Delete a document/value by key. Returns count deleted.
-    Note: For Firestore, returns 1 optimistically (no pre-read) to avoid an
-    extra billed read. The delete is a no-op if the document doesn't exist."""
+    """Delete a document/value by key. Returns the number of documents deleted."""
     def delete(key: str, col_name: str = 'default') -> int abs;
 
     """Check if a key exists."""
@@ -289,11 +287,7 @@ obj Db {
         col_name: str, id: str, update_data: dict, upsert_mode: bool = False
     ) -> PyMongoUpdateResult | UpdateResult abs;
 
-    """Delete a document by ID.
-
-    Note: For Firestore, returns deleted_count=1 optimistically (no pre-read)
-    to avoid an extra billed read. The delete is a no-op if the document does
-    not exist. Callers that need an exact count should call find_by_id() first."""
+    """Delete a document by ID. Returns the number of documents deleted."""
     def delete_by_id(col_name: str, id: str) -> PyMongoDeleteResult | DeleteResult abs;
     # ===== REDIS-ONLY METHODS =====
     def set_with_ttl(
