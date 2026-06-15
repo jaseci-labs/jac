@@ -38,6 +38,9 @@ obj ProjectConfig {
         requires_python: str = "",
         jac_version: str = "",
         entry_point: str = "main.jac",
+        # Project kind drives `jac run` dispatch (execute vs serve vs build).
+        # Empty = inferred from the entry-point codespace. See jaclang.project.kinds.
+        kind: str = "",
         urls: dict[str, str] = {},
         include: PackageIncludeConfig = PackageIncludeConfig();
 }

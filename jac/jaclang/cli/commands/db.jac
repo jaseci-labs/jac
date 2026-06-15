@@ -25,7 +25,7 @@ glob registry = get_registry();
             "action",
             kind=ArgKind.POSITIONAL,
             default="inspect",
-            help="Action: inspect, quarantine, alias, recover, recover-all, schema"
+            help="Action: inspect, fsck, quarantine, alias, recover, recover-all, schema"
         ),
         Arg.create(
             "sub",
@@ -65,6 +65,8 @@ glob registry = get_registry();
     examples=[
         ("jac db inspect", "Summarize the DB for the .jac in cwd"),
         ("jac db inspect --app path/to/app.jac", "Summarize a specific app's DB"),
+        ("jac db fsck", "Scan for dangling refs / orphans (read-only)"),
+        ("jac db fsck repair", "Heal dangling refs and collect orphans"),
         ("jac db quarantine list", "List quarantined anchors"),
         ("jac db quarantine show <row-id>", "Show one quarantined row in full"),
         ("jac db alias list", "List DB-resident aliases"),

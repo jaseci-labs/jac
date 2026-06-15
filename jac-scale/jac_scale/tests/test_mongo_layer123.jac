@@ -660,7 +660,7 @@ test "_put_node_atomic persists node despite default empty access.roots.anchors 
 
     fake_edge_id = str(uuid4());
 
-    backend._put_node_atomic(anchor, [fake_edge_id], []);
+    backend._put_node_atomic(anchor, [fake_edge_id], [], set());
 
     anchors_col = client["jac_test_l123"]["_anchors"];
 
@@ -715,7 +715,7 @@ test "_put_node_atomic written document round-trips correctly after fix (issue #
     backend._write_to_db(anchor);
 
     fake_edge_id = str(uuid4());
-    backend._put_node_atomic(anchor, [fake_edge_id], []);
+    backend._put_node_atomic(anchor, [fake_edge_id], [], set());
 
     backend2 = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
     reloaded = backend2.get(anchor.id);
@@ -904,8 +904,14 @@ test "sync writes endpoint nodes before the edges that reference them" {
     source.edges = [eanch];
     target.edges = [eanch];
 
-    # Adversarial insertion order: eanch sits before its target node.
-    backend._mem_ref = {source.id: source, eanch.id: eanch, target.id: target};
+    # Adversarial recording order: the eanch is recorded before its target
+    # node, and the source's edge-list repair before both. staged() must
+    # reorder regardless of recording order.
+    import from jaclang.runtimelib.changeset { ChangeSet }
+    cs = ChangeSet();
+    cs.record_edge_delta(source, added=[eanch.id], removed=[]);
+    cs.record_create(eanch);
+    cs.record_create(target);
 
     # Record the order in which documents are physically written.
     written: list = [];
@@ -915,14 +921,14 @@ test "sync writes endpoint nodes before the edges that reference them" {
         written.append(anchor);
         orig_write(anchor);
     }
-    def _rec_atomic(anchor: NodeAnchor, added: list, removed: list) {
+    def _rec_atomic(anchor: NodeAnchor, added: list, removed: list, fields: set) {
         written.append(anchor);
-        orig_atomic(anchor, added, removed);
+        orig_atomic(anchor, added, removed, fields);
     }
     backend._write_to_db = _rec_write;
     backend._put_node_atomic = _rec_atomic;
 
-    backend.sync();
+    backend.apply(cs);
 
     # Core invariant: replaying the writes in order, every eanch's endpoints are
     # already live when the eanch is written. `source` seeds the set because it
@@ -954,6 +960,56 @@ test "sync writes endpoint nodes before the edges that reference them" {
     assert anchors_col.find_one({'_id': str(eanch.id)}) is not None;
     assert anchors_col.find_one({'_id': str(target.id)}) is not None;
     assert anchors_col.find_one({'_id': str(source.id)}) is not None;
+
+    backend.close();
+}
+
+
+test "apply writes exactly the intent's fields, never re-derived dirtiness" {
+    _reset_mongo();
+    (client, uri) = _get_mongo();
+    backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+
+    person = cast(NodeAnchor, _MongoLayer123Person(name="orig", age=30).__jac__);
+    person.persistent = True;
+    backend._write_to_db(person);  # persists + snapshots field hashes
+    person.__dict__['_initial_edge_ids'] = frozenset();
+
+    # The walker mutated BOTH fields, but the collect pass recorded only
+    # 'age' on the intent (e.g. field write access was granted selectively).
+    # Backends execute intents — they must not re-run dirty detection and
+    # persist fields the runtime's access checks never authorized.
+    person.archetype.name = "sneaky";
+    person.archetype.age = 31;
+
+    edge_id = uuid4();
+    stub = EdgeAnchor.__new__(EdgeAnchor);
+    setattr(stub, 'id', edge_id);
+    setattr(stub, 'persistent', True);
+    person.edges.append(stub);
+
+    import from jaclang.runtimelib.changeset { ChangeSet }
+    cs = ChangeSet();
+    cs.record_edge_delta(person, added=[edge_id], removed=[]);
+    cs.record_update(person, {'age'});  # merges into the EDGE_LIST_DELTA intent
+
+    apply_report = backend.apply(cs);
+    assert apply_report.ok() , (
+        f"apply must succeed: {apply_report.failed} {apply_report.skipped}"
+    );
+
+    doc = client["jac_test_l123"]["_anchors"].find_one({'_id': str(person.id)});
+    assert doc is not None;
+    arch_doc = doc['data']['archetype'];
+    assert arch_doc.get('age') == 31 , (
+        f"intent field 'age' must be persisted; got {arch_doc.get('age')}"
+    );
+    assert arch_doc.get('name') == "orig" , (
+        "apply persisted a field the collect pass did not put on the intent: "
+        "the backend re-derived dirtiness instead of executing intent.fields "
+        f"(got name={arch_doc.get('name')!r})"
+    );
+    assert str(edge_id) in doc['data']['edges'] , "edge delta must still land";
 
     backend.close();
 }

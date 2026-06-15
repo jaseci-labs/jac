@@ -11,11 +11,14 @@ an extern symbol the native linker resolves out of the shared library at load ti
 `$ORIGIN`/`@loader_path` runpath the binary finds a sibling library regardless of
 the launch directory. The linker is pure Python, so no cc/ld is needed.
 
-Only scalar / small-struct entry points are bound. The 3D pipeline uses raylib's
-scalar rlgl immediate-mode API (rlVertex3f / rlColor4ub / rlTranslatef / ...)
-rather than the higher-level DrawCube(Vector3) / BeginMode3D(Camera3D) API, which
-passes multi-field float structs by value - something the native backend does not
-yet lower to the platform C ABI.
+The 3D pipeline deliberately uses raylib's scalar rlgl immediate-mode API
+(rlVertex3f / rlColor4ub / rlTranslatef / ...) rather than the higher-level
+DrawCube(Vector3) / BeginMode3D(Camera3D) by-value-struct API. The native backend
+*does* lower struct-by-value calls to the platform C ABI (declare the C struct as
+an obj in the import block), so the by-value entry points would work; the scalar
+rlgl surface is chosen here so the shooter.zig twin stays line-for-line comparable
+and the WebGL raylib_shim behind web/ - which emulates the same scalar rlgl API -
+can run this one source unchanged in the browser.
 
 Controls: mouse / arrows aim (click or Tab to capture the cursor for mouse-look),
 WASD move, Space fire, Tab release / re-capture cursor, Esc quit.

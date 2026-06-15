@@ -103,6 +103,7 @@ nav:
       - Import Patterns: "internals/jac_import_patterns.md"
       - UniIR Nodes: "internals/uniir_node.md"
       - Compiler Architecture: "internals/compiler_architecture.md"
+      - Cross-Codespace Interop: "internals/interop.md"
 
   - Ask Jac GPT ✨: https://jac-gpt.jaseci.org
 

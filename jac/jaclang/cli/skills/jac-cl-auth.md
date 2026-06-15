@@ -1,6 +1,6 @@
 ---
 name: jac-cl-auth
-description: Client-side authentication - signing up, logging in, logging out, and protecting pages behind login. Load when adding any auth UI or guarding pages from unauthenticated users. Pair with `jac-sv-auth` (server side of the auth loop), `jac-cl-routing` (post-login navigation).
+description: Client-side authentication - signing up, logging in, logging out, AuthGuard for protected routes, and SSO login. Load when adding any auth UI or guarding pages from unauthenticated users. Pair with `jac-sv-auth` (server side of the auth loop), `jac-cl-routing` (post-login navigation).
 ---
 
 Client auth uses four helpers from `@jac/runtime`. **Return types differ - get them wrong and the file fails `jac check` with E1001:**
@@ -103,9 +103,38 @@ def:pub Dashboard() -> JsxElement {
 }
 ```
 
+## Protecting routes with `AuthGuard` (preferred over inline guards)
+
+`AuthGuard` from `@jac/runtime` wraps children and redirects unauthenticated users - no per-page guard code, no rules-of-hooks ordering trap. With file-based routing, one layout protects a whole route group:
+
+```jac
+# pages/(auth)/layout.jac - every page in (auth)/ now requires login
+cl import from "@jac/runtime" { AuthGuard, Outlet }
+
+cl {
+    def:pub layout() -> JsxElement {
+        return <AuthGuard redirect="/login"><Outlet /></AuthGuard>;
+    }
+}
+```
+
+In manual routing, wrap the protected subtree the same way: `<AuthGuard redirect="/login"><Dashboard /></AuthGuard>`. Reserve the inline `jacIsLoggedIn()` guard for one-off cases.
+
+## SSO login
+
+Server side: configure a provider in `jac.toml` (handled by jac-scale - see `jac-sv-auth`):
+
+```toml
+[plugins.scale.sso.google]
+client_id = "..."
+client_secret = "..."
+```
+
+The server then exposes `/sso/{platform}/login`, `/sso/{platform}/register`, and the OAuth callback. Client side, `await jacSsoLogin("google")` (async, returns `bool`) hands off to the provider and resolves once the token lands; `jacSetToken(token)` stores a token directly (used by SSO callback pages).
+
 ## Auth-relevant `@jac/runtime` exports
 
-`jacLogin`, `jacSignup`, `jacLogout`, `jacIsLoggedIn`, plus `Navigate` / `useNavigate` for post-auth redirects. For the full client export list and the "compile-passes-build-fails" rule, see `jac-cl-components`.
+`jacLogin`, `jacSignup`, `jacLogout`, `jacIsLoggedIn`, `jacSsoLogin`, `jacSetToken`, `AuthGuard`, plus `Navigate` / `useNavigate` for post-auth redirects. For the full client export list, see `jac-cl-components`.
 
 ## Pitfalls
 
