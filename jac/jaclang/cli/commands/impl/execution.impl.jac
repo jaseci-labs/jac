@@ -94,6 +94,16 @@ def _print_plan(plan: object) {
     }
 }
 
+"""True if an optional plugin package (e.g. 'jac-client') is importable."""
+def _plugin_available(pkg: str) -> bool {
+    import importlib.util;
+    try {
+        return importlib.util.find_spec(pkg.replace("-", "_")) is not None;
+    } except (ImportError, ValueError) {
+        return False;
+    }
+}
+
 """Execute a resolved project run plan by delegating to the primitive command."""
 def _execute_plan(
     plan: object,
@@ -103,6 +113,15 @@ def _execute_plan(
     diagnostics: str,
     args: list
 ) -> int {
+    # Kinds that depend on a plugin fail cleanly up front when it is missing,
+    # rather than erroring deep inside the delegated command.
+    if plan.requires_plugin and not _plugin_available(plan.requires_plugin) {
+        console.error(
+            f"Project kind '{plan.kind}' requires the {plan.requires_plugin} plugin, "
+            f"which is not installed. Install it, then: {plan.command_line()}"
+        );
+        return 1;
+    }
     if plan.action == "execute" {
         # native-app (.na.jac) and cli (.jac) both flow through the normal
         # file-run path; the existing logic picks native JIT vs interpreted.
@@ -117,14 +136,17 @@ def _execute_plan(
     }
     if plan.action == "serve" {
         if "client" in plan.flags {
-            # desktop/mobile webview kinds: only the plugin's start/build
-            # extension can honor --client. Don't silently serve a bare server.
+            # desktop kind: the plugin is installed (checked above), but core
+            # start() has no --client parameter to forward -- the plugin only
+            # adds that flag at the CLI layer. Direct the user to the command.
             console.error(
-                f"Project kind '{plan.kind}' runs via the {plan.requires_plugin} "
-                f"plugin. Install it, then: {plan.command_line()}"
+                f"Project kind '{plan.kind}' is run via the {plan.requires_plugin} "
+                f"plugin command: {plan.command_line()}"
             );
             return 1;
         }
+        # api-service / microservices / fullstack / wasm are valid core `start`
+        # invocations; the client plugin (when present) hooks in during start.
         return start(
             filename=plan.entry_path,
             no_client=plan.flags.get("no_client", False),
@@ -156,7 +178,7 @@ def _execute_plan(
         # build verbs provided only by a plugin (e.g. mobile via jac-client).
         console.error(
             f"Project kind '{plan.kind}' builds via the {plan.requires_plugin} "
-            f"plugin. Install it, then: {plan.command_line()}"
+            f"plugin command: {plan.command_line()}"
         );
         return 1;
     }

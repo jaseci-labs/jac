@@ -87,13 +87,25 @@ def _entry_stem(path: str) -> str {
 
 """True when the project opts into the client (cl) codespace via plugin/deps."""
 def _has_client(config: JacConfig) -> bool {
-    if "jac-client" in config.plugins_config.enabled {
-        return True;
-    }
+    # Strongest signal: jac-client is a project dependency (pip package name).
     if "jac-client" in config.dependencies {
         return True;
     }
-    return "client" in config.plugins;
+    # The client plugin is configured: `[plugins.client]`. The plugins dict is
+    # keyed by the short plugin name (the codebase reads it as
+    # `get_plugin_config('client')`), not the package name `jac-client`.
+    if "client" in config.plugins {
+        return True;
+    }
+    # Explicitly enabled. Entries are plugin identifiers like `jac-client:cli`
+    # or `jac-client:*` (package:plugin), so match by package prefix rather
+    # than the bare package name.
+    for ident in config.plugins_config.enabled {
+        if ident == "jac-client" or ident.startswith("jac-client:") {
+            return True;
+        }
+    }
+    return False;
 }
 
 """Resolve the project's entry-point to an existing absolute file path.
@@ -110,6 +122,10 @@ def resolve_entry(config: JacConfig, project_root: str) -> str {
         return os.path.abspath(direct);
     }
     stem = _entry_stem(ep);
+    # Search the entry-point's own directory for a sibling codespace file. Note
+    # os.path.join drops `project_root` when `os.path.dirname(ep)` is absolute --
+    # which is the intended behavior: an absolute entry-point is searched at its
+    # own location, while a relative one stays anchored under the project root.
     base = os.path.join(project_root, os.path.dirname(ep), stem);
     for suf in [".jac", ".na.jac", ".sv.jac", ".cl.jac", ".py"] {
         cand = base + suf;

@@ -183,6 +183,28 @@ test "infer cli from plain .jac entry" {
     assert p.kind == "cli";
 }
 
+test "infer fullstack from plain .jac when jac-client is a dependency" {
+    p = _plan(
+        "entry-point = \"main.jac\"\n\n[dependencies]\njac-client = \"*\"\n", "main.jac"
+    );
+    assert p.kind == "fullstack";
+}
+
+test "infer fullstack from plain .jac when [plugins.client] is configured" {
+    p = _plan(
+        "entry-point = \"main.jac\"\n\n[plugins.client]\npaths = {}\n", "main.jac"
+    );
+    assert p.kind == "fullstack";
+}
+
+test "infer fullstack from plain .jac when jac-client is enabled (package:plugin id)" {
+    p = _plan(
+        "entry-point = \"main.jac\"\n\n[plugins]\nenabled = [\"jac-client:cli\"]\n",
+        "main.jac"
+    );
+    assert p.kind == "fullstack";
+}
+
 # ---------------------------------------------------------------------------
 # Entry-point resolution
 # ---------------------------------------------------------------------------
