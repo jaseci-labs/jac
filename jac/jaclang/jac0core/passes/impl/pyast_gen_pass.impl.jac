@@ -3663,18 +3663,14 @@ impl PyastGenPass.exit_filter_compr(nd: uni.FilterCompr) -> None {
         if op_str is not None {
             comparator = cmp_ast.comparators[0];
             if isinstance(comparator, ast3.Constant) {
-                spec_val = self.sync(
-                    ast3.Constant(value=comparator.value), jac_node=x
-                );
+                spec_val = self.sync(ast3.Constant(value=comparator.value), jac_node=x);
             } else {
                 pname = f"_jfs{len(hoisted)}";
                 hoisted.append(comparator);
                 lambda_comparators = [
                     self.sync(ast3.Name(id=pname, ctx=ast3.Load()), jac_node=x)
                 ];
-                spec_val = self.sync(
-                    ast3.Name(id=pname, ctx=ast3.Load()), jac_node=x
-                );
+                spec_val = self.sync(ast3.Name(id=pname, ctx=ast3.Load()), jac_node=x);
             }
         }
         comprs.append(
@@ -3706,9 +3702,7 @@ impl PyastGenPass.exit_filter_compr(nd: uni.FilterCompr) -> None {
                                 self.sync(
                                     ast3.Constant(value=cmp_ast.left.id), jac_node=x
                                 ),
-                                self.sync(
-                                    ast3.Constant(value=op_str), jac_node=x
-                                ),
+                                self.sync(ast3.Constant(value=op_str), jac_node=x),
                                 spec_val
                             ]
                         ),

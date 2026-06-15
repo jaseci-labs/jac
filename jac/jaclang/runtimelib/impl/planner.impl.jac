@@ -347,7 +347,7 @@ def _execute_hybrid_fields(
     if not ({'id_in', 'field_pushdown'} <= mem.capabilities()) {
         return None;
     }
-    l1 = getattr(mem, '__mem__', None);
+    l1 = mem?.__mem__;
     if not isinstance(l1, dict) {
         return None;
     }
@@ -372,10 +372,7 @@ def _execute_hybrid_fields(
         for anchor in mem.execute_plan(cold_plan) {
             if (
                 plan.post_filter is not None
-                and (
-                    anchor.archetype is None
-                    or not plan.post_filter(anchor.archetype)
-                )
+                and (anchor.archetype is None or not plan.post_filter(anchor.archetype))
             ) {
                 continue;
             }
@@ -523,9 +520,7 @@ def _build_plan_from_path(
             last_post_filter = dest.node_filter;
             # Pushable conjuncts from the codegen-tagged spec; the lambda
             # stays on as post_filter so pushdown only narrows.
-            field_preds = _predicates_to_field_filters(
-                getattr(dest.nd, '__jac_predicates__', None)
-            );
+            field_preds = _predicates_to_field_filters(dest.nd?.__jac_predicates__);
         }
     }
     if not has_filter and last_post_filter is None {

@@ -71,8 +71,7 @@ test "filter_spec tags the callable and preserves behavior" {
 
 test "codegen attaches predicate spec to filter comprehensions" {
     mod = _compile_inline(
-        "node T { has val: int = 0; }\n"
-        "with entry { x = [root-->][?val > 5]; }\n"
+        "node T { has val: int = 0; }\n" "with entry { x = [root-->][?val > 5]; }\n"
     );
     py = mod.gen.py;
     assert "filter_spec" in py , f"expected filter_spec wrapper in:\n{py}";
@@ -94,7 +93,7 @@ test "codegen hoists computed comparators into shared params" {
     assert "'val', '>', _jfs0" in py , f"expected spec to share the param in:\n{py}";
 }
 
-glob _limit_calls: dict = {"n" : 0};
+glob _limit_calls: dict = {"n": 0};
 
 def _counted_limit -> int {
     _limit_calls["n"] += 1;
@@ -113,7 +112,7 @@ test "computed comparator resolves once at query time" {
             r +>:PredEdgeC:+> PredTypeC(val=i + 10);
         }
         _limit_calls["n"] = 0;
-        result = [r->:PredEdgeC:->[?:PredTypeC, val > _counted_limit()]];
+        result = [r->:PredEdgeC:->[?:PredTypeC, val>_counted_limit()]];
         vals = sorted([n.val for n in result]);
         assert vals == [16, 17, 18, 19] , f"got {vals}";
         assert _limit_calls["n"] == 1 , (
@@ -127,28 +126,26 @@ test "computed comparator resolves once at query time" {
 
 test "predicate spec converts to backend field filters" {
     # Plain operator mapping.
-    assert _predicates_to_field_filters((("val", ">", 5), )) == {
-        "val" : {"$gt" : 5}
-    };
+    assert _predicates_to_field_filters((("val", ">", 5), )) == {"val": {"$gt": 5}};
     assert _predicates_to_field_filters((("name", "==", "a"), )) == {
-        "name" : {"$eq" : "a"}
+        "name": {"$eq": "a"}
     };
     # Two ops on the same field merge into one operator dict.
-    assert _predicates_to_field_filters(
-        (("val", ">=", 1), ("val", "<", 9))
-    ) == {"val" : {"$gte" : 1, "$lt" : 9}};
+    assert _predicates_to_field_filters((("val", ">=", 1), ("val", "<", 9))) == {
+        "val": {"$gte": 1, "$lt": 9}
+    };
     # Duplicate op on the same field keeps the first; lambda enforces the rest.
-    assert _predicates_to_field_filters(
-        (("val", ">", 1), ("val", ">", 5))
-    ) == {"val" : {"$gt" : 1}};
+    assert _predicates_to_field_filters((("val", ">", 1), ("val", ">", 5))) == {
+        "val": {"$gt": 1}
+    };
     # Membership ops need a literal collection of plain scalars.
     assert _predicates_to_field_filters((("tag", "in", ["a", "b"]), )) == {
-        "tag" : {"$in" : ["a", "b"]}
+        "tag": {"$in": ["a", "b"]}
     };
     assert _predicates_to_field_filters((("tag", "in", [object()]), )) == {};
     # `is` / `is not` push only against None.
     assert _predicates_to_field_filters((("ref", "is", None), )) == {
-        "ref" : {"$eq" : None}
+        "ref": {"$eq": None}
     };
     assert _predicates_to_field_filters((("ref", "is", "x"), )) == {};
     # Range ops reject None and bool (backend ordering diverges from Python).
@@ -177,7 +174,7 @@ test "planner lifts spec onto the query plan" {
         path = ObjectSpatialPath(r, None).edge_out(nd=filt);
         plan = _build_plan_from_path(ctx.mem, path, None);
         assert plan is not None , "predicate filter must still produce a plan";
-        assert plan.field_predicates == {"val" : {"$gt" : 5}} , (
+        assert plan.field_predicates == {"val": {"$gt": 5}} , (
             f"expected converted predicates, got {plan.field_predicates}"
         );
         assert plan.post_filter is not None , (
@@ -220,9 +217,9 @@ obj _StubL3 {
         return self.store.get(id);
     }
 
-    def sync -> None {}
-    def commit(anchor: any = None) -> None {}
-    def close -> None {}
+    def sync { }
+    def commit(anchor: any = None) { }
+    def close { }
 }
 
 test "hybrid splits L1-resident and cold candidates" {
@@ -271,7 +268,7 @@ test "hybrid splits L1-resident and cold candidates" {
 
         assert len(stub.plans) == 1 , "cold partition must hit the backend once";
         cold_plan = stub.plans[0];
-        assert cold_plan.field_predicates == {"val" : {"$gt" : 5}};
+        assert cold_plan.field_predicates == {"val": {"$gt": 5}};
         assert cold_plan.id_in == cold_ids , (
             "backend must only be asked about non-resident candidates"
         );
@@ -293,7 +290,7 @@ test "value predicate comprehension filters e2e" {
         for i in range(10) {
             r +>:PredEdge:+> PredTypeA(val=i + 10);
         }
-        result = [r->:PredEdge:->[?:PredTypeA, val > 15]];
+        result = [r->:PredEdge:->[?:PredTypeA, val>15]];
         vals = sorted([n.val for n in result]);
         assert vals == [16, 17, 18, 19] , f"got {vals}";
     } finally {
