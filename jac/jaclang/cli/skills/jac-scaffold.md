@@ -1,6 +1,6 @@
 ---
 name: jac-scaffold
-description: Bootstrapping a new Jac project - `jac create --use <template>` (default, client, fullstack, jac-shadcn), what each lays out, post-scaffold checklist, and choosing standard vs jac-shadcn. Load when starting a new project from scratch. Pair with `jac-project-kinds` (choose the right kind first), `jac-fullstack-patterns` (fullstack wiring), `jac-shadcn-components` (jac-shadcn primitives).
+description: Bootstrapping a new Jac project - `jac create --use <template>`, what each lays out, post-scaffold checklist, and choosing standard vs jac-shadcn. Load when starting a new project from scratch. Pair with `jac-project-kinds` (choose the right kind first), `jac-fullstack-patterns` (fullstack wiring), `jac-shadcn-components` (jac-shadcn primitives).
 ---
 
 Use the Jac CLI's `jac create` to scaffold new projects. It is the single source of truth for project layout and stays current with Jac releases.
