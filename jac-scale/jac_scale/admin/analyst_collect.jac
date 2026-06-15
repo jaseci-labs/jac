@@ -311,7 +311,24 @@ async def collect_trace_exemplars(
     }
     summaries: list = list(payload.get("traces", []) or []);
     summaries.sort(key=lambda t : int(t.get("durationMs", 0) or 0), reverse=True);
-    for t in summaries[:top_traces] {
+    # Drop operator/infra traffic (admin UI, the analyst's OWN /analyze call,
+    # health/metrics probes) - a *performance* report is about the app's
+    # workload, not the tooling observing it. Without this the analyst's own
+    # multi-second LLM call is the slowest trace and it diagnoses itself.
+    app_traces: list = [];
+    for t in summaries {
+        root = str(t.get("rootTraceName", "") or "").lower();
+        skip = False;
+        for p in ["/admin/", "/metrics", "/healthz", "/readyz", "/livez"] {
+            if p in root {
+                skip = True;
+            }
+        }
+        if not skip {
+            app_traces.append(t);
+        }
+    }
+    for t in app_traces[:top_traces] {
         tid = str(t.get("traceID", "") or "");
         if not tid {
             continue;
