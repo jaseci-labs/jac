@@ -156,6 +156,12 @@ impl UserManager.ensure_root_id(username: str) -> (str | None) {
         if username != Con.GUEST.value or self._root_anchor_exists(root_id) {
             return root_id;
         }
+        # Anchor is gone: repair. Old guest graph data is orphaned — log it.
+        import logging;
+        logging.getLogger("jaclang.serve").warning(
+            f"Guest root anchor '{root_id}' not found in the anchor store; "
+            f"creating a replacement root — previous guest graph data is orphaned."
+        );
         new_root_id = self._create_root_id();
         self._conn.execute(
             "UPDATE users SET root_id = ? WHERE username = ?", (new_root_id, username)

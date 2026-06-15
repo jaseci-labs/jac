@@ -154,6 +154,66 @@ test "concurrent first requests all resolve to the same shared root" {
 }
 
 
+test "root.shared self-heals when the cached id no longer resolves (#6498)" {
+    # Regression: get_shared_root caches the resolver's id. When a guest-root
+    # repair replaces a missing anchor mid-process, the cache must not keep
+    # serving the stale (now-orphaned) id and raise "did not resolve to a
+    # Root node" — it must drop it, re-resolve, and heal.
+    import from uuid { UUID }
+    import from jaclang.jac0core.runtime { JacRuntime }
+    import from jaclang.jac0core.constructs { Root }
+    import from jaclang.runtimelib.context { ExecutionContext }
+
+    with TemporaryDirectory() as tmpdir {
+        target = str(Path(tmpdir) / "main.jac");
+        orig_ctx = JacRuntime.exec_ctx;
+        orig_target = JacRuntime.get_full_target_path();
+        ctx = None;
+        try {
+            ctx = ExecutionContext(base_path_dir=tmpdir, full_target_path=target);
+            JacRuntime.exec_ctx = ctx;
+            # Seed a live root and point a repairing resolver at it. The
+            # resolver mimics ensure_root_id: if the current id's anchor is
+            # gone it mints a replacement and remembers the new id.
+            first_root = Root();
+            Jac.save(first_root.__jac__);
+            holder = [first_root.__jac__.id.hex];
+            def repairing_resolver -> str | None {
+                current = holder[0];
+                if current is not None and ctx.mem.get(UUID(current)) is not None {
+                    return current;
+                }
+                replacement = Root();
+                Jac.save(replacement.__jac__);
+                holder[0] = replacement.__jac__.id.hex;
+                return holder[0];
+            }
+            Jac.set_shared_root_resolver(repairing_resolver);
+            # Cold cache: resolves and caches the seeded root.
+            cached_id = Jac.get_shared_root().__jac__.id.hex;
+            assert cached_id == holder[0];
+            # The anchor vanishes (data loss / orphaned guest root) while the
+            # resolver cache still points at it.
+            ctx.mem.delete(UUID(cached_id));
+            assert ctx.mem.get(UUID(cached_id)) is None;
+            # Next access must NOT raise: drop the stale id, re-resolve
+            # (triggering repair), and return the fresh root.
+            healed_id = Jac.get_shared_root().__jac__.id.hex;
+            assert healed_id != cached_id , "stale shared-root id was not refreshed";
+            assert healed_id == holder[0];
+            assert ctx.mem.get(UUID(healed_id)) is not None;
+        } finally {
+            Jac.set_shared_root_resolver(None);
+            if ctx {
+                ctx.close();
+            }
+            JacRuntime.exec_ctx = orig_ctx;
+            JacRuntime.set_full_target_path(orig_target);
+        }
+    }
+}
+
+
 test "an explicitly lowered shared-root level is respected" {
     # Apps may lock the commons down to read-only: a non-NO_ACCESS level set
     # explicitly must NOT be re-floored back to CONNECT.

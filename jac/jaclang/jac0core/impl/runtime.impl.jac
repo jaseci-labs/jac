@@ -2605,24 +2605,45 @@ impl JacRuntime.get_shared_root -> Root {
     if resolver is None {
         return JacRuntimeInterface.get_context().get_root();
     }
-    with _shared_root_lock[0] {
-        root_id = _shared_root_resolver[1];
-        if not isinstance(root_id, str) {
-            root_id = resolver();
-            if not isinstance(root_id, str) {
-                raise RuntimeError(
-                    "Shared root unavailable: the registered shared-root resolver "
-                    "returned no root id."
-                );
+    # Resolve the shared-root id, lazily invoking the resolver on a cold cache.
+    # `force` re-invokes the resolver even on a warm cache; used to self-heal a
+    # cached id that no longer resolves to a Root (e.g. the resolver repaired a
+    # missing guest root after we cached the stale id).
+    def _resolve_shared_root_id(force: bool = False) -> str {
+        with _shared_root_lock[0] {
+            cached = _shared_root_resolver[1];
+            # Only the caller that still sees the stale id re-invokes the
+            # resolver; a sibling thread that already healed wins the race.
+            if force and cached == failed_id {
+                cached = None;
             }
-            _shared_root_resolver[1] = root_id;
+            if not isinstance(cached, str) {
+                cached = resolver();
+                if not isinstance(cached, str) {
+                    raise RuntimeError(
+                        "Shared root unavailable: the registered shared-root "
+                        "resolver returned no root id."
+                    );
+                }
+                _shared_root_resolver[1] = cached;
+            }
+            return cached;
         }
     }
+    failed_id = None;
+    root_id = _resolve_shared_root_id();
     shared = JacRuntimeInterface.get_object(root_id);
     if not isinstance(shared, Root) {
-        raise RuntimeError(
-            f"Shared root unavailable: id {root_id} did not resolve to a Root node."
-        );
+        # The cached id no longer resolves. Drop it, re-resolve once (which
+        # re-runs the resolver and triggers any repair), and retry.
+        failed_id = root_id;
+        root_id = _resolve_shared_root_id(force=True);
+        shared = JacRuntimeInterface.get_object(root_id);
+        if not isinstance(shared, Root) {
+            raise RuntimeError(
+                f"Shared root unavailable: id {root_id} did not resolve to a Root node."
+            );
+        }
     }
     # Default policy: the shared root is a commons - readable and attachable
     # (CONNECT) by every user, since anonymous requests already act as its

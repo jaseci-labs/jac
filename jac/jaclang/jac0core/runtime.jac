@@ -95,8 +95,11 @@ glob plugin_manager = plugin.PluginManager('jac'),
      # falls back to the current context's root — in those single-user
      # contexts the caller IS the shared graph's owner.
      # _shared_root_lock serialises the cache-miss block in get_shared_root so
-     # concurrent first-requests cannot each invoke the resolver and create
-     # duplicate root anchors.
+     # concurrent first-requests within a process cannot each invoke the resolver
+     # and create duplicate root anchors.  This is process-local (threading.Lock)
+     # and does NOT coordinate across pods: two pods can each trigger a repair
+     # independently.  For cross-pod idempotency, see the UUIDv5 deterministic
+     # root follow-up (jaseci-labs/jaseci#6698).
      _shared_root_lock: list = [threading.Lock()],
      _shared_root_resolver: list = [None, None];
 
