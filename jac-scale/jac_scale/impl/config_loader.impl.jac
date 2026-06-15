@@ -522,7 +522,13 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
         # the app-side SDK + Tempo deploy; `endpoint` overrides the OTLP
         # collector URL; `sample_ratio` sets head sampling. Read by the
         # gateway/service setup (install_tracing) and the K8s target.
-        'tracing': dict(ms_config.get('tracing', {}))
+        'tracing': dict(ms_config.get('tracing', {})),
+        # A-07: in-admin Performance Analyst. Opaque pass-through (same shape
+        # as logs/tracing): `enabled` gates the feature, `model` sets the
+        # default reasoning model, `digest_max_tokens` caps the digest before
+        # any model call. The BYO LLM API key is supplied per-request from the
+        # admin UI and is never read or persisted here.
+        'analyst': dict(ms_config.get('analyst', {}))
     };
 }
 
