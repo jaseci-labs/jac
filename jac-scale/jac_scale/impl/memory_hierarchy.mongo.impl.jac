@@ -796,8 +796,7 @@ impl MongoBackend._put_node_atomic(
     }
     _id = str(to_uuid(anchor.id));
     try {
-        # Serialize only the intent's archetype fields. `fields` comes from the
-        # collect pass — the single owner of dirty detection.
+        # Serialize the intent's dirty archetype fields (`fields` = collect pass's dirty set, the sole owner of dirty detection).
         partial_data: dict[str, object] = Serializer.serialize_fields(anchor, fields)
             if fields
             else {};
@@ -810,15 +809,7 @@ impl MongoBackend._put_node_atomic(
             if k not in ('edges', 'archetype')
         };
 
-        # Build a flat $set document. This is an aggregation-pipeline $set, so
-        # every value is evaluated as an expression — which rejects bare empty
-        # dicts (error 40180) and misreads `$`-prefixed keys (e.g. a Serializer
-        # `$ref`/`$type`). One rule keeps it safe: `data.edges` is the only
-        # expression; every serialized data value is wrapped in `$literal` and
-        # stored verbatim. (`type`/`updated_at` are hardcoded literals.)
-        #   data.<k>               — non-arch top-level fields (e.g. access)
-        #   data.archetype.<field> — the intent's dirty archetype fields
-        #   data.edges             — atomic $setUnion/$setDifference expression
+        # Pipeline $set evaluates values as expressions (bare {} → error 40180, $-keys misread); wrap all data in $literal to store verbatim, leaving data.edges the only expression.
         set_doc: dict[str, object] = {
             'type': 'NodeAnchor',
             'updated_at': datetime.now(timezone.utc).isoformat()

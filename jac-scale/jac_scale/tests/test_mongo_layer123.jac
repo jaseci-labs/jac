@@ -681,9 +681,7 @@ test "_put_node_atomic persists node despite default empty access.roots.anchors 
         f"added edge must appear in data.edges; got: {stored_edges}"
     );
 
-    # The default empty access dict must be persisted, not rejected: the
-    # $literal wrap lets a pipeline $set store empty dicts (it would otherwise
-    # raise 40180). A non-None access proves the write went through intact.
+    # $literal lets the pipeline $set store the default empty access dict instead of raising 40180; a non-None access proves the write went through.
     stored_access = doc.get('data', {}).get('access');
     assert stored_access is not None , (
         "access (which carries the default empty roots.anchors dict) must be "
@@ -769,9 +767,7 @@ test "_put_node_atomic stores a dict field with $-prefixed keys verbatim on the 
 }
 
 
-# mongo:6.0 is the production image and the only supported version where a bare
-# empty dict in a pipeline $set is rejected (40180); 6.1+ accepts them. The
-# $literal wrap makes clear-to-{} persist identically on every version. See #6167.
+# mongo:6.0 (the shipped image) is the only supported version that rejects a bare {} in a pipeline $set with 40180; 6.1+ accept it. See #6167.
 glob _MONGO_40180_IMAGE = "mongo:6.0";
 
 
@@ -805,10 +801,7 @@ def _reset_mongo_40180 -> None {
 
 
 test "_put_node_atomic persists a cleared-to-{} dict field on mongo:6.0 via $literal (#6167/#6294)" {
-    # mongo:6.0 rejects a bare {} in a pipeline $set with 40180. The $literal
-    # wrap lets the write through AND stores a real empty object, so a
-    # deliberate clear-to-{} persists here exactly as it does on mongo:latest —
-    # the previous version-gated strip silently swallowed it on this image.
+    # On mongo:6.0 a bare {} in a pipeline $set raises 40180; $literal lets the clear-to-{} write through and store a real empty object.
     _reset_mongo_40180();
     _process_cache.pop('mongo_client', None);
     _process_cache.pop('mongo_available', None);
@@ -824,8 +817,7 @@ test "_put_node_atomic persists a cleared-to-{} dict field on mongo:6.0 via $lit
     inst.settings = {};
     inst.__dict__['__jac_dirty_fields__'] = {'settings'};
     fake_edge_id = str(uuid4());
-    # `fields` is the collect pass's dirty set — the single owner of dirty
-    # detection; pass {'settings'} to authorize persisting the cleared field.
+    # `fields` = collect pass's dirty set; pass {'settings'} to authorize persisting the cleared field.
     backend._put_node_atomic(anchor, [fake_edge_id], [], {'settings'});
 
     col = client["jac_test_l123"]["_anchors"];
