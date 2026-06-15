@@ -758,7 +758,9 @@ test "_put_node_atomic persists a cleared-to-{} dict field on mongo:latest (#629
     inst.settings = {};
     inst.__dict__['__jac_dirty_fields__'] = {'settings'};
     fake_edge_id = str(uuid4());
-    backend._put_node_atomic(anchor, [fake_edge_id], []);
+    # `fields` is the collect pass's dirty set — the single owner of dirty
+    # detection; pass {'settings'} to authorize persisting the cleared field.
+    backend._put_node_atomic(anchor, [fake_edge_id], [], {'settings'});
 
     col = client["jac_test_l123"]["_anchors"];
     doc = col.find_one({'_id': str(anchor.id)});
@@ -864,7 +866,9 @@ test "_put_node_atomic persists a cleared-to-{} dict field on mongo:6.0 via $lit
     inst.settings = {};
     inst.__dict__['__jac_dirty_fields__'] = {'settings'};
     fake_edge_id = str(uuid4());
-    backend._put_node_atomic(anchor, [fake_edge_id], []);
+    # `fields` is the collect pass's dirty set — the single owner of dirty
+    # detection; pass {'settings'} to authorize persisting the cleared field.
+    backend._put_node_atomic(anchor, [fake_edge_id], [], {'settings'});
 
     col = client["jac_test_l123"]["_anchors"];
     doc = col.find_one({'_id': str(anchor.id)});
