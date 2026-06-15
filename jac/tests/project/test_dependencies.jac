@@ -1730,6 +1730,7 @@ test "update always uses upgrade flag" {
 test "jac install <pkg> works outside a project directory" {
     # Core contract: packages path bypasses jac.toml requirement entirely.
     # pip is always present, --no-deps makes it network-free and instant.
+    import subprocess;
     with tempfile.TemporaryDirectory() as tmp {
         result = subprocess.run(
             ["jac", "install", "pip", "--no-deps"],
