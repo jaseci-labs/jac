@@ -1,6 +1,6 @@
 ---
 name: jac-shadcn-blocks
-description: Design system constants and anti-patterns for jac-shadcn block development (spacing scale, type scale, section padding, container widths). Always load this before any jac-shadcn-blocks-* group file. Pairs with jac-shadcn-components for primitives and theming.
+description: Design system constants, anti-patterns, and composition patterns for jac-shadcn. Load when building any jac-shadcn page - provides spacing scale, type scale, and structural JSX skeletons for auth, sidebar app shell, data table, stats, pricing, CTA, empty state, and marketing sections.
 ---
 
 Component shape, named typed params (including `children: any = None`), and JSX comments - see `jac-cl-components`.
@@ -10,7 +10,7 @@ For semantic color tokens, `cn()` usage, and dark mode - see `jac-shadcn-compone
 
 ## Design System Constants
 
-Read before using any block group file. These values must be used consistently.
+Read before building any page. These values must be used consistently.
 
 ### Section padding (physical CSS only - never shorthand `py-` / `px-`)
 
@@ -93,84 +93,242 @@ For semantic color tokens (`text-muted-foreground`, `bg-card`, etc.) and `cn()` 
 
 ---
 
-## Block Group Index
+## Composition Patterns
 
-Load the base file (this file) first, then the group file matching your task.
+Minimal structural skeletons with the non-obvious rules for each. Use these as starting points - fill in real content, data, and handlers.
 
-| Group file | Blocks | When to load |
-|---|---|---|
-| `jac-shadcn-blocks-marketing` | HeroCentered, HeroSplit, FeaturesGrid, FeaturesAlternating, TestimonialGrid, PricingSection, FaqSection, FinalCta | Building a landing page or any marketing section |
-| `jac-shadcn-blocks-app` | SiteHeader, FooterFourColumn, AppShell, StatsGrid, DataTablePage, LoginPage | Building app navigation, a dashboard, or an auth page |
-| `jac-shadcn-blocks-empty` | ProjectsEmpty, SearchEmpty, ErrorEmpty | Page or section needs a feedback state for empty or failed data |
+### Auth card (centered viewport)
+
+```jac
+<div className="flex min-h-svh items-center justify-center pt-12 pb-12 pl-4 pr-4">
+    <Card className="w-full max-w-sm">
+        <CardHeader>
+            <CardTitle className="text-2xl">Sign in</CardTitle>
+            <CardDescription>Enter your email to access your account.</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <form className="flex flex-col gap-6">
+                <Field><FieldLabel htmlFor="email">Email</FieldLabel><Input id="email" type="email" /></Field>
+                <Button type="submit" className="w-full">Sign in</Button>
+            </form>
+        </CardContent>
+        <CardFooter>
+            <p className="w-full text-center text-sm text-muted-foreground">
+                {"Don't have an account?"} <a href="/signup" className="text-foreground underline-offset-4 hover:underline">Sign up</a>
+            </p>
+        </CardFooter>
+    </Card>
+</div>
+```
+
+- `min-h-svh` not `pt-24` - auth is viewport-centered, not a marketing section.
+- `max-w-sm` not `max-w-md` - auth cards are narrow and focused.
+- Submit button always `w-full type="submit"`. SSO buttons always `variant="outline"`.
+- Strings with `'` or `?` must be in braces: `{"Don't have an account?"}`.
+- For the full auth flow (`jacLogin`, `jacSignup`, 3-step registration), see `jac-cl-auth`.
 
 ---
 
-## Block -> Component Mapping
+### App shell with sidebar
 
-`jac add --shadcn` resolves peer dependencies automatically - only list the primary ones.
+```jac
+<SidebarProvider>
+    <Sidebar collapsible="offcanvas">
+        <SidebarHeader>...</SidebarHeader>
+        <SidebarContent>
+            <SidebarGroup>
+                <SidebarGroupLabel>Platform</SidebarGroupLabel>
+                <SidebarMenu>...</SidebarMenu>
+            </SidebarGroup>
+        </SidebarContent>
+        <SidebarFooter>...</SidebarFooter>
+    </Sidebar>
+    <SidebarInset>
+        <header className="flex h-14 items-center gap-2 border-b pl-4 pr-4">
+            <SidebarTrigger />
+            <Separator orientation="vertical" className="mr-2 h-4" />
+            <Breadcrumb><BreadcrumbList>...</BreadcrumbList></Breadcrumb>
+        </header>
+        <main className="flex flex-1 flex-col gap-6 pt-6 pb-6 pl-6 pr-6">{children}</main>
+    </SidebarInset>
+</SidebarProvider>
+```
 
-| Block | Primary jac-shadcn components |
-|---|---|
-| `hero_centered` | badge, button |
-| `hero_split` | badge, button |
-| `navbar_sticky` | button, sheet |
-| `features_grid` | badge |
-| `features_alternating` | badge |
-| `pricing_3tier` | card, badge, button |
-| `testimonial_grid` | card, avatar, badge |
-| `faq_accordion` | accordion, badge |
-| `cta_centered` | card, button |
-| `footer_4col` | button, separator |
-| `sidebar_nav` | sidebar, separator, breadcrumb |
-| `stats_row` | card, badge |
-| `data_table_page` | sidebar, card, table, badge, button, input |
-| `empty_state` | empty, button |
-| `auth_card_centered` | card, input, button, field |
+- `SidebarInset` main uses `pt-6 pb-6 pl-6 pr-6` (dashboard rhythm) - not `pt-24` (marketing).
+- No `max-w-*` on `<main>` inside `SidebarInset` - sidebar already constrains width.
+- `Separator orientation="vertical" className="mr-2 h-4"` is required between `SidebarTrigger` and breadcrumb.
+- `collapsible="offcanvas"` collapses to hidden; `collapsible="icon"` collapses to icon rail.
+- Never pass `className` to any `Sidebar*` sub-component - see Anti-Patterns.
 
 ---
 
-## Typical Component Sets by App Type
+### Data table in card
 
-| App type | Typical blocks | Typical components |
-|---|---|---|
-| SaaS (marketing + app) | navbar, hero, features, pricing, testimonials, faq, cta, footer, sidebar, stats | badge, button, card, sidebar, table, input, avatar, separator, accordion |
-| Dashboard (app-only) | sidebar, stats, data-table, empty-state | sidebar, card, table, badge, button, input, separator, breadcrumb |
-| Landing (marketing only) | navbar, hero, features, testimonials, cta, footer | badge, button, card, avatar, separator |
-| Web app (auth + pages) | navbar, hero, cta, footer, auth-card, sidebar | button, card, input, field, sidebar, badge |
-| Tool (focused utility) | navbar, sidebar, stats, data-table, empty-state | sidebar, table, input, badge, button, card |
-| Blog / content | navbar, hero, features, faq, footer | badge, button, card, separator, avatar |
+```jac
+<Card>
+    <CardHeader>
+        <div className="flex items-center justify-between">
+            <div>
+                <CardTitle>Customers</CardTitle>
+                <CardDescription>Manage your accounts.</CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+                <Input placeholder="Search..." className="w-64" />
+                <Button size="sm">Add</Button>
+            </div>
+        </div>
+    </CardHeader>
+    <CardContent>
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {rows.map(lambda(row: Any) -> Any {
+                    return <TableRow key={row.id}>
+                        <TableCell className="font-medium">{row.name}</TableCell>
+                        <TableCell><Badge variant="outline">{row.status}</Badge></TableCell>
+                        <TableCell className="text-right tabular-nums">{row.amount}</TableCell>
+                    </TableRow>;
+                })}
+            </TableBody>
+        </Table>
+    </CardContent>
+</Card>
+```
+
+- Table always wrapped in `Card` - never a bare `<Table>`.
+- Amount/number columns: `className="text-right tabular-nums"`.
+- Status badge: `variant="secondary"` for active, `variant="outline"` for inactive/default.
 
 ---
 
-## Full Page Composition Examples
+### Stats row (KPI cards)
 
-### Marketing landing page
+```jac
+<div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <Card>
+        <CardHeader>
+            <div className="flex items-center justify-between">
+                <CardDescription>Total Revenue</CardDescription>
+                <HugeiconsIcon icon={DollarCircleIcon} strokeWidth={2} className="size-4 text-muted-foreground" />
+            </div>
+            <CardTitle className="text-3xl font-semibold tabular-nums">$45,231</CardTitle>
+            <Badge variant="outline" className="mt-2 w-fit">
+                <HugeiconsIcon icon={ArrowUpRight01Icon} strokeWidth={2} className="size-3" />
+                +20.1%
+            </Badge>
+        </CardHeader>
+        <CardContent>
+            <div className="text-sm text-muted-foreground">vs last month</div>
+        </CardContent>
+    </Card>
+</div>
+```
 
-```
-SiteHeader          (jac-shadcn-blocks-app: navbar_sticky)
-HeroCentered        (jac-shadcn-blocks-marketing: hero_centered)
-FeaturesGrid        (jac-shadcn-blocks-marketing: features_grid)
-TestimonialGrid     (jac-shadcn-blocks-marketing: testimonial_grid)
-PricingSection      (jac-shadcn-blocks-marketing: pricing_3tier)
-FaqSection          (jac-shadcn-blocks-marketing: faq_accordion)
-FinalCta            (jac-shadcn-blocks-marketing: cta_centered)
-FooterFourColumn    (jac-shadcn-blocks-app: footer_4col)
+- Stat numbers: `text-3xl font-semibold tabular-nums` (prevents layout jitter on live updates).
+- Delta badges: `variant="outline"` with an arrow icon - never `text-green-500` / `text-red-500`.
+
+---
+
+### Pricing grid (3-tier)
+
+```jac
+<div className="mx-auto mt-12 grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-3">
+    <Card className={cn("relative flex flex-col", isPopular and "border-primary shadow-lg ring-1 ring-primary" or "")}>
+        {isPopular and <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">Most Popular</Badge> or None}
+        <CardHeader>
+            <CardTitle>{tier.name}</CardTitle>
+            <CardDescription>{tier.description}</CardDescription>
+        </CardHeader>
+        <CardContent className="flex-1">
+            {#* feature list *#}
+        </CardContent>
+        <CardFooter>
+            <Button className="w-full" variant={isPopular and "default" or "outline"}>{tier.cta}</Button>
+        </CardFooter>
+    </Card>
+</div>
 ```
 
-### SaaS app shell (authenticated)
+- `flex flex-col` + `flex-1` on `CardContent` keeps CTA buttons bottom-aligned across all cards.
+- Popular tier: `border-primary shadow-lg ring-1 ring-primary` - never `lg:scale-105`.
+- CTA always `w-full`.
 
-```
-AppShell (jac-shadcn-blocks-app: sidebar_nav) wrapping:
-  StatsGrid         (jac-shadcn-blocks-app: stats_row)
-  DataTablePage     (jac-shadcn-blocks-app: data_table_page)
-  ProjectsEmpty     (jac-shadcn-blocks-empty: empty_state - when no data)
+---
+
+### CTA banner (primary background)
+
+```jac
+<Card className="overflow-hidden bg-primary text-primary-foreground">
+    <div className="grid gap-8 pt-8 pb-8 pl-8 pr-8 lg:grid-cols-[1fr_auto] lg:items-center">
+        <div>
+            <h2 className="text-balance text-3xl font-bold tracking-tight">Ready to ship?</h2>
+            <p className="mt-4 text-lg opacity-90">No credit card required.</p>
+        </div>
+        <div className="flex gap-3">
+            <Button size="lg" variant="secondary">Get started</Button>
+            <Button size="lg" variant="outline" className="border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/10">
+                Learn more
+            </Button>
+        </div>
+    </div>
+</Card>
 ```
 
-### Auth flow (standalone pages, not inside shell)
+- On `bg-primary`: primary CTA button = `variant="secondary"` (default disappears on primary bg). Outline = `border-primary-foreground/20 text-primary-foreground`.
+- Lead text: `opacity-90` not `text-muted-foreground` (muted tokens break on primary backgrounds).
 
+---
+
+### Empty state
+
+```jac
+<div className="flex min-h-[400px] items-center justify-center">
+    <Empty>
+        <EmptyHeader>
+            <EmptyMedia variant="icon">
+                <HugeiconsIcon icon={FolderIcon} strokeWidth={2} />
+            </EmptyMedia>
+            <EmptyTitle>No items yet</EmptyTitle>
+            <EmptyDescription>Get started by creating your first item.</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+            <Button>Create item</Button>
+        </EmptyContent>
+    </Empty>
+</div>
 ```
-LoginPage           (jac-shadcn-blocks-app: auth_card_centered)
-  - Full-viewport centered card
-  - No navbar, no footer
-  - Redirect to dashboard on success
+
+- Always use the full `Empty > EmptyHeader > EmptyMedia > EmptyTitle > EmptyDescription > EmptyContent` hierarchy - never a raw `<div>`.
+- `EmptyMedia variant="icon"` sizes itself - do NOT pass `className="size-16"` to the inner icon.
+- Error state icon: `className="text-destructive"` not `text-red-500`.
+- Card-embedded: skip the `min-h-[400px]` wrapper, use `<CardContent className="pt-12 pb-12">` instead.
+
+---
+
+### Marketing section
+
+```jac
+<section className="pt-16 pb-16 sm:pt-24 sm:pb-24">
+    <div className="mx-auto max-w-7xl pl-4 pr-4 sm:pl-6 sm:pr-6 lg:pl-8 lg:pr-8">
+        <div className="mx-auto max-w-2xl text-center">
+            <Badge variant="outline" className="mb-4">Features</Badge>
+            <h2 className="text-balance text-3xl font-bold tracking-tight sm:text-4xl">Headline</h2>
+            <p className="mt-4 text-balance text-lg text-muted-foreground">Lead copy.</p>
+        </div>
+        <div className="mx-auto mt-16 grid max-w-6xl grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            {#* content items *#}
+        </div>
+    </div>
+</section>
 ```
+
+- FAQ/narrow content uses `max-w-3xl` container (not `max-w-7xl`) - answers should not sprawl.
+- Feature icon containers: `bg-primary/10 text-primary` not `bg-primary` (icon disappears against solid primary bg).
+- Alternating image/text rows: `lg:order-1 / lg:order-2` on the second row flips image position.
+- Stars in testimonials: `fill-current text-primary` not `text-yellow-400` (semantic color only).

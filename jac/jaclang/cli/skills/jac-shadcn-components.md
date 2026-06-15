@@ -95,7 +95,7 @@ Most filenames are the kebab-case of the component (`alert-dialog` → import `"
 | Hover detail card | `HoverCard` + `HoverCardTrigger` + `HoverCardContent` (file `hover-card`) |
 | Loading skeleton | `Skeleton` |
 | Loading spinner | `Spinner` |
-| Empty state | `Empty` |
+| Empty state | `Empty` + `EmptyHeader` + `EmptyMedia` + `EmptyTitle` + `EmptyDescription` + `EmptyContent` |
 | Alert / banner | `Alert` + `AlertTitle` + `AlertDescription` |
 | Toast / notification | `Toaster` (mount once at app root); call `toast(...)` from `"sonner"` |
 | Progress bar | `Progress` |
@@ -421,6 +421,24 @@ or calling `jac add`, list only primaries - never list peer components manually.
 | item | separator |
 | button-group | separator |
 
+## Extended component exports
+
+These exports exist in the registry but are not listed in the component selection table above.
+
+| Component | Additional exports |
+|---|---|
+| `Card` | `CardAction` - action slot in the card header (top-right area) |
+| `Avatar` | `AvatarBadge` (status dot overlay), `AvatarGroup` + `AvatarGroupCount` (stacked group) |
+| `Combobox` | `ComboboxChips`, `ComboboxChip`, `ComboboxChipsInput`, `ComboboxClear`, `useComboboxAnchor` - multi-select chip pattern |
+| `InputGroup` | `InputGroupButton` (button slot), `InputGroupText` (text slot), `InputGroupTextarea` (textarea slot) |
+| `Dialog` | `showCloseButton` prop on `DialogContent` (defaults `True`) |
+| `Sheet` | `showCloseButton` prop on `SheetContent` (defaults `False`) |
+| `AlertDialog` | `size` prop on `AlertDialogContent` |
+| `Item` | `ItemGroup`, `ItemSeparator`, `ItemMedia`, `ItemContent`, `ItemTitle`, `ItemDescription`, `ItemActions`, `ItemHeader`, `ItemFooter` - full slot composition for list rows |
+| `ButtonGroup` | `ButtonGroupText` (text separator slot) |
+| `Kbd` | `KbdGroup` (grouped key sequence) |
+| `NativeSelect` | `NativeSelectOptGroup` (option group) |
+
 ## Jac-shadcn gotchas
 
 Consolidated quick-reference. See Import patterns and component selection sections for full details.
@@ -452,7 +470,4 @@ import from ".ui.dropdown_menu" { DropdownMenu }    # WRONG - underscore, resolv
 - `jac-cl-organization` - file layout, hook pattern, when to extract
 - `jac-cl-styling` - conditional classes, cn() usage, semantic color tokens
 - `jac-npm-packages` - note: in jac-shadcn projects npm deps are managed by `jac add`/`jac retheme`
-- `jac-shadcn-blocks` - design system constants + anti-patterns + block group index (load first)
-- `jac-shadcn-blocks-marketing` - 8 marketing/landing blocks (hero, features, pricing, FAQ, testimonials, CTA)
-- `jac-shadcn-blocks-app` - 6 app shell blocks (navbar, footer, sidebar, stats, data table, login)
-- `jac-shadcn-blocks-empty` - 3 empty state blocks (no-projects, no-results, error/retry)
+- `jac-shadcn-blocks` - design system constants, anti-patterns, and composition pattern skeletons

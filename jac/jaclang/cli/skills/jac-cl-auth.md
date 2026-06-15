@@ -133,4 +133,4 @@ async def handle_login(email: str, password: str) -> str {
 }
 ```
 
-For jac-shadcn projects, apply auth handlers inside the LoginPage block - see `jac-shadcn-blocks-app`.
+For jac-shadcn projects, apply auth handlers inside your `LoginPage.cl.jac` component. The auth card layout pattern (viewport-centered, `max-w-sm`, `min-h-svh`) is in `jac-shadcn-blocks`.
