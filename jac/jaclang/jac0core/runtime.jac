@@ -5,6 +5,7 @@ import inspect;
 import json;
 import os;
 import sys;
+import threading;
 import types;
 import from collections { OrderedDict }
 import from collections.abc { Callable, Coroutine, Iterator, Mapping, Sequence }
@@ -93,6 +94,10 @@ glob plugin_manager = plugin.PluginManager('jac'),
      # When no resolver is registered (CLI, scripts, embedders) `root.shared`
      # falls back to the current context's root — in those single-user
      # contexts the caller IS the shared graph's owner.
+     # _shared_root_lock serialises the cache-miss block in get_shared_root so
+     # concurrent first-requests cannot each invoke the resolver and create
+     # duplicate root anchors.
+     _shared_root_lock: list = [threading.Lock()],
      _shared_root_resolver: list = [None, None];
 
 """Jac Access Validation Specs."""

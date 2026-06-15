@@ -242,3 +242,40 @@ test "forgot_and_reset_password_contract" {
         _cleanup();
     }
 }
+
+test "JacScaleUserManager.ensure_root_id is idempotent under concurrent calls" {
+    import threading;
+    import tempfile;
+    import from concurrent.futures { ThreadPoolExecutor, as_completed }
+    import from jac_scale.user_manager { JacScaleUserManager }
+    import from jaclang.jac0core.constant { Constants as Con }
+
+    with tempfile.TemporaryDirectory() as tmpdir {
+        mgr = JacScaleUserManager(base_path=tmpdir);
+        # Seed: ensure the guest user exists before the concurrent barrage.
+        seed = mgr.ensure_root_id(Con.GUEST.value);
+        assert seed is not None , "guest root must exist after first ensure_root_id";
+        N = 20;
+        barrier = threading.Barrier(N);
+        def call -> str | None {
+            barrier.wait();
+            return mgr.ensure_root_id(Con.GUEST.value);
+        }
+        results = [];
+        with ThreadPoolExecutor(max_workers=N) as pool {
+            futures = [pool.submit(call) for _ in range(N)];
+            for f in as_completed(futures) {
+                r = f.result();
+                if r is not None {
+                    results.append(r);
+                }
+            }
+        }
+        assert results , "all concurrent ensure_root_id calls failed";
+        assert len(set(results)) == 1 , (
+            f"concurrent ensure_root_id returned {len(set(results))} distinct "
+            f"root ids — lock is not preventing double-repair: {set(results)}"
+        );
+        mgr.close();
+    }
+}

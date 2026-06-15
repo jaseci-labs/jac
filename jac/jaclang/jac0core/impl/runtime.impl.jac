@@ -2605,16 +2605,18 @@ impl JacRuntime.get_shared_root -> Root {
     if resolver is None {
         return JacRuntimeInterface.get_context().get_root();
     }
-    root_id = _shared_root_resolver[1];
-    if not isinstance(root_id, str) {
-        root_id = resolver();
+    with _shared_root_lock[0] {
+        root_id = _shared_root_resolver[1];
         if not isinstance(root_id, str) {
-            raise RuntimeError(
-                "Shared root unavailable: the registered shared-root resolver "
-                "returned no root id."
-            );
+            root_id = resolver();
+            if not isinstance(root_id, str) {
+                raise RuntimeError(
+                    "Shared root unavailable: the registered shared-root resolver "
+                    "returned no root id."
+                );
+            }
+            _shared_root_resolver[1] = root_id;
         }
-        _shared_root_resolver[1] = root_id;
     }
     shared = JacRuntimeInterface.get_object(root_id);
     if not isinstance(shared, Root) {

@@ -112,6 +112,48 @@ test "guest and logged-in users share the shared-root graph" {
 }
 
 
+test "concurrent first requests all resolve to the same shared root" {
+    import threading;
+    import from concurrent.futures { ThreadPoolExecutor, as_completed }
+
+    with TemporaryDirectory() as tmpdir {
+        client = make_shared_client(tmpdir);
+        # Warmup: drive _ensure_initialized to completion before the
+        # concurrent barrage.  Without this all N threads race through
+        # `if self._server is not None` simultaneously and each tries to
+        # create the SQLite schema, hitting "table already exists".
+        warmup = client.post("/walker/whereami", json={});
+        assert warmup.ok;
+        N = 20;
+        barrier = threading.Barrier(N);
+        def fire -> str | None {
+            barrier.wait();
+            r = client.post("/walker/whereami", json={});
+            if not r.ok {
+                return None;
+            }
+            return r.data["reports"][1];
+        }
+        shared_ids = [];
+        with ThreadPoolExecutor(max_workers=N) as pool {
+            futures = [pool.submit(fire) for _ in range(N)];
+            for f in as_completed(futures) {
+                result = f.result();
+                if result is not None {
+                    shared_ids.append(result);
+                }
+            }
+        }
+        assert shared_ids , "all concurrent requests failed — server unreachable";
+        assert len(set(shared_ids)) == 1 , f"concurrent requests landed on {len(
+            set(shared_ids)
+        )} distinct shared roots: {set(shared_ids)}";
+        client.close();
+        Jac.set_shared_root_resolver(None);
+    }
+}
+
+
 test "an explicitly lowered shared-root level is respected" {
     # Apps may lock the commons down to read-only: a non-NO_ACCESS level set
     # explicitly must NOT be re-floored back to CONNECT.

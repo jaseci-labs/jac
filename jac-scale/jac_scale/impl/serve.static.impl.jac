@@ -453,7 +453,7 @@ impl JacAPIServerStatic.graph_data(Authorization: (str | None) = None) -> JSONRe
     # Fall back to __guest__ (super root) when no auth provided
     username = username or Con.GUEST.value;
     # Get user's root node and collect graph data
-    root_id = self.user_manager.get_root_id(username);
+    root_id = self.user_manager.ensure_root_id(username);
     if not root_id {
         return JSONResponse(
             status_code=404,

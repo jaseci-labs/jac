@@ -1149,7 +1149,7 @@ impl JFastApiServer.init(
                 username = self._user_manager.validate_jwt_token(token);
 
                 if username {
-                    user_root_id = self._user_manager.get_root_id(username);
+                    user_root_id = await self._user_manager.aensure_root_id(username);
                 }
             }
         }

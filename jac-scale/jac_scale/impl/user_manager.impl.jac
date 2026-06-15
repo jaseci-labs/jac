@@ -1,4 +1,6 @@
 impl JacScaleUserManager.postinit -> None {
+    import threading;
+    self._lock = threading.RLock();
     sso_config = get_scale_config().get_sso_config();
     for platform in Platforms {
         key = platform.value.lower();
@@ -140,26 +142,51 @@ Jac-scale stores users in IdentityStorage, not UserManager's legacy SQLite
 users table. ExecutionManager routes through ensure_root_id (not get_root_id),
 so this override must resolve via identity storage and reuse the guest-root
 repair path from jaclang's UserManager.
+
+The repair block is serialised with self._lock to prevent concurrent guest
+requests from each creating a distinct root anchor when the stored one is
+missing.  Inside the lock we re-read from storage rather than trusting the
+per-request ContextVar cache: a sibling thread that already completed the
+repair has updated storage but this thread's cache still holds the stale id.
 """
 impl JacScaleUserManager.ensure_root_id(username: str) -> str | None {
-    root_id = self.get_root_id(username);
+    root_id = self.get_root_id(username);  # fast path: ContextVar-cached read
     if not root_id {
         return None;
     }
-    # Non-guest users never need root repair — skip all anchor and identity lookups.
-    if username != Con.GUEST.value or self._root_anchor_exists(root_id) {
+    # Non-guest users never need root repair.
+    if username != Con.GUEST.value {
         return root_id;
     }
-    # Guest root is missing: fetch the stored user_id once (only on repair path).
-    guest_user = self._identity_storage.find_user_by_identity(Con.GUEST.value);
-    new_root_id = self._create_root_id();
-    storage_user_id = guest_user.get('user_id') if guest_user else username;
-    self._identity_storage.update_user_fields(
-        storage_user_id,
-        {'root_id': new_root_id, 'updated_at': datetime.now(UTC).isoformat()}
-    );
-    _root_id_request_cache.set(None);
-    return new_root_id;
+    with self._lock {
+        # Re-fetch from storage inside the lock to defeat TOCTOU: another
+        # thread may have already repaired and updated the stored root_id.
+        fresh_root_id = self._identity_storage.get_root_id(username);
+        if not fresh_root_id {
+            guest_user = self._identity_storage.find_user_by_identity(Con.GUEST.value);
+            fresh_root_id = guest_user.get('root_id') if guest_user else None;
+        }
+        if not fresh_root_id {
+            return None;
+        }
+        if self._root_anchor_exists(fresh_root_id) {
+            return fresh_root_id;
+        }
+        # Anchor is gone: repair.  Old graph data is orphaned — log it.
+        guest_user = self._identity_storage.find_user_by_identity(Con.GUEST.value);
+        logger.warning(
+            f"Guest root anchor '{fresh_root_id}' not found in the anchor store; "
+            f"creating a replacement root — previous guest graph data is orphaned."
+        );
+        new_root_id = self._create_root_id();
+        storage_user_id = guest_user.get('user_id') if guest_user else username;
+        self._identity_storage.update_user_fields(
+            storage_user_id,
+            {'root_id': new_root_id, 'updated_at': datetime.now(UTC).isoformat()}
+        );
+        _root_id_request_cache.set(None);
+        return new_root_id;
+    }
 }
 
 """Update password by user_id."""

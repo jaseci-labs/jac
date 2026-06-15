@@ -956,7 +956,7 @@ impl JacAPIServerAdmin.admin_graph_data(
     }
     import from jaclang.runtimelib.utils { collect_node_connections }
     target_username = username or Con.GUEST.value;
-    root_id = self.user_manager.get_root_id(target_username);
+    root_id = self.user_manager.ensure_root_id(target_username);
     if not root_id {
         return JSONResponse(
             status_code=404,
