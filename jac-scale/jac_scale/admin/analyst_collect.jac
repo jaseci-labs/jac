@@ -19,7 +19,9 @@ import logging;
 import os;
 import time;
 import from jac_scale.utilities.metrics.prometheus_client { query, scalar }
-import from jac_scale.admin.analyst { Symptom, ExemplarTrace, ErrorSignature }
+import from jac_scale.admin.analyst {
+    Symptom, ExemplarTrace, ErrorSignature, CriticalPathSpan
+}
 
 glob logger = logging.getLogger(__name__);
 
@@ -132,9 +134,124 @@ def collect_metric_symptoms(
 # --- Traces (Tempo / O-02) -> ExemplarTrace[] --------------------------------
 # Self-contained (mirrors prometheus_client's pattern) rather than importing
 # the admin traces proxy's impl-private _tempo_* helpers, which only its own
-# module can resolve. v1 surfaces slow-trace EXEMPLARS (id + total_ms) the
-# model/operator can pivot on; critical-path enrichment (fetch + OTLP flatten
-# + self-time ranking into CriticalPathSpan[]) is a scoped follow-up commit.
+# module can resolve. Surfaces slow-trace exemplars AND each one's critical
+# path (the hops that actually consumed the latency) so the model can reason
+# about WHERE the time went, not just which trace was slow.
+
+
+"""Pull a scalar from an OTLP attribute value object (string/int/bool/double)."""
+def otlp_value(value: any) -> any {
+    if "stringValue" in value { return value["stringValue"]; }
+    if "intValue" in value { return value["intValue"]; }
+    if "boolValue" in value { return value["boolValue"]; }
+    if "doubleValue" in value { return value["doubleValue"]; }
+    return "";
+}
+
+
+"""Flatten an OTLP attribute list `[{key, value}]` into a plain dict."""
+def otlp_attrs(attrs: any) -> dict {
+    out: dict = {};
+    for a in (attrs or []) {
+        k = a.get("key", "");
+        if k {
+            out[k] = otlp_value(a.get("value", {}));
+        }
+    }
+    return out;
+}
+
+
+"""Flatten Tempo's OTLP-JSON trace into a flat span list. Each span:
+{span_id, parent_span_id, name, service, duration_ms, attributes}. service.name
+is lifted from each batch's resource onto its spans."""
+def flatten_spans(payload: any) -> list {
+    spans: list = [];
+    for batch in (payload.get("batches", []) or []) {
+        resource = batch.get("resource", {}) or {};
+        service = str(otlp_attrs(resource.get("attributes", [])).get("service.name", "unknown"));
+        for scope in (batch.get("scopeSpans", []) or []) {
+            for span in (scope.get("spans", []) or []) {
+                start_ns = int(span.get("startTimeUnixNano", 0) or 0);
+                end_ns = int(span.get("endTimeUnixNano", 0) or 0);
+                dur = (end_ns - start_ns) / 1000000.0 if end_ns >= start_ns else 0.0;
+                spans.append(
+                    {
+                        "span_id": str(span.get("spanId", "") or ""),
+                        "parent_span_id": str(span.get("parentSpanId", "") or ""),
+                        "name": str(span.get("name", "") or ""),
+                        "service": service,
+                        "duration_ms": dur,
+                        "attributes": otlp_attrs(span.get("attributes", []))
+                    }
+                );
+            }
+        }
+    }
+    return spans;
+}
+
+
+"""Self-time rank key for a CriticalPathSpan (typed so self_ms is float)."""
+def cpspan_rank(h: CriticalPathSpan) -> float {
+    return h.self_ms;
+}
+
+
+"""Reduce a flat span list to its critical path: the top hops by self-time
+(span duration minus its direct children's durations). Approximates the longest
+dependent path (A07_DESIGN section 13) - surfaces the hops that actually
+consumed the latency, which is what the model needs to localise the problem."""
+def critical_path(spans: list, top_hops: int = 6) -> list[CriticalPathSpan] {
+    child_ms: dict = {};
+    for sp in spans {
+        pid = str(sp.get("parent_span_id", "") or "");
+        if pid {
+            child_ms[pid] = float(child_ms.get(pid, 0.0)) + float(sp.get("duration_ms", 0) or 0);
+        }
+    }
+    hops: list[CriticalPathSpan] = [];
+    for sp in spans {
+        sid = str(sp.get("span_id", "") or "");
+        self_ms = float(sp.get("duration_ms", 0) or 0) - float(child_ms.get(sid, 0.0));
+        if self_ms < 0.0 {
+            self_ms = 0.0;
+        }
+        hops.append(
+            CriticalPathSpan(
+                service=str(sp.get("service", "") or ""),
+                span_name=str(sp.get("name", "") or ""),
+                attrs=dict(sp.get("attributes", {}) or {}),
+                self_ms=self_ms
+            )
+        );
+    }
+    hops.sort(key=cpspan_rank, reverse=True);
+    return hops[:top_hops];
+}
+
+
+"""Fetch one trace's spans from Tempo and reduce to its critical path.
+Best-effort: [] on any failure (the exemplar still carries id + total_ms)."""
+async def fetch_critical_path(
+    base: str, trace_id: str, top_hops: int = 6
+) -> list[CriticalPathSpan] {
+    import httpx;
+    try {
+        async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=3.0)) as cl {
+            resp = await cl.get(
+                base + "/api/traces/" + trace_id,
+                headers={"Accept": "application/json"}
+            );
+            resp.raise_for_status();
+            payload = resp.json();
+        }
+    } except Exception as e {
+        logger.warning(f"analyst: Tempo trace fetch failed for {trace_id}: {e}");
+        return [];
+    }
+    return critical_path(flatten_spans(payload), top_hops);
+}
 
 
 """Resolve the in-cluster Tempo base URL, or None off-K8s.
@@ -158,7 +275,7 @@ def tempo_base_url -> str | None {
 """Collect slow-trace exemplars from Tempo (TraceQL `duration > Nms`).
 
 Returns the `top_traces` slowest traces in the last hour as ExemplarTrace
-(trace_id + total_ms; critical_path empty until the enrichment follow-up).
+(trace_id + total_ms + critical path, each fetched + flattened + self-timed).
 Best-effort + async: an unreachable backend or off-K8s deploy yields [] so the
 analysis degrades rather than fails. Only reduced summaries reach the model -
 never raw spans.
@@ -199,11 +316,12 @@ async def collect_trace_exemplars(
         if not tid {
             continue;
         }
+        cpath = await fetch_critical_path(base, tid);
         out.append(
             ExemplarTrace(
                 trace_id=tid,
                 total_ms=float(t.get("durationMs", 0) or 0),
-                critical_path=[]
+                critical_path=cpath
             )
         );
     }
