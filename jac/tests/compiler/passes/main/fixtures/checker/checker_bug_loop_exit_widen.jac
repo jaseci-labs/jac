@@ -36,8 +36,36 @@ def nested_widen(rows: list[list[int]]) -> int {
     return 0;
 }
 
-with entry {
-    for_widen([1, 2, 3]);
-    while_widen(3);
-    nested_widen([[1, 2], [3]]);
+def union_precision(items: list[int]) -> int {
+    fb: int | str | None = None;
+    for it in items {
+        fb = 5;
+    }
+    if fb is not None {
+        return fb;          # fb narrows to int -> valid
+    }
+    return 0;
+}
+
+def nested_scope(items: list[int]) -> int {
+    fb: int | None = None;
+    for it in items {
+        def inner() -> str {
+            fb = "x";       # distinct symbol in inner scope
+            return fb;
+        }
+        fb = 5;
+    }
+    if fb is not None {
+        return fb;          # fb narrows to int, not Literal["x"] | int -> valid
+    }
+    return 0;
+}
+
+def aug_assign(items: list[int]) -> int {
+    total: int = 0;
+    for it in items {
+        total += it;
+    }
+    return total;           # int -> valid
 }

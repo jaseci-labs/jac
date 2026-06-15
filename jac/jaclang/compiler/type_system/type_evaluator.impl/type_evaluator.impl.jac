@@ -4294,27 +4294,15 @@ impl TypeEvaluator._get_type_from_flow_node(
         }
 
         # Loop header read from after the loop: merge entry and body types.
-        if isinstance(pred, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt)) {
-            ancestor_node: uni.UniNode | None = flow_node;
-            inside_loop: bool = False;
-            while ancestor_node is not None {
-                if ancestor_node is pred {
-                    inside_loop = True;
-                    break;
-                }
-                ancestor_node = ancestor_node.parent;
+        if isinstance(pred, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt))
+            and not self._is_within(flow_node, pred) {
+            exit_type = self._loop_exit_narrowed_type(pred, target, pred_narrowed);
+            if exit_type is not None {
+                incoming_types.append(exit_type);
+            } else {
+                has_unnarrowed_pred = True;
             }
-            if not inside_loop {
-                exit_type = self._loop_exit_narrowed_type(
-                    pred, target, pred_narrowed
-                );
-                if exit_type is not None {
-                    incoming_types.append(exit_type);
-                } else {
-                    has_unnarrowed_pred = True;
-                }
-                continue;
-            }
+            continue;
         }
 
         # AssertStmt predecessor: a passed assert narrows along the true branch.
@@ -4471,33 +4459,40 @@ impl TypeEvaluator._get_type_from_flow_node(
 impl TypeEvaluator._loop_exit_narrowed_type(
     loop_node: uni.UniNode, target: NarrowingTarget, entry_type: TypeBase | None
 ) -> TypeBase | None {
-    import from jaclang.compiler.type_system.type_evaluator { NarrowingTarget }
-    import from jaclang.compiler.symbol_utils { collect_assignment_target_keys }
-    key = target.key;
+    import from ast { Store as _Store }
+    if target.symbol is None {
+        # Attribute/subscript target: no symbol to trust, widen.
+        return None;
+    }
     body_types: list[TypeBase] = [];
-    for assign in loop_node.get_all_sub_nodes(uni.Assignment) {
-        if not assign.value {
+    # Store-context name nodes inside the loop are the body's writes. Reads
+    # (Load) and writes outside the loop are skipped.
+    for name_atom in target.symbol.defn + target.symbol.uses {
+        if name_atom.py_ctx_func is not _Store {
             continue;
         }
-        for t in assign.target {
-            if key not in collect_assignment_target_keys(t) {
-                continue;
-            }
-            is_flat = (isinstance(t, uni.Name) and t.value == key) or (
-                isinstance(t, uni.AtomTrailer)
-                and t.is_attr
-                and self.create_key_for_reference(t) == key
-            );
-            # Destructuring write: widen instead of guessing the element type.
-            narrowed = self._assignment_narrowed_type(
-                self.get_type_of_expression(assign.value), target.declared_type
-            ) if is_flat else None;
-            if narrowed is None {
-                return None;
-            }
-            body_types.append(narrowed);
-            break;
+        if not self._is_within(name_atom, loop_node) {
+            continue;
         }
+        # Only a plain `name = value` write yields a usable RHS type. Aug-assign,
+        # walrus, destructuring, and for-targets fall through to widen.
+        assign = name_atom.find_parent_of_type(uni.Assignment);
+        narrowed: TypeBase | None = None;
+        if assign is not None and assign.value and assign.aug_op is None {
+            for t in assign.target {
+                if isinstance(t, uni.Name) and self._is_within(name_atom, t) {
+                    narrowed = self._assignment_narrowed_type(
+                        self.get_type_of_expression(assign.value),
+                        target.declared_type
+                    );
+                    break;
+                }
+            }
+        }
+        if narrowed is None {
+            return None;
+        }
+        body_types.append(narrowed);
     }
     if len(body_types) == 0 {
         # Body never writes the variable: keep the entry type.
@@ -4510,6 +4505,18 @@ impl TypeEvaluator._loop_exit_narrowed_type(
     body_types.append(entry_type);
     return body_types[0] if len(body_types) == 1
         else self._union_narrowed_types(body_types);
+}
+
+"""True if child is the same as or nested inside ancestor."""
+impl TypeEvaluator._is_within(child: uni.UniNode, ancestor: uni.UniNode) -> bool {
+    cur: uni.UniNode | None = child;
+    while cur is not None {
+        if cur is ancestor {
+            return True;
+        }
+        cur = cur.parent;
+    }
+    return False;
 }
 
 """Narrowed type from an assignment value, or None to keep the declared type."""

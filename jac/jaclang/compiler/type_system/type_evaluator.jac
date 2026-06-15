@@ -720,6 +720,7 @@ obj TypeEvaluator {
     def _assignment_narrowed_type(
         value_type: TypeBase | None, declared_type: TypeBase
     ) -> TypeBase | None;
+    def _is_within(child: uni.UniNode, ancestor: uni.UniNode) -> bool;
     # --- Shared narrowing utilities ---
     def _find_predicate_for(
         target: NarrowingTarget, condition: uni.Expr
