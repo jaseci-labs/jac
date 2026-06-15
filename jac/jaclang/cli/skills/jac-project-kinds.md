@@ -29,7 +29,7 @@ Jac compiles one language to three runtimes - Python bytecode (server `sv`), Jav
 - Bootstrapping a project: `jac-scaffold`. Configuring it (`jac.toml`, deps, scripts, profiles): `jac-config`.
 - Data modeling on the graph: `jac-node-edge-patterns` + `jac-walker-patterns`; typed state: `jac-has-fields`.
 - LLM-powered functions in any kind: `jac-by-llm`. Calling Python libs / being called from Python: `jac-python-interop`. Parallelism: `jac-concurrency`.
-- Client work beyond components: `jac-cl-organization`, `jac-cl-styling`, `jac-cl-auth`, `jac-cl-js-interop`, `jac-npm-packages` (consuming), `jac-shadcn-components`.
+- Client work beyond components: `jac-cl-organization`, `jac-cl-styling`, `jac-cl-auth`, `jac-cl-js-interop`, `jac-npm-packages` (consuming), `jac-shadcn-components`, `jac-shadcn-blocks`.
 - Production server concerns: `jac-sv-deploy` (scale/k8s/secrets), `jac-sv-persistence` (schema evolution).
 
 ## The loop for every kind

@@ -1,6 +1,6 @@
 ---
 name: jac-scaffold
-description: Bootstrapping a new Jac project - how to use `jac create --use <template>`, what each template lays out on disk, making your own templates with `jac jacpack`, and the post-scaffold checklist. Load when starting a new project from scratch. Pair with `jac-project-kinds` (choosing what to build) and `jac-fullstack-patterns` when building fullstack.
+description: Bootstrapping a new Jac project - `jac create --use <template>` (default, client, fullstack, jac-shadcn), what each lays out, post-scaffold checklist, and choosing standard vs jac-shadcn. Load when starting a new project from scratch. Pair with `jac-project-kinds` (choose the right kind first), `jac-fullstack-patterns` (fullstack wiring), `jac-shadcn-components` (jac-shadcn primitives).
 ---
 
 Use the Jac CLI's `jac create` to scaffold new projects. It is the single source of truth for project layout and stays current with Jac releases.
@@ -31,10 +31,20 @@ Without a project name, `jac create` initializes the **current directory** and n
 | (omitted) `default` | Backend / library project, no UI | `main.jac` (a `with entry` stub), `jac.toml`, `AGENTS.md`, `.gitignore` |
 | `client` | Pure client app, no server data | `main.jac` (`to cl:` + `def:pub app`), `components/Button.cl.jac`, `assets/`, `jac.toml`, `README.md`, `AGENTS.md`, `.gitignore` |
 | `fullstack` | Client UI + server endpoints | `main.jac`, `endpoints.sv.jac`, `frontend.cl.jac` + `frontend.impl.jac`, `components/*.cl.jac`, `assets/`, `jac.toml`, `README.md`, `AGENTS.md`, `.gitignore` |
+| `jac-shadcn` | Client UI with shadcn component system | same as `client` + `components/ui/` (pre-installed button + card), `lib/utils.cl.jac` (`cn()`), `styles/global.css` (themed CSS vars), `[jac-shadcn]` block in `jac.toml` |
 
 The `default` template's `main.jac` is a minimal `with entry { ... }` stub - it does **not** pre-wire endpoints; add `node`/`def:pub` declarations yourself (see `jac-sv-endpoints`).
 
-## When `jac create` refuses (and when it nests silently)
+## Choosing a UI method
+
+| Method | When to use | Template |
+|---|---|---|
+| Standard (plain Jac JSX + Tailwind) | Full control, no pre-built primitives, research spikes | `--use client` or `--use fullstack` |
+| jac-shadcn | Production UI with 53 accessible primitives, fast iteration | `--use jac-shadcn` |
+
+Detect from an existing project: check `jac.toml` for a `[jac-shadcn]` section, or look for a `components/ui/` directory. **Do NOT mix methods** - raw HTML form elements in a shadcn project ignore available primitives; importing `components/ui/` primitives in a non-shadcn project fails with unresolved module errors.
+
+## Always do this before scaffolding
 
 The behavior depends on which form you use:
 
