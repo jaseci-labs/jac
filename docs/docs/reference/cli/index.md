@@ -10,7 +10,7 @@ The CLI is extensible through plugins. When you install plugins like `jac-scale`
 
 | Command | Description |
 |---------|-------------|
-| `jac run` | Execute a Jac file |
+| `jac run` | Execute a Jac file, or (no filename) run the current project by its kind |
 | `jac start` | Start REST API server (use `--scale` for K8s deployment) |
 | `jac create` | Create new project |
 | `jac check` | Type check code |
@@ -77,17 +77,18 @@ _/ |\__,_|\___|    Python 3.12.3
 
 ### jac run
 
-Execute a Jac file.
+Execute a Jac file, or (with no filename) run the current project.
 
 **Note:** `jac <file>` is shorthand for `jac run <file>` - both work identically.
 
 ```bash
-jac run [-h] [-m] [--no-main] [-c] [--no-cache] [-e DIAGNOSTICS] [--profile PROFILE] filename [args ...]
+jac run [-h] [-s] [--show] [-m] [--no-main] [-c] [--no-cache] [-e DIAGNOSTICS] [--profile PROFILE] [filename] [args ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `filename` | Jac file to run | Required |
+| `filename` | Jac file to run. Omit to dispatch on the project's `jac.toml` | (project) |
+| `-s, --show` | Print the resolved project run-plan (kind, action, equivalent command) without executing | `False` |
 | `-m, --main` | Treat module as `__main__` | `True` |
 | `-c, --cache` | Enable compilation cache | `True` |
 | `-e, --diagnostics` | Diagnostic verbosity: `error`, `all`, or `none` | `error` |
@@ -95,6 +96,8 @@ jac run [-h] [-m] [--no-main] [-c] [--no-cache] [-e DIAGNOSTICS] [--profile PROF
 | `args` | Arguments passed to the script (available via `sys.argv[1:]`) | |
 
 Like Python, everything after the filename is passed to the script. Jac flags must come **before** the filename.
+
+**Project-aware run (no filename).** Inside a project, a bare `jac run` resolves the project *kind* from `[project] kind` in `jac.toml` (or infers it from the entry-point's codespace) and does the natural action for that kind: **execute** runnable kinds (`cli`, `native-app`), **serve** server kinds (`api-service`, `fullstack`, ...), or **build** artifact kinds (`native-binary`, `shared-library`, `pypi-package`, `npm-package`). Use `jac run --show` to preview the plan and the equivalent primitive command (`run` / `start` / `nacompile` / `bundle`) without running it. See [project kinds](../../quick-guide/project-kinds.md) and [config `[project]`](../config/index.md).
 
 **Diagnostics modes:**
 
@@ -111,6 +114,12 @@ The diagnostics level can also be set in `jac.toml` under `[run].diagnostics`. T
 ```bash
 # Run a file (fails on compile errors by default)
 jac run main.jac
+
+# Run the current project per its jac.toml kind (no filename)
+jac run
+
+# Preview what the project would run/build, without doing it
+jac run --show
 
 # Run without cache (flags before filename)
 jac run --no-cache main.jac

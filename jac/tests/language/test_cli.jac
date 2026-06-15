@@ -201,7 +201,10 @@ test "jac cli run python file" {
     assert "10" in stdout_value;
 }
 
-test "jac run with no filename reports missing required argument" {
+test "jac run with no filename and no resolvable entry errors cleanly" {
+    # `jac run` with no file is now project-aware: it climbs to the nearest
+    # jac.toml and dispatches on the project kind. JAC_ROOT's project declares
+    # no entry-point, so this must fail with a clear message (not a crash).
     env = dict(os.environ);
     env["PYTHONPATH"] = JAC_ROOT;
     result = subprocess.run(
@@ -216,8 +219,8 @@ test "jac run with no filename reports missing required argument" {
     assert result.returncode != 0 , (
         f"Expected non-zero exit for bare jac run; got:\n{combined}"
     );
-    assert "required: filename" in combined , (
-        f"Expected missing filename error; got:\n{combined}"
+    assert ("entry-point" in combined) or ("jac.toml" in combined) , (
+        f"Expected a project-aware run error; got:\n{combined}"
     );
     assert "NoneType" not in combined , (
         f"Should not crash with TypeError; got:\n{combined}"

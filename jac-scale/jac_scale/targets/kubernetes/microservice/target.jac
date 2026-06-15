@@ -457,6 +457,15 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
         ensure_namespace_exists(namespace);
 
+        # Ops Console RBAC (opt-in). Applied right after the
+        # namespace so the read-only Role + RoleBinding exist before the
+        # gateway pod (which uses them) rolls. Best-effort: an RBAC failure
+        # must not abort the app deploy, so it logs and continues.
+        ops_rbac = bundle.get("ops_rbac");
+        if ops_rbac {
+            self._apply_ops_rbac(namespace, ops_rbac);
+        }
+
         for (pvc_name, pvc_manifest) in bundle.get("pvcs", {}).items() {
             self._apply_or_replace_pvc(core_v1, namespace, pvc_manifest);
             if self.logger {
@@ -557,6 +566,67 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 self.logger.info(
                     "Applied Ingress for gateway",
                     {"name": ingress_manifest["metadata"]["name"]}
+                );
+            }
+        }
+    }
+
+    # Ops Console RBAC: namespace-scoped Role + RoleBinding bound to
+    # the gateway SA. Idempotent read-then-replace/create, mirroring the
+    # ingress/monitoring RBAC pattern. Best-effort - a failure here (e.g. the
+    # deployer lacks rbac create perms) logs a warning and continues; the
+    # app still deploys, the Ops Console pages just render a 403 detail.
+    def _apply_ops_rbac(namespace: str, ops_rbac: dict[str, any]) {
+        try {
+            rbac_v1 = client.RbacAuthorizationV1Api();
+            role = ops_rbac["role"];
+            binding = ops_rbac["role_binding"];
+            role_name: str = role["metadata"]["name"];
+            binding_name: str = binding["metadata"]["name"];
+
+            try {
+                rbac_v1.read_namespaced_role(name=role_name, namespace=namespace);
+                rbac_v1.replace_namespaced_role(
+                    name=role_name, namespace=namespace, body=role
+                );
+            } except ApiException as e {
+                if e.status == 404 {
+                    rbac_v1.create_namespaced_role(namespace=namespace, body=role);
+                } else {
+                    raise;
+                }
+            }
+
+            try {
+                rbac_v1.read_namespaced_role_binding(
+                    name=binding_name, namespace=namespace
+                );
+                rbac_v1.replace_namespaced_role_binding(
+                    name=binding_name, namespace=namespace, body=binding
+                );
+            } except ApiException as e {
+                if e.status == 404 {
+                    rbac_v1.create_namespaced_role_binding(
+                        namespace=namespace, body=binding
+                    );
+                } else {
+                    raise;
+                }
+            }
+
+            if self.logger {
+                subj = binding["subjects"][0]["name"];
+                self.logger.info(
+                    f"Applied Ops Console RBAC (read-only Role + RoleBinding)",
+                    {"name": role_name, "serviceAccount": subj}
+                );
+            }
+        } except Exception as e {
+            if self.logger {
+                self.logger.warning(
+                    f"Ops Console RBAC not applied ({e}); the in-admin "
+                    f"deploy-health pages will render a 403 until the Role is "
+                    f"bound to the gateway ServiceAccount."
                 );
             }
         }
