@@ -425,7 +425,14 @@ impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Va
     if isinstance(target_type, ir.PointerType) {
         return b.inttoptr(payload, target_type, name="jv.unbox.p");
     }
-    return payload;
+    # No faithful unbox for a by-value aggregate (complex/range/slice/...): the
+    # JacVal payload is a single i64, so the value cannot round-trip (the box
+    # side cannot represent it either). Emit a clear diagnostic instead of
+    # silently returning raw bits, which would miscompile. `any -> concrete` is
+    # supported for scalars (int/bool/float/str) and pointer-shaped types (user
+    # obj/node, list/dict/set). See #6421.
+    self.emit(E5090, kind="expression", name=f"`any` unbox to {target_type}");
+    return ir.Constant(target_type, None);
 }
 
 """Generate code for a dict literal {k1: v1, k2: v2, ...}."""

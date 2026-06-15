@@ -901,16 +901,23 @@ impl NaIRGenPass._emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     tags: list[int] = [];
+    unresolved: list[str] = [];
     for nm in names {
-        for t in self._jacval_tags_for_type(nm) {
+        nm_tags = self._jacval_tags_for_type(nm);
+        if not nm_tags {
+            unresolved.append(nm);
+        }
+        for t in nm_tags {
             if t not in tags {
                 tags.append(t);
             }
         }
     }
-    if not tags {
-        # Unknown / unsupported type operand (e.g. a user archetype): emit a
-        # structured error rather than silently returning a wrong answer.
+    if unresolved or not tags {
+        # Any name with no native tag (e.g. a user archetype) makes the result
+        # unsound -- including inside a tuple where a sibling name resolves
+        # (`isinstance(x, (int, MyNode))`), which must NOT silently drop the
+        # unsupported arm. Emit a structured error instead of a wrong answer.
         self._emit_unsupported_builtin_call(nd, "isinstance");
         return None;
     }
