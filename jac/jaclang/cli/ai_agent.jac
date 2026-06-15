@@ -490,6 +490,53 @@ obj TurnStats {
 }
 
 
+"""Persistent storage for `jac ai` sessions: JSON CRUD over the cache dir.
+
+One session is one JSON file at `<root_dir>/sessions/<id>.json`, where
+`<root_dir>` is the env-derived cache dir (`JAC_AI_CACHE` override or the
+centralized platform default, see `cache_paths`) by default and a temp dir
+in tests. Mirrors `browser_engine`'s cache pattern.
+Writes are atomic (temp file + `os.replace`) so a Ctrl-C mid-save never leaves
+torn JSON, and a corrupt file is skipped on list/load with a warning rather
+than crashing the agent. `root_dir` empty means resolve the cache dir lazily on
+each call, so a test that overrides the `JAC_AI_CACHE` env after construction
+still picks it up.
+
+A record is a plain `dict` shaped as: id, name, cwd, created, updated, cfg,
+ledger ({changes, notes}), turns (per-turn objective + phase answers + stats),
+and totals (running token/tool counts). The store is format-agnostic -- it does
+not know about `Ledger` or `AgentConfig`; (de)serialization between the dict and
+those objects lives on the agent module (where those types are defined).
+"""
+obj SessionStore {
+    has root_dir: str = "";
+
+    # Enumerate session records, newest-first by `updated`. When `cwd` is set,
+    # only sessions whose stored `cwd` matches are returned (isolation: a
+    # session belongs to the project it ran in).
+    def list_sessions(cwd: str = "") -> list[dict];
+    # Load one record by id; returns None (and warns) if the file is missing or
+    # its JSON is corrupt -- never raises.
+    def load(id: str) -> dict | None;
+    # Persist a record atomically: temp file + os.replace. Stamps `updated`.
+    def save(record: dict) -> None;
+    # Remove a session's file; returns whether a file was removed.
+    def delete(id: str) -> bool;
+    # Allocate a fresh record (id + timestamps + empty ledger/turns/totals) for
+    # a given cwd and optional name.
+    def create(cwd: str, name: str = "") -> dict;
+    # The most recently updated session for a cwd, or None.
+    def most_recent(cwd: str) -> dict | None;
+    # The existing session for a (cwd, name) pair, or None. Names are unique
+    # within a cwd (see create/save).
+    def resolve_by_name(cwd: str, name: str) -> dict | None;
+    # Resolve `<root_dir>/sessions`, creating it on first use.
+    def _dir -> str;
+    # The file path for one session id.
+    def _path(id: str) -> str;
+}
+
+
 """Builds a phase's system prompt: base rules + the node's own role + the ledger."""
 obj Prompt {
     static def for_phase(state_ty: type, objective: str, ledger: Ledger) -> str;
@@ -760,7 +807,13 @@ walker AgentSession {
         # How many times a Build phase has ended writing nothing and been pushed
         # back to actually write code; bounded so a model that simply cannot
         # produce a file does not loop forever.
-        build_nudges: int = 0;
+        build_nudges: int = 0,
+        # Per-turn phase transcript: {name, answer} pairs collected by
+        # PhaseState.step as the walker visits each phase. Fresh per spawn
+        # (one AgentSession per turn), then folded into the session record's
+        # `turns[].phases` for resume scrollback. Display-only -- never fed
+        # back into the model's ctx (see SESSIONS_PLAN §1 sub-decision).
+        phases: list = [];
 
     can begin with Root entry;
 }

@@ -71,6 +71,27 @@ glob registry = get_registry();
             default=False,
             help="Open the agent in a terminal UI (`--ui` and `--tui` are exclusive)"
         ),
+        Arg.create(
+            "resume", default="", help="Resume a session by its id (e.g. a3f1c902)"
+        ),
+        Arg.create(
+            "continue",
+            kind=ArgKind.FLAG,
+            typ=bool,
+            default=False,
+            help="Resume this project's most recent session",
+            short="c",
+            dest="continue_last"
+        ),
+        Arg.create(
+            "session",
+            default="",
+            help="Open or create a named session for this project",
+            short=""
+            # No short: -s is already taken by --safe (auto-generated). The
+            # long form is the only documented usage, so opt out of the
+            # first-char auto-short to avoid an argparse conflict.
+        ),
 
     ],
     examples=[
@@ -86,6 +107,9 @@ glob registry = get_registry();
         ),
         ("jac ai --ui", "Open a web UI with a live agent phase-graph visualizer"),
         ("jac ai --tui", "Open an in-terminal TUI session"),
+        ("jac ai -c", "Resume this project's most recent session"),
+        ("jac ai --resume a3f1c902", "Resume a specific session by id"),
+        ("jac ai --session refactor", "Open or create a named session"),
 
     ],
     group="general"
@@ -97,5 +121,8 @@ def ai(
     safe: bool = False,
     quiet: bool = False,
     ui: bool = False,
-    tui: bool = False
+    tui: bool = False,
+    resume: str = "",
+    continue_last: bool = False,
+    session_name: str = ""
 ) -> int;

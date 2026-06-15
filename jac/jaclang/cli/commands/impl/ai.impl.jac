@@ -15,11 +15,16 @@ impl ai(
     safe: bool = False,
     quiet: bool = False,
     ui: bool = False,
-    tui: bool = False
+    tui: bool = False,
+    resume: str = "",
+    continue_last: bool = False,
+    session_name: str = ""
 ) -> int {
     import from jaclang.cli.agent_api { build_agent_request, validate_agent_request }
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
-    req = build_agent_request(prompt, model, n_ctx, safe, quiet, ui, tui);
+    req = build_agent_request(
+        prompt, model, n_ctx, safe, quiet, ui, tui, resume, continue_last, session_name
+    );
     if err := validate_agent_request(req) {
         return err;
     }

@@ -3,8 +3,10 @@
 import os;
 import re;
 import sys;
+import json;
 import time;
 import signal;
+import secrets;
 import subprocess;
 import threading;
 import webbrowser;
@@ -1278,6 +1280,576 @@ impl reset_session{
 }
 
 # ---------------------------------------------------------------------------
+# Session store -- persistent `jac ai` conversations (issue #6706).
+# One session = one JSON file under the cache dir; see SessionStore in
+# ai_agent.jac. The dir follows browser_engine's cache precedent: an env
+# override (JAC_AI_CACHE) wins, else the centralized platform default.
+# ---------------------------------------------------------------------------
+"""The cache dir for `jac ai` sessions, as a string path.
+
+Delegates the platform default to the centralized resolver
+(`jaclang.jac0core.cache_paths`, see #6709) so sessions live alongside the
+rest of jac's cache (~/.cache/jac/ai on Linux, ~/Library/Caches/jac/ai on
+macOS). A `JAC_AI_CACHE` env override (mirroring `JACBROWSER_CACHE` for the
+browser engine) wins when set; returned as a string so the store's `root_dir`
+field holds it without a Path round-trip.
+"""
+def get_session_dir -> str {
+    env = os.environ.get("JAC_AI_CACHE");
+    if env {
+        return env;
+    }
+    import from jaclang.jac0core.cache_paths { get_ai_session_cache_dir as _default }
+    return str(_default());
+}
+
+"""Resolve `<root_dir>/sessions` (creating it) for this store, or the cache dir."""
+impl SessionStore._dir -> str {
+    base = self.root_dir or get_session_dir();
+    d = os.path.join(base, "sessions");
+    os.makedirs(d, exist_ok=True);
+    return d;
+}
+
+"""The on-disk path for one session id under this store."""
+impl SessionStore._path(id: str) -> str {
+    return os.path.join(self._dir(), f"{id}.json");
+}
+
+"""Allocate a fresh session record for a cwd with an optional name.
+
+`id` is an opaque hex token (not derived from cwd or time) so two sessions
+in the same project never collide and a path never leaks into the id. Names
+are unique within a cwd (enforced on save); a blank name means unnamed.
+"""
+impl SessionStore.create(cwd: str, name: str = "") -> dict {
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime());
+    return {
+        "id": secrets.token_hex(4),
+        "name": name,
+        "cwd": os.path.normpath(cwd),
+        "created": now,
+        "updated": now,
+        "cfg": {},
+        "ledger": {"changes": [], "notes": []},
+        "turns": [],
+        "totals": {}
+    };
+}
+
+"""Persist a record atomically: temp file then os.replace.
+
+Stamps `updated` so `most_recent`/`list_sessions` ordering tracks real
+activity, not import time. The temp file is written to the same directory
+then renamed, so `os.replace` is atomic on POSIX and Windows (same volume).
+A write failure (disk full, permissions) is caught and logged -- a save must
+never abort a turn.
+"""
+impl SessionStore.save(record: dict) -> None {
+    if not record or "id" not in record {
+        return;
+    }
+    record["updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime());
+    target = self._path(str(record["id"]));
+    tmp = f"{target}.tmp";
+    try {
+        with open(tmp, "w", encoding="utf-8") as f {
+            json.dump(record, f, indent=2);
+        }
+        os.replace(tmp, target);
+    } except Exception as e {
+        # Best-effort cleanup of a half-written temp; a failed save is
+        # non-fatal (the in-memory session keeps running).
+        try {
+            if os.path.exists(tmp) {
+                os.remove(tmp);
+            }
+        } except Exception { }
+        console.error(f"session save failed: {e}");
+    }
+}
+
+"""Load one record by id; None (with a warning) if missing or corrupt.
+
+A corrupt file never raises into the caller: the agent must keep running even
+when one session file is bad. Logged at error level so the user sees which
+file to inspect without the session crashing.
+"""
+impl SessionStore.load(id: str) -> dict | None {
+    if not id {
+        return None;
+    }
+    path = self._path(id);
+    if not os.path.exists(path) {
+        return None;
+    }
+    try {
+        with open(path, "r", encoding="utf-8") as f {
+            return json.load(f);
+        }
+    } except (json.JSONDecodeError, OSError) as e {
+        console.error(f"session {id} unreadable, skipping: {e}");
+        return None;
+    }
+}
+
+"""Delete a session's file; returns whether one was removed."""
+impl SessionStore.delete(id: str) -> bool {
+    if not id {
+        return False;
+    }
+    path = self._path(id);
+    if os.path.exists(path) {
+        try {
+            os.remove(path);
+            return True;
+        } except Exception as e {
+            console.error(f"session delete failed: {e}");
+        }
+    }
+    return False;
+}
+
+"""Enumerate session records, newest-first; filtered to a cwd when given.
+
+Skips unreadable files (corrupt JSON / IO errors) with a warning so one bad
+file never hides the rest. Sorts by `updated` descending so `most_recent` is
+the head and `/sessions` reads naturally.
+"""
+impl SessionStore.list_sessions(cwd: str = "") -> list[dict] {
+    d = self._dir();
+    results: list[dict] = [];
+    for name in os.listdir(d) {
+        if not name.endswith(".json") {
+            continue;
+        }
+        path = os.path.join(d, name);
+        try {
+            with open(path, "r", encoding="utf-8") as f {
+                rec = json.load(f);
+            }
+        } except (json.JSONDecodeError, OSError) as e {
+            console.error(f"session file {name} unreadable, skipping: {e}");
+            continue;
+        }
+        if cwd and os.path.normpath(str(rec.get("cwd", ""))) != os.path.normpath(cwd) {
+            continue;
+        }
+        results.append(rec);
+    }
+    results.sort(key=lambda r : str(r.get("updated", "")), reverse=True);
+    return results;
+}
+
+"""The newest session for a cwd, or None when there is none."""
+impl SessionStore.most_recent(cwd: str) -> dict | None {
+    matches = self.list_sessions(cwd);
+    return matches[0] if matches else None;
+}
+
+"""The existing session for a (cwd, name) pair, or None.
+
+Names are unique within a cwd, so the first match (newest) wins. An empty
+name never resolves (unnamed sessions are reached by id).
+"""
+impl SessionStore.resolve_by_name(cwd: str, name: str) -> dict | None {
+    if not name {
+        return None;
+    }
+    for rec in self.list_sessions(cwd) {
+        if str(rec.get("name", "")) == name {
+            return rec;
+        }
+    }
+    return None;
+}
+
+# ---------------------------------------------------------------------------
+# Session lifecycle -- resolve/restore/save between the record dict and the
+# live `agent` glob (ledger, cfg, cwd). The record is the on-disk snapshot;
+# the glob is the in-memory truth during a run. These helpers bridge them so
+# `run_agent` (resolve on entry) and `run_turn` (save after each turn) stay
+# small. See issue #6706.
+# ---------------------------------------------------------------------------
+# The AgentConfig fields worth persisting across a restart: the live display
+# toggles (/stats, /verbose, /feedback) and the model knobs. api_key/base_url
+# are UI-only and an API key has no business on disk in plaintext, so they are
+# excluded.
+glob _PERSIST_CFG_FIELDS: list[str] = [
+         "yolo_mode",
+         "verbose",
+         "show_stats",
+         "inline_feedback",
+         "temperature",
+         "n_ctx",
+         "threads"
+     ];
+
+# The store + the live record for the current run. `_session_record` is the
+# dict updated in place and saved each turn; it carries id/name/cwd and the
+# accumulated turns/totals that have no other in-memory home.
+glob _session_store: SessionStore | None = None,
+     _session_record: dict = {};
+
+"""Serialize a Ledger to a JSON-safe dict (its two list fields)."""
+def _ledger_to_dict(ledger: Ledger | None) -> dict {
+    if ledger is None {
+        return {"changes": [], "notes": []};
+    }
+    return {"changes": list(ledger.changes), "notes": list(ledger.notes)};
+}
+
+"""Rebuild a Ledger from a stored dict (empty-handed on a bad shape)."""
+def _ledger_from_dict(d: dict) -> Ledger {
+    return Ledger(changes=list(d.get("changes", [])), notes=list(d.get("notes", [])));
+}
+
+"""Snapshot the persisted AgentConfig scalars off the live cfg."""
+def _cfg_to_dict -> dict {
+    out: dict = {};
+    for f in _PERSIST_CFG_FIELDS {
+        out[f] = getattr(agent.cfg, f);
+    }
+    return out;
+}
+
+"""Restore persisted cfg scalars onto the live `agent.cfg` (best-effort).
+
+Only writes keys present in the record, so adding a field later never breaks an
+# old session file. Missing keys keep their import-time defaults.
+"""
+def _restore_cfg(record: dict) -> None {
+    d = record.get("cfg", {});
+    if not isinstance(d, dict) {
+        return;
+    }
+    for f in _PERSIST_CFG_FIELDS {
+        if f in d {
+            setattr(agent.cfg, f, d[f]);
+        }
+    }
+}
+
+"""Resolve the session for this run from the request flags, or start fresh.
+
+Priority: `--resume <id>` > `--continue` (most recent for cwd) > `--session
+<name>` (existing-or-new for cwd) > a new unnamed session. The three selectors
+are mutually exclusive -- two or more is a usage error (returns False so the
+caller can exit cleanly without starting the agent). On success the live
+`_session_store`/`_session_record` globals are set and the caller restores
+ledger/cfg/cwd from the record.
+"""
+def _resolve_session(r: any) -> bool {
+    global _session_store,_session_record;
+    cwd = agent.ws.cwd;
+    store = SessionStore();
+    resume_id = str(r?.resume or "");
+    cont = bool(r?.continue_last);
+    sname = str(r?.session_name or "");
+    # Mutual exclusivity: at most one selector may be set.
+    selectors = sum([bool(resume_id), cont, bool(sname)]);
+    if selectors > 1 {
+        console.error(
+            "--resume, --continue, and --session are mutually exclusive; pick one."
+        );
+        return False;
+    }
+    record: dict | None = None;
+    if resume_id {
+        record = store.load(resume_id);
+        if record is None {
+            console.error(f"session {resume_id} not found; starting a fresh one.");
+        }
+    } elif cont {
+        record = store.most_recent(cwd);
+        if record is None {
+            console.print(
+                "  no prior session for this project; starting fresh.", style="muted"
+            );
+        }
+    } elif sname {
+        record = store.resolve_by_name(cwd, sname);
+        if record is None {
+            record = store.create(cwd, sname);
+        }
+    }
+    if record is None {
+        record = store.create(cwd);
+    }
+    _session_store = store;
+    _session_record = record;
+    return True;
+}
+
+"""Capture the live agent state into `_session_record` and persist it.
+
+Called after each turn. Snapshots the current ledger/cfg/cwd, appends the
+turn's objective + stats to `turns`, folds the turn's token/tool counts into
+`totals`, and writes the file atomically. Wrapped so a save failure never
+aborts the turn (the store itself also guards). A None/empty objective skips
+the turn append (e.g. a /clear that doesn't run a turn).
+"""
+def _save_session(objective: str = "", stats: any = None, phases: list = None) -> None {
+    global _session_record;
+    if _session_store is None or not _session_record {
+        return;
+    }
+    _session_record["cwd"] = agent.ws.cwd;
+    _session_record["cfg"] = _cfg_to_dict();
+    _session_record["ledger"] = _ledger_to_dict(agent.ledger);
+    # The effective model name, so a resumed run rebuilds the same model.
+    try {
+        _session_record["model"] = str(agent_model.model_name);
+    } except Exception {
+        pass;
+    }
+    if stats is not None {
+        st: any = stats;
+        usage = st.usage if isinstance(st.usage, dict) else dict(st.usage or {});
+        turn = {
+            "objective": objective,
+            "phases": list(phases or []),
+            "stats": {
+                "n_read": int(st.n_read),
+                "n_write": int(st.n_write),
+                "n_run": int(st.n_run),
+                "usage": usage
+            }
+        };
+        _session_record["turns"].append(turn);
+        # Fold this turn's counts into the running totals.
+        totals = _session_record["totals"];
+        totals["n_read"] = int(totals.get("n_read", 0)) + int(st.n_read);
+        totals["n_write"] = int(totals.get("n_write", 0)) + int(st.n_write);
+        totals["n_run"] = int(totals.get("n_run", 0)) + int(st.n_run);
+        for (k, v) in usage.items() {
+            try {
+                totals[k] = int(totals.get(k, 0)) + int(v);
+            } except Exception {
+                totals[k] = v;
+            }
+        }
+    }
+    _session_store.save(_session_record);
+}
+
+"""Print prior turns as readable scrollback on resume (display-only).
+
+A compact header (session label + turn count + cwd) then each prior turn's
+objective and a short excerpt of its final phase's answer -- enough context to
+recall what was done without replaying the whole transcript. The model never
+sees this text (see SESSIONS_PLAN §1); it's purely for the user to pick up
+where they left off. A record with no turns prints nothing.
+"""
+def _print_scrollback(record: dict) {
+    turns = record.get("turns", []);
+    if not turns {
+        return;
+    }
+    label = str(record.get("name") or record.get("id", ""));
+    cwd = str(record.get("cwd", ""));
+    console.print("");
+    console.print(
+        f"  session {label} -- {len(turns)} prior turn(s) in {cwd}:", style="bold"
+    );
+    for (i, t) in enumerate(turns) {
+        obj_text = str(t.get("objective", ""));
+        console.print(f"    {i + 1}. {truncate(obj_text, 120)}", style="cyan");
+        phases = t.get("phases", []);
+        if phases {
+            last = phases[-1];
+            ans = str(last.get("answer", "")).strip();
+            lines = [
+                ln
+                for ln in ans.splitlines()
+                if ln.strip()
+            ];
+            for ln in lines[:4] {
+                console.print(f"       {truncate(ln, 160)}", style="muted");
+            }
+            if len(lines) > 4 {
+                console.print("       ...", style="muted");
+            }
+        }
+    }
+    console.print("");
+}
+
+"""Restore ledger/cfg/cwd from a record onto the live `agent` glob.
+
+The shared body of every "load a session" path: `run_agent`'s resume entry,
+`/resume` mid-session, and `/forget`'s fresh-session swap. Centralized so the
+three callers can't drift on which fields get restored. Only mutates the glob;
+callers own the banner/scrollback.
+"""
+def _restore_session_state(record: dict) {
+    agent.ledger = _ledger_from_dict(
+        record.get("ledger", {"changes": [], "notes": []})
+    );
+    _restore_cfg(record);
+    rec_cwd = str(record.get("cwd", ""));
+    if rec_cwd and rec_cwd != agent.ws.cwd {
+        agent.ws.set_cwd(rec_cwd);
+    }
+}
+
+# ---------------------------------------------------------------------------
+# REPL session-management commands (/sessions, /resume, /name, /forget, /cost).
+# Each reads/mutates the module `_session_*` globals; the REPL loop dispatches
+# to them. `/clear`'s session semantics live inline in the loop (wipe-and-stay).
+# ---------------------------------------------------------------------------
+"""`/sessions` -- list this project's sessions, marking the current one."""
+def cmd_sessions {
+    if _session_store is None {
+        console.print("  no session store active.", style="muted");
+        return;
+    }
+    cwd = agent.ws.cwd;
+    sessions = _session_store.list_sessions(cwd);
+    if not sessions {
+        console.print(f"  no sessions for {cwd}.", style="muted");
+        return;
+    }
+    current = str(_session_record.get("id", "")) if _session_record else "";
+    console.print(f"  sessions in {cwd}:", style="bold");
+    for s in sessions {
+        sid = str(s.get("id", ""));
+        name = str(s.get("name", "")) or "-";
+        nturns = len(s.get("turns", []));
+        updated = str(s.get("updated", "")).replace("T", " ").replace("Z", "") or "?";
+        totals = s.get("totals", {});
+        tok = int(totals.get("prompt_tokens", 0)) + int(
+            totals.get("completion_tokens", 0)
+        );
+        mark = "*" if sid == current else " ";
+        console.print(
+            f"  {mark} {sid}  {name:<16} {nturns:>2} turns  {updated}  "
+            f"{agent.view._short_num(tok)} tok",
+            style="muted"
+        );
+    }
+}
+
+"""`/resume <id|name>` -- swap to another session in-place, mid-REPL.
+
+Resolves the target by id first, then by name (both scoped to this cwd),
+restores its ledger/cfg/cwd, and replays its scrollback. Keeps the live model
+(switching models mid-session is not supported). A miss reports an error and
+leaves the current session active.
+"""
+def cmd_resume(target: str) {
+    global _session_record;
+    if _session_store is None {
+        console.print("  no session store active.", style="muted");
+        return;
+    }
+    if not target {
+        console.error("usage: /resume <id|name>");
+        return;
+    }
+    cwd = agent.ws.cwd;
+    record = _session_store.load(target);
+    if record is None {
+        record = _session_store.resolve_by_name(cwd, target);
+    }
+    if record is None {
+        console.error(f"no session '{target}' for this project.");
+        return;
+    }
+    _session_record = record;
+    _restore_session_state(record);
+    label = str(record.get("name") or record.get("id", ""));
+    n_turns = len(record.get("turns", []));
+    console.print(
+        f"  switched to session {label} -- {n_turns} turn(s).", style="bold green"
+    );
+    _print_scrollback(record);
+}
+
+"""`/name [name]` -- name/rename the current session, or show it if bare.
+
+Names are unique within a cwd (isolation invariant): renaming to a name
+already used by another session here is rejected. Persists immediately.
+"""
+def cmd_name(name: str) {
+    if not _session_record {
+        return;
+    }
+    if not name {
+        cur = str(_session_record.get("name", "")) or "(unnamed)";
+        console.print(f"  current name: {cur}", style="muted");
+        return;
+    }
+    cwd = agent.ws.cwd;
+    if _session_store is not None {
+        existing = _session_store.resolve_by_name(cwd, name);
+        if existing is not None
+        and str(existing.get("id", "")) != str(_session_record.get("id", "")) {
+            console.error(f"name '{name}' is already used by another session here.");
+            return;
+        }
+    }
+    _session_record["name"] = name;
+    if _session_store is not None {
+        _session_store.save(_session_record);
+    }
+    console.success(f"session named '{name}'.");
+}
+
+"""`/forget` -- delete the current session's file, then start fresh.
+
+Confirms first (the delete is irreversible). After the file is gone, allocates
+a new unnamed session so the REPL keeps working and later turns save to a new
+file rather than an orphaned id.
+"""
+def cmd_forget {
+    global _session_record;
+    if _session_store is None or not _session_record {
+        return;
+    }
+    label = str(_session_record.get("name") or _session_record.get("id", ""));
+    if not confirm(f"delete session {label}?") {
+        console.print("  cancelled.", style="muted");
+        return;
+    }
+    _session_store.delete(str(_session_record.get("id", "")));
+    # Fresh session so subsequent turns have somewhere to save.
+    _session_record = _session_store.create(agent.ws.cwd);
+    _restore_session_state(_session_record);
+    _session_store.save(_session_record);
+    console.success("session forgotten; started a fresh one.");
+}
+
+"""`/cost` -- cumulative token usage and tool counts for this session."""
+def cmd_cost {
+    if not _session_record {
+        return;
+    }
+    totals = _session_record.get("totals", {});
+    prompt = int(totals.get("prompt_tokens", 0));
+    completion = int(totals.get("completion_tokens", 0));
+    n_read = int(totals.get("n_read", 0));
+    n_write = int(totals.get("n_write", 0));
+    n_run = int(totals.get("n_run", 0));
+    label = str(_session_record.get("name") or _session_record.get("id", ""));
+    n_turns = len(_session_record.get("turns", []));
+    console.print(f"  session {label} -- {n_turns} turn(s):", style="bold");
+    tok_str = agent.view._format_tokens(
+        {"prompt_tokens": prompt, "completion_tokens": completion}
+    );
+    console.print(f"    tokens: {tok_str}", style="muted");
+    cost = (
+        agent.view._estimate_cost(prompt, completion)
+            if (prompt > 0 or completion > 0)
+            else 0.0
+    );
+    console.print(f"    est. cost: ${cost:.4f}", style="muted");
+    console.print(
+        f"    tools: {n_read} read, {n_write} write, {n_run} run", style="muted"
+    );
+}
+
+# ---------------------------------------------------------------------------
 # Event bus -- structured milestones for the `--ui` web view.
 # ---------------------------------------------------------------------------
 """Append one event (kind + fields), stamping a monotonic id; thread-safe."""
@@ -1751,7 +2323,9 @@ impl TurnRenderer.print_banner{
 
 impl TurnRenderer.print_help{
     _term_print("  /help     show this help", style="muted");
-    _term_print("  /clear    reset the conversation", style="muted");
+    _term_print(
+        "  /clear    reset the conversation (keeps the session)", style="muted"
+    );
     _term_print("  /guides   list the bundled Jac reference guides", style="muted");
     _term_print("  /stats    toggle the per-turn stat line", style="muted");
     _term_print(
@@ -1760,6 +2334,13 @@ impl TurnRenderer.print_help{
     _term_print(
         "  /feedback toggle inline compiler feedback after each write", style="muted"
     );
+    _term_print("  /sessions list sessions for this project", style="muted");
+    _term_print("  /resume <id|name>  switch to another session", style="muted");
+    _term_print("  /name <name>       name or rename this session", style="muted");
+    _term_print(
+        "  /cost     show cumulative token usage for this session", style="muted"
+    );
+    _term_print("  /forget   delete this session and start fresh", style="muted");
     _term_print("  /exit     quit the session", style="muted");
 }
 
@@ -2391,6 +2972,15 @@ impl PhaseState.step(visitor: AgentSession) -> dict {
     agent.bus.close_convo(self.ctx);
     visitor.stats.absorb(result);
     visitor.ledger.record(label, str(result.get("answer", "") or "(no summary)"));
+    # Capture this phase's answer into the turn transcript (display-only
+    # scrollback on resume). Bounded so a runaway output can't bloat the
+    # session file; the ledger's 400-char record is the model-visible memory.
+    visitor.phases.append(
+        {
+            "name": label,
+            "answer": truncate(str(result.get("answer", "") or "(no summary)"), 4000)
+        }
+    );
     # Surface the new ledger entry to the UI panel right away (the next bus emit
     # would carry it anyway, but this lands it the instant the phase records).
     agent.bus.publish_ledger();
@@ -2733,6 +3323,11 @@ impl run_turn(message: str) {
             "has_run": True
         };
     }
+    # Persist the session after every turn: ledger/cfg/cwd snapshot + this
+    # turn's objective + phase transcript + stats folded into running totals.
+    # Best-effort (the store guards its own failures), so a save error never
+    # aborts the turn.
+    _save_session(message, session.stats, session.phases);
 }
 
 """After a one-shot build, keep going until the project compiles.
@@ -2815,13 +3410,44 @@ impl run_agent(req: AgentRequest) -> int {
         agent.ws.ci.on_event = agent.view._ci_event;
     }
     initial_prompt = str(r.prompt);
-    # Import-time `agent_model` covers jac.toml/default; rebuild only when a
-    # flag changes the model or its context window.
+    # Resolve the session (resume/continue/session/new). Two selectors at once
+    # is a usage error: report it and bail without starting the agent.
+    if not _resolve_session(r) {
+        return 1;
+    }
+    resuming = bool(_session_record.get("ledger"));
+    # Import-time `agent_model` covers jac.toml/default; rebuild when a flag
+    # overrides, or -- on resume with no flag -- when the record names a model.
     if r.model or r.n_ctx > 0 {
         agent_model = build_model(str(r.model), int(r.n_ctx));
+    } elif resuming and _session_record.get("model") {
+        agent_model = build_model(str(_session_record["model"]), int(agent.cfg.n_ctx));
     }
     agent.view.print_banner();
-    reset_session();
+    if resuming {
+        # Restore the cross-turn memory + toggles + cwd from the record, and
+        # skip reset_session() so the restored ledger survives. A resumed run
+        # continues the same conversation rather than starting blank.
+        _restore_session_state(_session_record);
+        n_turns = len(_session_record.get("turns", []));
+        label = str(_session_record.get("name") or _session_record.get("id", ""));
+        console.print(
+            f"  resumed session {label} -- {n_turns} prior turn(s), "
+            f"{len(
+                _session_record["ledger"].get("changes", [])
+            )} change(s) remembered.",
+            style="bold green"
+        );
+        # Replay the prior conversation as readable scrollback (display-only:
+        # the model still sees only the ledger, per SESSIONS_PLAN §1).
+        _print_scrollback(_session_record);
+    } else {
+        reset_session();
+    }
+    # Persist the session shell now (before any turn) so the id/name/cwd land
+    # on disk even if the first turn raises -- the session stays resumable.
+    # For a resumed session this just refreshes the timestamp + re-snapshots.
+    _save_session();
 
     if initial_prompt {
         try {
@@ -2860,7 +3486,17 @@ impl run_agent(req: AgentRequest) -> int {
             continue;
         }
         if line == "/clear" {
+            # Wipe-and-stay: clear in-memory memory as today AND wipe the
+            # persisted transcript/ledger/totals so a resumed session stays
+            # cleared. Keeps the session id/name/cwd -- a fresh slate, not a
+            # fresh session (use /forget to discard the session entirely).
             reset_session();
+            if _session_record and _session_store is not None {
+                _session_record["turns"] = [];
+                _session_record["ledger"] = {"changes": [], "notes": []};
+                _session_record["totals"] = {};
+                _session_store.save(_session_record);
+            }
             console.success("Conversation cleared.");
             continue;
         }
@@ -2894,6 +3530,29 @@ impl run_agent(req: AgentRequest) -> int {
                     if agent.cfg.inline_feedback
                     else "Inline compiler feedback off: use jac_check to compile."
             );
+            continue;
+        }
+        # Session-management commands. The arg-taking ones (/resume, /name)
+        # split the line; the rest are exact-match.
+        if line == "/sessions" {
+            cmd_sessions();
+            continue;
+        }
+        if line == "/forget" {
+            cmd_forget();
+            continue;
+        }
+        if line == "/cost" {
+            cmd_cost();
+            continue;
+        }
+        head = line.split(None, 1);
+        if head[0] == "/resume" {
+            cmd_resume(head[1].strip() if len(head) > 1 else "");
+            continue;
+        }
+        if head[0] == "/name" {
+            cmd_name(head[1].strip() if len(head) > 1 else "");
             continue;
         }
         try {
