@@ -133,7 +133,20 @@ def _predicates_to_field_filters(spec: any) -> dict {
             continue;
         }
         slot = out.setdefault(field, {});
-        if backend_op not in slot {
+        # On a repeated op for the same field, keep the *tighter* bound so the
+        # backend filters more, not less (the lambda still enforces the rest).
+        # Mismatched types fall back to first-wins.
+        if backend_op in slot {
+            try {
+                if backend_op in ('$gt', '$gte') {
+                    slot[backend_op] = max(slot[backend_op], val);
+                } elif backend_op in ('$lt', '$lte') {
+                    slot[backend_op] = min(slot[backend_op], val);
+                }
+            } except TypeError {
+                ;
+            }
+        } else {
             slot[backend_op] = val;
         }
     }
@@ -347,7 +360,13 @@ def _execute_hybrid_fields(
     if not ({'id_in', 'field_pushdown'} <= mem.capabilities()) {
         return None;
     }
-    l1 = mem?.__mem__;
+    # `get_mem()` is the public L1 accessor on the Memory interface; prefer it
+    # over reaching into `__mem__` so a memory-layer refactor can't silently
+    # disable pushdown.
+    if not hasattr(mem, 'get_mem') {
+        return None;
+    }
+    l1 = mem.get_mem();
     if not isinstance(l1, dict) {
         return None;
     }
@@ -360,20 +379,36 @@ def _execute_hybrid_fields(
             cold.add(i);
         }
     }
+    import from jaclang.jac0core.archetype { NodeAnchor }
     result = _materialize_ids(mem, resident, post_filter=plan.post_filter);
     if cold {
+        # The slice still applies over the resident+cold union below, so we
+        # can't push it verbatim. But a sliced query needs at most `stop` rows
+        # total, hence at most `stop` from the cold side: pass that as a safe
+        # upper bound so the backend caps the fetch instead of returning every
+        # matching cold row. Only for contiguous (step 1) slices with a stop.
+        cold_slc: (slice | None) = None;
+        if plan.slc is not None
+        and (plan.slc.step is None or plan.slc.step == 1)
+        and plan.slc.stop is not None {
+            cold_slc = slice(0, plan.slc.stop);
+        }
         cold_plan = QueryPlan(
             root_id=plan.root_id,
             chain=[],
             field_predicates=plan.field_predicates,
             id_in=cold,
-            node_type_final=plan.node_type_final
+            node_type_final=plan.node_type_final,
+            slc=cold_slc
         );
         for anchor in mem.execute_plan(cold_plan) {
-            if (
-                plan.post_filter is not None
-                and (anchor.archetype is None or not plan.post_filter(anchor.archetype))
-            ) {
+            # Mirror `_materialize_ids`: only node anchors with a live archetype
+            # reach the result, then the post_filter lambda decides membership.
+            if not (isinstance(anchor, NodeAnchor) and anchor.archetype is not None) {
+                continue;
+            }
+            if plan.post_filter is not None
+            and not plan.post_filter(anchor.archetype) {
                 continue;
             }
             result.append(anchor);

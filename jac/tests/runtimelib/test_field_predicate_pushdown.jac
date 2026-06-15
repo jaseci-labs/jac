@@ -134,9 +134,13 @@ test "predicate spec converts to backend field filters" {
     assert _predicates_to_field_filters((("val", ">=", 1), ("val", "<", 9))) == {
         "val": {"$gte": 1, "$lt": 9}
     };
-    # Duplicate op on the same field keeps the first; lambda enforces the rest.
+    # Duplicate op on the same field keeps the tighter bound (max for $gt/$gte,
+    # min for $lt/$lte) so the backend filters more; lambda enforces the rest.
     assert _predicates_to_field_filters((("val", ">", 1), ("val", ">", 5))) == {
-        "val": {"$gt": 1}
+        "val": {"$gt": 5}
+    };
+    assert _predicates_to_field_filters((("val", "<", 9), ("val", "<", 4))) == {
+        "val": {"$lt": 4}
     };
     # Membership ops need a literal collection of plain scalars.
     assert _predicates_to_field_filters((("tag", "in", ["a", "b"]), )) == {
