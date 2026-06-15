@@ -519,23 +519,28 @@ impl NaIRGenPass._lower_function_type(t: any) -> ir.Type {
 """Resolve a Jac type expression to an LLVM type.
 
 An annotation Expr carries a `.type` (TypeBase) populated by TypeCheckPass;
-_lower_type maps it to an LLVM type. Every native type now flows through the
+_lower_type maps it to an LLVM type. Most native types flow through the
 central checker -- primitives, user structs/enums, collections, and the
 runtime `File` (modeled by na_builtins.pyi) -- including annotations in
 imported .na.jac modules (type-checked on load, #6117). The former name-based
 fallback (struct_types / type_map lookups) is gone: with `File` modeled
 centrally (#6118) it was reached zero times across the native suite.
 
-An annotation that reaches codegen without a `.type` is an E9002 ICE: the
-typed-tree contract (Phase 0) guarantees inference ran, so a missing type
-is a pipeline bug, never a user error. A present-but-unlowerable type still
-defaults to i64 (capability gap, E5090 territory -- tightened separately).
+Two paths reach codegen WITHOUT a `.type`, and both fall back rather than ICE:
 
-The exception is clib-import annotations (parameter types on `import from
-\"lib\" { def ...; }`). The type checker skips these nodes entirely, so their
-`.type` is always None. Rather than forcing the checker to process C-FFI
-declarations, the codegen falls back to `_resolve_primitive_name`, which maps
-raw primitive type names (int, i32, f64, str, …) directly to LLVM IR types.
+  * clib-import annotations (parameter/field types on `import from \"lib\"
+    { def ...; }`). The type checker skips these nodes entirely (the
+    `clib_decls` short-circuit in TypeCheckPass), so their `.type` is always
+    None. Codegen falls back to `_resolve_primitive_name`, which maps raw
+    primitive names (int, i32, f64, str, …) directly to LLVM IR types.
+  * a present-but-unlowerable type (a capability gap, E5090 territory).
+
+When neither resolves, `_resolve_jac_type` defaults to i64 and emits a debug
+breadcrumb -- it does NOT raise. This is a known soundness hole: an
+unrecognized C type is silently widened to signed i64. The proper fix is to
+type-check clib decls so `.type` is populated and a genuinely missing type can
+ICE honestly (the typed-tree contract this comment used to claim was already
+enforced) -- tracked in #6676.
 """
 # Primitive type name → LLVM IR type.  Used as a fallback when the type
 # checker did not stamp `.type` on an annotation (e.g. clib import params).
@@ -644,6 +649,17 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
             # Annotation not resolved by checker or primitive table.
             # Default to i64 (opaque pointer) instead of ICE — this
             # handles user-defined types the checker hasn't stamped.
+            # Soundness hole: an unrecognized clib C type is silently widened
+            # to signed i64. Log it so the fallback is observable; the real
+            # fix is to type-check clib decls (see #6676).
+            import logging as _logging;
+            _logging.getLogger("jaclang.native").debug(
+                "[NaIRGenPass] _resolve_jac_type: unresolved clib annotation "
+                "%r (type=%s) — defaulting to i64; the type checker does not "
+                "stamp clib import decls (see #6676)",
+                type_expr,
+                type(type_expr).__name__,
+            );
             return ir.IntType(64);
         }
         lowered = self._lower_type(type_expr.type);
@@ -651,6 +667,16 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
             return lowered;
         }
     }
+    # Catch-all: an annotated type the checker stamped but _lower_type could
+    # not lower (capability gap). Default to i64, but log so it is observable
+    # rather than silently mis-typed.
+    import logging as _logging;
+    _logging.getLogger("jaclang.native").debug(
+        "[NaIRGenPass] _resolve_jac_type: unresolved type %r (type=%s) — "
+        "defaulting to i64; consider adding an explicit type annotation",
+        type_expr,
+        type(type_expr).__name__,
+    );
     return ir.IntType(64);
 }
 

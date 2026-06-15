@@ -6,104 +6,111 @@ consistent Chromium rendering engine across all platforms. Use the
 
 ## Architecture
 
-The `desktop-cef` host uses **two independent FFI layers**. libpython is **not**
-used to talk to Chromium; it only embeds a minimal CPython runtime for the
-loopback HTTP server.
+The `desktop-cef` host is a single `jac nacompile` binary. There is **no C
+shim**: the CEF vtables and glue are written in Jac-native (`*.na.jac`) and
+compiled directly. libpython is **not** used to talk to Chromium; it only
+embeds a minimal CPython runtime for the loopback HTTP server.
 
 ### FFI layers
 
 | Library | Link style | Purpose |
 |---------|------------|---------|
-| **libpython** | AOT-linked via Jac `import from "libpython…"` in generated `host.na.jac` | Embed CPython: start loopback server, run `oauth_broker.py`, read `_port` |
-| **libcef** | Build-time link via `libcef_shim.so` | Browser window, rendering, CEF subprocesses |
-
-**libpython FFI**: the generated Jac `na` host (`host.na.jac`, built with
-`jac nacompile`) AOT-links the system libpython soname and calls a small C-API
-surface:
-
-- `Py_Initialize` / `Py_Finalize`
-- `PyRun_SimpleString`: runs embedded Python that binds `TCPServer` on
-  `127.0.0.1`, serves `dist/`, and exposes `/__jac/*` via `oauth_broker.py`
-- `PyRun_String` / `PyLong_AsLong`: reads `_port` from `__main__` to build the
-  navigation URL
-- `PyEval_SaveThread` / `PyEval_RestoreThread`: releases the GIL while the CEF
-  message loop runs
-
-The embedded interpreter uses **stdlib only** (no jaclang). `oauth_broker.jac` is
-transpiled to pure-Python `oauth_broker.py` at build time and shipped beside the
-binary.
+| **libcef** | `import from "libcef.so"` in `cef.na.jac` (AOT) | Browser window, rendering, message loop |
+| **libcef_dispatch** | `import from "libcef_dispatch.so"` in `cef.na.jac` (AOT) | Jac-native helper for the few things FFI can't express directly |
+| **libpython** | `import from "libpython…"` in generated `host.na.jac` (AOT) | Embed CPython: loopback server, `oauth_broker.py`, read `_port` |
 
 **CEF FFI**: CEF's C API requires client-side vtable structs with refcount
-callbacks and precise memory layout. Jac FFI handles scalars and strings cleanly
-but cannot express those vtables directly. The binding follows the same pattern as
-the webview integration:
+callbacks and precise memory layout. `cef.na.jac` expresses all CEF vtable
+structs (`cef_app_t`, `cef_client_t`, `cef_life_span_handler_t`, …) as flat Jac
+clib structs with `Callable` fields. The exported CEF entry points
+(`cef_initialize`, `cef_execute_process`, `cef_run_message_loop`, `cef_shutdown`)
+are imported directly from `libcef.so`. A thin helper, `libcef_dispatch.so`
+(built from `cef_dispatch.na.jac`), wraps the two things Jac FFI cannot express:
+calling methods on CEF-returned objects through their vtable pointers, and
+allocating data structs with mixed-size fields.
 
-| Layer | Role |
-|-------|------|
-| `cef_shim.c` → `libcef_shim.so` | C bridge: owns all CEF vtables, settings, browser creation |
-| `cef.na.jac` | Thin Jac binding: scalar/string FFI + `CefBrowser` ergonomic wrapper (tests/smoke hosts) |
-| `host.na.jac` | Production host (generated): `jac_cef_*` + embedded CPython loopback |
-| `CefDesktopTarget` | Build pipeline: fetch CEF, build shim, stage runtime, compile host |
+**libpython FFI**: the generated `host.na.jac` AOT-links the system libpython
+soname and calls a small C-API surface (`Py_Initialize`/`Py_Finalize`,
+`PyRun_SimpleString`/`PyRun_String`, `PyLong_AsLong`,
+`PyEval_SaveThread`/`PyEval_RestoreThread`). The embedded interpreter is
+**stdlib only** (no jaclang); `oauth_broker.jac` is transpiled to pure-Python
+`oauth_broker.py` at build time and shipped beside the binary.
 
-Jac code never touches CEF vtable structs; only `libcef_shim.so` exports.
-The production `desktop-cef` binary links `-lcef_shim -lcef -ldl`; it does **not**
-link libpython at build time (same as the native `desktop` target).
+### CEF subprocesses
+
+CEF spawns render/GPU/utility helper processes. These run the standalone
+`cef-subprocess` binary (built from `cef_subprocess.na.jac`), staged beside the
+host. The host's first call, `cef_execute_subprocess()`, returns `>= 0` when the
+current process *is* a CEF subprocess so the host can exit early.
+
+### The `close()` / RTLD_NEXT requirement
+
+libcef's `.init_array` constructors call `dlsym(RTLD_NEXT, "close")` during
+init. `RTLD_NEXT` resolves to the next definition of `close` *after* the caller
+in the link map, so **libc must appear after libcef in `DT_NEEDED`**. `jac
+nacompile` guarantees this by appending `libc.so.6`/`libm.so.6` last in the
+needed-library list (see `nacompile.impl.jac`). No `LD_PRELOAD` or injected C
+shim is required; an earlier `close_preload.c` approach was removed in favor of
+this ordering.
 
 ### Startup sequence
 
 ```
-main()
-  ├─ jac_cef_execute_process()     # CEF subprocess? exit early
+with entry {                       # generated host.na.jac
+  ├─ cef_execute_subprocess()      # CEF subprocess? exit early
+  ├─ cef_startup(cache_path, …)    # CEF init / dispatch bootstrap
   ├─ Py_Initialize()               # embed CPython (AOT-linked)
   ├─ PyRun_SimpleString(SERVE_PY)  # loopback server + oauth broker (daemon thread)
   ├─ read _port → build URL
-  ├─ jac_cef_create_browser(url)   # queue browser (UI thread)
-  ├─ jac_cef_initialize()          # CEF init → on_context_initialized creates window
-  ├─ jac_cef_run_message_loop()    # GIL released via PyEval_SaveThread
-  ├─ Py_Finalize()
-  └─ jac_cef_shutdown()
+  ├─ cef_open_browser(url, …)      # create window + navigate
+  ├─ PyEval_SaveThread()           # release GIL
+  ├─ cef_run_loop()                # CEF message loop
+  ├─ PyEval_RestoreThread() / Py_Finalize()
+  └─ cef_cleanup()
+}
 ```
 
 ### Comparison with the native `desktop` target
 
 Both targets share the same loopback-server Python (`SERVE_PY`) and
-`oauth_broker.py`. They differ only in how the shell renders the URL:
+`oauth_broker.py`, and both compile a generated `host.na.jac` via `jac
+nacompile`. They differ only in the renderer:
 
 | | Native (`desktop`) | CEF (`desktop-cef`) |
 |--|-------------------|---------------------|
-| Renderer FFI | Jac `na` → `libwebview.so` (AOT link) | Jac `na` → `libcef_shim.so` → `libcef.so` |
-| Host language | Jac `na` (`host` via `jac nacompile`) | Jac `na` (`host` via `jac nacompile`) |
-| libpython FFI | Jac `import from "libpython..."` (AOT link) | Jac `import from "libpython..."` (AOT link) |
-| Bootstrap globals | `webview_init(BOOTSTRAP_JS)` on each load | `on_context_created` in shim (V8 globals) |
-
-Both targets now share the same host pattern: `jac nacompile` on a generated
-`host.na.jac` that AOT-links libpython and the renderer shim/library.
+| Renderer FFI | Jac `na` → `libwebview.so` | Jac `na` → `libcef.so` + `libcef_dispatch.so` |
+| Bootstrap globals | `webview_init(BOOTSTRAP_JS)` on each load | `on_context_created` handler in `cef.na.jac` (V8 globals) |
 
 ## Contents
 
 | File | Role |
 |------|------|
-| `cef.na.jac` | Jac binding over `libcef_shim.so` (`new_cef_browser`, `CefBrowser`, `cef_cleanup`) |
-| `cef_shim.c` | C shim implementing CEF vtables and the scalar FFI surface |
-| `build_cef_shim.sh` | Compiles `libcef_shim.so` against staged `cef_dist/libcef.so` |
+| `cef.na.jac` | Jac binding: CEF vtable structs + `cef_startup`/`cef_open_browser`/`cef_run_loop`/`cef_cleanup`/`cef_execute_subprocess` |
+| `cef_dispatch.na.jac` | Source for `libcef_dispatch.so` (vtable-method calls + mixed-size struct alloc) |
+| `cef_subprocess.na.jac` | Source for the `cef-subprocess` helper binary |
+| `build_cef_dispatch.sh` | `jac nacompile --shared` → `libcef_dispatch.so` |
+| `build_cef_subprocess.sh` | `jac nacompile` → `cef-subprocess` |
 | `fetch_libcef.sh` | Downloads pinned CEF binary + SDK headers (one-time, ~800 MB tarball) |
-| `cef_smoke.na.jac` | Smoke test: init + shutdown via the shim |
-| `cef_test_host.na.jac` | Manual test: opens example.com in a CEF window |
+| `minimal-fonts.conf` | fontconfig used at runtime via `FONTCONFIG_FILE` |
+| `cef_smoke.na.jac` | Smoke test: init + shutdown |
+| `cef_test_host.na.jac` | Manual test: opens a page in a CEF window |
 
 ## Prerequisites
 
-On first `desktop-cef` build the pipeline runs `fetch_libcef.sh` and
-`build_cef_shim.sh` automatically. You need:
+On first `desktop-cef` build the pipeline runs `fetch_libcef.sh`,
+`build_cef_dispatch.sh`, and `build_cef_subprocess.sh` automatically. You need:
 
-- `curl` for downloading
-- `gcc` for building the shim
+- `curl` for downloading the CEF distribution
+- `jac` on `PATH` (the native pieces compile with `jac nacompile`, **no gcc**)
+- `patchelf` (optional) to set `$ORIGIN` rpath; without it, `libcef.so` must be
+  on `LD_LIBRARY_PATH` at runtime
 - ~1 GB disk for the cached CEF tarball + staged runtime
 
-Generated artifacts (not committed):
+Generated artifacts (not committed; see `.gitignore`):
 
-- `cef_dist/`: CEF runtime (`libcef.so`, `.pak`, `locales/`, ...)
+- `cef_dist/`: CEF runtime (`libcef.so`, `.pak`, `locales/`, …)
 - `cef_headers/`: CEF SDK headers (build-time only)
-- `libcef_shim.so`: compiled shim
+- `libcef_dispatch.so`, `cef-subprocess`: compiled native pieces
 
 On Linux, `chrome-sandbox` requires setuid root for the renderer sandbox:
 
@@ -112,19 +119,19 @@ sudo chown root:root cef_dist/chrome-sandbox
 sudo chmod 4755 cef_dist/chrome-sandbox
 ```
 
-Without setuid, the shim passes `--no-sandbox` via `no_sandbox=1` (OK for dev).
+Without setuid, the host passes `--no-sandbox` (OK for dev).
 
 ## Notes
 
-- CEF subprocess handling is inside `new_cef_browser()` via `jac_cef_execute_process()`.
-- The loopback server model matches the native target: host serves `dist/` on
-  `http://127.0.0.1:<port>/` and CEF navigates there after Python starts.
-- `cache_path` in `new_cef_browser()` controls CEF profile/localStorage persistence.
-- **Bootstrap JS injection**: `cef_render_process_handler_t::on_context_created`
-  in the shim sets `window.__JAC_DESKTOP__ = true` and
-  `window.__JAC_BROKER__ = '/__jac'` on the V8 global object synchronously
-  before any page scripts execute. This is the CEF equivalent of the native
-  target's `webview_init(BOOTSTRAP_JS)`.
+- **Pinned CEF version**: `fetch_libcef.sh` pins the CEF major version. The flat
+  struct layouts in `cef.na.jac` / `cef_dispatch.na.jac` are version-specific
+  (field offsets and `sizeof` are hard-coded for the pinned major); a version
+  bump requires re-verifying every offset.
+- **Bootstrap JS injection**: the `on_context_created` handler sets
+  `window.__JAC_DESKTOP__ = true` and `window.__JAC_BROKER__ = '/__jac'` on the
+  V8 global object before any page scripts execute (the CEF equivalent of the
+  native target's `webview_init(BOOTSTRAP_JS)`).
+- `cache_path` controls CEF profile/localStorage persistence.
 
 ## QA
 

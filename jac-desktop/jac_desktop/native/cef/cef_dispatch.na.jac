@@ -1,4 +1,8 @@
-"""Jac-native replacement for cef_dispatch.c + close_preload.c.
+"""Jac-native CEF dispatch helper compiled to libcef_dispatch.so.
+
+Wraps the parts of the CEF C API that Jac FFI cannot express directly:
+calling methods on CEF-returned objects through their vtable pointers, and
+allocating data structs with mixed-size fields.
 
 Compile to libcef_dispatch.so:
   jac nacompile --shared cef_dispatch.na.jac -o libcef_dispatch.so

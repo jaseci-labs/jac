@@ -31,12 +31,14 @@ jac_desktop = [
     "native/webview/install_webkit_deps.sh",
     "native/webview/README.md",
     "native/cef/cef.na.jac",
-    "native/cef/cef_dispatch.c",
-    "native/cef/close_preload.c",
+    "native/cef/cef_dispatch.na.jac",
+    "native/cef/cef_subprocess.na.jac",
     "native/cef/build_cef_dispatch.sh",
+    "native/cef/build_cef_subprocess.sh",
     "native/cef/fetch_libcef.sh",
     "native/cef/minimal-fonts.conf",
     "native/cef/README.md",
+    "native/cef/QA.md",
 ]
 
 [dependencies]

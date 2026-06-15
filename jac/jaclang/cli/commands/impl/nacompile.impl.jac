@@ -550,12 +550,6 @@ impl nacompile(
 
     obj_bytes = target_machine.emit_object(mod);
     console.print(f"  Object code emitted ({len(obj_bytes)} bytes).");
-    _emit_obj_path = os.environ.get("JAC_EMIT_OBJECT_PATH", "");
-    if _emit_obj_path {
-        with open(_emit_obj_path, "wb") as _obj_f {
-            _obj_f.write(obj_bytes);
-        }
-    }
 
     # Step 7: Link into native executable (platform-specific)
     if is_windows {
@@ -608,31 +602,11 @@ impl nacompile(
         }
     } else {
         import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
-        # Optional extra relocatables (colon-separated paths), e.g. CEF close shim.
-        crt_objects: list[bytes] = [];
-        _crt_spec = os.environ.get("JAC_CRT_OBJECTS", "");
-        if _crt_spec {
-            for _crt_path in _crt_spec.split(":") {
-                if not _crt_path {
-                    continue;
-                }
-                with open(_crt_path, "rb") as _crt_f {
-                    crt_objects.append(_crt_f.read());
-                }
-            }
-            if "close" not in export_symbols {
-                export_symbols.append("close");
-            }
-            if not is_macos and not is_windows and "libdl.so.2" not in needed_libs {
-                needed_libs.append("libdl.so.2");
-            }
-        }
         try {
             success = ElfLinker.link(
                 obj_bytes=obj_bytes,
                 output_path=output,
                 needed_libs=needed_libs,
-                crt_objects=crt_objects,
                 shared=shared,
                 export_symbols=export_symbols,
                 init_funcs=init_funcs,
