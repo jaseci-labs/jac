@@ -114,6 +114,9 @@ import models;
 import from models { Task }
 ```
 
+!!! note "No-dot imports anchor to the project root"
+    A dotted, no-leading-dot import (`import models;`, `import from engine.math.vec3 { Vec3 }`) resolves against the **project root** -- the nearest directory with a `jac.toml` -- from anywhere in the project. The importing file's depth does not matter, so a test under `tests/` uses the exact same path as a file at the root, and moving a file between directories never changes its imports.
+
 !!! note "Relative imports follow package rules"
     Just like Python, `.` / `..` / `...` resolve relative to the *package* a module belongs to. A `..` import only works when a real parent package sits above the current module. A file run directly with `jac run` is treated as a top-level script, so `..`-style imports *inside that entry file* fail with *"relative import beyond top-level package."* Use relative imports between modules inside nested package directories; from an entry script, reach other modules by their absolute path.
 

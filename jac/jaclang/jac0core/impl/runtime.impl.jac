@@ -915,10 +915,34 @@ impl JacBasics.jac_import(
         module_name = target;
     }
     caller_dir = base_path if os.path.isdir(base_path) else os.path.dirname(base_path);
+    # Anchor imports to the project root (the nearest `jac.toml` dir) in addition
+    # to the importing file's own directory. This lets a no-dot import like
+    # `engine.math.vec3` resolve as "project-root absolute" from anywhere in the
+    # project -- including a test file sitting in a `tests/` subdirectory -- and
+    # lets Python's PathFinder build pure namespace packages (directories with no
+    # direct `.jac` file, only sub-packages) that the Jac meta-importer skips.
+    # The file's own directory still comes first so sibling imports are unchanged.
+    project_root = find_jac_project_root(caller_dir);
+    roots_to_add = [];
+    for d in [caller_dir, project_root] {
+        if (d and (d not in sys.path) and (d not in roots_to_add)) {
+            roots_to_add.append(d);
+        }
+    }
     original_path = None;
-    if (caller_dir and (caller_dir not in sys.path)) {
+    if roots_to_add {
         original_path = sys.path.copy();
-        sys.path.insert(0, caller_dir);
+        for d in reversed(roots_to_add) {
+            sys.path.insert(0, d);
+        }
+    }
+    # Mark the importing file's directory as the active import base so that any
+    # bare imports executed while this module loads resolve against it first
+    # (own-directory-first), matching compile-time resolution. Balanced by the
+    # pop_import_base() in the finally below.
+    pushed_base = bool(caller_dir);
+    if pushed_base {
+        push_import_base(caller_dir);
     }
     try {
         if (override_name == '__main__') {
@@ -1005,6 +1029,9 @@ impl JacBasics.jac_import(
         }
         return (module, );
     } finally {
+        if pushed_base {
+            pop_import_base();
+        }
         if (original_path is not None) {
             sys.path[:] = original_path;
         }
