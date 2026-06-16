@@ -42,5 +42,6 @@ obj GraphBreakDetectPass(UniPass) {
     def _condition_is_data_dependent(cond: uni.Expr) -> bool;
     def _expr_uses_dynamic_attr(expr: uni.Expr) -> bool;
     def _trace_symbol(sym: uni.Symbol, visited: set[int], depth: int) -> bool;
+    def _defining_assignments(sym: uni.Symbol) -> list[uni.Assignment];
     def _defining_assignment(sym: uni.Symbol) -> (uni.Assignment | None);
 }

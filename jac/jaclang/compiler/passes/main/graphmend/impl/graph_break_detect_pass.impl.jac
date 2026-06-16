@@ -117,23 +117,38 @@ impl GraphBreakDetectPass._resolve_wrapped_entry(
     if arg is None {
         return None;
     }
-    # torch.compile(Model()) / torch.compile(make()) -> unwrap the call target
-    inner = arg.target if isinstance(arg, uni.FuncCall) else arg;
-    if not isinstance(inner, uni.Name) {
+    if isinstance(arg, uni.FuncCall) {
+        # torch.compile(Model()) compiles the instance, so its CLASS is the entry.
+        # torch.compile(make_model()) compiles the factory's RETURN value (not
+        # statically resolvable); the factory body runs outside any compiled
+        # region, so a callee that resolves to a function is NOT an entry.
+        target = arg.target;
+        if isinstance(target, uni.Name) {
+            resolved = self._def_node(target.value, call);
+            if isinstance(resolved, uni.Archetype) {
+                return resolved;
+            }
+        }
         return None;
     }
-    # direct: torch.compile(fn) / torch.compile(Class) / torch.compile(Class())
-    resolved = self._def_node(inner.value, call);
+    if not isinstance(arg, uni.Name) {
+        return None;
+    }
+    # direct: torch.compile(fn) / torch.compile(Class)
+    resolved = self._def_node(arg.value, call);
     if resolved is not None {
         return resolved;
     }
-    # variable: torch.compile(m) where `m = Model(...)`
-    assign = self._var_assignment(inner.value, call);
-    if (assign is not None) and (assign.value is not None) {
-        v = assign.value;
-        cls = v.target if isinstance(v, uni.FuncCall) else v;
-        if isinstance(cls, uni.Name) {
-            return self._def_node(cls.value, call);
+    # variable: torch.compile(m) where `m = Model(...)` -- only a class
+    # instantiation is an entry (a factory `m = make_model()` is not).
+    assign = self._var_assignment(arg.value, call);
+    if (assign is not None) and isinstance(assign.value, uni.FuncCall) {
+        ctor = assign.value.target;
+        if isinstance(ctor, uni.Name) {
+            cls = self._def_node(ctor.value, call);
+            if isinstance(cls, uni.Archetype) {
+                return cls;
+            }
         }
     }
     return None;
@@ -302,29 +317,51 @@ impl GraphBreakDetectPass._trace_symbol(
         return False;
     }
     visited.add(id(sym));
-    assign = self._defining_assignment(sym);
-    if (assign is None) or (assign.value is None) {
-        return False;
-    }
-    if self._expr_uses_dynamic_attr(assign.value) {
-        return True;
-    }
-    st = assign.sym_tab;
-    if not st {
-        return False;
-    }
-    for nm in assign.value.get_all_sub_nodes(uni.Name) {
-        dep = st.lookup(nm.value, deep=True);
-        if dep and (id(dep) not in visited) {
-            if self._trace_symbol(dep, visited, depth + 1) {
-                return True;
+    for assign in self._defining_assignments(sym) {
+        if assign.value is None {
+            continue;
+        }
+        if self._expr_uses_dynamic_attr(assign.value) {
+            return True;
+        }
+        st = assign.sym_tab;
+        if not st {
+            continue;
+        }
+        for nm in assign.value.get_all_sub_nodes(uni.Name) {
+            dep = st.lookup(nm.value, deep=True);
+            if dep and (id(dep) not in visited) {
+                if self._trace_symbol(dep, visited, depth + 1) {
+                    return True;
+                }
             }
         }
     }
     return False;
 }
 
-"""Return the Assignment that defines `sym`, if any."""
+"""Every Assignment that defines `sym`. A variable may be assigned on multiple
+paths (e.g. both arms of an if/else); checking all of them avoids missing a
+dynamic origin reachable on only one branch."""
+impl GraphBreakDetectPass._defining_assignments(
+    sym: uni.Symbol
+) -> list[uni.Assignment] {
+    out = [];
+    seen: set[int] = set();
+    for d in (sym.defn or []) {
+        cur = d.parent;
+        while cur and (not isinstance(cur, uni.Assignment)) {
+            cur = cur.parent;
+        }
+        if isinstance(cur, uni.Assignment) and (id(cur) not in seen) {
+            seen.add(id(cur));
+            out.append(cur);
+        }
+    }
+    return out;
+}
+
+"""Return the last Assignment that defines `sym`, if any."""
 impl GraphBreakDetectPass._defining_assignment(
     sym: uni.Symbol
 ) -> (uni.Assignment | None) {

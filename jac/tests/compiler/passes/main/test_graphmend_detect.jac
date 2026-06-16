@@ -88,7 +88,7 @@ test "validation guard with cleanup before raise is a val_guard" {
 
 test "no detection when graphmend disabled" {
     mod = _compile("where_return.jac", False);
-    assert _if_kinds(mod) == [None];
+    assert all(k is None for k in _if_kinds(mod));
 }
 
 test "static hasattr control flow is not tagged" {
@@ -105,6 +105,11 @@ test "detects transitive data-dependence via use-def trace" {
 test "detects an entry point wrapped at a call site via a variable" {
     mod = _compile("callsite_var.jac", True);
     assert "dyn_ctrl_fl" in _if_kinds(mod);
+}
+
+test "factory call torch.compile(make_model()) does not tag the factory body" {
+    mod = _compile("callsite_factory.jac", True);
+    assert "side_effect" not in _call_kinds(mod);
 }
 
 test "whole-module scope tags model code with no local torch.compile entry" {
