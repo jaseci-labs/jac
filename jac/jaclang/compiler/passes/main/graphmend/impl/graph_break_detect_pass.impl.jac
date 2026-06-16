@@ -99,7 +99,9 @@ impl GraphBreakDetectPass._call_is_torch_compile(call: uni.FuncCall) -> bool {
 
 """Resolve the function/class wrapped by torch.compile(...) to its defining
 Ability/Archetype in this module, else None."""
-impl GraphBreakDetectPass._resolve_wrapped_entry(call: uni.FuncCall) -> (uni.UniNode | None) {
+impl GraphBreakDetectPass._resolve_wrapped_entry(
+    call: uni.FuncCall
+) -> (uni.UniNode | None) {
     arg = None;
     for p in (call.params or []) {
         if not isinstance(p, uni.KWPair) {
@@ -133,7 +135,9 @@ impl GraphBreakDetectPass._resolve_wrapped_entry(call: uni.FuncCall) -> (uni.Uni
 }
 
 """Return the Ability/Archetype declared as `name` in scope, else None."""
-impl GraphBreakDetectPass._def_node(name: str, ctx: uni.UniNode) -> (uni.UniNode | None) {
+impl GraphBreakDetectPass._def_node(
+    name: str, ctx: uni.UniNode
+) -> (uni.UniNode | None) {
     st = ctx.sym_tab;
     if not st {
         return None;
@@ -153,7 +157,9 @@ impl GraphBreakDetectPass._def_node(name: str, ctx: uni.UniNode) -> (uni.UniNode
 }
 
 """Return the Assignment defining variable `name` in scope, else None."""
-impl GraphBreakDetectPass._var_assignment(name: str, ctx: uni.UniNode) -> (uni.Assignment | None) {
+impl GraphBreakDetectPass._var_assignment(
+    name: str, ctx: uni.UniNode
+) -> (uni.Assignment | None) {
     st = ctx.sym_tab;
     if not st {
         return None;
@@ -209,9 +215,7 @@ impl GraphBreakDetectPass._call_name(nd: uni.FuncCall) -> (str | None) {
     if isinstance(target, uni.Name) {
         return target.value;
     }
-    if (
-        isinstance(target, uni.AtomTrailer) and isinstance(target.right, uni.Name)
-    ) {
+    if (isinstance(target, uni.AtomTrailer) and isinstance(target.right, uni.Name)) {
         return target.right.value;
     }
     return None;
@@ -273,7 +277,9 @@ e.g. `seq_len = torch.max(position_ids) + 1`.
 Parameters are deliberately NOT treated as dynamic -- that would misfire on
 object params (e.g. tagging `if hasattr(self, ...)` as data-dependent).
 """
-impl GraphBreakDetectPass._trace_symbol(sym: uni.Symbol, visited: set[str], depth: int) -> bool {
+impl GraphBreakDetectPass._trace_symbol(
+    sym: uni.Symbol, visited: set[str], depth: int
+) -> bool {
     if (depth > 10) or (sym.sym_name in visited) {
         return False;
     }
@@ -301,7 +307,9 @@ impl GraphBreakDetectPass._trace_symbol(sym: uni.Symbol, visited: set[str], dept
 }
 
 """Return the Assignment that defines `sym`, if any."""
-impl GraphBreakDetectPass._defining_assignment(sym: uni.Symbol) -> (uni.Assignment | None) {
+impl GraphBreakDetectPass._defining_assignment(
+    sym: uni.Symbol
+) -> (uni.Assignment | None) {
     if not sym.defn {
         return None;
     }
