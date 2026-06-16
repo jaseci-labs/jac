@@ -1825,6 +1825,26 @@ test "pip_command translates and drops flags correctly for uv" {
     }
 }
 
+test "pip_command warn_fn called for dropped flag" {
+    with patch("shutil.which") as mock_which {
+        mock_which.return_value = "/usr/bin/uv";
+        warnings: list[str] = [];
+        def collect(msg: str) {
+            warnings.append(msg);
+        }
+        pip_command(
+            "/path/to/python",
+            ["install", "--prefer-binary", "pkg"],
+            use_uv=True,
+            warn_fn=collect
+        );
+        assert len(warnings) == 1;
+        assert "--prefer-binary" in warnings[0];
+        assert "no uv equivalent" in warnings[0];
+    }
+}
+
+
 test "update always uses upgrade flag" {
     reset_config();
     tmp = tempfile.mkdtemp(prefix="jac_test_");
@@ -1863,27 +1883,6 @@ test "update always uses upgrade flag" {
 }
 
 # ===== TestInstallPackageIntoActivatedEnv =====
-test "jac install <pkg> works outside a project directory" {
-    # Core contract: packages path bypasses jac.toml requirement entirely.
-    import from jaclang.cli.commands { project as proj_cmds }
-    tmp = tempfile.mkdtemp(prefix="jac_test_");
-    original_cwd = os.getcwd();
-    try {
-        os.chdir(tmp);
-        mock_result = MagicMock();
-        mock_result.returncode = 0;
-        mock_result.stdout = "Successfully installed pip-24.0";
-        mock_result.stderr = "";
-        with patch("subprocess.run", return_value=mock_result) {
-            result = proj_cmds.install(packages=["pip"], no_deps=True);
-        }
-        assert result == 0;
-    } finally {
-        os.chdir(original_cwd);
-        shutil.rmtree(tmp, ignore_errors=True);
-    }
-}
-
 test "install package failure returns error code" {
     # Error path: pip failure propagates as exit 1.
     reset_config();
@@ -1904,5 +1903,34 @@ test "install package failure returns error code" {
         os.chdir(original_cwd);
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
+    }
+}
+
+test "jac install pkg uses uv when uv on PATH" {
+    import from jaclang.cli.commands { project as proj_cmds }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    original_cwd = os.getcwd();
+    try {
+        os.chdir(tmp);
+        mock_result = MagicMock();
+        mock_result.returncode = 0;
+        mock_result.stdout = "";
+        mock_result.stderr = "";
+        clean_env = {
+            k: v
+            for (k, v) in os.environ.items()
+            if k != "JAC_NO_UV"
+        };
+        with patch("subprocess.run", return_value=mock_result) as mock_run, patch(
+            "shutil.which", return_value="/usr/bin/uv"
+        ), patch.dict(os.environ, clean_env, clear=True) {
+            result = proj_cmds.install(packages=["numpy"]);
+        }
+        assert result == 0;
+        cmd = mock_run.call_args[0][0];
+        assert "uv" in cmd[0];
+    } finally {
+        os.chdir(original_cwd);
+        shutil.rmtree(tmp, ignore_errors=True);
     }
 }
