@@ -1011,6 +1011,14 @@ class JacRuntimeInterface(JacClassReferences, JacAccessValidation, JacNode, JacE
     static def get_persistent_memory(config: dict) -> any;
 }
 
+# Hooks that AGGREGATE across plugins instead of first-result-wins. Every
+# implementing plugin contributes; the call returns the list of their returns.
+# (Most hooks are firstresult: the core default returns None so a plugin can
+# override.) `register_project_template` aggregates so several plugins can each
+# contribute project-kind templates -- without this, only one plugin's
+# templates would ever be seen.
+glob _AGGREGATING_HOOKS: set[str] = {"register_project_template"};
+
 """Generate three helper classes based on a plugin class.
 
     - Spec class: contains @hookspec placeholder methods.
@@ -1053,7 +1061,7 @@ def generate_plugin_helpers(
             placeholder.__signature__ = sig_nodef;
             return placeholder;
         }
-        spec_methods[name] = hookspec(firstresult=True)(
+        spec_methods[name] = hookspec(firstresult=name not in _AGGREGATING_HOOKS)(
             make_spec(name, sig_nodef, doc, method)
         );
         wrapped_impl = wraps(method)(method);

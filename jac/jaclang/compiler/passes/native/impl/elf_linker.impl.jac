@@ -7,12 +7,13 @@ Architecture is auto-detected from the object file.
 
 import struct;
 import os;
+import sys;
 import from jaclang.compiler.passes.native.linker_common {
     _align,
     _build_strtab,
     _append_to_blob,
     _resolve_seg_vaddr,
-    _find_patch_target,
+    _resolve_patch_site,
     _find_entry_vaddr
 }
 
@@ -99,6 +100,11 @@ glob R_X86_64_64 = 1,
      R_X86_64_JUMP_SLOT = 7,
      R_X86_64_RELATIVE = 8,
      R_X86_64_GOTPCREL = 9,
+     # Absolute 32-bit relocations. DWARF debug sections use these for 4-byte
+     # intra-section offsets (.debug_info → .debug_str, .debug_names, …); the
+     # loadable code path never emits them. _32 is unsigned, _32S sign-extended.
+     R_X86_64_32 = 10,
+     R_X86_64_32S = 11,
      R_X86_64_REX_GOTPCRELX = 42;
 
 # ══════════════════════════════════════════════════════════════════
@@ -131,6 +137,8 @@ glob R_AARCH64_PREL32 = 261,
      R_AARCH64_MOVW_UABS_G2 = 267,
      R_AARCH64_MOVW_UABS_G2_NC = 268,
      R_AARCH64_MOVW_UABS_G3 = 269,
+     # Absolute 32-bit data relocation (DWARF intra-section offsets on arm64).
+     R_AARCH64_ABS32 = 258,
      R_AARCH64_RELATIVE = 1027;
 
 
@@ -675,6 +683,29 @@ impl ElfLinker.parse_object -> bool {
 }
 
 
+# ── Apply an absolute DWARF relocation ───────────────────────────
+"""Patch an absolute relocation inside a (non-loaded) .debug_* section.
+
+DWARF relocations are all absolute: a 64-bit (R_X86_64_64 / R_AARCH64_ABS64)
+or 32-bit (R_X86_64_32 / _32S / R_AARCH64_ABS32) field set to sym_addr+addend.
+References to code resolve to the final virtual address; references to another
+debug section resolve to 0 (those sections are not loaded), so the field ends
+up holding just the addend, i.e. the in-section offset DWARF consumers expect.
+Returns False for any other relocation type so the caller can skip it."""
+def _apply_debug_reloc(
+    rtype: int, patch_buf: bytearray, patch_off: int, value: int
+) -> bool {
+    if rtype == R_X86_64_64 or rtype == R_AARCH64_ABS64 {
+        struct.pack_into("<Q", patch_buf, patch_off, value & 0xFFFFFFFFFFFFFFFF);
+        return True;
+    } elif rtype == R_X86_64_32 or rtype == R_X86_64_32S or rtype == R_AARCH64_ABS32 {
+        struct.pack_into("<I", patch_buf, patch_off, value & 0xFFFFFFFF);
+        return True;
+    }
+    return False;
+}
+
+
 # ── Build the executable ─────────────────────────────────────────
 impl ElfLinker.build_executable -> bytes {
     arch = self.arch;
@@ -1018,8 +1049,9 @@ impl ElfLinker.build_executable -> bytes {
             }
         }
 
-        # Determine target buffer and base vaddr
-        _pt = _find_patch_target(
+        # Determine target buffer, in-buffer offset, and final vaddr.
+        site = _resolve_patch_site(
+            rela.offset,
             rela.target_sec,
             code_sections,
             rodata_sections,
@@ -1031,7 +1063,7 @@ impl ElfLinker.build_executable -> bytes {
             rodata_vaddr,
             data_vaddr
         );
-        if _pt is None {
+        if site is None {
             # The relocation targets a section we do not place in the loadable
             # image (e.g. metadata like .eh_frame, whose relocations are also
             # filtered while parsing). There is nothing in the output to patch,
@@ -1039,9 +1071,7 @@ impl ElfLinker.build_executable -> bytes {
             # which would corrupt code if such a relocation were ever applied.
             continue;
         }
-        (patch_buf, sec_blob_off, patch_base_vaddr) = _pt;
-        patch_off = sec_blob_off + rela.offset;
-        patch_vaddr = patch_base_vaddr + patch_off;
+        (patch_buf, patch_off, patch_vaddr) = site;
 
         # Apply via architecture-specific handler. Every relocation that reaches
         # here targets an emitted (loadable) section, so an unhandled type would
@@ -1206,6 +1236,404 @@ impl ElfLinker.build_executable -> bytes {
         if sname {
             self.sym_vaddrs[sname] = va;
         }
+    }
+
+    # ── Debug build: preserve DWARF + emit a .symtab and section headers ──
+    # llvmlite emits .debug_* sections and a .symtab only when the IR carries
+    # debug metadata (JAC_NATIVE_DEBUG=1). When they are present we append a
+    # relocated copy of every .debug_* section, a .symtab carrying final virtual
+    # addresses, and a section header table: the three things GDB reads to map
+    # addresses to function names and source lines. A normal build has no
+    # .debug_* sections and falls through to the lean image returned below
+    # unchanged (no section header table, byte-identical to before).
+    debug_sec_names: list[str] = [];
+    debug_sec_blobs: dict[str, bytearray] = {};
+    for dsec in self.sections {
+        if dsec.name.startswith(".debug")
+        and dsec.typ == SHT_PROGBITS
+        and len(dsec.data) > 0 {
+            debug_sec_names.append(dsec.name);
+            debug_sec_blobs[dsec.name] = bytearray(dsec.data);
+        }
+    }
+
+    if debug_sec_names {
+        # Relocate the .debug_* copies, reusing the loadable path's symbol
+        # resolution: a code reference resolves to its final VA; a reference to
+        # an unplaced (debug) section resolves to 0, so the field holds just the
+        # addend, i.e. the in-section offset DWARF consumers expect.
+        _unhandled_debug_relocs: set[tuple[int, str]] = set();
+        for d_rela in self.relocations {
+            if d_rela.target_sec not in debug_sec_blobs {
+                continue;
+            }
+            d_sym_addr = 0;
+            d_local = local_sym_map.get(d_rela.sym_name) if d_rela.sym_name else None;
+            if d_local is None {
+                d_local = sym_idx_placement.get(d_rela.sym_idx);
+            }
+            if d_local is not None {
+                d_sym_addr = _resolve_seg_vaddr(
+                    d_local[0], d_local[1], text_vaddr, rodata_vaddr, data_vaddr
+                );
+            }
+            if not _apply_debug_reloc(
+                d_rela.rtype,
+                debug_sec_blobs[d_rela.target_sec],
+                d_rela.offset,
+                d_sym_addr + d_rela.addend
+            ) {
+                # An unhandled (non-absolute) reloc leaves the field at its
+                # placeholder, so that DWARF entry would point at a garbage
+                # offset. Surface it rather than silently shipping corrupt debug
+                # info — GDB would otherwise show "no source"/wrong locations
+                # with no explanation. Report each (type, section) pair once.
+                _unhandled_debug_relocs.add((d_rela.rtype, d_rela.target_sec));
+            }
+        }
+        if _unhandled_debug_relocs {
+            for (_ut, _usec) in sorted(_unhandled_debug_relocs) {
+                sys.stderr.write(
+                    f"  Warning: unhandled DWARF relocation type {_ut} in "
+                    f"{_usec}; some debug info may be incomplete.\n"
+                );
+            }
+        }
+
+        # Build the section header table. First mirror the loadable layout the
+        # program headers already describe (so PT_DYNAMIC has a matching
+        # SHT_DYNAMIC, .dynsym/.dynstr are reachable, etc.), then append the
+        # .debug_* sections, .symtab, .strtab and .shstrtab as a non-loaded
+        # tail. Each spec is a mutable list [name, type, flags, addr, off, size,
+        # link_name, info, align, entsize]; the tail offsets/sizes and the
+        # .symtab sh_info are patched in once the bytes are placed, and
+        # link_name is resolved to a section index at serialisation time.
+        sh_specs: list = [["", SHT_NULL, 0, 0, 0, 0, "", 0, 0, 0]];
+        sh_specs.append(
+            [
+                ".interp",
+                SHT_PROGBITS,
+                SHF_ALLOC,
+                interp_vaddr,
+                interp_foff,
+                len(interp_data),
+                "",
+                0,
+                1,
+                0
+            ]
+        );
+        sh_specs.append(
+            [
+                ".hash",
+                SHT_HASH,
+                SHF_ALLOC,
+                hash_vaddr,
+                hash_foff,
+                len(hash_data),
+                ".dynsym",
+                0,
+                8,
+                4
+            ]
+        );
+        sh_specs.append(
+            [
+                ".dynsym",
+                SHT_DYNSYM,
+                SHF_ALLOC,
+                dynsym_vaddr,
+                dynsym_foff,
+                num_dynsyms * 24,
+                ".dynstr",
+                1,
+                8,
+                24
+            ]
+        );
+        sh_specs.append(
+            [
+                ".dynstr",
+                SHT_STRTAB,
+                SHF_ALLOC,
+                dynstr_vaddr,
+                dynstr_foff,
+                len(dynstr_data),
+                "",
+                0,
+                1,
+                0
+            ]
+        );
+        if len(extern_func_syms) > 0 {
+            sh_specs.append(
+                [
+                    ".rela.plt",
+                    SHT_RELA,
+                    SHF_ALLOC,
+                    rela_plt_vaddr,
+                    rela_plt_foff,
+                    len(extern_func_syms) * 24,
+                    ".dynsym",
+                    0,
+                    8,
+                    24
+                ]
+            );
+        }
+        if rela_dyn_size > 0 {
+            sh_specs.append(
+                [
+                    ".rela.dyn",
+                    SHT_RELA,
+                    SHF_ALLOC,
+                    rela_dyn_vaddr,
+                    rela_dyn_foff,
+                    rela_dyn_size,
+                    ".dynsym",
+                    0,
+                    8,
+                    24
+                ]
+            );
+        }
+        if plt_size > 0 {
+            sh_specs.append(
+                [
+                    ".plt",
+                    SHT_PROGBITS,
+                    SHF_ALLOC | SHF_EXECINSTR,
+                    plt_vaddr,
+                    plt_foff,
+                    plt_size,
+                    "",
+                    0,
+                    16,
+                    16
+                ]
+            );
+        }
+        if len(code_data) > 0 {
+            sh_specs.append(
+                [
+                    ".text",
+                    SHT_PROGBITS,
+                    SHF_ALLOC | SHF_EXECINSTR,
+                    text_vaddr,
+                    text_foff,
+                    len(code_data),
+                    "",
+                    0,
+                    16,
+                    0
+                ]
+            );
+        }
+        if len(rodata_blob) > 0 {
+            sh_specs.append(
+                [
+                    ".rodata",
+                    SHT_PROGBITS,
+                    SHF_ALLOC,
+                    rodata_vaddr,
+                    rodata_foff,
+                    len(rodata_blob),
+                    "",
+                    0,
+                    16,
+                    0
+                ]
+            );
+        }
+        if got_plt_size > 0 {
+            sh_specs.append(
+                [
+                    ".got.plt",
+                    SHT_PROGBITS,
+                    SHF_WRITE | SHF_ALLOC,
+                    got_plt_vaddr,
+                    got_plt_foff,
+                    got_plt_size,
+                    "",
+                    0,
+                    8,
+                    8
+                ]
+            );
+        }
+        if data_got_size > 0 {
+            sh_specs.append(
+                [
+                    ".got",
+                    SHT_PROGBITS,
+                    SHF_WRITE | SHF_ALLOC,
+                    data_got_vaddr,
+                    data_got_foff,
+                    data_got_size,
+                    "",
+                    0,
+                    8,
+                    8
+                ]
+            );
+        }
+        sh_specs.append(
+            [
+                ".dynamic",
+                SHT_DYNAMIC,
+                SHF_WRITE | SHF_ALLOC,
+                dynamic_vaddr,
+                dynamic_foff,
+                len(dynamic_data),
+                ".dynstr",
+                0,
+                8,
+                16
+            ]
+        );
+        if len(data_blob) > 0 {
+            sh_specs.append(
+                [
+                    ".data",
+                    SHT_PROGBITS,
+                    SHF_WRITE | SHF_ALLOC,
+                    data_vaddr,
+                    data_foff,
+                    len(data_blob),
+                    "",
+                    0,
+                    8,
+                    0
+                ]
+            );
+        }
+        # Non-loaded tail (addr 0); offsets/sizes patched once placed below.
+        for dn in debug_sec_names {
+            sh_specs.append([dn, SHT_PROGBITS, 0, 0, 0, 0, "", 0, 1, 0]);
+        }
+        sh_specs.append([".symtab", SHT_SYMTAB, 0, 0, 0, 0, ".strtab", 0, 8, 24]);
+        sh_specs.append([".strtab", SHT_STRTAB, 0, 0, 0, 0, "", 0, 1, 0]);
+        sh_specs.append([".shstrtab", SHT_STRTAB, 0, 0, 0, 0, "", 0, 1, 0]);
+
+        sh_name_to_idx: dict[str, int] = {};
+        for (_si, _sp) in enumerate(sh_specs) {
+            sh_name_to_idx[_sp[0]] = _si;
+        }
+        text_idx = sh_name_to_idx.get(".text", 0);
+        seg_shndx: dict[str, int] = {
+            "code": text_idx,
+            "rodata": sh_name_to_idx.get(".rodata", text_idx),
+            "data": sh_name_to_idx.get(".data", text_idx)
+        };
+
+        # Build .symtab/.strtab from defined, named symbols with final VAs. ELF
+        # requires local symbols before globals; sh_info is the first global.
+        sym_locals: list = [];
+        sym_globals: list = [];
+        for dsym in self.symbols {
+            if (not dsym.name)
+            or dsym.shndx == SHN_UNDEF
+            or dsym.shndx >= len(self.sections) {
+                continue;
+            }
+            dplace = section_placement.get(dsym.shndx);
+            if dplace is None {
+                continue;
+            }
+            sva = _resolve_seg_vaddr(
+                dplace[0], dplace[1] + dsym.value, text_vaddr, rodata_vaddr, data_vaddr
+            );
+            styp = STT_FUNC if dplace[0] == "code" else STT_OBJECT;
+            entry = (
+                dsym.name,
+                sva,
+                dsym.size,
+                dsym.bind,
+                styp,
+                seg_shndx.get(dplace[0], text_idx)
+            );
+            if dsym.bind >= STB_GLOBAL {
+                sym_globals.append(entry);
+            } else {
+                sym_locals.append(entry);
+            }
+        }
+        ordered_syms = sym_locals + sym_globals;
+        first_global = 1 + len(sym_locals);
+        sym_names: list[str] = [];
+        for e in ordered_syms {
+            sym_names.append(e[0]);
+        }
+        (strtab_data, strtab_offsets) = _build_strtab(sym_names);
+        symtab_data = bytearray();
+        symtab_data.extend(struct.pack("<IBBHQQ", 0, 0, 0, 0, 0, 0));
+        for e in ordered_syms {
+            st_info = (e[3] << 4) | e[4];
+            symtab_data.extend(
+                struct.pack(
+                    "<IBBHQQ", strtab_offsets.get(e[0], 0), st_info, 0, e[5], e[1], e[2]
+                )
+            );
+        }
+
+        # ── Place the non-loaded tail and patch its specs' offsets/sizes ──
+        for dn in debug_sec_names {
+            _di = sh_name_to_idx[dn];
+            sh_specs[_di][4] = len(output);
+            sh_specs[_di][5] = len(debug_sec_blobs[dn]);
+            output.extend(debug_sec_blobs[dn]);
+        }
+        _pad = _align(len(output), 8) - len(output);
+        if _pad > 0 {
+            output.extend(b"\x00" * _pad);
+        }
+        _sti = sh_name_to_idx[".symtab"];
+        sh_specs[_sti][4] = len(output);
+        sh_specs[_sti][5] = len(symtab_data);
+        sh_specs[_sti][7] = first_global;  # sh_info = first global symbol index
+        output.extend(symtab_data);
+        _sri = sh_name_to_idx[".strtab"];
+        sh_specs[_sri][4] = len(output);
+        sh_specs[_sri][5] = len(strtab_data);
+        output.extend(strtab_data);
+
+        # ── Serialise .shstrtab + the section header table ──
+        sh_name_list: list[str] = [];
+        for sp in sh_specs {
+            sh_name_list.append(sp[0]);
+        }
+        (shstr_data, shstr_off) = _build_strtab(sh_name_list);
+        _shi = sh_name_to_idx[".shstrtab"];
+        sh_specs[_shi][4] = len(output);
+        sh_specs[_shi][5] = len(shstr_data);
+        output.extend(shstr_data);
+        shoff = _align(len(output), 8);
+        if shoff > len(output) {
+            output.extend(b"\x00" * (shoff - len(output)));
+        }
+        for sp in sh_specs {
+            slink = sh_name_to_idx.get(sp[6], 0) if sp[6] else 0;
+            output.extend(
+                struct.pack(
+                    "<IIQQQQIIQQ",
+                    shstr_off.get(sp[0], 0),
+                    sp[1],
+                    sp[2],
+                    sp[3],
+                    sp[4],
+                    sp[5],
+                    slink,
+                    sp[7],
+                    sp[8],
+                    sp[9]
+                )
+            );
+        }
+        # Patch the ELF header's section-header fields now that the table exists.
+        struct.pack_into("<Q", output, 40, shoff);  # e_shoff
+        struct.pack_into("<H", output, 58, 64);  # e_shentsize
+        struct.pack_into("<H", output, 60, len(sh_specs));  # e_shnum
+        struct.pack_into("<H", output, 62, sh_name_to_idx.get(".shstrtab", 0));
     }
 
     return bytes(output);
@@ -1863,7 +2291,8 @@ impl ElfLinker.build_shared_object -> bytes {
         if rela.rtype == arch.abs64_rtype and rela.target_sec in data_sections {
             continue;
         }
-        _pt = _find_patch_target(
+        site = _resolve_patch_site(
+            rela.offset,
             rela.target_sec,
             code_sections,
             rodata_sections,
@@ -1875,12 +2304,10 @@ impl ElfLinker.build_shared_object -> bytes {
             rodata_vaddr,
             data_vaddr
         );
-        if _pt is None {
+        if site is None {
             continue;
         }
-        (patch_buf, sec_blob_off, patch_base_vaddr) = _pt;
-        patch_off = sec_blob_off + rela.offset;
-        patch_vaddr = patch_base_vaddr + patch_off;
+        (patch_buf, patch_off, patch_vaddr) = site;
         sym_addr = 0;
         if rela.rtype in arch.gotpcrel_rtypes {
             # GOT-directed: resolve to the GOT slot holding the target address.

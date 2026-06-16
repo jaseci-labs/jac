@@ -96,32 +96,6 @@ def _anchor_has_structural_change(anchor: Anchor) -> bool {
     return anchor.hash == 0;
 }
 
-"""Recursively remove empty-dict leaves from a serialized value.
-
-MongoDB's aggregation-pipeline $set (used in _put_node_atomic) rejects any
-embedded empty document with error 40180 (EmptyObjectInUpdate).  The default
-Permission / Access values always produce `access.roots.anchors = {}`, so
-every NodeAnchor update fails unless we strip those leaves before building
-the set_doc.  The Serializer restores default empty dicts on deserialize via
-field(default_factory=dict), so stripping them from the stored document is
-safe and lossless.
-"""
-def _strip_empty_dicts(v: object) -> object {
-    if isinstance(v, dict) {
-        cleaned = {k: _strip_empty_dicts(vv) for (k, vv) in v.items()};
-        return {
-            k: vv
-            for (k, vv) in cleaned.items()
-            if not (isinstance(vv, dict) and not vv)
-        };
-    }
-    if isinstance(v, list) {
-        return [_strip_empty_dicts(item) for item in v];
-    }
-    return v;
-}
-
-
 # Field-hash dirty detection lives in jaclang.runtimelib.changeset — one
 # shared implementation for the runtime's collect pass and every backend.
 """Build a stored document for an anchor, including Layer 2 fingerprint
@@ -504,6 +478,7 @@ impl MongoBackend.put_partial(anchor: Anchor, field_names: set[str]) -> None {
     }
     _id = to_uuid(anchor.id);
     try {
+        # Classic operator $set (below) accepts empty dicts; no strip needed.
         partial_data = Serializer.serialize_fields(anchor, field_names);
         if not partial_data {
             return;
@@ -821,35 +796,29 @@ impl MongoBackend._put_node_atomic(
     }
     _id = str(to_uuid(anchor.id));
     try {
-        arch = anchor.archetype if anchor.is_populated() else None;
+        # Serialize the intent's dirty archetype fields (`fields` = collect pass's dirty set, the sole owner of dirty detection).
+        partial_data: dict[str, object] = Serializer.serialize_fields(anchor, fields)
+            if fields
+            else {};
 
-        # Serialize only the intent's archetype fields.
-        partial_data = Serializer.serialize_fields(anchor, fields) if fields else {};
-
-        # Non-archetype, non-edge top-level data fields (e.g. access control).
-        # Strip empty nested dicts before including in the aggregation-pipeline
-        # $set: MongoDB rejects empty embedded documents (error 40180) in that
-        # context.  access.roots.anchors defaults to {} and is the common trigger.
+        # Non-archetype top-level fields (e.g. access), whole-object replaced.
         full = dict(Serializer.serialize(anchor, include_type=True));
         non_arch_top = {
-            k: _strip_empty_dicts(v)
+            k: v
             for (k, v) in full.items()
             if k not in ('edges', 'archetype')
         };
 
-        # Build a flat $set document:
-        #   data.<k>               — non-arch top-level fields (e.g. access)
-        #   data.archetype.<field> — only dirty scalar fields (concurrent-safe)
-        #   data.edges             — atomic $setUnion/$setDifference expression
+        # Pipeline $set evaluates values as expressions (bare {} → error 40180, $-keys misread); wrap all data in $literal to store verbatim, leaving data.edges the only expression.
         set_doc: dict[str, object] = {
             'type': 'NodeAnchor',
             'updated_at': datetime.now(timezone.utc).isoformat()
         };
         for (k, v) in non_arch_top.items() {
-            set_doc[f"data.{k}"] = v;
+            set_doc[f"data.{k}"] = {'$literal': v};
         }
         for (k, v) in partial_data.items() {
-            set_doc[f"data.archetype.{k}"] = v;
+            set_doc[f"data.archetype.{k}"] = {'$literal': v};
         }
         set_doc['data.edges'] = {
             '$setUnion': [

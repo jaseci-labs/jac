@@ -155,14 +155,11 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
         _ir_dir = "";
         _stem = "";
         if _native_debug {
-            _src_name = _os.path.basename(module.loc.mod_path)
-                if module.loc
-                else "jac_native";
+            import from jaclang.jac0core.jir { get_native_cache_dir }
+            _mod_path = module.loc.mod_path if module.loc else "jac_native";
+            _src_name = _os.path.basename(_mod_path);
             _stem = _os.path.splitext(_src_name)[0];
-            _src_dir = _os.path.dirname(_os.path.abspath(module.loc.mod_path))
-                if module.loc
-                else ".";
-            _ir_dir = _os.path.join(_src_dir, ".jac_ir");
+            _ir_dir = str(get_native_cache_dir(_mod_path));
             _os.makedirs(_ir_dir, exist_ok=True);
             try {
                 _obj_bytes = target_machine.emit_object(mod);
@@ -464,18 +461,20 @@ impl NativeCompilePass._compile_and_link_native_imports(
 
         # ── Incremental compilation: check IR cache before recompiling ────
         # Hash the source file + compiler fingerprint to form the cache key.
-        # Cache layout: <source_dir>/.jac_ir/<stem>.<src_hash>.<comp_fp>.ir_cache
-        #               <source_dir>/.jac_ir/<stem>.<src_hash>.<comp_fp>.ir_meta
+        # Cache layout: <cache_dir>/<stem>.<src_hash>.<comp_fp>.ir_cache
+        #               <cache_dir>/<stem>.<src_hash>.<comp_fp>.ir_meta
+        # where <cache_dir> is get_native_cache_dir(source) — the project's
+        # .jac/cache/native/ (or the global cache for installed sources).
         # The .ir_cache file contains the raw LLVM IR text (pre-rename).
         # The .ir_meta file contains clib_paths and transitive dep info.
         # Including _compiler_fp ensures stale caches from a previous compiler
         # version are never reused after compiler implementation files change.
-        _src_dir = os.path.dirname(real_path);
+        import from jaclang.jac0core.jir { get_native_cache_dir }
         _src_stem = os.path.splitext(os.path.basename(real_path))[0];
         if _src_stem.endswith(".na") {
             _src_stem = _src_stem[:-3];
         }
-        _ir_cache_dir = os.path.join(_src_dir, ".jac_ir");
+        _ir_cache_dir = str(get_native_cache_dir(real_path));
 
         _source_hash = "";
         _cache_ir_path = "";

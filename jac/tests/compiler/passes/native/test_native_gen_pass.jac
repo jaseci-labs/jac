@@ -2646,6 +2646,49 @@ test "native osp node constructed in a non-OSP module carries its dispatch tag (
     }
 }
 
+test "native osp construct living only in an impl annex materializes imported archetypes" {
+    # A builder module IMPORTS OSP archetypes (`Hub`/`Area`) from another native
+    # module and wires them (`++>`) from an IMPL ANNEX (`.na.impl.jac`), not its
+    # head file. DeclImplMatchPass attaches an annex body via `decl.body =
+    # <ImplDef from the annex module>`, never splicing it into the head decl's
+    # `kid`, so the OSP construct is reachable only through `mod.impl_mod`.
+    # The OSP construct scan (now `OspAnalysis._uses_construct`) swept just the
+    # head module's `iter_context_stmts` + kid tree, classified the builder as a
+    # non-OSP user, and never gave the imported archetypes their stable type-tag
+    # -- the annexed `++>` then failed with
+    # E5090 ("not materialized") at nacompile (or mis-codegen SIGSEGV in a fuller
+    # graph). The byte-identical program with `build`'s body INLINE in the head
+    # file always compiled. Fixed: prints `2 2 3` (graph built, walker sums 1+2).
+    import tempfile;
+    fixture = str(os.path.join(FIXTURES, "osp_xmod_annexbuild_main.na.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "osp_xmod_annexbuild");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed (annexed OSP construct not materialized): "
+            f"exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        result = subprocess.run([out_bin], capture_output=True, text=True, timeout=10);
+        assert result.returncode == 0 , (
+            f"Native binary crashed (imported archetype tag not materialized): "
+            f"exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        # before=2 (graph built via annexed `build`), after=2 (survives spawn),
+        # seen=1+2=3 (walker reaches both Area nodes and sums their tags).
+        assert result.stdout.strip() == "2 2 3" , (
+            f"Expected '2 2 3', got stdout={result.stdout!r} stderr={result.stderr!r}"
+        );
+    }
+}
+
 # --- TestNativeAArch64Linker ---
 test "aarch64 standalone binary runs (issue #6366)" {
     # Cross-compile a trivial program to aarch64 via the in-house ELF linker

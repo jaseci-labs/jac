@@ -17,16 +17,11 @@ impl NativeIntEmitter.emit_to_bytes(
     one64 = ir.Constant(i64, 1);
     eight64 = ir.Constant(i64, 8);
     mask_ff = ir.Constant(i64, 0xFF);
-    length = args[0];  # i64
+    length = p._coerce_type(args[0], i64);  # i64
     byteorder = args[1];  # i8* "big" or "little"
-    # Allocate length+1 bytes (null-terminated)
-    alloc_sz = b.add(length, one64, name="tb.alloc.sz");
-    p._set_rc_ctx("to_bytes", "");
-    buf = b.call(p.rc_alloc_fn, [alloc_sz], name="tb.buf");
-    p._clear_rc_ctx();
-    # Null-terminate
-    end_ptr = b.gep(buf, [length], name="tb.end");
-    b.store(ir.Constant(i8, 0), end_ptr);
+    # Allocate a length-aware bytes value of exactly `length` data bytes.
+    bv = p._bytes_alloc(length);
+    buf = p._bytes_data_ptr(bv);
     # Determine if big-endian: strcmp(byteorder, "big") == 0
     big_str = p._make_global_string("big");
     strcmp_fn = p._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
@@ -59,7 +54,7 @@ impl NativeIntEmitter.emit_to_bytes(
     idx.add_incoming(next_idx, body_bb);
     b.branch(loop_bb);
     b.position_at_start(done_bb);
-    return buf;
+    return bv;
 }
 
 impl NativeIntEmitter.emit_as_integer_ratio(
@@ -191,11 +186,19 @@ impl NativeIntEmitter.emit_from_bytes(
     zero64 = ir.Constant(i64, 0);
     one64 = ir.Constant(i64, 1);
     eight64 = ir.Constant(i64, 8);
-    bytes_ptr = args[0];  # i8*
+    bytes_obj = args[0];  # length-aware bytes value, or a NUL-terminated i8*
     byteorder = args[1];  # i8* "big" or "little"
-    # Get length of bytes string
-    strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-    length = b.call(strlen_fn, [bytes_ptr], name="fb.len");
+    # Length-aware bytes: read the exact byte count + data pointer (never
+    # strlen — the buffer may contain embedded NULs). A plain i8* (e.g. a str
+    # used as a byte view, as the rune-aware lexer does) falls back to strlen.
+    if p._is_bytes_value(bytes_obj) {
+        length = p._bytes_len_val(bytes_obj);
+        bytes_ptr = p._bytes_data_ptr(bytes_obj);
+    } else {
+        strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
+        length = b.call(strlen_fn, [bytes_obj], name="fb.len");
+        bytes_ptr = bytes_obj;
+    }
     # Determine if big-endian
     big_str = p._make_global_string("big");
     strcmp_fn = p._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
@@ -2469,8 +2472,16 @@ impl NativeStrEmitter.emit_isupper(
 impl NativeStrEmitter.emit_encode(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # encode(): in native, strings are already UTF-8 i8* — return as-is
-    return target;
+    # encode(): native strings are UTF-8 i8* already; copy the bytes (up to the
+    # NUL terminator) into a length-aware bytes value so the encoding's length
+    # is exact and downstream slicing / struct can reinterpret it (#6404).
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i8p = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
+    strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
+    n = b.call(strlen_fn, [target], name="enc.len");
+    return p._bytes_from_raw(target, n);
 }
 
 impl NativeStrEmitter.emit_decode(
@@ -2502,11 +2513,27 @@ impl NativeStrEmitter.emit_maketrans(
 impl NativeBytesEmitter.emit_decode(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # decode(): native bytes are already a UTF-8 i8* buffer — return as-is,
-    # mirroring emit_encode. This makes `s.encode("utf-8")[a:b].decode("utf-8")`
-    # a portable byte-range -> str slice (identical to the Python backend),
-    # which the rune-aware lexer relies on for token-value extraction.
-    return target;
+    # decode(): copy the length-aware bytes into a fresh NUL-terminated str
+    # buffer. `s.encode("utf-8")[a:b].decode("utf-8")` stays a portable
+    # byte-range -> str slice, matching the Python backend (the rune-aware
+    # lexer relies on this for token-value extraction).
+    p = ctx.pass_ref;
+    b = get_builder(p);
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    i64 = ir.IntType(64);
+    n = p._bytes_len_val(target);
+    alloc_sz = b.add(n, ir.Constant(i64, 1), name="dec.alloc");
+    new_str = p._rc_call_with_ctx(
+        p.rc_alloc_fn, [alloc_sz], op="bytes_decode", loc="", name="dec.str"
+    );
+    p._emit_set_type_tag(b, new_str, "str");
+    memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    b.call(memcpy_fn, [new_str, p._bytes_data_ptr(target), n]);
+    nul_ptr = b.gep(new_str, [n], name="dec.nul");
+    b.store(ir.Constant(i8, 0), nul_ptr);
+    p._mark_owned(new_str);
+    return new_str;
 }
 
 impl NativeBytesEmitter.emit_hex(
