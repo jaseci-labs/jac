@@ -105,6 +105,7 @@ obj PerformanceReport {
     has generated_at: float = 0.0,
         window: str = "15m",
         sampled_traces: int = 0,
+        limits: dict = {},              # relevant timeouts (configured or default)
         health: ReportHealth | None = None,
         endpoints: list = [],           # list[EndpointStat]
         db_hotspots: list = [],         # list[DbHotspot]
@@ -116,6 +117,7 @@ obj PerformanceReport {
             "generated_at": self.generated_at,
             "window": self.window,
             "sampled_traces": self.sampled_traces,
+            "limits": self.limits,
             "health": self.health.to_dict() if self.health else None,
             "endpoints": [e.to_dict() for e in self.endpoints],
             "db_hotspots": [d.to_dict() for d in self.db_hotspots],
