@@ -490,7 +490,18 @@ impl NaIRGenPass._emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.T
         import from jaclang.compiler.type_system.types { UnknownType as _UnknownType }
         is_unknown = isinstance(tb, _UnknownType);
     } except ImportError { }
-    _label = type_expr.unparse() if isinstance(type_expr, uni.Expr) else str(tb);
+    # Recover the user-readable type name for non-Expr nodes that reach here
+    # (a HasVar/Param passed to _resolve_jac_type): without this, str(tb) on an
+    # UnknownType renders the opaque '<Unknown>' from UnknownType.__str__ and
+    # the diagnostic loses the name the user actually wrote. type_tag.tag is the
+    # same accessor used elsewhere in this file (_get_name(var.type_tag.tag));
+    # Expr nodes keep their full unparse() text unchanged.
+    if isinstance(type_expr, uni.Expr) {
+        _label = type_expr.unparse();
+    } else {
+        _tag = type_expr?.type_tag;
+        _label = self._get_name(_tag?.tag) or str(tb);
+    }
     if is_unknown {
         self.emit(
             E2018,

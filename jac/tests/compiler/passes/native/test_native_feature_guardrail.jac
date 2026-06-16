@@ -588,6 +588,38 @@ test "check rejects a native def with an unknown return type" {
     )}";
 }
 
+# An object FIELD whose annotation names an unresolved type (a typedef'd C
+# handle, an unmodeled width like `uint32_t`) reaches native codegen's
+# `_emit_unlowerable_type` through a non-Expr HasVar node. str(UnknownType) is
+# '<Unknown>', so the diagnostic used to read the useless
+# "Undefined name '<Unknown>'" -- losing the name the user actually wrote. The
+# label must now recover it from the field's type tag. Note this is the LIVE
+# catcher for fields: the front-end E2018 above covers clib/native *signature*
+# positions but not object field declarations, so the codegen pass is the only
+# thing that names the bad field type today.
+test "native object field with an unknown type names the type, not '<Unknown>'" {
+    prog = compile_na_inline(
+        "obj_field_unknown",
+        "obj Handle { has raw: uint32_t; }\n"
+        "with entry { h = Handle(raw=0); print(h.raw); }\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown object field type, got: {fmt_errors(
+        prog
+    )}";
+    named = False;
+    for alrt in prog.errors_had {
+        if (
+            alrt.code is not None
+            and alrt.code.code == "E2018"
+            and "uint32_t" in str(alrt)
+            and "<Unknown>" not in str(alrt)
+        ) {
+            named = True;
+        }
+    }
+    assert named , f"E2018 should name 'uint32_t', not '<Unknown>': {fmt_errors(prog)}";
+}
+
 # Negative control: a clib decl whose param/return types ARE recognized
 # (primitive `f64`, and a struct declared in the same block) must compile
 # cleanly — no E2018 false positive, no E5090.
