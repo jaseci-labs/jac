@@ -1,6 +1,6 @@
-"""Tests for `jac eject` (standalone zero-jaclang `ejected/{backend,frontend}`
-output). Runs eject in-process against tiny projects in TemporaryDirectory(),
-completing in under a second on a warm cache as part of `pytest jac`."""
+"""Tests for `jac eject` (FastAPI `ejected/{backend,frontend}` output, walkers
+on the jaclang runtime). Runs eject in-process against tiny projects in
+TemporaryDirectory(), completing under a second as part of `pytest jac`."""
 
 import ast;
 import io;
@@ -38,7 +38,7 @@ def _write_project(src: Path, name: str = "test_app") {
         'import from server { Greet }\n\n' + 'cl {\n' + '    import from .frontend { app as ClientApp }\n' + '    def:pub app -> JsxElement {\n' + '        return <ClientApp/>;\n' + '    }\n' + '}\n'
     );
     (src / "server.sv.jac").write_text(
-        'walker:pub Greet {\n' + '    has name: str,\n' + '        reports: list[str] = [];\n' + '    can g with Root entry {\n' + '        report f"Hello, {self.name}!";\n' + '    }\n' + '}\n'
+        'walker:pub Greet {\n' + '    has name: str,\n' + '        reports: list[str] = [];\n' + '    can g with Root entry {\n' + '        report f"Hello, {self.name}!";\n' + '    }\n' + '}\n\n' + 'walker Secret {\n' + '    has reports: list[str] = [];\n' + '    can g with Root entry {\n' + '        report "secret";\n' + '    }\n' + '}\n'
     );
     (src / "frontend.cl.jac").write_text(
         '"""Client UI."""\n' + 'sv import from server { Greet }\n\n' + 'def:pub app -> JsxElement {\n' + '    has msg: str = "hi";\n' + '    return <div>{msg}</div>;\n' + '}\n'
@@ -58,7 +58,7 @@ def _frontend(src: Path, rel: str) -> Path {
 }
 
 
-"""True if any line imports the jaclang runtime (the standalone smell test)."""
+"""True if any line imports the jaclang runtime."""
 def _has_jaclang_import(py_text: str) -> bool {
     for line in py_text.splitlines() {
         stripped = line.strip();
@@ -80,7 +80,6 @@ test "eject emits a project-internal ejected/{backend,frontend} layout" {
         assert rc == 0;
         out = src / "ejected";
         assert (out / "backend" / "main.py").exists();
-        assert (out / "backend" / "_osp.py").exists();
         assert (out / "backend" / "requirements.txt").exists();
         assert (out / "frontend" / "package.json").exists();
         assert (out / "frontend" / "index.html").exists();
@@ -126,32 +125,35 @@ test "backend exposes the server walker and not the client app" {
 }
 
 
-test "backend implements the @jac/runtime client contract envelope" {
+test "backend runs walkers on the jaclang runtime via ExecutionManager" {
     with TemporaryDirectory() as td {
         src = Path(td) / "myapp";
         _write_project(src, "myapp");
         rc = _silent_eject(str(src));
         assert rc == 0;
         main_py = _backend(src, "main.py").read_text();
-        # Walker responses are wrapped as {"data": {...reports...}}.
+        # Walkers run on the real runtime; responses use the {"data": ...} envelope.
+        assert "from jaclang.runtimelib.server import UserManager, ExecutionManager" in main_py;
+        assert "_em.spawn_walker(Greet" in main_py;
         assert '"data"' in main_py;
-        assert '"reports"' in main_py;
-        assert "_walker_data" in main_py;
+        # The compiled module keeps its real jaclang runtime imports.
+        assert _has_jaclang_import(_backend(src, "server.py").read_text());
     }
 }
 
 
-test "backend has zero jaclang imports" {
+test "backend exposes login/register and gates secured walkers by :pub" {
     with TemporaryDirectory() as td {
         src = Path(td) / "myapp";
         _write_project(src, "myapp");
         rc = _silent_eject(str(src));
         assert rc == 0;
-        for py in (src / "ejected" / "backend").rglob("*.py") {
-            assert not _has_jaclang_import(py.read_text());
-        }
-        # The compiled walker module imports the vendored runtime instead.
-        assert "from _osp import" in _backend(src, "server.py").read_text();
+        main_py = _backend(src, "main.py").read_text();
+        assert '@app.post("/user/register")' in main_py;
+        assert '@app.post("/user/login")' in main_py;
+        # :pub walker is an open endpoint (not auth-required); the bare walker is.
+        assert "_username(authorization, False)" in main_py;
+        assert "_username(authorization, True)" in main_py;
     }
 }
 
@@ -173,49 +175,16 @@ test "every emitted backend .py file parses as valid Python" {
 }
 
 
-test "requirements.txt is fastapi + uvicorn only (no jaclang)" {
+test "requirements.txt pins jaclang and adds fastapi + uvicorn" {
     with TemporaryDirectory() as td {
         src = Path(td) / "myapp";
         _write_project(src, "myapp");
         rc = _silent_eject(str(src));
         assert rc == 0;
         reqs = _backend(src, "requirements.txt").read_text();
+        assert "jaclang" in reqs;
         assert "fastapi" in reqs;
         assert "uvicorn" in reqs;
-        assert "jaclang" not in reqs;
-    }
-}
-
-
-test "_osp.py defines the runtime contract symbols and no jaclang import" {
-    with TemporaryDirectory() as td {
-        src = Path(td) / "myapp";
-        _write_project(src, "myapp");
-        rc = _silent_eject(str(src));
-        assert rc == 0;
-        osp = _backend(src, "_osp.py").read_text();
-        tree = ast.parse(osp);
-        names = set();
-        for node in tree.body {
-            if isinstance(node, ast.ClassDef) {
-                names.add(node.name);
-            } elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) {
-                names.add(node.name);
-            }
-        }
-        for required in [
-            "Root",
-            "Walker",
-            "on_entry",
-            "set_trigger",
-            "spawn",
-            "root",
-            "log_report",
-            "field"
-        ] {
-            assert required in names , f"_osp.py missing {required}";
-        }
-        assert not _has_jaclang_import(osp);
     }
 }
 

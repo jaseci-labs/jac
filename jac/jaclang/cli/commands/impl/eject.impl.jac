@@ -1,6 +1,6 @@
-"""Implementation of `jac eject`: compile the project into a standalone,
-zero-jaclang `ejected/{backend,frontend}` app (FastAPI backend with vendored
-`_osp.py` runtime via eject_targets/backend.jac; Vite frontend from .cl.jac)."""
+"""Implementation of `jac eject`: compile the project into an editable
+`ejected/{backend,frontend}` app — a FastAPI backend that runs the walkers on
+the jaclang runtime (eject_targets/backend.jac) and a Vite frontend from .cl.jac."""
 
 import shutil;
 import json;
@@ -73,9 +73,9 @@ def load_eject_project_metadata(src: Path) -> dict {
 }
 
 
-"""Eject a Jac project to a standalone, zero-jaclang app: a project-internal
-`ejected/` folder with a FastAPI `backend/` and a compiled-JS `frontend/`.
-Re-runnable without `--force` when the output carries our marker."""
+"""Eject a Jac project to a runnable app: a project-internal `ejected/` folder
+with a FastAPI `backend/` (walkers on the jaclang runtime) and a compiled-JS
+`frontend/`. Re-runnable without `--force` when the output carries our marker."""
 impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     src = Path(source).resolve();
     if not src.exists() or not src.is_dir() {
@@ -141,7 +141,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     backend_dir.mkdir(parents=True);
     frontend_src_dir.mkdir(parents=True);
 
-    console.print(f"\n📦 Ejecting '{project_name}' → standalone app", style="bold cyan");
+    console.print(f"\n📦 Ejecting '{project_name}' → FastAPI app", style="bold cyan");
     console.print(f"  Source: {src}");
     console.print(f"  Output: {out}\n");
 
@@ -163,7 +163,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
 
     js_count = 0;
     error_count = 0;
-    reserved: set = {"main", "_osp"};
+    reserved: set = {"main"};
     compiled: list = [];
     remap: dict = {};
     walkers: list = [];
@@ -199,8 +199,8 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         }
 
         # Backend half: server-side Python only — `.cl.jac` output is a
-        # frontend artifact and never goes to the backend. Module stems that
-        # collide with generated files (main/_osp) are renamed via remap.
+        # frontend artifact and never goes to the backend. A module stem that
+        # collides with the generated main.py is renamed via remap.
         stem = str(_strip_jac_suffix(rel.name));
         bmod = stem;
         if stem in reserved {
@@ -210,14 +210,26 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         is_client = rel.name.endswith(_CL_SUFFIX);
         server = _is_meaningful_python(py_code) and (not is_client);
 
+        # `:pub` walkers/functions become open endpoints; the rest are
+        # token-gated by the generated FastAPI app.
         if server {
             for item in ir.body {
                 if isinstance(item, uni.Archetype)
                 and item.sym_category == SymbolType.WALKER_ARCH {
-                    walkers.append({"name": str(item.name.sym_name), "module": bmod});
+                    walkers.append(
+                        {
+                            "name": str(item.name.sym_name),
+                            "module": bmod,
+                            "pub": _has_pub_access(item)
+                        }
+                    );
                 } elif isinstance(item, uni.Ability) and item.name_ref is not None {
                     functions.append(
-                        {"name": str(item.name_ref.sym_name), "module": bmod}
+                        {
+                            "name": str(item.name_ref.sym_name),
+                            "module": bmod,
+                            "pub": _has_pub_access(item)
+                        }
                     );
                 }
             }
@@ -483,15 +495,20 @@ def _copy_client_runtime(src: Path, frontend_root: Path) -> bool {
     }
     dest = frontend_root / "src" / "__jac_runtime.js";
     dest.parent.mkdir(parents=True, exist_ok=True);
+    map_src = runtime_src.with_suffix(".js.map");
+    has_map = map_src.exists();
     try {
-        shutil.copy2(runtime_src, dest);
+        content = runtime_src.read_text(encoding="utf-8");
     } except Exception as e {
-        console.warning(f"Failed to copy client_runtime.js: {e}");
+        console.warning(f"Failed to read client_runtime.js: {e}");
         return False;
     }
-    # The client runtime sometimes emits a sibling .map file; copy it too.
-    map_src = runtime_src.with_suffix(".js.map");
-    if map_src.exists() {
+    # The runtime's `//# sourceMappingURL=client_runtime.js.map` comment still
+    # names the pre-rename file. Point it at the renamed map we ship, or drop
+    # it entirely when no map is available, so the dev server doesn't ENOENT.
+    content = _fix_sourcemap_ref(content, "__jac_runtime.js.map", has_map);
+    dest.write_text(content, encoding="utf-8");
+    if has_map {
         try {
             shutil.copy2(map_src, dest.with_suffix(".js.map"));
         } except Exception {
@@ -501,6 +518,23 @@ def _copy_client_runtime(src: Path, frontend_root: Path) -> bool {
     }
     console.print("  ✔ @jac/runtime", style="success");
     return True;
+}
+
+
+"""Point a JS file's sourceMappingURL comment at `map_name`, or strip it
+entirely when `has_map` is false (so the dev server never reads a missing map)."""
+def _fix_sourcemap_ref(js_code: str, map_name: str, has_map: bool) -> str {
+    out_lines: list[str] = [];
+    for line in js_code.splitlines() {
+        if line.strip().startswith("//# sourceMappingURL=") {
+            if has_map {
+                out_lines.append("//# sourceMappingURL=" + map_name);
+            }
+            continue;
+        }
+        out_lines.append(line);
+    }
+    return "\n".join(out_lines);
 }
 
 
@@ -545,4 +579,23 @@ def _emit_entry_js(frontend_src_dir: Path, entry_module: str) {
     (frontend_src_dir / "__jac_entry.js").write_text(
         build_simple_react_entry_script(entry_module), encoding="utf-8"
     );
+}
+
+
+"""True iff the AST node carries a `:pub` access modifier (open endpoint)."""
+def _has_pub_access(ast_item: any) -> bool {
+    import jaclang.jac0core.unitree as uni;
+    import from jaclang.jac0core.constant { Tokens as Tok }
+    if not isinstance(ast_item, uni.AstAccessNode) {
+        return False;
+    }
+    access = ast_item?.access;
+    if access is None {
+        return False;
+    }
+    tag = access?.tag;
+    if tag is None {
+        return False;
+    }
+    return tag?.name == Tok.KW_PUB;
 }
