@@ -124,6 +124,43 @@ test "empty bytes length" {
     assert f() == 0;
 }
 
+# ─── bytes building: concatenation and the bytes()/bytearray() constructors ───
+test "bytes concat length" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    f = get_func(eng, "concat_len", ctypes.c_int64);
+    assert f() == 2;
+}
+
+test "bytes concat keeps embedded NUL (length-aware)" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    f = get_func(eng, "concat_embedded_nul_len", ctypes.c_int64);
+    assert f() == 4;
+}
+
+test "bytes concat copies right operand at correct offset" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    f = get_func(eng, "concat_idx", ctypes.c_int64);
+    assert f() == 67;
+}
+
+test "bytes() constructor length counts bytes past NUL" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    f = get_func(eng, "ctor_len", ctypes.c_int64);
+    assert f() == 3;
+}
+
+test "bytes() constructor byte after NUL is reachable" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    f = get_func(eng, "ctor_idx_after_nul", ctypes.c_int64);
+    assert f() == 66;
+}
+
+test "bytearray() constructor length counts bytes past NUL" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    f = get_func(eng, "bytearray_ctor_len", ctypes.c_int64);
+    assert f() == 3;
+}
+
 # ─── struct module: unpack / pack / calcsize ───
 test "struct unpack u32 little-endian" {
     (eng, _) = compile_native("struct_pack.na.jac");
