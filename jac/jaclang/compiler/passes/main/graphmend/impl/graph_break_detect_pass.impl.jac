@@ -51,12 +51,17 @@ impl GraphBreakDetectPass.enter_func_call(nd: uni.FuncCall) -> None {
         return;
     }
     name = self._call_name(nd);
-    if (name is not None) and is_side_effect_name(name) {
-        if self._is_user_defined(nd, name) {
-            return;
-        }
-        nd._gm_break_kind = 'side_effect';
+    if (name is None) or (not is_side_effect_name(name)) {
+        return;
     }
+    # The shadowing check applies only to a bare builtin call (e.g. a
+    # user-redefined `print`). For `logger.info(...)` the matched name is the
+    # method, not a module symbol, so looking it up would wrongly suppress the
+    # break whenever an unrelated module-level `def info(...)` exists.
+    if isinstance(nd.target, uni.Name) and self._is_user_defined(nd, name) {
+        return;
+    }
+    nd._gm_break_kind = 'side_effect';
 }
 
 """Collect torch.compile entry points: functions/classes decorated with

@@ -75,6 +75,11 @@ test "detects logger method call as a side effect" {
     assert "side_effect" in _call_kinds(mod);
 }
 
+test "logger method is tagged even if a same-named module function exists" {
+    mod = _compile("side_effect_logger_shadow.jac", True);
+    assert "side_effect" in _call_kinds(mod);
+}
+
 test "validation guard with cleanup before raise is a val_guard" {
     mod = _compile("guard_multi_stmt.jac", True);
     assert "val_guard" in _if_kinds(mod);

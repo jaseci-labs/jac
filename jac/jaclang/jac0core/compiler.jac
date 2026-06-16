@@ -260,6 +260,11 @@ def get_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
 def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
     global _codegen_sched_loading;
     if _codegen_sched_loading or _ir_sched_loading {
+        # Re-entrancy fallback hit only while compiling the pass modules this
+        # schedule depends on (internal jaclang modules, never a torch.compile
+        # entry point). GraphBreakDetectPass is intentionally omitted: importing
+        # it here would re-trigger compiling it, the circular import this guard
+        # exists to break -- and it would prune on these modules anyway.
         return [PyastGenPass, PyBytecodeGenPass];
     }
     _codegen_sched_loading = True;
