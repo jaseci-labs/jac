@@ -18,6 +18,7 @@ import from "lucide-react" {
     Workflow,
     ScrollText,
     Stethoscope,
+    Boxes,
     LogOut,
     CircleUserRound,
     Sun,
@@ -42,6 +43,7 @@ import from .monitoring.GraphsPage { GraphsPage }
 import from .monitoring.TracesPage { TracesPage }
 import from .logs.LogsPage { LogsPage }
 import from .ops.OpsPage { OpsPage }
+import from .ops.DeployPage { DeployPage }
 
 # Nav item id -> page component. Keep in sync with navGroups.
 glob PAGE_ROUTES = {
@@ -54,7 +56,8 @@ glob PAGE_ROUTES = {
          "llm_traces": LLMTracesPage,
          "traces": TracesPage,
          "logs": LogsPage,
-         "ops": OpsPage
+         "ops": OpsPage,
+         "deploy": DeployPage
      };
 
 def:pub DashboardLayout -> JsxElement {
@@ -118,7 +121,8 @@ def:pub DashboardLayout -> JsxElement {
         "llm_traces": <Bot className={iconCls}/>,
         "traces": <Workflow className={iconCls}/>,
         "logs": <ScrollText className={iconCls}/>,
-        "ops": <Stethoscope className={iconCls}/>
+        "ops": <Stethoscope className={iconCls}/>,
+        "deploy": <Boxes className={iconCls}/>
     };
 
     uname = String(auth["currentUsername"] or "");

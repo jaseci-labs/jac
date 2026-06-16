@@ -26,28 +26,45 @@ glob registry = get_registry(),
             short="f"
         ),
         Arg.create(
+            "kind",
+            default="",
+            help="Project kind to scaffold (cli, native-app, api-service, fullstack, ...)",
+            short="k"
+        ),
+        Arg.create(
             "use",
             default="default",
-            help="Jacpack template: name, file path, or URL",
+            help="Custom template: file path or URL to a .jacpack (or a variant name)",
             short="u"
         ),
         Arg.create(
             "list_jacpacks",
             typ=bool,
             default=False,
-            help="List available jacpack templates",
+            help="List available project kinds and templates",
             short="l"
         ),
 
     ],
     examples=[
-        ("jac create", "Initialize a project in the current directory (name from cwd)"),
-        ("jac create myapp", "Create new myapp/ directory"),
+        (
+            "jac create",
+            "Initialize a cli project in the current directory (name from cwd)"
+        ),
+        ("jac create myapp", "Create new myapp/ directory (cli kind)"),
+        ("jac create myapp --kind api-service", "Scaffold a headless API service"),
+        (
+            "jac create myapp --kind native-binary",
+            "Scaffold a natively-compiled binary"
+        ),
+        (
+            "jac create myapp --kind fullstack",
+            "Scaffold a fullstack app (needs jac-client)"
+        ),
         ("jac create --force", "Reinitialize existing project"),
-        ("jac create myapp --use client", "Create with client jacpack template"),
         ("jac create --use ./my.jacpack", "Create from local .jacpack file"),
         ("jac create --use https://example.com/t.jacpack", "Create from URL"),
-        ("jac create --list_jacpacks", "List available jacpack templates"),
+        ("jac create --list_jacpacks", "List available project kinds and templates"),
 
     ],
     group="project"
@@ -55,6 +72,7 @@ glob registry = get_registry(),
 def create(
     name: str = "",
     force: bool = False,
+    kind: str = "",
     use: str = "default",
     list_jacpacks: bool = False
 ) -> int;

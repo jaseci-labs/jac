@@ -15,21 +15,39 @@ happen. The CLI `run` command consumes the plan and either prints it
 import os;
 import from jaclang.project.config { JacConfig }
 
-# The canonical set of project kinds. Mirrors the jac-project-kinds skill.
-glob VALID_KINDS: list[str] = [
-         "cli",
-         "native-app",
-         "native-binary",
-         "shared-library",
-         "api-service",
-         "microservices",
-         "pypi-package",
-         "npm-package",
-         "fullstack",
-         "wasm",
-         "desktop",
-         "mobile"
-     ];
+# The canonical project-kind table: the single source of truth shared by
+# `jac create` (which template/entry-point to scaffold, which plugin a kind
+# needs) and `jac run` (which plugin a kind needs to dispatch). Each entry:
+#   entry  -- the scaffolded entry-point filename (its codespace suffix)
+#   plugin -- the pip package that must be installed for the kind ("" = core)
+# Insertion order is the canonical kind order (used in error messages).
+glob KIND_SPECS: dict[str, dict[str, str]] = {
+         "cli": {"entry": "main.jac", "plugin": ""},
+         "native-app": {"entry": "main.na.jac", "plugin": ""},
+         "native-binary": {"entry": "main.na.jac", "plugin": ""},
+         "shared-library": {"entry": "main.na.jac", "plugin": ""},
+         "api-service": {"entry": "main.sv.jac", "plugin": ""},
+         "microservices": {"entry": "main.sv.jac", "plugin": ""},
+         "pypi-package": {"entry": "lib.jac", "plugin": ""},
+         "npm-package": {"entry": "lib.jac", "plugin": ""},
+         "fullstack": {"entry": "main.jac", "plugin": "jac-client"},
+         "wasm": {"entry": "main.jac", "plugin": "jac-client"},
+         "desktop": {"entry": "main.jac", "plugin": "jac-desktop"},
+         "mobile": {"entry": "main.jac", "plugin": "jac-client"}
+     },
+     # The canonical set of project kinds, derived from KIND_SPECS so the two never
+     # drift. Mirrors the jac-project-kinds skill.
+     VALID_KINDS: list[str] = list(KIND_SPECS.keys());
+
+"""The pip package a kind requires to run/scaffold ("" when core-supported)."""
+def kind_required_plugin(kind: str) -> str {
+    return KIND_SPECS.get(kind, {}).get("plugin", "");
+}
+
+"""The canonical entry-point filename `jac create` scaffolds for a kind."""
+def kind_entry(kind: str) -> str {
+    return KIND_SPECS.get(kind, {}).get("entry", "main.jac");
+}
 
 """A resolved plan describing what `jac run` should do for a project.
 
@@ -247,7 +265,7 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
             entry_path=entry_path,
             flags=_serve_flags(config, {"dev": True}),
             summary="Serve full-stack app with client (dev mode)",
-            requires_plugin="jac-client"
+            requires_plugin=kind_required_plugin(kind)
         );
     }
     if kind == "wasm" {
@@ -258,7 +276,7 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
             entry_path=entry_path,
             flags=_serve_flags(config, {}),
             summary="Serve wasm page (emits /static/main.wasm)",
-            requires_plugin="jac-client"
+            requires_plugin=kind_required_plugin(kind)
         );
     }
     if kind == "desktop" {
@@ -269,7 +287,7 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
             entry_path=entry_path,
             flags={"client": "desktop"},
             summary="Run desktop app (OS webview)",
-            requires_plugin="jac-desktop"
+            requires_plugin=kind_required_plugin(kind)
         );
     }
     if kind == "pypi-package" {
@@ -300,7 +318,7 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
             entry_path=entry_path,
             flags={"client": "mobile"},
             summary="Build mobile app bundle",
-            requires_plugin="jac-client"
+            requires_plugin=kind_required_plugin(kind)
         );
     }
     return None;

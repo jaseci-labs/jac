@@ -582,15 +582,12 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     for (_, imported_mod) in imported_mods {
         self._register_imported_hierarchy(imported_mod);
     }
-    # ── Phase 1a.5: mark imported OSP archetypes (issue #6642 Blocker 2) ──────
-    # Before bodies are laid out, so an imported node/walker/edge reserves the
-    # OSP header (vtable + __type_tag) matching its defining module and gets its
-    # globally-stable tag. Tags are content hashes (see _register_osp_tags), so
-    # a library and any importer agree regardless of what else either defines --
-    # no sorted-order fragility, materialization is always sound.
-    for (_, imported_mod) in imported_mods {
-        self._register_imported_osp_archetypes(imported_mod);
-    }
+    # Imported OSP archetypes need no separate registration: their ASTs are
+    # already in `arch_ast_map` (Phase 1a), OSP-ness is read straight off each
+    # archetype (`arch.arch_kind`) where layout reserves the header, and
+    # `_compute_osp_model` folds them into the single OSP store with their
+    # globally-stable content-hash tags so a library and any importer agree
+    # (#6642 Blocker 2, #6659).
     # ── Phase 1b: fill ALL struct bodies, enums, globals ─────────────────────
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_types(imported_mod);
@@ -718,7 +715,7 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
             and isinstance(stmt.signature, uni.FuncSignature) {
                 self._forward_declare_method(aname, stmt);
             } elif isinstance(stmt.signature, uni.EventSignature)
-            and (aname in self.osp_arch_kind) {
+            and (arch.arch_kind is not None) {
                 # An imported OSP event ability (`can ... with T entry`): the
                 # body is linked from the defining module, but the consumer must
                 # forward-declare it and build its kernel dispatch thunk so its

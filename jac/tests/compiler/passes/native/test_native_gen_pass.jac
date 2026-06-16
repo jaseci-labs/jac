@@ -2652,9 +2652,10 @@ test "native osp construct living only in an impl annex materializes imported ar
     # head file. DeclImplMatchPass attaches an annex body via `decl.body =
     # <ImplDef from the annex module>`, never splicing it into the head decl's
     # `kid`, so the OSP construct is reachable only through `mod.impl_mod`.
-    # `_module_uses_osp` swept just the head module's `iter_context_stmts` + kid
-    # tree, classified the builder as a non-OSP user, and never gave the imported
-    # archetypes their stable type-tag -- the annexed `++>` then failed with
+    # The OSP construct scan (now `OspAnalysis._uses_construct`) swept just the
+    # head module's `iter_context_stmts` + kid tree, classified the builder as a
+    # non-OSP user, and never gave the imported archetypes their stable type-tag
+    # -- the annexed `++>` then failed with
     # E5090 ("not materialized") at nacompile (or mis-codegen SIGSEGV in a fuller
     # graph). The byte-identical program with `build`'s body INLINE in the head
     # file always compiled. Fixed: prints `2 2 3` (graph built, walker sums 1+2).

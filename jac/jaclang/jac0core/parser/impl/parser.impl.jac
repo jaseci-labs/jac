@@ -4083,10 +4083,16 @@ impl Parser.parse_code_block_stmts -> list {
         stmt = self.parse_statement();
         if stmt is not None {
             # Reject Python-style docstrings as first statement in code block.
-            # In Jac, semstrings go before the declaration, not inside.
+            # In Jac, semstrings go before the declaration, not inside. Skip
+            # this inside a JSX `{...}` slot body: a bare string there is
+            # template content accumulated into the slot's children, not a
+            # misplaced docstring -- warning on it is misleading (#6732).
             is_docstring = False;
             if (
-                not checked_first and isinstance(stmt, ExprStmt) and not stmt.in_fstring
+                not checked_first
+                and self._view_body_depth == 0
+                and isinstance(stmt, ExprStmt)
+                and not stmt.in_fstring
             ) {
                 if isinstance(stmt.expr, String) {
                     is_docstring = True;

@@ -303,6 +303,15 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
     if cname == "File" {
         return self._get_file_struct_type().as_pointer();
     }
+    # Native binary file object: open(path, "rb") -> BinaryFile, whose read()
+    # returns length-aware bytes (same struct layout as File).
+    if cname == "BinaryFile" {
+        return self._get_binary_file_struct_type().as_pointer();
+    }
+    # Length-aware bytes (#6404 Track 0): pointer to { i64 len, [0 x i8] data }.
+    if cname == "bytes" {
+        return self._get_bytes_struct_type().as_pointer();
+    }
     # User-defined object/struct -> pointer to struct.
     if cname in self.struct_types {
         return self.struct_types[cname].as_pointer();
@@ -1469,6 +1478,13 @@ impl NaIRGenPass._emit_comparison(
     if isinstance(left.type, ir.PointerType)
     and isinstance(right.type, ir.PointerType) {
         i8_ptr = ir.IntType(8).as_pointer();
+        # bytes == / != bytes: compare length then content (memcmp). A distinct
+        # struct type, so this never reaches the i8* string path below.
+        if self._is_bytes_value(left)
+        and self._is_bytes_value(right)
+        and (op == Tok.EE or op == Tok.NE) {
+            return self._emit_bytes_eq(left, right, negate=op == Tok.NE);
+        }
         # String comparison: both operands must be i8* (char pointers)
         if left.type == i8_ptr and right.type == i8_ptr {
             strcmp_fn = self._get_or_declare_extern(
