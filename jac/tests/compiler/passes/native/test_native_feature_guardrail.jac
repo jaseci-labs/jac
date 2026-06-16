@@ -519,15 +519,8 @@ test "nacompile still rejects skip in a value-returning native function" {
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# C-library (clib) import decl type resolution (issue #6676)
+# C-library (clib) import decl type resolution
 # ─────────────────────────────────────────────────────────────────────
-# A clib import declares the C ABI boundary: every parameter/return type is
-# *declared*, not inferred. A type name the compiler can't resolve (a typedef'd
-# handle, an unmodeled width like `uint32_t`, an opaque struct) used to be
-# silently lowered to a SIGNED i64 at the FFI boundary — a wrong-ABI call with
-# zero diagnostics (mis-widening + the signed-comparison hazard of #6353). The
-# undefined type name must now be rejected as E2018 ("requires a defined type"),
-# both at `jac check` and at full `nacompile`, instead of compiling silently.
 test "check rejects clib decl with an unknown parameter type" {
     prog = check_na_inline(
         "clib_unknown_param",
@@ -565,11 +558,7 @@ test "nacompile rejects clib decl with an unknown type (no silent i64)" {
     )}";
 }
 
-# Parity: the same silent-i64 hazard exists for a NON-clib native def. A
-# `.na.jac` signature whose annotation names an unresolved type used to get
-# only a W2001 warning at `jac check` and a wrong-ABI binary at nacompile. The
-# front-end now blocks it with E2018 too (same as the clib path), via the
-# canonical `in_native_context()` check — not just at codegen.
+# Native signatures with unresolved annotation types are E2018, not W2001.
 test "check rejects a native def with an unknown parameter type" {
     prog = check_na_inline(
         "native_unknown_param", "def takes_unknown(x: uint32_t) -> int { return 0; }\n"
@@ -588,15 +577,7 @@ test "check rejects a native def with an unknown return type" {
     )}";
 }
 
-# An object FIELD whose annotation names an unresolved type (a typedef'd C
-# handle, an unmodeled width like `uint32_t`) reaches native codegen's
-# `_emit_unlowerable_type` through a non-Expr HasVar node. str(UnknownType) is
-# '<Unknown>', so the diagnostic used to read the useless
-# "Undefined name '<Unknown>'" -- losing the name the user actually wrote. The
-# label must now recover it from the field's type tag. Note this is the LIVE
-# catcher for fields: the front-end E2018 above covers clib/native *signature*
-# positions but not object field declarations, so the codegen pass is the only
-# thing that names the bad field type today.
+# Object field annotations are caught at codegen; E2018 must name the written type.
 test "native object field with an unknown type names the type, not '<Unknown>'" {
     prog = compile_na_inline(
         "obj_field_unknown",
@@ -620,9 +601,7 @@ test "native object field with an unknown type names the type, not '<Unknown>'" 
     assert named , f"E2018 should name 'uint32_t', not '<Unknown>': {fmt_errors(prog)}";
 }
 
-# Negative control: a clib decl whose param/return types ARE recognized
-# (primitive `f64`, and a struct declared in the same block) must compile
-# cleanly — no E2018 false positive, no E5090.
+# Negative control: known clib types must compile without E2018/E5090.
 test "clib decl with known types is not rejected" {
     prog = compile_na_inline(
         "clib_known_ok",

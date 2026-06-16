@@ -458,16 +458,11 @@ An annotation Expr carries a `.type` (TypeBase) populated by TypeCheckPass;
 _lower_type maps it to an LLVM type. Every native type now flows through the
 central checker -- primitives, user structs/enums, collections, and the
 runtime `File` (modeled by na_builtins.pyi) -- including annotations in
-imported .na.jac modules (type-checked on load, #6117). The former name-based
-fallback (struct_types / type_map lookups) is gone: with `File` modeled
-centrally (#6118) it was reached zero times across the native suite.
+imported .na.jac modules (type-checked on load). The former name-based
+fallback (struct_types / type_map lookups) is gone.
 
-An annotation that reaches codegen without a `.type` is an E9002 ICE: the
-typed-tree contract (Phase 0) guarantees inference ran, so a missing type
-is a pipeline bug, never a user error. A present-but-unlowerable type is no
-longer silently widened to i64 -- it is reported honestly via
-`_emit_unlowerable_type` (E2018 for an unresolved type name, E5090 for a real
-native capability gap), closing the silent signed-i64 default of #6676.
+An annotation that reaches codegen without a `.type` is an E9002 ICE. Unlowerable
+types are reported via `_emit_unlowerable_type` instead of defaulting to i64.
 """
 impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
@@ -503,32 +498,14 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     return ir.IntType(64);
 }
 
-"""Emit an honest diagnostic for a present TypeBase that native codegen cannot
-lower to an LLVM type, then return a defensive i64 so the pass keeps running
-and surfaces every error in one go (matching the E9002 pattern above).
-
-An `UnknownType` means the central checker could not resolve the annotation's
-*name* — a user error (a typedef'd C handle, an unmodeled width like
-`uint32_t`, a typo'd type). Native annotations are *declared*, not inferred,
-so an unresolved name has no LLVM lowering and was the silent signed-i64
-default of #6676. It is reported as E2018 ("requires a defined type") — the
-same user-facing error `jac check` raises for it (#6676), so the `nacompile`
-path agrees instead of falling to a misleading "compiler bug" ICE. Any other
-present-but-unlowerable `TypeBase` (a resolved class native does not model, a
-`TypeVar`, ...) is a genuine native capability gap -> E5090.
-"""
+"""Emit E2018 for UnknownType, E5090 for other unlowerable types; return defensive i64."""
 impl NaIRGenPass._emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type {
     is_unknown = False;
     try {
         import from jaclang.compiler.type_system.types { UnknownType as _UnknownType }
         is_unknown = isinstance(tb, _UnknownType);
     } except ImportError { }
-    # Recover the user-readable type name for non-Expr nodes that reach here
-    # (a HasVar/Param passed to _resolve_jac_type): without this, str(tb) on an
-    # UnknownType renders the opaque '<Unknown>' from UnknownType.__str__ and
-    # the diagnostic loses the name the user actually wrote. type_tag.tag is the
-    # same accessor used elsewhere in this file (_get_name(var.type_tag.tag));
-    # Expr nodes keep their full unparse() text unchanged.
+    # Use type_tag for HasVar/Param so E2018 shows the written name, not '<Unknown>'.
     if isinstance(type_expr, uni.Expr) {
         _label = type_expr.unparse();
     } else {
@@ -551,15 +528,7 @@ impl NaIRGenPass._emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.T
 """Resolve a type for C library declarations -- clib structs use value types, not pointers."""
 impl NaIRGenPass._resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
-        # A `None` annotation here is a clib declaration with no return arrow
-        # (`def f(x: T);`). Param call sites never reach this -- a missing
-        # parameter annotation is already a hard E0052 -- so the only way in is
-        # an omitted return type. Jac's contract is "no return arrow == returns
-        # nothing", so the C ABI boundary is `void`, identical to an explicit
-        # `-> None`. The former silent `i64` here mis-declared every such void
-        # C function as returning a signed 64-bit garbage value at the FFI
-        # boundary -- the same #6676 hazard as an unresolved type name, just via
-        # omission instead of an unknown name.
+        # Omitted return on a clib decl is void per Jac semantics, not i64.
         return ir.VoidType();
     }
     # Check if this is a clib struct name -- return VALUE type (not pointer)

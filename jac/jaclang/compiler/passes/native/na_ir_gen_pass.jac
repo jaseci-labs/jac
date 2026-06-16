@@ -394,9 +394,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
-    # Honest diagnostic (replacing the former silent i64 default) for a present
-    # TypeBase native codegen cannot lower: E2018 for an unresolved type name,
-    # E5090 for a real native capability gap (#6676).
     def _emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type;
     # Unified TypeBase -> LLVM lowering (consumes the central type checker's
     # result; returns None when a type category is not yet handled).
