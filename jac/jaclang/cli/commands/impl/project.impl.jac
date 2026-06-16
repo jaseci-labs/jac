@@ -587,13 +587,11 @@ impl install(
             f"\n📦 Installing {len(packages)} package(s) into activated environment",
             style="bold"
         );
-        cmd: list[str] = [
+        cmd: list[str] = pip_command(
             sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--upgrade"
-        ] + install_flags + packages;
+            ["install", "--upgrade"] + install_flags + packages,
+            use_uv=not no_uv
+        );
         if verbose {
             console.print(f"  Running: {' '.join(cmd)}", style="muted");
         }
