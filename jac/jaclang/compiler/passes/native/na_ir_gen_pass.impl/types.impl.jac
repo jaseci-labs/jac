@@ -884,6 +884,24 @@ impl NaIRGenPass._emit_binary_op(
         self._mark_owned(buf);
         return buf;
     }
+    # bytes concatenation (jacbytes* + jacbytes*) — check before numeric dispatch.
+    # bytes are the length-aware struct, not i8*, so the str branch above misses
+    # them; allocate len(a)+len(b) and memcpy both data regions (embedded NULs
+    # survive). _bytes_alloc marks the result owned, so the caller owns it (rc=1).
+    if op == Tok.PLUS and self._is_bytes_value(left) and self._is_bytes_value(right) {
+        i8p = ir.IntType(8).as_pointer();
+        i64 = ir.IntType(64);
+        llen = self._bytes_len_val(left);
+        rlen = self._bytes_len_val(right);
+        total = self.builder.add(llen, rlen, name="by.cat.total");
+        result = self._bytes_alloc(total);
+        dst = self._bytes_data_ptr(result);
+        memcpy_fn = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+        self.builder.call(memcpy_fn, [dst, self._bytes_data_ptr(left), llen]);
+        rdst = self.builder.gep(dst, [llen], name="by.cat.rdst");
+        self.builder.call(memcpy_fn, [rdst, self._bytes_data_ptr(right), rlen]);
+        return result;
+    }
     # String repeat (i8* * i64 or i64 * i8*): allocate n*len buffer, loop-copy
     if op == Tok.STAR_MUL {
         str_val: (ir.Value | None) = None;

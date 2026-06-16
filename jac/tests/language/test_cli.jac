@@ -12,7 +12,14 @@ import tempfile;
 import traceback;
 import from pathlib { Path }
 import jaclang;
-import from jaclang.cli.commands { analysis, execution, project, tools, transform }
+import from jaclang.cli.commands {
+    analysis,
+    cli_helpers,
+    execution,
+    project,
+    tools,
+    transform
+}
 import from jaclang.cli.commands { config as config_cmd }
 import from jaclang.cli.registry { get_registry }
 import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
@@ -125,6 +132,32 @@ test "jac cli run" {
     }
     stdout_value = captured.getvalue();
     assert "Hello World!" in stdout_value;
+}
+
+test "proc_file strips compound codespace suffixes to bare module stem" {
+    # Issue #6696: `jac run`/`jac start` failed on `.sv.jac` / `.cl.jac`
+    # entries because proc_file stripped only the trailing `.jac`, leaving
+    # e.g. `main.sv`, which the meta-importer misread as the package `main.sv`
+    # ("No module named 'main.sv'"). Every compound codespace suffix must
+    # collapse to the bare stem so the meta-importer can resolve it.
+    cases = [
+        ("proj/main.jac", "main"),
+        ("proj/main.na.jac", "main"),
+        ("proj/main.sv.jac", "main"),
+        ("proj/main.cl.jac", "main"),
+        ("proj/server.py", "server"),
+
+    ];
+    for (filename, expected) in cases {
+        (base, mod, mach) = cli_helpers.proc_file(filename);
+        try {
+            assert mod == expected , (
+                f"proc_file({filename!r}) -> module {mod!r}, expected {expected!r}"
+            );
+        } finally {
+            mach.close();
+        }
+    }
 }
 
 test "diagnostics flag" {
@@ -1375,6 +1408,23 @@ test "jac install -e links all packages for space-separated and repeated flag fo
         _reset_config();
         os.chdir(original_cwd);
         shutil.rmtree(_tmpdir, ignore_errors=True);
+    }
+}
+
+test "jac install <pkg> routes package names through argparse" {
+    # Verifies CLI wiring: argparse maps positional args into packages,
+    # bypasses jac.toml, and --dry-run keeps it network/disk-free.
+    with tempfile.TemporaryDirectory() as tmp {
+        result = subprocess.run(
+            ["jac", "install", "numpy", "pandas", "--dry-run"],
+            capture_output=True,
+            text=True,
+            cwd=str(tmp)
+        );
+        combined = result.stdout + result.stderr;
+        assert result.returncode == 0 , f"Expected exit 0:\n{combined}";
+        assert "No jac.toml found" not in combined;
+        assert "Dry run complete" in combined;
     }
 }
 

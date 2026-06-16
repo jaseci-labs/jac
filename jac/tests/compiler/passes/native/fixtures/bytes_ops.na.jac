@@ -72,3 +72,33 @@ def empty_len() -> int {
     b = b"";
     return len(b);
 }
+
+def concat_len() -> int {
+    c = b"x" + b"y";
+    return len(c);
+}
+
+def concat_embedded_nul_len() -> int {
+    c = b"a\x00" + b"\x00b";
+    return len(c);
+}
+
+def concat_idx() -> int {
+    c = b"AB" + b"CD";
+    return c[2];
+}
+
+def ctor_len() -> int {
+    d = bytes([65, 0, 66]);
+    return len(d);
+}
+
+def ctor_idx_after_nul() -> int {
+    d = bytes([65, 0, 66]);
+    return d[2];
+}
+
+def bytearray_ctor_len() -> int {
+    d = bytearray([65, 0, 66]);
+    return len(d);
+}
