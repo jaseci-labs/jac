@@ -254,7 +254,7 @@ impl GraphBreakDetectPass._condition_is_data_dependent(cond: uni.Expr) -> bool {
     if not st {
         return False;
     }
-    visited: set[str] = set();
+    visited: set[int] = set();
     for nm in cond.get_all_sub_nodes(uni.Name) {
         sym = st.lookup(nm.value, deep=True);
         if sym and self._trace_symbol(sym, visited, 0) {
@@ -291,12 +291,12 @@ Parameters are deliberately NOT treated as dynamic -- that would misfire on
 object params (e.g. tagging `if hasattr(self, ...)` as data-dependent).
 """
 impl GraphBreakDetectPass._trace_symbol(
-    sym: uni.Symbol, visited: set[str], depth: int
+    sym: uni.Symbol, visited: set[int], depth: int
 ) -> bool {
-    if (depth > 10) or (sym.sym_name in visited) {
+    if (depth > 10) or (id(sym) in visited) {
         return False;
     }
-    visited.add(sym.sym_name);
+    visited.add(id(sym));
     assign = self._defining_assignment(sym);
     if (assign is None) or (assign.value is None) {
         return False;
@@ -310,7 +310,7 @@ impl GraphBreakDetectPass._trace_symbol(
     }
     for nm in assign.value.get_all_sub_nodes(uni.Name) {
         dep = st.lookup(nm.value, deep=True);
-        if dep and (dep.sym_name not in visited) {
+        if dep and (id(dep) not in visited) {
             if self._trace_symbol(dep, visited, depth + 1) {
                 return True;
             }

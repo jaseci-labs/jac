@@ -286,7 +286,13 @@ def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
         );
         return passes;
     } except ImportError {
-        return [PyastGenPass, PyBytecodeGenPass];
+        # The ecmascript / native imports above can fail in a Python-only
+        # environment; GraphMend depends only on core modules, so keep it in the
+        # fallback schedule too -- otherwise --graphmend would silently no-op.
+        import from jaclang.compiler.passes.main.graphmend.graph_break_detect_pass {
+            GraphBreakDetectPass
+        }
+        return [GraphBreakDetectPass, PyastGenPass, PyBytecodeGenPass];
     } finally {
         _codegen_sched_loading = False;
     }
