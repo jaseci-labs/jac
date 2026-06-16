@@ -827,6 +827,16 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _make_filter_iter(up: tuple, pred: ir.Function) -> (tuple | None);
     def _make_enumerate_iter(up: tuple) -> (tuple | None);
     def _make_zip_iter(up_a: tuple, up_b: tuple) -> (tuple | None);
+    # User-defined __iter__/__next__ bridged into the protocol (#6403 M2).
+    def _resolve_method(arch_name: str, method_name: str) -> (ir.Function | None);
+    def _arch_implements_iter(arch_name: str) -> bool;
+    def _user_iter_next_fn(
+        iter_struct: str, next_method_fn: ir.Function, elem_type: ir.Type
+    ) -> ir.Function;
+    def _make_user_iter(it_obj: ir.Value, iter_struct: str) -> (tuple | None);
+    def _make_user_iter_from_obj(
+        obj_val: ir.Value, struct_name: str, expr: uni.UniNode
+    ) -> (tuple | None);
     def _try_iter_protocol_for(nd: uni.InForStmt) -> bool;
     # Phase 16: Context Managers
     def _codegen_with(nd: uni.WithStmt) -> None;
