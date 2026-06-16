@@ -225,9 +225,9 @@ test "most_recent returns the newest session for a cwd, or None" {
         assert store.most_recent("/proj") is None;
         first = store.create("/proj", "first");
         store.save(first);
-        # A sleep-free ordering guarantee: most_recent re-sorts by `updated`,
-        # so saving a second session makes it the newest regardless of clock
-        # resolution (both share the same second -- ties broken by list order).
+        # A sleep-free ordering guarantee: `updated` carries microsecond
+        # precision (see _now_iso), so the second save sorts strictly newer
+        # than the first even back-to-back within the same wall-clock second.
         second = store.create("/proj", "second");
         store.save(second);
         mr = store.most_recent("/proj");

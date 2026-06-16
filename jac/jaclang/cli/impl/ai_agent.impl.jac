@@ -1316,6 +1316,16 @@ impl SessionStore._path(id: str) -> str {
     return os.path.join(self._dir(), f"{id}.json");
 }
 
+"""A UTC ISO-8601 timestamp with microsecond precision, lexicographically
+sortable. Sub-second precision keeps `most_recent`/`--continue` ordering
+deterministic when two sessions are saved within the same wall-clock second."""
+def _now_iso -> str {
+    t = time.time();
+    base = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(t));
+    micros = int((t - int(t)) * 1000000);
+    return f"{base}.{micros:06d}Z";
+}
+
 """Allocate a fresh session record for a cwd with an optional name.
 
 `id` is an opaque hex token (not derived from cwd or time) so two sessions
@@ -1323,7 +1333,7 @@ in the same project never collide and a path never leaks into the id. Names
 are unique within a cwd (enforced on save); a blank name means unnamed.
 """
 impl SessionStore.create(cwd: str, name: str = "") -> dict {
-    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime());
+    now = _now_iso();
     return {
         "id": secrets.token_hex(4),
         "name": name,
@@ -1349,7 +1359,7 @@ impl SessionStore.save(record: dict) -> None {
     if not record or "id" not in record {
         return;
     }
-    record["updated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime());
+    record["updated"] = _now_iso();
     target = self._path(str(record["id"]));
     tmp = f"{target}.tmp";
     try {
@@ -1716,7 +1726,8 @@ def cmd_sessions {
         sid = str(s.get("id", ""));
         name = str(s.get("name", "")) or "-";
         nturns = len(s.get("turns", []));
-        updated = str(s.get("updated", "")).replace("T", " ").replace("Z", "") or "?";
+        # Trim the sub-second fraction (see _now_iso) for a clean listing.
+        updated = str(s.get("updated", "")).split(".")[0].replace("T", " ") or "?";
         totals = s.get("totals", {});
         tok = int(totals.get("prompt_tokens", 0)) + int(
             totals.get("completion_tokens", 0)
@@ -3415,13 +3426,23 @@ impl run_agent(req: AgentRequest) -> int {
     if not _resolve_session(r) {
         return 1;
     }
-    resuming = bool(_session_record.get("ledger"));
+    # "Resuming" means we loaded real prior state, not just a freshly-created
+    # record (whose ledger is present-but-empty, so a bare `bool(ledger)` is
+    # always true). Gate on actual content: prior turns or a non-empty ledger.
+    _led = _session_record.get("ledger", {});
+    resuming = bool(
+        _session_record.get("turns") or _led.get("changes") or _led.get("notes")
+    );
     # Import-time `agent_model` covers jac.toml/default; rebuild when a flag
     # overrides, or -- on resume with no flag -- when the record names a model.
     if r.model or r.n_ctx > 0 {
         agent_model = build_model(str(r.model), int(r.n_ctx));
     } elif resuming and _session_record.get("model") {
-        agent_model = build_model(str(_session_record["model"]), int(agent.cfg.n_ctx));
+        # Use the session's persisted n_ctx (cfg is restored further down, after
+        # this rebuild, so read it from the record directly rather than the live
+        # cfg, which still holds the import-time default here).
+        rec_n_ctx = int(_session_record.get("cfg", {}).get("n_ctx", agent.cfg.n_ctx));
+        agent_model = build_model(str(_session_record["model"]), rec_n_ctx);
     }
     agent.view.print_banner();
     if resuming {
