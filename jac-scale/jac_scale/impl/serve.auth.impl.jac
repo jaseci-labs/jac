@@ -459,7 +459,10 @@ impl JacAPIServerAuth.get_api_key_manager -> ApiKeyManager {
 }
 
 impl JacAPIServerAuth.create_api_key(
-    name: str, expiry_days: int | None = None, Authorization: str | None = None
+    name: str,
+    expiry_days: int | None = None,
+    Authorization: str | None = None,
+    allowed_walkers: list[str] | None = None
 ) -> TransportResponse {
     (user_id, error) = authenticate_or_fail(
         Authorization,
@@ -470,7 +473,10 @@ impl JacAPIServerAuth.create_api_key(
         return error;
     }
     return self.get_api_key_manager().create_api_key(
-        username=user_id, name=name, expiry_days=expiry_days
+        user_id=user_id,
+        name=name,
+        expiry_days=expiry_days,
+        allowed_walkers=allowed_walkers
     );
 }
 
@@ -504,10 +510,22 @@ impl JacAPIServerAuth.revoke_api_key(
 
 impl JacAPIServerAuth.register_api_key_endpoints -> None {
     async def create_api_key_handler(
-        request: Request, name: str, expiry_days: int | None = None
+        request: Request,
+        name: str,
+        expiry_days: int | None = None,
+        allowed_walkers: str | None = None
     ) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        return self.create_api_key(name, expiry_days, authorization);
+        # Accept a comma-separated list; empty means unscoped (any walker)
+        scoped: list[str] | None = None;
+        if allowed_walkers {
+            scoped = [
+                w.strip()
+                for w in allowed_walkers.split(',')
+                if w.strip()
+            ];
+        }
+        return self.create_api_key(name, expiry_days, authorization, scoped);
     }
     async def list_api_keys_handler(request: Request) -> TransportResponse {
         authorization = request.headers.get('Authorization');
@@ -539,6 +557,14 @@ impl JacAPIServerAuth.register_api_key_endpoints -> None {
                     required=False,
                     default=None,
                     description='Number of days until expiry (default from config)',
+                    type=ParameterType.BODY
+                ),
+                APIParameter(
+                    name='allowed_walkers',
+                    data_type='string',
+                    required=False,
+                    default='',
+                    description='Comma-separated webhook walker names this key may call. Empty/omitted for an unscoped key (any walker).',
                     type=ParameterType.BODY
                 )
             ],

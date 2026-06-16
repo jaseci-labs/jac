@@ -335,8 +335,10 @@ test "deep imports interp mode" {
     Jac.set_base_path(FIXTURES);
     Jac.attach_program((prog := JacProgram()));
     prog.compile(os.path.join(FIXTURES, "deep_import_interp.jac"));
-    # as we use jac_import, only main module should be in the hub
-    assert len(Jac.get_program().mod.hub.keys()) == 1;
+    # Main module must be in the hub. Typed-tree inference resolves imports
+    # during analysis, so transitive imports may also appear; assert
+    # presence rather than exact count (same contract as jac_import above).
+    assert os.path.join(FIXTURES, "deep_import_interp.jac") in Jac.get_program().mod.hub;
 }
 
 test "deep outer imports from loc" {

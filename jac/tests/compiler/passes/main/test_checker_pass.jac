@@ -3,6 +3,7 @@
 import os;
 import from pathlib { Path }
 import jaclang;
+import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
@@ -1053,6 +1054,29 @@ test "disconnect_op_no_w1051" {
     )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
     # Disconnect must type as `bool` so that `removed: bool = a del --> b`
     # is a clean assignment, not E1001 (Unknown -> bool).
+    assert len(program.errors_had) == 0 , f"Unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+}
+
+test "named_entry_no_w1051" {
+    # Regression: a named entry block (`with entry:__main__`, `with entry:foo`)
+    # emitted a spurious W1051 on the entry-point label. A ModuleCode's `name`
+    # is a Name node that is a label, not a variable reference -- it has no
+    # symbol -- but exit_name type-evaluated it, got Unknown, and warned. This
+    # fired on the idiomatic `with entry:__main__` guard of nearly every program.
+    path = os.path.join(CHECKER_FIXTURES, "checker_named_entry_no_w1051.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051"
+    ];
+    assert len(w1051) == 0 , f"Expected no W1051 on named entry labels, got {len(
+        w1051
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
     assert len(program.errors_had) == 0 , f"Unexpected errors: {[
         e.pretty_print() for e in program.errors_had
     ]}";
@@ -5191,4 +5215,84 @@ test "spread_with_explicit_kwarg_no_false_positive" {
     assert len(program.errors_had) == 0 , f"Expected no errors for spread + explicit kwarg, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+test "circular_import_preserves_class_identity" {
+    abs_entry = os.path.join(CHECKER_FIXTURES, "circular_import_identity", "entry.jac");
+    rel_entry = os.path.relpath(abs_entry);
+    program = JacProgram();
+    program.compile(rel_entry, type_check=True);
+    assert len(program.errors_had) == 0 , f"Circular import split the class identity, got {len(
+        program.errors_had
+    )} error(s):\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+test "callable_null_default_rejected_outside_native" {
+    # Issue #6569 allows `Callable[[...], ret] = 0` (a C NULL function
+    # pointer) in native modules only. Regular Jac must keep rejecting it.
+    path = os.path.join(CHECKER_FIXTURES, "checker_callable_null_default.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , "Expected exactly 1 error, got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    assert program.errors_had[0].code.code == "E1001";
+    assert_error_pretty_found(
+        """
+        has fn: Callable[[int], int] = 0;  # <-- Error
+    """,
+        program.errors_had[0].pretty_print()
+    );
+}
+
+test "edge_endpoint_typing_narrows_neighbour_traversals" {
+    # Issue #6657: an edge that declares `: Src --> Tgt` lets a neighbour
+    # traversal infer the declared node type instead of `any`, with no
+    # `[?:Type]` filter -- so a field read off the result resolves statically.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "edge_endpoint_typing.jac"), type_check=True
+    );
+    assert len(program.errors_had) == 0 , "Unexpected errors:\\n" + "\\n---\\n".join(
+        e.pretty_print() for e in program.errors_had
+    );
+    expected = {
+        "follow_out": "list[Profile]",  # ->:Follow:-> narrows to target
+        "post_in": "list[Profile]",  # <-:Post:<- narrows to source
+        "post_out": "list[Tweet]",  # ->:Post:-> narrows to target
+        "untyped": "list[<any>]",  # bare edge stays gradual
+        "inherited": "list[Profile]",  # subtype edge inherits endpoints
+        "one": "Tweet",  # subscript element of a narrowed list
+        "field_read": "str"  # field read off a narrowed element
+    };
+    seen: dict[str, str] = {};
+    for nm in mod.get_all_sub_nodes(uni.Name) {
+        if nm.value in expected and nm.type is not None {
+            seen[nm.value] = str(nm.type);
+        }
+    }
+    for (target, want) in expected.items() {
+        assert seen.get(target) == want , f"{target}: expected {want}, got {seen.get(
+            target
+        )}";
+    }
+}
+
+test "edge_endpoint_clause_rejected_on_non_edge" {
+    # Issue #6657: the endpoint clause is edge-only; a node carrying one is an
+    # E2027 rather than a silently-ignored declaration.
+    program = JacProgram();
+    program.compile(
+        os.path.join(CHECKER_FIXTURES, "edge_endpoint_on_node.jac"), type_check=True
+    );
+    has_e2027 = False;
+    for alrt in program.errors_had {
+        if alrt.code is not None and alrt.code.code == "E2027" {
+            has_e2027 = True;
+        }
+    }
+    assert has_e2027 , "Expected E2027 for endpoint clause on a node, got:\\n" + "\\n---\\n".join(
+        e.pretty_print() for e in program.errors_had
+    );
 }

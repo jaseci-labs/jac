@@ -12,10 +12,10 @@ being independent subtrees. This fixture pins that exact behavior so every
 backend reproduces it (and so a future "independent siblings" reconciliation is
 a visible, intentional change here).
 
-Backend status: exit abilities compile on na but do NOT fire (the inline spawn
-stopgap is entry-only), and this also needs `visit`/edges; cl is unwired. So
-py-only today -- add backend variants when exit firing + visit/edge lowering
-land.
+Backend status: na and py agree. Exit abilities fire on na (Slice 2 routed
+spawn through the kernel) and edges/`visit` lower on na; OSP instances live in a
+program-lifetime graph arena so locations are not refcount-freed mid-walk. cl is
+unwired here, so the cross-backend assert is na vs py.
 """
 
 node N { has val: int; }
@@ -37,6 +37,16 @@ def exit_ordering_py() -> dict[str, any] {
     w = Ex();
     w spawn root_n;
     return {"order": w.log};
+}
+
+na {
+    def exit_ordering_na() -> dict[str, any] {
+        root_n = N(val=1); a = N(val=2); b = N(val=3);
+        root_n ++> a; root_n ++> b;
+        w = Ex();
+        w spawn root_n;
+        return {"order": w.log};
+    }
 }
 
 cl {

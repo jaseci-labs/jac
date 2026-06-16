@@ -341,6 +341,85 @@ def _cmd_recover_all(app: str) -> int {
 }
 
 
+def _cmd_fsck(app: str, repair: bool) -> int {
+    backend = _get_backend(app);
+    if not backend {
+        return 1;
+    }
+    r = backend.fsck(repair=repair);
+    dne = r.get('dangling_node_edge') or [];
+    den = r.get('dangling_edge_node') or [];
+    orphan_edges = r.get('orphan_edges') or [];
+    orphan_nodes = r.get('orphan_nodes') or [];
+    dangling_total = len(dne) + len(den);
+    # Distinct referrers: nodes citing a missing edge + edges citing a missing
+    # node. Not roots specifically — any document on the citing side.
+    referrers_affected = len({p[0] for p in dne} | {p[0] for p in den});
+    console.print_header(f"Jac DB fsck: {r.get('location', '?')}");
+    console.info(
+        f"dangling refs : {dangling_total}   "
+        f"({referrers_affected} document(s) cite a missing referent)",
+        emoji=False
+    );
+    console.info(f"orphan edges  : {len(orphan_edges)}", emoji=False);
+    console.info(f"orphan nodes  : {len(orphan_nodes)}", emoji=False);
+    if r.get('repaired') {
+        c = r.get('repaired_counts') or {};
+        console.success(
+            f"repaired: pruned {c.get('pruned', 0)} citation(s), "
+            f"quarantined {c.get('quarantined', 0)} dangler(s) under "
+            f"DANGLING_REF, collected {c.get('collected', 0)} orphan(s)."
+        );
+    } elif dangling_total == 0 and not orphan_edges and not orphan_nodes {
+        console.success("Clean: no referential-integrity violations.");
+    } else {
+        console.info(
+            "Run `jac db fsck repair` to heal danglers and collect orphans.",
+            emoji=False
+        );
+    }
+    return 0;
+}
+
+
+def _cmd_schema_rules(app: str) -> int {
+    # Loading the backend imports the app, which registers archetypes and
+    # collects their __jac_schema__ rules — the registry we list from.
+    backend = _get_backend(app);
+    if not backend {
+        return 1;
+    }
+    import from jaclang.runtimelib.schema_rules { repair_mode }
+    import jaclang.runtimelib.schema_rules as _rules_mod;
+    collected = getattr(_rules_mod, '_collected', {});
+    console.print_header("Registered schema drift rules");
+    console.info(f"JAC_SCHEMA_REPAIR mode: {repair_mode()}", emoji=False);
+    if not collected {
+        console.info("No archetype declares a __jac_schema__ hook.");
+        return 0;
+    }
+    rows: list = [];
+    for (owner, r) in sorted(collected.items()) {
+        for w in r.was_names {
+            rows.append([owner, 'was', w]);
+        }
+        for a in r.aliases {
+            rows.append([owner, 'alias', f"{a.stored_name} -> {a.new_name}"]);
+        }
+        for d in r.drops {
+            rows.append([owner, 'drop', d.field_name]);
+        }
+        for u in r.upgrades {
+            rows.append([owner, 'upgrade', getattr(u.fn, '__name__', '<fn>')]);
+        }
+    }
+    console.print_table(
+        headers=["archetype", "rule", "detail"], rows=rows, title="Rules"
+    );
+    return 0;
+}
+
+
 """Entry point — dispatches to the right subcommand."""
 impl db(
     action: str = 'inspect',
@@ -352,6 +431,18 @@ impl db(
 ) -> int {
     if action == 'inspect' {
         return _cmd_inspect(app);
+    }
+    if action == 'fsck' {
+        if sub == '' or sub == 'check' or sub == 'scan' {
+            return _cmd_fsck(app, repair=False);
+        }
+        if sub == 'repair' or sub == 'fix' {
+            return _cmd_fsck(app, repair=True);
+        }
+        console.error(
+            f"Unknown fsck sub-action '{sub}'", hint="expected: (none), repair"
+        );
+        return 1;
     }
     if action == 'quarantine' {
         if sub == 'list' or sub == '' {
@@ -386,9 +477,16 @@ impl db(
     if action == 'recover-all' {
         return _cmd_recover_all(app);
     }
+    if action == 'schema' {
+        if sub == 'rules' or sub == '' {
+            return _cmd_schema_rules(app);
+        }
+        console.error(f"Unknown schema sub-action '{sub}'", hint="expected: rules");
+        return 1;
+    }
     console.error(
         f"Unknown action '{action}'",
-        hint="expected: inspect, quarantine, alias, recover, recover-all"
+        hint="expected: inspect, fsck, quarantine, alias, recover, recover-all, schema"
     );
     return 1;
 }

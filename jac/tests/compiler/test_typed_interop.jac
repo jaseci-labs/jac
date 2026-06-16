@@ -128,6 +128,32 @@ test "sv-to-sv: relative sv import generates HTTP stubs (#6507)" {
     assert compiled is not None;
 }
 
+# A sv->sv function whose declared return type is an archetype must rehydrate
+# that return value into a typed instance, even when the provider module is not
+# in the consumer's program hub at codegen time (the per-service compile that
+# `jac start` does). The consumer's own symtab carries a `sv import` binding for
+# the type name; boundary-type collection used to accept that non-type binding,
+# short-circuit the provider AST-walk, and leave the type uncollected — so the
+# return arrived as a raw `_jac_type` dict and the imported type degraded into a
+# bogus callable stub (#6710).
+test "sv-to-sv: typed archetype return is rehydrated, not a raw dict (#6710)" {
+    py = compile_fixture("sv_relative_consumer.jac").gen.py;
+    # The function stub must wrap the remote call in the return type's
+    # `_from_wire`, not hand the wire dict straight back.
+    assert (
+        "AnalyticsReport._from_wire(__jac_sv_client.call('sv_relative_provider', "
+        "'analyze'"
+    ) in py , "sv->sv typed return must be rehydrated via <RetType>._from_wire(...)";
+    # The imported archetype must lower to a boundary stub *class* (carrying
+    # `_from_wire`), never a function stub that would RPC the type name itself.
+    assert "class AnalyticsReport:" in py , (
+        "an sv-imported archetype must become a boundary stub class"
+    );
+    assert "def AnalyticsReport(" not in py , (
+        "an sv-imported archetype must not degrade into a callable function stub"
+    );
+}
+
 # Inline cl block with def:pub produces __jacCallFunction
 test "inline cl block with defpub generates stubs" {
     code = '"""Test."""\n\ndef:pub get_data(name: str) -> dict {\n    return {"message": "Hello " + name};\n}\n\ncl {\n    def:pub app() -> Any {\n        data = await get_data("World");\n        return <div>{data}</div>;\n    }\n}\n';

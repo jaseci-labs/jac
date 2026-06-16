@@ -2,7 +2,17 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.22 (Latest Release)
+## jac-client 0.3.23 (Latest Release)
+
+### New Features
+
+- **Feature: google-auth example wired to system-browser SSO**: The example's login and register buttons now drive the runtime's `jacSsoLogin()`, completing the previously missing `lib/auth` (AuthProvider/route guard) and storing the token under the canonical `jac_token` key so authenticated walker calls work. (jaseci-labs/jaseci#6485)
+
+### Refactors
+
+- **Examples drop redundant `cl` markers**: Bundled `.cl.jac` examples rely on the file extension for client context. (jaseci-labs/jaseci#6557)
+
+## jac-client 0.3.22
 
 ### Bug Fixes
 

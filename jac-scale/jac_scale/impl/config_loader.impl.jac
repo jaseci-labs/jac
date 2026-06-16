@@ -27,7 +27,10 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'redis_eviction_samples': 5,
             'redis_default_ttl': 3600,
             'redis_max_connections': 20,
-            'redis_enable_keyspace_notifications': False
+            'redis_enable_keyspace_notifications': False,
+            # Cross-pod L1 cache invalidation.
+            'redis_l1_invalidation_enabled': True,
+            'redis_l1_invalidation_channel': 'jac:anchor:invalidate'
         },
         'kubernetes': {
             'app_name': 'jaseci',
@@ -79,7 +82,11 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
         'webhook': {
             'secret': 'webhook-secret-key',
             'signature_header': 'X-Webhook-Signature',
+            'timestamp_header': 'X-Webhook-Timestamp',
             'verify_signature': True,
+            'replay_tolerance_seconds': 300,
+            'max_body_bytes': 1048576,
+            'rate_limit_per_minute': 0,
             'api_key_expiry_days': 365
         },
         'monitoring': {
@@ -203,6 +210,12 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] 
         'redis_max_connections': int(db_config.get('redis_max_connections', 20)),
         'redis_enable_keyspace_notifications': db_config.get(
             'redis_enable_keyspace_notifications', False
+        ),
+        'redis_l1_invalidation_enabled': db_config.get(
+            'redis_l1_invalidation_enabled', True
+        ),
+        'redis_l1_invalidation_channel': db_config.get(
+            'redis_l1_invalidation_channel', 'jac:anchor:invalidate'
         )
     };
 }
@@ -252,7 +265,15 @@ impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, any] {
         'signature_header': webhook_config.get(
             'signature_header', 'X-Webhook-Signature'
         ),
+        'timestamp_header': webhook_config.get(
+            'timestamp_header', 'X-Webhook-Timestamp'
+        ),
         'verify_signature': webhook_config.get('verify_signature', True),
+        'replay_tolerance_seconds': int(
+            webhook_config.get('replay_tolerance_seconds', 300)
+        ),
+        'max_body_bytes': int(webhook_config.get('max_body_bytes', 1048576)),
+        'rate_limit_per_minute': int(webhook_config.get('rate_limit_per_minute', 0)),
         'api_key_expiry_days': int(webhook_config.get('api_key_expiry_days', 365))
     };
 }

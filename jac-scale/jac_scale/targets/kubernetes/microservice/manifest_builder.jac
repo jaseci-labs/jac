@@ -82,6 +82,28 @@ obj MicroserviceManifestBuilder {
         if ingress is not None {
             bundle["ingress"] = ingress;
         }
+        # Ops Console: read-only namespace Role + RoleBinding on the
+        # gateway SA (opt-in). Mutation verbs only when ops_console_mutations.
+        if getattr(self.k8s_config, "ops_console", False) {
+            import from jac_scale.targets.kubernetes.microservice.ops_rbac {
+                build_ops_rbac
+            }
+            bundle["ops_rbac"] = build_ops_rbac(
+                self.k8s_config.app_name,
+                self.k8s_config.namespace,
+                self._service_account_name(),
+                bool(getattr(self.k8s_config, "ops_console_mutations", False))
+            );
+        } elif getattr(self.k8s_config, "ops_console_mutations", False) {
+            # Mutations need the parent flag; warn instead of shipping no Role.
+            if self.logger {
+                self.logger.warning(
+                    "[plugins.scale.kubernetes].ops_console_mutations is set but "
+                    "ops_console is false; no Ops Console RBAC will be provisioned. "
+                    "Set ops_console = true to enable it."
+                );
+            }
+        }
         return bundle;
     }
 
@@ -698,14 +720,25 @@ obj MicroserviceManifestBuilder {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
+        resolved_image: str = self._resolve_image(image, svc_cfg);
+        # JAC_IMAGE_REF (B-01): the resolved ref incl. K-29's content-id
+        # suffix, surfaced so an in-pod self-check can report "running build X"
+        # with zero RBAC. Strip any user-set copy first so the rendered YAML
+        # has a single, system-owned entry (no duplicate-env reliance).
+        env_list = [
+            e
+            for e in self._build_env(svc_name, svc_cfg)
+            if e["name"] != "JAC_IMAGE_REF"
+        ];
+        env_list.append({"name": "JAC_IMAGE_REF", "value": resolved_image});
         # Container name must be DNS-1123 (no underscores); JAC_SV_NAME
         # env carries the raw name.
         container: dict[str, any] = {
             "name": k8s_safe_name(svc_name),
-            "image": self._resolve_image(image, svc_cfg),
+            "image": resolved_image,
             "command": entry["command"],
             "args": entry["args"],
-            "env": self._build_env(svc_name, svc_cfg),
+            "env": env_list,
             "ports": [{"containerPort": self.k8s_config.container_port}],
             "readinessProbe": self._build_readiness_probe(),
             "livenessProbe": self._build_liveness_probe(),

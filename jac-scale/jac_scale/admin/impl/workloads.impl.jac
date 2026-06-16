@@ -10,6 +10,7 @@ shows up in the list and the UI labels it as infrastructure.
 """
 import os;
 import time;
+import math;
 import logging;
 import from fastapi { Request }
 import from starlette.concurrency { run_in_threadpool }
@@ -37,7 +38,9 @@ glob logger = logging.getLogger(__name__);
 """Index a `by (<label>)` Prometheus result into {label_value: number}.
 
 Consolidates the previous per-shape indexers. `as_int` rounds to int (replica
-counts), otherwise keeps float (cpu/memory).
+counts), otherwise keeps float (cpu/memory). Non-finite values (NaN/Inf) coerce
+to 0: Prometheus returns "NaN" for increase()/rate() over windows shorter than a
+pod's lifetime, and int(nan) raises while round(nan)/json reject it downstream.
 """
 def _index_by(rows: list, label: str, as_int: bool = False) -> dict {
     out: dict = {};
@@ -46,10 +49,27 @@ def _index_by(rows: list, label: str, as_int: bool = False) -> dict {
         v = entry.get("value", [0, "0"]);
         if key {
             val = float(v[1]) if len(v) > 1 else 0.0;
+            if not math.isfinite(val) {
+                val = 0.0;
+            }
             out[key] = int(val) if as_int else val;
         }
     }
     return out;
+}
+
+"""Parse a Prometheus value pair ['<ts>', '<value>'] to a finite float.
+
+Returns 0.0 for missing, unparseable, or non-finite (NaN/Inf) values so callers
+can accumulate without risking int(nan) crashes or non-JSON-serialisable floats.
+"""
+def _finite(v: list) -> float {
+    try {
+        val = float(v[1]) if len(v) > 1 else 0.0;
+    } except Exception {
+        return 0.0;
+    }
+    return val if math.isfinite(val) else 0.0;
 }
 
 """Build a namespace-scoped PromQL selector for a bare metric.
@@ -198,16 +218,26 @@ impl JacAPIServerWorkloads.admin_workloads_summary(
         );
     }
     running = int(prom_scalar(probe));
-    pending = int(
-        prom_scalar(
-            prom_query(f'count(kube_pod_status_phase{{phase="Pending"{ns_and}}} == 1)')
-        )
+    # A None (not []) from these core pod-phase queries means Prometheus became
+    # unreachable after the probe passed; surface that instead of fake zeros.
+    pending_raw = prom_query(
+        f'count(kube_pod_status_phase{{phase="Pending"{ns_and}}} == 1)'
     );
-    failed = int(
-        prom_scalar(
-            prom_query(f'count(kube_pod_status_phase{{phase="Failed"{ns_and}}} == 1)')
-        )
+    failed_raw = prom_query(
+        f'count(kube_pod_status_phase{{phase="Failed"{ns_and}}} == 1)'
     );
+    if pending_raw is None or failed_raw is None {
+        return TransportResponse.success(
+            data={
+                'metrics_available': False,
+                'reason': 'Prometheus is configured but unreachable from the app pod',
+                'namespace': namespace
+            },
+            meta=Meta(extra={'http_status': 200})
+        );
+    }
+    pending = int(prom_scalar(pending_raw));
+    failed = int(prom_scalar(failed_raw));
     nodes_ready = int(
         prom_scalar(
             prom_query(
@@ -392,25 +422,19 @@ impl JacAPIServerWorkloads.admin_workloads_list(
         pod = entry.get("metric", {}).get("pod", "");
         v = entry.get("value", [0, "0"]);
         owner = match_owner(pod, wl_names);
-        cpu_by_owner[owner] = cpu_by_owner.get(owner, 0.0) + float(
-            v[1] if len(v) > 1 else 0
-        );
+        cpu_by_owner[owner] = cpu_by_owner.get(owner, 0.0) + _finite(v);
     }
     for entry in mem_by_pod {
         pod = entry.get("metric", {}).get("pod", "");
         v = entry.get("value", [0, "0"]);
         owner = match_owner(pod, wl_names);
-        mem_by_owner[owner] = mem_by_owner.get(owner, 0.0) + float(
-            v[1] if len(v) > 1 else 0
-        );
+        mem_by_owner[owner] = mem_by_owner.get(owner, 0.0) + _finite(v);
     }
     for entry in restarts_by_pod {
         pod = entry.get("metric", {}).get("pod", "");
         v = entry.get("value", [0, "0"]);
         owner = match_owner(pod, wl_names);
-        restarts_by_owner[owner] = restarts_by_owner.get(owner, 0) + int(
-            float(v[1] if len(v) > 1 else 0)
-        );
+        restarts_by_owner[owner] = restarts_by_owner.get(owner, 0) + int(_finite(v));
     }
 
     workloads: list = [];
@@ -556,10 +580,10 @@ def _rollup_range(rows: list, names: list) -> dict {
             if len(v) >= 2 {
                 try {
                     ts = float(v[0]);
-                    series[ts] = series.get(ts, 0.0) + float(v[1]);
                 } except (ValueError, TypeError) {
                     continue;
                 }
+                series[ts] = series.get(ts, 0.0) + _finite(v);
             }
         }
         out[owner] = series;

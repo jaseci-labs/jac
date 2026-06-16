@@ -8,6 +8,7 @@ Returns parsed result lists (or None on failure) so callers don't have to deal
 with the Prometheus response envelope or HTTP error handling.
 """
 import os;
+import math;
 import logging;
 import requests;
 import from requests.exceptions { RequestException }
@@ -125,7 +126,9 @@ def query_range(
 
 Prometheus returns values as ['<timestamp>', '<value as string>']. This helper
 parses the string into a float, returning the supplied fallback on missing
-data or parse failures.
+data or parse failures. Non-finite values (NaN/+Inf/-Inf) also fall back:
+Prometheus emits "NaN" for empty histogram_quantile and "+Inf" for cAdvisor
+buckets, and those are not JSON-serialisable.
 """
 def scalar(result: any, fallback: float = 0.0) -> float {
     if not result {
@@ -134,7 +137,8 @@ def scalar(result: any, fallback: float = 0.0) -> float {
     try {
         first = result[0];
         value = first["value"];
-        return float(str(value[1]));
+        parsed = float(str(value[1]));
+        return parsed if math.isfinite(parsed) else fallback;
     } except Exception {
         return fallback;
     }

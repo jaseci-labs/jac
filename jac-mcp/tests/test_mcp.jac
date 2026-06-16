@@ -839,12 +839,12 @@ test "graph viz snippet mermaid format" {
     assert isinstance(result["graph"], str);
 }
 
-test "list templates has default" {
+test "list templates has cli" {
     result = CompilerBridge.list_templates();
     assert "templates" in result;
     assert len(result["templates"]) > 0;
     names = [t["name"] for t in result["templates"]];
-    assert "default" in names;
+    assert "cli" in names;
     for t in result["templates"] {
         assert "name" in t;
         assert "description" in t;
