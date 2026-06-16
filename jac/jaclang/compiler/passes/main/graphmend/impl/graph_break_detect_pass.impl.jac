@@ -20,25 +20,35 @@ impl GraphBreakDetectPass.before_pass -> None {
     }
 }
 
-"""Tag data-dependent if/else and validation-guard conditionals."""
+"""Tag data-dependent if/elif/else and validation-guard conditionals.
+
+Every condition in an if/elif chain can independently be a graph break (the
+leading `if` may be static while a downstream `elif` is data-dependent), so the
+whole chain -- reached through `else_body` -- is walked from the leading `if`.
+The node-typed walker dispatches this hook only for the leading `if`; an `elif`
+is an ElseIf node, so it is reached here through the chain, never on its own."""
 impl GraphBreakDetectPass.enter_if_stmt(nd: uni.IfStmt) -> None {
     if not self._enabled {
-        return;
-    }
-    # elif heads are part of the parent chain; only tag leading `if`.
-    if isinstance(nd, uni.ElseIf) {
         return;
     }
     if not self._in_torch_compiled_scope(nd) {
         return;
     }
-    if not self._condition_is_data_dependent(nd.condition) {
-        return;
-    }
-    if self._is_validation_guard(nd) {
-        nd._gm_break_kind = 'val_guard';
-    } else {
-        nd._gm_break_kind = 'dyn_ctrl_fl';
+    cur: (uni.IfStmt | None) = nd;
+    while cur is not None {
+        if self._condition_is_data_dependent(cur.condition) {
+            if self._is_validation_guard(cur) {
+                cur._gm_break_kind = 'val_guard';
+            } else {
+                cur._gm_break_kind = 'dyn_ctrl_fl';
+            }
+        }
+        nxt = cur.else_body;
+        if isinstance(nxt, uni.ElseIf) {
+            cur = nxt;
+        } else {
+            cur = None;
+        }
     }
 }
 
@@ -154,7 +164,13 @@ impl GraphBreakDetectPass._resolve_wrapped_entry(
     return None;
 }
 
-"""Return the Ability/Archetype declared as `name` in scope, else None."""
+"""Return the Ability/Archetype declared as `name` in scope, else None.
+
+Only the name's own definition site counts: the def node itself or its name ref
+(immediate parent). We do NOT walk further up the parent chain -- a parameter or
+local variable would otherwise resolve to its ENCLOSING function, wrongly marking
+that whole function as a torch.compile entry (e.g. `torch.compile(model)` where
+`model` is a parameter)."""
 impl GraphBreakDetectPass._def_node(
     name: str, ctx: uni.UniNode
 ) -> (uni.UniNode | None) {
@@ -166,12 +182,12 @@ impl GraphBreakDetectPass._def_node(
     if (not sym) or (not sym.defn) {
         return None;
     }
-    cur = sym.defn[0];
-    while cur {
-        if isinstance(cur, (uni.Ability, uni.Archetype)) {
-            return cur;
-        }
-        cur = cur.parent;
+    d = sym.defn[0];
+    if isinstance(d, (uni.Ability, uni.Archetype)) {
+        return d;
+    }
+    if isinstance(d.parent, (uni.Ability, uni.Archetype)) {
+        return d.parent;
     }
     return None;
 }

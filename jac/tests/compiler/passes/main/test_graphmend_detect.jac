@@ -38,9 +38,19 @@ def _compile(name: str, gm: bool, scoped: bool = False) -> uni.Module {
     return mod;
 }
 
-"""Collect the GraphMend break-kind tag of every IfStmt in a module."""
+"""Collect the GraphMend break-kind tag of every conditional in a module.
+
+`get_all_sub_nodes` matches the exact node type, so `IfStmt` and `ElseIf` (the
+`elif` heads) are queried separately to cover whole if/elif chains."""
 def _if_kinds(mod: uni.Module) -> list {
-    return [n?._gm_break_kind for n in mod.get_all_sub_nodes(uni.IfStmt)];
+    out = [];
+    for n in mod.get_all_sub_nodes(uni.IfStmt) {
+        out.append(n?._gm_break_kind);
+    }
+    for n in mod.get_all_sub_nodes(uni.ElseIf) {
+        out.append(n?._gm_break_kind);
+    }
+    return out;
 }
 
 """Collect non-empty GraphMend break-kind tags of FuncCalls in a module."""
@@ -102,6 +112,16 @@ test "detects transitive data-dependence via use-def trace" {
     assert "dyn_ctrl_fl" in _if_kinds(mod);
 }
 
+test "detects a data-dependent elif under a static leading if" {
+    mod = _compile("elif_dynamic.jac", True);
+    assert "dyn_ctrl_fl" in _if_kinds(mod);
+}
+
+test "detects a data-dependent branch in a torch.compile-decorated class" {
+    mod = _compile("decorated_class.jac", True);
+    assert "dyn_ctrl_fl" in _if_kinds(mod);
+}
+
 test "detects an entry point wrapped at a call site via a variable" {
     mod = _compile("callsite_var.jac", True);
     assert "dyn_ctrl_fl" in _if_kinds(mod);
@@ -110,6 +130,16 @@ test "detects an entry point wrapped at a call site via a variable" {
 test "factory call torch.compile(make_model()) does not tag the factory body" {
     mod = _compile("callsite_factory.jac", True);
     assert "side_effect" not in _call_kinds(mod);
+}
+
+test "torch.compile(model) on a parameter does not tag the wrapper body" {
+    mod = _compile("callsite_param.jac", True);
+    assert "dyn_ctrl_fl" not in _if_kinds(mod);
+}
+
+test "detects a bare function wrapped directly via torch.compile(fn)" {
+    mod = _compile("callsite_func.jac", True);
+    assert "dyn_ctrl_fl" in _if_kinds(mod);
 }
 
 test "whole-module scope tags model code with no local torch.compile entry" {
