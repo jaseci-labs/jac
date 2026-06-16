@@ -10,6 +10,11 @@ def new(x: int) -> int {
     return x;
 }
 
+# `printgraph` builtin name used as a keyword-argument key below -> no import
+def takes_kw(printgraph: int) -> int {
+    return printgraph;
+}
+
 # genuine references
 def uses_callable(cb: Callable) -> int {
     return 1;
@@ -25,8 +30,9 @@ glob schedule = 1,
      Sequence = 3,
      b = Box();
 
+# attribute member -> no import
 with entry {
-    # attribute member -> no import
     b.schedule = schedule;
-    print(new(restspec), Sequence, b.schedule);
+    # keyword-argument key (`printgraph`) -> no import
+    print(new(restspec), takes_kw(printgraph=1), Sequence, b.schedule);
 }

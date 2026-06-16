@@ -434,7 +434,7 @@ test "ambient imports skip names shadowed by ordinary identifiers" {
     src = ast3.unparse(py_mod);
 
     # shadowed names must NOT be imported
-    for shadowed in ["new", "schedule", "restspec"] {
+    for shadowed in ["new", "schedule", "restspec", "printgraph"] {
         assert shadowed not in builtin_imported , (
             f"`{shadowed}` is a plain identifier, must not be imported. Source:\n" + src
         );
