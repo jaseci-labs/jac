@@ -153,6 +153,16 @@ cl {
                                 <span className="text-faint">Confidence: </span>
                                 {str(analysis["confidence"])}
                             </div>
+                            {bool(analysis["impact"])
+                            and <div className="text-sm text-fg">
+                                <span className="text-faint">Likely impact: </span>
+                                {analysis["impact"]}
+                            </div>}
+                            {bool(analysis["top_error"])
+                            and <div className="text-sm text-fg">
+                                <span className="text-faint">Most frequent error: </span>
+                                {analysis["top_error"]}
+                            </div>}
                             <div className="text-sm text-fg">
                                 <span className="text-faint">Recommended: </span>
                                 {analysis["recommended_action"]}

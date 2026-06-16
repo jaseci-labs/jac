@@ -28,24 +28,36 @@ glob ANALYST_SYSTEM_PROMPT = (
     "`db_hotspots` (route + DB operation with calls_per_req, ms_per_req and an "
     "n_plus_one flag - heavy/repeated DB calls), `slow_traces` (each with "
     "`critical_path`: the hops that consumed the latency, ranked by `self_ms`), "
-    "and `errors` (grouped error signatures with counts). Identify the SINGLE "
-    "most likely application performance problem, reasoning ONLY over the report.\n"
-    "\nRules:\n"
-    "- Be SPECIFIC and cite exact evidence: the endpoint (with its p95_ms / "
-    "error_rate), the DB hotspot (operation + calls_per_req, especially if "
-    "n_plus_one), the critical-path span (with self_ms), or the error signature "
-    "(with its count). A generic answer with no cited number is wrong.\n"
-    "- A high db_calls_per_req or an n_plus_one hotspot usually means the "
-    "endpoint is DB-bound (e.g. an N+1 query pattern); the highest-self_ms span "
-    "is the latency bottleneck; a high-count error signature points at a failure.\n"
-    "- This is APPLICATION analysis - do NOT discuss pods / CPU / memory / infra.\n"
-    "- Do NOT invent routes, span names, metric values, file paths, services, or "
-    "commits that are not in the report.\n"
-    "- If the report is thin (no endpoints, healthy, no hotspots or errors), say "
-    "so plainly and set confidence <= 0.3.\n"
+    "and `errors` (grouped error signatures with counts). Diagnose the SINGLE "
+    "most likely application performance problem AND reason through what it "
+    "leads to, using ONLY the report.\n"
+    "\nProduce a cause -> effect -> symptom chain:\n"
+    "1. ROOT CAUSE - the specific slow/DB-heavy thing. Cite exact evidence: the "
+    "endpoint (p95_ms / error_rate), the DB hotspot (operation + calls_per_req, "
+    "especially if n_plus_one), or the critical-path span (self_ms). A high "
+    "db_calls_per_req or an n_plus_one hotspot means the endpoint is DB-bound "
+    "(likely an N+1 pattern); the highest-self_ms span is the latency bottleneck.\n"
+    "2. IMPACT - what this CAUSES or risks as it gets worse. Reason about the "
+    "failure modes a slow/DB-bound endpoint produces: gateway/proxy 504 timeouts "
+    "(when p95 approaches the request timeout), DB connection-pool exhaustion and "
+    "queueing under load, retries amplifying the load, and cascading slowdowns in "
+    "callers. Frame these as the likely/at-risk consequence, tied to the cited "
+    "numbers - not as confirmed events.\n"
+    "3. TOP ERROR - the single most frequent error from `errors` (quote its "
+    "signature + count) and state whether it is plausibly caused by the root "
+    "cause (e.g. a timeout/connection error downstream of the slow DB calls). If "
+    "`errors` is empty, say 'no errors observed yet' - do NOT invent one.\n"
+    "\nRules: be specific and quote numbers; this is APPLICATION analysis (no "
+    "pods/CPU/memory/infra); do NOT invent routes, spans, metrics, errors, files, "
+    "or commits not in the report; if the report is thin (no endpoints, healthy, "
+    "no hotspots or errors) say so and set confidence <= 0.3.\n"
     "\nRespond with ONLY a JSON object of this shape: "
-    "{\"root_cause\": str (cite the specific endpoint/hotspot/span/error), "
+    "{\"root_cause\": str (cite the endpoint/hotspot/span), "
     "\"confidence\": float between 0 and 1, "
+    "\"impact\": str (likely failure modes this causes/risks, e.g. 504 timeouts, "
+    "pool exhaustion - tied to the cited numbers), "
+    "\"top_error\": str (most frequent error from `errors` with its count + "
+    "whether it is linked; 'no errors observed yet' if none), "
     "\"ranked_suspects\": [{\"service\": str, \"why\": str (cite the evidence)}], "
     "\"recommended_action\": str}."
 );
@@ -68,6 +80,8 @@ obj Analysis {
     always return a well-formed object."""
     has root_cause: str = "",
         confidence: float = 0.0,
+        impact: str = "",
+        top_error: str = "",
         ranked_suspects: list = [],
         recommended_action: str = "",
         error: str | None = None;
@@ -76,6 +90,8 @@ obj Analysis {
         return {
             "root_cause": self.root_cause,
             "confidence": self.confidence,
+            "impact": self.impact,
+            "top_error": self.top_error,
             "ranked_suspects": [s.to_dict() for s in self.ranked_suspects],
             "recommended_action": self.recommended_action,
             "error": self.error
@@ -115,6 +131,8 @@ def parse_analysis(content: str) -> Analysis {
     return Analysis(
         root_cause=str(data.get("root_cause", "")),
         confidence=float(data.get("confidence", 0.0) or 0.0),
+        impact=str(data.get("impact", "")),
+        top_error=str(data.get("top_error", "")),
         ranked_suspects=suspects,
         recommended_action=str(data.get("recommended_action", ""))
     );
