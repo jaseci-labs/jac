@@ -232,3 +232,10 @@ test "user iter next non-stopiteration propagates" {
     f = get_func(eng, "user_next_propagates", ctypes.c_int64);
     assert f() == 42;
 }
+
+# A subclass driving __iter__/__next__ inherited from its base.
+test "user iter inherited from base" {
+    (eng, _) = compile_native("iter_user.na.jac");
+    f = get_func(eng, "user_inherited_iter", ctypes.c_int64);
+    assert f() == 6;
+}

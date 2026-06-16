@@ -20,6 +20,7 @@ obj Counter {
     def __iter__() -> Counter {
         return self;
     }
+
     def __next__() -> int {
         if self.cur >= self.stop {
             raise StopIteration("done");
@@ -39,6 +40,7 @@ obj Cursor {
     def __iter__() -> Cursor {
         return self;
     }
+
     def __next__() -> int {
         if self.cur >= self.stop {
             raise StopIteration("stop");
@@ -136,6 +138,7 @@ obj Boom {
     def __iter__() -> Boom {
         return self;
     }
+
     def __next__() -> int {
         if self.n <= 0 {
             raise ValueError("boom");
@@ -157,6 +160,22 @@ def user_next_propagates() -> int {
     } except ValueError {
         return 42;
     }
+}
+
+# A subclass that inherits __iter__/__next__ from its base.
+obj SubCounter(Counter) {
+    has extra: int;
+}
+
+# --- a subclass driving inherited __iter__/__next__: 0+1+2+3 = 6. The receiver
+#     is coerced to __next__'s declared self type, so an inherited method stays
+#     well-typed. ---
+def user_inherited_iter() -> int {
+    total: int = 0;
+    for x in SubCounter(cur=0, stop=4, extra=99) {
+        total = total + x;
+    }
+    return total;
 }
 
 with entry { }

@@ -909,7 +909,13 @@ impl NaIRGenPass._resolve_method(
     return None;
 }
 
-"""Whether an archetype implements the iterator protocol (__iter__/__next__)."""
+"""Whether an archetype participates in the iterator protocol.
+
+The OR routes both shapes the bridge handles: a self-iterator (has `__next__`,
+used directly) and a re-iterable (has `__iter__`, which yields a separate
+cursor). It is not the Python "is iterable" test — that requires `__iter__`,
+which the type checker already enforces before this pass, so a `__next__`-only
+object never reaches codegen as a for-loop / `iter()` target."""
 impl NaIRGenPass._arch_implements_iter(arch_name: str) -> bool {
     return self._resolve_method(arch_name, "__next__") is not None
     or self._resolve_method(arch_name, "__iter__") is not None;
@@ -936,7 +942,11 @@ impl NaIRGenPass._user_iter_next_fn(
     i32 = ir.IntType(32);
     i1 = ir.IntType(1);
     exc_state_type = self._get_exception_state_type();
-    struct_ptr_type = self.struct_types[iter_struct].as_pointer();
+    # The receiver is bitcast to `__next__`'s own declared self-parameter type,
+    # not the concrete iter_struct pointer: when `__next__` is resolved up the
+    # MRO its LLVM signature expects the declaring class's pointer, so coercing
+    # to that (as the standard method-call path does) keeps the call well-typed.
+    struct_ptr_type = next_method_fn.function_type.args[0];
     state_ptr_type = self.struct_types["UserIterState"].as_pointer();
     nfty = ir.FunctionType(i1, [i8p, i8p]);
     fn = ir.Function(self.llvm_module, nfty, name="__iter_next_user_" + iter_struct);
@@ -1046,11 +1056,25 @@ impl NaIRGenPass._make_user_iter_from_obj(
     }
     it_obj = self.builder.call(iter_fn, [obj_val], name="usr.iter");
     self._mark_owned(it_obj);
-    if self._is_owned(obj_val) and obj_val != it_obj {
+    # Build the iterator BEFORE releasing the source, so a non-drivable
+    # `__iter__` result (e.g. one returning a builtin Iterator[T] box rather
+    # than a user iterator object, which `_infer_type_name`/`_make_user_iter`
+    # can't resolve a `__next__` for) bails with no partial side effects:
+    # release the owned `__iter__` result and leave `obj_val` for the caller's
+    # fall-through path.
+    iter_struct = self._infer_type_name(it_obj);
+    built = self._make_user_iter(it_obj, iter_struct)
+        if iter_struct is not None
+        else None;
+    if built is None {
+        self._emit_rc_release_simple(it_obj, op="user_iter_unresolved");
+        return None;
+    }
+    # The separate iterator is in hand, so drop the iterable temporary if owned.
+    if self._is_owned(obj_val) {
         self._emit_rc_release_simple(obj_val, op="user_iter_src");
     }
-    iter_struct = self._infer_type_name(it_obj) or struct_name;
-    return self._make_user_iter(it_obj, iter_struct);
+    return built;
 }
 
 # ─── First-class next() ──────────────────────────────────────
