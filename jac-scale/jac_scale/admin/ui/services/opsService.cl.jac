@@ -15,3 +15,8 @@ async def:pub getOpsHealth(token: str) -> dict {
 async def:pub getDeployHealth(token: str) -> dict {
     return await get("/admin/ops/deploy", token);
 }
+
+# endpoints / ingress / PVC.
+async def:pub getNetwork(token: str) -> dict {
+    return await get("/admin/ops/network", token);
+}
