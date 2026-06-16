@@ -76,3 +76,12 @@ def pack_multi() -> int {
     out = struct.unpack("<HH", p);
     return out[0] * 1000 + out[1];
 }
+
+def unpack_short_raises() -> int {
+    try {
+        out = struct.unpack("<I", b"\x01\x02");
+        return out[0];
+    } except Exception as e {
+        return -1;
+    }
+}

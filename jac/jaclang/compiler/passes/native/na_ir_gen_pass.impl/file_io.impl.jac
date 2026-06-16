@@ -178,44 +178,67 @@ impl NaIRGenPass._emit_file_like_helpers(
     self_arg = readline_fn.args[0];
     handle_ptr = b.gep(self_arg, [z32, z32], name="handle.ptr");
     handle = b.load(handle_ptr, name="handle");
-    buf_sz = 4096;
-    buf = b.alloca(ir.ArrayType(i8, buf_sz), name="line.buf");
-    buf_ptr = b.bitcast(buf, i8p, name="line.ptr");
-    result = b.call(
-        fgets_fn, [buf_ptr, ir.Constant(i32, buf_sz), handle], name="fgets.result"
-    );
-    is_eof = b.icmp_signed("==", result, ir.Constant(i8p, None), name="is.eof");
-    b.cbranch(is_eof, eof_bb, ok_bb);
-    # EOF: empty str / empty bytes.
-    b.position_at_end(eof_bb);
     if binary {
-        e_total = ir.Constant(i64, 8);
-        e_raw = b.call(rc_alloc_fn, [e_total], name="rl.eof.raw");
+        # getdelim returns the exact byte count (incl. the newline, excl. the
+        # trailing NUL it appends), so embedded NULs in the line survive —
+        # strlen/fgets would truncate at the first NUL. It mallocs *lineptr,
+        # which we copy out of and free.
+        null_i8p = ir.Constant(i8p, None);
+        n_slot = b.alloca(i64, name="rl.n");
+        b.store(ir.Constant(i64, 0), n_slot);
+        lp_slot = b.alloca(i8p, name="rl.lp");
+        b.store(null_i8p, lp_slot);
+        getdelim_fn = self._get_or_declare_extern(
+            "getdelim", i64, [i8p.as_pointer(), i64.as_pointer(), i32, i8p]
+        );
+        free_fn2 = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+        count = b.call(
+            getdelim_fn,
+            [lp_slot, n_slot, ir.Constant(i32, 10), handle],
+            name="rl.count"
+        );
+        is_eof = b.icmp_signed("<", count, ir.Constant(i64, 0), name="rl.eof");
+        b.cbranch(is_eof, eof_bb, ok_bb);
+        # EOF: free the (possibly allocated) buffer, return empty bytes.
+        b.position_at_end(eof_bb);
+        b.call(free_fn2, [b.load(lp_slot, name="rl.lp.eof")]);
+        e_raw = b.call(rc_alloc_fn, [ir.Constant(i64, 8)], name="rl.eof.raw");
         self._emit_set_type_tag(b, e_raw, "bytes");
         e_bv = b.bitcast(e_raw, bytes_ptr_type, name="rl.eof.bytes");
         b.store(ir.Constant(i64, 0), b.gep(e_bv, [z32, z32], name="rl.eof.len"));
         b.ret(e_bv);
+        # OK: copy `count` bytes into a fresh bytes value, free the buffer.
+        b.position_at_end(ok_bb);
+        lp = b.load(lp_slot, name="rl.lp.ok");
+        rl_total = b.add(count, ir.Constant(i64, 8), name="rl.total");
+        rl_raw = b.call(rc_alloc_fn, [rl_total], name="rl.raw");
+        self._emit_set_type_tag(b, rl_raw, "bytes");
+        rl_bv = b.bitcast(rl_raw, bytes_ptr_type, name="rl.bytes");
+        b.store(count, b.gep(rl_bv, [z32, z32], name="rl.len.ptr"));
+        rl_data = b.bitcast(
+            b.gep(rl_bv, [z32, one32], name="rl.data.arr"), i8p, name="rl.data"
+        );
+        b.call(memcpy_fn, [rl_data, lp, count]);
+        b.call(free_fn2, [lp]);
+        b.ret(rl_bv);
     } else {
+        buf_sz = 4096;
+        buf = b.alloca(ir.ArrayType(i8, buf_sz), name="line.buf");
+        buf_ptr = b.bitcast(buf, i8p, name="line.ptr");
+        result = b.call(
+            fgets_fn, [buf_ptr, ir.Constant(i32, buf_sz), handle], name="fgets.result"
+        );
+        is_eof = b.icmp_signed("==", result, ir.Constant(i8p, None), name="is.eof");
+        b.cbranch(is_eof, eof_bb, ok_bb);
+        # EOF: empty str.
+        b.position_at_end(eof_bb);
         empty = b.call(rc_alloc_fn, [ir.Constant(i64, 1)], name="empty.str");
         self._emit_set_type_tag(b, empty, "str");
         b.store(ir.Constant(i8, 0), empty);
         b.ret(empty);
-    }
-    # OK: copy the line.
-    b.position_at_end(ok_bb);
-    slen = b.call(strlen_fn, [buf_ptr], name="line.len");
-    if binary {
-        rl_total = b.add(slen, ir.Constant(i64, 8), name="rl.total");
-        rl_raw = b.call(rc_alloc_fn, [rl_total], name="rl.raw");
-        self._emit_set_type_tag(b, rl_raw, "bytes");
-        rl_bv = b.bitcast(rl_raw, bytes_ptr_type, name="rl.bytes");
-        b.store(slen, b.gep(rl_bv, [z32, z32], name="rl.len.ptr"));
-        rl_data = b.bitcast(
-            b.gep(rl_bv, [z32, one32], name="rl.data.arr"), i8p, name="rl.data"
-        );
-        b.call(memcpy_fn, [rl_data, buf_ptr, slen]);
-        b.ret(rl_bv);
-    } else {
+        # OK: copy the line (with its NUL terminator).
+        b.position_at_end(ok_bb);
+        slen = b.call(strlen_fn, [buf_ptr], name="line.len");
         alloc_size = b.add(slen, ir.Constant(i64, 1), name="alloc.size");
         line_str = b.call(rc_alloc_fn, [alloc_size], name="line.str");
         self._emit_set_type_tag(b, line_str, "str");

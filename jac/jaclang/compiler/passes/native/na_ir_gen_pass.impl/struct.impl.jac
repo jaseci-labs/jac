@@ -129,7 +129,26 @@ impl NaIRGenPass._emit_struct_pack(
     i64 = ir.IntType(64);
     f32 = ir.FloatType();
     f64 = ir.DoubleType();
-    # Value args follow the format.
+    # Value args follow the format. The count is statically known, so a
+    # mismatch with the non-pad field count is a compile-time error (CPython
+    # raises struct.error at runtime; failing fast is strictly better and
+    # avoids emitting a bytes value with uninitialised tail bytes).
+    _expected = len(
+        [
+            f
+            for f in fields
+            if f[0] != "pad"
+        ]
+    );
+    if len(params) - 1 != _expected {
+        self.emit(
+            E5090,
+            node_override=nd,
+            kind="struct.pack argument count",
+            name=f"expected {_expected}, got {len(params) - 1}"
+        );
+        return None;
+    }
     arg_vals: list = [];
     for p in params[1:] {
         v = self._codegen_expr(p);
@@ -201,6 +220,16 @@ impl NaIRGenPass._emit_struct_unpack(
         );
         return None;
     }
+    # Bounds: the buffer must hold at least `total` bytes, else the field loads
+    # below would read past the rc_alloc'd block. CPython raises struct.error;
+    # do the same instead of an out-of-bounds read.
+    buf_len = self._bytes_len_val(data_val);
+    too_short = self.builder.icmp_signed(
+        "<", buf_len, ir.Constant(ir.IntType(64), total), name="up.short"
+    );
+    self._emit_runtime_raise(
+        too_short, "struct.error", f"unpack requires a buffer of {total} bytes"
+    );
     data = self._bytes_data_ptr(data_val);
     # Assemble each field; collect (llvm value, llvm type).
     values: list = [];

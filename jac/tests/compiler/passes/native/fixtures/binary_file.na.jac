@@ -36,3 +36,17 @@ def read_with_ctx(path: str) -> int {
     }
     return total;
 }
+
+def first_line_len(path: str) -> int {
+    f = open(path, "rb");
+    line = f.readline();
+    f.close();
+    return len(line);
+}
+
+def first_line_byte_after_nul(path: str) -> int {
+    f = open(path, "rb");
+    line = f.readline();
+    f.close();
+    return line[3];
+}

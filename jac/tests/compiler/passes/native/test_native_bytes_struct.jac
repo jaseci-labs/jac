@@ -221,6 +221,20 @@ test "struct pack multiple values" {
     assert f() == 7009;
 }
 
+test "struct unpack short buffer raises" {
+    (eng, _) = compile_native("struct_pack.na.jac");
+    f = get_func(eng, "unpack_short_raises", ctypes.c_int64);
+    assert f() == -1;
+}
+
+test "struct pack wrong arg count is a compile error" {
+    prog = JacProgram();
+    prog.compile(file_path=str(os.path.join(FIXTURES, "struct_bad_pack.na.jac")));
+    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
+    assert prog.errors_had , "expected a compile error for the bad struct.pack";
+    assert any("struct.pack" in e for e in errors) , f"unexpected errors: {errors}";
+}
+
 # ─── binary file read returns length-aware bytes ───
 """Write a small binary blob with embedded NULs and return its path."""
 def _write_blob -> str {
@@ -269,6 +283,36 @@ test "binary read via context manager" {
     path = _write_blob();
     try {
         assert f(path.encode("utf-8")) == 8;
+    } finally {
+        os.unlink(path);
+    }
+}
+
+"""Write a blob whose first line has an embedded NUL before the newline."""
+def _write_line_blob -> str {
+    (fd, path) = tempfile.mkstemp(suffix=".bin");
+    os.write(fd, b"AB\x00C\nXY");
+    os.close(fd);
+    return path;
+}
+
+test "binary readline keeps embedded NUL (length-aware)" {
+    (eng, _) = compile_native("binary_file.na.jac");
+    f = get_func(eng, "first_line_len", ctypes.c_int64, ctypes.c_char_p);
+    path = _write_line_blob();
+    try {
+        assert f(path.encode("utf-8")) == 5;
+    } finally {
+        os.unlink(path);
+    }
+}
+
+test "binary readline byte after NUL" {
+    (eng, _) = compile_native("binary_file.na.jac");
+    f = get_func(eng, "first_line_byte_after_nul", ctypes.c_int64, ctypes.c_char_p);
+    path = _write_line_blob();
+    try {
+        assert f(path.encode("utf-8")) == 67;
     } finally {
         os.unlink(path);
     }

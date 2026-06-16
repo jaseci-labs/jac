@@ -186,12 +186,19 @@ impl NativeIntEmitter.emit_from_bytes(
     zero64 = ir.Constant(i64, 0);
     one64 = ir.Constant(i64, 1);
     eight64 = ir.Constant(i64, 8);
-    bytes_obj = args[0];  # bytes value (length-aware)
+    bytes_obj = args[0];  # length-aware bytes value, or a NUL-terminated i8*
     byteorder = args[1];  # i8* "big" or "little"
-    # Read the exact byte count + data pointer (never strlen — the buffer may
-    # contain embedded NULs).
-    length = p._bytes_len_val(bytes_obj);
-    bytes_ptr = p._bytes_data_ptr(bytes_obj);
+    # Length-aware bytes: read the exact byte count + data pointer (never
+    # strlen — the buffer may contain embedded NULs). A plain i8* (e.g. a str
+    # used as a byte view, as the rune-aware lexer does) falls back to strlen.
+    if p._is_bytes_value(bytes_obj) {
+        length = p._bytes_len_val(bytes_obj);
+        bytes_ptr = p._bytes_data_ptr(bytes_obj);
+    } else {
+        strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
+        length = b.call(strlen_fn, [bytes_obj], name="fb.len");
+        bytes_ptr = bytes_obj;
+    }
     # Determine if big-endian
     big_str = p._make_global_string("big");
     strcmp_fn = p._get_or_declare_extern("strcmp", i32, [i8p, i8p]);
