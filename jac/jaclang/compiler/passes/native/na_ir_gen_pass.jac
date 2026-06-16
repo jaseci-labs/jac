@@ -13,6 +13,7 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
 import from jaclang.jac0core.diagnostics { E5026, E5060, E5090, E5091, E9002 }
+import from jaclang.jac0core.osp_model { OspAnalysis, OspModel, stable_osp_tag }
 
 
 # time-module function names lowered by _emit_time_call. Gated explicitly (not
@@ -179,16 +180,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
         vtable_globals: dict[str, ir.GlobalVariable] = {},
         _non_overridden_methods: dict[str, set[str]] = {},
         # Object-Spatial kernel lowering (Phase 4 / issue #6146).
-        # osp_tags: stable per-archetype int type-tag (walker/node/edge),
-        #   shared by the instance __type_tag field, the is_a table, and the
-        #   descriptor table.
-        # osp_arch_kind: archetype name -> "walker" | "node" | "edge".
+        # The OSP "program facts" (archetype kinds, stable type tags, is_a
+        # relation, dispatch slots, construct usage) are NOT stored here: they are
+        # derived once by OspAnalysis.compute and held on the single store
+        # `self.ir_in.gen.osp_model`. Only target-specific codegen artifacts live
+        # on the pass.
         # osp_type_tag_field: archetype name -> struct field index holding the
         #   i64 __type_tag (fixed at 1: vtable slot is field 0).
         # osp_thunk_funcs: f"{Arch}.{ability}" -> the (JacVal,JacVal)->JacVal
         #   dispatch thunk that adapts the raw ability to a kernel Slot.fn.
-        osp_tags: dict[str, int] = {},
-        osp_arch_kind: dict[str, str] = {},
         osp_type_tag_field: dict[str, int] = {},
         # osp_reports_field: walker archetype name -> struct field index of the
         #   built-in `reports` list (fixed at 2: vtable@0, __type_tag@1). The
@@ -200,12 +200,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # thunks, so a consumer's thunk never collides with the library's
         # own `__ospthunk` symbol at link time (issue #6642 Blocker 2).
         _osp_thunk_uid: int = 0,
-        # Dense per-compile index of each OSP archetype into this module's
-        # descriptor / is_a tables. Distinct from osp_tags, which holds the
-        # GLOBALLY-STABLE hash tag stored in instances / edges / dispatch slots;
-        # the runtime callbacks translate a stable tag to a local index via the
-        # __ospHASH table so cross-module dispatch agrees (issue #6642).
-        osp_local_idx: dict[str, int] = {},
         # OSP archetypes IMPORTED from another native module: name ->
         #   (arch_kind, defining module name). Cross-module OSP lowering is
         #   not supported until #6146 Phases 3-4 (tag numbering and the
@@ -496,14 +490,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _forward_declare_imported_ability(nd: uni.Ability) -> None;
     def _register_archetypes(module: uni.Module) -> None;
     # Object-Spatial kernel lowering (Phase 4 / issue #6146)
-    def _stable_osp_tag(name: str) -> int;
-    def _register_osp_tags(archetypes: list[uni.Archetype]) -> None;
-    def _register_imported_osp_archetypes(imported_mod: uni.Module) -> None;
-    def _module_uses_osp(module: uni.Module) -> bool;
+    # Derive the single OSP-fact store (`self.ir_in.gen.osp_model`) over the
+    # local + imported OSP archetypes; the backends read it, never re-deriving.
+    def _compute_osp_model(archetypes: list[uni.Archetype]) -> None;
+    # True when this module participates in OSP (declares an event ability or
+    # uses a construct), the gate for kernel registration + descriptor setup.
+    def _osp_active -> bool;
     def _xmod_osp_help(names: list) -> (str | None);
     def _register_osp_kernel_module -> None;
     def _emit_osp_thunk(arch_name: str, method: uni.Ability) -> None;
-    def _osp_trigger_names(nd: (uni.UniNode | None)) -> list[str];
     def _emit_osp_setup -> None;
     def _osp_rc_new(struct_name: str) -> (ir.Value | None);
     def _osp_make_immortal(ptr: ir.Value) -> None;

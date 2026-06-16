@@ -4604,18 +4604,30 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
     }
 }
 
-"""Resolve an OSP ability's descriptor metadata, or None if `nd` is not an
-event ability on a walker/node/edge archetype. Returns the owner archetype
-name, its kind, whether the trigger is `entry`, the ability name, and the
-trigger archetype names (empty = untyped, fires on any location)."""
+"""The single OSP-fact store for this compile, derived once over the module's
+archetypes and memoized on the main module's `gen.osp_model`. Every OSP helper
+reads it; ES keeps no tag/kind/is_a/slot state of its own. (ES does not consume
+`uses_construct`, so the construct scan is left at its default context.)"""
+impl EsastGenPass._osp_model -> OspModel {
+    _root = self.ir_in if isinstance(self.ir_in, uni.Module) else self.get_main_mod();
+    _existing = _root.gen.osp_model;
+    if _existing is not None {
+        return _existing;
+    }
+    _model = OspAnalysis.compute(_root, _root.get_all_sub_nodes(uni.Archetype));
+    _root.gen.osp_model = _model;
+    return _model;
+}
+
+"""Resolve an OSP ability's emission metadata, or None if `nd` is not an event
+ability with a local body on a walker/node/edge archetype. `kind` drives the slot
+method's `here`/`visitor` binding in `_emit_osp_slot_method`; dispatch triggers
+come from the shared `OspModel`, not here. A body-less event ability
+(`can x with Y entry;`) is a server-walker RPC stub, not local OSP -> None."""
 impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict | None) {
     if not isinstance(nd.signature, uni.EventSignature) {
         return None;
     }
-    # A body-less event ability (`can x with Y entry;`) is a server-walker RPC
-    # stub whose implementation lives on the server -- not local OSP. Only an
-    # ability implemented in this unit (an inline body or an attached impl) runs
-    # through the local kernel.
     if nd.body is None {
         return None;
     }
@@ -4630,42 +4642,12 @@ impl EsastGenPass._osp_ability_info(nd: uni.Ability) -> (dict | None) {
     if (nd.name_ref is None) or (owner.name is None) {
         return None;
     }
-    # Prefer the checker-resolved trigger names (central
-    # Ability.event_trigger_type_names: unions split, `type[X]` unwrapped);
-    # fall back to flattening the trigger AST when no resolution was
-    # recorded (e.g. a JIR-loaded tree). Names unknown to the local tag
-    # table (such as `root`) lower to an untyped slot either way.
-    triggers = nd.event_trigger_type_names();
-    if triggers is None {
-        triggers = self._osp_trigger_names(nd.signature.arch_tag_info);
-    }
     return {
         "owner": owner.name.sym_name,
         "kind": kind,
         "is_entry": nd.signature.event.name == Tok.KW_ENTRY,
-        "name": nd.name_ref.sym_name,
-        "triggers": triggers
+        "name": nd.name_ref.sym_name
     };
-}
-
-"""Flatten an OSP ability trigger (`with <T> entry`) into archetype names.
-None -> [] (untyped); a tuple/union -> each member; a plain type -> [name]."""
-impl EsastGenPass._osp_trigger_names(expr: (uni.Expr | None)) -> list[str] {
-    if expr is None {
-        return [];
-    }
-    names: list[str] = [];
-    if isinstance(expr, uni.TupleVal) {
-        for member in expr.values {
-            names.extend(self._osp_trigger_names(member));
-        }
-        return names;
-    }
-    head = self._ref_head_name(expr);
-    if head is not None {
-        names.append(head);
-    }
-    return names;
 }
 
 """Build a `const <name> = <init>;` declaration."""
@@ -4694,8 +4676,9 @@ impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None {
     # (see `_build_local_osp_spawn`), not by ability emission -- a local-OSP
     # archetype that is never spawned locally must not pull in the kernel. The
     # slot body may use `_jac` primitives, so the runtime is still required.
+    # The descriptor records come from the shared OspModel, not from this
+    # emission, so nothing is collected here.
     self.needs_jac_runtime = True;
-    self._osp_slots.append(osp);
     is_walker = osp["kind"] == "walker";
     other_ref = self.sync_loc(es.Identifier(name="__other"), jac_node=nd);
     this_ref = self.sync_loc(es.ThisExpression(), jac_node=nd);
@@ -4731,40 +4714,17 @@ impl EsastGenPass._emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None {
     );
 }
 
-"""Memoized {archetype name -> kind ('walker'/'node'/'edge')} for a module with
-local OSP. A module "has local OSP" if any locally-declared walker/node/edge has
-an event ability; when so, EVERY local walker/node/edge is included -- including
-edge types with no abilities (used only in connects/refs), which still need a
-type tag + field constructor. Empty for non-OSP modules. Scanned up front so
-emission order (an edge or trigger node declared before its walker) doesn't
-matter."""
+"""{archetype name -> kind ('walker'/'node'/'edge')} for a module with local OSP,
+from the shared `OspModel`. A module "has local OSP" if any local walker/node/edge
+has an event ability with a body; when so, EVERY local walker/node/edge is
+included -- including edge types with no abilities (used only in connects/refs),
+which still need a type tag + field constructor. Empty for non-OSP modules."""
 impl EsastGenPass._osp_arch_kinds -> dict[str, str] {
-    if self._osp_prescan is not None {
-        return self._osp_prescan;
+    _model = self._osp_model();
+    if not _model.has_local_ability() {
+        return {};
     }
-    kinds: dict[str, str] = {};
-    scan_root = self.ir_in
-        if isinstance(self.ir_in, uni.Module)
-        else self.get_main_mod();
-    arches: list[uni.Archetype] = [];
-    has_osp = False;
-    for arch in scan_root.get_all_sub_nodes(uni.Archetype) {
-        if (arch.name is not None) and (arch.arch_kind is not None) {
-            arches.append(arch);
-            for ability in arch.get_all_sub_nodes(uni.Ability) {
-                if self._osp_ability_info(ability) is not None {
-                    has_osp = True;
-                }
-            }
-        }
-    }
-    if has_osp {
-        for arch in arches {
-            kinds[arch.name.sym_name] = arch.arch_kind;
-        }
-    }
-    self._osp_prescan = kinds;
-    return kinds;
+    return _model.arch_kind;
 }
 
 """Local archetype names participating in OSP (keys of `_osp_arch_kinds`)."""
@@ -4776,45 +4736,12 @@ impl EsastGenPass._osp_arch_set -> set[str] {
 candidates for in-process kernel spawn rather than `__jacSpawn` RPC."""
 impl EsastGenPass._local_walker_names -> set[str] {
     names: set[str] = set();
-    for slot in self._osp_slots {
-        if slot["kind"] == "walker" {
-            names.add(slot["owner"]);
+    for slot in self._osp_model().local_slots() {
+        if slot.kind == "walker" {
+            names.add(slot.owner);
         }
     }
     return names;
-}
-
-"""Memoized {archetype name -> its direct local base archetype names}, the input
-to the subtype `is_a` table so a `with Base entry` ability dispatches on a
-`Sub`. Only bases that are themselves local OSP archetypes are recorded."""
-impl EsastGenPass._osp_arch_bases -> dict[str, list[str]] {
-    if self._osp_bases_cache is not None {
-        return self._osp_bases_cache;
-    }
-    bases: dict[str, list[str]] = {};
-    kinds = self._osp_arch_kinds();
-    if kinds {
-        scan_root = self.ir_in
-            if isinstance(self.ir_in, uni.Module)
-            else self.get_main_mod();
-        for arch in scan_root.get_all_sub_nodes(uni.Archetype) {
-            if (arch.name is None) or (arch.name.sym_name not in kinds) {
-                continue;
-            }
-            direct: list[str] = [];
-            if arch.base_classes {
-                for bc in arch.base_classes {
-                    bname = self._ref_head_name(bc);
-                    if (bname is not None) and (bname in kinds) {
-                        direct.append(bname);
-                    }
-                }
-            }
-            bases[arch.name.sym_name] = direct;
-        }
-    }
-    self._osp_bases_cache = bases;
-    return bases;
 }
 
 """Memoized {variable name -> local archetype name} for `x = Arch(...)` bindings
@@ -4950,51 +4877,41 @@ on each archetype prototype, the closed-world subtype table, the per-archetype
 methods), and the cl `NoopHost` `OspRuntime`. Emitted after the archetype
 classes so `<Cls>.prototype` is defined."""
 impl EsastGenPass._build_osp_setup_js -> str {
-    # Stable tag for every local OSP archetype (walkers, nodes, AND edges, so
-    # edge types used only in connects/refs get a tag too), in declaration order.
+    _model = self._osp_model();
+    # Globally-stable content-hash tag for every local OSP archetype (walkers,
+    # nodes, AND edges, so edge types used only in connects/refs get a tag too).
     arch_kinds = self._osp_arch_kinds();
-    tags: dict[str, int] = {};
-    for name in arch_kinds.keys() {
-        tags[name] = len(tags);
-    }
-    # Group ability slots by owner / phase.
+    tags = _model.tags;
+    # Group has-body dispatch slots by owner / phase.
     entry_by_owner: dict[str, list] = {};
     exit_by_owner: dict[str, list] = {};
-    for slot in self._osp_slots {
-        owner = slot["owner"];
-        bucket = entry_by_owner if slot["is_entry"] else exit_by_owner;
-        if owner not in bucket {
-            bucket[owner] = [];
+    for slot in _model.local_slots() {
+        bucket = entry_by_owner if slot.is_entry else exit_by_owner;
+        if slot.owner not in bucket {
+            bucket[slot.owner] = [];
         }
-        bucket[owner].append(slot);
+        bucket[slot.owner].append(slot);
     }
-    # Closed-world subtype table: each tag is-a itself plus its transitive local
-    # base archetypes, so `with Base entry` fires on a `Sub`.
-    bases = self._osp_arch_bases();
+    # Closed-world subtype table from the shared is_a closure: each tag is-a
+    # itself plus its OSP ancestors, so `with Base entry` fires on a `Sub`.
     lines: list[str] = [];
     isa_parts: list[str] = [];
-    for (name, tag) in tags.items() {
+    for name in arch_kinds.keys() {
+        tag = tags[name];
         lines.append(f"{name}.prototype.__tag = {tag};");
-        isa_tags: list[int] = [tag];
-        pending: list[str] = `list(bases.get(name, []));
-        visited_bases: set[str] = set();
-        while pending {
-            bname = pending.pop();
-            if bname in visited_bases {
-                continue;
-            }
-            visited_bases.add(bname);
-            if bname in tags {
-                isa_tags.append(tags[bname]);
-            }
-            pending.extend(bases.get(bname, []));
-        }
-        isa_members = ", ".join([str(t) for t in isa_tags]);
+        isa_members = ", ".join(
+            [
+                str(tags[a])
+                for a in _model.isa.get(name, [])
+                if a in tags
+            ]
+        );
         isa_parts.append(f"{tag}: new Set([{isa_members}])");
     }
     lines.append("const __ospISA = {" + ", ".join(isa_parts) + "};");
     desc_parts: list[str] = [];
-    for (name, tag) in tags.items() {
+    for name in arch_kinds.keys() {
+        tag = tags[name];
         desc_cls = "WalkerDesc" if (arch_kinds[name] == "walker") else "NodeDesc";
         entry_js = self._osp_slots_js(entry_by_owner.get(name, []), tags);
         exit_js = self._osp_slots_js(exit_by_owner.get(name, []), tags);
@@ -5015,11 +4932,11 @@ its own slot bound to the same `(o, x) => o.<name>(x)` dispatch."""
 impl EsastGenPass._osp_slots_js(slots: list, tags: dict) -> str {
     parts: list[str] = [];
     for slot in slots {
-        fn = "(o, x) => o." + slot["name"] + "(x)";
-        if not slot["triggers"] {
+        fn = "(o, x) => o." + slot.ability + "(x)";
+        if not slot.trigger_names {
             parts.append("new Slot({trig_tag: -1, fn: " + fn + "})");
         } else {
-            for trig in slot["triggers"] {
+            for trig in slot.trigger_names {
                 ttag = tags[trig] if (trig in tags) else -1;
                 parts.append(f"new Slot({{trig_tag: {ttag}, fn: {fn}}})");
             }
