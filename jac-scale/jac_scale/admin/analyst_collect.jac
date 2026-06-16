@@ -318,13 +318,13 @@ async def collect_trace_exemplars(
     app_traces: list = [];
     for t in summaries {
         root = str(t.get("rootTraceName", "") or "").lower();
-        skip = False;
+        is_op = False;
         for p in ["/admin/", "/metrics", "/healthz", "/readyz", "/livez"] {
             if p in root {
-                skip = True;
+                is_op = True;
             }
         }
-        if not skip {
+        if not is_op {
             app_traces.append(t);
         }
     }
