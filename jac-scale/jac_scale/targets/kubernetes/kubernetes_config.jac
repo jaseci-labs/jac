@@ -31,6 +31,11 @@ obj KubernetesConfig(BaseConfig) {
         cpu_utilization_target:
             int = 50,  # matches DEFAULT_CPU_UTILIZATION_TARGET in autoscaler.jac
         autoscaler_engine: str = "hpa",
+        idle_replicas: (int | None) = None,
+        autoscaler_polling_interval: int = 30,
+        autoscaler_cooldown: int = 300,
+        autoscaler_initial_cooldown: int = 0,
+        extra_triggers: list[dict] = [],
         health_check_path: str = '/docs',
         # Runtime configuration
         python_image: str = 'python:3.12-slim',
@@ -150,6 +155,11 @@ obj KubernetesConfig(BaseConfig) {
                 'max_replicas': self.max_replicas,
                 'cpu_utilization_target': self.cpu_utilization_target,
                 'autoscaler_engine': self.autoscaler_engine,
+                'idle_replicas': self.idle_replicas,
+                'autoscaler_polling_interval': self.autoscaler_polling_interval,
+                'autoscaler_cooldown': self.autoscaler_cooldown,
+                'autoscaler_initial_cooldown': self.autoscaler_initial_cooldown,
+                'extra_triggers': self.extra_triggers,
                 'health_check_path': self.health_check_path,
                 # Runtime configuration
                 'python_image': self.python_image,
@@ -235,6 +245,11 @@ obj KubernetesConfig(BaseConfig) {
             max_replicas=config.get('max_replicas', 3),
             cpu_utilization_target=config.get('cpu_utilization_target', 50),
             autoscaler_engine=config.get('autoscaler_engine', 'hpa'),
+            idle_replicas=config.get('idle_replicas'),
+            autoscaler_polling_interval=config.get('autoscaler_polling_interval', 30),
+            autoscaler_cooldown=config.get('autoscaler_cooldown', 300),
+            autoscaler_initial_cooldown=config.get('autoscaler_initial_cooldown', 0),
+            extra_triggers=config.get('extra_triggers', []),
             health_check_path=config.get('health_check_path', '/docs'),
             python_image=config.get('python_image', 'python:3.12-slim'),
             busybox_image=config.get('busybox_image', 'busybox:1.36'),

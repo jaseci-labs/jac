@@ -57,6 +57,11 @@ glob NATIVE_RANDOM_FUNCS: set[str] = {
 
      };
 
+# struct-module function names lowered by _emit_struct_call (#6404). The format
+# string is a compile-time literal, so pack/unpack/calcsize are fully resolved
+# in codegen — the canonical, sv-congruent way to reinterpret bytes ↔ scalars.
+glob NATIVE_STRUCT_FUNCS: set[str] = {"pack", "unpack", "calcsize", };
+
 # ── Sentinel refcount value for static (immortal) strings.
 # INT64_MAX = 0x7FFFFFFFFFFFFFFF — never reaches 0 even if accidentally decremented.
 glob RC_SENTINEL: int = 0x7FFFFFFFFFFFFFFF;
@@ -266,6 +271,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # File I/O support (Phase 15)
         _file_struct_type: (object | None) = None,
         _file_helpers_emitted: bool = False,
+        # Binary file objects: open(path, "rb") -> BinaryFile whose read()
+        # returns length-aware bytes (#6404). Same struct layout as File.
+        _binary_file_struct_type: (object | None) = None,
+        _binary_file_helpers_emitted: bool = False,
+        # Length-aware bytes type: pointer to { i64 len, [0 x i8] data } — a
+        # single rc_alloc'd block so embedded NULs survive and len() is exact
+        # (#6404 Track 0). Distinct from str (i8*) so dispatch never confuses
+        # the two.
+        _bytes_struct_type: (object | None) = None,
         # Iterator protocol (#6403): boxed JacIter + per-kind state structs.
         _jac_iter_type: (object | None) = None,
         _iter_structs_registered: bool = False,
@@ -683,6 +697,26 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Native stdlib: random module (CPython-faithful MT19937, issue #6404)
     def _mt_ensure -> None;
     def _emit_random_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    # Native stdlib: struct module (byte ↔ scalar reinterpret, issue #6404)
+    def _emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_struct_pack(
+        nd: uni.FuncCall, params: list, fields: list, total: int, little: bool
+    ) -> (ir.Value | None);
+
+    def _emit_struct_unpack(
+        nd: uni.FuncCall, params: list, fields: list, total: int, little: bool
+    ) -> (ir.Value | None);
+    # Length-aware bytes type (#6404 Track 0)
+    def _get_bytes_struct_type -> ir.Type;
+    def _bytes_alloc(n: ir.Value) -> ir.Value;
+    def _bytes_data_ptr(bv: ir.Value) -> ir.Value;
+    def _bytes_len_val(bv: ir.Value) -> ir.Value;
+    def _bytes_from_raw(src: ir.Value, n: ir.Value) -> ir.Value;
+    def _make_global_bytes(data: bytes) -> ir.Value;
+    def _is_bytes_value(v: ir.Value) -> bool;
+    def _codegen_bytes_index(bv: ir.Value, idx: ir.Value) -> (ir.Value | None);
+    def _codegen_bytes_slice(bv: ir.Value, slice_node: object) -> (ir.Value | None);
+    def _emit_bytes_eq(left: ir.Value, right: ir.Value, negate: bool) -> ir.Value;
     # Phase 8: Entry Block
     def _codegen_entry(nd: uni.ModuleCode) -> None;
     # Phase 9: Tuples
@@ -788,7 +822,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_try(nd: uni.TryStmt) -> None;
     # Phase 15: File I/O
     def _get_file_struct_type -> ir.Type;
+    def _get_binary_file_struct_type -> ir.Type;
+    def _register_file_like_struct(name: str) -> ir.Type;
     def _emit_file_helpers -> None;
+    def _emit_binary_file_helpers -> None;
+    def _emit_file_like_helpers(
+        struct_name: str, struct_type: ir.Type, binary: bool
+    ) -> None;
+
     def _emit_open(nd: uni.FuncCall) -> (ir.Value | None);
     # Iterator protocol (#6403)
     def _ensure_iter_types -> None;
@@ -827,6 +868,18 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _make_filter_iter(up: tuple, pred: ir.Function) -> (tuple | None);
     def _make_enumerate_iter(up: tuple) -> (tuple | None);
     def _make_zip_iter(up_a: tuple, up_b: tuple) -> (tuple | None);
+    # User-defined __iter__/__next__ bridged into the protocol (#6403 M2).
+    def _resolve_method(arch_name: str, method_name: str) -> (ir.Function | None);
+    def _arch_implements_iter(arch_name: str) -> bool;
+    def _user_iter_next_fn(
+        iter_struct: str, next_method_fn: ir.Function, elem_type: ir.Type
+    ) -> ir.Function;
+
+    def _make_user_iter(it_obj: ir.Value, iter_struct: str) -> (tuple | None);
+    def _make_user_iter_from_obj(
+        obj_val: ir.Value, struct_name: str, expr: uni.UniNode
+    ) -> (tuple | None);
+
     def _try_iter_protocol_for(nd: uni.InForStmt) -> bool;
     # Phase 16: Context Managers
     def _codegen_with(nd: uni.WithStmt) -> None;

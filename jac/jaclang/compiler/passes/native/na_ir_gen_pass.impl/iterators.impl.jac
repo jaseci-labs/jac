@@ -41,6 +41,9 @@ impl NaIRGenPass._ensure_iter_types -> None {
     self._register_iter_struct("FilterIterState", ["upstream"], [i8p]);
     self._register_iter_struct("EnumerateIterState", ["upstream", "idx"], [i8p, i64]);
     self._register_iter_struct("ZipIterState", ["up_a", "up_b"], [i8p, i8p]);
+    # user iterator object stored as i8* so the generic dtor OWNS (releases) it,
+    # cascading into the object's own struct destructor (#6403 M2).
+    self._register_iter_struct("UserIterState", ["obj"], [i8p]);
 }
 
 """Register an identified struct + its field index/type maps."""
@@ -609,6 +612,14 @@ impl NaIRGenPass._make_iter_from_value(
         et = self._iter_elem_llvm_of(expr);
         return (val, "iter", et if et is not None else i8p);
     }
+    # User-defined iterator/iterable (#6403 M2): a struct implementing
+    # __iter__/__next__ is bridged into a JacIter whose next-fn drives the
+    # user's __next__ (StopIteration -> i1 0). It composes with the lazy
+    # adapters and crosses function boundaries like any other JacIter.
+    ustruct = self._struct_name_of(expr);
+    if ustruct is not None and self._arch_implements_iter(ustruct) {
+        return self._make_user_iter_from_obj(val, ustruct, expr);
+    }
     return None;
 }
 
@@ -884,6 +895,188 @@ impl NaIRGenPass._make_zip_iter(up_a: tuple, up_b: tuple) -> (tuple | None) {
     return (self._make_jac_iter(nfn, st), "tuple", tuple_type);
 }
 
+# ─── User-defined iterators (#6403 M2) ───────────────────────
+"""Resolve a method function for an archetype, walking its MRO; None if absent."""
+impl NaIRGenPass._resolve_method(
+    arch_name: str, method_name: str
+) -> (ir.Function | None) {
+    for check_name in self._mro_of(arch_name) {
+        full_name = f"{check_name}.{method_name}";
+        if full_name in self.method_funcs {
+            return self.method_funcs[full_name];
+        }
+    }
+    return None;
+}
+
+"""Whether an archetype participates in the iterator protocol.
+
+The OR routes both shapes the bridge handles: a self-iterator (has `__next__`,
+used directly) and a re-iterable (has `__iter__`, which yields a separate
+cursor). It is not the Python "is iterable" test — that requires `__iter__`,
+which the type checker already enforces before this pass, so a `__next__`-only
+object never reaches codegen as a for-loop / `iter()` target."""
+impl NaIRGenPass._arch_implements_iter(arch_name: str) -> bool {
+    return self._resolve_method(arch_name, "__next__") is not None
+    or self._resolve_method(arch_name, "__iter__") is not None;
+}
+
+"""Monomorphic next-fn bridging a user iterator's `__next__` into the protocol.
+Each call advances by invoking the user's `__next__`; a StopIteration raised
+there is the protocol's `i1 0` end-of-iteration (no exception leaks to the
+loop), while any other exception is re-raised to the enclosing handler. The
+StopIteration is caught with a local setjmp handler, so the fn carries the same
+optnone/noinline discipline try/except does (keep allocas off SSA across the
+non-local jump)."""
+impl NaIRGenPass._user_iter_next_fn(
+    iter_struct: str, next_method_fn: ir.Function, elem_type: ir.Type
+) -> ir.Function {
+    key = "user:" + iter_struct;
+    if key in self._iter_next_fns {
+        return self._iter_next_fns[key];
+    }
+    if self._exc_raise_fn is None {
+        self._declare_exception_runtime();
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i1 = ir.IntType(1);
+    exc_state_type = self._get_exception_state_type();
+    # The receiver is bitcast to `__next__`'s own declared self-parameter type,
+    # not the concrete iter_struct pointer: when `__next__` is resolved up the
+    # MRO its LLVM signature expects the declaring class's pointer, so coercing
+    # to that (as the standard method-call path does) keeps the call well-typed.
+    struct_ptr_type = next_method_fn.function_type.args[0];
+    state_ptr_type = self.struct_types["UserIterState"].as_pointer();
+    nfty = ir.FunctionType(i1, [i8p, i8p]);
+    fn = ir.Function(self.llvm_module, nfty, name="__iter_next_user_" + iter_struct);
+    fn.linkage = "private";
+    fn.attributes.add("optnone");
+    fn.attributes.add("noinline");
+    fn.args[0].name = "state";
+    fn.args[1].name = "out";
+    entry_bb = fn.append_basic_block("entry");
+    call_bb = fn.append_basic_block("call");
+    caught_bb = fn.append_basic_block("caught");
+    stop_bb = fn.append_basic_block("stop");
+    reraise_bb = fn.append_basic_block("reraise");
+    b = ir.IRBuilder(entry_bb);
+    state = b.bitcast(fn.args[0], state_ptr_type, name="usr.state");
+    obj_i8 = b.load(
+        b.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="usr.obj.slot"),
+        name="usr.obj.i8"
+    );
+    recv = b.bitcast(obj_i8, struct_ptr_type, name="usr.obj");
+    # Push a local handler and setjmp around the __next__ call.
+    exc_state = b.alloca(exc_state_type, name="usr.exc.state");
+    b.call(self._exc_push_fn, [exc_state]);
+    env_ptr = b.gep(
+        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="usr.env.ptr"
+    );
+    env_i8p = b.bitcast(env_ptr, i8p, name="usr.env.i8p");
+    sj = b.call(self.extern_funcs["setjmp"], [env_i8p], name="usr.sj");
+    is_exc = b.icmp_signed("!=", sj, ir.Constant(i32, 0), name="usr.is.exc");
+    b.cbranch(is_exc, caught_bb, call_bb);
+    # Normal path: __next__ returned a value.
+    b.position_at_end(call_bb);
+    v = b.call(next_method_fn, [recv], name="usr.v");
+    b.call(self._exc_pop_fn, []);
+    out_t = b.bitcast(fn.args[1], elem_type.as_pointer(), name="usr.out");
+    b.store(v, out_t);
+    b.ret(ir.Constant(i1, 1));
+    # Exception path: distinguish StopIteration (end) from a real error.
+    b.position_at_end(caught_bb);
+    b.call(self._exc_pop_fn, []);
+    exc_type_ptr = b.gep(
+        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="usr.exc.type.ptr"
+    );
+    exc_type_val = b.load(exc_type_ptr, name="usr.exc.type");
+    stop_id = self._get_or_register_exc_type("StopIteration");
+    is_stop = b.icmp_signed(
+        "==", exc_type_val, ir.Constant(i32, stop_id), name="usr.is.stop"
+    );
+    b.cbranch(is_stop, stop_bb, reraise_bb);
+    b.position_at_end(stop_bb);
+    b.ret(ir.Constant(i1, 0));
+    b.position_at_end(reraise_bb);
+    exc_obj_ptr = b.gep(
+        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="usr.exc.obj.ptr"
+    );
+    reraise_obj = b.load(exc_obj_ptr, name="usr.reraise.obj");
+    b.call(self._exc_raise_fn, [reraise_obj, exc_type_val]);
+    b.unreachable();
+    self._iter_next_fns[key] = fn;
+    return fn;
+}
+
+"""Box a user iterator object (owns a +1 ref) into a JacIter over its
+`__next__`. The object is stored as i8* so the generic dtor releases it,
+cascading into the object's own struct destructor."""
+impl NaIRGenPass._make_user_iter(it_obj: ir.Value, iter_struct: str) -> (tuple | None) {
+    next_method_fn = self._resolve_method(iter_struct, "__next__");
+    if next_method_fn is None {
+        return None;
+    }
+    elem_type = next_method_fn.function_type.return_type;
+    next_fn = self._user_iter_next_fn(iter_struct, next_method_fn, elem_type);
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    st = self._alloc_iter_struct("UserIterState");
+    obj_i8 = self.builder.bitcast(it_obj, i8p, name="usr.obj.store");
+    self.builder.store(
+        obj_i8,
+        self.builder.gep(
+            st, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="usr.obj.field"
+        )
+    );
+    return (self._make_jac_iter(next_fn, st), "user", elem_type);
+}
+
+"""Build a JacIter from a user iterable/iterator object (#6403 M2).
+If the object is already an iterator (has __next__) it is its own iterator
+(Python's `iter(it) is it`); otherwise `__iter__()` produces a fresh one. Every
+function returns an owned (+1) pointer, so `__iter__`'s result needs no retain;
+a borrowed self-iterator does (the JacIter releases it at end of life). The
+iterable temporary is released once its separate iterator is in hand."""
+impl NaIRGenPass._make_user_iter_from_obj(
+    obj_val: ir.Value, struct_name: str, expr: uni.UniNode
+) -> (tuple | None) {
+    if self._resolve_method(struct_name, "__next__") is not None {
+        it_obj = obj_val;
+        iter_struct = struct_name;
+        if not self._is_owned(it_obj) {
+            self._emit_rc_retain(it_obj, op="user_iter");
+            self._mark_owned(it_obj);
+        }
+        return self._make_user_iter(it_obj, iter_struct);
+    }
+    iter_fn = self._resolve_method(struct_name, "__iter__");
+    if iter_fn is None {
+        return None;
+    }
+    it_obj = self.builder.call(iter_fn, [obj_val], name="usr.iter");
+    self._mark_owned(it_obj);
+    # Build the iterator BEFORE releasing the source, so a non-drivable
+    # `__iter__` result (e.g. one returning a builtin Iterator[T] box rather
+    # than a user iterator object, which `_infer_type_name`/`_make_user_iter`
+    # can't resolve a `__next__` for) bails with no partial side effects:
+    # release the owned `__iter__` result and leave `obj_val` for the caller's
+    # fall-through path.
+    iter_struct = self._infer_type_name(it_obj);
+    built = self._make_user_iter(it_obj, iter_struct)
+        if iter_struct is not None
+        else None;
+    if built is None {
+        self._emit_rc_release_simple(it_obj, op="user_iter_unresolved");
+        return None;
+    }
+    # The separate iterator is in hand, so drop the iterable temporary if owned.
+    if self._is_owned(obj_val) {
+        self._emit_rc_release_simple(obj_val, op="user_iter_src");
+    }
+    return built;
+}
+
 # ─── First-class next() ──────────────────────────────────────
 """Lower `next(it)`: pull one element from a first-class iterator value.
 
@@ -937,21 +1130,28 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         and self._get_name(coll.target) in ["map", "filter", "enumerate", "zip", "iter"]
         and coll.call_kind == "builtin"
     );
+    # A user-defined object implementing __iter__/__next__ is bridged into a
+    # fresh (owned) JacIter, driven exactly like a builtin iterator (#6403 M2).
+    _ustruct = self._struct_name_of(coll) if not is_adapter_call else None;
+    is_user_iterable = _ustruct is not None and self._arch_implements_iter(_ustruct);
     built: (tuple | None) = None;
     owns_iter = False;
-    if is_adapter_call {
+    if is_adapter_call or is_user_iterable {
         built = self._build_iter_from_expr(coll);
         owns_iter = True;
     } else {
-        # A stored first-class iterator value (`it: Iterator[T]`); #6403 phase 2.
-        # The loop borrows it (the variable still owns the +1), so it must NOT
-        # be released here.
+        # A first-class iterator value (`it: Iterator[T]`); #6403 phase 2.
+        # A borrowed binding (`for x in it`) stays owned by its variable and is
+        # released at that variable's end of life, so the loop must NOT release
+        # it. An owned temporary (`for x in gen()`, an iterator returned from a
+        # call) has no other owner — the loop is responsible for releasing it.
         elem_t = self._iter_elem_llvm_of(coll);
         if elem_t is not None {
             iv = self._codegen_expr(coll);
             if iv is not None {
                 ename = "tuple" if isinstance(elem_t, ir.LiteralStructType) else "iter";
                 built = (iv, ename, elem_t);
+                owns_iter = self._is_owned(iv);
             }
         }
     }
