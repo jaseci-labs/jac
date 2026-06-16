@@ -403,6 +403,14 @@ test "E0076: duplicate method definition" {
     assert has_diagnostic_code(prog, "E0076");
 }
 
+test "E0076: Python __init__ and init are distinct methods" {
+    # Issue #6556: a Python class with both `__init__` and a plain `init`
+    # method (e.g. Pillow's PIL.ImageFile.PyCodec) is valid Python; raising
+    # `__init__` to Jac's `init` constructor must not collide with it.
+    (prog, _) = compile_only("parser_E0076_py_init_distinct.py");
+    assert not has_diagnostic_code(prog, "E0076");
+}
+
 test "E0077: empty f-string expression" {
     pytest.skip("E0077 not yet implemented");
     (has_err, _) = parse_and_validate('with entry { x = f"hello {}"; }');

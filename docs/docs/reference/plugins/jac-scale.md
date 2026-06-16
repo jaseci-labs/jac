@@ -635,6 +635,8 @@ Roles are stored in the user document and included in JWT claims. The admin user
 - System accounts (role `system`)
 - The guest account (identity `__guest__`)
 
+The guest account's root is the deployment's public graph - every unauthenticated request runs on it, and Jac code addresses it from any request as `root.shared` (see [The Shared Root](../language/osp.md#6-the-shared-root-rootshared)).
+
 Roles are managed via the admin portal API or programmatically through the `UserManager`:
 
 ```bash
@@ -1289,7 +1291,7 @@ with entry {
 All walker and function endpoints are **protected by default** -- they require JWT authentication. You must explicitly opt-in to public access using the `:pub` modifier. This secure-by-default approach prevents accidentally exposing endpoints without authentication.
 
 ```jac
-# Protected (default) -- requires JWT token
+# Protected (default) -- requires JWT token, runs on the caller's own isolated root
 walker get_profile {
     can fetch with Root entry { report [-->]; }
 }
@@ -1299,7 +1301,7 @@ walker :pub health_check {
     can check with Root entry { report {"status": "ok"}; }
 }
 
-# Private -- requires authentication, per-user isolated
+# Private -- identical to the default; `:priv` is the explicit spelling
 walker :priv internal_process {
     can run with Root entry { }
 }
@@ -1307,13 +1309,12 @@ walker :priv internal_process {
 
 ### Walker Access Levels
 
-Walkers have three access levels when served as API endpoints:
+Walkers have two access levels when served as API endpoints (`:priv` is the explicit spelling of the default):
 
 | Access | Description |
 |--------|-------------|
-| Public (`:pub`) | Accessible without authentication |
-| Protected (default) | Requires JWT authentication |
-| Private (`:priv`) | Requires JWT authentication; per-user isolated (each user operates on their own graph) |
+| Public (`:pub`) | Accessible without authentication. Anonymous callers run on the shared guest graph (`root.shared`); a caller presenting a valid token runs on their own root. |
+| Protected (default) and Private (`:priv`) | Require JWT authentication; per-user isolated (each user operates on their own graph). The unmarked default and `:priv` behave identically. |
 
 ### Permission Functions Reference
 
@@ -2406,6 +2407,8 @@ shelf_db_path = ".jac/data/anchor_store.db"  # SQLite/shelf path for local dev
 | `mongodb_uri`| None | External MongoDB URI. When set, K8s MongoDB StatefulSet is not provisioned. |
 | `redis_url`  | None | External Redis URL. When set, K8s Redis is not provisioned. |
 | `shelf_db_path` | `.jac/data/anchor_store.db` | Local shelf/SQLite storage path for `jac start` (no K8s) |
+| `redis_l1_invalidation_enabled` | `true` | Broadcast/apply cross-pod L1 cache evictions over Redis pub/sub (see [Memory Hierarchy](#cross-pod-l1-invalidation)). |
+| `redis_l1_invalidation_channel` | `"jac:anchor:invalidate"` | Pub/sub channel for L1 invalidation messages; all pods sharing a cache must match. |
 
 ---
 
@@ -2477,6 +2480,37 @@ graph TD
     L1 --- L2["L2: Redis (cache)"]
     L2 --- L3["L3: MongoDB (persistent)"]
 ```
+
+#### Cross-Pod L1 Invalidation
+
+L1 is an in-process cache: each request gets a fresh, request-scoped L1 that
+loads anchors from L3 and serves repeated reads of the same anchor from memory
+for the rest of that request. This is what makes a single request fast, but it
+also means that while a request holds an anchor in its L1, a **concurrent
+request on another pod** can commit a new version of that same anchor to L3.
+Without coordination, the first request keeps serving the stale snapshot it
+already loaded.
+
+To prevent that, every write broadcasts a small invalidation message over a
+**Redis pub/sub channel**. One daemon listener per process subscribes to that
+channel and, on each message, flags the named anchor _stale_ in every _other_
+live L1 in the process. The listener never mutates a sibling's cache directly;
+instead each owning request, on its next read of that anchor, drops its copy and
+reloads fresh from L3 -- but **only if the copy is unmodified**. A request that
+has its own uncommitted change to that anchor keeps it, so an in-flight write is
+never silently discarded. The writer's own L1 is excluded from the broadcast (it
+already holds the freshly merged copy), and deletes/quarantines flag everyone.
+The listener self-heals across Redis restarts with capped exponential backoff,
+and if Redis or the `redis` extra is unavailable the feature simply stays off:
+the system degrades to plain per-request L1s with no cross-pod coherence.
+
+This is on by default whenever a Redis URL resolves. Tune it under
+`[plugins.scale.database]`:
+
+| `jac.toml` key | Default | Description |
+|----------------|---------|-------------|
+| `redis_l1_invalidation_enabled` | `true` | Broadcast and apply cross-pod L1 evictions over Redis pub/sub. |
+| `redis_l1_invalidation_channel` | `"jac:anchor:invalidate"` | Pub/sub channel used for invalidation messages. All pods sharing a cache must agree on this value. |
 
 ---
 

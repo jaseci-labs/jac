@@ -7,6 +7,7 @@ import type from jaclang.compiler.passes.ecmascript.estree { IndexInfo, SliceInf
 import type from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
 import type from jaclang.compiler.passes.tool.doc_ir { Doc }
 import type from jaclang.jac0core.unitree { Source, Token }
+import type from jaclang.jac0core.osp_model { OspModel }
 import type from llvmlite.binding { ModuleRef, ExecutionEngine }
 
 """Client-side rendering manifest metadata."""
@@ -96,6 +97,30 @@ obj NativeFuncLayout {
         ret_enum_type: (str | None) = None;
 }
 
+"""Layout info for a native test block.
+
+A `test` block in native context lowers to a zero-argument native function
+returning `i8*`: null means the test passed, a non-null pointer is a static
+failure message (the uncaught exception's message).
+"""
+obj NativeTestLayout {
+    has name: str,
+        symbol: str,
+        description: str = "",
+        line: int = 0;
+}
+
+"""Native symbol name for a test block.
+
+Single naming contract shared by NaIRGenPass (which defines the function)
+and PyastGenPass (whose host-side shim looks the address up by name). The
+line number keeps symbols unique when two descriptions derive the same
+identifier.
+"""
+def native_test_symbol(name: str, line: int) -> str {
+    return f"__jac_test_{name}_{line}";
+}
+
 """Resolve a module name to a .na.jac file path.
 
 Shared resolver used by both BoundaryAnalysisPass and NaIRGenPass to
@@ -141,7 +166,8 @@ obj NativeModuleLayout {
         functions: dict[(str, NativeFuncLayout)] = field(default_factory=`dict),
         methods: dict[(str, NativeFuncLayout)] = field(default_factory=`dict),
         list_elem_types: dict[(str, str)] = field(default_factory=`dict),
-        tuples: dict[(str, NativeTupleLayout)] = field(default_factory=`dict);
+        tuples: dict[(str, NativeTupleLayout)] = field(default_factory=`dict),
+        tests: list[NativeTestLayout] = field(default_factory=`list);
 }
 
 """Metadata for a type (obj, node, enum) that crosses a codespace boundary.
@@ -240,6 +266,10 @@ obj CodeGenTarget {
         interop_py_funcs: dict[(str, Any)] = field(default_factory=`dict),
         _interop_callbacks: list[any] = field(default_factory=`list),
         native_layout: (NativeModuleLayout | None) = None,
+        # The one OSP-fact store (kinds/tags/is_a/slots/uses), derived once per
+        # compile by OspAnalysis.compute and read by every backend; no backend
+        # keeps its own OSP tag/kind/slot state. None until a backend computes it.
+        osp_model: (OspModel | None) = None,
         native_compat: bool = False,
         layout_registry: any = None,
         # Paths to C shared libraries discovered during native compilation.

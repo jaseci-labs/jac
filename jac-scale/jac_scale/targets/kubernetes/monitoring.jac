@@ -44,6 +44,9 @@ obj MonitoringDeployer {
         ne_name = f"{app_name}-node-exporter";
         service_port = provider.prometheus_scrape_port(self.k8s_config.container_port);
 
+        # The app's /metrics endpoint is admin-protected and also accepts Basic
+        # Auth (admin username + prometheus_admin_password). Send those creds so
+        # Prometheus can scrape without exposing /metrics unauthenticated.
         scrape_config = (
             "global:\n"
             "  scrape_interval: 15s\n"
@@ -53,6 +56,11 @@ obj MonitoringDeployer {
             "    static_configs:\n"
             f"      - targets: ['{app_name}-service:{service_port}']\n"
             "    metrics_path: '/metrics'\n"
+            "    basic_auth:\n"
+            f"      username: '{self.k8s_config.admin_username}'\n"
+            # Read from a mounted Secret (see prometheus_scrape_secret below)
+            # so the password stays out of the ConfigMap.
+            "      password_file: /etc/prometheus/scrape-secret/password\n"
         );
         if self.k8s_config.k8s_metrics_enabled {
             scrape_config = scrape_config + (
@@ -64,6 +72,29 @@ obj MonitoringDeployer {
                 "    static_configs:\n"
                 f"      - targets: ['{ne_name}-service:9100']\n"
                 "    metrics_path: '/metrics'\n"
+            );
+            # cAdvisor (per-container CPU/memory) is exposed by the kubelet, not a
+            # standalone exporter. Scrape it through the API-server node proxy so we
+            # don't need host-network access. Requires the prometheus ServiceAccount
+            # to have nodes/proxy RBAC (granted below) and its token mounted.
+            scrape_config = scrape_config + (
+                "  - job_name: 'kubernetes-cadvisor'\n"
+                "    scheme: https\n"
+                "    tls_config:\n"
+                "      insecure_skip_verify: true\n"
+                "    authorization:\n"
+                "      credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token\n"
+                "    kubernetes_sd_configs:\n"
+                "      - role: node\n"
+                "    relabel_configs:\n"
+                "      - action: labelmap\n"
+                "        regex: __meta_kubernetes_node_label_(.+)\n"
+                "      - target_label: __address__\n"
+                "        replacement: kubernetes.default.svc:443\n"
+                "      - source_labels: [__meta_kubernetes_node_name]\n"
+                "        regex: (.+)\n"
+                "        target_label: __metrics_path__\n"
+                "        replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor\n"
             );
         }
 
@@ -100,7 +131,40 @@ obj MonitoringDeployer {
             }
         }
 
+        # Secret holding the scrape password, mounted into the pod and referenced
+        # by basic_auth.password_file — keeps the credential out of the ConfigMap.
+        scrape_secret_name = f"{prometheus_name}-scrape-secret";
+        scrape_secret = {
+            'apiVersion': 'v1',
+            'kind': 'Secret',
+            'metadata': {
+                'name': scrape_secret_name,
+                'namespace': namespace,
+                'labels': {'app': prometheus_name, 'managed': 'jac-scale'}
+            },
+            'type': 'Opaque',
+            'stringData': {'password': self.k8s_config.prometheus_admin_password}
+        };
+        try {
+            core_v1.read_namespaced_secret(
+                name=scrape_secret_name, namespace=namespace
+            );
+            core_v1.replace_namespaced_secret(
+                name=scrape_secret_name, namespace=namespace, body=scrape_secret
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_secret(
+                    namespace=namespace, body=scrape_secret
+                );
+            } else {
+                raise;
+            }
+        }
+
         prometheus_sa_name = f"{prometheus_name}-sa";
+        # Token is automounted so Prometheus can authenticate to the API-server
+        # node proxy when scraping cAdvisor (see scrape_config above).
         prometheus_sa = {
             'apiVersion': 'v1',
             'kind': 'ServiceAccount',
@@ -109,7 +173,7 @@ obj MonitoringDeployer {
                 'namespace': namespace,
                 'labels': {'app': prometheus_name, 'managed': 'jac-scale'}
             },
-            'automountServiceAccountToken': False
+            'automountServiceAccountToken': True
         };
         try {
             core_v1.read_namespaced_service_account(
@@ -120,6 +184,81 @@ obj MonitoringDeployer {
                 core_v1.create_namespaced_service_account(
                     namespace=namespace, body=prometheus_sa
                 );
+            } else {
+                raise;
+            }
+        }
+
+        # ClusterRole granting read access to node metrics + the cAdvisor proxy
+        # path. Cluster-scoped because nodes are not namespaced. Prefixed with the
+        # namespace so multiple deployments don't collide.
+        prometheus_cluster_role_name = f"{namespace}-{prometheus_name}";
+        prometheus_rbac_v1 = client.RbacAuthorizationV1Api();
+        prometheus_cluster_role = {
+            'apiVersion': 'rbac.authorization.k8s.io/v1',
+            'kind': 'ClusterRole',
+            'metadata': {
+                'name': prometheus_cluster_role_name,
+                'labels': {'app': prometheus_name, 'managed': 'jac-scale'}
+            },
+            'rules': [
+                {
+                    'apiGroups': [''],
+                    'resources': [
+                        'nodes',
+                        'nodes/proxy',
+                        'nodes/metrics',
+                        'services',
+                        'endpoints',
+                        'pods'
+                    ],
+                    'verbs': ['get', 'list', 'watch']
+                },
+                {'nonResourceURLs': ['/metrics', '/metrics/cadvisor'], 'verbs': ['get']}
+            ]
+        };
+        try {
+            prometheus_rbac_v1.read_cluster_role(name=prometheus_cluster_role_name);
+            prometheus_rbac_v1.replace_cluster_role(
+                name=prometheus_cluster_role_name, body=prometheus_cluster_role
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                prometheus_rbac_v1.create_cluster_role(body=prometheus_cluster_role);
+            } else {
+                raise;
+            }
+        }
+        prometheus_crb = {
+            'apiVersion': 'rbac.authorization.k8s.io/v1',
+            'kind': 'ClusterRoleBinding',
+            'metadata': {
+                'name': prometheus_cluster_role_name,
+                'labels': {'app': prometheus_name, 'managed': 'jac-scale'}
+            },
+            'roleRef': {
+                'apiGroup': 'rbac.authorization.k8s.io',
+                'kind': 'ClusterRole',
+                'name': prometheus_cluster_role_name
+            },
+            'subjects': [
+                {
+                    'kind': 'ServiceAccount',
+                    'name': prometheus_sa_name,
+                    'namespace': namespace
+                }
+            ]
+        };
+        try {
+            prometheus_rbac_v1.read_cluster_role_binding(
+                name=prometheus_cluster_role_name
+            );
+            prometheus_rbac_v1.replace_cluster_role_binding(
+                name=prometheus_cluster_role_name, body=prometheus_crb
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                prometheus_rbac_v1.create_cluster_role_binding(body=prometheus_crb);
             } else {
                 raise;
             }
@@ -144,7 +283,7 @@ obj MonitoringDeployer {
                         'annotations': {'checksum/config': config_hash}
                     },
                     'spec': {
-                        'automountServiceAccountToken': False,
+                        'automountServiceAccountToken': True,
                         'serviceAccountName': prometheus_sa_name,
                         'securityContext': {
                             'seccompProfile': {'type': 'RuntimeDefault'}
@@ -175,6 +314,11 @@ obj MonitoringDeployer {
                                         'mountPath': '/etc/prometheus'
                                     },
                                     {
+                                        'name': 'prometheus-scrape-secret',
+                                        'mountPath': '/etc/prometheus/scrape-secret',
+                                        'readOnly': True
+                                    },
+                                    {
                                         'name': 'prometheus-data',
                                         'mountPath': '/prometheus'
                                     },
@@ -186,6 +330,10 @@ obj MonitoringDeployer {
                             {
                                 'name': 'prometheus-config-vol',
                                 'configMap': {'name': f"{prometheus_name}-config"}
+                            },
+                            {
+                                'name': 'prometheus-scrape-secret',
+                                'secret': {'secretName': scrape_secret_name}
                             },
                             {'name': 'prometheus-data', 'emptyDir': {}},
                             {'name': 'tmp', 'emptyDir': {}}
@@ -2158,6 +2306,7 @@ obj MonitoringDeployer {
         alloy_name = f"{app_name}-alloy";
         cluster_role_name = f"{namespace}-{ksm_name}";
         cluster_role_binding_name = f"{namespace}-{ksm_name}";
+        prometheus_cluster_role_name = f"{namespace}-{prometheus_name}";
 
         # Prometheus resources
         delete_if_exists(
@@ -2175,6 +2324,16 @@ obj MonitoringDeployer {
         try {
             core_v1.delete_namespaced_config_map(
                 name=f"{prometheus_name}-config", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        delete_k8s_secret(core_v1, namespace, f"{prometheus_name}-scrape-secret");
+        try {
+            core_v1.delete_namespaced_service_account(
+                name=f"{prometheus_name}-sa", namespace=namespace
             );
         } except ApiException as e {
             if e.status != 404 {
@@ -2212,6 +2371,21 @@ obj MonitoringDeployer {
         }
         try {
             rbac_v1.delete_cluster_role_binding(name=cluster_role_binding_name);
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        # Prometheus cAdvisor RBAC (cluster-scoped)
+        try {
+            rbac_v1.delete_cluster_role(name=prometheus_cluster_role_name);
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        try {
+            rbac_v1.delete_cluster_role_binding(name=prometheus_cluster_role_name);
         } except ApiException as e {
             if e.status != 404 {
                 raise;

@@ -2,7 +2,18 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.6.14 (Latest Release)
+## byllm 0.6.15 (Latest Release)
+
+### New Features
+
+- **Feature: Retry structured-output generation on empty or malformed responses**: A non-streaming `by llm()` call with a structured (non-`str`) return type now regenerates when the output is empty or cannot be parsed, instead of failing on the first bad generation. Between attempts byLLM resets to the original prompt and injects a corrective message that restates the failure, echoes the rejected output, and re-shows the JSON schema. The new `max_output_retries` knob (retries after the first attempt, default `3`, `0` disables) resolves per-call > per-object > `jac.toml` `[plugins.byllm.call_params]` > default; on exhaustion the raised `OutputConversionError` reports the attempt count and preserves `raw_output`. (jaseci-labs/jaseci#6538)
+- **Feature: MockLLM testing primitives for structured output and errors**: `MockRawResponse` feeds text through the real `parse_response` (so malformed JSON raises `OutputConversionError` and valid JSON parses to the typed object), `MockError` raises a wrapped exception, and `MockLLM.seen_prompts` records the prompt seen per attempt. These let tests drive the structured-output and retry paths through real `by llm()` calls; existing MockLLM behavior is unchanged. (jaseci-labs/jaseci#6538)
+
+### Bug Fixes
+
+- **Fix: streamed text answers now reach the response channel**: When a tool-enabled `-> str`/`None` agent finished by writing plain text instead of calling the hidden finish tool, byLLM left the reply on the internal `thought` stream and never emitted it on the `chunk` (answer) channel, so consumers that read only the answer channel received an empty response. The terminal text is now delivered as the answer `chunk`, reusing what the model already produced with no re-prompt and no extra LLM call. Structured returns and the existing finish-tool path are unchanged.
+
+## byllm 0.6.14
 
 ### New Features
 

@@ -5,7 +5,7 @@ client-side (frontend) package management:
 - `jac add --npm`: Add npm dependencies
 - `jac remove --npm`: Remove npm dependencies
 
-For creating client projects, use: `jac create --use client`
+For creating client projects, use: `jac create --kind fullstack`
 """
 
 import from jaclang.cli.registry { get_registry }
@@ -130,7 +130,7 @@ class JacCmd {
                     "skip",
                     typ=bool,
                     default=False,
-                    help="Skip npm package installation (for --use client)"
+                    help="Skip npm package installation (when creating client kinds: fullstack/wasm/mobile)"
                 ),
 
             ],

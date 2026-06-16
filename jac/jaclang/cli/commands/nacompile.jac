@@ -44,6 +44,12 @@ glob registry = get_registry();
             short="",  # suppress auto `-s` (taken by --scrub); long form only
             help="Build a C-ABI shared library (.so/.dylib/.dll) exporting `:pub` symbols instead of an executable"
         ),
+        Arg.create(
+            "debug",
+            kind=ArgKind.FLAG,
+            short="g",  # conventional `-g`, mirrors cc/clang
+            help="Emit DWARF debug info + symbol table so the binary is debuggable with gdb/lldb"
+        ),
 
     ],
     examples=[
@@ -51,6 +57,10 @@ glob registry = get_registry();
         ("jac nacompile program.jac", "Auto-promote and compile to ./program"),
         ("jac nacompile program.na.jac -o mybin", "Compile to ./mybin"),
         ("jac nacompile program.na.jac --scrub", "Clean rebuild (wipe IR cache)"),
+        (
+            "jac nacompile program.na.jac -g",
+            "Compile with DWARF debug info (gdb ./program works)"
+        ),
         (
             "jac nacompile game.na.jac --target wasm32 -o game.wasm",
             "Compile to a wasm module"
@@ -68,5 +78,6 @@ def nacompile(
     output: str = "",
     scrub: bool = False,
     target: str = "",
-    shared: bool = False
+    shared: bool = False,
+    debug: bool = False
 ) -> int;

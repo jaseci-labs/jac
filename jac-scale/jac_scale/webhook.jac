@@ -10,6 +10,7 @@ The API key is wrapped in a JWT for secure storage and validation.
 """
 import hmac;
 import hashlib;
+import logging;
 import secrets;
 import jwt;
 import from datetime { UTC, datetime, timedelta }
@@ -17,14 +18,9 @@ import from pydantic { BaseModel, Field }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.db { Db, get_mongo_client }
-import from jac_scale.factories.database_factory { DatabaseType }
+import from jac_scale.mongo_db { MongoDb }
 
-# Load webhook configuration
-glob _webhook_config = get_scale_config().get_webhook_config(),
-     WEBHOOK_API_KEY_EXPIRY_DAYS = _webhook_config['api_key_expiry_days'],
-     _jwt_config = get_scale_config().get_jwt_config(),
-     JWT_SECRET = _jwt_config['secret'],
-     JWT_ALGORITHM = _jwt_config['algorithm'];
+glob logger = logging.getLogger(__name__);
 
 """Pydantic model for API key creation request."""
 class CreateApiKeyRequest(BaseModel) {
@@ -60,7 +56,7 @@ obj WebhookUtils {
 
     The API key is embedded in a JWT for secure validation and expiry management."""
     static def create_api_key_token(
-        api_key_id: str, username: str, name: str, expiry_days: int | None = None
+        api_key_id: str, user_id: str, name: str, expiry_days: int | None = None
     ) -> str;
 
     """Validate an API key token and extract user information."""
@@ -74,9 +70,7 @@ obj WebhookUtils {
 def _create_api_key_db -> Db | None {
     db_config = get_scale_config().get_database_config();
     if db_config.get('mongodb_uri') is not None {
-        return Db(
-            client=get_mongo_client(), db_name='jac_db', db_type=DatabaseType.MONGODB
-        );
+        return MongoDb(client=get_mongo_client(), db_name='jac_db');
     }
     return None;
 }
@@ -85,22 +79,32 @@ def _create_api_key_db -> Db | None {
 obj ApiKeyManager {
     has _db: Db | None = _create_api_key_db(),
         _inmemory_store: dict = {},
-        _collection: str = 'webhook_api_keys';
+        _collection: str = 'webhook_api_keys',
+        _rate_window: dict = {};
+
+    """Ensure indexes (MongoDB only)."""
+    def postinit -> None;
+
+    """Index user_id for per-user key lookups."""
+    def _ensure_indexes -> None;
 
     """Create a new API key for a user."""
     def create_api_key(
-        username: str, name: str, expiry_days: int | None = None
+        user_id: str,
+        name: str,
+        expiry_days: int | None = None,
+        allowed_walkers: list[str] | None = None
     ) -> TransportResponse;
 
     """List all API keys for a user."""
-    def list_api_keys(username: str) -> TransportResponse;
+    def list_api_keys(user_id: str) -> TransportResponse;
 
     """Revoke an API key."""
-    def revoke_api_key(username: str, api_key_id: str) -> TransportResponse;
+    def revoke_api_key(user_id: str, api_key_id: str) -> TransportResponse;
 
-    """Validate an API key and return the associated username."""
-    def validate_api_key(api_key: str) -> str | None;
+    """Look up a stored key document by id (MongoDB or in-memory)."""
+    def _get_key_doc(api_key_id: str) -> dict | None;
 
-    """Check if an API key ID exists and is not revoked."""
-    def is_key_active(api_key_id: str) -> bool;
+    def resolve_key(api_key: str) -> dict | None;
+    def check_rate_limit(api_key_id: str, limit_per_minute: int) -> bool;
 }
