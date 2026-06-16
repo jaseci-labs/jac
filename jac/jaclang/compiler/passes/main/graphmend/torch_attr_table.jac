@@ -27,8 +27,21 @@ glob DYNAMIC_TORCH_ATTRS: set[str] = {
          'allclose',
          'unique'
      },
-     # Substrings (lower-cased) identifying logging-style side-effect calls.
-     LOGGING_PATTERNS: list[str] = ['logger', 'logging', 'warn', 'critical'],
+     # logging.Logger method names; a `<logger>.<method>(...)` call with one of
+     # these breaks tracing. Matched against the CALL's method name (not a
+     # substring of the callee), so `setup_logging()` is not a false positive.
+     LOG_METHODS: set[str] = {
+         'debug',
+         'info',
+         'warning',
+         'warning_once',
+         'error',
+         'exception',
+         'critical',
+         'fatal',
+         'log',
+         'warn'
+     },
      # Built-in side-effecting calls that break tracing when seen inside a graph.
      SIDE_EFFECT_CALLS: set[str] = {'print'};
 
@@ -37,17 +50,10 @@ def is_dynamic_torch_attr(attr: str) -> bool {
     return attr in DYNAMIC_TORCH_ATTRS;
 }
 
-"""True if `name` is a logging/printing side-effect call -- the builtin `print`,
-or a name containing a logging keyword (e.g. `logger.warning`)."""
+"""True if `name` is a side-effecting call that breaks tracing: the builtin
+`print`, or a logging.Logger method (`debug`/`info`/`warning`/...). For an
+attribute call this is matched against the method name, e.g. `warning` in
+`logger.warning(...)`."""
 def is_side_effect_name(name: str) -> bool {
-    if name in SIDE_EFFECT_CALLS {
-        return True;
-    }
-    lowered = name.lower();
-    for pattern in LOGGING_PATTERNS {
-        if pattern in lowered {
-            return True;
-        }
-    }
-    return False;
+    return (name in SIDE_EFFECT_CALLS) or (name in LOG_METHODS);
 }

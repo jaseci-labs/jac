@@ -35,7 +35,7 @@ impl GraphBreakDetectPass.enter_if_stmt(nd: uni.IfStmt) -> None {
     if not self._condition_is_data_dependent(nd.condition) {
         return;
     }
-    if self._body_is_only_raise(nd.body) {
+    if self._is_validation_guard(nd) {
         nd._gm_break_kind = 'val_guard';
     } else {
         nd._gm_break_kind = 'dyn_ctrl_fl';
@@ -231,12 +231,17 @@ impl GraphBreakDetectPass._is_user_defined(nd: uni.FuncCall, name: str) -> bool 
     return bool(sym and sym.defn);
 }
 
-"""True if a branch body is exactly one `raise` statement."""
-impl GraphBreakDetectPass._body_is_only_raise(body: list) -> bool {
-    if (not body) or (len(body) != 1) {
+"""True if `nd` is a validation guard: a one-armed conditional (no else) whose
+body ends in a `raise`, e.g. `if not C: raise` or `if not C: cleanup(); raise`.
+
+Keying on the trailing raise (not a single-statement body) keeps a guard with
+cleanup code classified as `val_guard` rather than `dyn_ctrl_fl`, so it is never
+handed to the value-predicating rewrite that would drop the cleanup."""
+impl GraphBreakDetectPass._is_validation_guard(nd: uni.IfStmt) -> bool {
+    if nd.else_body is not None {
         return False;
     }
-    return isinstance(body[0], uni.RaiseStmt);
+    return bool(nd.body) and isinstance(nd.body[-1], uni.RaiseStmt);
 }
 
 """True if `cond` is data-dependent: uses a dynamic torch attr, or a use-def
@@ -259,7 +264,15 @@ impl GraphBreakDetectPass._condition_is_data_dependent(cond: uni.Expr) -> bool {
     return False;
 }
 
-"""True if any attribute trailer in `expr` names a dynamic torch op."""
+"""True if any attribute trailer in `expr` names a dynamic torch op.
+
+This keys on the attribute name (`x.sum()`, `x.item()`), not the receiver's
+type -- distinguishing a tensor `x.sum()` from a non-tensor `df.sum()` would
+require type inference that is not reliably available here. The match is
+therefore intentionally permissive (it catches the paper's `x.sum()` on a
+tensor parameter, which no name-blind type check could). Over-tagging is safe:
+each transformation pass independently re-checks legality (tensor-valued
+branches, etc.) and declines to rewrite anything it cannot prove safe."""
 impl GraphBreakDetectPass._expr_uses_dynamic_attr(expr: uni.Expr) -> bool {
     for tr in expr.get_all_sub_nodes(uni.AtomTrailer) {
         if tr.is_attr and isinstance(tr.right, uni.Name) {
