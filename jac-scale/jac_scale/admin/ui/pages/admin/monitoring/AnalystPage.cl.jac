@@ -10,7 +10,7 @@ reads this report.
 """
 
 cl import from "lucide-react" {
-    Activity, RefreshCw, AlertTriangle, Timer, Bug, Sparkles, Cpu, Server
+    Activity, RefreshCw, AlertTriangle, Timer, Bug, Sparkles, Gauge, Database
 }
 
 cl {
@@ -70,7 +70,8 @@ cl {
         useEffect(lambda { load(); }, []);
 
         health = (rpt["health"] if rpt else {}) or {};
-        pods = (rpt["pods"] if rpt else []) or [];
+        endpoints = (rpt["endpoints"] if rpt else []) or [];
+        hotspots = (rpt["db_hotspots"] if rpt else []) or [];
         slow = (rpt["slow_traces"] if rpt else []) or [];
         errors = (rpt["errors"] if rpt else []) or [];
 
@@ -183,63 +184,91 @@ cl {
                         <Activity className="w-4 h-4 text-accent"/>
                         <h2 className="text-sm font-medium text-fg">Health</h2>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-line">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-line">
                         <div className={statCls}>
                             <div className={labelCls}>Status</div>
                             <div className={valCls}>{str(health["status"])}</div>
                         </div>
                         <div className={statCls}>
-                            <div className={labelCls}>Req/s</div>
-                            <div className={valCls}>{str(health["req_per_s"])}</div>
+                            <div className={labelCls}>Sampled traces</div>
+                            <div className={valCls}>{str(health["sampled_traces"])}</div>
                         </div>
                         <div className={statCls}>
                             <div className={labelCls}>Error ratio</div>
                             <div className={valCls}>{str(health["error_rate"])}</div>
                         </div>
                         <div className={statCls}>
-                            <div className={labelCls}>p95 (s)</div>
-                            <div className={valCls}>{str(health["p95_latency_s"])}</div>
-                        </div>
-                        <div className={statCls}>
-                            <div className={labelCls}>Pods (run/pend/fail)</div>
-                            <div className={valCls}>
-                                {str(health["pods_running"]) + "/" + str(health["pods_pending"]) + "/" + str(health["pods_failed"])}
-                            </div>
-                        </div>
-                        <div className={statCls}>
-                            <div className={labelCls}>Nodes ready</div>
-                            <div className={valCls}>{str(health["nodes_ready"])}</div>
+                            <div className={labelCls}>p95 (ms)</div>
+                            <div className={valCls}>{str(health["p95_ms"])}</div>
                         </div>
                     </div>
                 </div>}
 
-                {(not isLoading) and ok and bool(len(pods))
+                {(not isLoading) and ok and bool(len(endpoints))
                 and <div className={sectionCls}>
                     <div className={headCls}>
-                        <Cpu className="w-4 h-4 text-accent"/>
+                        <Gauge className="w-4 h-4 text-accent"/>
                         <h2 className="text-sm font-medium text-fg">
-                            Pod resource usage
+                            Endpoints (which APIs are having issues)
                         </h2>
                     </div>
                     <table className="w-full">
                         <thead className="bg-surface-2">
                             <tr>
-                                <th className={thCls}>Pod</th>
-                                <th className={thCls}>Status</th>
-                                <th className={thCls}>CPU (cores)</th>
-                                <th className={thCls}>Mem (MB)</th>
-                                <th className={thCls}>Restarts</th>
+                                <th className={thCls}>Endpoint</th>
+                                <th className={thCls}>Calls</th>
+                                <th className={thCls}>p95 (ms)</th>
+                                <th className={thCls}>Error rate</th>
+                                <th className={thCls}>DB calls/req</th>
+                                <th className={thCls}>DB ms/req</th>
                             </tr>
                         </thead>
                         <tbody>
                             {[
-                                <tr key={p["pod"]} className="border-t border-line">
-                                    <td className={tdCls + " font-mono text-xs"}>{p["pod"]}</td>
-                                    <td className={tdCls}>{str(p["status"])}</td>
-                                    <td className={tdCls}>{str(p["cpu_cores"])}</td>
-                                    <td className={tdCls}>{str(p["mem_mb"])}</td>
-                                    <td className={tdCls}>{str(p["restarts"])}</td>
-                                </tr> for p in pods
+                                <tr key={ep["route"]} className="border-t border-line">
+                                    <td className={tdCls + " font-mono text-xs"}>{ep["route"]}</td>
+                                    <td className={tdCls}>{str(ep["calls"])}</td>
+                                    <td className={tdCls}>{str(ep["p95_ms"])}</td>
+                                    <td className={tdCls}>{str(ep["error_rate"])}</td>
+                                    <td className={tdCls}>{str(ep["db_calls_per_req"])}</td>
+                                    <td className={tdCls}>{str(ep["db_ms_per_req"])}</td>
+                                </tr> for ep in endpoints
+                            ]}
+                        </tbody>
+                    </table>
+                </div>}
+
+                {(not isLoading) and ok and bool(len(hotspots))
+                and <div className={sectionCls}>
+                    <div className={headCls}>
+                        <Database className="w-4 h-4 text-accent"/>
+                        <h2 className="text-sm font-medium text-fg">
+                            DB hotspots (heavy calls / N+1)
+                        </h2>
+                    </div>
+                    <table className="w-full">
+                        <thead className="bg-surface-2">
+                            <tr>
+                                <th className={thCls}>Endpoint</th>
+                                <th className={thCls}>Operation</th>
+                                <th className={thCls}>DB</th>
+                                <th className={thCls}>Calls/req</th>
+                                <th className={thCls}>ms/req</th>
+                                <th className={thCls}>N+1</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {[
+                                <tr key={str(h["route"]) + str(h["operation"])} className="border-t border-line">
+                                    <td className={tdCls + " font-mono text-xs"}>{h["route"]}</td>
+                                    <td className={tdCls}>{h["operation"]}</td>
+                                    <td className={tdCls}>{str(h["db_system"])}</td>
+                                    <td className={tdCls}>{str(h["calls_per_req"])}</td>
+                                    <td className={tdCls}>{str(h["ms_per_req"])}</td>
+                                    <td className={tdCls + " text-warning"}>
+                                        {"N+1" if h["n_plus_one"] else ""}
+                                    </td>
+                                </tr> for h in hotspots
                             ]}
                         </tbody>
                     </table>
