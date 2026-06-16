@@ -470,9 +470,14 @@ impl JacConfig.get_build_dir -> Path {
     return base / self.build.dir;
 }
 
-"""Get the bytecode cache directory (.jac/cache)."""
+"""Get the cache directory ([build].dir / [cache].dir, default .jac/cache).
+
+The `[cache] dir` subdirectory name is honored here (defaulting to "cache"),
+so an absolute override relocates the cache wholesale while a relative one
+nests it under the build dir.
+"""
 impl JacConfig.get_cache_dir -> Path {
-    return self.get_build_dir() / "cache";
+    return self.get_build_dir() / self.cache.dir;
 }
 
 """Get the virtual environment directory (.jac/venv)."""
@@ -925,8 +930,7 @@ impl _parse_toml_data(
     if "cache" in data {
         cache_data = data["cache"];
         config.cache = CacheConfig(
-            enabled=cache_data.get("enabled", True),
-            dir=cache_data.get("dir", ".jac_cache")
+            enabled=cache_data.get("enabled", True), dir=cache_data.get("dir", "cache")
         );
     }
     if "storage" in data {

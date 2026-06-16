@@ -143,4 +143,25 @@ The server then exposes `/sso/{platform}/login`, `/sso/{platform}/register`, and
 - Post-login navigation uses `useNavigate()` from `jac-cl-routing` - `nav = useNavigate(); ... nav("/dashboard");` after a successful login.
 - **`jacSignup` does NOT establish a session.** ALWAYS follow with a `jacLogin` call using the same credentials - signup alone leaves the user unauthenticated.
 - **`jacLogin`, `jacSignup`, `jacSsoLogin` are `async` - always `await`. `jacLogout` and `jacIsLoggedIn` are sync - NEVER `await` them.** `await jacLogout()` type-errors; missing `await` on `jacLogin` silently returns a coroutine instead of the result.
+- **Pre-declare any var that holds an `await` result before the assignment.** In `.cl.jac`, `var = await fn()` can compile to a JS `let var = ...` whose scope is tighter than the surrounding function, so a later `if not var { ... }` throws `ReferenceError: var is not defined` at runtime. Compile passes; the page just blanks. Fix: declare the var with a default at the top, then assign.
+
+```
+# FRAGILE - runtime ReferenceError on the if-check
+async def handle_login(email: str, password: str) -> str {
+    ok = await jacLogin(email, password);
+    if not ok { return "failed"; }      # ReferenceError: ok is not defined
+    return "success";
+}
+
+# CORRECT - function-scope let, visible to the if-check
+async def handle_login(email: str, password: str) -> str {
+    ok: bool = False;
+    ok = await jacLogin(email, password);
+    if not ok { return "failed"; }
+    return "success";
+}
+```
+
 - For sharing the current user across components (an auth context with `user`/`setUser`), use the `createContext`/`useContext` pattern in `jac-cl-organization` - a `useAuth()` hook alone does NOT share state between consumers.
+
+For jac-shadcn projects, apply auth handlers inside your `LoginPage.cl.jac` component. The auth card layout pattern (viewport-centered, `max-w-sm`, `min-h-svh`) is in `jac-shadcn-blocks`.

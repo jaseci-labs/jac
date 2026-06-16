@@ -170,6 +170,6 @@ with entry {
 ## Debugging
 
 - `JAC_DUMP_IR=/tmp/out.ll jac nacompile app.na.jac` writes the optimized LLVM IR to a readable `.ll` file.
-- Stale behavior after moving/regenerating files: clear `~/.cache/jac/bytecode/` (Linux; `~/Library/Caches/jac/bytecode/` on macOS) and use `jac nacompile --scrub` to wipe the per-source `.jac_ir` IR cache.
+- Stale behavior after moving/regenerating files: use `jac nacompile --scrub` (or `jac run --no-cache`) to wipe the native IR cache, which lives in the module's cache dir (`.jac/cache/native/`, or the global `~/.cache/jac/jir/` for installed sources).
 - Memory: automatic reference counting, but deep release of nested structures is currently disabled - long-running daemons may leak; bounded-allocation programs are unaffected.
 - Run native test files with `jac test <file>`, not pytest. See `jac-testing` and `jac-debugging`.

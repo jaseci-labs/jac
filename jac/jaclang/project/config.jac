@@ -129,10 +129,14 @@ obj DotConfig {
         format: str = "dot";
 }
 
-"""Cache settings from [cache] section."""
+"""Cache settings from [cache] section.
+
+`dir` is the cache subdirectory name resolved under the build dir by
+`JacConfig.get_cache_dir` (e.g. `.jac/cache`); an absolute path relocates it.
+"""
 obj CacheConfig {
     has enabled: bool = True,
-        dir: str = ".jac_cache";
+        dir: str = "cache";
 }
 
 """Plugin settings from [plugins] section."""

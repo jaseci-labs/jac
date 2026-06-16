@@ -15,10 +15,16 @@ Plugins register templates to provide different project scaffolding
 options for the `jac create` command.
 """
 obj ProjectTemplate {
-    has name: str,  # e.g., "default", "client"
+    has name: str,  # e.g., "cli", "fullstack", "jac-shadcn" (a variant name)
         description: str,  # e.g., "Basic Jac project"
         config: dict[str, any],  # JacConfig-compatible dict for jac.toml
         files: dict[str, str],  # path -> content (with {{name}} placeholders)
+        # The project kind this template scaffolds (one of kinds.VALID_KINDS).
+        # `jac create --kind <kind>` selects the template flagged default for it.
+        kind: str = "cli",
+        # True when this is the canonical template for `kind`; False for named
+        # variants of a kind (e.g. jac-shadcn is a non-default fullstack variant).
+        is_default_for_kind: bool = True,
         directories: list[str] = [],  # directories to create
         root_gitignore_entries: list[str] = [],  # entries for project-root .gitignore
         post_create:
@@ -38,9 +44,12 @@ obj TemplateRegistry {
 
     def register(template_info: dict[str, any]) -> None;
     def get(name: str) -> ProjectTemplate | None;
+    def get_by_kind(kind: str) -> ProjectTemplate | None;
     def get_default -> ProjectTemplate;
     def list_templates -> list[tuple[str, str]];
+    def list_kinds -> list[tuple[str, str]];
     def has_template(name: str) -> bool;
+    def is_empty -> bool;
     def clear -> None;
 }
 

@@ -271,17 +271,10 @@ impl run(
     }
     # Re-discover config from the file's directory (handles absolute paths)
     _discover_config_from_file(filename);
-    # --no-cache: wipe all .jac_ir/ cache directories under the file's source tree.
+    # --no-cache: wipe cached compilation artifacts under the file's source tree.
     if not cache {
-        import glob as _glob;
-        import shutil;
-        _src_root = os.path.dirname(os.path.abspath(filename)) or ".";
-        cache_dirs = _glob.glob(
-            os.path.join(_src_root, "**", ".jac_ir"), recursive=True
-        );
-        for cache_dir in cache_dirs {
-            shutil.rmtree(cache_dir, ignore_errors=True);
-        }
+        import from jaclang.jac0core.jir { scrub_cache_dirs }
+        scrub_cache_dirs(os.path.dirname(os.path.abspath(filename)) or ".");
     }
     # Resolve diagnostics level: CLI flag > jac.toml > default ("error")
     if not diagnostics {

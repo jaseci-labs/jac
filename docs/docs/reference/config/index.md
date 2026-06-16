@@ -358,8 +358,9 @@ Bytecode cache settings:
 
 ```toml
 [cache]
-enabled = true      # Enable caching
-dir = ".jac_cache"  # Cache directory
+enabled = true   # Enable caching
+dir = "cache"    # Cache subdirectory under the build dir (i.e. .jac/cache).
+                 # An absolute path relocates the cache wholesale.
 ```
 
 ---
