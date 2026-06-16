@@ -33,7 +33,15 @@ import from .input { handle_key }
 def _sync_size(state: TuiState) {
     otui_update_size();
     state.term_rows = otui_rows();
-    state.term_cols = otui_cols();
+    # Typed as int so the i32 from otui_cols coerces to the i64 field width
+    # before the comparison below (avoids an i32/i64 IR type mismatch).
+    new_cols: int = otui_cols();
+    # A width change invalidates the wrapped row cache; height does not (only the
+    # number of rows shown changes, which render derives each frame).
+    if new_cols != state.term_cols {
+        state.layout_dirty = True;
+    }
+    state.term_cols = new_cols;
 }
 
 glob args = sys.argv;

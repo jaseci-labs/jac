@@ -152,7 +152,11 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     # internally (before archetype method bodies are codegen'd), so spawn
     # lowering inside abilities can reference the runtime (issue #6146).
     self._register_archetypes(self.ir_in);
-    # Phase 1: Codegen native abilities and entry blocks
+    # Phase 1: Codegen native abilities and entry blocks. Every `with entry`
+    # block is collected and merged into a single jac_entry below (a module may
+    # have several); emitting one function per block would duplicate the
+    # jac_entry symbol and the one-time glob/module-init prologue.
+    _entry_blocks: list = [];
     for stmt in ModuleCodegenPass.iter_context_stmts(self.ir_in, CodeContext.NATIVE) {
         if (
             isinstance(stmt, uni.Ability)
@@ -161,10 +165,13 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
         ) {
             self._codegen_ability(stmt);
         } elif isinstance(stmt, uni.ModuleCode) {
-            self._codegen_entry(stmt);
+            _entry_blocks.append(stmt);
         } elif isinstance(stmt, uni.Test) {
             self._codegen_test(stmt);
         }
+    }
+    if _entry_blocks {
+        self._codegen_entry(_entry_blocks);
     }
     # Store LLVM module on AST
     if self.has_native_code {

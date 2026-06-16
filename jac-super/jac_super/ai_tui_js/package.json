@@ -1,0 +1,15 @@
+{
+  "name": "jac-ai-tui-js",
+  "version": "0.0.0",
+  "private": true,
+  "description": "OpenTUI JS renderer sidecar for `jac ai --tui`, authored in Jac (.cl.jac -> JS).",
+  "type": "module",
+  "scripts": {
+    "build": "python build.py",
+    "test": "bun test ./dist/",
+    "start": "bun run ./dist/main.js"
+  },
+  "dependencies": {
+    "@opentui/core": "0.3.4"
+  }
+}

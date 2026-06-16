@@ -1,11 +1,28 @@
-"""Spawn the NA-native TUI binary as a subprocess sidecar for `jac ai --tui`.
+"""Spawn a TUI renderer sidecar as a subprocess for `jac ai --tui`.
+
+This module is the *backend-agnostic seam* between the Jac/Python agent control
+plane and a renderer sidecar.  The control plane streams UI frames to the
+sidecar's stdin and reads single-line commands back from its stdout.  Which
+renderer is spawned is selected by `JAC_AI_TUI_BACKEND` (default: "js").
+
+Backends:
+  js   OpenTUI renderer authored in Jac under ai_tui_js/  (default)
+  na   Native (nacompile'd) OpenTUI renderer under ai_tui_na/  (fallback)
+
+When the env is unset (js implicit default) and js isn't launchable yet - `bun`
+missing or `ai_tui_js/dist/` not built - the launcher transparently falls back to
+na so `jac ai --tui` keeps working.  An *explicitly* requested backend is never
+overridden; its failure is surfaced as-is.
+
+The wire protocol is identical across backends and is documented authoritatively
+in ai_tui/PROTOCOL.md (frames + commands) and ai_tui/BACKENDS.md (selection).
 
 IPC overview:
-  Python feeds ui_stream() frames to the binary's stdin as key:value lines
-  terminated by "---".  The binary sends single-line commands to Python via
+  Python feeds ui_stream() frames to the sidecar's stdin as key:value lines
+  terminated by "---".  The sidecar sends single-line commands to Python via
   its stdout (SEND:, STOP, RESET, QUIT, APPLY:).
 
-Frame format (Python -> binary):
+Frame format (Python -> sidecar):
   TYPE:full|delta|hb
   STATUS:<str>
   ACTIVE:<str>
@@ -22,31 +39,50 @@ import from jaclang.cli.agent_api { AgentRequest }
 
 impl run_tui_session(req: AgentRequest) -> int {
     import os;
-    import subprocess;
     import threading;
     import from pathlib { Path }
-    import from jaclang.cli.ai_agent {
-        ui_configure,
-        ui_send,
-        ui_stop,
-        ui_reset,
-        ui_apply_settings,
-        ui_stream
-    }
+    import from jaclang.cli.ai_agent { ui_configure, ui_stop, ui_stream }
     import from jaclang.cli.console { console }
 
-    # run_tui_session.jac lives in jac_super/ai_agent/; binary in jac_super/ai_tui_na/
+    # run_tui_session.jac lives in jac_super/ai_agent/; sidecars in jac_super/ai_tui_*/
     pkg_root = Path(__file__).resolve().parent.parent;
-    binary = str(pkg_root / "ai_tui_na" / "bin" / "jac-na-tui");
-
-    if not os.path.exists(binary) {
-        console.error(f"jac-na-tui not found at {binary}");
-        console.error("Build it with:  jac-super/jac_super/ai_tui_na/build.sh");
-        return 1;
-    }
 
     typed_req: AgentRequest = req;
     r: any = typed_req;
+    initial = str(r?.prompt or "").strip();
+
+    backend = _resolve_tui_backend();
+    resolved = _resolve_tui_command(backend, pkg_root, initial);
+
+    # Auto-fallback: when js is the implicit default (env unset) but isn't
+    # launchable - bun missing or dist/ not built - transparently retry na so the
+    # cutover doesn't hard-break environments that haven't built the js sidecar.
+    # An explicitly requested backend is honored even when it fails.
+    explicit_backend = os.environ.get("JAC_AI_TUI_BACKEND", "").strip();
+    if (not resolved.get("ok")) and backend == "js" and (not explicit_backend) {
+        na_resolved = _resolve_tui_command("na", pkg_root, initial);
+        if na_resolved.get("ok") {
+            _debug_log(
+                "js backend unavailable (" + str(resolved.get("error", "")) + "); falling back to na"
+            );
+            console.error(
+                "jac ai TUI: js backend unavailable, falling back to na " + "(set JAC_AI_TUI_BACKEND=js to see the underlying error)."
+            );
+            backend = "na";
+            resolved = na_resolved;
+        }
+    }
+
+    if not resolved.get("ok") {
+        console.error(str(resolved.get("error", "failed to resolve TUI backend")));
+        hint = str(resolved.get("hint", ""));
+        if hint {
+            console.error(hint);
+        }
+        return 1;
+    }
+    cmd_args = resolved.get("cmd_args");
+
     project = os.path.normpath(str(r?.cwd or os.getcwd()));
     os.environ["JAC_AI_UI_PROJECT"] = project;
     os.environ["JAC_AI_UI_MODEL"] = str(r?.model or "");
@@ -54,24 +90,12 @@ impl run_tui_session(req: AgentRequest) -> int {
 
     ui_configure();
 
-    initial = str(r?.prompt or "").strip();
-    cmd_args = [binary];
-    if initial {
-        cmd_args.append(initial);
-    }
-
     try {
-        proc = subprocess.Popen(
-            cmd_args,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-        );
-        _debug_log(f"spawned pid={proc.pid} binary={binary}");
+        proc = _spawn_tui_backend(cmd_args);
+        _debug_log(f"spawned pid={proc.pid} backend={backend} cmd={cmd_args}");
     } except Exception as e {
         _debug_log(f"launch failed: {e}");
-        console.error(f"Failed to launch jac-na-tui: {e}");
+        console.error(f"Failed to launch jac ai TUI backend ({backend}): {e}");
         return 1;
     }
 
@@ -161,6 +185,80 @@ def _debug_log(msg: str) -> None {
             f.write(f"[{stamp}] {msg}\n");
         }
     } except Exception { }
+}
+
+def _resolve_tui_backend -> str {
+    # Select the renderer sidecar via JAC_AI_TUI_BACKEND (default: js).
+    import os;
+
+    backend = os.environ.get("JAC_AI_TUI_BACKEND", "").strip().lower();
+    if not backend {
+        backend = "js";
+    }
+    return backend;
+}
+
+def _resolve_tui_command(backend: str, pkg_root: any, initial: str) -> dict {
+    # Map a backend name to a spawn command, validating its presence.
+    # Returns {ok, cmd_args, error, hint}.  `initial`, when non-empty, is passed
+    # to the sidecar as its first positional arg (the seed prompt).
+    import os;
+
+    if backend == "na" {
+        binary = str(pkg_root / "ai_tui_na" / "bin" / "jac-na-tui");
+        if not os.path.exists(binary) {
+            return {
+                "ok": False,
+                "cmd_args": [],
+                "error": f"jac-na-tui not found at {binary}",
+                "hint": "Build it with:  jac-super/jac_super/ai_tui_na/build.sh",
+
+            };
+        }
+        cmd_args = [binary];
+        if initial {
+            cmd_args.append(initial);
+        }
+        return {"ok": True, "cmd_args": cmd_args, "error": "", "hint": ""};
+    }
+
+    if backend == "js" {
+        # OpenTUI JS sidecar authored in Jac (.cl.jac -> JS via ai_tui_js/build.py).
+        # Runtime defaults to bun; override with JAC_AI_TUI_JS_RUNTIME.
+        runtime = os.environ.get("JAC_AI_TUI_JS_RUNTIME", "").strip() or "bun";
+        entry = str(pkg_root / "ai_tui_js" / "dist" / "main.js");
+        if not os.path.exists(entry) {
+            return {
+                "ok": False,
+                "cmd_args": [],
+                "error": f"jac ai JS TUI sidecar not built at {entry}",
+                "hint": "Build it: (cd jac_super/ai_tui_js && bun install && " + "python build.py), or set JAC_AI_TUI_BACKEND=na.",
+
+            };
+        }
+        cmd_args = [runtime, "run", entry];
+        if initial {
+            cmd_args.append(initial);
+        }
+        return {"ok": True, "cmd_args": cmd_args, "error": "", "hint": ""};
+    }
+
+    return {
+        "ok": False,
+        "cmd_args": [],
+        "error": f"unknown TUI backend: {backend!r}",
+        "hint": "Set JAC_AI_TUI_BACKEND to 'na' or 'js'.",
+
+    };
+}
+
+def _spawn_tui_backend(cmd_args: list) -> any {
+    # Spawn a sidecar with line-buffered text pipes on stdin/stdout.
+    import subprocess;
+
+    return subprocess.Popen(
+        cmd_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1,
+    );
 }
 
 def _esc_text(text: str) -> str {

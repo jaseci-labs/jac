@@ -608,9 +608,14 @@ impl NaIRGenPass._emit_glob_init_func -> None {
 }
 
 """Generate jac_entry() function for with entry { ... } blocks."""
-impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
+impl NaIRGenPass._codegen_entry(nds: list[uni.ModuleCode]) -> None {
     i64 = ir.IntType(64);
     import re;
+    # All `with entry` blocks in a module share one jac_entry: the one-time
+    # glob/module-init prologue is emitted once and the block bodies are
+    # concatenated in source order. nds[0] anchors the subprogram's source loc.
+    nd0 = nds[0];
+    nd_last = nds[len(nds) - 1];
     # Create jac_entry function: void jac_entry()
     fnty = ir.FunctionType(ir.VoidType(), []);
     func = ir.Function(self.llvm_module, fnty, name="jac_entry");
@@ -620,7 +625,7 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
-    entry_line = nd.loc.first_line if nd.loc else 0;
+    entry_line = nd0.loc.first_line if nd0.loc else 0;
     self._attach_di_subprogram(func, "jac_entry", entry_line);
     # Emit __jac_glob_init() (current module) and call it first.
     # This initialises all list/dict globs declared in THIS module before any
@@ -765,9 +770,11 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
             self.builder.position_at_end(_gk_done);
         }
     }
-    # Generate body statements
-    if (nd).body {
-        self._codegen_body((nd).body);
+    # Generate body statements for every `with entry` block, in source order.
+    for nd in nds {
+        if (nd).body {
+            self._codegen_body((nd).body);
+        }
     }
     # Flush all stdio buffers before returning to caller
     if not self.builder.block.is_terminated {
@@ -779,8 +786,8 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
         # release all pointer-typed locals at end of entry block.
         self._emit_scope_cleanup(
             skip_var=None,
-            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
-                if nd.loc
+            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd_last.loc.last_line
+                if nd_last.loc
                 else 0}"
         );
         # Emit live-objects dump (only if debug was enabled at runtime).

@@ -1,6 +1,8 @@
 """Regression tests for the `jac ai --tui` sidecar command bridge."""
 
 import importlib;
+import os;
+import from pathlib { Path }
 import jaclang.cli.ai_agent as ai_mod;
 
 
@@ -70,4 +72,59 @@ test "QUIT dispatch resolves ui_stop and tears down the sidecar" {
     }
 
     assert seen == ["stop"] , f"expected QUIT to call ui_stop exactly once; seen={seen!r}";
+}
+
+
+test "backend defaults to js and normalizes case" {
+    tui_mod = importlib.import_module("jac_super.ai_agent.run_tui_session");
+    resolve_backend = getattr(tui_mod, "_resolve_tui_backend");
+    old = os.environ.get("JAC_AI_TUI_BACKEND");
+    try {
+        os.environ.pop("JAC_AI_TUI_BACKEND", None);
+        assert resolve_backend() == "js" , "empty env must default to js";
+        os.environ["JAC_AI_TUI_BACKEND"] = "  NA  ";
+        assert resolve_backend() == "na" , "backend must be trimmed and lowercased";
+    } finally {
+        if old is None {
+            os.environ.pop("JAC_AI_TUI_BACKEND", None);
+        } else {
+            os.environ["JAC_AI_TUI_BACKEND"] = old;
+        }
+    }
+}
+
+
+test "command resolution reports missing backends and unknown names" {
+    tui_mod = importlib.import_module("jac_super.ai_agent.run_tui_session");
+    resolve_cmd = getattr(tui_mod, "_resolve_tui_command");
+    # run_tui_session lives in jac_super/ai_agent/; the sidecars are in
+    # jac_super/ai_tui_*/, so pkg_root is jac_super/ (mirrors the launcher's own
+    # `Path(__file__).resolve().parent.parent`).
+    pkg_root = Path(tui_mod.__file__).resolve().parent.parent;
+
+    # Unknown backend never resolves.
+    bogus = resolve_cmd("bogus", pkg_root, "");
+    assert not bogus["ok"] , "unknown backend must not resolve";
+    assert "unknown TUI backend" in bogus["error"];
+
+    # JS sidecar resolves to the built dist/main.js when present; otherwise it
+    # fails gracefully with a build hint pointing back at na.
+    js = resolve_cmd("js", pkg_root, "seed prompt");
+    if js["ok"] {
+        assert js["cmd_args"][-1] == "seed prompt" , "initial prompt must be last arg";
+        assert js["cmd_args"][0] != "" , "js runtime must be set";
+        assert js["cmd_args"][1] == "run" , "js spawn form is `<runtime> run <entry> [seed]`";
+        assert js["cmd_args"][2].endswith("dist/main.js") , "js entry must be the built dist/main.js";
+    } else {
+        assert "JAC_AI_TUI_BACKEND=na" in js["hint"];
+    }
+
+    # na resolution depends only on the built binary; when present, the seed
+    # prompt is threaded through as the first positional arg.
+    na = resolve_cmd("na", pkg_root, "seed prompt");
+    if na["ok"] {
+        assert na["cmd_args"][-1] == "seed prompt" , "initial prompt must be last arg";
+    } else {
+        assert "jac-na-tui not found" in na["error"];
+    }
 }

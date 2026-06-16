@@ -7,6 +7,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# ── resolve the jaclang to build with ───────────────────────────────────────
+# Prefer the repo's editable jaclang (the venv at the repo root) over any global
+# `jac` on PATH — a global uv-tool install can be stale and miss compiler fixes
+# this TUI depends on (e.g. multi-`with entry` codegen).
+REPO_VENV="$SCRIPT_DIR/../../../.venv"
+if [ -x "$REPO_VENV/bin/python" ]; then
+    JAC=("$REPO_VENV/bin/python" -m jaclang)
+    echo "==> Using repo jaclang: $REPO_VENV/bin/python -m jaclang"
+else
+    JAC=(jac)
+    echo "==> Using jac on PATH (no repo .venv found)"
+fi
+
 # ── locate libopentui.so ────────────────────────────────────────────────────
 OPENTUI_SO=$(find ~/.bun -name "libopentui.so" -path "*linux-x64*" 2>/dev/null | head -1 || true)
 if [ -z "$OPENTUI_SO" ]; then
@@ -31,7 +44,7 @@ gcc -O2 -shared -fPIC \
 
 # ── FFI tests ───────────────────────────────────────────────────────────────
 echo "==> Running FFI scalar tests ..."
-jac nacompile test_ffi.na.jac -o bin/test_ffi
+"${JAC[@]}" nacompile test_ffi.na.jac -o bin/test_ffi
 cp libtui_helpers.so libopentui_shim.so libopentui.so bin/
 echo "--- FFI test output ---"
 bin/test_ffi 2>&1 || true
@@ -39,7 +52,7 @@ echo "--- end FFI test ---"
 
 # ── build main NA binary ────────────────────────────────────────────────────
 echo "==> Compiling jac-na-tui ..."
-jac nacompile tui.na.jac -o bin/jac-na-tui
+"${JAC[@]}" nacompile tui.na.jac -o bin/jac-na-tui
 
 # ── deploy all .so files next to binary ─────────────────────────────────────
 echo "==> Deploying shared libraries to bin/ ..."
