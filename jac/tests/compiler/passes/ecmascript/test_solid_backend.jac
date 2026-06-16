@@ -28,6 +28,10 @@ import jaclang.compiler.passes.ecmascript.estree as es;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.project.config { JacConfig, ClientConfig, set_config }
 import from jaclang.runtimelib.solid_entry { build_simple_solid_entry_script }
+import from jaclang.runtimelib.runtime_source {
+    client_runtime_cl_basename,
+    resolve_client_runtime_cl_path
+}
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURES = os.path.join(
@@ -197,4 +201,79 @@ test "solid entry script renders via solid-js/web" {
     assert "createRoot" not in script;
     assert "render(() => h(App, {}), __jacMountEl)" in script;
     assert 'getElementById("__jac_root")' in script;
+}
+
+test "solid selects its own framework-free runtime shim" {
+    # Solid must NOT ride the React-flavored `client_runtime.cl.jac`; it has its
+    # own shim that re-exports the shared core with a `solid-js/h`-backed
+    # __jacJsx and zero React imports. This overrides the basename inherited
+    # from ReactBackend.
+    assert SolidBackend().runtime_source_basename() == "solid_runtime.cl.jac";
+    assert client_runtime_cl_basename("solid") == "solid_runtime.cl.jac";
+    path = resolve_client_runtime_cl_path("solid");
+    assert path.endswith("solid_runtime.cl.jac");
+    assert os.path.isfile(path);
+}
+
+test "solid needs no vite aliases (no react remapping)" {
+    # Unlike Preact (react -> preact/compat), Solid imports no React package, so
+    # the bundler needs no module remapping.
+    assert SolidBackend().vite_aliases() == {};
+}
+
+test "solid runtime shim compiles and links its impl bodies" {
+    # Compile the real Solid runtime (shim + its `impl/` annex) the way the
+    # bundler does and assert the bodies actually link — a parse error or an
+    # unlinked impl would surface here as an empty `__jacJsx`/`navigate` body,
+    # which the text-only purity scan above cannot catch.
+    rt = resolve_client_runtime_cl_path("solid");
+    prog = JacProgram();
+    ir = prog.compile(file_path=rt, no_cgen=True);
+    assert not prog.errors_had , (
+        f"Solid runtime failed to compile: {[str(e) for e in prog.errors_had]}"
+    );
+    assert len(ir.impl_mod) >= 1 , "Solid runtime impl annex was not linked";
+    js = es_to_js(
+        EsastGenPass(ir_in=ir, prog=prog, backend=SolidBackend()).ir_out.gen.es_ast
+    );
+    # __jacJsx has a real body that targets Solid's hyperscript runtime.
+    assert "function __jacJsx(" in js;
+    assert "childrenArray" in js , "__jacJsx body did not link";
+    assert "createElement" not in js , "Solid __jacJsx must not use React.createElement";
+    # Public surface forwards to the framework-agnostic core.
+    assert "_navigate(path)" in js , "navigate forwarder did not link";
+    assert "jacIsLoggedIn" in js;
+}
+
+test "solid runtime shim imports no react ecosystem package" {
+    # The whole point of the runtime split: a Solid build must never resolve
+    # react / react-router-dom / react-hook-form. Statically scan the shim
+    # source (and its impl) for any React-ecosystem import.
+    runtime_dir = Path(resolve_client_runtime_cl_path("solid")).parent;
+    sources = [
+        runtime_dir / "solid_runtime.cl.jac",
+        runtime_dir / "impl" / "solid_runtime.impl.jac"
+    ];
+    forbidden = [
+        "react",
+        "react-dom",
+        "react-router-dom",
+        "react-hook-form",
+        "react-error-boundary",
+        "@hookform"
+    ];
+    for src in sources {
+        assert src.is_file() , f"missing Solid runtime source: {src}";
+        for ln in src.read_text(encoding="utf-8").splitlines() {
+            stripped = ln.strip();
+            if not stripped.startswith("import") {
+                continue;
+            }
+            for pkg in forbidden {
+                assert f"'{pkg}'" not in stripped and f'"{pkg}"' not in stripped , (
+                    f"Solid runtime must not import '{pkg}': {stripped}"
+                );
+            }
+        }
+    }
 }

@@ -37,6 +37,14 @@ impl SolidBackend.import_source(symbol: str) -> str {
     return "@jac/runtime";
 }
 
+"""Solid uses its own framework-free runtime shim (`solid_runtime.cl.jac`),
+which re-exports the shared core but supplies a `solid-js/h`-backed `__jacJsx`
+and pulls in no React ecosystem package. Overrides the React/Preact basename
+inherited from ReactBackend."""
+impl SolidBackend.runtime_source_basename -> str {
+    return "solid_runtime.cl.jac";
+}
+
 """Hyperscript runtime (`solid-js/h`) needs no JSX-compiler Vite plugin."""
 impl SolidBackend.vite_plugin_lines -> (tuple[str, str] | None) {
     return None;

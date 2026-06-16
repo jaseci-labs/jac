@@ -42,6 +42,8 @@ obj SolidBackend(ReactBackend) {
     def async_boundary_symbols(a: AsyncBoundary) -> list[str];
     # Runtime/platform surface.
     def import_source(symbol: str) -> str;
+    # Selects the Solid-flavored runtime shim (re-exports the same core, no React).
+    def runtime_source_basename -> str;
     def vite_plugin_lines -> (tuple[str, str] | None);
     def build_entry_script(
         entry_module: str, install_global_handlers: bool = True
