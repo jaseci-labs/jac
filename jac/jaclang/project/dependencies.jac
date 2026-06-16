@@ -26,7 +26,7 @@ obj DependencyInstaller {
         verbose: bool = False,
         install_flags: list[str] | None = None,
         use_uv: bool = True,
-        _warned_prefer_binary: bool = False;
+        _warned_uv_flag_drop: bool = False;
 
     def postinit -> None;
     def ensure_venv -> None;
@@ -55,7 +55,12 @@ obj DependencyResolver {
 }
 
 """Build a pip-equivalent command for the given interpreter, preferring `uv pip` when available."""
-def pip_command(python: str, args: list[str], use_uv: bool = True) -> list[str];
+def pip_command(
+    python: str,
+    args: list[str],
+    use_uv: bool = True,
+    warn_fn: (Callable[[str], None] | None) = None
+) -> list[str];
 
 def get_venv_site_packages(venv_dir: Path) -> Path;
 

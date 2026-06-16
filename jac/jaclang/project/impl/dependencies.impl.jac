@@ -78,20 +78,22 @@ impl DependencyInstaller.ensure_venv -> None {
     }
 }
 
+"""Flags that pip accepts but uv pip does not support, mapped to their uv equivalent or None if dropped."""
+glob _UV_FLAG_MAP: dict[str, str | None] = {
+         "-y": None,
+         "--force-reinstall": "--reinstall",
+         "--no-cache-dir": "--no-cache",
+         "--pre": "--prerelease=allow",
+         "--prefer-binary": None,
+
+     };
+
 """Translate pip-only flags to their `uv pip` equivalents, dropping any without a counterpart."""
 def _pip_flags_for_uv(args: list[str]) -> list[str] {
-    rename: dict[str, str | None] = {
-        "-y": None,
-        "--force-reinstall": "--reinstall",
-        "--no-cache-dir": "--no-cache",
-        "--pre": "--prerelease=allow",
-        "--prefer-binary": None,
-
-    };
     translated: list[str] = [];
     for arg in args {
-        if arg in rename {
-            mapped = rename[arg];
+        if arg in _UV_FLAG_MAP {
+            mapped = _UV_FLAG_MAP[arg];
             if mapped is not None {
                 translated.append(mapped);
             }
@@ -102,7 +104,12 @@ def _pip_flags_for_uv(args: list[str]) -> list[str] {
     return translated;
 }
 
-impl pip_command(python: str, args: list[str], use_uv: bool = True) -> list[str] {
+impl pip_command(
+    python: str,
+    args: list[str],
+    use_uv: bool = True,
+    warn_fn: (Callable[[str], None] | None) = None
+) -> list[str] {
     import shutil;
     # Prefer uv's pip-compatible interface (much faster resolver/installer);
     # fall back to the interpreter's own pip when uv isn't on PATH or disabled.
@@ -110,8 +117,19 @@ impl pip_command(python: str, args: list[str], use_uv: bool = True) -> list[str]
     # `and args` guards against an empty args list to avoid IndexError on args[0].
     if uv_path and args {
         subcommand = args[0];
+        rest = args[1:];
+        if warn_fn is not None {
+            for arg in rest {
+                if _UV_FLAG_MAP.get(arg) is None and arg in _UV_FLAG_MAP {
+                    warn_fn(
+                        f"  note: {arg} has no uv equivalent and will be ignored"
+                        " (pass --no-uv or set JAC_NO_UV=1 to keep it)"
+                    );
+                }
+            }
+        }
         return [uv_path, "pip", subcommand, "--python", python] + _pip_flags_for_uv(
-            args[1:]
+            rest
         );
     }
     return [python, "-m", "pip"] + args;
@@ -126,17 +144,19 @@ impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
     } else {
         venv_python = str(self.venv_dir / "bin" / "python");
     }
-    # Warn once when --prefer-binary is requested but uv has no equivalent,
-    # so users know their flag was silently dropped rather than honoured.
-    if self.use_uv and "--prefer-binary" in args and not self._warned_prefer_binary {
-        self._warned_prefer_binary = True;
-        console.print(
-            "  note: --prefer-binary has no uv equivalent and will be ignored"
-            " (pass --no-uv or set JAC_NO_UV=1 to keep it)",
-            style="muted"
-        );
+    # Warn once per installer instance when a flag is silently dropped by uv.
+    def _warn_once(msg: str) {
+        if not self._warned_uv_flag_drop {
+            self._warned_uv_flag_drop = True;
+            console.print(msg, style="muted");
+        }
     }
-    cmd = pip_command(venv_python, args, use_uv=self.use_uv);
+    cmd = pip_command(
+        venv_python,
+        args,
+        use_uv=self.use_uv,
+        warn_fn=_warn_once if self.use_uv else None
+    );
     if self.verbose {
         console.print(f"Running: {' '.join(cmd)}");
     }
