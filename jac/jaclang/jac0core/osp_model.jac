@@ -18,16 +18,25 @@ import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 
 
 """Globally-stable OSP type tag: deterministic 64-bit FNV-1a hash of the
-archetype name, masked to a non-negative i63 (so it is never the -1 UNTYPED /
-generic-edge sentinel). The single definition shared by every backend, so a
-shared archetype gets the SAME tag wherever it is compiled -- the cross-module
-materialization #6642 needs, without position-based numbering."""
+archetype name, masked to a non-negative 53-bit value (so it is never the -1
+UNTYPED / generic-edge sentinel). The single definition shared by every backend,
+so a shared archetype gets the SAME tag wherever it is compiled -- the
+cross-module materialization #6642 needs, without position-based numbering.
+
+53 bits, not the full i63: the ECMAScript backend stores tags as a JS `Number`
+(IEEE-754 double, 53-bit mantissa), which silently rounds any integer above
+2^53. Keeping every tag <= 2^53-1 makes it exactly representable in JS, so the
+compile-time collision check in `OspAnalysis.compute` operates on the SAME values
+the JS runtime sees -- otherwise two names whose i63 hashes differ only in their
+low bits would pass the Python check yet collide (and mis-dispatch) in JS. The
+native (i64) backend is unaffected. 53 bits still leaves collisions
+astronomically unlikely for any realistic archetype count."""
 def stable_osp_tag(name: str) -> int {
     _h = 14695981039346656037;
     for _c in name {
         _h = ((_h ^ ord(_c)) * 1099511628211) & 18446744073709551615;
     }
-    return _h & 9223372036854775807;
+    return _h & 9007199254740991;
 }
 
 
@@ -51,6 +60,7 @@ obj OspModel {
     has arch_kind: dict[(str, str)] = field(default_factory=`dict),
         tags: dict[(str, int)] = field(default_factory=`dict),
         order: list[str] = field(default_factory=`list),
+        order_index: dict[(str, int)] = field(default_factory=`dict),
         isa: dict[(str, list[str])] = field(default_factory=`dict),
         slots: list[OspSlot] = field(default_factory=`list),
         collisions: list[(str, str)] = field(default_factory=`list),
@@ -81,12 +91,11 @@ obj OspModel {
     }
 
     """Dense local index of `name` in `order` (the per-compile descriptor / is_a
-    table index), or -1 when `name` is not a tagged OSP archetype."""
+    table index), or -1 when `name` is not a tagged OSP archetype. O(1) via the
+    `order_index` reverse map built once in `compute` (called per ancestor of
+    every archetype, so a per-call `order.index()` scan would be O(N^2))."""
     def local_index(name: str) -> int {
-        if name in self.order {
-            return self.order.index(name);
-        }
-        return -1;
+        return self.order_index.get(name, -1);
     }
 
     """Stable trigger tags for a slot: [-1] (UNTYPED) when the trigger is
@@ -250,6 +259,7 @@ obj OspAnalysis {
             }
             _by_tag[_tag] = _name;
             model.tags[_name] = _tag;
+            model.order_index[_name] = len(model.order);
             model.order.append(_name);
         }
         # Subtype is_a closure over the OSP set; dispatch slots per archetype.
@@ -298,7 +308,9 @@ obj OspAnalysis {
     ) -> bool {
         roots: list = list(ModuleCodegenPass.iter_context_stmts(module, context));
         for annex in list(module.impl_mod) + list(module.variant_mod) {
-            roots.extend(annex.body);
+            if annex.body is not None {
+                roots.extend(annex.body);
+            }
         }
         for stmt in roots {
             work: list = [stmt];
