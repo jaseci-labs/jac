@@ -30,7 +30,21 @@ obj MicroserviceManifestBuilder {
     has k8s_config: KubernetesConfig,
         secrets: dict[str, str] = {},
         deploy_context: DeployContext = DeployContext(),
+        # The [plugins.scale.microservices] block to render from. Empty ->
+        # fall back to the running process's jac.toml (the `jac start --scale`
+        # case, where the process IS the app). A platform deploying a
+        # DIFFERENT app (jacBuilder) injects the target app's block here so
+        # the manifests reflect the app, not the deployer's own config.
+        microservices_config: dict[str, any] = {},
         logger: any = None;
+
+    """Resolve the microservices config: the injected block if set, else
+    the running process's jac.toml. Single source for every read below."""
+    def _ms_cfg -> dict[str, any] {
+        import from jac_scale.config_loader { get_scale_config }
+        return self.microservices_config
+        or get_scale_config().get_microservices_config();
+    }
 
     """Lift pod-specs into full Deployment + Service + HPA + PDB
     bundle. Returns `{deployments, services, autoscalers, pdbs, pod_specs}`,
@@ -72,8 +86,7 @@ obj MicroserviceManifestBuilder {
             bundle["user_secret"] = user_secret;
         }
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             ingress_cfg: dict[str, any] = ms_cfg.get("ingress", {});
         } except Exception {
             ingress_cfg = {};
@@ -113,8 +126,7 @@ obj MicroserviceManifestBuilder {
     ) -> dict[str, dict[str, any]] {
         app_name = app_config.app_name or self.k8s_config.app_name;
 
-        import from jac_scale.config_loader { get_scale_config }
-        ms_cfg = get_scale_config().get_microservices_config();
+        ms_cfg = self._ms_cfg();
         routes: dict[str, str] = ms_cfg.get("routes", {});
 
         if not routes {
@@ -149,8 +161,7 @@ obj MicroserviceManifestBuilder {
     """drain_timeout_seconds (default 10s); sizes terminationGracePeriodSeconds."""
     def _drain_timeout -> int {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return int(ms_cfg.get("drain_timeout_seconds", 10));
         } except Exception {
             return 10;
@@ -160,8 +171,7 @@ obj MicroserviceManifestBuilder {
     """Per-service config from [...services.NAME]; {} on read failure."""
     def _service_config(svc_name: str) -> dict[str, any] {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return dict(ms_cfg.get("services", {}).get(svc_name, {}));
         } except Exception {
             return {};
@@ -172,8 +182,7 @@ obj MicroserviceManifestBuilder {
     for single-node dev. `services` may include `__gateway__`."""
     def _shared_volumes_config -> list[dict[str, any]] {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             raw = ms_cfg.get("shared_volumes", []);
             if not isinstance(raw, list) {
                 return [];
@@ -335,8 +344,7 @@ obj MicroserviceManifestBuilder {
     _build_env for `JAC_SV_<PEER>_URL` injection. Returns {} on read failure."""
     def _microservice_routes -> dict[str, str] {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return dict(ms_cfg.get("routes", {}));
         } except Exception {
             return {};
@@ -367,15 +375,21 @@ obj MicroserviceManifestBuilder {
         env: list[dict[str, any]] = [
             {"name": "JAC_SV_NAME", "value": svc_name},
             {"name": "K8S_APP_NAME", "value": self.k8s_config.app_name},
-            {"name": "K8S_NAMESPACE", "value": self.k8s_config.namespace}
+            {"name": "K8S_NAMESPACE", "value": self.k8s_config.namespace},
+            # POD_NAMESPACE via the downward API so in_cluster_namespace()
+            # resolves the ACTUAL namespace the pod runs in, not the "default"
+            # fallback. Peer DNS (`<svc>-service.<ns>.svc.cluster.local`) is
+            # built from this; without it a non-default namespace never
+            # resolves siblings (G2 of #6728).
+            {
+                "name": "POD_NAMESPACE",
+                "valueFrom": {"fieldRef": {"fieldPath": "metadata.namespace"}}
+            }
         ];
 
         # When tracing is enabled, point pods at the in-cluster Alloy OTLP
         # receiver. Added before user env so a per-service override wins.
-        import from jac_scale.config_loader { get_scale_config }
-        ms_trace_cfg: dict = dict(
-            get_scale_config().get_microservices_config().get("tracing", {})
-        );
+        ms_trace_cfg: dict = dict(self._ms_cfg().get("tracing", {}));
         if ms_trace_cfg.get("enabled", False) {
             env.append(
                 {

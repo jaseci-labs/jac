@@ -53,7 +53,20 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # path. Test path keeps them False -> parent KubernetesTarget
         # behavior (build_via_registry / python_image fallback).
         auto_build: bool = False,
-        guard_fallback_image: bool = False;
+        guard_fallback_image: bool = False,
+        # The app's [plugins.scale.microservices] block. Empty -> read the
+        # running process's jac.toml (the `jac start --scale` case). A
+        # platform deploying a DIFFERENT app (jacBuilder) injects the target
+        # app's block so this target deploys the app, not the deployer's own
+        # config (G4 of #6728). Threaded into MicroserviceManifestBuilder.
+        microservices_config: dict[str, any] = {};
+
+    """Resolve the microservices config: the injected block if set, else the
+    running process's jac.toml. Single source for every read in this target."""
+    def _ms_cfg -> dict[str, any] {
+        return self.microservices_config
+        or get_scale_config().get_microservices_config();
+    }
 
     """Auto-build path when `auto_build=True`: prefer user's pre-built
     docker_image_name, else auto_build_and_distribute. Else parent behavior."""
@@ -81,12 +94,22 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     fleet via code-sync (base image + code-server) instead of a built image."""
     def _code_inject_enabled -> bool {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
-            return bool(ms_cfg.get("code_inject", False));
+            return bool(self._ms_cfg().get("code_inject", False));
         } except Exception {
             return False;
         }
+    }
+
+    """Per-pod entrypoint tail for code-injection mode: export
+    JAC_SV_SIBLING=1 (so the sibling does NOT re-enter microservice
+    orchestration and spawn its own fleet) then dispatch on JAC_SV_NAME -
+    gateway runs `jac scale gateway`, a service runs `jac start <svc>.jac`.
+    Mirrors MicroserviceManifestBuilder._pod_entrypoint (built-image path)."""
+    def _code_inject_dispatch -> str {
+        return 'export JAC_SV_SIBLING=1 && '
+        'if [ "$JAC_SV_NAME" = "__gateway__" ]; then '
+        "exec jac scale gateway; "
+        'else exec jac start "${JAC_SV_NAME}.jac"; fi';
     }
 
     """Reads image_registry from raw config (KubernetesConfig.from_dict
@@ -174,12 +197,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 vc = self._build_volumes_config(
                     app_name, app_config, self.k8s_config.namespace, core_v1, apps_v1
                 );
-                dispatch: str = 'if [ "$JAC_SV_NAME" = "__gateway__" ]; then '
-                "exec jac scale gateway; "
-                'else exec jac start "${JAC_SV_NAME}.jac"; fi';
-                cmd = self._build_runtime_setup_command(
-                    app_config, start_command=dispatch
-                );
+                dispatch: str = self._code_inject_dispatch();
                 ctx = self._deploy_context;
                 ctx.init_containers = list(ctx.init_containers) + [
                     vc["build_container"]
@@ -190,7 +208,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     {"name": "tmp", "mountPath": "/tmp"}
                 ];
                 ctx.image_override = self.k8s_config.python_image;
-                ctx.entrypoint_command = cmd[2];
+                ctx.entrypoint_command = self._build_runtime_setup_script(
+                    app_config, start_command=dispatch
+                );
             } except Exception as e {
                 return DeploymentResult(
                     success=False, message=f"code-injection setup failed: {e}"
@@ -378,7 +398,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     failure (missing block, malformed TOML, loader exception)."""
     def _read_microservices_logs_config -> dict[str, Any] {
         try {
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return dict(ms_cfg.get("logs", {}));
         } except Exception as e {
             if self.logger {
@@ -395,7 +415,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     failure (missing block, malformed TOML, loader exception)."""
     def _read_microservices_tracing_config -> dict[str, Any] {
         try {
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return dict(ms_cfg.get("tracing", {}));
         } except Exception as e {
             if self.logger {
@@ -441,6 +461,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             k8s_config=self.k8s_config,
             secrets=self.secrets,
             deploy_context=self._deploy_context,
+            microservices_config=self.microservices_config,
             logger=self.logger
         );
         return builder.generate_manifests(app_config, image);

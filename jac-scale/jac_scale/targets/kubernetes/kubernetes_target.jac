@@ -185,6 +185,19 @@ obj KubernetesTarget(DeploymentTarget) {
     def _build_runtime_setup_command(
         app_config: AppConfig, start_command: str = ""
     ) -> list[str] {
+        return [
+            'bash',
+            '-c',
+            self._build_runtime_setup_script(app_config, start_command)
+        ];
+    }
+
+    """The `&&`-chained runtime-setup script (without the `bash -c` wrapper).
+    Split out so callers needing the raw string - the microservice
+    code-injection entrypoint - don't index into the returned arg list."""
+    def _build_runtime_setup_script(
+        app_config: AppConfig, start_command: str = ""
+    ) -> str {
         config = self.k8s_config;
         commands = [];
 
@@ -311,9 +324,7 @@ obj KubernetesTarget(DeploymentTarget) {
         commands.append(start_command or f"jac start {app_config.file_name}");
 
         # Join all commands
-        full_command = ' && '.join(commands);
-
-        return ['bash', '-c', full_command];
+        return ' && '.join(commands);
     }
 
     """Build container configuration."""

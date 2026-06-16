@@ -5,6 +5,9 @@ import from jac_scale.targets.kubernetes.microservice.manifest_builder {
     MicroserviceManifestBuilder
 }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.targets.kubernetes.microservice.target {
+    KubernetesMicroserviceTarget
+}
 import from jac_scale.abstractions.models.deploy_context { DeployContext }
 
 
@@ -14,7 +17,7 @@ test "build_env injects K8S_APP_NAME and K8S_NAMESPACE from k8s_config" {
 
     env = builder._build_env("orders", {});
 
-    pairs = {entry["name"]: entry["value"] for entry in env};
+    pairs = {entry["name"]: entry.get("value") for entry in env};
     assert pairs.get("JAC_SV_NAME") == "orders";
     assert pairs.get("K8S_APP_NAME") == "jac-shop";
     assert pairs.get("K8S_NAMESPACE") == "jac-shop-dev";
@@ -57,7 +60,7 @@ test "pod spec surfaces JAC_IMAGE_REF with the resolved content-addressed image"
     container = spec["containers"][0];
 
     assert container["image"] == "jac-shop:dev-abc123def456";
-    pairs = {entry["name"]: entry["value"] for entry in container["env"]};
+    pairs = {entry["name"]: entry.get("value") for entry in container["env"]};
     assert pairs.get("JAC_IMAGE_REF") == "jac-shop:dev-abc123def456";
 }
 
@@ -124,4 +127,62 @@ test "no code-injection context keeps the built image and JAC_SV_NAME entrypoint
 
     assert container["image"] == "jac-shop:dev-abc123";
     assert "JAC_SV_NAME" in container["args"][0];
+}
+
+
+# G2 of #6728: in_cluster_namespace() builds peer DNS from POD_NAMESPACE;
+# without the downward-API entry it falls back to "default" and a
+# non-default namespace never resolves siblings.
+test "every pod gets POD_NAMESPACE via the downward API (G2)" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="jb-abc-shop");
+    builder = MicroserviceManifestBuilder(k8s_config=cfg);
+
+    for svc in ["orders", "__gateway__"] {
+        spec = builder._build_service_pod_spec(svc, "jac-shop:dev-abc123");
+        container = spec["containers"][0];
+        pod_ns = [
+            e
+            for e in container["env"]
+            if e["name"] == "POD_NAMESPACE"
+        ];
+        assert len(pod_ns) == 1;
+        assert "value" not in pod_ns[0];
+        assert pod_ns[0]["valueFrom"]["fieldRef"]["fieldPath"] == "metadata.namespace";
+    }
+}
+
+
+# A0 / greptile fix on #6730: the code-injection dispatch must export
+# JAC_SV_SIBLING=1, else every sibling pod re-enters orchestration and
+# tries to spawn its own fleet.
+test "code-injection dispatch exports JAC_SV_SIBLING and dispatches on JAC_SV_NAME" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="jac-shop-dev");
+    t = KubernetesMicroserviceTarget(config=cfg);
+
+    dispatch = t._code_inject_dispatch();
+    assert "export JAC_SV_SIBLING=1" in dispatch;
+    assert "exec jac scale gateway" in dispatch;
+    assert 'exec jac start "${JAC_SV_NAME}.jac"' in dispatch;
+}
+
+
+# G4 of #6728: a platform deploying a DIFFERENT app injects that app's
+# config; with it set, the process jac.toml is never consulted.
+test "injected microservices_config overrides the process config (G4)" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="jac-shop-dev");
+    injected = {"routes": {"orders": "/api/orders"}, "code_inject": True};
+    builder = MicroserviceManifestBuilder(
+        k8s_config=cfg, microservices_config=injected
+    );
+
+    assert builder._ms_cfg() == injected;
+
+    t_on = KubernetesMicroserviceTarget(
+        config=cfg, microservices_config={"code_inject": True}
+    );
+    assert t_on._code_inject_enabled() == True;
+    t_off = KubernetesMicroserviceTarget(
+        config=cfg, microservices_config={"code_inject": False}
+    );
+    assert t_off._code_inject_enabled() == False;
 }

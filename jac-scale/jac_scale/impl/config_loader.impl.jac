@@ -522,6 +522,11 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
             'dist_dir': client_config.get('dist_dir', '.jac/client/dist'),
             'base_route': client_config.get('base_route', '/')
         },
+        # Code-injection deploy: when true, the K8s microservice target
+        # deploys the fleet from a base image + code-server (no per-app image
+        # build), reusing the monolith Dockerless path. Lets code-sync
+        # platforms (jacBuilder) deploy an sv-import app without building one.
+        'code_inject': bool(ms_config.get('code_inject', False)),
         # Ingress block. Pass through opaquely so K8s target sees
         # whatever the user wrote (host / ingress_class_name / annotations).
         'ingress': dict(ms_config.get('ingress', {})),
