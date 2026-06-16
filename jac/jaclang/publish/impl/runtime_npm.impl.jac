@@ -26,6 +26,11 @@ impl runtime_api_names -> set {
     ) {
         names.add(m.group(1));
     }
+    # Multi-line `glob` blocks list further bindings on indented continuation
+    # lines (`     foo = bar,`). The header regex above only captures the first.
+    for m in re.finditer(r"(?m)^\s+([A-Za-z_][A-Za-z0-9_]*)\s*=", text) {
+        names.add(m.group(1));
+    }
     _api_names_cache = names;
     return names;
 }
