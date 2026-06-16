@@ -317,10 +317,10 @@ async def collect_trace_exemplars(
     # multi-second LLM call is the slowest trace and it diagnoses itself.
     app_traces: list = [];
     for t in summaries {
-        root = str(t.get("rootTraceName", "") or "").lower();
+        root_name = str(t.get("rootTraceName", "") or "").lower();
         is_op = False;
         for p in ["/admin/", "/metrics", "/healthz", "/readyz", "/livez"] {
-            if p in root {
+            if p in root_name {
                 is_op = True;
             }
         }
