@@ -11,9 +11,7 @@ import from jaclang.cli.console { console }
 # jac.toml). Detected in the emitted Python and added to requirements.txt so
 # `pip install` produces a runnable backend.
 glob _IMPLICIT_PY_DEPS: dict = {
-         "byllm": "byllm",
-         "jac_cloud": "jac-cloud",
-         "jac_client": "jac-client"
+         "byllm": "byllm"
      };
 
 
@@ -137,7 +135,7 @@ def _first_duplicate(names: list) -> str {
 
 
 """Scan emitted backend Python for imports of known jaclang companion
-packages (byllm, jac-cloud, ...) and return the pip names to add."""
+packages (byllm, ...) and return the pip names to add."""
 def _detect_plugins(codes: list) -> list {
     found: set = set();
     for code in codes {
