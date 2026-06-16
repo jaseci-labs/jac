@@ -593,7 +593,7 @@ impl install(
         cmd: list[str] = pip_command(
             sys.executable,
             ["install", "--upgrade"] + install_flags + packages,
-            use_uv=not no_uv,
+            use_uv=not no_uv and not bool(os.environ.get("JAC_NO_UV")),
             warn_fn=_warn
         );
         if verbose {
