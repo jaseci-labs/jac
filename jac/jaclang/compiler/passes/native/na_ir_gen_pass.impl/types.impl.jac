@@ -507,7 +507,16 @@ impl NaIRGenPass._emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.T
 """Resolve a type for C library declarations -- clib structs use value types, not pointers."""
 impl NaIRGenPass._resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
-        return ir.IntType(64);
+        # A `None` annotation here is a clib declaration with no return arrow
+        # (`def f(x: T);`). Param call sites never reach this -- a missing
+        # parameter annotation is already a hard E0052 -- so the only way in is
+        # an omitted return type. Jac's contract is "no return arrow == returns
+        # nothing", so the C ABI boundary is `void`, identical to an explicit
+        # `-> None`. The former silent `i64` here mis-declared every such void
+        # C function as returning a signed 64-bit garbage value at the FFI
+        # boundary -- the same #6676 hazard as an unresolved type name, just via
+        # omission instead of an unknown name.
+        return ir.VoidType();
     }
     # Check if this is a clib struct name -- return VALUE type (not pointer)
     type_name: (str | None) = None;

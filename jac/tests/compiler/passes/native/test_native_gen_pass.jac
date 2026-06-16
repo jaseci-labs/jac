@@ -1905,6 +1905,30 @@ test "clib import produces extern declares" {
     assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
 }
 
+# A clib declaration with no return arrow (`def f(x: T);`) means "returns
+# nothing" -- the C ABI boundary is void, identical to an explicit `-> None`.
+# This used to silently lower to a SIGNED i64 return, mis-declaring every such
+# void C function as returning 64-bit garbage at the FFI boundary (the #6676
+# silent-i64 hazard via omission rather than an unknown type name). The omitted
+# return and the explicit `-> None` must now produce the same `void` declare.
+test "clib decl with no return arrow lowers to void, not i64 (issue #6676)" {
+    prog = JacProgram();
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES, "_clib_void_ret.na.jac")),
+        use_str="import from \"/usr/lib/libm.so.6\" {\n"
+        "    def no_arrow(x: f64);\n"
+        "    def explicit_none(x: f64) -> None;\n"
+        "}\n"
+        "def use_it(n: f64) -> f64 { return n; }\n"
+    );
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    s = str(ir.gen.llvm_ir);
+    assert 'declare void @"no_arrow"(double' in s , f"omitted return arrow did not lower to void: {s}";
+    assert 'declare i64 @"no_arrow"' not in s , "omitted return arrow silently lowered to i64 (#6676 regression)";
+    # Parity with the explicit `-> None` spelling.
+    assert 'declare void @"explicit_none"(double' in s , "explicit -> None did not lower to void";
+}
+
 test "clib import inside na block" {
     prog = JacProgram();
     ir = prog.compile(str(os.path.join(FIXTURES, "clib_import_na_block.jac")));
