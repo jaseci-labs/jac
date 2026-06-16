@@ -56,6 +56,7 @@ extern fn FileExists(fileName: [*:0]const u8) bool;
 extern fn LoadFileText(fileName: [*:0]const u8) [*:0]const u8;
 extern fn TextToInteger(text: [*:0]const u8) c_int;
 extern fn SaveFileText(fileName: [*:0]const u8, text: [*:0]const u8) bool;
+extern fn TakeScreenshot(fileName: [*:0]const u8) void;
 
 // raylib's GL matrix-mode and primitive constants (mirrors the Jac globals).
 const RL_MODELVIEW: c_int = 0x1700;
@@ -240,6 +241,19 @@ fn bench_seconds() f64 {
         return @floatFromInt(TextToInteger(LoadFileText(".bench_seconds")));
     }
     return 0.0;
+}
+
+/// Screenshot warmup frame, or 0 for none. `capture.jac` writes the frame
+/// number to capture into a sibling `.screenshot` file before launching; when
+/// that file is absent this returns 0 and the self-screenshot path stays
+/// dormant (every normal run), exactly as the Jac twin does. raylib's
+/// `TakeScreenshot` reads the GL framebuffer directly - no window grab needed.
+fn shot_frames() i64 {
+    if (FileExists(".screenshot")) {
+        const n: i64 = @intCast(TextToInteger(LoadFileText(".screenshot")));
+        return if (n > 0) n else 60;
+    }
+    return 0;
 }
 
 /// Hand the benchmark result back to demo.sh. Written to a sibling
@@ -495,6 +509,7 @@ pub fn main() void {
     }
 
     const bench = bench_seconds();
+    const shot = shot_frames();
     var frames: i64 = 0;
     var max_fps: f64 = 0.0;
 
@@ -541,6 +556,13 @@ pub fn main() void {
         end_camera(960.0, 600.0);
         draw_fps(10, 10);
         end_frame();
+
+        // Self-screenshot path (dormant unless `.screenshot` exists): grab the
+        // presented frame after EndDrawing, then exit.
+        if (shot > 0 and frames >= shot) {
+            TakeScreenshot("shooter_shot.png");
+            break;
+        }
 
         if (bench > 0.0 and GetTime() >= bench) {
             break;

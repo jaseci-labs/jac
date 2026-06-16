@@ -172,6 +172,18 @@ test "logging stream react" {
     assert "REACT_LOGGING_PASS" in stdout_value;
 }
 
+test "logging stream str answer without finish_tool delivers on chunk" {
+    # a `-> str` agent whose model skips finish_tool and
+    # returns plain text must deliver that terminal text on the `chunk` channel,
+    # not leave it stranded as `thought`-only.
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("logging_stream_str_skip_finish", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "STR_SKIP_FINISH_CHUNK_PASS" in stdout_value;
+}
+
 test "conversation kwarg writes back history with tool calls preserved" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;

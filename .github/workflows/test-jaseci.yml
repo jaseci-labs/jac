@@ -315,9 +315,13 @@ jobs:
         pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
 
   test-scale-k8s:
-    # Runs by default. Add the 'skip-k8s' label to a PR to skip it.
+    # Runs by default; add the 'skip-k8s' label to a PR to skip it.
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [deploy-core, failure-path]
     steps:
       - name: Check out code
         uses: actions/checkout@v5
@@ -359,12 +363,18 @@ jobs:
           wait: 120s
           config: /tmp/kind-config.yaml
 
-      - name: Run K8 tests
+      - name: Run K8 tests (deploy-core)
+        if: matrix.group == 'deploy-core'
         run: |
           pytest  -s -x jac-scale/jac_scale/tests/test_image_build.jac
           pytest  -s -x jac-scale/jac_scale/tests/test_pod_env.jac
           pytest  -s -x jac-scale/jac_scale/tests/test_k8s_utils.jac
-          pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac
+          pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac --deselect "jac-scale/jac_scale/tests/test_deploy_k8s.jac::early exit"
+
+      - name: Run K8 tests (failure-path)
+        if: matrix.group == 'failure-path'
+        run: |
+          pytest  -s -x "jac-scale/jac_scale/tests/test_deploy_k8s.jac::early exit"
 
   test-pypi-build:
     runs-on: blacksmith-4vcpu-ubuntu-2404

@@ -53,7 +53,24 @@ impl NaIRGenPass._emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None)
         );
         self.builder.cbranch(is_null, null_bb, ok_bb);
         self.builder.position_at_end(null_bb);
-        null_res = ir.Constant(i8p, None);
+        # Unset var: Python's `os.getenv(key, default)` returns `default`
+        # (and `None` when no default is given). Returning a bare NULL for a
+        # 2-arg call whose default is a string made every downstream string op
+        # (`len`, `+`, `!=`, ...) `strlen` a NULL pointer and segfault at
+        # startup (issue #6688: `os.getenv("QP_SMOKE", "") != ""`).
+        null_res: ir.Value = ir.Constant(i8p, None);
+        if len(params) >= 2 {
+            _default_val = self._codegen_expr(params[1]);
+            if _default_val is not None
+            and isinstance(_default_val.type, ir.PointerType) {
+                null_res = self._coerce_type(_default_val, i8p);
+                # os.getenv's result is consumed as an OWNED ref (a FuncCall
+                # result), so retain a borrowed default to balance the
+                # consumer's release; static literals and owned temporaries are
+                # handled by _emit_take_ref's ownership check.
+                self._emit_take_ref(null_res, op="getenv_default", loc="");
+            }
+        }
         self.builder.branch(merge_bb);
         null_end = self.builder.block;
         self.builder.position_at_end(ok_bb);

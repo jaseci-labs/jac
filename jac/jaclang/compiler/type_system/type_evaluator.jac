@@ -12,7 +12,7 @@ import from pathlib { Path }
 import from typing { cast }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { TOKEN_MAP }
-import from jaclang.jac0core.constant { SymbolType, Tokens as Tok }
+import from jaclang.jac0core.constant { SymbolType, Tokens as Tok, EdgeDir }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
@@ -499,7 +499,12 @@ obj TypeEvaluator {
         iterable_type: TypeBase, node_for_error: uni.Expr | None = None
     ) -> TypeBase | None;
 
+    def _native_iter_next_result(expr: uni.FuncCall) -> TypeBase | None;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
+    def _edge_endpoint_type(
+        edge_type: types.ClassType, edge_dir: EdgeDir
+    ) -> TypeBase | None;
+
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
     # --- Expected type helpers for bidirectional inference ---

@@ -175,6 +175,33 @@ test "sv-to-sv: typed objects serialize across boundary" {
     }
 }
 
+test "sv-to-sv: typed archetype return rehydrates for attribute access" {
+    # #6710: a sv->sv function whose declared return type is an archetype
+    # must hand back a real instance, not the serialized `_jac_type` dict.
+    # The consumer is compiled BEFORE the provider so the provider module is
+    # not in the consumer's program hub at codegen time -- exactly how
+    # `jac start` builds each service independently. Provider-first ordering
+    # masks the bug (the provider symtab resolves the return type), so the
+    # ordering here is load-bearing, not incidental.
+    tmp = setup_env();
+    try {
+        cons = make_server("calculator_service", tmp);
+        prov = make_server("math_service", tmp);
+        r = xd(cons.post("/function/describe_divide", json={"a": 6.0, "b": 2.0}))[
+            "result"
+        ];
+        # Before the fix this 500s with "'dict' object has no attribute 'result'"
+        # because `res.result` runs against the raw wire dict.
+        assert r["value"] == 3.0;
+        assert r["error"] == "";
+        calc_mod = Jac.loaded_modules["calculator_service"];
+        math_mod = sys.modules.get("math_service");
+        assert math_mod is None or calc_mod.add is not math_mod.add;
+    } finally {
+        done(tmp);
+    }
+}
+
 test "sv-to-sv: walker routes through provider" {
     tmp = setup_env();
     try {

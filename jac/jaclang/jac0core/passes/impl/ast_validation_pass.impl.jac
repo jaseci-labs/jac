@@ -368,6 +368,15 @@ impl ASTValidationPass.enter_archetype(
             continue;
         }
         mname = item.name_ref.value;
+        # Dedup on the emitted Python identity, not the surface value. The
+        # constructor (Jac `def init`, or a Python `__init__` raised by
+        # PyastBuildPass) carries the KW_INIT token and emits as `__init__`,
+        # while a plain Python method named `init` is an ordinary NAME token
+        # emitting as `init` -- both have value 'init' but are distinct
+        # methods (PyastGenPass._py_name makes the same token-kind
+        # distinction). Keying on the value alone rejected valid Python
+        # classes like Pillow's PIL.ImageFile.PyCodec.
+        dedup_name = '__init__' if item.name_ref.name == Tok.KW_INIT else mname;
         # Recognise a property accessor only when the decorator's target Name
         # matches the method name and that name was declared `@property` in
         # this class. The first guard rejects cross-property accessors like
@@ -389,10 +398,10 @@ impl ASTValidationPass.enter_archetype(
             seen_accessors.add(key);
             continue;
         }
-        if mname in seen_methods {
+        if dedup_name in seen_methods {
             self.emit(E0076, node_override=item.name_ref, name=mname);
         }
-        seen_methods.add(mname);
+        seen_methods.add(dedup_name);
     }
 }
 

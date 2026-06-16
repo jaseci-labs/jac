@@ -146,10 +146,10 @@ test "materialize themed starter writes the project" {
         assert (proj / "components" / "ui" / "button.cl.jac").exists();
         assert (proj / "components" / "ui" / "card.cl.jac").exists();
         assert (proj / "lib" / "utils.cl.jac").exists();
-        assert (proj / "global.css").exists();
+        assert (proj / "styles" / "global.css").exists();
         assert (proj / "main.jac").exists();
         # global.css is themed for the requested font + theme.
-        css = (proj / "global.css").read_text();
+        css = (proj / "styles" / "global.css").read_text();
         assert "@fontsource-variable/inter" in css;
         # main.jac has the project name substituted.
         assert "Welcome to demo" in (proj / "main.jac").read_text();
@@ -182,7 +182,7 @@ test "retheme regenerates global css and persists config" {
         );
         ok = retheme_project(config, {"theme": "emerald", "font": "outfit"});
         assert ok == True;
-        css = (Path(tmpdir) / "global.css").read_text();
+        css = (Path(tmpdir) / "styles" / "global.css").read_text();
         assert "@fontsource-variable/outfit" in css;
         toml_text = toml_path.read_text();
         assert 'theme = "emerald"' in toml_text;

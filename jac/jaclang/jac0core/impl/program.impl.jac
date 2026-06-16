@@ -199,7 +199,7 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
         self.mod.hub.clear();
     } else {
         for mod in self.mod.hub.values() {
-            for nd in mod.get_all_sub_nodes(uni.Expr, brute_force=True) {
+            for nd in mod.get_all_sub_nodes(uni.Expr) {
                 nd.type = None;
             }
         }
