@@ -1,153 +1,241 @@
-"""A-07 Performance Report - deterministic collectors (health + per-pod USE).
+"""A-07 Performance Report - APPLICATION-level span aggregation.
 
-Reuses the in-cluster Prometheus via prometheus_client with the SAME proven
-PromQL the admin Workloads view (#6186) uses, so metric names / labels are
-correct (app traffic is `*_http_requests_total` / `*_http_request_duration_
-seconds_bucket` with a `status_code` label; resource usage is cAdvisor +
-kube-state-metrics). Namespace-scoped by K8S_NAMESPACE - the namespace is the
-application boundary. No model involved; pure read-only metric queries.
+Samples recent Tempo traces and aggregates their spans into the per-endpoint
+RED + DB-hotspot picture the report is about: "which APIs are having issues,
+and which calls are hammering the database." Infra (pods/CPU/mem) lives in the
+Workloads view (#6186), not here.
+
+Method: search Tempo for recent traces (excluding operator/admin traffic),
+fetch + flatten each, then aggregate:
+  - per ENDPOINT (root span name): calls, p95/avg latency, error rate, and how
+    much DB work each request does (db_calls_per_req, db_ms_per_req).
+  - per (endpoint, DB operation): calls-per-request + time-per-request, with an
+    N+1 flag when a single request issues the same DB op many times.
+
+A DB span is any span carrying an OTel `db.system` attribute (covers the O-03
+memory-hierarchy spans: db.system=redis/mongodb). Best-effort + async: an
+unreachable Tempo yields an empty report. Read-only; no model.
 """
-import os;
+import time;
 import logging;
-import from jac_scale.utilities.metrics.prometheus_client { query, scalar }
-import from jac_scale.admin.analyst_report { ReportHealth, PodUsage }
+import from jac_scale.admin.analyst_report { ReportHealth, EndpointStat, DbHotspot }
+import from jac_scale.admin.analyst_collect { tempo_base_url, flatten_spans }
 
 glob logger = logging.getLogger(__name__);
 
+glob _OP_PREFIXES = ["/admin/", "/metrics", "/healthz", "/readyz", "/livez"];
+glob _NPLUSONE_THRESHOLD = 5.0;
 
-"""Namespace filter fragments from K8S_NAMESPACE: ('namespace="x"', ',namespace="x"')
-or ('', '') off-K8s. The second form appends into a selector with other labels."""
-def _ns_filters -> tuple {
-    ns = os.environ.get("K8S_NAMESPACE", "").strip();
-    if not ns {
-        return ("", "");
+
+"""True if a root trace name is operator/infra traffic (admin UI, the analyst's
+own calls, health/metrics probes) - excluded from an app report."""
+def is_operational(root_name: str) -> bool {
+    n = root_name.lower();
+    for p in _OP_PREFIXES {
+        if p in n {
+            return True;
+        }
     }
-    return (f'namespace="{ns}"', f',namespace="{ns}"');
+    return False;
 }
 
 
-"""Index a Prometheus vector result `[{metric:{pod:..}, value:[ts,"v"]}]` into
-{pod -> float}. Skips entries with no `pod` label."""
-def _by_pod(rows: any) -> dict {
-    out: dict = {};
-    for r in (rows or []) {
-        pod = str((r.get("metric", {}) or {}).get("pod", "") or "");
-        if not pod {
+"""Index-based percentile of a list of floats (0.0 on empty)."""
+def percentile(values: list, pct: float) -> float {
+    if not values {
+        return 0.0;
+    }
+    s = sorted(values);
+    idx = int(pct * (len(s) - 1));
+    return float(s[idx]);
+}
+
+
+"""The trace's root span: the one whose parent is absent or not in the trace."""
+def root_span(spans: list) -> dict {
+    ids: dict = {};
+    for sp in spans {
+        ids[str(sp.get("span_id", "") or "")] = True;
+    }
+    for sp in spans {
+        pid = str(sp.get("parent_span_id", "") or "");
+        if (not pid) or (pid not in ids) {
+            return dict(sp);
+        }
+    }
+    return dict(spans[0]) if spans else {};
+}
+
+
+"""Fetch one trace from Tempo and return its flattened spans ([] on failure)."""
+async def fetch_trace_spans(base: str, trace_id: str) -> list {
+    import httpx;
+    try {
+        async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=3.0)) as cl {
+            resp = await cl.get(
+                base + "/api/traces/" + trace_id,
+                headers={"Accept": "application/json"}
+            );
+            resp.raise_for_status();
+            payload = resp.json();
+        }
+    } except Exception as ex {
+        logger.warning(f"analyst report: trace fetch failed for {trace_id}: {ex}");
+        return [];
+    }
+    return flatten_spans(payload);
+}
+
+
+"""Aggregate a sample of recent traces into (health, endpoints, db_hotspots).
+
+`window_s` is the lookback; `sample_limit` caps how many traces are fetched
+(each is one Tempo round-trip). `top_n` bounds each output list.
+"""
+async def collect_app_report(
+    window_s: int = 900, sample_limit: int = 20, top_n: int = 10
+) -> tuple {
+    base = tempo_base_url();
+    if base is None {
+        return (ReportHealth(status="unknown"), [], []);
+    }
+    now_s = int(time.time());
+    import httpx;
+    try {
+        async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=3.0)) as cl {
+            resp = await cl.get(
+                base + "/api/search",
+                params={
+                    "q": "{ }",
+                    "limit": str(sample_limit),
+                    "start": str(now_s - window_s),
+                    "end": str(now_s)
+                }
+            );
+            resp.raise_for_status();
+            search = resp.json();
+        }
+    } except Exception as ex {
+        logger.warning(f"analyst report: Tempo search unavailable: {ex}");
+        return (ReportHealth(status="unknown"), [], []);
+    }
+
+    ep: dict = {};      # route -> {durs, errs, calls, db_calls, db_ms}
+    hot: dict = {};     # "route||op" -> {route, operation, db_system, count, ms}
+    sampled = 0;
+    for t in (search.get("traces", []) or []) {
+        root_name = str(t.get("rootTraceName", "") or "");
+        if is_operational(root_name) {
             continue;
         }
-        try {
-            out[pod] = float((r.get("value", [0, 0]) or [0, 0])[1]);
-        } except Exception {
-            out[pod] = 0.0;
+        tid = str(t.get("traceID", "") or "");
+        if not tid {
+            continue;
         }
-    }
-    return out;
-}
-
-
-"""Index pod -> phase from `kube_pod_status_phase == 1` (carries pod + phase)."""
-def _phase_by_pod(rows: any) -> dict {
-    out: dict = {};
-    for r in (rows or []) {
-        m = r.get("metric", {}) or {};
-        pod = str(m.get("pod", "") or "");
-        phase = str(m.get("phase", "") or "");
-        if pod and phase {
-            out[pod] = phase;
+        spans = await fetch_trace_spans(base, tid);
+        if not spans {
+            continue;
         }
-    }
-    return out;
-}
+        sampled += 1;
+        rootsp = root_span(spans);
+        route = str(rootsp.get("name", "") or root_name or "unknown");
+        total_ms = float(rootsp.get("duration_ms", 0) or 0);
+        rattrs = rootsp.get("attributes", {}) or {};
+        is_err = int(rattrs.get("http.status_code", 0) or 0) >= 500;
 
-
-"""Memory rank key for a PodUsage (typed so mem_mb resolves to float)."""
-def _pod_mem(p: PodUsage) -> float {
-    return p.mem_mb;
-}
-
-
-"""Collect the executive-summary health: pod/node counts + top-line RED
-(req/s, 5xx ratio, p95). Best-effort: missing series fall back to 0 via
-scalar(). Off-cluster (no Prometheus) yields an all-zero 'unknown' health."""
-def collect_health -> ReportHealth {
-    (ns_filter, ns_and) = _ns_filters();
-    running = int(scalar(query(f'count(kube_pod_status_phase{{phase="Running"{ns_and}}} == 1)')));
-    pending = int(scalar(query(f'count(kube_pod_status_phase{{phase="Pending"{ns_and}}} == 1)')));
-    failed = int(scalar(query(f'count(kube_pod_status_phase{{phase="Failed"{ns_and}}} == 1)')));
-    nodes = int(scalar(query('count(kube_node_info)')));
-    # App traffic series carry no namespace label (only k8s SD metrics do);
-    # Prometheus is per-namespace so an unfiltered match is safe (#6186).
-    req_ps = scalar(query('sum(rate({__name__=~".+_http_requests_total"}[1m]))'));
-    err_ps = scalar(
-        query('sum(rate({__name__=~".+_http_requests_total",status_code=~"5.."}[1m]))')
-    );
-    p95 = scalar(
-        query(
-            'histogram_quantile(0.95, sum(rate({__name__=~".+_http_request_duration_seconds_bucket"}[5m])) by (le))'
-        )
-    );
-    error_rate = (err_ps / req_ps) if req_ps > 0.0 else 0.0;
-    if failed > 0 or error_rate > 0.05 {
-        status = "Degraded";
-    } elif running > 0 {
-        status = "Healthy";
-    } else {
-        status = "Unknown";
-    }
-    return ReportHealth(
-        status=status,
-        pods_running=running,
-        pods_pending=pending,
-        pods_failed=failed,
-        nodes_ready=nodes,
-        req_per_s=req_ps,
-        error_rate=error_rate,
-        p95_latency_s=p95
-    );
-}
-
-
-"""Collect per-pod USE: CPU cores, memory (MB), restarts, status - joined by
-pod name across four Prometheus queries. Sorted by memory desc, top `top_n`."""
-def collect_pod_usage(top_n: int = 20) -> list[PodUsage] {
-    (ns_filter, ns_and) = _ns_filters();
-    cpu = _by_pod(
-        query(f'sum(rate(container_cpu_usage_seconds_total{{pod=~".+",container!=""{ns_and}}}[5m])) by (pod)')
-    );
-    mem = _by_pod(
-        query(f'sum(container_memory_working_set_bytes{{pod=~".+",container!=""{ns_and}}}) by (pod)')
-    );
-    restarts_q = (
-        f'sum(increase(kube_pod_container_status_restarts_total{{{ns_filter}}}[1h])) by (pod)'
-        if ns_filter
-        else 'sum(increase(kube_pod_container_status_restarts_total[1h])) by (pod)'
-    );
-    restarts = _by_pod(query(restarts_q));
-    phase_q = (
-        f'kube_pod_status_phase{{{ns_filter}}} == 1' if ns_filter
-        else 'kube_pod_status_phase == 1'
-    );
-    phases = _phase_by_pod(query(phase_q));
-
-    names: dict = {};
-    for src in [cpu, mem, restarts, phases] {
-        for k in src {
-            names[k] = True;
+        db_count = 0;
+        db_ms = 0.0;
+        for sp in spans {
+            attrs = sp.get("attributes", {}) or {};
+            dbsys = str(attrs.get("db.system", "") or "");
+            if not dbsys {
+                continue;
+            }
+            spms = float(sp.get("duration_ms", 0) or 0);
+            db_count += 1;
+            db_ms += spms;
+            op = str(sp.get("name", "") or "db op");
+            key = route + "||" + op;
+            h = hot.get(
+                key,
+                {"route": route, "operation": op, "db_system": dbsys, "count": 0, "ms": 0.0}
+            );
+            h["count"] = int(h["count"]) + 1;
+            h["ms"] = float(h["ms"]) + spms;
+            hot[key] = h;
         }
+
+        agg = ep.get(
+            route, {"durs": [], "errs": 0, "calls": 0, "db_calls": 0, "db_ms": 0.0}
+        );
+        agg["durs"].append(total_ms);
+        agg["calls"] = int(agg["calls"]) + 1;
+        if is_err {
+            agg["errs"] = int(agg["errs"]) + 1;
+        }
+        agg["db_calls"] = int(agg["db_calls"]) + db_count;
+        agg["db_ms"] = float(agg["db_ms"]) + db_ms;
+        ep[route] = agg;
     }
-    pods: list[PodUsage] = [];
-    for pod_key in names.keys() {
-        pod = str(pod_key);
-        pods.append(
-            PodUsage(
-                pod=pod,
-                status=str(phases.get(pod, "") or ""),
-                cpu_cores=float(cpu.get(pod, 0.0)),
-                mem_mb=float(mem.get(pod, 0.0)) / 1000000.0,
-                restarts=int(float(restarts.get(pod, 0.0)))
+
+    endpoints: list[EndpointStat] = [];
+    all_durs: list = [];
+    total_calls = 0;
+    total_errs = 0;
+    for route in ep.keys() {
+        agg = ep[route];
+        calls = int(agg["calls"]);
+        durs = agg["durs"];
+        all_durs = all_durs + list(durs);
+        total_calls += calls;
+        total_errs += int(agg["errs"]);
+        endpoints.append(
+            EndpointStat(
+                route=str(route),
+                calls=calls,
+                error_rate=(float(agg["errs"]) / calls) if calls else 0.0,
+                p95_ms=percentile(durs, 0.95),
+                avg_ms=(float(sum(durs)) / len(durs)) if durs else 0.0,
+                db_calls_per_req=(float(agg["db_calls"]) / calls) if calls else 0.0,
+                db_ms_per_req=(float(agg["db_ms"]) / calls) if calls else 0.0
             )
         );
     }
-    pods.sort(key=_pod_mem, reverse=True);
-    return pods[:top_n];
+    endpoints.sort(key=lambda e: any : e.p95_ms, reverse=True);
+
+    hotspots: list[DbHotspot] = [];
+    for key in hot.keys() {
+        h = hot[key];
+        route = str(h["route"]);
+        route_calls = int(ep.get(route, {"calls": 1}).get("calls", 1)) or 1;
+        cpr = float(h["count"]) / route_calls;
+        hotspots.append(
+            DbHotspot(
+                route=route,
+                operation=str(h["operation"]),
+                db_system=str(h["db_system"]),
+                calls_per_req=cpr,
+                ms_per_req=float(h["ms"]) / route_calls,
+                n_plus_one=(cpr >= _NPLUSONE_THRESHOLD)
+            )
+        );
+    }
+    hotspots.sort(key=lambda d: any : d.ms_per_req, reverse=True);
+
+    overall_p95 = percentile(all_durs, 0.95);
+    overall_err = (float(total_errs) / total_calls) if total_calls else 0.0;
+    if sampled == 0 {
+        status = "unknown";
+    } elif overall_err > 0.05 or overall_p95 > 2000.0 {
+        status = "Degraded";
+    } else {
+        status = "Healthy";
+    }
+    health = ReportHealth(
+        status=status,
+        sampled_traces=sampled,
+        error_rate=overall_err,
+        p95_ms=overall_p95
+    );
+    return (health, endpoints[:top_n], hotspots[:top_n]);
 }
