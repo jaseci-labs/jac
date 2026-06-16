@@ -501,8 +501,8 @@ def _init_vtables {
         has_one_ref=cef_stub_has_one_ref,
         has_at_least_one_ref=cef_stub_has_at_least_one_ref,
         on_before_command_line_processing=_on_before_cmdline,
-        # get_browser_process_handler=_get_browser_process_handler,
-        # get_render_process_handler=_get_render_process_handler,
+        get_browser_process_handler=_get_browser_process_handler,
+        get_render_process_handler=_get_render_process_handler,
     );
     g_stub_app = cef_app_t(
         size=80,
@@ -536,14 +536,13 @@ def:pub cef_dispatch_main_args_create -> int {
     return buf2;
 }
 
-def:pub cef_dispatch_settings_create(
-    no_sandbox: i32, cache_path: str, resources_dir: str, locales_dir: str
-) -> int {
+def:pub cef_dispatch_settings_create(no_sandbox: i32, cache_path: str) -> int {
+    _init_exe_dir;
     g_settings.size = 440;
     g_settings.no_sandbox = no_sandbox;
     g_settings.multi_threaded = 0;
     g_settings.log_severity = 3;  # LOGSEVERITY_WARNING (1=VERBOSE exits, 2=INFO may log to file)
-    # cache_path
+    # cache_path (Jac str from host — safe across the FFI boundary)
     if strlen(cache_path) > 0 {
         s: cef_string_t = cef_string_t();
         cef_string_utf8_to_utf16(cache_path, strlen(cache_path), s);
@@ -551,34 +550,38 @@ def:pub cef_dispatch_settings_create(
         g_settings.cp_len = s.len;
         g_settings.cp_dtor = s.dtor;
     }
-    # resources_dir_path
-    if strlen(resources_dir) > 0 {
-        s2: cef_string_t = cef_string_t();
-        cef_string_utf8_to_utf16(resources_dir, strlen(resources_dir), s2);
-        g_settings.rdp_ptr = s2.ptr;
-        g_settings.rdp_len = s2.len;
-        g_settings.rdp_dtor = s2.dtor;
-        # browser_subprocess_path = resources_dir/cef-subprocess
-        sub_buf: int = calloc(1, 4096);
-        strcpy(sub_buf, resources_dir);
-        strcat(sub_buf, "/cef-subprocess");
-        if access(sub_buf, 1) == 0 {
-            s3: cef_string_t = cef_string_t();
-            cef_string_utf8_to_utf16(sub_buf, strlen(sub_buf), s3);
-            g_settings.bsp_ptr = s3.ptr;
-            g_settings.bsp_len = s3.len;
-            g_settings.bsp_dtor = s3.dtor;
-            _log("settings: browser_subprocess_path set");
+    # resources_dir_path + locales_dir_path from exe dir (C char* only — do not
+    # pass int pointers as Jac `str` across function calls; nacompile mis-marshals).
+    if g_exe_dir_buf != 0 {
+        rlen: int = strlen(g_exe_dir_buf);
+        if rlen > 0 {
+            s2: cef_string_t = cef_string_t();
+            cef_string_utf8_to_utf16(g_exe_dir_buf, rlen, s2);
+            g_settings.rdp_ptr = s2.ptr;
+            g_settings.rdp_len = s2.len;
+            g_settings.rdp_dtor = s2.dtor;
+            sub_buf: int = calloc(1, 4096);
+            strcpy(sub_buf, g_exe_dir_buf);
+            strcat(sub_buf, "/cef-subprocess");
+            if access(sub_buf, 1) == 0 {
+                s3: cef_string_t = cef_string_t();
+                cef_string_utf8_to_utf16(sub_buf, strlen(sub_buf), s3);
+                g_settings.bsp_ptr = s3.ptr;
+                g_settings.bsp_len = s3.len;
+                g_settings.bsp_dtor = s3.dtor;
+                _log("settings: browser_subprocess_path set");
+            }
+            free(sub_buf);
+            locales_buf: int = calloc(1, 4096);
+            strcpy(locales_buf, g_exe_dir_buf);
+            strcat(locales_buf, "/locales");
+            s4: cef_string_t = cef_string_t();
+            cef_string_utf8_to_utf16(locales_buf, strlen(locales_buf), s4);
+            g_settings.ldp_ptr = s4.ptr;
+            g_settings.ldp_len = s4.len;
+            g_settings.ldp_dtor = s4.dtor;
+            free(locales_buf);
         }
-        free(sub_buf);
-    }
-    # locales_dir_path
-    if strlen(locales_dir) > 0 {
-        s4: cef_string_t = cef_string_t();
-        cef_string_utf8_to_utf16(locales_dir, strlen(locales_dir), s4);
-        g_settings.ldp_ptr = s4.ptr;
-        g_settings.ldp_len = s4.len;
-        g_settings.ldp_dtor = s4.dtor;
     }
     return g_settings;
 }
@@ -644,7 +647,7 @@ def:pub cef_dispatch_set_pending_browser(
 def:pub cef_dispatch_open_browser(url: str, title: str, width: int, height: int) {
     global g_browser_pending;
     cef_dispatch_set_pending_browser(url, title, width, height);
-    _init_vtables;
+    _init_vtables();
     wi: int = cef_dispatch_window_info_create(title, width, height);
     bs: int = cef_dispatch_browser_settings_create();
     ok: i32 = cef_dispatch_create_browser(wi, g_cli, url, bs);
@@ -655,8 +658,8 @@ def:pub cef_dispatch_open_browser(url: str, title: str, width: int, height: int)
 
 def:pub cef_dispatch_execute_process -> i32 {
     global g_cached_args;
-    cef_platform_bootstrap;
-    _init_vtables;
+    cef_platform_bootstrap();
+    _init_vtables();
     _log("execute_process");
     g_cached_args = cef_dispatch_main_args_create();
     code: i32 = cef_execute_process(g_cached_args, g_stub_app, 0);
@@ -672,19 +675,10 @@ def:pub cef_dispatch_execute_process -> i32 {
 }
 
 def:pub cef_dispatch_startup(cache_path: str, no_sandbox: int) -> i32 {
-    cef_platform_bootstrap;
-    _init_vtables;
+    cef_platform_bootstrap();
+    _init_vtables();
     _log("startup: initializing CEF");
-    _init_exe_dir;
-    # Build locales path: exe_dir + "/locales"
-    locales_buf: int = calloc(1, 4096);
-    if g_exe_dir_buf != 0 {
-        strcpy(locales_buf, g_exe_dir_buf);
-        strcat(locales_buf, "/locales");
-    }
-    settings: int = cef_dispatch_settings_create(
-        no_sandbox, cache_path, g_exe_dir_buf, locales_buf
-    );
+    settings: int = cef_dispatch_settings_create(no_sandbox, cache_path);
     # Reuse args from execute_process (same pointer = same memory CEF registered)
     global g_cached_args;
     if g_cached_args == 0 {
@@ -698,8 +692,6 @@ def:pub cef_dispatch_startup(cache_path: str, no_sandbox: int) -> i32 {
     free(g_cached_args);
     g_cached_args = 0;
     _log("startup: free args");
-    free(locales_buf);
-    _log("startup: free locales");
     if rc == 1 {
         _log("startup: cef_initialize ok");
     } else {

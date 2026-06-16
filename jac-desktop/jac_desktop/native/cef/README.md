@@ -20,14 +20,14 @@ embeds a minimal CPython runtime for the loopback HTTP server.
 | **libpython** | `import from "libpython…"` in generated `host.na.jac` (AOT) | Embed CPython: loopback server, `oauth_broker.py`, read `_port` |
 
 **CEF FFI**: CEF's C API requires client-side vtable structs with refcount
-callbacks and precise memory layout. `cef.na.jac` expresses all CEF vtable
-structs (`cef_app_t`, `cef_client_t`, `cef_life_span_handler_t`, …) as flat Jac
-clib structs with `Callable` fields. The exported CEF entry points
-(`cef_initialize`, `cef_execute_process`, `cef_run_message_loop`, `cef_shutdown`)
-are imported directly from `libcef.so`. A thin helper, `libcef_dispatch.so`
-(built from `cef_dispatch.na.jac`), wraps the two things Jac FFI cannot express:
-calling methods on CEF-returned objects through their vtable pointers, and
-allocating data structs with mixed-size fields.
+callbacks and precise memory layout. `cef_dispatch.na.jac` (compiled to
+`libcef_dispatch.so`) owns all CEF vtable structs (`cef_app_t`, `cef_client_t`,
+`cef_life_span_handler_t`, …) as flat Jac clib structs with `Callable` fields.
+`cef.na.jac` is a thin facade over that shared library. The exported CEF
+entry points used directly by hosts (`cef_run_message_loop`, `cef_shutdown`) are
+imported from `libcef.so`. `libcef_dispatch.so` wraps the two things Jac FFI
+cannot express: calling methods on CEF-returned objects through their vtable
+pointers, and allocating data structs with mixed-size fields.
 
 **libpython FFI**: the generated `host.na.jac` AOT-links the system libpython
 soname and calls a small C-API surface (`Py_Initialize`/`Py_Finalize`,
@@ -79,14 +79,15 @@ nacompile`. They differ only in the renderer:
 | | Native (`desktop`) | CEF (`desktop-cef`) |
 |--|-------------------|---------------------|
 | Renderer FFI | Jac `na` → `libwebview.so` | Jac `na` → `libcef.so` + `libcef_dispatch.so` |
-| Bootstrap globals | `webview_init(BOOTSTRAP_JS)` on each load | `on_context_created` handler in `cef.na.jac` (V8 globals) |
+| Bootstrap globals | `webview_init(BOOTSTRAP_JS)` on each load | `on_context_created` in `cef_dispatch.na.jac` (V8 globals) |
 
 ## Contents
 
 | File | Role |
 |------|------|
-| `cef.na.jac` | Jac binding: CEF vtable structs + `cef_startup`/`cef_open_browser`/`cef_run_loop`/`cef_cleanup`/`cef_execute_subprocess` |
-| `cef_dispatch.na.jac` | Source for `libcef_dispatch.so` (vtable-method calls + mixed-size struct alloc) |
+| `cef.na.jac` | Thin Jac binding over `libcef_dispatch.so` + message-loop imports from `libcef.so` |
+| `cef_dispatch.na.jac` | Source for `libcef_dispatch.so` (vtable structs, callbacks, lifecycle) |
+| `cef_platform.na.jac` | Shared stub vtables + `/proc/self/cmdline` parsing (spliced at build time) |
 | `cef_subprocess.na.jac` | Source for the `cef-subprocess` helper binary |
 | `build_cef_dispatch.sh` | `jac nacompile --shared` → `libcef_dispatch.so` |
 | `build_cef_subprocess.sh` | `jac nacompile` → `cef-subprocess` |

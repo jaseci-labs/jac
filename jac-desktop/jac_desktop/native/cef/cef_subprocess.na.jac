@@ -39,6 +39,8 @@ import from "libcef.so" {
 
 # ENTRY
 def _subprocess_bootstrap {
+    # Match main-process bootstrap (nacompile cannot share setenv/getenv cross-module yet).
+    setenv("NO_AT_BRIDGE", "1", 0);
     buf: int = calloc(1, 4096);
     n: int = readlink("/proc/self/exe", buf, 4095);
     if n <= 0 {
