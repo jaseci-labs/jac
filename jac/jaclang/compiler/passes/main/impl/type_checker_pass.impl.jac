@@ -35,8 +35,7 @@ impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: uni.Name) -> None {
         }
         if isinstance(nd.parent, uni.HasVar)
         and nd.parent.defer
-        and nd.parent.kid
-        and nd.parent.kid[-1] is nd {
+        and nd is not nd.parent.name {
             return;
         }
         if isinstance(nd.parent, uni.KWPair) and nd.parent.key is nd {
