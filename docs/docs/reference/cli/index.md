@@ -241,37 +241,47 @@ jac start --scale --build
 
 Initialize a new Jac project with configuration. Creates a project folder with the given name containing the project files, including an `AGENTS.md` that points AI coding agents at `jac guide`.
 
+`jac create` is kind-aware: `--kind <kind>` scaffolds a project for a specific project kind, stamping `[project] kind` into `jac.toml` so the new project's bare `jac run` dispatches correctly (see `jac run`). The 8 core kinds ship with `jaclang`; `fullstack`/`wasm`/`mobile` need jac-client and `desktop` needs jac-desktop.
+
 ```bash
-jac create [-h] [-f] [-u USE] [-l] [name]
+jac create [-h] [-f] [-k KIND] [-u USE] [-l] [name]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `name` | Project name (creates folder with this name) | Current directory name |
 | `-f, --force` | Overwrite existing project | `False` |
-| `-u, --use` | Jacpac template: registered name, file path, or URL | `default` |
-| `-l, --list_jacpacks` | List available jacpack templates | `False` |
+| `-k, --kind` | Project kind: cli, native-app, native-binary, shared-library, api-service, microservices, pypi-package, npm-package, fullstack, wasm, desktop, mobile | `cli` |
+| `-u, --use` | Custom template: file path or URL to a `.jacpack`, or a named variant (e.g. `jac-shadcn`) | `default` |
+| `-l, --list_jacpacks` | List available project kinds and named variants | `False` |
+
+`--kind` and `--use` are mutually exclusive.
 
 **Examples:**
 
 ```bash
-# Create basic project (creates myapp/ folder)
+# Create a basic cli project (creates myapp/ folder)
 jac create myapp
 cd myapp
 
-# Create full-stack project with client template (requires jac-client)
-jac create myapp --use client
+# Scaffold a headless API service
+jac create myapp --kind api-service
 
-# Create from a local .jacpack file
+# Scaffold a natively-compiled binary
+jac create myapp --kind native-binary
+
+# Scaffold a full-stack app (requires jac-client)
+jac create myapp --kind fullstack
+
+# Scaffold a shadcn-themed fullstack app (requires jac-super)
+jac create myapp --use jac-shadcn
+
+# Create from a local .jacpack file / directory / URL
 jac create myapp --use ./my-template.jacpack
-
-# Create from a local template directory
 jac create myapp --use ./my-template/
-
-# Create from a URL
 jac create myapp --use https://example.com/template.jacpack
 
-# List available jacpack templates
+# List available project kinds and named variants
 jac create --list_jacpacks
 
 # Force overwrite existing

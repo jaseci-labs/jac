@@ -123,7 +123,10 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         # The edge handle (`ptrtoint` of the edge object, as carried by an
         # `[edge ...]` ref) keys the row `osp_disconnect` drops.
         _del_arch = self._struct_name_of(target_expr);
-        if (_del_arch is not None) and (self.osp_arch_kind.get(_del_arch) == "edge") {
+        _del_model = self.ir_in.gen.osp_model;
+        if (_del_arch is not None)
+        and (_del_model is not None)
+        and (_del_model.arch_kind.get(_del_arch) == "edge") {
             _disc_fn = self.func_symtab.get("osp_disconnect");
             _edge_h = self._codegen_expr(target_expr);
             if (_disc_fn is not None) and (_edge_h is not None) {

@@ -134,9 +134,16 @@ impl load_template_from_directory(
             }
         }
     }
+    # The kind the template scaffolds is declared in its [project] kind; a
+    # template can opt out of being the kind's default via
+    # [jacpack.options] default_for_kind = false (used for named variants).
+    kind = config.get("project", {}).get("kind", "") or "cli";
+    default_for_kind = options.get("default_for_kind", True);
     return ProjectTemplate(
         name=name,
         description=description,
+        kind=kind,
+        is_default_for_kind=default_for_kind,
         config=config,
         files=files,
         directories=directories,
@@ -219,9 +226,14 @@ impl load_template_from_json(
     if hook is None and "post_create_hook" in data {
         hook = resolve_post_create_hook(data["post_create_hook"]);
     }
+    kind = data.get("kind")
+    or data.get("config", {}).get("project", {}).get("kind", "")
+    or "cli";
     return ProjectTemplate(
         name=data["name"],
         description=data["description"],
+        kind=kind,
+        is_default_for_kind=data.get("is_default_for_kind", True),
         config=data.get("config", {}),
         files=data.get("files", {}),
         directories=data.get("directories", []),

@@ -499,6 +499,7 @@ obj TypeEvaluator {
         iterable_type: TypeBase, node_for_error: uni.Expr | None = None
     ) -> TypeBase | None;
 
+    def _native_iter_next_result(expr: uni.FuncCall) -> TypeBase | None;
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _edge_endpoint_type(
         edge_type: types.ClassType, edge_dir: EdgeDir

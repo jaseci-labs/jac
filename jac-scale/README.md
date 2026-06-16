@@ -19,7 +19,7 @@
 ### 3. Kubernetes Deployment & Auto-Scaling
 
 - **Easy Deployment**: One-command deployment to Kubernetes clusters
-- **Auto-Scaling**: Scale your application based on demand
+- **Auto-Scaling**: CPU-based HPA autoscaling by default; switch to `autoscaler_engine = "keda"` for event-driven triggers (Prometheus, Redis, RabbitMQ, and more) and scale-to-zero support
 - **Database Auto-Provisioning**: Automatically spawns and configures Redis and MongoDB instances
 - **Production-Ready**: Built-in health checks, persistent storage, and service discovery
 
