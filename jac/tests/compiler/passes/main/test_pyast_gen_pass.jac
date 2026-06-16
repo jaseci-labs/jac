@@ -411,6 +411,47 @@ test "py_ast_val raises ICE with source location on empty py_ast" {
     }
 }
 
+test "ambient imports skip names shadowed by ordinary identifiers" {
+    # Regression: names merely spelled like an ambient builtin/typing name
+    # wrongly pulled an import, ignoring scope and position.
+    fixture = os.path.join(FIXTURES, "ambient_import_shadowing.jac");
+    code_gen = (prog := JacProgram()).compile(fixture);
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    assert code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module);
+
+    py_mod: ast3.Module = code_gen.gen.py_ast[0];
+    builtin_imported: set[str] = set();
+    typing_imported: set[str] = set();
+    for stmt in py_mod.body {
+        if isinstance(stmt, ast3.ImportFrom) {
+            if stmt.module == "jaclang.runtimelib.builtin" {
+                builtin_imported.update(n.name for n in stmt.names);
+            } elif stmt.module == "typing" {
+                typing_imported.update(n.name for n in stmt.names);
+            }
+        }
+    }
+    src = ast3.unparse(py_mod);
+
+    # shadowed names must NOT be imported
+    for shadowed in ["new", "schedule", "restspec"] {
+        assert shadowed not in builtin_imported , (
+            f"`{shadowed}` is a plain identifier, must not be imported. Source:\n" + src
+        );
+    }
+    assert "Sequence" not in typing_imported , (
+        "`Sequence` is a plain identifier, must not be imported. Source:\n" + src
+    );
+
+    # genuine references must KEEP their import
+    assert "APIProtocol" in builtin_imported , (
+        "expected `from jaclang.runtimelib.builtin import APIProtocol`. Source:\n" + src
+    );
+    assert "Callable" in typing_imported , (
+        "expected `from typing import Callable`. Source:\n" + src
+    );
+}
+
 test "ClassVar import stays runtime-visible (dataclass can find it)" {
     # Regression: a prior TYPE_CHECKING auto-classifier moved imports whose
     # uses were all "annotation-shaped" into `if typing.TYPE_CHECKING:` blocks

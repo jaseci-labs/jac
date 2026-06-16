@@ -206,6 +206,9 @@ needs_enum)
     codegen produces a `Jac.refs(...)` call we can fuse a `slc=` kwarg into."""
     def _is_edge_ref_target(target: uni.UniNode) -> bool;
 
+    """True if `nd` is a free name reference that may need an ambient import."""
+    def _is_ambient_ref(nd: uni.Name) -> bool;
+
     """Append an import statement to the preamble once."""
     def _add_preamble_once(key: str, nd: ast3.AST) -> None;
 

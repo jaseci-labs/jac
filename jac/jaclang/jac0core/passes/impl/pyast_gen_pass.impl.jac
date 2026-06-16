@@ -3896,13 +3896,33 @@ impl PyastGenPass.exit_name(nd: uni.Name) -> None {
             return;
         }
     }
-    if (name in self._get_builtin_names()) {
-        self.builtin_imports.add(name);
-    }
-    if (name in self._get_ambient_typing_names()) {
-        self.typing_imports.add(name);
+    if self._is_ambient_ref(nd) {
+        if (name in self._get_builtin_names()) {
+            self.builtin_imports.add(name);
+        }
+        if (name in self._get_ambient_typing_names()) {
+            self.typing_imports.add(name);
+        }
     }
     nd.gen.py_ast = [self.sync(ast3.Name(id=name, ctx=nd.py_ctx_func()))];
+}
+
+"""True only for unresolved free references. Attribute members and keyword
+keys emit as string labels, not global loads, so they never need the import."""
+impl PyastGenPass._is_ambient_ref(nd: uni.Name) -> bool {
+    if (nd.sym is not None) {
+        return False;
+    }
+    parent = nd.parent;
+    if (
+        isinstance(parent, uni.AtomTrailer) and parent.is_attr and (parent.right is nd)
+    ) {
+        return False;
+    }
+    if (isinstance(parent, uni.KWPair) and (parent.key is nd)) {
+        return False;
+    }
+    return True;
 }
 
 
