@@ -5921,6 +5921,12 @@ impl NativeBuiltinEmitter.emit_str(
     p = ctx.pass_ref;
     b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
+    # str(bytes): the CPython b'...' repr (#6749). Must precede the generic
+    # pointer path below, which would bitcast the jacbytes struct to i8* and
+    # print its length header instead.
+    if p._is_bytes_value(arg_val) {
+        return p._emit_bytes_repr(arg_val);
+    }
     # str() of something already a string (char*) is the string itself.
     # Native strings and bound exception messages are both i8*, so str(e)
     # in `except E as e` returns the message rather than formatting the
@@ -6056,6 +6062,10 @@ impl NativeBuiltinEmitter.emit_bool(
                 "!=", slen, ir.Constant(i64, 0), name="bool.nonempty"
             );
             return b.zext(is_nonempty, i64, name="bool.sresult");
+        }
+        # bool(bytes): non-empty is truthy (length-aware, #6749)
+        if p._is_bytes_value(arg_val) {
+            return b.zext(p._emit_bytes_truthy(arg_val), i64, name="bool.byresult");
         }
     }
     return None;

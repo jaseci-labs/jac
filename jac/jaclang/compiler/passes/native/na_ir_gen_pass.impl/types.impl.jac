@@ -356,18 +356,8 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
             k_llvm = _k;
             v_llvm = _v;
         }
-        # Key spec: i64 / f64 / ptr / tuple{size}.
-        k_spec = "i64";
-        k_size = 0;
-        if isinstance(k_llvm, ir.DoubleType) {
-            k_spec = "f64";
-        } elif isinstance(k_llvm, ir.PointerType) {
-            k_spec = "ptr";
-            if isinstance(k_llvm.pointee, ir.LiteralStructType) {
-                k_size = self._get_struct_size(k_llvm.pointee);
-                k_spec = f"tuple{k_size}";
-            }
-        }
+        # Key spec: i64 / f64 / bytes / tuple{size} / ptr (#6749).
+        (k_spec, k_size) = self._dict_key_spec(k_llvm);
         # Value spec: i64 / f64 / ptr / jacval.
         v_spec = "i64";
         if isinstance(v_llvm, ir.DoubleType) {
@@ -611,6 +601,11 @@ impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
             return self.builder.icmp_unsigned(
                 "!=", _len, ir.Constant(ir.IntType(64), 0), name="tobool"
             );
+        }
+        # bytes: empty is falsy, like the containers above — NOT a null test
+        # (a bytes value is never null), which is the bug #6749 item 4 hit.
+        if self._is_bytes_value(val) {
+            return self._emit_bytes_truthy(val);
         }
         null_ptr = ir.Constant(val.type, None);
         return self.builder.icmp_unsigned("!=", val, null_ptr, name="tobool");
@@ -901,6 +896,22 @@ impl NaIRGenPass._emit_binary_op(
         rdst = self.builder.gep(dst, [llen], name="by.cat.rdst");
         self.builder.call(memcpy_fn, [rdst, self._bytes_data_ptr(right), rlen]);
         return result;
+    }
+    # bytes repeat (jacbytes* * i64 or i64 * jacbytes*) — length-aware (#6749);
+    # the i8* str-repeat path below matches on i8* and would miss the struct.
+    if op == Tok.STAR_MUL {
+        by_val: (ir.Value | None) = None;
+        rep_val: (ir.Value | None) = None;
+        if self._is_bytes_value(left) and isinstance(right.type, ir.IntType) {
+            by_val = left;
+            rep_val = right;
+        } elif self._is_bytes_value(right) and isinstance(left.type, ir.IntType) {
+            by_val = right;
+            rep_val = left;
+        }
+        if by_val is not None and rep_val is not None {
+            return self._emit_bytes_repeat(by_val, rep_val);
+        }
     }
     # String repeat (i8* * i64 or i64 * i8*): allocate n*len buffer, loop-copy
     if op == Tok.STAR_MUL {
@@ -1496,12 +1507,27 @@ impl NaIRGenPass._emit_comparison(
     if isinstance(left.type, ir.PointerType)
     and isinstance(right.type, ir.PointerType) {
         i8_ptr = ir.IntType(8).as_pointer();
-        # bytes == / != bytes: compare length then content (memcmp). A distinct
-        # struct type, so this never reaches the i8* string path below.
-        if self._is_bytes_value(left)
-        and self._is_bytes_value(right)
-        and (op == Tok.EE or op == Tok.NE) {
-            return self._emit_bytes_eq(left, right, negate=op == Tok.NE);
+        # bytes comparison (#6749): == / != via length+memcmp, and ordering
+        # < > <= >= lexicographically (unsigned bytes, length tiebreak). A
+        # distinct struct type, so this never reaches the i8* string path.
+        if self._is_bytes_value(left) and self._is_bytes_value(right) {
+            if op == Tok.EE or op == Tok.NE {
+                return self._emit_bytes_eq(left, right, negate=op == Tok.NE);
+            }
+            if op in (Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) {
+                _ord = self._emit_bytes_cmp(left, right);
+                _zero = ir.Constant(ir.IntType(32), 0);
+                if op == Tok.LT {
+                    return self.builder.icmp_signed("<", _ord, _zero, name="by.lt");
+                }
+                if op == Tok.GT {
+                    return self.builder.icmp_signed(">", _ord, _zero, name="by.gt");
+                }
+                if op == Tok.LTE {
+                    return self.builder.icmp_signed("<=", _ord, _zero, name="by.lte");
+                }
+                return self.builder.icmp_signed(">=", _ord, _zero, name="by.gte");
+            }
         }
         # String comparison: both operands must be i8* (char pointers)
         if left.type == i8_ptr and right.type == i8_ptr {

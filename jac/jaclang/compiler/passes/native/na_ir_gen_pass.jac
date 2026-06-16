@@ -280,6 +280,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # (#6404 Track 0). Distinct from str (i8*) so dispatch never confuses
         # the two.
         _bytes_struct_type: (object | None) = None,
+        # #6749: memoized __jac_bytes_repr helper (one per module).
+        _bytes_repr_function: (object | None) = None,
         # Iterator protocol (#6403): boxed JacIter + per-kind state structs.
         _jac_iter_type: (object | None) = None,
         _iter_structs_registered: bool = False,
@@ -584,6 +586,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         key_size: int = 0
     ) -> ir.Value;
 
+    def _dict_key_spec(key_type: ir.Type) -> tuple;
     def _emit_rc_alloc_container(
         b: ir.IRBuilder,
         container_ptr_type: ir.Type,
@@ -717,6 +720,16 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_bytes_index(bv: ir.Value, idx: ir.Value) -> (ir.Value | None);
     def _codegen_bytes_slice(bv: ir.Value, slice_node: object) -> (ir.Value | None);
     def _emit_bytes_eq(left: ir.Value, right: ir.Value, negate: bool) -> ir.Value;
+    # #6749: the rest of the bytes op surface, length-aware on jacbytes*.
+    def _is_bytes_type(t: ir.Type) -> bool;
+    def _emit_bytes_truthy(bv: ir.Value) -> ir.Value;
+    def _emit_bytes_repeat(bv: ir.Value, count: ir.Value) -> ir.Value;
+    def _emit_bytes_contains(needle: ir.Value, haystack: ir.Value) -> ir.Value;
+    def _emit_bytes_cmp(left: ir.Value, right: ir.Value) -> ir.Value;
+    def _emit_bytes_repr(bv: ir.Value) -> ir.Value;
+    def _bytes_repr_fn -> ir.Function;
+    def _make_bytes_iter(bytes_val: ir.Value) -> ir.Value;
+    def _bytes_iter_next_fn -> ir.Function;
     # Phase 8: Entry Block
     def _codegen_entry(nd: uni.ModuleCode) -> None;
     # Phase 9: Tuples
