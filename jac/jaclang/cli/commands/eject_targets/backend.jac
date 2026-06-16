@@ -199,10 +199,13 @@ def _emit_main_py(
         f'"""Auto-generated FastAPI app for the ejected Jac project {project_name!r}:',
         'runs the compiled walkers on the jaclang runtime with jaclang-native auth',
         '(register/login via UserManager; :pub walkers open, others token-gated)."""',
+        'import inspect',
+        'import json',
         'import os',
         '',
         'from fastapi import FastAPI, Header, HTTPException',
         'from fastapi.middleware.cors import CORSMiddleware',
+        'from fastapi.responses import StreamingResponse',
         'from pydantic import BaseModel',
         '',
         'from jaclang.runtimelib.server import UserManager, ExecutionManager'
@@ -289,7 +292,40 @@ def _emit_main_py(
         '    res = _um.authenticate(creds.username, creds.password)',
         '    if not res:',
         '        raise HTTPException(status_code=401, detail="Invalid credentials")',
-        '    return res'
+        '    return res',
+        '',
+        '',
+        'async def _sse(stream):',
+        '    """Stream a (sync or async) generator result as Server-Sent Events."""',
+        '    if inspect.isasyncgen(stream):',
+        '        async for chunk in stream:',
+        '            yield _sse_line(chunk)',
+        '    else:',
+        '        for chunk in stream:',
+        '            yield _sse_line(chunk)',
+        '',
+        '',
+        'def _sse_line(chunk):',
+        '    if isinstance(chunk, (bytes, bytearray)):',
+        '        return bytes(chunk)',
+        '    if isinstance(chunk, str):',
+        '        return chunk.encode("utf-8")',
+        '    return f"data: {json.dumps(chunk)}\\n\\n".encode("utf-8")',
+        '',
+        '',
+        'def _respond(result):',
+        '    """A streaming walker returns a generator; stream it as SSE.',
+        '    Everything else is the normal JSON envelope."""',
+        '    if inspect.isgenerator(result) or inspect.isasyncgen(result):',
+        '        return StreamingResponse(_sse(result), media_type="text/event-stream")',
+        '    return {"data": result}',
+        '',
+        '',
+        'def _respond_fn(result):',
+        '    """Function variant of _respond ({"ok": True, "data": ...} envelope)."""',
+        '    if inspect.isgenerator(result) or inspect.isasyncgen(result):',
+        '        return StreamingResponse(_sse(result), media_type="text/event-stream")',
+        '    return {"ok": True, "data": result}'
     ];
 
     for w in walkers {
@@ -319,14 +355,14 @@ def _emit_main_py(
         lines.append('@app.post("/walker/' + wn + '")');
         lines.append('@app.post("/walker/' + wn + '/{node_id}")');
         lines.append(
-            "async def run_" + wn + "(body: " + model + ", node_id: str = \"\", authorization: str = Header(default=None)) -> dict:"
+            "async def run_" + wn + "(body: " + model + ", node_id: str = \"\", authorization: str = Header(default=None)):"
         );
         lines.append("    user = _username(authorization, " + required + ")");
         lines.append("    fields = dict(body.model_dump())");
         lines.append("    if node_id:");
         lines.append('        fields["_jac_spawn_node"] = node_id');
         lines.append(
-            "    return {\"data\": await _em.spawn_walker(" + wn + ", fields, user)}"
+            "    return _respond(await _em.spawn_walker(" + wn + ", fields, user))"
         );
     }
 
@@ -348,11 +384,11 @@ def _emit_main_py(
         lines.append("");
         lines.append('@app.post("/function/' + fn + '")');
         lines.append(
-            "async def call_" + fn + "(body: " + model + ", authorization: str = Header(default=None)) -> dict:"
+            "async def call_" + fn + "(body: " + model + ", authorization: str = Header(default=None)):"
         );
         lines.append("    user = _username(authorization, " + required + ")");
         lines.append(
-            "    return {\"ok\": True, \"data\": await _em.execute_function(" + fn + ", dict(body.model_dump()), user)}"
+            "    return _respond_fn(await _em.execute_function(" + fn + ", dict(body.model_dump()), user))"
         );
     }
 
