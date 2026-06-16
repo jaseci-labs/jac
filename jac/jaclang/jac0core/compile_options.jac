@@ -14,6 +14,7 @@ obj CompileOptions {
         resolve_annex_parent: bool = False,
         force_target_program: bool = False,
         aot_mode: bool = False,
+        graphmend: bool = False,
         suppress_codes: list[str] = field(default_factory=`list),
         cancel_token: any = None;
 
