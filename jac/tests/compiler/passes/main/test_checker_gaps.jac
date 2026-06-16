@@ -23,6 +23,7 @@ Gap index:
   #51 - @property on union types returns FunctionType instead of return type
   #52 - Enum iteration variable resolves to Unknown (cascading E1032 / W1051)
   #53 - discover_base_file misses .na.jac — self is Unknown in .impl.jac files
+  #57 - `by postinit` name emits spurious W1051 before the HasVar handler binds it
 """
 
 import os;
@@ -644,5 +645,19 @@ test "gap 56 keyword param does not cascade into E1051" {
     assert "Too many positional arguments" not in joined , (
         "Gap #56: a keyword parameter name must not cascade into spurious "
         f"'too many positional arguments' (E1051). Got: {msgs}"
+    );
+}
+
+test "gap 57 by postinit name does not emit W1051" {
+    program = compile_and_check("checker_postinit_fields.jac");
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code is not None and w.code.code == "W1051"
+        and "checker_postinit_fields.jac" in (w.loc.mod_path or "")
+    ];
+    assert len(w1051) == 0 , (
+        "Gap #57: `by postinit` must not emit W1051 on the postinit name. Got "
+        f"{len(w1051)} warnings: {[w.pretty_print()[:120] for w in w1051]}"
     );
 }
