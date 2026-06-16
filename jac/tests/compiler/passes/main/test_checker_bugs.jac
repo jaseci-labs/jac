@@ -705,7 +705,8 @@ test "bug_comprehension_narrowing" {
     assert len(program.errors_had) == 0 , (
         "`T | None` narrowing established by an enclosing guard must "
         "propagate into list/dict/set/gen comprehension iterators, out "
-        "expressions, and conditional clauses. "
+        "expressions, and conditional clauses -- both for early-return "
+        "guards and for in-body `if x is not None { ... }` blocks. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

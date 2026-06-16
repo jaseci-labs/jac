@@ -55,3 +55,42 @@ def use_gen(r: R | None) -> list[str] {
     if r is None { return []; }
     return list(r.parts[i] for i in range(len(r.parts)));
 }
+
+# In-body narrowing: `if r is not None { ... }` narrows `r` to `R` *inside
+# the block*. The comprehension is wired to the if-stmt as a synthetic flow
+# predecessor; that edge must be classified as the true branch so the head
+# expression sees the narrowed type. The narrowing was previously dropped on
+# the comprehension's false-branch misclassification (no else present),
+# narrowing `r` to `None` and yielding `list[NoneType]` E1001 false positives.
+def use_in_body_list(r: R | None) -> list[list[str]] {
+    if r is not None {
+        return [r.parts for _ in range(3)];
+    }
+    return [];
+}
+
+def use_in_body_set(r: R | None) -> set[int] {
+    if r is not None {
+        return {len(r.parts) for _ in range(3)};
+    }
+    return set();
+}
+
+def use_in_body_dict(r: R | None) -> dict[int, list[str]] {
+    if r is not None {
+        return {i: r.parts for i in range(3)};
+    }
+    return {};
+}
+
+# In-body narrowing inside the else branch: `if r is None {} else { ... }`
+# narrows `r` to `R` in the else body, reached via the false edge.
+def use_in_else(r: R | None) -> list[list[str]] {
+    result: list[list[str]] = [];
+    if r is None {
+        result = [];
+    } else {
+        result = [r.parts for _ in range(3)];
+    }
+    return result;
+}
