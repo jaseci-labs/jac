@@ -29,7 +29,7 @@ The CLI is extensible through plugins. When you install plugins like `jac-scale`
 | `jac destroy` | Remove Kubernetes deployment (jac-scale) |
 | `jac status` | Show deployment status of Kubernetes resources (jac-scale) |
 | `jac add` | Add packages to project |
-| `jac install` | Install project dependencies (or `-e <path>` for an editable install) |
+| `jac install` | Install project dependencies from `jac.toml`, or `jac install <pkg>` to install packages directly into the activated environment |
 | `jac remove` | Remove packages from project |
 | `jac update` | Update dependencies to latest compatible versions |
 | `jac bundle` | Build a distributable `.whl` from `jac.toml` |
@@ -1243,19 +1243,34 @@ For private packages from custom registries (e.g., GitHub Packages), configure s
 
 ### jac install
 
-Sync the project environment to `jac.toml`. Installs all Python (pip), git, and plugin-provided (npm, etc.) dependencies in one command. Creates or validates the project virtual environment at `.jac/venv/`.
+`jac install` has two modes depending on whether package names are passed:
+
+**No-argument mode** - sync the project environment to `jac.toml`. Installs all Python (pip), git, and plugin-provided (npm, etc.) dependencies in one command. Creates or validates the project virtual environment at `.jac/venv/`. Requires a `jac.toml` in the current (or a parent) directory.
+
+**Package mode** - `jac install <pkg> [pkg ...]` installs one or more packages directly into the **currently activated Python environment** via pip, without reading or modifying `jac.toml`. This is the equivalent of `pip install <pkg>` but invoked through the `jac` CLI. Useful for quick one-off installs or scripts where you do not need a full jac project.
+
+> **`jac install <pkg>` vs `jac add <pkg>`**
+>
+> | | `jac install <pkg>` | `jac add <pkg>` |
+> |---|---|---|
+> | Target | Activated Python environment | Project `.jac/venv/` |
+> | Updates `jac.toml` | No | Yes |
+> | Works outside a project | Yes | No |
+>
+> Use `jac add` when you want the dependency tracked for reproducible installs. Use `jac install <pkg>` for ad-hoc or environment-level installs.
 
 ```bash
-jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
+jac install [-h] [packages ...] [-e PATH] [-d] [-x group [group ...]] [-v]
             [--force-reinstall] [--no-cache-dir] [--pre] [--dry-run]
             [--no-deps] [--quiet] [--prefer-binary]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-e, --editable PATH` | Install the Jac package at `PATH` in editable mode (analogous to `pip install -e`). `jac.toml` is read from `PATH`, not the current directory. | `""` |
-| `-d, --dev` | Include dev dependencies | `False` |
-| `-x, --extras` | Install one or more `[optional-dependencies]` groups | `[]` |
+| `packages` | Package(s) to install into the activated environment. When provided, skips `jac.toml` entirely. | `[]` |
+| `-e, --editable PATH` | Install the Jac package at `PATH` in editable mode (analogous to `pip install -e`). `jac.toml` is read from `PATH`, not the current directory. Cannot be combined with `packages`. Repeatable. | `None` |
+| `-d, --dev` | Include dev dependencies (no-arg mode only) | `False` |
+| `-x, --extras` | Install one or more `[optional-dependencies]` groups (no-arg mode only) | `[]` |
 | `-v, --verbose` | Show detailed output | `False` |
 | `--force-reinstall` | Reinstall all packages even if they are already up-to-date | `False` |
 | `--no-cache-dir` | Disable the pip download cache | `False` |
@@ -1268,32 +1283,38 @@ jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
 **Examples:**
 
 ```bash
-# Install all dependencies
+# Install a single package into the activated environment
+jac install numpy
+
+# Install multiple packages at once
+jac install numpy pandas scipy
+
+# Install with version constraints
+jac install "requests>=2.28" "pydantic>=2.0"
+
+# Install all dependencies from jac.toml (no-arg mode)
 jac install
 
-# Install including dev dependencies
+# Install including dev dependencies (no-arg mode)
 jac install --dev
 
-# Install optional dependency groups defined in jac.toml
+# Install optional dependency groups defined in jac.toml (no-arg mode)
 jac install --extras data monitoring
 
-# Editable install with an optional group
-jac install -e . --extras all
-
-# Install with verbose output
-jac install -v
-
-# Editable install of the current package
+# Editable install of the current package (no-arg mode)
 jac install -e .
 
 # Editable install from anywhere (no need to cd into the package)
 jac install -e /path/to/lib
 
+# Editable install with all optional dependency groups
+jac install -e . --extras all
+
+# Install with verbose output
+jac install -v
+
 # Reinstall all packages from scratch (ignores cached state)
 jac install --force-reinstall
-
-# Include pre-release versions
-jac install --pre
 
 # Preview what would be installed without doing it
 jac install --dry-run
@@ -1304,7 +1325,7 @@ jac install --no-cache-dir
 
 Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See the [Configuration Reference](../config/index.md#optional-dependencies).
 
-> **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, etc.) are forwarded directly to the underlying pip invocation. Use `jac update` to upgrade packages to their latest versions.
+> **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, `--pre`, `--no-deps`, `--quiet`, `--prefer-binary`) are forwarded directly to pip in both modes. Use `jac update` to upgrade packages to their latest versions.
 
 ---
 
