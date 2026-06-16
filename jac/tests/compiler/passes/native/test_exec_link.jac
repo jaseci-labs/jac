@@ -145,6 +145,7 @@ test "Mach-O executable has MH_EXECUTE filetype and an LC_MAIN entry" {
         (cmd, cmdsize) = struct.unpack_from("<II", raw, off);
         if cmd == 0x80000028 {  # LC_MAIN
             has_main = True;
+            break;
         }
         off += cmdsize;
     }
