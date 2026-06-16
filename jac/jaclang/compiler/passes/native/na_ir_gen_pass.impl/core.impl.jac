@@ -77,6 +77,10 @@ impl NaIRGenPass.postinit -> None {
         self.type_map["bool"] = _spec_map["i1"];
         self.type_map["str"] = _spec_map["i8*"];
     }
+    # `LiteralString` (the checker's type for string literals) is `str` at
+    # runtime — alias it so literal-typed values lower like any other string
+    # (e.g. the element of `iter("hi")` -> Iterator[LiteralString]).
+    self.type_map["LiteralString"] = self.type_map.get("str", _spec_map["i8*"]);
 
     # Initialize LLVM struct types that depend on llvm_module.context
     self.complex_struct_type = self.llvm_module.context.get_identified_type(

@@ -20,5 +20,6 @@ libraylib*.dylib
 .jac/
 *.jir
 *.jbc
-.jac_ir/        # legacy native IR cache (superseded by .jac/cache/native)
+# legacy native IR cache (superseded by .jac/cache/native)
+.jac_ir/
 __pycache__/

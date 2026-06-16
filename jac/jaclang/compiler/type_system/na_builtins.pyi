@@ -13,7 +13,21 @@ type-checks accurately instead of degrading to UnknownType.
 
 from __future__ import annotations
 
-__all__ = ["File", "open"]
+from typing import Protocol, TypeVar
+
+__all__ = ["File", "open", "Iterable", "Iterator", "iter", "next"]
+
+_T = TypeVar("_T")
+
+class Iterable(Protocol[_T]):
+    def __iter__(self) -> Iterator[_T]: ...
+
+class Iterator(Iterable[_T], Protocol[_T]):
+    def __iter__(self) -> Iterator[_T]: ...
+    def __next__(self) -> _T: ...
+
+def iter(__o: Iterable[_T]) -> Iterator[_T]: ...
+def next(__i: Iterator[_T]) -> _T: ...
 
 class File:
     # Fields backing the emitted struct (handle is opaque and intentionally

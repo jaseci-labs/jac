@@ -29,6 +29,13 @@ impl NaIRGenPass._ensure_iter_types -> None {
     # coll/s stored as i64 (ptrtoint) so the generic dtor BORROWS them.
     self._register_iter_struct("ListIterState", ["coll", "idx"], [i64, i64]);
     self._register_iter_struct("StrIterState", ["s", "idx"], [i64, i64]);
+    self._register_iter_struct("DictKeyIterState", ["coll", "idx"], [i64, i64]);
+    self._register_iter_struct("SetIterState", ["coll", "idx"], [i64, i64]);
+    # range is value-copied into the iterator (cursor + bounds), so nothing
+    # is borrowed and the generic dtor is a plain free.
+    self._register_iter_struct(
+        "RangeIterState", ["cur", "stop", "step"], [i64, i64, i64]
+    );
     # upstream stored as i8* so the generic dtor OWNS (releases) it.
     self._register_iter_struct("MapIterState", ["upstream"], [i8p]);
     self._register_iter_struct("FilterIterState", ["upstream"], [i8p]);
@@ -276,6 +283,260 @@ impl NaIRGenPass._make_str_iter(str_val: ir.Value) -> ir.Value {
     return self._make_jac_iter(next_fn, state);
 }
 
+# ─── Dict-key / Set / Range iterators (#6403 M1) ─────────────
+"""Monomorphic next-fn for a dict's keys: yield get_key(d, idx), idx++."""
+impl NaIRGenPass._dict_iter_next_fn(dict_key: str) -> ir.Function {
+    key = "dict:" + dict_key;
+    if key in self._iter_next_fns {
+        return self._iter_next_fns[key];
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i1 = ir.IntType(1);
+    helpers = self.dict_helpers[dict_key];
+    dict_ptr_type = self.dict_types[dict_key].as_pointer();
+    key_type = helpers["key_type"];
+    state_ptr_type = self.struct_types["DictKeyIterState"].as_pointer();
+    nfty = ir.FunctionType(i1, [i8p, i8p]);
+    fn = ir.Function(
+        self.llvm_module, nfty, name="__iter_next_dict_" + dict_key.replace(":", "_")
+    );
+    fn.linkage = "private";
+    fn.args[0].name = "state";
+    fn.args[1].name = "out";
+    entry_bb = fn.append_basic_block("entry");
+    cont = fn.append_basic_block("cont");
+    stop = fn.append_basic_block("stop");
+    b = ir.IRBuilder(entry_bb);
+    state = b.bitcast(fn.args[0], state_ptr_type, name="dit.state");
+    coll_slot = b.gep(
+        state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="dit.coll.slot"
+    );
+    coll_i64 = b.load(coll_slot, name="dit.coll.i64");
+    dict_ptr = b.inttoptr(coll_i64, dict_ptr_type, name="dit.dict");
+    idx_slot = b.gep(
+        state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="dit.idx.slot"
+    );
+    idx = b.load(idx_slot, name="dit.idx");
+    n = b.call(helpers["len"], [dict_ptr], name="dit.len");
+    ok = b.icmp_signed("<", idx, n, name="dit.ok");
+    b.cbranch(ok, cont, stop);
+    b.position_at_end(cont);
+    k = b.call(helpers["get_key"], [dict_ptr, idx], name="dit.k");
+    out_t = b.bitcast(fn.args[1], key_type.as_pointer(), name="dit.out");
+    b.store(k, out_t);
+    b.store(b.add(idx, ir.Constant(i64, 1), name="dit.idx.next"), idx_slot);
+    b.ret(ir.Constant(i1, 1));
+    b.position_at_end(stop);
+    b.ret(ir.Constant(i1, 0));
+    self._iter_next_fns[key] = fn;
+    return fn;
+}
+
+"""Build a DictKeyIter over dict_val (borrows the dict)."""
+impl NaIRGenPass._make_dict_iter(dict_val: ir.Value, dict_key: str) -> ir.Value {
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    next_fn = self._dict_iter_next_fn(dict_key);
+    state = self._alloc_iter_struct("DictKeyIterState");
+    coll_i64 = self.builder.ptrtoint(dict_val, i64, name="dit.coll.store");
+    self.builder.store(
+        coll_i64,
+        self.builder.gep(
+            state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="dit.coll.field"
+        )
+    );
+    self.builder.store(
+        ir.Constant(i64, 0),
+        self.builder.gep(
+            state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="dit.idx.field"
+        )
+    );
+    return self._make_jac_iter(next_fn, state);
+}
+
+"""Monomorphic next-fn for a set: yield data[idx], idx++ (data = field 2)."""
+impl NaIRGenPass._set_iter_next_fn(
+    elem_type_name: str, elem_type: ir.Type
+) -> ir.Function {
+    key = "set:" + elem_type_name;
+    if key in self._iter_next_fns {
+        return self._iter_next_fns[key];
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i1 = ir.IntType(1);
+    set_ptr_type = self.set_types[elem_type_name].as_pointer();
+    state_ptr_type = self.struct_types["SetIterState"].as_pointer();
+    nfty = ir.FunctionType(i1, [i8p, i8p]);
+    fn = ir.Function(self.llvm_module, nfty, name="__iter_next_set_" + elem_type_name);
+    fn.linkage = "private";
+    fn.args[0].name = "state";
+    fn.args[1].name = "out";
+    entry_bb = fn.append_basic_block("entry");
+    cont = fn.append_basic_block("cont");
+    stop = fn.append_basic_block("stop");
+    b = ir.IRBuilder(entry_bb);
+    state = b.bitcast(fn.args[0], state_ptr_type, name="set.state");
+    coll_slot = b.gep(
+        state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="set.coll.slot"
+    );
+    coll_i64 = b.load(coll_slot, name="set.coll.i64");
+    set_ptr = b.inttoptr(coll_i64, set_ptr_type, name="set.set");
+    idx_slot = b.gep(
+        state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="set.idx.slot"
+    );
+    idx = b.load(idx_slot, name="set.idx");
+    # Set layout: { i64 len, i64 cap, elem_type* data }.
+    n = b.load(
+        b.gep(set_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="set.len.p"),
+        name="set.len"
+    );
+    ok = b.icmp_signed("<", idx, n, name="set.ok");
+    b.cbranch(ok, cont, stop);
+    b.position_at_end(cont);
+    data = b.load(
+        b.gep(set_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="set.data.p"),
+        name="set.data"
+    );
+    v = b.load(b.gep(data, [idx], name="set.elem.p"), name="set.elem");
+    out_t = b.bitcast(fn.args[1], elem_type.as_pointer(), name="set.out");
+    b.store(v, out_t);
+    b.store(b.add(idx, ir.Constant(i64, 1), name="set.idx.next"), idx_slot);
+    b.ret(ir.Constant(i1, 1));
+    b.position_at_end(stop);
+    b.ret(ir.Constant(i1, 0));
+    self._iter_next_fns[key] = fn;
+    return fn;
+}
+
+"""Build a SetIter over set_val (borrows the set)."""
+impl NaIRGenPass._make_set_iter(
+    set_val: ir.Value, elem_type_name: str, elem_type: ir.Type
+) -> ir.Value {
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    next_fn = self._set_iter_next_fn(elem_type_name, elem_type);
+    state = self._alloc_iter_struct("SetIterState");
+    coll_i64 = self.builder.ptrtoint(set_val, i64, name="set.coll.store");
+    self.builder.store(
+        coll_i64,
+        self.builder.gep(
+            state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="set.coll.field"
+        )
+    );
+    self.builder.store(
+        ir.Constant(i64, 0),
+        self.builder.gep(
+            state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="set.idx.field"
+        )
+    );
+    return self._make_jac_iter(next_fn, state);
+}
+
+"""Monomorphic next-fn for a range: yield cur, cur += step (either direction)."""
+impl NaIRGenPass._range_iter_next_fn -> ir.Function {
+    key = "range";
+    if key in self._iter_next_fns {
+        return self._iter_next_fns[key];
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i1 = ir.IntType(1);
+    state_ptr_type = self.struct_types["RangeIterState"].as_pointer();
+    nfty = ir.FunctionType(i1, [i8p, i8p]);
+    fn = ir.Function(self.llvm_module, nfty, name="__iter_next_range");
+    fn.linkage = "private";
+    fn.args[0].name = "state";
+    fn.args[1].name = "out";
+    entry_bb = fn.append_basic_block("entry");
+    cont = fn.append_basic_block("cont");
+    stop = fn.append_basic_block("stop");
+    b = ir.IRBuilder(entry_bb);
+    state = b.bitcast(fn.args[0], state_ptr_type, name="rit.state");
+    cur_slot = b.gep(
+        state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="rit.cur.slot"
+    );
+    cur = b.load(cur_slot, name="rit.cur");
+    stop_v = b.load(
+        b.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="rit.stop.slot"),
+        name="rit.stop"
+    );
+    step = b.load(
+        b.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="rit.step.slot"),
+        name="rit.step"
+    );
+    # In-bounds test honours step direction: cur<stop ascending, cur>stop
+    # descending. step is never 0 (range() rejects it).
+    pos = b.icmp_signed(">", step, ir.Constant(i64, 0), name="rit.pos");
+    lt = b.icmp_signed("<", cur, stop_v, name="rit.lt");
+    gt = b.icmp_signed(">", cur, stop_v, name="rit.gt");
+    ok = b.select(pos, lt, gt, name="rit.ok");
+    b.cbranch(ok, cont, stop);
+    b.position_at_end(cont);
+    out_t = b.bitcast(fn.args[1], i64.as_pointer(), name="rit.out");
+    b.store(cur, out_t);
+    b.store(b.add(cur, step, name="rit.cur.next"), cur_slot);
+    b.ret(ir.Constant(i1, 1));
+    b.position_at_end(stop);
+    b.ret(ir.Constant(i1, 0));
+    self._iter_next_fns[key] = fn;
+    return fn;
+}
+
+"""Build a RangeIter over range_val (copies start/stop/step; borrows nothing)."""
+impl NaIRGenPass._make_range_iter(range_val: ir.Value) -> ir.Value {
+    i32 = ir.IntType(32);
+    next_fn = self._range_iter_next_fn();
+    state = self._alloc_iter_struct("RangeIterState");
+    # JacRange layout: { i64 start, i64 stop, i64 step }.
+    rp = range_val;
+    rng_ptr_type = self.range_struct_type.as_pointer();
+    if range_val.type != rng_ptr_type {
+        rp = self.builder.bitcast(range_val, rng_ptr_type, name="rit.range");
+    }
+    start = self.builder.load(
+        self.builder.gep(
+            rp, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="rit.r.start.p"
+        ),
+        name="rit.r.start"
+    );
+    stop_v = self.builder.load(
+        self.builder.gep(
+            rp, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="rit.r.stop.p"
+        ),
+        name="rit.r.stop"
+    );
+    step = self.builder.load(
+        self.builder.gep(
+            rp, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="rit.r.step.p"
+        ),
+        name="rit.r.step"
+    );
+    self.builder.store(
+        start,
+        self.builder.gep(
+            state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="rit.cur.field"
+        )
+    );
+    self.builder.store(
+        stop_v,
+        self.builder.gep(
+            state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="rit.stop.field"
+        )
+    );
+    self.builder.store(
+        step,
+        self.builder.gep(
+            state, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="rit.step.field"
+        )
+    );
+    return self._make_jac_iter(next_fn, state);
+}
+
 # ─── Iterator construction from an expression ────────────────
 """Make an iterator from an already-codegen'd value (list/str/JacIter)."""
 impl NaIRGenPass._make_iter_from_value(
@@ -304,14 +565,49 @@ impl NaIRGenPass._make_iter_from_value(
             return (self._make_list_iter(val, lk, elem_type), lk, elem_type);
         }
     }
+    # range(...) -> RangeIter (#6403 M1); JacRange is value-copied.
+    if self?.range_struct_type and val.type == self.range_struct_type.as_pointer() {
+        return (self._make_range_iter(val), "range", ir.IntType(64));
+    }
+    # dict -> DictKeyIter over the keys (Python `iter(dict)` semantics).
+    for (dk, dt) in self.dict_types.items() {
+        if val.type == dt.as_pointer() {
+            key_type = self.dict_helpers[dk]["key_type"];
+            return (self._make_dict_iter(val, dk), dk, key_type);
+        }
+    }
+    # set / frozenset -> SetIter over the backing array.
+    for (sk, st) in self.set_types.items() {
+        if val.type == st.as_pointer() {
+            elem_type = self.set_helpers[sk]["elem_type"];
+            return (self._make_set_iter(val, sk, elem_type), sk, elem_type);
+        }
+    }
     if isinstance(val.type, ir.PointerType) and val.type == i8p {
         return (self._make_str_iter(val), "str", i8p);
     }
     if self._jac_iter_type is not None
     and val.type == self._jac_iter_type.as_pointer() {
-        # Already an iterator value; element type unknown from the value alone.
-        # Returned with i8* placeholder — only valid where elem type is tracked.
-        return (val, "iter", i8p);
+        # Already an iterator value (Python's `iter(it) is it`). Recover its
+        # element type from the checked `Iterator[T]` so adapters wrapping a
+        # stored iterator (e.g. `map(f, it)`) alloca the right upstream slot;
+        # i8* is the last resort.
+        #
+        # The result of this branch is treated as OWNED by every consumer: the
+        # central ownership invariant marks `iter(...)` call results +1, and an
+        # adapter takes ownership of its upstream (the i8p state field releases
+        # it via the generic dtor). But `val` is the *borrowed* pointer the
+        # source already owns — returning it as-is means the single +1 is
+        # released twice (loop/adapter end + the source variable's scope exit),
+        # a use-after-free. Retain it so it genuinely carries the +1 the
+        # consumer will release; an already-owned temporary (e.g. an iterator
+        # returned from a call) needs no extra retain. (#6403)
+        if not self._is_owned(val) {
+            self._emit_rc_retain(val, op="iter_alias");
+            self._mark_owned(val);
+        }
+        et = self._iter_elem_llvm_of(expr);
+        return (val, "iter", et if et is not None else i8p);
     }
     return None;
 }
@@ -588,6 +884,40 @@ impl NaIRGenPass._make_zip_iter(up_a: tuple, up_b: tuple) -> (tuple | None) {
     return (self._make_jac_iter(nfn, st), "tuple", tuple_type);
 }
 
+# ─── First-class next() ──────────────────────────────────────
+"""Lower `next(it)`: pull one element from a first-class iterator value.
+
+The element type comes from the checker's `Iterator[T]` (`_iter_elem_llvm_of`)
+so the out-slot is typed exactly. Exhaustion (`has_value == 0`) raises
+StopIteration — the for-loop drive uses the raw flag instead and never pays
+for the check, but the user-facing `next()` honors the Python contract.
+"""
+impl NaIRGenPass._codegen_next(nd: uni.FuncCall) -> (ir.Value | None) {
+    params = nd.params or [];
+    if len(params) != 1 {
+        self._emit_unsupported_builtin_call(nd, "next");
+        return None;
+    }
+    arg = params[0];
+    elem_type = self._iter_elem_llvm_of(arg);
+    iter_val = self._codegen_expr(arg);
+    if iter_val is None or elem_type is None {
+        self._emit_unsupported_builtin_call(nd, "next");
+        return None;
+    }
+    self._ensure_iter_types();
+    i1 = ir.IntType(1);
+    i8p = ir.IntType(8).as_pointer();
+    out_slot = self._entry_alloca(elem_type, "next.out");
+    out_i8 = self.builder.bitcast(out_slot, i8p, name="next.out.i8");
+    got = self._emit_iter_advance(self.builder, iter_val, out_i8);
+    is_stop = self.builder.icmp_unsigned(
+        "==", got, ir.Constant(i1, 0), name="next.stop"
+    );
+    self._emit_runtime_raise(is_stop, "StopIteration", "");
+    return self.builder.load(out_slot, name="next.val");
+}
+
 # ─── Generalized for-loop drive ──────────────────────────────
 """Drive `for x in <iterator-producing expr>` via the protocol.
 
@@ -597,22 +927,34 @@ existing fast paths.
 """
 impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     coll = nd.collection;
-    if not isinstance(coll, uni.FuncCall) {
-        return False;
-    }
     self._ensure_iter_types();
-    cname = self._get_name(coll.target);
-    if cname not in ["map", "filter", "enumerate", "zip", "iter"] {
-        return False;
+    # A map/filter/enumerate/zip/iter call builds a fresh (owned) iterator the
+    # loop must release at the end. A user-defined function named map/filter/...
+    # shadows the builtin; the checker-stamped classification (Phase 4 fact)
+    # decides, so the protocol only claims genuine builtin adapter calls.
+    is_adapter_call = (
+        isinstance(coll, uni.FuncCall)
+        and self._get_name(coll.target) in ["map", "filter", "enumerate", "zip", "iter"]
+        and coll.call_kind == "builtin"
+    );
+    built: (tuple | None) = None;
+    owns_iter = False;
+    if is_adapter_call {
+        built = self._build_iter_from_expr(coll);
+        owns_iter = True;
+    } else {
+        # A stored first-class iterator value (`it: Iterator[T]`); #6403 phase 2.
+        # The loop borrows it (the variable still owns the +1), so it must NOT
+        # be released here.
+        elem_t = self._iter_elem_llvm_of(coll);
+        if elem_t is not None {
+            iv = self._codegen_expr(coll);
+            if iv is not None {
+                ename = "tuple" if isinstance(elem_t, ir.LiteralStructType) else "iter";
+                built = (iv, ename, elem_t);
+            }
+        }
     }
-    # A user-defined function named map/filter/... shadows the builtin;
-    # the checker-stamped classification (Phase 4 fact) decides, so the
-    # iterator protocol only claims genuine builtin adapter calls. For-loop
-    # collections are source nodes, so the stamp is always present.
-    if coll.call_kind != "builtin" {
-        return False;
-    }
-    built = self._build_iter_from_expr(coll);
     if built is None {
         return False;
     }
@@ -668,6 +1010,10 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     }
     self.loop_stack.pop();
     self.builder.position_at_end(end_bb);
-    self._emit_rc_release_simple(iter_val, op="iter_end", loc=_loc);
+    # Only release iterators this loop created; a stored iterator stays owned
+    # by its variable and is released at that variable's end of life.
+    if owns_iter {
+        self._emit_rc_release_simple(iter_val, op="iter_end", loc=_loc);
+    }
     return True;
 }
