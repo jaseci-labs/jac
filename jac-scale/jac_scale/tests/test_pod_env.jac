@@ -5,6 +5,7 @@ import from jac_scale.targets.kubernetes.microservice.manifest_builder {
     MicroserviceManifestBuilder
 }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.abstractions.models.deploy_context { DeployContext }
 
 
 test "build_env injects K8S_APP_NAME and K8S_NAMESPACE from k8s_config" {
@@ -79,4 +80,48 @@ test "pod spec strips a user-set JAC_IMAGE_REF, leaving one system value" {
         if e["name"] == "JAC_IMAGE_REF"
     ];
     assert refs == ["jac-shop:dev-abc123def456"];
+}
+
+
+test "code-injection deploy_context yields base image, code-server init, shared volume, dispatch entrypoint" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="jac-shop-dev");
+    ctx = DeployContext(
+        image_override="python:3.12-slim",
+        entrypoint_command='cd /app && jac install && if [ "$JAC_SV_NAME" = "__gateway__" ]; then exec jac scale gateway; else exec jac start "${JAC_SV_NAME}.jac"; fi',
+        volumes=[{"name": "app-code", "emptyDir": {}}, {"name": "tmp", "emptyDir": {}}],
+        volume_mounts=[
+            {"name": "app-code", "mountPath": "/app"},
+            {"name": "tmp", "mountPath": "/tmp"}
+        ],
+        init_containers=[{"name": "build-app", "image": "busybox:1.36"}]
+    );
+    builder = MicroserviceManifestBuilder(k8s_config=cfg, deploy_context=ctx);
+
+    spec = builder._build_service_pod_spec("orders", "jac-shop:dev-abc123");
+    container = spec["containers"][0];
+
+    # Base image wins over the passed built image: no per-app image build.
+    assert container["image"] == "python:3.12-slim";
+    # Entrypoint is the code-injection command (runtime install + dispatch).
+    assert container["command"] == ["sh", "-c"];
+    assert container["args"] == [ctx.entrypoint_command];
+    # Shared /app + /tmp mounts on the main container.
+    mount_paths = [m["mountPath"] for m in container["volumeMounts"]];
+    assert "/app" in mount_paths;
+    assert "/tmp" in mount_paths;
+    # Volumes and the code-server init container are in the pod spec.
+    assert "app-code" in [v["name"] for v in spec["volumes"]];
+    assert "build-app" in [c["name"] for c in spec["initContainers"]];
+}
+
+
+test "no code-injection context keeps the built image and JAC_SV_NAME entrypoint" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="jac-shop-dev");
+    builder = MicroserviceManifestBuilder(k8s_config=cfg);
+
+    spec = builder._build_service_pod_spec("orders", "jac-shop:dev-abc123");
+    container = spec["containers"][0];
+
+    assert container["image"] == "jac-shop:dev-abc123";
+    assert "JAC_SV_NAME" in container["args"][0];
 }

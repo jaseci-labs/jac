@@ -77,6 +77,18 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return KubernetesTarget._handle_image_registry(self, app_name, app_config);
     }
 
+    """True when [plugins.scale.microservices].code_inject is set: deploy the
+    fleet via code-sync (base image + code-server) instead of a built image."""
+    def _code_inject_enabled -> bool {
+        try {
+            import from jac_scale.config_loader { get_scale_config }
+            ms_cfg = get_scale_config().get_microservices_config();
+            return bool(ms_cfg.get("code_inject", False));
+        } except Exception {
+            return False;
+        }
+    }
+
     """Reads image_registry from raw config (KubernetesConfig.from_dict
     drops unknown keys so we can't go via the typed view) and hands off
     to the cluster-aware auto-build pipeline."""
@@ -145,6 +157,45 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             return DeploymentResult(
                 success=False, message=f"database provisioning failed: {e}"
             );
+        }
+
+        # Code-injection mode: deploy the fleet via code-sync (base image +
+        # code-server + shared volume) instead of a built image, reusing the
+        # monolith target's Dockerless path fanned out per sibling via
+        # JAC_SV_NAME. Lets platforms that deploy by code-sync (jacBuilder)
+        # run the fleet with no image build/push.
+        if self._code_inject_enabled() {
+            try {
+                self.auto_build = False;
+                self.guard_fallback_image = False;
+                self._load_kube_config();
+                core_v1 = client.CoreV1Api();
+                apps_v1 = client.AppsV1Api();
+                vc = self._build_volumes_config(
+                    app_name, app_config, self.k8s_config.namespace, core_v1, apps_v1
+                );
+                dispatch: str = 'if [ "$JAC_SV_NAME" = "__gateway__" ]; then '
+                "exec jac scale gateway; "
+                'else exec jac start "${JAC_SV_NAME}.jac"; fi';
+                cmd = self._build_runtime_setup_command(
+                    app_config, start_command=dispatch
+                );
+                ctx = self._deploy_context;
+                ctx.init_containers = list(ctx.init_containers) + [
+                    vc["build_container"]
+                ];
+                ctx.volumes = list(ctx.volumes) + vc["volumes"];
+                ctx.volume_mounts = list(ctx.volume_mounts) + [
+                    {"name": "app-code", "mountPath": self.k8s_config.app_mount_path},
+                    {"name": "tmp", "mountPath": "/tmp"}
+                ];
+                ctx.image_override = self.k8s_config.python_image;
+                ctx.entrypoint_command = cmd[2];
+            } except Exception as e {
+                return DeploymentResult(
+                    success=False, message=f"code-injection setup failed: {e}"
+                );
+            }
         }
 
         try {

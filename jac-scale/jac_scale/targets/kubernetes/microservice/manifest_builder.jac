@@ -700,6 +700,14 @@ obj MicroserviceManifestBuilder {
     (gateway) or `jac start <name>.jac` (service). JAC_SV_SIBLING=1 is
     exported so the pre-hook skips local-mode orchestration."""
     def _pod_entrypoint -> dict[str, any] {
+        # Code-injection mode supplies a full entrypoint (runtime install +
+        # the same JAC_SV_NAME dispatch) since the base image has no app code.
+        if self.deploy_context.entrypoint_command {
+            return {
+                "command": ["sh", "-c"],
+                "args": [self.deploy_context.entrypoint_command]
+            };
+        }
         return {
             "command": ["sh", "-c"],
             "args": [
@@ -720,7 +728,8 @@ obj MicroserviceManifestBuilder {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
-        resolved_image: str = self._resolve_image(image, svc_cfg);
+        resolved_image: str = self.deploy_context.image_override
+        or self._resolve_image(image, svc_cfg);
         # JAC_IMAGE_REF (B-01): the resolved ref incl. K-29's content-id
         # suffix, surfaced so an in-pod self-check can report "running build X"
         # with zero RBAC. Strip any user-set copy first so the rendered YAML
@@ -749,8 +758,9 @@ obj MicroserviceManifestBuilder {
             container["resources"] = resources;
         }
         (shared_vols, shared_mounts) = self._shared_volumes_for_service(svc_name);
-        if shared_mounts {
-            container["volumeMounts"] = shared_mounts;
+        all_mounts = list(self.deploy_context.volume_mounts) + shared_mounts;
+        if all_mounts {
+            container["volumeMounts"] = all_mounts;
         }
         # envFrom for the user secret: created BEFORE Deployments in
         # apply_manifests so the secretRef resolves at pod startup.
@@ -765,8 +775,9 @@ obj MicroserviceManifestBuilder {
         if sa_name {
             spec["serviceAccountName"] = sa_name;
         }
-        if shared_vols {
-            spec["volumes"] = shared_vols;
+        all_vols = list(self.deploy_context.volumes) + shared_vols;
+        if all_vols {
+            spec["volumes"] = all_vols;
         }
         if self.deploy_context.init_containers {
             spec["initContainers"] = list(self.deploy_context.init_containers);
