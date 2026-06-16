@@ -700,7 +700,7 @@ impl CompilerBridge.list_templates -> dict[str, any] {
 
 """Create a new Jac project from a template."""
 impl CompilerBridge.create_project(
-    name: str, template: str = "default", directory: str = ""
+    name: str, template: str = "cli", directory: str = ""
 ) -> dict[str, any] {
     import subprocess;
     import from pathlib { Path }

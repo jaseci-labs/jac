@@ -49,7 +49,7 @@ impl LayoutPass.transform(ir_in: uni.Module) -> uni.Module {
 """Collect all Archetype nodes from the module, deduplicating forward declarations."""
 impl LayoutPass._collect_archetypes(module: uni.Module) -> dict[str, uni.Archetype] {
     arch_map: dict[str, uni.Archetype] = {};
-    for nd in UniPass.get_all_sub_nodes(module, uni.Archetype, brute_force=True) {
+    for nd in UniPass.get_all_sub_nodes(module, uni.Archetype) {
         aname = nd.name.value if nd.name else None;
         if aname is None {
             continue;
@@ -207,18 +207,8 @@ impl LayoutPass._build_layout(arch: uni.Archetype) -> ArchetypeLayout {
     mro = reg.mro_order.get(aname, [aname]);
     parents = reg.class_parents.get(aname, []);
 
-    # Determine arch_type string
-    arch_type_str = "object";
-    if arch.arch_type {
-        tok_name = arch.arch_type.name;
-        if tok_name == Tok.KW_WALKER.value {
-            arch_type_str = "walker";
-        } elif tok_name == Tok.KW_NODE.value {
-            arch_type_str = "node";
-        } elif tok_name == Tok.KW_EDGE.value {
-            arch_type_str = "edge";
-        }
-    }
+    # Determine arch_type string ("object" covers obj/class archetypes)
+    arch_type_str = arch.arch_kind or "object";
 
     # Determine if vtable is needed
     parents_set: set[str] = set();

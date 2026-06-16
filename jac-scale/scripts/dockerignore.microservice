@@ -6,7 +6,6 @@
 **/.jac/data
 **/.jac/logs
 **/.jac/run
-**/__jac_gen__
 
 # Node / frontend (built separately or served via static_mounts from a
 # host volume; bundling node_modules into the image is slow + wasteful)

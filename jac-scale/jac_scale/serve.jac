@@ -37,8 +37,10 @@ import from jaclang.cli.banners { JAC_DISCORD_URL }
 import from fastapi { WebSocket, WebSocketDisconnect }  # jac:runtime
 import from jac_scale.admin.admin_portal { JacAPIServerAdmin }
 import from jac_scale.admin.llm_telemetry { JacAPIServerLLMTelemetry }
+import from jac_scale.admin.workloads { JacAPIServerWorkloads }
 import from jac_scale.admin.logs { JacAPIServerLogs }
 import from jac_scale.admin.traces { JacAPIServerTraces }
+import from jac_scale.admin.ops { JacAPIServerOps }
 import from jac_scale.enums { Platforms, Operations }
 import from jac_scale.scheduler.scheduler { JacScaleScheduler, TriggerSpec }
 import from jaclang.runtimelib.builtin { ScheduleTrigger }
@@ -116,7 +118,10 @@ obj JacAPIServerAuth {
     # API key management
     def get_api_key_manager -> ApiKeyManager;
     def create_api_key(
-        name: str, expiry_days: int | None = None, Authorization: str | None = None
+        name: str,
+        expiry_days: int | None = None,
+        Authorization: str | None = None,
+        allowed_walkers: list[str] | None = None
     ) -> TransportResponse;
 
     def list_api_keys(Authorization: str | None = None) -> TransportResponse;
@@ -146,6 +151,8 @@ obj JacAPIServerCore {
     def _print_startup_banner(dev: bool, no_client: bool) -> None;
     # Health check
     def register_health_endpoint -> None;
+    # Dev-mode build health (HMR compile status)
+    def register_build_status_endpoint -> None;
     # Client error reporting
     def _register_client_error_endpoint -> None;
     # HMR support
@@ -224,7 +231,7 @@ obj JacAPIServerStatic {
 }
 
 """Composed JacAPIServer class combining all mixins with JServer base."""
-obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerScheduler, JacAPIServerEmailer, JServer) {
+obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerScheduler, JacAPIServerEmailer, JServer) {
     # HMR (Hot Module Replacement) support fields
     has _hmr_pending: bool = False,
         _hot_reloader: any | None = None,

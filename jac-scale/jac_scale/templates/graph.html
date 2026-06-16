@@ -437,7 +437,12 @@
         let network = null;
         let graphData = null;
         let physicsEnabled = true;
-        let authToken = localStorage.getItem("jac_token") || null;
+        // ?public=1 pins the visualizer to the public (super root) graph,
+        // ignoring any stored session token - useful for embeds.
+        const forcePublic = new URLSearchParams(window.location.search).get("public") === "1";
+        let authToken = forcePublic
+            ? null
+            : localStorage.getItem("jac_token") || null;
         const baseUrl = window.location.origin;
 
         // Load graph immediately and update header buttons
@@ -452,9 +457,8 @@
             });
 
         function updateHeaderButtons() {
-            document.getElementById("auth-btn").style.display = authToken
-                ? "none"
-                : "flex";
+            document.getElementById("auth-btn").style.display =
+                authToken || forcePublic ? "none" : "flex";
             document.getElementById("logout-btn").style.display = authToken
                 ? "flex"
                 : "none";

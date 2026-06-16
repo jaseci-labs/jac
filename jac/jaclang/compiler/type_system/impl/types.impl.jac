@@ -529,6 +529,73 @@ impl TypeBase.category.getter -> TypeCategory {
     return self.CATEGORY;
 }
 
+"""
+Canonical, stable string key for a type.
+
+Examples: "int", "MyStruct", "list[int]", "dict[str,MyStruct]",
+"fn(int,str)->bool". Properties of the key:
+- Literal refinements erase to their runtime class (Literal[42] -> "int"
+  context aside, the literal value never appears in the key).
+- Union members are sorted, so "int|None" == "None|int".
+- An instantiable (class-object) type is wrapped as "type[...]" to keep it
+  distinct from its instances.
+Backends key emission caches by this; it is the only sanctioned string form
+of a type for identity purposes (display uses __str__).
+"""
+impl TypeBase.mangle -> str {
+    if isinstance(self, ClassType) {
+        base = self._shared.class_name if self._shared is not None else "<unbound>";
+        if self.private.type_args {
+            args = ",".join(arg.mangle() for arg in self.private.type_args);
+            base = f"{base}[{args}]";
+        }
+        if self.is_instantiable() and not self.is_instance() {
+            return f"type[{base}]";
+        }
+        return base;
+    }
+    if isinstance(self, UnionType) {
+        members = sorted(ty.mangle() for ty in (self.types or []));
+        return "|".join(members) if members else "<union>";
+    }
+    if isinstance(self, FunctionType) {
+        params = ",".join(
+            (p.param_type.mangle() if p.param_type is not None else "any")
+            for p in (self.parameters or [])
+        );
+        ret = self.return_type.mangle() if self.return_type is not None else "any";
+        return f"fn({params})->{ret}";
+    }
+    if isinstance(self, OverloadedType) {
+        return "&".join(ov.mangle() for ov in (self.overloads or []));
+    }
+    if isinstance(self, EnumMemberType) {
+        enum_key = self.enum_class.mangle()
+            if self.enum_class is not None
+            else "<enum>";
+        member = self.member_info.member_name
+            if self.member_info is not None
+            else "<member>";
+        return f"{enum_key}.{member}";
+    }
+    if isinstance(self, ModuleType) {
+        return f"module[{self.mod_name}]" if self.mod_name else "module[?]";
+    }
+    if isinstance(self, TypeVarType) {
+        return f"~{self.name}" if self.name else "~T";
+    }
+    if isinstance(self, AnyType) {
+        return "any";
+    }
+    if isinstance(self, NeverType) {
+        return "never";
+    }
+    if isinstance(self, UnknownType) {
+        return "<unknown>";
+    }
+    return "<unbound>";
+}
+
 """Return true if this type is AnyType, TypeVarType, or object."""
 impl TypeBase.is_any_type -> bool {
     # Check for AnyType or TypeVarType using category

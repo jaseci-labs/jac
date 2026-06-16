@@ -91,19 +91,9 @@ impl JacShadcnPlugin.create_cmd -> None {
         pre_hook=_handle_create_theme,
         source="jac-shadcn"
     );
-
-    # register_project_template is firstresult; register directly so the
-    # jac-shadcn template is available even when another plugin (jac-client)
-    # also provides templates and wins the hook.
-    import from jaclang.project.template_registry { get_template_registry }
-    try {
-        info = _build_shadcn_template_info();
-        if info {
-            get_template_registry().register(info);
-        }
-    } except Exception {
-        ;
-    }
+    # The jac-shadcn template is contributed via the aggregating
+    # `register_project_template` hook (below) -- every plugin's templates are
+    # collected, so no direct registry registration is needed here.
 }
 
 impl _handle_create_theme(ctx: HookContext) -> None {
@@ -256,6 +246,12 @@ impl _build_shadcn_template_info -> dict[str, any] | None {
     try {
         template = load_template_from_directory(template_dir);
         info = template.to_dict();
+        # jac-shadcn is a non-default variant of the `fullstack` kind: `jac
+        # create --use jac-shadcn` selects it, while `--kind fullstack` keeps
+        # the plain jac-client fullstack template. (Also declared in the
+        # template's jac.toml; set here too so it holds regardless of loader.)
+        info["kind"] = "fullstack";
+        info["is_default_for_kind"] = False;
         # Generate the themed starter (global.css, components, main.jac) after scaffold.
         info["post_create"] = _shadcn_post_create;
         return info;
@@ -265,10 +261,9 @@ impl _build_shadcn_template_info -> dict[str, any] | None {
     }
 }
 
-# register_project_template is a firstresult hook, so when jac-client is installed
-# its templates win and this is never consulted. We therefore ALSO register the
-# template directly into the singleton registry in create_cmd (below). This hook
-# remains as a fallback for environments where jac-super is the only provider.
+# `register_project_template` is an aggregating hook: jac-shadcn's template is
+# collected alongside every other plugin's, so this contributes the variant
+# without competing with jac-client's kind templates.
 impl JacShadcnPlugin.register_project_template -> dict[str, any] | None {
     return _build_shadcn_template_info();
 }

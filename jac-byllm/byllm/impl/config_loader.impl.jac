@@ -23,7 +23,7 @@ impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, any] {
             'proxy': False,
             'verbose': False
         },
-        'call_params': {'temperature': 0.7, 'max_tokens': 0},
+        'call_params': {'temperature': 0.7, 'max_tokens': 0, 'max_output_retries': 3},
         'litellm': {'local_cost_map': True, 'drop_params': True, 'debug': False},
         'fallback': {'strategy': 'fallback', 'num_retries': 1, 'timeout': 60.0},
         'prompt_caching': {'enabled': True},
@@ -66,7 +66,12 @@ impl JacByllmConfig.get_call_params_config(self: JacByllmConfig) -> dict[str, an
     call_params = config.get('call_params', {});
     temperature = call_params.get('temperature', 0.7);
     max_tokens = call_params.get('max_tokens', 0);
-    result: dict[str, any] = {'temperature': temperature};
+    result: dict[str, any] = {
+        'temperature': temperature,
+        # Retries after the first attempt to coax a valid typed/structured
+        # output (0 disables). See BaseLLM._invoke_typed_retry.
+        'max_output_retries': int(call_params.get('max_output_retries', 3))
+    };
     # Only include max_tokens if it's set (non-zero)
     if max_tokens > 0 {
         result['max_tokens'] = max_tokens;

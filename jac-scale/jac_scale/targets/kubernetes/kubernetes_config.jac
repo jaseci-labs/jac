@@ -59,6 +59,9 @@ obj KubernetesConfig(BaseConfig) {
         # traces. Set from `[plugins.scale.microservices.tracing].enabled`.
         tracing_enabled: bool = False,
         prometheus_admin_password: str = 'Adminpassword123',
+        # Admin username, used by Prometheus to Basic-Auth scrape the app's
+        # admin-protected /metrics endpoint.
+        admin_username: str = 'admin',
         # Dashboard configuration
         redis_dashboard: bool = False,
         mongodb_dashboard: bool = False,
@@ -88,6 +91,14 @@ obj KubernetesConfig(BaseConfig) {
         # is detected automatically; controllers that terminate TLS out-of-band
         # (e.g. ALB via an ACM certificate-arn annotation) set this explicitly.
         shared_ingress_tls: bool = False,
+        # Skip the post-deploy reachability probe against `domain` in shared
+        # ingress mode. The probe verifies external DNS resolves to the shared
+        # controller, which is correct for a domain the platform owns (wildcard
+        # DNS). For a user's custom domain they point at the controller AFTER
+        # the deploy, the probe can never pass at deploy time and would block
+        # the deploy for the full retry budget; setting this lets the deploy
+        # finish on app readiness alone and DNS/cert resolve asynchronously.
+        shared_ingress_skip_reachability: bool = False,
         # Rate limiting (DDoS protection) — applied as NGINX Ingress annotations.
         # limit_rps: sustained requests/sec per client IP.
         # limit_burst_multiplier: burst headroom (burst = limit_rps * multiplier).
@@ -105,7 +116,16 @@ obj KubernetesConfig(BaseConfig) {
         # point this at a pre-bound SA. The microservice target does
         # not create the SA - it must already exist in the namespace,
         # with whatever RoleBindings / ClusterRoleBindings the app needs.
-        service_account_name: str = "";
+        service_account_name: str = "",
+        # Ops Console RBAC. `ops_console` provisions a read-only
+        # namespace Role + RoleBinding on the gateway SA so the in-admin
+        # deploy-health / endpoints / events / image-freshness pages can
+        # read the K8s API (namespace-scoped, no ClusterRole).
+        # `ops_console_mutations` additionally grants the V-10 patch/delete/
+        # scale verbs (rollout restart, redeploy, ingress flip, PVC unstick).
+        # Both off by default - opt in per deploy.
+        ops_console: bool = False,
+        ops_console_mutations: bool = False;
 
     override def to_dict -> dict[str, any] {
         base = super.to_dict();
@@ -158,6 +178,7 @@ obj KubernetesConfig(BaseConfig) {
                 'loki_enabled': self.loki_enabled,
                 'tracing_enabled': self.tracing_enabled,
                 'prometheus_admin_password': self.prometheus_admin_password,
+                'admin_username': self.admin_username,
                 # Dashboard configuration
                 'redis_dashboard': self.redis_dashboard,
                 'mongodb_dashboard': self.mongodb_dashboard,
@@ -175,6 +196,7 @@ obj KubernetesConfig(BaseConfig) {
                 'shared_ingress_class': self.shared_ingress_class,
                 'shared_ingress_annotations': self.shared_ingress_annotations,
                 'shared_ingress_tls': self.shared_ingress_tls,
+                'shared_ingress_skip_reachability': self.shared_ingress_skip_reachability,
                 'ingress_limit_rps': self.ingress_limit_rps,
                 'ingress_limit_burst_multiplier': self.ingress_limit_burst_multiplier,
                 'ingress_limit_connections': self.ingress_limit_connections,
@@ -182,7 +204,9 @@ obj KubernetesConfig(BaseConfig) {
                 # Domain / TLS configuration
                 'domain': self.domain,
                 'cert_manager_email': self.cert_manager_email,
-                'service_account_name': self.service_account_name
+                'service_account_name': self.service_account_name,
+                'ops_console': self.ops_console,
+                'ops_console_mutations': self.ops_console_mutations
             }
         );
         return base;
@@ -252,6 +276,9 @@ obj KubernetesConfig(BaseConfig) {
             shared_ingress_class=config.get('shared_ingress_class', 'nginx'),
             shared_ingress_annotations=config.get('shared_ingress_annotations', {}),
             shared_ingress_tls=config.get('shared_ingress_tls', False),
+            shared_ingress_skip_reachability=config.get(
+                'shared_ingress_skip_reachability', False
+            ),
             ingress_limit_rps=config.get('ingress_limit_rps', 20),
             ingress_limit_burst_multiplier=config.get(
                 'ingress_limit_burst_multiplier', 5
@@ -260,7 +287,9 @@ obj KubernetesConfig(BaseConfig) {
             ingress_session_affinity=config.get('ingress_session_affinity', True),
             domain=config.get('domain', ''),
             cert_manager_email=config.get('cert_manager_email', ''),
-            service_account_name=config.get('service_account_name', '')
+            service_account_name=config.get('service_account_name', ''),
+            ops_console=config.get('ops_console', False),
+            ops_console_mutations=config.get('ops_console_mutations', False)
         );
     }
 }

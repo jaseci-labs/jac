@@ -153,28 +153,42 @@ ctypes.
         """
 impl PyastGenPass._gen_native_interop_stubs(nd: uni.NativeBlock) -> None {
     manifest = self.ir_in.gen.interop_manifest;
-    if (not manifest or not manifest.bindings) {
-        return;
-    }
-    import from jaclang.jac0core.interop_bridge { JAC_TO_CTYPES_STR }
     parts: list[str] = [];
-    for binding in manifest.native_exports {
-        params = ', '.join(binding.param_names);
-        ret_ct = JAC_TO_CTYPES_STR.get(binding.ret_type, 'ctypes.c_int64');
-        arg_cts = ', '.join(
-            JAC_TO_CTYPES_STR.get(pt, 'ctypes.c_int64') for pt in binding.param_types
-        );
-        parts.append(
-            f"def {binding.name}({params}):\n" + f"    import ctypes\n" + f"    _addr = __jac_native_engine__" + f".get_function_address('{binding.name}')\n" + f"    _fn = ctypes.CFUNCTYPE({ret_ct}, {arg_cts})(_addr)\n" + f"    return _fn({params})"
-        );
+    if (manifest and manifest.bindings) {
+        import from jaclang.jac0core.interop_bridge { JAC_TO_CTYPES_STR }
+        for binding in manifest.native_exports {
+            params = ', '.join(binding.param_names);
+            ret_ct = JAC_TO_CTYPES_STR.get(binding.ret_type, 'ctypes.c_int64');
+            arg_cts = ', '.join(
+                JAC_TO_CTYPES_STR.get(pt, 'ctypes.c_int64')
+                for pt in binding.param_types
+            );
+            parts.append(
+                f"def {binding.name}({params}):\n" + f"    import ctypes\n" + f"    _addr = __jac_native_engine__" + f".get_function_address('{binding.name}')\n" + f"    _fn = ctypes.CFUNCTYPE({ret_ct}, {arg_cts})(_addr)\n" + f"    return _fn({params})"
+            );
+        }
+        for binding in manifest.native_imports {
+            parts.append(
+                f"__jac_interop_py_funcs__['{binding.name}'] = {binding.name}"
+            );
+        }
     }
-    for binding in manifest.native_imports {
-        parts.append(f"__jac_interop_py_funcs__['{binding.name}'] = {binding.name}");
-    }
+    out: list = [];
     if parts {
         src = '\n'.join(parts);
         parsed = ast3.parse(src);
-        nd.gen.py_ast = `list(parsed.body);
+        out.extend(parsed.body);
+    }
+    # Test blocks inside this na block: the block's children are pruned from
+    # normal traversal, so their host-side shims are emitted here instead.
+    for stmt in nd.body {
+        if isinstance(stmt, uni.Test) {
+            self.exit_test(stmt);
+            out.extend(stmt.gen.py_ast);
+        }
+    }
+    if out {
+        nd.gen.py_ast = out;
     }
 }
 
@@ -967,6 +981,16 @@ impl PyastGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
 
 impl PyastGenPass.exit_test(nd: uni.Test) -> None {
     test_name = nd.name.sym_name;
+    # A natively-lowered test keeps native semantics: its body lives in the
+    # LLVM module and the Python side is only a shim that invokes it.
+    if nd.code_context == CodeContext.NATIVE {
+        body_stmts = self._native_test_shim_stmts(nd);
+    } else {
+        body_stmts = [
+            cast(ast3.stmt, stmt)
+            for stmt in self.resolve_stmt_block(nd.body, doc=nd.doc)
+        ];
+    }
     func = self.sync(
         ast3.FunctionDef(
             name=test_name,
@@ -981,10 +1005,7 @@ impl PyastGenPass.exit_test(nd: uni.Test) -> None {
                     defaults=[]
                 )
             ),
-            body=[
-                cast(ast3.stmt, stmt)
-                for stmt in self.resolve_stmt_block(nd.body, doc=nd.doc)
-            ],
+            body=body_stmts,
             decorator_list=[cast(ast3.expr, self.py_ast_val(i)) for i in nd.decorators]
                 if nd.decorators
                 else [],
@@ -1031,6 +1052,27 @@ impl PyastGenPass.exit_test(nd: uni.Test) -> None {
         );
     }
     nd.gen.py_ast = [func];
+}
+
+impl PyastGenPass._native_test_shim_stmts(nd: uni.Test) -> list {
+    import from jaclang.jac0core.codeinfo { native_test_symbol }
+    test_name = nd.name.sym_name;
+    line = nd.loc.first_line if nd.loc else 0;
+    symbol = native_test_symbol(test_name, line);
+    src_lines = [
+        "import ctypes as _jac_ctypes",
+        "_jac_engine = globals().get('__jac_native_engine__')",
+        "if _jac_engine is None:",
+        "    raise RuntimeError('native engine unavailable for " + test_name + "')",
+        "_jac_addr = _jac_engine.get_function_address('" + symbol + "')",
+        "if _jac_addr == 0:",
+        "    raise RuntimeError('native test symbol missing: " + symbol + "')",
+        "_jac_msg = _jac_ctypes.CFUNCTYPE(_jac_ctypes.c_char_p)(_jac_addr)()",
+        "if _jac_msg is not None:",
+        "    raise AssertionError(_jac_msg.decode('utf-8', 'replace'))"
+    ];
+    parsed = ast3.parse('\n'.join(src_lines));
+    return `list(parsed.body);
 }
 
 impl PyastGenPass.exit_module_code(nd: uni.ModuleCode) -> None {
@@ -2859,13 +2901,28 @@ impl PyastGenPass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {
 }
 
 impl PyastGenPass.exit_multi_string(nd: uni.MultiString) -> None {
-    def get_pieces(str_seq: Sequence) -> list[(str | ast3.AST)] {
-        pieces: list[(str | ast3.AST)] = [];
+    if (
+        (len(nd.strings) == 1)
+        and isinstance(nd.strings[0], uni.FString)
+        and nd.strings[0].gen.py_ast
+    ) {
+        nd.gen.py_ast = nd.strings[0].gen.py_ast;
+        return;
+    }
+    def get_pieces(str_seq: Sequence) -> list[(str | bytes | ast3.AST)] {
+        pieces: list[(str | bytes | ast3.AST)] = [];
         for i in str_seq {
             if isinstance(i, uni.String) {
                 pieces.append(i.lit_value);
             } elif isinstance(i, (uni.FString, uni.ExprStmt)) {
-                pieces.append(self.py_ast_val(i));
+                py_val = self.py_ast_val(i);
+                if isinstance(py_val, ast3.JoinedStr) {
+                    for v in py_val.values {
+                        pieces.append(cast(ast3.expr, v));
+                    }
+                } else {
+                    pieces.append(py_val);
+                }
             } elif (
                 isinstance(i, uni.Token) and (i.name in [Tok.LBRACE, Tok.RBRACE])
             ) {
@@ -2901,16 +2958,30 @@ impl PyastGenPass.exit_multi_string(nd: uni.MultiString) -> None {
             combined_multi[i] = self.sync(ast3.Constant(value=val));
         }
     }
-    if (
-        (len(combined_multi) > 1) or not isinstance(combined_multi[0], ast3.Constant)
-    ) {
+    merged: list[ast3.AST] = [];
+    for val in combined_multi {
+        if (
+            merged
+            and isinstance(val, ast3.Constant)
+            and isinstance(val.value, str)
+            and isinstance(merged[-1], ast3.Constant)
+            and isinstance(merged[-1].value, str)
+        ) {
+            merged[-1] = self.sync(ast3.Constant(value=merged[-1].value + val.value));
+        } else {
+            merged.append(val);
+        }
+    }
+    if not merged {
+        nd.gen.py_ast = [self.sync(ast3.Constant(value=''))];
+    } elif (len(merged) == 1 and isinstance(merged[0], ast3.Constant)) {
+        nd.gen.py_ast = [merged[0]];
+    } else {
         nd.gen.py_ast = [
             self.sync(
-                ast3.JoinedStr(values=[cast(ast3.expr, nd) for nd in combined_multi])
+                ast3.JoinedStr(values=[cast(ast3.expr, piece) for piece in merged])
             )
         ];
-    } else {
-        nd.gen.py_ast = [combined_multi[0]];
     }
 }
 

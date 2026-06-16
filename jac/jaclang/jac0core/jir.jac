@@ -227,18 +227,15 @@ def parse_header(data: (bytes | memoryview)) -> (JirHeader | None) {
 }
 
 # --- Cache Directory ---
-"""Get the platform-appropriate global cache directory for JIR files."""
+"""Get the platform-appropriate global cache directory for JIR files.
+
+Delegates to the pure-Python `jaclang.jac0core.cache_paths` so the platform
+resolution rule lives in exactly one place, shared with the bootstrap bytecode
+cache in `meta_importer`.
+"""
 def get_jir_cache_dir -> Path {
-    if sys.platform == 'win32' {
-        base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'));
-        return base / 'jac' / 'cache' / 'jir';
-    } elif sys.platform == 'darwin' {
-        return Path.home() / 'Library' / 'Caches' / 'jac' / 'jir';
-    } else {
-        xdg_cache = os.environ.get('XDG_CACHE_HOME');
-        base = Path(xdg_cache) if xdg_cache else (Path.home() / '.cache');
-        return base / 'jac' / 'jir';
-    }
+    import from jaclang.jac0core.cache_paths { get_jir_cache_dir as _root }
+    return _root();
 }
 
 """Compute CRC32 of file content for fast-reject validation."""
@@ -414,6 +411,48 @@ def get_module_cache_path(source_path: str) -> Path {
     path_hash = hashlib.sha256(str(source).encode()).hexdigest()[:8];
     (major, minor) = (sys.version_info.major, sys.version_info.minor);
     return cache_dir / f"{source.stem}.{path_hash}.cpython-{major}{minor}.jir";
+}
+
+"""Get the cache directory for a module's native (LLVM IR / object) artifacts.
+
+Routed through the same project/global resolution as the `.jir` module cache
+(`_get_module_cache_dir`) so native artifacts land in the project's
+`.jac/cache/native/` (or the global cache for installed/external sources)
+instead of a hardcoded `.jac_ir/` sibling of the source. This keeps every
+cached artifact under one tree that `jac clean`/`--scrub` can wipe.
+"""
+def get_native_cache_dir(source_path: str) -> Path {
+    return _get_module_cache_dir(source_path) / "native";
+}
+
+"""Wipe project-local cache directories under a source tree (best-effort).
+
+Removes every `.jac/cache/` directory found beneath ``root`` (holding both the
+`.jir` module caches and native IR/object artifacts), plus any legacy
+`.jac_ir/` directories left by older builds. Returns the number of directories
+removed. Shared by `jac run --no-cache`, `jac nacompile --scrub`, and the
+clean command so they stay in lock-step.
+"""
+def scrub_cache_dirs(root: str) -> int {
+    import glob as _glob;
+    import shutil as _shutil;
+    patterns = [
+        os.path.join(root, "**", ".jac", "cache"),
+        os.path.join(root, "**", ".jac_ir")
+    ];
+    removed = 0;
+    seen: set[str] = set();
+    for pattern in patterns {
+        for cache_dir in _glob.glob(pattern, recursive=True) {
+            if cache_dir in seen or not os.path.isdir(cache_dir) {
+                continue;
+            }
+            seen.add(cache_dir);
+            _shutil.rmtree(cache_dir, ignore_errors=True);
+            removed += 1;
+        }
+    }
+    return removed;
 }
 
 """Serialize a dict of section_type -> bytes into a TLV blob.
