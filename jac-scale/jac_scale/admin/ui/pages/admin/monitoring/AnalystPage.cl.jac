@@ -199,15 +199,15 @@ cl {
                             <div className={labelCls}>Status</div>
                             <div className={valCls}>{str(health["status"])}</div>
                         </div>
-                        <div className={statCls}>
+                        <div className={statCls} title="How many recent traces this report was computed from. A small sample means the numbers are indicative, not exhaustive.">
                             <div className={labelCls}>Sampled traces</div>
                             <div className={valCls}>{str(health["sampled_traces"])}</div>
                         </div>
-                        <div className={statCls}>
+                        <div className={statCls} title="Share of sampled requests that failed with HTTP 5xx (0-1).">
                             <div className={labelCls}>Error ratio</div>
                             <div className={valCls}>{str(health["error_rate"])}</div>
                         </div>
-                        <div className={statCls}>
+                        <div className={statCls} title="95th-percentile latency across the sampled traces: 95% were faster than this (ms). The slow-tail, not the average.">
                             <div className={labelCls}>p95 (ms)</div>
                             <div className={valCls}>{str(health["p95_ms"])}</div>
                         </div>
@@ -226,11 +226,11 @@ cl {
                         <thead className="bg-surface-2">
                             <tr>
                                 <th className={thCls}>Endpoint</th>
-                                <th className={thCls}>Calls</th>
-                                <th className={thCls}>p95 (ms)</th>
-                                <th className={thCls}>Error rate</th>
-                                <th className={thCls}>DB calls/req</th>
-                                <th className={thCls}>DB ms/req</th>
+                                <th className={thCls} title="Number of requests to this endpoint in the sampled traces.">Calls</th>
+                                <th className={thCls} title="95th-percentile latency: 95% of requests to this endpoint finished faster than this (ms). The slow-tail experience, not the average.">p95 (ms)</th>
+                                <th className={thCls} title="Share of requests that failed with HTTP 5xx (0-1).">Error rate</th>
+                                <th className={thCls} title="Average database calls per request. High values usually mean an N+1 pattern - a query running in a loop.">DB calls/req</th>
+                                <th className={thCls} title="Average time spent in the database per request (ms).">DB ms/req</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -260,11 +260,11 @@ cl {
                         <thead className="bg-surface-2">
                             <tr>
                                 <th className={thCls}>Endpoint</th>
-                                <th className={thCls}>Operation</th>
-                                <th className={thCls}>DB</th>
-                                <th className={thCls}>Calls/req</th>
-                                <th className={thCls}>ms/req</th>
-                                <th className={thCls}>N+1</th>
+                                <th className={thCls} title="The DB span name, e.g. 'memory.get mongodb'.">Operation</th>
+                                <th className={thCls} title="Which datastore: mongodb / redis.">DB</th>
+                                <th className={thCls} title="How many times this DB operation runs per request, on average.">Calls/req</th>
+                                <th className={thCls} title="Average time this DB operation costs per request (ms).">ms/req</th>
+                                <th className={thCls} title="N+1: the same DB call repeats many times within one request - usually a query inside a loop that should be batched or cached.">N+1</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -297,7 +297,7 @@ cl {
                             <tr>
                                 <th className={thCls}>Trace ID</th>
                                 <th className={thCls}>Total (ms)</th>
-                                <th className={thCls}>Top hop (self ms)</th>
+                                <th className={thCls} title="The span that consumed the most self-time (time spent in that step itself, excluding the calls it makes) - the latency bottleneck of this trace.">Top hop (self ms)</th>
                             </tr>
                         </thead>
                         <tbody>
