@@ -48,4 +48,11 @@ obj FrameworkBackend {
     def build_entry_script(
         entry_module: str, install_global_handlers: bool = True
     ) -> str;
+    # File-based-routing entry — assembles the router tree from the generated
+    # `_routes.js` manifest and mounts it. `auth_redirect` is the login path an
+    # unauthenticated `auth: true` visit bounces to; `has_app_wrapper` wraps the
+    # router in the entry module's top-level `app` export when present.
+    def build_pages_entry_script(
+        entry_module: str, auth_redirect: str, has_app_wrapper: bool
+    ) -> str;
 }

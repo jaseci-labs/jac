@@ -48,6 +48,10 @@ obj SolidBackend(ReactBackend) {
     def build_entry_script(
         entry_module: str, install_global_handlers: bool = True
     ) -> str;
+
+    def build_pages_entry_script(
+        entry_module: str, auth_redirect: str, has_app_wrapper: bool
+    ) -> str;
     # Names imported from the `solid-js` core (everything else stays runtime).
     def _solid_symbols -> set[str];
 }

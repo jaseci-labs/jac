@@ -58,6 +58,15 @@ impl SolidBackend.build_entry_script(
     return build_simple_solid_entry_script(entry_module, install_global_handlers);
 }
 
+"""Build the Solid file-based-routing entry (`solid-js/web` render + the runtime
+shim's `@solidjs/router` adapters); pulls in no React-ecosystem package."""
+impl SolidBackend.build_pages_entry_script(
+    entry_module: str, auth_redirect: str, has_app_wrapper: bool
+) -> str {
+    import from jaclang.runtimelib.solid_entry { build_pages_solid_entry_script }
+    return build_pages_solid_entry_script(entry_module, auth_redirect, has_app_wrapper);
+}
+
 """Lower a reactive state field to `const [name, setName] = createSignal(init);`.
 
 Both React (`useState`) and Solid (`createSignal`) destructure `[getter, setter]`,

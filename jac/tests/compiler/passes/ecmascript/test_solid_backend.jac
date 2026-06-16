@@ -27,7 +27,10 @@ import from jaclang.compiler.passes.ecmascript.reactive_intent {
 import jaclang.compiler.passes.ecmascript.estree as es;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.project.config { JacConfig, ClientConfig, set_config }
-import from jaclang.runtimelib.solid_entry { build_simple_solid_entry_script }
+import from jaclang.runtimelib.solid_entry {
+    build_simple_solid_entry_script,
+    build_pages_solid_entry_script
+}
 import from jaclang.runtimelib.runtime_source {
     client_runtime_cl_basename,
     resolve_client_runtime_cl_path
@@ -203,6 +206,54 @@ test "solid entry script renders via solid-js/web" {
     assert 'getElementById("__jac_root")' in script;
 }
 
+test "solid file-based-routing entry mounts via solid-js/web + router shim" {
+    # The Solid analogue of the React file-based entry: same `_routes.js`
+    # manifest, but assembled through the runtime shim's `@solidjs/router`
+    # adapters and Solid's `render` — and crucially with NO React-ecosystem
+    # import. `has_app_wrapper=False`, so the router is the root.
+    script = build_pages_solid_entry_script("main", "/login", False);
+    # Solid mount surface, never React's.
+    assert 'import { render } from "solid-js/web";' in script;
+    assert 'import h from "solid-js/h";' in script;
+    assert 'react-dom/client' not in script;
+    assert 'react-router-dom' not in script;
+    assert 'React.createElement' not in script;
+    assert 'BrowserRouter' not in script;
+    # Router tree + auth wiring come from the shim's `@jac/runtime` exports.
+    assert 'Router, Routes, Route, AuthGuard' in script;
+    assert 'from "./_routes.js"' in script;
+    assert 'h(Route, { path: r.path, element: h(r.element, {}) })' in script;
+    assert 'AuthGuard("/login")' in script;
+    assert 'h(Router, {}' in script;
+    # Element creation is hyperscript, and the tree is wrapped in the boundary.
+    assert 'const appElement = h(App, {});' in script;
+    assert 'JacClientErrorBoundary' in script;
+    assert 'getElementById("__jac_root")' in script;
+    # No top-level `app` wrapper import when has_app_wrapper is False.
+    assert 'app as AppWrapper' not in script;
+}
+
+test "solid file-based-routing entry honors auth_redirect + app wrapper" {
+    script = build_pages_solid_entry_script("main", "/signin", True);
+    assert 'AuthGuard("/signin")' in script;
+    # The entry module's `app` export wraps the router tree.
+    assert 'import { app as AppWrapper } from "./main.js";' in script;
+    assert 'const appElement = h(AppWrapper, {}, h(App, {}));' in script;
+}
+
+test "backend.build_pages_entry_script dispatches per framework" {
+    # The ViteCompiler delegates file-based-routing entry generation to the
+    # active backend; Solid must produce a React-free entry while React keeps
+    # the `react-dom/client` route tree.
+    import from jaclang.compiler.passes.ecmascript.backends.react { ReactBackend }
+    solid_js = SolidBackend().build_pages_entry_script("main", "/login", False);
+    react_js = ReactBackend().build_pages_entry_script("main", "/login", False);
+    assert 'solid-js/web' in solid_js;
+    assert 'react-dom/client' not in solid_js;
+    assert 'react-dom/client' in react_js;
+    assert 'solid-js/web' not in react_js;
+}
+
 test "solid selects its own framework-free runtime shim" {
     # Solid must NOT ride the React-flavored `client_runtime.cl.jac`; it has its
     # own shim that re-exports the shared core with a `solid-js/h`-backed
@@ -243,6 +294,98 @@ test "solid runtime shim compiles and links its impl bodies" {
     # Public surface forwards to the framework-agnostic core.
     assert "_navigate(path)" in js , "navigate forwarder did not link";
     assert "jacIsLoggedIn" in js;
+}
+
+test "solid runtime shim reaches router/form parity with the React shim" {
+    # The Solid shim must expose the same router + form + error/async surface as
+    # the React shim, sourced from Solid-native libraries (no React ecosystem),
+    # so `@jac/runtime` stays framework-identical for app code. Compile the real
+    # shim and assert each ported body links.
+    rt = resolve_client_runtime_cl_path("solid");
+    prog = JacProgram();
+    ir = prog.compile(file_path=rt, no_cgen=True);
+    assert not prog.errors_had , (
+        f"Solid runtime failed to compile: {[str(e) for e in prog.errors_had]}"
+    );
+    js = es_to_js(
+        EsastGenPass(ir_in=ir, prog=prog, backend=SolidBackend()).ir_out.gen.es_ast
+    );
+    # Router adapters bridging react-router-dom's shape onto @solidjs/router.
+    for fn in [
+        "function Routes(",
+        "function Route(",
+        "function Link(",
+        "function Navigate(",
+        "function Outlet(",
+        "function useRouter(",
+        "function AuthGuard("
+    ] {
+        assert fn in js , f"router binding did not link: {fn}";
+    }
+    # Link maps `to`->`href` via @solidjs/router's `A`; Navigate maps `to`->`href`.
+    assert "SolidAnchor" in js , "Link adapter must delegate to @solidjs/router's A";
+    assert "SolidNavigate" in js;
+    # Forms: solid-hook-form's createForm + the hand-rolled zod resolver (no @hookform).
+    assert "function JacForm(" in js;
+    assert "function useJacForm(" in js;
+    assert "createForm(" in js , "useJacForm must build a solid-hook-form controller";
+    assert "function __zodResolver(" in js , "hand-rolled zod resolver did not link";
+    assert "safeParse" in js , "zod resolver must validate via schema.safeParse";
+    # Error boundary + async boundary over solid-js primitives.
+    assert "function JacClientErrorBoundary(" in js;
+    assert "function ErrorFallback(" in js;
+    assert "function JacAwaiting(" in js;
+    assert "SolidErrorBoundary" in js , "error boundary must use solid-js ErrorBoundary";
+    assert "SolidSuspense" in js , "JacAwaiting must use solid-js Suspense";
+    # The submit wrapper must be async so handleSubmit can await it.
+    assert "async function submitHandler(" in js;
+    # Absolutely no React element factory leaks through the form/router JSX.
+    assert "createElement" not in js , "Solid parity surface must not use React.createElement";
+}
+
+test "solid runtime shim exports the full router/form surface" {
+    # The compiled shim's ES module must re-export every router/form/error name so
+    # `@jac/runtime` resolves them for app code (mirrors ROUTER_EXPORTS + the
+    # React shim's public surface).
+    rt = resolve_client_runtime_cl_path("solid");
+    prog = JacProgram();
+    ir = prog.compile(file_path=rt, no_cgen=True);
+    js = es_to_js(
+        EsastGenPass(ir_in=ir, prog=prog, backend=SolidBackend()).ir_out.gen.es_ast
+    );
+    export_line = "";
+    for ln in js.splitlines() {
+        if ln.strip().startswith("export {") {
+            export_line = ln;
+        }
+    }
+    assert export_line , "Solid shim emitted no export statement";
+    for name in [
+        "Router",
+        "Routes",
+        "Route",
+        "Link",
+        "Navigate",
+        "Outlet",
+        "useNavigate",
+        "useLocation",
+        "useParams",
+        "useRouter",
+        "AuthGuard",
+        "JacForm",
+        "useJacForm",
+        "JacSchema",
+        "JacClientErrorBoundary",
+        "ErrorFallback",
+        "errorOverlay",
+        "JacAwaiting",
+        "__jacReactErrorHandler"
+    ] {
+        assert name in export_line , f"@jac/runtime (solid) must export {name}";
+    }
+    # Solid must NOT export React-only re-render hooks (it gets these from solid-js).
+    assert "useState" not in export_line , "Solid shim must not export useState";
+    assert "useEffect" not in export_line , "Solid shim must not export useEffect";
 }
 
 test "solid runtime shim imports no react ecosystem package" {

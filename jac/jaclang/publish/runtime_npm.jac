@@ -2,31 +2,53 @@
 
 A standalone npm package compiled from `.cl.jac` references runtime globals such
 as `__jacJsx`; those resolve to this package, which compiles the bare-serve Jac
-client runtime (`runtimelib/client_runtime.cl.jac`) to a single ESM module and
-re-exports its public API. It is React-independent.
+client runtime to a single ESM module and re-exports its public API.
+
+The compiled runtime source is **framework-aware**: it is the active backend's
+`runtime_source_basename()` (`client_runtime.cl.jac` for React/Preact,
+`solid_runtime.cl.jac` for Solid), resolved through `runtimelib/runtime_source`.
+A React/Preact build publishes the React-independent `@jaseci/runtime`; a Solid
+build publishes `@jaseci/runtime-solid`, compiled from the Solid shim and pulling
+in **no** React-ecosystem package. Pass `framework` explicitly to target a
+specific backend, or leave it `""` to use the project's active backend.
 """
 
 import from pathlib { Path }
 
 glob RUNTIME_PKG_NAME: str = "@jaseci/runtime";
 
-"""The runtime's public API symbol names (its top-level def/glob surface).
+"""The runtime's public API symbol names (its top-level def/glob surface) for
+   `framework` (`""` = active backend).
 
    This same set drives runtime-import detection in npm_sources, so a module that
    uses any of these names gets an import wired to the runtime package."""
-def runtime_api_names -> set[str];
+def runtime_api_names(framework: str = "") -> set[str];
 
-"""Compile the Jac client runtime to a single ESM JavaScript string (cached)."""
-def compile_runtime_js -> str;
+"""Compile the Jac client runtime for `framework` to a single ESM JavaScript
+   string (cached per framework; `""` = active backend)."""
+def compile_runtime_js(framework: str = "") -> str;
+
+"""npm package name for `framework`'s runtime (`""` = active backend).
+
+   React/Preact share `client_runtime.cl.jac` and publish as `@jaseci/runtime`;
+   any other backend gets a `@jaseci/runtime-<framework>` suffix (e.g.
+   `@jaseci/runtime-solid`) so distinct runtimes never collide on the registry."""
+def runtime_pkg_name(framework: str = "") -> str;
 
 """Public API names actually declared at top level in `js`, sorted — the symbols
-   appended to the runtime module's `export {...}` clause."""
-def runtime_export_names(js: str) -> list[str];
+   appended to the runtime module's `export {...}` clause. Resolved against
+   `framework`'s API surface (`""` = active backend)."""
+def runtime_export_names(js: str, framework: str = "") -> list[str];
 
-"""Build the runtime npm tarball bytes for `version` (e.g. the jaclang version)."""
-def build_runtime_tarball(version: str, pkg_name: str = RUNTIME_PKG_NAME) -> bytes;
+"""Build the runtime npm tarball bytes for `version` (e.g. the jaclang version).
+
+   `pkg_name` defaults to `runtime_pkg_name(framework)`; `framework` defaults to
+   the active backend."""
+def build_runtime_tarball(
+    version: str, pkg_name: str = "", framework: str = ""
+) -> bytes;
 
 """Build the runtime tarball and write it to output_dir; returns the Path."""
 def build_runtime_to(
-    output_dir: Path, version: str, pkg_name: str = RUNTIME_PKG_NAME
+    output_dir: Path, version: str, pkg_name: str = "", framework: str = ""
 ) -> Path;

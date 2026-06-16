@@ -50,6 +50,15 @@ impl ReactBackend.build_entry_script(
     return build_simple_react_entry_script(entry_module, install_global_handlers);
 }
 
+"""Build the React file-based-routing entry (`react-dom/client` + react-router-dom);
+Preact inherits this and resolves it through `preact/compat` via `vite_aliases`."""
+impl ReactBackend.build_pages_entry_script(
+    entry_module: str, auth_redirect: str, has_app_wrapper: bool
+) -> str {
+    import from jaclang.runtimelib.react_entry { build_pages_react_entry_script }
+    return build_pages_react_entry_script(entry_module, auth_redirect, has_app_wrapper);
+}
+
 """All React hook names — used by import_source and subclass backends."""
 impl ReactBackend._hook_symbols -> set[str] {
     return {

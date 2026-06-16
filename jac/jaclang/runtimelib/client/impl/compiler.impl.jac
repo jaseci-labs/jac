@@ -132,7 +132,9 @@ impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> No
 impl ViteCompiler._create_pages_entry_content(
     self: ViteCompiler, module_path: Path
 ) -> str {
-    lines: list[str] = [];
+    import from jaclang.compiler.passes.ecmascript.backends.registry {
+        resolve_active_backend
+    }
     auth_redirect = "/login";
     try {
         import from jaclang.runtimelib.client.config_loader { PluginConfig }
@@ -145,87 +147,17 @@ impl ViteCompiler._create_pages_entry_content(
             f"Failed to load routing config, using default auth_redirect='/login': {e}"
         );
     }
-    # Check if main.jac exists and exports app (used as wrapper)
+    # Check if the entry module (e.g. main.jac) exists and exports `app` (wrapper).
     app_module = self.compiled_dir / f"{module_path.stem}.js";
     has_app_wrapper = app_module.exists();
-    # --- Imports ---
-    lines.append('import React from "react";');
-    lines.append('import { createRoot } from "react-dom/client";');
-    lines.append('import { BrowserRouter, Routes, Route } from "react-router-dom";');
-    lines.append(
-        'import { JacClientErrorBoundary, ErrorFallback, AuthGuard, __jacInstallErrorHandlers, __jacReactErrorHandler } from "@jac/runtime";'
+    # The JS body is framework-specific (React's `react-dom/client` route tree vs
+    # Solid's `solid-js/web` render via the `@solidjs/router` shim adapters), so
+    # delegate to the active backend. Both consume the same framework-neutral
+    # `_routes.js` manifest (`routes`/`layouts`).
+    backend = resolve_active_backend();
+    return backend.build_pages_entry_script(
+        module_path.stem, auth_redirect, has_app_wrapper
     );
-    lines.append('import { routes, layouts } from "./_routes.js";');
-    lines.append('');
-    lines.append('__jacInstallErrorHandlers();');
-    if has_app_wrapper {
-        lines.append(f'import {{ app as AppWrapper }} from "./{module_path.stem}.js";');
-    }
-    lines.append('');
-    # --- Route helpers ---
-    lines.append('const publicRoutes = routes.filter(r => !r.auth);');
-    lines.append('const authRoutes = routes.filter(r => r.auth);');
-    lines.append('const RootLayout = layouts["/"] || null;');
-    lines.append('');
-    lines.append('function renderRoutes(routeList) {');
-    lines.append('\treturn routeList.map(r =>');
-    lines.append(
-        '\t\tReact.createElement(Route, { key: r.path, path: r.path, element: React.createElement(r.element, null) })'
-    );
-    lines.append('\t);');
-    lines.append('}');
-    lines.append('');
-    # --- Auth guard routes (reused in both layout and non-layout paths) ---
-    # AuthGuard is a runtime function compiled with plain parameters (not React props
-    # destructuring), so we wrap it in a component that passes the redirect string directly.
-    lines.append(
-        f'function _AuthGuardRoute() {{ return AuthGuard("{auth_redirect}"); }}'
-    );
-    lines.append(
-        'const authGuardElement = React.createElement(_AuthGuardRoute, null);'
-    );
-    lines.append('');
-    # --- Single App component with one BrowserRouter ---
-    lines.append('function App() {');
-    lines.append('\tconst routeChildren = [');
-    lines.append('\t\t...renderRoutes(publicRoutes),');
-    lines.append(
-        '\t\tReact.createElement(Route, { key: "__auth", element: authGuardElement },'
-    );
-    lines.append('\t\t\t...renderRoutes(authRoutes)');
-    lines.append('\t\t),');
-    lines.append('\t];');
-    lines.append('');
-    lines.append('\tconst routeTree = RootLayout');
-    lines.append(
-        '\t\t? React.createElement(Route, { element: React.createElement(RootLayout, null) }, ...routeChildren)'
-    );
-    lines.append('\t\t: routeChildren;');
-    lines.append('');
-    lines.append('\treturn React.createElement(BrowserRouter, null,');
-    lines.append('\t\tReact.createElement(Routes, null,');
-    lines.append('\t\t\t...(Array.isArray(routeTree) ? routeTree : [routeTree])');
-    lines.append('\t\t)');
-    lines.append('\t);');
-    lines.append('}');
-    lines.append('');
-    # --- Root render ---
-    if has_app_wrapper {
-        lines.append(
-            'const appElement = React.createElement(AppWrapper, null, React.createElement(App, null));'
-        );
-    } else {
-        lines.append('const appElement = React.createElement(App, null);');
-    }
-    lines.append('');
-    lines.append('const root = createRoot(document.getElementById("root"));');
-    lines.append('root.render(');
-    lines.append(
-        '\tReact.createElement(JacClientErrorBoundary, { FallbackComponent: ErrorFallback, onError: __jacReactErrorHandler }, appElement)'
-    );
-    lines.append(');');
-    lines.append('');
-    return "\n".join(lines);
 }
 
 """Copy assets from root assets/ folder to compiled/assets/ for @jac-client/assets alias."""

@@ -8,16 +8,40 @@ exactly as the React shim (`client_runtime.cl.jac`) does. On top of that it adds
 the Solid-specific JSX factory: `__jacJsx` builds elements through Solid's
 hyperscript runtime (`solid-js/h`) instead of `React.createElement`.
 
-Imports are written against `solid-js/h` only; this file pulls in **no** React
-ecosystem package, which is the whole point of the runtime split — a Solid build
-never resolves `react`, `react-router-dom`, or `react-hook-form`. Solid's
-reactive primitives (`createSignal`, `createEffect`, ...) are imported by the
-generated component code straight from `solid-js` (see `SolidBackend.import_source`),
-not re-exported here. Router and form bindings are React-ecosystem-specific and are
-a documented Solid follow-up (contract §8); they are intentionally absent.
+This file pulls in **no** React ecosystem package, which is the whole point of
+the runtime split — a Solid build never resolves `react`, `react-router-dom`,
+`react-hook-form`, or `@hookform/*`. It targets only Solid-native libraries:
+JSX via `solid-js/h`, routing via `@solidjs/router`, forms via `solid-hook-form`
+(a near-drop-in `createForm` for react-hook-form's `useForm`) plus a hand-rolled
+`__zodResolver` (so no `@hookform` package is needed), and error/async parity via
+`solid-js`'s `ErrorBoundary` / `Suspense`. Solid's reactive primitives
+(`createSignal`, `createEffect`, ...) are imported by the generated component code
+straight from `solid-js` (see `SolidBackend.import_source`), not re-exported here.
+
+Router parity uses thin adapters that bridge the API-shape gap between
+react-router-dom and `@solidjs/router` (`Link`→`A`, `to`→`href`, `Route element=`
+→`component=`; `Routes`/`Outlet` have no Solid equivalent and are best-effort
+shims — see RUNTIME_SPLIT_PROGRESS.md for the gaps pending browser e2e), so the
+same React-shaped names stay exported from `@jac/runtime` for every framework.
 """
 
 import from 'solid-js/h' { default as h }
+import from 'solid-js' {
+    createSignal as solidCreateSignal,
+    ErrorBoundary as SolidErrorBoundary,
+    Suspense as SolidSuspense
+}
+import from '@solidjs/router' {
+    Router as SolidRouter,
+    Route as SolidRoute,
+    A as SolidAnchor,
+    Navigate as SolidNavigate,
+    useNavigate as solidUseNavigate,
+    useLocation as solidUseLocation,
+    useParams as solidUseParams
+}
+import from 'solid-hook-form' { createForm }
+import from 'zod' { z }
 
 # --- Framework-agnostic core: import + re-export so `@jac/runtime` is one module.
 import from jaclang.runtimelib.client_runtime_core {
@@ -123,3 +147,41 @@ def:pub jacSetToken(token: str) -> None;
 # hyperscript runtime (`solid-js/h`) — the same factory name (`__jacJsx`) the
 # React/Preact shims expose, so `EsJsxProcessor` stays framework-neutral.
 def:pub __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement;
+
+# --- Router bindings (@solidjs/router) --------------------------------------
+# Directly compatible primitives are re-exported as-is; the rest are adapted in
+# the impl. `JacSchema` is the zod proxy (framework-agnostic), built exactly as
+# the React shim builds it. `useState`/`useEffect` are intentionally NOT exported
+# (Solid components get `createSignal`/`createEffect` from `solid-js` directly).
+glob:pub Router = SolidRouter,
+     useNavigate = solidUseNavigate,
+     useLocation = solidUseLocation,
+     useParams = solidUseParams,
+     JacSchema = __createJacSchema(z);
+
+# Adapters that bridge react-router-dom's shape onto @solidjs/router (see impl).
+def:pub Routes(props: dict) -> JsxElement;
+def:pub Route(props: dict) -> JsxElement;
+def:pub Link(props: dict) -> JsxElement;
+def:pub Navigate(props: dict) -> JsxElement;
+def:pub Outlet(props: dict = {}) -> JsxElement;
+def:pub useRouter -> dict;
+def:pub AuthGuard(redirect: str = "/login") -> JsxElement;
+
+# --- Error boundary + async boundary ----------------------------------------
+# `JacClientErrorBoundary` presents react-error-boundary's API
+# ({FallbackComponent, onError, children}) over `solid-js`'s `ErrorBoundary`, so
+# the same call sites work across frameworks. `JacAwaiting` wraps `Suspense`.
+def:pub JacClientErrorBoundary(props: dict) -> JsxElement;
+def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement;
+def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
+def:pub JacAwaiting(props: dict) -> JsxElement;
+def:pub __jacReactErrorHandler(error: any, info: any) -> None;
+
+# --- Forms (solid-hook-form + zod) ------------------------------------------
+# `__zodResolver` is internal (consumed only by `useJacForm`), declared here so
+# its impl-annex body is spliced into the module; it is not part of the public
+# `@jac/runtime` surface.
+def __zodResolver(schema: any) -> any;
+def:pub useJacForm(form_mode: str = "onTouched", schema: any) -> any;
+def:pub JacForm(props: dict) -> JsxElement;

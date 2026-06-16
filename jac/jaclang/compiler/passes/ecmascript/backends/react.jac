@@ -32,6 +32,10 @@ obj ReactBackend(FrameworkBackend) {
     def build_entry_script(
         entry_module: str, install_global_handlers: bool = True
     ) -> str;
+
+    def build_pages_entry_script(
+        entry_module: str, auth_redirect: str, has_app_wrapper: bool
+    ) -> str;
     # Vite plugin — returns (import_line, plugin_call) or None to skip plugin
     def vite_plugin_lines -> (tuple[str, str] | None);
     # Helpers reused across lower_* methods
