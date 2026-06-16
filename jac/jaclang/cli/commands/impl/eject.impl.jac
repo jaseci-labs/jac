@@ -263,6 +263,10 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     _emit_entry_js(frontend_src_dir, entry_module);
     _emit_index_html(frontend_dir, project_name);
 
+    # Copy non-.jac resources (config JSON, CSS, images) so paths the compiled
+    # code reads at runtime resolve in the ejected app.
+    _copy_data_files(src, out, backend_dir, frontend_src_dir, frontend_dir);
+
     console.print();
     console.success(f"Ejected '{project_name}' → {out}");
     console.print(
@@ -518,6 +522,65 @@ def _copy_client_runtime(src: Path, frontend_root: Path) -> bool {
     }
     console.print("  ✔ @jac/runtime", style="success");
     return True;
+}
+
+
+"""Copy non-.jac resources (config JSON, CSS, images, docs) into both the
+ejected backend and frontend/src so paths the compiled Python or JavaScript
+read at runtime resolve. Skips the output directory, .jac sources, jac.toml,
+hidden files, and build/vendor directories. `public/` lands at the frontend
+root (Vite convention), not under src/."""
+def _copy_data_files(
+    src: Path, out: Path, backend_dir: Path, frontend_src_dir: Path, frontend_root: Path
+) {
+    copied = False;
+    for path in src.rglob("*") {
+        if not path.is_file() {
+            continue;
+        }
+        if out in path.parents {
+            continue;
+        }
+        rel = path.relative_to(src);
+        rel_parts = list(rel.parts);
+        excluded = False;
+        for i in range(len(rel_parts) - 1) {
+            part = rel_parts[i];
+            if (part in _SKIP_DIRS) or part.startswith(".") {
+                excluded = True;
+                break;
+            }
+        }
+        if excluded {
+            continue;
+        }
+        if path.name.startswith(".") {
+            continue;
+        }
+        if path.suffix == ".jac" {
+            continue;
+        }
+        if str(rel) == "jac.toml" {
+            continue;
+        }
+        if rel_parts and (rel_parts[0] == "public") {
+            dest = frontend_root / rel;
+            dest.parent.mkdir(parents=True, exist_ok=True);
+            shutil.copy2(path, dest);
+            copied = True;
+            continue;
+        }
+        dest_b = backend_dir / rel;
+        dest_b.parent.mkdir(parents=True, exist_ok=True);
+        shutil.copy2(path, dest_b);
+        dest_f = frontend_src_dir / rel;
+        dest_f.parent.mkdir(parents=True, exist_ok=True);
+        shutil.copy2(path, dest_f);
+        copied = True;
+    }
+    if copied {
+        console.print("  ✔ resources", style="success");
+    }
 }
 
 

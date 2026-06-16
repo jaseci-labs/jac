@@ -134,7 +134,7 @@ test "backend runs walkers on the jaclang runtime via ExecutionManager" {
         main_py = _backend(src, "main.py").read_text();
         # Walkers run on the real runtime; responses use the {"data": ...} envelope.
         assert "from jaclang.runtimelib.server import UserManager, ExecutionManager" in main_py;
-        assert "_em.spawn_walker(Greet" in main_py;
+        assert "_em.spawn_walker(_W_Greet" in main_py;
         assert '"data"' in main_py;
         # The compiled module keeps its real jaclang runtime imports.
         assert _has_jaclang_import(_backend(src, "server.py").read_text());

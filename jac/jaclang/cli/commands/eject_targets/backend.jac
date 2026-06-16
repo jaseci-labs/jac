@@ -267,9 +267,11 @@ def _extract_func_params(py_code: str, func_names: set) -> dict {
 }
 
 
-"""Pydantic request-model name for a walker / function (Square -> SquareIn)."""
-def _model_class_name(name: str) -> str {
-    return name[:1].upper() + name[1:] + "In";
+"""Pydantic request-model name. The `suffix` keeps walker and function models
+in separate namespaces so a name reused across both kinds does not collide
+(walker Square -> SquareIn, function Square -> SquareFnIn)."""
+def _model_class_name(name: str, suffix: str) -> str {
+    return name[:1].upper() + name[1:] + suffix;
 }
 
 
@@ -294,27 +296,15 @@ def _emit_main_py(
         'from jaclang.runtimelib.server import UserManager, ExecutionManager'
     ];
 
-    by_module: dict = {};
-    order: list = [];
+    # Import each walker/function under a kind-prefixed alias (_W_ / _F_) so a
+    # name reused across a walker and a function (or modules) never shadows.
     for w in walkers {
-        m = str(w["module"]);
-        if m not in by_module {
-            by_module[m] = [];
-            order.append(m);
-        }
-        by_module[m].append(str(w["name"]));
+        wn = str(w["name"]);
+        lines.append("from " + str(w["module"]) + " import " + wn + " as _W_" + wn);
     }
     for f in functions {
-        m = str(f["module"]);
-        if m not in by_module {
-            by_module[m] = [];
-            order.append(m);
-        }
-        by_module[m].append(str(f["name"]));
-    }
-    for m in order {
-        names_here = [str(x) for x in by_module[m]];
-        lines.append("from " + str(m) + " import " + ", ".join(names_here));
+        fn = str(f["name"]);
+        lines.append("from " + str(f["module"]) + " import " + fn + " as _F_" + fn);
     }
 
     lines += [
@@ -417,7 +407,7 @@ def _emit_main_py(
 
     for w in walkers {
         wn = str(w["name"]);
-        model = _model_class_name(wn);
+        model = _model_class_name(wn, "In");
         required = "False" if w["pub"] else "True";
         lines.append("");
         lines.append("");
@@ -449,13 +439,13 @@ def _emit_main_py(
         lines.append("    if node_id:");
         lines.append('        fields["_jac_spawn_node"] = node_id');
         lines.append(
-            "    return _respond(await _em.spawn_walker(" + wn + ", fields, user))"
+            "    return _respond(await _em.spawn_walker(_W_" + wn + ", fields, user))"
         );
     }
 
     for f in functions {
         fn = str(f["name"]);
-        model = _model_class_name(fn);
+        model = _model_class_name(fn, "FnIn");
         required = "False" if f["pub"] else "True";
         lines.append("");
         lines.append("");
@@ -483,7 +473,7 @@ def _emit_main_py(
         );
         lines.append("    user = _username(authorization, " + required + ")");
         lines.append(
-            "    return _respond_fn(await _em.execute_function(" + fn + ", dict(body.model_dump()), user))"
+            "    return _respond_fn(await _em.execute_function(_F_" + fn + ", dict(body.model_dump()), user))"
         );
     }
 
