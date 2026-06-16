@@ -603,14 +603,23 @@ obj MicroserviceManifestBuilder {
 
     """Autoscaler config for a service; None if autoscaling is disabled."""
     def _get_autoscaler_config(svc_name: str) -> dict[str, any] | None {
-        cfg: dict[str, any] = self._service_config(svc_name).get("hpa", {});
-        if not cfg.get("enabled", True) {
+        svc: dict[str, any] = self._service_config(svc_name);
+        # 'hpa' block name is historical — applies to whichever autoscaler_engine is active
+        hpa: dict[str, any] = svc.get("hpa", {});
+        if not hpa.get("enabled", True) {
             return None;
         }
+        raw_triggers: list[dict[str, any]] = [];
+        for item in svc.get("triggers", []) {
+            if isinstance(item, dict) {
+                raw_triggers.append(dict(item));
+            }
+        }
         return {
-            "min": int(cfg.get("min", 1)),
-            "max": int(cfg.get("max", 3)),
-            "cpu_target": int(cfg.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET))
+            "min": int(hpa.get("min", 1)),
+            "max": int(hpa.get("max", 3)),
+            "cpu_target": int(hpa.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)),
+            "triggers": raw_triggers
         };
     }
 

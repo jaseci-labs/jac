@@ -218,7 +218,13 @@ shared decoder keeps the na ⊆ sv guarantee true by construction rather than
 re-deriving an inevitably-incomplete escape table here (regression: #6442).
 """
 impl NaIRGenPass._codegen_string(nd: uni.String) -> (ir.Value | None) {
-    return self._make_global_string(nd.lit_value);
+    # A byte-string literal (b"...") decodes to a Python `bytes` via lit_value;
+    # emit it as a length-aware bytes value rather than a NUL-terminated str.
+    _lit = nd.lit_value;
+    if isinstance(_lit, bytes) {
+        return self._make_global_bytes(_lit);
+    }
+    return self._make_global_string(_lit);
 }
 
 """Generate f-string by building a printf-style format string and calling snprintf."""

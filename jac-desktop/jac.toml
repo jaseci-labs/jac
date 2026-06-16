@@ -1,6 +1,6 @@
 [project]
 name = "jac-desktop"
-version = "0.2.1"
+version = "0.2.2"
 description = "Jac-native desktop target: one nacompile'd binary + the OS webview."
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
@@ -36,8 +36,8 @@ jac_desktop = [
 ]
 
 [dependencies]
-jaclang = ">=0.16.2"
-jac-client = ">=0.3.23"
+jaclang = ">=0.16.4"
+jac-client = ">=0.3.24"
 
 [optional-dependencies.dev]
 pytest = "==8.3.5"
