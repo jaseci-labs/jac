@@ -1280,7 +1280,12 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 target_val = self._codegen_expr(nd.target);
                 if target_val is not None {
                     i8p = ir.IntType(8).as_pointer();
-                    if target_val.type == i8p {
+                    if self._is_bytes_value(target_val) {
+                        result = self._codegen_bytes_slice(target_val, s);
+                        if result is not None {
+                            return result;
+                        }
+                    } elif target_val.type == i8p {
                         result = self._codegen_string_slice(target_val, s);
                         if result is not None {
                             return result;
@@ -1343,6 +1348,20 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             # Chained index: evaluate target expression, infer list type or string
             target_val = self._codegen_expr(nd.target);
             if target_val is not None {
+                # bytes[i] -> int (length-aware; embedded NULs are reachable).
+                if self._is_bytes_value(target_val) {
+                    slices = nd.right.slices or [];
+                    if slices {
+                        idx_node = slices[0];
+                        idx_val = self._codegen_expr(idx_node);
+                        if idx_val is None and idx_node?.start {
+                            idx_val = self._codegen_expr(idx_node.start);
+                        }
+                        if idx_val is not None {
+                            return self._codegen_bytes_index(target_val, idx_val);
+                        }
+                    }
+                }
                 # Check for string indexing: s[i] (only real i8* strings, not list ptrs)
                 i8p = ir.IntType(8).as_pointer();
                 if target_val.type == i8p {

@@ -31,7 +31,14 @@ import from jaclang.jac0core.diagnostics { E5090, W6001, W6002, W6003, W6004 }
 # than CapabilityCheckPass because auto-promotion coerces a module to
 # native context AFTER this pass runs; the legality TABLE lives here,
 # the post-coercion enforcement point stays in the backend.
-glob NATIVE_SUPPORTED_STDLIB: set[str] = {"sys", "math", "time", "os", "random"},
+glob NATIVE_SUPPORTED_STDLIB: set[str] = {
+         "sys",
+         "math",
+         "time",
+         "os",
+         "random",
+         "struct"
+     },
      # Statement / expression forms whose PRESENCE disqualifies a module from
      # native auto-promotion (no native lowering exists for them).
      NATIVE_DISQUALIFIER_NODES: tuple = (

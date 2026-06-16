@@ -223,6 +223,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 arg_val = self._codegen_expr(params_l[0]);
                 if arg_val is not None {
                     _len_result: (ir.Value | None) = None;
+                    # bytes: read the explicit length field (never strlen — the
+                    # buffer may contain embedded NULs).
+                    if self._is_bytes_value(arg_val) {
+                        _len_result = self._bytes_len_val(arg_val);
+                    }
                     # Check for dict type by inferring from value
                     if _len_result is None {
                         for (dict_key, helpers) in self.dict_helpers.items() {

@@ -3124,11 +3124,16 @@ impl EsastGenPass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
             nd.expr, default_factory=lambda _src: any : es.Literal(value=None)
         )
     );
-    # Inside a JSX `{...}` slot body, a bare JSX element statement is a
-    # template child: accumulate it into the slot's children array instead
-    # of emitting a discarded expression statement.
+    # Inside a JSX `{...}` slot body, a bare expression statement is template
+    # content: accumulate its value into the slot's children array instead of
+    # emitting a discarded expression statement. This covers a bare JSX
+    # element (`<span/>`) and equally any other value-producing expression --
+    # a string, f-string, identifier or call -- so statement-form slots stay
+    # consistent with the `{expr}` slot, which already renders its value
+    # (#6732). `_cur_view_acc` returns None inside a nested `def` barrier, so
+    # only statements lexically inside the slot body are accumulated.
     acc = self._cur_view_acc();
-    if acc is not None and isinstance(nd.expr, uni.JsxElement) {
+    if acc is not None {
         nd.gen.es_ast = self._view_push_stmt(acc, expr, nd);
         return;
     }

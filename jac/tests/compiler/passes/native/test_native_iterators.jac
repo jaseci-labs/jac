@@ -178,3 +178,64 @@ test "iter next keyword arg rejected" {
     assert errs , "expected a type error for next(it=...)";
     assert any("does not match any parameter" in e for e in errs) , errs;
 }
+
+# --- #6403 M2: user-defined __iter__/__next__ bridged into the protocol ---
+# A user `obj` implementing the iterator protocol drives for-loops, works with
+# first-class iter()/next(), composes under map/filter/enumerate, and crosses
+# function boundaries — its `__next__`'s StopIteration becomes the protocol's
+# i1-0 exhaustion flag.
+test "user iter self for-loop" {
+    (eng, _) = compile_native("iter_user.na.jac");
+    f = get_func(eng, "user_self_for", ctypes.c_int64);
+    assert f() == 10;
+}
+
+test "user iter borrowed var for-loop" {
+    (eng, _) = compile_native("iter_user.na.jac");
+    f = get_func(eng, "user_self_for_var", ctypes.c_int64);
+    assert f() == 3;
+}
+
+test "user iter separate iterator for-loop" {
+    (eng, _) = compile_native("iter_user.na.jac");
+    f = get_func(eng, "user_separate_for", ctypes.c_int64);
+    assert f() == 6;
+}
+
+test "user iter first-class iter next" {
+    (eng, _) = compile_native("iter_user.na.jac");
+    f = get_func(eng, "user_iter_next", ctypes.c_int64);
+    assert f() == 1011;
+}
+
+test "user iter under map adapter" {
+    (eng, _) = compile_native("iter_user.na.jac");
+    f = get_func(eng, "user_map_compose", ctypes.c_int64);
+    assert f() == 6;
+}
+
+test "user iter break mid-iteration" {
+    (eng, _) = compile_native("iter_user.na.jac");
+    f = get_func(eng, "user_break", ctypes.c_int64);
+    assert f() == 3;
+}
+
+test "user iter crosses function boundary" {
+    (eng, _) = compile_native("iter_user.na.jac");
+    f = get_func(eng, "user_cross_fn", ctypes.c_int64);
+    assert f() == 10;
+}
+
+# A non-StopIteration error from __next__ must propagate, not end the loop.
+test "user iter next non-stopiteration propagates" {
+    (eng, _) = compile_native("iter_user.na.jac");
+    f = get_func(eng, "user_next_propagates", ctypes.c_int64);
+    assert f() == 42;
+}
+
+# A subclass driving __iter__/__next__ inherited from its base.
+test "user iter inherited from base" {
+    (eng, _) = compile_native("iter_user.na.jac");
+    f = get_func(eng, "user_inherited_iter", ctypes.c_int64);
+    assert f() == 6;
+}

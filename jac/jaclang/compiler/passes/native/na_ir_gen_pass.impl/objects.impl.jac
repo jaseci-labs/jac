@@ -1289,6 +1289,15 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     ) {
         return self._emit_random_call(method_name, nd);
     }
+    # --- Native stdlib struct.X(...) calls (pack/unpack/calcsize, #6404) ---
+    if (
+        target_name == "struct"
+        and self?._native_stdlib_modules
+        and "struct" in self._native_stdlib_modules
+        and method_name in NATIVE_STRUCT_FUNCS
+    ) {
+        return self._emit_struct_call(method_name, nd);
+    }
     # --- Static/class method dispatch (int.from_bytes, float.fromhex) ---
     if target_name == "int" and method_name == "from_bytes" {
         arg_vals = self._codegen_call_args(nd);
@@ -1473,6 +1482,21 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 if result is not None {
                     return result;
                 }
+            }
+        }
+    }
+    # Bytes methods (on any target expression that is a length-aware bytes
+    # value): decode/hex/... dispatch through the NativeBytesEmitter. Checked
+    # before str since bytes has a distinct struct type (never i8*).
+    if method_name in self._primitive_method_names("bytes") {
+        bytes_val = self._codegen_expr(trailer.target);
+        if bytes_val is not None and self._is_bytes_value(bytes_val) {
+            arg_vals = self._codegen_call_args(nd);
+            result = self._dispatch_primitive_method(
+                "bytes", method_name, bytes_val, arg_vals, ""
+            );
+            if result is not None {
+                return result;
             }
         }
     }

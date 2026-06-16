@@ -1,57 +1,91 @@
-"""File I/O codegen: File struct, open() builtin, and File methods.
+"""File I/O codegen: File / BinaryFile structs, open() builtin, and methods.
 
-The File type is a built-in archetype with:
+A file object is a built-in archetype with:
   [0] i8*  handle   — FILE* from fopen
   [1] i8*  path     — file path string
-  [2] i8*  mode     — mode string ("r", "w", etc.)
+  [2] i8*  mode     — mode string ("r", "wb", etc.)
   [3] i1   closed   — closed flag
+
+`open(path, "r")` returns a text `File` whose read()/readline() yield `str`;
+`open(path, "rb")` returns a `BinaryFile` whose read()/readline() yield a
+length-aware `bytes` value (#6404). The two share this struct layout and all
+the method logic — only the read/write payload type differs — so the helper
+emitter is parameterized over (struct_name, binary).
 """
 
-# ─── File Struct Type ────────────────────────────────────────
-"""Get or create the File struct type and register field indices."""
+# ─── File Struct Types ───────────────────────────────────────
+"""Get or create the text File struct type and register field indices."""
 impl NaIRGenPass._get_file_struct_type -> ir.Type {
     if self._file_struct_type is not None {
         return self._file_struct_type;
     }
+    self._file_struct_type = self._register_file_like_struct("File");
+    return self._file_struct_type;
+}
+
+"""Get or create the BinaryFile struct type (same layout as File)."""
+impl NaIRGenPass._get_binary_file_struct_type -> ir.Type {
+    if self._binary_file_struct_type is not None {
+        return self._binary_file_struct_type;
+    }
+    self._binary_file_struct_type = self._register_file_like_struct("BinaryFile");
+    return self._binary_file_struct_type;
+}
+
+"""Register a { i8* handle, i8* path, i8* mode, i1 closed } struct under `name`
+and record its field indices/types so method/field access resolve."""
+impl NaIRGenPass._register_file_like_struct(name: str) -> ir.Type {
     i8p = ir.IntType(8).as_pointer();
     i1 = ir.IntType(1);
-    file_struct = self.llvm_module.context.get_identified_type("File");
-    file_struct.set_body(i8p, i8p, i8p, i1);
-    self._file_struct_type = file_struct;
-    # Register as a known struct type for method calls and field access
-    self.struct_types["File"] = file_struct;
-    self.struct_field_indices["File"] = {
-        "handle": 0,
-        "path": 1,
-        "mode": 2,
-        "closed": 3
-    };
-    self.struct_field_types["File"] = {
+    st = self.llvm_module.context.get_identified_type(name);
+    st.set_body(i8p, i8p, i8p, i1);
+    self.struct_types[name] = st;
+    self.struct_field_indices[name] = {"handle": 0, "path": 1, "mode": 2, "closed": 3};
+    self.struct_field_types[name] = {
         "handle": i8p,
         "path": i8p,
         "mode": i8p,
         "closed": i1
     };
-    self.struct_field_defaults["File"] = {};
-    return file_struct;
+    self.struct_field_defaults[name] = {};
+    return st;
 }
 
 # ─── File Helper Functions ───────────────────────────────────
-"""Emit all File method functions as LLVM IR."""
+"""Emit all text File method functions as LLVM IR (once)."""
 impl NaIRGenPass._emit_file_helpers -> None {
     if self._file_helpers_emitted {
         return;
     }
     self._file_helpers_emitted = True;
-    file_struct = self._get_file_struct_type();
-    file_ptr_type = file_struct.as_pointer();
+    self._emit_file_like_helpers("File", self._get_file_struct_type(), binary=False);
+}
+
+"""Emit all BinaryFile method functions as LLVM IR (once)."""
+impl NaIRGenPass._emit_binary_file_helpers -> None {
+    if self._binary_file_helpers_emitted {
+        return;
+    }
+    self._binary_file_helpers_emitted = True;
+    self._emit_file_like_helpers(
+        "BinaryFile", self._get_binary_file_struct_type(), binary=True
+    );
+}
+
+"""Emit read/readline/write/close/flush/__enter__/__exit__ for a file-like
+struct. When `binary`, read()/readline() return length-aware bytes and write()
+takes bytes; otherwise they use NUL-terminated str (i8*)."""
+impl NaIRGenPass._emit_file_like_helpers(
+    struct_name: str, struct_type: ir.Type, binary: bool
+) -> None {
+    file_ptr_type = struct_type.as_pointer();
     i8p = ir.IntType(8).as_pointer();
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     i1 = ir.IntType(1);
-    # Declare required C functions
-    fopen_fn = self._get_or_declare_extern("fopen", i8p, [i8p, i8p]);
+    z32 = ir.Constant(i32, 0);
+    one32 = ir.Constant(i32, 1);
     fclose_fn = self._get_or_declare_extern("fclose", i32, [i8p]);
     fread_fn = self._get_or_declare_extern("fread", i64, [i8p, i64, i64, i8p]);
     fwrite_fn = self._get_or_declare_extern("fwrite", i64, [i8p, i64, i64, i8p]);
@@ -62,41 +96,52 @@ impl NaIRGenPass._emit_file_helpers -> None {
     strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p]);
     memcpy_fn = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
     rc_alloc_fn = self.rc_alloc_fn;
-    # ── File.read(): read entire file contents as string ──
-    read_fnty = ir.FunctionType(i8p, [file_ptr_type]);
-    read_fn = ir.Function(self.llvm_module, read_fnty, name="File.read");
+    bt = self._get_bytes_struct_type();
+    bytes_ptr_type = bt.as_pointer();
+    # read() return type: bytes for binary, str (i8*) for text.
+    read_ret = bytes_ptr_type if binary else i8p;
+    # ── read(): read the entire file ──
+    read_fnty = ir.FunctionType(read_ret, [file_ptr_type]);
+    read_fn = ir.Function(self.llvm_module, read_fnty, name=f"{struct_name}.read");
     read_fn.linkage = "private";
     read_fn.args[0].name = "self";
     bb = read_fn.append_basic_block("entry");
     b = ir.IRBuilder(bb);
     self_arg = read_fn.args[0];
-    # Get handle
-    handle_ptr = b.gep(
-        self_arg, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="handle.ptr"
-    );
+    handle_ptr = b.gep(self_arg, [z32, z32], name="handle.ptr");
     handle = b.load(handle_ptr, name="handle");
-    # Seek to end to get file size
-    b.call(
-        fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 2)]
-    );  # SEEK_END = 2
+    b.call(fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 2)]);  # SEEK_END
     file_size = b.call(ftell_fn, [handle], name="file.size");
-    b.call(
-        fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 0)]
-    );  # SEEK_SET = 0
-    # Allocate buffer (size + 1 for null terminator) via rc_alloc
-    buf_size = b.add(file_size, ir.Constant(i64, 1), name="buf.size");
-    buffer = b.call(rc_alloc_fn, [buf_size], name="read.buf");
-    # Read file contents
-    bytes_read = b.call(
-        fread_fn, [buffer, ir.Constant(i64, 1), file_size, handle], name="bytes.read"
-    );
-    # Null-terminate
-    null_pos = b.gep(buffer, [bytes_read], name="null.pos");
-    b.store(ir.Constant(i8, 0), null_pos);
-    b.ret(buffer);
-    # ── File.write(data: str) -> int: write string to file ──
-    write_fnty = ir.FunctionType(i64, [file_ptr_type, i8p]);
-    write_fn = ir.Function(self.llvm_module, write_fnty, name="File.write");
+    b.call(fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 0)]);  # SEEK_SET
+    if binary {
+        # bytes value: { i64 len, [size x i8] } in one rc block; len is exact.
+        total = b.add(file_size, ir.Constant(i64, 8), name="rd.total");
+        raw = b.call(rc_alloc_fn, [total], name="rd.raw");
+        self._emit_set_type_tag(b, raw, "bytes");
+        bv = b.bitcast(raw, bytes_ptr_type, name="rd.bytes");
+        len_ptr = b.gep(bv, [z32, z32], name="rd.len.ptr");
+        b.store(file_size, len_ptr);
+        arr_ptr = b.gep(bv, [z32, one32], name="rd.data.arr");
+        data_ptr = b.bitcast(arr_ptr, i8p, name="rd.data");
+        b.call(fread_fn, [data_ptr, ir.Constant(i64, 1), file_size, handle]);
+        b.ret(bv);
+    } else {
+        buf_size = b.add(file_size, ir.Constant(i64, 1), name="buf.size");
+        buffer = b.call(rc_alloc_fn, [buf_size], name="read.buf");
+        self._emit_set_type_tag(b, buffer, "str");
+        bytes_read = b.call(
+            fread_fn,
+            [buffer, ir.Constant(i64, 1), file_size, handle],
+            name="bytes.read"
+        );
+        null_pos = b.gep(buffer, [bytes_read], name="null.pos");
+        b.store(ir.Constant(i8, 0), null_pos);
+        b.ret(buffer);
+    }
+    # ── write(data) -> int ──
+    write_arg = bytes_ptr_type if binary else i8p;
+    write_fnty = ir.FunctionType(i64, [file_ptr_type, write_arg]);
+    write_fn = ir.Function(self.llvm_module, write_fnty, name=f"{struct_name}.write");
     write_fn.linkage = "private";
     write_fn.args[0].name = "self";
     write_fn.args[1].name = "data";
@@ -104,20 +149,26 @@ impl NaIRGenPass._emit_file_helpers -> None {
     b = ir.IRBuilder(bb);
     self_arg = write_fn.args[0];
     data_arg = write_fn.args[1];
-    handle_ptr = b.gep(
-        self_arg, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="handle.ptr"
-    );
+    handle_ptr = b.gep(self_arg, [z32, z32], name="handle.ptr");
     handle = b.load(handle_ptr, name="handle");
-    # Get string length
-    data_len = b.call(strlen_fn, [data_arg], name="data.len");
-    # Write data
+    if binary {
+        len_ptr = b.gep(data_arg, [z32, z32], name="wr.len.ptr");
+        data_len = b.load(len_ptr, name="wr.len");
+        arr_ptr = b.gep(data_arg, [z32, one32], name="wr.data.arr");
+        src_ptr = b.bitcast(arr_ptr, i8p, name="wr.data");
+    } else {
+        data_len = b.call(strlen_fn, [data_arg], name="data.len");
+        src_ptr = data_arg;
+    }
     written = b.call(
-        fwrite_fn, [data_arg, ir.Constant(i64, 1), data_len, handle], name="written"
+        fwrite_fn, [src_ptr, ir.Constant(i64, 1), data_len, handle], name="written"
     );
     b.ret(written);
-    # ── File.readline() -> str: read one line ──
-    readline_fnty = ir.FunctionType(i8p, [file_ptr_type]);
-    readline_fn = ir.Function(self.llvm_module, readline_fnty, name="File.readline");
+    # ── readline() -> str/bytes (one line) ──
+    readline_fnty = ir.FunctionType(read_ret, [file_ptr_type]);
+    readline_fn = ir.Function(
+        self.llvm_module, readline_fnty, name=f"{struct_name}.readline"
+    );
     readline_fn.linkage = "private";
     readline_fn.args[0].name = "self";
     bb = readline_fn.append_basic_block("entry");
@@ -125,38 +176,78 @@ impl NaIRGenPass._emit_file_helpers -> None {
     ok_bb = readline_fn.append_basic_block("ok");
     b = ir.IRBuilder(bb);
     self_arg = readline_fn.args[0];
-    handle_ptr = b.gep(
-        self_arg, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="handle.ptr"
-    );
+    handle_ptr = b.gep(self_arg, [z32, z32], name="handle.ptr");
     handle = b.load(handle_ptr, name="handle");
-    # Allocate stack buffer
-    buf_sz = 4096;
-    buf_type = ir.ArrayType(i8, buf_sz);
-    buf = b.alloca(buf_type, name="line.buf");
-    buf_ptr = b.bitcast(buf, i8p, name="line.ptr");
-    # fgets
-    result = b.call(
-        fgets_fn, [buf_ptr, ir.Constant(i32, buf_sz), handle], name="fgets.result"
-    );
-    # Check for EOF
-    null_ptr = ir.Constant(i8p, None);
-    is_eof = b.icmp_signed("==", result, null_ptr, name="is.eof");
-    b.cbranch(is_eof, eof_bb, ok_bb);
-    # EOF: return empty string
-    b.position_at_end(eof_bb);
-    empty = b.call(rc_alloc_fn, [ir.Constant(i64, 1)], name="empty.str");
-    b.store(ir.Constant(i8, 0), empty);
-    b.ret(empty);
-    # OK: copy to GC memory
-    b.position_at_end(ok_bb);
-    slen = b.call(strlen_fn, [buf_ptr], name="line.len");
-    alloc_size = b.add(slen, ir.Constant(i64, 1), name="alloc.size");
-    line_str = b.call(rc_alloc_fn, [alloc_size], name="line.str");
-    b.call(memcpy_fn, [line_str, buf_ptr, alloc_size]);
-    b.ret(line_str);
-    # ── File.close(): close the file handle ──
+    if binary {
+        # getdelim returns the exact byte count (incl. the newline, excl. the
+        # trailing NUL it appends), so embedded NULs in the line survive —
+        # strlen/fgets would truncate at the first NUL. It mallocs *lineptr,
+        # which we copy out of and free.
+        null_i8p = ir.Constant(i8p, None);
+        n_slot = b.alloca(i64, name="rl.n");
+        b.store(ir.Constant(i64, 0), n_slot);
+        lp_slot = b.alloca(i8p, name="rl.lp");
+        b.store(null_i8p, lp_slot);
+        getdelim_fn = self._get_or_declare_extern(
+            "getdelim", i64, [i8p.as_pointer(), i64.as_pointer(), i32, i8p]
+        );
+        free_fn2 = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+        count = b.call(
+            getdelim_fn,
+            [lp_slot, n_slot, ir.Constant(i32, 10), handle],
+            name="rl.count"
+        );
+        is_eof = b.icmp_signed("<", count, ir.Constant(i64, 0), name="rl.eof");
+        b.cbranch(is_eof, eof_bb, ok_bb);
+        # EOF: free the (possibly allocated) buffer, return empty bytes.
+        b.position_at_end(eof_bb);
+        b.call(free_fn2, [b.load(lp_slot, name="rl.lp.eof")]);
+        e_raw = b.call(rc_alloc_fn, [ir.Constant(i64, 8)], name="rl.eof.raw");
+        self._emit_set_type_tag(b, e_raw, "bytes");
+        e_bv = b.bitcast(e_raw, bytes_ptr_type, name="rl.eof.bytes");
+        b.store(ir.Constant(i64, 0), b.gep(e_bv, [z32, z32], name="rl.eof.len"));
+        b.ret(e_bv);
+        # OK: copy `count` bytes into a fresh bytes value, free the buffer.
+        b.position_at_end(ok_bb);
+        lp = b.load(lp_slot, name="rl.lp.ok");
+        rl_total = b.add(count, ir.Constant(i64, 8), name="rl.total");
+        rl_raw = b.call(rc_alloc_fn, [rl_total], name="rl.raw");
+        self._emit_set_type_tag(b, rl_raw, "bytes");
+        rl_bv = b.bitcast(rl_raw, bytes_ptr_type, name="rl.bytes");
+        b.store(count, b.gep(rl_bv, [z32, z32], name="rl.len.ptr"));
+        rl_data = b.bitcast(
+            b.gep(rl_bv, [z32, one32], name="rl.data.arr"), i8p, name="rl.data"
+        );
+        b.call(memcpy_fn, [rl_data, lp, count]);
+        b.call(free_fn2, [lp]);
+        b.ret(rl_bv);
+    } else {
+        buf_sz = 4096;
+        buf = b.alloca(ir.ArrayType(i8, buf_sz), name="line.buf");
+        buf_ptr = b.bitcast(buf, i8p, name="line.ptr");
+        result = b.call(
+            fgets_fn, [buf_ptr, ir.Constant(i32, buf_sz), handle], name="fgets.result"
+        );
+        is_eof = b.icmp_signed("==", result, ir.Constant(i8p, None), name="is.eof");
+        b.cbranch(is_eof, eof_bb, ok_bb);
+        # EOF: empty str.
+        b.position_at_end(eof_bb);
+        empty = b.call(rc_alloc_fn, [ir.Constant(i64, 1)], name="empty.str");
+        self._emit_set_type_tag(b, empty, "str");
+        b.store(ir.Constant(i8, 0), empty);
+        b.ret(empty);
+        # OK: copy the line (with its NUL terminator).
+        b.position_at_end(ok_bb);
+        slen = b.call(strlen_fn, [buf_ptr], name="line.len");
+        alloc_size = b.add(slen, ir.Constant(i64, 1), name="alloc.size");
+        line_str = b.call(rc_alloc_fn, [alloc_size], name="line.str");
+        self._emit_set_type_tag(b, line_str, "str");
+        b.call(memcpy_fn, [line_str, buf_ptr, alloc_size]);
+        b.ret(line_str);
+    }
+    # ── close() ──
     close_fnty = ir.FunctionType(ir.VoidType(), [file_ptr_type]);
-    close_fn = ir.Function(self.llvm_module, close_fnty, name="File.close");
+    close_fn = ir.Function(self.llvm_module, close_fnty, name=f"{struct_name}.close");
     close_fn.linkage = "private";
     close_fn.args[0].name = "self";
     bb = close_fn.append_basic_block("entry");
@@ -164,46 +255,42 @@ impl NaIRGenPass._emit_file_helpers -> None {
     do_close_bb = close_fn.append_basic_block("do.close");
     b = ir.IRBuilder(bb);
     self_arg = close_fn.args[0];
-    closed_ptr = b.gep(
-        self_arg, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="closed.ptr"
-    );
+    closed_ptr = b.gep(self_arg, [z32, ir.Constant(i32, 3)], name="closed.ptr");
     is_closed = b.load(closed_ptr, name="is.closed");
     b.cbranch(is_closed, already_closed_bb, do_close_bb);
     b.position_at_end(already_closed_bb);
     b.ret_void();
     b.position_at_end(do_close_bb);
-    handle_ptr = b.gep(
-        self_arg, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="handle.ptr"
-    );
+    handle_ptr = b.gep(self_arg, [z32, z32], name="handle.ptr");
     handle = b.load(handle_ptr, name="handle");
     b.call(fclose_fn, [handle]);
-    b.store(ir.Constant(i1, 1), closed_ptr);  # Mark as closed
+    b.store(ir.Constant(i1, 1), closed_ptr);
     b.ret_void();
-    # ── File.flush(): flush buffered data ──
+    # ── flush() ──
     flush_fnty = ir.FunctionType(ir.VoidType(), [file_ptr_type]);
-    flush_fn = ir.Function(self.llvm_module, flush_fnty, name="File.flush");
+    flush_fn = ir.Function(self.llvm_module, flush_fnty, name=f"{struct_name}.flush");
     flush_fn.linkage = "private";
     flush_fn.args[0].name = "self";
     bb = flush_fn.append_basic_block("entry");
     b = ir.IRBuilder(bb);
     self_arg = flush_fn.args[0];
-    handle_ptr = b.gep(
-        self_arg, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="handle.ptr"
-    );
+    handle_ptr = b.gep(self_arg, [z32, z32], name="handle.ptr");
     handle = b.load(handle_ptr, name="handle");
     b.call(fflush_fn, [handle]);
     b.ret_void();
-    # ── File.__enter__() -> File: return self for context manager ──
+    # ── __enter__() -> self ──
     enter_fnty = ir.FunctionType(file_ptr_type, [file_ptr_type]);
-    enter_fn = ir.Function(self.llvm_module, enter_fnty, name="File.__enter__");
+    enter_fn = ir.Function(
+        self.llvm_module, enter_fnty, name=f"{struct_name}.__enter__"
+    );
     enter_fn.linkage = "private";
     enter_fn.args[0].name = "self";
     bb = enter_fn.append_basic_block("entry");
     b = ir.IRBuilder(bb);
     b.ret(enter_fn.args[0]);
-    # ── File.__exit__(exc_type, exc_val, tb) -> bool: close if not closed ──
+    # ── __exit__(exc_type, exc_val, tb) -> bool: close if not closed ──
     exit_fnty = ir.FunctionType(i1, [file_ptr_type, i8p, i8p, i8p]);
-    exit_fn = ir.Function(self.llvm_module, exit_fnty, name="File.__exit__");
+    exit_fn = ir.Function(self.llvm_module, exit_fnty, name=f"{struct_name}.__exit__");
     exit_fn.linkage = "private";
     exit_fn.args[0].name = "self";
     exit_fn.args[1].name = "exc_type";
@@ -211,42 +298,36 @@ impl NaIRGenPass._emit_file_helpers -> None {
     exit_fn.args[3].name = "traceback";
     bb = exit_fn.append_basic_block("entry");
     b = ir.IRBuilder(bb);
-    self_arg = exit_fn.args[0];
-    # Call close on self
-    b.call(close_fn, [self_arg]);
-    # Return False (don't suppress exceptions)
+    b.call(close_fn, [exit_fn.args[0]]);
     b.ret(ir.Constant(i1, 0));
-    # Register all methods in method_funcs
-    self.method_funcs["File.read"] = read_fn;
-    self.method_funcs["File.write"] = write_fn;
-    self.method_funcs["File.readline"] = readline_fn;
-    self.method_funcs["File.close"] = close_fn;
-    self.method_funcs["File.flush"] = flush_fn;
-    self.method_funcs["File.__enter__"] = enter_fn;
-    self.method_funcs["File.__exit__"] = exit_fn;
-    # Also register in func_symtab for lookup
-    self.func_symtab["File.read"] = read_fn;
-    self.func_symtab["File.write"] = write_fn;
-    self.func_symtab["File.readline"] = readline_fn;
-    self.func_symtab["File.close"] = close_fn;
-    self.func_symtab["File.flush"] = flush_fn;
-    self.func_symtab["File.__enter__"] = enter_fn;
-    self.func_symtab["File.__exit__"] = exit_fn;
+    # Register methods for dispatch + symbol lookup.
+    _methods = {
+        f"{struct_name}.read": read_fn,
+        f"{struct_name}.write": write_fn,
+        f"{struct_name}.readline": readline_fn,
+        f"{struct_name}.close": close_fn,
+        f"{struct_name}.flush": flush_fn,
+        f"{struct_name}.__enter__": enter_fn,
+        f"{struct_name}.__exit__": exit_fn
+    };
+    for (_mname, _mfn) in _methods.items() {
+        self.method_funcs[_mname] = _mfn;
+        self.func_symtab[_mname] = _mfn;
+    }
 }
 
 # ─── open() Builtin ─────────────────────────────────────────
-"""Emit code for open(path, mode) builtin: allocate File struct, call fopen."""
+"""Emit code for open(path, mode): allocate a File / BinaryFile and fopen.
+
+A literal mode containing 'b' selects the BinaryFile variant (read() -> bytes);
+this mirrors the na_builtins.pyi overload so the static type and the emitted
+struct always agree. A non-literal mode falls back to text File.
+"""
 impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     i8p = ir.IntType(8).as_pointer();
-    i8 = ir.IntType(8);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     i1 = ir.IntType(1);
-    # Ensure File type and helpers are emitted
-    file_struct = self._get_file_struct_type();
-    self._emit_file_helpers();
-    file_ptr_type = file_struct.as_pointer();
-    # Get arguments: path (required), mode (optional, default "r")
     params = nd.params or [];
     if not params {
         return None;
@@ -255,6 +336,29 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     if path_val is None {
         return None;
     }
+    # Determine binary-ness from a literal mode (if any).
+    mode_literal: (str | None) = None;
+    if len(params) >= 2 {
+        _mnode = params[1];
+        if isinstance(_mnode, uni.MultiString) and len(_mnode.strings) == 1 {
+            _mnode = _mnode.strings[0];
+        }
+        if isinstance(_mnode, uni.String) {
+            _mlv = _mnode.lit_value;
+            if isinstance(_mlv, str) {
+                mode_literal = _mlv;
+            }
+        }
+    }
+    is_binary = mode_literal is not None and "b" in mode_literal;
+    if is_binary {
+        struct_type = self._get_binary_file_struct_type();
+        self._emit_binary_file_helpers();
+    } else {
+        struct_type = self._get_file_struct_type();
+        self._emit_file_helpers();
+    }
+    file_ptr_type = struct_type.as_pointer();
     mode_val: (ir.Value | None) = None;
     if len(params) >= 2 {
         mode_val = self._codegen_expr(params[1]);
@@ -262,49 +366,37 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     if mode_val is None {
         mode_val = self._make_global_string("r", name_prefix=".file.mode");
     }
-    # Call fopen(path, mode)
     fopen_fn = self._get_or_declare_extern("fopen", i8p, [i8p, i8p]);
     file_handle = self.builder.call(
         fopen_fn, [path_val, mode_val], name="fopen.result"
     );
-    # Check for NULL (file open failure). CPython raises FileNotFoundError
-    # rather than returning None, so to keep the `open` surface congruent
-    # across sv/na (issue #6404, congruence decision #4) we raise the same
-    # exception class here instead of returning a null File pointer. The
-    # exception is catchable as FileNotFoundError / OSError / Exception per
-    # the canonical hierarchy in type_registry.jac.
+    # CPython raises FileNotFoundError rather than returning None; keep the
+    # `open` surface congruent across sv/na (issue #6404, decision #4).
     null_ptr = ir.Constant(i8p, None);
     is_null = self.builder.icmp_signed("==", file_handle, null_ptr, name="fopen.null");
     self._emit_runtime_raise(is_null, "FileNotFoundError", "No such file or directory");
-    # Past the raise check fopen succeeded: allocate and initialize File struct.
-    # Compute sizeof(File) using GEP-from-null trick
+    # fopen succeeded: allocate and initialize the file struct.
     null_file_ptr = ir.Constant(file_ptr_type, None);
     size_gep = self.builder.gep(
         null_file_ptr, [ir.Constant(i32, 1)], name="file.sizeof"
     );
     file_size = self.builder.ptrtoint(size_gep, i64, name="file.size");
-    # Allocate via rc_alloc (RC-managed)
     self._set_rc_ctx("file_read", "");
     raw = self.builder.call(self.rc_alloc_fn, [file_size], name="file.raw");
     self._clear_rc_ctx();
     file_obj = self.builder.bitcast(raw, file_ptr_type, name="file.obj");
-    # Store fields
-    # handle
     handle_ptr = self.builder.gep(
         file_obj, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="file.handle.ptr"
     );
     self.builder.store(file_handle, handle_ptr);
-    # path
     path_ptr = self.builder.gep(
         file_obj, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="file.path.ptr"
     );
     self.builder.store(path_val, path_ptr);
-    # mode
     mode_ptr = self.builder.gep(
         file_obj, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="file.mode.ptr"
     );
     self.builder.store(mode_val, mode_ptr);
-    # closed = false
     closed_ptr = self.builder.gep(
         file_obj, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="file.closed.ptr"
     );
