@@ -30,6 +30,9 @@ glob DYNAMIC_TORCH_ATTRS: set[str] = {
      # logging.Logger method names; a `<logger>.<method>(...)` call with one of
      # these breaks tracing. Matched against the CALL's method name (not a
      # substring of the callee), so `setup_logging()` is not a false positive.
+     # The generic `log` is excluded: it collides with non-logging methods like
+     # PyTorch Lightning's `self.log("metric", v)`, and the stdlib alias
+     # `logger.log(level, msg)` is rarely called directly.
      LOG_METHODS: set[str] = {
          'debug',
          'info',
@@ -39,7 +42,6 @@ glob DYNAMIC_TORCH_ATTRS: set[str] = {
          'exception',
          'critical',
          'fatal',
-         'log',
          'warn'
      },
      # Built-in side-effecting calls that break tracing when seen inside a graph.
