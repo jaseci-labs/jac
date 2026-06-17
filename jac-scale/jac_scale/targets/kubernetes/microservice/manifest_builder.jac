@@ -616,7 +616,10 @@ obj MicroserviceManifestBuilder {
             }
         }
         return {
-            "min": int(hpa.get("min", 1)),
+            # Gateway is the sole entry point for all external traffic; a single
+            # pod means any restart causes a ~300s outage (readiness delay).
+            # Default to 2 so one pod dying never takes the gateway fully down.
+            "min": int(hpa.get("min", 2 if svc_name == GATEWAY_NAME else 1)),
             "max": int(hpa.get("max", 3)),
             "cpu_target": int(hpa.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)),
             "triggers": raw_triggers
