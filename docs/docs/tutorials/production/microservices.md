@@ -400,12 +400,12 @@ Microservices (3)
 
   __gateway__
     image:     my-app:v1.0
-    replicas:  1
+    replicas:  2  (HPA: 2 -> 3 @ 50% CPU)
     resources: cpu 50m -> 200m     mem 64Mi -> 128Mi
     port:      8000
 
 Totals
-  3 deployments, 3 services, 2 HPAs, 3 PDBs
+  3 deployments, 3 services, 3 HPAs, 3 PDBs
 
 To see the raw YAML manifests, re-run with --show-yaml
 ```

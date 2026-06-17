@@ -3524,13 +3524,15 @@ Each microservice entry takes optional per-service overrides under `[plugins.sca
 | `[[services.NAME.triggers]]` | list | Per-service KEDA event-driven triggers. Each entry: `type` (str), `metadata` (dict), optional `name` (str), optional `auth.secret_refs` (dict). Requires `autoscaler_engine = "keda"` in `[plugins.scale.kubernetes]`. |
 
 ```toml
-# Example: scale jac_coder_sv hot during LLM workloads, fix the gateway at 2.
+# Example: scale jac_coder_sv hot during LLM workloads.
+# The gateway defaults to min=2 for HA; override only if you need different behaviour.
 [plugins.scale.microservices.services.jac_coder_sv]
 rpc_timeout = 300.0
 hpa = { enabled = true, min = 2, max = 10, cpu_target = 60 }
 
+# Override example: pin the gateway at exactly 3 replicas with no autoscaling.
 [plugins.scale.microservices.services.__gateway__]
-replicas = 2
+replicas = 3
 hpa = { enabled = false }
 
 # KEDA per-service trigger (requires autoscaler_engine = "keda" in [plugins.scale.kubernetes])
