@@ -30,7 +30,7 @@ import from jac_scale.abstractions.metrics { MetricsCollector }
 import from jac_scale.events.broker { EventStreamBroker }
 import from jac_scale.websocket { WebSocketConnectionManager }
 import from typing { AsyncGenerator }
-import from inspect { isgenerator }
+import from inspect { isgenerator, signature, Parameter }
 import from fastapi.responses { StreamingResponse }
 import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }

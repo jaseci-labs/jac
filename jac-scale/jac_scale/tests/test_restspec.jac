@@ -200,6 +200,55 @@ test "get func with params" {
     }
 }
 
+test "walker tolerates unknown query params" {
+    # Regression test for #4661: browsers/CDNs/proxies append params (e.g. ?v=
+    # cache busters) that don't match declared walker fields. Those should be
+    # silently ignored, not crash the endpoint with TypeError.
+    client = make_client("restspec_fixtures.jac");
+    try {
+        response = client.get(
+            "/walker/GetWalkerWithParams",
+            params={"name": "Alice", "age": 30, "v": "1708012345", "_t": "abc"}
+        );
+        assert response.status_code == 200;
+        data = extract_data(response.json());
+        assert data["reports"][0]["message"] == "GetWalkerWithParams executed";
+        assert data["reports"][0]["name"] == "Alice";
+        assert data["reports"][0]["age"] == 30;
+    } finally {
+        client.close();
+    }
+}
+
+test "function tolerates unknown query params" {
+    # Regression test for #4661 — same as above for @restspec functions.
+    client = make_client("restspec_fixtures.jac");
+    try {
+        client.register_user("u1", "p1");
+        login = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": "u1"},
+                "credential": {"type": "password", "password": "p1"}
+            }
+        );
+        token = extract_data(login.json())["token"];
+
+        response = client.get(
+            "/function/get_func_with_params",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"name": "Bob", "age": 40, "v": "1708012345", "_t": "abc"}
+        );
+        assert response.status_code == 200;
+        data = extract_data(response.json());
+        assert data["result"]["message"] == "get_func_with_params executed";
+        assert data["result"]["name"] == "Bob";
+        assert data["result"]["age"] == 40;
+    } finally {
+        client.close();
+    }
+}
+
 test "openapi specs" {
     client = make_client("restspec_fixtures.jac");
     try {

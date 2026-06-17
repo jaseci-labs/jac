@@ -110,6 +110,25 @@ impl JacAPIServerEndpoints.create_walker_callback(
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
     import from fastapi { Request }
     requires_auth = self.introspector.is_auth_required_for_walker(walker_name);
+    # Precompute accepted walker fields so unknown query params (e.g. browser
+    # cache-busters like ?v=123) don't crash walker_cls(**fields) downstream.
+    # Mirrors FastAPI's default behavior of ignoring undeclared query params.
+    walker_cls_for_sig: Any = self.get_walkers()[walker_name];
+    try {
+        wsig = signature(walker_cls_for_sig.init);
+        accepts_kwargs: bool = any(
+            (p.kind == Parameter.VAR_KEYWORD) for p in wsig.parameters.values()
+        );
+        accepted_fields: set[str] = {
+            n
+            for n in wsig.parameters
+            if n not in ('self', 'args', 'kwargs')
+        };
+    } except Exception {
+        # Non-introspectable callable; fall back to permissive behavior.
+        accepts_kwargs = True;
+        accepted_fields = set();
+    }
     async def callback(
         request: Request, nd: (str | None) = None, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse) {
@@ -120,6 +139,13 @@ impl JacAPIServerEndpoints.create_walker_callback(
                 message='Unauthorized',
                 meta=Meta(extra={'http_status': 401})
             );
+        }
+        if not accepts_kwargs {
+            kwargs = {
+                k: v
+                for (k, v) in kwargs.items()
+                if k in accepted_fields
+            };
         }
         if nd {
             kwargs['_jac_spawn_node'] = nd;
@@ -243,6 +269,21 @@ impl JacAPIServerEndpoints.create_function_callback(
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
     import from fastapi { Request }
     requires_auth = self.introspector.is_auth_required_for_function(func_name);
+    # Precompute accepted parameter names so unknown query params (e.g. browser
+    # cache-busters like ?v=123) don't crash func(**kwargs) downstream.
+    # Mirrors FastAPI's default behavior of ignoring undeclared query params.
+    func_obj_for_sig: Any = self.get_functions()[func_name];
+    try {
+        fsig = signature(func_obj_for_sig);
+        accepts_kwargs: bool = any(
+            (p.kind == Parameter.VAR_KEYWORD) for p in fsig.parameters.values()
+        );
+        accepted_params: set[str] = set(fsig.parameters.keys());
+    } except Exception {
+        # Non-introspectable callable; fall back to permissive behavior.
+        accepts_kwargs = True;
+        accepted_params = set();
+    }
     async def callback(
         request: Request, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse) {
@@ -253,6 +294,13 @@ impl JacAPIServerEndpoints.create_function_callback(
                 message='Unauthorized',
                 meta=Meta(extra={'http_status': 401})
             );
+        }
+        if not accepts_kwargs {
+            kwargs = {
+                k: v
+                for (k, v) in kwargs.items()
+                if k in accepted_params
+            };
         }
         console.print(f"Executing function '{func_name}' with params: {kwargs}");
         result = await self.execution_manager.execute_function(
