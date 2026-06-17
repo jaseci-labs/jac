@@ -2,7 +2,8 @@
 
 import unittest.mock as mock;
 import from jac_scale.targets.kubernetes.microservice.manifest_builder {
-    MicroserviceManifestBuilder
+    MicroserviceManifestBuilder,
+    GATEWAY_NAME
 }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
@@ -58,6 +59,41 @@ test "pod spec surfaces JAC_IMAGE_REF with the resolved content-addressed image"
     assert container["image"] == "jac-shop:dev-abc123def456";
     pairs = {entry["name"]: entry["value"] for entry in container["env"]};
     assert pairs.get("JAC_IMAGE_REF") == "jac-shop:dev-abc123def456";
+}
+
+
+test "gateway autoscaler defaults to min=2 when no __gateway__ config is set" {
+    builder = MicroserviceManifestBuilder(
+        k8s_config=KubernetesConfig(app_name="test-app", namespace="test-ns")
+    );
+    with mock.patch.object(builder, "_service_config", return_value={}) {
+        cfg = builder._get_autoscaler_config(GATEWAY_NAME);
+    }
+    assert cfg["min"] == 2;
+}
+
+
+test "regular service autoscaler defaults to min=1 when no config is set" {
+    builder = MicroserviceManifestBuilder(
+        k8s_config=KubernetesConfig(app_name="test-app", namespace="test-ns")
+    );
+    with mock.patch.object(builder, "_service_config", return_value={}) {
+        cfg = builder._get_autoscaler_config("my_service");
+    }
+    assert cfg["min"] == 1;
+}
+
+
+test "gateway autoscaler respects explicit min override from jac.toml" {
+    builder = MicroserviceManifestBuilder(
+        k8s_config=KubernetesConfig(app_name="test-app", namespace="test-ns")
+    );
+    with mock.patch.object(
+        builder, "_service_config", return_value={"hpa": {"min": 1}}
+    ) {
+        cfg = builder._get_autoscaler_config(GATEWAY_NAME);
+    }
+    assert cfg["min"] == 1;
 }
 
 
