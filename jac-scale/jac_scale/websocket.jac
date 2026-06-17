@@ -303,6 +303,7 @@ impl WebSocketConnectionManager.broadcast(
     target_kind: str, target_name: str, message: dict
 ) -> None {
     target_key = f"{target_kind}:{target_name}";
+    await self.ensure_backplane_started();
     backplane = self._get_backplane();
     channel = f"ws:{target_key}";
     broadcast_published(target_kind, target_name);
