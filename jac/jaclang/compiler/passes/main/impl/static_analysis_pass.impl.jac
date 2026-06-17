@@ -112,6 +112,19 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if isinstance(parent, uni.KWPair) and parent.key is name_nd {
             continue;
         }
+        # Hard-error unresolved types in native/clib annotation positions (E2018).
+        if not name_nd.is_kwesc {
+            native_position = self._native_type_position(name_nd);
+            if native_position is not None {
+                self.emit(
+                    E2018,
+                    node_override=name_nd,
+                    name=name_nd.value,
+                    position=native_position
+                );
+                continue;
+            }
+        }
         # Skip names that are part of import statements
         if name_nd.find_parent_of_type(uni.Import) is not None {
             continue;
@@ -196,6 +209,41 @@ impl StaticAnalysisPass._osp_shape_position(name_nd: uni.Name) -> (str | None) {
         }
         cur = parent;
         parent = cur.parent;
+    }
+    return None;
+}
+
+"""Return a position label for an undefined type name in a native annotation, else None.
+
+Applies to clib import declarations (always) and type annotations in native-context
+code (`.na.jac` / `na {}`). Mirrors `_osp_shape_position`: bounded walk to the
+enclosing `SubTag` or function return type, then checks context."""
+impl StaticAnalysisPass._native_type_position(name_nd: uni.Name) -> (str | None) {
+    cur: uni.UniNode = name_nd;
+    parent = cur.parent;
+    in_type_pos = False;
+    # Bound the walk so an unrelated nested name can't reach an ancestor tag.
+    for _ in range(8) {
+        if parent is None {
+            break;
+        }
+        if isinstance(parent, uni.SubTag)
+        or (isinstance(parent, uni.FuncSignature) and parent.return_type is cur) {
+            in_type_pos = True;
+            break;
+        }
+        cur = parent;
+        parent = cur.parent;
+    }
+    if not in_type_pos {
+        return None;
+    }
+    imp = name_nd.find_parent_of_type(uni.Import);
+    if imp is not None and imp.clib_decls {
+        return "C library declaration type position";
+    }
+    if name_nd.in_native_context() {
+        return "native type annotation position";
     }
     return None;
 }

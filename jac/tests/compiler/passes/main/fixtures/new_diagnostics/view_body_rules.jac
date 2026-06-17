@@ -123,3 +123,21 @@ def:pub KeylessWhileUnderSwitch(n: int, kind: str) -> JsxElement {
         }}
     </div>;
 }
+
+def:pub RedundantExprSlotWrap(n: int) -> JsxElement {
+    # Re-wrapping a single *expression* in `{...}` inside a slot body is just
+    # as redundant as re-wrapping a statement — the body is already in slot
+    # mode (issue #6733). Each inner `{...}` below (string literal, arithmetic
+    # expression, JSX element) must drive the same targeted E2023 the control-
+    # flow wraps get, NOT the misleading E0002 "Missing ';'" cascade that
+    # pointed at the *following* line.
+    return <button>
+        {if n == 0 {
+            {"none"}
+        } elif n == 1 {
+            {n + 1}
+        } else {
+            {<li>{n}</li>}
+        }}
+    </button>;
+}

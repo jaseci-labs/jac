@@ -808,6 +808,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "and violate React's rules of hooks. Declare 'has'-fields at the "
          "component scope (the enclosing 'def -> JsxElement' body)."
      ),
+     E2028 = _err(
+         "E2028",
+         Category.SEMANTIC,
+         "Redundant '{{...}}' around a single expression inside a JSX slot "
+         "body — slot bodies are already in slot mode, so the value renders "
+         "without the extra braces. Drop them: write the expression directly, "
+         "terminated with ';' (e.g. 'name;' instead of '{{name}}')."
+     ),
      W2021 = _warn(
          "W2021",
          Category.SEMANTIC,

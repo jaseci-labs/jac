@@ -1905,6 +1905,24 @@ test "clib import produces extern declares" {
     assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
 }
 
+test "clib decl with no return arrow lowers to void, not i64" {
+    prog = JacProgram();
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES, "_clib_void_ret.na.jac")),
+        use_str="import from \"/usr/lib/libm.so.6\" {\n"
+        "    def no_arrow(x: f64);\n"
+        "    def explicit_none(x: f64) -> None;\n"
+        "}\n"
+        "def use_it(n: f64) -> f64 { return n; }\n"
+    );
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    s = str(ir.gen.llvm_ir);
+    assert 'declare void @"no_arrow"(double' in s , f"omitted return arrow did not lower to void: {s}";
+    assert 'declare i64 @"no_arrow"' not in s , "omitted return arrow silently lowered to i64";
+    # Parity with the explicit `-> None` spelling.
+    assert 'declare void @"explicit_none"(double' in s , "explicit -> None did not lower to void";
+}
+
 test "clib import inside na block" {
     prog = JacProgram();
     ir = prog.compile(str(os.path.join(FIXTURES, "clib_import_na_block.jac")));

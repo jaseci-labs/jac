@@ -124,6 +124,43 @@ test "empty bytes length" {
     assert f() == 0;
 }
 
+# ─── bytes building: concatenation and the bytes()/bytearray() constructors ───
+test "bytes concat length" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    f = get_func(eng, "concat_len", ctypes.c_int64);
+    assert f() == 2;
+}
+
+test "bytes concat keeps embedded NUL (length-aware)" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    f = get_func(eng, "concat_embedded_nul_len", ctypes.c_int64);
+    assert f() == 4;
+}
+
+test "bytes concat copies right operand at correct offset" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    f = get_func(eng, "concat_idx", ctypes.c_int64);
+    assert f() == 67;
+}
+
+test "bytes() constructor length counts bytes past NUL" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    f = get_func(eng, "ctor_len", ctypes.c_int64);
+    assert f() == 3;
+}
+
+test "bytes() constructor byte after NUL is reachable" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    f = get_func(eng, "ctor_idx_after_nul", ctypes.c_int64);
+    assert f() == 66;
+}
+
+test "bytearray() constructor length counts bytes past NUL" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    f = get_func(eng, "bytearray_ctor_len", ctypes.c_int64);
+    assert f() == 3;
+}
+
 # ─── struct module: unpack / pack / calcsize ───
 test "struct unpack u32 little-endian" {
     (eng, _) = compile_native("struct_pack.na.jac");
@@ -316,4 +353,90 @@ test "binary readline byte after NUL" {
     } finally {
         os.unlink(path);
     }
+}
+
+# ─── #6749: ops the i8*→jacbytes* migration left on the old assumption ───
+# Grouped one-compile-per-gap; each embedded-NUL case is what the old
+# strlen/strstr/strcmp paths got wrong.
+test "bytes repeat is length-aware (#6749)" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    assert get_func(eng, "repeat_len", ctypes.c_int64)() == 6;
+    assert get_func(eng, "repeat_idx", ctypes.c_int64)() == 98;
+    assert get_func(eng, "repeat_nul_len", ctypes.c_int64)() == 6;
+    assert get_func(eng, "repeat_nul_idx", ctypes.c_int64)() == 0;
+    assert get_func(eng, "repeat_zero", ctypes.c_int64)() == 0;
+}
+
+test "bytes membership is length-aware (#6749)" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    assert get_func(eng, "in_true", ctypes.c_int64)() == 1;
+    assert get_func(eng, "in_false", ctypes.c_int64)() == 0;
+    assert get_func(eng, "in_nul", ctypes.c_int64)() == 1;
+    assert get_func(eng, "not_in_true", ctypes.c_int64)() == 1;
+    assert get_func(eng, "in_empty", ctypes.c_int64)() == 1;
+}
+
+test "bytes iteration yields int bytes (#6749)" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    assert get_func(eng, "iter_sum", ctypes.c_int64)() == 294;
+    assert get_func(eng, "iter_count_nul", ctypes.c_int64)() == 3;
+    assert get_func(eng, "iter_sum_nul", ctypes.c_int64)() == 195;
+    assert get_func(eng, "iter_protocol_sum", ctypes.c_int64)() == 294;
+}
+
+test "bytes truthiness is emptiness, not nullness (#6749)" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    assert get_func(eng, "truthy_empty", ctypes.c_int64)() == 0;
+    assert get_func(eng, "truthy_nonempty", ctypes.c_int64)() == 1;
+    assert get_func(eng, "truthy_nul", ctypes.c_int64)() == 1;
+    assert get_func(eng, "bool_empty", ctypes.c_int64)() == 0;
+    assert get_func(eng, "bool_nonempty", ctypes.c_int64)() == 1;
+}
+
+test "bytes repr matches CPython b'...' (#6749)" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    assert get_func(eng, "repr_abc_ok", ctypes.c_int64)() == 1;
+    assert get_func(eng, "repr_nul_ok", ctypes.c_int64)() == 1;
+    assert get_func(eng, "repr_empty_ok", ctypes.c_int64)() == 1;
+    assert get_func(eng, "repr_quote_ok", ctypes.c_int64)() == 1;
+    assert get_func(eng, "repr_special_ok", ctypes.c_int64)() == 1;
+    assert get_func(eng, "repr_backslash_ok", ctypes.c_int64)() == 1;
+    assert get_func(eng, "repr_hi_ok", ctypes.c_int64)() == 1;
+}
+
+test "bytes dict key is length-aware (#6749)" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    assert get_func(eng, "dict_get", ctypes.c_int64)() == 7;
+    assert get_func(eng, "dict_nul", ctypes.c_int64)() == 5;
+    assert get_func(eng, "dict_distinct_len", ctypes.c_int64)() == 2;
+    assert get_func(eng, "dict_distinct_len2", ctypes.c_int64)() == 1;
+}
+
+test "bytes ordering is lexicographic unsigned (#6749)" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    assert get_func(eng, "lt_true", ctypes.c_int64)() == 1;
+    assert get_func(eng, "lt_false", ctypes.c_int64)() == 0;
+    assert get_func(eng, "lt_prefix", ctypes.c_int64)() == 1;
+    assert get_func(eng, "gt_true", ctypes.c_int64)() == 1;
+    assert get_func(eng, "lte_eq", ctypes.c_int64)() == 1;
+    assert get_func(eng, "gte_eq", ctypes.c_int64)() == 1;
+    assert get_func(eng, "cmp_nul", ctypes.c_int64)() == 1;
+    assert get_func(eng, "cmp_hi", ctypes.c_int64)() == 1;
+}
+
+test "bytes vs None comparison is null-safe (#6751)" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    # None operand: equal only to None (CPython identity), never deref null
+    assert get_func(eng, "none_eq_bytes", ctypes.c_int64)() == 0;
+    assert get_func(eng, "bytes_eq_none", ctypes.c_int64)() == 0;
+    assert get_func(eng, "none_ne_bytes", ctypes.c_int64)() == 1;
+    assert get_func(eng, "cnone_eq_bytes", ctypes.c_int64)() == 0;
+    assert get_func(eng, "cnone_ne_bytes", ctypes.c_int64)() == 1;
+    # both None -> equal; non-null operand still compares by value
+    assert get_func(eng, "both_none_eq", ctypes.c_int64)() == 1;
+    assert get_func(eng, "both_none_ne", ctypes.c_int64)() == 0;
+    assert get_func(eng, "some_eq_bytes", ctypes.c_int64)() == 1;
+    assert get_func(eng, "some_eq_diff", ctypes.c_int64)() == 0;
+    # ordering (< > <= >=) against None raises TypeError, not a segfault
+    assert get_func(eng, "none_ordering_raises", ctypes.c_int64)() == 4;
 }

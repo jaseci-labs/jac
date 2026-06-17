@@ -253,6 +253,39 @@ impl NaIRGenPass._emit_key_comparison(
     i64 = ir.IntType(64);
     if isinstance(key_type, ir.IntType) {
         return b.icmp_signed("==", stored_val, search_val, name="key.eq");
+    } elif self._is_bytes_type(key_type) {
+        # bytes keys: length-aware value equality (#6749) — equal iff same
+        # length AND memcmp over that length is 0. The generic pointer
+        # branches below would do strcmp (stops at NUL) or pointer identity
+        # (distinct literals never match), both wrong for bytes. Emitted
+        # inline on the helper-local builder `b` (single block; memcmp over
+        # min(len) never reads past either buffer).
+        _i32 = ir.IntType(32);
+        _z0 = ir.Constant(_i32, 0);
+        _z1 = ir.Constant(_i32, 1);
+        llen = b.load(
+            b.gep(stored_val, [_z0, _z0], name="key.by.llp"), name="key.by.ll"
+        );
+        rlen = b.load(
+            b.gep(search_val, [_z0, _z0], name="key.by.rlp"), name="key.by.rl"
+        );
+        ldata = b.bitcast(
+            b.gep(stored_val, [_z0, _z1], name="key.by.ldp"), i8_ptr, name="key.by.ld"
+        );
+        rdata = b.bitcast(
+            b.gep(search_val, [_z0, _z1], name="key.by.rdp"), i8_ptr, name="key.by.rd"
+        );
+        minlen = b.select(
+            b.icmp_signed("<", llen, rlen, name="key.by.lt"),
+            llen,
+            rlen,
+            name="key.by.min"
+        );
+        memcmp_fn = self._get_or_declare_extern("memcmp", _i32, [i8_ptr, i8_ptr, i64]);
+        cmpr = b.call(memcmp_fn, [ldata, rdata, minlen], name="key.by.cmp");
+        len_eq = b.icmp_signed("==", llen, rlen, name="key.by.leneq");
+        data_eq = b.icmp_signed("==", cmpr, _z0, name="key.by.dataeq");
+        return b.and_(len_eq, data_eq, name="key.by.eq");
     } elif key_type == i8_ptr {
         strcmp_fn = self._get_or_declare_extern(
             "strcmp", ir.IntType(32), [i8_ptr, i8_ptr]

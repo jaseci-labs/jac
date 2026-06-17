@@ -29,7 +29,13 @@ impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: uni.Name) -> None {
         # - ModuleCode.name: the label of a named entry block (e.g. `__main__`
         #   in `with entry:__main__`) — an entry-point name, not a variable
         #   reference; it has no symbol and is not an expression.
+        # - HasVar `by postinit` name: `postinit` names __post_init__, bound by the HasVar handler.
         if isinstance(nd.parent, uni.AtomTrailer) and nd.parent.right is nd {
+            return;
+        }
+        if isinstance(nd.parent, uni.HasVar)
+        and nd.parent.defer
+        and nd is not nd.parent.name {
             return;
         }
         if isinstance(nd.parent, uni.KWPair) and nd.parent.key is nd {
