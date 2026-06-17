@@ -101,7 +101,7 @@ Use the matching type even when you don't read `e`; for an event not in the tabl
 - **Forms / validation:** `useJacForm`, `JacForm`, `JacSchema`
 - **Error / suspense:** `JacClientErrorBoundary`, `JacAwaiting`, `ErrorFallback`
 - **Walker calls:** `jacSpawn` (prefer the `root spawn walker(...)` syntax - see `jac-fullstack-patterns`)
-- **DO NOT use `useState`** - `has` fields always replace it (no exceptions). **DO NOT use `useEffect`** - `can with entry` / `can with exit` is idiomatic; the ONLY exception is an acquire-then-release pair (interval, socket, listener), which needs a single manual `useEffect` whose body returns the cleanup (see below).
+- **DO NOT use:** `useState`, `useEffect` (aliases exist but `has` + `can with entry` are idiomatic)
 
 ## Effects: dependency arrays, cleanup, and the entry/exit closure split
 
@@ -122,7 +122,7 @@ import from react { useEffect }
 
 def fetch_data();
 
-def:pub Poller() -> JsxElement {
+cl def:pub Poller() -> JsxElement {
     useEffect(lambda {
         interval = setInterval(lambda { fetch_data(); }, 5000);
         return lambda { clearInterval(interval); };
