@@ -4464,3 +4464,15 @@ test "isinstance mixed tuple unsupported type errors" {
         f"expected E5090 for mixed-tuple isinstance, got {codes}"
     );
 }
+
+# --- #6754: globals/enums declared in an impl annex resolve on native ---
+test "impl-annex glob and enum resolve on native (#6754)" {
+    (eng, _) = compile_native("annex_glob.na.jac");
+    # `glob SZ` / `enum Color` are declared in impl/annex_glob.na.impl.jac, not
+    # the head decl file. Before the fix a reference failed with E5090
+    # 'Name'/'BinaryExpr' (the annex was treated as non-native: no native
+    # context, no type inference, so the symbol/type was never recorded).
+    assert get_func(eng, "read_sz", ctypes.c_int64)() == 42;
+    assert get_func(eng, "floordiv_sz", ctypes.c_int64, ctypes.c_int64)(84) == 2;
+    assert get_func(eng, "enum_annex", ctypes.c_int64)() == 9;
+}

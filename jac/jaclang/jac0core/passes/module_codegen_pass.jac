@@ -68,6 +68,35 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
         return result;
     }
 
+    """`iter_context_stmts` for `ctx` plus the statements of every impl annex.
+
+    Top-level constructs declared in an `*.impl.jac` annex (a `glob`, `enum`,
+    ...) live in `impl_mod` sub-modules, never the head module's `body` (see
+    decl_impl_match, which only connects annex symbols; the @sv/@cl AST-gen
+    backends fold the annex in via BaseAstGenPass._merge_module_bodies). A
+    declaration sweep that walks only the head body therefore misses them
+    (#6754). This folds annex statements in — matching the head+annex idiom
+    already used by hand in osp_model._uses_construct and capability_check.
+
+    The annex statements are taken unfiltered (`ctx=None`): a `.na.impl.jac`
+    annex's own statements are currently mistagged `code_context=server` (the
+    file-kind coercion keys on `.na.jac`, which `.na.impl.jac` doesn't match),
+    so filtering them by the head's context would drop them. The annex of a
+    native decl is itself native by construction (a `.na.jac` head is annexed
+    only by `.na.impl.jac`), so the type-filtering the caller already applies
+    (e.g. GlobalVars / Enum) is the right gate."""
+    static def iter_context_stmts_with_annex(
+        module: uni.Module, ctx: (CodeContext | None) = None
+    ) -> list[uni.ElementStmt] {
+        result: list[uni.ElementStmt] = list(
+            ModuleCodegenPass.iter_context_stmts(module, ctx)
+        );
+        for annex in module.impl_mod {
+            result.extend(ModuleCodegenPass.iter_context_stmts(annex, None));
+        }
+        return result;
+    }
+
     """Names of archetypes referenced anywhere under `nd` (constructors, type
     annotations, and `with X entry` triggers all surface as resolved `Name`s
     whose symbol declares an Archetype). Backend-agnostic.

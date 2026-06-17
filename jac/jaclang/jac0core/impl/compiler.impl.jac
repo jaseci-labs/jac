@@ -581,7 +581,11 @@ impl JacCompiler.parse_str(
             _coerce_client_module(mod);
         } elif file_path.endswith('.sv.jac') {
             _coerce_server_module(mod);
-        } elif file_path.endswith('.na.jac') {
+        } elif file_path.endswith('.na.jac') or file_path.endswith('.na.impl.jac') {
+            # `.na.impl.jac` impl-annex carries native code just like `.na.jac`;
+            # without this its statements default to SERVER context and miss
+            # native inference, so an annex-declared `glob` never gets a type
+            # stamped (#6754).
             _coerce_native_module(mod);
         }
     }
@@ -689,7 +693,9 @@ impl JacCompiler.compile(
     run_inference = options.type_check;
     if not run_inference {
         mp = mod_targ.loc.mod_path if (mod_targ?.loc and mod_targ.loc) else file_path;
-        is_native_mod = (bool(mp) and mp.endswith('.na.jac'))
+        is_native_mod = (
+            bool(mp) and (mp.endswith('.na.jac') or mp.endswith('.na.impl.jac'))
+        )
         or (
             actual_program._auto_promote_native
             and mod_targ?.gen
