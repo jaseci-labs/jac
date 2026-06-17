@@ -114,7 +114,7 @@ Minimal structural skeletons with the non-obvious rules for each. Use these as s
         </CardContent>
         <CardFooter>
             <p className="w-full text-center text-sm text-muted-foreground">
-                {"Don't have an account?"} <a href="/signup" className="text-foreground underline-offset-4 hover:underline">Sign up</a>
+                {"Don't have an account?"} <Link to="/signup" className="text-foreground underline-offset-4 hover:underline">Sign up</Link>
             </p>
         </CardFooter>
     </Card>
@@ -125,6 +125,7 @@ Minimal structural skeletons with the non-obvious rules for each. Use these as s
 - `max-w-sm` not `max-w-md` - auth cards are narrow and focused.
 - Submit button always `w-full type="submit"`. SSO buttons always `variant="outline"`.
 - Strings with `'` or `?` must be in braces: `{"Don't have an account?"}`.
+- In-app navigation uses `<Link to="...">` (from `@jac/runtime`), never `<a href>` - a raw `<a>` triggers a full reload and loses client state.
 - For the full auth flow (`jacLogin`, `jacSignup`, 3-step registration), see `jac-cl-auth`.
 
 ---
@@ -188,13 +189,13 @@ Minimal structural skeletons with the non-obvious rules for each. Use these as s
                 </TableRow>
             </TableHeader>
             <TableBody>
-                {rows.map(lambda(row: Any) -> Any {
-                    return <TableRow key={row.id}>
+                {for row in rows {
+                    <TableRow key={row.id}>
                         <TableCell className="font-medium">{row.name}</TableCell>
                         <TableCell><Badge variant="outline">{row.status}</Badge></TableCell>
                         <TableCell className="text-right tabular-nums">{row.amount}</TableCell>
-                    </TableRow>;
-                })}
+                    </TableRow>
+                }}
             </TableBody>
         </Table>
     </CardContent>
@@ -202,6 +203,7 @@ Minimal structural skeletons with the non-obvious rules for each. Use these as s
 ```
 
 - Table always wrapped in `Card` - never a bare `<Table>`.
+- Render rows with a statement slot (`{for row in rows { <TableRow/> }}`), NOT `rows.map(...)` (fails E1030).
 - Amount/number columns: `className="text-right tabular-nums"`.
 - Status badge: `variant="secondary"` for active, `variant="outline"` for inactive/default.
 
