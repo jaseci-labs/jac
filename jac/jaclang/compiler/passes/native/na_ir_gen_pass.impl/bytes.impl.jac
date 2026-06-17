@@ -213,37 +213,61 @@ impl NaIRGenPass._codegen_bytes_slice(
     return new_b;
 }
 
-"""bytes == bytes / bytes != bytes -> i1. Equal lengths AND memcmp == 0."""
+"""bytes == bytes / bytes != bytes -> i1: equal lengths AND memcmp == 0.
+
+Null-safe (#6751): a `bytes | None` operand may be a null `%"jacbytes"*` at
+runtime. CPython `None == b"x"` is `False` and `None == None` is `True`, so a
+null operand follows identity semantics (equal iff BOTH null) and the data is
+dereferenced only on the both-non-null path -- never loading through null."""
 impl NaIRGenPass._emit_bytes_eq(
     left: ir.Value, right: ir.Value, negate: bool
 ) -> ir.Value {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
+    i1 = ir.IntType(1);
     func = self.builder.basic_block.function;
+    lnull = self.builder.icmp_unsigned(
+        "==", left, ir.Constant(left.type, None), name="by.eq.lnull"
+    );
+    rnull = self.builder.icmp_unsigned(
+        "==", right, ir.Constant(right.type, None), name="by.eq.rnull"
+    );
+    either_null = self.builder.or_(lnull, rnull, name="by.eq.enull");
+    both_null = self.builder.and_(lnull, rnull, name="by.eq.bnull");
+    entry_bb = self.builder.basic_block;
+    live_bb = func.append_basic_block(name="by.eq.live");
+    done_bb = func.append_basic_block(name="by.eq.done");
+    # Either null -> done with `both_null`; else deref-safe value compare.
+    self.builder.cbranch(either_null, done_bb, live_bb);
+    self.builder.position_at_end(live_bb);
     llen = self._bytes_len_val(left);
     rlen = self._bytes_len_val(right);
     len_eq = self.builder.icmp_signed("==", llen, rlen, name="by.eq.len");
-    cmp_bb = func.append_basic_block(name="by.eq.cmp");
-    done_bb = func.append_basic_block(name="by.eq.done");
-    entry_bb = self.builder.basic_block;
-    self.builder.cbranch(len_eq, cmp_bb, done_bb);
-    # Lengths match: memcmp the data.
-    self.builder.position_at_end(cmp_bb);
+    # memcmp over min(len) is safe even when lengths differ; full equality also
+    # requires equal length, so AND the two (no inner branch needed).
+    minlen = self.builder.select(
+        self.builder.icmp_signed("<", llen, rlen, name="by.eq.lt"),
+        llen,
+        rlen,
+        name="by.eq.min"
+    );
     memcmp_fn = self._get_or_declare_extern("memcmp", i32, [i8p, i8p, i64]);
     cmp = self.builder.call(
         memcmp_fn,
-        [self._bytes_data_ptr(left), self._bytes_data_ptr(right), llen],
+        [self._bytes_data_ptr(left), self._bytes_data_ptr(right), minlen],
         name="by.eq.memcmp"
     );
     data_eq = self.builder.icmp_signed(
         "==", cmp, ir.Constant(i32, 0), name="by.eq.data"
     );
+    full_eq = self.builder.and_(len_eq, data_eq, name="by.eq.full");
+    live_end_bb = self.builder.basic_block;
     self.builder.branch(done_bb);
     self.builder.position_at_end(done_bb);
-    res = self.builder.phi(ir.IntType(1), name="by.eq");
-    res.add_incoming(ir.Constant(ir.IntType(1), 0), entry_bb);
-    res.add_incoming(data_eq, cmp_bb);
+    res = self.builder.phi(i1, name="by.eq");
+    res.add_incoming(both_null, entry_bb);
+    res.add_incoming(full_eq, live_end_bb);
     if negate {
         return self.builder.not_(res, name="by.ne");
     }
@@ -333,10 +357,30 @@ impl NaIRGenPass._emit_bytes_contains(
 """3-way lexicographic comparison of two bytes (CPython unsigned-byte order):
 returns i32 <0 / 0 / >0 like memcmp, with a length tiebreak when one is a
 prefix of the other. The caller compares the result to 0 with the operator's
-predicate — the same shape the strcmp path uses for str ordering."""
-impl NaIRGenPass._emit_bytes_cmp(left: ir.Value, right: ir.Value) -> ir.Value {
+predicate — the same shape the strcmp path uses for str ordering.
+
+Null-safe (#6751): ordering a `bytes | None` against bytes when the operand is
+None raises TypeError (CPython parity: `op_sym` is unsupported between bytes
+and NoneType), which also avoids dereferencing the null before the compare.
+`op_sym` is the source operator ('<' / '>' / '<=' / '>=') so the message names
+the operator the user actually wrote."""
+impl NaIRGenPass._emit_bytes_cmp(
+    left: ir.Value, right: ir.Value, op_sym: str
+) -> ir.Value {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
+    # Raise (not deref) if either operand is None/null.
+    lnull = self.builder.icmp_unsigned(
+        "==", left, ir.Constant(left.type, None), name="by.cmp.lnull"
+    );
+    rnull = self.builder.icmp_unsigned(
+        "==", right, ir.Constant(right.type, None), name="by.cmp.rnull"
+    );
+    self._emit_runtime_raise(
+        self.builder.or_(lnull, rnull, name="by.cmp.enull"),
+        "TypeError",
+        f"'{op_sym}' not supported between instances of 'bytes' and 'NoneType'"
+    );
     llen = self._bytes_len_val(left);
     rlen = self._bytes_len_val(right);
     l_lt_r = self.builder.icmp_signed("<", llen, rlen, name="by.cmp.llt");

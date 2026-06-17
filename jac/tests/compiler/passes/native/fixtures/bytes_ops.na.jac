@@ -161,3 +161,33 @@ def lte_eq() -> int { return 1 if b"ab" <= b"ab" else 0; }
 def gte_eq() -> int { return 1 if b"ab" >= b"ab" else 0; }
 def cmp_nul() -> int { return 1 if b"a\x00" < b"a\x00b" else 0; }
 def cmp_hi() -> int { return 1 if b"\xff" > b"\x01" else 0; }
+
+# ─── #6751: comparing (bytes | None) to bytes must null-guard, not deref ───
+# A None-valued `bytes | None` is a null jacbytes*; == / != must follow CPython
+# identity semantics (equal iff both None) instead of loading through null
+# (which segfaulted for a branchy union and silently vanished for a const-None
+# once the optimizer dropped the null-deref UB).
+def _maybe_bytes(h: bool) -> bytes | None { if h { return b"AB"; } return None; }
+def _none_bytes() -> bytes | None { return None; }
+
+def none_eq_bytes() -> int { z = _maybe_bytes(False); return 1 if z == b"AB" else 0; }
+def bytes_eq_none() -> int { z = _maybe_bytes(False); return 1 if b"AB" == z else 0; }
+def none_ne_bytes() -> int { z = _maybe_bytes(False); return 1 if z != b"AB" else 0; }
+def some_eq_bytes() -> int { z = _maybe_bytes(True); return 1 if z == b"AB" else 0; }
+def some_eq_diff() -> int { z = _maybe_bytes(True); return 1 if z == b"XY" else 0; }
+def cnone_eq_bytes() -> int { z = _none_bytes(); return 1 if z == b"AB" else 0; }
+def cnone_ne_bytes() -> int { z = _none_bytes(); return 1 if z != b"AB" else 0; }
+def both_none_eq() -> int { a = _none_bytes(); b = _none_bytes(); return 1 if a == b else 0; }
+def both_none_ne() -> int { a = _none_bytes(); b = _none_bytes(); return 1 if a != b else 0; }
+
+# Ordering a None operand raises TypeError (CPython parity) rather than
+# dereferencing null; returns the count of operators that raised (expect 4).
+def none_ordering_raises() -> int {
+    z = _none_bytes();
+    c = 0;
+    try { if z < b"AB" { c += 0; } } except Exception as e { c += 1; }
+    try { if z > b"AB" { c += 0; } } except Exception as e { c += 1; }
+    try { if z <= b"AB" { c += 0; } } except Exception as e { c += 1; }
+    try { if z >= b"AB" { c += 0; } } except Exception as e { c += 1; }
+    return c;
+}

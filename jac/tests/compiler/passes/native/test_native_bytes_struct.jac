@@ -423,3 +423,20 @@ test "bytes ordering is lexicographic unsigned (#6749)" {
     assert get_func(eng, "cmp_nul", ctypes.c_int64)() == 1;
     assert get_func(eng, "cmp_hi", ctypes.c_int64)() == 1;
 }
+
+test "bytes vs None comparison is null-safe (#6751)" {
+    (eng, _) = compile_native("bytes_ops.na.jac");
+    # None operand: equal only to None (CPython identity), never deref null
+    assert get_func(eng, "none_eq_bytes", ctypes.c_int64)() == 0;
+    assert get_func(eng, "bytes_eq_none", ctypes.c_int64)() == 0;
+    assert get_func(eng, "none_ne_bytes", ctypes.c_int64)() == 1;
+    assert get_func(eng, "cnone_eq_bytes", ctypes.c_int64)() == 0;
+    assert get_func(eng, "cnone_ne_bytes", ctypes.c_int64)() == 1;
+    # both None -> equal; non-null operand still compares by value
+    assert get_func(eng, "both_none_eq", ctypes.c_int64)() == 1;
+    assert get_func(eng, "both_none_ne", ctypes.c_int64)() == 0;
+    assert get_func(eng, "some_eq_bytes", ctypes.c_int64)() == 1;
+    assert get_func(eng, "some_eq_diff", ctypes.c_int64)() == 0;
+    # ordering (< > <= >=) against None raises TypeError, not a segfault
+    assert get_func(eng, "none_ordering_raises", ctypes.c_int64)() == 4;
+}

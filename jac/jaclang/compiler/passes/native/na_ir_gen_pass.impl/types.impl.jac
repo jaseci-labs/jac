@@ -1541,7 +1541,10 @@ impl NaIRGenPass._emit_comparison(
                 return self._emit_bytes_eq(left, right, negate=op == Tok.NE);
             }
             if op in (Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) {
-                _ord = self._emit_bytes_cmp(left, right);
+                _sym = "<"
+                    if op == Tok.LT
+                    else (">" if op == Tok.GT else ("<=" if op == Tok.LTE else ">="));
+                _ord = self._emit_bytes_cmp(left, right, _sym);
                 _zero = ir.Constant(ir.IntType(32), 0);
                 if op == Tok.LT {
                     return self.builder.icmp_signed("<", _ord, _zero, name="by.lt");

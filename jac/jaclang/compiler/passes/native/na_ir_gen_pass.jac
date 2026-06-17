@@ -726,7 +726,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _emit_bytes_truthy(bv: ir.Value) -> ir.Value;
     def _emit_bytes_repeat(bv: ir.Value, count: ir.Value) -> ir.Value;
     def _emit_bytes_contains(needle: ir.Value, haystack: ir.Value) -> ir.Value;
-    def _emit_bytes_cmp(left: ir.Value, right: ir.Value) -> ir.Value;
+    def _emit_bytes_cmp(left: ir.Value, right: ir.Value, op_sym: str) -> ir.Value;
     def _emit_bytes_repr(bv: ir.Value) -> ir.Value;
     def _bytes_repr_fn -> ir.Function;
     def _make_bytes_iter(bytes_val: ir.Value) -> ir.Value;
