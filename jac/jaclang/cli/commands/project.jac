@@ -26,28 +26,45 @@ glob registry = get_registry(),
             short="f"
         ),
         Arg.create(
+            "kind",
+            default="",
+            help="Project kind to scaffold (cli, native-app, api-service, fullstack, ...)",
+            short="k"
+        ),
+        Arg.create(
             "use",
             default="default",
-            help="Jacpack template: name, file path, or URL",
+            help="Custom template: file path or URL to a .jacpack (or a variant name)",
             short="u"
         ),
         Arg.create(
             "list_jacpacks",
             typ=bool,
             default=False,
-            help="List available jacpack templates",
+            help="List available project kinds and templates",
             short="l"
         ),
 
     ],
     examples=[
-        ("jac create", "Initialize a project in the current directory (name from cwd)"),
-        ("jac create myapp", "Create new myapp/ directory"),
+        (
+            "jac create",
+            "Initialize a cli project in the current directory (name from cwd)"
+        ),
+        ("jac create myapp", "Create new myapp/ directory (cli kind)"),
+        ("jac create myapp --kind api-service", "Scaffold a headless API service"),
+        (
+            "jac create myapp --kind native-binary",
+            "Scaffold a natively-compiled binary"
+        ),
+        (
+            "jac create myapp --kind fullstack",
+            "Scaffold a fullstack app (needs jac-client)"
+        ),
         ("jac create --force", "Reinitialize existing project"),
-        ("jac create myapp --use client", "Create with client jacpack template"),
         ("jac create --use ./my.jacpack", "Create from local .jacpack file"),
         ("jac create --use https://example.com/t.jacpack", "Create from URL"),
-        ("jac create --list-jacpacks", "List available jacpack templates"),
+        ("jac create --list_jacpacks", "List available project kinds and templates"),
 
     ],
     group="project"
@@ -55,6 +72,7 @@ glob registry = get_registry(),
 def create(
     name: str = "",
     force: bool = False,
+    kind: str = "",
     use: str = "default",
     list_jacpacks: bool = False
 ) -> int;
@@ -62,8 +80,14 @@ def create(
 """Install all dependencies from jac.toml, or install a package in editable mode."""
 @registry.command(
     name="install",
-    help="Install project dependencies (or -e <path> for editable install)",
+    help="Install project dependencies, or 'jac install <pkg>' to install into the activated environment",
     args=[
+        Arg.create(
+            "packages",
+            kind=ArgKind.MULTI,
+            default=[],
+            help="Package(s) to install into the currently activated environment"
+        ),
         Arg.create(
             "editable",
             kind=ArgKind.APPEND,
@@ -130,10 +154,22 @@ def create(
             help="Prefer wheel files over source distributions",
             short=""
         ),
+        Arg.create(
+            "no-uv",
+            typ=bool,
+            default=False,
+            help="Use pip directly even if uv is available",
+            short=""
+        ),
 
     ],
     examples=[
-        ("jac install", "Install all dependencies"),
+        ("jac install", "Install all dependencies from jac.toml"),
+        ("jac install numpy", "Install numpy into the activated environment"),
+        (
+            "jac install numpy pandas scipy",
+            "Install multiple packages into the activated environment"
+        ),
         ("jac install -e .", "Install current package in editable mode"),
         ("jac install -e /path/to/lib", "Install a cloned library in editable mode"),
         (
@@ -149,11 +185,13 @@ def create(
         ("jac install --dry-run", "Preview what would be installed without doing it"),
         ("jac install --no-deps", "Install packages without their dependencies"),
         ("jac install --prefer-binary", "Prefer pre-built wheels over source builds"),
+        ("jac install --no-uv", "Use pip directly even if uv is available"),
 
     ],
     group="project"
 )
 def install(
+    packages: list = [],
     editable: list = [],
     dev: bool = False,
     extras: list = [],
@@ -164,7 +202,8 @@ def install(
     dry_run: bool = False,
     no_deps: bool = False,
     quiet: bool = False,
-    prefer_binary: bool = False
+    prefer_binary: bool = False,
+    no_uv: bool = False
 ) -> int;
 
 """Add dependencies to the project."""

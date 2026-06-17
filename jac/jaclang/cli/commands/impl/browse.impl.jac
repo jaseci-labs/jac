@@ -18,6 +18,9 @@ import from jaclang.cli.browser_engine {
     cmd_fill,
     cmd_press,
     cmd_get,
+    cmd_wait,
+    cmd_scroll,
+    cmd_console,
     cmd_snapshot,
     cmd_screenshot,
     cmd_state,
@@ -25,12 +28,14 @@ import from jaclang.cli.browser_engine {
     cmd_close
 }
 
-impl browse(action: str, args: list = [], session: str = "default") -> int {
+impl browse(
+    action: str, args: list = [], session: str = "default", viewport: str = "1280x720"
+) -> int {
     sess = os.environ.get("JACBROWSER_SESSION", session);
     out: any = "";
     try {
         if action == "open" {
-            out = cmd_open(sess, args[0] if args else None);
+            out = cmd_open(sess, args[0] if args else None, viewport);
         } elif action == "navigate" or action == "goto" {
             out = cmd_navigate(sess, args[0]);
         } elif action == "eval" {
@@ -45,6 +50,14 @@ impl browse(action: str, args: list = [], session: str = "default") -> int {
             out = cmd_press(sess, args[0]);
         } elif action == "get" {
             out = cmd_get(sess, args[0], args[1] if len(args) > 1 else None);
+        } elif action == "wait" {
+            out = cmd_wait(sess, args[0]);
+        } elif action == "scroll" {
+            out = cmd_scroll(sess, args[0], int(args[1]) if len(args) > 1 else None);
+        } elif action == "scrollintoview" {
+            out = cmd_scroll(sess, args[0]);
+        } elif action == "console" {
+            out = cmd_console(sess, "--clear" in args or "clear" in args);
         } elif action == "snapshot" {
             out = cmd_snapshot(sess);
         } elif action == "screenshot" {

@@ -1229,16 +1229,13 @@ impl JFastApiServer.init(
         }
 
         try {
+            # No commit here: the request lifecycle is core-owned.
+            # ExecutionManager commits on success and aborts on walker
+            # failure; a second unconditional commit at the middleware
+            # would flush a failed walker's partial mutations (#6619) and
+            # pay a redundant full-L1 hash sweep. Non-spawn endpoints that
+            # mutate are covered by the close-time backstop in `finally`.
             response = await call_next(request);
-            try {
-                await ctx.mem.acommit();
-            } except Exception as e {
-                logger.error(
-                    f"CRITICAL: Failed to commit request data: {e}. Request will fail.",
-                    exc_info=True
-                );
-                raise;
-            }
 
             # Echo the trace id on the response so clients (and our
             # e2e) can verify end-to-end propagation.

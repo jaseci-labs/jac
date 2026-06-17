@@ -314,17 +314,7 @@ impl BoundaryAnalysisPass._collect_pub_walkers(
     self: BoundaryAnalysisPass, nd: any, out: dict[str, any]
 ) -> None {
     if isinstance(nd, uni.Archetype) and nd.sym_name {
-        is_walker = False;
-        try {
-            arch_type = nd.arch_type;
-            if hasattr(arch_type, 'name') {
-                is_walker = (
-                    arch_type.name == Tok.KW_WALKER or arch_type.name == 'KW_WALKER'
-                );
-            }
-        } except Exception {
-            is_walker = False;
-        }
+        is_walker = nd.arch_kind == "walker";
         is_pub = False;
         try {
             is_pub = bool(getattr(nd, 'public_access', False));
@@ -719,16 +709,29 @@ impl BoundaryAnalysisPass._collect_boundary_type(
     for mod in search_mods {
         sym = mod.sym_tab.lookup(type_name, deep=True) if mod.sym_tab else None;
         if sym and sym.defn {
-            arch_node = sym.defn[0];
-            if isinstance(arch_node, uni.NameAtom) and arch_node.parent {
-                arch_node = arch_node.parent;
+            candidate = sym.defn[0];
+            if isinstance(candidate, uni.NameAtom) and candidate.parent {
+                candidate = candidate.parent;
             }
-            break;
+            # Only accept a symbol that actually resolves to a type
+            # definition. An `sv import`ed type name resolves, in the
+            # consumer's own symtab, to the import binding (a NameAtom/Token)
+            # rather than the Archetype -- accepting that would set arch_node
+            # to a non-type node, short-circuit the AST-walk fallback below,
+            # and leave the type uncollected. The return value of the sv->sv
+            # call then never gets a `_from_wire` stub and arrives as a raw
+            # `_jac_type` dict (#6710). Keep looking past such bindings so the
+            # fallback can find the real definition in the provider module.
+            if isinstance(candidate, (uni.Archetype, uni.Enum)) {
+                arch_node = candidate;
+                break;
+            }
         }
     }
     # AST-walk fallback for modules without a built sym_tab (e.g., a source
     # module that's already in prog.mod.hub but for which boundary type
-    # collection runs before symtab build).
+    # collection runs before symtab build), or whose only matching symbol was
+    # a non-type binding rejected above.
     if arch_node is None {
         for mod in search_mods {
             try {
@@ -746,16 +749,10 @@ impl BoundaryAnalysisPass._collect_boundary_type(
     }
     # Handle Archetype (obj, node, walker)
     if isinstance(arch_node, uni.Archetype) {
-        arch_type = arch_node.arch_type;
-        kind = "obj";
-        if hasattr(arch_type, 'name') {
-            name_val = arch_type.name;
-            if name_val == "KW_NODE" or "node" in str(name_val).lower() {
-                kind = "node";
-            } elif name_val == "KW_WALKER" or "walker" in str(name_val).lower() {
-                kind = "walker";
-            }
-        }
+        # Edge archetypes intentionally fall back to "obj" here -- this
+        # manifest only distinguishes node/walker shapes.
+        _ak = arch_node.arch_kind;
+        kind = _ak if _ak in ("node", "walker") else "obj";
         fields: list[tuple[(str, str)]] = [];
         nested: list[str] = [];
         # Extract has declarations (walk through ArchHas -> HasVar)
@@ -956,7 +953,7 @@ impl BoundaryAnalysisPass._record_access_levels(
 impl BoundaryAnalysisPass.enter_archetype(
     self: BoundaryAnalysisPass, nd: uni.Archetype
 ) -> None {
-    if nd.arch_type.name != Tok.KW_WALKER {
+    if nd.arch_kind != "walker" {
         return;
     }
     if not isinstance(nd.name, uni.Name) {

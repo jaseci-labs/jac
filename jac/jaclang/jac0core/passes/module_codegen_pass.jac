@@ -74,7 +74,7 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
     """
     static def archetype_refs(nd: uni.UniNode) -> list[str] {
         names: list[str] = [];
-        for nm in nd.get_all_sub_nodes(uni.Name, brute_force=True) {
+        for nm in nd.get_all_sub_nodes(uni.Name) {
             sym = nm.sym;
             if (sym is not None) and sym.defn {
                 cand = sym.defn[0].name_of;
@@ -98,7 +98,7 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
         module: uni.Module, ctx: CodeContext
     ) -> list[uni.Archetype] {
         shared: dict[(str, uni.Archetype)] = {};
-        for arch in module.get_all_sub_nodes(uni.Archetype, brute_force=True) {
+        for arch in module.get_all_sub_nodes(uni.Archetype) {
             if (arch.name is not None) and isinstance(arch.parent, uni.Module) {
                 shared[arch.name.value] = arch;
             }

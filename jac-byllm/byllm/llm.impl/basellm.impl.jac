@@ -1977,11 +1977,18 @@ impl BaseLLM._invoke_streaming(
                 # this branch handles MockLLM which bypasses parse_response.)
                 recovery_resp = self._attempt_recovery(mt_run);
                 if recovery_resp is None {
-                    # Plain string return or no finish_tool. The answer already
-                    # streamed above as `thought` events, so just close out.
+                    # The model answered in plain text without calling finish_tool,
+                    # so its terminal text IS the final answer - deliver it on the
+                    # `chunk` channel instead of leaving it as `thought`-only.
                     yield StreamEvent(
                         event_type="steps_done", data={"iterations": iter_count}
                     );
+                    final_answer = str(resp.output) if resp.output is not None else "";
+                    if final_answer {
+                        yield StreamEvent(
+                            event_type="chunk", data={"content": final_answer}
+                        );
+                    }
                     break;
                 }
                 yield from self._yield_recovery_result(

@@ -13,7 +13,13 @@ import sys;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.cli.commands { guide, analysis, project }
-import from jaclang.cli.guide_store { get_guide, list_guides, guide_for_diagnostic }
+import from jaclang.cli.guide_store {
+    get_guide,
+    list_guides,
+    guide_for_diagnostic,
+    guide_group,
+    grouped_guides
+}
 import from jaclang.project.template_registry { initialize_template_registry }
 
 """Absolute path to a file in the language test fixtures directory."""
@@ -85,6 +91,44 @@ test "jac guide --search filters the listing" {
     (empty_out, _, empty_code) = run_guide(search="zzznosuchtokenzzz");
     assert empty_code == 0;
     assert "jac-types" not in empty_out , "a non-match must not list any guide";
+}
+
+test "jac guide groups the listing with section headers" {
+    (stdout, _, code) = run_guide();
+    assert code == 0;
+    assert "Start here:" in stdout;
+    assert "Language:" in stdout;
+    assert "Server:" in stdout;
+    assert "Tooling & workflow:" in stdout;
+    # "Start here" keeps its curated reading order, not alphabetical.
+    assert stdout.index("jac-project-kinds") < stdout.index("jac-core-cheatsheet");
+}
+
+test "the grouped listing never drops a bundled guide" {
+    all_names = sorted([g.name for g in list_guides()]);
+    grouped_names: list[str] = [];
+    for (_, members) in grouped_guides() {
+        for g in members {
+            grouped_names.append(g.name);
+        }
+    }
+    assert len(grouped_names) == len(set(grouped_names)) , (
+        "a guide appears in more than one group"
+    );
+    assert sorted(grouped_names) == all_names , (
+        "grouping must list every bundled guide exactly once"
+    );
+}
+
+test "jac guide --json carries each guide's group" {
+    (stdout, _, code) = run_guide(as_json=True);
+    assert code == 0;
+    parsed = json.loads(stdout);
+    assert isinstance(parsed, list);
+    assert all("group" in g for g in parsed);
+    by_name = {g["name"]: g["group"] for g in parsed};
+    assert by_name["jac-types"] == "Language";
+    assert by_name["jac-sv-endpoints"] == "Server";
 }
 
 test "jac guide on an unknown topic exits non-zero" {
@@ -177,6 +221,43 @@ test "guide store maps diagnostic codes to guides" {
     # category fallback; codes with no mapping return None.
     assert guide_for_diagnostic("E1001", "type") == "jac-types";
     assert guide_for_diagnostic("E0001", "syntax") is None;
+}
+
+test "every mapped diagnostic code resolves to a bundled guide" {
+    # Each code in _CODE_GUIDE_MAP, pinned with the guide that documents it.
+    expected: dict[str, str] = {
+        "E0077": "jac-impl-files",
+        "W0060": "jac-core-cheatsheet",
+        "W0061": "jac-sv-persistence",
+        "E1050": "jac-walker-patterns",
+        "E1102": "jac-cl-components",
+        "E1104": "jac-npm-packages",
+        "E2004": "jac-has-fields",
+        "E2025": "jac-npm-packages",
+        "W2075": "jac-sv-persistence",
+        "W3037": "jac-types",
+
+    };
+    for (code, name) in expected.items() {
+        assert guide_for_diagnostic(code) == name , (
+            f"{code} should resolve to '{name}'"
+        );
+        assert get_guide(name) is not None , (
+            f"{code} maps to '{name}', which is not bundled"
+        );
+    }
+}
+
+test "guide groups resolve via name map, prefix rules, then Other" {
+    assert guide_group("jac-types") == "Language";
+    assert guide_group("jac-walker-patterns") == "Graph & OSP";
+    # Prefix rules cover guides that are not in the explicit name map,
+    # so a newly bundled jac-sv-*/jac-cl-*/jac-native* guide self-files.
+    assert guide_group("jac-sv-streaming") == "Server";
+    assert guide_group("jac-cl-components") == "Client & fullstack";
+    assert guide_group("jac-native-wasm") == "Native";
+    # Anything unmatched still gets listed, under "Other".
+    assert guide_group("jac-totally-new-topic") == "Other";
 }
 
 test "every bundled guide is well-formed" {

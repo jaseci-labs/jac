@@ -229,6 +229,17 @@ obj Root(NodeArchetype) {
     @cached_property
     def __jac__ -> NodeAnchor;
 
+    """Dynamic-attribute hook backing `root.shared` — the deployment's
+    shared root: the root every unauthenticated request runs on. Lets any
+    walker address the public graph without an `allroots()` scan; normal
+    permission checks still apply. In single-user contexts (CLI, scripts)
+    this is the current root itself. Deliberately NOT a property: the
+    serializer walks `dir()` for non-callable attributes, so a property
+    would be evaluated (and recursed into) during persistence and leak a
+    computed `shared` field into every serialized Root.
+    """
+    def __getattr__(name: str) -> Root;
+
     def __repr__ -> str;
 }
 

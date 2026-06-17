@@ -11,7 +11,7 @@ import from unittest.mock { MagicMock }
 
 import watchdog;
 
-import from jaclang.runtimelib.hmr { HotReloader }
+import from jaclang.runtimelib.hmr { HotReloader, get_build_status }
 import from jaclang.runtimelib.watcher { ChangeType, FileChangeEvent, JacFileWatcher }
 
 # --- TestJacFileWatcher ---
@@ -197,6 +197,69 @@ test "client output dir default" {
             base_path=str(temp_dir), module_name="test", watcher=watcher
         );
         assert reloader._client_output_dir == ".jac/client/compiled";
+    }
+}
+
+# --- TestBuildStatus ---
+test "build status records errors and recovers" {
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)]);
+        reloader = HotReloader(
+            base_path=str(temp_dir), module_name="test", watcher=watcher
+        );
+        # Fresh reloader is healthy
+        assert reloader.build_status() == {"status": "ok", "error": None};
+        # An error carries the failing file and message
+        reloader.record_error("app.cl.jac", "Missing ';'");
+        status = reloader.build_status();
+        assert status["status"] == "error";
+        assert status["error"] == {"file": "app.cl.jac", "message": "Missing ';'"};
+        # Recovery clears the error completely
+        reloader.record_ok();
+        assert reloader.build_status() == {"status": "ok", "error": None};
+    }
+}
+
+test "get build status reflects the active reloader" {
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        # No reloader running (non-dev mode) -> unavailable
+        assert get_build_status() == {"status": "unavailable", "error": None};
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)]);
+        reloader = HotReloader(
+            base_path=str(temp_dir), module_name="test", watcher=watcher
+        );
+        reloader.start();
+        # Running reloader's state is served, including errors
+        assert get_build_status()["status"] == "ok";
+        reloader.record_error("main.jac", "boom");
+        assert get_build_status()["status"] == "error";
+        reloader.stop();
+        # Stopped -> unavailable again
+        assert get_build_status() == {"status": "unavailable", "error": None};
+    }
+}
+
+test "process change settles to ok unless an error was recorded" {
+    with tempfile.TemporaryDirectory() as tmp {
+        temp_dir = Path(tmp);
+        watcher = JacFileWatcher(watch_paths=[str(temp_dir)]);
+        reloader = HotReloader(
+            base_path=str(temp_dir), module_name="test", watcher=watcher
+        );
+        # A change whose rebuild records no error ends healthy,
+        # even when the build was previously broken.
+        reloader.record_error("app.jac", "old failure");
+        reloader._dispatch_change = lambda p : None ;
+        reloader._process_change("app.jac");
+        assert reloader.build_status() == {"status": "ok", "error": None};
+        # A change whose rebuild records an error stays broken.
+        reloader._dispatch_change = lambda p : reloader.record_error(p, "boom");
+        reloader._process_change("app.jac");
+        status = reloader.build_status();
+        assert status["status"] == "error";
+        assert status["error"]["file"] == "app.jac";
     }
 }
 

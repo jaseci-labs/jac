@@ -11,6 +11,7 @@ Requires running MongoDB and Redis via testcontainers (installed via [test]).
 import asyncio;
 import from uuid { UUID }
 import from jaclang.runtimelib.serializer { Serializer }
+import from jaclang.runtimelib.changeset { ChangeSet }
 import from jac_scale.memory_hierarchy { MongoBackend, RedisBackend }
 import from jaclang.runtimelib.utils { storage_key }
 
@@ -53,8 +54,9 @@ test "MongoBackend.aget retrieves stored anchor via AsyncMongoClient" {
     anchor.persistent = True;
     backend = MongoBackend(mongo_url=_mongo_uri, db_name="jac_async_test");
     backend.postinit();
-    backend.set_memory_ref({anchor.id: anchor});
-    backend.sync();
+    seed = ChangeSet();
+    seed.record_create(anchor);
+    backend.apply(seed);
 
     async def _read -> object {
         return await backend.aget(anchor.id);
@@ -67,7 +69,7 @@ test "MongoBackend.aget retrieves stored anchor via AsyncMongoClient" {
     backend.close();
 }
 
-test "MongoBackend.acommit persists modified anchor via AsyncMongoClient" {
+test "MongoBackend.apply persists anchors (async commits route via to_thread(commit))" {
     if _mongo_uri is None {
         print("[skip] MongoDB unavailable");
         return;
@@ -77,13 +79,9 @@ test "MongoBackend.acommit persists modified anchor via AsyncMongoClient" {
     anchor.persistent = True;
     backend = MongoBackend(mongo_url=_mongo_uri, db_name="jac_async_test2");
     backend.postinit();
-    mem: dict[UUID, any] = {anchor.id: anchor};
-    backend.set_memory_ref(mem);
-
-    async def _commit {
-        await backend.acommit();
-    }
-    asyncio.run(_commit());
+    cs = ChangeSet();
+    cs.record_create(anchor);
+    backend.apply(cs);
 
     backend2 = MongoBackend(mongo_url=_mongo_uri, db_name="jac_async_test2");
     backend2.postinit();

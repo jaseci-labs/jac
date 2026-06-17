@@ -172,6 +172,18 @@ test "logging stream react" {
     assert "REACT_LOGGING_PASS" in stdout_value;
 }
 
+test "logging stream str answer without finish_tool delivers on chunk" {
+    # a `-> str` agent whose model skips finish_tool and
+    # returns plain text must deliver that terminal text on the `chunk` channel,
+    # not leave it stranded as `thought`-only.
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("logging_stream_str_skip_finish", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "STR_SKIP_FINISH_CHUNK_PASS" in stdout_value;
+}
+
 test "conversation kwarg writes back history with tool calls preserved" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;
@@ -188,6 +200,20 @@ test "streaming + conversation persists assistant message and emits dicts" {
     sys.stdout = sys.__stdout__;
     stdout_value = captured_output.getvalue();
     assert "STREAM_CONV_PASS" in stdout_value;
+}
+
+test "streaming generator survives consumption from a foreign Context" {
+    # Regression test: a streaming by llm() generator must be safe to consume
+    # from a different contextvars.Context than the one that created it — e.g. a
+    # thread-pool worker, which is how jac-scale's sse_frame_stream drives SSE.
+    # Pre-fix, the wrapper reset a ContextVar Token across Context boundaries and
+    # raised "Token was created in a different Context", killing the stream.
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("streaming_cross_context", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "CROSS_CONTEXT_PASS" in stdout_value;
 }
 
 test "by expr" {

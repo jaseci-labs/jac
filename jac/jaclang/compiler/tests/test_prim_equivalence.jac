@@ -221,6 +221,17 @@ test "random" {
     );
 }
 
+# --- isinstance-on-`any` + scalar box/unbox round-trip (issue #6421, gates json) ---
+test "any dispatch" {
+    run_with_both(
+        "prim_any.jac",
+        "any_dispatch_py",
+        "any_dispatch_cl",
+        "any_dispatch_na",
+        require=["na"]
+    );
+}
+
 # --- dict insertion-order lock (issue #6404 congruence #3, gates json) ---
 test "dict order" {
     run_with_both(

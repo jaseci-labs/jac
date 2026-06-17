@@ -70,6 +70,17 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         return self.prefetch.int_class if self.prefetch else types.UnknownType();
     }
 
+    # Native (.na.jac) first-class iter()/next() element-type inference
+    # (#6403 phase 2). Resolved before the generic overload path because the
+    # structural binding of e.g. `list[int]` against `Iterable[_T]` does not
+    # bind the element TypeVar in the native checker.
+    if self._in_native_context() {
+        na_iter_ret = self._native_iter_next_result(expr);
+        if na_iter_ret is not None {
+            return na_iter_ret;
+        }
+    }
+
     # TypeVar handling - use bound/constraints if available
     if isinstance(caller_type, types.TypeVarType) {
         # Constrained TypeVar - check all constraint types
