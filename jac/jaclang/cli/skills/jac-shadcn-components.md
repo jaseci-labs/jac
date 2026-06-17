@@ -331,7 +331,7 @@ cl import from "@hugeicons/react" { HugeiconsIcon }
 cl import from "@hugeicons/core-free-icons" { Add01Icon }
 
 def:pub EventListPage() -> JsxElement {
-    has events: list = [];
+    has events: list[dict] = [];   # type the element (use the sv import-ed view type); a bare `list` loses element typing -> E1032 on field access
     has loading: bool = True;
 
     async can with entry {

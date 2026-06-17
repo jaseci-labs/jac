@@ -142,8 +142,17 @@ def _stop_server(server: any) {
     }
 }
 
-"""Start server, launch browser, navigate to test page, run callback(page, resp)."""
-def _with_page(callback: any, wait_until: str = "networkidle") {
+"""Start server, launch browser, navigate to test page, run callback(page, resp).
+
+Navigation waits for `domcontentloaded`, not `networkidle`. The fixture's
+`run-code.js` spawns the Pyodide web worker on `DOMContentLoaded`, so the page
+keeps pulling bytes from the CDN long after the DOM is ready and `networkidle`
+(500ms of zero network activity) is never reached within the `goto` timeout —
+flaking the fast rendering tests that don't even need Pyodide. Each test already
+waits on the specific element/condition it depends on (Monaco, Pyodide output,
+Viz SVG, response headers), so none relies on the network going idle.
+"""
+def _with_page(callback: any, wait_until: str = "domcontentloaded") {
     (server, base_url) = _start_server();
     try {
         with sync_playwright() as p {
