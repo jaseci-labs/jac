@@ -1157,7 +1157,9 @@ does not exist - becomes an error ToolCall (see `_error_tool_call`) instead of
 a raised exception. The ReAct loop then answers it with a normal tool result
 so the model can retry, rather than the whole turn crashing on one bad call.
 """
-def _parse_tool_calls(mt_run: MTRuntime, tool_calls_list: list) -> list[ToolCall] {
+def _parse_tool_calls(
+    mt_run: MTRuntime, tool_calls_list: list, truncated_ids: set | None = None
+) -> list[ToolCall] {
     parsed: list[ToolCall] = [];
     for tool_call in tool_calls_list {
         fn = tool_call?.function;
@@ -1167,6 +1169,19 @@ def _parse_tool_calls(mt_run: MTRuntime, tool_calls_list: list) -> list[ToolCall
         if tool is None {
             parsed.append(
                 _error_tool_call(call_id, tool_name, f"unknown tool '{tool_name}'")
+            );
+            continue;
+        }
+        if truncated_ids and call_id in truncated_ids {
+            parsed.append(
+                _error_tool_call(
+                    call_id,
+                    tool_name,
+                    "the response hit the max_tokens limit before this tool call "
+                    "finished, so its arguments were truncated and discarded. Retry "
+                    "with a smaller payload (if one argument is very large, split the "
+                    "work across multiple calls)"
+                )
             );
             continue;
         }
@@ -1191,9 +1206,9 @@ def _parse_tool_calls(mt_run: MTRuntime, tool_calls_list: list) -> list[ToolCall
 A tool call whose `arguments` string is not valid JSON cannot be replayed to
 the provider API on the next turn - the provider rejects the entire request
 (`Expecting value: line 1 column 1`). Rewrite any such arguments to `"{}"` so
-the message persists and replays cleanly. The model still sees the failure as a
-recoverable tool result: the now-empty arguments make the tool run without its
-required inputs and fail the ordinary, caught way.
+the message persists and replays cleanly. (Truncated/incomplete tool calls are
+detected separately from the response's finish_reason - see
+`_truncated_call_ids` - so this only repairs JSON for replay safety.)
 """
 def _sanitize_tool_calls(message: object) {
     tool_calls = (message or {}).get("tool_calls") or [];
@@ -1222,6 +1237,24 @@ def _sanitize_tool_calls(message: object) {
             }
         }
     }
+}
+
+
+"""Tool-call ids in a response the model cut off at max_tokens (finish_reason
+== "length"). Such a call may be incomplete - invalid JSON, or valid JSON
+missing required arguments - so callers report a clear truncation error instead
+of executing it with partial arguments (which fails with a misleading "missing
+required argument").
+"""
+def _truncated_call_ids(message: object, finish_reason: str) -> set {
+    if finish_reason != "length" {
+        return set();
+    }
+    ids: set = set();
+    for tc in ((message or {}).get("tool_calls") or []) {
+        ids.add(str(tc?.id or ""));
+    }
+    return ids;
 }
 
 
@@ -1264,9 +1297,13 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     mt_run.add_message(message);
     output_content: str = message.get("content") or "";  # type: ignore
     self.log_info(f"LLM call completed with response: {output_content}");
+    finish_reason = str(
+        (response.get("choices") or [{}])[0].get("finish_reason") or ""
+    );
+    truncated_ids = _truncated_call_ids(message, finish_reason);
     tool_calls: list[ToolCall] = [];
     tool_calls_list = (message or {}).get("tool_calls") or [];
-    tool_calls = _parse_tool_calls(mt_run, tool_calls_list);
+    tool_calls = _parse_tool_calls(mt_run, tool_calls_list, truncated_ids);
     # Only parse the content as the final output when there are no tool calls.
     # gpt-4o may return non-JSON content alongside tool calls (e.g. "I'll handle that."),
     # which would cause json.loads to fail if we parsed it as the typed response.
@@ -1327,6 +1364,7 @@ impl BaseLLM.dispatch_streaming_with_tools(
     chunks: list = [];
     content_buf = "";
     no_stream = False;
+    finish_reason = "";
     try {
         for chunk in self.model_call_with_stream(params) {
             chunks.append(chunk);
@@ -1363,6 +1401,9 @@ impl BaseLLM.dispatch_streaming_with_tools(
         if rebuilt {
             message = rebuilt.get("choices", [])[0].get("message");
             usage_data = rebuilt.get("usage", {}) or {};
+            finish_reason = str(
+                rebuilt.get("choices", [])[0].get("finish_reason") or ""
+            );
         }
     } except Exception as e {
         logger.debug(f"stream_chunk_builder failed, using accumulated text: {e}");
@@ -1391,9 +1432,10 @@ impl BaseLLM.dispatch_streaming_with_tools(
     _sanitize_tool_calls(message);
     mt_run.add_message(message);
     output_content: str = message.get("content") or "";
+    truncated_ids = _truncated_call_ids(message, finish_reason);
     tool_calls: list[ToolCall] = [];
     tool_calls_list = (message or {}).get("tool_calls") or [];
-    tool_calls = _parse_tool_calls(mt_run, tool_calls_list);
+    tool_calls = _parse_tool_calls(mt_run, tool_calls_list, truncated_ids);
     output_value = mt_run.parse_response(output_content)
         if not tool_calls_list
         else output_content;
@@ -1429,9 +1471,13 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     mt_run.add_message(message);
     output_content: str = message.get("content") or "";  # type: ignore
     self.log_info(f"LLM call completed with response: {output_content}");
+    finish_reason = str(
+        (response.get("choices") or [{}])[0].get("finish_reason") or ""
+    );
+    truncated_ids = _truncated_call_ids(message, finish_reason);
     tool_calls: list[ToolCall] = [];
     tool_calls_list = (message or {}).get("tool_calls") or [];
-    tool_calls = _parse_tool_calls(mt_run, tool_calls_list);
+    tool_calls = _parse_tool_calls(mt_run, tool_calls_list, truncated_ids);
     output_value = mt_run.parse_response(output_content)
         if not tool_calls_list
         else output_content;

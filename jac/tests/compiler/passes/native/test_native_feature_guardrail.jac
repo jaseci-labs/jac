@@ -517,3 +517,105 @@ test "nacompile still rejects skip in a value-returning native function" {
         prog
     )}";
 }
+
+# ─────────────────────────────────────────────────────────────────────
+# C-library (clib) import decl type resolution
+# ─────────────────────────────────────────────────────────────────────
+test "check rejects clib decl with an unknown parameter type" {
+    prog = check_na_inline(
+        "clib_unknown_param",
+        "import from \"/usr/lib/libm.so.6\" {\n"
+        "    def takes_unknown(x: uint32_t) -> f64;\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown clib param type 'uint32_t', got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "check rejects clib decl with an unknown return type" {
+    prog = check_na_inline(
+        "clib_unknown_ret",
+        "import from \"/usr/lib/libm.so.6\" {\n"
+        "    def make_handle(x: f64) -> some_handle;\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown clib return type 'some_handle', got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "nacompile rejects clib decl with an unknown type (no silent i64)" {
+    prog = compile_na_inline(
+        "clib_unknown_cg",
+        "import from \"/usr/lib/libm.so.6\" {\n"
+        "    def takes_unknown(x: uint32_t) -> some_handle;\n"
+        "}\n"
+        "def use_it(n: f64) -> f64 { return n; }\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 (not a silent i64 declare) for unknown clib types, got: {fmt_errors(
+        prog
+    )}";
+}
+
+# Native signatures with unresolved annotation types are E2018, not W2001.
+test "check rejects a native def with an unknown parameter type" {
+    prog = check_na_inline(
+        "native_unknown_param", "def takes_unknown(x: uint32_t) -> int { return 0; }\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown native param type 'uint32_t', got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "check rejects a native def with an unknown return type" {
+    prog = check_na_inline(
+        "native_unknown_ret", "def make_it(x: int) -> some_handle { return x; }\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown native return type 'some_handle', got: {fmt_errors(
+        prog
+    )}";
+}
+
+# Object field annotations are caught at codegen; E2018 must name the written type.
+test "native object field with an unknown type names the type, not '<Unknown>'" {
+    prog = compile_na_inline(
+        "obj_field_unknown",
+        "obj Handle { has raw: uint32_t; }\n"
+        "with entry { h = Handle(raw=0); print(h.raw); }\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown object field type, got: {fmt_errors(
+        prog
+    )}";
+    named = False;
+    for alrt in prog.errors_had {
+        if (
+            alrt.code is not None
+            and alrt.code.code == "E2018"
+            and "uint32_t" in str(alrt)
+            and "<Unknown>" not in str(alrt)
+        ) {
+            named = True;
+        }
+    }
+    assert named , f"E2018 should name 'uint32_t', not '<Unknown>': {fmt_errors(prog)}";
+}
+
+# Negative control: known clib types must compile without E2018/E5090.
+test "clib decl with known types is not rejected" {
+    prog = compile_na_inline(
+        "clib_known_ok",
+        "import from \"/usr/lib/libm.so.6\" {\n"
+        "    obj Vec2 { has x: f64, y: f64; }\n"
+        "    def sqrt(x: f64) -> f64;\n"
+        "    def scale(v: Vec2, s: f64) -> Vec2;\n"
+        "}\n"
+        "def hypot(a: f64, b: f64) -> f64 { return sqrt(a * a + b * b); }\n"
+    );
+    assert not has_error_code(prog, "E2018") , f"Known clib types triggered E2018: {fmt_errors(
+        prog
+    )}";
+    assert not has_error_code(prog, "E5090") , f"Known clib types triggered E5090: {fmt_errors(
+        prog
+    )}";
+}
