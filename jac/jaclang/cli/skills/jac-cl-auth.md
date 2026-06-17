@@ -40,7 +40,7 @@ async def handle_register(name: str, email: str, password: str) -> str {
 
     profile_result = await save_profile(name, email);
     if profile_result is None { return "save failed"; }
-    if not profile_result.success { return profile_result.message; }
+    if not profile_result["success"] { return profile_result["message"]; }  # server result is a dict: subscript, not .success
 
     return "success";
 }
