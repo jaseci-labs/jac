@@ -1934,3 +1934,29 @@ test "jac install pkg uses uv when uv on PATH" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+test "jac install pkg respects JAC_NO_UV in direct path" {
+    import from jaclang.cli.commands { project as proj_cmds }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    original_cwd = os.getcwd();
+    try {
+        os.chdir(tmp);
+        mock_result = MagicMock();
+        mock_result.returncode = 0;
+        mock_result.stdout = "";
+        mock_result.stderr = "";
+        env_with_no_uv = dict(os.environ) | {"JAC_NO_UV": "1"};
+        with patch("subprocess.run", return_value=mock_result) as mock_run, patch(
+            "shutil.which", return_value="/usr/bin/uv"
+        ), patch.dict(os.environ, env_with_no_uv, clear=True) {
+            result = proj_cmds.install(packages=["numpy"]);
+        }
+        assert result == 0;
+        cmd = mock_run.call_args[0][0];
+        assert "uv" not in cmd[0];
+        assert cmd[0] == sys.executable;
+    } finally {
+        os.chdir(original_cwd);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
