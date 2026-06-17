@@ -148,6 +148,11 @@ test "detects a bare function wrapped directly via torch.compile(fn)" {
     assert "dyn_ctrl_fl" in _if_kinds(mod);
 }
 
+test "detects an entry passed by keyword: torch.compile(model=Model())" {
+    mod = _compile("callsite_kwarg.jac", True);
+    assert "dyn_ctrl_fl" in _if_kinds(mod);
+}
+
 test "whole-module scope tags model code with no local torch.compile entry" {
     # no local entry -> nothing is tagged
     plain = _compile("scoped_module.jac", True);

@@ -118,16 +118,26 @@ impl GraphBreakDetectPass._call_is_torch_compile(call: uni.FuncCall) -> bool {
 }
 
 """Resolve the function/class wrapped by torch.compile(...) to its defining
-Ability/Archetype in this module, else None."""
+Ability/Archetype in this module, else None.
+
+The wrapped object is torch.compile's first parameter, `model`, passed either
+positionally (`torch.compile(m)`) or by keyword (`torch.compile(model=m)`)."""
 impl GraphBreakDetectPass._resolve_wrapped_entry(
     call: uni.FuncCall
 ) -> (uni.UniNode | None) {
     arg = None;
+    kw_model = None;
     for p in (call.params or []) {
-        if not isinstance(p, uni.KWPair) {
+        if isinstance(p, uni.KWPair) {
+            if isinstance(p.key, uni.Name) and (p.key.value == 'model') {
+                kw_model = p.value;
+            }
+        } elif arg is None {
             arg = p;
-            break;
         }
+    }
+    if arg is None {
+        arg = kw_model;
     }
     if arg is None {
         return None;
