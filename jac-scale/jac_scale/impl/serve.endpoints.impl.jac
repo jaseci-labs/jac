@@ -26,7 +26,8 @@ impl JacAPIServerEndpoints.register_walkers_endpoints -> None {
                 response_model=None,
                 tags=['Walkers'],
                 summary='API Entry',
-                description='API Entry'
+                description='API Entry',
+                forward_undeclared_query_params=False
             )
         );
         self.server.add_endpoint(
@@ -40,7 +41,8 @@ impl JacAPIServerEndpoints.register_walkers_endpoints -> None {
                 response_model=None,
                 tags=['Walkers'],
                 summary='API Root',
-                description='API Root'
+                description='API Root',
+                forward_undeclared_query_params=False
             )
         );
     }
@@ -121,13 +123,11 @@ impl JacAPIServerEndpoints.create_walker_callback(
                 meta=Meta(extra={'http_status': 401})
             );
         }
-        walker_cls = self.get_walkers()[walker_name];
-        fields = filter_declared_kwargs(walker_cls, kwargs);
         if nd {
-            fields['_jac_spawn_node'] = nd;
+            kwargs['_jac_spawn_node'] = nd;
         }
         result = await self.execution_manager.spawn_walker(
-            walker_cls, fields, (username or Con.GUEST.value)
+            self.get_walkers()[walker_name], kwargs, (username or Con.GUEST.value)
         );
         if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
             import from jac_scale.microservices.gateway_internals.middleware.sse {
@@ -185,7 +185,8 @@ impl JacAPIServerEndpoints.register_functions_endpoints -> None {
                 response_model=None,
                 tags=['Functions'],
                 summary='This is a summary',
-                description='This is a description'
+                description='This is a description',
+                forward_undeclared_query_params=False
             )
         );
     }
@@ -256,11 +257,9 @@ impl JacAPIServerEndpoints.create_function_callback(
                 meta=Meta(extra={'http_status': 401})
             );
         }
-        func_obj = self.get_functions()[func_name];
-        params = filter_declared_kwargs(func_obj, kwargs);
-        console.print(f"Executing function '{func_name}' with params: {params}");
+        console.print(f"Executing function '{func_name}' with params: {kwargs}");
         result = await self.execution_manager.execute_function(
-            func_obj, params, (username or Con.GUEST.value)
+            self.get_functions()[func_name], kwargs, (username or Con.GUEST.value)
         );
         # Handle streaming responses (generators/async generators).
         # Wrap in sse_frame_stream so each yield becomes a properly

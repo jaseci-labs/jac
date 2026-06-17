@@ -1,6 +1,5 @@
 import random;
 import string;
-import inspect;
 import from urllib.parse { urlparse }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 
@@ -56,28 +55,6 @@ def _extract_path_param_names(path: (str | None)) -> list[str] {
         }
     }
     return param_names;
-}
-
-"""Keep only kwargs the target declares, mirroring how FastAPI ignores undeclared query parameters."""
-def filter_declared_kwargs(target: Callable, params: dict[str, any]) -> dict[str, any] {
-    # Archetypes expose their declared fields on `.init`; plain callables are inspected directly.
-    declarer: any = getattr(target, 'init', target);
-    try {
-        sig = inspect.signature(declarer);
-    } except (TypeError, ValueError) {
-        return params;
-    }
-    # A target accepting **kwargs takes any parameter, so forward unchanged.
-    for param in sig.parameters.values() {
-        if param.kind == inspect.Parameter.VAR_KEYWORD {
-            return params;
-        }
-    }
-    return {
-        name: value
-        for (name, value) in params.items()
-        if name in sig.parameters
-    };
 }
 
 """Generate a random password with specified length.

@@ -57,7 +57,8 @@ obj JEndPoint {
         request_model: (type[BaseModel] | None) = None,
         tags: (list[str] | None) = None,
         summary: (str | None) = None,
-        description: (str | None) = None;
+        description: (str | None) = None,
+        forward_undeclared_query_params: bool = True;
 }
 
 """Abstract base class for server implementations."""
