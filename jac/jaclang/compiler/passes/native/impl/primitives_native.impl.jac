@@ -5921,6 +5921,12 @@ impl NativeBuiltinEmitter.emit_str(
     p = ctx.pass_ref;
     b = get_builder(p);
     i8p = ir.IntType(8).as_pointer();
+    # str(bytes): the CPython b'...' repr (#6749). Must precede the generic
+    # pointer path below, which would bitcast the jacbytes struct to i8* and
+    # print its length header instead.
+    if p._is_bytes_value(arg_val) {
+        return p._emit_bytes_repr(arg_val);
+    }
     # str() of something already a string (char*) is the string itself.
     # Native strings and bound exception messages are both i8*, so str(e)
     # in `except E as e` returns the message rather than formatting the
@@ -6056,6 +6062,10 @@ impl NativeBuiltinEmitter.emit_bool(
                 "!=", slen, ir.Constant(i64, 0), name="bool.nonempty"
             );
             return b.zext(is_nonempty, i64, name="bool.sresult");
+        }
+        # bool(bytes): non-empty is truthy (length-aware, #6749)
+        if p._is_bytes_value(arg_val) {
+            return b.zext(p._emit_bytes_truthy(arg_val), i64, name="bool.byresult");
         }
     }
     return None;
@@ -6232,23 +6242,24 @@ impl NativeBuiltinEmitter.emit_frozenset(
 impl NativeBuiltinEmitter.emit_bytes(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # bytes(list_of_ints) -> i8* string from list elements
+    # bytes(list[int]) -> length-aware jacbytes struct (#6404 Track 0): allocate
+    # exactly list_len data bytes and store each trunc'd element. No NUL
+    # terminator — the length is carried explicitly so embedded 0x00 survives,
+    # mirroring the other byte-producing paths (struct.pack, file reads).
     if not args {
         return None;
     }
     p = ctx.pass_ref;
     b = get_builder(p);
     i8 = ir.IntType(8);
-    i8p = i8.as_pointer();
     i64 = ir.IntType(64);
     val = args[0];
-    # bytes(list[int]) -> convert each int element to a byte
     for (lk, lhelpers) in p.list_helpers.items() {
         ltype = p.list_types.get(lk);
         if ltype is not None and val.type == ltype.as_pointer() {
             list_len = b.call(lhelpers["len"], [val], name="bytes.len");
-            alloc_sz = b.add(list_len, ir.Constant(i64, 1), name="bytes.alloc");
-            buf = b.call(p.rc_alloc_fn, [alloc_sz], name="bytes.buf");
+            bv = p._bytes_alloc(list_len);
+            data = p._bytes_data_ptr(bv);
             func = b.basic_block.function;
             entry_bb = b.basic_block;
             loop_bb = func.append_basic_block(name="bytes.loop");
@@ -6263,16 +6274,13 @@ impl NativeBuiltinEmitter.emit_bytes(
             b.position_at_start(body_bb);
             elem = b.call(lhelpers["get"], [val, idx], name="bytes.elem");
             byte_val = b.trunc(elem, i8, name="bytes.trunc");
-            bp = b.gep(buf, [idx], name="bytes.bp");
+            bp = b.gep(data, [idx], name="bytes.bp");
             b.store(byte_val, bp);
             nidx = b.add(idx, ir.Constant(i64, 1), name="bytes.nidx");
             idx.add_incoming(nidx, body_bb);
             b.branch(loop_bb);
             b.position_at_start(done_bb);
-            # Null-terminate
-            end_ptr = b.gep(buf, [list_len], name="bytes.endptr");
-            b.store(ir.Constant(i8, 0), end_ptr);
-            return buf;
+            return bv;
         }
     }
     return None;
@@ -6281,7 +6289,7 @@ impl NativeBuiltinEmitter.emit_bytes(
 impl NativeBuiltinEmitter.emit_bytearray(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # bytearray(list_of_ints) -> same as bytes: i8* string
+    # bytearray(list_of_ints) -> same length-aware jacbytes value as bytes()
     return self.emit_bytes(ctx, args);
 }
 
