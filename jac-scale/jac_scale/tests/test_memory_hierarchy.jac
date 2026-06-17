@@ -15,6 +15,7 @@ import requests;
 import from pymongo { MongoClient }
 import from testcontainers.mongodb { MongoDbContainer }
 import from testcontainers.redis { RedisContainer }
+import from jaclang.jac0core.archetype { Root }
 import from jac_scale.context { JScaleExecutionContext }
 import from jac_scale.memory_hierarchy { _process_cache, MongoBackend }
 import from jac_scale.db { close_all_db_connections }
@@ -1348,9 +1349,9 @@ test "acommit forwards anchor argument to commit()" {
 
 """Unit test for issue 1g fix: ScaleTieredMemory._committed flag.
 
-After the first acommit() the flag is set True. A second call (the
-middleware's redundant pass) returns immediately — MongoBackend.sync()
-and its O(L1-size) hash computation are skipped entirely.
+After the first acommit() the flag is set True. A second call (e.g. the
+close-time backstop) returns immediately — the collect pass and its
+O(L1-size) hash computation are skipped entirely.
 """
 test "acommit is idempotent — _committed flag prevents second sync pass" {
     import asyncio;
@@ -1878,4 +1879,39 @@ test "L1 invalidation: ensure_listener is idempotent and self-heals" {
         os.environ.pop("REDIS_URL", None);
         _reset_process_cache();
     }
+}
+
+
+obj _L2CachePerson(Root) {
+    has name: str = "";
+}
+
+
+test "RedisBackend loads carry a field-hash snapshot (L2 parity with L3 loads)" {
+    import from jac_scale.memory_hierarchy { RedisBackend }
+    import from jaclang.runtimelib.changeset { derive_dirty_fields }
+
+    _reset_redis();
+    (rclient, redis_url) = _get_redis();
+    be = RedisBackend(redis_url=cast(str, redis_url));
+
+    person = _L2CachePerson(name="cached").__jac__;
+    person.persistent = True;
+    be.put(person);
+
+    loaded = be.get(person.id);
+    assert loaded is not None , "anchor must round-trip through Redis";
+    assert loaded.archetype.__dict__.get('__jac_field_hashes__') , (
+        "L2-loaded anchors must carry a field-hash snapshot like L3 loads do; "
+        "without one, derive_dirty_fields() is blind for this anchor and the "
+        "collect pass can drop its field mutations (or fall back to full "
+        "rewrites) for the rest of the request"
+    );
+    assert derive_dirty_fields(loaded) == set() , (
+        "a freshly L2-loaded anchor must derive as clean"
+    );
+    loaded.archetype.name = "renamed";
+    assert derive_dirty_fields(loaded) == {'name'} , (
+        "field mutations on an L2-loaded anchor must be derivable"
+    );
 }

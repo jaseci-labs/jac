@@ -37,11 +37,12 @@ obj Lexer {
         # code-point index, so scanning stays on the plain str path with zero
         # overhead. Only non-ASCII source takes the rune-aware byte path.
         #
-        # `_enc` is typed `str` because `str.encode()` is typed as returning
-        # `str` (native strings are already a UTF-8 i8* buffer; the Python
-        # backend holds the real `bytes` object). Both backends index, slice
-        # and decode it as raw UTF-8 bytes identically.
-        _enc: str = "",
+        # `_enc` is the UTF-8 `bytes` view of the source: `str.encode()` returns
+        # length-aware `bytes` on both backends (#6404), so indexing yields a
+        # byte int, slicing yields `bytes`, `== expected.encode()` is a byte
+        # compare, and `.decode()` turns a byte range back into a `str` —
+        # identically on sv and na.
+        _enc: bytes = b"",
         _ascii: bool = True,
         error_count: int = 0,
         mode_stack: list[LexerMode] = [],

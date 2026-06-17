@@ -2,7 +2,33 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.25 (Latest Release)
+## jac-scale 0.2.27 (Latest Release)
+
+### New Features
+
+- **Feature: admin Workloads + Usage views backed by Prometheus**: Adds a "Deployment" section to the admin portal with two tabs. **Workloads** lists every Deployment, StatefulSet, DaemonSet and Pod in the app's namespace with a traffic-light status (Healthy / Starting / Unstable / Broken), ready/desired replicas, live CPU and memory, restart count and age; a chip filter narrows by kind. **Usage** renders per-workload CPU and memory history charts with a 1h/6h/24h/7d time-range selector. Top-of-page cards summarize running/pending/failed pods, ready nodes, request rate, error rate and p95 latency. All data comes from the in-cluster Prometheus the monitoring stack already provisions (kube-state-metrics + node-exporter + cAdvisor); a new `utilities/metrics/prometheus_client.jac` wraps the Prometheus query API and resolves the service URL from `K8S_APP_NAME` (injected onto the app pod, with `PROMETHEUS_URL` override for local dev). When Prometheus is unreachable the endpoints degrade to `metrics_available: false` so the UI shows a banner instead of erroring.
+- **Fix: in-cluster Prometheus now actually scrapes app + container metrics**: The app scrape job targeted the LoadBalancer port (80) on AWS instead of the container port and sent no credentials to the admin-protected `/metrics`, so HTTP request/latency metrics were never collected. It now targets the container port and authenticates via Basic Auth (admin user + `prometheus_admin_password`), a cAdvisor scrape job (with the required RBAC + token) is added for per-pod CPU/memory, and the NetworkPolicy lets the app pod query Prometheus.
+- **Feature: Gateway-runtime Kubernetes client + opt-in namespace RBAC**: Adds a gateway-runtime Kubernetes API client helper (`admin/k8s_ops.jac`) - in-cluster config loaded once, namespace resolved from the pod's ServiceAccount, and every accessor degrades to a clean "unavailable" (never a 500) when the `kubernetes` client is absent or the process isn't running inside a cluster. Pairs it with an opt-in **namespace-scoped** read-only `Role` + `RoleBinding` bound to the gateway ServiceAccount (`targets/kubernetes/microservice/ops_rbac.jac`), provisioned by the microservice target only when `[plugins.scale.kubernetes].ops_console = true`; additional mutation verbs (patch/delete/scale) are appended only when `ops_console_mutations = true`. There is no ClusterRole, so each app's gateway can read only its own namespace, preserving per-app-namespace multi-tenancy. Both flags are off by default.
+- **Feature: Crash-safe MongoDB persistence**: MongoDB writes and deletes now flush through the shared unit-of-work contract in dependency order, so a process killed mid-request can no longer leave dangling references in the graph.
+- **Feature: MongoDB referential-integrity surface (#6619)**: `MongoBackend` now implements the read-path healing and integrity contract: `quarantine_dangling` files a dangling reference under the `DANGLING_REF` reason code, `is_quarantined` distinguishes a permanent dangler from a recoverable schema-drift quarantine, and `fsck` scans the collection for dangling references and orphans (collecting them on repair). `ScaleTieredMemory` consults the new `get_persistent_memory` hook before falling back to MongoDB / SQLite, so a third-party DB backend composes with the jac-scale stack.
+
+### Bug Fixes
+
+- **Empty dictionary fields now persist reliably on every MongoDB version.** Archetype `dict` fields that are empty, or cleared back to `{}`, are now saved correctly instead of being silently dropped. This previously failed on MongoDB older than 6.1.0 (including `mongo:6.0`, the image jac-scale provisions), which rejects empty embedded objects on the atomic write path; the empty value is now stored explicitly so a deliberate clear-to-`{}` persists identically on all versions, with no server-version detection or data migration.
+
+## jac-scale 0.2.26
+
+### New Features
+
+- **Cross-pod cache consistency**: in multi-pod deployments, a write on one pod now evicts the affected node from sibling pods' in-memory caches over Redis, so they no longer serve stale graph reads.
+- **Lazy read-repair and quarantine auto-retry in the Mongo backend**: Documents whose archetypes declare `__jac_schema__` drift rules are repaired on load and the upgraded form is written back with compare-and-set on the stored fingerprint, so concurrent writers on older app versions safely win and the document repairs again on its next read. Quarantined documents are now stamped with a machine-readable `reason_code` (`CLASS_MISSING`, `FIELD_RECONSTRUCT`, `DESER_ERROR`, `CASCADE`), and at backend startup a capped auto-retry re-attempts the quarantined docs the new deploy plausibly fixed (newly registered classes, aliases, or drift rules) ("deploy the fix and the data heals itself"), with `jac db recover-all` remaining as the manual override.
+- **Feature: In-admin "Signal self-check" health card**: A new **Operations -> Self-Check** page in the jac-scale admin dashboard answers "why is observability/health broken?" without a kubeconfig. `GET /admin/ops/health` returns, per signal (traces, logs, metrics, mongo, redis, admin API), a `{status, chain[]}` causal chain where each step is `{name, ok, detail}`, evaluated **short-circuit** so the first red link IS the diagnosis - e.g. "jac-scale[tracing] importable (HAS_OTEL): no" pinpoints a missing tracing extra that makes the Traces page return `count:0`, and "Mongo ping reachable: failed" explains an `/admin/login` returning SPA HTML instead of JSON. Every check is an in-process read (`HAS_OTEL`, config, `self.server`) or a best-effort ~2s backend probe wrapped in try/except, so a dead Tempo/Loki/Prometheus/Mongo/Redis renders a red row, never a 500. The page renders each chain as a vertical green-check / red-x stepper with the first failing step highlighted. Registered on both the monolith server and the microservice gateway. No Kubernetes API access and no RBAC.
+
+### Bug Fixes
+
+- **Fix: No duplicate startup banner in dev mode**: The jac-scale server  no longer prints its own banner (which advertised the API port as the URL to open) when a dev client is running; the main banner shows the correct URLs.
+
+## jac-scale 0.2.25
 
 ### Breaking Changes
 

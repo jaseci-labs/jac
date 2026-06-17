@@ -16,6 +16,10 @@ libraylib*.dylib
 .bench_seconds
 .bench_result
 
-# Jac native IR cache
+# Jac build & cache artifacts
+.jac/
+*.jir
+*.jbc
+# legacy native IR cache (superseded by .jac/cache/native)
 .jac_ir/
 __pycache__/

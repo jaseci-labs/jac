@@ -118,13 +118,31 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
             );
         }
     } elif isinstance(nd, uni.DeleteStmt) {
-        # del d[k]  →  d.remove(k)
         target_expr = nd.target;
-        if (
+        # `del e` on an edge: disconnect it from the adjacency (issue #6642).
+        # The edge handle (`ptrtoint` of the edge object, as carried by an
+        # `[edge ...]` ref) keys the row `osp_disconnect` drops.
+        _del_arch = self._struct_name_of(target_expr);
+        _del_model = self.ir_in.gen.osp_model;
+        if (_del_arch is not None)
+        and (_del_model is not None)
+        and (_del_model.arch_kind.get(_del_arch) == "edge") {
+            _disc_fn = self.func_symtab.get("osp_disconnect");
+            _edge_h = self._codegen_expr(target_expr);
+            if (_disc_fn is not None) and (_edge_h is not None) {
+                _disc_argtys = _disc_fn.function_type.args;
+                self.builder.call(
+                    _disc_fn, [self._coerce_type(_edge_h, _disc_argtys[0])]
+                );
+            } elif _disc_fn is None {
+                self.emit(E5090, node_override=nd, kind="statement", name="DeleteStmt");
+            }
+        } elif (
             isinstance(target_expr, uni.AtomTrailer)
             and not target_expr.is_attr
             and target_expr.right?.slices
         ) {
+            # del d[k]  →  d.remove(k)  (or del list[i] → list.del_at(i))
             slices = target_expr.right.slices or [];
             if slices {
                 # Only handle dict-typed targets (checked type, then LLVM shape)
@@ -623,21 +641,13 @@ impl NaIRGenPass._match_pattern_cond(
         return self._match_value_eq(subj, pat.value);
     }
     if isinstance(pat, uni.MatchOr) {
-        # OR is restricted to non-capturing alternatives so there is no
-        # ambiguity about which names a matched alternative binds.
+        # OR is restricted to non-capturing alternatives (value / singleton /
+        # wildcard / nested OR) so there is no ambiguity about which names a
+        # matched alternative binds. The native capability authority
+        # (`native_capability_violations`) rejects any other alternative
+        # pre-codegen, so by the time we lower here every sub-pattern is valid.
         result: (ir.Value | None) = None;
         for sub in pat.patterns {
-            if not isinstance(
-                sub, (uni.MatchValue, uni.MatchSingleton, uni.MatchWild, uni.MatchOr)
-            ) {
-                self.emit(
-                    E5090,
-                    node_override=sub,
-                    kind="match pattern",
-                    name=f"{type(sub).__name__} inside OR pattern"
-                );
-                return None;
-            }
             sub_cond = self._match_pattern_cond(sub, subj);
             if sub_cond is None {
                 return None;
@@ -648,7 +658,10 @@ impl NaIRGenPass._match_pattern_cond(
         }
         return result;
     }
-    # MatchSequence / MatchMapping / MatchArch / MatchStar are not yet lowered.
+    # MatchSequence / MatchMapping / MatchArch / MatchStar are not yet
+    # lowered. The central capability sweep (native_capability_violations)
+    # rejects them before emission starts, so this is a safety net for
+    # pattern kinds the sweep's table does not list.
     self.emit(E5090, node_override=pat, kind="match pattern", name=type(pat).__name__);
     return None;
 }
@@ -1567,10 +1580,39 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
 # ─── Expression Codegen ──────────────────────────────────────
 """Generate break or continue statement."""
 impl NaIRGenPass._codegen_ctrl(nd: uni.CtrlStmt) -> None {
+    ctrl_name = nd.ctrl.name if isinstance(nd.ctrl, uni.Token) else str(nd.ctrl);
+    # `skip` is Return-family, not loop control: the py target lowers it to a
+    # bare `return` and cl to a ReturnStatement (issue #6206). It must NOT
+    # fall under the loop_stack guard below — dropping it turns a
+    # `if <seen> { skip; }` visit-once guard into dead code, the silent wrong
+    # answer of issue #6636. Statements after it are skipped by the
+    # is_terminated check, mirroring disengage.
+    #
+    # `skip` outside a void (event-ability) body is rejected up front by the
+    # capability sweep (`native_capability_violations`), which runs before any
+    # codegen on BOTH `jac check` and `jac nacompile`, so a value-returning
+    # body never reaches here. The non-void branch below is a defensive
+    # backstop: a clean E5090 rather than an invalid `ret void` in a typed fn.
+    if ctrl_name == Tok.KW_SKIP {
+        if isinstance(self.builder.function.function_type.return_type, ir.VoidType) {
+            self.builder.ret_void();
+        } else {
+            self.emit(
+                E5090,
+                node_override=nd,
+                kind="statement",
+                name="SkipStmt",
+                help_text=(
+                    "`skip` ends an event ability (a void body); in a "
+                    "value-returning function use an explicit `return`."
+                )
+            );
+        }
+        return;
+    }
     if not self.loop_stack {
         return;
     }
-    ctrl_name = nd.ctrl.name if isinstance(nd.ctrl, uni.Token) else str(nd.ctrl);
     (continue_bb, break_bb) = self.loop_stack[-1];
     if ctrl_name == Tok.KW_BREAK {
         self.builder.branch(break_bb);
@@ -1620,7 +1662,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                         helpers=helpers,
                         var_names=[key_var_name, val_var_name],
                         var_types=[helpers["key_type"], helpers["val_type"]],
-                        rc_vars=False,
+                        rc_vars=True,
                         coll_release_op="fori_coll"
                     );
                     return;
@@ -1698,6 +1740,21 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             );
             return;
         }
+    }
+    # ── Bytes iteration: for x in b ── yields i64 byte values (#6749).
+    # A distinct struct type, so it precedes the str/list paths cleanly.
+    if _coll_memo is not None and self._is_bytes_value(_coll_memo) {
+        self._codegen_for_indexed(
+            nd,
+            kind="bytes",
+            collection_val=_coll_memo,
+            helpers=None,
+            var_names=[loop_var_name],
+            var_types=[ir.IntType(64)],
+            rc_vars=False,
+            coll_release_op="forby_coll"
+        );
+        return;
     }
     # ── String iteration: for c in s ── (before the list path: a raw i8*
     # would otherwise be misclassified as list[ptr])
@@ -1833,6 +1890,8 @@ impl NaIRGenPass._codegen_for_indexed(
                 "strlen", i64, [ir.IntType(8).as_pointer()]
             );
             len_val = self.builder.call(strlen_fn, [collection_val], name="for.len");
+        } elif kind == "bytes" {
+            len_val = self._bytes_len_val(collection_val);
         } else {
             len_val = self.builder.call(
                 helpers["len"], [collection_val], name="for.len"
@@ -1900,6 +1959,23 @@ impl NaIRGenPass._codegen_for_indexed(
             val_val = self.builder.call(
                 helpers["get_val"], [collection_val, body_idx], name="for.val"
             );
+            # `get_key`/`get_val` hand back BORROWED pointers into the dict's
+            # backing arrays. Pointer loop vars land in `local_vars`, so scope
+            # exit releases them; without a matching retain the dict's last
+            # key/val are over-released and their heap backing is freed under
+            # the still-live dict (issue #6688). Mirror the list/dict discipline
+            # below: release the prior occupant (null on the first pass) and
+            # retain the new borrow so the scope-exit release stays balanced.
+            if rc_vars and isinstance(var_types[0], ir.PointerType) {
+                _old_k = self.builder.load(allocas[0], name="for.key.old");
+                self._emit_rc_release_simple(_old_k, op="for_items_key", loc=_rc_loc);
+                self._emit_rc_retain(key_val, op="for_items_key", loc=_rc_loc);
+            }
+            if rc_vars and isinstance(var_types[1], ir.PointerType) {
+                _old_v = self.builder.load(allocas[1], name="for.val.old");
+                self._emit_rc_release_simple(_old_v, op="for_items_val", loc=_rc_loc);
+                self._emit_rc_retain(val_val, op="for_items_val", loc=_rc_loc);
+            }
             self.builder.store(key_val, allocas[0]);
             self.builder.store(val_val, allocas[1]);
         } elif kind == "str" {
@@ -1907,6 +1983,15 @@ impl NaIRGenPass._codegen_for_indexed(
             if char_str is not None {
                 self.builder.store(char_str, allocas[0]);
             }
+        } elif kind == "bytes" {
+            # Load the byte at body_idx and zero-extend to the i64 loop var.
+            _by_ptr = self.builder.gep(
+                self._bytes_data_ptr(collection_val), [body_idx], name="for.by.ptr"
+            );
+            _by = self.builder.load(_by_ptr, name="for.by.byte");
+            self.builder.store(
+                self.builder.zext(_by, i64, name="for.by.val"), allocas[0]
+            );
         } elif kind in ("list", "dict") {
             fetch_fn = helpers["get"] if kind == "list" else helpers["get_key"];
             elem_val = self.builder.call(

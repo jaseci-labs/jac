@@ -761,8 +761,9 @@ This is the form used for the libm example above. Any library that exposes a C A
 | Linux | aarch64 | Supported |
 | macOS | x86_64 | Supported |
 | macOS | arm64 (Apple Silicon) | Supported |
+| Windows | x86_64 | Supported (cross-build via `--target windows`, producing a PE `.exe` / `.dll`) |
 
-The platform and architecture are auto-detected at compile time. The correct binary format (ELF on Linux, Mach-O on macOS) is produced automatically -- no external compiler or linker is needed on any platform.
+The platform and architecture are auto-detected at compile time. The correct binary format (ELF on Linux, Mach-O on macOS, PE on Windows) is produced automatically -- no external compiler or linker is needed on any platform.
 
 !!! note "macOS arm64"
     On Apple Silicon, ad-hoc code signing is applied automatically as required by macOS.

@@ -305,6 +305,7 @@ ctrl_stmt ::= ("break" | "continue" | "skip") ";" | "disengage" ";"
 statement ::=
     ";"
     | jsx_element ";"?
+    | "{" expression ("}" ";"?)?
     | import_stmt
     | if_stmt
     | while_stmt
@@ -451,7 +452,8 @@ import_items ::=
 
 archetype ::=
     ("@" atomic_chain)* "async"? access_tag (NAME | KWESC_NAME) ("[" type_params "]")?
-    ("(" (atomic_chain ("," atomic_chain)*)? ")")? ("{" archetype_member* "}" | ";")
+    ("(" (atomic_chain ("," atomic_chain)*)? ")")?
+    (":" atomic_chain "-->" atomic_chain)? ("{" archetype_member* "}" | ";")
 
 archetype_member ::=
     STRING? (

@@ -32,6 +32,7 @@ import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
 import from jac_scale.abstractions.autoscaler {
     AutoscalerSpec,
     Trigger,
+    TriggerAuth,
     DEFAULT_CPU_UTILIZATION_TARGET
 }
 import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
@@ -457,6 +458,15 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
         ensure_namespace_exists(namespace);
 
+        # Ops Console RBAC (opt-in). Applied right after the
+        # namespace so the read-only Role + RoleBinding exist before the
+        # gateway pod (which uses them) rolls. Best-effort: an RBAC failure
+        # must not abort the app deploy, so it logs and continues.
+        ops_rbac = bundle.get("ops_rbac");
+        if ops_rbac {
+            self._apply_ops_rbac(namespace, ops_rbac);
+        }
+
         for (pvc_name, pvc_manifest) in bundle.get("pvcs", {}).items() {
             self._apply_or_replace_pvc(core_v1, namespace, pvc_manifest);
             if self.logger {
@@ -512,30 +522,74 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 self.k8s_config.to_dict(),
                 self.logger
             );
-            autoscaler.apply(
+            triggers = [];
+            # extra_triggers from [plugins.scale.kubernetes] targets the
+            # gateway only — it is the microservice-mode equivalent of the
+            # monolith ScaledObject.  Per-service triggers belong under
+            # [[plugins.scale.microservices.services.{name}.triggers]].
+            is_gateway = svc_name == GATEWAY_NAME;
+            effective_extra = self.k8s_config.extra_triggers if is_gateway else [];
+            if not cfg.get("triggers", []) and not effective_extra {
+                triggers = [
+                    Trigger(
+                        type="cpu",
+                        metadata={
+                            "averageUtilization": str(
+                                cfg.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)
+                            )
+                        }
+                    )
+                ];
+            }
+            for raw in cfg.get("triggers", []) {
+                t = Trigger(
+                    type=str(raw.get("type", "")),
+                    metadata=dict(raw.get("metadata", {})),
+                    name=raw.get("name")
+                );
+                raw_auth = raw.get("auth");
+                if raw_auth {
+                    t.auth = TriggerAuth(
+                        secret_refs=dict(raw_auth.get("secret_refs", {}))
+                    );
+                }
+                triggers.append(t);
+            }
+            for raw in effective_extra {
+                t = Trigger(
+                    type=str(raw.get("type", "")),
+                    metadata=dict(raw.get("metadata", {})),
+                    name=raw.get("name")
+                );
+                raw_auth = raw.get("auth");
+                if raw_auth {
+                    t.auth = TriggerAuth(
+                        secret_refs=dict(raw_auth.get("secret_refs", {}))
+                    );
+                }
+                triggers.append(t);
+            }
+            autoscaler_name = autoscaler.resource_name_for(k8s_name);
+            autoscaler_applied = autoscaler.apply(
                 AutoscalerSpec(
                     scale_target_name=f"{k8s_name}-deployment",
-                    autoscaler_name=f"{k8s_name}-hpa",
+                    autoscaler_name=autoscaler_name,
+                    app_name=k8s_name,
                     namespace=namespace,
                     min_replicas=int(cfg.get("min", 1)),
                     max_replicas=int(cfg.get("max", 3)),
-                    triggers=[
-                        Trigger(
-                            type="cpu",
-                            metadata={
-                                "averageUtilization": str(
-                                    cfg.get(
-                                        "cpu_target", DEFAULT_CPU_UTILIZATION_TARGET
-                                    )
-                                )
-                            }
-                        )
-                    ]
+                    idle_replicas=self.k8s_config.idle_replicas,
+                    polling_interval=self.k8s_config.autoscaler_polling_interval,
+                    cooldown_period=self.k8s_config.autoscaler_cooldown,
+                    initial_cooldown_period=self.k8s_config.autoscaler_initial_cooldown,
+                    triggers=triggers
                 )
             );
-            if self.logger {
+            # Only log success when apply() confirms it wrote the resource;
+            # a False return means preflight bailed silently (engine not available).
+            if self.logger and autoscaler_applied {
                 self.logger.info(
-                    f"Applied HPA for '{svc_name}'", {"name": f"{k8s_name}-hpa"}
+                    f"Applied autoscaler for '{svc_name}'", {"name": autoscaler_name}
                 );
             }
         }
@@ -557,6 +611,67 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 self.logger.info(
                     "Applied Ingress for gateway",
                     {"name": ingress_manifest["metadata"]["name"]}
+                );
+            }
+        }
+    }
+
+    # Ops Console RBAC: namespace-scoped Role + RoleBinding bound to
+    # the gateway SA. Idempotent read-then-replace/create, mirroring the
+    # ingress/monitoring RBAC pattern. Best-effort - a failure here (e.g. the
+    # deployer lacks rbac create perms) logs a warning and continues; the
+    # app still deploys, the Ops Console pages just render a 403 detail.
+    def _apply_ops_rbac(namespace: str, ops_rbac: dict[str, any]) {
+        try {
+            rbac_v1 = client.RbacAuthorizationV1Api();
+            role = ops_rbac["role"];
+            binding = ops_rbac["role_binding"];
+            role_name: str = role["metadata"]["name"];
+            binding_name: str = binding["metadata"]["name"];
+
+            try {
+                rbac_v1.read_namespaced_role(name=role_name, namespace=namespace);
+                rbac_v1.replace_namespaced_role(
+                    name=role_name, namespace=namespace, body=role
+                );
+            } except ApiException as e {
+                if e.status == 404 {
+                    rbac_v1.create_namespaced_role(namespace=namespace, body=role);
+                } else {
+                    raise;
+                }
+            }
+
+            try {
+                rbac_v1.read_namespaced_role_binding(
+                    name=binding_name, namespace=namespace
+                );
+                rbac_v1.replace_namespaced_role_binding(
+                    name=binding_name, namespace=namespace, body=binding
+                );
+            } except ApiException as e {
+                if e.status == 404 {
+                    rbac_v1.create_namespaced_role_binding(
+                        namespace=namespace, body=binding
+                    );
+                } else {
+                    raise;
+                }
+            }
+
+            if self.logger {
+                subj = binding["subjects"][0]["name"];
+                self.logger.info(
+                    f"Applied Ops Console RBAC (read-only Role + RoleBinding)",
+                    {"name": role_name, "serviceAccount": subj}
+                );
+            }
+        } except Exception as e {
+            if self.logger {
+                self.logger.warning(
+                    f"Ops Console RBAC not applied ({e}); the in-admin "
+                    f"deploy-health pages will render a 403 until the Role is "
+                    f"bound to the gateway ServiceAccount."
                 );
             }
         }
