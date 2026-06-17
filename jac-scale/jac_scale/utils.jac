@@ -73,7 +73,11 @@ def filter_declared_kwargs(target: Callable, params: dict[str, any]) -> dict[str
             return params;
         }
     }
-    return {name: value for (name, value) in params.items() if name in sig.parameters};
+    return {
+        name: value
+        for (name, value) in params.items()
+        if name in sig.parameters
+    };
 }
 
 """Generate a random password with specified length.
