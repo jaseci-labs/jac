@@ -1637,6 +1637,7 @@ jac eject [-h] [-o OUTPUT] [-f] [source]
 - Client-side `.cl.jac` modules become JavaScript via `gen.js` (JSX lowers to `__jacJsx(...)`, `has` to `useState`, `sv import` to HTTP RPC stubs). Client modules never go to the backend.
 - A generated `backend/main.py` is the FastAPI app: one `POST /walker/<Name>` per walker, `POST /function/<name>` per function, plus `/user/register` and `/user/login`. `:pub` walkers/functions are open endpoints; the rest require a bearer token.
 - `.impl.jac` / `.test.jac` files are skipped (they merge into their declaration sibling at compile time).
+- A project with no client `app` component (no `cl {}` block / `.cl.jac`) ejects **backend-only**: the `frontend/` scaffold is skipped so there is no broken Vite build.
 
 **Output layout**
 
@@ -1655,6 +1656,17 @@ jac eject [-h] [-o OUTPUT] [-f] [source]
 ```
 
 The generated `backend/main.py` wires up jaclang's `UserManager` and `ExecutionManager`: `/user/register` and `/user/login` create and authenticate users (each gets their own persistent SQLite-backed root graph), and each walker route resolves the bearer token to a user (falling back to a `__guest__` user for `:pub` walkers) before running the walker in that user's context. When a built frontend is present at `frontend/dist`, `main.py` mounts it so a single `uvicorn main:app` serves both the API and the UI.
+
+**Persistence**
+
+By default the object graph persists to a local SQLite file via the jaclang runtime. To persist through SQLAlchemy instead (so the same backend can target Postgres/MySQL), opt in via `jac.toml`:
+
+```toml
+[eject.db]
+driver = "sqlalchemy"   # or "sqlite"
+```
+
+This vendors a `backend/_jac_sqldb.py` SQLAlchemy `PersistentMemory` backend and registers it through the runtime's `get_persistent_memory` hook, and adds `SQLAlchemy` to `requirements.txt`. The connection URL defaults to a SQLite file under `backend/` and is overridable at runtime with `JAC_DB_URL` (e.g. `postgresql://...`). This is a single-writer backend (correct for one uvicorn worker); for multi-process writers use jac-scale.
 
 **Examples**
 
