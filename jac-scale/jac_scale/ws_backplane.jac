@@ -81,12 +81,6 @@ obj RedisBackplane(BaseBackplane) {
         _lock: (Any | None) = None,
         _closed: bool = False;
 
-    def postinit {
-        # Fresh per-instance copy so two backplanes (e.g. in tests) don't
-        # share the class-level mutable default and cross-dispatch handlers.
-        self._handlers = {};
-    }
-
     def _get_lock -> Any {
         if self._lock is None {
             self._lock = asyncio.Lock();

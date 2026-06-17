@@ -60,15 +60,6 @@ obj WebSocketConnectionManager {
         _subscribed: set[str] = set(),
         _backplane_started: bool = False;
 
-    def postinit {
-        # Overwrite the shared mutable defaults with fresh per-instance copies
-        # so multiple managers (e.g. in tests) don't accidentally share state.
-        self._by_target = {};
-        self._by_user = {};
-        self._anon_by_target = {};
-        self._subscribed = set();
-    }
-
     def _get_lock -> Lock {
         if self._lock is None {
             self._lock = Lock();
