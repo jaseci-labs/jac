@@ -1,12 +1,35 @@
-"""Command palette entries and execution."""
+"""Command palette entries, model/file picker item lists, and execution."""
 
 import from .state { TuiState }
 import from .select_list { SelectItem }
 import from .ipc { ipc_send_cmd }
 
+# Quick-pick model names, mirroring jaclang.cli.ai_agent `_MODEL_PRESETS` (the
+# same one-click defaults offered in the `--ui` settings panel). The model field
+# is free-form server-side (any byLLM/litellm name works); these are defaults.
+glob MODEL_PRESETS: list[str] = [
+         "anthropic/claude-opus-4-7",
+         "anthropic/claude-sonnet-4-6",
+         "openai/gpt-4o",
+         "ollama/gemma4:31b",
+         "local:gemma-4-e4b"
+     ];
+
 def palette_commands(state: TuiState) -> list[SelectItem] {
     items: list[SelectItem] = [];
 
+    items.append(
+        SelectItem(
+            value="open_model", label="/model", description="Switch the active model"
+        )
+    );
+    items.append(
+        SelectItem(
+            value="open_file",
+            label="/files",
+            description="Insert a project file reference"
+        )
+    );
     items.append(
         SelectItem(
             value="scroll_bottom",
@@ -44,6 +67,34 @@ def palette_commands(state: TuiState) -> list[SelectItem] {
     return items;
 }
 
+def model_items(state: TuiState) -> list[SelectItem] {
+    items: list[SelectItem] = [];
+    i: int = 0;
+    n = len(MODEL_PRESETS);
+    while i < n {
+        name = MODEL_PRESETS[i];
+        desc: str = "";
+        if name == state.model_name {
+            desc = "current";
+        }
+        items.append(SelectItem(value=name, label=name, description=desc));
+        i = i + 1;
+    }
+    return items;
+}
+
+def file_items(state: TuiState) -> list[SelectItem] {
+    items: list[SelectItem] = [];
+    i: int = 0;
+    n = len(state.files);
+    while i < n {
+        path = state.files[i];
+        items.append(SelectItem(value=path, label=path, description=""));
+        i = i + 1;
+    }
+    return items;
+}
+
 def run_command(cmd: str, state: TuiState, ipc_fd: int) -> bool {
     if cmd == "scroll_bottom" {
         state.scroll_to_bottom();
@@ -71,4 +122,11 @@ def run_command(cmd: str, state: TuiState, ipc_fd: int) -> bool {
         return True;
     }
     return False;
+}
+
+def apply_model(model: str, state: TuiState, ipc_fd: int) {
+    # APPLY:model=<name> tells the control plane to rebuild the model live
+    # (PROTOCOL.md).
+    ipc_send_cmd(ipc_fd, f"APPLY:model={model}");
+    state.dirty = True;
 }

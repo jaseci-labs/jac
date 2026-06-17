@@ -76,12 +76,18 @@ obj TuiState {
         layout_cols: int = -1,
         layout_dirty: bool = True,
         follow_tail: bool = True,
-        # Overlay stack (phase 6): command palette via SelectList.
+        # Overlay stack (phase 6): command palette / model / file pickers via
+        # SelectList. overlay_kind selects the on-select behavior in overlay.na.jac
+        # ("palette" | "model" | "file").
         overlay_active: bool = False,
+        overlay_kind: str = "palette",
         overlay_title: str = "",
         overlay_filter: str = "",
         overlay_full_redraw: bool = False,
-        select_list: SelectList = SelectList();
+        select_list: SelectList = SelectList(),
+        # Project file list, read once at startup (inline FFI in tui.na.jac's
+        # `with entry`); the file picker filters this cache.
+        files: list[str] = [];
 
     def reset_events {
         self.events = [];

@@ -1,10 +1,20 @@
 """Modal overlays composited on top of the base screen.
 
-Phase 6: center-anchored command palette using SelectList.
+Phase 6: center-anchored command palette, model picker, and file picker, all
+built on SelectList. state.overlay_kind ("palette" | "model" | "file") selects
+the on-select behavior.
 """
 
 import from .state { TuiState }
-import from .commands { palette_commands, run_command }
+import from .commands {
+    palette_commands,
+    model_items,
+    file_items,
+    run_command,
+    apply_model
+}
+import from .editor { editor_insert_text }
+import from .select_list { SelectItem }
 import from .width { visible_width, ansi_trunc, ansi_pad }
 import from .terminal { ansi_sgr, ansi_reset }
 import from .theme {
@@ -45,8 +55,9 @@ def overlay_is_active(state: TuiState) -> bool {
     return state.overlay_active;
 }
 
-def overlay_open_palette(state: TuiState, initial_filter: str) {
-    items = palette_commands(state);
+def _overlay_show(
+    state: TuiState, kind: str, title: str, items: list[SelectItem], initial_filter: str
+) {
     sl = state.select_list;
     sl.reset_items(items);
     sl.set_filter(initial_filter);
@@ -54,11 +65,26 @@ def overlay_open_palette(state: TuiState, initial_filter: str) {
     if state.term_rows < 20 {
         sl.max_visible = 5;
     }
+    state.overlay_kind = kind;
     state.overlay_filter = initial_filter;
-    state.overlay_title = "Commands";
+    state.overlay_title = title;
     state.overlay_active = True;
     state.overlay_full_redraw = True;
     state.dirty = True;
+}
+
+def overlay_open_palette(state: TuiState, initial_filter: str) {
+    _overlay_show(
+        state, "palette", "Commands", palette_commands(state), initial_filter
+    );
+}
+
+def overlay_open_model(state: TuiState) {
+    _overlay_show(state, "model", "Select model", model_items(state), "");
+}
+
+def overlay_open_file(state: TuiState) {
+    _overlay_show(state, "file", "Insert file", file_items(state), "");
 }
 
 def overlay_close(state: TuiState) {
@@ -66,6 +92,7 @@ def overlay_close(state: TuiState) {
         return;
     }
     state.overlay_active = False;
+    state.overlay_kind = "palette";
     state.overlay_filter = "";
     state.overlay_title = "";
     state.overlay_full_redraw = True;
@@ -87,6 +114,30 @@ def overlay_handle_key(key: str, state: TuiState, ipc_fd: int) -> bool {
     if action == "select" {
         item = sl.current();
         if item is None {
+            return False;
+        }
+        kind = state.overlay_kind;
+
+        if kind == "model" {
+            apply_model(item.value, state, ipc_fd);
+            overlay_close(state);
+            return False;
+        }
+
+        if kind == "file" {
+            editor_insert_text(state.editor, f"@{item.value} ");
+            overlay_close(state);
+            return False;
+        }
+
+        # palette: transition entries open a nested picker in place; everything
+        # else runs immediately and closes the overlay.
+        if item.value == "open_model" {
+            overlay_open_model(state);
+            return False;
+        }
+        if item.value == "open_file" {
+            overlay_open_file(state);
             return False;
         }
         should_quit = run_command(item.value, state, ipc_fd);

@@ -36,7 +36,13 @@ Key strings from libc_tty tty_read_key:
 
 import from .state { TuiState }
 import from .ipc { ipc_send_cmd }
-import from .overlay { overlay_is_active, overlay_handle_key, overlay_open_palette }
+import from .overlay {
+    overlay_is_active,
+    overlay_handle_key,
+    overlay_open_palette,
+    overlay_open_model,
+    overlay_open_file
+}
 import from .editor {
     editor_insert,
     editor_backspace,
@@ -103,6 +109,14 @@ def _handle_submit(state: TuiState, ipc_fd: int) -> bool {
         return False;
     }
 
+    if text == "/model" or text == "/models" {
+        overlay_open_model(state);
+        return False;
+    }
+    if text == "/file" or text == "/files" {
+        overlay_open_file(state);
+        return False;
+    }
     if text == "/quit" or text == "/exit" or text == "/q" {
         ipc_send_cmd(ipc_fd, "QUIT");
         return True;

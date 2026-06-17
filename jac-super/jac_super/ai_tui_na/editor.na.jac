@@ -151,6 +151,28 @@ def editor_insert(ed: EditorState, ch: str) {
     ed.cursor_col = ed.cursor_col + 1;
 }
 
+def editor_insert_text(ed: EditorState, text: str) {
+    # Insert a (newline-free) string at the cursor on the current line. Used by
+    # the file picker to drop a "@path " mention into the editor.
+    line = ed.lines[ed.cursor_line];
+    before = line[:ed.cursor_col];
+    after = line[ed.cursor_col:];
+    new_line = before + text + after;
+    new_lines: list[str] = [];
+    i: int = 0;
+    n = len(ed.lines);
+    while i < n {
+        if i == ed.cursor_line {
+            new_lines.append(new_line);
+        } else {
+            new_lines.append(ed.lines[i]);
+        }
+        i = i + 1;
+    }
+    ed.lines = new_lines;
+    ed.cursor_col = ed.cursor_col + len(text);
+}
+
 def editor_backspace(ed: EditorState) {
     if ed.cursor_col > 0 {
         line = ed.lines[ed.cursor_line];

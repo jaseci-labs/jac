@@ -28,6 +28,12 @@ echo "==> Compiling jac-na-tui ..."
 
 echo "==> Done. Binary: $SCRIPT_DIR/bin/jac-na-tui"
 
+# ── headless logic tests (no TTY needed) ─────────────────────────────────────
+echo "==> Building + running picker logic tests ..."
+"${JAC[@]}" nacompile test_pickers.na.jac -o bin/test_pickers
+"$SCRIPT_DIR/bin/test_pickers"
+echo "==> Tests passed."
+
 # ── quick smoke-test ─────────────────────────────────────────────────────────
 echo "==> Smoke-test (piped stdin, expect non-zero exit) ..."
 echo "---" | timeout 2 "$SCRIPT_DIR/bin/jac-na-tui" || true

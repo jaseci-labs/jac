@@ -123,6 +123,38 @@ test "backend defaults to js and normalizes case" {
 }
 
 
+test "_list_project_files enumerates files under a project dir" {
+    import tempfile;
+    tui_mod = importlib.import_module("jac_super.ai_agent.run_tui_session");
+    lister = getattr(tui_mod, "_list_project_files");
+    with tempfile.TemporaryDirectory() as d {
+        os.makedirs(os.path.join(d, "sub"));
+        with open(os.path.join(d, "a.txt"), "w") as f {
+            f.write("x");
+        }
+        with open(os.path.join(d, "sub", "b.txt"), "w") as f {
+            f.write("y");
+        }
+        listing = lister(d);
+        names: list[str] = [];
+        for line in listing.split("\n") {
+            s = line.strip();
+            if s {
+                names.append(s);
+            }
+        }
+        assert "a.txt" in names , f"expected a.txt in {names!r}";
+        has_b: bool = False;
+        for n in names {
+            if n.endswith("b.txt") {
+                has_b = True;
+            }
+        }
+        assert has_b , f"expected b.txt in {names!r}";
+    }
+}
+
+
 test "command resolution reports missing backends and unknown names" {
     tui_mod = importlib.import_module("jac_super.ai_agent.run_tui_session");
     resolve_cmd = getattr(tui_mod, "_resolve_tui_command");

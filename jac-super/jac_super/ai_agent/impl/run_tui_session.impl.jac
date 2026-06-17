@@ -87,6 +87,10 @@ impl run_tui_session(req: AgentRequest) -> int {
     os.environ["JAC_AI_UI_PROJECT"] = project;
     os.environ["JAC_AI_UI_MODEL"] = str(r?.model or "");
     os.environ["JAC_AI_UI_NCTX"] = str(int(r?.n_ctx or 0));
+    # File-picker source: a newline-separated project file list, capped. Computed
+    # here (control plane) so the native sidecar needs no filesystem FFI; it reads
+    # JAC_AI_UI_FILES via os.getenv at startup. Prefer tracked files, else walk.
+    os.environ["JAC_AI_UI_FILES"] = _list_project_files(project);
     old_active = os.environ.get("JAC_AI_UI_ACTIVE");
     os.environ["JAC_AI_UI_ACTIVE"] = "1";
 
@@ -200,6 +204,59 @@ def _debug_log(msg: str) -> None {
             f.write(f"[{stamp}] {msg}\n");
         }
     } except Exception { }
+}
+
+def _list_project_files(project: str) -> str {
+    # Newline-separated relative file paths under `project` for the file picker.
+    # Tracked files first (git ls-files), else a bounded filesystem walk. Capped
+    # so the value stays well within env-var size limits.
+    import os;
+    import subprocess;
+
+    cap = 2000;
+    out_lines: list = [];
+    try {
+        res = subprocess.run(
+            ["git", "-C", project, "ls-files"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        );
+        if res.returncode == 0 {
+            for line in res.stdout.split("\n") {
+                s = line.strip();
+                if s {
+                    out_lines.append(s);
+                }
+                if len(out_lines) >= cap {
+                    break;
+                }
+            }
+        }
+    } except Exception { }
+
+    if not out_lines {
+        try {
+            for entry in os.walk(project) {
+                dirpath = entry[0];
+                if ".git" in dirpath.split(os.sep) {
+                    continue;
+                }
+                for fn in entry[2] {
+                    rel = os.path.relpath(os.path.join(dirpath, fn), project);
+                    out_lines.append(rel);
+                    if len(out_lines) >= cap {
+                        break;
+                    }
+                }
+                if len(out_lines) >= cap {
+                    break;
+                }
+            }
+        } except Exception { }
+    }
+
+    return "\n".join(out_lines);
 }
 
 def _resolve_tui_backend -> str {

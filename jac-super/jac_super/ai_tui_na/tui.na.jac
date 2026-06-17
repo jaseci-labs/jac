@@ -93,6 +93,24 @@ with entry {
             state.cwd = proj;
         }
     }
+}
+
+# Project file list for the file picker. The control plane computes it and
+# passes a newline-separated JAC_AI_UI_FILES env var (see
+# run_tui_session.impl.jac `_list_project_files`), so the sidecar needs no
+# filesystem FFI -- which also sidesteps the NA `str = calloc(...)` refcount
+# double-free that bites any in-binary file read.
+glob files_env = os.getenv("JAC_AI_UI_FILES");
+
+with entry {
+    if files_env is not None {
+        for raw_path in files_env.split("\n") {
+            p = raw_path.strip();
+            if len(p) > 0 {
+                state.files.append(p);
+            }
+        }
+    }
 
     term_enter_alt_screen(1);
     term_hide_cursor(1);

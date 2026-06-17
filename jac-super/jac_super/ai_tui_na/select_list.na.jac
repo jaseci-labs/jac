@@ -65,6 +65,14 @@ obj SelectList {
         if lbl.startswith(prefix) {
             return True;
         }
+        # Substring match: model names ("anthropic/claude-opus") and file paths
+        # ("src/foo.jac") are best filtered by any contained run, not just prefix.
+        if val.find(prefix) >= 0 {
+            return True;
+        }
+        if lbl.find(prefix) >= 0 {
+            return True;
+        }
         return False;
     }
 
@@ -194,7 +202,7 @@ obj SelectList {
         lines: list[str] = [];
         n = len(self.filtered);
         if n == 0 {
-            msg = "  No matching commands";
+            msg = "  No matches";
             lines.append(
                 ansi_sgr(
                     TH_BORDER_R,
