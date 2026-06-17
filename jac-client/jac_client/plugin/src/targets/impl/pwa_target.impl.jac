@@ -196,17 +196,20 @@ def _build_service_worker_content(cache_name: str, precache_files: list[str]) ->
     return f'''// Jac PWA Service Worker
 const CACHE_NAME = '{cache_name}';
 const PRECACHE_ASSETS = [
-  './',
   {', '.join(
         precache_files
     )}
 ];
 
-// Install event - precache assets
+// Install event - precache assets individually (resilient to auth redirects)
 self.addEventListener('install', (event) => {{
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE_ASSETS))
+      .then((cache) => Promise.all(
+        PRECACHE_ASSETS.map((url) =>
+          cache.add(url).catch((err) => console.warn('SW: skipped caching', url, err))
+        )
+      ))
       .then(() => self.skipWaiting())
   );
 }});
@@ -519,7 +522,7 @@ def _build_pwa_install_banner_script(pwa_config: dict) -> str {
           }});
         }}
 
-        // Show banner after delay - install button handles prompt availability
+        // Show banner after delay
         setTimeout(showBanner, DELAY);
       }})();
     </script>''';

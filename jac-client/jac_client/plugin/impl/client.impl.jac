@@ -1,4 +1,9 @@
 import from jaclang.project.config { get_config }
+import from jac_client.plugin.src.targets.pwa_target {
+    _build_install_prompt_capture_script,
+    _build_sw_registration_script,
+    _build_pwa_install_banner_script
+}
 
 """Send static file response (images, fonts, etc.)."""
 impl JacClient.send_static_file(
@@ -86,17 +91,11 @@ impl JacClient.render_page(
         pwa_head = f'''
     <link rel="manifest" href="/static/manifest.json">
     <meta name="theme-color" content="{pwa_theme_color}">
-    <link rel="apple-touch-icon" href="/static/pwa-192x192.png">''';
-        pwa_body = '''
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/static/sw.js')
-            .then((reg) => console.log('SW registered:', reg.scope))
-            .catch((err) => console.log('SW registration failed:', err));
-        });
-      }
-    </script>''';
+    <link rel="apple-touch-icon" href="/static/pwa-192x192.png">
+    ''' + _build_install_prompt_capture_script();
+        pwa_body = _build_sw_registration_script() + _build_pwa_install_banner_script(
+            pwa_cfg
+        );
     }
     # Build __jac_init__ JSON with endpoint effects for client-side auto-caching
     init_data = {

@@ -3,6 +3,11 @@
 import os;
 import tempfile;
 import from pathlib { Path }
+import from jac_client.plugin.src.targets.pwa_target {
+    _build_install_prompt_capture_script,
+    _build_sw_registration_script,
+    _build_pwa_install_banner_script
+}
 
 """Create a minimal jac.toml file for PWA testing."""
 def _create_jac_toml_with_pwa(temp_dir: str, pwa_config: dict | None = None) -> str {
@@ -301,6 +306,111 @@ test "pwa banner can be disabled" {
 
             assert config.is_pwa_enabled() , "PWA should still be enabled";
             assert not pwa_config.get("install_banner") , "Banner should be disabled";
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}
+
+# =============================================================================
+# PWA Runtime Script Injection Tests
+# =============================================================================
+
+"""Test that install prompt capture script contains beforeinstallprompt handler."""
+test "pwa install prompt capture script has beforeinstallprompt" {
+    script = _build_install_prompt_capture_script();
+    assert "beforeinstallprompt" in script,
+        "Prompt capture script must listen for beforeinstallprompt event";
+    assert "__jacPwaPrompt" in script,
+        "Prompt capture script must store the prompt event";
+    assert "<script>" in script,
+        "Prompt capture must be wrapped in a script tag";
+}
+
+"""Test that SW registration script registers sw.js."""
+test "pwa sw registration script registers service worker" {
+    script = _build_sw_registration_script();
+    assert "serviceWorker" in script,
+        "SW registration script must check for serviceWorker support";
+    assert "sw.js" in script,
+        "SW registration script must register sw.js";
+    assert "<script>" in script,
+        "SW registration must be wrapped in a script tag";
+}
+
+"""Test that install banner script contains banner UI and dismiss logic."""
+test "pwa install banner script contains banner ui" {
+    script = _build_pwa_install_banner_script({});
+    assert "jac-pwa-banner" in script,
+        "Banner script must create the banner element";
+    assert "dismissBanner" in script,
+        "Banner script must have dismiss functionality";
+    assert "shouldShow" in script,
+        "Banner script must check whether to show";
+    assert "localStorage" in script,
+        "Banner script must persist dismiss state";
+    assert "<script>" in script,
+        "Banner script must be wrapped in a script tag";
+}
+
+"""Test that client.impl.jac imports the three PWA runtime scripts."""
+test "client impl imports pwa runtime scripts" {
+    # Read client.impl.jac and verify it imports the PWA functions
+    impl_path = Path(__file__).parent.parent / "plugin" / "impl" / "client.impl.jac";
+    content = impl_path.read_text(encoding='utf-8');
+
+    assert "_build_install_prompt_capture_script" in content,
+        "client.impl.jac must import _build_install_prompt_capture_script";
+    assert "_build_sw_registration_script" in content,
+        "client.impl.jac must import _build_sw_registration_script";
+    assert "_build_pwa_install_banner_script" in content,
+        "client.impl.jac must import _build_pwa_install_banner_script";
+}
+
+# =============================================================================
+# Vite Define Guard Tests
+# =============================================================================
+
+"""Test that _format_define_entries skips API base URL when empty (desktop builds)."""
+test "vite define skips api base url when empty" {
+    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        try {
+            os.chdir(temp_dir);
+            toml_content = '[project]\nname = "test-app"\nversion = "1.0.0"\n';
+            with open("jac.toml", "w") as f {
+                f.write(toml_content);
+            }
+            bundler = ViteBundler(Path(temp_dir));
+            result = bundler._format_define_entries("", {});
+            assert "__JAC_API_BASE_URL__" not in result,
+                "Empty api_base_url must NOT inject API base URL define (breaks desktop/Tauri builds)";
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}
+
+"""Test that _format_define_entries includes API base URL when set."""
+test "vite define includes api base url when set" {
+    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        try {
+            os.chdir(temp_dir);
+            toml_content = '[project]\nname = "test-app"\nversion = "1.0.0"\n';
+            with open("jac.toml", "w") as f {
+                f.write(toml_content);
+            }
+            bundler = ViteBundler(Path(temp_dir));
+            result = bundler._format_define_entries("http://localhost:8000", {});
+            assert "__JAC_API_BASE_URL__" in result,
+                "Non-empty api_base_url must inject API base URL define";
+            assert "localhost:8000" in result,
+                "Define must contain the actual URL";
         } finally {
             os.chdir(original_cwd);
         }
