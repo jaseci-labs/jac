@@ -3949,10 +3949,15 @@ impl EsastGenPass.exit_jsx_comment(nd: uni.JsxComment) -> None {
     nd.gen.es_ast = None;
 }
 
-"""Process JSX normal attribute."""
-impl EsastGenPass.exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None {
-    self.jsx_processor.normal_attribute(nd);
-}
+"""Process JSX normal attribute — no-op.
+
+Attribute classification (`normal_attribute`) is now driven by the element
+producer (`EsJsxProcessor.element`), which is the sole caller so each attribute
+is classified exactly once. (Classifying here too would re-run the scoped-style
+class rewrite a second time and double-hash the tokens.) The attribute value
+expression is lowered independently by its own child traversal, so nothing here
+is needed."""
+impl EsastGenPass.exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None { }
 
 """Process JSX spread attribute."""
 impl EsastGenPass.exit_jsx_spread_attribute(nd: uni.JsxSpreadAttribute) -> None {

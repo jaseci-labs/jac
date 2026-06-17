@@ -220,12 +220,20 @@ test "solid file-based-routing entry mounts via solid-js/web + router shim" {
     assert 'react-router-dom' not in script;
     assert 'React.createElement' not in script;
     assert 'BrowserRouter' not in script;
-    # Router tree + auth wiring come from the shim's `@jac/runtime` exports.
-    assert 'Router, Routes, Route, AuthGuard' in script;
+    # Native `@solidjs/router`: no <Routes>, routes are <Route> children of
+    # <Router> directly, each with a `component` (not a prebuilt `element`).
+    assert 'Router, Route, AuthGuard, __jacMakeLayoutRoot' in script;
+    assert 'Routes,' not in script;
     assert 'from "./_routes.js"' in script;
-    assert 'h(Route, { path: r.path, element: h(r.element, {}) })' in script;
-    assert 'AuthGuard("/login")' in script;
-    assert 'h(Router, {}' in script;
+    assert 'h(Route, { path: r.path, component: r.element })' in script;
+    # AuthGuard nests the protected routes and renders the matched child
+    # (`props.children`) when authenticated.
+    assert 'function _AuthGuardRoute(props) { return AuthGuard({ redirect: "/login", children: props.children }); }' in script;
+    assert 'h(Route, { component: _AuthGuardRoute }' in script;
+    # Root layout (when present) rides the router's `root` prop; the tree mounts
+    # via hyperscript with no <Routes> wrapper.
+    assert 'const routerProps = RootLayout ? { root: __jacMakeLayoutRoot(RootLayout) } : {};' in script;
+    assert 'h(Router, routerProps' in script;
     # Element creation is hyperscript, and the tree is wrapped in the boundary.
     assert 'const appElement = h(App, {});' in script;
     assert 'JacClientErrorBoundary' in script;
@@ -236,7 +244,7 @@ test "solid file-based-routing entry mounts via solid-js/web + router shim" {
 
 test "solid file-based-routing entry honors auth_redirect + app wrapper" {
     script = build_pages_solid_entry_script("main", "/signin", True);
-    assert 'AuthGuard("/signin")' in script;
+    assert 'AuthGuard({ redirect: "/signin", children: props.children })' in script;
     # The entry module's `app` export wraps the router tree.
     assert 'import { app as AppWrapper } from "./main.js";' in script;
     assert 'const appElement = h(AppWrapper, {}, h(App, {}));' in script;
@@ -319,7 +327,8 @@ test "solid runtime shim reaches router/form parity with the React shim" {
         "function Navigate(",
         "function Outlet(",
         "function useRouter(",
-        "function AuthGuard("
+        "function AuthGuard(",
+        "function __jacMakeLayoutRoot("
     ] {
         assert fn in js , f"router binding did not link: {fn}";
     }
@@ -373,6 +382,7 @@ test "solid runtime shim exports the full router/form surface" {
         "useParams",
         "useRouter",
         "AuthGuard",
+        "__jacMakeLayoutRoot",
         "JacForm",
         "useJacForm",
         "JacSchema",

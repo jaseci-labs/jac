@@ -13,6 +13,11 @@ import from jaclang.compiler.passes.ecmascript.reactive_intent {
     Effect,
     AsyncBoundary
 }
+# Type-only: `ViewElement` is used solely in the `lower_view` signature. A
+# runtime import would re-enter `get_compiler()` during the compiler bootstrap
+# (this module is imported early by `esast_gen_pass`); backends import the View
+# IR records lazily where they actually construct/inspect them.
+import type from jaclang.compiler.passes.ecmascript.view_ir { ViewElement }
 
 """Abstract base for per-framework lowering strategies."""
 obj FrameworkBackend {
@@ -28,7 +33,14 @@ obj FrameworkBackend {
     def lower_state_read(name: str) -> es.Expression;
     # View seam — lower a dynamic JSX position (expression child / dynamic
     # attribute value). No-op on hooks backends; signals backends thunk (`() => expr`).
+    # Consumed *inside* `lower_view` (no longer pre-applied by the producer).
     def lower_view_expr(expr: es.Expression) -> es.Expression;
+    # View IR seam ① — lower a neutral `ViewElement` tree to this backend's view
+    # form. JS-family backends (React/Preact/Solid) build a `__jacJsx(...)` factory
+    # call; a future Svelte backend builds template text. `sync_loc` is the pass's
+    # location-stamper `(es_node, jac_node=...) -> es_node`, handed in so the
+    # backend can carry each View IR node's provenance onto the ESTree it emits.
+    def lower_view(view: ViewElement, sync_loc: any) -> es.Expression;
     # Runtime symbols required by each lower_* (for import injection)
     def state_field_symbols(s: StateField) -> list[str];
     def ref_field_symbols(r: RefField) -> list[str];

@@ -95,23 +95,30 @@ impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
 # (see the glob block in the shim); only the components whose prop shape diverges
 # are adapted here.
 """Adapter for react-router-dom's `<Routes>`, which has no `@solidjs/router`
-equivalent — Solid expects `<Route>` elements as direct children of `<Router>`.
-This passthrough renders its children so React-shaped `<Router><Routes>...`
-source still lowers. Deeply nested route *matching* through this wrapper is a
-documented best-effort gap pending browser e2e."""
+equivalent — `@solidjs/router`'s `<Router>` consumes `<Route>` children as its
+config directly. The generated file-based-routing entry therefore renders routes
+straight under `<Router>` (no `<Routes>`). This passthrough is kept only for
+cross-framework surface parity; hand-written `<Router><Routes>...` source still
+lowers, but route *matching* through the wrapper is best-effort — prefer the
+native form."""
 impl Routes(props: dict) -> JsxElement {
     return props.children;
 }
 
 """Adapter mapping react-router-dom's `<Route element={<C/>}>` onto
-`@solidjs/router`'s `<Route component={C}>`: the already-built element is wrapped
-in a thunk component so Solid can mount it. `path`/`children` pass through."""
+`@solidjs/router`'s `<Route component={C}>`. The native `component` prop is
+preferred (Solid then delivers nested/auth route content to the component as
+`props.children`); a React-shape `element` is wrapped in a thunk component as a
+documented best-effort fallback for hand-written source. `path`/`children` pass
+through."""
 impl Route(props: dict) -> JsxElement {
     routeProps = {};
     if props.path != undefined {
         routeProps["path"] = props.path;
     }
-    if props.element != undefined {
+    if props.component != undefined {
+        routeProps["component"] = props.component;
+    } elif props.element != undefined {
         routeProps["component"] = lambda -> any { return props.element; };
     }
     if props.children != undefined {
@@ -144,15 +151,32 @@ impl Navigate(props: dict) -> JsxElement {
     return SolidNavigate(navProps);
 }
 
-"""`@solidjs/router` has no `<Outlet>`; nested route content is delivered to a
-parent route's `component` via `props.children`. v1 renders any children handed
-in; true nested-layout outlet semantics are a documented gap pending browser
-e2e."""
+"""`@solidjs/router` has no `<Outlet>`; it delivers the matched nested route to a
+parent/layout route's `component` as `props.children`. Jac layouts are authored
+`def layout -> JsxElement` (no params) and place `<Outlet/>` where children go, so
+the matched content can't reach them through their own props. `__jacMakeLayoutRoot`
+publishes the route props on `__JacOutletContext`; this reads `.children` back so
+the layout's `<Outlet/>` resolves. Outside a provider the context default `None`
+falls through to any direct `props.children`."""
 impl Outlet(props: dict = {}) -> JsxElement {
+    ctx = solidUseContext(__JacOutletContext);
+    if ctx != None and ctx != undefined {
+        return ctx.children;
+    }
     if props != undefined {
         return props.children;
     }
     return None;
+}
+
+"""Wrap a Jac layout component as a `@solidjs/router` `<Router root=...>` layout.
+Solid renders `root` once as the app shell and hands the matched route to it as
+`props.children`; this publishes those props on `__JacOutletContext` and renders
+the (param-less) layout, so the layout's `<Outlet/>` reads the children back."""
+impl __jacMakeLayoutRoot(layout_component: any) -> any {
+    return lambda props: any -> JsxElement { return h(
+        __JacOutletContext.Provider, {"value": props}, h(layout_component, {})
+    ); };
 }
 
 """Composed router hook — mirrors the React shim's `useRouter`, returning the
@@ -172,12 +196,13 @@ impl useRouter -> dict {
     };
 }
 
-"""Auth guard for file-based routing. Renders nested route content when
-authenticated, else redirects to the login path. Mirrors the React shim's
-`AuthGuard`; the `Outlet` path inherits the v1 outlet gap above."""
-impl AuthGuard(redirect: str = "/login") -> JsxElement {
+"""Auth guard for file-based routing. Used as a pathless parent route's
+`component`, so `@solidjs/router` passes the matched protected route in as
+`children`: render it when authenticated, else redirect to the login path.
+Mirrors the React shim's `AuthGuard` (whose `<Outlet/>` plays the same role)."""
+impl AuthGuard(redirect: str = "/login", children: any = None) -> JsxElement {
     if jacIsLoggedIn() {
-        return Outlet();
+        return children;
     }
     return Navigate({"to": redirect, "replace": True});
 }

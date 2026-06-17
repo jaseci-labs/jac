@@ -8,7 +8,9 @@ import from jaclang.compiler.passes.ecmascript.reactive_intent {
     Effect,
     AsyncBoundary
 }
-
+# View IR records are imported lazily inside `lower_view`/`_view_attr_property`
+# (see `framework_backend.jac`): a top-level runtime import would re-enter
+# `get_compiler()` during the compiler bootstrap.
 impl ReactBackend.name -> str {
     return "react";
 }
@@ -172,6 +174,156 @@ override this to wrap the expression in a thunk (`() => expr`) so the JSX runtim
 can re-read it reactively."""
 impl ReactBackend.lower_view_expr(expr: es.Expression) -> es.Expression {
     return expr;
+}
+
+"""Build one classified attribute's factory-call `Property`.
+
+`{ key: value }` with `key` the attribute name. Dynamic values route through the
+view thunk seam (`lower_view_expr`) — identity on React/Preact, `() => value` on
+Solid; event handlers, refs, and static values pass through verbatim (thunking a
+handler/ref would defer the callback/swallow the element, not a reactive read)."""
+impl ReactBackend._view_attr_property(attr: any, sync_loc: any) -> es.Property {
+    import from jaclang.compiler.passes.ecmascript.view_ir { DynamicAttr, EventAttr }
+    if isinstance(attr, DynamicAttr) {
+        name = attr.name;
+        value = sync_loc(self.lower_view_expr(attr.value), jac_node=attr.jac_node);
+    } elif isinstance(attr, EventAttr) {
+        name = attr.name;
+        value = attr.handler;
+    } else {
+        # StaticAttr | RefAttr — both carry a pre-built `value` expression.
+        name = attr.name;
+        value = attr.value;
+    }
+    key_expr = sync_loc(es.Literal(value=name), jac_node=attr.jac_node);
+    return sync_loc(
+        es.Property(
+            key=key_expr,
+            value=value,
+            kind='init',
+            method=False,
+            shorthand=False,
+            computed=False
+        ),
+        jac_node=attr.jac_node
+    );
+}
+
+"""Lower a neutral `ViewElement` tree to a `__jacJsx(tag, props, [children])` call.
+
+This is the JS-family view lowering shared by React/Preact/Solid (the factory
+name is `__jacJsx` for all three; Solid's runtime shim backs it with `solid-js/h`).
+It reproduces the ESTree the old `EsJsxProcessor.element` built directly, with the
+two backend-specific transforms now applied here from the neutral tree:
+dynamic positions are thunked via `lower_view_expr` (no-op on React/Preact) and
+spreads merge through `Object.assign`. `sync_loc` carries each View IR node's
+`jac_node` provenance onto the emitted ESTree."""
+impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression {
+    import from jaclang.compiler.passes.ecmascript.view_ir {
+        HostTag,
+        ComponentTag,
+        DynamicTag,
+        SpreadAttr,
+        TextChild,
+        DynamicChild,
+        ElementChild
+    }
+    tag = view.tag;
+    if isinstance(tag, HostTag) {
+        tag_expr: es.Expression = sync_loc(
+            es.Literal(value=tag.name), jac_node=tag.jac_node
+        );
+    } elif isinstance(tag, ComponentTag) {
+        tag_expr = tag.ref;
+    } elif isinstance(tag, DynamicTag) {
+        tag_expr = tag.expr;
+    } else {
+        # FragmentTag (or nameless element): a null tag.
+        tag_expr = sync_loc(es.Literal(value=None), jac_node=tag.jac_node);
+    }
+    has_spread = `any(isinstance(a, SpreadAttr) for a in view.attrs);
+    if not has_spread {
+        properties = [self._view_attr_property(a, sync_loc) for a in view.attrs];
+        props_expr: es.Expression = sync_loc(
+            es.ObjectExpression(properties=properties), jac_node=view.jac_node
+        );
+    } else {
+        # Spread present: merge `Object.assign({}, seg, …)` in source order; a
+        # normal attribute contributes a one-property object segment.
+        segments: list[es.Expression] = [];
+        for a in view.attrs {
+            if isinstance(a, SpreadAttr) {
+                segments.append(a.value);
+            } else {
+                segments.append(
+                    sync_loc(
+                        es.ObjectExpression(
+                            properties=[self._view_attr_property(a, sync_loc)]
+                        ),
+                        jac_node=a.jac_node
+                    )
+                );
+            }
+        }
+        if segments {
+            assign_member = sync_loc(
+                es.MemberExpression(
+                    object=sync_loc(
+                        es.Identifier(name='Object'), jac_node=view.jac_node
+                    ),
+                    property=sync_loc(
+                        es.Identifier(name='assign'), jac_node=view.jac_node
+                    ),
+                    computed=False,
+                    optional=False
+                ),
+                jac_node=view.jac_node
+            );
+            props_expr = sync_loc(
+                es.CallExpression(
+                    callee=assign_member,
+                    arguments=[
+                        sync_loc(
+                            es.ObjectExpression(properties=[]), jac_node=view.jac_node
+                        ),
+                        *segments
+                    ]
+                ),
+                jac_node=view.jac_node
+            );
+        } else {
+            props_expr = sync_loc(
+                es.ObjectExpression(properties=[]), jac_node=view.jac_node
+            );
+        }
+    }
+    children_elements: list[es.Expression] = [];
+    for child in view.children {
+        if isinstance(child, TextChild) {
+            children_elements.append(child.value);
+        } elif isinstance(child, DynamicChild) {
+            children_elements.append(
+                sync_loc(self.lower_view_expr(child.value), jac_node=child.jac_node)
+            );
+        } elif isinstance(child, ElementChild) {
+            children_elements.append(self.lower_view(child.element, sync_loc));
+        } else {
+            # SlotChild — the already-built accumulator IIFE, emitted verbatim.
+            children_elements.append(child.expr);
+        }
+    }
+    children_expr = sync_loc(
+        es.ArrayExpression(elements=children_elements), jac_node=view.jac_node
+    );
+    return sync_loc(
+        es.CallExpression(
+            callee=sync_loc(
+                es.Identifier(name=self.jsx_factory_name()), jac_node=view.jac_node
+            ),
+            arguments=[tag_expr, props_expr, children_expr]
+        ),
+        jac_node=view.jac_node
+    );
 }
 
 """Lower a state update to `setName(value)` (or `setName(name + value)`)."""

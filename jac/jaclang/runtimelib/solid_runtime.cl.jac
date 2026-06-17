@@ -20,14 +20,19 @@ straight from `solid-js` (see `SolidBackend.import_source`), not re-exported her
 
 Router parity uses thin adapters that bridge the API-shape gap between
 react-router-dom and `@solidjs/router` (`Link`→`A`, `to`→`href`, `Route element=`
-→`component=`; `Routes`/`Outlet` have no Solid equivalent and are best-effort
-shims pending browser e2e), so the
-same React-shaped names stay exported from `@jac/runtime` for every framework.
+→`component=`). The generated file-based-routing entry uses `@solidjs/router`
+natively (`<Router root={Layout}>`, `component={Page}`, and `props.children` for
+nested/auth routes); `Routes` is a passthrough kept only for cross-framework
+surface parity, and `Outlet` bridges a Jac layout's `<Outlet/>` to Solid Router's
+`props.children` via `__JacOutletContext`. The same React-shaped names stay
+exported from `@jac/runtime` for every framework.
 """
 
 import from 'solid-js/h' { default as h }
 import from 'solid-js' {
     createSignal as solidCreateSignal,
+    createContext as solidCreateContext,
+    useContext as solidUseContext,
     ErrorBoundary as SolidErrorBoundary,
     Suspense as SolidSuspense
 }
@@ -159,6 +164,12 @@ glob:pub Router = SolidRouter,
      useParams = solidUseParams,
      JacSchema = __createJacSchema(z);
 
+# Solid context carrying a parent/layout route's `props` (with `.children`) down
+# to a Jac layout's `<Outlet/>`. `@solidjs/router` has no `<Outlet>`; it hands the
+# matched nested route to the parent route's `component` as `props.children`, so
+# `__jacMakeLayoutRoot` provides those props here and `Outlet` reads them back.
+glob __JacOutletContext = solidCreateContext(None);
+
 # Adapters that bridge react-router-dom's shape onto @solidjs/router (see impl).
 def:pub Routes(props: dict) -> JsxElement;
 def:pub Route(props: dict) -> JsxElement;
@@ -166,7 +177,10 @@ def:pub Link(props: dict) -> JsxElement;
 def:pub Navigate(props: dict) -> JsxElement;
 def:pub Outlet(props: dict = {}) -> JsxElement;
 def:pub useRouter -> dict;
-def:pub AuthGuard(redirect: str = "/login") -> JsxElement;
+def:pub AuthGuard(redirect: str = "/login", children: any = None) -> JsxElement;
+# Wraps a Jac layout component as a `@solidjs/router` `root`, publishing the
+# route's `props` on `__JacOutletContext` so the layout's `<Outlet/>` resolves.
+def:pub __jacMakeLayoutRoot(layout_component: any) -> any;
 
 # --- Error boundary + async boundary ----------------------------------------
 # `JacClientErrorBoundary` presents react-error-boundary's API

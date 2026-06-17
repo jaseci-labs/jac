@@ -4,97 +4,89 @@ impl EsJsxProcessor.init(self: EsJsxProcessor, pass_ref: EsastGenPass) -> None {
     self.pass_ref = pass_ref;
     import from jaclang.compiler.passes.ecmascript { estree as es }
     self.es = es;
+    # Memoizes each element's built `ViewElement` by node id, so a parent's
+    # `ElementChild` can carry its child's neutral tree (rather than splicing the
+    # child's already-lowered expression, which would freeze the child to the
+    # backend that lowered it first and break a future per-backend `lower_view`).
+    self._view_by_node = {};
 }
 
-"""Process JSX element into the active backend's JSX factory call."""
+"""Build the neutral View IR tree for a JSX element, then lower it.
+
+Replaces the former direct ESTree-call construction: this resolves the tag
+(host / component / fragment / dynamic) and classifies the attributes and
+children ONCE into a framework-neutral `ViewElement`, then hands it to the
+active backend's `lower_view`. The JS-family backends rebuild the same
+`__jacJsx(tag, props, [children])` call from the tree (Solid additionally
+thunks dynamic positions); a future Svelte backend lowers it to template text.
+The dynamic-position thunk is no longer pre-applied here (contract §4.2 view
+seam moved into `lower_view`)."""
 impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Expression {
     es = self.es;
+    # Deferred runtime import — see the type-only note in `jsx_processor.jac`.
+    import from jaclang.compiler.passes.ecmascript.view_ir {
+        ViewElement,
+        HostTag,
+        ComponentTag,
+        FragmentTag,
+        DynamicTag,
+        SpreadAttr,
+        TextChild,
+        DynamicChild,
+        ElementChild,
+        SlotChild
+    }
+    # --- tag, resolved once ---
     if nd.dynamic_tag is not None {
         # Dynamic tag `<@expr ...>` — the tag is the expression's value
         # (a host-tag string, a view reference, or a `str | type`).
-        tag_expr: Expression = cast(
+        dyn_expr: Expression = cast(
             'Expression',
             nd.dynamic_tag.gen.es_ast
             or self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd)
         );
+        tag = DynamicTag(expr=dyn_expr, jac_node=nd);
     } elif (nd.is_fragment or not nd.name) {
-        tag_expr = self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd);
+        tag = FragmentTag(jac_node=nd);
     } else {
-        tag_expr = cast(
-            'Expression',
-            nd.name.gen.es_ast
-            or self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd.name)
-        );
-    }
-    attributes = nd.attributes or [];
-    has_spread = `any(isinstance(attr, uni.JsxSpreadAttribute) for attr in attributes);
-    if not attributes {
-        props_expr: Expression = self.pass_ref.sync_loc(
-            es.ObjectExpression(properties=[]), jac_node=nd
-        );
-    } elif has_spread {
-        segments: list[Expression] = [];
-        for attr in attributes {
-            if isinstance(attr, uni.JsxSpreadAttribute) {
-                exp = attr.gen.es_ast;
-                if isinstance(exp, es.Expression) {
-                    segments.append(exp);
-                }
-            } elif isinstance(attr, uni.JsxNormalAttribute) {
-                prop = attr.gen.es_ast;
-                if isinstance(prop, es.Property) {
-                    segments.append(
-                        self.pass_ref.sync_loc(
-                            es.ObjectExpression(properties=[prop]), jac_node=attr
-                        )
-                    );
-                }
-            }
-        }
-        if segments {
-            assign_member = self.pass_ref.sync_loc(
-                es.MemberExpression(
-                    object=self.pass_ref.sync_loc(
-                        es.Identifier(name='Object'), jac_node=nd
-                    ),
-                    property=self.pass_ref.sync_loc(
-                        es.Identifier(name='assign'), jac_node=nd
-                    ),
-                    computed=False,
-                    optional=False
-                ),
-                jac_node=nd
-            );
-            props_expr = self.pass_ref.sync_loc(
-                es.CallExpression(
-                    callee=assign_member,
-                    arguments=[
-                        self.pass_ref.sync_loc(
-                            es.ObjectExpression(properties=[]), jac_node=nd
-                        ),
-                        *segments
-                    ]
-                ),
-                jac_node=nd
-            );
+        parts = nd.name.parts or [];
+        first_val = parts[0].value if parts else None;
+        # Mirror `element_name`'s rule: a single lowercase part is a host tag
+        # (`<div>` → string literal); dotted names and Capitalized names are
+        # component references (the `Identifier`/member chain already built).
+        is_host = bool(parts)
+        and (len(parts) == 1)
+        and bool(first_val)
+        and not first_val[0].isupper();
+        if is_host {
+            tag = HostTag(name=first_val, jac_node=nd.name);
         } else {
-            props_expr = self.pass_ref.sync_loc(
-                es.ObjectExpression(properties=[]), jac_node=nd
+            ref: Expression = cast(
+                'Expression',
+                nd.name.gen.es_ast
+                or self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd.name)
             );
+            tag = ComponentTag(ref=ref, jac_node=nd.name);
         }
-    } else {
-        properties: list[Property] = [];
-        for attr in attributes {
-            prop = attr.gen.es_ast;
-            if isinstance(prop, es.Property) {
-                properties.append(prop);
-            }
-        }
-        props_expr = self.pass_ref.sync_loc(
-            es.ObjectExpression(properties=properties), jac_node=nd
-        );
     }
-    children_elements: list[Expression | SpreadElement | None] = [];
+    # --- attributes, classified once (in source order) ---
+    attrs = [];
+    for attr in (nd.attributes or []) {
+        if isinstance(attr, uni.JsxSpreadAttribute) {
+            spread_val: Expression = cast(
+                'Expression',
+                attr.gen.es_ast
+                or self.pass_ref.sync_loc(
+                    es.ObjectExpression(properties=[]), jac_node=attr
+                )
+            );
+            attrs.append(SpreadAttr(value=spread_val, jac_node=attr));
+        } elif isinstance(attr, uni.JsxNormalAttribute) {
+            attrs.append(self.normal_attribute(attr));
+        }
+    }
+    # --- children, in source order (structural whitespace + comments dropped) ---
+    children = [];
     for child in (nd.children or []) {
         # Drop JsxText nodes whose normalized text is empty (structural
         # whitespace such as the newline+indent between `}` and the next
@@ -108,32 +100,46 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
         if isinstance(child, uni.JsxComment) {
             continue;
         }
-        child_expr = child.gen.es_ast;
-        if (child_expr is None) {
-            continue;
-        }
-        if isinstance(child_expr, `list) {
-            children_elements.extend(cast('Expression', expr) for expr in child_expr);
+        if isinstance(child, uni.JsxText) {
+            children.append(
+                TextChild(value=cast('Expression', child.gen.es_ast), jac_node=child)
+            );
+        } elif isinstance(child, uni.JsxExpression) {
+            # The raw, un-thunked child expression; `lower_view` wraps it.
+            children.append(
+                DynamicChild(value=cast('Expression', child.gen.es_ast), jac_node=child)
+            );
+        } elif isinstance(child, uni.JsxElement) {
+            # Carry the child's neutral tree, not its already-lowered expression.
+            child_ve = self._view_by_node.get(id(child));
+            if child_ve is not None {
+                children.append(ElementChild(element=child_ve, jac_node=child));
+            }
         } else {
-            children_elements.append(cast('Expression', child_expr));
+            # A statement-form slot (or any other pre-lowered child): its value
+            # is an already-built expression (the accumulator IIFE) emitted
+            # verbatim — never thunked. A list-valued child expands in place.
+            child_expr = child.gen.es_ast;
+            if (child_expr is None) {
+                continue;
+            }
+            if isinstance(child_expr, `list) {
+                for sub in child_expr {
+                    children.append(
+                        SlotChild(expr=cast('Expression', sub), jac_node=child)
+                    );
+                }
+            } else {
+                children.append(
+                    SlotChild(expr=cast('Expression', child_expr), jac_node=child)
+                );
+            }
         }
     }
-    children_expr = self.pass_ref.sync_loc(
-        es.ArrayExpression(elements=children_elements), jac_node=nd
-    );
+    view = ViewElement(tag=tag, attrs=attrs, children=children, jac_node=nd);
+    self._view_by_node[id(nd)] = view;
     self.pass_ref._ensure_backend();
-    import from jaclang.runtimelib.client_surface { backend_jsx_factory_name }
-    factory_name = backend_jsx_factory_name(self.pass_ref.backend);
-    call_expr = self.pass_ref.sync_loc(
-        es.CallExpression(
-            callee=self.pass_ref.sync_loc(
-                es.Identifier(name=factory_name), jac_node=nd
-            ),
-            arguments=[tag_expr, props_expr, children_expr]
-        ),
-        jac_node=nd
-    );
-    return call_expr;
+    return self.pass_ref.backend.lower_view(view, self.pass_ref.sync_loc);
 }
 
 """Process JSX element name."""
@@ -187,16 +193,32 @@ impl EsJsxProcessor.spread_attribute(
     return expr;
 }
 
-"""Process JSX normal attribute."""
+"""Classify a JSX normal attribute into a neutral View IR attribute.
+
+Resolves the attribute kind ONCE (the classification the backends used to
+re-sniff): a value-less attribute and a string literal are `StaticAttr` (string
+literals are HTML-unescaped, and `className`/`class` tokens rewritten against the
+module's scoped `.style.css` annex); `on[A-Z]…` is an `EventAttr` (the React DOM
+convention — `onClick`, `onInput`); `ref` is a `RefAttr` (an imperative element
+hook); everything else is a `DynamicAttr`. The dynamic-position thunk (contract
+§4.2) is NOT applied here — `lower_view` owns it (no-op on hooks backends, a
+`() => expr` thunk on signals backends), keying off the attribute kind rather
+than re-deriving the fragile `on[A-Z]`/`ref` heuristic per backend."""
 impl EsJsxProcessor.normal_attribute(
     self: EsJsxProcessor, nd: uni.JsxNormalAttribute
-) -> Property {
+) -> (StaticAttr | DynamicAttr | EventAttr | RefAttr) {
     es = self.es;
-    key_expr = self.pass_ref.sync_loc(
-        es.Literal(value=nd.name.value), jac_node=nd.name
-    );
+    # Deferred runtime import — see the type-only note in `jsx_processor.jac`.
+    import from jaclang.compiler.passes.ecmascript.view_ir {
+        StaticAttr,
+        DynamicAttr,
+        EventAttr,
+        RefAttr
+    }
+    attr_name = nd.name.value;
     if (nd.value is None) {
         value_expr = self.pass_ref.sync_loc(es.Literal(value=True), jac_node=nd);
+        return StaticAttr(name=attr_name, value=value_expr, jac_node=nd);
     } elif isinstance(nd.value, uni.String) {
         import html;
         attr_value = html.unescape(nd.value.lit_value);
@@ -204,52 +226,30 @@ impl EsJsxProcessor.normal_attribute(
         # `.style.css` annex (if any): declared class tokens are hashed to
         # match the rewritten CSS selectors.
         sheet = self.pass_ref.scoped_styles;
-        if (sheet is not None and nd.name.value in ('className', 'class')) {
+        if (sheet is not None and attr_name in ('className', 'class')) {
             attr_value = sheet.rewrite_class_value(attr_value);
         }
         value_expr = self.pass_ref.sync_loc(
             es.Literal(value=attr_value), jac_node=nd.value
         );
-    } else {
-        value_expr = nd.value.gen.es_ast
-        or self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd.value);
-        # View seam (contract §4.2): a dynamic attribute value `attr={expr}` routes
-        # through the backend (no-op on hooks; thunk on signals). Event handlers
-        # (`on[A-Z]…`, the React DOM convention: `onClick`, `onInput`) are emitted
-        # as-is and never wrapped — wrapping a handler would defer the callback
-        # itself, not a reactive read. NOTE the heuristic's fragility (contract
-        # §4.2): it keys on an uppercase third char, so a lowercase custom prop
-        # like `onfoo` is NOT recognized as a handler and gets thunked.
-        attr_name = nd.name.value;
-        is_event = attr_name.startswith('on')
-        and len(attr_name) > 2
-        and attr_name[2].isupper();
-        # `ref` is an imperative element hook, not a reactive read: Solid (and
-        # React) call the ref callback with the DOM node. Thunking it on a
-        # signals backend (`() => field.ref`) swallows the element so the node
-        # never registers — exclude it from the view seam the same way event
-        # handlers are. No-op on hooks backends (`lower_view_expr` is identity).
-        is_ref = attr_name == 'ref';
-        if not is_event and not is_ref {
-            self.pass_ref._ensure_backend();
-            value_expr = self.pass_ref.sync_loc(
-                self.pass_ref.backend.lower_view_expr(value_expr), jac_node=nd.value
-            );
-        }
+        return StaticAttr(name=attr_name, value=value_expr, jac_node=nd);
     }
-    prop = self.pass_ref.sync_loc(
-        es.Property(
-            key=key_expr,
-            value=value_expr,
-            kind='init',
-            method=False,
-            shorthand=False,
-            computed=False
-        ),
-        jac_node=nd
-    );
-    nd.gen.es_ast = prop;
-    return prop;
+    value_expr = nd.value.gen.es_ast
+    or self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd.value);
+    value_expr = cast('Expression', value_expr);
+    # NOTE the event heuristic's fragility (contract §4.2): it keys on an
+    # uppercase third char, so a lowercase custom prop like `onfoo` is NOT
+    # recognized as a handler and falls through to `DynamicAttr` (and is thunked).
+    is_event = attr_name.startswith('on')
+    and len(attr_name) > 2
+    and attr_name[2].isupper();
+    if is_event {
+        return EventAttr(name=attr_name, handler=value_expr, jac_node=nd);
+    }
+    if attr_name == 'ref' {
+        return RefAttr(name=attr_name, value=value_expr, jac_node=nd);
+    }
+    return DynamicAttr(name=attr_name, value=value_expr, jac_node=nd);
 }
 
 """Process JSX text node."""
@@ -263,7 +263,12 @@ impl EsJsxProcessor.text(self: EsJsxProcessor, nd: uni.JsxText) -> Expression {
     return expr;
 }
 
-"""Process JSX expression child."""
+"""Process JSX expression child `{expr}` — store the raw, un-thunked expression.
+
+The View IR seam moved the dynamic-position thunk into `lower_view` (contract
+§4.2), so this only resolves the embedded expression; `element` wraps it in a
+`DynamicChild` and the backend thunks it (no-op on hooks, `() => expr` on
+signals) when lowering."""
 impl EsJsxProcessor.expression(
     self: EsJsxProcessor, nd: uni.JsxExpression
 ) -> Expression {
@@ -271,12 +276,6 @@ impl EsJsxProcessor.expression(
     expr: Expression = cast('Expression', nd.expr.gen.es_ast)
         if (nd.expr and nd.expr.gen.es_ast)
         else self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd.expr);
-    # View seam (contract §4.2): a dynamic JSX child `{expr}` routes through the
-    # backend. No-op on hooks backends; signals backends thunk it (`() => expr`).
-    self.pass_ref._ensure_backend();
-    expr = self.pass_ref.sync_loc(
-        self.pass_ref.backend.lower_view_expr(expr), jac_node=nd
-    );
     nd.gen.es_ast = expr;
     return expr;
 }

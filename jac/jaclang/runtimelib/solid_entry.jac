@@ -44,20 +44,15 @@ def build_simple_solid_entry_script(
 """Build the file-based-routing entry script for Solid.
 
 The Solid analogue of `build_pages_react_entry_script`: it consumes the same
-framework-neutral `./_routes.js` manifest (`routes` / `layouts`) and assembles an
-equivalent `<Router><Routes>...` tree, but through the Solid runtime shim's
-adapters (`Router`/`Routes`/`Route`/`AuthGuard` from `@jac/runtime`, which bridge
-`@solidjs/router`) and Solid's `solid-js/web` `render` + `solid-js/h` hyperscript
-factory — so the bundle resolves **no** React-ecosystem package. Element creation
-uses `h(C, {})` in place of React's `React.createElement(C, null)`; the route
-shape (`{ path, element }`) and auth-guard/layout/app-wrapper wiring mirror the
-React builder one-for-one.
-
-Known gaps (best-effort, pending browser e2e):
-`@solidjs/router` expects `<Route>` as a direct child of `<Router>` and has no
-`<Outlet>`, so the passthrough `Routes` and the `AuthGuard`→`Outlet` nesting cover
-the flat case but deeply nested matching / true layout outlets need a running
-Solid build to validate.
+framework-neutral `./_routes.js` manifest (`routes` / `layouts`) but assembles the
+route tree against `@solidjs/router` **natively** — there is no `<Routes>`, routes
+are `<Route>` children of `<Router>` directly, each uses `component={Page}` (not
+`element={<Page/>}`), a pathless `component={AuthGuard}` route groups the protected
+routes (Solid passes the matched child in as `props.children`), and a root layout
+rides `<Router root={Layout}>`. Mounting is Solid's `solid-js/web` `render` +
+`solid-js/h` hyperscript (`h(C, {})` in place of `React.createElement(C, null)`),
+so the bundle resolves **no** React-ecosystem package. The app-wrapper and error
+boundary wiring mirror the React builder.
 """
 def build_pages_solid_entry_script(
     entry_module: str, auth_redirect: str, has_app_wrapper: bool
@@ -65,7 +60,7 @@ def build_pages_solid_entry_script(
     lines: list[str] = [
         'import { render } from "solid-js/web";',
         'import h from "solid-js/h";',
-        'import { Router, Routes, Route, AuthGuard, JacClientErrorBoundary, ErrorFallback, __jacInstallErrorHandlers, __jacReactErrorHandler } from "@jac/runtime";',
+        'import { Router, Route, AuthGuard, __jacMakeLayoutRoot, JacClientErrorBoundary, ErrorFallback, __jacInstallErrorHandlers, __jacReactErrorHandler } from "@jac/runtime";',
         'import { routes, layouts } from "./_routes.js";'
     ];
     if has_app_wrapper {
@@ -80,39 +75,36 @@ def build_pages_solid_entry_script(
             'const authRoutes = routes.filter(r => r.auth);',
             'const RootLayout = layouts["/"] || null;',
             '',
+            '// `@solidjs/router` takes <Route> children directly (no <Routes>) and a',
+            '// `component` (not a prebuilt `element`); page components then receive',
+            '// nested/auth route content as `props.children`.',
             'function renderRoutes(routeList) {',
             '\treturn routeList.map(r =>',
-            '\t\th(Route, { path: r.path, element: h(r.element, {}) })',
+            '\t\th(Route, { path: r.path, component: r.element })',
             '\t);',
             '}',
             ''
         ]
     );
-    # AuthGuard is a runtime function compiled with a plain `redirect` parameter
-    # (not props destructuring), so wrap it in a component that passes the redirect
-    # string directly — identical to the React builder.
+    # The protected routes nest under a pathless `component={_AuthGuardRoute}`
+    # route; `@solidjs/router` hands the matched child to that component as
+    # `props.children`, which `AuthGuard` renders when authenticated (else it
+    # redirects). The root layout, when present, rides the router's `root` prop.
     lines.extend(
         [
-            f'function _AuthGuardRoute() {{ return AuthGuard("{auth_redirect}"); }}',
-            'const authGuardElement = h(_AuthGuardRoute, {});',
+            f'function _AuthGuardRoute(props) {{ return AuthGuard({{ redirect: "{auth_redirect}", children: props.children }}); }}',
+            '',
+            'const routeChildren = [',
+            '\t...renderRoutes(publicRoutes),',
+            '\th(Route, { component: _AuthGuardRoute },',
+            '\t\t...renderRoutes(authRoutes)',
+            '\t),',
+            '];',
+            '',
+            'const routerProps = RootLayout ? { root: __jacMakeLayoutRoot(RootLayout) } : {};',
             '',
             'function App() {',
-            '\tconst routeChildren = [',
-            '\t\t...renderRoutes(publicRoutes),',
-            '\t\th(Route, { element: authGuardElement },',
-            '\t\t\t...renderRoutes(authRoutes)',
-            '\t\t),',
-            '\t];',
-            '',
-            '\tconst routeTree = RootLayout',
-            '\t\t? h(Route, { element: h(RootLayout, {}) }, ...routeChildren)',
-            '\t\t: routeChildren;',
-            '',
-            '\treturn h(Router, {},',
-            '\t\th(Routes, {},',
-            '\t\t\t...(Array.isArray(routeTree) ? routeTree : [routeTree])',
-            '\t\t)',
-            '\t);',
+            '\treturn h(Router, routerProps, ...routeChildren);',
             '}',
             ''
         ]

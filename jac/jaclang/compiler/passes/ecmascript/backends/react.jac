@@ -9,6 +9,9 @@ import from jaclang.compiler.passes.ecmascript.reactive_intent {
     Effect,
     AsyncBoundary
 }
+# Type-only (see `framework_backend.jac`): `ViewElement` annotates `lower_view`;
+# the impl imports the View IR records lazily for runtime isinstance/construction.
+import type from jaclang.compiler.passes.ecmascript.view_ir { ViewElement }
 
 obj ReactBackend(FrameworkBackend) {
     def name -> str;
@@ -20,6 +23,13 @@ obj ReactBackend(FrameworkBackend) {
     def lower_async_boundary(a: AsyncBoundary) -> es.Expression;
     def lower_state_read(name: str) -> es.Expression;
     def lower_view_expr(expr: es.Expression) -> es.Expression;
+    # JS-family View IR lowering — shared by React/Preact/Solid (all build a
+    # `__jacJsx(tag, props, [children])` factory call). Solid diverges only via
+    # its `lower_view_expr` thunk, applied here for dynamic positions.
+    def lower_view(view: ViewElement, sync_loc: any) -> es.Expression;
+    # Per-attribute helper: build the factory-call `Property` for one classified
+    # attribute (thunking dynamic values via `lower_view_expr`).
+    def _view_attr_property(attr: any, sync_loc: any) -> es.Property;
     def state_field_symbols(s: StateField) -> list[str];
     def ref_field_symbols(r: RefField) -> list[str];
     def effect_symbols(e: Effect) -> list[str];
