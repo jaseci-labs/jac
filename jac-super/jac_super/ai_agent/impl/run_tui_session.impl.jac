@@ -238,7 +238,7 @@ def _resolve_tui_command(backend: str, pkg_root: any, initial: str) -> dict {
     }
 
     if backend == "js" {
-        # OpenTUI JS sidecar authored in Jac (.cl.jac -> JS via ai_tui_js/build.py).
+        # OpenTUI JS sidecar authored in Jac (.cl.jac -> JS via ai_tui_js/build.sh).
         # Runtime defaults to bun; override with JAC_AI_TUI_JS_RUNTIME.
         runtime = os.environ.get("JAC_AI_TUI_JS_RUNTIME", "").strip() or "bun";
         entry = str(pkg_root / "ai_tui_js" / "dist" / "main.js");
@@ -247,7 +247,7 @@ def _resolve_tui_command(backend: str, pkg_root: any, initial: str) -> dict {
                 "ok": False,
                 "cmd_args": [],
                 "error": f"jac ai JS TUI sidecar not built at {entry}",
-                "hint": "Build it: (cd jac_super/ai_tui_js && bun install && " + "python build.py), or set JAC_AI_TUI_BACKEND=na.",
+                "hint": "Build it: (cd jac_super/ai_tui_js && bun install && " + "./build.sh), or set JAC_AI_TUI_BACKEND=na.",
 
             };
         }

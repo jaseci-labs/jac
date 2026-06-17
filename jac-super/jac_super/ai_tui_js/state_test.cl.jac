@@ -1,5 +1,5 @@
 """Phase 2 parity tests: JS state evolves the same way as the NA sidecar given the
-same frame/command sequence. Run with `bun test ./dist/` after `build.py`.
+same frame/command sequence. Run with `bun test ./dist/` after `./build.sh`.
 
 Multi-statement bodies live in same-module `def`s (Jac lambdas are
 single-expression); each `test(...)` wraps `lambda : t_fn()`.

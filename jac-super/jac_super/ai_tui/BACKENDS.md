@@ -39,12 +39,11 @@ see why js won't start.
 ### `js` - OpenTUI renderer authored in Jac (default)
 
 - Sources: `jac_super/ai_tui_js/*.cl.jac` (`main`, `state`, `protocol`, `input`,
-  `render`), compiled to JS via `ai_tui_js/build.py` (`EsastGenPass` + `es_to_js`,
-  the programmatic ecmascript path - not Vite). Drives `@opentui/core`
-  imperatively; no Solid/React.
+  `render`), compiled to JS via `ai_tui_js/build.sh` (`jac jac2js` per module).
+  Drives `@opentui/core` imperatively; no Solid/React.
 - Entry: `jac_super/ai_tui_js/dist/main.js` (built artifact).
 - **Prerequisite: `bun`** must be on `PATH` (the default runtime). Build the
-  sidecar once with `cd jac_super/ai_tui_js && bun install && python build.py`.
+  sidecar once with `cd jac_super/ai_tui_js && bun install && ./build.sh`.
 - Runtime: `bun` by default; override with `JAC_AI_TUI_JS_RUNTIME` (e.g. `node`).
   Spawned as `<runtime> run <entry> [seed-prompt]`.
 - Until built (or if `bun` is absent), the implicit default falls back to `na`;
@@ -52,8 +51,7 @@ see why js won't start.
 - Renders to `/dev/tty` (passed as explicit `stdin`/`stdout` streams to
   `createCliRenderer`) so the process stdin/stdout stay the protocol pipes.
 - Logic (`state`/`protocol`/`input`) is I/O-free and unit-tested for parity
-  against the NA semantics (`bun test ./dist/`); the real spawn + frame/command
-  round-trip is covered by `ai_tui_js/smoke_bridge.py`.
+  against the NA semantics (`bun test ./dist/`).
 
 ### `na` - native renderer (fallback)
 

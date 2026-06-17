@@ -5,7 +5,7 @@
   "description": "OpenTUI JS renderer sidecar for `jac ai --tui`, authored in Jac (.cl.jac -> JS).",
   "type": "module",
   "scripts": {
-    "build": "python build.py",
+    "build": "bash build.sh",
     "test": "bun test ./dist/",
     "start": "bun run ./dist/main.js"
   },
