@@ -10,6 +10,8 @@ Key strings from libc_tty tty_read_key:
   Ctrl+Q           -> "\021"
   Ctrl+G (stop)    -> "\007"
   Ctrl+R (reset)   -> "\022"
+  Ctrl+O (palette) -> "\017"
+  Tab (slash menu) -> "\t"   when editor text starts with /
   Ctrl+A (home)    -> "\001"
   Ctrl+E (end)     -> "\005"
   Ctrl+K           -> "\013"
@@ -34,6 +36,7 @@ Key strings from libc_tty tty_read_key:
 
 import from .state { TuiState }
 import from .ipc { ipc_send_cmd }
+import from .overlay { overlay_is_active, overlay_handle_key, overlay_open_palette }
 import from .editor {
     editor_insert,
     editor_backspace,
@@ -133,6 +136,10 @@ def handle_key(key: str, state: TuiState, ipc_fd: int) -> bool {
         return False;
     }
 
+    if overlay_is_active(state) {
+        return overlay_handle_key(key, state, ipc_fd);
+    }
+
     ed = state.editor;
     ew = _editor_width(state);
     emr = _editor_max_rows(state);
@@ -159,6 +166,21 @@ def handle_key(key: str, state: TuiState, ipc_fd: int) -> bool {
         state.reset_events();
         state.dirty = True;
         return False;
+    }
+
+    # Ctrl+O (\017) — command palette
+    if code == 15 {
+        overlay_open_palette(state, "");
+        return False;
+    }
+
+    # Tab — slash-command palette when editor starts with /
+    if code == 9 {
+        ed_text = ed.get_text();
+        if ed_text.startswith("/") {
+            overlay_open_palette(state, ed_text[1:]);
+            return False;
+        }
     }
 
     # Ctrl+A (\001) — move to line start

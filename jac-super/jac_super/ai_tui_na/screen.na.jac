@@ -14,6 +14,7 @@ Layout (0-indexed rows):
 
 import from .state { TuiState, DisplayRow, EditorState }
 import from .feed { build_rows }
+import from .overlay { overlay_build_modal, overlay_composite }
 import from .terminal { ansi_sgr, ansi_reset }
 import from .width { visible_width, ansi_trunc, ansi_pad }
 
@@ -189,7 +190,7 @@ def _status_row(state: TuiState, cols: int) -> str {
         }
     }
 
-    hints: str = "^G stop  ^R reset  ^C quit";
+    hints: str = "^O commands  ^G stop  ^R reset  ^C quit";
     hints_len = len(hints);  # pure ASCII: len() == visible_width()
 
     left_len = st_len + 1;
@@ -547,6 +548,11 @@ def screen_render(state: TuiState, cols: int, rows: int) -> list[str] {
     while ri < editor_h {
         out.append(editor_rows[ri]);
         ri = ri + 1;
+    }
+
+    if state.overlay_active {
+        modal = overlay_build_modal(state, cols, rows);
+        out = overlay_composite(out, modal, cols, rows);
     }
 
     return out;

@@ -131,6 +131,10 @@ with entry {
         }
 
         if state.dirty {
+            if state.overlay_full_redraw {
+                diff_engine.invalidate();
+                state.overlay_full_redraw = False;
+            }
             lines = screen_render(state, state.term_cols, state.term_rows);
             diff_engine.paint(lines, state.term_cols, 1);
             state.dirty = False;

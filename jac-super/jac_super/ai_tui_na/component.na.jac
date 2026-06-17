@@ -5,8 +5,7 @@ codes allowed; no cursor-positioning sequences inside).
 
 Container.render concatenates children vertically.
 
-Phase 1: Screen uses typed component refs directly. Container becomes
-load-bearing in phase 2+ when per-event components arrive.
+Phase 6: SelectList command palette via overlay.na.jac.
 """
 
 obj Component {

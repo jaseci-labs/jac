@@ -334,7 +334,8 @@ on CSI 2026.
 
 | Horizon | Policy |
 |---------|--------|
-| **Short term** | NA becomes the zero-dep path once phase 0a lands. JS stays for dev parity. |
+| **Now** | **NA (`jac-na-tui`) is the primary TUI.** Pure libc, nacompile-only, phase 0a landed. |
+| **Short term** | JS OpenTUI sidecar (`ai_tui_js`) is legacy dev fallback only when explicitly built; default launcher may still try `js` then fall back to `na` until default flips. |
 | **Long term** | Retire JS OpenTUI render path; keep `ai_tui_js` protocol tests only. |
 | **Never** | Change `PROTOCOL.md` or `run_tui_session` framing for a backend swap. |
 

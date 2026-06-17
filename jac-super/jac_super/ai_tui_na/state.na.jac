@@ -1,5 +1,7 @@
 """TUI state: one Event per agent bus emit, one TuiState for the whole session."""
 
+import from .select_list { SelectList }
+
 obj EditorState {
     has lines: list[str] = [""],
         cursor_line: int = 0,
@@ -73,7 +75,13 @@ obj TuiState {
         display_rows: list[DisplayRow] = [],
         layout_cols: int = -1,
         layout_dirty: bool = True,
-        follow_tail: bool = True;
+        follow_tail: bool = True,
+        # Overlay stack (phase 6): command palette via SelectList.
+        overlay_active: bool = False,
+        overlay_title: str = "",
+        overlay_filter: str = "",
+        overlay_full_redraw: bool = False,
+        select_list: SelectList = SelectList();
 
     def reset_events {
         self.events = [];
