@@ -1,5 +1,39 @@
 """TUI state: one Event per agent bus emit, one TuiState for the whole session."""
 
+obj EditorState {
+    has lines: list[str] = [""],
+        cursor_line: int = 0,
+        cursor_col: int = 0,
+        scroll_offset: int = 0,
+        history: list[str] = [],
+        history_idx: int = -1,
+        history_draft_lines: list[str] = [""],
+        history_draft_line: int = 0,
+        history_draft_col: int = 0;
+
+    def get_text -> str {
+        result: str = "";
+        i: int = 0;
+        n = len(self.lines);
+        while i < n {
+            if i > 0 {
+                result = result + "\n";
+            }
+            result = result + self.lines[i];
+            i = i + 1;
+        }
+        return result;
+    }
+
+    def clear {
+        self.lines = [""];
+        self.cursor_line = 0;
+        self.cursor_col = 0;
+        self.scroll_offset = 0;
+        self.history_idx = -1;
+    }
+}
+
 obj Event {
     has id: int = 0,
         kind: str = "",
@@ -8,11 +42,14 @@ obj Event {
 }
 
 """One wrapped transcript line: composed text plus the source event's kind so the
-renderer can derive its color/attr without reaching back into `events`."""
+renderer can derive its color/attr without reaching back into `events`.
+pre_styled: text already contains ANSI SGR codes and is padded to inner_w;
+the renderer skips _kind_sgr and emits the text directly."""
 obj DisplayRow {
     has text: str = "",
         kind: str = "",
-        is_continuation: bool = False;
+        is_continuation: bool = False,
+        pre_styled: bool = False;
 }
 
 obj TuiState {
@@ -24,7 +61,7 @@ obj TuiState {
         cwd: str = "",
         events: list[Event] = [],
         dirty: bool = True,
-        input_buf: str = "",
+        editor: EditorState = EditorState(),
         # Top visible DISPLAY-ROW index (not an event index).
         viewport_top: int = 0,
         term_rows: int = 24,

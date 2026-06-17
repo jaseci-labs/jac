@@ -280,6 +280,47 @@ test "the renderer turns an event stream into the live view and turn tallies" {
 }
 
 
+test "ui sessions suppress tool error results from the live transcript" {
+    ai.agent.cfg.verbose = True;
+    ai.agent.bus.events = [];
+    ai.agent.bus._next_id = 1;
+    ai.agent.bus.active_feed = True;
+    stream = [
+        StreamEv(event_type="tool_call", data={"tool": "read_guide", "args": {}}),
+        StreamEv(
+            event_type="tool_result",
+            data={
+                "tool": "read_guide",
+                "result": "Tool error: GuideTools.read_guide() missing 1 required positional argument: 'name'"
+            }
+        ),
+        StreamEv(
+            event_type="tool_timing", data={"tool": "read_guide", "duration_ms": 2.0}
+        ),
+        StreamEv(event_type="chunk", data={"content": "Recovered."}),
+        StreamEv(event_type="steps_done", data={})
+    ];
+
+    events_snapshot: list = [];
+    try {
+        out = capturing(lambda : ai.agent.view.render_stream(stream));
+        events_snapshot = list(ai.agent.bus.events);
+    } finally {
+        ai.agent.bus.active_feed = False;
+        ai.agent.bus.events = [];
+        ai.agent.bus._next_id = 1;
+    }
+
+    assert "Tool error:" not in out , out;
+    assert "Recovered." in out , out;
+    assert not [
+        ev
+        for ev in events_snapshot
+        if ev.get("kind") == "tool_result" and "Tool error:" in str(ev.get("text", ""))
+    ] , events_snapshot;
+}
+
+
 test "a scripted MockLLM drives the AgentSession walker through its phases" {
     proj = make_project();
     events: list = [];

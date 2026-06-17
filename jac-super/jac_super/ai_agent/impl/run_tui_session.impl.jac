@@ -87,6 +87,8 @@ impl run_tui_session(req: AgentRequest) -> int {
     os.environ["JAC_AI_UI_PROJECT"] = project;
     os.environ["JAC_AI_UI_MODEL"] = str(r?.model or "");
     os.environ["JAC_AI_UI_NCTX"] = str(int(r?.n_ctx or 0));
+    old_suppress = os.environ.get("JAC_AI_SUPPRESS_TERM_OUTPUT");
+    os.environ["JAC_AI_SUPPRESS_TERM_OUTPUT"] = "1";
 
     ui_configure();
 
@@ -164,6 +166,11 @@ impl run_tui_session(req: AgentRequest) -> int {
         try {
             ui_stop();
         } except Exception { }
+        if old_suppress is None {
+            os.environ.pop("JAC_AI_SUPPRESS_TERM_OUTPUT", None);
+        } else {
+            os.environ["JAC_AI_SUPPRESS_TERM_OUTPUT"] = old_suppress;
+        }
     }
 
     rc: any = proc.returncode;

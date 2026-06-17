@@ -4,6 +4,7 @@ import importlib;
 import os;
 import from pathlib { Path }
 import jaclang.cli.ai_agent as ai_mod;
+import from jaclang.cli.agent_api { AgentRequest }
 
 
 obj DummyProc {
@@ -24,6 +25,34 @@ obj DummyStopEvt {
 
     def is_set -> bool {
         return self.stopped;
+    }
+}
+
+
+obj DummyPipe {
+    def write(_text: str) { }
+    def flush { }
+    def close { }
+}
+
+
+obj DummySpawnedProc {
+    has pid: int = 1234,
+        returncode: int = 0,
+        stdin: DummyPipe = DummyPipe(),
+        stdout: list[str] = [];
+
+    def poll -> int {
+        return 0;
+    }
+
+    def wait -> int {
+        self.returncode = 0;
+        return 0;
+    }
+
+    def terminate {
+        self.returncode = 0;
     }
 }
 
@@ -127,4 +156,62 @@ test "command resolution reports missing backends and unknown names" {
     } else {
         assert "jac-na-tui not found" in na["error"];
     }
+}
+
+
+test "run_tui_session suppresses terminal prints only for the session lifetime" {
+    tui_mod = importlib.import_module("jac_super.ai_agent.run_tui_session");
+    runner = getattr(tui_mod, "run_tui_session");
+    old_resolve = getattr(tui_mod, "_resolve_tui_command");
+    old_spawn = getattr(tui_mod, "_spawn_tui_backend");
+    old_configure = getattr(ai_mod, "ui_configure");
+    old_stream = getattr(ai_mod, "ui_stream");
+    old_stop = getattr(ai_mod, "ui_stop");
+    prior = os.environ.get("JAC_AI_SUPPRESS_TERM_OUTPUT");
+    seen: list[str] = [];
+
+    def fake_resolve(_backend: str, _pkg_root: any, _initial: str) -> dict {
+        return {"ok": True, "cmd_args": ["dummy"], "error": "", "hint": ""};
+    }
+
+    def fake_spawn(_cmd_args: list) -> DummySpawnedProc {
+        return DummySpawnedProc();
+    }
+
+    def fake_configure {
+        seen.append(os.environ.get("JAC_AI_SUPPRESS_TERM_OUTPUT", ""));
+    }
+
+    def fake_stream -> any {
+        for item in [] {
+            yield item;
+        }
+    }
+
+    def fake_stop { }
+
+    setattr(tui_mod, "_resolve_tui_command", fake_resolve);
+    setattr(tui_mod, "_spawn_tui_backend", fake_spawn);
+    setattr(ai_mod, "ui_configure", fake_configure);
+    setattr(ai_mod, "ui_stream", fake_stream);
+    setattr(ai_mod, "ui_stop", fake_stop);
+    try {
+        os.environ.pop("JAC_AI_SUPPRESS_TERM_OUTPUT", None);
+        rc = runner(AgentRequest(tui=True, cwd=os.getcwd()));
+    } finally {
+        setattr(tui_mod, "_resolve_tui_command", old_resolve);
+        setattr(tui_mod, "_spawn_tui_backend", old_spawn);
+        setattr(ai_mod, "ui_configure", old_configure);
+        setattr(ai_mod, "ui_stream", old_stream);
+        setattr(ai_mod, "ui_stop", old_stop);
+        if prior is None {
+            os.environ.pop("JAC_AI_SUPPRESS_TERM_OUTPUT", None);
+        } else {
+            os.environ["JAC_AI_SUPPRESS_TERM_OUTPUT"] = prior;
+        }
+    }
+
+    assert rc == 0 , rc;
+    assert seen == ["1"] , seen;
+    assert os.environ.get("JAC_AI_SUPPRESS_TERM_OUTPUT") is None;
 }

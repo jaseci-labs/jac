@@ -1,0 +1,3 @@
+# nacompile smoke-test binaries (built locally, not committed)
+no_c_*
+!no_c_*.na.jac

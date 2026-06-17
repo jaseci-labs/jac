@@ -7,6 +7,8 @@ codegen) and is append-only.
 """
 
 import from .state { Event, DisplayRow, TuiState }
+import from .markdown { md_render }
+import from .tool_block { tool_call_rows, tool_result_rows }
 
 def event_prefix(ev: Event) -> str {
     kind = ev.kind;
@@ -93,17 +95,64 @@ def _wrap_line(
     }
 }
 
-"""Project one event into wrapped rows: split on explicit newlines, then wrap
-each logical line. Continuation rows are indented under the gutter."""
+"""Project one event into wrapped rows.
+
+answer and reasoning events are rendered as markdown (pre-styled ANSI rows).
+All other events use plain prefix-wrap.
+"""
 def wrap_event(ev: Event, width: int, out: list[DisplayRow]) {
+    kind = ev.kind;
+    body = event_text(ev);
+
+    # Markdown rendering for assistant answer and reasoning
+    if kind == "answer" {
+        md_rows = md_render(body, width, 220, 220, 220, 0);
+        i: int = 0;
+        n = len(md_rows);
+        while i < n {
+            out.append(
+                DisplayRow(
+                    text=md_rows[i], kind=kind, is_continuation=i > 0, pre_styled=True
+                )
+            );
+            i = i + 1;
+        }
+        return;
+    }
+    if kind == "reasoning" {
+        # attrs=6: dim(2)+italic(4)
+        md_rows = md_render(body, width, 160, 160, 160, 6);
+        i: int = 0;
+        n = len(md_rows);
+        while i < n {
+            out.append(
+                DisplayRow(
+                    text=md_rows[i], kind=kind, is_continuation=i > 0, pre_styled=True
+                )
+            );
+            i = i + 1;
+        }
+        return;
+    }
+
+    # ToolBlock rendering for tool call and result events (pi tool-execution.ts patterns)
+    if kind == "call" {
+        tool_call_rows(ev.node, body, width, out);
+        return;
+    }
+    if kind == "tool_result" {
+        tool_result_rows(ev.node, body, width, out);
+        return;
+    }
+
+    # Plain prefix-wrap for all other event kinds
     pre = event_prefix(ev);
     cont = "    ";
-    body = event_text(ev);
     parts = body.split("\n");
     i: int = 0;
     np = len(parts);
     while i < np {
-        _wrap_line(parts[i], width, pre, cont, ev.kind, out);
+        _wrap_line(parts[i], width, pre, cont, kind, out);
         i = i + 1;
     }
 }
@@ -123,6 +172,10 @@ def build_rows(state: TuiState) {
     i: int = 0;
     n = len(state.events);
     while i < n {
+        # Blank separator row between events for visual breathing room.
+        if i > 0 {
+            rows.append(DisplayRow(text="", kind="sep", is_continuation=False));
+        }
         wrap_event(state.events[i], width, rows);
         i = i + 1;
     }

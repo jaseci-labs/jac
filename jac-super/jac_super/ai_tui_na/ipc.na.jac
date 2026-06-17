@@ -2,9 +2,7 @@
 
 import from .state { TuiState }
 
-import from .tui_helpers {
-    def tui_read_line -> str;  def tui_write(fd: i32, s: str) -> None;
-}
+import from .libc_tty { tty_read_line, tty_write }
 
 def _unescape(s: str) -> str {
     result: str = "";
@@ -87,7 +85,7 @@ def ipc_read_frame_v2(state: TuiState) -> bool {
     lines: list[str] = [];
 
     while True {
-        raw = tui_read_line();
+        raw = tty_read_line();
         if len(raw) == 0 {
             return False;
         }
@@ -137,5 +135,5 @@ def ipc_read_frame_v2(state: TuiState) -> bool {
 }
 
 def ipc_send_cmd(fd: int, cmd: str) {
-    tui_write(fd, cmd + "\n");
+    tty_write(fd, cmd + "\n");
 }

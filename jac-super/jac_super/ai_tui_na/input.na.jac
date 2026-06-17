@@ -1,49 +1,120 @@
-"""Keypress dispatcher: maps raw key strings from tui_read_key to state mutations.
+"""Keypress dispatcher: routes raw key strings to editor operations or IPC commands.
 
-Returns True when the TUI should quit.
-
-Key strings from tui_helpers.c tui_read_key:
-  Regular char   -> itself e.g. "a", " "
-  Enter          -> "\r"
-  Backspace      -> "\177"  (DEL)
-  Ctrl+C         -> "\003"
-  Ctrl+Q         -> "\021"
-  Ctrl+G (stop)  -> "\007"
-  Ctrl+R (reset) -> "\022"
-  ESC            -> "\033"
-  Up arrow       -> "\033[A"
-  Down arrow     -> "\033[B"
-  Page Up        -> "\033[5~"
-  Page Down      -> "\033[6~"
+Key strings from libc_tty tty_read_key:
+  Regular char     -> itself e.g. "a", " "
+  Enter            -> "\r"   (CR, code 13)
+  LF               -> "\n"   (code 10)
+  Backspace        -> "\177" (DEL, code 127) or "\010" (BS, code 8)
+  Delete           -> "\033[3~"
+  Ctrl+C           -> "\003"
+  Ctrl+Q           -> "\021"
+  Ctrl+G (stop)    -> "\007"
+  Ctrl+R (reset)   -> "\022"
+  Ctrl+A (home)    -> "\001"
+  Ctrl+E (end)     -> "\005"
+  Ctrl+K           -> "\013"
+  Ctrl+U           -> "\025"
+  Ctrl+W           -> "\027"
+  ESC              -> "\033"
+  Alt+Enter        -> "\033\r"
+  Shift+Enter (CSI)-> "\033[13;2~"
+  Up arrow         -> "\033[A" or "\033OA"
+  Down arrow       -> "\033[B" or "\033OB"
+  Left arrow       -> "\033[D" or "\033OD"
+  Right arrow      -> "\033[C" or "\033OC"
+  Home             -> "\033[H" or "\033OH"
+  End              -> "\033[F" or "\033OF"
+  Ctrl+Left        -> "\033[1;5D" or "\033[5D"
+  Ctrl+Right       -> "\033[1;5C" or "\033[5C"
+  Alt+Left         -> "\033b"  or "\033[1;3D"
+  Alt+Right        -> "\033f"  or "\033[1;3C"
+  Page Up          -> "\033[5~"
+  Page Down        -> "\033[6~"
 """
 
 import from .state { TuiState }
 import from .ipc { ipc_send_cmd }
+import from .editor {
+    editor_insert,
+    editor_backspace,
+    editor_forward_delete,
+    editor_newline,
+    editor_move_left,
+    editor_move_right,
+    editor_move_up,
+    editor_move_down,
+    editor_move_line_start,
+    editor_move_line_end,
+    editor_delete_to_line_end,
+    editor_delete_to_line_start,
+    editor_delete_word_back,
+    editor_word_left,
+    editor_word_right,
+    editor_is_on_first_vline,
+    editor_is_on_last_vline,
+    editor_nav_history,
+    editor_update_scroll,
+    editor_submit
+}
 
-def _handle_enter(state: TuiState, ipc_fd: int) -> bool {
-    prompt = state.input_buf.strip();
-    state.input_buf = "";
+def _editor_width(state: TuiState) -> int {
+    # Content width available for the editor (same as text_width in screen.na.jac).
+    # cols - 4 (box borders+space) - 2 (prompt prefix "› " or "  ")
+    w = state.term_cols - 6;
+    if w < 1 {
+        return 1;
+    }
+    return w;
+}
+
+def _editor_max_rows(state: TuiState) -> int {
+    # Maximum visible editor content rows (30% of terminal, min 1, max 10).
+    m = state.term_rows - 6;
+    if m < 1 {
+        return 1;
+    }
+    if m > 10 {
+        return 10;
+    }
+    return m;
+}
+
+def _handle_submit(state: TuiState, ipc_fd: int) -> bool {
+    ed = state.editor;
+
+    # Check backslash+Enter: if char before cursor is \, replace with newline.
+    if len(ed.lines) > 0 {
+        cur_line = ed.lines[ed.cursor_line];
+        if ed.cursor_col > 0 and cur_line[ed.cursor_col - 1] == "\\" {
+            editor_backspace(ed);
+            editor_newline(ed);
+            state.dirty = True;
+            return False;
+        }
+    }
+
+    text = editor_submit(ed);
     state.dirty = True;
 
-    if len(prompt) == 0 {
+    if len(text) == 0 {
         return False;
     }
 
-    if prompt == "/quit" or prompt == "/exit" or prompt == "/q" {
+    if text == "/quit" or text == "/exit" or text == "/q" {
         ipc_send_cmd(ipc_fd, "QUIT");
         return True;
     }
-    if prompt == "/stop" {
+    if text == "/stop" {
         ipc_send_cmd(ipc_fd, "STOP");
         return False;
     }
-    if prompt == "/reset" {
+    if text == "/reset" {
         ipc_send_cmd(ipc_fd, "RESET");
         state.reset_events();
         return False;
     }
-    if prompt.startswith("/settings ") {
-        args = prompt[10:].strip();
+    if text.startswith("/settings ") {
+        args = text[10:].strip();
         ipc_send_cmd(ipc_fd, f"APPLY:{args}");
         return False;
     }
@@ -52,7 +123,7 @@ def _handle_enter(state: TuiState, ipc_fd: int) -> bool {
         return False;
     }
 
-    ipc_send_cmd(ipc_fd, f"SEND:{prompt}");
+    ipc_send_cmd(ipc_fd, f"SEND:{text}");
     state.scroll_to_bottom();
     return False;
 }
@@ -61,6 +132,10 @@ def handle_key(key: str, state: TuiState, ipc_fd: int) -> bool {
     if len(key) == 0 {
         return False;
     }
+
+    ed = state.editor;
+    ew = _editor_width(state);
+    emr = _editor_max_rows(state);
 
     first = key[0];
     code = ord(first);
@@ -86,40 +161,188 @@ def handle_key(key: str, state: TuiState, ipc_fd: int) -> bool {
         return False;
     }
 
-    # Enter (\r or \n)
+    # Ctrl+A (\001) — move to line start
+    if code == 1 {
+        editor_move_line_start(ed);
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
+    }
+
+    # Ctrl+E (\005) — move to line end
+    if code == 5 {
+        editor_move_line_end(ed);
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
+    }
+
+    # Ctrl+K (\013) — delete to line end
+    if code == 11 {
+        editor_delete_to_line_end(ed);
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
+    }
+
+    # Ctrl+U (\025) — delete to line start
+    if code == 21 {
+        editor_delete_to_line_start(ed);
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
+    }
+
+    # Ctrl+W (\027) — delete word back
+    if code == 23 {
+        editor_delete_word_back(ed);
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
+    }
+
+    # Alt+Enter (\033\r) or Shift+Enter (\033[13;2~) — insert newline
+    if key == "\033\r" or key == "\033[13;2~" {
+        editor_newline(ed);
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
+    }
+
+    # Enter (\r = 13 or \n = 10)
     if code == 13 or code == 10 {
-        return _handle_enter(state, ipc_fd);
+        if len(key) == 1 {
+            return _handle_submit(state, ipc_fd);
+        }
+        # Multi-byte sequence starting with LF: treat as newline
+        editor_newline(ed);
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
+        return False;
     }
 
     # Backspace / DEL (\177 or \010)
     if code == 127 or code == 8 {
-        blen = len(state.input_buf);
-        if blen > 0 {
-            state.input_buf = state.input_buf[:blen - 1];
-            state.dirty = True;
-        }
+        editor_backspace(ed);
+        editor_update_scroll(ed, ew, emr);
+        state.dirty = True;
         return False;
     }
 
     # ESC sequences
     if code == 27 and len(key) > 1 {
-        if key == "\033[A" or key == "\033OA" {
-            state.scroll_up(3);
-        } elif key == "\033[B" or key == "\033OB" {
-            state.scroll_down(3);
-        } elif key == "\033[5~" or key == "\033[1;5A" {
-            state.scroll_up(state.term_rows - 4);
-        } elif key == "\033[6~" or key == "\033[1;5B" {
-            state.scroll_down(state.term_rows - 4);
+        # Delete key
+        if key == "\033[3~" {
+            editor_forward_delete(ed);
+            editor_update_scroll(ed, ew, emr);
+            state.dirty = True;
+            return False;
         }
-        state.dirty = True;
+
+        # Up arrow — move cursor up or navigate history older
+        if key == "\033[A" or key == "\033OA" {
+            if editor_is_on_first_vline(ed, ew) {
+                navigated = editor_nav_history(ed, -1);
+                if not navigated {
+                    editor_move_line_start(ed);
+                }
+            } else {
+                editor_move_up(ed, ew);
+            }
+            editor_update_scroll(ed, ew, emr);
+            state.dirty = True;
+            return False;
+        }
+
+        # Down arrow — move cursor down or navigate history newer
+        if key == "\033[B" or key == "\033OB" {
+            if editor_is_on_last_vline(ed, ew) {
+                navigated = editor_nav_history(ed, 1);
+                if not navigated {
+                    editor_move_line_end(ed);
+                }
+            } else {
+                editor_move_down(ed, ew);
+            }
+            editor_update_scroll(ed, ew, emr);
+            state.dirty = True;
+            return False;
+        }
+
+        # Left arrow
+        if key == "\033[D" or key == "\033OD" {
+            editor_move_left(ed);
+            editor_update_scroll(ed, ew, emr);
+            state.dirty = True;
+            return False;
+        }
+
+        # Right arrow
+        if key == "\033[C" or key == "\033OC" {
+            editor_move_right(ed);
+            editor_update_scroll(ed, ew, emr);
+            state.dirty = True;
+            return False;
+        }
+
+        # Home
+        if key == "\033[H" or key == "\033OH" {
+            editor_move_line_start(ed);
+            editor_update_scroll(ed, ew, emr);
+            state.dirty = True;
+            return False;
+        }
+
+        # End
+        if key == "\033[F" or key == "\033OF" {
+            editor_move_line_end(ed);
+            editor_update_scroll(ed, ew, emr);
+            state.dirty = True;
+            return False;
+        }
+
+        # Ctrl+Left or Alt+Left — word left
+        if key == "\033[1;5D"
+        or key == "\033[5D"
+        or key == "\033b"
+        or key == "\033[1;3D" {
+            editor_word_left(ed);
+            editor_update_scroll(ed, ew, emr);
+            state.dirty = True;
+            return False;
+        }
+
+        # Ctrl+Right or Alt+Right — word right
+        if key == "\033[1;5C"
+        or key == "\033[5C"
+        or key == "\033f"
+        or key == "\033[1;3C" {
+            editor_word_right(ed);
+            editor_update_scroll(ed, ew, emr);
+            state.dirty = True;
+            return False;
+        }
+
+        # Page Up — scroll transcript
+        if key == "\033[5~" or key == "\033[1;5A" {
+            state.scroll_up(state.term_rows - 4);
+            return False;
+        }
+
+        # Page Down — scroll transcript
+        if key == "\033[6~" or key == "\033[1;5B" {
+            state.scroll_down(state.term_rows - 4);
+            return False;
+        }
+
         return False;
     }
 
-    # Printable ASCII
+    # Printable ASCII (32-126)
     if code >= 32 and code <= 126 {
-        if len(state.input_buf) < 1024 {
-            state.input_buf = state.input_buf + first;
+        if len(ed.get_text()) < 4096 {
+            editor_insert(ed, first);
+            editor_update_scroll(ed, ew, emr);
             state.dirty = True;
         }
         return False;

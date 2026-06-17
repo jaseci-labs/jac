@@ -336,6 +336,9 @@ impl _count_diags(diags: list) -> tuple[int, int] {
 
 """True when the agent may print to the terminal."""
 impl _term_output_enabled -> bool {
+    if os.environ.get("JAC_AI_SUPPRESS_TERM_OUTPUT", "").strip() == "1" {
+        return False;
+    }
     return sys.stdout.isatty() and os.environ.get("TERM", "") not in {"", "dumb"};
 }
 
@@ -345,6 +348,22 @@ impl _term_print(*args: any, **kwargs: any) -> None {
         return;
     }
     console.print(*args, **kwargs);
+}
+
+"""True when a tool result is an execution failure rather than useful output."""
+impl _tool_result_is_error(result: str, tool_name: str = "") -> bool {
+    text = result.strip();
+    if not text {
+        return False;
+    }
+    if text.startswith("Tool error:") {
+        return True;
+    }
+    timeout_prefix = f"Tool '{tool_name}' timed out after " if tool_name else "Tool '";
+    if text.startswith(timeout_prefix) and " timed out after " in text {
+        return True;
+    }
+    return False;
 }
 
 """Rebuild the project model after a write and report the diagnostics it caused.
@@ -2031,8 +2050,15 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
         if pend_result is None {
             return;
         }
-        (result, ms) = (pend_result["result"], pend_result["ms"]);
+        (tool_name, result, ms) = (
+            str(pend_result.get("tool", "")),
+            pend_result["result"],
+            pend_result["ms"]
+        );
         pend_result = None;
+        if agent.bus.active_feed and _tool_result_is_error(result, tool_name) {
+            return;
+        }
         agent.bus.emit("tool_result", {"text": truncate(str(result), 4000)});
         lines = agent.view._result_snippet(result, 3 if agent.cfg.verbose else 1);
         tail = f"   {agent.view._fmt_ms(ms)}"
@@ -2138,7 +2164,11 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
                 clear_think();
                 end_line();
                 flush_result();
-                pend_result = {"result": str(data.get("result", "")), "ms": None};
+                pend_result = {
+                    "tool": str(data.get("tool", "")),
+                    "result": str(data.get("result", "")),
+                    "ms": None
+                };
             } elif kind == "tool_timing" {
                 if pend_result is not None {
                     pend_result["ms"] = float(data.get("duration_ms", 0) or 0);

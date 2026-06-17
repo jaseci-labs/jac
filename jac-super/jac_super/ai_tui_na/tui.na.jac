@@ -1,9 +1,9 @@
-"""NA-native TUI binary for `jac ai --tui`.
+"""NA-native TUI binary — pure libc, no OpenTUI, no custom C.
 
 IPC contract (see ipc.na.jac):
   stdin  <- Python: key:value frames terminated by "---"
   fd 3   -> Python: SEND:, STOP, RESET, QUIT, APPLY: commands  (after fd remap)
-  /dev/tty: keyboard in; ANSI rendering via OpenTUI on fd 1
+  /dev/tty: keyboard in; ANSI rendering on fd 1
 
 Build:
   cd jac-super/jac_super/ai_tui_na
@@ -13,31 +13,38 @@ Build:
 import sys;
 import os;
 
-import from .tui_helpers {
-    def tui_open -> i32;  def tui_close(fd: i32) -> None;  def tui_poll(
-        tty_fd: i32, timeout_ms: i32
-    ) -> None;  def tui_stdin_ready -> i32;  def tui_key_ready -> i32;  def tui_read_key(
-        fd: i32
-    ) -> str;  def tui_write(fd: i32, s: str) -> None;
+import from .libc_tty {
+    tty_open,
+    tty_close,
+    tty_update_size,
+    tty_rows,
+    tty_cols,
+    tty_poll,
+    tty_stdin_ready,
+    tty_key_ready,
+    tty_read_key,
+    tty_write,
+    tty_init_stdio_remap,
+    tty_restore_stdio,
+    tty_ipc_fd
 }
-
-import from .opentui_helpers {
-    def otui_init -> i32;  def otui_close -> None;  def otui_ipc_fd -> i32;  def otui_update_size -> None;  def otui_rows -> i32;  def otui_cols -> i32;
+import from .terminal {
+    term_enter_alt_screen,
+    term_leave_alt_screen,
+    term_hide_cursor,
+    term_show_cursor
 }
-
 import from .state { TuiState }
 import from .ipc { ipc_read_frame_v2, ipc_send_cmd }
-import from .render { render_full }
+import from .screen { screen_render }
+import from .diff { DiffEngine }
 import from .input { handle_key }
 
 def _sync_size(state: TuiState) {
-    otui_update_size();
-    state.term_rows = otui_rows();
-    # Typed as int so the i32 from otui_cols coerces to the i64 field width
-    # before the comparison below (avoids an i32/i64 IR type mismatch).
-    new_cols: int = otui_cols();
-    # A width change invalidates the wrapped row cache; height does not (only the
-    # number of rows shown changes, which render derives each frame).
+    tty_update_size();
+    new_rows: int = tty_rows();
+    new_cols: int = tty_cols();
+    state.term_rows = new_rows;
     if new_cols != state.term_cols {
         state.layout_dirty = True;
     }
@@ -47,38 +54,32 @@ def _sync_size(state: TuiState) {
 glob args = sys.argv;
 
 with entry {
-    tui_write(2, "[tui] starting\r\n");
+    tty_write(2, "[tui] starting\r\n");
 }
 
-# Open /dev/tty for keyboard I/O before the fd remap so raw mode is set
-# on the controlling terminal before OpenTUI touches it.
-glob raw_fd = tui_open();
+glob raw_fd: int = tty_open();
 
 with entry {
     if raw_fd < 0 {
-        tui_write(2, "[tui] tui_open failed\r\n");
+        tty_write(2, "[tui] tty_open failed\r\n");
         sys.exit(1);
     }
-
-    tui_write(2, "[tui] tui_open ok\r\n");
+    tty_write(2, "[tui] tty_open ok\r\n");
 }
 
-# Remap fds, load libopentui.so, create renderer, enter alt screen.
-glob rc = otui_init();
+glob rc: int = tty_init_stdio_remap();
 
 with entry {
     if rc < 0 {
-        tui_write(2, "[tui] otui_init failed\r\n");
-        tui_close(raw_fd);
+        tty_write(2, "[tui] stdio remap failed\r\n");
+        tty_close();
         sys.exit(1);
     }
-
-    tui_write(2, "[tui] otui_init ok\r\n");
 }
 
-# After otui_init(): fd 1 = terminal, fd 3 = IPC out pipe.
-glob ipc_fd: i32 = otui_ipc_fd(),
-     state = TuiState();
+glob ipc_fd: int = tty_ipc_fd(),
+     state: TuiState = TuiState(),
+     diff_engine: DiffEngine = DiffEngine();
 
 with entry {
     state.cwd = os.getcwd();
@@ -93,6 +94,9 @@ with entry {
         }
     }
 
+    term_enter_alt_screen(1);
+    term_hide_cursor(1);
+
     _sync_size(state);
     state.dirty = True;
 
@@ -104,10 +108,9 @@ with entry {
     }
 
     while not state.quit_flag {
-        tui_poll(raw_fd, 50);
+        tty_poll(50);
 
-        has_stdin = tui_stdin_ready();
-        if has_stdin > 0 {
+        if tty_stdin_ready() > 0 {
             ok = ipc_read_frame_v2(state);
             if not ok {
                 state.quit_flag = True;
@@ -117,9 +120,8 @@ with entry {
             state.dirty = True;
         }
 
-        has_key = tui_key_ready();
-        if has_key > 0 {
-            k = tui_read_key(raw_fd);
+        if tty_key_ready() > 0 {
+            k = tty_read_key();
             if len(k) > 0 {
                 should_quit = handle_key(k, state, ipc_fd);
                 if should_quit {
@@ -129,11 +131,14 @@ with entry {
         }
 
         if state.dirty {
-            render_full(state);
+            lines = screen_render(state, state.term_cols, state.term_rows);
+            diff_engine.paint(lines, state.term_cols, 1);
             state.dirty = False;
         }
     }
 
-    otui_close();
-    tui_close(raw_fd);
+    term_show_cursor(1);
+    term_leave_alt_screen(1);
+    tty_restore_stdio();
+    tty_close();
 }

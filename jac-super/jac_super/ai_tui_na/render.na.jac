@@ -1,4 +1,4 @@
-"""OpenTUI renderer: paints the full screen from TuiState each dirty cycle.
+"""ANSI renderer: paints the full screen from TuiState each dirty cycle.
 
 Layout (0-indexed rows):
   0        ┌─ jac.ai ─ cwd ─────────────────── model ─┐
@@ -11,33 +11,35 @@ Layout (0-indexed rows):
 
 import from .state { TuiState, DisplayRow }
 import from .feed { build_rows }
+import from .libc_tty { tty_write }
+import from .terminal { ansi_move, ansi_sgr, term_sync_start, term_sync_end }
 
-import from .opentui_helpers {
-    def otui_begin -> None;  def otui_draw_text(
-        x: i32,
-        y: i32,
-        text: str,
-        fg_r: i32,
-        fg_g: i32,
-        fg_b: i32,
-        bg_r: i32,
-        bg_g: i32,
-        bg_b: i32,
-        attrs: i32
-    ) -> None;  def otui_fill_rect(
-        x: i32, y: i32, w: i32, h: i32, bg_r: i32, bg_g: i32, bg_b: i32
-    ) -> None;  def otui_flush -> None;
+glob BG_R: int = 18,
+     BG_G: int = 18,
+     BG_B: int = 28,
+     BR_R: int = 70,
+     BR_G: int = 70,
+     BR_B: int = 100,
+     ATTR_BOLD: int = 1,
+     ATTR_DIM: int = 2,
+     ATTR_ITAL: int = 4;
+
+def _dt(
+    x: int,
+    y: int,
+    text: str,
+    fg_r: int,
+    fg_g: int,
+    fg_b: int,
+    bg_r: int,
+    bg_g: int,
+    bg_b: int,
+    attrs: int
+) {
+    tty_write(
+        1, ansi_move(x, y) + ansi_sgr(fg_r, fg_g, fg_b, bg_r, bg_g, bg_b, attrs) + text
+    );
 }
-
-glob BG_R: i32 = 18,
-     BG_G: i32 = 18,
-     BG_B: i32 = 28,
-     BR_R: i32 = 70,
-     BR_G: i32 = 70,
-     BR_B: i32 = 100,
-     ATTR_BOLD: i32 = 1,
-     ATTR_DIM: i32 = 2,
-     ATTR_ITAL: i32 = 4;
 
 def _trunc(s: str, width: int) -> str {
     if len(s) <= width {
@@ -102,9 +104,11 @@ def render_full(state: TuiState) -> None {
         return;
     }
 
-    otui_begin();
+    # Synchronized output start (terminals that don't support it ignore this)
+    term_sync_start(1);
 
-    otui_fill_rect(0, 0, cols, rows, BG_R, BG_G, BG_B);
+    # Clear screen filled with background color
+    tty_write(1, f"\033[48;2;{BG_R};{BG_G};{BG_B}m\033[2J\033[H");
 
     # inner content width: col 0 = border, col 1 = space, cols-2 = space, cols-1 = border
     inner_w = cols - 4;
@@ -114,8 +118,8 @@ def render_full(state: TuiState) -> None {
 
     # ── Row 0: Top border with title ──────────────────────────────────────
     top_line = _hline("┌", "─", "┐", cols);
-    otui_draw_text(0, 0, top_line, BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
-    otui_draw_text(2, 0, " jac.ai ", 204, 0, 204, BG_R, BG_G, BG_B, ATTR_BOLD);
+    _dt(0, 0, top_line, BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
+    _dt(2, 0, " jac.ai ", 204, 0, 204, BG_R, BG_G, BG_B, ATTR_BOLD);
 
     cwd_d = _cwd_short(state.cwd);
     model = state.model_name;
@@ -129,25 +133,21 @@ def render_full(state: TuiState) -> None {
     }
     cwd_avail = model_start - cwd_start - 2;
     if cwd_avail > 2 {
-        otui_draw_text(
-            cwd_start, 0, _trunc(cwd_d, cwd_avail), 86, 182, 194, BG_R, BG_G, BG_B, 0
-        );
+        _dt(cwd_start, 0, _trunc(cwd_d, cwd_avail), 86, 182, 194, BG_R, BG_G, BG_B, 0);
     }
     if model_start > cwd_start {
-        otui_draw_text(
-            model_start, 0, model, 120, 120, 120, BG_R, BG_G, BG_B, ATTR_DIM
-        );
+        _dt(model_start, 0, model, 120, 120, 120, BG_R, BG_G, BG_B, ATTR_DIM);
     }
 
     # ── Row 1: Status bar ─────────────────────────────────────────────────
-    otui_draw_text(0, 1, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
-    otui_draw_text(cols - 1, 1, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
+    _dt(0, 1, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
+    _dt(cols - 1, 1, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
 
     st_text: str = "○ idle";
-    st_r: i32 = 140;
-    st_g: i32 = 140;
-    st_b: i32 = 140;
-    st_a: i32 = ATTR_DIM;
+    st_r: int = 140;
+    st_g: int = 140;
+    st_b: int = 140;
+    st_a: int = ATTR_DIM;
     if state.status == "running" {
         st_text = "● running";
         st_r = 255;
@@ -169,10 +169,10 @@ def render_full(state: TuiState) -> None {
         st_b = 80;
         st_a = 0;
     }
-    otui_draw_text(2, 1, st_text, st_r, st_g, st_b, BG_R, BG_G, BG_B, st_a);
+    _dt(2, 1, st_text, st_r, st_g, st_b, BG_R, BG_G, BG_B, st_a);
     if len(state.active) > 0 {
         act_x = len(st_text) + 4;
-        otui_draw_text(
+        _dt(
             act_x,
             1,
             _trunc(state.active, inner_w - act_x),
@@ -188,12 +188,12 @@ def render_full(state: TuiState) -> None {
     hints = "^G stop  ^R reset  ^C quit";
     hints_x = cols - len(hints) - 2;
     if hints_x > len(st_text) + 8 {
-        otui_draw_text(hints_x, 1, hints, BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, ATTR_DIM);
+        _dt(hints_x, 1, hints, BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, ATTR_DIM);
     }
 
     # ── Row 2: Content divider ────────────────────────────────────────────
     div_line = _hline("├", "─", "┤", cols);
-    otui_draw_text(0, 2, div_line, BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
+    _dt(0, 2, div_line, BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
 
     # ── Layout ────────────────────────────────────────────────────────────
     input_row = rows - 1;
@@ -216,8 +216,6 @@ def render_full(state: TuiState) -> None {
     }
 
     # ── Transcript ────────────────────────────────────────────────────────
-    # Refresh the cached row layout only when text changed (layout_dirty) or the
-    # width drifted from what the cache was built at.
     if state.layout_dirty or state.layout_cols != cols {
         build_rows(state);
     }
@@ -232,8 +230,6 @@ def render_full(state: TuiState) -> None {
     if max_top < 0 {
         max_top = 0;
     }
-    # Pin to the last row while following the tail (streaming); otherwise just
-    # clamp the manual scroll position into range.
     if state.follow_tail {
         state.viewport_top = max_top;
     }
@@ -249,15 +245,13 @@ def render_full(state: TuiState) -> None {
 
     while row_idx < total and screen_row <= t_draw_end {
         dr = drows[row_idx];
-        # Cached text already carries prefix/indent; _trunc is a defensive guard
-        # for the one frame a resize may precede a rebuild.
         display = _trunc(dr.text, inner_w);
 
         kind = dr.kind;
-        ev_r: i32 = 200;
-        ev_g: i32 = 200;
-        ev_b: i32 = 200;
-        ev_a: i32 = 0;
+        ev_r: int = 200;
+        ev_g: int = 200;
+        ev_b: int = 200;
+        ev_a: int = 0;
         if kind == "user" {
             ev_r = 255;
             ev_g = 255;
@@ -307,13 +301,9 @@ def render_full(state: TuiState) -> None {
             ev_a = ATTR_DIM;
         }
 
-        otui_draw_text(0, screen_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
-        otui_draw_text(
-            2, screen_row, display, ev_r, ev_g, ev_b, BG_R, BG_G, BG_B, ev_a
-        );
-        otui_draw_text(
-            cols - 1, screen_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0
-        );
+        _dt(0, screen_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
+        _dt(2, screen_row, display, ev_r, ev_g, ev_b, BG_R, BG_G, BG_B, ev_a);
+        _dt(cols - 1, screen_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
 
         row_idx = row_idx + 1;
         screen_row = screen_row + 1;
@@ -321,10 +311,8 @@ def render_full(state: TuiState) -> None {
 
     # Empty transcript rows — borders only
     while screen_row <= t_draw_end {
-        otui_draw_text(0, screen_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
-        otui_draw_text(
-            cols - 1, screen_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0
-        );
+        _dt(0, screen_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
+        _dt(cols - 1, screen_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
         screen_row = screen_row + 1;
     }
 
@@ -337,24 +325,26 @@ def render_full(state: TuiState) -> None {
         warn_text = _trunc(
             f"  Missing API key: {env}  (/settings to configure)", inner_w
         );
-        otui_draw_text(0, warn_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
-        otui_draw_text(2, warn_row, warn_text, 255, 80, 80, BG_R, BG_G, BG_B, 0);
-        otui_draw_text(cols - 1, warn_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
+        _dt(0, warn_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
+        _dt(2, warn_row, warn_text, 255, 80, 80, BG_R, BG_G, BG_B, 0);
+        _dt(cols - 1, warn_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
     }
 
     # ── Input divider ──────────────────────────────────────────────────────
-    otui_draw_text(0, input_div, div_line, BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
+    _dt(0, input_div, div_line, BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
 
     # ── Input row ──────────────────────────────────────────────────────────
-    otui_draw_text(0, input_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
-    otui_draw_text(cols - 1, input_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
+    _dt(0, input_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
+    _dt(cols - 1, input_row, "│", BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, 0);
     if state.status == "running" {
-        otui_draw_text(2, input_row, "›", 120, 120, 120, BG_R, BG_G, BG_B, ATTR_DIM);
+        _dt(2, input_row, "›", 120, 120, 120, BG_R, BG_G, BG_B, ATTR_DIM);
     } else {
-        otui_draw_text(2, input_row, "›", 255, 255, 255, BG_R, BG_G, BG_B, ATTR_BOLD);
+        _dt(2, input_row, "›", 255, 255, 255, BG_R, BG_G, BG_B, ATTR_BOLD);
     }
     visible = _trunc(state.input_buf, inner_w - 2);
-    otui_draw_text(4, input_row, visible, 220, 220, 220, BG_R, BG_G, BG_B, 0);
+    _dt(4, input_row, visible, 220, 220, 220, BG_R, BG_G, BG_B, 0);
 
-    otui_flush();
+    # Reset color and end synchronized output
+    tty_write(1, "\033[0m");
+    term_sync_end(1);
 }
