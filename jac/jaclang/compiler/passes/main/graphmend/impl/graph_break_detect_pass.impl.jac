@@ -39,9 +39,14 @@ impl GraphBreakDetectPass.enter_if_stmt(nd: uni.IfStmt) -> None {
         if self._condition_is_data_dependent(cur.condition) {
             if self._is_validation_guard(cur) {
                 cur._gm_break_kind = 'val_guard';
-            } else {
+            } elif not self._body_ends_in_raise(cur) {
                 cur._gm_break_kind = 'dyn_ctrl_fl';
             }
+            # A raise-terminated branch that is not a standalone guard (an
+            # `elif`, or one paired with an `else`) cannot be lowered by either
+            # transform without changing semantics -- an assert would fire
+            # unconditionally and the value-predicating rewrite would drop the
+            # raise -- so it is left untagged: a correct, unoptimized break.
         }
         nxt = cur.else_body;
         if isinstance(nxt, uni.ElseIf) {
@@ -267,16 +272,28 @@ impl GraphBreakDetectPass._is_user_defined(nd: uni.FuncCall, name: str) -> bool 
     return bool(sym and sym.defn);
 }
 
-"""True if `nd` is a validation guard: a one-armed conditional (no else) whose
-body ends in a `raise`, e.g. `if not C: raise` or `if not C: cleanup(); raise`.
+"""True if `nd` is a validation guard: a STANDALONE one-armed conditional (no
+else, not an `elif`) whose body ends in a `raise`, e.g. `if not C: raise` or
+`if not C: cleanup(); raise`.
 
-Keying on the trailing raise (not a single-statement body) keeps a guard with
-cleanup code classified as `val_guard` rather than `dyn_ctrl_fl`, so it is never
-handed to the value-predicating rewrite that would drop the cleanup."""
+An `elif ...: raise` is deliberately excluded: its raise is conditional on the
+preceding branches being false, so lowering it as a standalone
+`torch._assert_async(not C)` would fire unconditionally. Keying on the trailing
+raise (not a single-statement body) keeps a guard with cleanup code classified as
+`val_guard` rather than `dyn_ctrl_fl`, so it is never handed to the
+value-predicating rewrite that would drop the cleanup."""
 impl GraphBreakDetectPass._is_validation_guard(nd: uni.IfStmt) -> bool {
+    if isinstance(nd, uni.ElseIf) {
+        return False;
+    }
     if nd.else_body is not None {
         return False;
     }
+    return self._body_ends_in_raise(nd);
+}
+
+"""True if `nd`'s body ends in a `raise` statement."""
+impl GraphBreakDetectPass._body_ends_in_raise(nd: uni.IfStmt) -> bool {
     return bool(nd.body) and isinstance(nd.body[-1], uni.RaiseStmt);
 }
 

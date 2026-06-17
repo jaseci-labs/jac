@@ -117,6 +117,12 @@ test "detects a data-dependent elif under a static leading if" {
     assert "dyn_ctrl_fl" in _if_kinds(mod);
 }
 
+test "a raise inside an elif is not tagged val_guard or dyn_ctrl_fl" {
+    mod = _compile("elif_guard.jac", True);
+    assert "val_guard" not in _if_kinds(mod);
+    assert "dyn_ctrl_fl" not in _if_kinds(mod);
+}
+
 test "detects a data-dependent branch in a torch.compile-decorated class" {
     mod = _compile("decorated_class.jac", True);
     assert "dyn_ctrl_fl" in _if_kinds(mod);

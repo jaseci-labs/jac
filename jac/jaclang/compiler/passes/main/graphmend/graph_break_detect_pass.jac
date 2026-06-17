@@ -39,6 +39,7 @@ obj GraphBreakDetectPass(UniPass) {
     def _call_name(nd: uni.FuncCall) -> (str | None);
     def _is_user_defined(nd: uni.FuncCall, name: str) -> bool;
     def _is_validation_guard(nd: uni.IfStmt) -> bool;
+    def _body_ends_in_raise(nd: uni.IfStmt) -> bool;
     def _condition_is_data_dependent(cond: uni.Expr) -> bool;
     def _expr_uses_dynamic_attr(expr: uni.Expr) -> bool;
     def _trace_symbol(sym: uni.Symbol, visited: set[int], depth: int) -> bool;
