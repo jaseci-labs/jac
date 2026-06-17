@@ -123,22 +123,6 @@ impl IdentityStorage.authenticate(
             continue;
         }
         pw_hash = cred.get('password_hash', '');
-
-        # --- LEGACY SHA256 MIGRATION (removable) ---
-        if cred.get('algorithm') == 'sha256' {
-            if hashlib.sha256(password.encode()).hexdigest() == pw_hash {
-                cred['password_hash'] = IdentityStorage.hash_password(password);
-                cred.pop('algorithm', None);
-                self._update_credentials(user_id, credentials);
-                return {
-                    'user_id': user_id,
-                    'root_id': user['root_id'],
-                    'role': user.get('role', 'user')
-                };
-            }
-            continue;
-        }
-        # --- END LEGACY SHA256 MIGRATION ---
         if IdentityStorage.verify_password(password, pw_hash) {
             return {
                 'user_id': user_id,
@@ -215,7 +199,6 @@ impl IdentityStorage.reset_password(user_id: str, new_password: str) -> dict[str
     for cred in credentials {
         if cred.get('type') == 'password' {
             cred['password_hash'] = new_hash;
-            cred.pop('algorithm', None);
             password_set = True;
         }
     }

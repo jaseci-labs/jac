@@ -12,7 +12,6 @@ Architecture:
 - SqliteIdentityStorage: SQLite-backed (uses db_path file path)
 """
 import bcrypt;
-import hashlib;
 import uuid;
 import logging;
 import from datetime { datetime, UTC }
@@ -117,8 +116,6 @@ obj MongoIdentityStorage(IdentityStorage) {
     def identity_taken(value: str) -> bool;
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, any] | None;
-    # Migration
-    def migrate_legacy_users -> None;
 }
 
 """SQLite-backed identity storage."""
