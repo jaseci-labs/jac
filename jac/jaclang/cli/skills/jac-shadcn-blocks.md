@@ -190,10 +190,10 @@ Minimal structural skeletons with the non-obvious rules for each. Use these as s
             </TableHeader>
             <TableBody>
                 {for row in rows {
-                    <TableRow key={row["id"]}>
-                        <TableCell className="font-medium">{row["name"]}</TableCell>
-                        <TableCell><Badge variant="outline">{row["status"]}</Badge></TableCell>
-                        <TableCell className="text-right tabular-nums">{row["amount"]}</TableCell>
+                    <TableRow key={row.id}>
+                        <TableCell className="font-medium">{row.name}</TableCell>
+                        <TableCell><Badge variant="outline">{row.status}</Badge></TableCell>
+                        <TableCell className="text-right tabular-nums">{row.amount}</TableCell>
                     </TableRow>
                 }}
             </TableBody>
@@ -203,7 +203,7 @@ Minimal structural skeletons with the non-obvious rules for each. Use these as s
 ```
 
 - Table always wrapped in `Card` - never a bare `<Table>`.
-- Render rows with a statement slot (`{for row in rows { <TableRow/> }}`), NOT `rows.map(...)` (fails E1030), and read row fields by subscript (`row["name"]`), NOT `row.name`.
+- Render rows with a statement slot (`{for row in rows { <TableRow/> }}`), NOT `rows.map(...)` (fails E1030).
 - Amount/number columns: `className="text-right tabular-nums"`.
 - Status badge: `variant="secondary"` for active, `variant="outline"` for inactive/default.
 

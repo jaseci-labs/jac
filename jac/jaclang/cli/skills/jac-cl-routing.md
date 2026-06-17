@@ -80,13 +80,13 @@ cl {
 
 ```
 location = useLocation();
-searchParams = URLSearchParams(location["search"]);   # hook result is a plain JS object: subscript, NOT .search
-query = searchParams.get("q") or "";                  # .get() IS valid on a real URLSearchParams (but NOT on useParams/useLocation)
+searchParams = URLSearchParams(location.search);
+query = searchParams.get("q") or "";
 page = int(searchParams.get("page") or "1");
 # update: nav(f"/search?q={query}&page={page + 1}");
 ```
 
-- **Active link styling:** compare `useLocation()["pathname"] == path` (subscript, not `.pathname`) and switch `className`.
+- **Active link styling:** compare `useLocation().pathname == path` and switch `className`.
 
 ## Manual routing (secondary)
 

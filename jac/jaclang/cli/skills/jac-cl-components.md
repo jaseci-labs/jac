@@ -96,7 +96,7 @@ Use the matching type even when you don't read `e`; for an event not in the tabl
 ## Imports from `@jac/runtime` (complete list)
 
 - **Routing components:** `Router`, `Routes`, `Route`, `Link`, `Navigate`, `Outlet`, `AuthGuard`
-- **Routing hooks/fns:** `useNavigate`, `useLocation`, `useParams`, `useRouter`, `navigate` (NO `useSearchParams` - parse `useLocation()["search"]` by subscript, not `.search`)
+- **Routing hooks/fns:** `useNavigate`, `useLocation`, `useParams`, `useRouter`, `navigate` (NO `useSearchParams` - parse `useLocation().search`)
 - **Auth:** `jacLogin`, `jacSignup`, `jacLogout`, `jacIsLoggedIn`, `jacSsoLogin`, `jacSetToken`
 - **Forms / validation:** `useJacForm`, `JacForm`, `JacSchema`
 - **Error / suspense:** `JacClientErrorBoundary`, `JacAwaiting`, `ErrorFallback`
