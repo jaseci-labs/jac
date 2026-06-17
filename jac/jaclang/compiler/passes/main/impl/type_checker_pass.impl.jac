@@ -348,6 +348,17 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                         }
                     }
                 }
+                # Slice target (container[a:b] = value): skip assign_type — the write
+                # contract is __setitem__(slice, T), not the container type itself.
+                if (
+                    isinstance(target, uni.AtomTrailer)
+                    and not target.is_attr
+                    and isinstance(target.right, uni.IndexSlice)
+                    and target.right.is_range
+                ) {
+                    self.evaluator.get_type_of_expression(nd.value);
+                    return;
+                }
             }
         }
         # Pass declared LHS type as expected_type for bidirectional inference
