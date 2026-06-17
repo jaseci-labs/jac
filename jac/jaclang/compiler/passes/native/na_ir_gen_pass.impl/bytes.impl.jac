@@ -360,9 +360,13 @@ prefix of the other. The caller compares the result to 0 with the operator's
 predicate — the same shape the strcmp path uses for str ordering.
 
 Null-safe (#6751): ordering a `bytes | None` against bytes when the operand is
-None raises TypeError (CPython parity: `<` etc. are unsupported between bytes
-and NoneType), which also avoids dereferencing the null before the compare."""
-impl NaIRGenPass._emit_bytes_cmp(left: ir.Value, right: ir.Value) -> ir.Value {
+None raises TypeError (CPython parity: `op_sym` is unsupported between bytes
+and NoneType), which also avoids dereferencing the null before the compare.
+`op_sym` is the source operator ('<' / '>' / '<=' / '>=') so the message names
+the operator the user actually wrote."""
+impl NaIRGenPass._emit_bytes_cmp(
+    left: ir.Value, right: ir.Value, op_sym: str
+) -> ir.Value {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     # Raise (not deref) if either operand is None/null.
@@ -375,7 +379,7 @@ impl NaIRGenPass._emit_bytes_cmp(left: ir.Value, right: ir.Value) -> ir.Value {
     self._emit_runtime_raise(
         self.builder.or_(lnull, rnull, name="by.cmp.enull"),
         "TypeError",
-        "'<' not supported between instances of 'bytes' and 'NoneType'"
+        f"'{op_sym}' not supported between instances of 'bytes' and 'NoneType'"
     );
     llen = self._bytes_len_val(left);
     rlen = self._bytes_len_val(right);

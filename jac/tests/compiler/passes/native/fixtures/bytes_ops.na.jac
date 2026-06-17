@@ -179,3 +179,15 @@ def cnone_eq_bytes() -> int { z = _none_bytes(); return 1 if z == b"AB" else 0; 
 def cnone_ne_bytes() -> int { z = _none_bytes(); return 1 if z != b"AB" else 0; }
 def both_none_eq() -> int { a = _none_bytes(); b = _none_bytes(); return 1 if a == b else 0; }
 def both_none_ne() -> int { a = _none_bytes(); b = _none_bytes(); return 1 if a != b else 0; }
+
+# Ordering a None operand raises TypeError (CPython parity) rather than
+# dereferencing null; returns the count of operators that raised (expect 4).
+def none_ordering_raises() -> int {
+    z = _none_bytes();
+    c = 0;
+    try { if z < b"AB" { c += 0; } } except Exception as e { c += 1; }
+    try { if z > b"AB" { c += 0; } } except Exception as e { c += 1; }
+    try { if z <= b"AB" { c += 0; } } except Exception as e { c += 1; }
+    try { if z >= b"AB" { c += 0; } } except Exception as e { c += 1; }
+    return c;
+}

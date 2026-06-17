@@ -437,4 +437,6 @@ test "bytes vs None comparison is null-safe (#6751)" {
     assert get_func(eng, "both_none_ne", ctypes.c_int64)() == 0;
     assert get_func(eng, "some_eq_bytes", ctypes.c_int64)() == 1;
     assert get_func(eng, "some_eq_diff", ctypes.c_int64)() == 0;
+    # ordering (< > <= >=) against None raises TypeError, not a segfault
+    assert get_func(eng, "none_ordering_raises", ctypes.c_int64)() == 4;
 }
