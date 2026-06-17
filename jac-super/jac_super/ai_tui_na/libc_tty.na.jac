@@ -9,60 +9,23 @@ Type rule: Jac `int` for locals; `i32`/`i64` only in libc FFI decl slots.
 """
 
 import from "/usr/lib/libc.so.6" {
-    obj Termios {
-        has c_iflag: u32,
-            c_oflag: u32,
-            c_cflag: u32,
-            c_lflag: u32,
-            c_line: u8,
-            c_cc0: u8,
-            c_cc1: u8,
-            c_cc2: u8,
-            c_cc3: u8,
-            c_cc4: u8,
-            c_cc5: u8,
-            c_cc6: u8,
-            c_cc7: u8,
-            c_cc8: u8,
-            c_cc9: u8,
-            c_cc10: u8,
-            c_cc11: u8,
-            c_cc12: u8,
-            c_cc13: u8,
-            c_cc14: u8,
-            c_cc15: u8,
-            c_cc16: u8,
-            c_cc17: u8,
-            c_cc18: u8,
-            c_cc19: u8,
-            c_cc20: u8,
-            c_cc21: u8,
-            c_cc22: u8,
-            c_cc23: u8,
-            c_cc24: u8,
-            c_cc25: u8,
-            c_cc26: u8,
-            c_cc27: u8,
-            c_cc28: u8,
-            c_cc29: u8,
-            c_cc30: u8,
-            c_cc31: u8,
-            c_ispeed: u32,
-            c_ospeed: u32;
-    }  def open(path: str, flags: i32, mode: i32) -> i32;  def close(fd: i32) -> i32;  def read(
+    def open(path: str, flags: i32, mode: i32) -> i32;  def close(fd: i32) -> i32;  def read(
         fd: i32, buf: str, count: i32
     ) -> i32;  def write(fd: i32, buf: str, count: i32) -> i32;  def dup2(
         oldfd: i32, newfd: i32
     ) -> i32;  def fcntl(fd: i32, cmd: i32, arg: i32) -> i32;  def ioctl(
         fd: i32, request: i64, arg: str
     ) -> i32;  def tcgetattr(fd: i32, term: str) -> i32;  def tcsetattr(
-        fd: i32, opt: i32, term: Termios
+        fd: i32, opt: i32, term: str
     ) -> i32;  def poll(fds: str, nfds: i32, timeout: i32) -> i32;  def calloc(
         n: int, sz: int
     ) -> int;  def free(p: int) -> None;
 }
 
-# tcsetattr takes Termios (input). tcgetattr fills a calloc str (output).
+# Both tcgetattr and tcsetattr take a 60-byte glibc-termios buffer via an i8*
+# (a calloc'd `str`). Passing a by-value `Termios` struct through NA FFI
+# mis-marshals the 60-byte aggregate and segfaults inside libc tcsetattr, so we
+# never pass structs by value -- only pointer buffers built as fresh strings.
 glob O_RDWR: int = 2,
      O_NONBLOCK: int = 2048,
      F_GETFL: int = 3,
@@ -127,106 +90,34 @@ def pack_pollfd(fd: int, events: int) -> str {
     return b0 + b1 + b2 + b3 + b4 + b5 + z + z;
 }
 
-def blank_termios -> Termios {
-    return Termios(
-        c_iflag=0,
-        c_oflag=0,
-        c_cflag=0,
-        c_lflag=0,
-        c_line=0,
-        c_cc0=0,
-        c_cc1=0,
-        c_cc2=0,
-        c_cc3=0,
-        c_cc4=0,
-        c_cc5=0,
-        c_cc6=0,
-        c_cc7=0,
-        c_cc8=0,
-        c_cc9=0,
-        c_cc10=0,
-        c_cc11=0,
-        c_cc12=0,
-        c_cc13=0,
-        c_cc14=0,
-        c_cc15=0,
-        c_cc16=0,
-        c_cc17=0,
-        c_cc18=0,
-        c_cc19=0,
-        c_cc20=0,
-        c_cc21=0,
-        c_cc22=0,
-        c_cc23=0,
-        c_cc24=0,
-        c_cc25=0,
-        c_cc26=0,
-        c_cc27=0,
-        c_cc28=0,
-        c_cc29=0,
-        c_cc30=0,
-        c_cc31=0,
-        c_ispeed=0,
-        c_ospeed=0
-    );
+def u32_bytes(val: int) -> str {
+    b0: str = chr(val & 0xFF);
+    b1: str = chr((val >> 8) & 0xFF);
+    b2: str = chr((val >> 16) & 0xFF);
+    b3: str = chr((val >> 24) & 0xFF);
+    return b0 + b1 + b2 + b3;
 }
 
-def termios_from_buf(buf: str) -> Termios {
-    t: Termios = blank_termios();
-    t.c_iflag = read_u32(buf, 0);
-    t.c_oflag = read_u32(buf, 4);
-    t.c_cflag = read_u32(buf, 8);
-    t.c_lflag = read_u32(buf, 12);
-    t.c_line = ord(buf[16]);
-    t.c_cc0 = ord(buf[17]);
-    t.c_cc1 = ord(buf[18]);
-    t.c_cc2 = ord(buf[19]);
-    t.c_cc3 = ord(buf[20]);
-    t.c_cc4 = ord(buf[21]);
-    t.c_cc5 = ord(buf[22]);
-    t.c_cc6 = ord(buf[23]);
-    t.c_cc7 = ord(buf[24]);
-    t.c_cc8 = ord(buf[25]);
-    t.c_cc9 = ord(buf[26]);
-    t.c_cc10 = ord(buf[27]);
-    t.c_cc11 = ord(buf[28]);
-    t.c_cc12 = ord(buf[29]);
-    t.c_cc13 = ord(buf[30]);
-    t.c_cc14 = ord(buf[31]);
-    t.c_cc15 = ord(buf[32]);
-    t.c_cc16 = ord(buf[33]);
-    t.c_cc17 = ord(buf[34]);
-    t.c_cc18 = ord(buf[35]);
-    t.c_cc19 = ord(buf[36]);
-    t.c_cc20 = ord(buf[37]);
-    t.c_cc21 = ord(buf[38]);
-    t.c_cc22 = ord(buf[39]);
-    t.c_cc23 = ord(buf[40]);
-    t.c_cc24 = ord(buf[41]);
-    t.c_cc25 = ord(buf[42]);
-    t.c_cc26 = ord(buf[43]);
-    t.c_cc27 = ord(buf[44]);
-    t.c_cc28 = ord(buf[45]);
-    t.c_cc29 = ord(buf[46]);
-    t.c_cc30 = ord(buf[47]);
-    t.c_cc31 = ord(buf[48]);
-    t.c_ispeed = read_u32(buf, 52);
-    t.c_ospeed = read_u32(buf, 56);
-    return t;
-}
-
-def _makeraw(t: Termios) -> Termios {
-    iflag: int = t.c_iflag;
-    oflag: int = t.c_oflag;
-    lflag: int = t.c_lflag;
-    cflag: int = t.c_cflag;
-    t.c_iflag = iflag & ~(
+# Build a fresh 60-byte termios buffer with raw-mode flags applied. Bytes
+# 0..15 are the four rewritten flag words; bytes 16..59 (c_line, c_cc[], speeds)
+# are copied verbatim from the saved buffer. Returned as a `str` so it can be
+# handed to tcsetattr as an i8* without any by-value struct marshaling.
+def build_raw_termios(saved: str) -> str {
+    iflag: int = read_u32(saved, 0) & ~(
         IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON
     );
-    t.c_oflag = oflag & ~OPOST;
-    t.c_lflag = lflag & ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
-    t.c_cflag = (cflag & ~(CSIZE | PARENB)) | CS8;
-    return t;
+    oflag: int = read_u32(saved, 4) & ~OPOST;
+    cflag: int = (read_u32(saved, 8) & ~(CSIZE | PARENB)) | CS8;
+    lflag: int = read_u32(saved, 12) & ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+    out: str = u32_bytes(iflag) + u32_bytes(oflag) + u32_bytes(cflag) + u32_bytes(
+        lflag
+    );
+    i: int = 16;
+    while i < TERMIOS_SZ {
+        out = out + chr(ord(saved[i]));
+        i = i + 1;
+    }
+    return out;
 }
 
 def tty_open -> int {
@@ -249,9 +140,8 @@ def tty_open -> int {
         return -1;
     }
     g_tty.saved_term = saved;
-    cur: Termios = termios_from_buf(saved);
-    raw: Termios = _makeraw(cur);
-    if tcsetattr(fd, TCSANOW, raw) != 0 {
+    raw_buf: str = build_raw_termios(saved);
+    if tcsetattr(fd, TCSANOW, raw_buf) != 0 {
         free(saved);
         close(fd);
         return -1;
@@ -268,8 +158,9 @@ def tty_close {
     saved: str = g_tty.saved_term;
     if fd >= 0 {
         if len(saved) > 0 {
-            restore: Termios = termios_from_buf(saved);
-            tcsetattr(fd, TCSANOW, restore);
+            # `saved` already holds the original 60-byte termios; restore it
+            # directly as an i8* -- no struct round-trip needed.
+            tcsetattr(fd, TCSANOW, saved);
             free(saved);
             g_tty.saved_term = "";
         }

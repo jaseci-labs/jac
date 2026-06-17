@@ -53,47 +53,20 @@ def _sync_size(state: TuiState) {
 
 glob args = sys.argv;
 
-with entry {
-    tty_write(2, "[tui] starting\r\n");
-}
+# Libc/tty handles are filled in `with entry`, never in glob init. Calling
+# tty_open() / tty_init_stdio_remap() from a `glob x = ...()` initializer runs
+# during the glob-init phase -- before the imported libc_tty module's `g_tty`
+# glob is constructed -- so a no-TTY run (piped/CI) NULL-derefs `g_tty.fd_saved`
+# inside tty_init_stdio_remap and segfaults before any output. Deferring the
+# setup also lets us exit(1) cleanly when there is no controlling terminal.
+glob raw_fd: int = -1,
+     ipc_fd: int = -1;
 
-glob raw_fd: int = tty_open();
-
-with entry {
-    if raw_fd < 0 {
-        tty_write(2, "[tui] tty_open failed\r\n");
-        sys.exit(1);
-    }
-    tty_write(2, "[tui] tty_open ok\r\n");
-}
-
-glob rc: int = tty_init_stdio_remap();
-
-with entry {
-    if rc < 0 {
-        tty_write(2, "[tui] stdio remap failed\r\n");
-        tty_close();
-        sys.exit(1);
-    }
-}
-
-glob ipc_fd: int = tty_ipc_fd(),
-     state: TuiState = TuiState(),
+# Pure object construction (no libc) is safe in glob init.
+glob state: TuiState = TuiState(),
      diff_engine: DiffEngine = DiffEngine();
 
-with entry {
-    state.cwd = os.getcwd();
-}
-
 glob proj = os.getenv("JAC_AI_UI_PROJECT");
-
-with entry {
-    if proj is not None {
-        if len(proj) > 0 {
-            state.cwd = proj;
-        }
-    }
-}
 
 # Project file list for the file picker. The control plane computes it and
 # passes a newline-separated JAC_AI_UI_FILES env var (see
@@ -103,6 +76,35 @@ with entry {
 glob files_env = os.getenv("JAC_AI_UI_FILES");
 
 with entry {
+    tty_write(2, "[tui] starting\r\n");
+}
+
+glob raw_fd = tty_open();
+
+with entry {
+    if raw_fd < 0 {
+        tty_write(2, "[tui] no controlling terminal; --tui needs a real tty\r\n");
+        sys.exit(1);
+    }
+    tty_write(2, "[tui] tty_open ok\r\n");
+
+    if tty_init_stdio_remap() < 0 {
+        tty_write(2, "[tui] stdio remap failed\r\n");
+        tty_close();
+        sys.exit(1);
+    }
+}
+
+glob ipc_fd = tty_ipc_fd();
+
+with entry {
+    state.cwd = os.getcwd();
+    if proj is not None {
+        if len(proj) > 0 {
+            state.cwd = proj;
+        }
+    }
+
     if files_env is not None {
         for raw_path in files_env.split("\n") {
             p = raw_path.strip();
