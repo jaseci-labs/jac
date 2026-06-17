@@ -166,6 +166,11 @@ test "matrix #7 solid: Ref[T] field is deferred to a plain let binding" {
     assert "let buttonRef = null" in js , "Solid defers refs to a let binding";
     assert "useRef" not in js;
     assert "createSignal(null)" not in js;
+    # The `ref={buttonRef}` JSX attribute must NOT be thunked: Solid calls a ref
+    # callback with the DOM node, so a `() => buttonRef` wrapper would swallow the
+    # element and the node would never register (TODO #1 regression guard).
+    assert '"ref": buttonRef' in js , "ref attribute must escape the view thunk seam";
+    assert '"ref": () => buttonRef' not in js , "ref must never be view-wrapped";
 }
 
 # --- Zero-diff gate: Preact tracks React on the seam-sensitive fixtures ---------

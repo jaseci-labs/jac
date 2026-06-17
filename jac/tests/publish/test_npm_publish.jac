@@ -35,6 +35,7 @@ import from jaclang.publish.npm_sources { collect_npm_sources, NpmBoundaryError 
 import from jaclang.publish.npm_builder { NpmBuilder }
 import from jaclang.publish.runtime_npm {
     build_runtime_tarball,
+    runtime_peer_deps,
     runtime_pkg_name,
     RUNTIME_PKG_NAME
 }
@@ -334,6 +335,18 @@ test "build_runtime_tarball packages the runtime with exports" {
         assert peers["zod"] == "^4.3.6";
         assert "react-dom" not in peers;
     }
+}
+
+test "runtime_peer_deps raises for unknown imported packages" {
+    raised = False;
+    try {
+        runtime_peer_deps('import foo from "left-pad";\n');
+    } except ValueError {
+        raised = True;
+    }
+    assert raised;
+    peers = runtime_peer_deps('import { useState } from "react";\n');
+    assert peers["react"] == "^18.2.0";
 }
 
 test "runtime_pkg_name suffixes non-react backends so packages never collide" {

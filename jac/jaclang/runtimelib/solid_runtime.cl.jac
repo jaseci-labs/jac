@@ -21,7 +21,7 @@ straight from `solid-js` (see `SolidBackend.import_source`), not re-exported her
 Router parity uses thin adapters that bridge the API-shape gap between
 react-router-dom and `@solidjs/router` (`Link`→`A`, `to`→`href`, `Route element=`
 →`component=`; `Routes`/`Outlet` have no Solid equivalent and are best-effort
-shims — see RUNTIME_SPLIT_PROGRESS.md for the gaps pending browser e2e), so the
+shims pending browser e2e), so the
 same React-shaped names stay exported from `@jac/runtime` for every framework.
 """
 

@@ -144,7 +144,8 @@ def _pkg_root(spec: str) -> (str | None) {
 # `runtimelib/client/impl/config_loader.impl.jac` — the source of truth a project
 # actually installs. Duplicated as a flat literal here (rather than imported) so
 # the runtime-npm builder stays free of the client config/console dependency
-# graph. `"*"` is the fallback for any imported package not listed.
+# graph. Any imported package not listed must be added here (and in client_deps)
+# — `_runtime_peer_deps` raises rather than emitting an unbounded `"*"`.
 glob _PEER_VERSIONS: dict[str, str] = {
          "react": "^18.2.0",
          "react-dom": "^18.2.0",
@@ -164,7 +165,7 @@ runtime module actually imports, versioned from `_PEER_VERSIONS`.
 Scanning the compiled JS — rather than dumping a whole dep map — keeps the peer
 list honest: `react-dom` lives in the generated entry script, not the runtime
 module, so it is correctly absent here. Anything imported but not in the canonical
-map falls back to `"*"`."""
+map raises `ValueError` so published packages never ship an unbounded peer."""
 def _runtime_peer_deps(js: str) -> dict[str, str] {
     roots: set[str] = set();
     # Normalize single-quoted specifiers to double quotes so a single regex (with
@@ -184,9 +185,21 @@ def _runtime_peer_deps(js: str) -> dict[str, str] {
     }
     peers: dict[str, str] = {};
     for pkg in sorted(roots) {
-        peers[pkg] = _PEER_VERSIONS.get(pkg, "*");
+        version = _PEER_VERSIONS.get(pkg);
+        if version is None {
+            raise ValueError(
+                f"runtime imports unknown peer package {pkg!r}; "
+                "add it to _PEER_VERSIONS in runtime_npm.impl.jac and the "
+                "client dependency defaults"
+            );
+        }
+        peers[pkg] = version;
     }
     return peers;
+}
+
+impl runtime_peer_deps(js: str) -> dict[str, str] {
+    return _runtime_peer_deps(js);
 }
 
 """Relative `.js` import specifiers in `js` (those starting with `.` and ending

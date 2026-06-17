@@ -8,8 +8,7 @@ render plus that a click reactively updates the text -- exercising the live
 `solid-js` runtime, the `solid-js/h`-backed `__jacJsx`, the accessor-thunk read,
 and the signal setter end to end.
 
-This is the documented follow-up for Solid runtime exec (see RUNTIME_SPLIT_PROGRESS.md
-"Out of scope / follow-ups"): `@solidjs/router` calls a client-only `solid-js`
+This is the documented follow-up for Solid runtime exec: `@solidjs/router` calls a client-only `solid-js`
 API at import time, so the shim can't load in bare `node` -- a jsdom DOM plus the
 `browser` resolver condition (which selects solid's DOM build over its SSR build)
 is what makes it runnable.

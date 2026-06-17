@@ -3,26 +3,27 @@
 Mirrors `react_entry.jac` / `preact_entry.jac` but uses Solid's `render` from
 `solid-js/web` with the hyperscript factory `h` from `solid-js/h`. Solid's
 `render` takes a thunk returning the component tree, matching the once-run
-component model.
-
-v1 mounts the app directly. The React-flavored `JacClientErrorBoundary` wrapper
-used on the React/Preact entries is not applied here — error-boundary parity for
-Solid (`ErrorBoundary` from `solid-js`) is a documented follow-up. Global error
-handlers are still installed when requested.
+component model. The exported `app` is wrapped in `JacClientErrorBoundary` (the
+Solid shim's React-shaped API over `solid-js`'s `ErrorBoundary`), matching the
+React/Preact simple entries.
 """
 
 def build_simple_solid_entry_script(
     entry_module: str, install_global_handlers: bool = True
 ) -> str {
+    runtime_imports: list[str] = ['JacClientErrorBoundary', 'ErrorFallback'];
+    if install_global_handlers {
+        runtime_imports.append('__jacInstallErrorHandlers');
+    }
+    runtime_imports.append('__jacReactErrorHandler');
+
     lines: list[str] = [
         'import { render } from "solid-js/web";',
         'import h from "solid-js/h";',
-        f'import {{ app as App }} from "./{entry_module}.js";'
+        f'import {{ app as App }} from "./{entry_module}.js";',
+        f'import {{ {", ".join(runtime_imports)} }} from "@jac/runtime";',
+        ''
     ];
-    if install_global_handlers {
-        lines.append('import { __jacInstallErrorHandlers } from "@jac/runtime";');
-    }
-    lines.append('');
     if install_global_handlers {
         lines.append('__jacInstallErrorHandlers();');
     }
@@ -30,7 +31,10 @@ def build_simple_solid_entry_script(
         [
             'const __jacMountEl = document.getElementById("root")',
             '\t?? document.getElementById("__jac_root");',
-            'render(() => h(App, {}), __jacMountEl);',
+            'render(',
+            '\t() => h(JacClientErrorBoundary, { FallbackComponent: ErrorFallback, onError: __jacReactErrorHandler }, h(App, {})),',
+            '\t__jacMountEl',
+            ');',
             ''
         ]
     );
@@ -49,12 +53,7 @@ uses `h(C, {})` in place of React's `React.createElement(C, null)`; the route
 shape (`{ path, element }`) and auth-guard/layout/app-wrapper wiring mirror the
 React builder one-for-one.
 
-Unlike `build_simple_solid_entry_script`, this wraps the tree in
-`JacClientErrorBoundary` (the Solid shim now presents that React-shaped API over
-`solid-js`'s `ErrorBoundary`), reaching the same boundary parity as the React
-entry.
-
-Known gaps (best-effort, pending browser e2e — see RUNTIME_SPLIT_PROGRESS.md):
+Known gaps (best-effort, pending browser e2e):
 `@solidjs/router` expects `<Route>` as a direct child of `<Router>` and has no
 `<Outlet>`, so the passthrough `Routes` and the `AuthGuard`→`Outlet` nesting cover
 the flat case but deeply nested matching / true layout outlets need a running

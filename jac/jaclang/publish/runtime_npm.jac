@@ -52,3 +52,9 @@ def build_runtime_tarball(
 def build_runtime_to(
     output_dir: Path, version: str, pkg_name: str = "", framework: str = ""
 ) -> Path;
+
+"""Resolve peer dependency version ranges for bare-package imports in `js`.
+
+Raises `ValueError` when the compiled runtime imports a package that is not in
+the canonical `_PEER_VERSIONS` map."""
+def runtime_peer_deps(js: str) -> dict[str, str];

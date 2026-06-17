@@ -98,7 +98,7 @@ impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
 equivalent — Solid expects `<Route>` elements as direct children of `<Router>`.
 This passthrough renders its children so React-shaped `<Router><Routes>...`
 source still lowers. Deeply nested route *matching* through this wrapper is a
-documented best-effort gap (RUNTIME_SPLIT_PROGRESS.md) pending browser e2e."""
+documented best-effort gap pending browser e2e."""
 impl Routes(props: dict) -> JsxElement {
     return props.children;
 }
@@ -147,7 +147,7 @@ impl Navigate(props: dict) -> JsxElement {
 """`@solidjs/router` has no `<Outlet>`; nested route content is delivered to a
 parent route's `component` via `props.children`. v1 renders any children handed
 in; true nested-layout outlet semantics are a documented gap pending browser
-e2e (RUNTIME_SPLIT_PROGRESS.md)."""
+e2e."""
 impl Outlet(props: dict = {}) -> JsxElement {
     if props != undefined {
         return props.children;

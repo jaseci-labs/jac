@@ -224,7 +224,13 @@ impl EsJsxProcessor.normal_attribute(
         is_event = attr_name.startswith('on')
         and len(attr_name) > 2
         and attr_name[2].isupper();
-        if not is_event {
+        # `ref` is an imperative element hook, not a reactive read: Solid (and
+        # React) call the ref callback with the DOM node. Thunking it on a
+        # signals backend (`() => field.ref`) swallows the element so the node
+        # never registers — exclude it from the view seam the same way event
+        # handlers are. No-op on hooks backends (`lower_view_expr` is identity).
+        is_ref = attr_name == 'ref';
+        if not is_event and not is_ref {
             self.pass_ref._ensure_backend();
             value_expr = self.pass_ref.sync_loc(
                 self.pass_ref.backend.lower_view_expr(value_expr), jac_node=nd.value

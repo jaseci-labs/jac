@@ -202,7 +202,8 @@ test "solid entry script renders via solid-js/web" {
     assert 'import { render } from "solid-js/web";' in script;
     assert 'import h from "solid-js/h";' in script;
     assert "createRoot" not in script;
-    assert "render(() => h(App, {}), __jacMountEl)" in script;
+    assert 'JacClientErrorBoundary' in script;
+    assert 'h(JacClientErrorBoundary, { FallbackComponent: ErrorFallback, onError: __jacReactErrorHandler }, h(App, {}))' in script;
     assert 'getElementById("__jac_root")' in script;
 }
 

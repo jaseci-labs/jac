@@ -74,8 +74,11 @@ demo/
 
 node_modules
 
-# Agent notes
+# Agent / IDE working notes (not repo artifacts)
 AGENTS.md
+PLAN.md
+IMPLEMENTATION.md
+RUNTIME_SPLIT_PROGRESS.md
 
 # Claude Code local instructions
 CLAUDE.local.md
