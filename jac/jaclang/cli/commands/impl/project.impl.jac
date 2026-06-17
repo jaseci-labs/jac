@@ -532,8 +532,9 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) {
     console.print(f"  ✔ .gitignore", style="success");
 }
 
-"""Install all dependencies from jac.toml."""
+"""Install all dependencies from jac.toml, or packages into the activated environment."""
 impl install(
+    packages: list = [],
     editable: list = [],
     dev: bool = False,
     extras: list = [],
@@ -544,11 +545,12 @@ impl install(
     dry_run: bool = False,
     no_deps: bool = False,
     quiet: bool = False,
-    prefer_binary: bool = False
+    prefer_binary: bool = False,
+    no_uv: bool = False
 ) -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dependencies { DependencyInstaller }
+    import from jaclang.project.dependencies { DependencyInstaller, pip_command }
     import from jaclang.project.dep_registry { get_dependency_registry }
 
     flag_defs: list = [
@@ -566,14 +568,62 @@ impl install(
         for (enabled, flag) in flag_defs
         if enabled
     ];
+    # ── Direct install into activated environment ─────────────────────────────
+    if packages {
+        if editable {
+            console.error(
+                "Cannot mix package names with -e/--editable in a single command. "
+                "Run them separately: 'jac install <pkg>' then 'jac install -e <path>'."
+            );
+            return 1;
+        }
+        if dev or extras {
+            console.warning(
+                "--dev and --extras have no effect with package names. "
+                "Use 'jac add <pkg> --dev' to track packages in jac.toml."
+            );
+        }
+        console.print(
+            f"\n📦 Installing {len(packages)} package(s) into activated environment",
+            style="bold"
+        );
+        cmd: list[str] = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--upgrade"
+        ] + install_flags + packages;
+        if verbose {
+            console.print(f"  Running: {' '.join(cmd)}", style="muted");
+        }
+        result = subprocess.run(cmd, capture_output=not verbose, text=True);
+        if result.returncode != 0 {
+            err_detail: str = result.stderr or result.stdout or "(see output above)";
+            console.error(f"Install failed:\n{err_detail}");
+            return 1;
+        }
+        if dry_run {
+            if result.stdout {
+                console.print(result.stdout, style="dim");
+            }
+            console.success("Dry run complete (nothing installed).");
+            return 0;
+        }
+        if not verbose {
+            for pkg in packages {
+                console.print(f"  ✔ {pkg}", style="success");
+            }
+        }
+        console.success("Package(s) installed");
+        return 0;
+    }
     # ── Editable install ──────────────────────────────────────────────────────
     # Flatten nested lists produced by action="append" with nargs="+":
     #   -e ./a ./b -e ./c  →  [["./a","./b"],["./c"]]  →  ["./a","./b","./c"]
     editable = [p for group in (editable or []) for p in group];
     if editable {
-        import sys;
         import site;
-        import subprocess;
         import from jaclang.publish.builder { WheelBuilder }
 
         # Phase 1 — collect all dep specs for a single unified pip call.
@@ -581,6 +631,13 @@ impl install(
         all_dep_specs: list[str] = [];
         for editable_path in editable {
             src_dir: Path = Path(editable_path).resolve();
+            if not src_dir.is_dir() {
+                console.error(
+                    f"'{editable_path}' is not a directory.",
+                    hint=f"Use 'jac install {editable_path}' to install from PyPI, or pass a local path to -e."
+                );
+                return 1;
+            }
             config = get_config(start_path=src_dir, force_discover=True);
             if config is None {
                 console.error(
@@ -590,7 +647,10 @@ impl install(
                 return 1;
             }
             installer = DependencyInstaller(
-                config=config, verbose=verbose, install_flags=install_flags
+                config=config,
+                verbose=verbose,
+                install_flags=install_flags,
+                use_uv=not no_uv
             );
             dep_specs = installer.get_pip_package_specs(include_dev=dev);
             if extras {
@@ -620,13 +680,13 @@ impl install(
                 f"\n  Installing {len(all_dep_specs)} dependencies...", style="muted"
             );
             result = subprocess.run(
-                [
+                pip_command(
                     sys.executable,
-                    "-m",
-                    "pip",
-                    "install",
-                    "--upgrade"
-                ] + install_flags + all_dep_specs,
+                    ["install", "--upgrade"] + (
+                        installer.install_flags or []
+                    ) + all_dep_specs,
+                    installer.use_uv
+                ),
                 capture_output=not verbose,
                 text=True,
             );
@@ -661,7 +721,7 @@ impl install(
         return 1;
     }
     installer = DependencyInstaller(
-        config=config, verbose=verbose, install_flags=install_flags
+        config=config, verbose=verbose, install_flags=install_flags, use_uv=not no_uv
     );
     console.print(
         f"\n📦 Installing dependencies for {config.project.name}", style="bold"
@@ -1316,12 +1376,14 @@ def _run_precompile_in_venv(
             venv_python = str(venv_dir / "bin" / "python");
             venv_jac = str(venv_dir / "bin" / "jac");
         }
+        import from jaclang.project.dependencies { pip_command }
+        use_uv: bool = not bool(os.environ.get("JAC_NO_UV"));
         jac_install = subprocess.run(
-            [venv_python, "-m", "pip", "install", jac_spec, "--quiet"],
+            pip_command(venv_python, ["install", jac_spec, "--quiet"], use_uv),
             capture_output=True
         );
         if jac_install.returncode != 0 {
-            return f"pip install {jac_spec} failed:\n{jac_install.stderr.decode(
+            return f"install {jac_spec} failed:\n{jac_install.stderr.decode(
                 errors='replace'
             )}";
         }
@@ -1338,11 +1400,11 @@ def _run_precompile_in_venv(
         }
         if dep_specs {
             deps_install = subprocess.run(
-                [venv_python, "-m", "pip", "install"] + dep_specs + ["--quiet"],
+                pip_command(venv_python, ["install"] + dep_specs + ["--quiet"], use_uv),
                 capture_output=True
             );
             if deps_install.returncode != 0 {
-                return f"pip install project deps failed:\n{deps_install.stderr.decode(
+                return f"install project deps failed:\n{deps_install.stderr.decode(
                     errors='replace'
                 )}";
             }
