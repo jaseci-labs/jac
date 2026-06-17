@@ -11,27 +11,12 @@ import from jaclang.cli.console { console }
 # jac.toml). Detected in the emitted Python and added to requirements.txt so
 # `pip install` produces a runnable backend.
 glob _IMPLICIT_PY_DEPS: dict = {"byllm": "byllm"},
-     # Vendored SQLAlchemy persistence backend, written verbatim into the ejected
-     # backend as `_jac_sqldb.py` when `[eject.db] driver = "sqlalchemy"` (or
-     # "sqlite"). It plugs into the jaclang runtime via the get_persistent_memory
-     # hook (registered in main.py) so the object graph persists through SQLAlchemy.
-     # Defaults to a local SQLite file; point JAC_DB_URL at any SQLAlchemy URL
-     # (postgresql://..., mysql://...) to use another engine.
+     # Vendored into the ejected backend as `_jac_sqldb.py` when `[eject.db]
+     # driver` is "sqlalchemy"/"sqlite"; wired via the get_persistent_memory hook
+     # in main.py. Defaults to SQLite; JAC_DB_URL points it at Postgres/MySQL.
      _SQLDB_BACKEND_SRC: str = '''"""Vendored SQLAlchemy persistence backend for the ejected Jac app.
-
-Registered through jaclang\'s `get_persistent_memory` hook so the runtime
-stores the object graph through SQLAlchemy. Defaults to a local SQLite file;
-set JAC_DB_URL to any SQLAlchemy URL (postgresql://..., mysql://...) to use
-another engine (install that engine\'s driver alongside sqlalchemy).
-
-Each anchor is one row keyed by its id; the payload is the exact Serializer
-JSON the built-in SQLite backend writes, stored as text so no engine has to
-round-trip a non-portable type. `apply()` upserts whole rows per write intent.
-
-SCOPE: single-writer. Correct for one uvicorn worker (the eject default).
-Concurrent multi-process writers (scaled workers/replicas) need field-level
-merge-aware writes; use jac-scale for that.
-"""
+Registered via jaclang\'s get_persistent_memory hook; defaults to a local SQLite
+file (set JAC_DB_URL for Postgres/MySQL). Single-writer; use jac-scale to scale."""
 from __future__ import annotations
 
 import json
@@ -387,10 +372,9 @@ def emit_backend(
         );
     }
 
-    # SQLAlchemy persistence is opt-in via `[eject.db] driver = "sqlalchemy"`
-    # (alias "sqlite"/"sql"); absent it the backend keeps the runtime's built-in
-    # zero-dependency SQLite. The default URL is a SQLite file under backend/;
-    # override at runtime with JAC_DB_URL for Postgres/MySQL.
+    # Opt-in via `[eject.db] driver` ("sqlalchemy"/"sqlite"/"sql"); absent it the
+    # backend keeps the runtime's built-in zero-dep SQLite. Default URL is a
+    # SQLite file under backend/; JAC_DB_URL overrides it for Postgres/MySQL.
     sql = str(db.get("driver", "")).lower() in ["sqlalchemy", "sqlite", "sql"];
     db_basename = _default_db_basename(project_name) if sql else "";
     if sql {
@@ -493,9 +477,23 @@ def _rewrite_imports(py_code: str, remap: dict) -> str {
 }
 
 
-"""Extract each walker's request fields from the compiled Python, skipping
-private names and the runtime-managed `reports` field. Returns
-{walker_name: [{name, type, has_default, default}]}."""
+# Compiled runtime base classes a walker always inherits; not user fields, so
+# an unresolved base with one of these names is never a missing-field warning.
+glob _RUNTIME_ARCH_BASES: set = {
+         "Walker",
+         "WalkerArchetype",
+         "Archetype",
+         "NodeArchetype",
+         "EdgeArchetype",
+         "Node",
+         "Edge",
+         "object"
+     };
+
+
+"""Extract each walker's request fields from the compiled Python (skipping
+private and `reports`), including same-module base-class fields (base-first,
+subclass overrides). Returns {walker: [{name, type, has_default, default}]}."""
 def _extract_walker_fields(py_code: str, walker_names: set) -> dict {
     result: dict = {};
     try {
@@ -503,38 +501,75 @@ def _extract_walker_fields(py_code: str, walker_names: set) -> dict {
     } except Exception {
         return result;
     }
+    class_map: dict[str, ast.ClassDef] = {};
+    for n in tree.body {
+        if isinstance(n, ast.ClassDef) {
+            class_map[n.name] = n;
+        }
+    }
     for node in tree.body {
         if isinstance(node, ast.ClassDef) and (node.name in walker_names) {
-            fields: list = [];
-            for stmt in node.body {
-                if isinstance(stmt, ast.AnnAssign)
-                and isinstance(stmt.target, ast.Name) {
-                    fname = stmt.target.id;
-                    if fname.startswith("_") or (fname == "reports") {
-                        continue;
-                    }
-                    ftype = ast.unparse(stmt.annotation);
-                    if ftype.startswith("ClassVar") {
-                        continue;
-                    }
-                    has_default = stmt.value is not None;
-                    default_src = ast.unparse(stmt.value)
-                        if stmt.value is not None
-                        else None;
-                    fields.append(
-                        {
-                            "name": fname,
-                            "type": ftype,
-                            "has_default": has_default,
-                            "default": default_src
-                        }
-                    );
-                }
+            ordered: dict = {};
+            unresolved: set = set();
+            _collect_walker_fields(node, class_map, ordered, unresolved, set());
+            result[node.name] = list(ordered.values());
+            for b in sorted(list(unresolved)) {
+                console.warning(
+                    f"  backend: walker '{node.name}' inherits from '{b}', which "
+                    "is not in the same module; any required fields it declares "
+                    "will be missing from the generated request model."
+                );
             }
-            result[node.name] = fields;
         }
     }
     return result;
+}
+
+
+"""Collect a walker class's annotated fields into `ordered` ({name: record}),
+recursing into same-module base classes first so a subclass field overrides an
+inherited one. Bases that are neither in-module nor runtime go to `unresolved`."""
+def _collect_walker_fields(
+    cls_node: ast.ClassDef,
+    class_map: dict[str, ast.ClassDef],
+    ordered: dict,
+    unresolved: set,
+    visited: set
+) {
+    if cls_node.name in visited {
+        return;
+    }
+    visited.add(cls_node.name);
+    for base in cls_node.bases {
+        bname = ast.unparse(base);
+        if bname in class_map {
+            _collect_walker_fields(
+                class_map[bname], class_map, ordered, unresolved, visited
+            );
+        } elif bname not in _RUNTIME_ARCH_BASES {
+            unresolved.add(bname);
+        }
+    }
+    for stmt in cls_node.body {
+        if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name) {
+            fname = stmt.target.id;
+            if fname.startswith("_") or (fname == "reports") {
+                continue;
+            }
+            ftype = ast.unparse(stmt.annotation);
+            if ftype.startswith("ClassVar") {
+                continue;
+            }
+            has_default = stmt.value is not None;
+            default_src = ast.unparse(stmt.value) if stmt.value is not None else None;
+            ordered[fname] = {
+                "name": fname,
+                "type": ftype,
+                "has_default": has_default,
+                "default": default_src
+            };
+        }
+    }
 }
 
 
@@ -591,10 +626,9 @@ def _model_class_name(name: str, suffix: str) -> str {
 }
 
 
-"""Write main.py: a FastAPI app running the walkers on the jaclang runtime
-with jaclang-native auth (UserManager / ExecutionManager). When `sql` is set,
-register the get_persistent_memory hook so the graph persists through
-SQLAlchemy (default SQLite file `<db_basename>.db`, overridable via JAC_DB_URL)."""
+"""Write main.py: a FastAPI app running the walkers on the jaclang runtime with
+jaclang-native auth. When `sql` is set, register the get_persistent_memory hook
+so the graph persists via SQLAlchemy (SQLite `<db_basename>.db` / JAC_DB_URL)."""
 def _emit_main_py(
     backend_dir: Path,
     project_name: str,
@@ -632,11 +666,9 @@ def _emit_main_py(
 
     lines += ['', '_BASE = os.path.dirname(os.path.abspath(__file__))'];
 
-    # SQLAlchemy persistence: register the get_persistent_memory hook before any
-    # ExecutionManager builds a context, so the runtime picks the SQLAlchemy L3
-    # backend. The default URL is a SQLite file in backend/; JAC_DB_URL overrides
-    # it (postgresql://..., mysql://...). Registered unconditionally — a SQLite
-    # default always resolves, so persistence works out of the box.
+    # Register the get_persistent_memory hook before any ExecutionManager builds
+    # a context, so the runtime picks the SQLAlchemy L3 backend. Registered
+    # unconditionally; the SQLite default always resolves (JAC_DB_URL overrides).
     if sql {
         lines += [
             'from jaclang.jac0core.runtime import hookimpl, plugin_manager',
@@ -698,11 +730,9 @@ def _emit_main_py(
         '    return _GUEST',
         '',
         '',
-        '# Auth wire format matches the @jac/runtime client: register sends',
-        '# {identities:[{type,value}], credential:{type,password}}, login sends',
-        '# {identity:{type,value}, credential:{type,password}}; login replies',
-        '# {"data": {"token": ...}}. Flat {username,password} is accepted too so',
-        '# the endpoints stay usable from curl/other clients.',
+        '# Auth wire format matches the @jac/runtime client: register/login send',
+        '# {identit(y|ies), credential} and login replies {"data":{"token":...}}.',
+        '# Flat {username,password} is also accepted so curl/other clients work.',
         'class _Identity(BaseModel):',
         '    type: str = "username"',
         '    value: str',

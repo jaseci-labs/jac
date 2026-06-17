@@ -318,3 +318,109 @@ test "load_eject_project_metadata falls back to source dir name on placeholder" 
         assert meta["project_name"] == "fallback_app";
     }
 }
+
+
+# ==================== backend-only projects (no client app) ====================
+"""Materialize a walker-only project: no `cl {}` block / `.cl.jac`, so no
+client `app` component exists."""
+def _write_backend_only_project(src: Path, name: str = "be_app") {
+    src.mkdir(parents=True, exist_ok=True);
+    (src / "jac.toml").write_text(
+        f'[project]\nname = "{name}"\nentry-point = "main.jac"\n'
+    );
+    (src / "main.jac").write_text(
+        'walker:pub Ping {\n' + '    has reports: list[str] = [];\n' + '    can run with `root entry {\n' + '        report "pong";\n' + '    }\n' + '}\n'
+    );
+}
+
+
+test "walker-only project ejects a backend-only app with no frontend" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "beapp";
+        _write_backend_only_project(src, "beapp");
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        # Backend is complete...
+        assert _backend(src, "main.py").exists();
+        assert '@app.post("/walker/Ping")' in _backend(src, "main.py").read_text();
+        # ...and no half-built frontend scaffold is left behind.
+        assert not (src / "ejected" / "frontend").exists();
+    }
+}
+
+
+# ==================== inherited walker fields ====================
+"""Field names of a Pydantic model class in the emitted main.py."""
+def _model_fields(main_py: str, model: str) -> set {
+    tree = ast.parse(main_py);
+    names: set = set();
+    for node in tree.body {
+        if isinstance(node, ast.ClassDef) and (node.name == model) {
+            for stmt in node.body {
+                if isinstance(stmt, ast.AnnAssign)
+                and isinstance(stmt.target, ast.Name) {
+                    names.add(stmt.target.id);
+                }
+            }
+        }
+    }
+    return names;
+}
+
+
+test "request model includes fields inherited from a base walker" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "inh";
+        src.mkdir(parents=True, exist_ok=True);
+        (src / "jac.toml").write_text(
+            '[project]\nname = "inh"\nentry-point = "main.jac"\n'
+        );
+        (src / "main.jac").write_text(
+            'walker:pub Base {\n' + '    has a: int,\n' + '        b: str = "def";\n' + '    has reports: list[int] = [];\n' + '}\n\n' + 'walker:pub Compute(Base) {\n' + '    has c: int;\n' + '    can run with `root entry {\n' + '        report self.a + self.c;\n' + '    }\n' + '}\n'
+        );
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        main_py = _backend(src, "main.py").read_text();
+        fields = _model_fields(main_py, "ComputeIn");
+        # `a` and `b` come from Base; `c` is Compute's own field.
+        assert "a" in fields , f"inherited field a missing from ComputeIn: {fields}";
+        assert "b" in fields , f"inherited field b missing from ComputeIn: {fields}";
+        assert "c" in fields , f"own field c missing from ComputeIn: {fields}";
+    }
+}
+
+
+# ==================== [eject.db] SQLAlchemy persistence ====================
+test "[eject.db] sqlalchemy emits the backend, hook, and SQLAlchemy dep" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "dbapp";
+        _write_project(src, "dbapp");
+        # Opt into the SQLAlchemy persistence backend.
+        toml = (src / "jac.toml").read_text();
+        (src / "jac.toml").write_text(toml + '\n[eject.db]\ndriver = "sqlalchemy"\n');
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        assert _backend(src, "_jac_sqldb.py").exists();
+        main_py = _backend(src, "main.py").read_text();
+        assert "from _jac_sqldb import SqlAlchemyMemory" in main_py;
+        assert "def get_persistent_memory" in main_py;
+        assert "JAC_DB_URL" in main_py;
+        reqs = _backend(src, "requirements.txt").read_text();
+        assert "SQLAlchemy" in reqs;
+    }
+}
+
+
+test "default eject does not emit the SQLAlchemy backend" {
+    with TemporaryDirectory() as td {
+        src = Path(td) / "plainapp";
+        _write_project(src, "plainapp");
+        rc = _silent_eject(str(src));
+        assert rc == 0;
+        assert not _backend(src, "_jac_sqldb.py").exists();
+        main_py = _backend(src, "main.py").read_text();
+        assert "get_persistent_memory" not in main_py;
+        reqs = _backend(src, "requirements.txt").read_text();
+        assert "SQLAlchemy" not in reqs;
+    }
+}

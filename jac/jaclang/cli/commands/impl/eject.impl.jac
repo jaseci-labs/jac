@@ -27,23 +27,9 @@ glob _SV_SUFFIX: str = ".sv.jac",
      };
 
 
-"""Read jac.toml and return resolved project metadata for `jac eject`.
-
-Returns a dict with the keys eject needs to drive its emit pipeline:
-
-- `project_name`: the resolved project name (falls back to the source
-  directory name when jac.toml has no name or still contains the
-  unrendered `{{name}}` template placeholder).
-- `entry_point`: the raw entry-point filename from jac.toml (default
-  `"main.jac"`).
-- `entry_module`: the entry-point stem with `.sv.jac` / `.cl.jac` / `.jac`
-  suffixes stripped (e.g. `"main"`), used as the frontend entry module name.
-- `toml_data`: the raw parsed jac.toml so plugins can read other sections
-  (e.g. `[plugins.scale]`, `[dependencies.npm]`) without re-parsing.
-
-Raises `FileNotFoundError` if `src/jac.toml` does not exist, or
-`RuntimeError` if it cannot be parsed.
-"""
+"""Read jac.toml and return `jac eject` metadata: {project_name (falls back to
+src dir name), entry_point, entry_module (suffix-stripped stem), toml_data}.
+Raises FileNotFoundError if jac.toml is missing, RuntimeError if unparsable."""
 def load_eject_project_metadata(src: Path) -> dict {
     toml_path = src / "jac.toml";
     if not toml_path.exists() {
@@ -165,6 +151,10 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     import from jaclang.jac0core.constant { SymbolType }
 
     js_count = 0;
+    # Whether the entry module exports a client `app`. `__jac_entry.js` imports
+    # it, so a frontend is only viable when that export exists; a walker-only
+    # module still emits JS (no `app`), so `js_count` alone is not a signal.
+    entry_has_app = False;
     error_count = 0;
     reserved: set = {"main"};
     compiled: list = [];
@@ -199,13 +189,18 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
             js_out.parent.mkdir(parents=True, exist_ok=True);
             js_out.write_text(_inject_runtime_imports(js_code), encoding="utf-8");
             js_count += 1;
+            # Is this the entry module, and does it export a client `app`?
+            stem = str(_strip_jac_suffix(rel.name));
+            if (len(rel.parent.parts) == 0)
+            and (stem == entry_module)
+            and _js_exports_app(js_code) {
+                entry_has_app = True;
+            }
         }
 
-        # Backend half: server-side Python only — `.cl.jac` output is a
-        # frontend artifact and never goes to the backend. The module keeps its
-        # dotted path (pkg/util.sv.jac -> pkg.util) so nested modules don't
-        # collide on filename and the compiler's dotted imports resolve; a
-        # top-level stem that collides with the generated main.py is remapped.
+        # Backend half: server-side Python only (.cl.jac output is frontend).
+        # The module keeps its dotted path (pkg/util.sv.jac -> pkg.util) so
+        # nested modules resolve; a stem colliding with main.py is remapped.
         stem = str(_strip_jac_suffix(rel.name));
         parent_parts = [str(p) for p in rel.parent.parts];
         if (len(parent_parts) == 0) and (stem in reserved) {
@@ -264,29 +259,53 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         return rc;
     }
 
-    # Frontend: vendor the client runtime and emit the Vite/React boilerplate
-    # (the Vite dev server proxies /walker and /function to the FastAPI backend).
-    runtime_copied = _copy_client_runtime(src, frontend_dir);
-    _emit_package_json(frontend_dir, project_name, toml_data);
-    _emit_vite_config(frontend_dir, runtime_copied);
-    _emit_entry_js(frontend_src_dir, entry_module);
-    _emit_index_html(frontend_dir, project_name);
+    # Frontend: vendor the client runtime + Vite/React boilerplate, but only when
+    # the entry module exports a client `app` (else `__jac_entry.js` imports a
+    # missing `app` and the build fails). No `app` -> a clean backend-only eject.
+    has_frontend = entry_has_app;
+    if has_frontend {
+        runtime_copied = _copy_client_runtime(src, frontend_dir);
+        _emit_package_json(frontend_dir, project_name, toml_data);
+        _emit_vite_config(frontend_dir, runtime_copied);
+        _emit_entry_js(frontend_src_dir, entry_module);
+        _emit_index_html(frontend_dir, project_name);
+    } else {
+        console.warning(
+            f"  No client `app` component in entry module '{entry_module}'; "
+            "emitting a backend-only app (skipping the frontend scaffold)."
+        );
+    }
 
     # Copy non-.jac resources (config JSON, CSS, images) so paths the compiled
     # code reads at runtime resolve in the ejected app.
-    _copy_data_files(src, out, backend_dir, frontend_src_dir, frontend_dir);
+    _copy_data_files(
+        src, out, backend_dir, frontend_src_dir, frontend_dir, has_frontend
+    );
+
+    # Drop the (now-empty) frontend dir for a backend-only eject so the output
+    # is a clean `backend/` with no half-built scaffold.
+    if not has_frontend {
+        try {
+            shutil.rmtree(frontend_dir);
+        } except Exception {
+            _ = 0;
+        }
+    }
 
     console.print();
     console.success(f"Ejected '{project_name}' → {out}");
+    fe_summary = f"   frontend: {js_count} JS module(s)" if has_frontend else "";
     console.print(
         f"  backend: {len(walkers)} walker(s), {len(functions)} function(s)"
-        f"   frontend: {js_count} JS module(s)",
+        f"{fe_summary}",
         style="muted"
     );
     console.print();
     console.print("Next steps:", style="bold");
     console.print(f"  cd {out}");
-    console.print("  (cd frontend && npm install && npm run build)");
+    if has_frontend {
+        console.print("  (cd frontend && npm install && npm run build)");
+    }
     console.print(
         "  cd backend && pip install -r requirements.txt && uvicorn main:app"
     );
@@ -295,12 +314,9 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
 }
 
 
-"""Walk the source tree and return every .jac file that should be compiled.
-
-Skips impl/test files (they merge into their declaration sibling at compile
-time and have no standalone meaning), hidden directories, and well-known
-build/vendor directories listed in _SKIP_DIRS.
-"""
+"""Walk the source tree and return every .jac file to compile. Skips impl/test
+files (they merge into their declaration sibling), hidden directories, and the
+build/vendor directories in _SKIP_DIRS."""
 def _collect_jac_files(src: Path) -> list[Path] {
     results: list[Path] = [];
     all_files = list(src.rglob("*.jac"));
@@ -360,19 +376,45 @@ def _to_js_rel_path(rel: Path) -> Path {
 }
 
 
+"""True iff the compiled module JS exports an `app` binding (the client entry).
+Covers `export {app}` / `export {x as app}` / `export const|function|let|var
+app`. A walker-only module emits JS but no `app`, so this rules it out."""
+def _js_exports_app(js_code: str) -> bool {
+    for raw in js_code.splitlines() {
+        line = raw.strip();
+        if not line.startswith("export") {
+            continue;
+        }
+        compact = line.replace(" ", "");
+        if ("{app}" in compact)
+        or ("{app," in compact)
+        or (",app}" in compact)
+        or (",app," in compact)
+        or ("asapp}" in compact)
+        or ("asapp," in compact) {
+            return True;
+        }
+        if compact.startswith("exportconstapp=")
+        or compact.startswith("exportfunctionapp(")
+        or compact.startswith("exportletapp=")
+        or compact.startswith("exportvarapp=")
+        or compact.startswith("exportasyncfunctionapp(") {
+            return True;
+        }
+    }
+    return False;
+}
+
+
 def _inject_runtime_imports(js_code: str) -> str {
     import from jaclang.runtimelib.client_surface { with_runtime_globals }
     return with_runtime_globals(js_code);
 }
 
 
-"""Decide whether a unparsed Python module has any real content worth writing.
-
-Files like `frontend.cl.jac` produce a Python module that contains only a
-docstring and a couple of `from __future__` / runtime imports — there is no
-behavior to ship to the backend. We skip those so the ejected backend
-directory only contains modules that actually do something.
-"""
+"""Decide whether an unparsed Python module has real content worth writing.
+A `.cl.jac` compiles to a Python module of only a docstring + imports (no
+backend behavior); skip those so the backend holds only modules that do work."""
 def _is_meaningful_python(py_code: str) -> bool {
     if not py_code.strip() {
         return False;
@@ -436,19 +478,9 @@ def _emit_package_json(frontend_dir: Path, project_name: str, toml_data: dict) {
 }
 
 
-"""Write frontend/vite.config.js with a proxy to the backend API.
-
-Vite serves the static frontend on its dev server port; all requests under
-/walker, /function, /user, /cl, /functions, /walkers are forwarded to the
-FastAPI backend so the SPA can call the API without any CORS plumbing during
-local dev.
-
-When `runtime_copied` is True, also emits a resolve.alias mapping the
-"@jac/runtime" bare specifier (hardcoded throughout the compiled frontend
-JS) to the local `src/__jac_runtime.js` we wrote alongside the frontend.
-This is what allows the ejected SPA to load in the browser without
-depending on the `jac-client-node` meta-package or the Jac build.
-"""
+"""Write frontend/vite.config.js: dev-server proxy forwarding API routes
+(/walker, /function, /user, ...) to the FastAPI backend, and (when
+`runtime_copied`) a resolve.alias for "@jac/runtime" -> src/__jac_runtime.js."""
 def _emit_vite_config(frontend_dir: Path, runtime_copied: bool) {
     # Proxy target honours $BACKEND_PORT so a custom backend port flows through
     # to the Vite proxy without editing vite.config.js; falls back to the
@@ -534,13 +566,16 @@ def _copy_client_runtime(src: Path, frontend_root: Path) -> bool {
 }
 
 
-"""Copy non-.jac resources (config JSON, CSS, images, docs) into both the
-ejected backend and frontend/src so paths the compiled Python or JavaScript
-read at runtime resolve. Skips the output directory, .jac sources, jac.toml,
-hidden files, and build/vendor directories. `public/` lands at the frontend
-root (Vite convention), not under src/."""
+"""Copy non-.jac resources into the backend (and frontend/src when
+`has_frontend`) so runtime file reads resolve. Skips the output dir, .jac,
+jac.toml, hidden + build/vendor dirs; `public/` lands at the frontend root."""
 def _copy_data_files(
-    src: Path, out: Path, backend_dir: Path, frontend_src_dir: Path, frontend_root: Path
+    src: Path,
+    out: Path,
+    backend_dir: Path,
+    frontend_src_dir: Path,
+    frontend_root: Path,
+    has_frontend: bool
 ) {
     copied = False;
     for path in src.rglob("*") {
@@ -565,6 +600,10 @@ def _copy_data_files(
             continue;
         }
         if rel_parts and (rel_parts[0] == "public") {
+            # `public/` is a frontend-only convention; skip it for backend-only.
+            if not has_frontend {
+                continue;
+            }
             dest = frontend_root / rel;
             dest.parent.mkdir(parents=True, exist_ok=True);
             shutil.copy2(path, dest);
@@ -574,9 +613,11 @@ def _copy_data_files(
         dest_b = backend_dir / rel;
         dest_b.parent.mkdir(parents=True, exist_ok=True);
         shutil.copy2(path, dest_b);
-        dest_f = frontend_src_dir / rel;
-        dest_f.parent.mkdir(parents=True, exist_ok=True);
-        shutil.copy2(path, dest_f);
+        if has_frontend {
+            dest_f = frontend_src_dir / rel;
+            dest_f.parent.mkdir(parents=True, exist_ok=True);
+            shutil.copy2(path, dest_f);
+        }
         copied = True;
     }
     if copied {
@@ -602,13 +643,9 @@ def _fix_sourcemap_ref(js_code: str, map_name: str, has_map: bool) -> str {
 }
 
 
-"""Write a minimal frontend/index.html that bootstraps the ejected SPA.
-
-Uses `<div id="root"></div>` to match the mount node the client runtime
-and generated __jac_entry.js target. Loads __jac_entry.js (not main.js
-directly) so eject controls the React bootstrap — main.js only exports
-the `app` component.
-"""
+"""Write a minimal frontend/index.html that bootstraps the ejected SPA. Mounts
+on `<div id="root">` and loads __jac_entry.js (not main.js) so eject owns the
+React bootstrap; main.js only exports the `app` component."""
 def _emit_index_html(frontend_dir: Path, project_name: str) {
     lines: list[str] = [
         '<!doctype html>',
@@ -629,15 +666,9 @@ def _emit_index_html(frontend_dir: Path, project_name: str) {
 }
 
 
-"""Write the SPA bootstrap (__jac_entry.js) that mounts the ejected app.
-
-The Jac client compiler emits a per-module main.js that *exports* an `app`
-component but never renders it — the Jac build's auto-generated _entry.js
-handles createRoot. Eject is that _entry.js' substitute: it imports the
-entry module's `app`, wraps it in the runtime's ErrorBoundary, and calls
-createRoot against <div id="root">. Without this, `vite dev` serves the
-files and 200s cleanly, but the page stays blank.
-"""
+"""Write the SPA bootstrap (__jac_entry.js): imports the entry module's `app`
+(which main.js exports but never renders), wraps it in the runtime
+ErrorBoundary, and createRoot()s it onto <div id="root">. Without it: blank page."""
 def _emit_entry_js(frontend_src_dir: Path, entry_module: str) {
     import from jaclang.runtimelib.react_entry { build_simple_react_entry_script }
     (frontend_src_dir / "__jac_entry.js").write_text(

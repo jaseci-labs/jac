@@ -1,11 +1,6 @@
 """Eject command: compile a Jac project into a runnable FastAPI + JavaScript app.
-
-Walks a Jac project, compiles every .jac source file to Python and JavaScript,
-and writes an `ejected/{backend,frontend}` folder containing zero .jac files.
-The backend is a FastAPI app that runs the walkers on the installed `jaclang`
-runtime (register/login + `:pub` gating); the frontend is the compiled `.cl.jac`
-UI on Vite. No Jac source or compilation step is required to run it.
-"""
+Writes an `ejected/{backend,frontend}` folder with zero .jac files: a FastAPI
+backend running walkers on `jaclang` plus the compiled `.cl.jac` UI on Vite."""
 
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
