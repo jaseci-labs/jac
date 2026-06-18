@@ -32,7 +32,9 @@ import from .terminal {
     term_enter_alt_screen,
     term_leave_alt_screen,
     term_hide_cursor,
-    term_show_cursor
+    term_show_cursor,
+    term_enable_mouse,
+    term_disable_mouse
 }
 import from .state { TuiState }
 import from .ipc { ipc_read_frame_v2, ipc_send_cmd }
@@ -125,6 +127,7 @@ def _run {
 
     term_enter_alt_screen(1);
     term_hide_cursor(1);
+    term_enable_mouse(1);
 
     _sync_size(state);
     state.dirty = True;
@@ -172,6 +175,7 @@ def _run {
         }
     }
 
+    term_disable_mouse(1);
     term_show_cursor(1);
     term_leave_alt_screen(1);
     tty_restore_stdio();

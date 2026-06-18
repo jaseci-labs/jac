@@ -317,10 +317,26 @@ def tty_read_key -> str {
         return seq;
     }
     seq = seq + chr(c2);
-    if c2 == 91 or c2 == 79 {
+    if c2 == 79 {
         c3: int = tty_read_byte(fd);
         if c3 >= 0 {
             seq = seq + chr(c3);
+        }
+        return seq;
+    }
+    if c2 == 91 {
+        # CSI: read parameter/intermediate bytes until a final byte in
+        # 0x40-0x7E (@-~). Cap the run to bound a malformed stream. This
+        # captures 4-byte (\033[5~) and mouse (\033[<b;x;yM) sequences.
+        while len(seq) < 32 {
+            cn: int = tty_read_byte(fd);
+            if cn < 0 {
+                break;
+            }
+            seq = seq + chr(cn);
+            if cn >= 64 and cn <= 126 {
+                break;
+            }
         }
     }
     return seq;

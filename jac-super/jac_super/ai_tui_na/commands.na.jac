@@ -44,6 +44,13 @@ def palette_commands(state: TuiState) -> list[SelectItem] {
 
     items.append(
         SelectItem(
+            value="/clear",
+            label="/clear",
+            description="Clear transcript and reset session"
+        )
+    );
+    items.append(
+        SelectItem(
             value="/reset",
             label="/reset",
             description="Clear transcript and reset session"
@@ -100,7 +107,7 @@ def run_command(cmd: str, state: TuiState, ipc_fd: int) -> bool {
         state.dirty = True;
         return False;
     }
-    if cmd == "/reset" {
+    if cmd == "/reset" or cmd == "/clear" {
         ipc_send_cmd(ipc_fd, "RESET");
         state.reset_events();
         state.dirty = True;

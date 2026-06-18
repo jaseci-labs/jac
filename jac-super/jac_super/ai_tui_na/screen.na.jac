@@ -493,6 +493,12 @@ def screen_render(state: TuiState, cols: int, rows: int) -> list[str] {
     if state.viewport_top < 0 {
         state.viewport_top = 0;
     }
+    # Re-attach to the streaming tail once a manual scroll (wheel / Page Down)
+    # reaches the bottom. max_top is only known here, so the re-follow lives in
+    # render rather than in state.scroll_down.
+    if not state.follow_tail and state.viewport_top >= max_top {
+        state.follow_tail = True;
+    }
 
     # Emit transcript rows.
     row_idx = state.viewport_top;

@@ -288,18 +288,32 @@ def _tui_binary_path(pkg_root: any) -> str {
 def _ensure_tui_binary(pkg_root: any) -> dict {
     # Compile jac-na-tui on first launch when NA sources are present (dev tree).
     # Installed packages without sources still need a prebuilt binary or manual build.
+    # Set JAC_AI_TUI_REBUILD=1 to force a recompile of an existing binary (dev
+    # iteration: pick up edits to *.na.jac without deleting bin/jac-na-tui by hand).
     import os;
     import subprocess;
     import from jaclang.cli.console { console }
 
     binary = _tui_binary_path(pkg_root);
-    if os.path.exists(binary) {
+    exists = os.path.exists(binary);
+    force = os.environ.get("JAC_AI_TUI_REBUILD", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on"
+    );
+    if exists and not force {
         return {"ok": True, "error": "", "hint": ""};
     }
     na_dir = str(pkg_root / "ai_tui_na");
     tui_src = str(pkg_root / "ai_tui_na" / "tui.na.jac");
     build_sh = str(pkg_root / "ai_tui_na" / "build.sh");
     if not os.path.isfile(tui_src) {
+        # No sources to (re)build from. Use a prebuilt binary if present
+        # (installed package); only fail when there is nothing to run.
+        if exists {
+            return {"ok": True, "error": "", "hint": ""};
+        }
         return {
             "ok": False,
             "cmd_args": [],
@@ -309,6 +323,9 @@ def _ensure_tui_binary(pkg_root: any) -> dict {
         };
     }
     if not os.path.isfile(build_sh) {
+        if exists {
+            return {"ok": True, "error": "", "hint": ""};
+        }
         return {
             "ok": False,
             "cmd_args": [],
@@ -319,7 +336,15 @@ def _ensure_tui_binary(pkg_root: any) -> dict {
 
         };
     }
-    console.print("[tui] jac-na-tui missing; compiling (first run) ...", style="dim");
+    if force and exists {
+        console.print(
+            "[tui] JAC_AI_TUI_REBUILD set; recompiling jac-na-tui ...", style="dim"
+        );
+    } else {
+        console.print(
+            "[tui] jac-na-tui missing; compiling (first run) ...", style="dim"
+        );
+    }
     try {
         res = subprocess.run(
             ["bash", build_sh, "--quick"],

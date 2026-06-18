@@ -66,6 +66,23 @@ import from .editor {
     editor_submit
 }
 
+def _parse_uint(s: str) -> int {
+    # Parse a run of ASCII digits to an int (non-digits ignored). Used for the
+    # decimal button field of an SGR mouse sequence; no NUL hazard since the
+    # bytes are printable ASCII (see na-chr-concat-drops-nul).
+    n: int = 0;
+    i: int = 0;
+    m = len(s);
+    while i < m {
+        c = ord(s[i]);
+        if c >= 48 and c <= 57 {
+            n = n * 10 + (c - 48);
+        }
+        i = i + 1;
+    }
+    return n;
+}
+
 def _editor_width(state: TuiState) -> int {
     # Content width available for the editor (same as text_width in screen.na.jac).
     # cols - 4 (box borders+space) - 2 (prompt prefix "› " or "  ")
@@ -125,7 +142,7 @@ def _handle_submit(state: TuiState, ipc_fd: int) -> bool {
         ipc_send_cmd(ipc_fd, "STOP");
         return False;
     }
-    if text == "/reset" {
+    if text == "/reset" or text == "/clear" {
         ipc_send_cmd(ipc_fd, "RESET");
         state.reset_events();
         return False;
@@ -267,6 +284,24 @@ def handle_key(key: str, state: TuiState, ipc_fd: int) -> bool {
 
     # ESC sequences
     if code == 27 and len(key) > 1 {
+        # SGR mouse event: \033[<button;x;yM (press) / m (release). Wheel-up is
+        # button 64, wheel-down 65 — scroll the transcript ~3 rows/notch. Other
+        # buttons (press/drag/click) are reserved for a later selection effort.
+        klen = len(key);
+        last = key[klen - 1];
+        if key.startswith("\033[<") and (last == "M" or last == "m") {
+            parts = key[3:klen - 1].split(";");
+            if len(parts) > 0 {
+                btn = _parse_uint(parts[0]);
+                if btn == 64 {
+                    state.scroll_up(3);
+                } elif btn == 65 {
+                    state.scroll_down(3);
+                }
+            }
+            return False;
+        }
+
         # Delete key
         if key == "\033[3~" {
             editor_forward_delete(ed);

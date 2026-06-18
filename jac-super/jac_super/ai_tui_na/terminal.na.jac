@@ -18,6 +18,17 @@ def term_show_cursor(fd: int) {
     tty_write(fd, "\033[?25h");
 }
 
+def term_enable_mouse(fd: int) {
+    # ?1000h = button-event tracking (includes wheel); ?1006h = SGR extended
+    # coordinates (decimal params, avoids the legacy \033[M raw-byte encoding
+    # that would collide with the NUL-drop hazard in NA string concat).
+    tty_write(fd, "\033[?1000h\033[?1006h");
+}
+
+def term_disable_mouse(fd: int) {
+    tty_write(fd, "\033[?1006l\033[?1000l");
+}
+
 def term_sync_start(fd: int) {
     tty_write(fd, "\033[?2026h");
 }
