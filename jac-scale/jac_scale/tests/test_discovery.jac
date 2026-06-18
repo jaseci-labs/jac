@@ -2,11 +2,41 @@
 
 import tempfile;
 import shutil;
+import tomllib;
 import from pathlib { Path }
 import from jac_scale.microservices.discovery {
     discover_sv_services,
     should_enter_local_ms,
     _code_lines
+}
+
+glob _K8S_E2E_FIXTURE: Path = Path(__file__).parent / "fixtures" / "k8s_e2e";
+
+# =============================================================================
+# Parity against the real example: auto-detection (ignoring the toml) must find
+# exactly the services the fixture's [routes] table declares by hand. This is
+# the regression guard that "zero-config == hand-written config" for a real app.
+# =============================================================================
+test "discover on the k8s_e2e fixture matches its hand-written toml routes" {
+    main = _K8S_E2E_FIXTURE / "main.jac";
+    discovered = discover_sv_services(str(main));
+
+    toml_path = _K8S_E2E_FIXTURE / "jac.toml";
+    with open(str(toml_path), "rb") as f {
+        doc = tomllib.load(f);
+    }
+    declared = (
+        doc.get("plugins", {})
+        .get("scale", {})
+        .get("microservices", {})
+        .get("routes", {})
+    );
+
+    assert discovered == dict(declared) , (
+        f"auto-detect {discovered} != declared routes {dict(declared)}"
+    );
+    # sanity: it actually found the three services
+    assert set(discovered.keys()) == {"products_app", "cart_app", "orders_app"};
 }
 
 # =============================================================================
