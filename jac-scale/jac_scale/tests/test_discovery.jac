@@ -7,7 +7,7 @@ import from pathlib { Path }
 import from jac_scale.microservices.discovery {
     discover_sv_services,
     should_enter_local_ms,
-    _code_lines
+    scan_markers
 }
 
 glob _K8S_E2E_FIXTURE: Path = Path(__file__).parent / "fixtures" / "k8s_e2e";
@@ -26,10 +26,9 @@ test "discover on the k8s_e2e fixture matches its hand-written toml routes" {
         doc = tomllib.load(f);
     }
     declared = (
-        doc.get("plugins", {})
-        .get("scale", {})
-        .get("microservices", {})
-        .get("routes", {})
+        doc.get("plugins", {}).get("scale", {}).get("microservices", {}).get(
+            "routes", {}
+        )
     );
 
     assert discovered == dict(declared) , (
@@ -72,53 +71,56 @@ test "gate: --scale never takes the local path" {
 }
 
 # =============================================================================
-# _code_lines: comment + docstring stripping
+# scan_markers: AST-based marker extraction (replaces the regex line-scanner)
 # =============================================================================
-test "_code_lines drops comments and blank lines" {
-    text = "# a comment\n\n   \nto sv:\n";
-    assert _code_lines(text) == ["to sv:"];
-}
-
-test "_code_lines drops multi-line docstrings (the false-positive guard)" {
-    # The example apps embed `sv import from ...` inside their docstrings;
-    # those must never be picked up as real statements.
-    text = "\"\"\"Module doc.\n  - sv import: `sv import from cart_app { x }`\n\"\"\"\nto sv:\n";
-    lines = _code_lines(text);
-    assert lines == ["to sv:"];
-}
-
-test "_code_lines drops single-line docstrings" {
-    text = "\"\"\"one liner with sv import from ghost\"\"\"\nsv import from real { f }\n";
-    assert _code_lines(text) == ["sv import from real { f }"];
-}
-
-test "_code_lines: embedded triple-quote in body does not close docstring early" {
-    # A docstring body line that *contains* the delimiter (e.g. documenting
-    # triple-quotes) must not end the docstring; otherwise the lines after it
-    # leak to the marker regexes as false-positive services. Only a line that
-    # STARTS with the delimiter closes it.
-    text = (
-        "\"\"\"Module doc.\n"
-        "Example body line shows a \"\"\" delimiter mid-text.\n"
-        "sv import from ghost_app { f }\n"
-        "\"\"\"\n"
-        "sv import from real_app { g }\n"
+test "scan_markers reads sv-import targets and the to-sv self-declaration" {
+    m = scan_markers(
+        "sv import from cart_app { view_cart }\nto sv:\ndef:pub f() -> int { return 1; }\n",
+        "orders_app.jac"
     );
-    assert _code_lines(text) == ["sv import from real_app { g }"];
+    assert m is not None;
+    assert m.sv_import_targets == ["cart_app"];
+    assert m.is_service == True;
 }
 
-test "_code_lines: code after a closing delimiter on the same line is kept" {
-    # `""" to sv:` closes the docstring AND declares a service on one line;
-    # the statement after the delimiter must not be silently dropped.
-    text = "\"\"\"doc\n\"\"\" to sv:\n";
-    assert _code_lines(text) == ["to sv:"];
+test "scan_markers detects the `sv { ... }` block form as a service" {
+    # The old line-regex only matched `to sv:` and silently missed the block
+    # form; the AST recognizes both as a ServerBlock.
+    m = scan_markers("sv {\n  def:pub g() -> int { return 1; }\n}\n", "svc.jac");
+    assert m is not None;
+    assert m.is_service == True;
 }
 
-test "_code_lines: code after a single-line docstring on the same line is kept" {
-    # `"""brief""" to sv:` opens+closes a docstring and then declares a
-    # service on the same line; the trailing statement must survive.
-    text = "\"\"\"brief\"\"\" to sv:\n";
-    assert _code_lines(text) == ["to sv:"];
+test "scan_markers ignores sv-import text living only in a docstring" {
+    # The parser classifies the docstring as a string literal, so there is no
+    # false-positive service - no comment/docstring pre-stripping needed.
+    m = scan_markers(
+        "\"\"\"Docs: `sv import from cart_app { x }` and `to sv:` are mentioned.\"\"\"\nwith entry { print(1); }\n",
+        "main.jac"
+    );
+    assert m is not None;
+    assert m.sv_import_targets == [];
+    assert m.is_service == False;
+}
+
+test "scan_markers: a plain import under a to-sv section is not an sv target" {
+    # Only an explicit `sv import` declares a peer service; a plain `import`
+    # inside a `to sv:` section does not (matches the runtime provider edge).
+    m = scan_markers(
+        "to sv:\nimport from helpers { h }\ndef:pub g() -> int { return 1; }\n",
+        "svc.jac"
+    );
+    assert m is not None;
+    assert m.sv_import_targets == [];
+    assert m.is_service == True;
+}
+
+test "scan_markers returns multiple sv-import targets" {
+    m = scan_markers(
+        "sv import from cart_app { a }\nsv import from products_app { b }\n", "main.jac"
+    );
+    assert m is not None;
+    assert sorted(m.sv_import_targets) == ["cart_app", "products_app"];
 }
 
 # =============================================================================
@@ -127,8 +129,12 @@ test "_code_lines: code after a single-line docstring on the same line is kept" 
 test "discover finds to-sv files and sv-import targets" {
     tmp = tempfile.mkdtemp();
     (Path(tmp) / "main.jac").write_text("to cl:\nimport from .frontend { app }\n");
-    (Path(tmp) / "products_app.jac").write_text("to sv:\ndef:pub list_products -> list { return []; }\n");
-    (Path(tmp) / "cart_app.jac").write_text("to sv:\ndef:pub view_cart -> dict { return {}; }\n");
+    (Path(tmp) / "products_app.jac").write_text(
+        "to sv:\ndef:pub list_products -> list { return []; }\n"
+    );
+    (Path(tmp) / "cart_app.jac").write_text(
+        "to sv:\ndef:pub view_cart -> dict { return {}; }\n"
+    );
     (Path(tmp) / "orders_app.jac").write_text(
         "sv import from cart_app { view_cart }\nto sv:\ndef:pub create_order -> dict { return {}; }\n"
     );

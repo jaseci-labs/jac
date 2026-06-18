@@ -19,6 +19,9 @@ import from jac_scale.targets.kubernetes.microservice.source_bundle {
     build_bootstrap_init_container,
     pinned_install_specs,
     auto_no_image_fallback,
+    decide_zeroconfig_image_strategy,
+    IMAGE_STRATEGY_IMAGE,
+    IMAGE_STRATEGY_NO_IMAGE,
     SOURCE_ARCHIVE_KEY,
     APP_MOUNT_PATH,
     PYDEPS_DIR
@@ -64,7 +67,9 @@ test "pack_source excludes secret files (.env, keys, certs, jac.toml)" {
     (Path(tmp) / "main.jac").write_text("to cl:\n");
     (Path(tmp) / ".env").write_text("DB_PASSWORD=hunter2\n");
     (Path(tmp) / ".env.production").write_text("API_KEY=sk_live\n");
-    (Path(tmp) / "jac.toml").write_text("[plugins.scale.kubernetes]\ndocker_password='p'\n");
+    (Path(tmp) / "jac.toml").write_text(
+        "[plugins.scale.kubernetes]\ndocker_password='p'\n"
+    );
     (Path(tmp) / "tls.key").write_text("PRIVATE KEY");
     (Path(tmp) / "server.pem").write_text("CERT");
 
@@ -88,18 +93,52 @@ test "pack_source excludes secret files (.env, keys, certs, jac.toml)" {
 # auto_no_image_fallback: zero-config default
 # =============================================================================
 test "auto_no_image_fallback: no image/registry/build -> True (fallback)" {
-    assert auto_no_image_fallback(False, "jac-shop:latest", "jac-shop:latest", "") == True;
+    assert auto_no_image_fallback(
+        False, "jac-shop:latest", "jac-shop:latest", ""
+    ) == True;
     # bare default image still counts as 'no explicit image'
     assert auto_no_image_fallback(False, "", "jac-shop:latest", "") == True;
 }
 
 test "auto_no_image_fallback: explicit image or registry or --build -> False" {
     # explicit (non-default) image
-    assert auto_no_image_fallback(False, "myrepo/app:v1", "jac-shop:latest", "") == False;
+    assert auto_no_image_fallback(
+        False, "myrepo/app:v1", "jac-shop:latest", ""
+    ) == False;
     # registry configured
-    assert auto_no_image_fallback(False, "jac-shop:latest", "jac-shop:latest", "ghcr.io/me") == False;
+    assert auto_no_image_fallback(
+        False, "jac-shop:latest", "jac-shop:latest", "ghcr.io/me"
+    ) == False;
     # --build forces the image pipeline
-    assert auto_no_image_fallback(True, "jac-shop:latest", "jac-shop:latest", "") == False;
+    assert auto_no_image_fallback(
+        True, "jac-shop:latest", "jac-shop:latest", ""
+    ) == False;
+}
+
+# =============================================================================
+# decide_zeroconfig_image_strategy: prefer a real image; no-image is last resort
+# =============================================================================
+test "strategy: docker + local cluster -> build a real image (no registry)" {
+    # The win: a zero-config app on kind/k3d/minikube gets a REAL image built
+    # and loaded with no registry, instead of the source-ConfigMap workaround.
+    s = decide_zeroconfig_image_strategy(docker_usable=True, cluster_is_local=True);
+    assert s.mode == IMAGE_STRATEGY_IMAGE;
+    assert "real image" in s.reason;
+}
+
+test "strategy: no docker -> no-image is the only option" {
+    s = decide_zeroconfig_image_strategy(docker_usable=False, cluster_is_local=True);
+    assert s.mode == IMAGE_STRATEGY_NO_IMAGE;
+    assert "docker" in s.reason;
+    # docker absence dominates even if the cluster would otherwise be local
+    s2 = decide_zeroconfig_image_strategy(docker_usable=False, cluster_is_local=False);
+    assert s2.mode == IMAGE_STRATEGY_NO_IMAGE;
+}
+
+test "strategy: docker but remote cluster, no registry -> no-image fallback" {
+    s = decide_zeroconfig_image_strategy(docker_usable=True, cluster_is_local=False);
+    assert s.mode == IMAGE_STRATEGY_NO_IMAGE;
+    assert "registry" in s.reason;
 }
 
 test "build_source_configmap holds the base64 archive in binaryData" {
@@ -181,7 +220,14 @@ test "no-image pod spec runs the python base image with source volumes" {
     assert "jac-app" in vol_names;
     assert "jac-source" in vol_names;
     # source ConfigMap volume references the right ConfigMap name
-    src_vol = next((v for v in spec["volumes"] if v["name"] == "jac-source"), None);
+    src_vol = next(
+        (
+            v
+            for v in spec["volumes"]
+            if v["name"] == "jac-source"
+        ),
+        None
+    );
     assert src_vol["configMap"]["name"] == source_configmap_name("jac-shop");
 
     init_names = {c["name"] for c in spec["initContainers"]};

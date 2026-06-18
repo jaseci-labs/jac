@@ -21,7 +21,7 @@ import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.storage { Storage }
 
 """Print the zero-config auto-detect info line on local microservice startup."""
-def _print_autodetect_banner(routes: dict[str, str]) -> None {
+def _print_autodetect_banner(routes: dict[str, str]) {
     names = sorted(routes.keys());
     plural = "s" if len(names) != 1 else "";
     console.print(
@@ -69,7 +69,7 @@ def _scale_pre_hook(context: HookContext) -> None {
         if should_enter_local_ms(
             enabled, is_sv_sibling, scale_flag, bool(discovered)
         ) {
-            auto_detected: bool = (enabled is None);
+            auto_detected: bool = enabled is None;
             if not ms_config.get("routes", {}) {
                 ms_config["routes"] = discovered;
             }
@@ -104,13 +104,10 @@ def _scale_pre_hook(context: HookContext) -> None {
             # enabled but no routes were declared (fill defaults). Without the
             # latter, `enabled = true` + no [routes] would deploy a gateway
             # with an empty route table that silently drops every peer call.
-            needs_discovery = (enabled is None) or (
-                enabled is True and not ms_config.get("routes", {})
-            );
+            needs_discovery = (enabled is None)
+            or (enabled is True and not ms_config.get("routes", {}));
             if needs_discovery and filename and os.path.exists(filename) {
-                import from jac_scale.microservices.discovery {
-                    discover_sv_services
-                }
+                import from jac_scale.microservices.discovery { discover_sv_services }
                 scale_discovered = discover_sv_services(filename);
             }
             if (enabled is True) or scale_discovered {
@@ -207,7 +204,11 @@ def _scale_pre_hook(context: HookContext) -> None {
         auto_no_image = False;
         if (target == "kubernetes-microservice") and (not no_image) {
             import from jac_scale.targets.kubernetes.microservice.source_bundle {
-                auto_no_image_fallback
+                auto_no_image_fallback,
+                decide_zeroconfig_image_strategy,
+                docker_usable,
+                cluster_is_local,
+                IMAGE_STRATEGY_NO_IMAGE
             }
             raw_k8s = scale_config.load().get("kubernetes", {});
             default_image = f"{target_config.get('app_name', 'jaseci')}:latest";
@@ -217,8 +218,21 @@ def _scale_pre_hook(context: HookContext) -> None {
                 default_image,
                 str(raw_k8s.get("image_registry", "") or "")
             ) {
-                no_image = True;
-                auto_no_image = True;
+                # Zero-config: no image path configured. A no-image source
+                # ConfigMap is a LAST RESORT, not the default - whenever a real
+                # image can be produced for free (local cluster + docker), the
+                # local pipeline builds + loads it with no external registry.
+                # Only when docker is unavailable, or the cluster is remote with
+                # no registry, do we copy source instead. When mode == image we
+                # leave no_image False so the auto_build path below runs.
+                strategy = decide_zeroconfig_image_strategy(
+                    docker_usable(), cluster_is_local()
+                );
+                console.print(f"Zero-config deploy: {strategy.reason}", style="cyan");
+                if strategy.mode == IMAGE_STRATEGY_NO_IMAGE {
+                    no_image = True;
+                    auto_no_image = True;
+                }
             }
         }
         # Create app config
@@ -826,9 +840,7 @@ class JacCmd {
             # Fill routes from auto-discovery (scanning the working directory)
             # when none are declared, matching what `jac start` does on launch.
             if not ms_config.get("routes", {}) {
-                import from jac_scale.microservices.discovery {
-                    discover_sv_services
-                }
+                import from jac_scale.microservices.discovery { discover_sv_services }
                 discovered = discover_sv_services(".");
                 if discovered {
                     ms_config["routes"] = discovered;
