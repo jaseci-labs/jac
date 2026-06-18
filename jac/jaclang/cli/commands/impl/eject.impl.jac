@@ -10,6 +10,7 @@ import from jaclang.cli.console { console }
 # File-suffix and skip-dir constants shared by the collection/compile pass.
 glob _SV_SUFFIX: str = ".sv.jac",
      _CL_SUFFIX: str = ".cl.jac",
+     _NA_SUFFIX: str = ".na.jac",
      _IMPL_SUFFIX: str = ".impl.jac",
      _TEST_SUFFIX: str = ".test.jac",
      # Directories never traversed when collecting source files.
@@ -210,7 +211,8 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
             bmod = ".".join(parent_parts + [stem]);
         }
         is_client = rel.name.endswith(_CL_SUFFIX);
-        server = _is_meaningful_python(py_code) and (not is_client);
+        is_native = rel.name.endswith(_NA_SUFFIX);
+        server = _is_meaningful_python(py_code) and (not is_client) and (not is_native);
 
         # `:pub` walkers/functions become open endpoints; the rest are
         # token-gated by the generated FastAPI app.
@@ -226,12 +228,12 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
                         }
                     );
                 } elif isinstance(item, uni.Ability) and item.name_ref is not None {
+                    fn_name = str(item.name_ref.sym_name);
+                    if fn_name.startswith("_") {
+                        continue;
+                    }
                     functions.append(
-                        {
-                            "name": str(item.name_ref.sym_name),
-                            "module": bmod,
-                            "pub": _has_pub_access(item)
-                        }
+                        {"name": fn_name, "module": bmod, "pub": _has_pub_access(item)}
                     );
                 }
             }
