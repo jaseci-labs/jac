@@ -991,26 +991,13 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     emit_full = (not self.inference_only) or bool(self.ir_in?._type_check_requested);
     if not emit_full {
         mod = self.ir_in;
-        mp = mod.loc.mod_path if mod?.loc else '';
-        is_native_mod = bool(mp)
-        and (mp.endswith('.na.jac') or mp.endswith('.na.impl.jac'));
-        if not is_native_mod and mod?.body {
-            for _stmt in mod.body {
-                if isinstance(_stmt, uni.NativeBlock) {
-                    is_native_mod = True;
-                    break;
-                }
-            }
-        }
-        if (
-            not is_native_mod
-            and self.prog._auto_promote_native
-            and mod?.gen
-            and mod.gen.native_compat
-        ) {
-            is_native_mod = True;
-        }
-        emit_full = is_native_mod;
+        # Native modules emit full diagnostics. Single-source-of-truth test
+        # (whole-native file incl. `.na.impl.jac` annex / inline `na { }` /
+        # auto-promotion), shared with JacCompiler.compile's inference gate so
+        # the two never drift -- the drift is what hid the annex from native
+        # type inference (#6754).
+        emit_full = mod is not None
+        and mod.is_native(auto_promote=self.prog._auto_promote_native);
     }
     # Re-typing sweeps over JIR-loaded dependency modules (see the dep loop
     # in JacCompiler.compile) exist solely to repopulate Expr.type for

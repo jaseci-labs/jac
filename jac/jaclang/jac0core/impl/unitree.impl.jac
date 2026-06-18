@@ -231,7 +231,7 @@ impl UniNode.in_client_context -> bool {
             }
         }
         if isinstance(nd, Module) {
-            return (nd.loc is not None and nd.loc.mod_path.endswith(".cl.jac"));
+            return nd.is_client_file;
         }
         nd = nd.parent;
     }
@@ -243,6 +243,7 @@ impl UniNode.in_client_context -> bool {
         This covers:
         - Nodes inside an explicit na {} block in a .jac file
         - Nodes inside a function marked with NATIVE context in .na.jac files
+        - Any top-level node of a whole-native file (`.na.jac` / `.na.impl.jac`)
         - Overridden by sv {} or cl {} blocks
         """
 impl UniNode.in_native_context -> bool {
@@ -259,6 +260,13 @@ impl UniNode.in_native_context -> bool {
             if (context == CodeContext.NATIVE) {
                 return True;
             }
+        }
+        if isinstance(nd, Module) {
+            # Whole-native file: every top-level node is native, even without a
+            # `na { }` wrapper. Mirrors the `.cl.jac` handling in
+            # `in_client_context`; previously absent, so callers each bolted on
+            # their own `.na.jac` fallback (and missed `.na.impl.jac`) (#6754).
+            return nd.is_native_file;
         }
         nd = nd.parent;
     }
@@ -1021,6 +1029,69 @@ impl Module.annexable_by.getter -> (str | None) {
         return None;
     }
     return discover_base_file(self.loc.mod_path);
+}
+
+"""Whole-native source file: a `*.na.jac` head or its `*.na.impl.jac` impl annex.
+
+Single source of truth for the native file kind, replacing scattered
+`mod_path.endswith('.na.jac')` checks that silently missed the impl annex
+(#6754). Mirrors how `in_client_context` treats a `.cl.jac` module."""
+impl Module.is_native_file.getter -> bool {
+    mp = self.loc.mod_path if self.loc else '';
+    return mp.endswith('.na.jac') or mp.endswith('.na.impl.jac');
+}
+
+"""Whole-client source file (`*.cl.jac`).
+
+Unlike `is_native_file`, this does NOT fold in the `.cl.impl.jac` annex: only
+`.na.impl.jac` annexes are coerced to their codespace context today (#6754), so
+treating a `.cl.impl.jac` annex as client here would disagree with its nodes'
+actual (un-coerced, server-default) `code_context`. Kept narrow to preserve
+existing `in_client_context` behavior exactly."""
+impl Module.is_client_file.getter -> bool {
+    mp = self.loc.mod_path if self.loc else '';
+    return mp.endswith('.cl.jac');
+}
+
+"""True when this module carries native code that must receive native
+compilation treatment (full type inference + native codegen). The single
+predicate behind the inference / emit-full gates, replacing the 3-part
+`endswith('.na.jac') or NativeBlock or auto-promote` disjunction that was
+duplicated across the gates and silently missed `.na.impl.jac` annexes (#6754).
+
+Native when any of:
+  - a whole-native file (`is_native_file`),
+  - an inline `na { }` block lives in the body (mixed `.jac` module), or
+  - `auto_promote` is set and this module is native-compatible (a plain `.jac`
+    being promoted to native at codegen time)."""
+impl Module.is_native(auto_promote: bool = False) -> bool {
+    if self.is_native_file {
+        return True;
+    }
+    if (auto_promote and self.gen.native_compat) {
+        return True;
+    }
+    for stmt in self.body {
+        if isinstance(stmt, NativeBlock) {
+            return True;
+        }
+    }
+    return False;
+}
+
+"""True when this module carries client code (whole `.cl.jac` file or an inline
+`cl { }` block). The client analogue of `is_native`; no auto-promote (client
+promotion is not a thing)."""
+impl Module.is_client -> bool {
+    if self.is_client_file {
+        return True;
+    }
+    for stmt in self.body {
+        if isinstance(stmt, ClientBlock) {
+            return True;
+        }
+    }
+    return False;
 }
 
 """Get all sub nodes of type."""

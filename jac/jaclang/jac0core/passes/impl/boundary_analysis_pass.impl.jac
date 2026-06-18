@@ -142,14 +142,11 @@ impl BoundaryAnalysisPass.enter_import(
                         # For native-to-native imports, create binding immediately
                         # so NativeCompilePass can link the module. This avoids
                         # relying on enter_func_call which may not visit annex bodies.
-                        # Check both explicit na {} context and .na.jac file context.
+                        # Check both explicit na {} context and whole-native
+                        # file context (`.na.jac` head or `.na.impl.jac` annex).
                         is_native_ctx = (
                             import_context == InteropContext.NATIVE
-                            or (
-                                self.ir_in
-                                and self.ir_in.loc
-                                and self.ir_in.loc.mod_path.endswith('.na.jac')
-                            )
+                            or (self.ir_in is not None and self.ir_in.is_native_file)
                         );
                         if (is_native_ctx and func_name not in manifest.bindings) {
                             binding = InteropBinding(

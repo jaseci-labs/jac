@@ -68,33 +68,79 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
         return result;
     }
 
-    """`iter_context_stmts` for `ctx` plus the statements of every impl annex.
+    """Flatten a module's woven codegen body: impl-annex bodies + head body, plus
+    (optionally) variant and test bodies. The single fold shared by all three
+    backends -- @sv (PyastGenPass), @cl (EsastGenPass) and @na (NaIRGenPass) --
+    replacing the old split between `BaseAstGenPass._merge_module_bodies` (sv/cl)
+    and a native-only annex walk that missed `.na.impl.jac` globals/enums (#6754).
 
-    Top-level constructs declared in an `*.impl.jac` annex (a `glob`, `enum`,
-    ...) live in `impl_mod` sub-modules, never the head module's `body` (see
-    decl_impl_match, which only connects annex symbols; the @sv/@cl AST-gen
-    backends fold the annex in via BaseAstGenPass._merge_module_bodies). A
-    declaration sweep that walks only the head body therefore misses them
-    (#6754). This folds annex statements in — matching the head+annex idiom
-    already used by hand in osp_model._uses_construct and capability_check.
+    Top-level constructs declared in an `*.impl.jac` annex (a `glob`, `enum`, an
+    `impl`) live in `impl_mod` sub-modules, never the head's `body` (decl_impl_match
+    only connects their symbols), so a head-only sweep misses them. This folds them
+    back in.
 
-    The annex statements are taken unfiltered (`ctx=None`): a `.na.impl.jac`
-    annex's own statements are currently mistagged `code_context=server` (the
-    file-kind coercion keys on `.na.jac`, which `.na.impl.jac` doesn't match),
-    so filtering them by the head's context would drop them. The annex of a
-    native decl is itself native by construction (a `.na.jac` head is annexed
-    only by `.na.impl.jac`), so the type-filtering the caller already applies
-    (e.g. GlobalVars / Enum) is the right gate."""
-    static def iter_context_stmts_with_annex(
-        module: uni.Module, ctx: (CodeContext | None) = None
-    ) -> list[uni.ElementStmt] {
-        result: list[uni.ElementStmt] = list(
-            ModuleCodegenPass.iter_context_stmts(module, ctx)
-        );
+    `ctx` selects the gather mode:
+      - `ctx is None` (sv/cl): take statements verbatim, dropping only the head's
+        own `ImplDef` wrappers (the woven annex supplies the real bodies). Context
+        separation then happens per node inside each AST-gen backend (PyastGen
+        prunes foreign blocks; EsastGen filters to CLIENT).
+      - `ctx` set (native): unwrap `na`/`sv`/`cl` blocks and keep only `ctx`
+        statements of the head; a wholly-native annex contributes all of its
+        top-level decls.
+
+    Annex bodies come first: an sv/cl head statement may call an annex-defined
+    function at module-load time, so the impl must precede it. Native glob/enum
+    registration is order-free, so this shared ordering is safe for it too.
+
+    `include_tests` / `include_variants` let native drop `test`/variant bodies that
+    never belong in a compiled binary."""
+    static def collect_codegen_bodies(
+        module: uni.Module,
+        ctx: (CodeContext | None) = None,
+        include_tests: bool = True,
+        include_variants: bool = True
+    ) -> list {
+        result: list = [];
         for annex in module.impl_mod {
-            result.extend(ModuleCodegenPass.iter_context_stmts(annex, None));
+            result.extend(ModuleCodegenPass._ctx_body(annex, ctx, is_head=False));
+        }
+        result.extend(ModuleCodegenPass._ctx_body(module, ctx, is_head=True));
+        if include_variants {
+            for variant in module.variant_mod {
+                for vimpl in variant.impl_mod {
+                    result.extend(
+                        ModuleCodegenPass._ctx_body(vimpl, ctx, is_head=False)
+                    );
+                }
+                result.extend(ModuleCodegenPass._ctx_body(variant, ctx, is_head=True));
+            }
+        }
+        if include_tests {
+            for tmod in module.test_mod {
+                result.extend(ModuleCodegenPass._ctx_body(tmod, ctx, is_head=False));
+            }
         }
         return result;
+    }
+
+    """One module's contribution to `collect_codegen_bodies` (see there). The head
+    is special: in verbatim mode (`ctx is None`) it sheds its `ImplDef` wrappers;
+    in context mode it filters to `ctx` (a sub-module/annex instead contributes all
+    of its statements, `ctx=None`)."""
+    static def _ctx_body(
+        mod: uni.Module, ctx: (CodeContext | None), is_head: bool
+    ) -> list {
+        if ctx is None {
+            if is_head {
+                return [
+                    stmt
+                    for stmt in mod.body
+                    if not isinstance(stmt, uni.ImplDef)
+                ];
+            }
+            return list(mod.body);
+        }
+        return ModuleCodegenPass.iter_context_stmts(mod, ctx if is_head else None);
     }
 
     """Names of archetypes referenced anywhere under `nd` (constructors, type

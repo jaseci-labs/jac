@@ -692,28 +692,14 @@ impl JacCompiler.compile(
     # native-context per #6049, suppressed otherwise per #6262).
     run_inference = options.type_check;
     if not run_inference {
-        mp = mod_targ.loc.mod_path if (mod_targ?.loc and mod_targ.loc) else file_path;
-        is_native_mod = (
-            bool(mp) and (mp.endswith('.na.jac') or mp.endswith('.na.impl.jac'))
-        )
-        or (
-            actual_program._auto_promote_native
-            and mod_targ?.gen
-            and mod_targ.gen.native_compat
-        );
-        is_client_mod = bool(mp) and mp.endswith('.cl.jac');
-        # A `na { }` / `cl { }` block puts native / client code in an otherwise
-        # plain .jac module; one body scan covers both extensions' inline form.
-        if (not is_native_mod or not is_client_mod) and mod_targ?.body {
-            for _stmt in mod_targ.body {
-                if isinstance(_stmt, uni.NativeBlock) {
-                    is_native_mod = True;
-                }
-                if isinstance(_stmt, uni.ClientBlock) {
-                    is_client_mod = True;
-                }
-            }
-        }
+        # Native-ness (whole-native file / inline `na { }` / auto-promotion) and
+        # client-ness (`.cl.jac` / inline `cl { }`) are the single-source-of-truth
+        # `Module.is_native` / `Module.is_client` predicates -- the same logic the
+        # TypeCheckPass emit-full gate uses, and the place `.na.impl.jac` annexes
+        # now resolve (#6754).
+        is_native_mod = mod_targ is not None
+        and mod_targ.is_native(auto_promote=actual_program._auto_promote_native);
+        is_client_mod = mod_targ is not None and mod_targ.is_client();
         # Native consumes Expr.type even on lightweight (no_cgen /
         # symtab_ir_only) compiles, since the cross-module native linker lowers
         # a provider's annotations on demand. Client only reads callee_decl

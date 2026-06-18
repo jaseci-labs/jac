@@ -3087,17 +3087,11 @@ impl TypeEvaluator._in_native_context -> bool {
     if cur is None or not isinstance(cur, uni.UniNode) {
         return False;
     }
-    # An explicit `na { ... }` block is native regardless of file extension —
-    # use the canonical ancestor walk so a fixture or app written as `.jac`
-    # gets the same native ABI/coercion rules as a whole `.na.jac` module.
-    if cur.in_native_context() {
-        return True;
-    }
-    mod = cur.find_parent_of_type(uni.Module);
-    if mod is None or mod.loc is None {
-        return False;
-    }
-    return mod.loc.mod_path.endswith(".na.jac");
+    # `in_native_context` is the canonical ancestor walk: an explicit `na { }`
+    # block, a NATIVE-context ability, OR a whole-native file (`.na.jac` /
+    # `.na.impl.jac`) all count. The whole-file fallback now lives in that walk
+    # (it previously had to be repeated here, and missed `.na.impl.jac`) (#6754).
+    return cur.in_native_context();
 }
 
 """Match a typing special form loaded from any stdlib typing stub.

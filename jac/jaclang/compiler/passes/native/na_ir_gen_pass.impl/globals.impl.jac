@@ -4,11 +4,12 @@ global variables.
 
 A `glob` declared in an `*.impl.jac` annex lives in an `impl_mod` sub-module,
 not `module.body`, so a head-only walk misses it and any reference fails to
-lower (#6754). `iter_context_stmts_with_annex` folds the annex in, mirroring
-how @sv/@cl treat the woven annex's globals as normal module globals."""
+lower (#6754). `collect_codegen_bodies` folds the annex in -- the same fold @sv/
+@cl use for their woven bodies -- so the annex's globals register as normal
+module globals. Tests/variants are excluded: they never enter the binary."""
 impl NaIRGenPass._register_globals(module: uni.Module) -> None {
-    for stmt in ModuleCodegenPass.iter_context_stmts_with_annex(
-        module, CodeContext.NATIVE
+    for stmt in ModuleCodegenPass.collect_codegen_bodies(
+        module, CodeContext.NATIVE, include_tests=False, include_variants=False
     ) {
         if isinstance(stmt, uni.GlobalVars) {
             self._codegen_global_vars(stmt);
@@ -172,10 +173,10 @@ impl NaIRGenPass._codegen_const_expr(
 
 """Walk the module and register all native enum types."""
 impl NaIRGenPass._register_enums(module: uni.Module) -> None {
-    # Head body + impl-annex bodies, so an `enum` declared in an annex resolves
-    # too (same annex-visibility gap as globals, #6754).
-    for stmt in ModuleCodegenPass.iter_context_stmts_with_annex(
-        module, CodeContext.NATIVE
+    # Head body + impl-annex bodies (shared codegen fold), so an `enum` declared
+    # in an annex resolves too (same annex-visibility gap as globals, #6754).
+    for stmt in ModuleCodegenPass.collect_codegen_bodies(
+        module, CodeContext.NATIVE, include_tests=False, include_variants=False
     ) {
         if isinstance(stmt, uni.Enum) {
             self._codegen_enum(stmt);

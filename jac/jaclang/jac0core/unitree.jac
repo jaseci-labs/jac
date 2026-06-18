@@ -394,7 +394,11 @@ obj Module(AstDocNode, UniScopeNode) {
     def postinit -> None;
 
     has annexable_by: (str | None) { getter; }
+    has is_native_file: bool { getter; }
+    has is_client_file: bool { getter; }
 
+    def is_native(auto_promote: bool = False) -> bool;
+    def is_client -> bool;
     def format -> str;
     def unparse(requires_format: bool = True) -> str;
     static def make_stub(

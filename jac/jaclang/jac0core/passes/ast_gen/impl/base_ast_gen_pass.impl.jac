@@ -1,33 +1,13 @@
 """Implementation for base_ast_gen_pass constructs."""
 
-"""Concatenate impl/test/variant bodies with the main module body."""
+"""Concatenate impl/test/variant bodies with the main module body.
+
+Thin verbatim-mode (`ctx=None`) view over the shared codegen fold; native uses
+the same fold with a context filter. See ModuleCodegenPass.collect_codegen_bodies
+for the single implementation (#6754)."""
 impl BaseAstGenPass._merge_module_bodies(nd: uni.Module) -> list {
-    clean_body = [
-        item
-        for item in nd.body
-        if not isinstance(item, uni.ImplDef)
-    ];
-    merged: list = [];
-    for mod in nd.impl_mod {
-        merged.extend(mod.body);
-    }
-    merged.extend(clean_body);
-    for variant in nd.variant_mod {
-        for vimpl in variant.impl_mod {
-            merged.extend(vimpl.body);
-        }
-        merged.extend(
-            [
-                item
-                for item in variant.body
-                if not isinstance(item, uni.ImplDef)
-            ]
-        );
-    }
-    for mod in nd.test_mod {
-        merged.extend(mod.body);
-    }
-    return merged;
+    import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
+    return ModuleCodegenPass.collect_codegen_bodies(nd);
 }
 
 """Instantiate child passes for impl, test, and variant modules."""
