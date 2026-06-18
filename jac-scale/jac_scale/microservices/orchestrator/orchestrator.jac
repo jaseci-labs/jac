@@ -31,10 +31,26 @@ obj MicroserviceOrchestrator {
     """Build client bundle -> registry -> spawn deployers -> wait for
     health -> print banner -> start gateway -> stop all on shutdown."""
     def start_local -> None {
+        # Routes are optional in zero-config mode. The pre-hook normally
+        # injects auto-discovered routes already; this fallback covers direct
+        # calls by scanning the working directory for `sv import` / `to sv:`
+        # services and using their default prefixes.
         if not self.ms_config.get("routes", {}) {
-            logger.error("No routes declared in [plugins.scale.microservices.routes]");
-            logger.error("Run `jac setup microservice` to configure.");
-            return;
+            import from jac_scale.microservices.discovery { discover_sv_services }
+            discovered = discover_sv_services(".");
+            if discovered {
+                self.ms_config["routes"] = discovered;
+                logger.info(
+                    f"Auto-discovered {len(discovered)} service(s): "
+                    f"{', '.join(sorted(discovered.keys()))}"
+                );
+            } else {
+                logger.info(
+                    "No microservices found (no `sv import` / `to sv:` markers). "
+                    "Run `jac setup microservice` to configure explicitly."
+                );
+                return;
+            }
         }
 
         client_config = self.ms_config.get("client", {});
