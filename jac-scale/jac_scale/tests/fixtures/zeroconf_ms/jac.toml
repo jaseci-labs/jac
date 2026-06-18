@@ -1,0 +1,3 @@
+[project]
+name = "zeroconf-shop"
+entry-point = "main.jac"

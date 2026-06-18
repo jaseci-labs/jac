@@ -82,7 +82,23 @@ sv {
 }
 ```
 
-### 2. Configure jac.toml
+### 2. Configure jac.toml (optional)
+
+Microservice mode is **zero-config**: with no `[plugins.scale.microservices]`
+block at all, `jac start` discovers every sibling module that has a `to sv:`
+(or `sv {}`) section, treats the entry-point as the gateway, and derives a
+route prefix per service by convention (`products_app` -> `/api/products`,
+`cart_app` -> `/api/cart`). The same discovery drives local runs and `--scale`
+deploys. So this is enough:
+
+```toml
+[project]
+name = "my_app"
+entry-point = "main.jac"
+```
+
+Declare a block only to override the conventions or add knobs. An explicit
+routes table always wins over discovery:
 
 ```toml
 [plugins.scale.microservices]
@@ -99,8 +115,9 @@ orders_app = "/api/orders"
 entry = "main.jac"
 ```
 
-Services are NOT declared individually - `sv import` handles discovery.
-The TOML only maps module names to gateway prefixes.
+Services are NOT declared individually - the `to sv:` marker (and
+`sv import`) handle discovery. The TOML only maps module names to gateway
+prefixes when you want non-default routing.
 
 ### 3. Start
 
@@ -139,10 +156,30 @@ jac scale restart cart_app               # restart one service
 jac scale logs products_app              # view logs
 jac scale destroy                        # stop everything
 
+# Deploy to Kubernetes
+jac start main.jac --scale                         # build per-app image + deploy
+jac start main.jac --scale --no-image              # imageless: source via ConfigMap
+
 # Preview before applying (no cluster contact, no docker build)
 jac start main.jac --scale --dry-run               # per-service plan + lint
 jac start main.jac --scale --dry-run --show-yaml   # + raw multi-doc YAML
+jac start main.jac --scale --no-image --dry-run    # preview the imageless plan
 ```
+
+### `--no-image`: deploy without building an image
+
+`--no-image` skips the per-app Docker build. It packs your project's
+`.jac`/`.toml` source into a Kubernetes ConfigMap mounted at `/app`, and
+runs a cached `jac-scale-base:<version>` image (built once per cluster from
+the installed jac-scale, reused on every later deploy). A code change just
+re-applies the ConfigMap and rolls the pods - a `JAC_SOURCE_HASH` env stamp
+forces the rollout. MongoDB/Redis are still provisioned as usual.
+
+Use it for fast iteration on local clusters. The source must fit a
+ConfigMap (~1 MB total); for larger projects, or ones that need extra
+OS/pip dependencies baked in, use the default build path (omit `--no-image`).
+Remote clusters need `[plugins.scale.kubernetes].image_registry` set so the
+base image can be pushed somewhere the nodes can pull it.
 
 `--dry-run` runs the same manifest generation as the real deploy but
 exits before any side effect. Sub-second. Default output is a

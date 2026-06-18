@@ -50,7 +50,10 @@ def _tempo_base_url -> str {
 """Configured microservice route keys + 'gateway'. Empty list off-K8s."""
 def _trace_services -> list[str] {
     try {
-        ms = get_scale_config().get_microservices_config();
+        import from jac_scale.microservices.discovery { resolve_microservices_config }
+        ms = resolve_microservices_config(
+            get_scale_config().get_microservices_config(), "."
+        );
         routes: dict = ms.get("routes", {});
         names: list[str] = list(routes.keys());
         return ["gateway"] + sorted(names);

@@ -13,7 +13,33 @@ import from jac_scale.abstractions.autoscaler { DEFAULT_CPU_UTILIZATION_TARGET }
 glob GATEWAY_NAME: str = "__gateway__",
      # +5s cushion lets uvicorn finish exiting AFTER our drain middleware
      # completes; without it, SIGKILL can arrive mid-drain.
-     _UVICORN_EXIT_CUSHION_S: int = 5;
+     _UVICORN_EXIT_CUSHION_S: int = 5,
+     # Name of the volume that mounts --no-image project source at /app.
+     _SOURCE_VOLUME_NAME: str = "jac-source",
+     # K8s ConfigMap objects cap at ~1Mi total. Stay under it with headroom
+     # for the apiserver's own encoding overhead; over this we fail loud and
+     # tell the user to use an image build instead.
+     _SOURCE_CONFIGMAP_MAX_BYTES: int = 950000,
+     # Source file extensions shipped in the --no-image ConfigMap: everything
+     # jac needs to compile + run the project. Build artifacts / binaries are
+     # excluded by extension and by the dir filter in scan.
+     _SOURCE_FILE_EXTS: list[str] = [".jac", ".toml", ".env", ".txt"];
+
+
+"""Sanitize a project-relative path into a valid ConfigMap data key
+([-._a-zA-Z0-9]). The real directory layout is restored at mount time via
+the volume's items[].path, so the key only needs to be unique + valid."""
+def _sanitize_cm_key(rel_path: str) -> str {
+    out: str = "";
+    for ch in rel_path {
+        if ch.isalnum() or ch in "-._" {
+            out += ch;
+        } else {
+            out += "_";
+        }
+    }
+    return out or "f";
+}
 
 
 """DNS-1123-valid K8s resource name. Module level so
@@ -30,12 +56,55 @@ obj MicroserviceManifestBuilder {
     has k8s_config: KubernetesConfig,
         secrets: dict[str, str] = {},
         deploy_context: DeployContext = DeployContext(),
-        logger: any = None;
+        logger: any = None,
+        # Project root + entry file used for zero-config route discovery when
+        # no explicit [plugins.scale.microservices.routes] block is declared.
+        # Set by generate_manifests() from the AppConfig; default to cwd so
+        # direct callers (tests) still resolve sensibly.
+        project_root: str = ".",
+        entry_file: str | None = None,
+        # `--no-image`: mount project source from a ConfigMap into a base
+        # image instead of baking a per-app image. Adds a source ConfigMap to
+        # the bundle and a /app volume mount to every pod.
+        no_image: bool = False,
+        # {relative_path: sanitized_configmap_key}, populated by
+        # _build_source_configmap and read by the per-pod source volume so
+        # items[].path can restore the real directory layout.
+        _source_key_map: dict[str, str] = {},
+        # Short content hash of the --no-image source set, stamped into pods
+        # as JAC_SOURCE_HASH so a code change rolls the Deployments (a
+        # ConfigMap edit alone does not change the pod template otherwise).
+        _source_hash: str = "";
+
+    """Microservices config with routes resolved from source discovery when
+    no explicit routes table is declared (zero-config). Memoized in
+    discovery, so repeated calls in a single build are cheap."""
+    def _resolved_ms_config -> dict[str, any] {
+        import from jac_scale.config_loader { get_scale_config }
+        import from jac_scale.microservices.discovery { resolve_microservices_config }
+        return resolve_microservices_config(
+            get_scale_config().get_microservices_config(),
+            self.project_root,
+            self.entry_file
+        );
+    }
 
     """Lift pod-specs into full Deployment + Service + HPA + PDB
     bundle. Returns `{deployments, services, autoscalers, pdbs, pod_specs}`,
     plus optional `pvcs`, `user_secret`, `ingress`."""
     def generate_manifests(app_config: AppConfig, image: str) -> dict[str, any] {
+        # Anchor zero-config route discovery to the deploy's project dir so
+        # an app with no explicit routes block still fans out one pod per
+        # discovered service.
+        if app_config.code_folder {
+            self.project_root = app_config.code_folder;
+        }
+        if app_config.file_name {
+            self.entry_file = app_config.file_name;
+        }
+        # Build the source ConfigMap first (when --no-image) so its key map is
+        # populated before pod specs request the /app source volume.
+        source_configmap = self._build_source_configmap();
         pod_specs = self.generate_service_pod_specs(app_config, image);
         deployments: dict[str, dict[str, any]] = {};
         services: dict[str, dict[str, any]] = {};
@@ -70,6 +139,9 @@ obj MicroserviceManifestBuilder {
         user_secret = self._build_user_secret_manifest();
         if user_secret is not None {
             bundle["user_secret"] = user_secret;
+        }
+        if source_configmap is not None {
+            bundle["source_configmap"] = source_configmap;
         }
         try {
             import from jac_scale.config_loader { get_scale_config }
@@ -113,15 +185,15 @@ obj MicroserviceManifestBuilder {
     ) -> dict[str, dict[str, any]] {
         app_name = app_config.app_name or self.k8s_config.app_name;
 
-        import from jac_scale.config_loader { get_scale_config }
-        ms_cfg = get_scale_config().get_microservices_config();
+        ms_cfg = self._resolved_ms_config();
         routes: dict[str, str] = ms_cfg.get("routes", {});
 
         if not routes {
             raise ValueError(
-                "[plugins.scale.microservices.routes] is empty in jac.toml. "
-                "Microservice mode needs at least one declared service.\n"
-                "Add to your jac.toml:\n"
+                "No microservices found. Microservice mode needs at least "
+                "one service - a `.jac` module with a `to sv:` section that "
+                "exposes a public endpoint, sitting next to your entry file.\n"
+                "Either add such a module, or declare routes explicitly:\n"
                 "  [plugins.scale.microservices.routes]\n"
                 "  my_service = \"/api/my\"\n"
                 "where 'my_service' is the name of a .jac file in the "
@@ -325,6 +397,167 @@ obj MicroserviceManifestBuilder {
         return f"{self.k8s_config.app_name}-secrets";
     }
 
+    """Name of the ConfigMap holding project source for --no-image deploys."""
+    def _source_configmap_name -> str {
+        return f"{self.k8s_config.app_name}-source";
+    }
+
+    """Collect (relative_path, text) for every source file under the project
+    root that jac needs to compile + run. Excludes build/cache dirs and
+    non-source extensions. Mirrors the .dockerignore intent of an image build."""
+    def _collect_source_files -> list[tuple[str, str]] {
+        import os;
+        import from pathlib { Path }
+        base = Path(self.project_root).resolve();
+        exclude_dirs: set[str] = {
+            ".jac",
+            "__pycache__",
+            "node_modules",
+            ".git",
+            ".github",
+            ".vscode",
+            ".idea",
+            "dist",
+            "build",
+            ".venv",
+            "venv",
+            ".pytest_cache",
+            ".mypy_cache",
+            ".ruff_cache"
+        };
+        out: list[tuple[str, str]] = [];
+        for path in sorted(base.rglob("*")) {
+            if not path.is_file() {
+                continue;
+            }
+            rel = path.relative_to(base);
+            rel_parts = rel.parts;
+            should_skip = False;
+            for part in rel_parts {
+                if part in exclude_dirs {
+                    should_skip = True;
+                }
+            }
+            if should_skip {
+                continue;
+            }
+            # Match by suffix, including double extensions (.cl.jac, .impl.jac).
+            name = path.name;
+            ok = False;
+            for ext in _SOURCE_FILE_EXTS {
+                if name.endswith(ext) {
+                    ok = True;
+                }
+            }
+            if not ok {
+                continue;
+            }
+            try {
+                text = path.read_text();
+            } except Exception {
+                # Binary or unreadable file with a matching suffix: skip it
+                # rather than corrupt the ConfigMap.
+                continue;
+            }
+            out.append((rel.as_posix(), text));
+        }
+        return out;
+    }
+
+    """Source ConfigMap for --no-image deploys: each project source file as a
+    data entry, keyed by a sanitized path. Returns None when --no-image is
+    off. Raises if the source exceeds the ConfigMap size ceiling (the user
+    should switch to an image build for a project that large)."""
+    def _build_source_configmap -> dict[str, any] | None {
+        if not self.no_image {
+            return None;
+        }
+        files = self._collect_source_files();
+        if not files {
+            raise ValueError(
+                f"--no-image found no source files under '{self.project_root}'. "
+                "Run the deploy from your project directory."
+            );
+        }
+        import hashlib;
+        hasher = hashlib.sha256();
+        data: dict[str, str] = {};
+        key_for_path: dict[str, str] = {};
+        used_keys: set[str] = set();
+        total: int = 0;
+        for (rel, text) in files {
+            hasher.update(rel.encode("utf-8"));
+            hasher.update(b"\x00");
+            hasher.update(text.encode("utf-8"));
+            total += len(text.encode("utf-8"));
+            key = _sanitize_cm_key(rel);
+            # Disambiguate sanitize-collisions (a/b.jac vs a-b.jac).
+            base_key = key;
+            i: int = 1;
+            while key in used_keys {
+                key = f"{base_key}.{i}";
+                i += 1;
+            }
+            used_keys.add(key);
+            data[key] = text;
+            key_for_path[rel] = key;
+        }
+        if total > _SOURCE_CONFIGMAP_MAX_BYTES {
+            raise ValueError(
+                f"--no-image project source is {total} bytes, over the "
+                f"{_SOURCE_CONFIGMAP_MAX_BYTES}-byte ConfigMap ceiling. "
+                "Deploy with an image build instead (drop --no-image; "
+                "`jac start --scale` auto-builds), which has no size limit."
+            );
+        }
+        if self.logger {
+            self.logger.info(
+                f"Packed {len(files)} source file(s) ({total} bytes) into "
+                f"ConfigMap '{self._source_configmap_name()}' for --no-image deploy"
+            );
+        }
+        # Stash the key map so the per-pod volume can restore the directory
+        # layout via items[].path, and the content hash so pods roll on a
+        # source change.
+        self._source_key_map = key_for_path;
+        self._source_hash = hasher.hexdigest()[:12];
+        return {
+            "apiVersion": "v1",
+            "kind": "ConfigMap",
+            "metadata": {
+                "name": self._source_configmap_name(),
+                "namespace": self.k8s_config.namespace,
+                "labels": {
+                    "app": "jac-scale-source",
+                    "managed": "jac-scale",
+                    "jac-scale.role": "source"
+                }
+            },
+            "data": data
+        };
+    }
+
+    """(volume, volumeMount) that project the source ConfigMap onto /app.
+    Empty tuple when --no-image is off. items[].path restores the real
+    directory layout from the sanitized keys."""
+    def _source_volume_and_mount(
+        key_map: dict[str, str]
+    ) -> tuple[list[dict[str, any]], list[dict[str, any]]] {
+        if not self.no_image or not key_map {
+            return ([], []);
+        }
+        items: list[dict[str, any]] = [];
+        for (rel, key) in key_map.items() {
+            items.append({"key": key, "path": rel});
+        }
+        volume = {
+            "name": _SOURCE_VOLUME_NAME,
+            "configMap": {"name": self._source_configmap_name(), "items": items}
+        };
+        mount = {"name": _SOURCE_VOLUME_NAME, "mountPath": "/app"};
+        return ([volume], [mount]);
+    }
+
     """ServiceAccount; empty -> namespace default SA. Microservice mode
     does NOT auto-provision SA - apps point this at a pre-bound one."""
     def _service_account_name -> str {
@@ -335,9 +568,7 @@ obj MicroserviceManifestBuilder {
     _build_env for `JAC_SV_<PEER>_URL` injection. Returns {} on read failure."""
     def _microservice_routes -> dict[str, str] {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
-            return dict(ms_cfg.get("routes", {}));
+            return dict(self._resolved_ms_config().get("routes", {}));
         } except Exception {
             return {};
         }
@@ -369,6 +600,13 @@ obj MicroserviceManifestBuilder {
             {"name": "K8S_APP_NAME", "value": self.k8s_config.app_name},
             {"name": "K8S_NAMESPACE", "value": self.k8s_config.namespace}
         ];
+
+        # --no-image: stamp the source content hash so a code change (new
+        # ConfigMap) rolls the Deployment - a ConfigMap volume update alone
+        # does not mutate the pod template.
+        if self.no_image and self._source_hash {
+            env.append({"name": "JAC_SOURCE_HASH", "value": self._source_hash});
+        }
 
         # When tracing is enabled, point pods at the in-cluster Alloy OTLP
         # receiver. Added before user env so a per-service override wins.
@@ -758,8 +996,12 @@ obj MicroserviceManifestBuilder {
             container["resources"] = resources;
         }
         (shared_vols, shared_mounts) = self._shared_volumes_for_service(svc_name);
-        if shared_mounts {
-            container["volumeMounts"] = shared_mounts;
+        (source_vols, source_mounts) = self._source_volume_and_mount(
+            self._source_key_map
+        );
+        all_mounts = source_mounts + shared_mounts;
+        if all_mounts {
+            container["volumeMounts"] = all_mounts;
         }
         # envFrom for the user secret: created BEFORE Deployments in
         # apply_manifests so the secretRef resolves at pod startup.
@@ -774,8 +1016,9 @@ obj MicroserviceManifestBuilder {
         if sa_name {
             spec["serviceAccountName"] = sa_name;
         }
-        if shared_vols {
-            spec["volumes"] = shared_vols;
+        all_vols = source_vols + shared_vols;
+        if all_vols {
+            spec["volumes"] = all_vols;
         }
         if self.deploy_context.init_containers {
             spec["initContainers"] = list(self.deploy_context.init_containers);

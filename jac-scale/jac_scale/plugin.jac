@@ -30,6 +30,20 @@ def _scale_pre_hook(context: HookContext) -> None {
     ms_config = scale_config.get_microservices_config();
     is_sv_sibling = os.environ.get("JAC_SV_SIBLING") == "1";
 
+    # Zero-config: if no explicit routes block is declared, auto-discover the
+    # service set from source (modules with `to sv:` endpoints) relative to
+    # the entry file's directory. This makes `[plugins.scale.microservices]`
+    # optional - a `sv import` app activates microservice mode by its source
+    # shape alone. An explicit routes block always wins.
+    if not is_sv_sibling {
+        ms_filename = context.get_arg("filename");
+        ms_project_root = (os.path.dirname(ms_filename) or '.') if ms_filename else '.';
+        import from jac_scale.microservices.discovery { resolve_microservices_config }
+        ms_config = resolve_microservices_config(
+            ms_config, ms_project_root, ms_filename
+        );
+    }
+
     if ms_config.get("enabled", False) and not is_sv_sibling {
         scale_flag = context.get_arg("scale", False);
         if not scale_flag {
@@ -142,6 +156,7 @@ def _scale_pre_hook(context: HookContext) -> None {
         # --dry-run cancels execution before the deploy. auto_build and
         # guard_fallback_image stay at their defaults (False) so
         # generate_manifests never tries to build an image.
+        no_image = context.get_arg("no_image", False);
         dry_run = context.get_arg("dry_run", False);
         if dry_run {
             if target != "kubernetes-microservice" {
@@ -151,6 +166,13 @@ def _scale_pre_hook(context: HookContext) -> None {
                 context.set_data("cancel_execution", True);
                 context.set_data("cancel_return_code", 1);
                 return;
+            }
+            # Reflect --no-image in the plan (source ConfigMap + base image
+            # tag) without building anything: dry_run short-circuits the base
+            # build in _base_image.
+            if no_image {
+                deployment_target.no_image = True;
+                deployment_target.dry_run = True;
             }
             show_yaml: bool = bool(context.get_arg("show_yaml", False));
             try {
@@ -176,8 +198,17 @@ def _scale_pre_hook(context: HookContext) -> None {
         # build=False for manifest-shape assertions construct the
         # target without these flags and fall through to parent behavior.
         if target == "kubernetes-microservice" {
-            deployment_target.auto_build = True;
-            deployment_target.guard_fallback_image = True;
+            if no_image {
+                # Imageless deploy: project source rides into a cached
+                # jac-scale base image via a ConfigMap. No per-app docker
+                # build. auto_build stays off; the base image is resolved
+                # (built-once + cached) by the target.
+                deployment_target.no_image = True;
+                deployment_target.guard_fallback_image = True;
+            } else {
+                deployment_target.auto_build = True;
+                deployment_target.guard_fallback_image = True;
+            }
         }
 
         # Deploy. Cancel execution on failure so we don't fall through to
@@ -312,6 +343,13 @@ class JacCmd {
                     default=False,
                     help="Build and push Docker image (with --scale)",
                     short="b"
+                ),
+                Arg.create(
+                    "no-image",
+                    typ=bool,
+                    default=False,
+                    help="Deploy without building a Docker image: ship project source via a ConfigMap into a cached jac-scale base image (with --scale)",
+                    short=""
                 ),
                 Arg.create(
                     "experimental",
@@ -658,18 +696,29 @@ class JacCmd {
             import from jac_scale.microservices.local_deployer { LocalDeployer }
 
             scale_config = get_scale_config();
-            ms_config = scale_config.get_microservices_config();
+            import from jac_scale.microservices.discovery {
+                resolve_microservices_config
+            }
+            # Resolve routes from source discovery (cwd) when no explicit
+            # routes block is declared, so `jac scale ...` and the in-pod
+            # `jac scale gateway` work zero-config.
+            ms_config = resolve_microservices_config(
+                scale_config.get_microservices_config(), "."
+            );
 
             if not ms_config.get("enabled", False) {
                 console.print(
-                    "Microservice mode is not enabled in jac.toml", style="error"
+                    "Microservice mode is not active: no [plugins.scale.microservices] "
+                    "routes block and no services discovered in the project "
+                    "(a service is a `.jac` module with a `to sv:` endpoint).",
+                    style="error"
                 );
                 return 1;
             }
 
             if not ms_config.get("routes", {}) {
                 console.print(
-                    "No routes configured in [plugins.scale.microservices.routes]",
+                    "No microservices found (no routes block, no `to sv:` modules).",
                     style="error"
                 );
                 return 1;
@@ -945,13 +994,20 @@ class JacScalePlugin {
             return dict(sv_client._registry);
         }
 
-        # K8s mode: build DNS map from configured routes.
+        # K8s mode: build DNS map from configured routes. Routes are resolved
+        # from source discovery (cwd == /app in-pod) when no explicit routes
+        # block is declared, so zero-config apps still resolve peers via DNS.
         try {
             import from jac_scale.config_loader { get_scale_config }
+            import from jac_scale.microservices.discovery {
+                resolve_microservices_config
+            }
             import from jac_scale.targets.kubernetes.microservice.runtime_resolver {
                 build_k8s_registry
             }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = resolve_microservices_config(
+                get_scale_config().get_microservices_config(), "."
+            );
             routes: dict[str, str] = ms_cfg.get("routes", {});
             port: int = int(ms_cfg.get("gateway_port", 8000));
             return build_k8s_registry(routes, port);

@@ -40,26 +40,60 @@ before cleanup.
 
 ## Deploy your own app
 
-Minimum `jac.toml`:
+### Zero-config (recommended)
+
+You don't need a `[plugins.scale.microservices]` block at all. Minimum
+`jac.toml`:
 
 ```toml
 [project]
 name = "my_app"
 entry-point = "main.jac"
+```
 
-[plugins.scale.microservices]
-enabled = true
+A **service** is any sibling `.jac` module with a `to sv:` section that
+exposes a public endpoint:
 
+```jac
+# my_service.jac
+to sv:
+
+def:pub ping -> dict { return {"ok": true}; }
+```
+
+The entry-point (`main.jac`) is the **gateway** and is never itself a
+service. `jac start` discovers every `to sv:` module in the project, maps
+each to a conventional route prefix (`my_service` -> `/api/my_service`,
+`orders_app` -> `/api/orders`), and activates microservice mode - the same
+behavior locally and on Kubernetes:
+
+```bash
+jac start main.jac           # local: gateway + one subprocess per service
+jac start main.jac --scale   # K8s: gateway pod + one Deployment per service
+```
+
+To override the auto-derived prefixes (or add a service the scan can't
+reach), declare a routes block - it always wins over discovery:
+
+```toml
 [plugins.scale.microservices.routes]
 my_service = "/api/my"
 ```
 
-`my_service.jac` is a sibling file with `def:pub` functions discoverable
-via `sv import`. Then:
+### Deploy without building an image (`--no-image`)
 
 ```bash
-jac start main.jac --scale
+jac start main.jac --scale --no-image
 ```
+
+Instead of building a per-app Docker image, this ships your project source
+into a **ConfigMap** mounted at `/app` in every pod, running a cached
+`jac-scale-base:<version>` image (built once per cluster, reused after).
+No Dockerfile, no per-deploy build - a code change just re-applies the
+ConfigMap and rolls the pods (a `JAC_SOURCE_HASH` env stamp triggers the
+rollout). Best for fast iteration; the source must fit a ConfigMap (~1 MB).
+For large projects or ones needing extra OS/pip deps, use the default
+image-build path (drop `--no-image`).
 
 No Dockerfile, no registry config required for local clusters.
 `jac start --scale` detects your cluster type from kubeconfig, builds

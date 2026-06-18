@@ -54,11 +54,23 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # path. Test path keeps them False -> parent KubernetesTarget
         # behavior (build_via_registry / python_image fallback).
         auto_build: bool = False,
-        guard_fallback_image: bool = False;
+        guard_fallback_image: bool = False,
+        # `--no-image`: deploy project source via a ConfigMap into a cached
+        # jac-scale base image instead of building a per-app image. Mutually
+        # exclusive with auto_build (the pre-hook sets one or the other).
+        no_image: bool = False,
+        # --dry-run: resolve the base image tag for the plan without building
+        # or touching the cluster.
+        dry_run: bool = False;
 
     """Auto-build path when `auto_build=True`: prefer user's pre-built
     docker_image_name, else auto_build_and_distribute. Else parent behavior."""
     def _handle_image_registry(app_name: str, app_config: AppConfig) -> str {
+        if self.no_image {
+            # Imageless: pods run the cached jac-scale base image; user code
+            # is mounted from a ConfigMap (built in generate_manifests).
+            return self._base_image();
+        }
         if self.auto_build {
             user_image = self.k8s_config.docker_image_name;
             if user_image and user_image != f"{app_name}:latest" {
@@ -78,30 +90,37 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return KubernetesTarget._handle_image_registry(self, app_name, app_config);
     }
 
-    """Reads image_registry from raw config (KubernetesConfig.from_dict
-    drops unknown keys so we can't go via the typed view) and hands off
-    to the cluster-aware auto-build pipeline."""
+    """image_registry from raw [plugins.scale.kubernetes] config.
+    KubernetesConfig.from_dict drops unknown keys, so the typed view would
+    lose this. Empty/missing -> None (fine for local; remote needs it)."""
+    def _registry_url -> str | None {
+        try {
+            import from jac_scale.config_loader { get_scale_config }
+            raw = get_scale_config().load();
+            k8s_raw = raw.get("kubernetes", {});
+            return str(k8s_raw.get("image_registry", "")).strip();
+        } except Exception {
+            return None;
+        }
+    }
+
+    """Resolve (build-once + cache) the jac-scale base image for --no-image."""
+    def _base_image -> str {
+        import from jac_scale.microservices.images.base_image { ensure_base_image }
+        image_tag = ensure_base_image(self._registry_url(), dry_run=self.dry_run);
+        if self.logger {
+            self.logger.info(f"Using jac-scale base image: {image_tag}");
+        }
+        return image_tag;
+    }
+
     def _auto_build_image(app_name: str, app_config: AppConfig) -> str {
         import from pathlib { Path }
         import from jac_scale.microservices.images.auto_build {
             auto_build_and_distribute
         }
 
-        # Read image_registry directly from raw [plugins.scale.kubernetes]
-        # config; KubernetesConfig.from_dict drops unknown keys, so going
-        # via the typed view would lose this. Empty/missing -> None,
-        # which is fine for local clusters and signals "needs registry"
-        # for remote.
-        registry_url: str | None = None;
-        try {
-            import from jac_scale.config_loader { get_scale_config }
-            raw = get_scale_config().load();
-            k8s_raw = raw.get("kubernetes", {});
-            reg = str(k8s_raw.get("image_registry", "")).strip();
-            registry_url = reg;
-        } except Exception {
-            registry_url = None;
-        }
+        registry_url: str | None = self._registry_url();
 
         project_dir = Path(app_config.code_folder).resolve();
         if self.logger {
@@ -137,8 +156,13 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # pod-spec. Skipped silently in tests (no kube config / not on a
         # real cluster); the provisioning helper is idempotent for re-deploys.
         try {
+            # Provision on any production deploy path: image auto-build OR
+            # imageless (--no-image). Both run real pods that need the DBs;
+            # only the flagless test path (both False) skips provisioning.
             self._deploy_context = MicroserviceDatabaseProvisioner(
-                k8s_target=self, logger=self.logger, enabled=self.auto_build
+                k8s_target=self,
+                logger=self.logger,
+                enabled=self.auto_build or self.no_image
             ).provision(
                 app_name
             );
@@ -391,7 +415,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             k8s_config=self.k8s_config,
             secrets=self.secrets,
             deploy_context=self._deploy_context,
-            logger=self.logger
+            logger=self.logger,
+            no_image=self.no_image
         );
         return builder.generate_manifests(app_config, image);
     }
@@ -490,6 +515,22 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     f"Applied Secret for user-defined [plugins.scale.secrets] "
                     f"({len(user_secret['stringData'])} keys)",
                     {"name": user_secret["metadata"]["name"]}
+                );
+            }
+        }
+
+        # Source ConfigMap (--no-image): applied before Deployments so the
+        # /app volume resolves at pod startup. A rolled ConfigMap triggers a
+        # rollout via the content hash stamped into the pod template.
+        source_configmap = bundle.get("source_configmap");
+        if source_configmap {
+            self._apply_or_replace_configmap(core_v1, namespace, source_configmap);
+            if self.logger {
+                self.logger.info(
+                    f"Applied source ConfigMap '{source_configmap['metadata'][
+                        'name'
+                    ]}' "
+                    f"({len(source_configmap.get('data', {}))} files)"
                 );
             }
         }
@@ -692,6 +733,26 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except ApiException as e {
             if e.status == 404 {
                 core_v1.create_namespaced_service(namespace=namespace, body=manifest);
+            } else {
+                raise;
+            }
+        }
+    }
+
+    def _apply_or_replace_configmap(
+        core_v1: any, namespace: str, manifest: dict[str, any]
+    ) {
+        name: str = manifest["metadata"]["name"];
+        try {
+            core_v1.read_namespaced_config_map(name=name, namespace=namespace);
+            core_v1.replace_namespaced_config_map(
+                name=name, namespace=namespace, body=manifest
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_config_map(
+                    namespace=namespace, body=manifest
+                );
             } else {
                 raise;
             }

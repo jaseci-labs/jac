@@ -302,6 +302,13 @@ def _render_cluster_wide(bundle: Any, ms_cfg: Any) -> None {
         lines.append(f"  user_secret: {name} ({len(data)} keys)");
     }
 
+    scm = bundle.get("source_configmap") if isinstance(bundle, dict) else None;
+    if isinstance(scm, dict) {
+        name = sget(dget(scm, "metadata"), "name") or "?";
+        data = dget(scm, "data");
+        lines.append(f"  source_configmap: {name} ({len(data)} files, --no-image)");
+    }
+
     if not lines {
         return;
     }
@@ -360,6 +367,15 @@ obj Plan {
         bundle_raw = target.generate_manifests(app_config);
         bundle: dict = bundle_raw if isinstance(bundle_raw, dict) else {};
         (ms_cfg, svc_configs) = Plan._load_ms_cfg();
+
+        # Resolve zero-config routes from source so the plan's route column
+        # matches the pod specs the builder actually emitted (which also use
+        # discovery). Without this the plan would render discovered services
+        # as "internal-only" even though the gateway routes to them.
+        import from jac_scale.microservices.discovery { resolve_microservices_config }
+        ms_cfg = resolve_microservices_config(
+            ms_cfg, app_config.code_folder or ".", app_config.file_name
+        );
 
         routes_any: Any = ms_cfg.get("routes", {});
         routes: dict = {};
@@ -547,6 +563,10 @@ obj Plan {
         out: list = [];
         if self.bundle.get("user_secret") {
             out.append(self.bundle["user_secret"]);
+        }
+        # --no-image source ConfigMap, applied before Deployments mount it.
+        if self.bundle.get("source_configmap") {
+            out.append(self.bundle["source_configmap"]);
         }
         for key in ["pvcs", "deployments", "services", "pdbs"] {
             for m in dget(self.bundle, key).values() {
