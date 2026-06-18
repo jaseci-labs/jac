@@ -145,6 +145,9 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     }
     self._post_apply(apply_report);
     self.changes.clear();
+    if anchor is None {
+        self._committed = True;
+    }
 }
 
 """Batch get with full tiered read-through: L1 → L2 MGET → L3 $in."""

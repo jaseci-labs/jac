@@ -1943,9 +1943,10 @@ impl TieredMemory.delete(id: UUID) -> None {
     }
 }
 
-"""Close all tiers. Pending work is committed first — this is the backstop
-that persists CLI runs (`jac run` flows end at close, not at an explicit
-commit). A failed request must abort() before close to discard its work."""
+"""Close all tiers and release resources. Callers should commit explicitly
+before calling close(); the commit() call here is a best-effort backstop,
+not a guaranteed persistence point. ScaleTieredMemory overrides this and
+skips the backstop commit when _committed is already set."""
 impl TieredMemory.close -> None {
     self.commit();
     if self.l3 {
