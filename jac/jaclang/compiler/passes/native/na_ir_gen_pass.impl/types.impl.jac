@@ -469,6 +469,19 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     }
     if isinstance(type_expr, uni.Expr) {
         if type_expr.type is None {
+            # Native compiles with `type_check=False` (see nacompile): the strict
+            # TypeCheckPass -- which normally stamps annotation `.type` for codegen
+            # via exit_sub_tag -- never runs, so signature/return annotations reach
+            # here unstamped. Resolve (not check) the annotation on demand through
+            # the central type evaluator so collections/unions/structs lower
+            # identically to the checked path. get_type_of_expression stamps
+            # `node.type`, so the result is cached for reuse. The E9002 below stays
+            # a genuine guard: it only fires if resolution itself yields nothing.
+            try {
+                self.prog.get_type_evaluator().get_type_of_expression(type_expr);
+            } except Exception { }
+        }
+        if type_expr.type is None {
             self.emit(
                 E9002,
                 node_override=type_expr,
