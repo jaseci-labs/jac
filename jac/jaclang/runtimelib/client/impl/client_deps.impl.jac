@@ -30,16 +30,15 @@ def _resolve_client_framework -> str {
 
 """Return the (runtime_deps, dev_deps) default npm package sets for a framework.
 
-Solid uses Solid-native libraries only — no React ecosystem package — matching
-the framework-free `solid_runtime.cl.jac` shim: routing via `@solidjs/router`,
-forms via `solid-hook-form` + `zod` (the shim hand-rolls its zod resolver, so no
-`@hookform/*` package is pulled). React/Preact keep the react-hook-form stack."""
+Both Solid and React use TanStack Form (`@tanstack/solid-form` /
+`@tanstack/react-form`), which share `@tanstack/form-core` and consume Standard
+Schema natively — no resolver packages needed on either side."""
 def _default_client_deps(framework: str) -> tuple[dict[str, str], dict[str, str]] {
     if framework == "solid" {
         runtime_deps: dict[str, str] = {
             'solid-js': '^1.9.13',
             '@solidjs/router': '^0.16.1',
-            'solid-hook-form': '^2.5.3',
+            '@tanstack/solid-form': '^1.33.0',
             'zod': '^4.3.6'
         };
         # No `vite-plugin-solid`: the Solid build uses the `solid-js/h` hyperscript
@@ -54,9 +53,8 @@ def _default_client_deps(framework: str) -> tuple[dict[str, str], dict[str, str]
         'react-dom': '^18.2.0',
         'react-router-dom': '^6.22.0',
         'react-error-boundary': '^5.0.0',
-        "react-hook-form": "^7.71.0",
-        "zod": "^4.3.6",
-        "@hookform/resolvers": "^5.2.2"
+        "@tanstack/react-form": "^1.33.0",
+        "zod": "^4.3.6"
     };
     dev_deps: dict[str, str] = {
         'vite': '^6.4.1',

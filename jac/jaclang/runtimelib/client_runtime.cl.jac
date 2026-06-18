@@ -6,7 +6,7 @@ localStorage, navigation, error reporting, zod-schema proxy) lives in
 symbol so `@jac/runtime` keeps exposing the full surface from a single module.
 On top of that it adds the React-specific pieces: the `__jacJsx` element factory
 (React.createElement), router bindings (react-router-dom), forms
-(react-hook-form + zod), the `JacAwaiting` Suspense wrapper, and the error
+(@tanstack/react-form + zod), the `JacAwaiting` Suspense wrapper, and the error
 boundary.
 
 Imports are written against `react`; the Preact backend remaps them to
@@ -30,8 +30,7 @@ import from 'react-router-dom' {
     useParams as reactRouterUseParams
 }
 import from 'react-error-boundary' { ErrorBoundary }
-import from 'react-hook-form' { useForm }
-import from '@hookform/resolvers/zod' { zodResolver }
+import from '@tanstack/react-form' { useForm }
 import from 'zod' { z }
 
 # --- Framework-agnostic core: import + re-export so `@jac/runtime` is one module.
@@ -166,7 +165,10 @@ def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement;
 # `JacClientErrorBoundary` for now.
 def:pub JacAwaiting(props: dict) -> JsxElement;
 def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
-def:pub useJacForm(form_mode: str = "onTouched", schema: any) -> any;
+def:pub useJacForm(
+    form_mode: str = "onTouched", schema: any, onSubmit: any = None
+) -> any;
+
 def:pub JacForm(props: dict) -> JsxElement;
 
 # onError prop for JacClientErrorBoundary. Wired by entry-script generators

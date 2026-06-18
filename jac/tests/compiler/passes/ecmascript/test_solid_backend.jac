@@ -335,12 +335,10 @@ test "solid runtime shim reaches router/form parity with the React shim" {
     # Link maps `to`->`href` via @solidjs/router's `A`; Navigate maps `to`->`href`.
     assert "SolidAnchor" in js , "Link adapter must delegate to @solidjs/router's A";
     assert "SolidNavigate" in js;
-    # Forms: solid-hook-form's createForm + the hand-rolled zod resolver (no @hookform).
+    # Forms: @tanstack/solid-form's createForm (Standard Schema, no resolver needed).
     assert "function JacForm(" in js;
     assert "function useJacForm(" in js;
-    assert "createForm(" in js , "useJacForm must build a solid-hook-form controller";
-    assert "function __zodResolver(" in js , "hand-rolled zod resolver did not link";
-    assert "safeParse" in js , "zod resolver must validate via schema.safeParse";
+    assert "createForm(" in js , "useJacForm must build a tanstack/solid-form controller";
     # Error boundary + async boundary over solid-js primitives.
     assert "function JacClientErrorBoundary(" in js;
     assert "function ErrorFallback(" in js;

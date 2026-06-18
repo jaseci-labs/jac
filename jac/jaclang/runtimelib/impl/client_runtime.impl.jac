@@ -276,31 +276,36 @@ impl errorOverlay(filePath: str, errors: str) -> JsxElement {
     );
 }
 
-impl useJacForm(form_mode: str, schema: any) -> any {
-    return useForm(mode=form_mode, resolver=zodResolver(schema));
+impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
+    actualSchema = schema;
+    try {
+        if schema._def and schema._def.schema {
+            actualSchema = schema._def.schema;
+        }
+    } except Exception as e {
+        console.warn("Failed to unwrap schema:", e);
+    }
+    schemaShape = actualSchema.shape || {};
+    defaults = {};
+    for key in Object.keys(schemaShape) {
+        defaults[key] = "";
+    }
+    validators = {};
+    if form_mode == "onChange" {
+        validators["onChange"] = schema;
+    } elif form_mode == "onSubmit" {
+        validators["onSubmit"] = schema;
+    } else {
+        validators["onBlur"] = schema;
+    }
+    opts = {"defaultValues": defaults, "validators": validators};
+    if onSubmit {
+        opts["onSubmit"] = lambda args: any { return onSubmit(args.value); };
+    }
+    return useForm(opts);
 }
 
-"""Auto-generated JacForm component that can render forms based on Zod schemas with built-in validation and styling.
-        Props:
-        - schema: Zod schema defining the form fields and validation
-        - onSubmit: function to call with form data on submit
-        - layout: "vertical" (default), "horizontal", "inline", or "grid"
-        - field_config: dict mapping field names to {type, label, placeholder, options, rows, showPasswordToggle, className, inputClassName, labelClassName}
-            - type: REQUIRED - field type ("text", "email", "password", "number", "date", "datetime-local", "checkbox", "select", "radio", "textarea", etc.)
-            - label: field label (defaults to field name)
-            - placeholder: placeholder text
-            - options: array of options for radio buttons (e.g., ["option1", "option2"])
-            - rows: number of rows for textarea (default 4)
-            - showPasswordToggle: boolean - show "Show password" checkbox for password fields (default false)
-            - className, inputClassName, labelClassName: CSS classes for styling
-        - submitLabel: custom label for the submit button (default "Submit")
-        - submitClassName: custom className for submit button
-        - gridColumns: number of columns for grid layout (default 2)
-        - validateMode: validation mode for react-hook-form (default "onTouched")
-        - className: additional CSS class for the form element
-"""
 impl JacForm(props: dict) -> JsxElement {
-    # Destructure props (JSX passes all props as a single object)
     schema = props.schema;
     onSubmit = props.onSubmit;
     layout = props.layout || "vertical";
@@ -310,12 +315,9 @@ impl JacForm(props: dict) -> JsxElement {
     gridColumns = props.gridColumns || 2;
     validateMode = props.validateMode || "onTouched";
     className = props.className || "";
-    # Extract field names from schema
-    # Handle ZodEffects (schemas with .refine()) by unwrapping
     actualSchema = schema;
     try {
         if schema._def and schema._def.schema {
-            # This is a ZodEffects, unwrap to get the base schema
             actualSchema = schema._def.schema;
         }
     } except Exception as e {
@@ -323,52 +325,35 @@ impl JacForm(props: dict) -> JsxElement {
     }
     schemaShape = actualSchema.shape || {};
     fieldNames = Object.keys(schemaShape);
-    # Initialize form with the original schema (not the unwrapped one)
-    form = useJacForm(validateMode, schema);
-    errors = form.formState.errors;
-    isSubmitting = form.formState.isSubmitting;
-    isDirty = form.formState.isDirty;
-    # # State for password visibility (separate state for each field)
+    form = useJacForm(validateMode, schema, onSubmit);
     [passwordVisible, setPasswordVisible] = useState({});
-    # Helper function to recursively unwrap Zod wrapper types
     def unwrapZodSchema(schema: any, depth: int = 0) -> any {
-        maxDepth = 10;  # Prevent infinite recursion
+        maxDepth = 10;
         if not schema._def or depth >= maxDepth {
             return schema;
         }
-
         typeValue = schema._def.type;
-
-        # Unwrap ZodOptional (.optional())
         if typeValue == "optional" and schema._def.innerType {
             return unwrapZodSchema(schema._def.innerType, depth + 1);
         }
-
-        # Unwrap ZodDefault (.default())
         if typeValue == "default" and schema._def.innerType {
             return unwrapZodSchema(schema._def.innerType, depth + 1);
         }
-
-        # Unwrap ZodEffects (.refine(), .transform(), etc.)
         if schema._def.checks and schema._def.schema {
             return unwrapZodSchema(schema._def.schema, depth + 1);
         }
-
-        # Base case: not a wrapper type
         return schema;
     }
-    # Helper: Render error message
-    def renderError(error: any) -> JsxElement | None {
-        if not error {
+    def renderError(errors: list) -> JsxElement | None {
+        if not errors or not errors.length {
             return None;
         }
         return (
             <p style={{color: "#ef4444", fontSize: "0.85rem", marginTop: "0.25rem"}}>
-                ⚠️{error.message}
+                ⚠️{errors[0]}
             </p>
         );
     }
-    # Helper: Extract enum options from schema
     def getEnumOptions(fieldSchema: any) -> list {
         unwrapped = unwrapZodSchema(fieldSchema);
         if unwrapped._def and unwrapped._def.entries {
@@ -378,23 +363,16 @@ impl JacForm(props: dict) -> JsxElement {
         }
         return [];
     }
-    # Helper: Render the actual input element based on type
     def renderInput(
-        fieldType: str,
-        field: any,
-        error: any,
-        config: dict,
-        fieldSchema: any,
-        fieldName: str
+        fieldType: str, field: any, config: dict, fieldSchema: any, fieldName: str
     ) -> JsxElement {
         inputClassName = config.inputClassName or "";
         labelClassName = config.labelClassName or "";
         placeholder = config.placeholder or "";
         label = config.label or fieldName;
+        hasError = field.state.meta.errors and field.state.meta.errors.length;
 
-        # Checkbox
         if fieldType == "checkbox" {
-            watchValue = form.watch(fieldName);
             return (
                 <label
                     style={{
@@ -406,11 +384,11 @@ impl JacForm(props: dict) -> JsxElement {
                 >
                     <input
                         type="checkbox"
-                        name={field.name}
-                        ref={field.ref}
-                        onChange={field.onChange}
-                        onBlur={field.onBlur}
-                        checked={watchValue || False}
+                        checked={field.state.value || False}
+                        onChange={lambda e: any { field.handleChange(
+                            e.target.checked
+                        ); }}
+                        onBlur={field.handleBlur}
                         className={inputClassName}
                         style={{cursor: "pointer"}}
                     />
@@ -419,17 +397,13 @@ impl JacForm(props: dict) -> JsxElement {
             );
         }
 
-        # Select dropdown
         if fieldType == "select" {
             options = getEnumOptions(fieldSchema);
-            watchValue = form.watch(fieldName);
             return (
                 <select
-                    name={field.name}
-                    ref={field.ref}
-                    onChange={field.onChange}
-                    onBlur={field.onBlur}
-                    value={watchValue || ""}
+                    value={field.state.value || ""}
+                    onChange={lambda e: any { field.handleChange(e.target.value); }}
+                    onBlur={field.handleBlur}
                     className={inputClassName}
                     style={{width: "100%", boxSizing: "border-box"}}
                 >
@@ -439,10 +413,8 @@ impl JacForm(props: dict) -> JsxElement {
             );
         }
 
-        # Radio buttons
         if fieldType == "radio" {
             options = getEnumOptions(fieldSchema);
-            watchValue = form.watch(fieldName);
             return (
                 <div style={{display: "flex", flexDirection: "column", gap: "0.5rem"}}>
                     {[
@@ -457,12 +429,12 @@ impl JacForm(props: dict) -> JsxElement {
                         >
                             <input
                                 type="radio"
-                                name={field.name}
                                 value={opt}
-                                ref={field.ref}
-                                onChange={field.onChange}
-                                onBlur={field.onBlur}
-                                checked={watchValue == opt}
+                                checked={field.state.value == opt}
+                                onChange={lambda e: any { field.handleChange(
+                                    e.target.value
+                                ); }}
+                                onBlur={field.handleBlur}
                                 className={inputClassName}
                                 style={{cursor: "pointer"}}
                             />
@@ -473,19 +445,22 @@ impl JacForm(props: dict) -> JsxElement {
             );
         }
 
-        # Textarea
         if fieldType == "textarea" {
             rows = config.rows or 4;
             return (
                 <textarea
                     placeholder={placeholder}
                     rows={rows}
-                    {**field}
+                    value={field.state.value}
+                    onChange={lambda e: any { field.handleChange(e.target.value); }}
+                    onBlur={field.handleBlur}
                     className={inputClassName}
                     style={{
                         width: "100%",
                         boxSizing: "border-box",
-                        border: ("2px solid #ef4444" if error else "2px solid #e5e7eb"),
+                        border: (
+                            "2px solid #ef4444" if hasError else "2px solid #e5e7eb"
+                        ),
                         padding: "0.5rem",
                         fontFamily: "inherit",
                         fontSize: "inherit",
@@ -495,8 +470,6 @@ impl JacForm(props: dict) -> JsxElement {
             );
         }
 
-        # Regular input (text, email, password, number, date, datetime-local, tel, url, etc.)
-        # Special handling for password fields with visibility toggle
         if fieldType == "password" and config.showPasswordToggle {
             isVisible = passwordVisible[fieldName] || False;
             return (
@@ -505,14 +478,18 @@ impl JacForm(props: dict) -> JsxElement {
                         <input
                             type={"text" if isVisible else "password"}
                             placeholder={placeholder}
-                            {**field}
+                            value={field.state.value}
+                            onChange={lambda e: any { field.handleChange(
+                                e.target.value
+                            ); }}
+                            onBlur={field.handleBlur}
                             className={inputClassName}
                             style={{
                                 width: "100%",
                                 boxSizing: "border-box",
                                 border: (
                                     "2px solid #ef4444"
-                                        if error
+                                        if hasError
                                         else "2px solid #e5e7eb"
                                 ),
                                 paddingRight: "2.5rem"
@@ -548,58 +525,51 @@ impl JacForm(props: dict) -> JsxElement {
             );
         }
 
-        # Regular input without toggle
         return (
             <input
                 type={fieldType}
                 placeholder={placeholder}
-                {**field}
+                value={field.state.value}
+                onChange={lambda e: any { field.handleChange(
+                    parseFloat(e.target.value)
+                        if fieldType == "number"
+                        else e.target.value
+                ); }}
+                onBlur={field.handleBlur}
                 className={inputClassName}
                 style={{
                     width: "100%",
                     boxSizing: "border-box",
-                    border: ("2px solid #ef4444" if error else "2px solid #e5e7eb")
+                    border: ("2px solid #ef4444" if hasError else "2px solid #e5e7eb")
                 }}
             />
         );
     }
-    # Main field renderer
     def renderField(fieldName: str) -> JsxElement {
         fieldSchema = schemaShape[fieldName];
         config = field_config[fieldName] if field_config[fieldName] else {};
-
-        # field_config entries carry the input kind under a "type" key
-        # (e.g. {type: "email"}); read it straight through.
         fieldType = config.type or "text";
         label = config.label or fieldName;
         fieldClassName = config.className or "";
         labelClassName = config.labelClassName or "";
 
-        # Register field and get error state
-        # valueAsNumber: true is required for number fields because <input type="number">
-        registerOptions = {"valueAsNumber": True} if fieldType == "number" else {};
-        field = form.register(fieldName, registerOptions);
-        error = errors[fieldName];
-
-        # Render: wrapper > input > error
         return (
-            <div
-                className={fieldClassName}
-                style={{marginBottom: "1rem"}}
-                key={fieldName}
-            >
-                <label
-                    className={labelClassName}
-                    style={{display: "block", marginBottom: "0.5rem"}}
-                >
-                    {label}
-                </label>
-                {renderInput(fieldType, field, error, config, fieldSchema, fieldName)}
-                {renderError(error)}
-            </div>
+            <form.Field name={fieldName} key={fieldName}>
+                {lambda field: JsxElement { return (
+                    <div className={fieldClassName} style={{marginBottom: "1rem"}}>
+                        <label
+                            className={labelClassName}
+                            style={{display: "block", marginBottom: "0.5rem"}}
+                        >
+                            {label}
+                        </label>
+                        {renderInput(fieldType, field, config, fieldSchema, fieldName)}
+                        {renderError(field.state.meta.errors)}
+                    </div>
+                ); }}
+            </form.Field>
         );
     }
-    # Generate layout styles based on layout prop
     def getLayoutStyle -> dict {
         if layout == "grid" {
             return {
@@ -617,11 +587,9 @@ impl JacForm(props: dict) -> JsxElement {
         } elif layout == "inline" {
             return {display: "flex", gap: "0.5rem", alignItems: "flex-end"};
         } else {
-            # vertical (default)
             return {};
         }
     }
-    # Render all fields
     fields = [];
     for fieldName in fieldNames {
         fields.append(renderField(fieldName));
@@ -630,20 +598,30 @@ impl JacForm(props: dict) -> JsxElement {
     formClassName = className or "";
     buttonClassName = submitClassName or "";
     return (
-        <form onSubmit={form.handleSubmit(onSubmit)} className={formClassName}>
+        <form
+            onSubmit={lambda e: any {
+                e.preventDefault();
+                e.stopPropagation();
+                form.handleSubmit();
+            }}
+            className={formClassName}
+        >
             <div style={layoutStyle}>{fields}</div>
             <button
                 type="submit"
-                disabled={isSubmitting or not isDirty}
+                disabled={form.state.isSubmitting or not form.state.isDirty}
                 className={buttonClassName}
                 style={{
                     width: "100%",
                     cursor: (
-                        "not-allowed" if (isSubmitting or not isDirty) else "pointer"
+                        "not-allowed"
+                            if (form.state.isSubmitting or not form.state.isDirty)
+                            else "pointer"
                     )
                 }}
             >
-                {isSubmitting and "Submitting..."}{not isSubmitting and submitLabel}
+                {form.state.isSubmitting and "Submitting..."}{not form.state.isSubmitting
+                and submitLabel}
             </button>
         </form>
     );

@@ -151,11 +151,10 @@ glob _PEER_VERSIONS: dict[str, str] = {
          "react-dom": "^18.2.0",
          "react-router-dom": "^6.22.0",
          "react-error-boundary": "^5.0.0",
-         "react-hook-form": "^7.71.0",
-         "@hookform/resolvers": "^5.2.2",
+         "@tanstack/react-form": "^1.33.0",
+         "@tanstack/solid-form": "^1.33.0",
          "solid-js": "^1.9.13",
          "@solidjs/router": "^0.16.1",
-         "solid-hook-form": "^2.5.3",
          "zod": "^4.3.6"
      };
 

@@ -11,10 +11,9 @@ hyperscript runtime (`solid-js/h`) instead of `React.createElement`.
 This file pulls in **no** React ecosystem package, which is the whole point of
 the runtime split — a Solid build never resolves `react`, `react-router-dom`,
 `react-hook-form`, or `@hookform/*`. It targets only Solid-native libraries:
-JSX via `solid-js/h`, routing via `@solidjs/router`, forms via `solid-hook-form`
-(a near-drop-in `createForm` for react-hook-form's `useForm`) plus a hand-rolled
-`__zodResolver` (so no `@hookform` package is needed), and error/async parity via
-`solid-js`'s `ErrorBoundary` / `Suspense`. Solid's reactive primitives
+JSX via `solid-js/h`, routing via `@solidjs/router`, forms via
+`@tanstack/solid-form` (Standard Schema natively, no resolver needed), and
+error/async parity via `solid-js`'s `ErrorBoundary` / `Suspense`. Solid's reactive primitives
 (`createSignal`, `createEffect`, ...) are imported by the generated component code
 straight from `solid-js` (see `SolidBackend.import_source`), not re-exported here.
 
@@ -45,7 +44,7 @@ import from '@solidjs/router' {
     useLocation as solidUseLocation,
     useParams as solidUseParams
 }
-import from 'solid-hook-form' { createForm }
+import from '@tanstack/solid-form' { createForm }
 import from 'zod' { z }
 
 # --- Framework-agnostic core: import + re-export so `@jac/runtime` is one module.
@@ -192,10 +191,9 @@ def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
 def:pub JacAwaiting(props: dict) -> JsxElement;
 def:pub __jacReactErrorHandler(error: any, info: any) -> None;
 
-# --- Forms (solid-hook-form + zod) ------------------------------------------
-# `__zodResolver` is internal (consumed only by `useJacForm`), declared here so
-# its impl-annex body is spliced into the module; it is not part of the public
-# `@jac/runtime` surface.
-def __zodResolver(schema: any) -> any;
-def:pub useJacForm(form_mode: str = "onTouched", schema: any) -> any;
+# --- Forms (@tanstack/solid-form + zod) -------------------------------------
+def:pub useJacForm(
+    form_mode: str = "onTouched", schema: any, onSubmit: any = None
+) -> any;
+
 def:pub JacForm(props: dict) -> JsxElement;

@@ -392,7 +392,7 @@ test "build_runtime_tarball packages the Solid runtime with no React ecosystem" 
         peers = pj["peerDependencies"];
         assert peers["solid-js"] == "^1.9.13";
         assert peers["@solidjs/router"] == "^0.16.1";
-        assert peers["solid-hook-form"] == "^2.5.3";
+        assert peers["@tanstack/solid-form"] == "^1.33.0";
         assert peers["zod"] == "^4.3.6";
         assert "react" not in peers;
         assert "react-dom" not in peers;
