@@ -654,7 +654,6 @@ glob _JSON_SAFE_TYPE_NAMES: set = {
          "set",
          "frozenset",
          "None",
-         "NoneType",
          "Any",
          "object",
          "Optional",
@@ -742,7 +741,9 @@ def _emit_main_py(
         'import inspect',
         'import json',
         'import os',
-        'from typing import Any',
+        'from typing import '
+            'Any, Dict, Iterable, List, Literal, Mapping, '
+            'Optional, Sequence, Set, Tuple, Union',
         '',
         'from fastapi import FastAPI, Header, HTTPException',
         'from fastapi.middleware.cors import CORSMiddleware',
