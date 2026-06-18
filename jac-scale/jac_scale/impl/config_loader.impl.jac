@@ -150,7 +150,11 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'token_collection': 'auth_tokens'
         },
         'microservices': {
-            'enabled': False,
+            # `enabled` is intentionally NOT defaulted here. Its absence is
+            # meaningful: get_microservices_config returns None when the key
+            # is unset so _scale_pre_hook can tell "auto-detect" (None) from
+            # an explicit opt-out (False). A default of False here would be
+            # merged in by load() and erase that distinction.
             'gateway_port': 8000,
             'gateway_host': '0.0.0.0',
             'routes': {},
@@ -488,7 +492,8 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
     rl_config = ms_config.get('rate_limit', {});
 
     return {
-        'enabled': ms_config.get('enabled', False),
+        # Tri-state: None = unset (auto-detect), True/False = explicit choice.
+        'enabled': ms_config.get('enabled', None),
         'gateway_port': int(ms_config.get('gateway_port', 8000)),
         'gateway_host': ms_config.get('gateway_host', '0.0.0.0'),
         'drain_timeout_seconds': float(ms_config.get('drain_timeout_seconds', 10)),

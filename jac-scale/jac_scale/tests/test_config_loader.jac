@@ -83,3 +83,36 @@ test "get_microservices_config logs block round-trips enabled flag" {
     out = cfg.get_microservices_config();
     assert out["logs"] == {"enabled": True};
 }
+
+
+# =============================================================================
+# Tri-state `enabled` (zero-config auto-detect). Absent must be None, not
+# False, so _scale_pre_hook can tell auto-detect from an explicit opt-out.
+# =============================================================================
+test "get_microservices_config enabled is None when unset (auto-detect)" {
+    cfg = JacScaleConfig();
+    cfg._config = {"microservices": {"gateway_port": 8000}};
+    out = cfg.get_microservices_config();
+    assert out["enabled"] is None;
+}
+
+test "get_microservices_config enabled is None when section absent" {
+    cfg = JacScaleConfig();
+    cfg._config = {};
+    out = cfg.get_microservices_config();
+    assert out["enabled"] is None;
+}
+
+test "get_microservices_config preserves explicit enabled=False (opt-out)" {
+    cfg = JacScaleConfig();
+    cfg._config = {"microservices": {"enabled": False}};
+    out = cfg.get_microservices_config();
+    assert out["enabled"] is False;
+}
+
+test "get_microservices_config preserves explicit enabled=True" {
+    cfg = JacScaleConfig();
+    cfg._config = {"microservices": {"enabled": True}};
+    out = cfg.get_microservices_config();
+    assert out["enabled"] is True;
+}
