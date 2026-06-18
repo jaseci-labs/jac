@@ -2144,7 +2144,20 @@ impl TieredMemory._collect_into(changes: ChangeSet) -> None {
 the next commit sees these anchors as clean: whole-anchor hash, per-field
 hash snapshot, and the edge-list baseline that feeds edge_delta()."""
 impl TieredMemory._post_apply(apply_report: ApplyReport) -> None {
+    import from jaclang { JacRuntimeInterface as Jac }
     applied = set(apply_report.applied);
+    # Read-set OCC: an applied edge-list change advanced this node's version, so
+    # the request now *knows* it at that new version. Refresh the snapshot it
+    # would CAS on, so a SECOND committed edge change in the same request does
+    # not conflict with the request's OWN prior commit. Only nodes already in
+    # the read-set are refreshed — a blind append stays untracked and keeps
+    # merging lock-free.
+    read_versions: dict = {};
+    try {
+        read_versions = Jac.get_context().read_versions;
+    } except Exception {
+        ;
+    }
     for intent in self.changes.intents.values() {
         if intent.is_delete() or intent.anchor.id not in applied {
             continue;
@@ -2157,6 +2170,9 @@ impl TieredMemory._post_apply(apply_report: ApplyReport) -> None {
                 anchor.__dict__['_initial_edge_ids'] = frozenset(
                     e.id for e in anchor.edges
                 );
+                if anchor.id in read_versions {
+                    read_versions[anchor.id] = anchor.version;
+                }
             }
         } except Exception as e {
             logger.debug(f"post-apply re-baseline failed for {anchor.id}: {e}");

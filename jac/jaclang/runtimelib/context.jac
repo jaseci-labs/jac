@@ -89,6 +89,7 @@ obj ExecutionContext {
     def close -> None;
     def on_commit(callback: Callable) -> None;
     def run_pending_effects -> None;
+    def note_traversal_reads(origins: list[NodeAnchor]) -> None;
     def get_root -> Root;
     # Async mirrors — resolve root / entry via the async Memory surface so
     # the calling event loop is not blocked on L3 reads.

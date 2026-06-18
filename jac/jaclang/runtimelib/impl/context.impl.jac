@@ -131,6 +131,22 @@ impl ExecutionContext.run_pending_effects -> None {
     }
 }
 
+"""Read-set OCC: snapshot the version of each node a request reads an
+out-traversal from, so the collect pass can promote it to a commit-time CAS.
+
+Recorded by `refs` *before* the planner/edge-walk split, so a topology-index
+fast path (which never reaches `edges_to_nodes`) still takes the dependency.
+First read wins (`setdefault`): a later read in the same request never
+overwrites the version originally observed.
+"""
+impl ExecutionContext.note_traversal_reads(origins: list[NodeAnchor]) -> None {
+    for anchor in origins {
+        if isinstance(anchor, NodeAnchor) {
+            self.read_versions.setdefault(anchor.id, anchor.version);
+        }
+    }
+}
+
 """Get current user's root."""
 impl ExecutionContext.get_root -> Root {
     return cast(Root, self.user_root.archetype);

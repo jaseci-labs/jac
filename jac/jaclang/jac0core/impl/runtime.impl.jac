@@ -330,13 +330,15 @@ impl JacNode.edges_to_nodes(
 ) -> list[NodeArchetype] {
     _prefetch_edges(origin);
     # Read-set OCC: snapshot the version of every node this request reads an
-    # out-traversal from. The collect pass turns it into a commit-time CAS, so
-    # a check-then-create conflicts (and replays) while a blind append does not.
-    _occ_ctx = JacRuntimeInterface.get_context();
+    # out-traversal from (here the per-hop origins, so multi-hop fallback walks
+    # take a dependency on intermediate nodes too). `refs` already recorded the
+    # path's first origin before the strategy split; this covers the rest.
+    JacRuntimeInterface.get_context().note_traversal_reads(
+        [nd.__jac__ for nd in origin]
+    );
     nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
-        _occ_ctx.read_versions.setdefault(nanch.id, nanch.version);
         for stub in `list(nanch.edges) {
             `edge = resolve_ref(stub, nanch);
             if `edge is None {
@@ -1272,6 +1274,14 @@ impl JacBasics.refs(
             last.nd = lambda i: any : (orig_nd(i) and post_filter(i));
         }
     }
+    # Read-set OCC: record the origin versions this traversal reads up front,
+    # independent of which strategy resolves it. The planner fast path
+    # (topology_index / backend pushdown) and the edge-only path both return
+    # without ever touching `edges_to_nodes`, so capturing here is what keeps a
+    # check-then-create resolved by the index from silently skipping the
+    # commit-time CAS that stops duplicate child creation (#6266).
+    ctx = JacRuntimeInterface.get_context();
+    ctx.note_traversal_reads([nd.__jac__ for nd in path.origin]);
     # Try the storage-aware planner for non-edge-only queries. The planner
     # owns the strategy ladder: backend pushdown (e.g. Mongo `_id $in + field`
     # predicates) → topology_index narrowing → batch_get materialization. It
@@ -1279,7 +1289,6 @@ impl JacBasics.refs(
     # the caller must fall back to the linear edge-walk below.
     if not path.edge_only {
         import from jaclang.runtimelib.planner { execute_path }
-        ctx = JacRuntimeInterface.get_context();
         planned = execute_path(ctx.mem, path, slc);
         if planned is not None {
             return [
