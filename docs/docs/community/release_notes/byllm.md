@@ -2,7 +2,14 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.6.15 (Latest Release)
+## byllm 0.6.17 (Latest Release)
+
+### Bug Fixes
+
+- **Fix: Streaming `by llm()` no longer crashes when consumed from a foreign thread Context**: `Model.invoke()` now resets the `ContextVar` Token immediately in the originating Context before returning the streaming generator. A new `_stream_with_telemetry` wrapper drives each `next()` call via `contextvars.copy_context()`, so the generator is safe to pull from jac-scale's SSE thread-pool worker (or any foreign Context) without raising `ValueError: Token was created in a different Context`.
+- **Fix: Clear error on max_tokens-truncated tool calls**: When a response is cut off at the token limit mid tool-call, byLLM now returns a clear "output truncated, retry with a smaller payload" error instead of executing the tool with partial arguments and failing with a misleading "missing required argument".
+
+## byllm 0.6.15
 
 ### New Features
 
