@@ -26,17 +26,23 @@ obj PluginMetadata {
 
 """Return the absolute path of desktop_api.cl.jac for the jac.modules entry point.
 
-Works from both source checkout and installed wheel: the SDK file is shipped
-as package data in the wheel and lives beside this module in the source tree."""
+The SDK file ships beside this module as package data, so the same relative
+path resolves from both a source checkout and an installed wheel."""
 def desktop_sdk_path -> str {
     this_dir = os.path.dirname(os.path.abspath(__file__));
-    # Source layout: jac_desktop/plugin/desktop_api.cl.jac
-    src_path = os.path.join(this_dir, 'plugin', 'desktop_api.cl.jac');
-    if os.path.isfile(src_path) {
-        return src_path;
-    }
-    # Wheel layout (data files): jac_desktop/plugin/desktop_api.cl.jac
-    return src_path;
+    return os.path.join(this_dir, 'plugin', 'desktop_api.cl.jac');
+}
+
+
+"""Public symbol names exported by the @jac/desktop client SDK.
+
+The authoritative export list for desktop_api.cl.jac, kept beside the SDK it
+describes. jaclang's client compiler reads it via the `jac.module_exports`
+entry point (so the desktop symbol set lives here, not in core) because the SDK
+is built from `obj` types that the generic export extractor doesn't pick up.
+Keep in sync with the top-level `obj` declarations in desktop_api.cl.jac."""
+def desktop_sdk_exports -> list[str] {
+    return ['app_window', 'clipboard', 'dialog', 'fs', 'notification', 'path', 'shell'];
 }
 
 """Single option spec in a plugin config schema."""

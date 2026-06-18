@@ -77,14 +77,6 @@ Only an explicit False (or None/missing) disables the plugin.
     }
 
     def init { }
-    """Register a command handler. Enables command-map dispatch."""
-    def register_command(name: str, handler: callable) {
-        if not hasattr(self, "_command_map") {
-            self._command_map = {};
-        }
-        self._command_map[name] = handler;
-    }
-
     """Receive the live webview handle and ctypes lib after the native webview is created.
 
     Default is a no-op; override in plugins that need to call back into libwebview
@@ -94,12 +86,11 @@ Only an explicit False (or None/missing) disables the plugin.
 
     """Handle a command from JS. Returns a dict result or raises PluginError.
 
-    First checks the command map; if not found, raises UNKNOWN_COMMAND.
+    Base implementation raises UNKNOWN_COMMAND. Plugins override handle() with
+    their command dispatch and delegate anything they don't recognize back here
+    via `super.handle(command, args)`.
     """
     def handle(command: str, args: dict) -> dict {
-        if self?._command_map and command in self._command_map {
-            return self._command_map[command](args);
-        }
         raise PluginError(
             ErrorCode.UNKNOWN_COMMAND,
             f"Plugin '{self.plugin_name}' has no command '{command}'"

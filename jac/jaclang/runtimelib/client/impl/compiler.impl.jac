@@ -447,11 +447,12 @@ impl ViteCompiler.compile_desktop_sdk(self: ViteCompiler) {
     desktop_exports = self.jac_compiler.extract_exports(desktop_manifest);
     desktop_globals = self.jac_compiler.extract_globals(desktop_manifest, mod);
     all_names = sorted(set(desktop_exports + list(desktop_globals.keys())));
-    # Fallback: the SDK's known obj names if extract found nothing
+    # Fallback: the SDK is built from `obj` types, which the extractors above
+    # don't surface. Ask the package that owns @jac/desktop for its export list
+    # via the jac.module_exports entry point — the names live there, not here.
     if not all_names {
-        all_names = sorted(
-            ['fs', 'dialog', 'clipboard', 'notification', 'window', 'path', 'shell']
-        );
+        import from jaclang.jac0core.modresolver { resolve_jac_virtual_module_exports }
+        all_names = sorted(resolve_jac_virtual_module_exports('@jac/desktop'));
     }
     if all_names {
         export_line = 'export {' + ', '.join(all_names) + '};';

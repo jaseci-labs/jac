@@ -8,19 +8,18 @@ PluginManifest.commands at build time and staged beside the user's client code,
 so the host and the SDK can never drift.
 
 Binding note: the bridge is injected by the host's BOOTSTRAP_JS onto the browser
-global. It is reached via `globalThis.__jac` (see `_invoke`) rather than bare
-`window.__jac`, because this module declares `obj window` for the window-control
-facade, which shadows the ambient `window` global — `globalThis` is the same
-object in the webview and is never shadowed.
+global and is reached via `globalThis.__jac` (see `_invoke`). `globalThis` is
+the same object as `window` in the webview and is unambiguous regardless of any
+identifiers in local scope. (The window-control facade is named `app_window`,
+not `window`, so it does not shadow the ambient global.)
 """
 
 """Thin wrapper over the injected JS bridge. Resolves to data or throws an
 Error carrying `.code` (the host's structured PluginError code).
 
-Uses `globalThis` (not bare `window`) deliberately: this module declares
-`obj window` for the window-control facade, which shadows the ambient browser
-`window` global — so `window.__jac` would bind to that class. `globalThis` is
-the same object as `window` in the webview and is never shadowed."""
+Uses `globalThis.__jac` (not bare `window.__jac`): `globalThis` is the same
+object as `window` in the webview and is unambiguous regardless of any
+identifiers in local scope."""
 async def _invoke(plugin: str, command: str, args: dict) -> any {
     return await globalThis.__jac.invoke(plugin, command, args);
 }
@@ -104,8 +103,9 @@ obj notification {
 }
 
 
-"""Window control (mirrors jac.window)."""
-obj window {
+"""Window control (mirrors jac.window). Named `app_window` (not `window`) so it
+never shadows the ambient browser `window` global in consumer code."""
+obj app_window {
     static async def set_title(title: str) {
         await _invoke("jac.window", "set_title", {"title": title});
     }

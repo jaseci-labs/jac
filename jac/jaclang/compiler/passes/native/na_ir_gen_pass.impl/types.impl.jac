@@ -585,10 +585,6 @@ impl NaIRGenPass._resolve_primitive_name(
             # Unknown primitive name — return None to let caller decide
         }
     }
-    # Subscript like `Callable[[int, int], None]` — base is `Callable`
-    if hasattr(expr, 'body') and hasattr(expr, 'body', 'name') {
-        pass;
-    }
     _unparsed = expr.unparse() if expr?.unparse else '';
     if _unparsed.startswith('Callable') {
         _fn_ty = self._parse_callable_type_string(_unparsed);

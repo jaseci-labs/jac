@@ -47,5 +47,8 @@ desktop_plugin_config = "jac_desktop.plugin_config:JacDesktopPluginConfig"
 [entrypoints."jac.modules"]
 desktop = "jac_desktop.plugin_config:desktop_sdk_path"
 
+[entrypoints."jac.module_exports"]
+desktop = "jac_desktop.plugin_config:desktop_sdk_exports"
+
 [entrypoints.jac_client]
 desktop = "jac_desktop.plugin:JacDesktopPlugin"

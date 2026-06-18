@@ -47,6 +47,40 @@ def _plugin_src_dir -> Path {
     return _pkg_root() / "plugin";
 }
 
+"""The BOOTSTRAP_JS bridge shim, as emitted by _generate_host_source.
+
+Single in-test copy of the shim so the JS tests below don't each carry their
+own. `_generate_host_source` remains the source of truth; the
+"js sdk snippet matches generated host source" test asserts this copy has not
+drifted from it whenever the native target module is importable in the runner."""
+def _bootstrap_js_snippet -> str {
+    return (
+        "(function(){"
+        "var _l={};"
+        "window.__jac={"
+        "invoke:function(p,c,a){"
+        "return window.__jac_invoke(p,c,a||{}).then(function(r){"
+        "if(typeof r==='string')r=JSON.parse(r);"
+        "if(r.ok)return r.data;"
+        "var e=new Error(r.error.message);"
+        "e.code=r.error.code;throw e;"
+        "});"
+        "},"
+        "on:function(ev,cb){"
+        "(_l[ev]=_l[ev]||[]).push(cb);"
+        "return function(){var a=_l[ev]||[];var i=a.indexOf(cb);"
+        "if(i!==-1)a.splice(i,1);};"
+        "},"
+        "__emit__:function(ev,p){"
+        "(_l[ev]||[]).forEach(function(h){try{h(p);}catch(_){}});"
+        "}"
+        "};"
+        "window.__JAC_DESKTOP__=true;"
+        "window.__JAC_BROKER__='/__jac';"
+        "})();"
+    );
+}
+
 """Run jac2py on a file, return (ok, stdout_or_None, stderr_or_None)."""
 def _jac2py(jac_file: Path) -> tuple {
     jac = shutil.which("jac") or "jac";
@@ -1031,31 +1065,7 @@ test "generated host source with no plugins" {
 """The JS SDK snippet is parseable JavaScript."""
 test "js sdk snippet is valid javascript" {
     import subprocess;
-    js_sdk = (
-        "(function(){"
-        "var _l={};"
-        "window.__jac={"
-        "invoke:function(p,c,a){"
-        "return window.__jac_invoke(p,c,a||{}).then(function(r){"
-        "if(typeof r==='string')r=JSON.parse(r);"
-        "if(r.ok)return r.data;"
-        "var e=new Error(r.error.message);"
-        "e.code=r.error.code;throw e;"
-        "});"
-        "},"
-        "on:function(ev,cb){"
-        "(_l[ev]=_l[ev]||[]).push(cb);"
-        "return function(){var a=_l[ev]||[];var i=a.indexOf(cb);"
-        "if(i!==-1)a.splice(i,1);};"
-        "},"
-        "__emit__:function(ev,p){"
-        "(_l[ev]||[]).forEach(function(h){try{h(p);}catch(_){}});"
-        "}"
-        "};"
-        "window.__JAC_DESKTOP__=true;"
-        "window.__JAC_BROKER__='/__jac';"
-        "})();"
-    );
+    js_sdk = _bootstrap_js_snippet();
     # Check with node if available
     node_bin = shutil.which("node");
     if node_bin {
@@ -1091,29 +1101,7 @@ test "js sdk invoke produces correct request format" {
         "var captured = null;"
         "window = {__jac_invoke: function(p,c,a) { captured = {plugin:p,command:c,args:a}; "
         "return Promise.resolve({ok:true,data:{x:1}}); }};"
-        "(function(){"
-        "var _l={};"
-        "window.__jac={"
-        "invoke:function(p,c,a){"
-        "return window.__jac_invoke(p,c,a||{}).then(function(r){"
-        "if(typeof r==='string')r=JSON.parse(r);"
-        "if(r.ok)return r.data;"
-        "var e=new Error(r.error.message);"
-        "e.code=r.error.code;throw e;"
-        "});"
-        "},"
-        "on:function(ev,cb){"
-        "(_l[ev]=_l[ev]||[]).push(cb);"
-        "return function(){var a=_l[ev]||[];var i=a.indexOf(cb);"
-        "if(i!==-1)a.splice(i,1);};"
-        "},"
-        "__emit__:function(ev,p){"
-        "(_l[ev]||[]).forEach(function(h){try{h(p);}catch(_){}});"
-        "}"
-        "};"
-        "window.__JAC_DESKTOP__=true;"
-        "window.__JAC_BROKER__='/__jac';"
-        "})();"
+    ) + _bootstrap_js_snippet() + (
         "window.__jac.invoke('fs','read_file',{path:'/tmp/x'}).then(function(r){"
         "console.log(JSON.stringify(captured));"
         "console.log('RESULT:'+JSON.stringify(r));"
@@ -1133,6 +1121,59 @@ test "js sdk invoke produces correct request format" {
     assert "RESULT:" in lines[1];
     result_data = json.loads(lines[1].replace("RESULT:", ""));
     assert result_data["x"] == 1;
+}
+
+"""The in-test JS shim must match the BOOTSTRAP_JS the host generator emits.
+
+Guards the single _bootstrap_js_snippet() copy against drifting from the real
+shim built by _generate_host_source. Only checkable when the native target
+module is importable in this runner; otherwise there's nothing to compare to."""
+test "js sdk snippet matches generated host source" {
+    import sys;
+    mod_name = "jac_desktop.targets.native_desktop_target";
+    if mod_name not in sys.modules {
+        return;  # native target not loaded here; covered when it is
+    }
+    _generate_host_source = sys.modules[mod_name]._generate_host_source;
+    src = _generate_host_source(
+        libpy="libpython3.12.so.1.0",
+        title="T",
+        width=1,
+        height=1,
+        app_name="t",
+        plugin_configs={}
+    );
+    # _generate_host_source emits: glob BOOTSTRAP_JS: str = <json>;
+    encoded = json.dumps(_bootstrap_js_snippet(), ensure_ascii=False);
+    assert encoded in src , "in-test JS shim drifted from _generate_host_source BOOTSTRAP_JS";
+}
+
+"""Every command the client SDK invokes maps to a real host plugin command.
+
+A text-level contract between desktop_api.cl.jac (the hand-written typed SDK)
+and the built-in plugins' dispatch. Catches the drift a hand-written SDK is
+prone to: a method calling a renamed/removed plugin or command. (The host may
+expose more commands than the SDK surfaces — that direction is allowed.)"""
+test "client SDK commands map to host plugin commands" {
+    import re;
+    plugin_dir = _plugin_src_dir();
+    sdk_text = (plugin_dir / "desktop_api.cl.jac").read_text();
+    sdk_pairs = re.findall(r'_invoke\(\s*"([^"]+)"\s*,\s*"([^"]+)"', sdk_text);
+    assert len(sdk_pairs) > 0 , "no _invoke() calls found in desktop_api.cl.jac";
+    # Map host plugin name -> handled commands, parsed from each plugin source.
+    host = {};
+    for pf in sorted((plugin_dir / "built_in").glob("*_plugin.jac")) {
+        text = pf.read_text();
+        nm = re.search(r'name="(jac\.[a-z]+)"', text);
+        if nm is None {
+            continue;
+        }
+        host[nm.group(1)] = set(re.findall(r'command == "([a-z_]+)"', text));
+    }
+    for (plugin, command) in sdk_pairs {
+        assert plugin in host , f"SDK calls unknown plugin '{plugin}'";
+        assert command in host[plugin] , f"SDK has no host command {plugin}.{command}";
+    }
 }
 
 

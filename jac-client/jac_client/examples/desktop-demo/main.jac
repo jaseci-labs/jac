@@ -1,12 +1,17 @@
+# Desktop Plugin Demo — sends a native OS notification through the typed
+# @jac/desktop SDK instead of hand-writing window.__jac.invoke() magic strings.
+cl import from "@jac/desktop" { notification }
+
 cl {
     def:pub app -> JsxElement {
         has count: int = 0,
             msg: str = "Ready";
 
         def do_notify {
-            window.__jac.invoke(
-                "jac.notification", "send", {"title": "Test", "body": "Hello!"}
-            ).then(
+            # SDK calls take POSITIONAL args (see desktop_api.cl.jac); they
+            # return a promise that resolves on success / rejects with an
+            # Error carrying the host's `.code`.
+            notification.send("Test", "Hello!").then(
                 lambda r: any { msg = "Notification sent!"; }
             ).catch(
                 lambda e: any { msg = "Error: " + str(e); }

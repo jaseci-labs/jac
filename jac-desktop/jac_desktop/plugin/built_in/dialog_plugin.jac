@@ -8,7 +8,7 @@ Shows native OS dialogs (open file, save file, message) via platform tools:
 Transpiled to dependency-free Python at build time.
 """
 import subprocess;
-import from desktop_plugin { PluginError, ErrorCode, OsPlugin }
+import from desktop_plugin { PluginError, ErrorCode, OsPlugin, DesktopPlugin }
 import from manifest { PluginManifest, CommandSpec, PluginContext }
 
 
@@ -55,7 +55,7 @@ obj DialogPlugin(OsPlugin) {
         # If this plugin is instantiated at all, it's enabled.
         # config may be True (from `dialog = true`), {} (from empty
         # `[plugins.desktop.plugins.dialog]`), or a dict with sub-settings.
-        self._enabled = config is not False;
+        self._enabled = DesktopPlugin._config_enabled(config);
     }
 
     def handle(command: str, args: dict) -> dict {

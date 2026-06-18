@@ -149,10 +149,11 @@ def _generate_host_source(
     );
     # --- Plugin IPC bootstrap (embedded CPython) ---
     # Import plugin modules, register enabled plugins, expose dispatch.
-    # The registry (registry.jac) is the single source of truth for which
-    # modules to load and how to register them. The import loop still runs as
-    # strings (embedded CPython has no jaclang), but it now derives the module
-    # list from the same BUILTIN_PLUGINS array that drives registration.
+    # registry.jac (BUILTIN_PLUGINS + bootstrap_plugins) owns *which plugins to
+    # register and how*. This list owns the *module load order* for the embedded
+    # importlib bootstrap, which runs before registry is importable, so it can't
+    # be derived from BUILTIN_PLUGINS — it must be hand-kept in sync: every
+    # `built_in.*` plugin module here must match a BUILTIN_PLUGINS entry.
     # Order is load order. `registry` imports every `built_in.*` plugin at
     # module scope, so it MUST come last: in the embedded CPython `built_in`
     # is a bare ModuleType (not a real package), so `from built_in.x import Y`

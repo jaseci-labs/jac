@@ -9,7 +9,7 @@ Transpiled to dependency-free Python at build time.
 """
 import os;
 import subprocess;
-import from desktop_plugin { PluginError, ErrorCode, OsPlugin }
+import from desktop_plugin { PluginError, ErrorCode, OsPlugin, DesktopPlugin }
 import from manifest { PluginManifest, CommandSpec, PluginContext }
 
 
@@ -45,7 +45,7 @@ obj NotificationPlugin(OsPlugin) {
         # config may be True (from `notification = true` in TOML),
         # {} (from empty `[plugins.desktop.plugins.notification]`),
         # or a dict with sub-settings.
-        self._enabled = config is not False;
+        self._enabled = DesktopPlugin._config_enabled(config);
     }
 
     def handle(command: str, args: dict) -> dict {
