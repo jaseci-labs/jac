@@ -20,6 +20,24 @@ import from .user_manager { JacScaleUserManager }
 import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.storage { Storage }
 
+"""Print the zero-config auto-detect info line on local microservice startup."""
+def _print_autodetect_banner(routes: dict[str, str]) -> None {
+    names = sorted(routes.keys());
+    plural = "s" if len(names) != 1 else "";
+    console.print(
+        f"Microservice mode (auto-detected): {len(names)} service{plural} "
+        f"[{', '.join(names)}], running locally as subprocesses with no "
+        f"Docker images.",
+        style="cyan"
+    );
+    pairs = ", ".join([f"{n} -> {routes[n]}" for n in names]);
+    console.print(f"  Default routes: {pairs}", style="muted");
+    console.print(
+        "  Run `jac setup microservice` to customize routes/ports/scaling/deploy.",
+        style="muted"
+    );
+}
+
 """Pre-hook for jac start command to handle microservice mode and --scale flag."""
 def _scale_pre_hook(context: HookContext) -> None {
     # Microservice mode: services are spawned on-demand by core's BFS
@@ -29,10 +47,35 @@ def _scale_pre_hook(context: HookContext) -> None {
     scale_config = get_scale_config();
     ms_config = scale_config.get_microservices_config();
     is_sv_sibling = os.environ.get("JAC_SV_SIBLING") == "1";
+    scale_flag = context.get_arg("scale", False);
 
-    if ms_config.get("enabled", False) and not is_sv_sibling {
-        scale_flag = context.get_arg("scale", False);
-        if not scale_flag {
+    # LOCAL microservice mode gate. `enabled` is tri-state:
+    #   True  -> explicit opt-in (config wins; routes auto-filled if absent)
+    #   False -> explicit opt-out (always stay a monolith)
+    #   None  -> unset: auto-detect from `sv import` / `to sv:` source markers
+    # Children (JAC_SV_SIBLING=1) never enter (re-orchestration would fork
+    # infinitely); --scale is the remote deploy path handled below.
+    enabled = ms_config.get("enabled", None);
+    if (not is_sv_sibling) and (not scale_flag) and (enabled is not False) {
+        filename = context.get_arg("filename");
+        # Discover when unset (to decide whether to enter) or when enabled
+        # but no routes were declared (to fill defaults). Explicit routes win.
+        discovered: dict[str, str] = {};
+        if filename and ((enabled is None) or (not ms_config.get("routes", {}))) {
+            import from jac_scale.microservices.discovery { discover_sv_services }
+            discovered = discover_sv_services(filename);
+        }
+        import from jac_scale.microservices.discovery { should_enter_local_ms }
+        if should_enter_local_ms(
+            enabled, is_sv_sibling, scale_flag, bool(discovered)
+        ) {
+            auto_detected: bool = (enabled is None);
+            if not ms_config.get("routes", {}) {
+                ms_config["routes"] = discovered;
+            }
+            if auto_detected {
+                _print_autodetect_banner(ms_config.get("routes", {}));
+            }
             import from jac_scale.microservices.orchestrator.orchestrator {
                 start_microservice_mode
             }
@@ -41,7 +84,6 @@ def _scale_pre_hook(context: HookContext) -> None {
             context.set_data("cancel_return_code", 0);
             return;
         }
-        # If --scale is set with microservices enabled, fall through to K8s deploy
     }
 
     scale = context.get_arg("scale", False);
