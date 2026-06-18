@@ -1082,6 +1082,24 @@ test "named_entry_no_w1051" {
     ]}";
 }
 
+test "lambda_param_inferred_from_expected_callable" {
+    # Unannotated lambda params infer from the key= callable, so no E1054/W1051.
+    path = os.path.join(CHECKER_FIXTURES, "checker_lambda_param_inference.jac");
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    assert len(program.errors_had) == 0 , f"Unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051"
+    ];
+    assert len(w1051) == 0 , f"Expected no W1051 on inferred lambdas, got {len(
+        w1051
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
+}
+
 test "ability_trigger_archetype" {
     # Walker abilities must trigger on a node/edge/Root; node/edge
     # abilities must trigger on a walker. Tuple and union triggers are
@@ -2132,6 +2150,15 @@ test "postinit_fields_not_required_in_constructor" {
     assert len(program.errors_had) == 0 , f"Expected no type checking errors, but got {len(
         program.errors_had
     )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+    # `by postinit` must not emit W1051 on the postinit name.
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051"
+    ];
+    assert len(w1051) == 0 , f"Expected no W1051 warnings, but got {len(w1051)}: " + "\n".join(
+        [w.pretty_print() for w in w1051]
+    );
 }
 
 test "impl_body_type_checking" {

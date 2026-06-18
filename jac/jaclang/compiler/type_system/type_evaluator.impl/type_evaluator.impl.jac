@@ -540,6 +540,7 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.LambdaExpr():
             return_type: TypeBase = types.UnknownType();
             parameters: list[types.Parameter] = [];
+            has_unresolved_param = False;
             # Bidirectional inference: if expected_type is a FunctionType,
             # seed untyped lambda params from the expected callable signature.
             expected_func: types.FunctionType | None = None;
@@ -556,6 +557,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     );
                 }
                 sig_params = expr.signature.get_parameters();
+                seeded_param = False;
                 for (idx, param) in enumerate(sig_params) {
                     param_type: TypeBase | None = None;
                     if param.type_tag {
@@ -568,6 +570,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                         and idx < len(expected_func.parameters)
                     ) {
                         param_type = expected_func.parameters[idx].param_type;
+                        # Seed onto the Name (read by _get_type_of_symbol) and
+                        # the ParamVar (read by hover).
+                        if param_type is not None {
+                            param.name.type = param_type;
+                            param.type = param_type;
+                            seeded_param = True;
+                        }
+                    }
+                    if param_type is None {
+                        has_unresolved_param = True;
                     }
                     parameters.append(
                         types.Parameter(
@@ -578,6 +590,19 @@ impl TypeEvaluator._get_type_of_expression_core(
                         )
                     );
                 }
+                # Re-resolve the body against the seeded params.
+                if seeded_param and isinstance(expr.body, uni.Expr) {
+                    self._invalidate_expr_type_cache(expr.body);
+                }
+            }
+            # Skip the body for a speculative overload candidate whose param
+            # is still Unknown; the matching overload re-evaluates it seeded.
+            if has_unresolved_param {
+                return types.FunctionType(
+                    func_name="<lambda>",
+                    return_type=types.UnknownType(),
+                    parameters=parameters,
+                );
             }
             if isinstance(expr.body, uni.Expr) {
                 body_type = self.get_type_of_expression(expr.body);
@@ -2283,6 +2308,10 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                 }
                 return self._convert_to_instance(annotation_type);
             }
+            # Honor a type seeded onto the Name by lambda inference.
+            if node_.name.type is not None {
+                return node_.name.type;
+            }
 
         # This actually defined in the function getTypeForDeclaration();
         # Pyright has DeclarationType.Variable.
@@ -3570,14 +3599,23 @@ impl TypeEvaluator.get_type_of_expression(
     if isinstance(node_, uni.Ability) {
         return self.get_type_of_ability(node_);
     }
-    # Use cached result if available, UNLESS expected_type is provided
-    # for a container literal or comprehension that could benefit from
-    # bidirectional inference (ListCompr also covers Set/Gen comprehensions
-    # by inheritance).
+    # Use cached result if available, UNLESS expected_type is provided for a
+    # container literal, comprehension, or lambda that benefits from
+    # bidirectional inference (ListCompr also covers Set/Gen comprehensions; a
+    # lambda re-evaluates so the expected callable can seed its params).
     if node_.type is not None {
         if expected_type is None
         or not isinstance(
-            node_, (uni.ListVal, uni.DictVal, uni.SetVal, uni.TupleVal, uni.ListCompr)
+            node_,
+            (
+                uni.ListVal,
+                uni.DictVal,
+                uni.SetVal,
+                uni.TupleVal,
+                uni.ListCompr,
+                uni.LambdaExpr,
+
+            )
         ) {
             # Whole-expression CFG narrowing: chained subscripts like
             # `self.squares[r][c]` aren't narrowed by the AtomTrailer

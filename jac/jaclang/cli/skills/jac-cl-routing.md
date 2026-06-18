@@ -5,6 +5,8 @@ description: Multi-page navigation on the client - pages/ directory routing, [id
 
 Two routing systems, both client-side (URL changes, no full reload). **File-based routing is the recommended default**: files in a `pages/` directory become routes by convention - no Router wiring at all. Manual `<Router>`/`<Routes>` is the explicit alternative for apps that want one file of route declarations.
 
+> **Pick ONE system and stay with it - do NOT mix them or switch mid-build.** Default to file-based routing. If you choose manual `<Router>`, keep route components OUT of `pages/`: a `pages/` directory and a manual `<Router>` fight over the URL, and manually importing `pages/foo.jac` breaks (the compiled JS resolves `./pages/foo.js`, which file-based routing never emits).
+
 ## File-based routing (recommended)
 
 ```
@@ -92,10 +94,12 @@ Explicit route table in one component (typically `AppShell.cl.jac` or `main.jac`
 
 ```jac
 import from "@jac/runtime" { Router, Routes, Route, Navigate, Outlet }
-import from .pages.LoginPage { LoginPage }
-import from .pages.DashboardLayout { DashboardLayout }
-import from .pages.DashboardHome { DashboardHome }
-import from .pages.Settings { Settings }
+# Manual-routing components live OUTSIDE pages/ (e.g. a routes/ folder) - a
+# pages/ directory would trigger file-based routing and fight this Router.
+import from .routes.LoginPage { LoginPage }
+import from .routes.DashboardLayout { DashboardLayout }
+import from .routes.DashboardHome { DashboardHome }
+import from .routes.Settings { Settings }
 
 def:pub AppShell() -> JsxElement {
     return <Router>
