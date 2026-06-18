@@ -90,11 +90,40 @@ def _scale_pre_hook(context: HookContext) -> None {
     if scale {
         filename = context.get_arg("filename");
         target = context.get_arg("target", "kubernetes");
-        # When microservice mode is enabled + target is the default,
-        # swap to kubernetes-microservice. Explicit --target=kubernetes
-        # still does monolith deploy.
-        if (target == "kubernetes" and ms_config.get("enabled", False)) {
-            target = "kubernetes-microservice";
+        # Zero-config for --scale, mirroring the local gate. Pick the
+        # microservice target when the user opted in (enabled = true) OR left
+        # `enabled` unset and we auto-detect sv-import services next to the
+        # entry file. enabled = false stays a monolith deploy; an explicit
+        # --target=kubernetes also keeps the monolith path.
+        # Discovered routes are injected into the loaded config so the manifest
+        # builder sees them, and propagated to pods via JAC_SV_ROUTES env (the
+        # in-cluster jac.toml has no [routes] table in zero-config mode).
+        if target == "kubernetes" and enabled is not False {
+            scale_discovered: dict[str, str] = {};
+            if (enabled is None) and filename and os.path.exists(filename) {
+                import from jac_scale.microservices.discovery {
+                    discover_sv_services
+                }
+                scale_discovered = discover_sv_services(filename);
+            }
+            if (enabled is True) or scale_discovered {
+                target = "kubernetes-microservice";
+                if scale_discovered and not ms_config.get("routes", {}) {
+                    raw_cfg = get_scale_config().load();
+                    raw_ms = raw_cfg.setdefault("microservices", {});
+                    if not raw_ms.get("routes") {
+                        raw_ms["routes"] = scale_discovered;
+                    }
+                    names = ", ".join(sorted(scale_discovered.keys()));
+                    console.print(
+                        f"Microservice mode (auto-detected): "
+                        f"{len(scale_discovered)} services [{names}], default "
+                        f"routes /api/<name>. Deploying to kubernetes; run "
+                        f"`jac setup microservice` to customize.",
+                        style="cyan"
+                    );
+                }
+            }
         }
         if not os.path.exists(filename) {
             raise FileNotFoundError(f"File not found: '{filename}'");

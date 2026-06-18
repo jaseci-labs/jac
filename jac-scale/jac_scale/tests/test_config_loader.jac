@@ -2,6 +2,7 @@
 tests stub get_microservices_config; this catches bugs in the loader
 itself - e.g. when the ingress block was dropped from the return dict)."""
 
+import os;
 import from jac_scale.config_loader { JacScaleConfig }
 
 
@@ -115,4 +116,50 @@ test "get_microservices_config preserves explicit enabled=True" {
     cfg._config = {"microservices": {"enabled": True}};
     out = cfg.get_microservices_config();
     assert out["enabled"] is True;
+}
+
+
+# =============================================================================
+# Route propagation: JAC_SV_ROUTES env fallback (zero-config --scale pods read
+# routes from the env the manifest builder injected, since the in-cluster
+# jac.toml has no [routes] table).
+# =============================================================================
+test "get_microservices_config reads routes from JAC_SV_ROUTES when config empty" {
+    cfg = JacScaleConfig();
+    cfg._config = {"microservices": {"enabled": True}};
+    os.environ["JAC_SV_ROUTES"] = "{\"orders_app\": \"/api/orders\", \"cart_app\": \"/api/cart\"}";
+    try {
+        out = cfg.get_microservices_config();
+        assert out["routes"] == {
+            "orders_app": "/api/orders", "cart_app": "/api/cart"
+        };
+    } finally {
+        del os.environ["JAC_SV_ROUTES"];
+    }
+}
+
+test "get_microservices_config: explicit config routes win over JAC_SV_ROUTES" {
+    cfg = JacScaleConfig();
+    cfg._config = {
+        "microservices": {"routes": {"real_app": "/api/real"}}
+    };
+    os.environ["JAC_SV_ROUTES"] = "{\"ghost_app\": \"/api/ghost\"}";
+    try {
+        out = cfg.get_microservices_config();
+        assert out["routes"] == {"real_app": "/api/real"};
+    } finally {
+        del os.environ["JAC_SV_ROUTES"];
+    }
+}
+
+test "get_microservices_config: malformed JAC_SV_ROUTES falls back to empty" {
+    cfg = JacScaleConfig();
+    cfg._config = {"microservices": {}};
+    os.environ["JAC_SV_ROUTES"] = "not-json";
+    try {
+        out = cfg.get_microservices_config();
+        assert out["routes"] == {};
+    } finally {
+        del os.environ["JAC_SV_ROUTES"];
+    }
 }

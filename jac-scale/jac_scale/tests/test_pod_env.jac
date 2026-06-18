@@ -1,11 +1,35 @@
 """Tests for K-track pod env injection (K8S_APP_NAME / K8S_NAMESPACE)."""
 
 import unittest.mock as mock;
+import json;
 import from jac_scale.targets.kubernetes.microservice.manifest_builder {
     MicroserviceManifestBuilder
 }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
+
+test "build_env injects JAC_SV_ROUTES so pods get routes without a toml table" {
+    # Zero-config --scale: the in-cluster jac.toml has no [routes] table, so
+    # the builder serializes the routes map into JAC_SV_ROUTES for every pod.
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
+    builder = MicroserviceManifestBuilder(k8s_config=cfg);
+    routes = {"orders_app": "/api/orders", "cart_app": "/api/cart"};
+    with mock.patch.object(builder, "_microservice_routes", return_value=routes) {
+        env = builder._build_env("orders_app", {});
+    }
+    pairs = {e["name"]: e["value"] for e in env};
+    assert "JAC_SV_ROUTES" in pairs;
+    assert json.loads(pairs["JAC_SV_ROUTES"]) == routes;
+}
+
+test "build_env omits JAC_SV_ROUTES when there are no routes" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
+    builder = MicroserviceManifestBuilder(k8s_config=cfg);
+    with mock.patch.object(builder, "_microservice_routes", return_value={}) {
+        env = builder._build_env("orders_app", {});
+    }
+    assert "JAC_SV_ROUTES" not in {e["name"] for e in env};
+}
 
 test "build_env injects K8S_APP_NAME and K8S_NAMESPACE from k8s_config" {
     cfg = KubernetesConfig(app_name="jac-shop", namespace="jac-shop-dev");

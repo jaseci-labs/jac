@@ -402,6 +402,16 @@ obj MicroserviceManifestBuilder {
         }
 
         routes: dict[str, str] = self._microservice_routes();
+        # Propagate the full routes table to every pod as JSON so the gateway
+        # + get_sv_registry resolve prefixes/peers even when the in-cluster
+        # jac.toml has no [routes] table (zero-config `--scale` deploys). The
+        # config loader reads JAC_SV_ROUTES when its own routes are empty.
+        if routes {
+            import json;
+            env.append(
+                {"name": "JAC_SV_ROUTES", "value": json.dumps(dict(routes))}
+            );
+        }
         seen_peer_keys: set = set();
         for peer_name in routes {
             if peer_name == svc_name {
