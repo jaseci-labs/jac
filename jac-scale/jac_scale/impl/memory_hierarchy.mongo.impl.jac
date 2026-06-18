@@ -4,6 +4,7 @@ import from jac_scale.microservices.runtime.tracing {
     start_memory_span,
     end_memory_span
 }
+import from jaclang.runtimelib.exceptions { WriteConflict }
 
 """Post-initialization: connect to MongoDB and load DB-resident aliases.
 
@@ -738,6 +739,18 @@ impl MongoBackend.apply(changeset: ChangeSet) -> ApplyReport {
                 try {
                     self._apply_one(intent);
                     apply_report.applied.append(intent.anchor.id);
+                } except WriteConflict as wc {
+                    # Optimistic-concurrency miss: poison like any failed write
+                    # (skips dependents), but carry the typed conflict so
+                    # commit() can raise it and the boundary can replay. DEBUG,
+                    # not ERROR: a losing racer is expected, not noise.
+                    poisoned.add(intent.anchor.id);
+                    apply_report.failed[intent.anchor.id] = wc.message();
+                    apply_report.conflicts.append(wc);
+                    logger.debug(
+                        f"MongoDB apply: write conflict on {intent.anchor.id}: "
+                        f"{wc.message()}"
+                    );
                 } except Exception as e {
                     poisoned.add(intent.anchor.id);
                     apply_report.failed[intent.anchor.id] = str(e);
@@ -795,6 +808,9 @@ impl MongoBackend._put_node_atomic(
         return;
     }
     _id = str(to_uuid(anchor.id));
+    # Optimistic-concurrency guard: the version this request last saw. A
+    # concurrent committer that bumped it makes our CAS miss -> WriteConflict.
+    captured_version = anchor.version;
     try {
         # Serialize the intent's dirty archetype fields (`fields` = collect pass's dirty set, the sole owner of dirty detection).
         partial_data: dict[str, object] = Serializer.serialize_fields(anchor, fields)
@@ -802,11 +818,12 @@ impl MongoBackend._put_node_atomic(
             else {};
 
         # Non-archetype top-level fields (e.g. access), whole-object replaced.
+        # 'version' is excluded: it's bumped via $inc below, not $set verbatim.
         full = dict(Serializer.serialize(anchor, include_type=True));
         non_arch_top = {
             k: v
             for (k, v) in full.items()
-            if k not in ('edges', 'archetype')
+            if k not in ('edges', 'archetype', 'version')
         };
 
         # Pipeline $set evaluates values as expressions (bare {} → error 40180, $-keys misread); wrap all data in $literal to store verbatim, leaving data.edges the only expression.
@@ -826,15 +843,42 @@ impl MongoBackend._put_node_atomic(
                 edges_added
             ]
         };
+        # Bump the OCC version as part of the same atomic update.
+        set_doc['data.version'] = {'$add': [{'$ifNull': ['$data.version', 0]}, 1]};
 
         import from pymongo { ReturnDocument }
+        # CAS: only update if the doc's version still matches what we read.
+        # upsert=False so a version miss does NOT mint a spurious duplicate.
         merged_doc = self.collection.find_one_and_update(
-            {'_id': _id},
+            {'_id': _id, 'data.version': captured_version},
             [{'$set': set_doc}],
-            projection={'data.edges': 1},
-            upsert=True,
+            projection={'data.edges': 1, 'data.version': 1},
+            upsert=False,
             return_document=ReturnDocument.AFTER
         );
+        if merged_doc is None {
+            # No doc matched (_id, version). Either the version moved under us
+            # (a concurrent committer) or the doc doesn't exist yet.
+            existing = self.collection.find_one({'_id': _id}, {'data.version': 1});
+            if existing is not None {
+                actual = existing.get('data', {}).get('version', -1);
+                raise WriteConflict(
+                    anchor_id=anchor.id,
+                    expected_version=captured_version,
+                    actual_version=actual
+                );
+            }
+            # First-ever write for this node (rare on the delta path): fall
+            # back to a plain upsert, preserving pre-OCC behavior. $ifNull
+            # seeds version 0 -> 1.
+            merged_doc = self.collection.find_one_and_update(
+                {'_id': _id},
+                [{'$set': set_doc}],
+                projection={'data.edges': 1, 'data.version': 1},
+                upsert=True,
+                return_document=ReturnDocument.AFTER
+            );
+        }
 
         if self._l2_ref {
             try {
@@ -863,6 +907,11 @@ impl MongoBackend._put_node_atomic(
                     for e in anchor.edges
                     if e.id in merged_ids
                 ];
+                # Re-baseline the local OCC version to the just-committed one,
+                # so a subsequent commit this request CASes on the right value.
+                anchor.version = merged_doc.get('data', {}).get(
+                    'version', captured_version + 1
+                );
             }
         } except Exception as rb_err {
             logger.debug(f"MongoDB _put_node_atomic read-back failed: {rb_err}");
@@ -876,6 +925,9 @@ impl MongoBackend._put_node_atomic(
                 f"MongoDB _put_node_atomic _snapshot_field_hashes failed: {shf_err}"
             );
         }
+    } except WriteConflict {
+        # Expected under contention; apply() records + commit() raises it.
+        raise;
     } except Exception as e {
         logger.error(f"MongoDB _put_node_atomic failed: {e}");
         raise;

@@ -2007,6 +2007,11 @@ impl TieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     apply_report = self.l3.apply(self.changes);
     self._post_apply(apply_report);
     self.changes.clear();
+    # Surface optimistic-concurrency conflicts after re-baselining applied
+    # intents. The request boundary converges on this (abort + replay).
+    if (conflict := apply_report.primary_conflict()) {
+        raise conflict;
+    }
 }
 
 """Collect the working set's dirtiness into the unit of work. This is the

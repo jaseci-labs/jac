@@ -39,6 +39,8 @@ def _get_save -> Callable[..., any];
 
 def _get_commit -> Callable[..., any];
 
+def _get_on_commit -> Callable[..., any];
+
 def _get_store -> Callable[..., any];
 
 def _get_llm -> LLMModel;
@@ -99,6 +101,7 @@ glob __all__ = [
          'allroots',
          'save',
          'commit',
+         'on_commit',
          'store',
          'llm',
          'new',

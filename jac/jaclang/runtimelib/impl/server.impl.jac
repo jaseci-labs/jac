@@ -2,6 +2,7 @@ import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.client_bundle { _ensure_js_generated }
+import from jaclang.runtimelib.exceptions { WriteConflict }
 import from jaclang.runtimelib.auth_models {
     IdentityType,
     LoginRequest,
@@ -467,35 +468,67 @@ impl ExecutionManager.spawn_walker_sync(
     target_node_id = fields.pop('_jac_spawn_node', None);
     _deserialize_wire_args(fields);
     (ctx, req_token) = await _begin_request_context(root_id);
-    call_token = ctx.call_state.set(CallState());
-    call_state = ctx.call_state.get();
+    # Optimistic-concurrency replay: a walker that loses a check-then-create
+    # race raises WriteConflict at commit. We discard the attempt's mutations
+    # + deferred effects, reload the root so the replay sees the committed
+    # winner, and re-run — so find-or-create converges instead of duplicating.
+    max_attempts = 5;
     try {
-        `walker = walker_cls(**fields);
-        if target_node_id {
-            target_node = await Jac.aget_object(target_node_id);
-            if not isinstance(target_node, NodeArchetype) {
-                return {'error': f"Invalid target node: {target_node_id}"};
+        attempt = 0;
+        while attempt < max_attempts {
+            attempt += 1;
+            call_token = ctx.call_state.set(CallState());
+            call_state = ctx.call_state.get();
+            try {
+                `walker = walker_cls(**fields);
+                if target_node_id {
+                    target_node = await Jac.aget_object(target_node_id);
+                    if not isinstance(target_node, NodeArchetype) {
+                        return {'error': f"Invalid target node: {target_node_id}"};
+                    }
+                } else {
+                    target_node = ctx.get_root();
+                }
+                result = await asyncio.to_thread(Jac.spawn, `walker, target_node);
+                # Defensive: if a caller reaches this path with a walker whose
+                # spawn path returned a coroutine, await it on the loop rather
+                # than returning an unawaited coroutine object.
+                if iscoroutine(result) {
+                    result = await result;
+                }
+                return await self._finalize_call_response(call_state, result);
+            } except WriteConflict as wc {
+                # Lost the race: drop this attempt's graph mutations and any
+                # deferred on_commit effects (they never committed), reload the
+                # root from L3 so the replay re-reads the winner, then retry.
+                ctx.mem.abort();
+                ctx.pending_effects.clear();
+                if attempt >= max_attempts {
+                    return {
+                        'error': wc.message(),
+                        'error_code': 'write_conflict',
+                        'http_status': 409
+                    };
+                }
+                await ctx.aset_user_root(root_id);
+            } except Exception as e {
+                import traceback;
+                # Abort-on-error: a failed walker must not half-mutate the graph.
+                # Discard its uncommitted unit of work instead of leaving it in
+                # the shared working set for the next commit to flush (#6619).
+                ctx.mem.abort();
+                return {'error': str(e), 'traceback': traceback.format_exc()};
+            } finally {
+                ctx.call_state.reset(call_token);
             }
-        } else {
-            target_node = ctx.get_root();
         }
-        result = await asyncio.to_thread(Jac.spawn, `walker, target_node);
-        # Defensive: if a caller reaches this path with a walker whose
-        # spawn path returned a coroutine, await it on the loop rather
-        # than returning an unawaited coroutine object.
-        if iscoroutine(result) {
-            result = await result;
-        }
-        return await self._finalize_call_response(call_state, result);
-    } except Exception as e {
-        import traceback;
-        # Abort-on-error: a failed walker must not half-mutate the graph.
-        # Discard its uncommitted unit of work instead of leaving it in
-        # the shared working set for the next commit to flush (#6619).
-        ctx.mem.abort();
-        return {'error': str(e), 'traceback': traceback.format_exc()};
+        # Loop only exits via return; this satisfies control-flow analysis.
+        return {
+            'error': 'write_conflict: retries exhausted',
+            'error_code': 'write_conflict',
+            'http_status': 409
+        };
     } finally {
-        ctx.call_state.reset(call_token);
         Jac.reset_request_context(req_token);
     }
 }
@@ -515,34 +548,61 @@ impl ExecutionManager.spawn_walker_async(
     target_node_id = fields.pop('_jac_spawn_node', None);
     _deserialize_wire_args(fields);
     (ctx, req_token) = await _begin_request_context(root_id);
-    call_token = ctx.call_state.set(CallState());
-    call_state = ctx.call_state.get();
+    # Optimistic-concurrency replay: see spawn_walker_sync. A WriteConflict at
+    # commit means we lost a check-then-create race; discard + reload + replay
+    # so find-or-create converges on the winner instead of duplicating.
+    max_attempts = 5;
     try {
-        `walker = walker_cls(**fields);
-        if target_node_id {
-            target_node = await Jac.aget_object(target_node_id);
-            if not isinstance(target_node, NodeArchetype) {
-                return {'error': f"Invalid target node: {target_node_id}"};
+        attempt = 0;
+        while attempt < max_attempts {
+            attempt += 1;
+            call_token = ctx.call_state.set(CallState());
+            call_state = ctx.call_state.get();
+            try {
+                `walker = walker_cls(**fields);
+                if target_node_id {
+                    target_node = await Jac.aget_object(target_node_id);
+                    if not isinstance(target_node, NodeArchetype) {
+                        return {'error': f"Invalid target node: {target_node_id}"};
+                    }
+                } else {
+                    target_node = ctx.get_root();
+                }
+                spawn_result = Jac.spawn(`walker, target_node);
+                if iscoroutine(spawn_result) {
+                    result = await spawn_result;
+                } else {
+                    result = spawn_result;
+                }
+                return await self._finalize_call_response(call_state, result);
+            } except WriteConflict as wc {
+                ctx.mem.abort();
+                ctx.pending_effects.clear();
+                if attempt >= max_attempts {
+                    return {
+                        'error': wc.message(),
+                        'error_code': 'write_conflict',
+                        'http_status': 409
+                    };
+                }
+                await ctx.aset_user_root(root_id);
+            } except Exception as e {
+                import traceback;
+                # Abort-on-error: a failed walker must not half-mutate the graph.
+                # Discard its uncommitted unit of work instead of leaving it in
+                # the shared working set for the next commit to flush (#6619).
+                ctx.mem.abort();
+                return {'error': str(e), 'traceback': traceback.format_exc()};
+            } finally {
+                ctx.call_state.reset(call_token);
             }
-        } else {
-            target_node = ctx.get_root();
         }
-        spawn_result = Jac.spawn(`walker, target_node);
-        if iscoroutine(spawn_result) {
-            result = await spawn_result;
-        } else {
-            result = spawn_result;
-        }
-        return await self._finalize_call_response(call_state, result);
-    } except Exception as e {
-        import traceback;
-        # Abort-on-error: a failed walker must not half-mutate the graph.
-        # Discard its uncommitted unit of work instead of leaving it in
-        # the shared working set for the next commit to flush (#6619).
-        ctx.mem.abort();
-        return {'error': str(e), 'traceback': traceback.format_exc()};
+        return {
+            'error': 'write_conflict: retries exhausted',
+            'error_code': 'write_conflict',
+            'http_status': 409
+        };
     } finally {
-        ctx.call_state.reset(call_token);
         Jac.reset_request_context(req_token);
     }
 }

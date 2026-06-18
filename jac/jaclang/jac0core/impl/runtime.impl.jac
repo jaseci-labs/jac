@@ -694,6 +694,7 @@ impl JacBasics.commit(anchor: Anchor | Archetype | None = None) -> None {
     }
     ctx = JacRuntimeInterface.get_context();
     ctx.mem.commit(anchor);
+    ctx.run_pending_effects();
 }
 
 """Async commit - persists through the async Memory surface."""
@@ -703,6 +704,12 @@ impl JacBasics.acommit(anchor: Anchor | Archetype | None = None) -> None {
     }
     ctx = JacRuntimeInterface.get_context();
     await ctx.mem.acommit(anchor);
+    ctx.run_pending_effects();
+}
+
+"""Register a post-commit effect on the current execution context."""
+impl JacBasics.on_commit(callback: Callable) -> None {
+    JacRuntimeInterface.get_context().on_commit(callback);
 }
 
 """Purge current or target graph."""

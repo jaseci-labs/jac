@@ -2,7 +2,7 @@
 
 import os;
 import from dataclasses { MISSING }
-import from typing { cast }
+import from typing { Callable, cast }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
@@ -92,6 +92,39 @@ impl ExecutionContext.close -> None {
     }
     # TieredMemory handles syncing to persistence and closing all tiers
     self.mem.close();
+}
+
+"""Register a callback to run after the next successful commit.
+
+Backs the `on_commit(...)` ambient builtin. Callbacks are deferred
+external effects: they run only if the unit of work actually flushes,
+and exactly once per registration, so a request that aborts before
+committing never fires them.
+"""
+impl ExecutionContext.on_commit(callback: Callable) -> None {
+    self.pending_effects.append(callback);
+}
+
+"""Drain and run queued post-commit effects.
+
+Snapshot-then-clear before running so an effect that itself registers
+another effect enqueues it for the next drain rather than extending
+this one. A failing effect is logged and skipped: it neither aborts the
+commit nor blocks the remaining effects.
+"""
+impl ExecutionContext.run_pending_effects -> None {
+    if not self.pending_effects {
+        return;
+    }
+    effects = self.pending_effects;
+    self.pending_effects = [];
+    for effect in effects {
+        try {
+            effect();
+        } except Exception as e {
+            logger.error(f"on_commit effect failed: {e}");
+        }
+    }
 }
 
 """Get current user's root."""

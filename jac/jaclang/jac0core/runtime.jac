@@ -381,6 +381,12 @@ class JacBasics {
     so the caller's event loop is not blocked on L3 writes."""
     static async def acommit(anchor: Anchor | Archetype | None = None) -> None;
 
+    """Register a callback to run after the next successful commit. Backs
+    the `on_commit(...)` ambient builtin for deferred external effects:
+    the callback fires only if the unit of work flushes, and never if the
+    request aborts."""
+    static def on_commit(callback: Callable) -> None;
+
     """Purge current or target graph."""
     static def reset_graph(root_node: (Root | None) = None) -> int;
 
