@@ -2200,8 +2200,11 @@ impl TurnRenderer.render_stream(event_stream: any) -> dict {
     } except Exception as e {
         _term_print("");
         if not _term_output_enabled() {
+            err_text = f"provider: {e}";
+            if not _ui_is_duplicate_provider_error(err_text) {
+                agent.bus.emit("error", {"text": err_text});
+            }
             register_ui_provider_error(e);
-            agent.bus.emit("error", {"text": f"provider: {e}"});
         } else {
             console.error(f"agent error: {e}");
         }
@@ -2894,7 +2897,21 @@ glob _ui_recent_errors: dict = {},
      _UI_PROVIDER_DEDUP_S = 2.0;
 
 def _ui_provider_fingerprint(text: str) -> str {
-    return " ".join(text.strip().lower().split())[:240];
+    # Both error paths describe the same provider failure but decorate it
+    # differently: the worker emits `provider: <str(exc)>` while byllm's loguru
+    # record carries a `LLM <Kind>Error: <msg>` label. Strip both decorations so
+    # the two emitters collapse to the same key regardless of which fired first.
+    t = " ".join(text.strip().lower().split());
+    if t.startswith("provider:") {
+        t = t[len("provider:"):].strip();
+    }
+    if t.startswith("llm ") and ":" in t {
+        (head, _, tail) = t.partition(":");
+        if "error" in head or "failed" in head {
+            t = tail.strip();
+        }
+    }
+    return t[:240];
 }
 
 def _ui_purge_stale_provider_errors(now: float) {
@@ -2944,6 +2961,12 @@ def _ui_bus_emit_guarded(kind: str, text: str) {
     _ui_emit_tls.active = True;
     try {
         bus.emit(kind, {"text": text});
+        if kind == "error" {
+            # Remember what we just surfaced so the worker's except path (which
+            # fires *after* byllm's loguru log, with a differently-decorated copy
+            # of the same failure) collapses onto this row instead of duplicating.
+            _ui_remember_provider_error(text);
+        }
     } finally {
         _ui_emit_tls.active = False;
     }
@@ -3059,8 +3082,14 @@ def _ui_turn_worker(prompt: str) {
             verify_and_continue();
         }
     } except Exception as e {
+        # byllm already logged this failure via loguru (our sink surfaced it on
+        # the bus). Only emit if that didn't happen -- a non-provider error (tool
+        # bug, agent logic) reaches here without a prior loguru row.
+        err_text = f"provider: {e}";
+        if not _ui_is_duplicate_provider_error(err_text) {
+            agent.bus.emit("error", {"text": err_text});
+        }
         register_ui_provider_error(e);
-        agent.bus.emit("error", {"text": f"provider: {e}"});
         # An auth failure mid-turn means the key is missing or invalid even if we
         # thought one was present -- force the settings panel open so the user can
         # fix it without hunting through the feed.

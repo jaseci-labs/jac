@@ -241,3 +241,74 @@ test "ui output capture dedups provider loguru errors after agent registration" 
     assert bus.events[0]["kind"] == "error" , bus.events[0];
     assert "provider:" in str(bus.events[0].get("text", "")) , bus.events[0];
 }
+
+
+test "ui output capture dedups when the loguru sink fires before the worker emit" {
+    import from jaclang.cli.ai_agent {
+        _install_ui_provider_capture,
+        register_ui_provider_error
+    }
+    import from loguru { logger }
+
+    # `_ui_is_duplicate_provider_error` is an impl-annex helper (no decl), reached
+    # as a module attribute like the worker's except path resolves it at runtime.
+    is_dup = getattr(ai_mod, "_ui_is_duplicate_provider_error");
+    # Stale fingerprints from a prior test would poison the 2s dedup window.
+    getattr(ai_mod, "_ui_recent_errors").clear();
+    bus = CaptureBus();
+    _install_ui_provider_capture(bus);
+
+    # Real ordering: byllm logs the failure via loguru *first* (our sink surfaces
+    # it), and the re-raised exception only reaches the worker's except block
+    # afterwards. byllm labels the loguru record ("LLM AuthenticationError: ...")
+    # while the worker sees the bare re-raised message; the fingerprint must
+    # collapse both onto one row.
+    logger.error("LLM AuthenticationError: litellm bad key 42");
+    assert len(bus.events) == 1 , bus.events;
+
+    # Worker except path for the *same* failure -- must not add a second row.
+    err_text = "provider: litellm bad key 42";
+    if not is_dup(err_text) {
+        bus.emit("error", {"text": err_text});
+    }
+    register_ui_provider_error(RuntimeError("litellm bad key 42"));
+    assert len(bus.events) == 1 , bus.events;
+
+    # A genuinely different provider failure still earns its own row.
+    err2 = "provider: litellm rate limit on gpt-x";
+    if not is_dup(err2) {
+        bus.emit("error", {"text": err2});
+    }
+    assert len(bus.events) == 2 , bus.events;
+}
+
+
+test "ui output capture removes loguru's default sink and gags litellm" {
+    import from jaclang.cli.ai_agent { _install_ui_provider_capture }
+    import from loguru { logger }
+
+    getattr(ai_mod, "_ui_recent_errors").clear();
+    bus = CaptureBus();
+    _install_ui_provider_capture(bus);
+
+    # logger.remove() must have dropped loguru's default stderr sink (the one
+    # thing a stderr relay can't do), leaving exactly one handler -- ours -- so
+    # byllm's logger.error() reaches the bus, not the real terminal. A
+    # redirect_stderr probe would be meaningless: loguru binds its sink to the
+    # original stderr at import. Single-handler count *plus* the log landing on
+    # the bus proves the default stderr sink is gone (count==1 alone wouldn't,
+    # since the lone handler could still be the default).
+    handlers = logger?._core?.handlers;
+    if handlers is not None {
+        assert len(handlers) == 1 , len(handlers);
+    }
+    logger.error("LLM call failed with APIError: routed to bus not tty");
+    assert len(bus.events) == 1 , bus.events;
+    assert bus.events[0]["kind"] == "error" , bus.events[0];
+
+    # Phase 2b: litellm's stdout footer print() is gated by suppress_debug_info.
+    try {
+        import litellm;
+        assert litellm.suppress_debug_info == True , litellm.suppress_debug_info;
+    } except ImportError { }
+}
