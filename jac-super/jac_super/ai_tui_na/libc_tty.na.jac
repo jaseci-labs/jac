@@ -1,12 +1,20 @@
 """Pure-Jac terminal helpers — direct libc FFI, zero custom .c files.
 
-Requires a controlling terminal (/dev/tty). Uses:
+Opens the terminal device passed as JAC_AI_TUI_TTY by the control plane
+(typically /dev/pts/N), falling back to /dev/tty. Uses:
   - scalar libc calls (open, read, write, dup2, fcntl, poll, …)
-  - calloc-backed str buffers for ioctl / tcgetattr / tcsetattr
-  - packed 8-byte strings for struct pollfd arrays
+  - calloc-backed str buffers for ioctl / tcgetattr / tcsetattr / poll
+
+Every binary struct handed to an FFI call (termios, struct pollfd[]) MUST live in
+calloc'd memory and be filled with memcpy/memset -- never built by `chr()` + `+`
+concatenation. NA strings are NUL-terminated, so concatenating any chr(0) byte
+silently truncates the buffer (a struct pollfd for fd 0 collapses to 0 bytes,
+poll then reports POLLNVAL and no keystroke or stdin frame is ever read).
 
 Type rule: Jac `int` for locals; `i32`/`i64` only in libc FFI decl slots.
 """
+
+import os;
 
 import from "/usr/lib/libc.so.6" {
     def open(path: str, flags: i32, mode: i32) -> i32;  def close(fd: i32) -> i32;  def read(
@@ -19,7 +27,9 @@ import from "/usr/lib/libc.so.6" {
         fd: i32, opt: i32, term: str
     ) -> i32;  def poll(fds: str, nfds: i32, timeout: i32) -> i32;  def calloc(
         n: int, sz: int
-    ) -> int;  def free(p: int) -> None;
+    ) -> int;  def free(p: int) -> None;  def memset(s: int, c: i32, n: int) -> int;  def memcpy(
+        dst: int, src: str, n: int
+    ) -> int;
 }
 
 # Both tcgetattr and tcsetattr take a 60-byte glibc-termios buffer via an i8*
@@ -79,29 +89,21 @@ def u16le(buf: str, off: int) -> int {
     return lo | (hi << 8);
 }
 
-def pack_pollfd(fd: int, events: int) -> str {
-    b0: str = chr(fd & 0xFF);
-    b1: str = chr((fd >> 8) & 0xFF);
-    b2: str = chr((fd >> 16) & 0xFF);
-    b3: str = chr((fd >> 24) & 0xFF);
-    b4: str = chr(events & 0xFF);
-    b5: str = chr((events >> 8) & 0xFF);
-    z: str = chr(0);
-    return b0 + b1 + b2 + b3 + b4 + b5 + z + z;
+def poke_u32(p: int, off: int, val: int) {
+    # Write a 32-bit little-endian word into calloc'd memory one byte at a time.
+    # memset (not chr()+concat) so embedded NUL bytes survive.
+    memset(p + off, val & 0xFF, 1);
+    memset(p + off + 1, (val >> 8) & 0xFF, 1);
+    memset(p + off + 2, (val >> 16) & 0xFF, 1);
+    memset(p + off + 3, (val >> 24) & 0xFF, 1);
 }
 
-def u32_bytes(val: int) -> str {
-    b0: str = chr(val & 0xFF);
-    b1: str = chr((val >> 8) & 0xFF);
-    b2: str = chr((val >> 16) & 0xFF);
-    b3: str = chr((val >> 24) & 0xFF);
-    return b0 + b1 + b2 + b3;
-}
-
-# Build a fresh 60-byte termios buffer with raw-mode flags applied. Bytes
-# 0..15 are the four rewritten flag words; bytes 16..59 (c_line, c_cc[], speeds)
-# are copied verbatim from the saved buffer. Returned as a `str` so it can be
-# handed to tcsetattr as an i8* without any by-value struct marshaling.
+# Build a fresh 60-byte termios buffer with raw-mode flags applied, in calloc'd
+# memory so NUL bytes in the flag words and c_cc[] survive (chr()+concat would
+# truncate at the first NUL, leaving tcsetattr a garbage struct -> the terminal
+# never actually enters raw mode). c_line, c_cc[], and speeds (bytes 16..59) are
+# copied verbatim from `saved` via memcpy; the four flag words are then poked in.
+# Returns the calloc pointer as a `str`; the caller MUST free() it.
 def build_raw_termios(saved: str) -> str {
     iflag: int = read_u32(saved, 0) & ~(
         IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON
@@ -109,29 +111,52 @@ def build_raw_termios(saved: str) -> str {
     oflag: int = read_u32(saved, 4) & ~OPOST;
     cflag: int = (read_u32(saved, 8) & ~(CSIZE | PARENB)) | CS8;
     lflag: int = read_u32(saved, 12) & ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
-    out: str = u32_bytes(iflag) + u32_bytes(oflag) + u32_bytes(cflag) + u32_bytes(
-        lflag
-    );
-    i: int = 16;
-    while i < TERMIOS_SZ {
-        out = out + chr(ord(saved[i]));
-        i = i + 1;
-    }
+    p: int = calloc(TERMIOS_SZ, 1);
+    memcpy(p, saved, TERMIOS_SZ);
+    poke_u32(p, 0, iflag);
+    poke_u32(p, 4, oflag);
+    poke_u32(p, 8, cflag);
+    poke_u32(p, 12, lflag);
+    # Non-canonical byte-at-a-time reads: VTIME=0 (c_cc[5]@22), VMIN=1 (c_cc[6]@23).
+    memset(p + 22, 0, 1);
+    memset(p + 23, 1, 1);
+    out: str = p;
     return out;
 }
 
+def _tty_device_path -> str {
+    # Control plane sets JAC_AI_TUI_TTY to the parent's terminal (e.g. /dev/pts/5).
+    # open("/dev/tty") fails after setsid() (no controlling tty), so we need the
+    # explicit path when the sidecar runs in its own session.
+    p = os.getenv("JAC_AI_TUI_TTY");
+    if p is not None {
+        if len(p) > 0 {
+            return p;
+        }
+    }
+    return "/dev/tty";
+}
+
 def tty_open -> int {
-    fd: int = open("/dev/tty", O_RDWR, 0);
+    fd: int = open(_tty_device_path(), O_RDWR, 0);
     if fd < 0 {
         return -1;
     }
+    # Relocate the tty fd above the stdio-remap range. open() hands back the lowest
+    # free fd -- typically 3, since the sidecar's 0/1/2 are pipes -- but
+    # tty_init_stdio_remap reuses fd 3 for the IPC channel (dup2(1, 3)) and would
+    # clobber the tty. Move it with dup2, NOT fcntl(F_DUPFD): fcntl is variadic and
+    # its min-fd arg is mis-marshaled through NA FFI (returns fd 0), which silently
+    # rebinds every subsequent tcgetattr/tcsetattr to stdin -- so the TTY only works
+    # by accident when stdin is itself a terminal, and fails under a piped stdin
+    # (exactly how `jac ai --tui` spawns this sidecar).
     if fd < 10 {
-        safe: int = fcntl(fd, F_DUPFD, 10);
-        close(fd);
-        if safe < 0 {
+        if dup2(fd, 10) < 0 {
+            close(fd);
             return -1;
         }
-        fd = safe;
+        close(fd);
+        fd = 10;
     }
     saved: str = calloc(TERMIOS_SZ, 1);
     if tcgetattr(fd, saved) != 0 {
@@ -141,7 +166,9 @@ def tty_open -> int {
     }
     g_tty.saved_term = saved;
     raw_buf: str = build_raw_termios(saved);
-    if tcsetattr(fd, TCSANOW, raw_buf) != 0 {
+    rc: int = tcsetattr(fd, TCSANOW, raw_buf);
+    free(raw_buf);
+    if rc != 0 {
         free(saved);
         close(fd);
         return -1;
@@ -203,7 +230,16 @@ def tty_poll(timeout_ms: int) {
     if fd < 0 {
         return;
     }
-    fds: str = pack_pollfd(0, POLLIN) + pack_pollfd(fd, POLLIN);
+    # struct pollfd[2] in calloc'd (NUL-safe) memory. Each entry is 8 bytes:
+    # { int fd; short events; short revents }. calloc zeroes fd-high bytes and
+    # revents; we poke in fd low bytes and events=POLLIN. Slot 0 = stdin (fd 0,
+    # already zeroed), slot 1 = the tty fd.
+    p: int = calloc(16, 1);
+    memset(p + 4, POLLIN, 1);
+    memset(p + 8, fd & 0xFF, 1);
+    memset(p + 9, (fd >> 8) & 0xFF, 1);
+    memset(p + 12, POLLIN, 1);
+    fds: str = p;
     r: int = poll(fds, 2, timeout_ms);
     if r > 0 {
         rev0: int = u16le(fds, 6);
@@ -215,6 +251,7 @@ def tty_poll(timeout_ms: int) {
             g_tty.key_ready = 1;
         }
     }
+    free(p);
 }
 
 def tty_stdin_ready -> int {

@@ -20,6 +20,8 @@ Selection and spawning live in
   `ipc.na.jac`, `tui.na.jac`, and related modules under `ai_tui_na/`.
 - Renders to `/dev/tty` (stdio remapped via `libc_tty.na.jac`) so process
   stdin/stdout stay the protocol pipes.
+- **Platform:** Linux (and WSL) only today. macOS and Windows port plans are in
+  `PORTING.md`.
 
 ## Environment passed to the sidecar
 
@@ -27,6 +29,7 @@ Set by the control plane before spawn (see `PROTOCOL.md` → Startup):
 
 | Variable                  | Meaning                                   |
 | ------------------------- | ----------------------------------------- |
+| `JAC_AI_TUI_TTY`          | Parent terminal device path (e.g. `/dev/pts/5`); sidecar opens this for keyboard input after `setsid` |
 | `JAC_AI_UI_PROJECT`       | Normalized working directory              |
 | `JAC_AI_UI_MODEL`         | Model name override (may be empty)        |
 | `JAC_AI_UI_NCTX`          | Context window override as int (`0`=unset)|

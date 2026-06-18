@@ -58,6 +58,16 @@ impl run_tui_session(req: AgentRequest) -> int {
     }
     cmd_args = resolved.get("cmd_args");
 
+    tty_dev = _sidecar_tty_device();
+    if not tty_dev {
+        console.error(
+            "jac ai --tui needs an interactive terminal (stdin or stderr must be a TTY)"
+        );
+        return 1;
+    }
+    old_tty_env = os.environ.get("JAC_AI_TUI_TTY");
+    os.environ["JAC_AI_TUI_TTY"] = tty_dev;
+
     project = os.path.normpath(str(r?.cwd or os.getcwd()));
     os.environ["JAC_AI_UI_PROJECT"] = project;
     os.environ["JAC_AI_UI_MODEL"] = str(r?.model or "");
@@ -85,6 +95,11 @@ impl run_tui_session(req: AgentRequest) -> int {
             os.environ.pop("JAC_AI_UI_ACTIVE", None);
         } else {
             os.environ["JAC_AI_UI_ACTIVE"] = old_active;
+        }
+        if old_tty_env is None {
+            os.environ.pop("JAC_AI_TUI_TTY", None);
+        } else {
+            os.environ["JAC_AI_TUI_TTY"] = old_tty_env;
         }
         console.error(f"Failed to launch jac ai TUI: {e}");
         return 1;
@@ -159,6 +174,11 @@ impl run_tui_session(req: AgentRequest) -> int {
             os.environ.pop("JAC_AI_UI_ACTIVE", None);
         } else {
             os.environ["JAC_AI_UI_ACTIVE"] = old_active;
+        }
+        if old_tty_env is None {
+            os.environ.pop("JAC_AI_TUI_TTY", None);
+        } else {
+            os.environ["JAC_AI_TUI_TTY"] = old_tty_env;
         }
     }
 
@@ -236,6 +256,22 @@ def _list_project_files(project: str) -> str {
     return "\n".join(out_lines);
 }
 
+def _sidecar_tty_device -> str {
+    # Resolve the interactive terminal the user is sitting at. The NA sidecar's
+    # stdin is a pipe, so it cannot use isatty(stdin); pass the real device path.
+    import os;
+    import sys;
+
+    for stream in (sys.stderr, sys.stdin, sys.stdout) {
+        try {
+            if stream.isatty() {
+                return os.ttyname(stream.fileno());
+            }
+        } except Exception { }
+    }
+    return "";
+}
+
 def _resolve_tui_command(pkg_root: any, initial: str) -> dict {
     # Map the NA sidecar to a spawn command, validating its presence.
     # Returns {ok, cmd_args, error, hint}.  `initial`, when non-empty, is passed
@@ -261,10 +297,18 @@ def _resolve_tui_command(pkg_root: any, initial: str) -> dict {
 
 def _spawn_tui_backend(cmd_args: list) -> any {
     # Spawn a sidecar with line-buffered text pipes on stdin/stdout.
+    # Own session so keyboard input is not stolen by the parent foreground group.
+    # The sidecar opens JAC_AI_TUI_TTY (/dev/pts/N) directly -- not /dev/tty,
+    # which fails once setsid() drops the controlling terminal.
     import subprocess;
 
     return subprocess.Popen(
-        cmd_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1,
+        cmd_args,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+        start_new_session=True,
     );
 }
 

@@ -83,7 +83,9 @@ def _run {
     raw_fd: int = tty_open();
 
     if raw_fd < 0 {
-        tty_write(2, "[tui] no controlling terminal; --tui needs a real tty\r\n");
+        tty_write(
+            2, "[tui] tty open failed (set JAC_AI_TUI_TTY or run from a terminal)\r\n"
+        );
         sys.exit(1);
     }
     tty_write(2, "[tui] tty_open ok\r\n");
@@ -137,16 +139,8 @@ def _run {
     while not state.quit_flag {
         tty_poll(50);
 
-        if tty_stdin_ready() > 0 {
-            ok = ipc_read_frame_v2(state);
-            if not ok {
-                state.quit_flag = True;
-                break;
-            }
-            _sync_size(state);
-            state.dirty = True;
-        }
-
+        # Handle keyboard before IPC frames so a steady ui_stream() delta feed
+        # cannot starve prompt editing.
         if tty_key_ready() > 0 {
             k = tty_read_key();
             if len(k) > 0 {
@@ -155,6 +149,16 @@ def _run {
                     state.quit_flag = True;
                 }
             }
+        }
+
+        if tty_stdin_ready() > 0 {
+            ok = ipc_read_frame_v2(state);
+            if not ok {
+                state.quit_flag = True;
+                break;
+            }
+            _sync_size(state);
+            state.dirty = True;
         }
 
         if state.dirty {
