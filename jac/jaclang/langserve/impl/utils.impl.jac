@@ -403,10 +403,19 @@ impl debounce(`wait: float) -> Callable[[T], Callable[(..., Awaitable[None])]] {
 impl gen_diagnostics(
     from_path: str, errors: list[Alert], warnings: list[Alert]
 ) -> list[lspt.Diagnostic] {
+    # Fold the help hint into the message so IDE clients (which render only
+    # Diagnostic.message) show what the CLI prints under `help:`.
+    def _message(alert: Alert) -> str {
+        hint = alert.code.help_text if alert.code else None;
+        if alert.help_text {
+            hint = alert.help_text;
+        }
+        return (alert.msg + "\n\nhelp: " + hint) if hint else alert.msg;
+    }
     return [
         lspt.Diagnostic(
             range=create_range(error.loc),
-            message=error.msg,
+            message=_message(error),
             severity=lspt.DiagnosticSeverity.Error,
             code=error.code.code if error.code else None,
             source="jac"
@@ -416,7 +425,7 @@ impl gen_diagnostics(
     ] + [
         lspt.Diagnostic(
             range=create_range(warning.loc),
-            message=warning.msg,
+            message=_message(warning),
             severity=lspt.DiagnosticSeverity.Warning,
             code=warning.code.code if warning.code else None,
             source="jac"
