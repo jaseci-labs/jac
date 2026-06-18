@@ -561,11 +561,9 @@ obj TypeEvaluator {
 
     def _is_unbound_method_call(expr: uni.FuncCall) -> bool;
     def validate_call_args(expr: uni.FuncCall) -> TypeBase;
-    # If a call argument is a lambda with at least one unannotated parameter,
-    # return that parameter's name (for an actionable overload-mismatch hint);
-    # else None. Jac does not yet infer lambda param types from the expected
-    # callable, so an unannotated lambda param stays Unknown and can silently
-    # break overload resolution.
+    # If a call argument is a lambda with an unannotated parameter the checker
+    # couldn't infer, return that parameter's name for an actionable
+    # overload-mismatch hint; else None.
     def _unannotated_lambda_arg_name(expr: uni.FuncCall) -> str | None;
     # --- async / await modeling ---
     # Wrap a return type as `Coroutine[Any, Any, inner]` (the value an

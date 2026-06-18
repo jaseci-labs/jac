@@ -570,13 +570,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                         and idx < len(expected_func.parameters)
                     ) {
                         param_type = expected_func.parameters[idx].param_type;
-                        # Publish the inferred type onto the param's Name so the
-                        # body resolves the param to it (an unannotated lambda
-                        # param has no symbol type of its own). _get_type_of_symbol
-                        # reads this back for unannotated ParamVars. Also stamp the
-                        # ParamVar node itself: exit_param_var ran during traversal
-                        # before this inference and cached Unknown there, which is
-                        # what hover/LSP reads off the declaration.
+                        # Seed the inferred type onto both the param Name (read
+                        # back by _get_type_of_symbol so the body resolves it)
+                        # and the ParamVar (read by hover/LSP, which traversal
+                        # otherwise stamped Unknown before this inference ran).
                         if param_type is not None {
                             param.name.type = param_type;
                             param.type = param_type;
@@ -595,22 +592,17 @@ impl TypeEvaluator._get_type_of_expression_core(
                         )
                     );
                 }
-                # The body (and any sub-expression referencing a seeded param)
-                # may have been cached as Unknown by an earlier expected-less
-                # pass; drop those caches so the body re-resolves against the
-                # freshly seeded param types. Only expression-bodied lambdas
-                # need this: a block body is a CodeBlockStmt sequence, not an
-                # Expr, and is re-typed via its own statement traversal.
+                # Drop body caches from any earlier expected-less pass so it
+                # re-resolves against the seeded params. (Block bodies are a
+                # statement list, not an Expr, and re-type via traversal.)
                 if seeded_param and isinstance(expr.body, uni.Expr) {
                     self._invalidate_expr_type_cache(expr.body);
                 }
             }
-            # Skip body evaluation while a param is still untyped: this happens
-            # during speculative overload matching (e.g. the `key: None` overload
-            # of `sorted` reaches here before the callable overload). Typing the
-            # body against Unknown params would emit spurious diagnostics from a
-            # candidate that is about to be discarded. The body is evaluated in
-            # the pass where the params are resolved.
+            # Don't type the body while a param is still Unknown: this is a
+            # speculative overload candidate (e.g. `sorted`'s `key: None`
+            # overload) and typing it would emit errors from a soon-discarded
+            # match. The matching overload re-evaluates with params resolved.
             if has_unresolved_param {
                 return types.FunctionType(
                     func_name="<lambda>",
@@ -2322,9 +2314,8 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                 }
                 return self._convert_to_instance(annotation_type);
             }
-            # Unannotated param: an inferred type may have been published onto
-            # the param's Name (lambda bidirectional inference seeds it from the
-            # expected callable). Honor it so the body resolves the param.
+            # Unannotated param: honor a type seeded onto its Name by lambda
+            # bidirectional inference so the body resolves the param.
             if node_.name.type is not None {
                 return node_.name.type;
             }
@@ -3618,10 +3609,9 @@ impl TypeEvaluator.get_type_of_expression(
     # Use cached result if available, UNLESS expected_type is provided
     # for a container literal, comprehension, or lambda that could benefit
     # from bidirectional inference (ListCompr also covers Set/Gen
-    # comprehensions by inheritance). A lambda must re-evaluate when an
-    # expected callable arrives: an unannotated param seeds its type from
-    # the expected signature, and the first (expected-less or wrong-overload)
-    # pass caches it as Unknown, which would otherwise stick.
+    # comprehensions by inheritance). A lambda must re-evaluate so an
+    # expected callable can seed its params, which an earlier pass cached
+    # as Unknown.
     if node_.type is not None {
         if expected_type is None
         or not isinstance(
@@ -3660,7 +3650,12 @@ impl TypeEvaluator.get_type_of_expression(
         # be fully resolved in Jac; surfacing them produces noise for
         # users who only care about diagnostics on their own source.
         mod = node_.find_parent_of_type(uni.Module);
-        if mod is None or not mod.is_raised_from_py {
+        # Also suppress inside a lambda body: post-order traversal evaluates
+        # body sub-expressions before the enclosing call seeds the lambda's
+        # params, so an unseeded param reads Unknown here. The lambda's own
+        # evaluation (with params bound) is the authoritative resolution.
+        in_lambda_body = node_.find_parent_of_type(uni.LambdaExpr) is not None;
+        if (mod is None or not mod.is_raised_from_py) and not in_lambda_body {
             self.emit_diag(W1051, node_);
         }
     }

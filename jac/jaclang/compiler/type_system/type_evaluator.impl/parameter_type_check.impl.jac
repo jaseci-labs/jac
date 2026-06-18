@@ -5,13 +5,11 @@ impl TypeEvaluator.validate_arg_types(
 ) -> bool {
     has_errors: bool = False;
 
-    # Bidirectional inference for lambda args: a param annotated with a
-    # generic callable (e.g. `key: Callable[[_T], ...]` in `sorted`) only
-    # gives a lambda a useful expected type once `_T` is solved. So bind
-    # TypeVars from the concrete (non-lambda) args first, then substitute
-    # those bindings into each param's expected type. Without this, the
-    # lambda param stays Unknown and no overload matches (pyright solves
-    # `_T` from `iterable` before typing `key`'s lambda the same way).
+    # Bidirectional inference for lambda args: a generic callable param
+    # (e.g. `key: Callable[[_T], ...]` in `sorted`) only gives a lambda a
+    # useful expected type once `_T` is solved. Bind TypeVars from the
+    # concrete (non-lambda) args first, then substitute below so the lambda
+    # param doesn't stay Unknown and break overload resolution.
     bindings: dict[str, TypeBase] = {};
     for (arg, param) in args.arg_params.items() {
         if param is None or param.param_type is None {
@@ -34,7 +32,6 @@ impl TypeEvaluator.validate_arg_types(
         if bindings {
             expected = type_utils.apply_solved_type_vars(expected, bindings);
         }
-        # Pass param type as expected_type for bidirectional inference
         value = arg.value if isinstance(arg, uni.KWPair) else arg;
         arg_type = self.get_type_of_expression(value, expected_type=expected);
 
@@ -631,9 +628,8 @@ impl TypeEvaluator.match_args_to_params(
 
 """
 Scan call arguments for a lambda with an unannotated parameter and return
-that parameter's name, else None. Drives the E1054 hint that tells the user
-to annotate the lambda param (Jac does not yet infer it from the expected
-callable, so it stays Unknown and breaks overload resolution).
+that parameter's name, else None. Drives the E1054 hint suggesting the user
+annotate the param when its type couldn't be inferred from the call context.
 """
 impl TypeEvaluator._unannotated_lambda_arg_name(expr: uni.FuncCall) -> str | None {
     if expr.params is None {
