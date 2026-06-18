@@ -62,37 +62,25 @@ scan.
 
 ---
 
-## Still missing  - semantics
+## Semantics
 
-### `onTouched` is approximated, not equivalent to RHF
+### `onTouched` - RESOLVED (display gate, Option 2)
 
-RHF `mode: "onTouched"` means:
+`validateMode="onTouched"` wires **both** `onBlur` and `onChange` TanStack
+validators. `renderError` now gates on `field.state.meta.isTouched`:
 
-1. **Do not** validate on change until the field has been blurred once.
-2. After first blur, validate on every subsequent change.
+```
+if validateMode == "onTouched" and not isTouched → return None
+```
 
-Our workaround wires **both** `onBlur` and `onChange` validators. That restores
-post-blur revalidation (the main regression) but may validate on change **before**
-first blur  - stricter than RHF.
+**UX result**: errors appear after first blur (matching RHF semantics), then clear
+immediately on onChange without a second blur. Other modes (`onChange`, `onBlur`,
+`onSubmit`) are unaffected.
 
-**Proper fix options (pick one before calling this done):**
-
-1. **Conditional `onChange` validator**  - only run schema when
-   `field.state.meta.isTouched` / `isBlurred` is true (needs per-field awareness;
-   form-level Standard Schema may require a wrapper function, not a bare Zod
-   object).
-2. **Gate error display, not validation**  - keep both triggers but only render
-   `field.state.meta.errors` when `isTouched` (TanStack community pattern; errors
-   still compute in the background).
-3. **Change the public default** to `onBlur` or `onChange` and document the
-   TanStack mapping explicitly in `form-handling.md` (breaking change for apps
-   relying on RHF semantics).
-4. **TanStack `revalidateLogic` / `onDynamic`**  - investigate
-   `validationLogic: revalidateLogic({ mode: 'blur', modeAfterSubmission: 'change' })`
-   for form-submit-scoped behavior (not per-field touched; different model).
-
-Until one of these is chosen and tested, treat `validateMode="onTouched"` as
-**best-effort parity**, not a guarantee.
+**Residual difference from RHF**: validation *runs* in the background pre-blur
+(so `form.state.isValid` can be `false` before any touch), whereas RHF skips the
+validator entirely. This does not affect current UI because submit is gated on
+`!isDirty`, not `!isValid`.
 
 ### Submit button `disabled` semantics may differ from RHF
 
@@ -114,16 +102,12 @@ introspection path exists yet.
 
 | Gap | Why it matters |
 |-----|----------------|
-| **No Solid jsdom form fixture** | Routing and control-flow have jsdom gates (`test_solid_jsdom.jac`); forms do not. `TODO.md` explicitly lists "JacForm submit/validation/checkbox/radio" as required before React-parity. |
-| **No runtime test for `onTouched` behavior** | Compiler pins emitted validator wiring; nothing asserts blur-then-change UX (error appears on blur, clears/updates on change). |
+| ~~**No Solid jsdom form fixture**~~ | **RESOLVED** (`fixtures/solid_form_app.cl.jac` + `_FORM_HARNESS` + test in `test_solid_jsdom.jac`): mounts `JacForm` with email + checkbox, asserts error on blur, clears on onChange (no second blur), checkbox renders. |
+| ~~**No runtime test for `onTouched` behavior**~~ | **RESOLVED** by same test: the harness proves the onBlur+onChange approximation end-to-end - error appears after blur, clears on onChange without second blur. |
 | **No React-side symmetric import guard** | Solid forbids `@tanstack/react-form`; React shim has no corresponding ban on `@tanstack/solid-form` (lower risk, but asymmetric). |
 | **jac-client `test_form.jac` is shallow** | Bundle contains validation strings; Playwright checks native `input.validity` (browser constraint validation), **not** JacForm / TanStack error messages or `validateMode` timing. |
 | **No Preact-specific form test** | Preact reuses `client_runtime.cl.jac`; assumed covered by React path but unproven after migration. |
 | **No test that the *React* published `@jac/runtime` resolves TanStack, not RHF** | Partially addressed for **Solid only**: `test_npm_publish.jac`'s `build_runtime_tarball ... with no React ecosystem` test now scans every `.js` in the Solid tarball and asserts no `react` / `react-dom` / `react-router` import, and positively asserts `@tanstack/solid-form` in peers. **The React runtime dist has no equivalent bundle-level scan**, and its peer-dep assertion (`build_runtime_tarball packages the runtime with exports`) is itself stale  - it asserts `react` / `react-router-dom` / `zod` but neither asserts `@tanstack/react-form` is present nor that `react-hook-form` is absent. (Note: the Solid bundle scan does not name `react-hook-form` / `@hookform/*` explicitly  - only `react`-family roots. The source-level ban lives in `test_solid_backend.jac`'s negative-import guard.) |
-
-**Suggested first test to add:** `fixtures/solid_form_app.cl.jac` + jsdom harness  -
-fill invalid email → blur → assert Jac error text → fix value → assert error
-clears without second blur (proves `onTouched` post-blur revalidation).
 
 ---
 
@@ -136,12 +120,11 @@ clears without second blur (proves `onTouched` post-blur revalidation).
 - **Error source is `field.state.meta.errors`**  - TanStack separates `onChange` vs
   `onBlur` error maps; JacForm merges via `.errors`. Verify stale `onBlur` errors
   clear on `onChange` (known TanStack footgun in discussions #1784).
-- **`renderError` shows errors unconditionally**  - no `isTouched` gate. Even with
-  correct validator timing, UX may show errors earlier than RHF `onTouched` users
-  expect.
-- **Checkbox / radio / select paths**  - compile and render in React jac-client
-  example; no Solid jsdom coverage. `TODO.md` #1 (ref thunking) was fixed for
-  generic `ref={...}`; confirm form controls don't rely on broken ref paths.
+- ~~**`renderError` shows errors unconditionally**~~ **RESOLVED**: `renderError` now accepts `isTouched: bool`; when `validateMode == "onTouched"`, errors are suppressed until `field.state.meta.isTouched` is true. Other modes (`onChange`, `onBlur`, `onSubmit`) are unaffected.
+- **Radio / select paths**  - compile and render in React jac-client example; no
+  Solid jsdom coverage. Checkbox is now covered by `test_solid_jsdom.jac`'s form
+  test. `TODO.md` #1 (ref thunking) was fixed for generic `ref={...}`; confirm
+  form controls don't rely on broken ref paths.
 - **No `useJacForm` consumer docs for TanStack**  - public API unchanged
   (`validateMode`, `JacSchema`) but underlying field handle shape changed; custom
   form UIs that reached into RHF `register` / `formState` will break silently.
@@ -153,7 +136,7 @@ clears without second blur (proves `onTouched` post-blur revalidation).
 | Location | Issue |
 |----------|-------|
 | `docs/docs/tutorials/fullstack/setup.md` | Still lists `react-hook-form = "^7.71.0"` |
-| `docs/docs/community/release_notes/unreleased/jaclang/6490.feature.md` | Describes `solid-hook-form` (superseded by 6539) |
+| `docs/docs/community/release_notes/unreleased/jaclang/6490.feature.md` | **Resolved on this PR.** The Solid router+form parity bullet previously claimed `solid-hook-form` + a hand-rolled zod resolver + `formState.errors`; updated in-place to `@tanstack/solid-form` + Standard Schema validators + `field.state.meta.errors`, with a forward pointer to #6539. (The note's other three bullets - Solid signals backend, View IR seam, native Solid routing - were correct and left untouched.) |
 | `jac-client/jac_client/plugin/src/impl/diagnostics.impl.jac` | `CORE_DEPS` still lists `react-hook-form` + `@hookform/resolvers` **and is missing `@tanstack/react-form`**  - so a real missing-dep error for TanStack gets misclassified as a regular (non-core) dep with the wrong hint, while the dead RHF entries stay classified as core. |
 | `jac-client/jac_client/docs/advance/form-handling.md` | Documents `onTouched` as an RHF mode name with no TanStack caveat |
 | `.jac/client/compiled/client_runtime.js` (local cache) | May still show old RHF `useForm({mode, resolver})` until recompiled (confirmed stale on this checkout: still `import { useForm } from "react-hook-form"` + `zodResolver`) |

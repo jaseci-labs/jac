@@ -338,6 +338,144 @@ console.log(`\\n${tag} ${failures.length ? "FAILED" : "OK"}: ${failures.length} 
 process.exit(failures.length ? 1 : 0);
 """;
 
+"""Form harness: mount a `JacForm` with email + checkbox fields compiled via the
+Solid backend, then assert (1) the form structure renders in jsdom, (2) an invalid
+email shows a Jac error paragraph after blur (onBlur validator fires), (3) fixing
+the email clears the error without a second blur (onChange revalidation — end-to-end
+proof of the `onTouched` approximation), and (4) the checkbox input renders and
+accepts a change event. A plain (non-f) string so JS `${}`/`{}` need no escaping;
+`_BABEL_BUILD` compiles every emitted `*.src.jsx` before any import."""
+glob _FORM_HARNESS: str = _BABEL_BUILD + """
+import { JSDOM } from "jsdom";
+
+const dom = new JSDOM(
+  '<!DOCTYPE html><html><body><div id="__jac_root"></div></body></html>',
+  { url: "http://localhost/", pretendToBeVisual: true }
+);
+const { window } = dom;
+globalThis.window = window;
+for (const k of [
+  "document", "navigator", "HTMLElement", "Element", "SVGElement", "Node",
+  "Text", "Comment", "DocumentFragment", "Event", "CustomEvent", "MouseEvent",
+  "KeyboardEvent", "FocusEvent", "getComputedStyle", "DOMParser",
+]) {
+  if (window[k] === undefined) continue;
+  try { globalThis[k] = window[k]; } catch {}
+}
+globalThis.requestAnimationFrame =
+  window.requestAnimationFrame || ((cb) => setTimeout(() => cb(Date.now()), 0));
+globalThis.cancelAnimationFrame = window.cancelAnimationFrame || clearTimeout;
+
+const failures = [];
+const check = (label, ok, detail) => {
+  console.log(`${ok ? "PASS" : "FAIL"}  ${label}${detail ? "  -- " + detail : ""}`);
+  if (!ok) failures.push(label);
+};
+
+let render, app;
+try {
+  ({ render } = await import("solid-js/web"));
+  ({ app } = await import("./component.js"));
+} catch (e) {
+  check("runtime modules import (jsdom + --conditions=browser)", false,
+    String((e && e.stack) || e));
+  console.log("\\nFAILED: import error");
+  process.exit(1);
+}
+
+const root = document.getElementById("__jac_root");
+try {
+  render(() => app(), root);
+} catch (e) {
+  check("render() mounts without throwing", false, String((e && e.stack) || e));
+  console.log("\\nFAILED: mount error");
+  process.exit(1);
+}
+
+// --- Structure checks ---
+const formEl = document.querySelector("form");
+check("form element rendered", !!formEl, `root.innerHTML=${root.innerHTML}`);
+
+const emailInput = document.querySelector('input[type="email"]');
+check("email input rendered", !!emailInput, `html=${root.innerHTML}`);
+
+const checkboxInput = document.querySelector('input[type="checkbox"]');
+check("checkbox input rendered", !!checkboxInput, `html=${root.innerHTML}`);
+
+const submitBtn = document.querySelector('button[type="submit"]');
+check("submit button rendered", !!submitBtn, `html=${root.innerHTML}`);
+
+if (submitBtn) {
+  check("submit disabled initially (form not dirty)",
+    submitBtn.disabled,
+    `disabled=${submitBtn.disabled}`);
+}
+
+// --- onTouched validation: error on blur, clears on onChange (no second blur) ---
+if (emailInput) {
+  // Find the error paragraph scoped to the email field's wrapper div.
+  const emailError = () => {
+    const wrapper = emailInput.closest("div");
+    return wrapper ? wrapper.querySelector("p") : null;
+  };
+
+  // 1. Enter an invalid email value and fire the change event (handleChange).
+  emailInput.value = "not-an-email";
+  emailInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  // 2. Blur the field (handleBlur) — triggers the onBlur validator.
+  emailInput.dispatchEvent(new window.Event("blur", { bubbles: false }));
+  // Allow TanStack Form's async validation + Solid reactive DOM update to settle.
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  check("email error appears after invalid input + blur",
+    !!emailError() && emailError().textContent.includes("Invalid email"),
+    `errorText=${emailError() ? JSON.stringify(emailError().textContent) : "null"} html=${root.innerHTML}`);
+
+  // 3. Fix the email — onChange validator should re-run and clear the error
+  //    without requiring another blur. This is the critical onTouched proof.
+  emailInput.value = "test@example.com";
+  emailInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  check("email error clears after valid input without second blur",
+    !emailError() || !emailError().textContent.includes("Invalid email"),
+    `errorText=${emailError() ? JSON.stringify(emailError().textContent) : "null"}`);
+
+  if (submitBtn) {
+    check("submit enabled after form is dirtied",
+      !submitBtn.disabled,
+      `disabled=${submitBtn.disabled}`);
+  }
+}
+
+// --- Checkbox: change event dispatches without error ---
+if (checkboxInput) {
+  let checkboxError = false;
+  try {
+    checkboxInput.checked = true;
+    checkboxInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+  } catch (e) {
+    checkboxError = true;
+    check("checkbox change event dispatches without throwing", false, String(e));
+  }
+  if (!checkboxError) {
+    check("checkbox change event dispatches without throwing", true);
+  }
+}
+
+console.log(`\\n${failures.length ? "FAILED" : "OK"}: ${failures.length} failure(s)` +
+  (failures.length ? `: ${failures.join(", ")}` : ""));
+process.exit(failures.length ? 1 : 0);
+""";
+
 """Skip unless the bun/npm client toolchain is opted in (mirrors preact e2e)."""
 def _require_client_integration {
     if not os.environ.get("JAC_CLIENT_INTEGRATION") {
@@ -637,5 +775,69 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
                 f"routing harness {sc} failed (exit {run.returncode}):\n{detail}"
             );
         }
+    }
+}
+
+test "solid JacForm renders and validates in jsdom (TanStack Form end-to-end)" {
+    # End-to-end proof of the TanStack Form migration for the Solid backend:
+    # `JacForm` mounts correctly via `@tanstack/solid-form`, email validation
+    # fires on blur (onBlur validator) and clears on onChange without a second
+    # blur (`onTouched` approximation: both onBlur + onChange wired), and the
+    # checkbox field renders. Same opt-in + toolchain as the counter test.
+    _require_client_integration();
+    bun = get_bun();
+    if bun is None {
+        pytest.skip("bun is required but could not be located/installed");
+    }
+
+    backend = SolidBackend();
+    component_js = _wire_jac_runtime(
+        with_runtime_globals(
+            _compile_solid(os.path.join(FIXTURES, "solid_form_app.cl.jac")), backend
+        )
+    );
+    runtime_path = resolve_client_runtime_cl_path("solid");
+    runtime_js = _rewrite_core_specifier(_compile_solid(runtime_path));
+    core_js = _compile_solid(
+        str(Path(runtime_path).parent / "client_runtime_core.cl.jac")
+    );
+
+    with TemporaryDirectory() as tmp {
+        work = Path(tmp);
+        (work / "component.src.jsx").write_text(component_js, encoding="utf-8");
+        (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
+        (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
+        (work / "harness.mjs").write_text(_FORM_HARNESS, encoding="utf-8");
+        (work / "package.json").write_text(
+            json.dumps(
+                {
+                    "name": "solid-form-jsdom-test",
+                    "private": True,
+                    "type": "module",
+                    "dependencies": _DEPS
+                }
+            ),
+            encoding="utf-8"
+        );
+        install = subprocess.run(
+            [bun, "install"], cwd=str(work), capture_output=True, text=True, timeout=300
+        );
+        assert install.returncode == 0 , (
+            f"bun install failed (exit {install.returncode}):\n"
+            f"{install.stdout}\n{install.stderr}"
+        );
+        node_bin = shutil.which("node");
+        if node_bin {
+            cmd = [node_bin, "--conditions=browser", str(work / "harness.mjs")];
+        } else {
+            cmd = [bun, "--conditions=browser", "run", str(work / "harness.mjs")];
+        }
+        run = subprocess.run(
+            cmd, cwd=str(work), capture_output=True, text=True, timeout=120
+        );
+        detail = (run.stdout or "") + "\n" + (run.stderr or "");
+        assert run.returncode == 0 , (
+            f"form jsdom harness failed (exit {run.returncode}):\n{detail}"
+        );
     }
 }

@@ -469,7 +469,10 @@ impl JacForm(props: dict) -> JsxElement {
         }
         return schema;
     }
-    def renderError(errors: list) -> JsxElement | None {
+    def renderError(errors: list, isTouched: bool) -> JsxElement | None {
+        if validateMode == "onTouched" and not isTouched {
+            return None;
+        }
         if not errors or not errors.length {
             return None;
         }
@@ -689,7 +692,9 @@ impl JacForm(props: dict) -> JsxElement {
                             {label}
                         </label>
                         {renderInput(fieldType, field, config, fieldSchema, fieldName)}
-                        {renderError(field.state.meta.errors)}
+                        {renderError(
+                            field.state.meta.errors, field.state.meta.isTouched
+                        )}
                     </div>
                 ); }}
             </form.Field>
