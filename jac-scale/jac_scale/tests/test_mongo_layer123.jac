@@ -733,6 +733,75 @@ test "_put_node_atomic written document round-trips correctly after fix (issue #
 }
 
 
+# Regression: issue #6785 — deterministic (insertion-order) out-edge ordering.
+# The atomic edge-merge pipeline must preserve insertion order in data.edges.
+# MongoDB's $setUnion / $setDifference return *sets*: they sort + dedup and
+# discard array order, so a node's persisted out-edges came back in BSON sort
+# order rather than connection order. That silently broke ordered/nested OSP
+# structures (ASTs, DOM/JSX trees, grammars) on the scale backend, where edge
+# order is the structure. These tests pin the order-preserving contract.
+test "data.edges preserves insertion order on atomic add (issue #6785)" {
+    _reset_mongo();
+    (client, uri) = _get_mongo();
+    backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+
+    person_node = _MongoLayer123Person(name="seq", age=1);
+    anchor = cast(NodeAnchor, person_node.__jac__);
+    anchor.persistent = True;
+    backend._write_to_db(anchor);
+
+    # Edge IDs chosen so connection order is the REVERSE of BSON/lexicographic
+    # sort order: a set-based merge would re-sort them ascending, exposing the
+    # bug deterministically (no reliance on random UUID layout).
+    edge_ids = [str(UUID(int=200 - i)) for i in range(10)];
+    backend._put_node_atomic(anchor, edge_ids, [], set());
+
+    doc = client["jac_test_l123"]["_anchors"].find_one({'_id': str(anchor.id)});
+    assert doc is not None;
+    stored = doc.get('data', {}).get('edges', []);
+    assert stored == edge_ids , (
+        "out-edges must persist in connection (insertion) order; "
+        f"expected {edge_ids}, got {stored}"
+    );
+
+    backend.close();
+}
+
+
+test "data.edges preserves order when a middle edge is removed (issue #6785)" {
+    _reset_mongo();
+    (client, uri) = _get_mongo();
+    backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+
+    person_node = _MongoLayer123Person(name="seq2", age=2);
+    anchor = cast(NodeAnchor, person_node.__jac__);
+    anchor.persistent = True;
+    backend._write_to_db(anchor);
+
+    edge_ids = [str(UUID(int=200 - i)) for i in range(10)];
+    backend._put_node_atomic(anchor, edge_ids, [], set());
+
+    # Drop a middle edge; the remaining edges must keep their relative order.
+    removed = edge_ids[4];
+    expected = [
+        e
+        for e in edge_ids
+        if e != removed
+    ];
+    backend._put_node_atomic(anchor, [], [removed], set());
+
+    doc = client["jac_test_l123"]["_anchors"].find_one({'_id': str(anchor.id)});
+    assert doc is not None;
+    stored = doc.get('data', {}).get('edges', []);
+    assert stored == expected , (
+        "removing an edge must preserve the relative order of the rest; "
+        f"expected {expected}, got {stored}"
+    );
+
+    backend.close();
+}
+
+
 test "_put_node_atomic stores a dict field with $-prefixed keys verbatim on the atomic path" {
     # Pins that the whole-value $literal wrap stores `$`-prefixed keys (e.g. the Serializer's `$ref`/`$type`) as data, not as misread pipeline operators.
     _reset_mongo();

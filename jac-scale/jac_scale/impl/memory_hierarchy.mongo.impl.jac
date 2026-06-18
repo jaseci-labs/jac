@@ -820,11 +820,35 @@ impl MongoBackend._put_node_atomic(
         for (k, v) in partial_data.items() {
             set_doc[f"data.archetype.{k}"] = {'$literal': v};
         }
+        # Order-preserving edge merge (issue #6785): out-edge order is part of
+        # OSP semantics (connection/insertion order), so it must survive the
+        # atomic merge. $setUnion / $setDifference return *sets* — they sort and
+        # dedup, discarding array order — so they cannot be used here. Instead
+        # keep existing edges in place ($filter out the removed ones) and append
+        # only the genuinely-new added edges ($filter out any already present,
+        # which keeps the merge idempotent under write retries).
         set_doc['data.edges'] = {
-            '$setUnion': [
-                {'$setDifference': [{'$ifNull': ['$data.edges', []]}, edges_removed]},
-                edges_added
-            ]
+            '$let': {
+                'vars': {'cur': {'$ifNull': ['$data.edges', []]}},
+                'in': {
+                    '$concatArrays': [
+                        {
+                            '$filter': {
+                                'input': '$$cur',
+                                'as': 'e',
+                                'cond': {'$not': [{'$in': ['$$e', edges_removed]}]}
+                            }
+                        },
+                        {
+                            '$filter': {
+                                'input': edges_added,
+                                'as': 'e',
+                                'cond': {'$not': [{'$in': ['$$e', '$$cur']}]}
+                            }
+                        }
+                    ]
+                }
+            }
         };
 
         import from pymongo { ReturnDocument }
