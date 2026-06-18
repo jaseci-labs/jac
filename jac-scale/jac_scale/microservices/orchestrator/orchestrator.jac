@@ -45,7 +45,10 @@ obj MicroserviceOrchestrator {
                     f"{', '.join(sorted(discovered.keys()))}"
                 );
             } else {
-                logger.info(
+                # warning (not info) so an `enabled = true` app whose service
+                # files are missing doesn't exit silently and leave the user
+                # wondering why `jac start` returned without running anything.
+                logger.warning(
                     "No microservices found (no `sv import` / `to sv:` markers). "
                     "Run `jac setup microservice` to configure explicitly."
                 );

@@ -122,10 +122,9 @@ def discover_sv_services(entry_file: str) -> dict[str, str] {
         root_dir = entry_path;
         entry_stem: str = "";
     } else {
+        # Path("main.jac").parent is Path(".") (str "."), so a bare filename
+        # already scans the cwd; the is_dir() check below handles bad paths.
         root_dir = entry_path.parent;
-        if not str(root_dir) {
-            root_dir = Path(".");
-        }
         entry_stem: str = entry_path.stem;
     }
     if not root_dir.is_dir() {
