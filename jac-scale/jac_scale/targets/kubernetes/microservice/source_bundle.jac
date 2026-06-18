@@ -30,6 +30,32 @@ glob _EXCLUDE_DIRS: set[str] = {
     ".mypy_cache",
     ".pytest_cache"
 };
+# Secret-bearing files are NEVER packed into the ConfigMap (it's stored
+# unencrypted in etcd and readable by anyone with `kubectl get configmap`).
+# .env / key / cert files are excluded outright; jac.toml is excluded because
+# it can hold registry + DB credentials and the pod doesn't need it in
+# no-image mode (routes arrive via JAC_SV_ROUTES env, DB creds via injected
+# Secret env). Put real secrets in [plugins.scale.secrets] (-> K8s Secret) or
+# build an image instead.
+glob _EXCLUDE_FILES: set[str] = {
+    ".env",
+    "jac.toml",
+    "id_rsa",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519"
+};
+glob _EXCLUDE_SUFFIXES: tuple = (
+    ".pem",
+    ".key",
+    ".crt",
+    ".cer",
+    ".p12",
+    ".pfx",
+    ".jks",
+    ".keystore"
+);
+
 # etcd caps a single object at ~1 MiB; the base64-encoded archive must fit
 # under that with headroom for the rest of the ConfigMap manifest.
 glob _CONFIGMAP_MAX_BYTES: int = 900000;
@@ -50,7 +76,57 @@ def source_configmap_name(app_name: str) -> str {
 }
 
 
-"""Tar+gzip the project dir (excluding build artifacts) into raw bytes."""
+"""Whether `jac start --scale` should auto-fall-back to no-image deploy.
+
+Pure so it is unit-testable. True when the user has NOT configured a way to get
+a real image - no explicit `docker_image_name` (i.e. it's still the
+`<app>:latest` default), no `image_registry`, and no `--build` - so a
+zero-config app deploys by copying local source instead of failing for lack of
+an image. An explicit image/registry or `--build` returns False (use the image
+pipeline); `--no-image` is handled separately as a forced override.
+"""
+def auto_no_image_fallback(
+    build: bool, docker_image_name: str, default_image: str, image_registry: str
+) -> bool {
+    if build {
+        return False;
+    }
+    user_image = str(docker_image_name or "").strip();
+    if user_image and user_image != default_image {
+        return False;
+    }
+    if str(image_registry or "").strip() {
+        return False;
+    }
+    return True;
+}
+
+
+"""True if `rel` (a project-relative Path) is a build artifact or secret file
+that must not be packed into the ConfigMap."""
+def _is_excluded(rel: any) -> bool {
+    for part in rel.parts {
+        if part in _EXCLUDE_DIRS {
+            return True;
+        }
+    }
+    name = rel.name;
+    if name in _EXCLUDE_FILES {
+        return True;
+    }
+    # .env, .env.local, .env.production, ... (dotenv family)
+    if name == ".env" or name.startswith(".env.") {
+        return True;
+    }
+    if name.endswith(_EXCLUDE_SUFFIXES) {
+        return True;
+    }
+    return False;
+}
+
+
+"""Tar+gzip the project dir (excluding build artifacts + secret files) into
+raw bytes."""
 def pack_source(project_dir: str) -> bytes {
     base = Path(project_dir).resolve();
     buf = io.BytesIO();
@@ -60,13 +136,7 @@ def pack_source(project_dir: str) -> bytes {
                 continue;
             }
             rel = path.relative_to(base);
-            excluded = False;
-            for part in rel.parts {
-                if part in _EXCLUDE_DIRS {
-                    excluded = True;
-                }
-            }
-            if excluded {
+            if _is_excluded(rel) {
                 continue;
             }
             tar.add(str(path), arcname=str(rel));

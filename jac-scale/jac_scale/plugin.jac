@@ -86,8 +86,8 @@ def _scale_pre_hook(context: HookContext) -> None {
         }
     }
 
-    scale = context.get_arg("scale", False);
-    if scale {
+    # Reuse scale_flag read at the top of the hook (same arg).
+    if scale_flag {
         filename = context.get_arg("filename");
         target = context.get_arg("target", "kubernetes");
         # Zero-config for --scale, mirroring the local gate. Pick the
@@ -182,9 +182,13 @@ def _scale_pre_hook(context: HookContext) -> None {
             image_registry = ImageRegistryFactory.create(registry, target_config);
             deployment_target.image_registry = image_registry;
         }
-        # --no-image: copy local source into the cluster + install jac at
-        # pod startup instead of building/pushing an image. Microservice
-        # target only; dev/preview only (two warnings below).
+        # no-image deploy: copy local source into the cluster + install jac at
+        # pod startup instead of building/pushing an image (microservice
+        # target only). Zero-config default: when no image/registry is
+        # configured and the user didn't pass --build, fall back to no-image
+        # automatically so `jac start --scale` works with no Docker setup.
+        # Explicit --no-image forces it; an explicit image/registry (or
+        # --build) keeps the normal image pipeline.
         no_image = context.get_arg("no_image", False);
         if no_image and target != "kubernetes-microservice" {
             console.warning(
@@ -192,6 +196,23 @@ def _scale_pre_hook(context: HookContext) -> None {
                 "(kubernetes-microservice target); ignoring it."
             );
             no_image = False;
+        }
+        auto_no_image = False;
+        if (target == "kubernetes-microservice") and (not no_image) {
+            import from jac_scale.targets.kubernetes.microservice.source_bundle {
+                auto_no_image_fallback
+            }
+            raw_k8s = scale_config.load().get("kubernetes", {});
+            default_image = f"{target_config.get('app_name', 'jaseci')}:latest";
+            if auto_no_image_fallback(
+                build,
+                str(target_config.get("docker_image_name", "") or ""),
+                default_image,
+                str(raw_k8s.get("image_registry", "") or "")
+            ) {
+                no_image = True;
+                auto_no_image = True;
+            }
         }
         # Create app config
         app_config = AppConfig(
@@ -203,15 +224,32 @@ def _scale_pre_hook(context: HookContext) -> None {
         );
         if no_image {
             deployment_target.no_image = True;
-            console.warning(
-                "no-image mode: copying local source into the cluster and "
-                "installing jac at pod startup. This is for development / "
-                "preview only - build and push a real image for "
-                "production-ready apps."
-            );
+            if auto_no_image {
+                console.warning(
+                    "No image or registry configured - falling back to "
+                    "no-image deploy: copying local source into the cluster "
+                    "and installing jac at pod startup. This is for "
+                    "development / preview only; set "
+                    "[plugins.scale.kubernetes].docker_image_name or "
+                    "image_registry (or pass --build) to deploy a real image "
+                    "for production-ready apps."
+                );
+            } else {
+                console.warning(
+                    "no-image mode: copying local source into the cluster and "
+                    "installing jac at pod startup. Development / preview only "
+                    "- build and push a real image for production-ready apps."
+                );
+            }
             console.warning(
                 "Run `jac setup microservice` to configure resources, "
                 "scaling, ingress, and secrets before going to production."
+            );
+            console.warning(
+                "Source is uploaded to a Kubernetes ConfigMap. Secret files "
+                "(.env, *.key/*.pem/*.crt, jac.toml) are NOT included; keep "
+                "secrets in [plugins.scale.secrets] (synced as a K8s Secret) "
+                "or in .env, never inline in committed source."
             );
         }
         if experimental {
@@ -456,7 +494,7 @@ class JacCmd {
                     "no-image",
                     typ=bool,
                     default=False,
-                    help="Deploy microservices WITHOUT building/pushing a Docker image: copy local source into the cluster and install jac at pod startup (dev/preview only; use a real image for production)",
+                    help="Force no-image microservice deploy (copy local source + install jac at pod startup). Auto-enabled when no image/registry is configured; pass this to force it even when they are (dev/preview only; use a real image for production)",
                     short=""
                 ),
 

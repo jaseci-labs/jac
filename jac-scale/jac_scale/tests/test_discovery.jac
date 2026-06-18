@@ -77,6 +77,13 @@ test "_code_lines: embedded triple-quote in body does not close docstring early"
     assert _code_lines(text) == ["sv import from real_app { g }"];
 }
 
+test "_code_lines: code after a closing delimiter on the same line is kept" {
+    # `""" to sv:` closes the docstring AND declares a service on one line;
+    # the statement after the delimiter must not be silently dropped.
+    text = "\"\"\"doc\n\"\"\" to sv:\n";
+    assert _code_lines(text) == ["to sv:"];
+}
+
 # =============================================================================
 # discover_sv_services: multi-service app
 # =============================================================================

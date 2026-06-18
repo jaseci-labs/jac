@@ -18,6 +18,7 @@ import from jac_scale.targets.kubernetes.microservice.source_bundle {
     source_configmap_name,
     build_bootstrap_init_container,
     pinned_install_specs,
+    auto_no_image_fallback,
     SOURCE_ARCHIVE_KEY,
     APP_MOUNT_PATH,
     PYDEPS_DIR
@@ -56,6 +57,49 @@ test "pack_source archives jac files and skips build artifacts" {
     assert not any([n.startswith("node_modules/") for n in names]);
 
     shutil.rmtree(tmp);
+}
+
+test "pack_source excludes secret files (.env, keys, certs, jac.toml)" {
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "main.jac").write_text("to cl:\n");
+    (Path(tmp) / ".env").write_text("DB_PASSWORD=hunter2\n");
+    (Path(tmp) / ".env.production").write_text("API_KEY=sk_live\n");
+    (Path(tmp) / "jac.toml").write_text("[plugins.scale.kubernetes]\ndocker_password='p'\n");
+    (Path(tmp) / "tls.key").write_text("PRIVATE KEY");
+    (Path(tmp) / "server.pem").write_text("CERT");
+
+    raw = pack_source(tmp);
+    names = set();
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
+        for m in tar.getmembers() {
+            names.add(m.name);
+        }
+    }
+
+    assert "main.jac" in names;
+    for secret in [".env", ".env.production", "jac.toml", "tls.key", "server.pem"] {
+        assert secret not in names , f"{secret} must not be packed into the ConfigMap";
+    }
+
+    shutil.rmtree(tmp);
+}
+
+# =============================================================================
+# auto_no_image_fallback: zero-config default
+# =============================================================================
+test "auto_no_image_fallback: no image/registry/build -> True (fallback)" {
+    assert auto_no_image_fallback(False, "jac-shop:latest", "jac-shop:latest", "") == True;
+    # bare default image still counts as 'no explicit image'
+    assert auto_no_image_fallback(False, "", "jac-shop:latest", "") == True;
+}
+
+test "auto_no_image_fallback: explicit image or registry or --build -> False" {
+    # explicit (non-default) image
+    assert auto_no_image_fallback(False, "myrepo/app:v1", "jac-shop:latest", "") == False;
+    # registry configured
+    assert auto_no_image_fallback(False, "jac-shop:latest", "jac-shop:latest", "ghcr.io/me") == False;
+    # --build forces the image pipeline
+    assert auto_no_image_fallback(True, "jac-shop:latest", "jac-shop:latest", "") == False;
 }
 
 test "build_source_configmap holds the base64 archive in binaryData" {

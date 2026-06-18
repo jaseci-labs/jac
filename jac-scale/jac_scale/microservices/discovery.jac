@@ -50,8 +50,16 @@ def _code_lines(text: str) -> list[str] {
             # regexes as false-positive services.
             if line.startswith(doc_delim) {
                 in_doc = False;
+                # Fall through to scan any real code after the closing
+                # delimiter on the same line (e.g. `""" to sv:`); otherwise
+                # that statement would be silently dropped (false negative).
+                line = line[len(doc_delim):].strip();
+                if not line or line.startswith("#") {
+                    continue;
+                }
+            } else {
+                continue;
             }
-            continue;
         }
         if not line or line.startswith("#") {
             continue;
