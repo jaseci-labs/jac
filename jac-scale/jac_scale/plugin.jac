@@ -153,13 +153,38 @@ def _scale_pre_hook(context: HookContext) -> None {
             image_registry = ImageRegistryFactory.create(registry, target_config);
             deployment_target.image_registry = image_registry;
         }
+        # --no-image: copy local source into the cluster + install jac at
+        # pod startup instead of building/pushing an image. Microservice
+        # target only; dev/preview only (two warnings below).
+        no_image = context.get_arg("no_image", False);
+        if no_image and target != "kubernetes-microservice" {
+            console.warning(
+                "--no-image only applies to microservice mode "
+                "(kubernetes-microservice target); ignoring it."
+            );
+            no_image = False;
+        }
         # Create app config
         app_config = AppConfig(
             code_folder=code_folder,
             file_name=base_file_path,
             build=build,
-            experimental=experimental
+            experimental=experimental,
+            no_image=no_image
         );
+        if no_image {
+            deployment_target.no_image = True;
+            console.warning(
+                "no-image mode: copying local source into the cluster and "
+                "installing jac at pod startup. This is for development / "
+                "preview only - build and push a real image for "
+                "production-ready apps."
+            );
+            console.warning(
+                "Run `jac setup microservice` to configure resources, "
+                "scaling, ingress, and secrets before going to production."
+            );
+        }
         if experimental {
             console.print(
                 "Installing Jaseci packages from repository (experimental mode)..."
@@ -217,7 +242,10 @@ def _scale_pre_hook(context: HookContext) -> None {
         # on the production `jac start --scale` path. Tests using
         # build=False for manifest-shape assertions construct the
         # target without these flags and fall through to parent behavior.
-        if target == "kubernetes-microservice" {
+        # no-image mode skips the image pipeline entirely (it serves the
+        # source from a ConfigMap + installs jac at pod startup), so the
+        # build/guard flags stay off.
+        if target == "kubernetes-microservice" and not no_image {
             deployment_target.auto_build = True;
             deployment_target.guard_fallback_image = True;
         }
@@ -393,6 +421,13 @@ class JacCmd {
                     typ=bool,
                     default=False,
                     help="With --dry-run: also dump the raw multi-doc YAML stream (for `kubectl diff` or similar). Off by default; the card view above is the friendly summary",
+                    short=""
+                ),
+                Arg.create(
+                    "no-image",
+                    typ=bool,
+                    default=False,
+                    help="Deploy microservices WITHOUT building/pushing a Docker image: copy local source into the cluster and install jac at pod startup (dev/preview only; use a real image for production)",
                     short=""
                 ),
 
