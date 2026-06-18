@@ -213,6 +213,30 @@ impl Parser.check_peek_any(*kinds: TokenKind) -> bool {
     return self.peek().kind in kinds;
 }
 
+impl Parser.skip_to_delimiter(*delimiters: TokenKind) -> None {
+    # Side-effect-free lookahead: advance the cursor past a balanced token
+    # span until one of `delimiters` appears at bracket depth 0, or input ends.
+    # Emits no diagnostics and builds no AST, so callers disambiguate by
+    # inspecting the landing token and then rewind `self.pos`. A closing bracket
+    # with no matching opener also stops the scan.
+    depth = 0;
+    while not self.at_end() {
+        if depth == 0 and self.check_any(*delimiters) {
+            return;
+        }
+        if self.check_any(TokenKind.LPAREN, TokenKind.LBRACE, TokenKind.LSQUARE) {
+            depth += 1;
+        } elif self.check_any(TokenKind.RPAREN, TokenKind.RBRACE, TokenKind.RSQUARE) {
+            if depth > 0 {
+                depth -= 1;
+            } else {
+                return;
+            }
+        }
+        self.advance();
+    }
+}
+
 impl Parser.get_source -> Source {
     # Return the cached source (set in parse_module) or create new one
     # Note: self.source is guaranteed to be set in parse_module before any token creation
@@ -3121,41 +3145,28 @@ impl Parser.parse_lambda_param -> ParamVar | None {
         return None;
     }
     type_tag: SubTag | None = None;
-    # Heuristic to distinguish type annotation from lambda body colon:
-    # Type annotation COLON is followed by a type and then COMMA, EQ, COLON, RETURN_HINT, or LBRACE
+    # An un-parenthesized lambda reuses `:` for both the param annotation and
+    # the body separator: `name : <type> : <body>`. Unlike `def`/`has` params
+    # (whose colon is unambiguous), disambiguate by parsing the candidate type
+    # with parse_bitwise_or — the precedence rung that covers type syntax
+    # (names, dotted, subscripts, `|` unions) but stops below comparison and
+    # other operators. A real type lands on a param/body delimiter (`:` `,` `=`
+    # `->` `{`); a body like `len(s) > 1,` stops at `>` and `-x` at `-`, so the
+    # trailing-token check rejects them and the colon falls through to the body.
     if self.check(TokenKind.COLON) {
-        next_tok = self.peek();
-        is_type_annotation = False;
-        if next_tok.kind in [
-            TokenKind.NAME,
-            TokenKind.TYP_STRING,
-            TokenKind.TYP_INT,
-            TokenKind.TYP_FLOAT,
-            TokenKind.TYP_LIST,
-            TokenKind.TYP_TUPLE,
-            TokenKind.TYP_SET,
-            TokenKind.TYP_DICT,
-            TokenKind.TYP_BOOL,
-            TokenKind.TYP_BYTES,
-            TokenKind.TYP_ANY,
-            TokenKind.TYP_TYPE
-        ] {
-            after_type = self.peek(2);
-            if after_type.kind in [
-                TokenKind.COMMA,
-                TokenKind.EQ,
-                TokenKind.COLON,
-                TokenKind.RETURN_HINT,
-                TokenKind.LBRACE
-            ] {
-                is_type_annotation = True;
-            }
-        }
-        if is_type_annotation {
-            self.advance();  # consume COLON
-            lam_colon = self.make_uni_token(self.previous());
-            te = self.parse_pipe();
-            type_tag = SubTag(tag=te, kid=[lam_colon, te]);
+        save_pos = self.pos;
+        param_colon_uni = self.consume_uni(TokenKind.COLON);
+        tp = self.parse_bitwise_or();
+        if self.check_any(
+            TokenKind.COMMA,
+            TokenKind.EQ,
+            TokenKind.COLON,
+            TokenKind.RETURN_HINT,
+            TokenKind.LBRACE
+        ) {
+            type_tag = SubTag(tag=tp, kid=[param_colon_uni, tp]);
+        } else {
+            self.pos = save_pos;  # not a type — the colon belongs to the body
         }
     }
     default_val: Expr | None = None;
@@ -7185,60 +7196,20 @@ impl Parser._is_impl_enum_body -> bool {
     if self.check_name() and self.check_peek(TokenKind.COMMA) {
         return True;
     }
-    # NAME: type = value, ... (typed enum)
+    # NAME: type = value, ... (typed enum). A trailing `,` (possibly after `=`)
+    # marks an enum member; a `;`/`}`/end marks a code-style body.
     if self.check_name() and self.check_peek(TokenKind.COLON) {
         save_pos = self.pos;
         self.advance();  # consume NAME
         self.advance();  # consume COLON
-        # Skip type expression to find EQ or COMMA
-        depth = 0;
-        while not self.at_end()
-        and not (
-            depth == 0
-            and self.check_any(
-                TokenKind.EQ, TokenKind.COMMA, TokenKind.SEMI, TokenKind.RBRACE
-            )
-        ) {
-            if self.check_any(TokenKind.LPAREN, TokenKind.LBRACE, TokenKind.LSQUARE) {
-                depth += 1;
-            } elif self.check_any(
-                TokenKind.RPAREN, TokenKind.RBRACE, TokenKind.RSQUARE
-            ) {
-                if depth > 0 {
-                    depth -= 1;
-                } else {
-                    break;
-                }
-            }
-            self.advance();
-        }
+        self.skip_to_delimiter(
+            TokenKind.EQ, TokenKind.COMMA, TokenKind.SEMI, TokenKind.RBRACE
+        );
         result = False;
         if self.check(TokenKind.EQ) {
             self.advance();  # consume EQ
-            depth = 0;
-            while not self.at_end()
-            and not (
-                depth == 0
-                and self.check_any(TokenKind.COMMA, TokenKind.SEMI, TokenKind.RBRACE)
-            ) {
-                if self.check_any(
-                    TokenKind.LPAREN, TokenKind.LBRACE, TokenKind.LSQUARE
-                ) {
-                    depth += 1;
-                } elif self.check_any(
-                    TokenKind.RPAREN, TokenKind.RBRACE, TokenKind.RSQUARE
-                ) {
-                    if depth > 0 {
-                        depth -= 1;
-                    } else {
-                        break;
-                    }
-                }
-                self.advance();
-            }
-            if self.check(TokenKind.COMMA) {
-                result = True;
-            }
+            self.skip_to_delimiter(TokenKind.COMMA, TokenKind.SEMI, TokenKind.RBRACE);
+            result = self.check(TokenKind.COMMA);
         } elif self.check(TokenKind.COMMA) {
             result = True;
         }
@@ -7250,25 +7221,7 @@ impl Parser._is_impl_enum_body -> bool {
         save_pos = self.pos;
         self.advance();  # consume NAME
         self.advance();  # consume EQ
-        depth = 0;
-        while not self.at_end()
-        and not (
-            depth == 0
-            and self.check_any(TokenKind.COMMA, TokenKind.SEMI, TokenKind.RBRACE)
-        ) {
-            if self.check_any(TokenKind.LPAREN, TokenKind.LBRACE, TokenKind.LSQUARE) {
-                depth += 1;
-            } elif self.check_any(
-                TokenKind.RPAREN, TokenKind.RBRACE, TokenKind.RSQUARE
-            ) {
-                if depth > 0 {
-                    depth -= 1;
-                } else {
-                    break;
-                }
-            }
-            self.advance();
-        }
+        self.skip_to_delimiter(TokenKind.COMMA, TokenKind.SEMI, TokenKind.RBRACE);
         result = self.check(TokenKind.COMMA);
         self.pos = save_pos;
         return result;

@@ -430,6 +430,7 @@ obj Parser {
     def check_any(*kinds: TokenKind) -> bool;
     def check_peek(kind: TokenKind) -> bool;
     def check_peek_any(*kinds: TokenKind) -> bool;
+    def skip_to_delimiter(*delimiters: TokenKind) -> None;
     def check_name -> bool;
     def is_keyword_token -> bool;
     def is_builtin_type_token -> bool;
