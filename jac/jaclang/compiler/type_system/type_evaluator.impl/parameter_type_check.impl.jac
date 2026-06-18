@@ -5,11 +5,9 @@ impl TypeEvaluator.validate_arg_types(
 ) -> bool {
     has_errors: bool = False;
 
-    # Bidirectional inference for lambda args: a generic callable param
-    # (e.g. `key: Callable[[_T], ...]` in `sorted`) only gives a lambda a
-    # useful expected type once `_T` is solved. Bind TypeVars from the
-    # concrete (non-lambda) args first, then substitute below so the lambda
-    # param doesn't stay Unknown and break overload resolution.
+    # Bind TypeVars from the concrete (non-lambda) args first so the lambda's
+    # expected callable (e.g. `key: Callable[[_T], ...]`) is solved before the
+    # lambda is typed below. Otherwise its param stays Unknown.
     bindings: dict[str, TypeBase] = {};
     for (arg, param) in args.arg_params.items() {
         if param is None or param.param_type is None {
@@ -626,11 +624,7 @@ impl TypeEvaluator.match_args_to_params(
     );
 }
 
-"""
-Scan call arguments for a lambda with an unannotated parameter and return
-that parameter's name, else None. Drives the E1054 hint suggesting the user
-annotate the param when its type couldn't be inferred from the call context.
-"""
+"""Name of an unannotated lambda-arg param (for the E1054 hint), else None."""
 impl TypeEvaluator._unannotated_lambda_arg_name(expr: uni.FuncCall) -> str | None {
     if expr.params is None {
         return None;

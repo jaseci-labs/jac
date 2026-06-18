@@ -570,10 +570,8 @@ impl TypeEvaluator._get_type_of_expression_core(
                         and idx < len(expected_func.parameters)
                     ) {
                         param_type = expected_func.parameters[idx].param_type;
-                        # Seed the inferred type onto both the param Name (read
-                        # back by _get_type_of_symbol so the body resolves it)
-                        # and the ParamVar (read by hover/LSP, which traversal
-                        # otherwise stamped Unknown before this inference ran).
+                        # Seed onto the Name (read by _get_type_of_symbol) and
+                        # the ParamVar (read by hover).
                         if param_type is not None {
                             param.name.type = param_type;
                             param.type = param_type;
@@ -592,17 +590,13 @@ impl TypeEvaluator._get_type_of_expression_core(
                         )
                     );
                 }
-                # Drop body caches from any earlier expected-less pass so it
-                # re-resolves against the seeded params. (Block bodies are a
-                # statement list, not an Expr, and re-type via traversal.)
+                # Re-resolve the body against the seeded params.
                 if seeded_param and isinstance(expr.body, uni.Expr) {
                     self._invalidate_expr_type_cache(expr.body);
                 }
             }
-            # Don't type the body while a param is still Unknown: this is a
-            # speculative overload candidate (e.g. `sorted`'s `key: None`
-            # overload) and typing it would emit errors from a soon-discarded
-            # match. The matching overload re-evaluates with params resolved.
+            # Skip the body for a speculative overload candidate whose param
+            # is still Unknown; the matching overload re-evaluates it seeded.
             if has_unresolved_param {
                 return types.FunctionType(
                     func_name="<lambda>",
@@ -2314,8 +2308,7 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                 }
                 return self._convert_to_instance(annotation_type);
             }
-            # Unannotated param: honor a type seeded onto its Name by lambda
-            # bidirectional inference so the body resolves the param.
+            # Honor a type seeded onto the Name by lambda inference.
             if node_.name.type is not None {
                 return node_.name.type;
             }
@@ -3606,12 +3599,10 @@ impl TypeEvaluator.get_type_of_expression(
     if isinstance(node_, uni.Ability) {
         return self.get_type_of_ability(node_);
     }
-    # Use cached result if available, UNLESS expected_type is provided
-    # for a container literal, comprehension, or lambda that could benefit
-    # from bidirectional inference (ListCompr also covers Set/Gen
-    # comprehensions by inheritance). A lambda must re-evaluate so an
-    # expected callable can seed its params, which an earlier pass cached
-    # as Unknown.
+    # Use cached result if available, UNLESS expected_type is provided for a
+    # container literal, comprehension, or lambda that benefits from
+    # bidirectional inference (ListCompr also covers Set/Gen comprehensions; a
+    # lambda re-evaluates so the expected callable can seed its params).
     if node_.type is not None {
         if expected_type is None
         or not isinstance(
@@ -3650,12 +3641,7 @@ impl TypeEvaluator.get_type_of_expression(
         # be fully resolved in Jac; surfacing them produces noise for
         # users who only care about diagnostics on their own source.
         mod = node_.find_parent_of_type(uni.Module);
-        # Also suppress inside a lambda body: post-order traversal evaluates
-        # body sub-expressions before the enclosing call seeds the lambda's
-        # params, so an unseeded param reads Unknown here. The lambda's own
-        # evaluation (with params bound) is the authoritative resolution.
-        in_lambda_body = node_.find_parent_of_type(uni.LambdaExpr) is not None;
-        if (mod is None or not mod.is_raised_from_py) and not in_lambda_body {
+        if mod is None or not mod.is_raised_from_py {
             self.emit_diag(W1051, node_);
         }
     }

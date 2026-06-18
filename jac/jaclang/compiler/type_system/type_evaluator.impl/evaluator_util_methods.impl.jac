@@ -1057,10 +1057,8 @@ impl TypeEvaluator.emit_diag(
 }
 
 impl TypeEvaluator._invalidate_expr_type_cache(node_: uni.UniNode) -> None {
-    # Walk the raw kid tree rather than `_sub_node_tab`: the precomputed
-    # sub-node table is keyed off the enclosing statement, so an AtomTrailer
-    # body like `d["n"]` exposes none of its inner Exprs through
-    # get_all_sub_nodes. The kid list is the authoritative child structure.
+    # Walk `.kid`, not `_sub_node_tab`: the latter is keyed off the enclosing
+    # statement, so an AtomTrailer body exposes none of its inner Exprs.
     if isinstance(node_, uni.Expr) {
         node_.type = None;
     }

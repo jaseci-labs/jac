@@ -1083,9 +1083,7 @@ test "named_entry_no_w1051" {
 }
 
 test "lambda_param_inferred_from_expected_callable" {
-    # An unannotated lambda passed to a generic builtin (sorted/max/min/
-    # filter key=...) infers its param type from the expected callable, so
-    # the body resolves and the overload matches instead of E1054 + W1051.
+    # Unannotated lambda params infer from the key= callable, so no E1054/W1051.
     path = os.path.join(CHECKER_FIXTURES, "checker_lambda_param_inference.jac");
     program = JacProgram();
     program.compile(path, type_check=True);

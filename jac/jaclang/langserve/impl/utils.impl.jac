@@ -403,9 +403,8 @@ impl debounce(`wait: float) -> Callable[[T], Callable[(..., Awaitable[None])]] {
 impl gen_diagnostics(
     from_path: str, errors: list[Alert], warnings: list[Alert]
 ) -> list[lspt.Diagnostic] {
-    # Fold the alert's help/fix hint into the hover message so IDE clients
-    # (which only render Diagnostic.message) surface the same guidance the
-    # CLI prints under `help:`.
+    # Fold the help hint into the message so IDE clients (which render only
+    # Diagnostic.message) show what the CLI prints under `help:`.
     def _message(alert: Alert) -> str {
         hint = alert.code.help_text if alert.code else None;
         if alert.help_text {
