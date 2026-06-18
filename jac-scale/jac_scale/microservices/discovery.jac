@@ -44,7 +44,11 @@ def _code_lines(text: str) -> list[str] {
         line = raw.strip();
         if in_doc {
             # Inside a docstring: only a matching closing delimiter ends it.
-            if doc_delim in line {
+            # Use startswith (mirroring the opening check) so an embedded
+            # `"""`/`'''` in the body (e.g. a code example) does not close
+            # the docstring early and leak its remaining lines to the marker
+            # regexes as false-positive services.
+            if line.startswith(doc_delim) {
                 in_doc = False;
             }
             continue;

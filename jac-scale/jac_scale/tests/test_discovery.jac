@@ -62,6 +62,21 @@ test "_code_lines drops single-line docstrings" {
     assert _code_lines(text) == ["sv import from real { f }"];
 }
 
+test "_code_lines: embedded triple-quote in body does not close docstring early" {
+    # A docstring body line that *contains* the delimiter (e.g. documenting
+    # triple-quotes) must not end the docstring; otherwise the lines after it
+    # leak to the marker regexes as false-positive services. Only a line that
+    # STARTS with the delimiter closes it.
+    text = (
+        "\"\"\"Module doc.\n"
+        "Example body line shows a \"\"\" delimiter mid-text.\n"
+        "sv import from ghost_app { f }\n"
+        "\"\"\"\n"
+        "sv import from real_app { g }\n"
+    );
+    assert _code_lines(text) == ["sv import from real_app { g }"];
+}
+
 # =============================================================================
 # discover_sv_services: multi-service app
 # =============================================================================
