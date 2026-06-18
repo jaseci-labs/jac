@@ -54,7 +54,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # path. Test path keeps them False -> parent KubernetesTarget
         # behavior (build_via_registry / python_image fallback).
         auto_build: bool = False,
-        guard_fallback_image: bool = False;
+        guard_fallback_image: bool = False,
+        # no-image mode: copy local source into the cluster + install jac at
+        # pod startup instead of building/pushing an image. Set by
+        # _scale_pre_hook for `jac start --scale --no-image`.
+        no_image: bool = False;
 
     """Auto-build path when `auto_build=True`: prefer user's pre-built
     docker_image_name, else auto_build_and_distribute. Else parent behavior."""
@@ -138,7 +142,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # real cluster); the provisioning helper is idempotent for re-deploys.
         try {
             self._deploy_context = MicroserviceDatabaseProvisioner(
-                k8s_target=self, logger=self.logger, enabled=self.auto_build
+                k8s_target=self, logger=self.logger,
+                enabled=self.auto_build or self.no_image
             ).provision(
                 app_name
             );
@@ -363,6 +368,23 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     which produces pod specs without DB env / init containers."""
     def generate_manifests(app_config: AppConfig) -> dict[str, any] {
         app_name = app_config.app_name or self.k8s_config.app_name;
+
+        # no-image mode skips the whole image pipeline: pods run the generic
+        # python base + install jac at startup against ConfigMap-mounted
+        # source. Pass the base image straight through (the builder ignores it
+        # and uses python_image) and wire the source dir into the builder.
+        if self.no_image or app_config.no_image {
+            builder = MicroserviceManifestBuilder(
+                k8s_config=self.k8s_config,
+                secrets=self.secrets,
+                deploy_context=self._deploy_context,
+                logger=self.logger,
+                no_image=True,
+                project_dir=app_config.code_folder
+            );
+            return builder.generate_manifests(app_config, self.k8s_config.python_image);
+        }
+
         image = self._handle_image_registry(app_name, app_config);
 
         # Fail loud on python_image fallback so users don't get a silent
@@ -473,6 +495,19 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 self.logger.info(
                     f"Applied PVC for shared volume '{pvc_name}'",
                     {"name": pvc_manifest["metadata"]["name"]}
+                );
+            }
+        }
+
+        # no-image source ConfigMap must exist before the Deployments so the
+        # bootstrap initContainer can mount + extract it at pod startup.
+        source_cm = bundle.get("source_configmap");
+        if source_cm {
+            self._apply_or_replace_configmap(core_v1, namespace, source_cm);
+            if self.logger {
+                self.logger.info(
+                    f"Applied source ConfigMap (no-image mode)",
+                    {"name": source_cm["metadata"]["name"]}
                 );
             }
         }
@@ -698,6 +733,26 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
+    def _apply_or_replace_configmap(
+        core_v1: any, namespace: str, manifest: dict[str, any]
+    ) {
+        name: str = manifest["metadata"]["name"];
+        try {
+            core_v1.read_namespaced_config_map(name=name, namespace=namespace);
+            core_v1.replace_namespaced_config_map(
+                name=name, namespace=namespace, body=manifest
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_config_map(
+                    namespace=namespace, body=manifest
+                );
+            } else {
+                raise;
+            }
+        }
+    }
+
     def _apply_or_replace_pvc(core_v1: any, namespace: str, manifest: dict[str, any]) {
         name: str = manifest["metadata"]["name"];
         try {
@@ -868,6 +923,17 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     }
                 }
             }
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
+        # no-image source ConfigMap(s), labeled managed=jac-scale.
+        try {
+            core_v1.delete_collection_namespaced_config_map(
+                namespace=namespace, label_selector="managed=jac-scale,jac-scale.role=source"
+            );
         } except ApiException as e {
             if e.status != 404 {
                 raise;
