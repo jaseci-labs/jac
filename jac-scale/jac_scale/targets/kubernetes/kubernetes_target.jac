@@ -254,7 +254,13 @@ obj KubernetesTarget(DeploymentTarget) {
             }
             commands.append('git submodule update --init --recursive');
             commands.append('pip install pluggy');
-            commands.append('pip install -e ./jac');
+            # The image pre-installs jaclang from PyPI; if that released version
+            # is newer than this branch, a plain `pip install -e ./jac` is a
+            # no-op (pip sees the requirement already satisfied) and the pod runs
+            # released jaclang instead of the local checkout. --force-reinstall
+            # makes the local editable win regardless of version; --no-deps
+            # keeps it from re-resolving the already-installed dependency tree.
+            commands.append('pip install --force-reinstall --no-deps -e ./jac');
             commands.append('jac install -e ./jac-scale --extras all');
             commands.append('jac install -e ./jac-client');
             commands.append('jac install -e ./jac-byllm');
