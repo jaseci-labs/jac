@@ -30,7 +30,21 @@ obj MicroserviceManifestBuilder {
     has k8s_config: KubernetesConfig,
         secrets: dict[str, str] = {},
         deploy_context: DeployContext = DeployContext(),
+        # The [plugins.scale.microservices] block to render from. Empty ->
+        # fall back to the running process's jac.toml (the `jac start --scale`
+        # case, where the process IS the app). A platform deploying a
+        # DIFFERENT app (jacBuilder) injects the target app's block here so
+        # the manifests reflect the app, not the deployer's own config.
+        microservices_config: dict[str, any] = {},
         logger: any = None;
+
+    """Resolve the microservices config: the injected block if set, else
+    the running process's jac.toml. Single source for every read below."""
+    def _ms_cfg -> dict[str, any] {
+        import from jac_scale.config_loader { get_scale_config }
+        return self.microservices_config
+        or get_scale_config().get_microservices_config();
+    }
 
     """Lift pod-specs into full Deployment + Service + HPA + PDB
     bundle. Returns `{deployments, services, autoscalers, pdbs, pod_specs}`,
@@ -72,8 +86,7 @@ obj MicroserviceManifestBuilder {
             bundle["user_secret"] = user_secret;
         }
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             ingress_cfg: dict[str, any] = ms_cfg.get("ingress", {});
         } except Exception {
             ingress_cfg = {};
@@ -113,8 +126,7 @@ obj MicroserviceManifestBuilder {
     ) -> dict[str, dict[str, any]] {
         app_name = app_config.app_name or self.k8s_config.app_name;
 
-        import from jac_scale.config_loader { get_scale_config }
-        ms_cfg = get_scale_config().get_microservices_config();
+        ms_cfg = self._ms_cfg();
         routes: dict[str, str] = ms_cfg.get("routes", {});
 
         if not routes {
@@ -149,8 +161,7 @@ obj MicroserviceManifestBuilder {
     """drain_timeout_seconds (default 10s); sizes terminationGracePeriodSeconds."""
     def _drain_timeout -> int {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return int(ms_cfg.get("drain_timeout_seconds", 10));
         } except Exception {
             return 10;
@@ -160,8 +171,7 @@ obj MicroserviceManifestBuilder {
     """Per-service config from [...services.NAME]; {} on read failure."""
     def _service_config(svc_name: str) -> dict[str, any] {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return dict(ms_cfg.get("services", {}).get(svc_name, {}));
         } except Exception {
             return {};
@@ -172,8 +182,7 @@ obj MicroserviceManifestBuilder {
     for single-node dev. `services` may include `__gateway__`."""
     def _shared_volumes_config -> list[dict[str, any]] {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             raw = ms_cfg.get("shared_volumes", []);
             if not isinstance(raw, list) {
                 return [];
@@ -335,8 +344,7 @@ obj MicroserviceManifestBuilder {
     _build_env for `JAC_SV_<PEER>_URL` injection. Returns {} on read failure."""
     def _microservice_routes -> dict[str, str] {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return dict(ms_cfg.get("routes", {}));
         } except Exception {
             return {};
@@ -367,15 +375,21 @@ obj MicroserviceManifestBuilder {
         env: list[dict[str, any]] = [
             {"name": "JAC_SV_NAME", "value": svc_name},
             {"name": "K8S_APP_NAME", "value": self.k8s_config.app_name},
-            {"name": "K8S_NAMESPACE", "value": self.k8s_config.namespace}
+            {"name": "K8S_NAMESPACE", "value": self.k8s_config.namespace},
+            # POD_NAMESPACE via the downward API so in_cluster_namespace()
+            # resolves the ACTUAL namespace the pod runs in, not the "default"
+            # fallback. Peer DNS (`<svc>-service.<ns>.svc.cluster.local`) is
+            # built from this; without it a non-default namespace never
+            # resolves siblings (G2 of #6728).
+            {
+                "name": "POD_NAMESPACE",
+                "valueFrom": {"fieldRef": {"fieldPath": "metadata.namespace"}}
+            }
         ];
 
         # When tracing is enabled, point pods at the in-cluster Alloy OTLP
         # receiver. Added before user env so a per-service override wins.
-        import from jac_scale.config_loader { get_scale_config }
-        ms_trace_cfg: dict = dict(
-            get_scale_config().get_microservices_config().get("tracing", {})
-        );
+        ms_trace_cfg: dict = dict(self._ms_cfg().get("tracing", {}));
         if ms_trace_cfg.get("enabled", False) {
             env.append(
                 {
@@ -448,7 +462,14 @@ obj MicroserviceManifestBuilder {
             memory_limit_val = cfg.memory_limit;
         }
         if memory_limit_val is None {
-            memory_limit_val = "2Gi" if is_gateway else "1Gi";
+            # Code-injection pods build the client (vite) in-pod, which OOMs
+            # (exit 137) at the 1Gi service default; give every code-inject pod
+            # 2Gi by default. The gateway already defaults to 2Gi.
+            if self._ms_cfg().get("code_inject", False) {
+                memory_limit_val = "2Gi";
+            } else {
+                memory_limit_val = "2Gi" if is_gateway else "1Gi";
+            }
         }
         cpu_request_val = svc_cfg.get("cpu_request");
         if cpu_request_val is None {
@@ -526,6 +547,22 @@ obj MicroserviceManifestBuilder {
             "periodSeconds": cfg.liveness_period,
             "timeoutSeconds": 3,
             "failureThreshold": cfg.liveness_failure_threshold
+        };
+    }
+
+    """Startup probe for code-injection mode (added only when code_inject is
+    set). The pod installs jaseci and builds the client at runtime, which can
+    take many minutes; until this probe first succeeds K8s suppresses the
+    liveness AND readiness probes, so the slow first boot can't be SIGKILLed
+    mid-install. failureThreshold * periodSeconds is the boot budget (~15min);
+    once it passes, the normal liveness probe governs restarts."""
+    def _build_startup_probe -> dict[str, any] {
+        cfg = self.k8s_config;
+        return {
+            "httpGet": {"path": "/healthz/live", "port": cfg.container_port},
+            "periodSeconds": 10,
+            "timeoutSeconds": 3,
+            "failureThreshold": 90
         };
     }
 
@@ -709,6 +746,14 @@ obj MicroserviceManifestBuilder {
     (gateway) or `jac start <name>.jac` (service). JAC_SV_SIBLING=1 is
     exported so the pre-hook skips local-mode orchestration."""
     def _pod_entrypoint -> dict[str, any] {
+        # Code-injection mode supplies a full entrypoint (runtime install +
+        # the same JAC_SV_NAME dispatch) since the base image has no app code.
+        if self.deploy_context.entrypoint_command {
+            return {
+                "command": ["sh", "-c"],
+                "args": [self.deploy_context.entrypoint_command]
+            };
+        }
         return {
             "command": ["sh", "-c"],
             "args": [
@@ -729,7 +774,8 @@ obj MicroserviceManifestBuilder {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
-        resolved_image: str = self._resolve_image(image, svc_cfg);
+        resolved_image: str = self.deploy_context.image_override
+        or self._resolve_image(image, svc_cfg);
         # JAC_IMAGE_REF (B-01): the resolved ref incl. K-29's content-id
         # suffix, surfaced so an in-pod self-check can report "running build X"
         # with zero RBAC. Strip any user-set copy first so the rendered YAML
@@ -753,13 +799,22 @@ obj MicroserviceManifestBuilder {
             "livenessProbe": self._build_liveness_probe(),
             "lifecycle": {"preStop": self._build_prestop_hook()}
         };
+        # Code-injection pods install jaseci + build the client AT RUNTIME
+        # (minutes). A startup probe holds liveness/readiness off until the app
+        # first answers, so the slow first boot is never mistaken for a hang
+        # and SIGKILLed by the (tight) liveness probe. Built-image pods boot
+        # fast and don't need it, so it's gated on code_inject.
+        if self._ms_cfg().get("code_inject", False) {
+            container["startupProbe"] = self._build_startup_probe();
+        }
         resources = self._build_resources(svc_cfg, svc_name == GATEWAY_NAME);
         if resources {
             container["resources"] = resources;
         }
         (shared_vols, shared_mounts) = self._shared_volumes_for_service(svc_name);
-        if shared_mounts {
-            container["volumeMounts"] = shared_mounts;
+        all_mounts = list(self.deploy_context.volume_mounts) + shared_mounts;
+        if all_mounts {
+            container["volumeMounts"] = all_mounts;
         }
         # envFrom for the user secret: created BEFORE Deployments in
         # apply_manifests so the secretRef resolves at pod startup.
@@ -774,8 +829,9 @@ obj MicroserviceManifestBuilder {
         if sa_name {
             spec["serviceAccountName"] = sa_name;
         }
-        if shared_vols {
-            spec["volumes"] = shared_vols;
+        all_vols = list(self.deploy_context.volumes) + shared_vols;
+        if all_vols {
+            spec["volumes"] = all_vols;
         }
         if self.deploy_context.init_containers {
             spec["initContainers"] = list(self.deploy_context.init_containers);

@@ -404,11 +404,18 @@ impl MicroserviceGateway.handle_builtin_passthrough(
             logger.info(f"Passthrough: {request.method} {path} -> {target_url}");
 
             import from jac_scale.microservices.runtime.util { http_forward_timeout }
+            import from jac_scale.microservices.impl.http_forward { stream_forward }
             timeout = http_forward_timeout(svc_name);
-            result = await raw_forward(
+            # stream_forward (not raw_forward) so a streaming response - SSE
+            # from a /function/* generator served to the client - passes
+            # through frame-by-frame instead of being buffered to completion.
+            # The upstream status is known from the response head before the
+            # body, so the 404/405 "try the next service" fan-out still works:
+            # release the connection and move on without draining the body.
+            fr = await stream_forward(
                 request.method, target_url, fwd_headers, body, timeout=int(timeout)
             );
-            if result is None {
+            if fr is None {
                 # Transport error (e.g. ServerDisconnectedError) talking
                 # to a service we know is healthy. Surfacing this as a
                 # 503 keeps the caller from receiving a misleading 405
@@ -418,14 +425,14 @@ impl MicroserviceGateway.handle_builtin_passthrough(
                 }
                 return service_unavailable(svc_name, "transport_error");
             }
-            (sc, rh, rb) = result;
             # 404 = "I don't have this walker"; 405 = "I have the path
             # but not this method". Both mean "not my route" in the
-            # fan-out context, so try the next healthy service.
-            if sc in (404, 405) {
+            # fan-out context, so release this upstream and try the next.
+            if fr.status in (404, 405) {
+                await fr.cleanup();
                 continue;
             }
-            return Response(status_code=sc, headers=rh, content=rb);
+            return fr.to_response();
         }
     }
     import from jac_scale.microservices.runtime.errors { not_found }

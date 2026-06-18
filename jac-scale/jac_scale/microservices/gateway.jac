@@ -11,7 +11,6 @@ import from jac_scale.microservices.service_registry {
     ServiceEntry,
     ServiceStatus
 }
-import from jac_scale.microservices.impl.http_forward { raw_forward }
 import from jac_scale.microservices.runtime.util {
     DEFAULT_GATEWAY_PORT,
     DEFAULT_GATEWAY_HOST,
