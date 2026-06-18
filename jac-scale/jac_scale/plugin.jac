@@ -702,19 +702,37 @@ class JacCmd {
             scale_config = get_scale_config();
             ms_config = scale_config.get_microservices_config();
 
-            if not ms_config.get("enabled", False) {
+            # Mirror _scale_pre_hook's tri-state semantics so these management
+            # commands work in zero-config auto-detect mode too. Only an
+            # explicit `enabled = false` is an opt-out; unset (None) and true
+            # both proceed.
+            if ms_config.get("enabled", None) is False {
                 console.print(
-                    "Microservice mode is not enabled in jac.toml", style="error"
+                    "Microservice mode is disabled (enabled = false in jac.toml).",
+                    style="error"
                 );
                 return 1;
             }
 
+            # Fill routes from auto-discovery (scanning the working directory)
+            # when none are declared, matching what `jac start` does on launch.
             if not ms_config.get("routes", {}) {
-                console.print(
-                    "No routes configured in [plugins.scale.microservices.routes]",
-                    style="error"
-                );
-                return 1;
+                import from jac_scale.microservices.discovery {
+                    discover_sv_services
+                }
+                discovered = discover_sv_services(".");
+                if discovered {
+                    ms_config["routes"] = discovered;
+                } else {
+                    console.print(
+                        "No microservices found: no routes in "
+                        "[plugins.scale.microservices.routes] and no "
+                        "`sv import` / `to sv:` services detected in the "
+                        "current directory.",
+                        style="error"
+                    );
+                    return 1;
+                }
             }
 
             registry = build_registry(ms_config);
