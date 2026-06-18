@@ -14,8 +14,9 @@ Selection and spawning live in
 
 - Binary: `jac_super/ai_tui_na/bin/jac-na-tui`
 - Built with `jac_super/ai_tui_na/build.sh` (`jac nacompile`).
-- If the binary is missing, launch fails with a build hint; it is not
-  auto-built.
+- If the binary is missing but NA sources are present (dev checkout),
+  `run_tui_session` runs `build.sh --quick` once before spawn. Installed
+  packages without sources still need a prebuilt binary or a manual build.
 - Sources: `state.na.jac`, `feed.na.jac`, `screen.na.jac`, `input.na.jac`,
   `ipc.na.jac`, `tui.na.jac`, and related modules under `ai_tui_na/`.
 - Renders to `/dev/tty` (stdio remapped via `libc_tty.na.jac`) so process
