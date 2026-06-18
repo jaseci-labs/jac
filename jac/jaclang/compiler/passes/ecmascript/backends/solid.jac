@@ -1,17 +1,28 @@
 """Solid backend — fine-grained signals reactivity (contract §5.6, PR 5c).
 
 Unlike React/Preact (re-render model), Solid runs each component body once and
-wires a reactive graph: state is an accessor (`count()`), writes notify
-subscribers (`setCount(...)`), and dynamic view positions must be thunks
-(`() => expr`) so the runtime can re-run just that binding. SolidBackend reuses
-ReactBackend's structural helpers (`_get_setter_name`, `_jsx_fragment`,
-`jsx_factory_name`) and overrides every method whose lowering diverges from the
-re-render model.
+wires a reactive graph: state is an accessor (`count()`) and writes notify
+subscribers (`setCount(...)`). SolidBackend reuses ReactBackend's structural
+helpers (`_get_setter_name`) and overrides every method whose lowering diverges
+from the re-render model.
+
+**View IR / dom-expressions path (Branch 3).** Where React/Preact lower a view to a
+`__jacJsx(tag, props, [children])` hyperscript call, `SolidBackend.lower_view`
+emits real **JSX syntax** (estree JSX nodes the unparser prints as `<tag …>`),
+which `vite-plugin-solid` (`babel-plugin-jsx-dom-expressions`) compiles to
+fine-grained reactive DOM. Dynamic positions are therefore **not** thunked here
+(the dom-expressions compiler owns the reactive read); `lower_view_expr` survives
+only because `lower_state_read` reads still pass through it elsewhere and a couple
+of legacy tests pin it — it is no longer applied to view positions (Branch 5+
+removes it). Spreads are native `{...obj}` and refs/events are classified once in
+the producer (TODO #1/#2). The `solid-js/h`-backed `__jacJsx` lives on in the
+runtime shim (now dead for component code) until the hyperscript route is deleted
+in Branch 5+.
 
 v1 is a best-effort subset over the representative fixtures (contract §7); the
-documented gaps live in contract §8 (refs deferred, block-shadowing, functional-
-updater asymmetry, full dom-expressions parity). The shared `__jacJsx` factory is
-kept and targets Solid's hyperscript runtime (`solid-js/h`).
+documented gaps live in contract §8 (refs deferred for `useRef`-style fields,
+block-shadowing, functional-updater asymmetry, `unsafe_html` on the JSX path,
+native control flow).
 """
 
 import jaclang.compiler.passes.ecmascript.estree as es;
@@ -23,6 +34,10 @@ import from jaclang.compiler.passes.ecmascript.reactive_intent {
     Effect,
     AsyncBoundary
 }
+# Type-only: `ViewElement` appears solely in `lower_view`'s signature; a runtime
+# import would re-enter the compiler bootstrap (see `framework_backend.jac`). The
+# View IR records are imported lazily inside the impl bodies that build them.
+import type from jaclang.compiler.passes.ecmascript.view_ir { ViewElement }
 
 obj SolidBackend(ReactBackend) {
     def name -> str;
@@ -35,6 +50,47 @@ obj SolidBackend(ReactBackend) {
     # Read seams — the load-bearing signals additions.
     def lower_state_read(name: str) -> es.Expression;
     def lower_view_expr(expr: es.Expression) -> es.Expression;
+    # View IR seam — Solid emits real JSX *syntax* (estree JSX nodes the unparser
+    # prints as `<tag …>`), which `vite-plugin-solid`'s dom-expressions compiler
+    # owns reactivity for, rather than the shared `__jacJsx(…)` hyperscript call.
+    # This is the divergence from the JS-family `lower_view` (React/Preact).
+    def lower_view(view: ViewElement, sync_loc: any) -> es.Expression;
+    # JSX-lowering helpers (pure structural transforms over the View IR tree).
+    def _jsx_tag_name(
+        expr: es.Expression
+    ) -> (es.JsxIdentifier | es.JsxMemberExpression | None);
+
+    def _map_attr_name(name: str) -> str;
+    def _jsx_attr_str_safe(value: str) -> bool;
+    def _jsx_attr(
+        attr: any, sync_loc: any
+    ) -> (es.JsxAttribute | es.JsxSpreadAttribute);
+
+    def _jsx_child_nodes(children: list, sync_loc: any) -> list;
+    # Native control flow (Branch 4): `EachChild` → `<For each>{(item) => …}</For>`,
+    # `IfChild` → `<Show when fallback>…</Show>`.
+    def _jsx_for(child: any, sync_loc: any) -> es.JsxElement;
+    def _jsx_show(child: any, sync_loc: any) -> es.JsxElement;
+    # A neutral child list as a single JSX expression: the lone element directly,
+    # otherwise a `<>…</>` fragment (the arrow body of `<For>` / `<Show>` fallback).
+    def _view_children_as_expr(children: list, sync_loc: any) -> es.Expression;
+    # `<For>`/`<Show>` imports a lowered tree references (recursive scan).
+    def view_runtime_symbols(view: ViewElement) -> list[str];
+    def _jsx_element(
+        name_node: any, attrs: list, children: list, jac_node: any, sync_loc: any
+    ) -> es.JsxElement;
+
+    def _jsx_dynamic(
+        component_expr: es.Expression,
+        attrs: list,
+        children: list,
+        jac_node: any,
+        sync_loc: any
+    ) -> es.JsxElement;
+    # Identity location-stamper for `lower_async_boundary` (which is called
+    # without the pass's `sync_loc`); keeps `lower_view`'s `sync_loc(...)` calls
+    # uniform when building the async-boundary `ViewElement`s.
+    def _noloc(es_node: any, jac_node: any = None) -> any;
     # Runtime symbols required by each lowering (import injection).
     def state_field_symbols(s: StateField) -> list[str];
     def ref_field_symbols(r: RefField) -> list[str];

@@ -46,6 +46,10 @@ obj FrameworkBackend {
     def ref_field_symbols(r: RefField) -> list[str];
     def effect_symbols(e: Effect) -> list[str];
     def async_boundary_symbols(a: AsyncBoundary) -> list[str];
+    # Framework view components a lowered tree references (control-flow nodes →
+    # `<For>`/`<Show>` on Solid); empty on JS-family backends that render the
+    # carried `js_fallback`. The pass injects these after `lower_view` runs.
+    def view_runtime_symbols(view: ViewElement) -> list[str];
     # JSX factory name for shared EsJsxProcessor (v1: all backends use __jacJsx)
     def jsx_factory_name -> str;
     def import_source(symbol: str) -> str;

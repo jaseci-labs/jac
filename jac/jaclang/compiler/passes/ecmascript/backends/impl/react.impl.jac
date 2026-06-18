@@ -131,6 +131,15 @@ impl ReactBackend.async_boundary_symbols(a: AsyncBoundary) -> list[str] {
     return syms;
 }
 
+"""Framework view symbols a lowered tree references — none for the JS family.
+
+React/Preact render any lifted `IfChild`/`EachChild` from the carried
+`js_fallback` (`?:`/`.map()`), so no `<For>`/`<Show>`-style component import is
+needed; Solid overrides this to scan the tree."""
+impl ReactBackend.view_runtime_symbols(view: ViewElement) -> list[str] {
+    return [];
+}
+
 """Lower a reactive state field to `const [name, setName] = useState(init);`."""
 impl ReactBackend.lower_state_field(s: StateField) -> list[es.Statement] {
     setter_name = self._get_setter_name(s.name);
@@ -226,7 +235,9 @@ impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression 
         SpreadAttr,
         TextChild,
         DynamicChild,
-        ElementChild
+        ElementChild,
+        IfChild,
+        EachChild
     }
     tag = view.tag;
     if isinstance(tag, HostTag) {
@@ -307,6 +318,15 @@ impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression 
             );
         } elif isinstance(child, ElementChild) {
             children_elements.append(self.lower_view(child.element, sync_loc));
+        } elif isinstance(child, (IfChild, EachChild)) {
+            # Native control flow is Solid/Svelte polish; the JS family renders
+            # the already-lowered `?:`/`.map()` expression the producer carried,
+            # so React/Preact output is byte-for-byte what it was before lifting.
+            children_elements.append(
+                sync_loc(
+                    self.lower_view_expr(child.js_fallback), jac_node=child.jac_node
+                )
+            );
         } else {
             # SlotChild — the already-built accumulator IIFE, emitted verbatim.
             children_elements.append(child.expr);

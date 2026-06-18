@@ -105,16 +105,29 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
                 TextChild(value=cast('Expression', child.gen.es_ast), jac_node=child)
             );
         } elif isinstance(child, uni.JsxExpression) {
-            # The raw, un-thunked child expression; `lower_view` wraps it.
-            children.append(
-                DynamicChild(value=cast('Expression', child.gen.es_ast), jac_node=child)
-            );
+            # Lift the idiomatic, provably-pure control-flow shapes (view-shaped
+            # ternaries, keyed/filtered comprehensions) to neutral `IfChild`/
+            # `EachChild` so Solid can render `<Show>`/`<For>`; everything else
+            # stays the raw, un-thunked expression that `lower_view` wraps.
+            lifted = self._lift_control_flow(child);
+            if lifted is not None {
+                children.append(lifted);
+            } else {
+                children.append(
+                    DynamicChild(
+                        value=cast('Expression', child.gen.es_ast), jac_node=child
+                    )
+                );
+            }
         } elif isinstance(child, uni.JsxElement) {
             # Carry the child's neutral tree, not its already-lowered expression.
+            # The exit pass is post-order, so the child element's `element()` ran
+            # first and memoized its `ViewElement`; a missing entry means that
+            # invariant broke and the child would otherwise silently vanish from
+            # the output. Fail loudly instead of dropping it.
             child_ve = self._view_by_node.get(id(child));
-            if child_ve is not None {
-                children.append(ElementChild(element=child_ve, jac_node=child));
-            }
+            assert child_ve is not None , "child JsxElement has no memoized ViewElement (post-order invariant broken)";
+            children.append(ElementChild(element=child_ve, jac_node=child));
         } else {
             # A statement-form slot (or any other pre-lowered child): its value
             # is an already-built expression (the accumulator IIFE) emitted
@@ -140,6 +153,181 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
     self._view_by_node[id(nd)] = view;
     self.pass_ref._ensure_backend();
     return self.pass_ref.backend.lower_view(view, self.pass_ref.sync_loc);
+}
+
+"""Lift a control-flow JSX expression child to a neutral node, or `None`.
+
+Detection runs on the **Jac AST** (where a comprehension and a ternary are
+unambiguous — after lowering, a `for` and a `.map` blur together). Only the
+idiomatic, provably-pure shapes lift; the `&&` short-form is intentionally left
+as a `DynamicChild` (its falsy-value rendering would silently change under a
+`{#if}`-style backend)."""
+impl EsJsxProcessor._lift_control_flow(
+    self: EsJsxProcessor, child: uni.JsxExpression
+) -> (IfChild | EachChild | None) {
+    expr = child.expr;
+    # `ListCompr` covers list/set/generator comprehensions (`GenCompr`/`SetCompr`
+    # subclass it) — i.e. both the `[<li> for …]` and `{{ <li> for … }}` forms.
+    if isinstance(expr, uni.ListCompr) {
+        return self._lift_each(child, expr);
+    }
+    if isinstance(expr, uni.IfElseExpr) {
+        return self._lift_if(child, expr);
+    }
+    return None;
+}
+
+"""Lift `{[<el key={…}> for item in coll if pred]}` to an `EachChild`.
+
+Conservative: only a *single*-clause comprehension whose loop variable is a plain
+name and whose output is a JSX element lifts; anything else returns `None` (stays
+a `DynamicChild`, rendered by the comprehension's own `.map()` lowering). Filters
+fold into `items` as `coll.filter(item => pred)` (Svelte's `{#each}` has no filter
+clause; Solid's `<For>` takes the filtered iterable directly), the authored `key=`
+lifts onto `EachChild.key`, and the body element is carried with `key` removed."""
+impl EsJsxProcessor._lift_each(
+    self: EsJsxProcessor, child: uni.JsxExpression, compr: uni.ListCompr
+) -> (EachChild | None) {
+    es = self.es;
+    import from jaclang.compiler.passes.ecmascript.view_ir {
+        ViewElement,
+        ElementChild,
+        EachChild
+    }
+    if len(compr.compr) != 1 {
+        # Nested `for`s (`for a in A for b in B`) would need nested `EachChild`s;
+        # not yet recognised — fall back to the `.map()` lowering.
+        return None;
+    }
+    inner = compr.compr[0];
+    out_expr = compr.out_expr;
+    if not isinstance(out_expr, uni.JsxElement) {
+        return None;
+    }
+    if not isinstance(inner.target, uni.Name) {
+        return None;
+    }
+    out_ve = self._view_by_node.get(id(out_expr));
+    if out_ve is None {
+        return None;
+    }
+    item_name = inner.target.value;
+    items_expr = inner.collection.gen.es_ast;
+    if items_expr is None {
+        return None;
+    }
+    items_expr = cast('Expression', items_expr);
+    for cond in (inner.conditional or []) {
+        pred = cond.gen.es_ast;
+        if pred is None {
+            return None;
+        }
+        filter_arrow = es.ArrowFunctionExpression(
+            params=[es.Identifier(name=item_name)],
+            body=cast('Expression', pred),
+            async_=False,
+            expression=True
+        );
+        items_expr = es.CallExpression(
+            callee=es.MemberExpression(
+                object=items_expr, property=es.Identifier(name='filter'), computed=False
+            ),
+            arguments=[filter_arrow]
+        );
+    }
+    (key_expr, body_attrs) = self._split_key(out_ve);
+    body_ve = ViewElement(
+        tag=out_ve.tag,
+        attrs=body_attrs,
+        children=out_ve.children,
+        jac_node=out_ve.jac_node
+    );
+    return EachChild(
+        items=items_expr,
+        item=item_name,
+        key=key_expr,
+        body=[ElementChild(element=body_ve, jac_node=out_expr)],
+        js_fallback=cast('Expression', child.gen.es_ast),
+        jac_node=child
+    );
+}
+
+"""Lift `{<A/> if cond else <B/>}` (a view-shaped ternary) to an `IfChild`.
+
+Lifts only when the consequent is a JSX element and the alternate is either a JSX
+element (→ fallback) or the literal `None` (→ no fallback); an arbitrary-expression
+alternate returns `None` so it stays a `DynamicChild` (the ternary renders as-is).
+The `js_fallback` is the already-built `ConditionalExpression`, so a JS-family
+backend emits the identical `?:`."""
+impl EsJsxProcessor._lift_if(
+    self: EsJsxProcessor, child: uni.JsxExpression, ternary: uni.IfElseExpr
+) -> (IfChild | None) {
+    es = self.es;
+    import from jaclang.compiler.passes.ecmascript.view_ir { IfChild }
+    # The arms are wrapped in `CfgExpr`; unwrap to the authored expression.
+    cons_inner = ternary.value.expr;
+    alt_inner = ternary.else_value.expr;
+    if not isinstance(cons_inner, uni.JsxElement) {
+        return None;
+    }
+    consequent = self._view_arm(cons_inner);
+    if consequent is None {
+        return None;
+    }
+    if isinstance(alt_inner, uni.JsxElement) {
+        alternate = self._view_arm(alt_inner);
+        if alternate is None {
+            return None;
+        }
+    } else {
+        # A non-JSX alternate lifts only when it is the literal `None`
+        # (`… else None` → a `<Show>` with no fallback). Any other expression is
+        # not view-shaped, so leave the whole ternary as a `DynamicChild`.
+        alt_es = alt_inner.gen.es_ast;
+        if isinstance(alt_es, es.Literal) and alt_es.value is None {
+            alternate = None;
+        } else {
+            return None;
+        }
+    }
+    test = ternary.condition.gen.es_ast;
+    if test is None {
+        return None;
+    }
+    return IfChild(
+        test=cast('Expression', test),
+        consequent=consequent,
+        alternate=alternate,
+        js_fallback=cast('Expression', child.gen.es_ast),
+        jac_node=child
+    );
+}
+
+"""The neutral child list for a ternary/comprehension arm that is a JSX element."""
+impl EsJsxProcessor._view_arm(
+    self: EsJsxProcessor, nd: uni.JsxElement
+) -> (list | None) {
+    import from jaclang.compiler.passes.ecmascript.view_ir { ElementChild }
+    ve = self._view_by_node.get(id(nd));
+    if ve is None {
+        return None;
+    }
+    return [ElementChild(element=ve, jac_node=nd)];
+}
+
+"""Split a list element's authored `key=` off its attributes."""
+impl EsJsxProcessor._split_key(self: EsJsxProcessor, ve: ViewElement) -> tuple {
+    import from jaclang.compiler.passes.ecmascript.view_ir { StaticAttr, DynamicAttr }
+    key_expr = None;
+    kept = [];
+    for a in ve.attrs {
+        if isinstance(a, (StaticAttr, DynamicAttr)) and a.name == "key" {
+            key_expr = a.value;
+        } else {
+            kept.append(a);
+        }
+    }
+    return (key_expr, kept);
 }
 
 """Process JSX element name."""

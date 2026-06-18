@@ -34,6 +34,7 @@ obj ReactBackend(FrameworkBackend) {
     def ref_field_symbols(r: RefField) -> list[str];
     def effect_symbols(e: Effect) -> list[str];
     def async_boundary_symbols(a: AsyncBoundary) -> list[str];
+    def view_runtime_symbols(view: ViewElement) -> list[str];
     def jsx_factory_name -> str;
     def import_source(symbol: str) -> str;
     def required_globals -> list[str];

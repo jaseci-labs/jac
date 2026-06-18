@@ -45,13 +45,39 @@ glob FIXTURES = str(Path(__file__).parent / "fixtures"),
          "jsdom": "^24.0.0",
          "solid-js": "^1.9.13",
          "@solidjs/router": "^0.16.1",
-         "solid-hook-form": "^2.5.3",
-         "zod": "^4.3.6"
+         "@tanstack/solid-form": "^1.33.0",
+         "zod": "^4.3.6",
+         # The Solid backend now emits JSX *syntax* (the dom-expressions path), so
+         # the harness must run the babel transform `vite-plugin-solid` wraps
+         # (`babel-preset-solid`) before mounting — mirroring `jac client build`'s
+         # plugin. Test-only deps (distinct from the deps the compiler *emits* into
+         # a generated project, which land with the Vite plugin wiring in Branch 5+).
+         "@babel/core": "^7.24.0",
+         "babel-preset-solid": "^1.9.12"
      },
-     # ES harness: build a jsdom DOM, publish the browser globals solid's DOM build
-     # needs BEFORE importing it, mount the compiled component, and assert render +
+     # Babel-transform step shared by both harnesses: the Solid backend emits JSX
+     # *syntax*, so every emitted module is written as `<name>.src.jsx` and compiled
+     # to `<name>.js` through `babel-preset-solid` (the transform `vite-plugin-solid`
+     # applies) before any import. Plain JS modules (the entry, the route manifest)
+     # carry no JSX, so the transform is a safe no-op. A plain (non-f) string.
+     _BABEL_BUILD: str = """
+import babelCore from "@babel/core";
+import fs from "node:fs";
+for (const f of fs.readdirSync(".")) {
+  if (!f.endsWith(".src.jsx")) continue;
+  const code = fs.readFileSync("./" + f, "utf8");
+  const out = babelCore.transformSync(code, {
+    presets: [["babel-preset-solid", { generate: "dom", hydratable: false }]],
+    filename: f,
+  });
+  fs.writeFileSync("./" + f.replace(/\\.src\\.jsx$/, ".js"), out.code, "utf8");
+}
+""",
+     # ES harness: babel-build every emitted module, build a jsdom DOM, publish the
+     # browser globals solid's DOM build needs BEFORE importing it, mount the
+     # compiled component via `solid-js/web`'s `render`, and assert render +
      # reactivity. A plain (non-f) string so the JS `${}` / `{}` need no escaping.
-     _HARNESS: str = """
+     _HARNESS: str = _BABEL_BUILD + """
 import { JSDOM } from "jsdom";
 
 const dom = new JSDOM(
@@ -80,10 +106,9 @@ const check = (label, ok, detail) => {
   if (!ok) failures.push(label);
 };
 
-let render, h, app;
+let render, app;
 try {
   ({ render } = await import("solid-js/web"));
-  h = (await import("solid-js/h")).default;
   ({ app } = await import("./component.js"));
 } catch (e) {
   check("runtime modules import (jsdom + --conditions=browser)", false,
@@ -97,7 +122,9 @@ check("solid-js/web exposes a DOM render()", typeof render === "function",
 
 const root = document.getElementById("__jac_root");
 try {
-  render(() => h(app, {}), root);
+  // The compiled component is a dom-expressions function component — mount it
+  // directly (no hyperscript `h(app, {})` wrapper).
+  render(() => app(), root);
 } catch (e) {
   check("render() mounts without throwing", false, String((e && e.stack) || e));
 }
@@ -129,12 +156,103 @@ console.log(`\\n${failures.length ? "FAILED" : "OK"}: ${failures.length} failure
 process.exit(failures.length ? 1 : 0);
 """;
 
+"""Control-flow harness (Branch 4): mount the lifted `<For>`/`<Show>` component and
+assert it actually renders + reacts through `babel-preset-solid` — the keyed
+comprehension produces three ordered `<li>` with no stray `key` DOM attribute, and
+the `show` signal toggle swaps the `<Show>` arm. A plain (non-f) string so the JS
+`${}`/`{}` need no escaping; the leading `_BABEL_BUILD` builds `component.src.jsx`."""
+glob _CONTROL_FLOW_HARNESS: str = _BABEL_BUILD + """
+import { JSDOM } from "jsdom";
+
+const dom = new JSDOM(
+  '<!DOCTYPE html><html><body><div id="__jac_root"></div></body></html>',
+  { url: "http://localhost/", pretendToBeVisual: true }
+);
+const { window } = dom;
+globalThis.window = window;
+for (const k of [
+  "document", "navigator", "HTMLElement", "Element", "SVGElement", "Node",
+  "Text", "Comment", "DocumentFragment", "Event", "CustomEvent", "MouseEvent",
+  "KeyboardEvent", "getComputedStyle", "DOMParser",
+]) {
+  if (window[k] === undefined) continue;
+  try { globalThis[k] = window[k]; } catch {}
+}
+globalThis.requestAnimationFrame =
+  window.requestAnimationFrame || ((cb) => setTimeout(() => cb(Date.now()), 0));
+globalThis.cancelAnimationFrame = window.cancelAnimationFrame || clearTimeout;
+
+const failures = [];
+const check = (label, ok, detail) => {
+  console.log(`${ok ? "PASS" : "FAIL"}  ${label}${detail ? "  -- " + detail : ""}`);
+  if (!ok) failures.push(label);
+};
+
+let render, app;
+try {
+  ({ render } = await import("solid-js/web"));
+  ({ app } = await import("./component.js"));
+} catch (e) {
+  check("runtime modules import (jsdom + --conditions=browser)", false,
+    String((e && e.stack) || e));
+  console.log("\\nFAILED: import error");
+  process.exit(1);
+}
+
+const root = document.getElementById("__jac_root");
+try {
+  render(() => app(), root);
+} catch (e) {
+  check("render() mounts without throwing", false, String((e && e.stack) || e));
+}
+
+// <For>: the keyed comprehension lowered to a native <For each={labels}> and
+// rendered three ordered <li> children.
+const items = () => Array.from(
+  document.querySelectorAll('[data-testid="list"] > li')
+).map((n) => n.textContent.trim());
+check("For rendered three list items", items().length === 3,
+  `got: ${JSON.stringify(items())}`);
+check("For preserved item text/order",
+  JSON.stringify(items()) === JSON.stringify(["alpha", "beta", "gamma"]),
+  `got: ${JSON.stringify(items())}`);
+// The lifted body must NOT carry the React-style `key` on the DOM node.
+const firstLi = document.querySelector('[data-testid="list"] > li');
+check("For body dropped the key attribute",
+  !!firstLi && !firstLi.hasAttribute("key"),
+  firstLi ? firstLi.outerHTML : "no <li>");
+
+// <Show>: the view ternary lowered to <Show when={show()} fallback={...}>; the
+// consequent renders initially and the fallback is absent.
+const shown = () => document.querySelector('[data-testid="shown"]');
+const hidden = () => document.querySelector('[data-testid="hidden"]');
+check("Show renders the consequent initially", !!shown() && !hidden(),
+  `root=${root.innerHTML}`);
+
+const toggle = document.querySelector('[data-testid="toggle"]');
+check("toggle button present", !!toggle);
+if (toggle) {
+  toggle.click();
+  check("Show reactively swaps to the fallback after toggle",
+    !shown() && !!hidden(), `root=${root.innerHTML}`);
+  toggle.click();
+  check("Show swaps back to the consequent",
+    !!shown() && !hidden(), `root=${root.innerHTML}`);
+}
+
+console.log(`\\n${failures.length ? "FAILED" : "OK"}: ${failures.length} failure(s)` +
+  (failures.length ? `: ${failures.join(", ")}` : ""));
+process.exit(failures.length ? 1 : 0);
+""";
+
 """Routing harness: build a jsdom DOM at a given start URL, optionally seed a
 `jac_token` (so `jacIsLoggedIn()` is true), import the generated file-based-routing
 `entry.js` (which renders itself), then assert per-scenario. `argv[2]` is the start
 path, `argv[3]` is `loggedIn`/`loggedOut`. A plain (non-f) string so JS `${}`/`{}`
-need no escaping."""
-glob _ROUTING_HARNESS: str = """
+need no escaping. The leading `_BABEL_BUILD` step compiles every emitted
+`*.src.jsx` (pages, layout, runtime shim) to `*.js` via `babel-preset-solid`; the
+entry and route manifest carry no JSX, so their transform is a no-op."""
+glob _ROUTING_HARNESS: str = _BABEL_BUILD + """
 import { JSDOM } from "jsdom";
 
 const startUrl = process.argv[2] || "/";
@@ -159,6 +277,9 @@ globalThis.localStorage = window.localStorage;
 globalThis.requestAnimationFrame =
   window.requestAnimationFrame || ((cb) => setTimeout(() => cb(Date.now()), 0));
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame || clearTimeout;
+// `@solidjs/router` scrolls on navigation; jsdom has no `scrollTo`, so stub it.
+window.scrollTo = () => {};
+globalThis.scrollTo = () => {};
 
 if (loggedIn) window.localStorage.setItem("jac_token", "test-token");
 else window.localStorage.removeItem("jac_token");
@@ -293,9 +414,11 @@ test "solid counter mounts and reacts in jsdom" {
 
     with TemporaryDirectory() as tmp {
         work = Path(tmp);
-        (work / "component.js").write_text(component_js, encoding="utf-8");
-        (work / "jac_runtime.js").write_text(runtime_js, encoding="utf-8");
-        (work / "client_runtime_core.js").write_text(core_js, encoding="utf-8");
+        # Emitted JSX modules land as `*.src.jsx`; the harness babel-builds them to
+        # `*.js` before mounting (cross-module imports already target `.js`).
+        (work / "component.src.jsx").write_text(component_js, encoding="utf-8");
+        (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
+        (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
         (work / "harness.mjs").write_text(_HARNESS, encoding="utf-8");
         (work / "package.json").write_text(
             json.dumps(
@@ -318,6 +441,72 @@ test "solid counter mounts and reacts in jsdom" {
         # node with the `browser` condition selects solid's DOM build (not SSR);
         # fall back to bun if node is unavailable on the runner. (`node` is a Jac
         # keyword, so the binary path is held in `node_bin`.)
+        node_bin = shutil.which("node");
+        if node_bin {
+            cmd = [node_bin, "--conditions=browser", str(work / "harness.mjs")];
+        } else {
+            cmd = [bun, "--conditions=browser", "run", str(work / "harness.mjs")];
+        }
+        run = subprocess.run(
+            cmd, cwd=str(work), capture_output=True, text=True, timeout=120
+        );
+        detail = (run.stdout or "") + "\n" + (run.stderr or "");
+        assert run.returncode == 0 , (
+            f"jsdom harness failed (exit {run.returncode}):\n{detail}"
+        );
+    }
+}
+
+test "solid native control flow (<For>/<Show>) renders + reacts in jsdom (Branch 4)" {
+    # End-to-end proof of Branch 4: the lifted keyed comprehension and view ternary
+    # compile through `babel-preset-solid` and render as native `<For>`/`<Show>`
+    # (not just emit plausible JSX strings — the unit tests pin the strings, this
+    # pins the runtime behaviour). Same opt-in + toolchain as the counter test.
+    _require_client_integration();
+    bun = get_bun();
+    if bun is None {
+        pytest.skip("bun is required but could not be located/installed");
+    }
+
+    backend = SolidBackend();
+    component_js = with_runtime_globals(
+        _compile_solid(os.path.join(FIXTURES, "solid_control_flow_app.cl.jac")), backend
+    );
+    runtime_path = resolve_client_runtime_cl_path("solid");
+    runtime_js = _rewrite_core_specifier(_compile_solid(runtime_path));
+    core_js = _compile_solid(
+        str(Path(runtime_path).parent / "client_runtime_core.cl.jac")
+    );
+    for q in ['"', "'"] {
+        component_js = component_js.replace(
+            f"{q}@jac/runtime{q}", f"{q}./jac_runtime.js{q}"
+        );
+    }
+
+    with TemporaryDirectory() as tmp {
+        work = Path(tmp);
+        (work / "component.src.jsx").write_text(component_js, encoding="utf-8");
+        (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
+        (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
+        (work / "harness.mjs").write_text(_CONTROL_FLOW_HARNESS, encoding="utf-8");
+        (work / "package.json").write_text(
+            json.dumps(
+                {
+                    "name": "solid-jsdom-test",
+                    "private": True,
+                    "type": "module",
+                    "dependencies": _DEPS
+                }
+            ),
+            encoding="utf-8"
+        );
+        install = subprocess.run(
+            [bun, "install"], cwd=str(work), capture_output=True, text=True, timeout=300
+        );
+        assert install.returncode == 0 , (
+            f"bun install failed (exit {install.returncode}):\n"
+            f"{install.stdout}\n{install.stderr}"
+        );
         node_bin = shutil.which("node");
         if node_bin {
             cmd = [node_bin, "--conditions=browser", str(work / "harness.mjs")];
@@ -383,14 +572,17 @@ test "solid file-based routing mounts, navigates, and guards in jsdom" {
 
     with TemporaryDirectory() as tmp {
         work = Path(tmp);
-        (work / "home_page.js").write_text(home_js, encoding="utf-8");
-        (work / "about_page.js").write_text(about_js, encoding="utf-8");
-        (work / "dashboard_page.js").write_text(dash_js, encoding="utf-8");
-        (work / "root_layout.js").write_text(layout_js, encoding="utf-8");
-        (work / "_routes.js").write_text(manifest, encoding="utf-8");
-        (work / "entry.js").write_text(entry_js, encoding="utf-8");
-        (work / "jac_runtime.js").write_text(runtime_js, encoding="utf-8");
-        (work / "client_runtime_core.js").write_text(core_js, encoding="utf-8");
+        # Pages/layout/runtime emit JSX → `*.src.jsx` (harness babel-builds them);
+        # the entry and route manifest carry no JSX but ride the same `.src.jsx`
+        # build path (a no-op transform) so every importable name ends in `.js`.
+        (work / "home_page.src.jsx").write_text(home_js, encoding="utf-8");
+        (work / "about_page.src.jsx").write_text(about_js, encoding="utf-8");
+        (work / "dashboard_page.src.jsx").write_text(dash_js, encoding="utf-8");
+        (work / "root_layout.src.jsx").write_text(layout_js, encoding="utf-8");
+        (work / "_routes.src.jsx").write_text(manifest, encoding="utf-8");
+        (work / "entry.src.jsx").write_text(entry_js, encoding="utf-8");
+        (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
+        (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
         (work / "harness.mjs").write_text(_ROUTING_HARNESS, encoding="utf-8");
         (work / "package.json").write_text(
             json.dumps(

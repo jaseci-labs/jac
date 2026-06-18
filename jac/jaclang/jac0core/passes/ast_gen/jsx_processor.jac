@@ -12,7 +12,10 @@ import type from jaclang.compiler.passes.ecmascript.view_ir {
     StaticAttr,
     DynamicAttr,
     EventAttr,
-    RefAttr
+    RefAttr,
+    ViewElement,
+    IfChild,
+    EachChild
 }
 import type from jaclang.jac0core.passes.pyast_gen_pass { PyastGenPass }
 
@@ -43,6 +46,34 @@ class EsJsxProcessor {
 
     """Process JSX expression child."""
     def expression(self: EsJsxProcessor, nd: uni.JsxExpression) -> Expression;
+
+    """Lift an idiomatic JSX control-flow expression child to a neutral
+    `IfChild`/`EachChild`, or `None` when the shape is not a provably pure,
+    view-shaped ternary/comprehension (then it stays a `DynamicChild`)."""
+    def _lift_control_flow(
+        self: EsJsxProcessor, child: uni.JsxExpression
+    ) -> (IfChild | EachChild | None);
+
+    """Lift a single-clause comprehension whose element is JSX to an
+    `EachChild` (filters fold into `items`, the `key=` lifts out)."""
+    def _lift_each(
+        self: EsJsxProcessor, child: uni.JsxExpression, compr: uni.ListCompr
+    ) -> (EachChild | None);
+
+    """Lift a view-shaped ternary to an `IfChild` (both arms JSX, or a `None`
+    alternate); arbitrary-expression arms return `None` (no lift)."""
+    def _lift_if(
+        self: EsJsxProcessor, child: uni.JsxExpression, ternary: uni.IfElseExpr
+    ) -> (IfChild | None);
+
+    """The neutral child list for one ternary/comprehension arm that is a JSX
+    element (its memoized `ViewElement` wrapped in an `ElementChild`), or
+    `None` when that element was not memoized (post-order invariant broken)."""
+    def _view_arm(self: EsJsxProcessor, nd: uni.JsxElement) -> (list | None);
+
+    """Split a list element's authored `key=` value off its attributes:
+    returns `(key_value_or_None, attrs_without_key)`."""
+    def _split_key(self: EsJsxProcessor, ve: ViewElement) -> tuple;
 }
 
 """Generate Python AST structures for JSX nodes."""

@@ -413,7 +413,14 @@ impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
         validators["onChange"] = schema;
     } elif form_mode == "onSubmit" {
         validators["onSubmit"] = schema;
+    } elif form_mode == "onBlur" {
+        validators["onBlur"] = schema;
+    } elif form_mode == "onTouched" {
+        # TanStack Form has no onTouched; blur then change is closest to RHF.
+        validators["onBlur"] = schema;
+        validators["onChange"] = schema;
     } else {
+        console.warn(f"Unknown validateMode '{form_mode}'; falling back to onBlur");
         validators["onBlur"] = schema;
     }
     opts = {"defaultValues": defaults, "validators": validators};
@@ -468,7 +475,7 @@ impl JacForm(props: dict) -> JsxElement {
         }
         return (
             <p style={{color: "#ef4444", fontSize: "0.85rem", marginTop: "0.25rem"}}>
-                ⚠️{errors[0]}
+                ⚠️{errors[0].message}
             </p>
         );
     }

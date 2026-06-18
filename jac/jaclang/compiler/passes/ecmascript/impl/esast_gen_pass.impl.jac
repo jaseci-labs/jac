@@ -3985,7 +3985,27 @@ impl EsastGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
     ) {
         self._inject_runtime_import(nd.name.parts[0].value, nd);
     }
+    # A `<@expr>` dynamic tag lowers to `<Dynamic component={expr}>` on backends
+    # that emit JSX syntax (Solid); the import source comes from the backend, so
+    # only those needing `Dynamic` (import_source → a non-`@jac/runtime` module)
+    # actually inject it.
+    if nd.dynamic_tag is not None {
+        self._ensure_backend();
+        if self.backend.import_source("Dynamic") != self.backend.runtime_module() {
+            self._inject_runtime_import("Dynamic", nd);
+        }
+    }
     nd.gen.es_ast = self.jsx_processor.element(nd);
+    # Lifted control-flow nodes lower to framework view components (`<For>`/
+    # `<Show>` on Solid); inject their imports from the neutral view the producer
+    # just memoized. Empty on the JS family (it renders the carried `js_fallback`).
+    self._ensure_backend();
+    view = self.jsx_processor._view_by_node.get(id(nd));
+    if view is not None {
+        for sym in self.backend.view_runtime_symbols(view) {
+            self._inject_runtime_import(sym, nd);
+        }
+    }
 }
 
 """Process has variable."""
