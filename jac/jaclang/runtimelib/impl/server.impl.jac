@@ -312,8 +312,7 @@ cached, so this is cheap per request; any failure falls back to retry/5/0
 (the prior hardcoded behavior)."""
 def _occ_policy -> tuple {
     mode = "retry";
-    (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
-    max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
+    max_attempts = 5;
     backoff_ms = 0;
     try {
         import from jaclang.project.config { get_config }
@@ -406,13 +405,14 @@ impl ExecutionManager.execute_function_sync(
         return {'error': 'User not found'};
     }
     (ctx, req_token) = await _begin_request_context(root_id);
-    _deserialize_wire_args(args);
     # OCC replay (parity with spawn_walker_*): a function that loses a
     # check-then-create race converges via abort + reload + replay instead of
-    # surfacing the WriteConflict as a 500.
-    (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
-    max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
+    # surfacing the WriteConflict as a 500. Arg deserialization + policy read
+    # stay inside the try so the finally always resets the request context.
     try {
+        _deserialize_wire_args(args);
+        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
+        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
         attempt = 0;
         while attempt < max_attempts {
             attempt += 1;
@@ -475,12 +475,13 @@ impl ExecutionManager.execute_function_async(
         return {'error': 'User not found'};
     }
     (ctx, req_token) = await _begin_request_context(root_id);
-    _deserialize_wire_args(args);
     # OCC replay (parity with spawn_walker_*): converge a lost check-then-create
-    # race instead of surfacing the WriteConflict as a 500.
-    (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
-    max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
+    # race instead of surfacing the WriteConflict as a 500. Arg deserialization
+    # + policy read stay inside the try so the finally always resets the context.
     try {
+        _deserialize_wire_args(args);
+        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
+        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
         attempt = 0;
         while attempt < max_attempts {
             attempt += 1;
@@ -560,9 +561,9 @@ impl ExecutionManager.spawn_walker_sync(
     # race raises WriteConflict at commit. We discard the attempt's mutations
     # + deferred effects, reload the root so the replay sees the committed
     # winner, and re-run — so find-or-create converges instead of duplicating.
-    (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
-    max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
     try {
+        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
+        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
         attempt = 0;
         while attempt < max_attempts {
             attempt += 1;
@@ -644,9 +645,9 @@ impl ExecutionManager.spawn_walker_async(
     # Optimistic-concurrency replay: see spawn_walker_sync. A WriteConflict at
     # commit means we lost a check-then-create race; discard + reload + replay
     # so find-or-create converges on the winner instead of duplicating.
-    (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
-    max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
     try {
+        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
+        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
         attempt = 0;
         while attempt < max_attempts {
             attempt += 1;

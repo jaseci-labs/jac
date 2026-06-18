@@ -851,7 +851,18 @@ impl MongoBackend._put_node_atomic(
         # dependency -> plain upsert + $setUnion merges lock-free (#5644).
         cas_filter: dict = {'_id': _id};
         if cas_version is not None {
-            cas_filter = {'_id': _id, 'data.version': cas_version};
+            # A doc written before this feature shipped has no `data.version`;
+            # MongoDB equality won't match a missing field, so when the request
+            # expects v0 also accept the absent case (treat absent == 0). This
+            # keeps legacy nodes from spuriously conflicting on first write.
+            if cas_version == 0 {
+                cas_filter = {
+                    '_id': _id,
+                    '$or': [{'data.version': 0}, {'data.version': {'$exists': False}}]
+                };
+            } else {
+                cas_filter = {'_id': _id, 'data.version': cas_version};
+            }
         }
         merged_doc = self.collection.find_one_and_update(
             cas_filter,
@@ -859,31 +870,25 @@ impl MongoBackend._put_node_atomic(
             projection={'data.edges': 1, 'data.version': 1},
             upsert=(cas_version is None),
             return_document=ReturnDocument.AFTER
-            # upsert is safe only when not version-gating: a version miss must
+            # upsert only on the no-CAS (blind append) path: a version miss must
             # NOT mint a spurious duplicate doc.
         );
         if merged_doc is None {
-            # Only reachable on the version-gated path (upsert=False). Either
-            # the version moved under us (a concurrent committer) or the doc
-            # does not exist yet.
+            # Version-gated path (upsert=False) with no match: the node moved or
+            # vanished since this request read it. Either way the optimistic
+            # assumption failed -> conflict, and the request boundary replays
+            # (re-reading the now-current graph). We do NOT fall back to an
+            # upsert here: that read-then-upsert was a TOCTOU window, and an
+            # EDGE_LIST_DELTA only targets a node the request already loaded, so
+            # a genuinely absent doc is itself a stale-read to converge on.
+            # The find_one is diagnostic only (best-effort actual version).
+            actual = -1;
             existing = self.collection.find_one({'_id': _id}, {'data.version': 1});
             if existing is not None {
                 actual = existing.get('data', {}).get('version', -1);
-                raise WriteConflict(
-                    anchor_id=anchor.id,
-                    expected_version=cas_version,
-                    actual_version=actual
-                );
             }
-            # First-ever write for this node (rare on the delta path): fall
-            # back to a plain upsert, preserving pre-OCC behavior. $ifNull
-            # seeds version 0 -> 1.
-            merged_doc = self.collection.find_one_and_update(
-                {'_id': _id},
-                [{'$set': set_doc}],
-                projection={'data.edges': 1, 'data.version': 1},
-                upsert=True,
-                return_document=ReturnDocument.AFTER
+            raise WriteConflict(
+                anchor_id=anchor.id, expected_version=cas_version, actual_version=actual
             );
         }
 

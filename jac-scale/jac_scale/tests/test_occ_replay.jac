@@ -90,6 +90,32 @@ test "OCC: a read-gated stale write conflicts" {
 }
 
 
+test "OCC: a read-gated write on a legacy doc (no data.version) does not conflict" {
+    (client, uri) = _get_mongo();
+    client.drop_database(_DB);
+    backend: any = MongoBackend(mongo_url=uri, db_name=_DB);
+    coll: any = client[_DB]["_anchors"];
+    (ranch, rid) = _seed_root(backend);
+
+    # Simulate a document written before this feature shipped: no data.version.
+    coll.update_one({"_id": rid}, {"$unset": {"data.version": ""}});
+    assert "version" not in coll.find_one({"_id": rid})["data"];
+
+    # A request reads it (absent version -> default 0) and adds an edge. The CAS
+    # must treat absent as 0 and succeed, not 409 on the legacy node.
+    a: any = Serializer.deserialize(coll.find_one({"_id": rid})["data"]);
+    assert a.version == 0;
+    conflicted = False;
+    try {
+        backend._put_node_atomic(a, [str(uuid4())], [], set(), 0);
+    } except WriteConflict {
+        conflicted = True;
+    }
+    assert not conflicted , "legacy doc (absent version) must not spuriously conflict";
+    assert coll.find_one({"_id": rid})["data"]["version"] == 1;
+}
+
+
 test "OCC: a blind append (no read) merges lock-free" {
     (client, uri) = _get_mongo();
     client.drop_database(_DB);

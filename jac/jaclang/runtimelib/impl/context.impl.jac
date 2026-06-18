@@ -92,6 +92,10 @@ impl ExecutionContext.close -> None {
     }
     # TieredMemory handles syncing to persistence and closing all tiers
     self.mem.close();
+    # Fire any on_commit effects flushed by close()'s commit backstop. This
+    # covers CLI / library flows (jac run) that rely on close() rather than an
+    # explicit commit()/acommit(); a no-op if an earlier commit already drained.
+    self.run_pending_effects();
 }
 
 """Register a callback to run after the next successful commit.
