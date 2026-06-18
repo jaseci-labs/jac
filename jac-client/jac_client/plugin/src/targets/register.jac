@@ -9,6 +9,7 @@ import from jac_client.plugin.src.targets.registry {
 }
 import from jac_client.plugin.src.targets.web_target { WebTarget }
 import from jac_client.plugin.src.targets.pwa_target { PWATarget }
+import from jac_client.plugin.src.targets.static_target { StaticTarget }
 import from jac_client.plugin.src.targets.mobile_target { MobileTarget }
 
 # Note: Jac's annex pass should auto-discover .impl.jac files automatically
@@ -39,6 +40,7 @@ def register_targets {
     registry = get_target_registry();
     registry.register(WebTarget());
     registry.register(PWATarget());
+    registry.register(StaticTarget());
     registry.register(MobileTarget());
     _register_plugin_client_targets(registry);
 }

@@ -139,16 +139,37 @@ import from raylib {                                  # logical name, like a lin
 }
 ```
 
+Pass and return C structs **by value** by declaring them as `obj` inside the same block - the backend lowers them to the platform C struct ABI, so a library's natural by-value API works directly (no scalar workaround needed):
+
+```jac
+import from raylib {                                  # same sibling-library resolution as above
+    obj Color   { has r: u8, g: u8, b: u8, a: u8; }            # 4B  -> packed into an i32
+    obj Vector3 { has x: f32, y: f32, z: f32; }               # 12B -> <2 x float>, float
+    obj Camera3D { has position: Vector3, target: Vector3, up: Vector3,
+                       fovy: f32, projection: i32; }          # 44B -> MEMORY class (byval)
+
+    def GetColor(hexValue: u32) -> Color;                     # struct returned by value
+    def ColorToInt(color: Color) -> i32;                      # struct passed by value
+    def DrawCube(position: Vector3, w: f32, h: f32, l: f32, color: Color) -> None;
+    def BeginMode3D(camera: Camera3D) -> None;                # 44B struct, passed byval
+}
+
+with entry {
+    print(ColorToInt(GetColor(0xFF0000FF)));   # a Color round-trips by value across the FFI
+    DrawCube(Vector3(x=0.0, y=1.0, z=0.0), 2.0, 2.0, 2.0, Color(r=255, g=0, b=0, a=255));
+}
+```
+
 - The plain logical name already finds a **sibling** library: every binary gets RUNPATH `$ORIGIN` (`@loader_path` on macOS) plus a bare DT_NEEDED (`libraylib.so`), so the loader checks the binary's own directory first, then `LD_LIBRARY_PATH`/system paths (verified with `readelf -d`). Ship the `.so` next to the binary and it runs from any cwd - the shooter flagship stages `libraylib.so` beside `./shooter` exactly this way.
 - `import from .raylib` (leading dot) **pins** sibling-only resolution: DT_NEEDED becomes `$ORIGIN/libraylib.so`, so a system-installed copy is never used as a fallback. `import from vendor.raylib` -> `$ORIGIN/vendor/...`.
 - A literal string (`import from "/usr/lib/libm.so.6" { def sqrt(x: f64) -> f64; }`) is only for pinning an exact path or versioned soname - no prefix/extension rewriting.
 - Fixed-width types (`i32`, `u8`, `f32`, `f64`, `c_void`) are needed ONLY inside the `import from` declaration to match the C ABI. Everywhere else use standard `int`/`float`/`str`; the compiler coerces at the call site.
-- **Keep FFI calls scalar.** Passing or returning a multi-field struct *by value* (a 3-float `Vector3`, a `Camera3D`, a `Color`) does not reliably round-trip yet - bind the library's scalar entry points instead (e.g. raylib's `rlVertex3f`/`rlColor4ub`/`rlClearColor` rather than `DrawCube(Vector3,...)`/`ClearBackground(Color)`). An int return read straight into `float(...)` is a known safe workaround for some bindings.
+- **Structs cross by value.** Declare each C struct as an `obj` of fixed-width fields (nested `obj` structs allowed) inside the `import from` block and call the by-value entry points directly: the compiler classifies each struct per the platform C ABI (System V AMD64 eightbytes on x86_64, AArch64 AAPCS) and emits the matching `byval`/`sret`/register coercion, so a `Color`/`Vector3`/`Camera3D` passed or returned by value round-trips correctly - including >16-byte MEMORY-class aggregates like the 44-byte `Camera3D`. Targets outside x86_64 SysV / AArch64 AAPCS fall back to the legacy path; binding a library's scalar entry points (raylib's `rlVertex3f`/`rlColor4ub`) is still a valid lower-level style, just no longer required.
 - No `cc`/`ld` step: each declared symbol becomes an extern Jac's own linker records (DT_NEEDED / LC_LOAD_DYLIB) and the OS loader resolves at run time.
 
 ## Debugging
 
 - `JAC_DUMP_IR=/tmp/out.ll jac nacompile app.na.jac` writes the optimized LLVM IR to a readable `.ll` file.
-- Stale behavior after moving/regenerating files: clear `~/.cache/jac/bytecode/` (Linux; `~/Library/Caches/jac/bytecode/` on macOS) and use `jac nacompile --scrub` to wipe the per-source `.jac_ir` IR cache.
+- Stale behavior after moving/regenerating files: use `jac nacompile --scrub` (or `jac run --no-cache`) to wipe the native IR cache, which lives in the module's cache dir (`.jac/cache/native/`, or the global `~/.cache/jac/jir/` for installed sources).
 - Memory: automatic reference counting, but deep release of nested structures is currently disabled - long-running daemons may leak; bounded-allocation programs are unaffected.
 - Run native test files with `jac test <file>`, not pytest. See `jac-testing` and `jac-debugging`.

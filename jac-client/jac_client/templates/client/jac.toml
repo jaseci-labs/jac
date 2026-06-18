@@ -3,6 +3,7 @@ name = "{{name}}"
 version = "1.0.0"
 description = "Jac client application: {{name}}"
 entry-point = "main.jac"
+kind = "client"
 
 [dependencies]
 
@@ -22,7 +23,7 @@ base_route_app = "app"
 
 [jacpack]
 name = "client"
-description = "Jac project with frontend client setup"
+description = "Client-only Jac app (runs in the browser, no backend)"
 jaclang = "0.9.8"
 
 [[jacpack.plugins]]

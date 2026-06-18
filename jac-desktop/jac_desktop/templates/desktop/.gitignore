@@ -1,0 +1,23 @@
+# Jac project
+packages/
+*.jbc
+*.jir
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Node.js
+node_modules/
+
+# Build artifacts
+.jac/
+*.session
+*.session.*

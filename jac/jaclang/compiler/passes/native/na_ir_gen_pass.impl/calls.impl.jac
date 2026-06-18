@@ -215,6 +215,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             return ir.Constant(ir.DoubleType(), 0.0);
         }
+        # isinstance(x, T): lower to a JacVal tag comparison. Works on an `any`
+        # operand (runtime tag) and a concrete one (the box folds to a constant
+        # tag). The engine behind generic-over-`any` dispatch (#6421).
+        if func_name == "isinstance" {
+            return self._emit_isinstance(nd);
+        }
         # Handle len() builtin for lists, dicts, sets, and strings
         if func_name == "len" {
             params_l = nd.params or [];
@@ -223,6 +229,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 arg_val = self._codegen_expr(params_l[0]);
                 if arg_val is not None {
                     _len_result: (ir.Value | None) = None;
+                    # bytes: read the explicit length field (never strlen — the
+                    # buffer may contain embedded NULs).
+                    if self._is_bytes_value(arg_val) {
+                        _len_result = self._bytes_len_val(arg_val);
+                    }
                     # Check for dict type by inferring from value
                     if _len_result is None {
                         for (dict_key, helpers) in self.dict_helpers.items() {
@@ -283,6 +294,23 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                     }
                 }
             }
+        }
+        # First-class iterator builtins (#6403 phase 2). `iter(x)` boxes a
+        # JacIter over x (its element type flows from the checker's
+        # Iterator[T]); `next(it)` pulls one element and raises StopIteration
+        # at exhaustion. For-loop driving of map/filter/... and of a stored
+        # iterator is handled earlier in `_try_iter_protocol_for`.
+        if func_name == "iter" {
+            built = self._build_iter_from_expr(nd);
+            if built is not None {
+                (iter_val, _ename, _etype) = built;
+                return iter_val;
+            }
+            self._emit_unsupported_builtin_call(nd, "iter");
+            return None;
+        }
+        if func_name == "next" {
+            return self._codegen_next(nd);
         }
         # Handle complex() constructor: complex(real, imag) -> JacComplex*
         if func_name == "complex" {
@@ -829,6 +857,114 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     # the callee for borrowed refs, or skip-var donation for named locals);
     # ownership is applied at the _codegen_expr seam from the central
     # invariant (compiler/ownership.jac).
+    return result;
+}
+# ─── isinstance-on-`any` (JacVal tag dispatch) ───────────────
+"""JacVal tag(s) that satisfy `isinstance(x, name)`.
+
+Keyed off the box scheme in `_box_to_jacval`. `int` also accepts `bool` (tag 7)
+because CPython treats `bool` as a subtype of `int`; `bool` accepts only tag 7.
+An empty result means the type operand is not lowerable here (e.g. a user
+archetype), and the caller surfaces a structured error instead of miscompiling.
+"""
+impl NaIRGenPass._jacval_tags_for_type(name: str) -> list[int] {
+    if name == "int" {
+        return [0, 7];
+    }
+    if name == "bool" {
+        return [7];
+    }
+    if name == "float" {
+        return [1];
+    }
+    if name == "str" {
+        return [2];
+    }
+    if name == "list" {
+        return [3];
+    }
+    if name == "dict" {
+        return [4];
+    }
+    if name == "set" {
+        return [5];
+    }
+    return [];
+}
+
+"""Lower `isinstance(operand, T)` to a JacVal tag comparison.
+
+`T` is a type name or a tuple of type names (`isinstance(x, (int, str))`). The
+operand is boxed once — a no-op for an already-boxed `any`, and a constant the
+optimizer folds for a concrete value — then its tag byte is compared against the
+tag set for `T`. Returns an `i1`; `None` (with a structured error) when `T` names
+a type that has no native tag.
+"""
+impl NaIRGenPass._emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None) {
+    i1 = ir.IntType(1);
+    i8 = ir.IntType(8);
+    params = nd.params or [];
+    if len(params) < 2 {
+        self._emit_unsupported_builtin_call(nd, "isinstance");
+        return None;
+    }
+    operand = self._codegen_expr(params[0]);
+    if operand is None {
+        return None;
+    }
+    # Collect the type name(s): a bare name or a tuple of names.
+    type_arg = params[1];
+    names: list[str] = [];
+    if isinstance(type_arg, uni.TupleVal) {
+        for v in (type_arg.values or []) {
+            nm = self._get_name(v);
+            if nm is not None {
+                names.append(nm);
+            }
+        }
+    } else {
+        nm = self._get_name(type_arg);
+        if nm is not None {
+            names.append(nm);
+        }
+    }
+    tags: list[int] = [];
+    unresolved: list[str] = [];
+    for nm in names {
+        nm_tags = self._jacval_tags_for_type(nm);
+        if not nm_tags {
+            unresolved.append(nm);
+        }
+        for t in nm_tags {
+            if t not in tags {
+                tags.append(t);
+            }
+        }
+    }
+    if unresolved or not tags {
+        # Any name with no native tag (e.g. a user archetype) makes the result
+        # unsound -- including inside a tuple where a sibling name resolves
+        # (`isinstance(x, (int, MyNode))`), which must NOT silently drop the
+        # unsupported arm. Emit a structured error instead of a wrong answer.
+        self._emit_unsupported_builtin_call(nd, "isinstance");
+        return None;
+    }
+    boxed = self._box_to_jacval(operand);
+    tag = self.builder.extract_value(boxed, 0, name="isinst.tag");
+    result: (ir.Value | None) = None;
+    for t in sorted(tags) {
+        cmp = self.builder.icmp_unsigned(
+            "==", tag, ir.Constant(i8, t), name="isinst.cmp"
+        );
+        result = cmp
+            if result is None
+            else self.builder.or_(result, cmp, name="isinst.or");
+    }
+    # Only the tag was inspected; release an owned pointer temporary so e.g.
+    # `isinstance([1, 2, 3], list)` does not leak the literal.
+    if isinstance(operand.type, ir.PointerType) and self._is_owned(operand) {
+        self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
+    }
     return result;
 }
 # ─── External Function Support ───────────────────────────────

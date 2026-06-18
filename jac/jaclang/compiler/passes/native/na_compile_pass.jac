@@ -26,6 +26,13 @@ obj NativeCompilePass(Transform) {
     def _compile_and_link_native_imports(
         module: uni.Module, main_mod: object, imports: list, target_machine: object
     ) -> None;
+    # Load a C shared library into the process so MCJIT can resolve its
+    # symbols at JIT time, stripping any AOT-only `$ORIGIN`/`@loader_path`
+    # loader token first. Returns True when the library was loaded.
+    def _jit_load_clib(lib_path: str) -> bool;
     # Link the portable OSP kernel's IR into an OSP program (issue #6146)
     def _link_osp_kernel(main_mod: object) -> None;
+    # True when the linked IR references the OSP kernel but no module defines it
+    # -- e.g. the spawn/visit lives in an imported module (issue #6669)
+    def _references_undefined_osp_kernel(main_mod: object) -> bool;
 }

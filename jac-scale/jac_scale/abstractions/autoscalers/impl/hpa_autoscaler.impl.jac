@@ -45,13 +45,30 @@ impl HPAAutoscaler.apply{
     for trigger in spec.triggers {
         if trigger.type not in ["cpu", "memory"] {
             raise ValueError(
-                f"Trigger type '{trigger.type}' is not supported by engine='hpa'. Use an engine that supports this trigger type in jac.toml."
+                f"Trigger '{trigger.name or trigger.type}' (type='{trigger.type}') requires KEDA. "
+                "Set autoscaler_engine = \"keda\" in [plugins.scale.kubernetes] in jac.toml."
             );
         }
     }
     manifest = self._build_manifests(spec);
     name = manifest["metadata"]["name"];
     namespace = manifest["metadata"]["namespace"];
+    # Engine-switch: remove any competing ScaledObject left from a prior keda-engine deploy.
+    # An active ScaledObject and a new HPA both drive spec.replicas on the same
+    # Deployment, producing non-deterministic scaling behaviour.
+    try {
+        client.CustomObjectsApi().delete_namespaced_custom_object(
+            group="keda.sh",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="scaledobjects",
+            name=f"{spec.app_name or spec.scale_target_name}-scaledobject"
+        );
+    } except ApiException as e {
+        if e.status not in [404, 422] {
+            raise;
+        }
+    }
     autoscaling_v2 = AutoscalingV2Api();
     try {
         autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
@@ -69,6 +86,7 @@ impl HPAAutoscaler.apply{
             raise;
         }
     }
+    return True;
 }
 
 """Delete the HPA resource; no-op if already absent."""
@@ -87,4 +105,42 @@ impl HPAAutoscaler.destroy_collection{
     AutoscalingV2Api().delete_collection_namespaced_horizontal_pod_autoscaler(
         namespace=namespace, label_selector=label_selector
     );
+    # Also sweep any KEDA resources left from a keda-engine deploy of the same app
+    custom_api = client.CustomObjectsApi();
+    for plural in ["scaledobjects", "triggerauthentications"] {
+        try {
+            items = custom_api.list_namespaced_custom_object(
+                group="keda.sh",
+                version="v1alpha1",
+                namespace=namespace,
+                plural=plural,
+                label_selector=label_selector
+            );
+            for item in items.get("items", []) {
+                item_name = item["metadata"]["name"];
+                try {
+                    custom_api.delete_namespaced_custom_object(
+                        group="keda.sh",
+                        version="v1alpha1",
+                        namespace=namespace,
+                        plural=plural,
+                        name=item_name
+                    );
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise;
+                    }
+                }
+            }
+        } except ApiException as e {
+            if e.status not in [404, 422] {
+                raise;
+            }
+        }
+    }
+}
+
+"""Return the HPA resource name for a scale target."""
+impl HPAAutoscaler.resource_name_for{
+    return f"{target}-hpa";
 }

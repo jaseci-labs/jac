@@ -2,7 +2,7 @@
 
 Environment variables
 ---------------------
-JAC_DEBUG_IR=1        — save IR to .jac_ir/<stem>.ll next to the source file
+JAC_DEBUG_IR=1        — save IR to <stem>.ll in the module's native cache dir
 JAC_VERIFY_IR=1       — run llvmlite parse_assembly to verify the IR
 """
 import from jaclang.cli.console { console }
@@ -109,18 +109,18 @@ impl NaIRGenPass.post_transform -> None {
 
     ir_str = str(self.llvm_module);
 
-    # ── Auto-save to .jac_ir/<stem>.ll when JAC_DEBUG_IR is set ─────────────
+    # ── Auto-save IR to the native cache dir when JAC_DEBUG_IR is set ────────
     if os.environ.get("JAC_DEBUG_IR", "").strip().lower() in (
         "1",
         "true",
         "yes",
         "on"
     ) {
+        import from jaclang.jac0core.jir { get_native_cache_dir }
         src_path = self.ir_in.loc.mod_path;
         if src_path {
-            src_dir = os.path.dirname(os.path.abspath(src_path));
             stem = os.path.splitext(os.path.basename(src_path))[0];
-            ir_dir = os.path.join(src_dir, ".jac_ir");
+            ir_dir = str(get_native_cache_dir(src_path));
             os.makedirs(ir_dir, exist_ok=True);
             auto_ir_path = os.path.join(ir_dir, stem + ".ll");
             with open(auto_ir_path, "w") as f {

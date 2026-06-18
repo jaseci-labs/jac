@@ -463,16 +463,21 @@ user-facing reference, [Primitives & Codespace Semantics](../reference/language/
 |-----------|--------|--------------|
 | `cl → sv` | HTTP `POST` to the walker / function endpoint exposed by `jac start` | `EsastGenPass` emits `fetch(...)` against the URL recorded in the binding |
 | `sv → cl` | None at runtime -- the client mounts its own DOM. The server only ships the bootstrap payload | `PyastGenPass` emits the static-file route for the bundle |
-| `sv → na` | ctypes call into the native shared object | `PyastGenPass` emits a `ctypes.CFUNCTYPE` stub; `NaIRGenPass` exposes the function with C ABI |
-| `na → sv` | C-callable thunk that re-enters CPython via the limited API | Generated alongside the `sv → na` stub |
+| `sv → na` | In-process `ctypes.CFUNCTYPE` over the JIT'd function address (MCJIT); an AOT `--shared` build is loaded across the process boundary instead | `PyastGenPass` emits the ctypes stub; `NaIRGenPass` exposes the function with C ABI |
+| `na → sv` | Python callback wrapped in a `ctypes.CFUNCTYPE` and registered as a JIT symbol (`llvm.add_symbol`), so MCJIT resolves the native call back into CPython | `interop_bridge.register_py_callbacks`, alongside the `sv → na` stub |
 | `na → na` | Direct symbol reference resolved by the in-tree linker | `InteropAnalysisPass` records the import; `NativeCompilePass` emits the relocation |
-| `sv → sv` (microservice) | HTTP between processes when an `sv import` resolves to a different deployment | `PyastGenPass` emits an `httpx` call; the manifest is consumed by `jac-scale` |
+| `sv → sv` (microservice) | HTTP between processes when an `sv import` resolves to a different deployment | `PyastGenPass` emits a generated `__jac_sv_client` RPC stub; the manifest is consumed by `jac-scale` |
 
 Boundary types are serialised through the schemas in
 [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/codeinfo.jac).
 The primitive contract guarantees that types like `int` and `list[str]`
 mean the same thing on both sides; non-primitive types must be reachable
 in both codespaces (typically as plain `obj` archetypes).
+
+For the full interop matrix -- every ordered pair plus the foreign (C),
+WebAssembly, and Python boundaries, the marshalling format, and how desktop
+apps stitch several boundaries together -- see
+[Cross-Codespace & Foreign Interop](interop.md).
 
 ---
 
