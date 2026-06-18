@@ -142,7 +142,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # real cluster); the provisioning helper is idempotent for re-deploys.
         try {
             self._deploy_context = MicroserviceDatabaseProvisioner(
-                k8s_target=self, logger=self.logger,
+                k8s_target=self,
+                logger=self.logger,
                 enabled=self.auto_build or self.no_image
             ).provision(
                 app_name
@@ -932,7 +933,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # no-image source ConfigMap(s), labeled managed=jac-scale.
         try {
             core_v1.delete_collection_namespaced_config_map(
-                namespace=namespace, label_selector="managed=jac-scale,jac-scale.role=source"
+                namespace=namespace,
+                label_selector="managed=jac-scale,jac-scale.role=source"
             );
         } except ApiException as e {
             if e.status != 404 {

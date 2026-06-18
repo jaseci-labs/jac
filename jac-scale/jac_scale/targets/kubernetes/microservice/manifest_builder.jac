@@ -408,9 +408,7 @@ obj MicroserviceManifestBuilder {
         # config loader reads JAC_SV_ROUTES when its own routes are empty.
         if routes {
             import json;
-            env.append(
-                {"name": "JAC_SV_ROUTES", "value": json.dumps(dict(routes))}
-            );
+            env.append({"name": "JAC_SV_ROUTES", "value": json.dumps(dict(routes))});
         }
         seen_peer_keys: set = set();
         for peer_name in routes {
@@ -759,8 +757,8 @@ obj MicroserviceManifestBuilder {
         # image_tag override is meaningless without a built image.
         resolved_image: str = (
             self.k8s_config.python_image
-            if self.no_image
-            else self._resolve_image(image, svc_cfg)
+                if self.no_image
+                else self._resolve_image(image, svc_cfg)
         );
         # JAC_IMAGE_REF (B-01): the resolved ref incl. K-29's content-id
         # suffix, surfaced so an in-pod self-check can report "running build X"

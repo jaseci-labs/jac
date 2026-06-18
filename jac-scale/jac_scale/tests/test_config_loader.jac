@@ -130,9 +130,7 @@ test "get_microservices_config reads routes from JAC_SV_ROUTES when config empty
     os.environ["JAC_SV_ROUTES"] = "{\"orders_app\": \"/api/orders\", \"cart_app\": \"/api/cart\"}";
     try {
         out = cfg.get_microservices_config();
-        assert out["routes"] == {
-            "orders_app": "/api/orders", "cart_app": "/api/cart"
-        };
+        assert out["routes"] == {"orders_app": "/api/orders", "cart_app": "/api/cart"};
     } finally {
         del os.environ["JAC_SV_ROUTES"];
     }
@@ -140,9 +138,7 @@ test "get_microservices_config reads routes from JAC_SV_ROUTES when config empty
 
 test "get_microservices_config: explicit config routes win over JAC_SV_ROUTES" {
     cfg = JacScaleConfig();
-    cfg._config = {
-        "microservices": {"routes": {"real_app": "/api/real"}}
-    };
+    cfg._config = {"microservices": {"routes": {"real_app": "/api/real"}}};
     os.environ["JAC_SV_ROUTES"] = "{\"ghost_app\": \"/api/ghost\"}";
     try {
         out = cfg.get_microservices_config();
