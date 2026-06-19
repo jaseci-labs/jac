@@ -25,6 +25,7 @@ The language spec covers all core Jac constructs:
 
 ## Deployment & Scaling
 
+- **[jac-scale Overview](plugins/jac-scale-overview.md)** - What jac-scale does and how the pieces fit together
 - **[jac-scale Reference](plugins/jac-scale.md)** - Production deployment, API generation, Kubernetes, monitoring
 
 ## Tools & Config
