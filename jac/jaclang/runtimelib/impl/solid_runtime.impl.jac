@@ -127,9 +127,14 @@ Solid renders `root` once as the app shell and hands the matched route to it as
 `props.children`; this publishes those props on `__JacOutletContext` and renders
 the (param-less) layout, so the layout's `<Outlet/>` reads the children back."""
 impl __jacMakeLayoutRoot(layout_component: any) -> any {
-    return lambda props: any -> JsxElement { return h(
-        __JacOutletContext.Provider, {"value": props}, h(layout_component, {})
-    ); };
+    return lambda props: any -> JsxElement {
+        LayoutComponent = layout_component;
+        return (
+            <__JacOutletContext.Provider value={props}>
+                <LayoutComponent/>
+            </__JacOutletContext.Provider>
+        );
+    };
 }
 
 """Composed router hook — mirrors the React shim's `useRouter`, returning the
