@@ -84,13 +84,6 @@ obj EditorState {
     }
 }
 
-obj Event {
-    has id: int = 0,
-        kind: str = "",
-        text: str = "",
-        node: str = "";
-}
-
 """One wrapped transcript line: composed text plus the source event's kind so the
 renderer can derive its color/attr without reaching back into `events`.
 pre_styled: text already contains ANSI SGR codes and is padded to inner_w;
@@ -100,6 +93,19 @@ obj DisplayRow {
         kind: str = "",
         is_continuation: bool = False,
         pre_styled: bool = False;
+}
+
+obj Event {
+    has id: int = 0,
+        kind: str = "",
+        text: str = "",
+        node: str = "",
+        # Per-event render cache: skip md_render for events whose text and
+        # terminal width haven't changed since the last build_rows call.
+        # cache_text_len = -1 means "not cached" (initial / after text change).
+        cache_text_len: int = -1,
+        cache_width: int = -1,
+        cached_rows: list[DisplayRow] = [];
 }
 
 obj TuiState {
@@ -146,10 +152,20 @@ obj TuiState {
         # Inline autocomplete state (phase 7). Managed by autocomplete.na.jac.
         ac: AcState = AcState();
 
+    # A transcript/layout change is always a visible change, so it must both
+    # rebuild the display-row cache (layout_dirty, consumed by build_rows) AND
+    # repaint (dirty, the render gate). Funnelling both through one method keeps
+    # them in lockstep: a mutator can never mark the layout stale without also
+    # asking for a paint, which is the bug class this invariant removes.
+    def mark_layout_dirty {
+        self.dirty = True;
+        self.layout_dirty = True;
+    }
+
     def reset_events {
         self.events = [];
         self.display_rows = [];
-        self.layout_dirty = True;
+        self.mark_layout_dirty();
         self.follow_tail = True;
         self.viewport_top = 0;
         self.ac.dismiss();
@@ -165,7 +181,7 @@ obj TuiState {
                     if len(node_name) > 0 {
                         ev.node = node_name;
                     }
-                    self.layout_dirty = True;
+                    self.mark_layout_dirty();
                     return;
                 }
             }
@@ -178,7 +194,9 @@ obj TuiState {
                 if len(node_name) > 0 {
                     ev.node = node_name;
                 }
-                self.layout_dirty = True;
+                # Text replaced entirely — invalidate render cache.
+                ev.cache_text_len = -1;
+                self.mark_layout_dirty();
                 return;
             }
         }
@@ -188,7 +206,7 @@ obj TuiState {
         if n > 2000 {
             self.events = self.events[n - 2000:];
         }
-        self.layout_dirty = True;
+        self.mark_layout_dirty();
     }
 
     # Append delta text to an existing streaming event (EVA IPC line). Avoids
@@ -197,7 +215,7 @@ obj TuiState {
         for ev in self.events {
             if ev.id == ev_id {
                 ev.text = ev.text + delta;
-                self.layout_dirty = True;
+                self.mark_layout_dirty();
                 return;
             }
         }

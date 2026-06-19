@@ -3,13 +3,11 @@
 Row strings carry SGR color codes but no cursor-positioning sequences.
 The DiffEngine (diff.na.jac) owns cursor movement and paints changed rows.
 
-Layout (0-indexed rows):
-  0        │ status  active  [hints right-aligned]  │
-  1        ├────────────────────────────────────────┤
-  2..R-4   │ transcript events                      │
+Layout (0-indexed rows, editor_h=1):
+  0..R-4   │ transcript events                      │
   R-3      ├────────────────────────────────────────┤
   R-2      │ › input text                           │
-  R-1      │ cwd ─────────────── model               │
+  R-1      │ [active] ──── ~/cwd ──── model         │
 """
 
 import from .state { TuiState, DisplayRow, EditorState }
@@ -108,98 +106,56 @@ def _kind_sgr(kind: str) -> str {
 }
 
 # ── Row builders ─────────────────────────────────────────────────────────────
-def _footer_row(cwd: str, model: str, cols: int) -> str {
-    # Footer row: │ cwd ─────────────── model │
-    # Fixed left = 2 vis cols ("│ "), right = 2 (" │").
-    # Remaining space: cwd + dashes + model.
-    model_s: str = model;
-    if visible_width(model_s) == 0 {
-        model_s = "no model";
-    }
-    model_len = visible_width(model_s);
-
-    cwd_d = _cwd_short(cwd);
-    cwd_avail = cols - 6 - model_len;
-    if cwd_avail < 0 {
-        cwd_avail = 0;
-    }
-    cwd_disp = ansi_trunc(cwd_d, cwd_avail);
-    cwd_len = visible_width(cwd_disp);
-
-    total_dashes = cols - 4 - cwd_len - model_len;
-    if total_dashes < 1 {
-        total_dashes = 1;
-    }
-
-    row: str = _SB + "│ ";
-    if cwd_len > 0 {
-        row = row + _SC + cwd_disp;
-    }
-    row = row + _SB + term_dashes(total_dashes);
-    if model_len > 0 {
-        row = row + _SM + model_s;
-    }
-    row = row + " " + _SB + "│" + _SR;
-    return row;
-}
-
-def _status_row(state: TuiState, cols: int) -> str {
-    # Row 0: │ status  active          hints │
+def _status_footer_row(state: TuiState, cols: int) -> str {
+    # Bottom row: │ [active] ──── ~/cwd ──── model │
+    # The status pill (○ idle / ● running / ✓ done / ○ stopping) was removed;
+    # the active task, cwd and model remain.
     inner_w = cols - 4;
-
-    st_text: str = "○ idle";
-    st_sgr = ansi_sgr(140, 140, 140, TH_BG_R, TH_BG_G, TH_BG_B, TH_DIM);
-    if state.status == "running" {
-        st_text = "● running";
-        st_sgr = ansi_sgr(255, 200, 50, TH_BG_R, TH_BG_G, TH_BG_B, 0);
-    }
-    if state.status == "done" {
-        st_text = "✓ done";
-        st_sgr = ansi_sgr(80, 200, 80, TH_BG_R, TH_BG_G, TH_BG_B, 0);
-    }
-    if state.status == "stopping" {
-        st_text = "○ stopping";
-        st_sgr = ansi_sgr(255, 80, 80, TH_BG_R, TH_BG_G, TH_BG_B, 0);
-    }
-    # Use visible_width: "○", "●", "✓" are 3-byte UTF-8 but 1 visible column each.
-    st_len = visible_width(st_text);
 
     act_disp: str = "";
     act_len: int = 0;
     if len(state.active) > 0 {
-        act_max = inner_w - st_len - 3;
+        act_max = inner_w - 3;
         if act_max > 0 {
             act_disp = ansi_trunc(state.active, act_max);
             act_len = visible_width(act_disp);
         }
     }
 
-    hints: str = "^O commands  ^G stop  ^R reset  ^C quit";
-    hints_len = len(hints);  # pure ASCII: len() == visible_width()
+    model_s: str = state.model_name;
+    if visible_width(model_s) == 0 {
+        model_s = "no model";
+    }
+    model_len = visible_width(model_s);
 
-    left_len = st_len + 1;
-    if act_len > 0 {
-        left_len = left_len + 1 + act_len;
+    left_len = act_len;
+
+    cwd_d = _cwd_short(state.cwd);
+    cwd_avail = inner_w - left_len - model_len - 3;
+    if cwd_avail < 0 {
+        cwd_avail = 0;
     }
-    right_len = hints_len + 1;
-    gap = inner_w - left_len - right_len;
-    if gap < 1 {
-        gap = 1;
+    cwd_disp = ansi_trunc(cwd_d, cwd_avail);
+    cwd_len = visible_width(cwd_disp);
+
+    right_len = cwd_len + model_len;
+    if cwd_len > 0 {
+        right_len = right_len + 1;
+    }
+    total_dashes = inner_w - left_len - right_len;
+    if total_dashes < 1 {
+        total_dashes = 1;
     }
 
-    row: str = _SB + "│ " + st_sgr + st_text;
+    row: str = _SB + "│ ";
     if act_len > 0 {
-        row = row + " " + ansi_sgr(
-            255, 210, 60, TH_BG_R, TH_BG_G, TH_BG_B, 0
-        ) + act_disp;
+        row = row + ansi_sgr(255, 210, 60, TH_BG_R, TH_BG_G, TH_BG_B, 0) + act_disp;
     }
-    if gap >= 1 and hints_len <= inner_w - left_len - 2 {
-        row = row + term_spaces(gap);
-        row = row + ansi_sgr(
-            TH_BORDER_R, TH_BORDER_G, TH_BORDER_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_DIM
-        ) + hints;
+    row = row + _SB + term_dashes(total_dashes);
+    if cwd_len > 0 {
+        row = row + _SC + cwd_disp + " ";
     }
-    row = row + " " + _SB + "│" + _SR;
+    row = row + _SM + model_s + " " + _SB + "│" + _SR;
     return row;
 }
 
@@ -469,7 +425,7 @@ def _editor_height(ed: EditorState, cols: int, rows: int) -> int {
         text_w = 1;
     }
     total_vl = _ed_total_vlines(ed, text_w);
-    max_h: int = rows - 5;  # leave room for status+divider+sep+at_least_1_transcript+footer
+    max_h: int = rows - 3;  # leave room for at_least_1_transcript+input_divider+footer
     if max_h < 1 {
         max_h = 1;
     }
@@ -499,14 +455,8 @@ def screen_render(state: TuiState, cols: int, rows: int) -> list[str] {
         return out;
     }
 
-    # Row 0: status bar
-    out.append(_status_row(state, cols));
-
-    # Row 1: content divider
-    out.append(_divider_row("├", "┤", cols));
-
     # Editor height is variable: compute it now so transcript area is sized correctly.
-    # Layout: rows 0-1 = status/divider; 1 separator before editor; editor_h rows; 1 footer.
+    # Layout: transcript; 1 input divider; editor_h rows; 1 footer.
     ed = state.editor;
     editor_h = _editor_height(ed, cols, rows);
     is_running = state.status == "running";
@@ -520,9 +470,9 @@ def screen_render(state: TuiState, cols: int, rows: int) -> list[str] {
         }
     }
 
-    # Transcript occupies rows 2 .. (rows - 3 - editor_h - ac_h).
-    # 1 separator row above editor, ac_h AC rows, editor_h content rows, 1 footer row.
-    transcript_h = rows - 2 - 1 - editor_h - ac_h - 1;
+    # Transcript occupies rows 0 .. (rows - 3 - editor_h - ac_h).
+    # 1 input divider, editor_h rows, ac_h rows, 1 status/footer row.
+    transcript_h = rows - 1 - editor_h - ac_h - 1;
     if transcript_h < 0 {
         transcript_h = 0;
     }
@@ -615,8 +565,8 @@ def screen_render(state: TuiState, cols: int, rows: int) -> list[str] {
         ri = ri + 1;
     }
 
-    # Footer row with cwd and model info
-    out.append(_footer_row(state.cwd, state.model_name, cols));
+    # Footer row with status, cwd and model info
+    out.append(_status_footer_row(state, cols));
 
     if state.overlay_active {
         modal = overlay_build_modal(state, cols, rows);
