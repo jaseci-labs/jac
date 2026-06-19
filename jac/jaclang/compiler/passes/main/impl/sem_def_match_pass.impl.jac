@@ -1,7 +1,7 @@
 """Connect sem strings from source symbol table to declarations in target symbol table.
 
 When source_sym_tab and target_sym_tab are the same, this connects within the same module.
-When different, it connects implementations from impl_mod to declarations in the main module.
+When different, it connects implementations in one scope to declarations in another.
 
 Walking each SemDef's `target: Sequence[NameAtom]` directly (rather than splitting
 the string-form `sem.A.B.C` of the SemDef's symbol name) lets us bind each target

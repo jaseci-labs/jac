@@ -62,8 +62,8 @@ target symbol table.
 
         When source_sym_tab and target_sym_tab are the same, this connects
 within the same module.
-        When different, it connects implementations from impl_mod to
-declarations in the main module.
+        When different, it connects implementations in one scope to
+declarations in another.
         """
     def connect_impls(
         self: DeclImplMatchPass,
