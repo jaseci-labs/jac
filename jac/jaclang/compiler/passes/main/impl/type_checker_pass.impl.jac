@@ -1110,7 +1110,14 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
 
 impl TypeCheckPass.after_pass(self: TypeCheckPass) -> None {
     # Flag lambda params left Unknown (seeding settles only once fully typed).
-    self._check_unresolved_lambda_params();
+    # Guard with _emit_diagnostics: param.name.type is re-derived in every
+    # full run, so there is nothing to defer — and a quiet inference sweep over
+    # a JIR-loaded dependency has degraded cross-module link state, where a
+    # param that the owning full run resolves can still look Unknown. Stashing
+    # E1119 there would replay as a false positive on well-typed code.
+    if getattr(self, '_emit_diagnostics', True) {
+        self._check_unresolved_lambda_params();
+    }
     # Full-diagnostic runs replay diagnostics deferred by earlier suppressed
     # inference runs on this module: evaluator memoization (Expr.type cache)
     # means this run could not re-derive them live. Live re-emissions during
