@@ -484,31 +484,42 @@ if (emailInput) {
     `errorText=${emailError() ? JSON.stringify(emailError().textContent) : "null"}`);
 
   // Dirty the remaining required fields so the multi-field schema can validate.
+  // Fire both `input` (delegated by Solid) and `change` (direct listener) so the
+  // handleChange path is exercised regardless of which event Solid delegates.
   const agreeCb = document.querySelector('input[type="checkbox"]');
   if (agreeCb) {
     agreeCb.checked = true;
+    agreeCb.dispatchEvent(new window.Event("input", { bubbles: true }));
     agreeCb.dispatchEvent(new window.Event("change", { bubbles: true }));
   }
+  await Promise.resolve(); await Promise.resolve();
+
   const planSelect = document.querySelector("select");
   if (planSelect) {
     planSelect.value = "pro";
+    planSelect.dispatchEvent(new window.Event("input", { bubbles: true }));
     planSelect.dispatchEvent(new window.Event("change", { bubbles: true }));
   }
+  await Promise.resolve(); await Promise.resolve();
+
   const adminRadio = document.querySelector('input[type="radio"][value="admin"]');
   if (adminRadio) {
     adminRadio.checked = true;
+    adminRadio.dispatchEvent(new window.Event("input", { bubbles: true }));
     adminRadio.dispatchEvent(new window.Event("change", { bubbles: true }));
   }
+  // Allow microtask and macrotask rounds for the async Zod Standard Schema
+  // validator and Solid's reactive re-render to settle.
   await Promise.resolve();
   await Promise.resolve();
   await new Promise((r) => setTimeout(r, 0));
-  await new Promise((r) => setTimeout(r, 10));
+  await new Promise((r) => setTimeout(r, 50));
 
   const submitLive = document.querySelector('button[type="submit"]');
   if (submitLive) {
     check("submit enabled after form is dirtied",
       !submitLive.disabled,
-      `disabled=${submitLive.disabled}`);
+      `disabled=${submitLive.disabled} isDirty/isValid debug: form has ${document.querySelectorAll('[data-testid]').length} testid els`);
   }
 }
 
@@ -582,10 +593,10 @@ if (submitLive && !submitLive.disabled) {
   let submitError = false;
   try {
     submitLive.click();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    // Give TanStack Form's async handleSubmit chain (validateAllFields, then
+    // onSubmit callback) time to complete: a macrotask ensures all pending
+    // microtasks (including Promise.all inside handleSubmit) are flushed first.
+    await new Promise((r) => setTimeout(r, 0));
   } catch (e) {
     submitError = true;
     check("submit click fires onSubmit without throwing", false, String(e));
@@ -913,12 +924,13 @@ test "solid JacForm renders and validates in jsdom (TanStack Form end-to-end)" {
     # End-to-end proof of the TanStack Form migration for the Solid backend:
     # `JacForm` mounts correctly via `@tanstack/solid-form`, email validation
     # fires on blur (onBlur validator) and clears on onChange without a second
-    # blur (`onTouched` approximation: both onBlur + onChange wired), the
-    # checkbox and select branches render and accept change events, the select
-    # value is reflected after handleChange, the radio branch renders one input
-    # per enum option with correct initial state and marks the clicked option
-    # checked, and the full submit flow (dirty → enabled → onSubmit fires) is
-    # verified end-to-end. Same opt-in + toolchain as the counter test.
+    # blur (`onTouched` approximation: onChange-only, error display gated on
+    # isTouched), the checkbox and select branches render and accept change
+    # events, the select value is reflected after handleChange, the radio branch
+    # renders one input per enum option with correct initial state and marks the
+    # clicked option checked, and the full submit flow (dirty → enabled →
+    # onSubmit fires) is verified end-to-end. Same opt-in + toolchain as the
+    # counter test.
     _require_client_integration();
     bun = get_bun();
     if bun is None {

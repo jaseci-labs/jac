@@ -373,9 +373,11 @@ impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
     } elif form_mode == "onBlur" {
         validators["onBlur"] = schema;
     } elif form_mode == "onTouched" {
-        # Both wired so post-touch onChange clears errors; JacForm gates submit on
-        # isTouched so isValid appearing false pre-blur doesn't disable the button.
-        validators["onBlur"] = schema;
+        # Only onChange so errors are always fresh when values change. The error
+        # display is gated on isTouched so errors appear only after blur. Using
+        # both onChange+onBlur leaves stale onBlur entries in other fields'
+        # errorMap (set when the first field blurs), keeping isValid=false even
+        # after those fields have valid values.
         validators["onChange"] = schema;
     } else {
         console.warn(f"Unknown validateMode '{form_mode}'; falling back to onBlur");
@@ -385,7 +387,8 @@ impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
     if onSubmit {
         opts["onSubmit"] = lambda args: any { return onSubmit(args.value); };
     }
-    return createForm(lambda -> any { return opts; });
+    f = createForm(lambda -> any { return opts; });
+    return f;
 }
 
 impl JacForm(props: dict) -> JsxElement {
@@ -493,6 +496,9 @@ impl JacForm(props: dict) -> JsxElement {
                     <input
                         type="checkbox"
                         checked={fieldApi().state.value || False}
+                        onInput={lambda e: any { fieldApi().handleChange(
+                            e.target.checked
+                        ); }}
                         onChange={lambda e: any { fieldApi().handleChange(
                             e.target.checked
                         ); }}
@@ -510,6 +516,7 @@ impl JacForm(props: dict) -> JsxElement {
             return (
                 <select
                     value={fieldApi().state.value || ""}
+                    onInput={lambda e: any { fieldApi().handleChange(e.target.value); }}
                     onChange={lambda e: any { fieldApi().handleChange(
                         e.target.value
                     ); }}
@@ -541,6 +548,9 @@ impl JacForm(props: dict) -> JsxElement {
                                 type="radio"
                                 value={opt}
                                 checked={fieldApi().state.value == opt}
+                                onInput={lambda e: any { fieldApi().handleChange(
+                                    e.target.value
+                                ); }}
                                 onChange={lambda e: any { fieldApi().handleChange(
                                     e.target.value
                                 ); }}
@@ -779,26 +789,35 @@ impl JacForm(props: dict) -> JsxElement {
                 ]; }}
             >
                 {lambda snap: any {
-                    isSubmitting = snap[0];
-                    isDirty = snap[1];
-                    isValid = snap[2];
-                    isTouched = snap[3];
-                    isDisabled = (
-                        isSubmitting
-                        or not isDirty
-                        or ((validateMode != "onTouched" or isTouched) and not isValid)
+                    isDisabled = createMemo(
+                        lambda -> any {
+                            _s = snap();
+                            isSubmitting = _s[0];
+                            isDirty = _s[1];
+                            isValid = _s[2];
+                            isTouched = _s[3];
+                            return (
+                                isSubmitting
+                                or not isDirty
+                                or (
+                                    (validateMode != "onTouched" or isTouched)
+                                    and not isValid
+                                )
+                            );
+                        }
                     );
+                    isSubmittingM = createMemo(lambda -> any { return snap()[0]; });
                     return (
                         <button
                             type="submit"
-                            disabled={isDisabled}
+                            disabled={isDisabled()}
                             className={buttonClassName}
                             style={{
                                 width: "100%",
-                                cursor: ("not-allowed" if isDisabled else "pointer")
+                                cursor: ("not-allowed" if isDisabled() else "pointer")
                             }}
                         >
-                            {isSubmitting and "Submitting..."}{not isSubmitting
+                            {isSubmittingM() and "Submitting..."}{not isSubmittingM()
                             and submitLabel}
                         </button>
                     );

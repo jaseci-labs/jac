@@ -31,6 +31,7 @@ exported from `@jac/runtime` for every framework.
 
 import from 'solid-js' {
     createSignal as solidCreateSignal,
+    createMemo,
     createContext as solidCreateContext,
     useContext as solidUseContext,
     ErrorBoundary as SolidErrorBoundary,

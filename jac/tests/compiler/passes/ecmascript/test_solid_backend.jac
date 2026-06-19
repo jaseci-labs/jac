@@ -414,8 +414,14 @@ test "solid runtime shim reaches router/form parity with the React shim" {
     use_jac_form = js.split("function useJacForm(", 1)[1].split("function JacForm(", 1)[
         0
     ];
-    assert 'validators["onBlur"] = schema' in use_jac_form;
-    assert 'validators["onChange"] = schema' in use_jac_form;
+    # Solid onTouched uses onChange only (stale onBlur errorMap across fields);
+    # error display is gated on isTouched in JacForm. onBlur mode still exists.
+    assert (
+        'validators["onBlur"] = schema;\n        validators["onChange"] = schema' not in use_jac_form
+    ) , "Solid onTouched must not wire both onBlur and onChange validators";
+    assert (
+        'form_mode === "onTouched")) {\n    validators["onChange"] = schema;' in use_jac_form
+    ) , "Solid onTouched must validate on change only";
     # Error boundary + async boundary over solid-js primitives.
     assert "function JacClientErrorBoundary(" in js;
     assert "function ErrorFallback(" in js;

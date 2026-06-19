@@ -2,10 +2,12 @@
 
 Mounts a `JacForm` with an email field (string with `.email()` validation), a
 boolean checkbox field, an enum select field, and an enum radio field, using the
-default `validateMode="onTouched"`. The Solid runtime wires both `onBlur` and
-`onChange` validators for `onTouched`. `JacForm` gates the submit button on
-`isTouched` so pre-blur `isValid=false` (eager onChange) does not disable the
-button early.
+default `validateMode="onTouched"`. The Solid runtime wires only the `onChange`
+validator for `onTouched` mode (not `onBlur`) so that sibling fields do not
+accumulate stale `errorMap["blur"]` entries when the first field is blurred;
+error display is gated on `isTouched` to preserve the "show errors after first
+touch" UX. `JacForm` gates the submit button on `isTouched` so pre-blur
+`isValid=false` (eager onChange) does not disable the button early.
 
 The jsdom harness in `test_solid_jsdom.jac` verifies:
 
