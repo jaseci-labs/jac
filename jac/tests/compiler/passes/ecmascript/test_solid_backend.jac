@@ -349,6 +349,10 @@ test "solid emits vite-plugin-solid lines for the bundler config" {
     assert "solidPlugin()" in call_line;
 }
 
+test "solid prepends only __jacSpawn (no __jacJsx factory)" {
+    assert SolidBackend().required_globals() == ["__jacSpawn"];
+}
+
 test "solid runtime shim compiles and links its impl bodies" {
     # Compile the real Solid runtime (shim + its `impl/` annex) the way the
     # bundler does and assert the bodies actually link — a parse error or an

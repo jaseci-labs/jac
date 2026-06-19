@@ -13,6 +13,11 @@ impl SolidBackend.name -> str {
     return "solid";
 }
 
+"""Bare globals the bundler prepends — no `__jacJsx` on the dom-expressions path."""
+impl SolidBackend.required_globals -> list[str] {
+    return ["__jacSpawn"];
+}
+
 """Names that resolve to the `solid-js` core; everything else stays runtime."""
 impl SolidBackend._solid_symbols -> set[str] {
     return {
