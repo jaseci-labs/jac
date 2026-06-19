@@ -66,7 +66,13 @@ obj JacLangServer(JacProgram, LanguageServer) {
 
     def _clear_alerts_for_file(file_path: str) -> None;
     def get_ir(file_path: str) -> Optional[uni.Module];
-    def update_modules(file_path: str, build: uni.Module, need: bool = True) -> None;
+    def update_modules(
+        file_path: str,
+        build: uni.Module,
+        need: bool = True,
+        files: (list[str] | None) = None
+    ) -> None;
+
     def type_check_file(
         file_uri: str, cancel_token: threading.Event | None = None
     ) -> bool;

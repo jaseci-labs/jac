@@ -11,10 +11,38 @@ impl SemTokManager.postinit -> None {
 Iterates all in-module nodes and collects those with valid semantic tokens.
 """
 impl SemTokManager.collect_resolved_nodes(ir: uni.Module) -> list {
+    import from pathlib { Path }
+    # Resolve the target file once; cache per distinct node mod_path so a merged
+    # module covering a few source files does at most a handful of resolves.
+    target: (str | None) = None;
+    if self.target_path {
+        try {
+            target = str(Path(self.target_path).resolve());
+        } except Exception {
+            target = self.target_path;
+        }
+    }
+    resolved_cache: dict = {};
+    def belongs(mp: (str | None)) -> bool {
+        if target is None {
+            return True;
+        }
+        if not mp {
+            return False;
+        }
+        if mp not in resolved_cache {
+            try {
+                resolved_cache[mp] = str(Path(mp).resolve());
+            } except Exception {
+                resolved_cache[mp] = mp;
+            }
+        }
+        return resolved_cache[mp] == target;
+    }
     nodes: list = [];
     for nd in ir._in_mod_nodes {
         if isinstance(nd, uni.NameAtom) {
-            if nd.sem_token {
+            if nd.sem_token and belongs(nd.loc.mod_path) {
                 nodes.append(nd);
             }
         }
