@@ -107,17 +107,22 @@ obj FirebaseSSOProvider(SSOProvider) {
         SSOUserInfo with email and Firebase UID as external_id, plus the
         display name and picture from the token claims when present.
     """
-    def handle_id_token(id_token: str) -> SSOUserInfo {
+    async def handle_id_token(id_token: str) -> SSOUserInfo {
         if not id_token {
             raise ValueError("Missing 'id_token'.");
         }
 
+        import asyncio;
+        import functools;
         # verify_id_token checks signature, expiry, audience (project), and
         # issuer. check_revoked also rejects tokens for users who have been
         # disabled or signed out since the token was minted (one extra read).
+        # Run in a thread pool to avoid blocking the async event loop.
         auth_mod: any = auth;
-        decoded: any = auth_mod.verify_id_token(
-            id_token, app=self._app, check_revoked=True
+        decoded: any = await asyncio.to_thread(
+            functools.partial(
+                auth_mod.verify_id_token, id_token, app=self._app, check_revoked=True
+            )
         );
 
         email = decoded.get("email");
@@ -158,6 +163,6 @@ obj FirebaseSSOProvider(SSOProvider) {
         if not id_token_raw {
             raise ValueError("Missing 'id_token' in request body.");
         }
-        return self.handle_id_token(str(id_token_raw));
+        return await self.handle_id_token(str(id_token_raw));
     }
 }

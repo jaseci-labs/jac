@@ -5,11 +5,16 @@ import from jac_scale._db_helpers { _validate_not_read_only }
 # ===== FIRESTORE HELPERS =====
 """Generate Firestore collection name with db namespace.
 
-Uses `__` as a separator. Do not use `__` in `db_name` or `col_name` — the
-separator is not escaped, so names containing `__` can produce ambiguous
-collection paths that silently collide with other (db_name, col_name) pairs.
+Uses `__` as a separator. Raises ValueError if `db_name` or `col_name`
+contains `__` to prevent ambiguous collection paths.
 """
 def _firestore_collection_name(db_name: str, col_name: str) -> str {
+    if '__' in db_name or '__' in col_name {
+        raise ValueError(
+            f"Firestore collection name components must not contain '__': "
+            f"db_name={db_name!r}, col_name={col_name!r}"
+        );
+    }
     return f"{db_name}__{col_name}";
 }
 

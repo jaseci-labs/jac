@@ -436,11 +436,9 @@ impl JacScaleUserManager.firebase_token_auth_with_id_token(
             meta=Meta(extra={'http_status': 501})
         );
     }
-    credentials = self.SUPPORTED_PLATFORMS[platform];
-    import from jac_scale.sso.firebase { FirebaseSSOProvider }
-    sso = FirebaseSSOProvider(project_id=credentials['project_id']);
+    sso = self.get_sso(platform);
     try {
-        user_info = sso.handle_id_token(id_token);
+        user_info = await sso.handle_id_token(id_token);
         return self._complete_sso_login(platform, user_info);
     } except Exception as e {
         # Token verification failed (bad signature, expired, wrong audience,
