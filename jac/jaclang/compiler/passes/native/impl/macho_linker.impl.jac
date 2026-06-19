@@ -616,8 +616,17 @@ impl MachOLinker.build_executable -> bytes {
         or sec.name == "__eh_frame" {
             continue;
         }
-        is_text = sec.segname == "__TEXT"
-        and (sec.flags & S_ATTR_PURE_INSTRUCTIONS) != 0;
+        # Accept both S_ATTR_PURE_INSTRUCTIONS (0x80000000) and
+        # S_ATTR_SOME_INSTRUCTIONS (0x400) as code markers.  Native macOS arm64
+        # LLVM at -O2 may emit cold code in sections (e.g. __TEXT:__text_cold)
+        # that carry only S_ATTR_SOME_INSTRUCTIONS; insisting on PURE_INSTRUCTIONS
+        # alone causes those sections to be misclassified as rodata, which places
+        # the symbols at the wrong virtual address in the export trie (causing
+        # dlsym to return a garbage pointer) or drops them if the section name
+        # falls outside __TEXT/__DATA (causing dlsym to fail with "symbol not
+        # found").
+        _code_attr = S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS;
+        is_text = (sec.flags & _code_attr) != 0;
         is_rodata = sec.segname == "__TEXT" and not is_text and len(sec.data) > 0;
         is_data = sec.segname == "__DATA";
 
@@ -1614,8 +1623,11 @@ impl MachOLinker.build_shared_object -> bytes {
         or sec.name == "__eh_frame" {
             continue;
         }
-        is_text = sec.segname == "__TEXT"
-        and (sec.flags & S_ATTR_PURE_INSTRUCTIONS) != 0;
+        # Accept S_ATTR_SOME_INSTRUCTIONS (0x400) in addition to PURE (0x80000000)
+        # so cold/split code sections on native macOS arm64 are classified as code
+        # and their symbols reach the export trie with the correct virtual address.
+        _code_attr = S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS;
+        is_text = (sec.flags & _code_attr) != 0;
         is_rodata = sec.segname == "__TEXT" and not is_text and len(sec.data) > 0;
         is_data = sec.segname == "__DATA";
         sec_key = f"{sec.segname}:{sec.name}";
@@ -2008,9 +2020,11 @@ impl MachOLinker.build_shared_object -> bytes {
 
     # --- Export trie (what dlsym/ld resolve against) ---
     export_pairs: list[tuple[str, int]] = [];
+    _unresolved_exports: list[str] = [];
     for nm in self.export_symbols {
         _mn = _resolve_macho_name(local_sym_map, nm);
         if _mn is None {
+            _unresolved_exports.append(nm);
             continue;
         }
         (seg, off) = local_sym_map[_mn];
@@ -2018,6 +2032,19 @@ impl MachOLinker.build_shared_object -> bytes {
             seg, off, text_sec_vaddr, const_sec_vaddr, data_sec_vaddr
         );
         export_pairs.append((_mn, va));
+    }
+    if _unresolved_exports {
+        import warnings;
+        _sym_sample = list(local_sym_map.keys())[:30];
+        warnings.warn(
+            f"MachO shared-object: {len(_unresolved_exports)} export symbol(s) "
+            f"not found in local_sym_map and will be absent from the export trie "
+            f"(dlsym will fail): {_unresolved_exports}. "
+            f"Section breakdown: code={len(code_data)}B rodata={len(rodata_data)}B "
+            f"data={len(data_data)}B. "
+            f"First 30 local symbols: {_sym_sample}",
+            stacklevel=2
+        );
     }
     export_trie = _build_export_trie(export_pairs);
 

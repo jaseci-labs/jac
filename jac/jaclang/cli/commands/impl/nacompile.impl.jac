@@ -219,7 +219,13 @@ impl nacompile(
     is_windows = ("windows" in target)
     or (target in ["win", "win64", "mingw"])
     or (not target and sys.platform == "win32");
-    if is_windows {
+    if is_windows and (sys.platform != "win32" or "-" in target) {
+        # Cross-compiling to Windows from a non-Windows host: pin the triple
+        # explicitly so NaIRGenPass and the emit step both target the correct ABI.
+        # On a native Windows host with a short alias (e.g. --target windows),
+        # leave JAC_NATIVE_TARGET unset so both passes use from_default_triple();
+        # some llvmlite Windows builds emit ELF (not COFF) when the triple is
+        # provided via env var but produce correct COFF with the native default.
         os.environ["JAC_NATIVE_TARGET"] = (
             target if "-" in target else "x86_64-pc-windows-msvc"
         );

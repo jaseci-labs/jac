@@ -87,6 +87,14 @@ glob FORBIDDEN: dict[str, str] = {
              "surface-shape dispatch on declared annotation forms "
              "(assessed train 4: legitimately kept)"
          ),
+         ("native/na_ir_gen_pass.impl/types.impl.jac", "type_evaluator"): (
+             1,
+             "type_check=False leaves annotation .type unstamped "
+             "(TypeCheckPass never runs in nacompile); calls the central "
+             "type evaluator once to stamp the missing fact before lowering "
+             "-- a read of the central API, not re-running analysis. "
+             "Result is cached on the node by get_type_of_expression."
+         ),
 
      };
 

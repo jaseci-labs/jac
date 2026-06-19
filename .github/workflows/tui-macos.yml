@@ -127,6 +127,63 @@ jobs:
             || { echo "FAIL: libtui.dylib not properly signed"; exit 1; }
           echo "ok: codesign verify passed"
 
+      - name: Assert libtui.dylib export trie is complete
+        working-directory: jac-super/jac_super/ai_tui_na
+        run: |
+          python3 - << 'PYEOF'
+          import struct, sys
+
+          def parse_uleb128(data, offset):
+              result = 0; shift = 0
+              while True:
+                  b = data[offset]; offset += 1
+                  result |= (b & 0x7F) << shift; shift += 7
+                  if (b & 0x80) == 0: break
+              return result, offset
+
+          def traverse_trie(data, offset, prefix, results):
+              if offset >= len(data): return
+              terminal_size, pos = parse_uleb128(data, offset)
+              has_terminal = terminal_size > 0
+              pos += terminal_size
+              if pos >= len(data): return
+              child_count = data[pos]; pos += 1
+              for _ in range(child_count):
+                  end = data.index(0, pos)
+                  edge = data[pos:end].decode('utf-8', 'replace'); pos = end + 1
+                  child_offset, pos = parse_uleb128(data, pos)
+                  traverse_trie(data, child_offset, prefix + edge, results)
+              if has_terminal:
+                  results.append(prefix)
+
+          data = open('bin/libtui.dylib', 'rb').read()
+          ncmds = struct.unpack_from('<I', data, 16)[0]
+          pos = 32; exports = []
+          for _ in range(ncmds):
+              cmd, cmdsize = struct.unpack_from('<II', data, pos)
+              if cmd in (0x22, 0x80000022):  # LC_DYLD_INFO / LC_DYLD_INFO_ONLY
+                  export_off = struct.unpack_from('<I', data, pos+40)[0]
+                  export_sz  = struct.unpack_from('<I', data, pos+44)[0]
+                  if export_sz > 0:
+                      traverse_trie(data[export_off:export_off+export_sz], 0, '', exports)
+              elif cmd == 0x80000033:  # LC_DYLD_EXPORTS_TRIE
+                  off, sz = struct.unpack_from('<II', data, pos+8)
+                  if sz > 0:
+                      traverse_trie(data[off:off+sz], 0, '', exports)
+              pos += cmdsize
+
+          required = ['_tui_init', '_tui_apply_frame', '_tui_wait_key',
+                      '_tui_handle_key', '_tui_next_command', '_tui_quit_requested',
+                      '_tui_render', '_tui_render_buf', '_tui_shutdown',
+                      '_jac_retain', '_jac_release']
+          print(f"Export trie: {len(exports)} symbols: {exports}")
+          missing = [s for s in required if s not in exports]
+          if missing:
+              print(f"FAIL: missing from export trie: {missing}", file=sys.stderr)
+              sys.exit(1)
+          print("ok: all required exports in trie")
+          PYEOF
+
       - name: Headless host gate (ctypes CDLL load + frame parse)
         working-directory: jac-super/jac_super/ai_tui_na
         run: python -m jaclang run test_host.jac
