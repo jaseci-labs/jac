@@ -752,7 +752,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
         # Edge archetypes intentionally fall back to "obj" here -- this
         # manifest only distinguishes node/walker shapes.
         _ak = arch_node.arch_kind;
-        kind = _ak if _ak in ("node", "walker") else "obj";
+        kind = _ak if (_ak is not None and _ak in ("node", "walker")) else "obj";
         fields: list[tuple[(str, str)]] = [];
         nested: list[str] = [];
         # Extract has declarations (walk through ArchHas -> HasVar)
@@ -1125,7 +1125,7 @@ impl BoundaryAnalysisPass._resolved_body(
                 return resolved;
             }
         } except Exception {
-            pass;
+            ;
         }
     }
     body = owner?.body;
