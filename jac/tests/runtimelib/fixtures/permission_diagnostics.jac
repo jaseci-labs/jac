@@ -27,7 +27,7 @@ walker create_profile {
 
     can enter with Root entry {
         p = here ++> Profile(tag=self.tag);
-        print(p[0].__jac__.id);
+        print(p.__jac__.id);
     }
 }
 

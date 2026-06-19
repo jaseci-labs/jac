@@ -264,7 +264,7 @@ def _register_core_templates(registry: TemplateRegistry) {
         '    """Append a message and report the created node."""\n'
         '    has author: str,\n        text: str,\n        reports: list[Message] = [];\n\n'
         '    can post with `root entry {\n'
-        '        report (here ++> Message(author=self.author, text=self.text))[0];\n'
+        '        report here ++> Message(author=self.author, text=self.text);\n'
         '    }\n}\n\n'
         'walker:pub ListMessages {\n'
         '    """Report every message in the guestbook."""\n'

@@ -22,7 +22,7 @@ walker ImportedWalker {
 
     can create_item with Root entry {
         item = here ++> ImportedItem(name=self.item_name);
-        created = item[0] if item else None;
+        created = item if item else None;
         if created {
             report created;
         }
