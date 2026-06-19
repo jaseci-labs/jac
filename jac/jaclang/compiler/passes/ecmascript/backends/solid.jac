@@ -95,6 +95,7 @@ obj SolidBackend(ReactBackend) {
     def async_boundary_symbols(a: AsyncBoundary) -> list[str];
     # Runtime/platform surface.
     def import_source(symbol: str) -> str;
+    def required_globals -> list[str];
     # Selects the Solid-flavored runtime shim (re-exports the same core, no React,
     # no __jacJsx — the JSX path no longer needs a hyperscript factory).
     def runtime_source_basename -> str;
