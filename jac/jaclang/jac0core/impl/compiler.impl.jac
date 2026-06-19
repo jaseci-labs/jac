@@ -583,18 +583,6 @@ impl JacCompiler.parse_str(
             _coerce_server_module(mod);
         } elif file_path.endswith('.na.jac') {
             _coerce_native_module(mod);
-        } elif (
-            (file_path.endswith('.impl.jac') or file_path.endswith('.test.jac'))
-            and file_path[:-9].endswith('.na')
-        ) {
-            # Native annex (`*.na.impl.jac` / `*.na.test.jac`). Its statements
-            # default to SERVER context like any module's, but they belong to a
-            # native module: they must carry NATIVE context so native codegen's
-            # context-filtered statement scan (`iter_context_stmts(..., NATIVE)`)
-            # sees the annex's globals/enums/standalone defs. The head `.na.jac`
-            # is coerced above; coercing the annex keeps the two congruent so an
-            # annex-declared `glob` resolves on native the same as on @sv (#6754).
-            _coerce_native_module(mod);
         }
     }
     if had_error {
@@ -609,6 +597,20 @@ impl JacCompiler.parse_str(
     import from pathlib { Path as _HubPath }
     target_program.mod.hub[str(_HubPath(mod.loc.mod_path).resolve())] = mod;
     JacAnnexPass(ir_in=mod, prog=target_program);
+    # An annex inherits its head module's code-context. A native (`.na.jac`)
+    # head's impl/test annexes were compiled standalone above and defaulted to
+    # SERVER; coerce them to NATIVE now that they are attached to a known-native
+    # head, so native codegen's context-filtered scan
+    # (`iter_context_stmts(..., NATIVE)`) sees the annex's globals/enums/
+    # standalone defs (issue #6754). Keyed off the HEAD's `.na.jac`, this covers
+    # both the bare `foo.impl.jac` and the variant-specific `foo.na.impl.jac`
+    # annex forms; a variant `.na.jac`'s own annexes are coerced by its own
+    # parse_str pass (same path, run while loading the variant above).
+    if file_path.endswith('.na.jac') {
+        for _annex in mod.impl_mod + mod.test_mod {
+            _coerce_native_module(_annex);
+        }
+    }
     return mod;
 }
 
@@ -763,7 +765,7 @@ impl JacCompiler.compile(
                 cancel_token=options.cancel_token
             );
             # Type the head module's annexes too: a glob/enum/standalone def in
-            # a `.na.impl.jac` lives off the head's `kid` tree, so the pass above
+            # an impl annex lives off the head's `kid` tree, so the pass above
             # never reaches it, leaving native codegen with no type (#6754).
             self._infer_module_annexes(mod_targ, actual_program, options.cancel_token);
         } except Exception {
@@ -803,8 +805,8 @@ impl JacCompiler.compile(
                         cancel_token=options.cancel_token
                     );
                     # Same annex-typing gap as the entry module, but for an
-                    # imported native dependency: type its `.na.impl.jac` annex
-                    # so cross-module codegen of an annex-declared glob resolves
+                    # imported native dependency: type its impl annex so
+                    # cross-module codegen of an annex-declared glob resolves
                     # (#6754, the imported half of the repro).
                     self._infer_module_annexes(
                         dep_mod, actual_program, options.cancel_token
@@ -1002,9 +1004,10 @@ impl JacCompiler._infer_module_annexes(
             continue;
         }
         annex_mod._inference_started = True;
-        # An annex is woven into its head module's diagnostics, never its own:
-        # quiet mode populates Expr.type without surfacing (head-owned)
-        # diagnostics a second time.
+        # Quiet: populate Expr.type for codegen only. User-facing type
+        # diagnostics for annex code are owned by the head module's own compile,
+        # not this auxiliary pass (same rationale as the quiet dep-inference
+        # sweep above).
         annex_mod._inference_quiet = True;
         try {
             self.run_schedule(

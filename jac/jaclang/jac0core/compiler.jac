@@ -518,11 +518,12 @@ obj JacCompiler {
 
     """Run type inference over a module's impl/test/variant annexes.
 
-    Annex statements (a glob/enum/standalone def declared in a `.na.impl.jac`)
-    live off the head module's `kid` tree, so the inference pass that walks the
-    head never types them. Native codegen requires those types (issue #6754),
-    so the front end infers each annex explicitly here. Always quiet — an annex
-    never owns user-facing diagnostics; its head module's own compile does.
+    Annex statements (a glob/enum/standalone def declared in an impl annex such
+    as `foo.impl.jac`) live off the head module's `kid` tree, so the inference
+    pass that walks the head never types them. Native codegen consumes those
+    types and fails without them (issue #6754), so the front end infers each
+    annex explicitly here. Always quiet: type diagnostics for annex code belong
+    to the head module's own compile, not a second pass over the annex.
     """
     def _infer_module_annexes(
         mod: uni.Module, target_program: JacProgram, cancel_token: (Event | None) = None

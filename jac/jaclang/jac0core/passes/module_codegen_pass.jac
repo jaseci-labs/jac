@@ -35,16 +35,21 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
     tests).
 
     This is the single source of truth for annex weaving. Every backend derives
-    its woven view of a module from this one traversal, so an annex-declared
-    construct (a `glob`, `enum`, standalone `def`/archetype, ...) can never be
-    visible to one backend and invisible to another (issue #6754). `iter_context_stmts`
-    (native) and `BaseAstGenPass._merge_module_bodies` (@sv/ecmascript) both build
-    on it.
+    the set of bodies an annexed module contributes from this one traversal,
+    closing the gap (issue #6754) where native's scan omitted the annex bodies
+    that @sv/ecmascript wove in -- so an annex-declared construct (a `glob`,
+    `enum`, standalone `def`/archetype, ...) reaches every backend's codegen.
+    `iter_context_stmts` (native) and `BaseAstGenPass._merge_module_bodies`
+    (@sv/ecmascript) both build on it; each still applies its own context filter
+    to the woven statements.
 
-    `strip_impl_defs` is True for the head and variant bodies — their `ImplDef`s
-    are already woven into the matching decls by DeclImplMatchPass and must not
-    be emitted standalone — and False for annex bodies, which is where the
-    standalone constructs (and the annexed `ImplDef`s) live.
+    `strip_impl_defs` is True for the head and variant bodies: their `ImplDef`s
+    are reached through the decls DeclImplMatchPass connects them to (the decl
+    emits the construct from the impl's body), so the standalone `ImplDef` node
+    is redundant in the merged list. It is False for annex bodies, which carry
+    the standalone constructs (globs, enums, free defs) that have no head decl,
+    plus the annex's own `ImplDef`s. Only `_merge_module_bodies` consults this
+    flag; `iter_context_stmts` type-dispatches and ignores `ImplDef`s anyway.
     """
     static def iter_woven_segments(module: uni.Module) -> list[tuple[Sequence, bool]] {
         segments: list[tuple[Sequence, bool]] = [];
@@ -71,8 +76,9 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
     matching the given CodeContext. When ctx is None, yields all statements from
     all blocks (flat iteration). Annex statements participate in the same context
     filter, so e.g. a native module only ever sees its NATIVE-context annex
-    statements (the head `.na.jac` and its `.na.impl.jac` annexes are both coerced
-    to NATIVE in the front end).
+    statements: a `.na.jac` head and its impl/test annexes are all coerced to
+    NATIVE in the front end (parse_str), so the annex's globals/defs survive the
+    filter.
     """
     static def iter_context_stmts(
         module: uni.Module, ctx: (CodeContext | None) = None
