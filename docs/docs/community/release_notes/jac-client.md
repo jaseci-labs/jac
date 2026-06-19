@@ -2,7 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.23 (Latest Release)
+## jac-client 0.3.24 (Latest Release)
+
+### New Features
+
+- **Feature: `fullstack` / `wasm` / `mobile` create kinds**: jac-client now contributes project-kind templates to the kind-aware `jac create`. `jac create --kind fullstack` scaffolds a server + client app, `--kind wasm` a client-only page (the former `client` template), and `--kind mobile` a mobile client app. Each stamps `[project] kind` so the project's bare `jac run` does the right thing.
+
+## jac-client 0.3.23
 
 ### New Features
 

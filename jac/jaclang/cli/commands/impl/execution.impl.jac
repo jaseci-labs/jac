@@ -145,7 +145,7 @@ def _execute_plan(
             );
             return 1;
         }
-        # api-service / microservices / fullstack / wasm are valid core `start`
+        # api-service / microservices / fullstack / client are valid core `start`
         # invocations; the client plugin (when present) hooks in during start.
         # The plan carries the project's [serve] port (from jac.toml) in flags.
         return start(

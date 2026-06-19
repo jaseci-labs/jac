@@ -29,7 +29,13 @@ impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: uni.Name) -> None {
         # - ModuleCode.name: the label of a named entry block (e.g. `__main__`
         #   in `with entry:__main__`) — an entry-point name, not a variable
         #   reference; it has no symbol and is not an expression.
+        # - HasVar `by postinit` name: `postinit` names __post_init__, bound by the HasVar handler.
         if isinstance(nd.parent, uni.AtomTrailer) and nd.parent.right is nd {
+            return;
+        }
+        if isinstance(nd.parent, uni.HasVar)
+        and nd.parent.defer
+        and nd is not nd.parent.name {
             return;
         }
         if isinstance(nd.parent, uni.KWPair) and nd.parent.key is nd {
@@ -159,12 +165,35 @@ impl TypeCheckPass.exit_filter_compr(self: TypeCheckPass, nd: uni.FilterCompr) -
     self.evaluator.get_type_of_expression(nd);
 }
 
+# Count only expression-bodied lambdas: their body is re-typed in-context
+# once params are seeded, so the expr exit handlers can safely defer it. A
+# block body has no such re-eval, so its statements stay on normal traversal.
+impl TypeCheckPass.enter_lambda_expr(self: TypeCheckPass, nd: uni.LambdaExpr) -> None {
+    if isinstance(nd.body, uni.Expr) {
+        self._lambda_depth += 1;
+    }
+}
+
+impl TypeCheckPass.exit_lambda_expr(self: TypeCheckPass, nd: uni.LambdaExpr) -> None {
+    if isinstance(nd.body, uni.Expr) {
+        self._lambda_depth -= 1;
+    }
+}
+
 """Handle the function call node."""
 impl TypeCheckPass.exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None {
     import from jaclang.compiler.symbol_utils {
         classify_call,
         ability_of_symbol,
         resolve_expr_symbol
+    }
+    # Inside a lambda body: defer arg validation to the lambda's own re-eval
+    # (params not yet seeded). Stamp call-kind/callee from shape/symbol only;
+    # evaluating the target would resolve it against an unseeded param.
+    if self._lambda_depth > 0 {
+        nd.call_kind = classify_call(nd).value;
+        nd.callee_decl = ability_of_symbol(resolve_expr_symbol(nd.target));
+        return;
     }
     self.evaluator.get_type_of_expression(nd);
 
@@ -201,11 +230,19 @@ impl TypeCheckPass.exit_jsx_element(self: TypeCheckPass, nd: uni.JsxElement) -> 
 
 """Handle the binary expression node."""
 impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> None {
+    # Defer inside a lambda body (see exit_func_call).
+    if self._lambda_depth > 0 {
+        return;
+    }
     self.evaluator.get_type_of_expression(nd);
 }
 
 """Handle the atom trailer node."""
 impl TypeCheckPass.exit_atom_trailer(self: TypeCheckPass, nd: uni.AtomTrailer) -> None {
+    # Defer inside a lambda body (see exit_func_call).
+    if self._lambda_depth > 0 {
+        return;
+    }
     self.evaluator.get_type_of_expression(nd);
 }
 

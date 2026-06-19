@@ -31,9 +31,18 @@ obj MicroserviceOrchestrator {
     """Build client bundle -> registry -> spawn deployers -> wait for
     health -> print banner -> start gateway -> stop all on shutdown."""
     def start_local -> None {
+        # Discovery belongs to the start pre-hook: it scans the entry file's
+        # own directory and populates `routes` before invoking us, so by the
+        # time start_local runs the table is already filled for every real
+        # entry path. We only guard the empty case (e.g. `enabled = true` on an
+        # app whose service files are missing) so the user gets a clear message
+        # instead of a silently-empty gateway.
         if not self.ms_config.get("routes", {}) {
-            logger.error("No routes declared in [plugins.scale.microservices.routes]");
-            logger.error("Run `jac setup microservice` to configure.");
+            logger.warning(
+                "No microservices to run: no routes were declared or discovered "
+                "(no `sv import` / `to sv:` markers next to the entry file). "
+                "Run `jac setup microservice` to configure explicitly."
+            );
             return;
         }
 

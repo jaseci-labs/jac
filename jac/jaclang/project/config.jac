@@ -83,7 +83,15 @@ obj ServeConfig {
         session: str = "",
         main: bool = True,
         cl_route_prefix: str = "cl",
-        base_route_app: str = "";
+        base_route_app: str = "",
+        # Optimistic-concurrency policy for check-then-create races (#6266).
+        # "retry": the request boundary aborts + replays so the loser converges
+        # on the winner; "fail": no replay, return a typed 409 immediately.
+        on_conflict: str = "retry",
+        # Max walker/function attempts under "retry" (1 = effectively fail-fast).
+        conflict_max_attempts: int = 5,
+        # Linear backoff between replay attempts (0 = none).
+        conflict_backoff_ms: int = 0;
 }
 
 """Format command defaults from [format] section."""

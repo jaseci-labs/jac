@@ -32,6 +32,7 @@ import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
 import from jac_scale.abstractions.autoscaler {
     AutoscalerSpec,
     Trigger,
+    TriggerAuth,
     DEFAULT_CPU_UTILIZATION_TARGET
 }
 import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
@@ -53,7 +54,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # path. Test path keeps them False -> parent KubernetesTarget
         # behavior (build_via_registry / python_image fallback).
         auto_build: bool = False,
-        guard_fallback_image: bool = False;
+        guard_fallback_image: bool = False,
+        # no-image mode: copy local source into the cluster + install jac at
+        # pod startup instead of building/pushing an image. Set by
+        # _scale_pre_hook for `jac start --scale --no-image`.
+        no_image: bool = False;
 
     """Auto-build path when `auto_build=True`: prefer user's pre-built
     docker_image_name, else auto_build_and_distribute. Else parent behavior."""
@@ -137,7 +142,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # real cluster); the provisioning helper is idempotent for re-deploys.
         try {
             self._deploy_context = MicroserviceDatabaseProvisioner(
-                k8s_target=self, logger=self.logger, enabled=self.auto_build
+                k8s_target=self,
+                logger=self.logger,
+                enabled=self.auto_build or self.no_image
             ).provision(
                 app_name
             );
@@ -362,6 +369,23 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     which produces pod specs without DB env / init containers."""
     def generate_manifests(app_config: AppConfig) -> dict[str, any] {
         app_name = app_config.app_name or self.k8s_config.app_name;
+
+        # no-image mode skips the whole image pipeline: pods run the generic
+        # python base + install jac at startup against ConfigMap-mounted
+        # source. Pass the base image straight through (the builder ignores it
+        # and uses python_image) and wire the source dir into the builder.
+        if self.no_image or app_config.no_image {
+            builder = MicroserviceManifestBuilder(
+                k8s_config=self.k8s_config,
+                secrets=self.secrets,
+                deploy_context=self._deploy_context,
+                logger=self.logger,
+                no_image=True,
+                project_dir=app_config.code_folder
+            );
+            return builder.generate_manifests(app_config, self.k8s_config.python_image);
+        }
+
         image = self._handle_image_registry(app_name, app_config);
 
         # Fail loud on python_image fallback so users don't get a silent
@@ -476,6 +500,19 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
+        # no-image source ConfigMap must exist before the Deployments so the
+        # bootstrap initContainer can mount + extract it at pod startup.
+        source_cm = bundle.get("source_configmap");
+        if source_cm {
+            self._apply_or_replace_configmap(core_v1, namespace, source_cm);
+            if self.logger {
+                self.logger.info(
+                    f"Applied source ConfigMap (no-image mode)",
+                    {"name": source_cm["metadata"]["name"]}
+                );
+            }
+        }
+
         user_secret = bundle.get("user_secret");
         if user_secret {
             create_k8s_secret(
@@ -521,30 +558,74 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 self.k8s_config.to_dict(),
                 self.logger
             );
-            autoscaler.apply(
+            triggers = [];
+            # extra_triggers from [plugins.scale.kubernetes] targets the
+            # gateway only — it is the microservice-mode equivalent of the
+            # monolith ScaledObject.  Per-service triggers belong under
+            # [[plugins.scale.microservices.services.{name}.triggers]].
+            is_gateway = svc_name == GATEWAY_NAME;
+            effective_extra = self.k8s_config.extra_triggers if is_gateway else [];
+            if not cfg.get("triggers", []) and not effective_extra {
+                triggers = [
+                    Trigger(
+                        type="cpu",
+                        metadata={
+                            "averageUtilization": str(
+                                cfg.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)
+                            )
+                        }
+                    )
+                ];
+            }
+            for raw in cfg.get("triggers", []) {
+                t = Trigger(
+                    type=str(raw.get("type", "")),
+                    metadata=dict(raw.get("metadata", {})),
+                    name=raw.get("name")
+                );
+                raw_auth = raw.get("auth");
+                if raw_auth {
+                    t.auth = TriggerAuth(
+                        secret_refs=dict(raw_auth.get("secret_refs", {}))
+                    );
+                }
+                triggers.append(t);
+            }
+            for raw in effective_extra {
+                t = Trigger(
+                    type=str(raw.get("type", "")),
+                    metadata=dict(raw.get("metadata", {})),
+                    name=raw.get("name")
+                );
+                raw_auth = raw.get("auth");
+                if raw_auth {
+                    t.auth = TriggerAuth(
+                        secret_refs=dict(raw_auth.get("secret_refs", {}))
+                    );
+                }
+                triggers.append(t);
+            }
+            autoscaler_name = autoscaler.resource_name_for(k8s_name);
+            autoscaler_applied = autoscaler.apply(
                 AutoscalerSpec(
                     scale_target_name=f"{k8s_name}-deployment",
-                    autoscaler_name=f"{k8s_name}-hpa",
+                    autoscaler_name=autoscaler_name,
+                    app_name=k8s_name,
                     namespace=namespace,
                     min_replicas=int(cfg.get("min", 1)),
                     max_replicas=int(cfg.get("max", 3)),
-                    triggers=[
-                        Trigger(
-                            type="cpu",
-                            metadata={
-                                "averageUtilization": str(
-                                    cfg.get(
-                                        "cpu_target", DEFAULT_CPU_UTILIZATION_TARGET
-                                    )
-                                )
-                            }
-                        )
-                    ]
+                    idle_replicas=self.k8s_config.idle_replicas,
+                    polling_interval=self.k8s_config.autoscaler_polling_interval,
+                    cooldown_period=self.k8s_config.autoscaler_cooldown,
+                    initial_cooldown_period=self.k8s_config.autoscaler_initial_cooldown,
+                    triggers=triggers
                 )
             );
-            if self.logger {
+            # Only log success when apply() confirms it wrote the resource;
+            # a False return means preflight bailed silently (engine not available).
+            if self.logger and autoscaler_applied {
                 self.logger.info(
-                    f"Applied HPA for '{svc_name}'", {"name": f"{k8s_name}-hpa"}
+                    f"Applied autoscaler for '{svc_name}'", {"name": autoscaler_name}
                 );
             }
         }
@@ -647,6 +728,26 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except ApiException as e {
             if e.status == 404 {
                 core_v1.create_namespaced_service(namespace=namespace, body=manifest);
+            } else {
+                raise;
+            }
+        }
+    }
+
+    def _apply_or_replace_configmap(
+        core_v1: any, namespace: str, manifest: dict[str, any]
+    ) {
+        name: str = manifest["metadata"]["name"];
+        try {
+            core_v1.read_namespaced_config_map(name=name, namespace=namespace);
+            core_v1.replace_namespaced_config_map(
+                name=name, namespace=namespace, body=manifest
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_config_map(
+                    namespace=namespace, body=manifest
+                );
             } else {
                 raise;
             }
@@ -823,6 +924,18 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     }
                 }
             }
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
+        # no-image source ConfigMap(s), labeled managed=jac-scale.
+        try {
+            core_v1.delete_collection_namespaced_config_map(
+                namespace=namespace,
+                label_selector="managed=jac-scale,jac-scale.role=source"
+            );
         } except ApiException as e {
             if e.status != 404 {
                 raise;

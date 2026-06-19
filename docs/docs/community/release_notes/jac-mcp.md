@@ -1,6 +1,12 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.17 (Latest Release)
+## jac-mcp 0.1.23 (Latest Release)
+
+### Bug Fixes
+
+- **Fix: MCP `create_project` default template**: The MCP compiler bridge's `create_project` (and `list_templates` test) defaulted to the `default` template, which the kind-aware `jac create` work renamed to `cli`. The bridge now defaults to the `cli` core template so MCP-driven project creation works again.
+
+## jac-mcp 0.1.17
 
 ### Refactors
 

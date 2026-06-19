@@ -1056,6 +1056,17 @@ impl TypeEvaluator.emit_diag(
     }
 }
 
+impl TypeEvaluator._invalidate_expr_type_cache(node_: uni.UniNode) -> None {
+    # Walk `.kid`, not `_sub_node_tab`: the latter is keyed off the enclosing
+    # statement, so an AtomTrailer body exposes none of its inner Exprs.
+    if isinstance(node_, uni.Expr) {
+        node_.type = None;
+    }
+    for kid in node_.kid {
+        self._invalidate_expr_type_cache(kid);
+    }
+}
+
 impl TypeEvaluator._is_ability_classmethod(node_: uni.Ability) -> bool {
     # Note: __new__ is a staticmethod in CPython, not a classmethod.
     # Its cls param is marked is_cls for constructor resolution but the

@@ -814,6 +814,20 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
             }
             return result;
         }
+        # bytes membership: `needle in haystack` — length-aware (#6749). Must
+        # precede the i8* strstr path, which assumes NUL-terminated operands.
+        if self._is_bytes_value(left) and self._is_bytes_value(right) {
+            i64 = ir.IntType(64);
+            is_found = self._emit_bytes_contains(left, right);
+            result = self.builder.zext(is_found, i64, name="by.in.i64");
+            if is_not_in {
+                result = self.builder.icmp_signed(
+                    "==", result, ir.Constant(i64, 0), name="by.notin"
+                );
+                result = self.builder.zext(result, i64, name="by.notin.i64");
+            }
+            return result;
+        }
         # Check if right is a string (i8*): left in right → strstr
         if isinstance(right.type, ir.PointerType)
         and isinstance(left.type, ir.PointerType) {

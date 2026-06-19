@@ -29,12 +29,12 @@ The CLI is extensible through plugins. When you install plugins like `jac-scale`
 | `jac destroy` | Remove Kubernetes deployment (jac-scale) |
 | `jac status` | Show deployment status of Kubernetes resources (jac-scale) |
 | `jac add` | Add packages to project |
-| `jac install` | Install project dependencies (or `-e <path>` for an editable install) |
+| `jac install` | Install project dependencies from `jac.toml`, or `jac install <pkg>` to install packages directly into the activated environment |
 | `jac remove` | Remove packages from project |
 | `jac update` | Update dependencies to latest compatible versions |
 | `jac bundle` | Build a distributable `.whl` from `jac.toml` |
 | `jac jacpack` | Manage project templates (.jacpack files) |
-| `jac eject` | Compile a project to standalone Python + JavaScript (zero `.jac` files) |
+| `jac eject` | Compile a project into a runnable FastAPI + JavaScript app (zero `.jac` files) |
 | `jac grammar` | Extract and print the Jac grammar |
 | `jac guide` | Show curated Jac reference guides |
 | `jac script` | Run project scripts |
@@ -1253,19 +1253,34 @@ For private packages from custom registries (e.g., GitHub Packages), configure s
 
 ### jac install
 
-Sync the project environment to `jac.toml`. Installs all Python (pip), git, and plugin-provided (npm, etc.) dependencies in one command. Creates or validates the project virtual environment at `.jac/venv/`.
+`jac install` has two modes depending on whether package names are passed:
+
+**No-argument mode** - sync the project environment to `jac.toml`. Installs all Python (pip), git, and plugin-provided (npm, etc.) dependencies in one command. Creates or validates the project virtual environment at `.jac/venv/`. Requires a `jac.toml` in the current (or a parent) directory.
+
+**Package mode** - `jac install <pkg> [pkg ...]` installs one or more packages directly into the **currently activated Python environment** via pip, without reading or modifying `jac.toml`. This is the equivalent of `pip install <pkg>` but invoked through the `jac` CLI. Useful for quick one-off installs or scripts where you do not need a full jac project.
+
+> **`jac install <pkg>` vs `jac add <pkg>`**
+>
+> | | `jac install <pkg>` | `jac add <pkg>` |
+> |---|---|---|
+> | Target | Activated Python environment | Project `.jac/venv/` |
+> | Updates `jac.toml` | No | Yes |
+> | Works outside a project | Yes | No |
+>
+> Use `jac add` when you want the dependency tracked for reproducible installs. Use `jac install <pkg>` for ad-hoc or environment-level installs.
 
 ```bash
-jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
+jac install [-h] [packages ...] [-e PATH] [-d] [-x group [group ...]] [-v]
             [--force-reinstall] [--no-cache-dir] [--pre] [--dry-run]
-            [--no-deps] [--quiet] [--prefer-binary]
+            [--no-deps] [--quiet] [--prefer-binary] [--no-uv]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-e, --editable PATH` | Install the Jac package at `PATH` in editable mode (analogous to `pip install -e`). `jac.toml` is read from `PATH`, not the current directory. | `""` |
-| `-d, --dev` | Include dev dependencies | `False` |
-| `-x, --extras` | Install one or more `[optional-dependencies]` groups | `[]` |
+| `packages` | Package(s) to install into the activated environment. When provided, skips `jac.toml` entirely. | `[]` |
+| `-e, --editable PATH` | Install the Jac package at `PATH` in editable mode (analogous to `pip install -e`). `jac.toml` is read from `PATH`, not the current directory. Cannot be combined with `packages`. Repeatable. | `None` |
+| `-d, --dev` | Include dev dependencies (no-arg mode only) | `False` |
+| `-x, --extras` | Install one or more `[optional-dependencies]` groups (no-arg mode only) | `[]` |
 | `-v, --verbose` | Show detailed output | `False` |
 | `--force-reinstall` | Reinstall all packages even if they are already up-to-date | `False` |
 | `--no-cache-dir` | Disable the pip download cache | `False` |
@@ -1274,47 +1289,65 @@ jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
 | `--no-deps` | Don't install package dependencies | `False` |
 | `--quiet` | Suppress pip output | `False` |
 | `--prefer-binary` | Prefer pre-built wheels over source distributions | `False` |
+| `--no-uv` | Use pip directly, even if `uv` is available on `PATH` | `False` |
 
 **Examples:**
 
 ```bash
-# Install all dependencies
+# Install a single package into the activated environment
+jac install numpy
+
+# Install multiple packages at once
+jac install numpy pandas scipy
+
+# Install with version constraints
+jac install "requests>=2.28" "pydantic>=2.0"
+
+# Install all dependencies from jac.toml (no-arg mode)
 jac install
 
-# Install including dev dependencies
+# Install including dev dependencies (no-arg mode)
 jac install --dev
 
-# Install optional dependency groups defined in jac.toml
+# Install optional dependency groups defined in jac.toml (no-arg mode)
 jac install --extras data monitoring
 
-# Editable install with an optional group
-jac install -e . --extras all
-
-# Install with verbose output
-jac install -v
-
-# Editable install of the current package
+# Editable install of the current package (no-arg mode)
 jac install -e .
 
 # Editable install from anywhere (no need to cd into the package)
 jac install -e /path/to/lib
 
+# Editable install with all optional dependency groups
+jac install -e . --extras all
+
+# Install with verbose output
+jac install -v
+
 # Reinstall all packages from scratch (ignores cached state)
 jac install --force-reinstall
-
-# Include pre-release versions
-jac install --pre
 
 # Preview what would be installed without doing it
 jac install --dry-run
 
 # Install without using pip's download cache
 jac install --no-cache-dir
+
+# Force pip (skip uv) for this install
+jac install --no-uv
 ```
 
 Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See the [Configuration Reference](../config/index.md#optional-dependencies).
 
-> **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, etc.) are forwarded directly to the underlying pip invocation. Use `jac update` to upgrade packages to their latest versions.
+> **uv backend:** When [`uv`](https://github.com/astral-sh/uv) is installed and on `PATH`, `jac install` (and `jac add`, `jac remove`, `jac update`) automatically route pip operations through `uv pip` for significantly faster dependency resolution and downloads. No configuration needed - it activates on detection.
+>
+> To opt out for a single `jac install` run: `jac install --no-uv`
+>
+> To opt out system-wide (all commands, all sessions): `export JAC_NO_UV=1`
+>
+> The `--prefer-binary` flag has no `uv` equivalent and is silently dropped when uv is active. Pass `--no-uv` to preserve it.
+>
+> **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, `--pre`, `--no-deps`, `--quiet`, `--prefer-binary`) are forwarded directly to pip in both modes. Use `jac update` to upgrade packages to their latest versions.
 
 ---
 
@@ -1586,7 +1619,7 @@ jac create myproject --use mytemplate
 
 ### jac eject
 
-Compile a Jac project to a self-contained output folder containing only Python and JavaScript files. The ejected project has **zero `.jac` files** and can be run, edited, and deployed without invoking the Jac compiler. Use it when you want to hand off a Jac-built application to a team that doesn't use Jac, freeze a snapshot of a project, or deploy on infrastructure where installing the toolchain is impractical.
+Compile a Jac project into a runnable FastAPI + JavaScript app. The output contains **zero `.jac` files**: each walker is compiled to Python and served by a FastAPI backend, and the `.cl.jac` UI is compiled to JavaScript on Vite. The backend runs the walkers on the installed `jaclang` runtime (so persistence, graph traversal, access control, and `by llm()` behave exactly as under `jac start`), and exposes jaclang-native auth. Use it when you want an editable FastAPI/JS codebase you can extend and deploy without writing Jac.
 
 ```bash
 jac eject [-h] [-o OUTPUT] [-f] [source]
@@ -1595,80 +1628,79 @@ jac eject [-h] [-o OUTPUT] [-f] [source]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `source` | Project directory to eject (must contain `jac.toml`) | `.` |
-| `-o, --output` | Output directory | `<source>-ejected` next to source |
-| `-f, --force` | Overwrite the output directory if it already exists | `False` |
+| `-o, --output` | Output directory | `<project>/ejected` (overridable via `[eject].output`) |
+| `-f, --force` | Overwrite a non-eject directory at the output path | `False` |
 
 **What gets emitted**
 
-- Server-side `.sv.jac` modules become plain Python via the compiler's existing `gen.py` output (walkers compile to classes with `@on_entry`/`@on_exit`, spatial operations like `-->` and `visit` lower to `connect`/`refs`/`visit` calls).
-- Client-side `.cl.jac` modules become plain JavaScript via `gen.js` (JSX lowers to `__jacJsx(...)` calls, `has` declarations to `useState` hooks, `sv import` to auto-generated HTTP RPC stubs).
-- `.impl.jac` files merge automatically into their declaration sibling at compile time, so the eject pipeline never processes them directly.
-- Filenames drop the `.sv` / `.cl` context tag (`endpoints.sv.jac` → `endpoints.py`, `frontend.cl.jac` → `frontend.js`), matching what the compiler already emits in cross-module imports.
-- Static assets under `assets/` are copied verbatim into `frontend/src/assets/`.
+- Server-side `.sv.jac` (and the server scope of plain `.jac`) modules become Python via the compiler's `gen.py`, keeping their real `jaclang.jac0core.jaclib` imports.
+- Client-side `.cl.jac` modules become JavaScript via `gen.js` (JSX lowers to `__jacJsx(...)`, `has` to `useState`, `sv import` to HTTP RPC stubs). Client modules never go to the backend.
+- A generated `backend/main.py` is the FastAPI app: one `POST /walker/<Name>` per walker, `POST /function/<name>` per function, plus `/user/register` and `/user/login`. `:pub` walkers/functions are open endpoints; the rest require a bearer token.
+- `.impl.jac` / `.test.jac` files are skipped (they merge into their declaration sibling at compile time).
+- A project with no client `app` component (no `cl {}` block / `.cl.jac`) ejects **backend-only**: the `frontend/` scaffold is skipped so there is no broken Vite build.
 
 **Output layout**
 
 ```
-<name>-ejected/
-├── README.md             how to run, layout, caveats
-├── run.sh                starts backend + frontend dev server
+<project>/ejected/
+├── .jac-ejected         marker (lets re-runs regenerate without --force)
 ├── backend/
-│   ├── serve.py          entry script (python serve.py)
-│   ├── requirements.txt  pip dependencies (includes jaclang)
-│   ├── main.py           ejected entry module
-│   └── ...               other ejected server modules
+│   ├── main.py          FastAPI app (walkers/functions + auth routes)
+│   ├── requirements.txt  jaclang + fastapi + uvicorn
+│   └── <module>.py      compiled server modules (real jaclang imports)
 └── frontend/
-    ├── package.json      npm dependencies (includes Vite)
-    ├── vite.config.js    dev server with backend proxy
-    ├── index.html        SPA shell loading src/main.js
-    └── src/
-        ├── main.js
-        ├── components/   ejected client components
-        └── assets/       static files
+    ├── package.json     npm dependencies (includes Vite)
+    ├── vite.config.js   dev server proxying /walker, /function, /user to the backend
+    ├── index.html       SPA shell
+    └── src/             compiled .cl.jac modules + vendored @jac/runtime
 ```
 
-The generated `backend/serve.py` boots the existing `JacAPIServer` HTTP request handler against the ejected modules: it loads the entry module via `importlib`, injects it into `Jac.loaded_modules` so the introspector skips its own `jac_import`, and constructs `http.server.HTTPServer` directly to bypass the `Jac.create_server` plugin hook. It also forces the base SQLite-backed `UserManager` so register/login/auth work consistently regardless of which jaclang plugins are installed in the runtime environment.
+The generated `backend/main.py` wires up jaclang's `UserManager` and `ExecutionManager`: `/user/register` and `/user/login` create and authenticate users (each gets their own persistent SQLite-backed root graph), and each walker route resolves the bearer token to a user (falling back to a `__guest__` user for `:pub` walkers) before running the walker in that user's context. When a built frontend is present at `frontend/dist`, `main.py` mounts it so a single `uvicorn main:app` serves both the API and the UI.
+
+**Persistence**
+
+By default the object graph persists to a local SQLite file via the jaclang runtime. To persist through SQLAlchemy instead (so the same backend can target Postgres/MySQL), opt in via `jac.toml`:
+
+```toml
+[eject.db]
+driver = "sqlalchemy"   # or "sqlite"
+```
+
+This vendors a `backend/_jac_sqldb.py` SQLAlchemy `PersistentMemory` backend and registers it through the runtime's `get_persistent_memory` hook, and adds `SQLAlchemy` to `requirements.txt`. The connection URL defaults to a SQLite file under `backend/` and is overridable at runtime with `JAC_DB_URL` (e.g. `postgresql://...`). This is a single-writer backend (correct for one uvicorn worker); for multi-process writers use jac-scale.
 
 **Examples**
 
 ```bash
-# Eject the current project to ./<name>-ejected/
+# Eject the current project to ./ejected/
 jac eject
 
 # Eject a specific project to a chosen output directory
-jac eject ./myapp -o /tmp/myapp-standalone
+jac eject ./myapp -o /tmp/myapp-out
 
-# Overwrite an existing output directory
-jac eject ./myapp -o /tmp/myapp-standalone --force
+# Overwrite an existing (non-eject) directory at the output path
+jac eject ./myapp --force
 ```
 
 **Running the ejected project**
 
 ```bash
-cd <name>-ejected
-pip install -r backend/requirements.txt
-(cd frontend && npm install)
-./run.sh
+cd ejected
+(cd frontend && npm install && npm run build)
+cd backend && pip install -r requirements.txt && uvicorn main:app
 ```
 
-The backend listens on `PORT` (default 8000) and the Vite dev server listens on `FRONTEND_PORT` (default 5173); the Vite config proxies `/walker`, `/walkers`, `/function`, `/functions`, `/user`, and `/cl` to the backend so the SPA can call API endpoints without CORS plumbing.
+The backend listens on `PORT` (default 8000). For frontend dev with hot reload, run `npm run dev` in `frontend/` instead; its Vite config proxies `/walker`, `/function`, and `/user` to the backend.
 
 **Caveats**
 
-- This first version still requires `jaclang` to be installed at runtime. The ejected backend imports walker primitives from `jaclang.jac0core.jaclib` and the HTTP request handler from `jaclang.runtimelib.server`. The goal is *zero `.jac` files in the output*, not *zero `jaclang` dependency*.
-- `.impl.jac` and `.test.jac` files are skipped (they have no standalone meaning); so are well-known build directories (`.jac`, `.git`, `.venv`, `node_modules`, `__pycache__`, `dist`, `build`, etc.).
+- The ejected backend requires `jaclang` to be installed at runtime (it imports the runtime from `jaclang.runtimelib.server` and the compiled modules import `jaclang.jac0core.jaclib`). The goal is *zero `.jac` files and an editable FastAPI surface*, not *zero `jaclang` dependency*.
+- The generated FastAPI app enables permissive CORS (`allow_origins=["*"]`) for local dev; restrict it before deploying to production.
+- `.impl.jac` and `.test.jac` files are skipped; so are well-known build directories (`.jac`, `.git`, `.venv`, `node_modules`, `__pycache__`, `dist`, `build`, etc.).
 - Persistent state (users, root nodes, graph data) lives under `backend/.jac/data/` after first run, just as it would for `jac start`.
 
 **Extending eject from a plugin**
 
-Like every other command, `jac eject` is extensible through the standard plugin hook mechanism -- a plugin can add flags via `registry.extend_command("eject", ...)` and either replace the default behavior in a pre-hook (`jac-scale --scale` style) or augment the output in a post-hook (`jac-client --client desktop` style). See the [Plugin Authoring Guide](../plugin-authoring.md) for the full extension model.
-
-For eject specifically, `jaclang.cli.commands.impl.eject` exports two helpers so plugin pre/post hooks can stay in sync with whatever the default command produces:
-
-| Helper | Purpose |
-|--------|---------|
-| `resolve_eject_output(src: Path, output: str) -> Path` | Returns the resolved output directory, applying the same `<source>-ejected` fallback the command uses when `--output` is not given. |
-| `load_eject_project_metadata(src: Path) -> dict` | Parses `jac.toml` and returns a dict with `project_name`, `entry_point`, `entry_module`, and the raw `toml_data` so plugins can read sections like `[plugins.scale]` or `[dependencies.npm]` without re-parsing. |
+Like every other command, `jac eject` is extensible through the standard plugin hook mechanism -- a plugin can add flags via `registry.extend_command("eject", ...)` and either replace the default behavior in a pre-hook or augment the output in a post-hook. See the [Plugin Authoring Guide](../plugin-authoring.md) for the full extension model. `jaclang.cli.commands.impl.eject` exports `load_eject_project_metadata(src: Path) -> dict`, which parses `jac.toml` and returns `project_name`, `entry_point`, `entry_module`, and the raw `toml_data`, so plugin hooks can read sections like `[plugins.scale]` or `[dependencies.npm]` without re-parsing.
 
 ---
 

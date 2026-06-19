@@ -29,40 +29,88 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
         return None;
     }
 
-    """Iterate top-level statements for a given context.
+    """Ordered (body, strip_impl_defs) segments that contribute top-level
+    statements to a module's codegen: the head body plus every impl/variant/test
+    annex body, in weave order (impls first, then head, then variants, then
+    tests).
 
-    Unwraps NativeBlock/ClientBlock/ServerBlock and yields their
-    children matching the given CodeContext. When ctx is None, yields
-    all statements from all blocks (flat iteration).
+    This is the single source of truth for annex weaving. Every backend derives
+    the set of bodies an annexed module contributes from this one traversal,
+    closing the gap (issue #6754) where native's scan omitted the annex bodies
+    that @sv/ecmascript wove in -- so an annex-declared construct (a `glob`,
+    `enum`, standalone `def`/archetype, ...) reaches every backend's codegen.
+    `iter_context_stmts` (native) and `BaseAstGenPass._merge_module_bodies`
+    (@sv/ecmascript) both build on it; each still applies its own context filter
+    to the woven statements.
+
+    `strip_impl_defs` is True for the head and variant bodies: their `ImplDef`s
+    are reached through the decls DeclImplMatchPass connects them to (the decl
+    emits the construct from the impl's body), so the standalone `ImplDef` node
+    is redundant in the merged list. It is False for annex bodies, which carry
+    the standalone constructs (globs, enums, free defs) that have no head decl,
+    plus the annex's own `ImplDef`s. Only `_merge_module_bodies` consults this
+    flag; `iter_context_stmts` type-dispatches and ignores `ImplDef`s anyway.
+    """
+    static def iter_woven_segments(module: uni.Module) -> list[tuple[Sequence, bool]] {
+        segments: list[tuple[Sequence, bool]] = [];
+        for mod in module.impl_mod {
+            segments.append((mod.body, False));
+        }
+        segments.append((module.body, True));
+        for variant in module.variant_mod {
+            for vimpl in variant.impl_mod {
+                segments.append((vimpl.body, False));
+            }
+            segments.append((variant.body, True));
+        }
+        for mod in module.test_mod {
+            segments.append((mod.body, False));
+        }
+        return segments;
+    }
+
+    """Iterate top-level statements for a given context, across the head module
+    AND its impl/variant/test annexes (see iter_woven_segments).
+
+    Unwraps NativeBlock/ClientBlock/ServerBlock and yields their children
+    matching the given CodeContext. When ctx is None, yields all statements from
+    all blocks (flat iteration). Annex statements participate in the same context
+    filter, so e.g. a native module only ever sees its NATIVE-context annex
+    statements: a `.na.jac` head and its impl/test annexes are all coerced to
+    NATIVE in the front end (parse_str), so the annex's globals/defs survive the
+    filter.
     """
     static def iter_context_stmts(
         module: uni.Module, ctx: (CodeContext | None) = None
     ) -> list[uni.ElementStmt] {
         result: list[uni.ElementStmt] = [];
-        for stmt in module.body {
-            if isinstance(stmt, uni.NativeBlock) {
-                if (ctx is None or ctx == CodeContext.NATIVE) {
-                    result.extend(stmt.body);
+        for (body, _strip) in ModuleCodegenPass.iter_woven_segments(module) {
+            for stmt in body {
+                if isinstance(stmt, uni.NativeBlock) {
+                    if (ctx is None or ctx == CodeContext.NATIVE) {
+                        result.extend(stmt.body);
+                    }
+                } elif isinstance(stmt, uni.ClientBlock) {
+                    if (ctx is None or ctx == CodeContext.CLIENT) {
+                        result.extend(stmt.body);
+                    }
+                } elif isinstance(stmt, uni.ServerBlock) {
+                    if (ctx is None or ctx == CodeContext.SERVER) {
+                        result.extend(stmt.body);
+                    }
+                } elif ctx is None {
+                    result.append(stmt);
+                } elif (
+                    isinstance(stmt, uni.ContextAwareNode) and stmt.code_context == ctx
+                ) {
+                    result.append(stmt);
+                } elif (
+                    not isinstance(stmt, uni.ContextAwareNode)
+                    and ctx == CodeContext.SERVER
+                ) {
+                    # Undecorated top-level nodes default to SERVER context
+                    result.append(stmt);
                 }
-            } elif isinstance(stmt, uni.ClientBlock) {
-                if (ctx is None or ctx == CodeContext.CLIENT) {
-                    result.extend(stmt.body);
-                }
-            } elif isinstance(stmt, uni.ServerBlock) {
-                if (ctx is None or ctx == CodeContext.SERVER) {
-                    result.extend(stmt.body);
-                }
-            } elif ctx is None {
-                result.append(stmt);
-            } elif (
-                isinstance(stmt, uni.ContextAwareNode) and stmt.code_context == ctx
-            ) {
-                result.append(stmt);
-            } elif (
-                not isinstance(stmt, uni.ContextAwareNode) and ctx == CodeContext.SERVER
-            ) {
-                # Undecorated top-level nodes default to SERVER context
-                result.append(stmt);
             }
         }
         return result;

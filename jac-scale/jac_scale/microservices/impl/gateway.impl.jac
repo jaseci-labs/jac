@@ -928,6 +928,9 @@ impl MicroserviceGateway._install_admin_api -> None {
     # /admin/traces/* (Tempo proxy) for the in-admin Traces page.
     self.register_traces_endpoints();
     self.register_ops_endpoints();
+    self.register_deploy_health_endpoints();
+    self.register_network_endpoints();
+    self.register_podenv_endpoints();
 
     # 4. Materialize the queued endpoints as actual FastAPI routes.
     #    JFastApiServer.add_endpoint() only enqueues; create_server()
