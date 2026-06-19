@@ -17,31 +17,29 @@ import from .feed { build_rows }
 import from .overlay { overlay_build_modal, overlay_composite }
 import from .terminal { ansi_sgr, ansi_reset, term_spaces, term_dashes }
 import from .width { visible_width, ansi_trunc, ansi_pad }
+import from .theme {
+    TH_BG_R,
+    TH_BG_G,
+    TH_BG_B,
+    TH_BORDER_R,
+    TH_BORDER_G,
+    TH_BORDER_B,
+    TH_BOLD,
+    TH_DIM
+}
 
 # ── Palette (hardcoded SGR strings — avoids calling functions at glob-init) ───
 # Format: ESC[0[;attrs];38;2;R;G;Bm;48;2;R;G;Bm   bg=(18,18,28)
-glob _SB: str = "\033[0;38;2;70;70;100;48;2;18;18;28m";  # border/chrome
-glob _ST: str = "\033[0;1;38;2;204;0;204;48;2;18;18;28m";  # title bold
-glob _SC: str = "\033[0;38;2;86;182;194;48;2;18;18;28m";  # cwd cyan
-glob _SM: str = "\033[0;2;38;2;120;120;120;48;2;18;18;28m";  # model dim
-glob _SR: str = "\033[0m";  # reset
-
-# User message: white bold on indigo-tinted bg (26,26,46) for visual contrast
-glob _USER_MSG: str = "\033[0;1;38;2;255;255;255;48;2;26;26;46m";
-# Reasoning: italic+dim gray (theme DIM_ITALIC=6 → ;2;3 in SGR)
-glob _REASON_MSG: str = "\033[0;2;3;38;2;160;160;160;48;2;18;18;28m";
-
-# Background and attribute constants used by ansi_sgr() calls in functions below.
-# See theme.na.jac for the canonical named values.
-glob BG_R: int = 18,
-     BG_G: int = 18,
-     BG_B: int = 28;
-glob BR_R: int = 70,
-     BR_G: int = 70,
-     BR_B: int = 100;
-glob ATTR_BOLD: int = 1,
-     ATTR_DIM: int = 2,
-     ATTR_ITALIC: int = 4;
+# _SB border/chrome, _ST title bold, _SC cwd cyan, _SM model dim, _SR reset
+glob _SB: str = "\033[0;38;2;70;70;100;48;2;18;18;28m",
+     _ST: str = "\033[0;1;38;2;204;0;204;48;2;18;18;28m",
+     _SC: str = "\033[0;38;2;86;182;194;48;2;18;18;28m",
+     _SM: str = "\033[0;2;38;2;120;120;120;48;2;18;18;28m",
+     _SR: str = "\033[0m",
+     # User message: white bold on indigo-tinted bg (26,26,46) for visual contrast
+     _USER_MSG: str = "\033[0;1;38;2;255;255;255;48;2;26;26;46m",
+     # Reasoning: italic+dim gray (theme DIM_ITALIC=6 → ;2;3 in SGR)
+     _REASON_MSG: str = "\033[0;2;3;38;2;160;160;160;48;2;18;18;28m";
 
 def _cwd_short(cwd: str) -> str {
     slen = len(cwd);
@@ -74,30 +72,30 @@ def _cwd_short(cwd: str) -> str {
 
 def _kind_sgr(kind: str) -> str {
     if kind == "user" {
-        return ansi_sgr(255, 255, 255, BG_R, BG_G, BG_B, ATTR_BOLD);
+        return ansi_sgr(255, 255, 255, TH_BG_R, TH_BG_G, TH_BG_B, TH_BOLD);
     }
     if kind == "answer" {
-        return ansi_sgr(220, 220, 220, BG_R, BG_G, BG_B, 0);
+        return ansi_sgr(220, 220, 220, TH_BG_R, TH_BG_G, TH_BG_B, 0);
     }
     if kind == "reasoning" {
         return _REASON_MSG;
     }
     if kind == "system" {
-        return ansi_sgr(86, 182, 194, BG_R, BG_G, BG_B, 0);
+        return ansi_sgr(86, 182, 194, TH_BG_R, TH_BG_G, TH_BG_B, 0);
     }
     if kind == "error" {
-        return ansi_sgr(255, 80, 80, BG_R, BG_G, BG_B, ATTR_BOLD);
+        return ansi_sgr(255, 80, 80, TH_BG_R, TH_BG_G, TH_BG_B, TH_BOLD);
     }
     if kind == "phase" {
-        return ansi_sgr(255, 210, 60, BG_R, BG_G, BG_B, 0);
+        return ansi_sgr(255, 210, 60, TH_BG_R, TH_BG_G, TH_BG_B, 0);
     }
     if kind == "call" {
-        return ansi_sgr(204, 119, 255, BG_R, BG_G, BG_B, 0);
+        return ansi_sgr(204, 119, 255, TH_BG_R, TH_BG_G, TH_BG_B, 0);
     }
     if kind == "tool_result" {
-        return ansi_sgr(140, 140, 140, BG_R, BG_G, BG_B, ATTR_DIM);
+        return ansi_sgr(140, 140, 140, TH_BG_R, TH_BG_G, TH_BG_B, TH_DIM);
     }
-    return ansi_sgr(200, 200, 200, BG_R, BG_G, BG_B, 0);
+    return ansi_sgr(200, 200, 200, TH_BG_R, TH_BG_G, TH_BG_B, 0);
 }
 
 # ── Row builders ─────────────────────────────────────────────────────────────
@@ -143,18 +141,18 @@ def _status_row(state: TuiState, cols: int) -> str {
     inner_w = cols - 4;
 
     st_text: str = "○ idle";
-    st_sgr = ansi_sgr(140, 140, 140, BG_R, BG_G, BG_B, ATTR_DIM);
+    st_sgr = ansi_sgr(140, 140, 140, TH_BG_R, TH_BG_G, TH_BG_B, TH_DIM);
     if state.status == "running" {
         st_text = "● running";
-        st_sgr = ansi_sgr(255, 200, 50, BG_R, BG_G, BG_B, 0);
+        st_sgr = ansi_sgr(255, 200, 50, TH_BG_R, TH_BG_G, TH_BG_B, 0);
     }
     if state.status == "done" {
         st_text = "✓ done";
-        st_sgr = ansi_sgr(80, 200, 80, BG_R, BG_G, BG_B, 0);
+        st_sgr = ansi_sgr(80, 200, 80, TH_BG_R, TH_BG_G, TH_BG_B, 0);
     }
     if state.status == "stopping" {
         st_text = "○ stopping";
-        st_sgr = ansi_sgr(255, 80, 80, BG_R, BG_G, BG_B, 0);
+        st_sgr = ansi_sgr(255, 80, 80, TH_BG_R, TH_BG_G, TH_BG_B, 0);
     }
     # Use visible_width: "○", "●", "✓" are 3-byte UTF-8 but 1 visible column each.
     st_len = visible_width(st_text);
@@ -184,11 +182,15 @@ def _status_row(state: TuiState, cols: int) -> str {
 
     row: str = _SB + "│ " + st_sgr + st_text;
     if act_len > 0 {
-        row = row + " " + ansi_sgr(255, 210, 60, BG_R, BG_G, BG_B, 0) + act_disp;
+        row = row + " " + ansi_sgr(
+            255, 210, 60, TH_BG_R, TH_BG_G, TH_BG_B, 0
+        ) + act_disp;
     }
     if gap >= 1 and hints_len <= inner_w - left_len - 2 {
         row = row + term_spaces(gap);
-        row = row + ansi_sgr(BR_R, BR_G, BR_B, BG_R, BG_G, BG_B, ATTR_DIM) + hints;
+        row = row + ansi_sgr(
+            TH_BORDER_R, TH_BORDER_G, TH_BORDER_B, TH_BG_R, TH_BG_G, TH_BG_B, TH_DIM
+        ) + hints;
     }
     row = row + " " + _SB + "│" + _SR;
     return row;
@@ -240,7 +242,9 @@ def _warn_row(env: str, cols: int) -> str {
     warn_text = ansi_trunc(
         f"  Missing API key: {env}  (/settings to configure)", inner_w
     );
-    return _SB + "│ " + ansi_sgr(255, 80, 80, BG_R, BG_G, BG_B, 0) + warn_text + " " + _SB + "│" + _SR;
+    return _SB + "│ " + ansi_sgr(
+        255, 80, 80, TH_BG_R, TH_BG_G, TH_BG_B, 0
+    ) + warn_text + " " + _SB + "│" + _SR;
 }
 
 def _idiv_s(a: int, b: int) -> int {
@@ -288,11 +292,11 @@ def _editor_rows(
     }
 
     if is_running {
-        prompt_sgr = ansi_sgr(120, 120, 120, BG_R, BG_G, BG_B, ATTR_DIM);
+        prompt_sgr = ansi_sgr(120, 120, 120, TH_BG_R, TH_BG_G, TH_BG_B, TH_DIM);
     } else {
-        prompt_sgr = ansi_sgr(255, 255, 255, BG_R, BG_G, BG_B, ATTR_BOLD);
+        prompt_sgr = ansi_sgr(255, 255, 255, TH_BG_R, TH_BG_G, TH_BG_B, TH_BOLD);
     }
-    text_sgr = ansi_sgr(220, 220, 220, BG_R, BG_G, BG_B, 0);
+    text_sgr = ansi_sgr(220, 220, 220, TH_BG_R, TH_BG_G, TH_BG_B, 0);
     cursor_sgr: str = "\033[7m";  # reverse video for cursor
 
     # Build list of (visual_line_text, cursor_vis_col) pairs.
