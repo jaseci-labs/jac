@@ -338,13 +338,16 @@ console.log(`\\n${tag} ${failures.length ? "FAILED" : "OK"}: ${failures.length} 
 process.exit(failures.length ? 1 : 0);
 """;
 
-"""Form harness: mount a `JacForm` with email + checkbox fields compiled via the
-Solid backend, then assert (1) the form structure renders in jsdom, (2) an invalid
-email shows a Jac error paragraph after blur (onBlur validator fires), (3) fixing
-the email clears the error without a second blur (onChange revalidation — end-to-end
-proof of the `onTouched` approximation), and (4) the checkbox input renders and
-accepts a change event. A plain (non-f) string so JS `${}`/`{}` need no escaping;
-`_BABEL_BUILD` compiles every emitted `*.src.jsx` before any import."""
+"""Form harness: mount a `JacForm` with email + checkbox + enum-select fields
+compiled via the Solid backend, then assert (1) the form structure renders in
+jsdom, (2) an invalid email shows a Jac error paragraph after blur (onBlur
+validator fires), (3) fixing the email clears the error without a second blur
+(onChange revalidation — end-to-end proof of the `onTouched` approximation),
+(4) the checkbox input renders and accepts a change event, and (5) the enum
+field renders a `<select>` with one `<option>` per enum value plus the
+placeholder, and accepts a change event. A plain (non-f) string so JS `${}`/`{}`
+need no escaping; `_BABEL_BUILD` compiles every emitted `*.src.jsx` before any
+import."""
 glob _FORM_HARNESS: str = _BABEL_BUILD + """
 import { JSDOM } from "jsdom";
 
@@ -401,6 +404,17 @@ check("email input rendered", !!emailInput, `html=${root.innerHTML}`);
 
 const checkboxInput = document.querySelector('input[type="checkbox"]');
 check("checkbox input rendered", !!checkboxInput, `html=${root.innerHTML}`);
+
+const selectEl = document.querySelector('select');
+check("select input rendered", !!selectEl, `html=${root.innerHTML}`);
+// The select branch renders a placeholder `<option value="">` plus one option per
+// enum value (from `getEnumOptions` reading zod v4's `_def.entries`).
+const selectValues = selectEl
+  ? Array.from(selectEl.querySelectorAll('option')).map((o) => o.value)
+  : [];
+check("select lists the enum options (+ placeholder)",
+  JSON.stringify(selectValues) === JSON.stringify(["", "free", "pro", "enterprise"]),
+  `got: ${JSON.stringify(selectValues)}`);
 
 const submitBtn = document.querySelector('button[type="submit"]');
 check("submit button rendered", !!submitBtn, `html=${root.innerHTML}`);
@@ -468,6 +482,23 @@ if (checkboxInput) {
   }
   if (!checkboxError) {
     check("checkbox change event dispatches without throwing", true);
+  }
+}
+
+// --- Select: change event dispatches without error (exercises handleChange) ---
+if (selectEl) {
+  let selectError = false;
+  try {
+    selectEl.value = "pro";
+    selectEl.dispatchEvent(new window.Event("change", { bubbles: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+  } catch (e) {
+    selectError = true;
+    check("select change event dispatches without throwing", false, String(e));
+  }
+  if (!selectError) {
+    check("select change event dispatches without throwing", true);
   }
 }
 
