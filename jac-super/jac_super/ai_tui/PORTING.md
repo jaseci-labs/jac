@@ -1,8 +1,9 @@
 # `jac ai --tui` - Cross-Platform Porting
 
-The native (`na`) TUI sidecar is **Linux-only today**. The architecture is
-designed for portability: only the **terminal I/O layer** and **control-plane
-spawn** are OS-specific. Everything above that seam is shared Jac NA code.
+The native (`na`) TUI sidecar runs on **Linux, macOS, and Windows**. The
+architecture is designed for portability: only the **terminal I/O layer** and
+**control-plane spawn** are OS-specific. Everything above that seam is shared
+Jac NA code.
 
 Related docs:
 
@@ -14,10 +15,10 @@ Related docs:
 
 | Environment              | Status | Notes                                      |
 | ------------------------ | ------ | ------------------------------------------ |
-| Linux (native terminal)  | **Yes** | `libc_tty.na.jac` + glibc FFI             |
+| Linux (native terminal)  | **Yes** | `libc_tty.linux.na.jac` + glibc FFI       |
 | WSL                      | **Yes** | Build and run inside WSL (Linux userspace) |
-| macOS                    | No     | POSIX cousin; needs Darwin `termios` port   |
-| Windows (native)         | No     | Needs Console API / ConPTY backend        |
+| macOS                    | **Yes** | `libc_tty.darwin.na.jac`; Phase 5 sign-off pending |
+| Windows (native)         | **Yes** | `console.win32.na.jac`; in-process default; Phase 5 sign-off pending |
 
 ## Architecture (unchanged across platforms)
 
@@ -37,9 +38,9 @@ Related docs:
 │                                                         │
 │  ┌─────────────────────────────────────────────────┐    │
 │  │  Platform terminal backend (swap per OS)        │    │
-│  │  Linux:   libc_tty.linux.na.jac  (today)        │    │
-│  │  macOS:   libc_tty.darwin.na.jac  (planned)     │    │
-│  │  Windows: console.win32.na.jac    (planned)     │    │
+│  │  Linux:   libc_tty.linux.na.jac  (shipped)       │    │
+│  │  macOS:   libc_tty.darwin.na.jac  (shipped)     │    │
+│  │  Windows: console.win32.na.jac    (shipped)     │    │
 │  └─────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -242,9 +243,9 @@ isolation.
 
 ## Control-plane env vars (platform-related)
 
-| Variable | Linux / macOS | Windows (planned) |
-| -------- | ------------- | ----------------- |
-| `JAC_AI_TUI_TTY` | Device path from `os.ttyname()` (e.g. `/dev/pts/5`) | N/A - replace with handle/ConPTY env |
+| Variable | Linux / macOS | Windows |
+| -------- | ------------- | ------- |
+| `JAC_AI_TUI_TTY` | Device path from `os.ttyname()` (e.g. `/dev/pts/5`) | `""` (empty sentinel; `tty_open_dev` attaches parent console) |
 | `JAC_AI_UI_*` | Unchanged | Unchanged |
 
 All `JAC_AI_UI_*` startup vars in `PROTOCOL.md` stay the same on every OS.
@@ -254,13 +255,11 @@ All `JAC_AI_UI_*` startup vars in `PROTOCOL.md` stay the same on every OS.
 | Layer | Linux | macOS | Windows |
 | ----- | ----- | ----- | ------- |
 | Protocol / bridge (subprocess) | `test_ai_tui_bridge.jac` | Same | Same |
-| In-process host (ctypes + real PTY) | `test_ai_tui_host.jac` | Same (POSIX PTY) | Console-handle variant |
-| Libc / console smoke | `proto/no_c_*.na.jac` | Darwin termios variants | Console API smoke binary |
+| In-process host (ctypes) | `test_host.py` | Same | Same (`tui.dll`) |
+| TTY / console smoke | `proto/no_c_*.na.jac` | `test_tty_darwin.py` (PTY harness) | `test_console_win32.py` (constant probe + VT gate) |
 | Headless UI | `test_pickers.na.jac` | Same | Same |
-| Integration | `jac ai --tui` under real TTY | Real terminal on Mac | Windows Terminal in CI |
-
-Libc smoke tests need a controlling terminal locally; CI should use a
-pseudo-tty wrapper or skip unless the runner provides one.
+| CI | `blacksmith-4vcpu-ubuntu-2404` | cross-compile + `macos-latest` | cross-compile (PE/COFF assert) + `windows-latest` |
+| Integration | `jac ai --tui` under real TTY | Phase 5 sign-off pending | Phase 5 sign-off pending |
 
 ## Implementation order
 

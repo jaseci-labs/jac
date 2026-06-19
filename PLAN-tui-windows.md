@@ -39,9 +39,9 @@ Everything above the tty seam (`width`, `tui_core`, `state`, `feed`,
 `:pub` exports) is shared. The default **in-process** backend does not need
 Linux-style fd-3 IPC remap for the happy path.
 
-**Still open:** `windows-latest` CI job, `PORTING.md` status table update,
-Phase 5 interactive sign-off (`SIGNOFF-win32.md`). ConPTY + full subprocess
-IPC remain follow-up work.
+**Still open:** `PORTING.md` status table update, Phase 5 interactive
+sign-off (`SIGNOFF-win32.md`). ConPTY + full subprocess IPC remain follow-up
+work.
 
 ## Delivered (v1 - 2026-06-18)
 
@@ -422,7 +422,12 @@ win32; `bash build.sh --quick` elsewhere.
 Default is in-process; use `JAC_AI_TUI_BACKEND=subprocess` on Windows at
 your own risk until Phase 6.
 
-## Phase 4 - CI - **open**
+## Phase 4 - CI - **DONE**
+
+Added `.github/workflows/tui-windows.yml` with two jobs:
+
+- `windows-cross-compile` (Linux runner): PE/COFF format assertions on both artifacts
+- `windows-native` (`windows-latest`): full build + picker tests + host gate + console gate
 
 Add to the jac-super NA artifact workflow:
 
@@ -467,7 +472,7 @@ Checklist for interactive validation (capture in `ai_tui/SIGNOFF-win32.md`):
 | 1 | `console.win32.na.jac` (Console API + `tty_read_key` translation) | **DONE** |
 | 2 | `build.ps1`, `build.sh` win32, `_ensure_na_artifact` | **DONE** |
 | 3 | `run_tui_in_process` TTY gate + `nul` redirect | **DONE** |
-| 4 | Linux cross-compile gate + `windows-latest` CI | **open** (local gates only) |
+| 4 | Linux cross-compile gate + `windows-latest` CI | **DONE** (`.github/workflows/tui-windows.yml`) |
 | 5 | Human Windows sign-off (`SIGNOFF-win32.md`) | **open** |
 | 6 | Subprocess IPC + stdio remap on Win | **open** |
 | 7 | ConPTY v2 | **out of scope** |
@@ -541,3 +546,4 @@ JAC_AI_TUI_TARGET=win32 ./build.sh --quick
 | ---------- | ----- | ----- |
 | 2026-06-18 | plan  | Initial Windows port plan. Contrasted with macOS one-module swap; identified `tty_read_key` / `INPUT_RECORD` translation as the crux; chose parent-console v1 + `build.ps1` + `tty/` staging; sequenced after macOS plumbing. |
 | 2026-06-18 | v1    | **Implemented.** `console.win32.na.jac`, `build.ps1`, `build.sh` win32 cross-compile, control-plane branches, `test_console_win32.py`. In-process path is the supported Windows backend; subprocess IPC stubs link but are not wired. CI `windows-latest` + `SIGNOFF-win32.md` remain open. |
+| 2026-06-18 | CI    | **Phase 4 done.** `.github/workflows/tui-windows.yml`: cross-compile (Linux → PE/COFF assertions) + `windows-latest` (native build, picker tests, host gate, console gate). `SIGNOFF-win32.md` remains open. |
