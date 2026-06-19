@@ -45,16 +45,17 @@ impl SolidBackend.import_source(symbol: str) -> str {
 }
 
 """Solid uses its own framework-free runtime shim (`solid_runtime.cl.jac`),
-which re-exports the shared core but supplies a `solid-js/h`-backed `__jacJsx`
-and pulls in no React ecosystem package. Overrides the React/Preact basename
+which re-exports the shared core with no React ecosystem package and no `__jacJsx`
+(the JSX path no longer needs a hyperscript factory). Overrides the basename
 inherited from ReactBackend."""
 impl SolidBackend.runtime_source_basename -> str {
     return "solid_runtime.cl.jac";
 }
 
-"""Hyperscript runtime (`solid-js/h`) needs no JSX-compiler Vite plugin."""
+"""The Solid build uses `vite-plugin-solid` (wraps `babel-plugin-jsx-dom-expressions`),
+the same transform the jsdom harness applies via `babel-preset-solid`."""
 impl SolidBackend.vite_plugin_lines -> (tuple[str, str] | None) {
-    return None;
+    return ('import solidPlugin from "vite-plugin-solid";', 'solidPlugin()');
 }
 
 """Build the Solid entry script that mounts an exported `app` component."""
@@ -104,17 +105,6 @@ impl SolidBackend.lower_ref_field(r: RefField) -> list[es.Statement] {
 subscribes the surrounding computation under fine-grained reactivity)."""
 impl SolidBackend.lower_state_read(name: str) -> es.Expression {
     return es.CallExpression(callee=es.Identifier(name=name), arguments=[]);
-}
-
-"""Lower a dynamic JSX position to a thunk `() => expr`.
-
-The component body runs once, so a signal read placed directly in JSX would be
-evaluated a single time. Wrapping it in a thunk lets the runtime own a per-node
-tracking computation that re-runs `expr` when its signals change."""
-impl SolidBackend.lower_view_expr(expr: es.Expression) -> es.Expression {
-    return es.ArrowFunctionExpression(
-        params=[], body=expr, async_=False, expression=True
-    );
 }
 
 # ============================================================================

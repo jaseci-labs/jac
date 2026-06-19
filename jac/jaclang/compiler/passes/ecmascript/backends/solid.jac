@@ -10,14 +10,12 @@ from the re-render model.
 `__jacJsx(tag, props, [children])` hyperscript call, `SolidBackend.lower_view`
 emits real **JSX syntax** (estree JSX nodes the unparser prints as `<tag …>`),
 which `vite-plugin-solid` (`babel-plugin-jsx-dom-expressions`) compiles to
-fine-grained reactive DOM. Dynamic positions are therefore **not** thunked here
-(the dom-expressions compiler owns the reactive read); `lower_view_expr` survives
-only because `lower_state_read` reads still pass through it elsewhere and a couple
-of legacy tests pin it — it is no longer applied to view positions (Branch 5+
-removes it). Spreads are native `{...obj}` and refs/events are classified once in
-the producer (TODO #1/#2). The `solid-js/h`-backed `__jacJsx` lives on in the
-runtime shim (now dead for component code) until the hyperscript route is deleted
-in Branch 5+.
+fine-grained reactive DOM. Dynamic positions are **not** thunked (the dom-expressions compiler owns the
+reactive read); `lower_view_expr` is not declared on `SolidBackend` — the identity
+inherited from `ReactBackend` is never called on the JSX path. Spreads are native
+`{...obj}` and refs/events are classified once in the producer (TODO #1/#2). The
+`solid-js/h` hyperscript route and its `__jacJsx` factory have been removed from
+the runtime shim (Branch 5).
 
 v1 is a best-effort subset over the representative fixtures (contract §7); the
 documented gaps live in contract §8 (refs deferred for `useRef`-style fields,
@@ -47,9 +45,8 @@ obj SolidBackend(ReactBackend) {
     def lower_state_update(u: StateUpdate) -> es.Expression;
     def lower_effect(e: Effect) -> list[es.Statement];
     def lower_async_boundary(a: AsyncBoundary) -> es.Expression;
-    # Read seams — the load-bearing signals additions.
+    # Read seam — the load-bearing signals addition.
     def lower_state_read(name: str) -> es.Expression;
-    def lower_view_expr(expr: es.Expression) -> es.Expression;
     # View IR seam — Solid emits real JSX *syntax* (estree JSX nodes the unparser
     # prints as `<tag …>`), which `vite-plugin-solid`'s dom-expressions compiler
     # owns reactivity for, rather than the shared `__jacJsx(…)` hyperscript call.
@@ -98,7 +95,8 @@ obj SolidBackend(ReactBackend) {
     def async_boundary_symbols(a: AsyncBoundary) -> list[str];
     # Runtime/platform surface.
     def import_source(symbol: str) -> str;
-    # Selects the Solid-flavored runtime shim (re-exports the same core, no React).
+    # Selects the Solid-flavored runtime shim (re-exports the same core, no React,
+    # no __jacJsx — the JSX path no longer needs a hyperscript factory).
     def runtime_source_basename -> str;
     def vite_plugin_lines -> (tuple[str, str] | None);
     def build_entry_script(

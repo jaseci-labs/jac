@@ -105,14 +105,6 @@ test "solid read seam lowers a reactive read to an accessor call" {
     assert read_node.arguments == [];
 }
 
-test "solid view seam thunks a dynamic position" {
-    expr = es.Identifier(name="count");
-    out = SolidBackend().lower_view_expr(expr);
-    assert isinstance(out, es.ArrowFunctionExpression);
-    assert out.params == [];
-    assert out.body is expr;
-}
-
 test "solid aug-assign uses a functional updater (contract §5.3)" {
     backend = SolidBackend();
     upd = StateUpdate(name="count", value=es.Literal(value=1, raw="1"), aug_op="+");
@@ -330,9 +322,9 @@ test "backend.build_pages_entry_script dispatches per framework" {
 
 test "solid selects its own framework-free runtime shim" {
     # Solid must NOT ride the React-flavored `client_runtime.cl.jac`; it has its
-    # own shim that re-exports the shared core with a `solid-js/h`-backed
-    # __jacJsx and zero React imports. This overrides the basename inherited
-    # from ReactBackend.
+    # own shim that re-exports the shared core with zero React imports (no __jacJsx —
+    # the JSX path no longer needs a hyperscript factory). Overrides the basename
+    # inherited from ReactBackend.
     assert SolidBackend().runtime_source_basename() == "solid_runtime.cl.jac";
     assert client_runtime_cl_basename("solid") == "solid_runtime.cl.jac";
     path = resolve_client_runtime_cl_path("solid");
@@ -346,11 +338,22 @@ test "solid needs no vite aliases (no react remapping)" {
     assert SolidBackend().vite_aliases() == {};
 }
 
+test "solid emits vite-plugin-solid lines for the bundler config" {
+    # Branch 5: the Solid build uses `vite-plugin-solid` (wraps
+    # `babel-plugin-jsx-dom-expressions`), not the old hyperscript h route.
+    lines = SolidBackend().vite_plugin_lines();
+    assert lines is not None , "SolidBackend.vite_plugin_lines() must return plugin lines";
+    (import_line, call_line) = lines;
+    assert "vite-plugin-solid" in import_line;
+    assert "solidPlugin" in import_line;
+    assert "solidPlugin()" in call_line;
+}
+
 test "solid runtime shim compiles and links its impl bodies" {
     # Compile the real Solid runtime (shim + its `impl/` annex) the way the
     # bundler does and assert the bodies actually link — a parse error or an
-    # unlinked impl would surface here as an empty `__jacJsx`/`navigate` body,
-    # which the text-only purity scan above cannot catch.
+    # unlinked impl would surface here as an empty `navigate` body, which the
+    # text-only purity scan above cannot catch.
     rt = resolve_client_runtime_cl_path("solid");
     prog = JacProgram();
     ir = prog.compile(file_path=rt, no_cgen=True);
@@ -361,10 +364,9 @@ test "solid runtime shim compiles and links its impl bodies" {
     js = es_to_js(
         EsastGenPass(ir_in=ir, prog=prog, backend=SolidBackend()).ir_out.gen.es_ast
     );
-    # __jacJsx has a real body that targets Solid's hyperscript runtime.
-    assert "function __jacJsx(" in js;
-    assert "childrenArray" in js , "__jacJsx body did not link";
-    assert "createElement" not in js , "Solid __jacJsx must not use React.createElement";
+    # The dom-expressions (JSX) path: no __jacJsx hyperscript factory.
+    assert "function __jacJsx(" not in js , "Solid shim must not emit __jacJsx (dom-expressions path)";
+    assert "createElement" not in js , "Solid shim must not use React.createElement";
     # Public surface forwards to the framework-agnostic core.
     assert "_navigate(path)" in js , "navigate forwarder did not link";
     assert "jacIsLoggedIn" in js;

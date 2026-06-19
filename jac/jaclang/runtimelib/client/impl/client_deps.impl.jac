@@ -41,10 +41,13 @@ def _default_client_deps(framework: str) -> tuple[dict[str, str], dict[str, str]
             '@tanstack/solid-form': '^1.33.0',
             'zod': '^4.3.6'
         };
-        # No `vite-plugin-solid`: the Solid build uses the `solid-js/h` hyperscript
-        # runtime (not Solid's JSX compiler), so `SolidBackend.vite_plugin_lines`
-        # adds no plugin to the generated Vite config.
-        dev_deps: dict[str, str] = {'vite': '^6.4.1', 'typescript': '^5.3.3'};
+        # `vite-plugin-solid` wraps `babel-plugin-jsx-dom-expressions` (the same
+        # transform the jsdom harness applies via `babel-preset-solid`).
+        dev_deps: dict[str, str] = {
+            'vite': '^6.4.1',
+            'vite-plugin-solid': '^0.5.0',
+            'typescript': '^5.3.3'
+        };
         return (runtime_deps, dev_deps);
     }
     # React / Preact (Preact reuses the React runtime via a Vite alias).

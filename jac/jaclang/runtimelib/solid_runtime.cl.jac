@@ -11,9 +11,11 @@ hyperscript runtime (`solid-js/h`) instead of `React.createElement`.
 This file pulls in **no** React ecosystem package, which is the whole point of
 the runtime split — a Solid build never resolves `react`, `react-router-dom`,
 `react-hook-form`, or `@hookform/*`. It targets only Solid-native libraries:
-JSX via `solid-js/h`, routing via `@solidjs/router`, forms via
-`@tanstack/solid-form` (Standard Schema natively, no resolver needed), and
-error/async parity via `solid-js`'s `ErrorBoundary` / `Suspense`. Solid's reactive primitives
+routing via `@solidjs/router`, forms via `@tanstack/solid-form` (Standard Schema
+natively, no resolver needed), and error/async parity via `solid-js`'s
+`ErrorBoundary` / `Suspense`. Generated components emit JSX syntax compiled by
+`vite-plugin-solid` (dom-expressions); there is no `__jacJsx` hyperscript factory
+on this path. Solid's reactive primitives
 (`createSignal`, `createEffect`, ...) are imported by the generated component code
 straight from `solid-js` (see `SolidBackend.import_source`), not re-exported here.
 
@@ -27,7 +29,6 @@ surface parity, and `Outlet` bridges a Jac layout's `<Outlet/>` to Solid Router'
 exported from `@jac/runtime` for every framework.
 """
 
-import from 'solid-js/h' { default as h }
 import from 'solid-js' {
     createSignal as solidCreateSignal,
     createContext as solidCreateContext,
@@ -145,12 +146,6 @@ async def:pub jacSsoLogin(
 ) -> bool;
 
 def:pub jacSetToken(token: str) -> None;
-
-# --- Solid-specific surface -------------------------------------------------
-# The JSX factory called by every compiled component. Targets Solid's
-# hyperscript runtime (`solid-js/h`) — the same factory name (`__jacJsx`) the
-# React/Preact shims expose, so `EsJsxProcessor` stays framework-neutral.
-def:pub __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement;
 
 # --- Router bindings (@solidjs/router) --------------------------------------
 # Directly compatible primitives are re-exported as-is; the rest are adapted in
