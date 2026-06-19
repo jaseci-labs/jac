@@ -24,7 +24,7 @@ nothing from the old handle shape carries over.
 | `{...register("fieldName")}` | `<JacForm>` for auto-rendered fields; `form.Field({name: "fieldName"})` for custom UIs |
 | `formState.errors.fieldName?.message` | `field.state.meta.errors[0]` |
 | `formState.isSubmitting` | `form.state.isSubmitting` |
-| `formState.isValid` | `form.state.isValid` |
+| `formState.isValid` | `form.state.isValid` (raw TanStack value; see `onTouched` note below) |
 | `formState.isDirty` | `form.state.isDirty` |
 | `handleSubmit(fn)` | `form.handleSubmit` (or use `<JacForm onSubmit={fn}>`) |
 
@@ -41,8 +41,26 @@ TanStack Form has no `onTouched` mode. `JacForm` approximates it by wiring **bot
 `onBlur` and `onChange` validators, then gating error display on
 `field.state.meta.isTouched` (errors appear after first blur, clear on subsequent
 `onChange` without a second blur). Validation still runs in the background pre-blur,
-so `form.state.isValid` may be `false` before touch; submit is gated on `!isDirty`, not
-`!isValid`.
+so raw `form.state.isValid` may be `false` before touch.
+
+`<JacForm>` compensates with an `effectiveIsValid` submit gate:
+
+```jac
+effectiveIsValid = (
+    True
+    if (validateMode == "onTouched" and not form.state.isTouched)
+    else form.state.isValid
+);
+```
+
+The built-in submit button uses:
+
+```jac
+disabled={form.state.isSubmitting or not form.state.isDirty or not effectiveIsValid}
+```
+
+So before any field has been touched, submit stays gated only by `isSubmitting` and
+`isDirty`; after the first touch, it also reflects the real `form.state.isValid`.
 
 For custom field UIs built with `form.Field`, apply the same display gate:
 
@@ -52,6 +70,9 @@ if field.state.meta.isTouched and len(field.state.meta.errors) > 0 {
     return <span class="error">{field.state.meta.errors[0]}</span>;
 }
 ```
+
+If you build a custom submit button from the raw form handle and want `<JacForm>`
+parity for `validateMode="onTouched"`, mirror the same `effectiveIsValid` logic.
 
 The other modes map cleanly:
 
@@ -118,6 +139,11 @@ cl import from "@jac/runtime" { useJacForm, JacSchema }
 def:pub MyCustomForm -> JsxElement {
     schema = JacSchema({ email: JacSchema.string().email() });
     form = useJacForm("onTouched", schema);
+    effectiveIsValid = (
+        True
+        if not form.state.isTouched
+        else form.state.isValid
+    );
 
     return (
         <form onSubmit={(e) -> None {
@@ -139,7 +165,16 @@ def:pub MyCustomForm -> JsxElement {
                     );
                 }}
             </form.Field>
-            <button type="submit" disabled={form.state.isSubmitting}>Submit</button>
+            <button
+                type="submit"
+                disabled={
+                    form.state.isSubmitting
+                    or not form.state.isDirty
+                    or not effectiveIsValid
+                }
+            >
+                Submit
+            </button>
         </form>
     );
 }

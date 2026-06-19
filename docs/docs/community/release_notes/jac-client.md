@@ -84,7 +84,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: Correct assert string in `test_client_only_requires_base_url`**: The test was checking for `"client_only = true requires"` which never existed in the implementation. Updated to match the actual error message `"client_only mode requires"` in `desktop_target.impl.jac`.
 - **Fix: `jacSignup` surfaces JSON parse errors instead of swallowing them**: On a 200 response with a malformed body, `jacSignup` previously returned `{success: True, user_id: None}`, hiding the failure from callers. It now returns `{success: False, error: ...}` when the response body cannot be parsed as JSON.
 - **jac-client: Multi-segment SPA routes**: Fixed an issue where asset paths (JS/CSS) in the generated `index.html` were relative, causing 404 errors when refreshing on nested routes. Asset paths now use a configurable `base_path` (defaulting to `/`), which also enables deploying the app on a subpath.
-- **Fix: use `{**field}` instead of `{...field}` in JacForm input JSX**: jac-client's form-input components spread the `react-hook-form` `field` registration into JSX with `{...field}`, which is JS-idiomatic but emits W0063 (`prefer-double-star-spread`) once the type checker reaches them. Switched to Jac's `{**field}` so the lint stays clean as `@jac/runtime` consumers gain stricter type checking. No runtime behavior change.
+- **Fix: use `{**field}` instead of `{...field}` in JacForm input JSX**: jac-client's form-input components now use Jac's `{**field}` spread syntax instead of JS-style `{...field}`, avoiding W0063 (`prefer-double-star-spread`) once the type checker reaches them. No runtime behavior change.
 
 ### Refactors
 
