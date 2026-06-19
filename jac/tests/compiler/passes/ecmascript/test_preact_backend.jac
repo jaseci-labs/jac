@@ -209,3 +209,51 @@ test "react client runtime shim imports no solid ecosystem package" {
         }
     }
 }
+
+test "preact runtime shim compiles JacForm and emits tanstack react-form" {
+    # Compile the shared React/Preact runtime with PreactBackend and verify
+    # JacForm / useJacForm are emitted and use @tanstack/react-form's useForm
+    # (not Solid's createForm).
+    rt = resolve_client_runtime_cl_path("preact");
+    prog = JacProgram();
+    ir = prog.compile(file_path=rt, no_cgen=True);
+    js = es_to_js(
+        EsastGenPass(ir_in=ir, prog=prog, backend=PreactBackend()).ir_out.gen.es_ast
+    );
+    assert "function JacForm(" in js;
+    assert "function useJacForm(" in js;
+    assert "useForm(" in js , "useJacForm must call @tanstack/react-form's useForm";
+    assert '"onTouched"' in js , "useJacForm must handle the default validateMode";
+    use_jac_form = js.split("function useJacForm(", 1)[1].split("function JacForm(", 1)[
+        0
+    ];
+    assert 'validators["onBlur"] = schema' in use_jac_form;
+    assert 'validators["onChange"] = schema' in use_jac_form;
+    # Must NOT use Solid's createForm factory.
+    assert "createForm(" not in js , "Preact runtime must not reference @tanstack/solid-form";
+}
+
+test "preact runtime shim exports form symbols" {
+    rt = resolve_client_runtime_cl_path("preact");
+    prog = JacProgram();
+    ir = prog.compile(file_path=rt, no_cgen=True);
+    js = es_to_js(
+        EsastGenPass(ir_in=ir, prog=prog, backend=PreactBackend()).ir_out.gen.es_ast
+    );
+    export_line = "";
+    for ln in js.splitlines() {
+        if ln.strip().startswith("export {") {
+            export_line = ln;
+        }
+    }
+    assert export_line , "Preact/React shim emitted no export statement";
+    for name in [
+        "JacForm",
+        "useJacForm",
+        "JacSchema",
+        "JacClientErrorBoundary",
+        "JacAwaiting"
+    ] {
+        assert name in export_line , f"@jac/runtime (preact) must export {name}";
+    }
+}
