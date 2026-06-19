@@ -279,8 +279,12 @@ impl errorOverlay(filePath: str, errors: str) -> JsxElement {
 impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
     actualSchema = schema;
     try {
-        if schema._def and schema._def.schema {
-            actualSchema = schema._def.schema;
+        if not schema.shape {
+            if schema._def and schema._def.schema {
+                actualSchema = schema._def.schema;
+            } elif schema.def and schema.def.schema {
+                actualSchema = schema.def.schema;
+            }
         }
     } except Exception as e {
         console.warn("Failed to unwrap schema:", e);
@@ -298,7 +302,8 @@ impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
     } elif form_mode == "onBlur" {
         validators["onBlur"] = schema;
     } elif form_mode == "onTouched" {
-        # TanStack Form has no onTouched; blur then change is closest to RHF.
+        # Both wired so post-touch onChange clears errors; JacForm gates submit on
+        # isTouched so isValid appearing false pre-blur doesn't disable the button.
         validators["onBlur"] = schema;
         validators["onChange"] = schema;
     } else {
@@ -324,8 +329,12 @@ impl JacForm(props: dict) -> JsxElement {
     className = props.className || "";
     actualSchema = schema;
     try {
-        if schema._def and schema._def.schema {
-            actualSchema = schema._def.schema;
+        if not schema.shape {
+            if schema._def and schema._def.schema {
+                actualSchema = schema._def.schema;
+            } elif schema.def and schema.def.schema {
+                actualSchema = schema.def.schema;
+            }
         }
     } except Exception as e {
         console.warn("Failed to unwrap schema:", e);
@@ -336,7 +345,16 @@ impl JacForm(props: dict) -> JsxElement {
     [passwordVisible, setPasswordVisible] = useState({});
     def unwrapZodSchema(schema: any, depth: int = 0) -> any {
         maxDepth = 10;
-        if not schema._def or depth >= maxDepth {
+        if depth >= maxDepth {
+            return schema;
+        }
+        # Prefer public Zod methods (optional/nullable expose .unwrap())
+        try {
+            if schema.unwrap {
+                return unwrapZodSchema(schema.unwrap(), depth + 1);
+            }
+        } except Exception { }
+        if not schema._def {
             return schema;
         }
         typeValue = schema._def.type;
@@ -366,9 +384,19 @@ impl JacForm(props: dict) -> JsxElement {
     }
     def getEnumOptions(fieldSchema: any) -> list {
         unwrapped = unwrapZodSchema(fieldSchema);
+        # Public Zod v3/v4 API: z.enum() exposes .options array
+        if unwrapped.options and Array.isArray(unwrapped.options) {
+            return unwrapped.options;
+        }
+        # Public Zod v3 API: z.nativeEnum() exposes .enum object
+        if unwrapped.enum {
+            return Object.keys(unwrapped.enum);
+        }
+        # Fallback: Zod v4 internal _def.entries / def.entries
         if unwrapped._def and unwrapped._def.entries {
             return Object.keys(unwrapped._def.entries);
-        } elif unwrapped.def and unwrapped.def.entries {
+        }
+        if unwrapped.def and unwrapped.def.entries {
             return Object.keys(unwrapped.def.entries);
         }
         return [];
@@ -613,6 +641,16 @@ impl JacForm(props: dict) -> JsxElement {
     layoutStyle = getLayoutStyle();
     formClassName = className or "";
     buttonClassName = submitClassName or "";
+    # onTouched: treat form as valid before any field is touched so the eager
+    # onChange validator does not disable the button before the user blurs once.
+    effectiveIsValid = (
+        True
+            if (validateMode == "onTouched" and not form.state.isTouched)
+            else form.state.isValid
+    );
+    isFormDisabled = (
+        form.state.isSubmitting or not form.state.isDirty or not effectiveIsValid
+    );
     return (
         <form
             onSubmit={lambda e: any {
@@ -625,15 +663,11 @@ impl JacForm(props: dict) -> JsxElement {
             <div style={layoutStyle}>{fields}</div>
             <button
                 type="submit"
-                disabled={form.state.isSubmitting or not form.state.isDirty}
+                disabled={isFormDisabled}
                 className={buttonClassName}
                 style={{
                     width: "100%",
-                    cursor: (
-                        "not-allowed"
-                            if (form.state.isSubmitting or not form.state.isDirty)
-                            else "pointer"
-                    )
+                    cursor: ("not-allowed" if isFormDisabled else "pointer")
                 }}
             >
                 {form.state.isSubmitting and "Submitting..."}{not form.state.isSubmitting

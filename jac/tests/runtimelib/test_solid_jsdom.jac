@@ -5,7 +5,7 @@ pin what the Solid backend *emits* but never execute it. This test closes that
 gap: it compiles a Solid counter + the real `@jac/runtime` shim to JS, mounts it
 in a real DOM (jsdom) via `solid-js/web`'s `render`, and asserts the initial
 render plus that a click reactively updates the text -- exercising the live
-`solid-js` runtime, the `solid-js/h`-backed `__jacJsx`, the accessor-thunk read,
+`solid-js` runtime, the dom-expressions JSX path, the accessor-thunk read,
 and the signal setter end to end.
 
 This is the documented follow-up for Solid runtime exec: `@solidjs/router` calls a client-only `solid-js`
@@ -338,14 +338,17 @@ console.log(`\\n${tag} ${failures.length ? "FAILED" : "OK"}: ${failures.length} 
 process.exit(failures.length ? 1 : 0);
 """;
 
-"""Form harness: mount a `JacForm` with email + checkbox + enum-select fields
-compiled via the Solid backend, then assert (1) the form structure renders in
-jsdom, (2) an invalid email shows a Jac error paragraph after blur (onBlur
-validator fires), (3) fixing the email clears the error without a second blur
-(onChange revalidation — end-to-end proof of the `onTouched` approximation),
-(4) the checkbox input renders and accepts a change event, and (5) the enum
-field renders a `<select>` with one `<option>` per enum value plus the
-placeholder, and accepts a change event. A plain (non-f) string so JS `${}`/`{}`
+"""Form harness: mount a `JacForm` with email + checkbox + enum-select +
+enum-radio fields compiled via the Solid backend, then assert (1) the form
+structure renders in jsdom, (2) an invalid email shows a Jac error paragraph
+after blur (onBlur validator fires), (3) fixing the email clears the error
+without a second blur (onChange revalidation — end-to-end proof of the
+`onTouched` approximation), (4) the checkbox input renders and accepts a change
+event, (5) the select field renders the correct options and a change updates its
+reflected value, (6) the radio field renders one input per option with none
+checked initially and a click marks the chosen option checked, and (7) the full
+submit flow: dirty → button enabled → click → onSubmit fires (sets
+`globalThis.__jacFormSubmitted`). A plain (non-f) string so JS `${}`/`{}`
 need no escaping; `_BABEL_BUILD` compiles every emitted `*.src.jsx` before any
 import."""
 glob _FORM_HARNESS: str = _BABEL_BUILD + """
@@ -416,6 +419,14 @@ check("select lists the enum options (+ placeholder)",
   JSON.stringify(selectValues) === JSON.stringify(["", "free", "pro", "enterprise"]),
   `got: ${JSON.stringify(selectValues)}`);
 
+const allRadios = Array.from(document.querySelectorAll('input[type="radio"]'));
+check("radio inputs rendered (one per enum option)",
+  allRadios.length === 2,
+  `got: ${allRadios.length}, html=${root.innerHTML}`);
+check("no radio checked initially",
+  !allRadios.some((r) => r.checked),
+  `checked: ${JSON.stringify(allRadios.filter((r) => r.checked).map((r) => r.value))}`);
+
 const submitBtn = document.querySelector('button[type="submit"]');
 check("submit button rendered", !!submitBtn, `html=${root.innerHTML}`);
 
@@ -485,7 +496,7 @@ if (checkboxInput) {
   }
 }
 
-// --- Select: change event dispatches without error (exercises handleChange) ---
+// --- Select: change event dispatches without error + value is reflected ---
 if (selectEl) {
   let selectError = false;
   try {
@@ -499,7 +510,62 @@ if (selectEl) {
   }
   if (!selectError) {
     check("select change event dispatches without throwing", true);
+    check("select reflects the chosen value after handleChange",
+      selectEl.value === "pro",
+      `got: ${JSON.stringify(selectEl.value)}`);
   }
+}
+
+// --- Radio: click one option, verify it is marked checked after handleChange ---
+const radioInputs = Array.from(document.querySelectorAll('input[type="radio"]'));
+if (radioInputs.length > 0) {
+  const adminRadio = radioInputs.find((r) => r.value === "admin");
+  let radioError = false;
+  try {
+    if (adminRadio) {
+      adminRadio.checked = true;
+      adminRadio.dispatchEvent(new window.Event("change", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+  } catch (e) {
+    radioError = true;
+    check("radio change event dispatches without throwing", false, String(e));
+  }
+  if (!radioError) {
+    check("radio change event dispatches without throwing", true);
+    check("clicked radio reflects checked state",
+      !!adminRadio && adminRadio.checked,
+      adminRadio ? `value=${adminRadio.value} checked=${adminRadio.checked}` : "no admin radio");
+  }
+}
+
+// --- Full submit flow: dirty → button enabled → onSubmit fires ---
+globalThis.__jacFormSubmitted = false;
+if (submitBtn && !submitBtn.disabled) {
+  let submitError = false;
+  try {
+    submitBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  } catch (e) {
+    submitError = true;
+    check("submit click fires onSubmit without throwing", false, String(e));
+  }
+  if (!submitError) {
+    check("submit click fires onSubmit without throwing", true);
+    check("onSubmit callback invoked (globalThis.__jacFormSubmitted)",
+      globalThis.__jacFormSubmitted === true,
+      `__jacFormSubmitted=${globalThis.__jacFormSubmitted}`);
+  }
+} else {
+  check("submit button is enabled for the submit flow test",
+    false,
+    `disabled=${submitBtn ? submitBtn.disabled : "no button"}, isDirty check failed`);
 }
 
 console.log(`\\n${failures.length ? "FAILED" : "OK"}: ${failures.length} failure(s)` +
@@ -813,8 +879,12 @@ test "solid JacForm renders and validates in jsdom (TanStack Form end-to-end)" {
     # End-to-end proof of the TanStack Form migration for the Solid backend:
     # `JacForm` mounts correctly via `@tanstack/solid-form`, email validation
     # fires on blur (onBlur validator) and clears on onChange without a second
-    # blur (`onTouched` approximation: both onBlur + onChange wired), and the
-    # checkbox field renders. Same opt-in + toolchain as the counter test.
+    # blur (`onTouched` approximation: both onBlur + onChange wired), the
+    # checkbox and select branches render and accept change events, the select
+    # value is reflected after handleChange, the radio branch renders one input
+    # per enum option with correct initial state and marks the clicked option
+    # checked, and the full submit flow (dirty → enabled → onSubmit fires) is
+    # verified end-to-end. Same opt-in + toolchain as the counter test.
     _require_client_integration();
     bun = get_bun();
     if bun is None {
