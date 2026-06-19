@@ -260,6 +260,28 @@ test "no-image gateway entrypoint builds the client when a client entry is set" 
     assert "jac build" not in no_build;
 }
 
+test "no-image pods default to higher memory (in-pod build); built-image stays small" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="jac-shop-dev");
+    ni = MicroserviceManifestBuilder(k8s_config=cfg, no_image=True);
+    # service default: 4Gi limit / 1Gi request (jac install + compile in-pod).
+    svc = ni._build_resources({});
+    assert svc["limits"]["memory"] == "4Gi";
+    assert svc["requests"]["memory"] == "1Gi";
+    # gateway default: 8Gi limit / 2Gi request (also builds the client bundle).
+    gw = ni._build_resources({}, is_gateway=True);
+    assert gw["limits"]["memory"] == "8Gi";
+    assert gw["requests"]["memory"] == "2Gi";
+    # explicit config still wins over the default.
+    assert ni._build_resources({"memory_limit": "512Mi"})["limits"]["memory"] == "512Mi";
+
+    # built-image keeps the small Burstable defaults (no in-pod build).
+    plain = MicroserviceManifestBuilder(k8s_config=cfg);
+    pr = plain._build_resources({});
+    assert pr["limits"]["memory"] == "1Gi";
+    assert pr["requests"]["memory"] == "128Mi";
+    assert plain._build_resources({}, is_gateway=True)["limits"]["memory"] == "2Gi";
+}
+
 test "experimental bootstrap git-clones the branch into a shared venv" {
     init = build_bootstrap_init_container(
         "python:3.12-slim",

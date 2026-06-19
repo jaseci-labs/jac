@@ -236,12 +236,8 @@ def _is_excluded(rel: any) -> bool {
 }
 
 
-"""A copy of the project's jac.toml with the `[plugins.scale...]` tables removed,
-or None when there's no jac.toml. The raw file is never packed (it can hold
-registry/DB creds under `[plugins.scale]`), but the rest - `[project]`,
-`[dependencies.*]`, `[plugins.client*]` - is the app + client-build config the
-pods need (so `jac build` can bundle the frontend and `jac start` has a real
-project file). Keep app-level secrets out of jac.toml; use env or a K8s Secret."""
+"""The project's jac.toml with the `[plugins.scale...]` tables (deploy creds)
+removed, or None when there's no jac.toml."""
 def _sanitized_jac_toml(base: any) -> (str | None) {
     src = base / "jac.toml";
     if not src.is_file() {
@@ -270,8 +266,7 @@ def _sanitized_jac_toml(base: any) -> (str | None) {
 
 
 """Tar+gzip the project dir (excluding build artifacts + secret files) into
-raw bytes. The raw jac.toml is excluded; a `[plugins.scale]`-stripped copy is
-added so pods get the app + client-build config without the deploy secrets."""
+raw bytes."""
 def pack_source(project_dir: str) -> bytes {
     base = Path(project_dir).resolve();
     buf = io.BytesIO();

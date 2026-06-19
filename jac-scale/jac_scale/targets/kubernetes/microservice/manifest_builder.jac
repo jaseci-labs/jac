@@ -188,10 +188,7 @@ obj MicroserviceManifestBuilder {
         }
     }
 
-    """[...microservices.client].entry (the fullstack client to build), or '' if
-    unset/unreadable. Read at deploy time from the full config and baked into the
-    gateway entrypoint so the in-pod jac.toml (which has [plugins.scale] stripped)
-    doesn't need it."""
+    """[...microservices.client].entry (the client to build), or '' if unset."""
     def _client_entry -> str {
         try {
             import from jac_scale.config_loader { get_scale_config }
@@ -483,14 +480,22 @@ obj MicroserviceManifestBuilder {
             memory_request_val = cfg.memory_request;
         }
         if memory_request_val is None {
-            memory_request_val = "128Mi";
+            if self.no_image {
+                memory_request_val = "2Gi" if is_gateway else "1Gi";
+            } else {
+                memory_request_val = "128Mi";
+            }
         }
         memory_limit_val = svc_cfg.get("memory_limit");
         if memory_limit_val is None {
             memory_limit_val = cfg.memory_limit;
         }
         if memory_limit_val is None {
-            memory_limit_val = "2Gi" if is_gateway else "1Gi";
+            if self.no_image {
+                memory_limit_val = "8Gi" if is_gateway else "4Gi";
+            } else {
+                memory_limit_val = "2Gi" if is_gateway else "1Gi";
+            }
         }
         cpu_request_val = svc_cfg.get("cpu_request");
         if cpu_request_val is None {
@@ -764,9 +769,7 @@ obj MicroserviceManifestBuilder {
 
     """Pod entrypoint: reads JAC_SV_NAME and runs `jac scale gateway`
     (gateway) or `jac start <name>.jac` (service). JAC_SV_SIBLING=1 is
-    exported so the pre-hook skips local-mode orchestration. In no-image mode
-    the gateway also builds the client bundle first (there's no image-build step
-    to do it), so it can serve the SPA at `/`."""
+    exported so the pre-hook skips local-mode orchestration."""
     def _pod_entrypoint -> dict[str, any] {
         gw_prefix = "";
         if self.no_image {
