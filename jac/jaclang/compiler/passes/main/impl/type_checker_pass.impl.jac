@@ -1109,21 +1109,22 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
 }
 
 impl TypeCheckPass.after_pass(self: TypeCheckPass) -> None {
-    # Flag lambda params left Unknown (seeding settles only once fully typed).
-    # Guard with _emit_diagnostics: param.name.type is re-derived in every
-    # full run, so there is nothing to defer — and a quiet inference sweep over
-    # a JIR-loaded dependency has degraded cross-module link state, where a
-    # param that the owning full run resolves can still look Unknown. Stashing
-    # E1119 there would replay as a false positive on well-typed code.
+    # Both steps below are full-diagnostic-only. The lambda check runs first
+    # so a live E1119 evicts any copy a prior suppressed run stashed (see
+    # emit()), and the replay loop then skips it.
     if getattr(self, '_emit_diagnostics', True) {
+        # Flag lambda params left Unknown once fully typed. Guarded because
+        # param.name.type is re-derived every full run (nothing to defer), and
+        # a quiet inference sweep over a JIR-loaded dependency has degraded
+        # cross-module link state where a param the owning full run resolves
+        # can still look Unknown -- stashing E1119 there would replay as a
+        # false positive on well-typed code.
         self._check_unresolved_lambda_params();
-    }
-    # Full-diagnostic runs replay diagnostics deferred by earlier suppressed
-    # inference runs on this module: evaluator memoization (Expr.type cache)
-    # means this run could not re-derive them live. Live re-emissions during
-    # this run already evicted their stash entries in emit(), so whatever
-    # remains here is exactly the cache-swallowed remainder.
-    if getattr(self, '_emit_diagnostics', True) {
+        # Replay diagnostics deferred by earlier suppressed inference runs on
+        # this module: evaluator memoization (Expr.type cache) means this run
+        # could not re-derive them live. Live re-emissions during this run
+        # already evicted their stash entries in emit(), so whatever remains
+        # here is exactly the cache-swallowed remainder.
         stash = self.ir_in?._deferred_type_diags;
         if stash {
             for (diag, node_override, related, help_text, kwargs) in list(
