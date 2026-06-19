@@ -32,8 +32,7 @@ import from jac_super.ai_agent.tui_shared {
     _dispatch_cmd,
     _ensure_na_artifact,
     _frame_blob,
-    _sidecar_tty_device,
-    _tty_is_available
+    _require_tty
 }
 
 impl run_tui_session(req: AgentRequest) -> int {
@@ -71,11 +70,8 @@ impl run_tui_session(req: AgentRequest) -> int {
     }
     cmd_args = resolved.get("cmd_args");
 
-    tty_dev = _sidecar_tty_device();
-    if not _tty_is_available(tty_dev) {
-        console.error(
-            "jac ai --tui needs an interactive terminal (stdin or stderr must be a TTY)"
-        );
+    tty_dev = _require_tty();
+    if tty_dev is None {
         return 1;
     }
     old_tty_env = os.environ.get("JAC_AI_TUI_TTY");
@@ -96,7 +92,9 @@ impl run_tui_session(req: AgentRequest) -> int {
         _debug_log(f"launch failed: {e}");
         try {
             ui_stop();
-        } except Exception { }
+        } except Exception as e {
+            _debug_log(f"ui_stop error (on launch fail): {e}");
+        }
         restore_ui();
         if old_tty_env is None {
             os.environ.pop("JAC_AI_TUI_TTY", None);
@@ -171,7 +169,9 @@ impl run_tui_session(req: AgentRequest) -> int {
         stop_evt.set();
         try {
             ui_stop();
-        } except Exception { }
+        } except Exception as e {
+            _debug_log(f"ui_stop error: {e}");
+        }
         restore_ui();
         if old_tty_env is None {
             os.environ.pop("JAC_AI_TUI_TTY", None);
@@ -261,5 +261,7 @@ def _write_frame(pipe: any, frame: dict) {
     try {
         pipe.write(_frame_blob(frame) + "\n");
         pipe.flush();
-    } except Exception { }
+    } except Exception as e {
+        _debug_log(f"frame write error: {e}");
+    }
 }

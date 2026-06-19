@@ -22,8 +22,7 @@ impl run_tui_in_process(req: AgentRequest) -> int {
         _debug_log,
         _dispatch_cmd,
         _frame_blob,
-        _sidecar_tty_device,
-        _tty_is_available
+        _require_tty
     }
     import from jac_super.ai_agent.tui_host { TuiHost, _ensure_tui_lib, _tui_lib_path }
 
@@ -43,11 +42,8 @@ impl run_tui_in_process(req: AgentRequest) -> int {
         return 1;
     }
 
-    tty_dev = _sidecar_tty_device();
-    if not _tty_is_available(tty_dev) {
-        console.error(
-            "jac ai --tui needs an interactive terminal (stdin or stderr must be a TTY)"
-        );
+    tty_dev = _require_tty();
+    if tty_dev is None {
         return 1;
     }
 
@@ -70,35 +66,51 @@ impl run_tui_in_process(req: AgentRequest) -> int {
         _debug_log(f"libtui.so load failed: {e}");
         try {
             ui_stop();
-        } except Exception { }
+        } except Exception as e {
+            _debug_log(f"ui_stop error (on load fail): {e}");
+        }
         restore_ui();
         console.error(f"Failed to load in-process TUI library: {e}");
         return 1;
     }
 
-    # Stray-output guard (§12.2): in-process there is no fd remap protecting the
-    # alt-screen -- fd 1/2 ARE the controlling tty the native layer puts into raw
-    # + alt-screen. Redirect the process's REAL stdout/stderr fds to /dev/null for
-    # the TUI's lifetime so an unhandled traceback or stray print can't scribble
-    # over the render. The native TUI opens its own tty fd (relocated ≥ 10), so
-    # this does not touch its output. Restored in `finally`.
-    # On Windows os.devnull is "nul" (verified on Python 3.12+); same intent.
-    devnull_fd = os.open(os.devnull, os.O_WRONLY);
+    # Stray-output guard (§12.2): in-process fd 1/2 ARE the controlling tty the
+    # native layer puts into raw+alt-screen. Redirect them for the TUI's lifetime
+    # so stray prints/tracebacks can't scribble over the render. When
+    # JAC_AI_TUI_DEBUG_LOG is set we redirect to that file (captured for post-mortem
+    # inspection); otherwise to /dev/null. The native TUI opens its own tty fd
+    # (relocated ≥ 10), so this does not touch its output. Restored in `finally`.
+    _log_path = os.environ.get("JAC_AI_TUI_DEBUG_LOG", "").strip();
+    if _log_path {
+        try {
+            redirect_fd = os.open(
+                _log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644
+            );
+        } except Exception {
+            redirect_fd = os.open(os.devnull, os.O_WRONLY);
+        }
+    } else {
+        redirect_fd = os.open(os.devnull, os.O_WRONLY);
+    }
     saved_out = os.dup(1);
     saved_err = os.dup(2);
-    os.dup2(devnull_fd, 1);
-    os.dup2(devnull_fd, 2);
-    os.close(devnull_fd);
+    os.dup2(redirect_fd, 1);
+    os.dup2(redirect_fd, 2);
+    os.close(redirect_fd);
 
     def _restore_fds {
         try {
             os.dup2(saved_out, 1);
             os.close(saved_out);
-        } except Exception { }
+        } except Exception as e {
+            _debug_log(f"restore stdout fd error: {e}");
+        }
         try {
             os.dup2(saved_err, 2);
             os.close(saved_err);
-        } except Exception { }
+        } except Exception as e {
+            _debug_log(f"restore stderr fd error: {e}");
+        }
     }
 
     # `start` wraps native tui_init; named `start` because Jac reserves `init` as
@@ -108,7 +120,9 @@ impl run_tui_in_process(req: AgentRequest) -> int {
         _restore_fds();
         try {
             ui_stop();
-        } except Exception { }
+        } except Exception as e {
+            _debug_log(f"ui_stop error (on init fail): {e}");
+        }
         restore_ui();
         console.error(f"in-process TUI init failed (tty={tty_dev}, rc={rc})");
         return 1;
@@ -193,7 +207,9 @@ impl run_tui_in_process(req: AgentRequest) -> int {
         stop_evt.set();
         try {
             ui_stop();
-        } except Exception { }
+        } except Exception as e {
+            _debug_log(f"ui_stop error: {e}");
+        }
         with lock {
             try {
                 host.shutdown();
