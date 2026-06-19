@@ -2,7 +2,7 @@
 impl KEDAAutoscaler._trigger_auth_name{
     key = f"{app_name}/{trigger.name or f'{trigger.type}-{trigger_index}'}";
     short_hash = hashlib.sha256(key.encode()).hexdigest()[:8];
-    return f"{app_name[:20]}-{short_hash}-ta";
+    return f"{app_name[:20].rstrip('-')}-{short_hash}-ta";
 }
 
 """Derive cache key from active cluster host; falls back to 'default' if config is unavailable."""
