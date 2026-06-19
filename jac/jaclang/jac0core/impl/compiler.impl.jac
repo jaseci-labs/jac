@@ -583,6 +583,18 @@ impl JacCompiler.parse_str(
             _coerce_server_module(mod);
         } elif file_path.endswith('.na.jac') {
             _coerce_native_module(mod);
+        } elif (
+            (file_path.endswith('.impl.jac') or file_path.endswith('.test.jac'))
+            and file_path[:-9].endswith('.na')
+        ) {
+            # Native annex (`*.na.impl.jac` / `*.na.test.jac`). Its statements
+            # default to SERVER context like any module's, but they belong to a
+            # native module: they must carry NATIVE context so native codegen's
+            # context-filtered statement scan (`iter_context_stmts(..., NATIVE)`)
+            # sees the annex's globals/enums/standalone defs. The head `.na.jac`
+            # is coerced above; coercing the annex keeps the two congruent so an
+            # annex-declared `glob` resolves on native the same as on @sv (#6754).
+            _coerce_native_module(mod);
         }
     }
     if had_error {
@@ -750,6 +762,10 @@ impl JacCompiler.compile(
                 passes=get_inference_sched(),
                 cancel_token=options.cancel_token
             );
+            # Type the head module's annexes too: a glob/enum/standalone def in
+            # a `.na.impl.jac` lives off the head's `kid` tree, so the pass above
+            # never reaches it, leaving native codegen with no type (#6754).
+            self._infer_module_annexes(mod_targ, actual_program, options.cancel_token);
         } except Exception {
             # A partial inference run must not satisfy the dep-sweep guard:
             # the module would be skipped on retry with an incompletely
@@ -785,6 +801,13 @@ impl JacCompiler.compile(
                         target_program=actual_program,
                         passes=get_inference_sched(),
                         cancel_token=options.cancel_token
+                    );
+                    # Same annex-typing gap as the entry module, but for an
+                    # imported native dependency: type its `.na.impl.jac` annex
+                    # so cross-module codegen of an annex-declared glob resolves
+                    # (#6754, the imported half of the repro).
+                    self._infer_module_annexes(
+                        dep_mod, actual_program, options.cancel_token
                     );
                 } except Exception {
                     dep_mod._inference_started = False;
@@ -964,6 +987,38 @@ impl JacCompiler.run_schedule(
             break;
         }
         current_pass(ir_in=mod, prog=target_program, cancel_token=cancel_token);
+    }
+}
+
+impl JacCompiler._infer_module_annexes(
+    mod: uni.Module, target_program: JacProgram, cancel_token: (Event | None) = None
+) -> None {
+    sched = get_inference_sched();
+    if not sched {
+        return;
+    }
+    for annex_mod in mod.impl_mod + mod.test_mod + mod.variant_mod {
+        if annex_mod?._inference_started {
+            continue;
+        }
+        annex_mod._inference_started = True;
+        # An annex is woven into its head module's diagnostics, never its own:
+        # quiet mode populates Expr.type without surfacing (head-owned)
+        # diagnostics a second time.
+        annex_mod._inference_quiet = True;
+        try {
+            self.run_schedule(
+                mod=annex_mod,
+                target_program=target_program,
+                passes=sched,
+                cancel_token=cancel_token
+            );
+        } except Exception {
+            annex_mod._inference_started = False;
+            raise;
+        } finally {
+            annex_mod._inference_quiet = False;
+        }
     }
 }
 

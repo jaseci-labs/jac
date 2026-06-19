@@ -516,6 +516,18 @@ obj JacCompiler {
         cancel_token: (Event | None) = None
     ) -> None;
 
+    """Run type inference over a module's impl/test/variant annexes.
+
+    Annex statements (a glob/enum/standalone def declared in a `.na.impl.jac`)
+    live off the head module's `kid` tree, so the inference pass that walks the
+    head never types them. Native codegen requires those types (issue #6754),
+    so the front end infers each annex explicitly here. Always quiet — an annex
+    never owns user-facing diagnostics; its head module's own compile does.
+    """
+    def _infer_module_annexes(
+        mod: uni.Module, target_program: JacProgram, cancel_token: (Event | None) = None
+    ) -> None;
+
     """Count codegen-blocking errors attributed to a specific module file."""
     static def _count_module_blocking_errors(
         target_program: JacProgram, mod_path: str

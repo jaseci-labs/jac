@@ -169,6 +169,20 @@ test "nested functions helper recursion and module global" {
     assert uses_global(7) == 107;
 }
 
+test "glob declared in an impl annex resolves on native (issue #6754)" {
+    # A `glob` declared in an IMPL ANNEX (`impl/annex_glob.na.impl.jac`), not the
+    # head file, must be registered in the native module's globals and resolved
+    # by references in the annexed ability bodies. Before the fix, native global
+    # collection swept only the head module's `body`, so the annex glob was never
+    # emitted and references bailed with E5090 'Name'/'BinaryExpr'. The
+    # byte-identical program with the glob in the head file always compiled.
+    (eng, _) = compile_native("annex_glob.na.jac");
+    get_sz = get_func(eng, "get_sz", ctypes.c_int64);
+    double_sz = get_func(eng, "double_sz", ctypes.c_int64);
+    assert get_sz() == 21;  # bare `Name` reference to the annex glob
+    assert double_sz() == 42;  # `BinaryExpr` reference to the annex glob
+}
+
 # --- TestNativeContextIsolation ---
 test "context isolation native excluded from python" {
     prog = JacProgram();
