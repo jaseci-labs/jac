@@ -36,6 +36,7 @@ Key strings from libc_tty tty_read_key:
 
 import from .state { TuiState }
 import from .ipc { ipc_send_cmd }
+import from .autocomplete { ac_update, ac_apply }
 import from .overlay {
     overlay_is_active,
     overlay_handle_key,
@@ -157,8 +158,12 @@ def _handle_submit(state: TuiState, ipc_fd: int) -> bool {
         return False;
     }
 
-    ipc_send_cmd(ipc_fd, f"SEND:{text}");
+    # Add user message to transcript immediately for instant feedback
+    # Use negative ID to avoid conflicts with backend-assigned IDs
+    state.upsert_event(-1, "user", text, "");
     state.scroll_to_bottom();
+
+    ipc_send_cmd(ipc_fd, f"SEND:{text}");
     return False;
 }
 
@@ -177,6 +182,49 @@ def handle_key(key: str, state: TuiState, ipc_fd: int) -> bool {
 
     first = key[0];
     code = ord(first);
+
+    # ── Autocomplete intercepts (phase 7) ─────────────────────────────────────
+    # These run before other key handlers so AC navigation takes priority.
+    if state.ac.active {
+        # Tab: apply the selected completion.
+        if code == 9 {
+            ac_apply(state);
+            editor_update_scroll(ed, ew, emr);
+            state.dirty = True;
+            return False;
+        }
+        # Plain ESC (\033, len 1): dismiss without modifying editor.
+        if code == 27 and len(key) == 1 {
+            state.ac.dismiss();
+            state.dirty = True;
+            return False;
+        }
+        # Up arrow: move AC selection up instead of cursor/history.
+        if key == "\033[A" or key == "\033OA" {
+            state.ac.nav_up();
+            state.dirty = True;
+            return False;
+        }
+        # Down arrow: move AC selection down.
+        if key == "\033[B" or key == "\033OB" {
+            state.ac.nav_down();
+            state.dirty = True;
+            return False;
+        }
+        # Enter (single CR or LF): apply completion, then submit if slash command.
+        if (code == 13 or code == 10) and len(key) == 1 {
+            ac_kind = state.ac.kind;
+            ac_apply(state);
+            editor_update_scroll(ed, ew, emr);
+            if ac_kind == "slash" {
+                return _handle_submit(state, ipc_fd);
+            }
+            return False;
+        }
+        # Any other key: dismiss AC and fall through to normal handling.
+        state.ac.dismiss();
+        state.dirty = True;
+    }
 
     # Ctrl+C (\003) or Ctrl+Q (\021)
     if code == 3 or code == 17 {
@@ -278,6 +326,7 @@ def handle_key(key: str, state: TuiState, ipc_fd: int) -> bool {
     if code == 127 or code == 8 {
         editor_backspace(ed);
         editor_update_scroll(ed, ew, emr);
+        ac_update(state);
         state.dirty = True;
         return False;
     }
@@ -414,6 +463,7 @@ def handle_key(key: str, state: TuiState, ipc_fd: int) -> bool {
         if len(ed.get_text()) < 4096 {
             editor_insert(ed, first);
             editor_update_scroll(ed, ew, emr);
+            ac_update(state);
             state.dirty = True;
         }
         return False;

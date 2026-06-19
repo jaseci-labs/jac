@@ -2,6 +2,54 @@
 
 import from .select_list { SelectList }
 
+obj AcItem {
+    has value: str = "",
+        label: str = "",
+        description: str = "";
+}
+
+obj AcState {
+    has active: bool = False,
+        kind: str = "",
+        items: list[AcItem] = [],
+        selected_idx: int = 0,
+        prefix: str = "",
+        query: str = "";
+
+    def dismiss {
+        self.active = False;
+        self.kind = "";
+        self.items = [];
+        self.selected_idx = 0;
+        self.prefix = "";
+        self.query = "";
+    }
+
+    def nav_up {
+        n = len(self.items);
+        if n == 0 {
+            return;
+        }
+        if self.selected_idx > 0 {
+            self.selected_idx = self.selected_idx - 1;
+        } else {
+            self.selected_idx = n - 1;
+        }
+    }
+
+    def nav_down {
+        n = len(self.items);
+        if n == 0 {
+            return;
+        }
+        if self.selected_idx < n - 1 {
+            self.selected_idx = self.selected_idx + 1;
+        } else {
+            self.selected_idx = 0;
+        }
+    }
+}
+
 obj EditorState {
     has lines: list[str] = [""],
         cursor_line: int = 0,
@@ -94,7 +142,9 @@ obj TuiState {
         files: list[str] = [],
         # Quick-pick model names from JAC_AI_UI_MODEL_PRESETS (control plane
         # copies ai_agent._MODEL_PRESETS); the model picker filters this cache.
-        model_presets: list[str] = [];
+        model_presets: list[str] = [],
+        # Inline autocomplete state (phase 7). Managed by autocomplete.na.jac.
+        ac: AcState = AcState();
 
     def reset_events {
         self.events = [];
@@ -102,9 +152,25 @@ obj TuiState {
         self.layout_dirty = True;
         self.follow_tail = True;
         self.viewport_top = 0;
+        self.ac.dismiss();
     }
 
     def upsert_event(ev_id: int, kind: str, text: str, node_name: str) -> None {
+        # Special case: if backend sends the user message we added locally with ID -1,
+        # replace it with the real backend-assigned ID instead of creating a duplicate
+        if kind == "user" and ev_id >= 0 {
+            for ev in self.events {
+                if ev.id == -1 and ev.kind == "user" and ev.text == text {
+                    ev.id = ev_id;
+                    if len(node_name) > 0 {
+                        ev.node = node_name;
+                    }
+                    self.layout_dirty = True;
+                    return;
+                }
+            }
+        }
+
         for ev in self.events {
             if ev.id == ev_id {
                 ev.text = text;
