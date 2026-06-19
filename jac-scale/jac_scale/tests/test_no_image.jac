@@ -299,6 +299,95 @@ test "injected microservices_config overrides the process jac.toml (platform dep
     assert isinstance(plain._ms_cfg(), dict);
 }
 
+test "shared_ingress routes the deploy domain to the gateway (no [...ingress])" {
+    cfg = KubernetesConfig(
+        app_name="jac-shop",
+        namespace="jac-shop-dev",
+        shared_ingress=True,
+        domain="shop.jaseci.app",
+        shared_ingress_class="alb",
+        shared_ingress_annotations={"alb.ingress.kubernetes.io/group.name": "shared"}
+    );
+    b = MicroserviceManifestBuilder(k8s_config=cfg, no_image=True);
+    # [...ingress] unset, but config.shared_ingress + domain -> a gateway ingress
+    # (this is the host-routed shared ALB/nginx subdomain a PaaS deploy needs).
+    ing = b._build_ingress_manifest({});
+    assert ing is not None;
+    rule = ing["spec"]["rules"][0];
+    assert rule["host"] == "shop.jaseci.app";
+    backend = rule["http"]["paths"][0]["backend"]["service"];
+    assert backend["name"] == "gateway-service";
+    assert ing["spec"]["ingressClassName"] == "alb";
+    annos = ing["metadata"]["annotations"];
+    assert annos["alb.ingress.kubernetes.io/group.name"] == "shared";
+    # ALB/ACM (no cert-manager annotation) terminates TLS at the LB -> no spec.tls.
+    assert "tls" not in ing["spec"];
+
+    # neither [...ingress] nor shared_ingress -> no ingress at all (unchanged).
+    plain_cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
+    plain = MicroserviceManifestBuilder(k8s_config=plain_cfg, no_image=True);
+    assert plain._build_ingress_manifest({}) is None;
+
+    # cert-manager (nginx) shared controller gets a spec.tls block for its cert.
+    cm_cfg = KubernetesConfig(
+        app_name="jac-shop",
+        namespace="ns",
+        shared_ingress=True,
+        domain="shop.example.com",
+        shared_ingress_class="nginx",
+        shared_ingress_tls=True,
+        shared_ingress_annotations={"cert-manager.io/cluster-issuer": "letsencrypt"}
+    );
+    cm_ing = MicroserviceManifestBuilder(
+        k8s_config=cm_cfg, no_image=True
+    )._build_ingress_manifest(
+        {}
+    );
+    assert cm_ing["spec"]["tls"][0]["hosts"] == ["shop.example.com"];
+}
+
+test "client entry auto-detects main.jac for a fullstack project (no [...client])" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
+
+    # fullstack project (ships a .cl.jac) with no [client] table -> auto main.jac
+    # so the gateway still builds + serves the SPA.
+    fs = tempfile.mkdtemp();
+    (Path(fs) / "main.jac").write_text("to cl:\n");
+    (Path(fs) / "frontend.cl.jac").write_text("# client\n");
+    fs_b = MicroserviceManifestBuilder(
+        k8s_config=cfg,
+        no_image=True,
+        project_dir=fs,
+        microservices_config={"routes": {}}
+    );
+    assert fs_b._has_client_source();
+    assert fs_b._client_entry() == "main.jac";
+
+    # backend-only project (no .cl.jac) -> client build skipped.
+    be = tempfile.mkdtemp();
+    (Path(be) / "main.jac").write_text("to sv:\n");
+    be_b = MicroserviceManifestBuilder(
+        k8s_config=cfg,
+        no_image=True,
+        project_dir=be,
+        microservices_config={"routes": {}}
+    );
+    assert not be_b._has_client_source();
+    assert be_b._client_entry() == "";
+
+    # an explicit [client].entry always wins over auto-detection.
+    exp_b = MicroserviceManifestBuilder(
+        k8s_config=cfg,
+        no_image=True,
+        project_dir=fs,
+        microservices_config={"client": {"entry": "app.jac"}}
+    );
+    assert exp_b._client_entry() == "app.jac";
+
+    shutil.rmtree(fs);
+    shutil.rmtree(be);
+}
+
 test "experimental bootstrap git-clones the branch into a shared venv" {
     init = build_bootstrap_init_container(
         "python:3.12-slim",

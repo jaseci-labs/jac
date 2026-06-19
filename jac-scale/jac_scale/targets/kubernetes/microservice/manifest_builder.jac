@@ -202,14 +202,38 @@ obj MicroserviceManifestBuilder {
         }
     }
 
-    """[...microservices.client].entry (the client to build), or '' if unset."""
+    """[...microservices.client].entry, else 'main.jac' when the project ships
+    a client (fullstack), else '' (the gateway skips the client build)."""
     def _client_entry -> str {
         try {
             ms_cfg = self._ms_cfg();
-            return str(dict(ms_cfg.get("client", {})).get("entry", "")).strip();
+            explicit = str(dict(ms_cfg.get("client", {})).get("entry", "")).strip();
+            if explicit {
+                return explicit;
+            }
+            if self._has_client_source() {
+                return "main.jac";
+            }
+            return "";
         } except Exception {
             return "";
         }
+    }
+
+    """True when project_dir ships a `.cl.jac` client - a fullstack app whose
+    gateway must build + serve the SPA even if [...client].entry is unset."""
+    def _has_client_source -> bool {
+        root_dir = self.project_dir;
+        if not root_dir {
+            return False;
+        }
+        import os;
+        import glob;
+        if not os.path.isdir(root_dir) {
+            return False;
+        }
+        matches = glob.glob(os.path.join(root_dir, "**", "*.cl.jac"), recursive=True);
+        return len(matches) > 0;
     }
 
     """[[shared_volumes]] entries. PVC mode for cloud K8s, hostPath mode
@@ -693,25 +717,45 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """Single Ingress -> gateway Service; HTTP only; controller-agnostic.
-    Returns None if `[...ingress].enabled` is unset. Backend always points
-    at gateway-service with path "/" Prefix - the gateway owns /api/{svc}/*
-    dispatch internally. `host` is optional (omitted = match any host)."""
+    """Single Ingress -> gateway Service; controller-agnostic. Built from
+    `[...ingress]`, or the deploy-wide `shared_ingress` (host=domain) when that
+    table is unset. Returns None if neither is configured. Backend always points
+    at gateway-service path "/" Prefix - the gateway owns /api/{svc}/* dispatch."""
     def _build_ingress_manifest(ingress_cfg: dict[str, any]) -> dict[str, any] | None {
-        if not ingress_cfg.get("enabled", False) {
-            return None;
-        }
+        cfg = self.k8s_config;
+        enabled: bool = bool(ingress_cfg.get("enabled", False));
         host: str = str(ingress_cfg.get("host", "")).strip();
         ingress_class: str = str(ingress_cfg.get("ingress_class_name", "")).strip();
         annotations: dict[str, str] = {};
         for (k, v) in ingress_cfg.get("annotations", {}).items() {
             annotations[str(k)] = str(v);
         }
+        # Fall back to the deploy-wide shared ingress when [...ingress] is unset,
+        # so a host-routed shared controller (an ALB/nginx PaaS subdomain) still
+        # reaches the gateway. Caller annotations carry the ALB cert/group/scheme.
+        use_shared: bool = (not enabled) and cfg.shared_ingress and bool(cfg.domain);
+        if use_shared {
+            enabled = True;
+            if not host {
+                host = cfg.domain;
+            }
+            if not ingress_class {
+                ingress_class = cfg.shared_ingress_class;
+            }
+            if not annotations {
+                for (k, v) in cfg.shared_ingress_annotations.items() {
+                    annotations[str(k)] = str(v);
+                }
+            }
+        }
+        if not enabled {
+            return None;
+        }
 
         backend: dict[str, any] = {
             "service": {
                 "name": "gateway-service",
-                "port": {"number": self.k8s_config.container_port}
+                "port": {"number": cfg.container_port}
             }
         };
         path_entry: dict[str, any] = {
@@ -727,7 +771,7 @@ obj MicroserviceManifestBuilder {
 
         metadata: dict[str, any] = {
             "name": "gateway-ingress",
-            "namespace": self.k8s_config.namespace,
+            "namespace": cfg.namespace,
             "labels": {
                 "app": "gateway",
                 "managed": "jac-scale",
@@ -741,6 +785,16 @@ obj MicroserviceManifestBuilder {
         spec: dict[str, any] = {"rules": [rule]};
         if ingress_class {
             spec["ingressClassName"] = ingress_class;
+        }
+        # cert-manager (nginx) needs a spec.tls block to mint a per-host cert; an
+        # ALB/ACM controller terminates TLS at the LB via its annotations and
+        # gets none. Mirrors the monolith IngressDeployer.
+        cert_manager_managed: bool = (
+            "cert-manager.io/cluster-issuer" in cfg.shared_ingress_annotations
+            or "cert-manager.io/issuer" in cfg.shared_ingress_annotations
+        );
+        if use_shared and cfg.shared_ingress_tls and host and cert_manager_managed {
+            spec["tls"] = [{"hosts": [host], "secretName": "gateway-tls"}];
         }
 
         return {
