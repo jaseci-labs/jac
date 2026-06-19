@@ -406,6 +406,7 @@ test "TriggerAuthentication name written to cluster matches authenticationRef na
     );
     keda.apply(spec);
     create_calls = mock_api.create_namespaced_custom_object.call_args_list;
+    assert len(create_calls) == 2;
     ta_name = create_calls[0][1]["body"]["metadata"]["name"];
     ref_name = create_calls[1][1]["body"]["spec"]["triggers"][0]["authenticationRef"][
         "name"
