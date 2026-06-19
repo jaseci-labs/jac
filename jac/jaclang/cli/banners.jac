@@ -6,6 +6,7 @@ import platform;
 import sys;
 import from jaclang.cli.console { console }
 glob JAC_LOGO = '   _\n  (_) __ _  ___\n  | |/ _` |/ __|\n  | | (_| | (__\n _/ |\\__,_|\\___|\n|__/',
+     JAC_CLI_LOGO = '  _  _    _   _ \n | \\| | __| | | |\n | .  | _|| | | |\n | \\|___|_|_|_|\n               ',
      JAC_DOCS_URL = 'https://docs.jaseci.org',
      JAC_DISCORD_URL = 'https://discord.gg/6j3QNdtcN6',
      JAC_GITHUB_URL = 'https://github.com/Jaseci-Labs/jaseci',
@@ -78,4 +79,17 @@ def print_startup_header(mode: str = 'development') {
     """
 def print_celebration(message: str = 'Happy coding!') {
     console.print(f"🚀 {message}", style='bold green');
+}
+
+"""Print just the logos without version/platform info."""
+def print_logos {
+    jac_lines = JAC_LOGO.split('\n');
+    cli_lines = JAC_CLI_LOGO.split('\n');
+    for i in range(len(jac_lines)) {
+        if i < len(cli_lines) {
+            console.print((jac_lines[i] + '    ' + cli_lines[i]), style='bold cyan');
+        } else {
+            console.print(jac_lines[i], style='bold cyan');
+        }
+    }
 }

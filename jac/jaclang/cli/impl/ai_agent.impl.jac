@@ -3053,15 +3053,8 @@ impl ui_configure -> None {
     agent.cfg.n_ctx = n_ctx;
     try {
         agent_model = build_model(model_flag, n_ctx);
-        agent.bus.emit(
-            "system",
-            {"text": f"Connected to {agent.ws.cwd} using {agent_model.model_name}."}
-        );
     } except Exception as e {
-        agent.bus.emit(
-            "error",
-            {"text": f"Connected to {agent.ws.cwd}, but the model failed to load: {e}"}
-        );
+        agent.bus.emit("error", {"text": f"Model failed to load: {e}"});
     }
     # Detect whether the chosen model still needs an API key. This rides along in
     # every pushed state frame, so the client opens the settings panel on the

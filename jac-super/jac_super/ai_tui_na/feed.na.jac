@@ -25,6 +25,9 @@ def event_prefix(ev: Event) -> str {
     if kind == "system" {
         return "* ";
     }
+    if kind == "logo" {
+        return "";
+    }
     if kind == "error" {
         return "! ";
     }

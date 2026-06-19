@@ -282,6 +282,12 @@ def tty_poll(timeout_ms: int) {
     # { int fd; short events; short revents }. calloc zeroes fd-high bytes and
     # revents; we poke in fd low bytes and events=POLLIN. Slot 0 = stdin (fd 0,
     # already zeroed), slot 1 = the tty fd.
+    # A single 16-byte allocation avoids the double-free that arises when two
+    # separate calloc(8,1)/str/free() cycles share a scope: NA's RC system frees
+    # the str's backing memory on return, conflicting with the earlier free(p)
+    # call; with two cycles p1 may reuse p0's address, making it a triple-free.
+    # poll(fds, 2, timeout_ms) returns as soon as EITHER fd has data, so stdin
+    # streaming data already causes early wakeup -- no split-poll needed.
     p: int = calloc(16, 1);
     memset(p + 4, POLLIN, 1);
     memset(p + 8, fd & 0xFF, 1);

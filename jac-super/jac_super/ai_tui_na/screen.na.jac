@@ -89,6 +89,9 @@ def _kind_sgr(kind: str) -> str {
     if kind == "system" {
         return ansi_sgr(86, 182, 194, TH_BG_R, TH_BG_G, TH_BG_B, 0);
     }
+    if kind == "logo" {
+        return ansi_sgr(86, 182, 194, TH_BG_R, TH_BG_G, TH_BG_B, TH_BOLD);
+    }
     if kind == "error" {
         return ansi_sgr(255, 80, 80, TH_BG_R, TH_BG_G, TH_BG_B, TH_BOLD);
     }
