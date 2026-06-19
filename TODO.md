@@ -1,37 +1,64 @@
-Blocking architectural issues
+# jac-svelte branch status
 
-1. [FIXED] Explicit ref={...} is broken on Solid - concrete bug, not a documented gap.
-[normal_attribute](file:///home/jac/repos/jac-svelte/jac/jaclang/jac0core/passes/ast_gen/impl/jsx_processor.impl.jac#L225-L231) routes every non-event dynamic attribute through lower_view_expr, which on Solid wraps it in a thunk. So ref={field.ref} lowers to ref: () => field.ref. Solid calls a ref function with the element; this wrapper ignores the element and returns field.ref, so the node is never registered. The checkbox/select/radio branches in [JacForm](file:///home/jac/repos/jac-svelte/jac/jaclang/runtimelib/impl/solid_runtime.impl.jac) use explicit ref={field.ref} and will silently fail to register. (The {**field} spread paths happen to survive.) ref must be excluded from the thunk seam, the same way event handlers already are.
-   FIX: `normal_attribute` now excludes `ref` from the view seam alongside event handlers (no-op on hooks backends, where lower_view_expr is identity). Regression guard added to "matrix #7 solid" in test_acceptance_matrix.jac (asserts `"ref": buttonRef`, never `"ref": () => buttonRef`).
+**Last updated:** 2026-06-19
+**PR:** [#6539](https://github.com/jaseci-labs/jaseci/pull/6539)
+**Checklist:** `docs/remaining-work.md`
 
-2. [FIXED] The router shim won't actually route. @solidjs/router ≥0.10 removed <Routes>, <Router> consumes the route config itself, <Route> uses component not element, and there is no <Outlet>. The shim's Routes/Outlet passthroughs ([solid_runtime.impl.jac](file:///home/jac/repos/jac-svelte/jac/jaclang/runtimelib/impl/solid_runtime.impl.jac)) plus the Router > Routes > Route wiring in [build_pages_solid_entry_script](file:///home/jac/repos/jac-svelte/jac/jaclang/runtimelib/solid_entry.jac#L63) are modeled on the old/React API. Worse, the auth/layout nesting passes a prebuilt element as the route component (() => props.element), so AuthGuard→Outlet() receives no children and authenticated/nested/layout routes render blank. This is the right place to use native Solid Router (<Router root={Layout}>, component={Page}, and props.children in route components).
-   FIX: the file-based-routing entry (`build_pages_solid_entry_script`) now assembles routes natively against `@solidjs/router` - `<Route>` children directly under `<Router>` (no `<Routes>`), `component={Page}` not `element={<Page/>}`, a pathless `component={AuthGuard}` route grouping protected routes (Solid passes the matched child as `props.children`), and the root layout on `<Router root={...}>`. `AuthGuard(redirect, children)` renders `children` when authenticated; `__jacMakeLayoutRoot` + `__JacOutletContext` bridge a param-less Jac layout's `<Outlet/>` to Solid Router's `props.children`. New jsdom gate "solid file-based routing mounts, navigates, and guards" (`test_solid_jsdom.jac` + `fixtures/solid_routing/`) covers mount → `<Link>` nav → flat/auth routes.
+---
 
-3. [IN PROGRESS - Branches 1–3 of 5 landed] solid-js/h (no vite-plugin-solid) caps long-term parity. The thunk seam is correct for h on the counter case, but h is the universal runtime, not Solid's compiled dom-expressions. Function-valued component props can be misread as reactive accessors, JSX spreads via Object.assign snapshot reactive props, and control-flow/keyed lists aren't native. Fine for a documented subset; not "same level as React" as a public promise. Long-term the right fix is Solid's JSX compiler path or an h-based lowering that distinguishes DOM events / component callbacks / reactive props / refs / spreads.
-   Delivered per `docs/framework-view-ir-plan.md` / `docs/solid-dom-expressions-plan.md` as the View IR seam, of which **Branch 1 (View IR producer refactor, inert) is now landed**:
-   - New `jac/jaclang/compiler/passes/ecmascript/view_ir.jac` - framework-neutral view vocabulary (`ViewElement`; `HostTag`/`ComponentTag`/`FragmentTag`/`DynamicTag`; `StaticAttr`/`DynamicAttr`/`EventAttr`/`RefAttr`/`SpreadAttr`; `TextChild`/`DynamicChild`/`ElementChild`/`SlotChild`), each carrying `jac_node` provenance.
-   - `EsJsxProcessor` (the producer) now builds a neutral `ViewElement` tree - resolving the tag and classifying attributes/children **once** (kills the per-backend `on[A-Z]`/`ref`/host-vs-component re-sniffing) - and delegates ESTree construction to `backend.lower_view(view, sync_loc)`. The Solid view thunk is **no longer pre-applied** by the producer (View IR carries neutral `es.Expression`s).
-   - `FrameworkBackend.lower_view` added; `ReactBackend.lower_view` (shared by Preact/Solid) rebuilds the same `__jacJsx(tag, props, [children])` call from the tree, applying the `lower_view_expr` thunk for dynamic positions (no-op on React/Preact, `() => expr` on Solid). The three holes (`jsx_factory_name`/`lower_view_expr`/`_jsx_fragment`) stay this branch (async-boundary still builds `h(...)` directly).
-   - **Inert: verified byte-for-byte** - 185 ecmascript output-pinning tests pass unchanged (React/Preact/Solid backends, acceptance matrix, slot/ref/forward-ref/await specs, full JS generation).
-   - **Recorded debt (soundness item 4):** `SlotChild` carries the already-built accumulator IIFE expression for now; carrying the pristine pre-accumulator body (so a Svelte backend can synthesize its own accumulation) is deferred to the slot/Svelte work - it is not an inert change.
-   - **Branch 2 landed** (commit `1ab0e31f9`): the ESTree-JSX node set (`JsxElement`/`JsxFragment`/`JsxOpeningElement`/…) + `gen_jsx_*` emission in `es_unparse`, with a round-trip test pinning the exact JSX dialect. Inert until Branch 3.
-   - **Branch 3 landed (the heart):** `SolidBackend.lower_view` now builds **JSX estree** instead of `__jacJsx(...)` - host/component/fragment/dynamic tags, `className`→`class`, native `{...spread}`, un-thunked `{expr}` dynamic positions (dom-expressions tracks reactivity; closes #1/#2), nested-fragment splicing, `<Dynamic component={…}>` for `<@expr>`. `lower_async_boundary` routes through View IR `ComponentTag`s (`<Suspense>`/`<ErrorBoundary>`, soundness item 2). The runtime shim self-compiles under JSX, and the mount entries (`solid_entry.jac`) emit JSX (lazy `<Route>` children fix `@solidjs/router`'s "outside a Route" - soundness item 3 debt, still string-built). Phase 0 spike confirmed the dialect (incl. member-access callback refs) through `babel-preset-solid`. The jsdom harness now runs `babel-preset-solid` before mounting; **counter render+reactivity and the full routing matrix (mount → `<Link>` nav → flat/auth/layout) pass end to end**. `unsafe_html`→`innerHTML` is a documented gap (the builtin lowers to opaque raw text; needs an upstream structured marker).
-   - **Branch 4 landed (native control flow):** the producer (`EsJsxProcessor`) now lifts the idiomatic, provably-pure JSX control-flow shapes to neutral View IR nodes - `view_ir.jac` gains `IfChild`/`EachChild`, each carrying a `js_fallback` (the already-lowered `?:`/`.map()` expression) alongside the neutral decomposition. A view-shaped ternary (`<A/> if cond else <B/>`, or `… else None`) lifts to `IfChild`; a single-clause keyed comprehension (`[<li key={x.id}> for x in xs if pred]`) lifts to `EachChild` with the filter folded into `items` (`xs.filter(x => pred)`) and the `key=` lifted off the body. `SolidBackend.lower_view` turns these into native `<For each={items}>{(item) => …}</For>` and `<Show when={test} fallback={…}>…</Show>` (un-thunked - dom-expressions owns reactivity), auto-injecting `For`/`Show` from `solid-js` via the new `view_runtime_symbols` seam. **The JS family (React/Preact) renders `js_fallback` verbatim** (chosen design: a JS-family lowering artifact riding alongside the neutral facts, mirroring `SlotChild`'s prebuilt IIFE), so React/Preact output is byte-for-byte unchanged - verified: the full ecmascript suite (React/default 40, Preact 13, acceptance matrix 13) stays green, including the `jsx_comprehension` `.map()`/`.filter()` pins. Conservative by design: `&&` (the `{0 && <X/>}` falsy-leak trap) and statement-form `JsxSlot` lifting are intentionally deferred (they stay `DynamicChild`/`SlotChild` - tier-3 residue that works on every JS-family backend). New fixture `jsx_control_flow.cl.jac` + 3 `test_solid_backend.jac` cases pin `<For>`/`<Show>` output, import injection, the dropped `key`, and the JS-family fallback.
-   - Remaining: Branch 5+ (bundler/deps: `vite_plugin_lines`→`vite-plugin-solid`, emit the dep, real-build entry transform; rewrite remaining `h(...)` string tests; **jsdom For/Show render fixtures** - Branch 4's output is unit-pinned but not yet exercised end-to-end through `babel-preset-solid`; **delete the `h` route** + the now-vestigial `lower_view_expr`).
+## Shipped
 
-Secondary issues
+### FrameworkBackend seam (#6490 core)
 
-1. Error-boundary asymmetry. [build_simple_solid_entry_script](file:///home/jac/repos/jac-svelte/jac/jaclang/runtimelib/solid_entry.jac#L14) does not wrap in JacClientErrorBoundary, but the pages entry does, and React's simple entry does. Since JacClientErrorBoundary now exists in the Solid shim, the simple entry should wrap too - the "follow-up" comment is stale.
+- `FrameworkBackend` interface + neutral `reactive_intent` / `view_ir` layers
+- **React**, **Preact**, **Solid** backends; `[client] framework` in `jac.toml`
+- Backend-driven Vite plugins/aliases, runtime globals, entry scripts
+- `E5081` for unknown framework names
 
-2. Re-export duplication won't scale. Both shims hand-duplicate import X as _X + glob:pub X =_X for all 34 core symbols, identically; Svelte makes it N×34. One missed symbol silently diverges @jac/runtime per framework. Needs a single export manifest + a surface-parity test (and ideally a real typed re-export at the language/codegen level - that limitation looks like a compiler gap worth a separate branch per your AGENTS.md rule).
+### Solid backend
 
-3. peerDependencies: "*" fallback in [_runtime_peer_deps](file:///home/jac/repos/jac-svelte/jac/jaclang/publish/impl/runtime_npm.impl.jac) ships an unbounded range for any package not in the canonical map - bad for a published production package; should fail loudly instead.
+| Area | Status |
+|------|--------|
+| View IR Branches 1-5 (dom-expressions, `vite-plugin-solid`, drop `h`) | Done |
+| Native `@solidjs/router` file-based routing + layout bridge | Done |
+| `ref` excluded from Solid view thunk seam | Done |
+| `solid_runtime.cl.jac` framework-free shim | Done |
+| `CORE_RUNTIME_SYMBOLS` export manifest + parity test | Done |
+| Strict runtime peer deps (no `"*"` fallback) | Done |
+| jsdom gate (`test_solid_jsdom.jac`, 5 tests) | Done |
 
-4. [PARTIALLY RESOLVED] Form stack supply-chain and test coverage. **Was:** `solid-hook-form` niche dependency with no runtime form test; Zod resolver reached into private `_def`/`shape`. **Now:** migrated to `@tanstack/solid-form` / `@tanstack/react-form` with Standard Schema validators (no `@hookform/resolvers`). Solid jsdom gate (`test_solid_jsdom.jac` + `fixtures/solid_form_app.cl.jac`) mounts `JacForm` with email + checkbox and asserts onTouched blur→error→onChange-clear end-to-end. React symmetric import guard in `test_preact_backend.jac` forbids `@tanstack/solid-form` and `solid-js` in `client_runtime.cl.jac` + impl (mirrors Solid's ban on `@tanstack/react-form`). React publish test asserts `@tanstack/react-form` peer and no RHF in tarball `.js`. **Still open:** radio/select Solid jsdom coverage; Zod `_def`/`shape` unwrapping in `useJacForm`/`JacForm` remains version-fragile; submit `disabled` semantics (`!isDirty` vs RHF `isValid`) unverified.
+**jsdom coverage:** counter, routing, `<For>`/`<Show>`, full `JacForm` (email,
+checkbox, select, radio, submit), dynamic prop, `ref` e2e, callback prop.
 
-5. [FIXED] `onTouched` error display didn't match RHF after the TanStack Form migration. TanStack has no native `onTouched` mode; wiring both `onBlur` and `onChange` validators restored post-blur revalidation but could surface errors on change before first blur. **Fix (Option 2 - display gate, commit `5a5cbd813` + follow-up):** `renderError` and `hasError` borders in both [client_runtime.impl.jac](file:///home/jac/repos/jac-svelte/jac/jaclang/runtimelib/impl/client_runtime.impl.jac) and [solid_runtime.impl.jac](file:///home/jac/repos/jac-svelte/jac/jaclang/runtimelib/impl/solid_runtime.impl.jac) gate on `field.state.meta.isTouched` when `validateMode == "onTouched"`. **UX:** errors and red borders appear after first blur (RHF parity), then clear on `onChange` without a second blur; `onChange`/`onBlur`/`onSubmit` modes unchanged. **Residual:** validation still runs pre-blur in the background (`form.state.isValid` may be `false` early); current submit is gated on `!isDirty`, not `!isValid`. Documented in `docs/tanstack-form-migration-gaps.md` and `jac-client/jac_client/docs/advance/form-migration.md`.
+### TanStack Form migration
 
-What I'd require before calling this React-parity
-Fix #1 and #2 (they're real bugs, not gaps), then add a Solid jsdom matrix beyond the counter: dynamic prop/child, explicit ref, component callback prop, Link/Navigate, flat + nested + auth + layout routes, and JacForm submit/validation (email onTouched + checkbox **done** via `solid_form_app.cl.jac`; radio/select still open). Until then this should ship behind an "experimental" label rather than as React-level parity.
+- `@tanstack/react-form` (React/Preact) and `@tanstack/solid-form` (Solid)
+- RHF / resolvers removed; Standard Schema validators
+- `onTouched` display + border gate; React `effectiveIsValid` submit gate
+- Solid onChange-only `onTouched` validators (avoids stale cross-field `errorMap`)
+- Import guards, publish tarball scans, jac-client Playwright error DOM
 
-Want me to fix the concrete bugs (#1 ref-thunking, #2 native Solid Router rewrite, #4 error-boundary) on this branch?
+---
+
+## Open (non-blocking)
+
+Full list in `docs/remaining-work.md`. Summary:
+
+| Area | Open items |
+|------|------------|
+| Form polish | Preact form test; React #1784 stale `errorMap`; Playwright submit flow |
+| Docs | `effectiveIsValid` wording in `form-migration.md`; RHF pins in ancillary `jac.toml` |
+| #6490 follow-up | Svelte backend; `lower_state_read` ([#6677](https://github.com/jaseci-labs/jaseci/issues/6677)); reactivity contract |
+| View IR tail | `unsafe_html` → `innerHTML`; tier-3 `&&` / `JsxSlot` lifts; typed `@jac/runtime` re-exports |
+
+---
+
+## Reference docs
+
+| Doc | Purpose |
+|-----|---------|
+| `docs/remaining-work.md` | Prioritized open work |
+| `docs/tanstack-form-migration-gaps.md` | Form migration detail + accepted gaps |
+| `docs/compiler-ir-vs-main.md` | Pipeline diff vs `main` (PR review) |
+| `docs/framework-view-ir-plan.md` | View IR architecture plan |
+| `docs/solid-dom-expressions-plan.md` | Solid dom-expressions rollout |
