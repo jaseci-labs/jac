@@ -1109,22 +1109,12 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
 }
 
 impl TypeCheckPass.after_pass(self: TypeCheckPass) -> None {
-    # Both steps below are full-diagnostic-only. The lambda check runs first
-    # so a live E1119 evicts any copy a prior suppressed run stashed (see
-    # emit()), and the replay loop then skips it.
+    # Full-diagnostic-only. Lambda check first, so a live E1119 evicts any
+    # stashed copy before the replay loop reaches it.
     if getattr(self, '_emit_diagnostics', True) {
-        # Flag lambda params left Unknown once fully typed. Guarded because
-        # param.name.type is re-derived every full run (nothing to defer), and
-        # a quiet inference sweep over a JIR-loaded dependency has degraded
-        # cross-module link state where a param the owning full run resolves
-        # can still look Unknown -- stashing E1119 there would replay as a
-        # false positive on well-typed code.
         self._check_unresolved_lambda_params();
-        # Replay diagnostics deferred by earlier suppressed inference runs on
-        # this module: evaluator memoization (Expr.type cache) means this run
-        # could not re-derive them live. Live re-emissions during this run
-        # already evicted their stash entries in emit(), so whatever remains
-        # here is exactly the cache-swallowed remainder.
+        # Replay diagnostics deferred by earlier suppressed inference runs:
+        # Expr.type memoization means this run couldn't re-derive them live.
         stash = self.ir_in?._deferred_type_diags;
         if stash {
             for (diag, node_override, related, help_text, kwargs) in list(
