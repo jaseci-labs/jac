@@ -141,19 +141,23 @@ def _list_project_files(project: str) -> str {
 }
 
 
-def _any_stream_is_tty -> bool {
-    # Single isatty probe shared by _sidecar_tty_device (POSIX) and
-    # _tty_is_available (Windows). stderr first — matches historical probe order.
+def _first_tty_stream -> object {
+    # stderr first — matches historical probe order.
     import sys;
 
     for stream in (sys.stderr, sys.stdin, sys.stdout) {
         try {
             if stream.isatty() {
-                return True;
+                return stream;
             }
         } except Exception { }
     }
-    return False;
+    return None;
+}
+
+
+def _any_stream_is_tty -> bool {
+    return _first_tty_stream() is not None;
 }
 
 
@@ -171,14 +175,15 @@ def _sidecar_tty_device -> str {
     if sys.platform == "win32" {
         return "";
     }
-    for stream in (sys.stderr, sys.stdin, sys.stdout) {
-        try {
-            if stream.isatty() {
-                return os.ttyname(stream.fileno());
-            }
-        } except Exception { }
+    stream = _first_tty_stream();
+    if stream is None {
+        return "";
     }
-    return "";
+    try {
+        return os.ttyname(stream.fileno());
+    } except Exception {
+        return "";
+    }
 }
 
 
