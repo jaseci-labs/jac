@@ -58,7 +58,25 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # no-image mode: copy local source into the cluster + install jac at
         # pod startup instead of building/pushing an image. Set by
         # _scale_pre_hook for `jac start --scale --no-image`.
-        no_image: bool = False;
+        no_image: bool = False,
+        # The app's [plugins.scale.microservices] config. When set (a platform
+        # deploying a different app's fleet), it's used and threaded into the
+        # manifest builder instead of the running process's own jac.toml.
+        microservices_config: dict[str, any] = {};
+
+    """The app's microservices config: injected when provided, else read from
+    the running process's jac.toml."""
+    def _ms_cfg -> dict[str, any] {
+        if self.microservices_config {
+            return self.microservices_config;
+        }
+        try {
+            import from jac_scale.config_loader { get_scale_config }
+            return get_scale_config().get_microservices_config();
+        } except Exception {
+            return {};
+        }
+    }
 
     """Auto-build path when `auto_build=True`: prefer user's pre-built
     docker_image_name, else auto_build_and_distribute. Else parent behavior."""
@@ -334,7 +352,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     failure (missing block, malformed TOML, loader exception)."""
     def _read_microservices_logs_config -> dict[str, Any] {
         try {
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return dict(ms_cfg.get("logs", {}));
         } except Exception as e {
             if self.logger {
@@ -351,7 +369,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     failure (missing block, malformed TOML, loader exception)."""
     def _read_microservices_tracing_config -> dict[str, Any] {
         try {
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return dict(ms_cfg.get("tracing", {}));
         } except Exception as e {
             if self.logger {
@@ -382,7 +400,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 logger=self.logger,
                 no_image=True,
                 experimental=app_config.experimental,
-                project_dir=app_config.code_folder
+                project_dir=app_config.code_folder,
+                microservices_config=self.microservices_config
             );
             return builder.generate_manifests(app_config, self.k8s_config.python_image);
         }
@@ -415,7 +434,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             k8s_config=self.k8s_config,
             secrets=self.secrets,
             deploy_context=self._deploy_context,
-            logger=self.logger
+            logger=self.logger,
+            microservices_config=self.microservices_config
         );
         return builder.generate_manifests(app_config, image);
     }

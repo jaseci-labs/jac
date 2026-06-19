@@ -282,6 +282,23 @@ test "no-image pods default to higher memory (in-pod build); built-image stays s
     assert plain._build_resources({}, is_gateway=True)["limits"]["memory"] == "2Gi";
 }
 
+test "injected microservices_config overrides the process jac.toml (platform deploys)" {
+    cfg = KubernetesConfig(app_name="other-app", namespace="other-ns");
+    injected = {"routes": {"svc_a": "/api/svc_a"}, "client": {"entry": "app.jac"}};
+    b = MicroserviceManifestBuilder(
+        k8s_config=cfg, no_image=True, microservices_config=injected
+    );
+    # _ms_cfg returns the injected config, not the deploying process's jac.toml.
+    assert b._ms_cfg() == injected;
+    # config consumers read through _ms_cfg, so the injected client entry drives
+    # the in-pod gateway client build.
+    assert b._client_entry() == "app.jac";
+
+    # no injection -> falls back to the process config (a dict, no crash).
+    plain = MicroserviceManifestBuilder(k8s_config=cfg, no_image=True);
+    assert isinstance(plain._ms_cfg(), dict);
+}
+
 test "experimental bootstrap git-clones the branch into a shared venv" {
     init = build_bootstrap_init_container(
         "python:3.12-slim",
