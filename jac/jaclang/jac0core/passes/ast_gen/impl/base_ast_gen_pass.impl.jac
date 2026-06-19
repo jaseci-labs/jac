@@ -1,31 +1,24 @@
 """Implementation for base_ast_gen_pass constructs."""
 
-"""Concatenate impl/test/variant bodies with the main module body."""
+"""Concatenate impl/test/variant bodies with the main module body.
+
+Derives the weave order and per-segment `ImplDef` stripping from the shared
+`ModuleCodegenPass.iter_woven_segments` so @sv/ecmascript and native agree on
+exactly which statements an annexed module contributes (issue #6754)."""
 impl BaseAstGenPass._merge_module_bodies(nd: uni.Module) -> list {
-    clean_body = [
-        item
-        for item in nd.body
-        if not isinstance(item, uni.ImplDef)
-    ];
     merged: list = [];
-    for mod in nd.impl_mod {
-        merged.extend(mod.body);
-    }
-    merged.extend(clean_body);
-    for variant in nd.variant_mod {
-        for vimpl in variant.impl_mod {
-            merged.extend(vimpl.body);
+    for (body, strip_impl_defs) in ModuleCodegenPass.iter_woven_segments(nd) {
+        if strip_impl_defs {
+            merged.extend(
+                [
+                    item
+                    for item in body
+                    if not isinstance(item, uni.ImplDef)
+                ]
+            );
+        } else {
+            merged.extend(body);
         }
-        merged.extend(
-            [
-                item
-                for item in variant.body
-                if not isinstance(item, uni.ImplDef)
-            ]
-        );
-    }
-    for mod in nd.test_mod {
-        merged.extend(mod.body);
     }
     return merged;
 }

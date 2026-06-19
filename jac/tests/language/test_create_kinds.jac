@@ -4,7 +4,7 @@
 it stamps `[project] kind` into jac.toml, lays down an entry-point in the
 right codespace, and produces a project whose bare `jac run` resolves to the
 natural action for that kind. These tests cover the eight core kinds (the
-plugin kinds -- fullstack/wasm/mobile/desktop -- are tested in their own
+plugin kinds -- fullstack/client/mobile/desktop -- are tested in their own
 plugin packages)."""
 
 import os;

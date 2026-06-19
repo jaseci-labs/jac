@@ -115,13 +115,13 @@ class JacClientPluginConfig {
         };
     }
 
-    """Register the jac-client project-kind templates (fullstack/wasm/mobile)."""
+    """Register the jac-client project-kind templates (fullstack/client/mobile)."""
     @hookimpl
     static def register_project_template -> list[dict[str, any]] {
         templates: list[dict[str, any]] = [];
 
         # Each directory carries its kind in its jac.toml [project] kind.
-        for template_name in ["fullstack", "wasm", "mobile"] {
+        for template_name in ["fullstack", "client", "mobile"] {
             template = _load_template(template_name);
             if template {
                 templates.append(template);

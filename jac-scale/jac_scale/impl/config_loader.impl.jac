@@ -150,7 +150,11 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'token_collection': 'auth_tokens'
         },
         'microservices': {
-            'enabled': False,
+            # `enabled` is intentionally NOT defaulted here. Its absence is
+            # meaningful: get_microservices_config returns None when the key
+            # is unset so _scale_pre_hook can tell "auto-detect" (None) from
+            # an explicit opt-out (False). A default of False here would be
+            # merged in by load() and erase that distinction.
             'gateway_port': 8000,
             'gateway_host': '0.0.0.0',
             'routes': {},
@@ -487,13 +491,40 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
     cors_config = ms_config.get('cors', {});
     rl_config = ms_config.get('rate_limit', {});
 
+    # Routes fall back to the JAC_SV_ROUTES env var (JSON) when the jac.toml
+    # has none. In zero-config `--scale` deploys the in-cluster jac.toml has no
+    # [routes] table, so the manifest builder injects the auto-detected routes
+    # into every pod via this env var; the gateway + get_sv_registry then read
+    # them here uniformly with the explicit-config path.
+    routes: dict[str, any] = dict(ms_config.get('routes', {}));
+    if not routes {
+        import json;
+        env_routes: str = os.environ.get('JAC_SV_ROUTES', '');
+        if env_routes {
+            try {
+                routes = dict(json.loads(env_routes));
+            } except Exception as e {
+                # Malformed injection: warn so an empty in-pod route table is
+                # observable in logs instead of the gateway silently dropping
+                # every peer request.
+                import logging;
+                logging.getLogger(__name__).warning(
+                    f"Ignoring malformed JAC_SV_ROUTES env var ({e}); "
+                    f"gateway will have no routes from env."
+                );
+                routes = {};
+            }
+        }
+    }
+
     return {
-        'enabled': ms_config.get('enabled', False),
+        # Tri-state: None = unset (auto-detect), True/False = explicit choice.
+        'enabled': ms_config.get('enabled', None),
         'gateway_port': int(ms_config.get('gateway_port', 8000)),
         'gateway_host': ms_config.get('gateway_host', '0.0.0.0'),
         'drain_timeout_seconds': float(ms_config.get('drain_timeout_seconds', 10)),
         'http_forward_timeout': float(ms_config.get('http_forward_timeout', 30)),
-        'routes': dict(ms_config.get('routes', {})),
+        'routes': routes,
         'services': dict(ms_config.get('services', {})),
         'rate_limit': {
             'enabled': bool(rl_config.get('enabled', False)),

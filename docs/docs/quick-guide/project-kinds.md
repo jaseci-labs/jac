@@ -433,10 +433,15 @@ cl {
 
 It uses the same `jac.toml` as the [full-stack app](#full-stack-app) (React deps + `[plugins.client]`).
 
+Set `kind = "client"` in `jac.toml` so the toolchain treats it as a client-only app (no backend):
+
 ```bash
 jac start          # builds the cl bundle + na->wasm, serves on http://localhost:8000
 jac start --dev    # same, with hot reload
+jac build          # portable, self-contained dist in .jac/client/dist/
 ```
+
+Because a `client` project has no server, `jac start` serves the build with a **minimal static server** (no API server, auth, or database) and `jac build` emits a **portable `index.html`** with its JS/CSS inlined, so a pure `cl` page opens directly from disk (`file://`). An app that fetches `/static/main.wasm` at runtime, like this one, must be *served* (the browser can't fetch the module over `file://`). See [Client-only apps](../reference/plugins/jac-client.md#client-only-apps).
 
 `jac start` compiles the `na` block to `/static/main.wasm` as part of the client build -- no emscripten and no `wasm-ld`; Jac's own WebAssembly linker turns the object into an instantiable module -- and the page fetches it on mount. Open [http://localhost:8000](http://localhost:8000):
 

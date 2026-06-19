@@ -813,9 +813,10 @@ walker:priv DeleteWithChildren {
 | `allroots()` | Get all root references |
 | `save(node)` | Persist node to storage |
 | `commit()` | Commit pending changes |
+| `on_commit(callback)` | Register a callback to run **after** the next successful commit (discarded on abort/replay) -- for deferred external side effects that must fire exactly once |
 | `printgraph(root)` | Print graph structure to stdout (output depends on graph size; may require logging configuration to see results) |
 
-> See [Persistence & Schema Migration](../persistence.md) for how persisted graph data tolerates schema changes across runs (added/removed fields, type changes, class renames) and how to inspect or rescue data with [`jac db`](../cli/index.md#database-operations).
+> See [Persistence & Schema Migration](../persistence.md) for how persisted graph data tolerates schema changes across runs (added/removed fields, type changes, class renames) and how to inspect or rescue data with [`jac db`](../cli/index.md#database-operations). For concurrent find-or-create safety (and why `on_commit` matters when a request replays), see [Concurrent writes: check-then-create](../persistence.md#concurrent-writes-check-then-create-and-convergence).
 
 ```jac
 node Person { has name: str; }
