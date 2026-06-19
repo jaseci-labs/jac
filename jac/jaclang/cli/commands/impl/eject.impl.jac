@@ -643,6 +643,15 @@ def _copy_data_files(
             dest_f = frontend_src_dir / rel;
             dest_f.parent.mkdir(parents=True, exist_ok=True);
             shutil.copy2(path, dest_f);
+            static_rels = [rel];
+            if rel_parts and (rel_parts[0] == "assets") and (len(rel_parts) > 1) {
+                static_rels.append(Path(*rel_parts[1:]));
+            }
+            for static_rel in static_rels {
+                dest_s = frontend_root / "public" / "static" / static_rel;
+                dest_s.parent.mkdir(parents=True, exist_ok=True);
+                shutil.copy2(path, dest_s);
+            }
         }
         copied = True;
     }
