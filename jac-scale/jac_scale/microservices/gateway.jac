@@ -146,6 +146,15 @@ obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerLogs, JacAPIServerTraces,
     None if not found."""
     def serve_extra_static(local_dir: str, file_path: str) -> Response | None;
 
+    """Live {module_stem: url_prefix} routing map from the registry; the one
+    place microservice prefixes become client-facing routing data."""
+    def service_routes_map -> dict;
+
+    """Merge the live service->prefix map into the SPA's `__jac_init__` JSON so
+    cross-module client stubs route to the owning service. No-op without an
+    init element or routes."""
+    def inject_service_routes(html: str) -> str;
+
     """Serve index.html for SPA fallback. Returns None if no index.html exists."""
     def serve_spa_fallback -> Response | None;
 

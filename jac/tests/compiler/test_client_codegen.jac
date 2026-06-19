@@ -82,6 +82,48 @@ test "type to typeof and spawn operator" {
     assert '__jacSpawn("MixedWalker", "", {"label": "Second", "count": 1, ...extra})' in js;
 }
 
+test "cross-module client stubs carry source-module provenance" {
+    # A cross-module client call must stamp the source-module stem as an
+    # optional trailing arg so the runtime can route it to the owning service.
+    with TemporaryDirectory() as tmpdir {
+        svc = Path(tmpdir) / "svc.jac";
+        svc.write_text(
+            'def:pub make(item: str) -> dict { return {"i": item}; }\nwalker Doer { has v: int; can run with `root entry {} }\n'
+        );
+        main = Path(tmpdir) / "main.jac";
+        main.write_text(
+            'cl {\n    sv import from svc { make, Doer }\n    def:pub app() -> any {\n        d = await make("x");\n        w = root spawn Doer(3);\n        return <div>{d}</div>;\n    }\n}\n'
+        );
+        prog = JacProgram();
+        mod = prog.compile(str(main));
+        js = mod.gen.js;
+        # sv-import function stub (and its call site) carry the source stem.
+        assert '__jacCallFunction("make", {"item": "x"}, "svc")' in js , (
+            f"Cross-module fn call should carry module provenance, got: {js}"
+        );
+        # Cross-module walker spawn carries the source stem as a 4th arg.
+        assert '__jacSpawn("Doer", "", {"v": 3}, "svc")' in js , (
+            f"Cross-module walker spawn should carry module provenance, got: {js}"
+        );
+    }
+}
+
+test "same-module client stubs omit provenance (monolith byte-identical)" {
+    # A same-module call has no cross-service routing need, so codegen must NOT
+    # add the trailing module arg -- keeping monolith output byte-for-byte
+    # identical to before the provenance feature.
+    prog = JacProgram();
+    code = 'def:pub make(item: str) -> dict { return {"i": item}; }\nwalker Doer { has v: int; can run with `root entry {} }\ncl {\n    def:pub app() -> any {\n        d = await make("x");\n        w = root spawn Doer(3);\n        return <div>{d}</div>;\n    }\n}\n';
+    mod = compile_inline(code, prog);
+    js = mod.gen.js;
+    assert '__jacCallFunction("make", {"item": "x"})' in js , (
+        f"Same-module fn call must omit provenance arg, got: {js}"
+    );
+    assert '__jacSpawn("Doer", "", {"v": 3})' in js , (
+        f"Same-module walker spawn must omit provenance arg, got: {js}"
+    );
+}
+
 test "client import local jac module gets relative path" {
     with TemporaryDirectory() as tmpdir {
         local_module = Path(tmpdir) / "mymodule.jac";

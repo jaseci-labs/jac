@@ -791,29 +791,32 @@ test "sv import kwargs preserve names in jac call function" {
     fixture = "sv_import_kwargs_client.cl.jac";
     js_code = compile_fixture_to_js(fixture, FIXTURES);
 
+    # These are cross-module `sv import`ed calls, so each carries its source
+    # module stem ("sv_import_kwargs") as the trailing provenance arg used for
+    # microservice routing.
     # Pure-kwargs single arg: ``greet(name=input_text)``
-    assert '__jacCallFunction("greet", {"name": input_text})' in js_code , (
+    assert '__jacCallFunction("greet", {"name": input_text}, "sv_import_kwargs")' in js_code , (
         "Single-kwarg call must propagate the name into the args object;\n" + "got:\n" + js_code
     );
 
     # Pure-kwargs out-of-order: ``add_pair(b=2, a=1)`` — both keys must be
     # present in the args object regardless of source order.
     assert (
-        '__jacCallFunction("add_pair", {"b": 2, "a": 1})' in js_code
-        or '__jacCallFunction("add_pair", {"a": 1, "b": 2})' in js_code
+        '__jacCallFunction("add_pair", {"b": 2, "a": 1}, "sv_import_kwargs")' in js_code
+        or '__jacCallFunction("add_pair", {"a": 1, "b": 2}, "sv_import_kwargs")' in js_code
     ) , (
         "Kwargs-only call must include all kwarg keys in the args object;\n" + "got:\n" + js_code
     );
 
     # Mixed positional + kwarg: ``add_pair(1, b=2)`` — first param mapped
     # by position to its server-side name, second carried by kwarg key.
-    assert '__jacCallFunction("add_pair", {"a": 1, "b": 2})' in js_code , (
+    assert '__jacCallFunction("add_pair", {"a": 1, "b": 2}, "sv_import_kwargs")' in js_code , (
         "Mixed positional/kwarg call must merge both into the args object;\n" + "got:\n" + js_code
     );
 
     # ``**dict`` spread against a known signature can lower to declared
     # parameter-key reads, avoiding the old single-object positional shape.
-    assert '__jacCallFunction("add_pair", {"a": kw["a"], "b": kw["b"]})' in js_code , (
+    assert '__jacCallFunction("add_pair", {"a": kw["a"], "b": kw["b"]}, "sv_import_kwargs")' in js_code , (
         "**dict spread against known signature must compile to keyed parameter reads;\n" + "got:\n" + js_code
     );
 

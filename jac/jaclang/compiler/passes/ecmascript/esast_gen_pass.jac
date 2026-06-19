@@ -168,7 +168,10 @@ obj AssignmentTargetInfo {
 obj SpawnWalkerInfo {
     has call_node: uni.FuncCall,
         walker_name: str,
-        fields_object: es.ObjectExpression;
+        fields_object: es.ObjectExpression,
+        # Source-module stem when the walker is defined in a DIFFERENT module
+        # than the spawn site (generic provenance; `None` for same-module).
+        module_name: (str | None) = None;
 }
 
 """Describes the target-side of a spawn expression."""
@@ -221,6 +224,10 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         _view_awaiting_tries: set[int] = set(),
         # JS function stubs for def:pub functions imported via sv import
         sv_import_stubs: list[es.Statement] = [],
+        # Provenance for `sv import`ed names: local_name -> source module stem.
+        # Lets cross-module walker spawns recover the defining service the same
+        # way function stubs do (generic; carries no microservice/prefix policy).
+        sv_import_modules: dict[str, str] = {},
         # True iff the primitive emitter produced `_jac.*` calls and the runtime needs importing
         needs_jac_runtime: bool = False,
         # OSP local-kernel lowering: set when a local walker is spawned via the
@@ -468,6 +475,9 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _collect_pattern_names(target: uni.UniNode) -> list[tuple[(str, uni.Name)]];
     def exit_assignment(nd: uni.Assignment) -> None;
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
+    def _provenance_module_name(
+        def_node: (uni.UniNode | None), call_site: uni.UniNode
+    ) -> (str | None);
     def _ability_from_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
     def _return_type_includes_jsx_element(rt: uni.Expr) -> bool;

@@ -39,9 +39,15 @@ glob:pub useState = reactUseState,
 def:pub __createJacSchema(zodLib: any) -> any;
 def:pub useRouter -> dict;
 def:pub navigate(path: str) -> None;
-async def:pub __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
-def:pub jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
-async def:pub __jacCallFunction(function_name: str, args: dict = {}) -> any;
+async def:pub __jacSpawn(
+    left: str, right: str = "", fields: dict = {}, module: (str | None) = None
+) -> any;
+def:pub jacSpawn(
+    left: str, right: str = "", fields: dict = {}, module: (str | None) = None
+) -> any;
+async def:pub __jacCallFunction(
+    function_name: str, args: dict = {}, module: (str | None) = None
+) -> any;
 def:pub __normalizeIdentity(x: any) -> dict;
 def:pub __normalizeCredential(x: any) -> dict;
 async def:pub jacSignup(
@@ -110,13 +116,17 @@ def:pub JacForm(props: dict) -> JsxElement;
 # AUTO-CACHE INTERNALS - Compiler-driven caching for walker/function calls
 # ============================================================================
 def:pub __getEndpointEffects -> dict;
+def:pub __getServiceRoutes -> dict;
+def:pub __resolveServicePrefix(module: (str | None)) -> str;
 def:pub __getCacheState -> dict;
 def:pub __isFresh(`entry: dict) -> bool;
 def:pub __cacheGet(key: str) -> dict;
 def:pub __cacheSet(key: str, data: any, ttl: int) -> None;
 def:pub __evictOldest -> None;
-async def:pub __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any;
-async def:pub __doFuncFetch(function_name: str, args: dict) -> any;
+async def:pub __doWalkerFetch(
+    `walker: str, nodeId: str, fields: dict, prefix: str = ""
+) -> any;
+async def:pub __doFuncFetch(function_name: str, args: dict, prefix: str = "") -> any;
 async def:pub __cachedEndpointCall(
     endpoint_key: str, args_key: str, fetch_fn: any
 ) -> any;

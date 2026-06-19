@@ -977,6 +977,31 @@ impl EsastGenPass.exit_index_slice(nd: uni.IndexSlice) -> None {
     }
 }
 
+"""Source-module stem for a backend node, when it lives in a DIFFERENT module.
+
+Generic provenance only: returns the defining module's stem so the runtime
+can route the call (microservice prefix, etc.) without the codegen knowing
+anything about how the name is used. Returns ``None`` for a same-module
+definition (so monolith output stays byte-identical) or when the owning
+module cannot be determined.
+"""
+impl EsastGenPass._provenance_module_name(
+    def_node: (uni.UniNode | None), call_site: uni.UniNode
+) -> (str | None) {
+    if def_node is None {
+        return None;
+    }
+    src_mod = def_node.find_parent_of_type(uni.Module);
+    if src_mod is None {
+        return None;
+    }
+    cur_mod = call_site.find_parent_of_type(uni.Module);
+    if cur_mod is not None and (src_mod is cur_mod) {
+        return None;
+    }
+    return src_mod.name or None;
+}
+
 """Resolve an import's source module in both production and type-check paths."""
 impl EsastGenPass._resolve_source_module(nd: uni.Import) -> (uni.Module | None) {
     if not nd.from_loc {
@@ -1835,13 +1860,21 @@ impl EsastGenPass._try_lower_server_rpc_call(
     }
     # Emit the bare call — the surrounding ``exit_await_expr`` handles
     # the leading ``await`` for non-boundary returns.
+    call_args: list[(es.Expression | es.SpreadElement)] = [
+        self.sync_loc(es.Literal(value=func_name), jac_node=nd),
+        args_obj
+    ];
+    # Cross-module callee: attach the source-module stem as an optional 3rd
+    # arg so the runtime can route it (e.g. to a microservice prefix). Omitted
+    # for same-module calls, keeping monolith output byte-for-byte unchanged.
+    src_module = self._provenance_module_name(ability_node, nd);
+    if src_module {
+        call_args.append(self.sync_loc(es.Literal(value=src_module), jac_node=nd));
+    }
     result_expr: es.Expression = self.sync_loc(
         es.CallExpression(
             callee=self.sync_loc(es.Identifier(name='__jacCallFunction'), jac_node=nd),
-            arguments=[
-                self.sync_loc(es.Literal(value=func_name), jac_node=nd),
-                args_obj
-            ]
+            arguments=call_args
         ),
         jac_node=nd
     );
@@ -5516,6 +5549,13 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
         }
         func_name = item.name.sym_name;
         local_name = item.alias.sym_name if item.alias else func_name;
+        # Record provenance for EVERY sv-imported name (functions and walkers
+        # alike) so a later cross-service walker spawn can recover its defining
+        # service by name -- the function-stub branch below only covers
+        # def:pub functions.
+        if source_mod and source_mod.name {
+            self.sv_import_modules[local_name] = source_mod.name;
+        }
         # Resolve the function signature from the source module so the
         # generated stub mirrors all three positional buckets (posonly,
         # regular, kwonly) — matching the call-site lowering's view of
@@ -5578,16 +5618,25 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
             );
         }
         args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);
-        # Build: await __jacCallFunction("func_name", { ...args })
+        # Build: await __jacCallFunction("func_name", { ...args }[, "module"])
+        # An sv import always crosses a module boundary, so attach the source
+        # module stem as the optional 3rd arg whenever it resolved -- the
+        # runtime uses it to route to the owning service.
+        stub_args: list[(es.Expression | es.SpreadElement)] = [
+            self.sync_loc(es.Literal(value=func_name), jac_node=nd),
+            args_obj
+        ];
+        if source_mod and source_mod.name {
+            stub_args.append(
+                self.sync_loc(es.Literal(value=source_mod.name), jac_node=nd)
+            );
+        }
         call_expr = self.sync_loc(
             es.CallExpression(
                 callee=self.sync_loc(
                     es.Identifier(name='__jacCallFunction'), jac_node=nd
                 ),
-                arguments=[
-                    self.sync_loc(es.Literal(value=func_name), jac_node=nd),
-                    args_obj
-                ]
+                arguments=stub_args
             ),
             jac_node=nd
         );
@@ -6571,14 +6620,26 @@ impl EsastGenPass._build_spawn_runtime_call(
     walker_literal = self.sync_loc(
         es.Literal(value=parts.walker.walker_name), jac_node=parts.walker.call_node
     );
+    spawn_args: list[(es.Expression | es.SpreadElement)] = [
+        walker_literal,
+        parts.target.expression,
+        parts.walker.fields_object
+    ];
+    # Cross-module walker: append the source-module stem as an optional 4th
+    # arg so the runtime routes the spawn. Same-module spawns omit it, keeping
+    # monolith output byte-for-byte unchanged.
+    if parts.walker.module_name {
+        spawn_args.append(
+            self.sync_loc(
+                es.Literal(value=parts.walker.module_name),
+                jac_node=parts.walker.call_node
+            )
+        );
+    }
     spawn_call = self.sync_loc(
         es.CallExpression(
             callee=self.sync_loc(es.Identifier(name='__jacSpawn'), jac_node=nd),
-            arguments=[
-                walker_literal,
-                parts.target.expression,
-                parts.walker.fields_object
-            ]
+            arguments=spawn_args
         ),
         jac_node=nd
     );
@@ -6643,10 +6704,18 @@ impl EsastGenPass._resolve_spawn_walker(
         else None;
     # If symbol is found and is a walker, use it
     if target_symbol and (target_symbol.sym_type == SymbolType.WALKER_ARCH) {
+        import from jaclang.compiler.symbol_utils { symbol_owner_archetype }
         walker_name = target_symbol.sym_name;
         fields_obj = self._build_spawn_arg_object(stripped_node, target_symbol);
+        # Cross-module walker: carry its defining module so the runtime can
+        # route the spawn the same way it routes cross-module function calls.
+        owner_arch = symbol_owner_archetype(target_symbol);
+        module_name = self._provenance_module_name(owner_arch, stripped_node);
         return SpawnWalkerInfo(
-            call_node=stripped_node, walker_name=walker_name, fields_object=fields_obj
+            call_node=stripped_node,
+            walker_name=walker_name,
+            fields_object=fields_obj,
+            module_name=module_name
         );
     }
     # Allow function calls that look like walker constructors (server walkers from sv imports)
@@ -6654,8 +6723,14 @@ impl EsastGenPass._resolve_spawn_walker(
     if isinstance(stripped_node.target, uni.Name) {
         walker_name = stripped_node.target.sym_name;
         fields_obj = self._build_spawn_arg_object(stripped_node, None);
+        # The checker could not bind the symbol (typical for sv-imported server
+        # walkers); recover provenance from the recorded sv-import name map.
+        module_name = self.sv_import_modules.get(walker_name);
         return SpawnWalkerInfo(
-            call_node=stripped_node, walker_name=walker_name, fields_object=fields_obj
+            call_node=stripped_node,
+            walker_name=walker_name,
+            fields_object=fields_obj,
+            module_name=module_name
         );
     }
     return None;

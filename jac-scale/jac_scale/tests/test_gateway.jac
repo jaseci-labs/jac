@@ -880,6 +880,68 @@ test "spa fallback returns none when no index.html" {
 }
 
 # =============================================================================
+# service_routes_map + inject_service_routes (client stub routing)
+# =============================================================================
+test "service_routes_map maps module stems to their gateway prefixes" {
+    reg = ServiceRegistry();
+    reg.register(ServiceEntry(name="orders_app", file="orders_app.jac", prefix="/api/orders"));
+    reg.register(ServiceEntry(name="cart_app", file="cart_app.jac", prefix="/api/cart"));
+    # An entry with no prefix is internal-only and must not leak into the map.
+    reg.register(ServiceEntry(name="shared", file="shared.jac", prefix=""));
+    gw = MicroserviceGateway(registry=reg);
+
+    routes = gw.service_routes_map();
+    assert routes == {"orders_app": "/api/orders", "cart_app": "/api/cart"} , routes;
+}
+
+test "inject_service_routes merges the prefix map into __jac_init__ (effects kept)" {
+    import json;
+    reg = ServiceRegistry();
+    reg.register(ServiceEntry(name="orders_app", file="orders_app.jac", prefix="/api/orders"));
+    gw = MicroserviceGateway(registry=reg);
+
+    # Build an index.html the way render_page does: `</` escaped to `<\/`.
+    init = {"module": "main", "function": "app", "endpointEffects": {"func:x": {"is_writer": False}}};
+    raw = json.dumps(init).replace("</", "<\\/");
+    html = '<!doctype html><body><div id="root"></div><script id="__jac_init__" type="application/json">'
+        + raw
+        + '</script><script src="/static/client.js"></script></body>';
+
+    out = gw.inject_service_routes(html);
+
+    # Exactly one init element survives and the bundle reference is intact.
+    assert out.count('id="__jac_init__"') == 1;
+    assert "/static/client.js" in out;
+
+    # Re-extract the (still-escaped) JSON and confirm the merge.
+    import re;
+    body = re.search(
+        r'<script id="__jac_init__"[^>]*>(.*?)</script>', out, re.DOTALL
+    ).group(1);
+    data = json.loads(body);
+    assert data["serviceRoutes"] == {"orders_app": "/api/orders"} , data;
+    # Pre-existing init payload (endpoint effects) is preserved.
+    assert data["endpointEffects"] == {"func:x": {"is_writer": False}};
+}
+
+test "inject_service_routes is a no-op when there are no routes (monolith parity)" {
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg);
+
+    html = '<script id="__jac_init__" type="application/json">{"module": "m"}</script>';
+    assert gw.inject_service_routes(html) == html;
+}
+
+test "inject_service_routes leaves html without an init element untouched" {
+    reg = ServiceRegistry();
+    reg.register(ServiceEntry(name="orders_app", file="orders_app.jac", prefix="/api/orders"));
+    gw = MicroserviceGateway(registry=reg);
+
+    html = "<html><body>no init here</body></html>";
+    assert gw.inject_service_routes(html) == html;
+}
+
+# =============================================================================
 # Static + SPA via TestClient (integration)
 # =============================================================================
 test "gateway serves static files for unmatched paths" {

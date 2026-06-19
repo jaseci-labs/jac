@@ -121,6 +121,52 @@ impl __getEndpointEffects -> dict {
     return globalThis.__jacEndpointEffects__;
 }
 
+# Read the compiler/host-provided service->prefix routing map from __jac_init__.
+#
+# Generic: the map is opaque data of the form {moduleStem: urlPrefix}. The
+# runtime applies it without knowing what the prefixes mean. It is empty for a
+# monolith bundle (no `serviceRoutes` key), so cross-module calls fall back to
+# the flat path and behavior is unchanged. A host (e.g. the microservice
+# gateway) populates it to route stubs to the owning service.
+impl __getServiceRoutes -> dict {
+    if not globalThis.__jacServiceRoutes__ {
+        initEl = None;
+        if globalThis.document {
+            try {
+                initEl = document.getElementById("__jac_init__");
+            } except Exception as e {
+                console.warn("[jac-client] Failed to find __jac_init__ element:", e);
+            }
+        }
+        if initEl {
+            try {
+                data = JSON.parse(initEl.textContent);
+                globalThis.__jacServiceRoutes__ = data["serviceRoutes"] or {};
+            } except Exception as e {
+                console.warn(
+                    "[jac-client] Failed to parse __jac_init__ data, using empty routes:",
+                    e
+                );
+                globalThis.__jacServiceRoutes__ = {};
+            }
+        } else {
+            globalThis.__jacServiceRoutes__ = {};
+        }
+    }
+    return globalThis.__jacServiceRoutes__;
+}
+
+# Resolve a source-module stem to its URL prefix, or "" when the map has no
+# entry (monolith, builtin routes, older bundles) -> caller uses the flat path.
+impl __resolveServicePrefix(module: (str | None)) -> str {
+    if not module {
+        return "";
+    }
+    routes = __getServiceRoutes();
+    prefix = routes[module];
+    return prefix if prefix else "";
+}
+
 # Get or initialize cache state on globalThis
 impl __getCacheState -> dict {
     if not globalThis.__jacCacheState__ {
@@ -221,12 +267,14 @@ impl __invalidateEndpoint(endpoint_key: str) -> None {
 # ============================================================================
 
 # Direct walker fetch (POST /walker/<name>[/<nodeId>])
-impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
+impl __doWalkerFetch(
+    `walker: str, nodeId: str, fields: dict, prefix: str = ""
+) -> any {
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
-    url = f"{base_url}/walker/{`walker}";
+    url = f"{base_url}{prefix}/walker/{`walker}";
     if nodeId != "" {
-        url = f"{base_url}/walker/{`walker}/{nodeId}";
+        url = f"{base_url}{prefix}/walker/{`walker}/{nodeId}";
     }
     headers = {"Content-Type": "application/json", "Accept": "application/json"};
     if token {
@@ -249,8 +297,8 @@ impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
     return payload["data"] if payload["data"] else {};
 }
 
-# Direct function fetch (POST /function/<name>)
-impl __doFuncFetch(function_name: str, args: dict) -> any {
+# Direct function fetch (POST [<prefix>]/function/<name>)
+impl __doFuncFetch(function_name: str, args: dict, prefix: str = "") -> any {
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
     headers = {"Content-Type": "application/json"};
@@ -258,7 +306,7 @@ impl __doFuncFetch(function_name: str, args: dict) -> any {
         headers["Authorization"] = f"Bearer {token}";
     }
     response = await fetch(
-        f"{base_url}/function/{function_name}",
+        f"{base_url}{prefix}/function/{function_name}",
         {"method": "POST", "headers": headers, "body": JSON.stringify(args)}
     );
     if not response.ok {
@@ -330,34 +378,54 @@ impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> an
 # ============================================================================
 # PUBLIC API - __jacSpawn and __jacCallFunction with auto-caching
 # ============================================================================
-impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
+impl __jacSpawn(
+    left: str, right: str = "", fields: dict = {}, module: (str | None) = None
+) -> any {
+    # `module` (optional) is the codegen-emitted source-module stem for a
+    # cross-module walker; resolve it to a routing prefix. Absent -> flat path.
+    prefix = __resolveServicePrefix(module);
     # Auth walkers always skip cache
     if left == "login"
     or left == "signup"
     or left == "logout"
     or left == "refresh_token" {
-        return await __doWalkerFetch(left, right, fields);
+        return await __doWalkerFetch(left, right, fields, prefix);
     }
     endpoint_key = f"walker:{left}";
     args_key = f"{endpoint_key}:{right}:{JSON.stringify(fields)}";
+    # Disambiguate same-named walkers across services in the cache key.
+    if module {
+        args_key = f"{endpoint_key}:{module}:{right}:{JSON.stringify(fields)}";
+    }
     return await __cachedEndpointCall(
         endpoint_key,
         args_key,
-        lambda -> any { return __doWalkerFetch(left, right, fields); }
+        lambda -> any { return __doWalkerFetch(left, right, fields, prefix); }
     );
 }
 
-impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
-    return __jacSpawn(left, right, fields);
+impl jacSpawn(
+    left: str, right: str = "", fields: dict = {}, module: (str | None) = None
+) -> any {
+    return __jacSpawn(left, right, fields, module);
 }
 
-impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
+impl __jacCallFunction(
+    function_name: str, args: dict = {}, module: (str | None) = None
+) -> any {
+    # `module` (optional) is the codegen-emitted source-module stem for a
+    # cross-module call; resolve it to a routing prefix. Absent -> flat path.
+    prefix = __resolveServicePrefix(module);
     endpoint_key = f"func:{function_name}";
     args_key = f"{endpoint_key}:{JSON.stringify(args)}";
+    # Disambiguate same-named functions across services in the cache key.
+    if module {
+        args_key = f"{endpoint_key}:{module}:{JSON.stringify(args)}";
+    }
     return await __cachedEndpointCall(
         endpoint_key,
         args_key,
-        lambda -> any { return __doFuncFetch(function_name, args); }
+        lambda -> any { return __doFuncFetch(function_name, args, prefix); }
     );
 }
 

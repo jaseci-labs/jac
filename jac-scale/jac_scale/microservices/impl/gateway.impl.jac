@@ -157,11 +157,59 @@ impl MicroserviceGateway.serve_extra_static(
 }
 
 
+"""Live {module_stem: url_prefix} routing map from the registry.
+
+This is the single source of truth that turns microservice prefixes into
+client-facing routing data. The core runtime applies the map generically -
+it never learns what a prefix means; jac-scale owns that policy here."""
+impl MicroserviceGateway.service_routes_map -> dict {
+    routes: dict = {};
+    for (name, entry) in self.registry.entries.items() {
+        if entry.prefix {
+            routes[name] = entry.prefix;
+        }
+    }
+    return routes;
+}
+
+"""Merge the live service->prefix map into the SPA's `__jac_init__` JSON.
+
+The bundle's `__jac_init__` payload is baked at `jac build` time (endpoint
+effects, etc.) before prefixes are known; the prefixes only exist once the
+registry is built at boot. So we inject them at serve time. Cross-module
+client stubs (carrying their source-module stem) then route to the owning
+service. A no-op when there is no init element or no routes - the client
+falls back to the flat path, matching monolith behavior."""
+impl MicroserviceGateway.inject_service_routes(html: str) -> str {
+    import json;
+    import re;
+    routes = self.service_routes_map();
+    if not routes {
+        return html;
+    }
+    pattern = r'(<script id="__jac_init__"[^>]*>)(.*?)(</script>)';
+    init_match = re.search(pattern, html, re.DOTALL);
+    if not init_match {
+        return html;
+    }
+    try {
+        data = json.loads(init_match.group(2));
+    } except Exception {
+        return html;
+    }
+    data["serviceRoutes"] = routes;
+    # Re-apply the same `</` escaping render_page uses so the JSON cannot
+    # prematurely close its <script> host element.
+    new_json = json.dumps(data).replace("</", "<\\/");
+    return html[:init_match.start(2)] + new_json + html[init_match.end(2):];
+}
+
 """Serve index.html for SPA fallback. Returns None if no index.html exists."""
 impl MicroserviceGateway.serve_spa_fallback -> Response | None {
     index = Path(self.client_dist_dir) / "index.html";
     if index.is_file() {
-        return HTMLResponse(content=index.read_text(encoding="utf-8"));
+        html = self.inject_service_routes(index.read_text(encoding="utf-8"));
+        return HTMLResponse(content=html);
     }
     return None;
 }
