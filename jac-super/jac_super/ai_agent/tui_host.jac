@@ -13,6 +13,9 @@ released for the duration of the foreign call); `apply_frame` / `handle_key` /
 TuiState and MUST run under the host's render lock.
 """
 
+import from jac_super.ai_agent.tui_shared { _ensure_na_artifact }
+
+
 obj TuiHost {
     has lib: any = None;
 
@@ -103,90 +106,23 @@ obj TuiHost {
 
 
 def _tui_lib_path(pkg_root: any) -> str {
-    return str(pkg_root / "ai_tui_na" / "bin" / "libtui.so");
+    import sys;
+    name = "libtui.dylib" if sys.platform == "darwin" else "libtui.so";
+    return str(pkg_root / "ai_tui_na" / "bin" / name);
 }
 
 
 def _ensure_tui_lib(pkg_root: any) -> dict {
-    # Mirror of run_tui_session's _ensure_tui_binary, for libtui.so. Compile on
-    # first launch when NA sources are present (dev tree); installed packages ship
-    # a prebuilt .so. JAC_AI_TUI_REBUILD=1 forces a recompile. build.sh (even with
-    # --quick) builds both jac-na-tui and libtui.so, so the same invocation works.
+    # libtui.so/.dylib is the shared lib the in-process backend ctypes-loads;
+    # host.na.jac is its entry source, used to detect a dev tree. Delegates to the
+    # shared NA artifact ensure so the build contract stays identical to the
+    # subprocess backend's _ensure_tui_binary (build.sh --quick builds both).
     import os;
-    import subprocess;
-    import from jaclang.cli.console { console }
-
-    lib = _tui_lib_path(pkg_root);
-    exists = os.path.exists(lib);
-    force = os.environ.get("JAC_AI_TUI_REBUILD", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on"
+    lib_path = _tui_lib_path(pkg_root);
+    return _ensure_na_artifact(
+        pkg_root,
+        lib_path,
+        str(pkg_root / "ai_tui_na" / "host.na.jac"),
+        os.path.basename(lib_path),
     );
-    if exists and not force {
-        return {"ok": True, "error": "", "hint": ""};
-    }
-    na_dir = str(pkg_root / "ai_tui_na");
-    host_src = str(pkg_root / "ai_tui_na" / "host.na.jac");
-    build_sh = str(pkg_root / "ai_tui_na" / "build.sh");
-    if not os.path.isfile(host_src) or not os.path.isfile(build_sh) {
-        # No sources to (re)build from. Use a prebuilt .so if present (installed
-        # package); only fail when there is nothing to load.
-        if exists {
-            return {"ok": True, "error": "", "hint": ""};
-        }
-        return {
-            "ok": False,
-            "error": f"libtui.so not found at {lib}",
-            "hint": "Build it with: jac-super/jac_super/ai_tui_na/build.sh --quick",
-
-        };
-    }
-    if force and exists {
-        console.print(
-            "[tui] JAC_AI_TUI_REBUILD set; recompiling libtui.so ...", style="dim"
-        );
-    } else {
-        console.print(
-            "[tui] libtui.so missing; compiling (first run) ...", style="dim"
-        );
-    }
-    try {
-        res = subprocess.run(
-            ["bash", build_sh, "--quick"],
-            cwd=na_dir,
-            capture_output=True,
-            text=True,
-            timeout=300,
-        );
-        if res.returncode != 0 {
-            detail = (res.stderr or res.stdout or "").strip();
-            if detail {
-                console.error(detail);
-            }
-            return {
-                "ok": False,
-                "error": "libtui.so compile failed",
-                "hint": f"Run manually: {build_sh} --quick",
-
-            };
-        }
-    } except Exception as e {
-        return {
-            "ok": False,
-            "error": f"libtui.so compile failed: {e}",
-            "hint": f"Run manually: {build_sh} --quick",
-
-        };
-    }
-    if not os.path.exists(lib) {
-        return {
-            "ok": False,
-            "error": f"libtui.so not found at {lib} after compile",
-            "hint": f"Run manually: {build_sh} --quick",
-
-        };
-    }
-    return {"ok": True, "error": "", "hint": ""};
 }

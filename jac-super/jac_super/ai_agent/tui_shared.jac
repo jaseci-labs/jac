@@ -12,6 +12,18 @@ lines, just returns the string instead of flushing it to a pipe). `_dispatch_cmd
 is the shared command dispatcher: it takes an optional `proc` so the subprocess
 backend can still `terminate()` on QUIT while the in-process backend passes
 `None` (quit there flows through `stop_evt` + the native `tui_quit_requested`).
+
+`_configure_ui_env` is the one copy of the JAC_AI_UI_* env contract
+(PROJECT/MODEL/NCTX/FILES/MODEL_PRESETS plus the JAC_AI_UI_ACTIVE=1 capture
+gate). Both backends set this exact block before `ui_configure()`; the helper
+returns the computed project/files/presets (the in-process backend hands them to
+`host.start`) and a zero-arg `restore` closure that unwinds JAC_AI_UI_ACTIVE,
+so the two backends cannot drift on the env contract.
+
+`_ensure_na_artifact` is the one copy of the NA build-artifact ensure logic
+(compile `bin/jac-na-tui` / `bin/libtui.so` from `*.na.jac` on first launch);
+both backends' `_ensure_tui_binary` / `_ensure_tui_lib` delegate to it so the
+build contract cannot drift between them.
 """
 
 def _debug_log(msg: str) -> None {
@@ -147,6 +159,49 @@ def _sidecar_tty_device -> str {
 }
 
 
+def _configure_ui_env(r: any) -> dict {
+    # Set the JAC_AI_UI_* env contract shared by both `jac ai --tui` backends and
+    # gate agent bus capture with JAC_AI_UI_ACTIVE=1. The agent reads these on
+    # ui_configure(); the native sidecar/host reads PROJECT/MODEL/NCTX/FILES/
+    # MODEL_PRESETS at startup. Returns the computed project/files_env/presets_env
+    # (the in-process backend hands them to host.start) plus a zero-arg `restore`
+    # closure that unwinds JAC_AI_UI_ACTIVE to its prior value, so each backend
+    # restores the env on every exit path without duplicating the save/restore
+    # dance. One copy here = the two backends cannot drift on the env contract.
+    import os;
+    import from jaclang.cli.ai_agent { _MODEL_PRESETS }
+
+    project = os.path.normpath(str(r?.cwd or os.getcwd()));
+    files_env = _list_project_files(project);
+    presets_env = "\n".join(_MODEL_PRESETS);
+
+    os.environ["JAC_AI_UI_PROJECT"] = project;
+    os.environ["JAC_AI_UI_MODEL"] = str(r?.model or "");
+    os.environ["JAC_AI_UI_NCTX"] = str(int(r?.n_ctx or 0));
+    os.environ["JAC_AI_UI_FILES"] = files_env;
+    os.environ["JAC_AI_UI_MODEL_PRESETS"] = presets_env;
+
+    old_active = os.environ.get("JAC_AI_UI_ACTIVE");
+    os.environ["JAC_AI_UI_ACTIVE"] = "1";
+
+    def _restore_active {
+        if old_active is None {
+            os.environ.pop("JAC_AI_UI_ACTIVE", None);
+        } else {
+            os.environ["JAC_AI_UI_ACTIVE"] = old_active;
+        }
+    }
+
+    return {
+        "restore": _restore_active,
+        "project": project,
+        "files_env": files_env,
+        "presets_env": presets_env,
+
+    };
+}
+
+
 def _dispatch_cmd(line: str, stop_evt: any, proc: any) {
     # Map one command line (SEND:/STOP/RESET/QUIT/APPLY:) onto the agent UI API.
     # Shared by both backends. `proc` is the subprocess handle for the subprocess
@@ -216,4 +271,95 @@ def _dispatch_cmd(line: str, stop_evt: any, proc: any) {
             _debug_log(f"ui_apply_settings({settings}) error: {e}");
         }
     }
+}
+
+
+def _ensure_na_artifact(
+    pkg_root: any, artifact_path: str, source_file: str, label: str
+) -> dict {
+    # Compile a NA build artifact on first launch when NA sources are present
+    # (dev tree); installed packages ship a prebuilt artifact. JAC_AI_TUI_REBUILD=1
+    # forces a recompile (dev iteration: pick up edits to *.na.jac without deleting
+    # bin/* by hand). build.sh --quick builds both jac-na-tui and libtui.so, so the
+    # same invocation works for either artifact.
+    #
+    # pkg_root: jac_super/ package root (parent of ai_tui_na/).
+    # artifact_path: full path to the built artifact (bin/jac-na-tui or
+    #                bin/libtui.so) -- also used verbatim in error messages.
+    # source_file: full path to a NA source file used to detect a dev tree
+    #              (tui.na.jac for the subprocess binary, host.na.jac for the .so).
+    # label: human-readable name used in console messages and error hints.
+    import os;
+    import subprocess;
+    import from jaclang.cli.console { console }
+
+    exists = os.path.exists(artifact_path);
+    force = os.environ.get("JAC_AI_TUI_REBUILD", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on"
+    );
+    if exists and not force {
+        return {"ok": True, "error": "", "hint": ""};
+    }
+    na_dir = str(pkg_root / "ai_tui_na");
+    build_sh = str(pkg_root / "ai_tui_na" / "build.sh");
+    if not os.path.isfile(source_file) or not os.path.isfile(build_sh) {
+        # No sources to (re)build from. Use a prebuilt artifact if present
+        # (installed package); only fail when there is nothing to load.
+        if exists {
+            return {"ok": True, "error": "", "hint": ""};
+        }
+        return {
+            "ok": False,
+            "error": f"{label} not found at {artifact_path}",
+            "hint": "Build it with: jac-super/jac_super/ai_tui_na/build.sh --quick",
+
+        };
+    }
+    if force and exists {
+        console.print(
+            f"[tui] JAC_AI_TUI_REBUILD set; recompiling {label} ...", style="dim"
+        );
+    } else {
+        console.print(f"[tui] {label} missing; compiling (first run) ...", style="dim");
+    }
+    try {
+        res = subprocess.run(
+            ["bash", build_sh, "--quick"],
+            cwd=na_dir,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        );
+        if res.returncode != 0 {
+            detail = (res.stderr or res.stdout or "").strip();
+            if detail {
+                console.error(detail);
+            }
+            return {
+                "ok": False,
+                "error": f"{label} compile failed",
+                "hint": f"Run manually: {build_sh} --quick",
+
+            };
+        }
+    } except Exception as e {
+        return {
+            "ok": False,
+            "error": f"{label} compile failed: {e}",
+            "hint": f"Run manually: {build_sh} --quick",
+
+        };
+    }
+    if not os.path.exists(artifact_path) {
+        return {
+            "ok": False,
+            "error": f"{label} not found at {artifact_path} after compile",
+            "hint": f"Run manually: {build_sh} --quick",
+
+        };
+    }
+    return {"ok": True, "error": "", "hint": ""};
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the NA TUI binary — nacompile only, no gcc, no Bun, no custom C.
+# Build the NA TUI binary — nacompile only, no gcc, no custom C.
 # Run from any directory; script resolves paths relative to its own location.
 
 set -euo pipefail

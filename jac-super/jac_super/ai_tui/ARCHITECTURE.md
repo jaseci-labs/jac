@@ -20,34 +20,26 @@ Related docs:
 | `BACKENDS.md` | Binary path, spawn flags, env vars |
 | `PORTING.md` | macOS / Windows port plan |
 | `../../PLAN.md` | Feature roadmap and phase history |
-| `../../../agents.md` | Rewrite history (Ink → Textual → NA) |
+| `../../../agents.md` | Agent-oriented file map and protocol summary |
 
 ## Design goals
 
 1. **Separation of concerns** - agent loop (LLM, tools, bus) and terminal UI
    evolve independently behind `PROTOCOL.md`.
-2. **No render deps** - sidecar is Jac NA + libc FFI only (no OpenTUI, npm, custom `.c`).
+2. **No render deps** - renderer is Jac NA + libc FFI only (no custom `.c`).
 3. **Clean terminal I/O** - protocol uses pipes; the real TTY is opened separately
    so stdin/stdout are not shared with the drawing surface.
 4. **Control plane owns I/O policy** - filesystem walks, model presets, loguru/litellm
    capture, and stdout gating stay in Python/Jac; the sidecar is a dumb renderer +
    keyboard front-end.
 
-### Why subprocess (not in-process today)
+### Subprocess fallback (`JAC_AI_TUI_BACKEND=subprocess`)
 
-| Reason | Source |
-| ------ | ------ |
-| Python TUI (Textual) event loop conflicted with the byLLM async agent loop | `agents.md` |
-| stdin/stdout must be IPC pipes; display goes to `/dev/tty` via a second fd | `PROTOCOL.md` |
-| Swappable renderer - any process speaking the protocol works | `PLAN.md` principle 3 |
-| NA binary avoids filesystem FFI in the sidecar (file list via env) | `run_tui_session`, `PLAN.md` |
-
-The **in-process** path is now the default (renderer loaded as `libtui.so`, not
-spawned) - see [In-process model](#in-process-model). It trades crash isolation
-and fd separation for one shipped artifact and no spawn/`setsid` plumbing. Set
-`JAC_AI_TUI_BACKEND=subprocess` for the crash-isolated sidecar fallback. The
-bogus "event-loop conflict" reason above never applied to this code (there is no
-asyncio in the control plane).
+The sidecar transport remains for crash isolation and third-party renderers that
+speak `PROTOCOL.md` over pipes. In-process is the default because it avoids
+spawn/`setsid` plumbing and ships one `libtui.so` artifact. The subprocess path
+keeps stdin/stdout as IPC pipes and opens the real TTY on a separate fd (see
+`PROTOCOL.md`).
 
 ## Process model
 

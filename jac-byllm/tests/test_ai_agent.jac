@@ -74,7 +74,7 @@ def arm(proj: str, events: list, feedback: bool = True) -> CodeIntelligence {
 """Run a thunk with stdout captured; return what it printed.
 
 The agent's _term_output_enabled() guard suppresses console.print when
-stdout is not a tty (so the Ink TUI is not corrupted).  Patch isatty on the
+stdout is not a tty (so the terminal UI is not corrupted).  Patch isatty on the
 StringIO cap so captured-output tests still see terminal prints.
 """
 def capturing(run: any) -> str {

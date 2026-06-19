@@ -15,18 +15,13 @@ impl run_tui_in_process(req: AgentRequest) -> int {
     import os;
     import threading;
     import from pathlib { Path }
-    import from jaclang.cli.ai_agent {
-        _MODEL_PRESETS,
-        ui_configure,
-        ui_stop,
-        ui_stream
-    }
+    import from jaclang.cli.ai_agent { ui_configure, ui_stop, ui_stream }
     import from jaclang.cli.console { console }
     import from jac_super.ai_agent.tui_shared {
+        _configure_ui_env,
         _debug_log,
         _dispatch_cmd,
         _frame_blob,
-        _list_project_files,
         _sidecar_tty_device
     }
     import from jac_super.ai_agent.tui_host { TuiHost, _ensure_tui_lib, _tui_lib_path }
@@ -55,27 +50,15 @@ impl run_tui_in_process(req: AgentRequest) -> int {
         return 1;
     }
 
-    project = os.path.normpath(str(r?.cwd or os.getcwd()));
-    files_env = _list_project_files(project);
-    presets_env = "\n".join(_MODEL_PRESETS);
-
-    # JAC_AI_UI_* contract is shared with the subprocess path: the agent reads
-    # these on configure; JAC_AI_UI_ACTIVE=1 gates loguru/litellm bus capture.
-    os.environ["JAC_AI_UI_PROJECT"] = project;
-    os.environ["JAC_AI_UI_MODEL"] = str(r?.model or "");
-    os.environ["JAC_AI_UI_NCTX"] = str(int(r?.n_ctx or 0));
-    os.environ["JAC_AI_UI_FILES"] = files_env;
-    os.environ["JAC_AI_UI_MODEL_PRESETS"] = presets_env;
-    old_active = os.environ.get("JAC_AI_UI_ACTIVE");
-    os.environ["JAC_AI_UI_ACTIVE"] = "1";
-
-    def _restore_env {
-        if old_active is None {
-            os.environ.pop("JAC_AI_UI_ACTIVE", None);
-        } else {
-            os.environ["JAC_AI_UI_ACTIVE"] = old_active;
-        }
-    }
+    # JAC_AI_UI_* env contract + ACTIVE capture gate, set through tui_shared so
+    # the subprocess and in-process backends share one copy of the contract. The
+    # restore closure unwinds JAC_AI_UI_ACTIVE on every exit path; project/files/
+    # presets come back typed (the helper computed them) for host.start below.
+    env = _configure_ui_env(r);
+    restore_ui = env["restore"];
+    project = env["project"] as str;
+    files_env = env["files_env"] as str;
+    presets_env = env["presets_env"] as str;
 
     ui_configure();
 
@@ -87,7 +70,7 @@ impl run_tui_in_process(req: AgentRequest) -> int {
         try {
             ui_stop();
         } except Exception { }
-        _restore_env();
+        restore_ui();
         console.error(f"Failed to load in-process TUI library: {e}");
         return 1;
     }
@@ -124,7 +107,7 @@ impl run_tui_in_process(req: AgentRequest) -> int {
         try {
             ui_stop();
         } except Exception { }
-        _restore_env();
+        restore_ui();
         console.error(f"in-process TUI init failed (tty={tty_dev}, rc={rc})");
         return 1;
     }
@@ -217,7 +200,7 @@ impl run_tui_in_process(req: AgentRequest) -> int {
             }
         }
         _restore_fds();
-        _restore_env();
+        restore_ui();
     }
 
     _debug_log("in-process session exit rc=0");

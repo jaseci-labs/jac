@@ -1,4 +1,4 @@
-"""NA-native TUI binary — pure libc, no OpenTUI, no custom C.
+"""NA-native TUI binary — pure libc FFI, no custom C.
 
 IPC contract (see ipc.na.jac):
   stdin  <- Python: key:value frames terminated by "---"
