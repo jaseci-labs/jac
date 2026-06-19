@@ -3,7 +3,7 @@
 `react-hook-form` → `@tanstack/*-form` on the `jac-svelte` branch.
 
 **Last updated:** 2026-06-19
-**Status:** **Complete.** Remaining items are optional polish.
+**Status:** **Complete.**
 
 ---
 
@@ -15,27 +15,30 @@
 | RHF / resolvers / `solid-hook-form` removed | Done |
 | Peer deps, client deps, npm publish maps | Done |
 | `onTouched` display + border gated on `isTouched` | Done |
-| React `effectiveIsValid` submit gate | Done |
-| Solid onChange-only `onTouched` + `createMemo` submit | Done |
+| `effectiveIsValid` submit gate (React/Preact) | Done |
+| onChange-only `onTouched` on **all** runtimes (TanStack #1784) | Done |
+| Solid reactive submit (`createMemo` + `form.Subscribe`) | Done |
 | Solid jsdom: email, checkbox, select, radio, submit | Done |
 | Import guards + publish tarball scans | Done |
-| jac-client Playwright Jac error DOM | Done |
+| jac-client Playwright: error DOM + submit flow | Done |
+| Preact `JacForm` compiler smoke | Done |
 | Migration guide + example `jac.toml` cleanup | Done |
 
 ---
 
-## Validator mapping
+## Validator mapping (final)
 
-| `validateMode` | React / Preact | Solid |
-|----------------|----------------|-------|
-| `onChange` | `onChange` | `onChange` |
-| `onSubmit` | `onSubmit` | `onSubmit` |
-| `onBlur` | `onBlur` | `onBlur` |
-| `onTouched` | `onBlur` + `onChange` | **onChange only** |
-| unknown | `onBlur` fallback + warn | same |
+| `validateMode` | React / Preact / Solid |
+|----------------|------------------------|
+| `onChange` | `onChange` |
+| `onSubmit` | `onSubmit` |
+| `onBlur` | `onBlur` |
+| `onTouched` | **onChange only** |
+| unknown | `onBlur` fallback + warn |
 
-Solid uses onChange-only for `onTouched` to avoid stale `errorMap["blur"]` on
-sibling fields (TanStack #1784-style). Display and borders stay gated on `isTouched`.
+All runtimes use onChange-only for `onTouched` so sibling fields do not keep stale
+`errorMap["blur"]` entries after cross-field blur (TanStack #1784). Error display
+and borders stay gated on `isTouched`.
 
 ---
 
@@ -48,15 +51,13 @@ sibling fields (TanStack #1784-style). Display and borders stay gated on `isTouc
 
 ---
 
-## Optional follow-ups
+## Optional defer
 
 | Item | Notes |
 |------|-------|
-| Preact-specific form test | Shares `client_runtime` |
-| React multi-field stale `errorMap` | Solid fixed; React not |
-| Playwright submit enabled/disabled | Error DOM only today |
-| `form-migration.md` `effectiveIsValid` wording | Doc polish |
-| RHF in `jac-scale` / `ai_ui` tomls | Out of `@jac/runtime` scope |
+| True RHF-identical `onTouched` | Not needed for UX |
+| Preact runtime jsdom form test | Compiler smoke sufficient |
+| RHF `register` checker warning | Migration guide only |
 
 ---
 
@@ -66,7 +67,7 @@ sibling fields (TanStack #1784-style). Display and borders stay gated on `isTouc
 |------|------|
 | React shim | `jac/jaclang/runtimelib/impl/client_runtime.impl.jac` |
 | Solid shim | `jac/jaclang/runtimelib/impl/solid_runtime.impl.jac` |
-| jsdom tests | `jac/tests/runtimelib/test_solid_jsdom.jac`, `fixtures/solid_form_app.cl.jac` |
+| jsdom | `jac/tests/runtimelib/test_solid_jsdom.jac` |
+| Playwright | `jac-client/jac_client/tests/test_form.jac` |
 | Compiler pins | `test_solid_backend.jac`, `test_preact_backend.jac` |
 | Migration guide | `jac-client/jac_client/docs/advance/form-migration.md` |
-| Release note | `docs/docs/community/release_notes/unreleased/jaclang/6539.refactor.md` |

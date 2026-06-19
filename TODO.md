@@ -30,26 +30,26 @@
 **jsdom coverage:** counter, routing, `<For>`/`<Show>`, full `JacForm` (email,
 checkbox, select, radio, submit), dynamic prop, `ref` e2e, callback prop.
 
-### TanStack Form migration
+### TanStack Form migration (complete)
 
 - `@tanstack/react-form` (React/Preact) and `@tanstack/solid-form` (Solid)
 - RHF / resolvers removed; Standard Schema validators
-- `onTouched` display + border gate; React `effectiveIsValid` submit gate
-- Solid onChange-only `onTouched` validators (avoids stale cross-field `errorMap`)
-- Import guards, publish tarball scans, jac-client Playwright error DOM
+- `onTouched` display + border gate; `effectiveIsValid` submit gate (React)
+- **onChange-only `onTouched` on all runtimes** (TanStack #1784 fix; React matches Solid)
+- Solid reactive submit via `form.Subscribe` + `createMemo`
+- Import guards, publish tarball scans
+- jac-client Playwright: error DOM + submit disabled → enabled → `onSubmit` fires
+- Preact compiler smoke for `JacForm` / `useJacForm` (`test_preact_backend.jac`)
 
 ---
 
-## Open (non-blocking)
+## Open (follow-up PRs)
 
-Full list in `docs/remaining-work.md`. Summary:
-
-| Area | Open items |
-|------|------------|
-| Form polish | Preact form test; React #1784 stale `errorMap`; Playwright submit flow |
-| Docs | `effectiveIsValid` wording in `form-migration.md`; RHF pins in ancillary `jac.toml` |
-| #6490 follow-up | Svelte backend; `lower_state_read` ([#6677](https://github.com/jaseci-labs/jaseci/issues/6677)); reactivity contract |
+| Area | Items |
+|------|-------|
+| #6490 tail | Svelte backend; `lower_state_read` ([#6677](https://github.com/jaseci-labs/jaseci/issues/6677)); reactivity contract |
 | View IR tail | `unsafe_html` → `innerHTML`; tier-3 `&&` / `JsxSlot` lifts; typed `@jac/runtime` re-exports |
+| Defer | True RHF-identical `onTouched`; RHF `register` checker warning; Zod `_def` introspection |
 
 ---
 
@@ -57,8 +57,8 @@ Full list in `docs/remaining-work.md`. Summary:
 
 | Doc | Purpose |
 |-----|---------|
-| `docs/remaining-work.md` | Prioritized open work |
-| `docs/tanstack-form-migration-gaps.md` | Form migration detail + accepted gaps |
-| `docs/compiler-ir-vs-main.md` | Pipeline diff vs `main` (PR review) |
-| `docs/framework-view-ir-plan.md` | View IR architecture plan |
+| `docs/remaining-work.md` | Open follow-ups only |
+| `docs/tanstack-form-migration-gaps.md` | Form migration (complete) |
+| `docs/compiler-ir-vs-main.md` | Pipeline diff vs `main` |
+| `docs/framework-view-ir-plan.md` | View IR architecture |
 | `docs/solid-dom-expressions-plan.md` | Solid dom-expressions rollout |

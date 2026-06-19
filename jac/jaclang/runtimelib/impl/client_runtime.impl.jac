@@ -302,9 +302,11 @@ impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
     } elif form_mode == "onBlur" {
         validators["onBlur"] = schema;
     } elif form_mode == "onTouched" {
-        # Both wired so post-touch onChange clears errors; JacForm gates submit on
-        # isTouched so isValid appearing false pre-blur doesn't disable the button.
-        validators["onBlur"] = schema;
+        # onChange-only (same as Solid): errors are always fresh when values change.
+        # isTouched gate in renderError ensures errors show only after first blur.
+        # Wiring both onChange+onBlur leaves stale onBlur entries in other fields'
+        # errorMap after cross-field interaction (TanStack #1784), keeping
+        # isValid=false even after those fields have been corrected.
         validators["onChange"] = schema;
     } else {
         console.warn(f"Unknown validateMode '{form_mode}'; falling back to onBlur");

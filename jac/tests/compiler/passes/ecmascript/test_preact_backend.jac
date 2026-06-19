@@ -227,8 +227,23 @@ test "preact runtime shim compiles JacForm and emits tanstack react-form" {
     use_jac_form = js.split("function useJacForm(", 1)[1].split("function JacForm(", 1)[
         0
     ];
-    assert 'validators["onBlur"] = schema' in use_jac_form;
-    assert 'validators["onChange"] = schema' in use_jac_form;
+    # onTouched wires onChange-only (mirrors Solid): stale onBlur entries in
+    # other fields' errorMap (TanStack #1784) are avoided; isTouched gates display.
+    # Narrow to just the onTouched block (from the condition guard to the next else).
+    # Use the comparison form `=== "onTouched"` to skip the default-param occurrence.
+    on_touched_idx = use_jac_form.find('=== "onTouched"');
+    assert on_touched_idx >= 0 , "onTouched condition must exist in useJacForm";
+    after_guard = use_jac_form[on_touched_idx:];
+    next_else_off = after_guard.find("} else");
+    on_touched_block = after_guard[:next_else_off]
+        if next_else_off >= 0
+        else after_guard;
+    assert 'validators["onChange"] = schema' in on_touched_block , (
+        "onTouched block must wire onChange"
+    );
+    assert 'validators["onBlur"] = schema' not in on_touched_block , (
+        "onTouched must not wire onBlur validator (TanStack #1784 stale errorMap)"
+    );
     # Must NOT use Solid's createForm factory.
     assert "createForm(" not in js , "Preact runtime must not reference @tanstack/solid-form";
 }

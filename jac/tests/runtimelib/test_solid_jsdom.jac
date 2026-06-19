@@ -618,6 +618,152 @@ console.log(`\\n${failures.length ? "FAILED" : "OK"}: ${failures.length} failure
 process.exit(failures.length ? 1 : 0);
 """;
 
+"""Combined harness for the P2 jsdom matrix (dynamic prop, ref e2e, callback prop).
+Mounts three separate Solid apps in three root divs and asserts each scenario.
+A plain (non-f) string so JS `${}`/`{}` need no escaping; `_BABEL_BUILD` compiles
+every emitted `*.src.jsx` before any import."""
+glob _P2_HARNESS: str = _BABEL_BUILD + """
+import { JSDOM } from "jsdom";
+
+const dom = new JSDOM(
+  '<!DOCTYPE html><html><body></body></html>',
+  { url: "http://localhost/", pretendToBeVisual: true }
+);
+const { window } = dom;
+globalThis.window = window;
+for (const k of [
+  "document", "navigator", "HTMLElement", "Element", "SVGElement", "Node",
+  "Text", "Comment", "DocumentFragment", "Event", "CustomEvent", "MouseEvent",
+  "KeyboardEvent", "getComputedStyle", "DOMParser",
+]) {
+  if (window[k] === undefined) continue;
+  try { globalThis[k] = window[k]; } catch {}
+}
+globalThis.requestAnimationFrame =
+  window.requestAnimationFrame || ((cb) => setTimeout(() => cb(Date.now()), 0));
+globalThis.cancelAnimationFrame = window.cancelAnimationFrame || clearTimeout;
+
+const failures = [];
+const check = (label, ok, detail) => {
+  console.log(`${ok ? "PASS" : "FAIL"}  ${label}${detail ? "  -- " + detail : ""}`);
+  if (!ok) failures.push(label);
+};
+
+let render, dynpropApp, refApp, callbackApp;
+try {
+  ({ render } = await import("solid-js/web"));
+  ({ app: dynpropApp } = await import("./dynprop.js"));
+  ({ app: refApp } = await import("./ref_app.js"));
+  ({ app: callbackApp } = await import("./callback.js"));
+} catch (e) {
+  check("runtime modules import (jsdom + --conditions=browser)", false,
+    String((e && e.stack) || e));
+  console.log("\\nFAILED: import error");
+  process.exit(1);
+}
+
+// ---- P2.1: Dynamic prop / child reactivity ----------------------------------------
+{
+  const root = document.createElement("div");
+  document.body.appendChild(root);
+  try {
+    render(() => dynpropApp(), root);
+  } catch (e) {
+    check("P2.1 dynprop: render mounts without throwing", false, String((e && e.stack) || e));
+  }
+
+  const display = () => root.querySelector('[data-testid="display"]');
+  check("P2.1 dynprop: Display component renders",
+    !!display(), `root=${root.innerHTML}`);
+
+  if (display()) {
+    check("P2.1 dynprop: initial value is 0",
+      display().textContent.includes("0"),
+      `got: ${JSON.stringify(display().textContent)}`);
+
+    const btn = root.querySelector('[data-testid="inc"]');
+    check("P2.1 dynprop: increment button present", !!btn);
+    if (btn) {
+      btn.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      check("P2.1 dynprop: value updates to 1 after click (reactive prop through child)",
+        display().textContent.includes("1"),
+        `got: ${JSON.stringify(display().textContent)}`);
+    }
+  }
+}
+
+// ---- P2.2: Explicit ref={...} end-to-end -----------------------------------------
+{
+  const root = document.createElement("div");
+  document.body.appendChild(root);
+  try {
+    render(() => refApp(), root);
+  } catch (e) {
+    check("P2.2 ref: render mounts without throwing", false, String((e && e.stack) || e));
+  }
+
+  const target = root.querySelector('[data-testid="target"]');
+  check("P2.2 ref: target button rendered", !!target, `root=${root.innerHTML}`);
+
+  const statusEl = () => root.querySelector('[data-testid="ref-status"]');
+  check("P2.2 ref: initial status is 'unset'",
+    !!statusEl() && statusEl().textContent.includes("unset"),
+    `got: ${statusEl() ? statusEl().textContent : "null"}`);
+
+  const checkBtn = root.querySelector('[data-testid="check"]');
+  check("P2.2 ref: check button rendered", !!checkBtn);
+  if (checkBtn) {
+    checkBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    check("P2.2 ref: ref was populated (babel-preset-solid assigned the DOM element)",
+      !!statusEl() && statusEl().textContent.includes("set"),
+      `got: ${statusEl() ? statusEl().textContent : "null"}`);
+  }
+}
+
+// ---- P2.3: Callback prop (plain fn, not reactive accessor) -----------------------
+{
+  const root = document.createElement("div");
+  document.body.appendChild(root);
+  try {
+    render(() => callbackApp(), root);
+  } catch (e) {
+    check("P2.3 callback: render mounts without throwing", false, String((e && e.stack) || e));
+  }
+
+  const countEl = () => root.querySelector('[data-testid="click-count"]');
+  check("P2.3 callback: click count element renders",
+    !!countEl(), `root=${root.innerHTML}`);
+
+  if (countEl()) {
+    check("P2.3 callback: initial click count is 0",
+      countEl().textContent.includes("0"),
+      `got: ${JSON.stringify(countEl().textContent)}`);
+
+    const childBtn = root.querySelector('[data-testid="child-btn"]');
+    check("P2.3 callback: child button rendered", !!childBtn);
+    if (childBtn) {
+      childBtn.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      check("P2.3 callback: handler fires on click (count incremented to 1)",
+        countEl().textContent.includes("1"),
+        `got: ${JSON.stringify(countEl().textContent)}`);
+      check("P2.3 callback: count is exactly 1 (fn not called spuriously as signal)",
+        countEl().textContent.trim() === "Clicks: 1",
+        `got: ${JSON.stringify(countEl().textContent)}`);
+    }
+  }
+}
+
+console.log(`\\n${failures.length ? "FAILED" : "OK"}: ${failures.length} failure(s)` +
+  (failures.length ? `: ${failures.join(", ")}` : ""));
+process.exit(failures.length ? 1 : 0);
+""";
+
 """Skip unless the bun/npm client toolchain is opted in (mirrors preact e2e)."""
 def _require_client_integration {
     if not os.environ.get("JAC_CLIENT_INTEGRATION") {
@@ -985,6 +1131,87 @@ test "solid JacForm renders and validates in jsdom (TanStack Form end-to-end)" {
         detail = (run.stdout or "") + "\n" + (run.stderr or "");
         assert run.returncode == 0 , (
             f"form jsdom harness failed (exit {run.returncode}):\n{detail}"
+        );
+    }
+}
+
+test "solid P2 jsdom matrix: dynamic prop, ref e2e, and callback prop" {
+    # End-to-end proof of the three remaining P2 jsdom matrix items:
+    # 2.1 Dynamic prop / child reactivity: a parent's reactive signal flows
+    #     through a component prop boundary and reactively updates the child DOM.
+    # 2.2 Explicit ref={...}: babel-preset-solid assigns the DOM element to the
+    #     let-bound ref variable; the handler reading it post-mount sees a truthy
+    #     element, not null.
+    # 2.3 Callback prop: a plain function passed as a component prop fires exactly
+    #     once on click — Solid does NOT call it as a reactive accessor.
+    # All three share one bun install (same _DEPS) for faster CI.
+    _require_client_integration();
+    bun = get_bun();
+    if bun is None {
+        pytest.skip("bun is required but could not be located/installed");
+    }
+
+    backend = SolidBackend();
+    runtime_path = resolve_client_runtime_cl_path("solid");
+    runtime_js = _rewrite_core_specifier(_compile_solid(runtime_path));
+    core_js = _compile_solid(
+        str(Path(runtime_path).parent / "client_runtime_core.cl.jac")
+    );
+
+    dynprop_js = _wire_jac_runtime(
+        with_runtime_globals(
+            _compile_solid(os.path.join(FIXTURES, "solid_dynprop_app.cl.jac")), backend
+        )
+    );
+    ref_js = _wire_jac_runtime(
+        with_runtime_globals(
+            _compile_solid(os.path.join(FIXTURES, "solid_ref_app.cl.jac")), backend
+        )
+    );
+    callback_js = _wire_jac_runtime(
+        with_runtime_globals(
+            _compile_solid(os.path.join(FIXTURES, "solid_callback_app.cl.jac")), backend
+        )
+    );
+
+    with TemporaryDirectory() as tmp {
+        work = Path(tmp);
+        (work / "dynprop.src.jsx").write_text(dynprop_js, encoding="utf-8");
+        (work / "ref_app.src.jsx").write_text(ref_js, encoding="utf-8");
+        (work / "callback.src.jsx").write_text(callback_js, encoding="utf-8");
+        (work / "jac_runtime.src.jsx").write_text(runtime_js, encoding="utf-8");
+        (work / "client_runtime_core.src.jsx").write_text(core_js, encoding="utf-8");
+        (work / "harness.mjs").write_text(_P2_HARNESS, encoding="utf-8");
+        (work / "package.json").write_text(
+            json.dumps(
+                {
+                    "name": "solid-p2-jsdom-test",
+                    "private": True,
+                    "type": "module",
+                    "dependencies": _DEPS
+                }
+            ),
+            encoding="utf-8"
+        );
+        install = subprocess.run(
+            [bun, "install"], cwd=str(work), capture_output=True, text=True, timeout=300
+        );
+        assert install.returncode == 0 , (
+            f"bun install failed (exit {install.returncode}):\n"
+            f"{install.stdout}\n{install.stderr}"
+        );
+        node_bin = shutil.which("node");
+        if node_bin {
+            cmd = [node_bin, "--conditions=browser", str(work / "harness.mjs")];
+        } else {
+            cmd = [bun, "--conditions=browser", "run", str(work / "harness.mjs")];
+        }
+        run = subprocess.run(
+            cmd, cwd=str(work), capture_output=True, text=True, timeout=120
+        );
+        detail = (run.stdout or "") + "\n" + (run.stderr or "");
+        assert run.returncode == 0 , (
+            f"P2 jsdom harness failed (exit {run.returncode}):\n{detail}"
         );
     }
 }
