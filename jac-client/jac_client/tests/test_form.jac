@@ -185,34 +185,45 @@ test "form validation with browser" {
         "test-form-validation-browser", build=False, start_server=True
     );
     try {
-        time.sleep(3);
-
-        # Use Playwright to test form validation
         with sync_playwright() as p {
             browser = p.chromium.launch(headless=True);
             context = browser.new_context();
             page = context.new_page();
             try {
                 page.goto(url, wait_until="networkidle", timeout=60000);
-                page.wait_for_timeout(2000);
+                # Wait for React to hydrate: the email field must be visible before
+                # we interact with anything.
+                email_input = page.locator('input[name="emailField"]').first;
+                email_input.wait_for(state="visible", timeout=30000);
 
                 # Submit button should be disabled initially
                 submit_btn = page.locator('button[type="submit"]').first;
+                submit_btn.wait_for(state="visible", timeout=5000);
                 is_disabled = submit_btn.evaluate("el => el.disabled");
                 assert is_disabled , "Submit button should be disabled initially";
-                # Test 1: Invalid email validation
-                email_input = page.locator('input[name="emailField"]').first;
+
+                # Test 1: Invalid email → Jac renders a ⚠️ error <p> after blur
+                # (isTouched gates renderError in onTouched mode; blur sets it)
                 email_input.fill("not-an-email");
                 email_input.blur();
-                page.wait_for_timeout(500);
-                is_valid = email_input.evaluate("el => el.validity.valid");
-                assert not is_valid , "Invalid email should not be valid";
-                # Test 2: Valid email should pass validation
+                page.wait_for_selector("p:has-text('Invalid email')", timeout=5000);
+                email_err = page.locator("p:has-text('Invalid email')").first;
+                assert email_err.is_visible() , (
+                    "Jac 'Invalid email' error paragraph should be visible after blur"
+                );
+                assert "Invalid email" in (email_err.text_content() or "") , (
+                    f"Error text mismatch: {email_err.text_content()!r}"
+                );
+
+                # Test 2: Valid email → error <p> must disappear
                 email_input.fill("test@example.com");
                 email_input.blur();
-                page.wait_for_timeout(500);
-                is_valid_now = email_input.evaluate("el => el.validity.valid");
-                assert is_valid_now , "Valid email should be valid";
+                page.wait_for_selector(
+                    "p:has-text('Invalid email')", state="hidden", timeout=5000
+                );
+                assert not page.locator("p:has-text('Invalid email')").is_visible() , (
+                    "Error paragraph should be gone after entering a valid email"
+                );
             } finally {
                 context.close();
                 browser.close();

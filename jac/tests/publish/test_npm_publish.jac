@@ -326,14 +326,26 @@ test "build_runtime_tarball packages the runtime with exports" {
         );
         # The entry imports the core's symbols from the bundled sibling module.
         assert "./jaclang/runtimelib/client_runtime_core.js" in js;
+        # The runtime is built on @tanstack/react-form, so NO `.js` in the package
+        # pulls in the legacy react-hook-form library (checked across the entry
+        # AND the bundled core).
+        for member in names {
+            if member.endswith(".js") {
+                src = tf.extractfile(member).read().decode();
+                assert "react-hook-form" not in src , f"{member} imports react-hook-form";
+                assert "@hookform" not in src , f"{member} imports @hookform";
+            }
+        }
         # peerDependencies reflect the packages the runtime actually imports,
         # versioned from the canonical React client-dep set. `react-dom` lives in
         # the generated entry script (not this module), so it is absent here.
         peers = pj["peerDependencies"];
         assert peers["react"] == "^18.2.0";
         assert peers["react-router-dom"] == "^6.22.0";
+        assert peers["@tanstack/react-form"] == "^1.33.0";
         assert peers["zod"] == "^4.3.6";
         assert "react-dom" not in peers;
+        assert "react-hook-form" not in peers;
     }
 }
 

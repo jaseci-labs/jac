@@ -183,3 +183,29 @@ test "preact ref_field_symbols inherits useRef from react" {
         "useRef"
     ];
 }
+
+test "react client runtime shim imports no solid ecosystem package" {
+    # Symmetric guard to the Solid negative-import test: a React/Preact build must
+    # never resolve @tanstack/solid-form or solid-js. Statically scan the shim
+    # source (and its impl) for any Solid-ecosystem import.
+    runtime_dir = Path(resolve_client_runtime_cl_path("react")).parent;
+    sources = [
+        runtime_dir / "client_runtime.cl.jac",
+        runtime_dir / "impl" / "client_runtime.impl.jac"
+    ];
+    forbidden = ["@tanstack/solid-form", "solid-js"];
+    for src in sources {
+        assert src.is_file() , f"missing React runtime source: {src}";
+        for ln in src.read_text(encoding="utf-8").splitlines() {
+            stripped = ln.strip();
+            if not stripped.startswith("import") {
+                continue;
+            }
+            for pkg in forbidden {
+                assert f"'{pkg}'" not in stripped and f'"{pkg}"' not in stripped , (
+                    f"React runtime must not import '{pkg}': {stripped}"
+                );
+            }
+        }
+    }
+}

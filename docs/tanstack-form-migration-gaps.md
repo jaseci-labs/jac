@@ -1,15 +1,32 @@
-# TanStack Form migration  - what's done and what's missing
+# TanStack Form migration - status
 
 Status doc for the `react-hook-form` → `@tanstack/*-form` migration on the
 `jac-svelte` branch. Read this before continuing form work.
 
-> **Re-verified 2026-06-18** against the working tree. The migration itself is
-> confirmed live in both runtimes and all "landed" items are present. Of the
-> "still missing" items, only the `test_npm_publish.jac` row has since been
-> *partially* addressed (Solid bundle scan added); it is refined below rather
-> than struck. Two additional stale references (`multi_segment_app/jac.toml`,
-> and `@tanstack/react-form` missing from `diagnostics.impl.jac` `CORE_DEPS`)
-> were found and added. Every other gap remains open.
+**Last updated:** 2026-06-18 (aligned with branch through `5a5cbd813`).
+
+---
+
+## Shipped summary
+
+| Area | Status |
+|------|--------|
+| TanStack Form on React / Preact / Solid runtimes | Done |
+| Remove RHF / `@hookform/resolvers` / `solid-hook-form` / `__zodResolver` | Done |
+| Peer deps, default client deps, npm publish maps | Done |
+| `onTouched` validator wiring (`onBlur` + `onChange`) | Done |
+| `onTouched` error **display** gated on `isTouched` (`renderError` + `hasError` borders) | Done |
+| Solid shim import guard (`@tanstack/react-form` forbidden) | Done |
+| React shim symmetric import guard (`@tanstack/solid-form` / `solid-js` forbidden) | Done |
+| Solid jsdom `JacForm` e2e (email blur/change + checkbox) | Done |
+| Compiler pins for `onTouched` in `useJacForm` | Done |
+| Solid published runtime tarball scan (no React ecosystem) | Done |
+| Migration guide + `form-handling.md` caveat | Done |
+| `diagnostics.impl.jac` `CORE_DEPS` → `@tanstack/react-form` | Done |
+| True RHF-identical `onTouched` (no pre-blur validation) | **Not done** (approximation + display gate) |
+| React dist / peer publish assertions for TanStack | Done |
+| jac-client Playwright depth on Jac error DOM | Done |
+| Solid jsdom for radio / select | **Not done** |
 
 ---
 
@@ -25,22 +42,26 @@ Form** on both runtimes:
 | Solid | `solid_runtime.cl.jac` | `@tanstack/solid-form` → `createForm` |
 
 Zod schemas are passed directly as Standard Schema validators (no
-`@hookform/resolvers`, no hand-rolled `__zodResolver`). Peer deps, default client
-deps, and npm publish maps were updated (`6539.refactor.md`).
+`@hookform/resolvers`, no hand-rolled `__zodResolver`). See release note
+`docs/docs/community/release_notes/unreleased/jaclang/6539.refactor.md`.
 
 ---
 
-## Landed on this branch (recent)
+## Shipped on this branch
 
-### 1. `onTouched` default no longer silently maps to `onBlur` only
+### Runtime migration (`fd749265b`)
 
-**Bug:** Public default is `validateMode = "onTouched"`, but `useJacForm` only
-handled `"onChange"` and `"onSubmit"` explicitly. Everything else  - including
-the default  - fell through to `validators.onBlur`. TanStack Form has no
-`onTouched` mode, so the default became blur-only validation (no revalidation
-on change after touch).
+- `useJacForm` / `JacForm` rewritten for TanStack Form on React and Solid.
+- `client_deps.impl.jac`, `config_loader.impl.jac`, `runtime_npm.impl.jac` updated
+  for `@tanstack/react-form` / `@tanstack/solid-form` peers.
+- Solid runtime uses `createForm`; React uses `useForm`.
+- `JacForm` uses `form.Field` render props with explicit `handleChange` /
+  `handleBlur` per input type (replaces RHF `register` + `{**field}` spread).
 
-**Fix (both `client_runtime.impl.jac` and `solid_runtime.impl.jac`):**
+### `onTouched` validator mapping (`a211465f2`)
+
+Public default remains `validateMode = "onTouched"`. TanStack has no native mode;
+both runtimes map it explicitly:
 
 | `validateMode` | TanStack validators |
 |----------------|---------------------|
@@ -50,115 +71,113 @@ on change after touch).
 | `onTouched` | `onBlur` + `onChange` |
 | unknown | `console.warn` + `onBlur` fallback |
 
-Compiler assertion added in `test_solid_backend.jac` (Solid shim must emit the
+Compiler regression in `test_solid_backend.jac` (Solid shim must emit the
 `onTouched` branch with both validators).
 
-### 2. Solid negative-import guard extended
+### `onTouched` error display gate (`5a5cbd813`)
 
-`test "solid runtime shim imports no react ecosystem package"` now forbids
-`@tanstack/react-form` in addition to `react-hook-form` / `@hookform/*`, so a
-regression that pulls the React form lib into the Solid shim fails the static
-scan.
+`renderError` in both `client_runtime.impl.jac` and `solid_runtime.impl.jac`
+suppresses the error paragraph until `field.state.meta.isTouched` when
+`validateMode == "onTouched"`. Restores the RHF UX of “no error text until first
+blur”; post-blur revalidation on change is covered by the dual validators.
+
+Documented in `jac-client/jac_client/docs/advance/form-migration.md` and linked
+from `form-handling.md`.
+
+### Solid framework isolation
+
+- `test "solid runtime shim imports no react ecosystem package"` forbids
+  `react-hook-form`, `@hookform/*`, and `@tanstack/react-form` in Solid shim sources.
+- `test_npm_publish.jac`: `build_runtime_tarball packages the Solid runtime with no
+  React ecosystem` scans every `.js` in the Solid package and asserts
+  `@tanstack/solid-form` in peers (no `react` / `react-dom` / `react-router`).
+
+### Solid jsdom form e2e
+
+- Fixture: `jac/tests/runtimelib/fixtures/solid_form_app.cl.jac`
+- Test: `test "solid JacForm renders and validates in jsdom (TanStack Form end-to-end)"`
+  in `test_solid_jsdom.jac`
+- Proves: mount, invalid email → error after blur, fix clears on change without
+  second blur, checkbox branch renders.
+
+### Docs and tooling (shipped)
+
+| Item | Where |
+|------|--------|
+| Migration guide (API table, `validateMode`, `jac.toml` diff) | `jac-client/jac_client/docs/advance/form-migration.md` |
+| `onTouched` caveat + link to migration guide | `jac-client/jac_client/docs/advance/form-handling.md` |
+| Release note for TanStack migration | `6539.refactor.md` |
+| `6490.feature.md` corrected (TanStack, not `solid-hook-form`) | unreleased jaclang notes |
+| `CORE_DEPS` uses `@tanstack/react-form` (RHF removed) | `diagnostics.impl.jac` |
+| `multi_segment_app` test fixture deps | RHF entries removed from `jac.toml` |
 
 ---
 
-## Semantics
+## Still open - semantics
 
-### `onTouched` - RESOLVED (display gate, Option 2)
+### `onTouched` is approximated, not identical to RHF
 
-`validateMode="onTouched"` wires **both** `onBlur` and `onChange` TanStack
-validators. `renderError` now gates on `field.state.meta.isTouched`:
+**Shipped:** dual validators + error text and `hasError` borders gated on `isTouched`.
 
-```
-if validateMode == "onTouched" and not isTouched → return None
-```
+**Still differs from RHF:**
 
-**UX result**: errors appear after first blur (matching RHF semantics), then clear
-immediately on onChange without a second blur. Other modes (`onChange`, `onBlur`,
-`onSubmit`) are unaffected.
+1. **Validation still runs on change before first blur** (background work; users
+   do not see error text or red borders, but `form.state.isValid` may be false early).
+2. Submit stays `disabled={isSubmitting || !isDirty}`, not tied to `isValid`.
 
-**Residual difference from RHF**: validation *runs* in the background pre-blur
-(so `form.state.isValid` can be `false` before any touch), whereas RHF skips the
-validator entirely. This does not affect current UI because submit is gated on
-`!isDirty`, not `!isValid`.
+**Further fix options if stricter parity is required:**
 
-### Submit button `disabled` semantics may differ from RHF
-
-Both runtimes disable submit when `form.state.isSubmitting || !form.state.isDirty`.
-TanStack's `isDirty` / validity model differs from RHF's `formState.isValid`.
-Confirm this is intentional; jac-client Playwright test only checks
-`disabled` initially, not post-validation enablement.
+- Conditional `onChange` validator (only when `field.state.meta.isTouched`)
+- Change public default + document breaking change
+- TanStack `revalidateLogic` / `onDynamic` (form-submit-scoped; different model)
 
 ### Zod schema unwrapping reaches into private `_def`
 
 `useJacForm` and `JacForm` unwrap `schema._def.schema` / `.shape` for defaults
-and field enumeration. This predates TanStack but remains a supply-chain / Zod
-version fragility (called out in `TODO.md` #7). No typed Standard Schema field
-introspection path exists yet.
+and field enumeration. Supply-chain / Zod version fragility; no Standard Schema
+field introspection path yet (`TODO.md` #7).
 
 ---
 
-## Still missing  - tests
+## Still open - tests
 
-| Gap | Why it matters |
-|-----|----------------|
-| ~~**No Solid jsdom form fixture**~~ | **RESOLVED** (`fixtures/solid_form_app.cl.jac` + `_FORM_HARNESS` + test in `test_solid_jsdom.jac`): mounts `JacForm` with email + checkbox, asserts error on blur, clears on onChange (no second blur), checkbox renders. |
-| ~~**No runtime test for `onTouched` behavior**~~ | **RESOLVED** by same test: the harness proves the onBlur+onChange approximation end-to-end - error appears after blur, clears on onChange without second blur. |
-| **No React-side symmetric import guard** | Solid forbids `@tanstack/react-form`; React shim has no corresponding ban on `@tanstack/solid-form` (lower risk, but asymmetric). |
-| **jac-client `test_form.jac` is shallow** | Bundle contains validation strings; Playwright checks native `input.validity` (browser constraint validation), **not** JacForm / TanStack error messages or `validateMode` timing. |
-| **No Preact-specific form test** | Preact reuses `client_runtime.cl.jac`; assumed covered by React path but unproven after migration. |
-| **No test that the *React* published `@jac/runtime` resolves TanStack, not RHF** | Partially addressed for **Solid only**: `test_npm_publish.jac`'s `build_runtime_tarball ... with no React ecosystem` test now scans every `.js` in the Solid tarball and asserts no `react` / `react-dom` / `react-router` import, and positively asserts `@tanstack/solid-form` in peers. **The React runtime dist has no equivalent bundle-level scan**, and its peer-dep assertion (`build_runtime_tarball packages the runtime with exports`) is itself stale  - it asserts `react` / `react-router-dom` / `zod` but neither asserts `@tanstack/react-form` is present nor that `react-hook-form` is absent. (Note: the Solid bundle scan does not name `react-hook-form` / `@hookform/*` explicitly  - only `react`-family roots. The source-level ban lives in `test_solid_backend.jac`'s negative-import guard.) |
-
----
-
-## Still missing  - runtime / JacForm implementation
-
-- **Solid `JacForm` field wiring is manual**  - every input calls
-  `field.handleChange` / `field.handleBlur` explicitly. No `{**field}` spread.
-  Works today but diverges from patterns documented for RHF-era JacForm; any
-  TanStack field API additions (e.g. `field.handleSubmit`) need dual-runtime edits.
-- **Error source is `field.state.meta.errors`**  - TanStack separates `onChange` vs
-  `onBlur` error maps; JacForm merges via `.errors`. Verify stale `onBlur` errors
-  clear on `onChange` (known TanStack footgun in discussions #1784).
-- ~~**`renderError` shows errors unconditionally**~~ **RESOLVED**: `renderError` now accepts `isTouched: bool`; when `validateMode == "onTouched"`, errors are suppressed until `field.state.meta.isTouched` is true. Other modes (`onChange`, `onBlur`, `onSubmit`) are unaffected.
-- **Radio / select paths**  - compile and render in React jac-client example; no
-  Solid jsdom coverage. Checkbox is now covered by `test_solid_jsdom.jac`'s form
-  test. `TODO.md` #1 (ref thunking) was fixed for generic `ref={...}`; confirm
-  form controls don't rely on broken ref paths.
-- **No `useJacForm` consumer docs for TanStack**  - public API unchanged
-  (`validateMode`, `JacSchema`) but underlying field handle shape changed; custom
-  form UIs that reached into RHF `register` / `formState` will break silently.
+| Gap | Notes |
+|-----|--------|
+| ~~**React-side symmetric import guard**~~ | **Done** - `test_preact_backend.jac` forbids `@tanstack/solid-form` and `solid-js` in `client_runtime.cl.jac` + impl. |
+| ~~**jac-client `test_form.jac` shallow**~~ | **Done** - Playwright asserts Jac `Invalid email` error `<p>` after blur and hidden after fix. |
+| **No Preact-specific form test** | Reuses `client_runtime.cl.jac`; unproven after migration. |
+| ~~**React published `@jac/runtime` tarball**~~ | **Done** - `test_npm_publish.jac` asserts `@tanstack/react-form` peer and no `react-hook-form` / `@hookform` in any `.js`. |
+| **Solid radio / select** | Email + checkbox covered in jsdom; radio/select branches not exercised end-to-end. |
 
 ---
 
-## Still missing  - docs and tooling
+## Still open - runtime / JacForm
+
+- **Manual field wiring** in both runtimes - every input type calls
+  `handleChange` / `handleBlur` explicitly; TanStack API changes need dual edits.
+- **Stale `onBlur` vs `onChange` error maps** - TanStack footgun (#1784); not
+  explicitly regression-tested.
+- **Custom form UIs** using RHF `register` / `formState` break at runtime;
+  migration guide exists but no compile-time warning.
+
+---
+
+## Still open - docs and housekeeping
 
 | Location | Issue |
-|----------|-------|
-| `docs/docs/tutorials/fullstack/setup.md` | Still lists `react-hook-form = "^7.71.0"` |
-| `docs/docs/community/release_notes/unreleased/jaclang/6490.feature.md` | **Resolved on this PR.** The Solid router+form parity bullet previously claimed `solid-hook-form` + a hand-rolled zod resolver + `formState.errors`; updated in-place to `@tanstack/solid-form` + Standard Schema validators + `field.state.meta.errors`, with a forward pointer to #6539. (The note's other three bullets - Solid signals backend, View IR seam, native Solid routing - were correct and left untouched.) |
-| `jac-client/jac_client/plugin/src/impl/diagnostics.impl.jac` | `CORE_DEPS` still lists `react-hook-form` + `@hookform/resolvers` **and is missing `@tanstack/react-form`**  - so a real missing-dep error for TanStack gets misclassified as a regular (non-core) dep with the wrong hint, while the dead RHF entries stay classified as core. |
-| `jac-client/jac_client/docs/advance/form-handling.md` | Documents `onTouched` as an RHF mode name with no TanStack caveat |
-| `.jac/client/compiled/client_runtime.js` (local cache) | May still show old RHF `useForm({mode, resolver})` until recompiled (confirmed stale on this checkout: still `import { useForm } from "react-hook-form"` + `zodResolver`) |
-| `jac-client/jac_client/tests/fixtures/multi_segment_app/jac.toml` | Test fixture's `[dependencies.npm]` still pins `react-hook-form = "^7.71.0"` and `"@hookform/resolvers" = "^5.2.2"` even though the app source uses no forms at all |
-
-Update user-facing docs when migration ships; note `onTouched` approximation
-explicitly in `form-handling.md`.
+|----------|--------|
+| Unrelated `jac.toml` fixtures | `jac-scale`, `jaclang/cli/ai_ui`, etc. still pin `react-hook-form` for their own UIs (outside `@jac/runtime` migration scope). |
+| Historical release notes | `jac-client.md` still mentions RHF-era `{**field}` fix (accurate history, not current stack). |
+| Local `.jac/client/compiled/` cache | May show old RHF until recompiled; not a source-of-truth issue. |
 
 ---
 
-## Recommended order before continuing
+## Recommended order before calling migration done
 
-1. **Add Solid jsdom form fixture**  - smallest end-to-end proof the migration
-   works (submit, validation messages, checkbox/radio if cheap).
-2. **Decide `onTouched` policy**  - approximation + doc, or conditional validator /
-   error gating for true RHF parity.
-3. **Harden jac-client Playwright test**  - assert JacForm error DOM, not just
-   native `validity`.
-4. **Sweep stale `react-hook-form` references** in docs, diagnostics, tutorials.
-5. **Optional:** React shim negative-import test for `@tanstack/solid-form`;
-   bundle-level "no RHF in **React** dist" check + positive `@tanstack/react-form`
-   peer assertion (the Solid counterpart already exists in `test_npm_publish.jac`).
+1. **Solid jsdom** for select/radio if cheap.
+2. **Optional:** conditional `onChange` validator if background pre-blur validation
+   causes real submit/state bugs.
+3. **Preact-specific form test** if we want explicit coverage beyond shared `client_runtime`.
 
 ---
 
@@ -169,8 +188,10 @@ explicitly in `form-handling.md`.
 | React `useJacForm` | `jac/jaclang/runtimelib/impl/client_runtime.impl.jac` |
 | Solid `useJacForm` | `jac/jaclang/runtimelib/impl/solid_runtime.impl.jac` |
 | Public API | `client_runtime.cl.jac`, `solid_runtime.cl.jac` |
-| Compiler tests | `jac/tests/compiler/passes/ecmascript/test_solid_backend.jac` |
+| Migration guide | `jac-client/jac_client/docs/advance/form-migration.md` |
+| Compiler tests | `jac/tests/compiler/passes/ecmascript/test_solid_backend.jac`, `test_preact_backend.jac` |
 | jsdom harness | `jac/tests/runtimelib/test_solid_jsdom.jac` |
+| Form fixture | `jac/tests/runtimelib/fixtures/solid_form_app.cl.jac` |
 | jac-client e2e | `jac-client/jac_client/tests/test_form.jac` |
 | Deps / peers | `client_deps.impl.jac`, `runtime_npm.impl.jac` |
-| Broader Solid parity | `TODO.md` (items #3, #7, jsdom matrix) |
+| Broader Solid parity | `TODO.md`, `docs/compiler-ir-vs-main.md` |

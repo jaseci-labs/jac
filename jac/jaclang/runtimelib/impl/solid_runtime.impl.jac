@@ -498,7 +498,11 @@ impl JacForm(props: dict) -> JsxElement {
         labelClassName = config.labelClassName or "";
         placeholder = config.placeholder or "";
         label = config.label or fieldName;
-        hasError = field.state.meta.errors and field.state.meta.errors.length;
+        hasError = (
+            field.state.meta.errors
+            and field.state.meta.errors.length
+            and (validateMode != "onTouched" or field.state.meta.isTouched)
+        );
 
         if fieldType == "checkbox" {
             return (
