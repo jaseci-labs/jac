@@ -62,29 +62,48 @@ test "pack_source archives jac files and skips build artifacts" {
     shutil.rmtree(tmp);
 }
 
-test "pack_source excludes secret files (.env, keys, certs, jac.toml)" {
+test "pack_source ships a [plugins.scale]-stripped jac.toml; excludes other secrets" {
     tmp = tempfile.mkdtemp();
     (Path(tmp) / "main.jac").write_text("to cl:\n");
     (Path(tmp) / ".env").write_text("DB_PASSWORD=hunter2\n");
     (Path(tmp) / ".env.production").write_text("API_KEY=sk_live\n");
     (Path(tmp) / "jac.toml").write_text(
-        "[plugins.scale.kubernetes]\ndocker_password='p'\n"
+        "[project]\nname = \"shop\"\n\n"
+        "[dependencies.npm]\nreact = \"^18\"\n\n"
+        "[plugins.scale.kubernetes]\ndocker_password = \"hunter2\"\n"
+        "registry_password = \"sekret\"\n\n"
+        "[plugins.scale.microservices.client]\nentry = \"main.jac\"\n"
     );
     (Path(tmp) / "tls.key").write_text("PRIVATE KEY");
     (Path(tmp) / "server.pem").write_text("CERT");
 
     raw = pack_source(tmp);
     names = set();
+    toml_body = "";
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
         for m in tar.getmembers() {
             names.add(m.name);
+            if m.name == "jac.toml" {
+                toml_body = tar.extractfile(m).read().decode();
+            }
         }
     }
 
     assert "main.jac" in names;
-    for secret in [".env", ".env.production", "jac.toml", "tls.key", "server.pem"] {
+    # .env / key / cert files are still excluded outright.
+    for secret in [".env", ".env.production", "tls.key", "server.pem"] {
         assert secret not in names , f"{secret} must not be packed into the ConfigMap";
     }
+    # jac.toml IS shipped, but with the [plugins.scale...] tables (deploy creds)
+    # stripped out...
+    assert "jac.toml" in names;
+    assert "docker_password" not in toml_body;
+    assert "registry_password" not in toml_body;
+    assert "plugins.scale" not in toml_body;
+    # ...while the app + client-build config is retained (so jac build / jac start work).
+    assert "[project]" in toml_body;
+    assert "[dependencies.npm]" in toml_body;
+    assert "react" in toml_body;
 
     shutil.rmtree(tmp);
 }
@@ -213,6 +232,32 @@ test "no-image pods get a startup probe; built-image pods do not" {
         0
     ];
     assert "startupProbe" not in pc;
+}
+
+test "no-image gateway entrypoint builds the client when a client entry is set" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="jac-shop-dev");
+    b = MicroserviceManifestBuilder(k8s_config=cfg, no_image=True);
+    p = mock.patch.object(b, "_client_entry", return_value="main.jac");
+    p.start();
+    gw = b._pod_entrypoint()["args"][0];
+    p.stop();
+    # The gateway builds the SPA before serving; non-fatal so the API still
+    # comes up if the FE build fails.
+    assert 'jac build "main.jac"' in gw;
+    assert "exec jac scale gateway" in gw;
+    assert "|| echo" in gw;
+
+    # Built-image mode never builds in-pod (the image already has the bundle).
+    plain = MicroserviceManifestBuilder(k8s_config=cfg);
+    assert "jac build" not in plain._pod_entrypoint()["args"][0];
+
+    # No-image but no client entry (backend-only app) -> no client build.
+    nc = MicroserviceManifestBuilder(k8s_config=cfg, no_image=True);
+    p2 = mock.patch.object(nc, "_client_entry", return_value="");
+    p2.start();
+    no_build = nc._pod_entrypoint()["args"][0];
+    p2.stop();
+    assert "jac build" not in no_build;
 }
 
 test "experimental bootstrap git-clones the branch into a shared venv" {

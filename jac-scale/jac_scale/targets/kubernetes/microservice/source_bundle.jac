@@ -32,11 +32,12 @@ glob _EXCLUDE_DIRS: set[str] = {
      };
 # Secret-bearing files are NEVER packed into the ConfigMap (it's stored
 # unencrypted in etcd and readable by anyone with `kubectl get configmap`).
-# .env / key / cert files are excluded outright; jac.toml is excluded because
-# it can hold registry + DB credentials and the pod doesn't need it in
-# no-image mode (routes arrive via JAC_SV_ROUTES env, DB creds via injected
-# Secret env). Put real secrets in [plugins.scale.secrets] (-> K8s Secret) or
-# build an image instead.
+# .env / key / cert files are excluded outright. The raw jac.toml is excluded
+# too (it can hold registry + DB creds under `[plugins.scale]`), but a
+# `[plugins.scale]`-stripped copy is added back by `pack_source` (see
+# `_sanitized_jac_toml`) so pods still get the app + client-build config they
+# need. Keep app-level secrets out of jac.toml; use [plugins.scale.secrets]
+# (-> K8s Secret) or env.
 glob _EXCLUDE_FILES: set[str] = {
          ".env",
          "jac.toml",
@@ -235,8 +236,42 @@ def _is_excluded(rel: any) -> bool {
 }
 
 
+"""A copy of the project's jac.toml with the `[plugins.scale...]` tables removed,
+or None when there's no jac.toml. The raw file is never packed (it can hold
+registry/DB creds under `[plugins.scale]`), but the rest - `[project]`,
+`[dependencies.*]`, `[plugins.client*]` - is the app + client-build config the
+pods need (so `jac build` can bundle the frontend and `jac start` has a real
+project file). Keep app-level secrets out of jac.toml; use env or a K8s Secret."""
+def _sanitized_jac_toml(base: any) -> (str | None) {
+    src = base / "jac.toml";
+    if not src.is_file() {
+        return None;
+    }
+    out: list[str] = [];
+    skipping = False;
+    for line in src.read_text().splitlines() {
+        stripped = line.lstrip();
+        if stripped.startswith("[") {
+            header = stripped.lstrip("[").rstrip().rstrip("]").strip();
+            skipping = header == "plugins.scale" or header.startswith("plugins.scale.");
+            if skipping {
+                continue;
+            }
+        } elif stripped == "plugins.scale" or stripped.startswith("plugins.scale.") {
+            # Dotted-key form of a jac-scale setting; drop it defensively.
+            continue;
+        }
+        if not skipping {
+            out.append(line);
+        }
+    }
+    return "\n".join(out) + "\n";
+}
+
+
 """Tar+gzip the project dir (excluding build artifacts + secret files) into
-raw bytes."""
+raw bytes. The raw jac.toml is excluded; a `[plugins.scale]`-stripped copy is
+added so pods get the app + client-build config without the deploy secrets."""
 def pack_source(project_dir: str) -> bytes {
     base = Path(project_dir).resolve();
     buf = io.BytesIO();
@@ -250,6 +285,13 @@ def pack_source(project_dir: str) -> bytes {
                 continue;
             }
             tar.add(str(path), arcname=str(rel));
+        }
+        sanitized = _sanitized_jac_toml(base);
+        if sanitized is not None {
+            data = sanitized.encode("utf-8");
+            info = tarfile.TarInfo(name="jac.toml");
+            info.size = len(data);
+            tar.addfile(info, io.BytesIO(data));
         }
     }
     return buf.getvalue();

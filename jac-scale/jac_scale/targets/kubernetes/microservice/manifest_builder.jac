@@ -188,6 +188,20 @@ obj MicroserviceManifestBuilder {
         }
     }
 
+    """[...microservices.client].entry (the fullstack client to build), or '' if
+    unset/unreadable. Read at deploy time from the full config and baked into the
+    gateway entrypoint so the in-pod jac.toml (which has [plugins.scale] stripped)
+    doesn't need it."""
+    def _client_entry -> str {
+        try {
+            import from jac_scale.config_loader { get_scale_config }
+            ms_cfg = get_scale_config().get_microservices_config();
+            return str(dict(ms_cfg.get("client", {})).get("entry", "")).strip();
+        } except Exception {
+            return "";
+        }
+    }
+
     """[[shared_volumes]] entries. PVC mode for cloud K8s, hostPath mode
     for single-node dev. `services` may include `__gateway__`."""
     def _shared_volumes_config -> list[dict[str, any]] {
@@ -750,14 +764,30 @@ obj MicroserviceManifestBuilder {
 
     """Pod entrypoint: reads JAC_SV_NAME and runs `jac scale gateway`
     (gateway) or `jac start <name>.jac` (service). JAC_SV_SIBLING=1 is
-    exported so the pre-hook skips local-mode orchestration."""
+    exported so the pre-hook skips local-mode orchestration. In no-image mode
+    the gateway also builds the client bundle first (there's no image-build step
+    to do it), so it can serve the SPA at `/`."""
     def _pod_entrypoint -> dict[str, any] {
+        gw_prefix = "";
+        if self.no_image {
+            client_entry = self._client_entry();
+            if client_entry {
+                # Build the fullstack client in-pod so the gateway serves it at
+                # `/`. Non-fatal: the API + admin still come up if the FE build
+                # fails (the SPA route just 404s, as it did before).
+                gw_prefix = (
+                    f'jac build "{client_entry}" '
+                    f'|| echo "[jac-scale] client build failed; / will 404"; '
+                );
+            }
+        }
         return {
             "command": ["sh", "-c"],
             "args": [
                 "set -euo pipefail; "
                 "export JAC_SV_SIBLING=1; "
                 'if [ "$JAC_SV_NAME" = "__gateway__" ]; then '
+                f"  {gw_prefix}"
                 "  exec jac scale gateway; "
                 "else "
                 '  exec jac start "${JAC_SV_NAME}.jac"; '
