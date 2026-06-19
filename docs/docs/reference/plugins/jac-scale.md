@@ -2,6 +2,8 @@
 
 jac-scale generates REST endpoints from your Jac walkers and functions. Running `jac start` with this plugin turns every `:pub` or `:priv` walker into an API endpoint backed by FastAPI, with automatic Swagger docs, SQLite persistence, and built-in authentication.
 
+Your `def:pub` functions become `POST /function/<name>` endpoints and walkers become `POST /walker/<name>`. You don't write route decorators or request handlers; the plugin inspects your Jac module at startup and registers everything automatically.
+
 For production, the `--scale` flag automates Docker image builds and Kubernetes deployment -- generating Dockerfiles, manifests, and service configurations from your code. This reference covers server startup options, endpoint generation, authentication, database persistence, Kubernetes deployment, and the CLI flags for each mode.
 
 ---
@@ -2220,7 +2222,7 @@ Two implementations ship in-tree:
 - **`LocalEventStream`** (in-memory): single-process, no persistence. Used automatically when no Redis URL is configured. Right for dev workstations, tests, and single-pod deployments.
 - **`RedisEventStream`** (Redis Streams): durable, cross-pod. Used automatically when a Redis URL resolves and the `[data]` extra is installed.
 
-You don't pick the broker; selection happens at startup based on what's available.
+The implementation picks the right backend automatically based on whether a Redis connection is available.
 
 ### Enabling
 
