@@ -37,6 +37,7 @@ import from jac_super.ai_agent.tui_shared {
 
 impl run_tui_session(req: AgentRequest) -> int {
     import os;
+    import sys;
     import threading;
     import from pathlib { Path }
     import from jaclang.cli.ai_agent { ui_configure, ui_stop, ui_stream }
@@ -71,7 +72,25 @@ impl run_tui_session(req: AgentRequest) -> int {
     cmd_args = resolved.get("cmd_args");
 
     tty_dev = _sidecar_tty_device();
-    if not tty_dev {
+    # On Windows tty_dev is always "" (no /dev/pts path); check isatty() directly.
+    # Note: the subprocess backend on Windows is Phase 6 (out of scope for v1);
+    # in-process is the default and routes through run_tui_in_process instead.
+    if sys.platform == "win32" {
+        _win_tty: bool = False;
+        for _s in (sys.stderr, sys.stdin, sys.stdout) {
+            try {
+                if _s.isatty() {
+                    _win_tty = True;
+                }
+            } except Exception { }
+        }
+        if not _win_tty {
+            console.error(
+                "jac ai --tui needs an interactive terminal (stdin or stderr must be a TTY)"
+            );
+            return 1;
+        }
+    } elif not tty_dev {
         console.error(
             "jac ai --tui needs an interactive terminal (stdin or stderr must be a TTY)"
         );
@@ -185,7 +204,9 @@ impl run_tui_session(req: AgentRequest) -> int {
 }
 
 def _tui_binary_path(pkg_root: any) -> str {
-    return str(pkg_root / "ai_tui_na" / "bin" / "jac-na-tui");
+    import sys;
+    name = "jac-na-tui.exe" if sys.platform == "win32" else "jac-na-tui";
+    return str(pkg_root / "ai_tui_na" / "bin" / name);
 }
 
 def _ensure_tui_binary(pkg_root: any) -> dict {
@@ -225,12 +246,23 @@ def _resolve_tui_command(pkg_root: any, initial: str) -> dict {
 }
 
 def _spawn_tui_backend(cmd_args: list) -> any {
-    # Spawn a sidecar with line-buffered text pipes on stdin/stdout.
-    # Own session so keyboard input is not stolen by the parent foreground group.
-    # The sidecar opens JAC_AI_TUI_TTY (/dev/pts/N) directly -- not /dev/tty,
-    # which fails once setsid() drops the controlling terminal.
+    # Spawn a sidecar with line-buffered text pipes on stdin/stdout. On POSIX,
+    # start_new_session=True calls setsid() so keyboard signals don't reach the
+    # parent. On Windows, CREATE_NEW_PROCESS_GROUP is the equivalent (subprocess
+    # backend is Phase 6 / out of scope for v1; this just avoids crashes).
+    import sys;
     import subprocess;
 
+    if sys.platform == "win32" {
+        return subprocess.Popen(
+            cmd_args,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+        );
+    }
     return subprocess.Popen(
         cmd_args,
         stdin=subprocess.PIPE,

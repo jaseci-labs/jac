@@ -1,0 +1,143 @@
+name: TUI macOS port CI
+
+# Phase 4 of the macOS port (PLAN-tui-macos.md §Phase 4).
+#
+# Two jobs:
+#   macos-cross-compile  — Linux runner, builds libtui.dylib via nacompile
+#                          --target darwin, asserts Mach-O format. Validates
+#                          the compiler's Mach-O backend handles this code's
+#                          FFI shape (calloc'd struct buffers, ioctl(i64)).
+#   macos-native         — macos-latest runner, native build + full test suite:
+#                          CDLL load, picker logic, PTY termios harness.
+#
+# CI green is necessary but NOT sufficient to merge — Phase 5 (human Mac
+# sign-off on Terminal.app/iTerm2/Warp) gates the final merge.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'jac-super/jac_super/ai_tui_na/**'
+      - 'jac-super/jac_super/ai_agent/tui_host.jac'
+      - 'jac-super/jac_super/ai_agent/tui_shared.jac'
+      - '.github/workflows/tui-macos.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'jac-super/jac_super/ai_tui_na/**'
+      - 'jac-super/jac_super/ai_agent/tui_host.jac'
+      - 'jac-super/jac_super/ai_agent/tui_shared.jac'
+      - '.github/workflows/tui-macos.yml'
+  workflow_dispatch:
+
+jobs:
+  # ── Linux cross-compile gate ────────────────────────────────────────────────
+  # Build libtui.dylib and jac-na-tui targeting arm64-apple-darwin on a Linux
+  # runner. Cannot run the output, but `file` asserts it is Mach-O 64-bit and
+  # links libSystem — enough to validate the Mach-O codegen path for this
+  # module's FFI shape before any macOS runner is involved.
+  macos-cross-compile:
+    name: "Cross-compile (Linux → Darwin Mach-O)"
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install jaclang + jac-super
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./jac
+          jac install -e ./jac-super
+
+      - name: Cross-compile NA TUI → Darwin (--target darwin)
+        working-directory: jac-super/jac_super/ai_tui_na
+        run: JAC_AI_TUI_TARGET=darwin bash build.sh --quick
+
+      - name: Assert libtui.dylib is Mach-O 64-bit
+        working-directory: jac-super/jac_super/ai_tui_na
+        run: |
+          FILE_OUT="$(file bin/libtui.dylib)"
+          echo "file: $FILE_OUT"
+          echo "$FILE_OUT" | grep -q "Mach-O 64-bit" \
+            || { echo "FAIL: not Mach-O 64-bit"; exit 1; }
+          echo "ok: Mach-O 64-bit confirmed"
+
+      - name: Assert libtui.dylib links libSystem
+        working-directory: jac-super/jac_super/ai_tui_na
+        run: |
+          # strings is always available on Linux and reads Mach-O bytes fine;
+          # /usr/lib/libSystem.B.dylib appears verbatim in the LC_LOAD_DYLIB cmd.
+          if strings bin/libtui.dylib | grep -q "libSystem"; then
+            echo "ok: libSystem load command present (strings)"
+          else
+            # Last-resort: byte search via Python (no external deps).
+            python3 -c "import sys; data=open('bin/libtui.dylib','rb').read(); assert b'libSystem' in data, 'libSystem not found'; print('ok: libSystem found in dylib binary (byte search)')"
+          fi
+
+      - name: Assert jac-na-tui is Mach-O 64-bit
+        working-directory: jac-super/jac_super/ai_tui_na
+        run: |
+          FILE_OUT="$(file bin/jac-na-tui)"
+          echo "file: $FILE_OUT"
+          echo "$FILE_OUT" | grep -q "Mach-O 64-bit" \
+            || { echo "FAIL: jac-na-tui is not Mach-O 64-bit"; exit 1; }
+          echo "ok: jac-na-tui is Mach-O 64-bit"
+
+  # ── macOS native job ────────────────────────────────────────────────────────
+  # Native arm64 macOS build, codesign, and three headless gates:
+  #   1. test_host.py   — CDLL load + apply_frame/render (no TTY)
+  #   2. test_pickers   — picker logic (no TTY)
+  #   3. test_tty_darwin.py — PTY termios harness (validates the Darwin flag
+  #                           table and raw-mode masks against live xnu)
+  macos-native:
+    name: "Native macOS build + PTY harness"
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install jaclang + jac-super
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./jac
+          jac install -e ./jac-super
+
+      - name: Build NA TUI (native macOS)
+        working-directory: jac-super/jac_super/ai_tui_na
+        run: bash build.sh --quick
+
+      - name: Verify libtui.dylib is codesigned
+        working-directory: jac-super/jac_super/ai_tui_na
+        run: |
+          codesign --verify --verbose bin/libtui.dylib \
+            || { echo "FAIL: libtui.dylib not properly signed"; exit 1; }
+          echo "ok: codesign verify passed"
+
+      - name: Headless host gate (ctypes CDLL load + frame parse)
+        working-directory: jac-super/jac_super/ai_tui_na
+        run: python test_host.py
+
+      - name: Picker logic tests
+        working-directory: jac-super/jac_super/ai_tui_na
+        run: |
+          python -m jaclang nacompile test_pickers.na.jac -o bin/test_pickers
+          codesign --sign - bin/test_pickers
+          ./bin/test_pickers
+
+      - name: PTY termios harness (Darwin flag-table + raw-mode gate)
+        working-directory: jac-super/jac_super/ai_tui_na
+        run: python test_tty_darwin.py

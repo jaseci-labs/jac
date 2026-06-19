@@ -18,7 +18,12 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-LIB = os.path.join(HERE, "bin", "libtui.so")
+if sys.platform == "darwin":
+    LIB = os.path.join(HERE, "bin", "libtui.dylib")
+elif sys.platform == "win32":
+    LIB = os.path.join(HERE, "bin", "tui.dll")
+else:
+    LIB = os.path.join(HERE, "bin", "libtui.so")
 
 MARK_USER = "HELLOUSERMARKER"
 MARK_ASSISTANT = "HELLOASSISTANTMARKER"
@@ -38,8 +43,9 @@ FRAME = "\n".join(
 
 
 def main() -> int:
+    build_hint = "build.ps1" if sys.platform == "win32" else "build.sh"
     if not os.path.exists(LIB):
-        print(f"FAIL: {LIB} not found (build it with build.sh)", file=sys.stderr)
+        print(f"FAIL: {LIB} not found (build it with {build_hint})", file=sys.stderr)
         return 1
 
     lib = ctypes.CDLL(LIB)

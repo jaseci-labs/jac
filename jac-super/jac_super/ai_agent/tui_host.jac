@@ -107,7 +107,12 @@ obj TuiHost {
 
 def _tui_lib_path(pkg_root: any) -> str {
     import sys;
-    name = "libtui.dylib" if sys.platform == "darwin" else "libtui.so";
+    name: str = "libtui.so";
+    if sys.platform == "darwin" {
+        name = "libtui.dylib";
+    } elif sys.platform == "win32" {
+        name = "tui.dll";
+    }
     return str(pkg_root / "ai_tui_na" / "bin" / name);
 }
 

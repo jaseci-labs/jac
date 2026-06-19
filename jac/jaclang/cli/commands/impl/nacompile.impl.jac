@@ -216,7 +216,9 @@ impl nacompile(
     # then link the COFF object with the pure-Jac PE linker. Mirrors is_wasm.
     # A bare alias ("windows"/"win64") maps to the msvc triple; a full triple
     # the user passed ("x86_64-pc-windows-gnu") is used verbatim.
-    is_windows = ("windows" in target) or (target in ["win", "win64", "mingw"]);
+    is_windows = ("windows" in target)
+    or (target in ["win", "win64", "mingw"])
+    or (not target and sys.platform == "win32");
     if is_windows {
         os.environ["JAC_NATIVE_TARGET"] = (
             target if "-" in target else "x86_64-pc-windows-msvc"

@@ -145,9 +145,23 @@ def _sidecar_tty_device -> str {
     # Resolve the interactive terminal the user is sitting at. Both backends use
     # it: the subprocess sidecar gets it via JAC_AI_TUI_TTY (its stdin is a pipe);
     # the in-process host opens it directly with tui_init's tty_dev arg.
+    #
+    # On Windows there is no /dev/pts path. Return "" as a success sentinel when
+    # any stream is a TTY; tty_open_dev("") attaches the parent console.
+    # The caller (run_tui_in_process) must NOT treat "" as failure on win32.
     import os;
     import sys;
 
+    if sys.platform == "win32" {
+        for stream in (sys.stderr, sys.stdin, sys.stdout) {
+            try {
+                if stream.isatty() {
+                    return "";
+                }
+            } except Exception { }
+        }
+        return "";
+    }
     for stream in (sys.stderr, sys.stdin, sys.stdout) {
         try {
             if stream.isatty() {
@@ -280,16 +294,15 @@ def _ensure_na_artifact(
     # Compile a NA build artifact on first launch when NA sources are present
     # (dev tree); installed packages ship a prebuilt artifact. JAC_AI_TUI_REBUILD=1
     # forces a recompile (dev iteration: pick up edits to *.na.jac without deleting
-    # bin/* by hand). build.sh --quick builds both jac-na-tui and libtui.so, so the
-    # same invocation works for either artifact.
+    # bin/* by hand). build.sh / build.ps1 --quick builds both jac-na-tui and the
+    # shared lib, so the same invocation works for either artifact.
     #
     # pkg_root: jac_super/ package root (parent of ai_tui_na/).
-    # artifact_path: full path to the built artifact (bin/jac-na-tui or
-    #                bin/libtui.so) -- also used verbatim in error messages.
-    # source_file: full path to a NA source file used to detect a dev tree
-    #              (tui.na.jac for the subprocess binary, host.na.jac for the .so).
+    # artifact_path: full path to the built artifact -- also used in error messages.
+    # source_file: full path to a NA source file used to detect a dev tree.
     # label: human-readable name used in console messages and error hints.
     import os;
+    import sys;
     import subprocess;
     import from jaclang.cli.console { console }
 
@@ -305,7 +318,27 @@ def _ensure_na_artifact(
     }
     na_dir = str(pkg_root / "ai_tui_na");
     build_sh = str(pkg_root / "ai_tui_na" / "build.sh");
-    if not os.path.isfile(source_file) or not os.path.isfile(build_sh) {
+    build_ps1 = str(pkg_root / "ai_tui_na" / "build.ps1");
+
+    # Select the build script and command for this platform.
+    if sys.platform == "win32" {
+        build_script = build_ps1;
+        build_cmd = [
+            "powershell",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            build_ps1,
+            "-Quick"
+        ];
+        manual_hint = f"powershell -ExecutionPolicy Bypass -File {build_ps1} -Quick";
+    } else {
+        build_script = build_sh;
+        build_cmd = ["bash", build_sh, "--quick"];
+        manual_hint = f"{build_sh} --quick";
+    }
+
+    if not os.path.isfile(source_file) or not os.path.isfile(build_script) {
         # No sources to (re)build from. Use a prebuilt artifact if present
         # (installed package); only fail when there is nothing to load.
         if exists {
@@ -314,7 +347,7 @@ def _ensure_na_artifact(
         return {
             "ok": False,
             "error": f"{label} not found at {artifact_path}",
-            "hint": "Build it with: jac-super/jac_super/ai_tui_na/build.sh --quick",
+            "hint": f"Build it with: {manual_hint}",
 
         };
     }
@@ -327,11 +360,7 @@ def _ensure_na_artifact(
     }
     try {
         res = subprocess.run(
-            ["bash", build_sh, "--quick"],
-            cwd=na_dir,
-            capture_output=True,
-            text=True,
-            timeout=300,
+            build_cmd, cwd=na_dir, capture_output=True, text=True, timeout=300,
         );
         if res.returncode != 0 {
             detail = (res.stderr or res.stdout or "").strip();
@@ -341,7 +370,7 @@ def _ensure_na_artifact(
             return {
                 "ok": False,
                 "error": f"{label} compile failed",
-                "hint": f"Run manually: {build_sh} --quick",
+                "hint": f"Run manually: {manual_hint}",
 
             };
         }
@@ -349,7 +378,7 @@ def _ensure_na_artifact(
         return {
             "ok": False,
             "error": f"{label} compile failed: {e}",
-            "hint": f"Run manually: {build_sh} --quick",
+            "hint": f"Run manually: {manual_hint}",
 
         };
     }
@@ -357,7 +386,7 @@ def _ensure_na_artifact(
         return {
             "ok": False,
             "error": f"{label} not found at {artifact_path} after compile",
-            "hint": f"Run manually: {build_sh} --quick",
+            "hint": f"Run manually: {manual_hint}",
 
         };
     }

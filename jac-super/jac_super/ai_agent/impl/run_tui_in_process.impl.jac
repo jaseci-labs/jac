@@ -13,6 +13,7 @@ import from jaclang.cli.agent_api { AgentRequest }
 
 impl run_tui_in_process(req: AgentRequest) -> int {
     import os;
+    import sys;
     import threading;
     import from pathlib { Path }
     import from jaclang.cli.ai_agent { ui_configure, ui_stop, ui_stream }
@@ -43,7 +44,24 @@ impl run_tui_in_process(req: AgentRequest) -> int {
     }
 
     tty_dev = _sidecar_tty_device();
-    if not tty_dev {
+    # On Windows tty_dev is always "" (no /dev/pts path); check isatty() directly.
+    # On POSIX, "" means no controlling terminal.
+    if sys.platform == "win32" {
+        _win_tty: bool = False;
+        for _s in (sys.stderr, sys.stdin, sys.stdout) {
+            try {
+                if _s.isatty() {
+                    _win_tty = True;
+                }
+            } except Exception { }
+        }
+        if not _win_tty {
+            console.error(
+                "jac ai --tui needs an interactive terminal (stdin or stderr must be a TTY)"
+            );
+            return 1;
+        }
+    } elif not tty_dev {
         console.error(
             "jac ai --tui needs an interactive terminal (stdin or stderr must be a TTY)"
         );
@@ -81,6 +99,7 @@ impl run_tui_in_process(req: AgentRequest) -> int {
     # the TUI's lifetime so an unhandled traceback or stray print can't scribble
     # over the render. The native TUI opens its own tty fd (relocated ≥ 10), so
     # this does not touch its output. Restored in `finally`.
+    # On Windows os.devnull is "nul" (verified on Python 3.12+); same intent.
     devnull_fd = os.open(os.devnull, os.O_WRONLY);
     saved_out = os.dup(1);
     saved_err = os.dup(2);
