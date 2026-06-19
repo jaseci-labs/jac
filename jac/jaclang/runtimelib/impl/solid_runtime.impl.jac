@@ -473,17 +473,12 @@ impl JacForm(props: dict) -> JsxElement {
         return [];
     }
     def renderInput(
-        fieldType: str, field: any, config: dict, fieldSchema: any, fieldName: str
+        fieldType: str, fieldApi: any, config: dict, fieldSchema: any, fieldName: str
     ) -> JsxElement {
         inputClassName = config.inputClassName or "";
         labelClassName = config.labelClassName or "";
         placeholder = config.placeholder or "";
         label = config.label or fieldName;
-        hasError = (
-            field.state.meta.errors
-            and field.state.meta.errors.length
-            and (validateMode != "onTouched" or field.state.meta.isTouched)
-        );
 
         if fieldType == "checkbox" {
             return (
@@ -497,11 +492,11 @@ impl JacForm(props: dict) -> JsxElement {
                 >
                     <input
                         type="checkbox"
-                        checked={field.state.value || False}
-                        onChange={lambda e: any { field.handleChange(
+                        checked={fieldApi().state.value || False}
+                        onChange={lambda e: any { fieldApi().handleChange(
                             e.target.checked
                         ); }}
-                        onBlur={field.handleBlur}
+                        onBlur={fieldApi().handleBlur}
                         className={inputClassName}
                         style={{cursor: "pointer"}}
                     />
@@ -514,9 +509,11 @@ impl JacForm(props: dict) -> JsxElement {
             options = getEnumOptions(fieldSchema);
             return (
                 <select
-                    value={field.state.value || ""}
-                    onChange={lambda e: any { field.handleChange(e.target.value); }}
-                    onBlur={field.handleBlur}
+                    value={fieldApi().state.value || ""}
+                    onChange={lambda e: any { fieldApi().handleChange(
+                        e.target.value
+                    ); }}
+                    onBlur={fieldApi().handleBlur}
                     className={inputClassName}
                     style={{width: "100%", boxSizing: "border-box"}}
                 >
@@ -543,11 +540,11 @@ impl JacForm(props: dict) -> JsxElement {
                             <input
                                 type="radio"
                                 value={opt}
-                                checked={field.state.value == opt}
-                                onChange={lambda e: any { field.handleChange(
+                                checked={fieldApi().state.value == opt}
+                                onChange={lambda e: any { fieldApi().handleChange(
                                     e.target.value
                                 ); }}
-                                onBlur={field.handleBlur}
+                                onBlur={fieldApi().handleBlur}
                                 className={inputClassName}
                                 style={{cursor: "pointer"}}
                             />
@@ -564,15 +561,26 @@ impl JacForm(props: dict) -> JsxElement {
                 <textarea
                     placeholder={placeholder}
                     rows={rows}
-                    value={field.state.value}
-                    onChange={lambda e: any { field.handleChange(e.target.value); }}
-                    onBlur={field.handleBlur}
+                    value={fieldApi().state.value}
+                    onChange={lambda e: any { fieldApi().handleChange(
+                        e.target.value
+                    ); }}
+                    onBlur={fieldApi().handleBlur}
                     className={inputClassName}
                     style={{
                         width: "100%",
                         boxSizing: "border-box",
                         border: (
-                            "2px solid #ef4444" if hasError else "2px solid #e5e7eb"
+                            "2px solid #ef4444"
+                                if (
+                                    fieldApi().state.meta.errors
+                                    and fieldApi().state.meta.errors.length
+                                    and (
+                                        validateMode != "onTouched"
+                                        or fieldApi().state.meta.isTouched
+                                    )
+                                )
+                                else "2px solid #e5e7eb"
                         ),
                         padding: "0.5rem",
                         fontFamily: "inherit",
@@ -591,18 +599,25 @@ impl JacForm(props: dict) -> JsxElement {
                         <input
                             type={"text" if isVisible else "password"}
                             placeholder={placeholder}
-                            value={field.state.value}
-                            onChange={lambda e: any { field.handleChange(
+                            value={fieldApi().state.value}
+                            onChange={lambda e: any { fieldApi().handleChange(
                                 e.target.value
                             ); }}
-                            onBlur={field.handleBlur}
+                            onBlur={fieldApi().handleBlur}
                             className={inputClassName}
                             style={{
                                 width: "100%",
                                 boxSizing: "border-box",
                                 border: (
                                     "2px solid #ef4444"
-                                        if hasError
+                                        if (
+                                            fieldApi().state.meta.errors
+                                            and fieldApi().state.meta.errors.length
+                                            and (
+                                                validateMode != "onTouched"
+                                                or fieldApi().state.meta.isTouched
+                                            )
+                                        )
                                         else "2px solid #e5e7eb"
                                 ),
                                 paddingRight: "2.5rem"
@@ -642,18 +657,34 @@ impl JacForm(props: dict) -> JsxElement {
             <input
                 type={fieldType}
                 placeholder={placeholder}
-                value={field.state.value}
-                onChange={lambda e: any { field.handleChange(
+                value={fieldApi().state.value}
+                onInput={lambda e: any { fieldApi().handleChange(
                     parseFloat(e.target.value)
                         if fieldType == "number"
                         else e.target.value
                 ); }}
-                onBlur={field.handleBlur}
+                onChange={lambda e: any { fieldApi().handleChange(
+                    parseFloat(e.target.value)
+                        if fieldType == "number"
+                        else e.target.value
+                ); }}
+                onBlur={fieldApi().handleBlur}
                 className={inputClassName}
                 style={{
                     width: "100%",
                     boxSizing: "border-box",
-                    border: ("2px solid #ef4444" if hasError else "2px solid #e5e7eb")
+                    border: (
+                        "2px solid #ef4444"
+                            if (
+                                fieldApi().state.meta.errors
+                                and fieldApi().state.meta.errors.length
+                                and (
+                                    validateMode != "onTouched"
+                                    or fieldApi().state.meta.isTouched
+                                )
+                            )
+                            else "2px solid #e5e7eb"
+                    )
                 }}
             />
         );
@@ -677,8 +708,25 @@ impl JacForm(props: dict) -> JsxElement {
                             {label}
                         </label>
                         {renderInput(fieldType, field, config, fieldSchema, fieldName)}
-                        {renderError(
-                            field.state.meta.errors, field.state.meta.isTouched
+                        {(
+                            (
+                                validateMode != "onTouched"
+                                or field().state.meta.isTouched
+                            )
+                            and not field().state.meta.isValid
+                            and field().state.meta.errors
+                            and field().state.meta.errors.length
+                        )
+                        and (
+                            <p
+                                style={{
+                                    color: "#ef4444",
+                                    fontSize: "0.85rem",
+                                    marginTop: "0.25rem"
+                                }}
+                            >
+                                ⚠️{field().state.meta.errors[0].message}
+                            </p>
                         )}
                     </div>
                 ); }}
@@ -712,16 +760,6 @@ impl JacForm(props: dict) -> JsxElement {
     layoutStyle = getLayoutStyle();
     formClassName = className or "";
     buttonClassName = submitClassName or "";
-    # onTouched: treat form as valid before any field is touched so the eager
-    # onChange validator does not disable the button before the user blurs once.
-    effectiveIsValid = (
-        True
-            if (validateMode == "onTouched" and not form.state.isTouched)
-            else form.state.isValid
-    );
-    isFormDisabled = (
-        form.state.isSubmitting or not form.state.isDirty or not effectiveIsValid
-    );
     return (
         <form
             onSubmit={lambda e: any {
@@ -732,18 +770,40 @@ impl JacForm(props: dict) -> JsxElement {
             className={formClassName}
         >
             <div style={layoutStyle}>{fields}</div>
-            <button
-                type="submit"
-                disabled={isFormDisabled}
-                className={buttonClassName}
-                style={{
-                    width: "100%",
-                    cursor: ("not-allowed" if isFormDisabled else "pointer")
-                }}
+            <form.Subscribe
+                selector={lambda state: any { return [
+                    state.isSubmitting,
+                    state.isDirty,
+                    state.isValid,
+                    state.isTouched
+                ]; }}
             >
-                {form.state.isSubmitting and "Submitting..."}{not form.state.isSubmitting
-                and submitLabel}
-            </button>
+                {lambda snap: any {
+                    isSubmitting = snap[0];
+                    isDirty = snap[1];
+                    isValid = snap[2];
+                    isTouched = snap[3];
+                    isDisabled = (
+                        isSubmitting
+                        or not isDirty
+                        or ((validateMode != "onTouched" or isTouched) and not isValid)
+                    );
+                    return (
+                        <button
+                            type="submit"
+                            disabled={isDisabled}
+                            className={buttonClassName}
+                            style={{
+                                width: "100%",
+                                cursor: ("not-allowed" if isDisabled else "pointer")
+                            }}
+                        >
+                            {isSubmitting and "Submitting..."}{not isSubmitting
+                            and submitLabel}
+                        </button>
+                    );
+                }}
+            </form.Subscribe>
         </form>
     );
 }

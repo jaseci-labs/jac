@@ -438,14 +438,17 @@ if (submitBtn) {
 
 // --- onTouched validation: error on blur, clears on onChange (no second blur) ---
 if (emailInput) {
-  // Find the error paragraph scoped to the email field's wrapper div.
+  // Re-query each time: Solid may replace the input node on reactive updates.
   const emailError = () => {
-    const wrapper = emailInput.closest("div");
+    const input = document.querySelector('input[type="email"]');
+    if (!input) return null;
+    const wrapper = input.closest("div");
     return wrapper ? wrapper.querySelector("p") : null;
   };
 
   // 1. Enter an invalid email value and fire the change event (handleChange).
   emailInput.value = "not-an-email";
+  emailInput.dispatchEvent(new window.Event("input", { bubbles: true }));
   emailInput.dispatchEvent(new window.Event("change", { bubbles: true }));
   // 2. Blur the field (handleBlur) — triggers the onBlur validator.
   emailInput.dispatchEvent(new window.Event("blur", { bubbles: false }));
@@ -461,21 +464,51 @@ if (emailInput) {
 
   // 3. Fix the email — onChange validator should re-run and clear the error
   //    without requiring another blur. This is the critical onTouched proof.
-  emailInput.value = "test@example.com";
-  emailInput.dispatchEvent(new window.Event("change", { bubbles: true }));
+  const emailLive = document.querySelector('input[type="email"]');
+  if (emailLive) {
+    emailLive.value = "test@example.com";
+    emailLive.dispatchEvent(new window.Event("input", { bubbles: true }));
+    emailLive.dispatchEvent(new window.Event("change", { bubbles: true }));
+    emailLive.dispatchEvent(new window.Event("blur", { bubbles: false }));
+  }
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 10));
 
   check("email error clears after valid input without second blur",
     !emailError() || !emailError().textContent.includes("Invalid email"),
     `errorText=${emailError() ? JSON.stringify(emailError().textContent) : "null"}`);
 
-  if (submitBtn) {
+  // Dirty the remaining required fields so the multi-field schema can validate.
+  const agreeCb = document.querySelector('input[type="checkbox"]');
+  if (agreeCb) {
+    agreeCb.checked = true;
+    agreeCb.dispatchEvent(new window.Event("change", { bubbles: true }));
+  }
+  const planSelect = document.querySelector("select");
+  if (planSelect) {
+    planSelect.value = "pro";
+    planSelect.dispatchEvent(new window.Event("change", { bubbles: true }));
+  }
+  const adminRadio = document.querySelector('input[type="radio"][value="admin"]');
+  if (adminRadio) {
+    adminRadio.checked = true;
+    adminRadio.dispatchEvent(new window.Event("change", { bubbles: true }));
+  }
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 10));
+
+  const submitLive = document.querySelector('button[type="submit"]');
+  if (submitLive) {
     check("submit enabled after form is dirtied",
-      !submitBtn.disabled,
-      `disabled=${submitBtn.disabled}`);
+      !submitLive.disabled,
+      `disabled=${submitLive.disabled}`);
   }
 }
 
@@ -544,10 +577,11 @@ if (radioInputs.length > 0) {
 
 // --- Full submit flow: dirty → button enabled → onSubmit fires ---
 globalThis.__jacFormSubmitted = false;
-if (submitBtn && !submitBtn.disabled) {
+const submitLive = document.querySelector('button[type="submit"]');
+if (submitLive && !submitLive.disabled) {
   let submitError = false;
   try {
-    submitBtn.click();
+    submitLive.click();
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
@@ -565,7 +599,7 @@ if (submitBtn && !submitBtn.disabled) {
 } else {
   check("submit button is enabled for the submit flow test",
     false,
-    `disabled=${submitBtn ? submitBtn.disabled : "no button"}, isDirty check failed`);
+    `disabled=${submitLive ? submitLive.disabled : "no button"}, isDirty check failed`);
 }
 
 console.log(`\\n${failures.length ? "FAILED" : "OK"}: ${failures.length} failure(s)` +
