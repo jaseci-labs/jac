@@ -65,9 +65,8 @@ impl SemDefMatchPass.resolve_sem_target(
 """Connect Decls and Defs."""
 impl SemDefMatchPass.transform(ir_in: uni.Module) -> uni.Module {
     self.cur_node = ir_in;
+    # sem defs from annex files are merged into ir_in's own tree, so a single
+    # same-module connect covers them along with the head's.
     self.connect_sems(ir_in.sym_tab, ir_in.sym_tab);
-    for impl_module in ir_in.impl_mod {
-        self.connect_sems(impl_module.sym_tab, ir_in.sym_tab);
-    }
     return ir_in;
 }

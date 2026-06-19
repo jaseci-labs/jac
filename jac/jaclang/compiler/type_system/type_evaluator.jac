@@ -334,7 +334,6 @@ obj TypeEvaluator {
     file changes."""
     def forget_module(resolved_path: str) -> None;
 
-    def _reattach_impl_modules(mod: uni.Module, source_path: str) -> None;
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
     def _is_fstring_all_literal(fstring: uni.FString) -> bool;
     def _try_resolve_forward_ref(expr: uni.String) -> TypeBase | None;

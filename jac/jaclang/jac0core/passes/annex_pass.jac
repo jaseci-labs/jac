@@ -15,17 +15,20 @@ This enables the separation of interface and implementation, as well as test
 code organization.
 """
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.bccache { discover_annex_files, discover_variant_files }
+import from jaclang.jac0core.bccache { discover_annex_files }
 import from jaclang.jac0core.passes.transform { Transform }
 import type from jaclang.jac0core.program { JacProgram }
 
 """Handles loading and attaching of annex files (.impl.jac, .test.jac)."""
 class JacAnnexPass(Transform[uni.Module, uni.Module]) {
-    """Load and attach annex modules to the given module."""
+    """Load and merge annex modules into the given module."""
     def transform(self: JacAnnexPass, ir_in: uni.Module) -> uni.Module;
 
-    """Parse and attach annex modules to the node."""
+    """Discover and merge annex files into the head module."""
     def _load_annexes(
         self: JacAnnexPass, jac_program: JacProgram, nd: uni.Module, mod_path: str
     ) -> None;
+
+    """Parse one annex file and splice its body into the head module."""
+    def _merge_annex(self: JacAnnexPass, nd: uni.Module, path: str) -> None;
 }

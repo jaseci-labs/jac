@@ -6,47 +6,19 @@ impl DeclImplMatchPass.transform(
 ) -> uni.Module {
     self._e2026_reported = set();
     self.cur_node = ir_in;
+    # Annex (and variant) bodies are merged into ir_in's own tree by
+    # JacAnnexPass, so a single same-module connect binds head and annex
+    # decls/impls alike — no per-annex-module cross-table wiring needed.
     self.connect_impls(ir_in.sym_tab, ir_in.sym_tab);
-    for impl_module in ir_in.impl_mod {
-        self.connect_impls(impl_module.sym_tab, ir_in.sym_tab);
-        # Set impl module's parent_scope to main module for import visibility.
-        # This ensures impl files can access imports from their parent .jac file.
-        impl_module.parent_scope = ir_in;
-    }
-    for variant_module in ir_in.variant_mod {
-        self.connect_impls(variant_module.sym_tab, variant_module.sym_tab);
-        for impl_module in variant_module.impl_mod {
-            self.connect_impls(impl_module.sym_tab, variant_module.sym_tab);
-            # Set impl module's parent_scope to variant module for import visibility.
-            impl_module.parent_scope = variant_module;
-        }
-    }
-    # Cross-variant: head impl files may provide impls for variant decls.
-    for impl_module in ir_in.impl_mod {
-        for variant_module in ir_in.variant_mod {
-            self.connect_impls(impl_module.sym_tab, variant_module.sym_tab);
-        }
-    }
-    # Resolve all Load-context names across primary, impls, and variants.
-    # Why: prior carve-out to (TypeAlias, GlobalVars, ModuleCode) missed
-    # standalone top-level constructs in .impl.jac files (def/obj/node/walker/
-    # enum/etc.), leaving their bodies' reads unresolved and defeating type
-    # inference. _resolve_symbols_in_subtree is idempotent — it skips Names
-    # whose sym is already set by the matched-impl path above.
-    for module in [ir_in] + ir_in.impl_mod + ir_in.variant_mod {
-        self._resolve_symbols_in_subtree(module);
-    }
-    for variant_module in ir_in.variant_mod {
-        for impl_module in variant_module.impl_mod {
-            self._resolve_symbols_in_subtree(impl_module);
-        }
-    }
+    # Resolve all Load-context names across the unified tree. Idempotent — skips
+    # Names whose sym is already set by the matched-impl path above. Catches
+    # standalone top-level constructs (def/obj/node/walker/enum) merged from
+    # .impl.jac files whose body reads would otherwise defeat type inference.
+    self._resolve_symbols_in_subtree(ir_in);
     # Scan inline init/postinit for annotated self-assignments on obj types.
     # Must run after symbol resolution so all names are connected.
-    for module in [ir_in] + ir_in.impl_mod + ir_in.variant_mod {
-        for arch in module.get_all_sub_nodes(uni.Archetype) {
-            self._populate_inline_init_symbols(arch);
-        }
+    for arch in ir_in.get_all_sub_nodes(uni.Archetype) {
+        self._populate_inline_init_symbols(arch);
     }
     return ir_in;
 }
