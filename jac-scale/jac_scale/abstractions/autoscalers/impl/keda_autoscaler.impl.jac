@@ -1,3 +1,10 @@
+"""Derive a short, unique TriggerAuthentication resource name scoped to the service."""
+impl KEDAAutoscaler._trigger_auth_name{
+    key = f"{app_name}/{trigger.name or f'{trigger.type}-{trigger_index}'}";
+    short_hash = hashlib.sha256(key.encode()).hexdigest()[:8];
+    return f"{app_name[:20]}-{short_hash}-ta";
+}
+
 """Derive cache key from active cluster host; falls back to 'default' if config is unavailable."""
 impl KEDAAutoscaler._get_cluster_key{
     try {
@@ -70,7 +77,7 @@ impl KEDAAutoscaler._build_trigger{
         keda_trigger["name"] = trigger.name;
     }
     if trigger.auth and trigger.auth.secret_refs {
-        auth_name = f"{trigger.name or trigger.type}-trigger-auth";
+        auth_name = self._trigger_auth_name(app_name, trigger, trigger_index);
         keda_trigger["authenticationRef"] = {"name": auth_name};
     }
     return keda_trigger;
@@ -80,8 +87,9 @@ impl KEDAAutoscaler._build_trigger{
 impl KEDAAutoscaler._build_manifests{
     scaled_obj_name = spec.autoscaler_name or f"{spec.scale_target_name}-scaledobject";
     keda_triggers: list[dict[str, any]] = [];
-    for trigger in spec.triggers {
-        keda_triggers.append(self._build_trigger(trigger));
+    app_name = spec.app_name or spec.scale_target_name;
+    for (i, trigger) in enumerate(spec.triggers) {
+        keda_triggers.append(self._build_trigger(trigger, app_name, i));
     }
     # KEDA rejects a ScaledObject with an empty triggers array
     if not keda_triggers {
@@ -134,18 +142,14 @@ impl KEDAAutoscaler._build_manifests{
 
 """Create or patch the TriggerAuthentication for a trigger that carries secret references."""
 impl KEDAAutoscaler._apply_trigger_auth{
-    # TODO(#6535): Three known naming gaps deferred to follow-up:
-    # 1. Per-service isolation: two services sharing the same trigger name share one TriggerAuthentication.
-    # 2. Within-spec collision: two unnamed triggers of the same type in one spec overwrite each other's auth.
-    # 3. destroy() gap: single-resource teardown has no trigger list so cannot clean up TriggerAuthentications.
-    # All three are tracked in https://github.com/jaseci-labs/jaseci/issues/6535.
+    # TODO(#6535): destroy() gap: single-resource teardown has no trigger list so cannot clean up TriggerAuthentications.
     if not trigger.auth {
         return;
     }
     if not trigger.auth.secret_refs {
         return;
     }
-    auth_name = f"{trigger.name or trigger.type}-trigger-auth";
+    auth_name = self._trigger_auth_name(app_name, trigger, trigger_index);
     secret_target_refs: list[dict[str, any]] = [];
     for (param, ref) in trigger.auth.secret_refs.items() {
         if not isinstance(ref, dict) {
@@ -226,8 +230,9 @@ impl KEDAAutoscaler.apply{
         }
     }
     # TriggerAuthentication must exist before ScaledObject; KEDA validates authenticationRef at admission time
-    for trigger in spec.triggers {
-        self._apply_trigger_auth(api, trigger, spec.namespace);
+    app_name = spec.app_name or spec.scale_target_name;
+    for (i, trigger) in enumerate(spec.triggers) {
+        self._apply_trigger_auth(api, trigger, spec.namespace, app_name, i);
     }
     manifests = self._build_manifests(spec);
     name = manifests["name"];

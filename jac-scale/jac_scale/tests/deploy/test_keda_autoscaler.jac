@@ -24,7 +24,7 @@ test "cpu trigger is translated to KEDA Utilization format" {
     # KEDA accepts but never acts on.
     keda = KEDAAutoscaler();
     result = keda._build_trigger(
-        Trigger(type="cpu", metadata={"averageUtilization": "70"})
+        Trigger(type="cpu", metadata={"averageUtilization": "70"}), "myapp", 0
     );
     assert result["type"] == "cpu";
     assert result["metricType"] == "Utilization";
@@ -38,7 +38,7 @@ test "memory trigger uses its own default 80 when metadata is empty" {
     # (50 for cpu, 80 for memory).  Passing empty metadata exercises the default
     # branch; checking "80" confirms we hit the memory branch, not the cpu one.
     keda = KEDAAutoscaler();
-    result = keda._build_trigger(Trigger(type="memory", metadata={}));
+    result = keda._build_trigger(Trigger(type="memory", metadata={}), "myapp", 0);
     assert result["type"] == "memory";
     assert result["metricType"] == "Utilization";
     assert result["metadata"]["value"] == "80";
@@ -53,7 +53,9 @@ test "non-resource trigger metadata integer values are coerced to strings" {
         Trigger(
             type="prometheus",
             metadata={"serverAddress": "http://prom:9090", "threshold": 100}
-        )
+        ),
+        "myapp",
+        0
     );
     assert result["type"] == "prometheus";
     assert result["metadata"]["threshold"] == "100";
@@ -67,7 +69,7 @@ test "trigger name is propagated to KEDA trigger dict" {
     # dropping it breaks authenticationRef resolution.
     keda = KEDAAutoscaler();
     result = keda._build_trigger(
-        Trigger(type="redis", metadata={}, name="redis-queue")
+        Trigger(type="redis", metadata={}, name="redis-queue"), "myapp", 0
     );
     assert result["name"] == "redis-queue";
 }

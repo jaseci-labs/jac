@@ -8,6 +8,7 @@ import from jac_scale.abstractions.autoscaler {
     DEFAULT_MEMORY_UTILIZATION_TARGET
 }
 import from jac_scale.abstractions.logger { Logger }
+import hashlib;
 
 obj KEDAAutoscaler(Autoscaler) {
     has _custom_api: (any | None) = None,
@@ -19,11 +20,18 @@ obj KEDAAutoscaler(Autoscaler) {
     """Return a cache key identifying the current cluster"""
     def _get_cluster_key -> str;
 
+    """Derive a short, unique TriggerAuthentication resource name scoped to the service."""
+    def _trigger_auth_name(app_name: str, trigger: Trigger, trigger_index: int) -> str;
+
     """Build a single KEDA trigger dict from a Trigger object."""
-    def _build_trigger(trigger: Trigger) -> dict[str, any];
+    def _build_trigger(
+        trigger: Trigger, app_name: str, trigger_index: int
+    ) -> dict[str, any];
 
     """Create or patch the TriggerAuthentication resource for a trigger."""
-    def _apply_trigger_auth(api: any, trigger: Trigger, namespace: str) -> None;
+    def _apply_trigger_auth(
+        api: any, trigger: Trigger, namespace: str, app_name: str, trigger_index: int
+    ) -> None;
 
     """Build the ScaledObject manifest dict from spec."""
     def _build_manifests(spec: AutoscalerSpec) -> dict[str, any];
