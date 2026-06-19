@@ -34,6 +34,10 @@ obj MicroserviceManifestBuilder {
         # no-image mode: serve source from a ConfigMap + install jac at pod
         # startup on a generic Python base image (no docker build/push).
         no_image: bool = False,
+        # no-image + experimental: the bootstrap git-clones the jaseci
+        # repo/branch (k8s_config.jaseci_*) into a shared venv instead of
+        # installing pinned releases from PyPI - run unreleased jac in-pod.
+        experimental: bool = False,
         project_dir: str = "";
 
     """Lift pod-specs into full Deployment + Service + HPA + PDB
@@ -797,16 +801,29 @@ obj MicroserviceManifestBuilder {
             import from jac_scale.targets.kubernetes.microservice.source_bundle {
                 APP_VOLUME_NAME,
                 APP_MOUNT_PATH,
-                PYDEPS_DIR
+                PYDEPS_DIR,
+                VENV_DIR
             }
             container["workingDir"] = APP_MOUNT_PATH;
-            env_list.append({"name": "PYTHONPATH", "value": PYDEPS_DIR});
-            env_list.append(
-                {
-                    "name": "PATH",
-                    "value": f"{PYDEPS_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
-                }
-            );
+            if self.experimental {
+                # Run out of the shared venv the experimental bootstrap built
+                # (editable jac + plugins); no PYDEPS_DIR / PYTHONPATH override.
+                env_list.append({"name": "VIRTUAL_ENV", "value": VENV_DIR});
+                env_list.append(
+                    {
+                        "name": "PATH",
+                        "value": f"{VENV_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
+                    }
+                );
+            } else {
+                env_list.append({"name": "PYTHONPATH", "value": PYDEPS_DIR});
+                env_list.append(
+                    {
+                        "name": "PATH",
+                        "value": f"{PYDEPS_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
+                    }
+                );
+            }
             no_image_mounts.append(
                 {"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH}
             );
@@ -851,7 +868,13 @@ obj MicroserviceManifestBuilder {
             # Bootstrap runs first: extract source + install jac before the
             # db-wait init containers (order is cosmetic; both must finish).
             init_containers = [
-                build_bootstrap_init_container(self.k8s_config.python_image)
+                build_bootstrap_init_container(
+                    self.k8s_config.python_image,
+                    experimental=self.experimental,
+                    repo_url=self.k8s_config.jaseci_repo_url,
+                    branch=self.k8s_config.jaseci_branch,
+                    commit=self.k8s_config.jaseci_commit or ""
+                )
             ] + init_containers;
         }
         if all_volumes {

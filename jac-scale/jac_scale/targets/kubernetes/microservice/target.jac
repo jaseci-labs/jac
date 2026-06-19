@@ -381,6 +381,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 deploy_context=self._deploy_context,
                 logger=self.logger,
                 no_image=True,
+                experimental=app_config.experimental,
                 project_dir=app_config.code_folder
             );
             return builder.generate_manifests(app_config, self.k8s_config.python_image);

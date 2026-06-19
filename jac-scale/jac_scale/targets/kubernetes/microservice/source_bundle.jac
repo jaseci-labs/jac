@@ -66,7 +66,11 @@ glob SOURCE_ARCHIVE_KEY: str = "source.tar.gz",
      SOURCE_MOUNT_PATH: str = "/jac-src",
      APP_VOLUME_NAME: str = "jac-app",
      APP_MOUNT_PATH: str = "/app",
-     PYDEPS_DIR: str = "/app/.pydeps";
+     PYDEPS_DIR: str = "/app/.pydeps",
+     # Experimental mode installs an editable jaseci checkout into a venv on
+     # the shared app volume (jac plugins can't go into PYDEPS_DIR via
+     # `pip --target`); the main container runs out of this venv instead.
+     VENV_DIR: str = "/app/.venv";
 
 
 """ConfigMap name holding a service app's packed source (caller pre-sanitizes
@@ -312,18 +316,74 @@ def pinned_install_specs -> list[str] {
 }
 
 
-"""initContainer that extracts the packed source into the shared app volume
-and pip-installs jac into a target dir on that same volume. The slow install
-runs here (no probes) so the main container starts fast against a ready tree."""
-def build_bootstrap_init_container(base_image: str) -> dict[str, any] {
-    # Single-quote each spec so the `[all]` extras marker isn't treated as a
-    # shell glob char-class by the `sh -c` bootstrap.
-    install = " ".join([f"'{spec}'" for spec in pinned_install_specs()]);
-    script = (
-        "set -eu; "
-        f"tar xzf {SOURCE_MOUNT_PATH}/{SOURCE_ARCHIVE_KEY} -C {APP_MOUNT_PATH}; "
-        f"pip install --no-cache-dir --target={PYDEPS_DIR} {install}"
+"""The `&&`-joined shell script the bootstrap initContainer runs in
+experimental mode: extract the source, then clone the jaseci repo/branch into a
+venv on the shared app volume and editable-install jac + jac-scale[all] +
+jac-client (the jac plugins can't go into PYDEPS_DIR via `pip --target`, so a
+venv on the shared volume carries them to the main container)."""
+def experimental_bootstrap_script(repo_url: str, branch: str, commit: str) -> str {
+    # Normalize SCP/ssh GitHub URLs to anonymous HTTPS (the pod has no SSH key).
+    url = repo_url;
+    if url.startswith("git@") and ":" in url {
+        host = url[4:].split(":", 1)[0];
+        path = url[4:].split(":", 1)[1];
+        url = f"https://{host}/{path}";
+    } elif url.startswith("ssh://git@") {
+        url = "https://" + url[len("ssh://git@"):];
+    }
+    steps: list[str] = [
+        "set -eu",
+        "export DEBIAN_FRONTEND=noninteractive",
+        "apt-get update",
+        "apt-get install -y --no-install-recommends git",
+        f"tar xzf {SOURCE_MOUNT_PATH}/{SOURCE_ARCHIVE_KEY} -C {APP_MOUNT_PATH}",
+        f"python3 -m venv {VENV_DIR}",
+        f". {VENV_DIR}/bin/activate",
+        f"rm -rf {APP_MOUNT_PATH}/jaseci",
+        f"git clone --branch {branch} --single-branch {url} {APP_MOUNT_PATH}/jaseci",
+        f"cd {APP_MOUNT_PATH}/jaseci"
+    ];
+    if commit {
+        steps.append(f"git checkout {commit}");
+    }
+    steps.extend(
+        [
+            "git submodule update --init --recursive",
+            "pip install pluggy",
+            # --force-reinstall --no-deps so the local checkout wins over any
+            # already-resolved release of the same version.
+            "pip install --force-reinstall --no-deps -e ./jac",
+            "jac install -e ./jac-scale --extras all",
+            "jac install -e ./jac-client"
+        ]
     );
+    return " && ".join(steps);
+}
+
+
+"""initContainer that extracts the packed source into the shared app volume and
+installs jac onto that same volume (so the main container starts fast against a
+ready tree). PyPI-pinned by default; in experimental mode it git-clones the
+jaseci repo/branch into a venv on the shared volume instead."""
+def build_bootstrap_init_container(
+    base_image: str,
+    experimental: bool = False,
+    repo_url: str = "",
+    branch: str = "main",
+    commit: str = ""
+) -> dict[str, any] {
+    if experimental {
+        script = experimental_bootstrap_script(repo_url, branch, commit);
+    } else {
+        # Single-quote each spec so the `[all]` extras marker isn't treated as a
+        # shell glob char-class by the `sh -c` bootstrap.
+        install = " ".join([f"'{spec}'" for spec in pinned_install_specs()]);
+        script = (
+            "set -eu; "
+            f"tar xzf {SOURCE_MOUNT_PATH}/{SOURCE_ARCHIVE_KEY} -C {APP_MOUNT_PATH}; "
+            f"pip install --no-cache-dir --target={PYDEPS_DIR} {install}"
+        );
+    }
     return {
         "name": "jac-bootstrap",
         "image": base_image,

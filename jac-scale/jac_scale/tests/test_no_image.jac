@@ -201,6 +201,22 @@ test "bootstrap init container extracts source and installs to pydeps" {
     assert "jac-source" in mount_names;
 }
 
+test "experimental bootstrap git-clones the branch into a shared venv" {
+    init = build_bootstrap_init_container(
+        "python:3.12-slim",
+        experimental=True,
+        repo_url="https://github.com/udithishanka/jaseci.git",
+        branch="fix/no-image-bootstrap-deps"
+    );
+    script = init["args"][0];
+    assert "python3 -m venv /app/.venv" in script;
+    assert "git clone --branch fix/no-image-bootstrap-deps" in script;
+    assert "jac install -e ./jac-scale --extras all" in script;
+    assert "jac install -e ./jac-client" in script;
+    # No PyPI pin in experimental mode.
+    assert "pip install --no-cache-dir --target" not in script;
+}
+
 # =============================================================================
 # manifest_builder: no-image pod spec
 # =============================================================================
