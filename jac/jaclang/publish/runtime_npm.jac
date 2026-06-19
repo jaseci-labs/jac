@@ -17,6 +17,50 @@ import from pathlib { Path }
 
 glob RUNTIME_PKG_NAME: str = "@jaseci/runtime";
 
+"""The 34 framework-agnostic symbols that every `@jac/runtime` shim MUST re-export:
+the public API `def:pub` surface (navigate, jacSpawn, auth, …) plus the `__`-prefixed
+internal helpers used by generated code. The surface-parity test in
+`test_npm_publish.jac` checks every shim against this set; framework-specific extras
+are allowed, but none may omit these."""
+glob CORE_RUNTIME_SYMBOLS: set[str] = set(
+         [
+             "navigate",
+             "jacSpawn",
+             "jacSignup",
+             "jacLogin",
+             "jacLogout",
+             "jacIsLoggedIn",
+             "jacSsoLogin",
+             "jacSetToken",
+             "__createJacSchema",
+             "__jacSpawn",
+             "__jacCallFunction",
+             "__normalizeIdentity",
+             "__normalizeCredential",
+             "__jacClearCache",
+             "__jacDesktopBroker",
+             "__jacPollBrokerSession",
+             "__jacSleep",
+             "__getApiBaseUrl",
+             "__getLocalStorage",
+             "__setLocalStorage",
+             "__removeLocalStorage",
+             "__getEndpointEffects",
+             "__getCacheState",
+             "__isFresh",
+             "__cacheGet",
+             "__cacheSet",
+             "__evictOldest",
+             "__doWalkerFetch",
+             "__doFuncFetch",
+             "__cachedEndpointCall",
+             "__invalidateEndpoint",
+             "__overlaps",
+             "__jacReportError",
+             "__jacInstallErrorHandlers"
+         ]
+     );
+
 """The runtime's public API symbol names (its top-level def/glob surface) for
    `framework` (`""` = active backend).
 

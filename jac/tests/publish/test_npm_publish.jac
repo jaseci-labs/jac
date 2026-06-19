@@ -35,9 +35,11 @@ import from jaclang.publish.npm_sources { collect_npm_sources, NpmBoundaryError 
 import from jaclang.publish.npm_builder { NpmBuilder }
 import from jaclang.publish.runtime_npm {
     build_runtime_tarball,
+    runtime_api_names,
     runtime_peer_deps,
     runtime_pkg_name,
-    RUNTIME_PKG_NAME
+    RUNTIME_PKG_NAME,
+    CORE_RUNTIME_SYMBOLS
 }
 
 
@@ -380,12 +382,16 @@ test "build_runtime_tarball packages the Solid runtime with no React ecosystem" 
         assert "package/index.js" in names;
         assert "package/jaclang/runtimelib/client_runtime_core.js" in names;
         js = tf.extractfile("package/index.js").read().decode();
-        # Same factory surface as every framework, mounted on Solid's hyperscript.
-        assert "__jacJsx" in js;
-        assert "solid-js/h" in js;
-        # Public API exported exactly once — no duplicate export (invalid ESM).
+        # Branch 5: solid-js/h hyperscript import removed; user component code
+        # uses the JSX compiler path (vite-plugin-solid). Core symbols are present.
+        assert "solid-js/h" not in js;
+        assert "jacIsLoggedIn" in js;
+        assert "JacClientErrorBoundary" in js;
+        # __jacJsx is NOT part of the public surface; it must not appear in
+        # the export clause (impl-JSX may still call it internally).
         exported = _exported_names(js);
-        assert "__jacJsx" in exported;
+        assert "jacIsLoggedIn" in exported;
+        assert "__jacJsx" not in exported;
         assert len(exported) == len(set(exported)) , (
             f"duplicate export in solid index.js: {sorted(exported)}"
         );
@@ -409,6 +415,18 @@ test "build_runtime_tarball packages the Solid runtime with no React ecosystem" 
         assert "react" not in peers;
         assert "react-dom" not in peers;
     }
+}
+
+test "@jac/runtime surface-parity: all core symbols appear in React and Solid shims" {
+    react_names = runtime_api_names("react");
+    solid_names = runtime_api_names("solid");
+    for sym in CORE_RUNTIME_SYMBOLS {
+        assert sym in react_names , f"React shim missing core symbol: {sym}";
+        assert sym in solid_names , f"Solid shim missing core symbol: {sym}";
+    }
+    # Each shim exposes framework-specific extras beyond the shared core.
+    assert len(react_names) > len(CORE_RUNTIME_SYMBOLS);
+    assert len(solid_names) > len(CORE_RUNTIME_SYMBOLS);
 }
 
 test "react import is recorded as a peerDependency" {
