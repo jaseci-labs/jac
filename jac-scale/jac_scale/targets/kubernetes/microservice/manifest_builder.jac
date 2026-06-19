@@ -30,7 +30,11 @@ obj MicroserviceManifestBuilder {
     has k8s_config: KubernetesConfig,
         secrets: dict[str, str] = {},
         deploy_context: DeployContext = DeployContext(),
-        logger: any = None;
+        logger: any = None,
+        # no-image mode: serve source from a ConfigMap + install jac at pod
+        # startup on a generic Python base image (no docker build/push).
+        no_image: bool = False,
+        project_dir: str = "";
 
     """Lift pod-specs into full Deployment + Service + HPA + PDB
     bundle. Returns `{deployments, services, autoscalers, pdbs, pod_specs}`,
@@ -63,6 +67,18 @@ obj MicroserviceManifestBuilder {
             "pdbs": pdbs,
             "pod_specs": pod_specs
         };
+        # no-image mode: pack local source into a ConfigMap mounted by every
+        # pod's bootstrap initContainer (see _build_pod_spec).
+        if self.no_image {
+            import from jac_scale.targets.kubernetes.microservice.source_bundle {
+                build_source_configmap
+            }
+            bundle["source_configmap"] = build_source_configmap(
+                k8s_safe_name(self.k8s_config.app_name),
+                self.k8s_config.namespace,
+                self.project_dir or app_config.code_folder
+            );
+        }
         pvcs = self._build_shared_pvc_manifests();
         if pvcs {
             bundle["pvcs"] = pvcs;
@@ -386,6 +402,14 @@ obj MicroserviceManifestBuilder {
         }
 
         routes: dict[str, str] = self._microservice_routes();
+        # Propagate the full routes table to every pod as JSON so the gateway
+        # + get_sv_registry resolve prefixes/peers even when the in-cluster
+        # jac.toml has no [routes] table (zero-config `--scale` deploys). The
+        # config loader reads JAC_SV_ROUTES when its own routes are empty.
+        if routes {
+            import json;
+            env.append({"name": "JAC_SV_ROUTES", "value": json.dumps(dict(routes))});
+        }
         seen_peer_keys: set = set();
         for peer_name in routes {
             if peer_name == svc_name {
@@ -729,7 +753,13 @@ obj MicroserviceManifestBuilder {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
-        resolved_image: str = self._resolve_image(image, svc_cfg);
+        # no-image mode runs on the generic Python base image; the per-service
+        # image_tag override is meaningless without a built image.
+        resolved_image: str = (
+            self.k8s_config.python_image
+                if self.no_image
+                else self._resolve_image(image, svc_cfg)
+        );
         # JAC_IMAGE_REF (B-01): the resolved ref incl. K-29's content-id
         # suffix, surfaced so an in-pod self-check can report "running build X"
         # with zero RBAC. Strip any user-set copy first so the rendered YAML
@@ -758,8 +788,32 @@ obj MicroserviceManifestBuilder {
             container["resources"] = resources;
         }
         (shared_vols, shared_mounts) = self._shared_volumes_for_service(svc_name);
-        if shared_mounts {
-            container["volumeMounts"] = shared_mounts;
+        # no-image mode: run from the extracted source on a shared emptyDir,
+        # resolving jac + deps the bootstrap initContainer installed under
+        # PYDEPS_DIR (added to PATH/PYTHONPATH). entry["args"]'s `jac` then
+        # resolves to the installed console script.
+        no_image_mounts: list[dict[str, any]] = [];
+        if self.no_image {
+            import from jac_scale.targets.kubernetes.microservice.source_bundle {
+                APP_VOLUME_NAME,
+                APP_MOUNT_PATH,
+                PYDEPS_DIR
+            }
+            container["workingDir"] = APP_MOUNT_PATH;
+            env_list.append({"name": "PYTHONPATH", "value": PYDEPS_DIR});
+            env_list.append(
+                {
+                    "name": "PATH",
+                    "value": f"{PYDEPS_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
+                }
+            );
+            no_image_mounts.append(
+                {"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH}
+            );
+        }
+        all_mounts = shared_mounts + no_image_mounts;
+        if all_mounts {
+            container["volumeMounts"] = all_mounts;
         }
         # envFrom for the user secret: created BEFORE Deployments in
         # apply_manifests so the secretRef resolves at pod startup.
@@ -774,11 +828,37 @@ obj MicroserviceManifestBuilder {
         if sa_name {
             spec["serviceAccountName"] = sa_name;
         }
-        if shared_vols {
-            spec["volumes"] = shared_vols;
+        all_volumes = list(shared_vols);
+        init_containers = list(self.deploy_context.init_containers);
+        if self.no_image {
+            import from jac_scale.targets.kubernetes.microservice.source_bundle {
+                APP_VOLUME_NAME,
+                SOURCE_VOLUME_NAME,
+                source_configmap_name,
+                build_bootstrap_init_container
+            }
+            all_volumes.append({"name": APP_VOLUME_NAME, "emptyDir": {}});
+            all_volumes.append(
+                {
+                    "name": SOURCE_VOLUME_NAME,
+                    "configMap": {
+                        "name": source_configmap_name(
+                            k8s_safe_name(self.k8s_config.app_name)
+                        )
+                    }
+                }
+            );
+            # Bootstrap runs first: extract source + install jac before the
+            # db-wait init containers (order is cosmetic; both must finish).
+            init_containers = [
+                build_bootstrap_init_container(self.k8s_config.python_image)
+            ] + init_containers;
         }
-        if self.deploy_context.init_containers {
-            spec["initContainers"] = list(self.deploy_context.init_containers);
+        if all_volumes {
+            spec["volumes"] = all_volumes;
+        }
+        if init_containers {
+            spec["initContainers"] = init_containers;
         }
         return spec;
     }

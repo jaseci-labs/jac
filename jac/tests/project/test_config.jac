@@ -312,6 +312,29 @@ test "parse minimal config" {
     assert cfg.project.version == "0.1.0";
 }
 
+test "serve on_conflict default and normalization" {
+    config_mod._config = None;
+    # Absent -> safe default.
+    base = JacConfig.from_toml_str("\n[serve]\nport = 8000\n");
+    assert base.serve.on_conflict == "retry";
+
+    # Explicit lowercase passes through.
+    config_mod._config = None;
+    fail = JacConfig.from_toml_str("\n[serve]\non_conflict = \"fail\"\n");
+    assert fail.serve.on_conflict == "fail";
+
+    # Case/whitespace is normalized so a mis-cased value still means fail-fast.
+    config_mod._config = None;
+    cased = JacConfig.from_toml_str("\n[serve]\non_conflict = \" Fail \"\n");
+    assert cased.serve.on_conflict == "fail";
+
+    # A genuine typo falls back to the safe default instead of silently
+    # disabling replay under an unrecognized value.
+    config_mod._config = None;
+    typo = JacConfig.from_toml_str("\n[serve]\non_conflict = \"retri\"\n");
+    assert typo.serve.on_conflict == "retry";
+}
+
 test "parse full config" {
     config_mod._config = None;
     toml_str = "\n[project]\nname = \"full-project\"\nversion = \"1.2.3\"\ndescription = \"A full project\"\nauthors = [\"Jane Doe <jane@example.com>\"]\nlicense = \"MIT\"\nentry-point = \"app.jac\"\n\n[dependencies]\nnumpy = \">=1.24.0\"\npandas = \">=2.0.0\"\n\n[run]\nsession = \"my_session\"\nmain = false\ncache = false\n\n[build]\ntypecheck = true\n\n[test]\ndirectory = \"tests\"\nverbose = true\nfail_fast = true\nmax_failures = 5\n\n[serve]\nport = 9000\n\n[cache]\nenabled = false\ndir = \".cache\"\n\n[scripts]\nstart = \"jac run app.jac\"\nlint = \"jac lint . --fix\"\n\n[plugins.byllm]\ndefault_model = \"gpt-4\"\ntemperature = 0.7\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n\n[environments.production]\n[environments.production.serve]\nport = 8000\n";

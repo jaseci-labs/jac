@@ -90,6 +90,24 @@ test "native osp: spawn returns the walker" {
     assert collect_one(0) == 0;
 }
 
+test "native osp: skip in an impl-annex walker event ability (issue #6794)" {
+    # `skip` is a valid Return-family statement in a walker `with X entry` event
+    # ability, and native lowers it there. When the ability is split decl/impl,
+    # the `skip` lives in an `impl Walker.ability with X entry` ImplDef in the
+    # annex. Before the fix the native capability check — now scanning annex
+    # bodies (#6754) — saw the ImplDef (not an inline Ability) around the `skip`
+    # and falsely rejected it (E5090), producing no IR; a module importing it
+    # then failed to link (E5024) and `jac test` reported "native engine
+    # unavailable". Here `grab` skips val==0 nodes and sums the rest.
+    (eng, _) = compile_native("osp_skip_annex.na.jac");
+    collect = get_func(
+        eng, "collect", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    assert collect(10, 0, 32) == 42;  # the val==0 node is skipped
+    assert collect(0, 0, 0) == 0;  # every node skipped
+    assert collect(5, 5, 5) == 15;
+}
+
 test "arithmetic negate" {
     (eng, _) = compile_native("arithmetic.na.jac");
     neg = get_func(eng, "negate", ctypes.c_int64, ctypes.c_int64);
@@ -167,6 +185,22 @@ test "nested functions helper recursion and module global" {
     # x + BASE, BASE == 100
     assert uses_global(0) == 100;
     assert uses_global(7) == 107;
+}
+
+test "glob declared in an impl annex resolves on native (issue #6754)" {
+    # A `glob` declared in the canonical bare IMPL ANNEX
+    # (`impl/annex_glob.impl.jac`, base name resolved before the `.na` variant
+    # suffix), not the head file, must be registered in the native module's
+    # globals and resolved by references in the annexed ability bodies. Before
+    # the fix, native global collection swept only the head module's `body`, so
+    # the annex glob was never emitted and references bailed with E5090
+    # 'Name'/'BinaryExpr'. The byte-identical program with the glob in the head
+    # file always compiled.
+    (eng, _) = compile_native("annex_glob.na.jac");
+    get_sz = get_func(eng, "get_sz", ctypes.c_int64);
+    double_sz = get_func(eng, "double_sz", ctypes.c_int64);
+    assert get_sz() == 21;  # bare `Name` reference to the annex glob
+    assert double_sz() == 42;  # `BinaryExpr` reference to the annex glob
 }
 
 # --- TestNativeContextIsolation ---

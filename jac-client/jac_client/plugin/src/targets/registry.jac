@@ -11,6 +11,7 @@ enum TargetType {
     WEB = "web",
     DESKTOP = "desktop",
     PWA = "pwa",
+    STATIC = "static",
     MOBILE = "mobile"
 }
 
@@ -25,6 +26,9 @@ def get_target_type(name: str) -> TargetType {
     }
     if name_lower == "pwa" {
         return TargetType.PWA;
+    }
+    if name_lower == "static" {
+        return TargetType.STATIC;
     }
     if name_lower == "mobile" {
         return TargetType.MOBILE;

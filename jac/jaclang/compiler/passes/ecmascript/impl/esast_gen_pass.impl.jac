@@ -5514,6 +5514,17 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
         or not isinstance(item.name, uni.Name) {
             continue;
         }
+        # An sv-imported type (node/obj/edge/enum) or walker is not an HTTP
+        # endpoint: a node/obj/edge lowers to a wire `class <name>` (and an
+        # enum to a frozen object) via `_emit_boundary_type_stubs`, while a
+        # walker is reached through `__jacSpawn`. Emitting an
+        # `async function <name>` RPC stub for any of them is dead code that,
+        # for a boundary type, collides with the wire declaration at bundle
+        # time (#6795 -- the cl->sv analog of the Python-path #6710 fix).
+        # Only `def:pub` abilities are HTTP-callable.
+        if self._sv_import_item_is_type(nd, item) {
+            continue;
+        }
         func_name = item.name.sym_name;
         local_name = item.alias.sym_name if item.alias else func_name;
         # Resolve the function signature from the source module so the
@@ -5618,6 +5629,37 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
         # collect them separately and inject them into the module body).
         self.sv_import_stubs.extend(stubs);
     }
+}
+
+"""Report whether an sv-imported item names a type rather than a function.
+
+A node/obj/edge/enum/walker must not get an HTTP RPC function stub: the
+type already lowers to a wire `class <name>` (or frozen-object enum) via
+`_emit_boundary_type_stubs` and a walker is spawned, not called, so an
+`async function <name>` stub is dead code that collides with the wire
+declaration at bundle time (#6795). The import item's own resolved symbol
+classifies the kind directly, so this holds even when the provider module
+is absent from the program hub at codegen time; a name already collected as
+a boundary type is treated as a type too, as a belt-and-suspenders guard.
+"""
+impl EsastGenPass._sv_import_item_is_type(
+    nd: uni.Import, item: uni.ModuleItem
+) -> bool {
+    type_kinds = {
+        SymbolType.OBJECT_ARCH,
+        SymbolType.NODE_ARCH,
+        SymbolType.EDGE_ARCH,
+        SymbolType.WALKER_ARCH,
+        SymbolType.ENUM_ARCH
+    };
+    sym = item.name.sym;
+    if sym and (sym.sym_type in type_kinds) {
+        return True;
+    }
+    boundary_types = nd.gen.interop_manifest.boundary_types
+        if nd.gen.interop_manifest
+        else {};
+    return item.name.sym_name in boundary_types;
 }
 
 """Process SubTag node."""

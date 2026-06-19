@@ -54,8 +54,8 @@ test "create --kind fullstack" {
     _cleanup();
 }
 
-test "create --kind wasm" {
-    _assert_kind("wasm", "serve");
+test "create --kind client" {
+    _assert_kind("client", "serve");
     _cleanup();
 }
 

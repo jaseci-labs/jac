@@ -16,6 +16,8 @@ impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
     self.mem = ScaleTieredMemory();
     self.reports: list[any] = [];
     self.diagnostics: list[PermissionDenied] = [];
+    self.pending_effects = [];
+    self.read_versions = {};
     self.custom: any = MISSING;
     cached_root = _process_cache.get('system_root');
     if cached_root is not None {

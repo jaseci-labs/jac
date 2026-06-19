@@ -31,7 +31,7 @@ glob KIND_SPECS: dict[str, dict[str, str]] = {
          "pypi-package": {"entry": "lib.jac", "plugin": ""},
          "npm-package": {"entry": "lib.jac", "plugin": ""},
          "fullstack": {"entry": "main.jac", "plugin": "jac-client"},
-         "wasm": {"entry": "main.jac", "plugin": "jac-client"},
+         "client": {"entry": "main.jac", "plugin": "jac-client"},
          "desktop": {"entry": "main.jac", "plugin": "jac-desktop"},
          "mobile": {"entry": "main.jac", "plugin": "jac-client"}
      },
@@ -268,14 +268,14 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
             requires_plugin=kind_required_plugin(kind)
         );
     }
-    if kind == "wasm" {
+    if kind == "client" {
         return RunPlan(
             kind=kind,
             action="serve",
             verb="start",
             entry_path=entry_path,
             flags=_serve_flags(config, {}),
-            summary="Serve wasm page (emits /static/main.wasm)",
+            summary="Serve client-only app as a static page (no backend)",
             requires_plugin=kind_required_plugin(kind)
         );
     }

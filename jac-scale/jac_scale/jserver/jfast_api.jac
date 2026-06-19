@@ -153,7 +153,8 @@ class JFastApiServer(JServer[FastAPI]) {
         callback: Callable[(..., Any)],
         parameters: list[APIParameter],
         dependencies: list[any],
-        request_model: (type[BaseModel] | None) = None
+        request_model: (type[BaseModel] | None) = None,
+        forward_undeclared_query_params: bool = True
     ) -> Callable[..., any];
 
     def _get_python_type(self: JFastApiServer, type_string: str) -> type[any];

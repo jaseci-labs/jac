@@ -2,7 +2,7 @@
 
 import os;
 import from dataclasses { MISSING }
-import from typing { cast }
+import from typing { Callable, cast }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
@@ -92,6 +92,59 @@ impl ExecutionContext.close -> None {
     }
     # TieredMemory handles syncing to persistence and closing all tiers
     self.mem.close();
+    # Fire any on_commit effects flushed by close()'s commit backstop. This
+    # covers CLI / library flows (jac run) that rely on close() rather than an
+    # explicit commit()/acommit(); a no-op if an earlier commit already drained.
+    self.run_pending_effects();
+}
+
+"""Register a callback to run after the next successful commit.
+
+Backs the `on_commit(...)` ambient builtin. Callbacks are deferred
+external effects: they run only if the unit of work actually flushes,
+and exactly once per registration, so a request that aborts before
+committing never fires them.
+"""
+impl ExecutionContext.on_commit(callback: Callable) -> None {
+    self.pending_effects.append(callback);
+}
+
+"""Drain and run queued post-commit effects.
+
+Snapshot-then-clear before running so an effect that itself registers
+another effect enqueues it for the next drain rather than extending
+this one. A failing effect is logged and skipped: it neither aborts the
+commit nor blocks the remaining effects.
+"""
+impl ExecutionContext.run_pending_effects -> None {
+    if not self.pending_effects {
+        return;
+    }
+    effects = self.pending_effects;
+    self.pending_effects = [];
+    for effect in effects {
+        try {
+            effect();
+        } except Exception as e {
+            logger.error(f"on_commit effect failed: {e}");
+        }
+    }
+}
+
+"""Read-set OCC: snapshot the version of each node a request reads an
+out-traversal from, so the collect pass can promote it to a commit-time CAS.
+
+Recorded by `refs` *before* the planner/edge-walk split, so a topology-index
+fast path (which never reaches `edges_to_nodes`) still takes the dependency.
+First read wins (`setdefault`): a later read in the same request never
+overwrites the version originally observed.
+"""
+impl ExecutionContext.note_traversal_reads(origins: list[NodeAnchor]) -> None {
+    for anchor in origins {
+        if isinstance(anchor, NodeAnchor) {
+            self.read_versions.setdefault(anchor.id, anchor.version);
+        }
+    }
 }
 
 """Get current user's root."""
