@@ -557,6 +557,21 @@ obj MicroserviceManifestBuilder {
         };
     }
 
+    """Startup probe for no-image pods: they install jac (and, in experimental
+    mode, git-clone + compile it) and run a first jaclang compile AT STARTUP,
+    which easily exceeds the liveness grace. The startup probe suppresses
+    liveness/readiness until the app first answers (~15min budget) so the slow
+    first boot isn't SIGKILLed; once it passes, liveness governs."""
+    def _build_startup_probe -> dict[str, any] {
+        cfg = self.k8s_config;
+        return {
+            "httpGet": {"path": "/healthz/live", "port": cfg.container_port},
+            "periodSeconds": 10,
+            "timeoutSeconds": 3,
+            "failureThreshold": 90
+        };
+    }
+
     """PreStop sleep bridges the kube-proxy endpoint-propagation gap so
     the pod doesn't stop accepting work before remote nodes stop sending."""
     def _build_prestop_hook -> dict[str, any] {
@@ -787,6 +802,12 @@ obj MicroserviceManifestBuilder {
             "livenessProbe": self._build_liveness_probe(),
             "lifecycle": {"preStop": self._build_prestop_hook()}
         };
+        # no-image pods install + compile jac at startup (minutes), which the
+        # liveness probe would SIGKILL; a startup probe holds it off until the
+        # app first answers. Built-image pods boot fast and don't need it.
+        if self.no_image {
+            container["startupProbe"] = self._build_startup_probe();
+        }
         resources = self._build_resources(svc_cfg, svc_name == GATEWAY_NAME);
         if resources {
             container["resources"] = resources;

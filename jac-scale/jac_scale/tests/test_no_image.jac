@@ -201,6 +201,20 @@ test "bootstrap init container extracts source and installs to pydeps" {
     assert "jac-source" in mount_names;
 }
 
+test "no-image pods get a startup probe; built-image pods do not" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="jac-shop-dev");
+    ni = MicroserviceManifestBuilder(k8s_config=cfg, no_image=True);
+    nc = ni._build_service_pod_spec("orders_app", "ignored:image")["containers"][0];
+    assert "startupProbe" in nc;
+    assert nc["startupProbe"]["failureThreshold"] == 90;
+
+    plain = MicroserviceManifestBuilder(k8s_config=cfg);
+    pc = plain._build_service_pod_spec("orders_app", "jac-shop:dev-abc")["containers"][
+        0
+    ];
+    assert "startupProbe" not in pc;
+}
+
 test "experimental bootstrap git-clones the branch into a shared venv" {
     init = build_bootstrap_init_container(
         "python:3.12-slim",
