@@ -5,7 +5,13 @@ import shutil;
 import sys;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
-import from jaclang.cli.guide_store { list_guides, get_guide, search_guides }
+import from jaclang.cli.guide_store {
+    list_guides,
+    get_guide,
+    search_guides,
+    guide_group,
+    grouped_guides
+}
 
 """Write text verbatim to stdout, followed by a newline.
 
@@ -82,24 +88,50 @@ impl guide(
         }
         return 0;
     }
-    # List guides, optionally filtered by --search.
+    # Grouped console listing (the default no-arg path) loads guides through
+    # grouped_guides() alone, so the skills directory is read once.
+    if not search and not as_json {
+        groups = grouped_guides();
+        if not groups {
+            console.error("No guides are bundled with this Jac installation.");
+            return 0;
+        }
+        console.print();
+        console.print("Jac reference guides", style="bold");
+        for (group, members) in groups {
+            console.print();
+            console.print(f"{group}:", style="bold");
+            for g in members {
+                console.print(f"  {g.name}", style="bold cyan");
+                console.print(f"      {g.description}", style="muted");
+            }
+        }
+        console.print();
+        console.print("Read one with:  jac guide <name>", style="muted");
+        console.print();
+        return 0;
+    }
+    # JSON listing and --search results.
     guides = search_guides(search) if search else list_guides();
     if as_json {
-        payload = [{"name": g.name, "description": g.description} for g in guides];
+        payload = [
+            {
+                "name": g.name,
+                "description": g.description,
+                "group": guide_group(g.name)
+            } for g in guides
+        ];
         _emit(json.dumps(payload, indent=2));
         return 0;
     }
+    # Only the console search path remains.
     if not guides {
-        if search {
-            console.warning(f"No guides match '{search}'.");
-        } else {
-            console.error("No guides are bundled with this Jac installation.");
-        }
+        console.warning(f"No guides match '{search}'.");
         return 0;
     }
-    header = f"Jac guides matching '{search}'" if search else "Jac reference guides";
     console.print();
-    console.print(header, style="bold");
+    console.print(f"Jac guides matching '{search}'", style="bold");
+    # Search results are already a filtered subset -- keep them flat.
     console.print();
     for g in guides {
         console.print(f"  {g.name}", style="bold cyan");

@@ -228,6 +228,48 @@ with entry {
 }
 ```
 
+### 4 Typed Edge Endpoints
+
+By default an edge can connect *any* node types, so a neighbour traversal such as `[here ->:Friend:->]` has element type `any` and needs a `[?:Type]` filter before you can read a field off the result. You can instead declare the **source** and **target** node types an edge connects, after a `:`, using the traversal arrow so it reads like the navigation it enables:
+
+```jac
+node Profile { has name: str = ""; }
+node Tweet { has content: str = ""; }
+
+edge Follow: Profile --> Profile {}      # Profile → Profile
+edge Post: Profile --> Tweet {}          # Profile → Tweet
+```
+
+With endpoints declared, a neighbour traversal **infers the declared node type** -- no `[?:Type]` filter needed:
+
+```jac
+with entry {
+    me = Profile(name="me");
+    following = [me ->:Follow:->];   # inferred list[Profile] (target)
+    followers = [me <-:Follow:<-];   # inferred list[Profile] (source)
+    my_tweets = [me ->:Post:->];     # inferred list[Tweet]
+
+    # The element type is concrete, so field access resolves statically
+    # (and compiles on the native backend) -- no filter required:
+    if following {
+        print(following[0].name);
+    }
+}
+```
+
+An outgoing traversal (`->:Edge:->`) narrows to the **target** type; an incoming traversal (`<-:Edge:<-`) narrows to the **source** type. A `[?:Sub]` filter can still narrow *further* to a subtype.
+
+Typed endpoints are **opt-in and gradual**: an untyped `edge Link {}` keeps `any → any` connectivity and `list[any]` traversal results, so existing code is unaffected. The endpoint type is a **bound** -- `Profile` *or a subtype* -- so subclass-heterogeneous graphs stay valid.
+
+The `()` after the name remains reserved for **edge inheritance**, orthogonal to the endpoints. A subtype edge inherits its base edge's endpoints unless it re-declares them:
+
+```jac
+edge TimedFollow(Follow) { has at: str = ""; }          # inherits Profile → Profile
+edge BlockedFollow(Follow): Profile --> Profile {}      # re-declares its endpoints
+```
+
+The endpoint clause is only valid on an `edge`; placing it on a `node`, `walker`, or `obj` is a compile error (`E2027`).
+
 ---
 
 ## Walkers
@@ -771,9 +813,10 @@ walker:priv DeleteWithChildren {
 | `allroots()` | Get all root references |
 | `save(node)` | Persist node to storage |
 | `commit()` | Commit pending changes |
+| `on_commit(callback)` | Register a callback to run **after** the next successful commit (discarded on abort/replay) -- for deferred external side effects that must fire exactly once |
 | `printgraph(root)` | Print graph structure to stdout (output depends on graph size; may require logging configuration to see results) |
 
-> See [Persistence & Schema Migration](../persistence.md) for how persisted graph data tolerates schema changes across runs (added/removed fields, type changes, class renames) and how to inspect or rescue data with [`jac db`](../cli/index.md#database-operations).
+> See [Persistence & Schema Migration](../persistence.md) for how persisted graph data tolerates schema changes across runs (added/removed fields, type changes, class renames) and how to inspect or rescue data with [`jac db`](../cli/index.md#database-operations). For concurrent find-or-create safety (and why `on_commit` matters when a request replays), see [Concurrent writes: check-then-create](../persistence.md#concurrent-writes-check-then-create-and-convergence).
 
 ```jac
 node Person { has name: str; }
@@ -788,6 +831,39 @@ with entry {
     printgraph(root);
 }
 ```
+
+### 6 The Shared Root (`root.shared`)
+
+Every served deployment has one public graph alongside the per-user roots: the **shared root**, the root that every unauthenticated request runs on. `root.shared` resolves to it from any request context, so a walker can read or extend the public graph directly - no `allroots()` fan-out, no passing root ids around:
+
+```jac
+node Post { has text: str; }
+edge Posted {}
+
+walker:pub publish {
+    has text: str;
+
+    can run with Root entry {
+        # Lands on the public graph whoever the caller is.
+        fresh = root.shared +>: Posted() :+> Post(text=self.text);
+        grant(fresh[0], level=ReadPerm);   # author opens the post to readers
+    }
+}
+
+walker:pub read_feed {
+    can run with Root entry {
+        report [p.text for p in [root.shared-->[?:Post]]];
+    }
+}
+```
+
+**Default policy.** The shared root is a commons: its access level is floored at `ConnectPerm`, so every user - authenticated or anonymous - can read it and attach nodes to it without any arming grant. The floor reflects reality rather than weakening security: anonymous requests already act as the shared root's owner through any public endpoint, so withholding access from authenticated users protects nothing.
+
+**Ownership stays the boundary.** Nodes a user hangs on the shared graph remain owned by that user and closed until the author grants. The conventional levels: `ConnectPerm` on container nodes others should build under, `ReadPerm` on leaf contributions others should only see. Anonymous-created content is collectively owned by the anonymous identity and is readable by everyone through the floor.
+
+**Lockdown.** An app can lower the commons explicitly - for example `grant(root.shared, level=ReadPerm)` from an anonymous or system context makes it read-only. Any explicitly set level other than `NoPerm` is respected; only the never-granted state is floored back to `ConnectPerm`.
+
+Outside a server (CLI runs, scripts, tests without a server) there are no separate users, so `root.shared` is the current root itself: `jid(root.shared) == jid(root)`.
 
 ---
 
@@ -870,6 +946,9 @@ walker FilteredWalker {
     }
 }
 ```
+
+!!! tip "Skip the `[?:Type]` filter"
+    If an edge declares its endpoint node types (see [Typed Edge Endpoints](#4-typed-edge-endpoints)), a neighbour traversal already infers the concrete node type, so the trailing `[?:Type]` filter is only needed to narrow *further* to a subtype.
 
 ### 3 Entry and Exit Events
 

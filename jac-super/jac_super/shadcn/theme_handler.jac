@@ -279,7 +279,7 @@ def generate_starter_main_jac -> str {
         'cl import from ".components.ui.card" {',
         '    Card, CardHeader, CardTitle, CardDescription, CardContent',
         '}',
-        'cl import ".global.css";',
+        'cl import ".styles.global.css";',
         "",
         "cl {",
         "    def:pub app() -> JsxElement {",
@@ -430,7 +430,9 @@ def materialize_themed_starter(
     (lib_dir / "utils.cl.jac").write_text(_UTILS_CONTENT);
 
     # Themed global.css
-    (pr / "global.css").write_text(
+    styles_dir = pr / "styles";
+    styles_dir.mkdir(parents=True, exist_ok=True);
+    (styles_dir / "global.css").write_text(
         generate_global_css(font, resolve_css_vars(shadcn_config))
     );
 
@@ -486,7 +488,9 @@ def retheme_project(config: any, overrides: dict) -> bool {
 
     # Persist config and regenerate the themed stylesheet.
     set_shadcn_section(toml_path, merged);
-    (project_root / "global.css").write_text(
+    styles_dir = project_root / "styles";
+    styles_dir.mkdir(parents=True, exist_ok=True);
+    (styles_dir / "global.css").write_text(
         generate_global_css(merged.get("font", "figtree"), resolve_css_vars(merged))
     );
     _patch_npm_deps(
@@ -506,7 +510,7 @@ def retheme_project(config: any, overrides: dict) -> bool {
         ) + ", font: " + merged.get("font", "figtree") + ")",
         style="bold cyan"
     );
-    console.print("  + global.css", style="green");
+    console.print("  + styles/global.css", style="green");
 
     # When the style changes, re-resolve components already installed.
     if new_style != old_style {

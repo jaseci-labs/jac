@@ -15,6 +15,7 @@ import requests;
 import from pymongo { MongoClient }
 import from testcontainers.mongodb { MongoDbContainer }
 import from testcontainers.redis { RedisContainer }
+import from jaclang.jac0core.archetype { Root }
 import from jac_scale.context { JScaleExecutionContext }
 import from jac_scale.memory_hierarchy { _process_cache, MongoBackend }
 import from jac_scale.db { close_all_db_connections }
@@ -24,6 +25,10 @@ def get_free_port -> int {
         s.bind(("", 0));
         return s.getsockname()[1];
     }
+}
+
+obj _FakeL1 {
+    has __mem__: dict;
 }
 
 glob FIXTURES_DIR = Path(__file__).parent / "fixtures",
@@ -1344,9 +1349,9 @@ test "acommit forwards anchor argument to commit()" {
 
 """Unit test for issue 1g fix: ScaleTieredMemory._committed flag.
 
-After the first acommit() the flag is set True. A second call (the
-middleware's redundant pass) returns immediately — MongoBackend.sync()
-and its O(L1-size) hash computation are skipped entirely.
+After the first acommit() the flag is set True. A second call (e.g. the
+close-time backstop) returns immediately — the collect pass and its
+O(L1-size) hash computation are skipped entirely.
 """
 test "acommit is idempotent — _committed flag prevents second sync pass" {
     import asyncio;
@@ -1654,4 +1659,259 @@ test "L2 Redis is invalidated (not re-poisoned) after edge-delta atomic write (i
         os.environ.pop("REDIS_URL", None);
         _reset_process_cache();
     }
+}
+
+# ----------------------------------------------------------------------
+# Cross-pod L1 cache invalidation via Redis pub/sub
+# ----------------------------------------------------------------------
+test "L1 invalidation: marks every sibling stale, skips origin, never pops" {
+    import from uuid { uuid4 }
+    import from jac_scale.l1_invalidation {
+        register_l1,
+        deregister_l1,
+        evict_local_l1,
+        consume_stale,
+        new_l1_id
+    }
+
+    anchor_id = uuid4();
+    id_a = new_l1_id();
+    id_b = new_l1_id();
+    id_c = new_l1_id();
+    mem_a = _FakeL1(__mem__={anchor_id: "A"});
+    mem_b = _FakeL1(__mem__={anchor_id: "B"});
+    mem_c = _FakeL1(__mem__={anchor_id: "C"});
+    register_l1(id_a, mem_a);
+    register_l1(id_b, mem_b);
+    register_l1(id_c, mem_c);
+    try {
+        marked = evict_local_l1(str(anchor_id), id_a);
+        assert marked == 2 , f"expected 2 siblings marked, got {marked}";
+        # The listener marks; it must never pop a sibling's __mem__.
+        assert anchor_id in mem_a.__mem__ , "origin __mem__ must be untouched";
+        assert anchor_id in mem_b.__mem__ , "sibling B __mem__ must be untouched";
+        assert anchor_id in mem_c.__mem__ , "sibling C __mem__ must be untouched";
+        assert not consume_stale(id_a, anchor_id) , "origin must NOT be marked";
+        assert consume_stale(id_b, anchor_id) , "sibling B must be marked stale";
+        assert consume_stale(id_c, anchor_id) , "sibling C must be marked stale";
+        assert not consume_stale(id_b, anchor_id) , "the stale mark must be one-shot";
+        assert evict_local_l1("not-a-uuid", id_a) == 0 , "bad id must no-op";
+    } finally {
+        deregister_l1(id_a);
+        deregister_l1(id_b);
+        deregister_l1(id_c);
+    }
+}
+
+test "L1 invalidation: stale-but-clean entries reload, dirty entries survive" {
+    import from jaclang.runtimelib.serializer { Serializer }
+    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+    import from jac_scale.l1_invalidation { evict_local_l1, deregister_l1, new_l1_id }
+    import sys;
+    sys.path.insert(0, str(FIXTURES_DIR));
+    import from mutation_app { Item }
+
+    os.environ.pop("REDIS_URL", None);
+    os.environ.pop("MONGODB_URI", None);
+
+    mem = ScaleTieredMemory();
+    mem.l2 = None;  # no lower tiers: a dropped entry just becomes a miss
+    mem.l3 = None;
+    other = new_l1_id();
+
+    clean = Item(id=1).__jac__;
+    clean.persistent = True;
+    clean.hash = Serializer._compute_hash(clean);
+    # Mutated after its hash was stamped: an uncommitted in-flight write.
+    dirty_item = Item(id=2);
+    dirty = dirty_item.__jac__;
+    dirty.persistent = True;
+    dirty.hash = Serializer._compute_hash(dirty);
+    dirty_item.completed = True;
+
+    try {
+        # Same rule on every memory-routed read: a clean stale entry is dropped
+        # for reload; a dirty one is kept so the uncommitted write isn't lost.
+        for read in ["get", "batch_get", "find_one"] {
+            cast(dict, mem.__mem__)[clean.id] = clean;
+            cast(dict, mem.__mem__)[dirty.id] = dirty;
+            evict_local_l1(str(clean.id), other);
+            evict_local_l1(str(dirty.id), other);
+            if read == "get" {
+                _ = mem.get(clean.id);
+                _ = mem.get(dirty.id);
+            } elif read == "batch_get" {
+                _ = mem.batch_get([clean.id, dirty.id]);
+            } else {
+                _ = mem.find_one(clean.id);
+                _ = mem.find_one(dirty.id);
+            }
+            assert clean.id not in mem.__mem__ , f"{read}: clean stale entry must drop";
+            assert dirty.id in mem.__mem__ , f"{read}: dirty entry must survive";
+        }
+        assert dirty_item.completed == True , "the uncommitted mutation must survive";
+    } finally {
+        deregister_l1(mem._l1_id);
+    }
+}
+
+test "L1 invalidation: GC reclaims the registry and clears stale marks" {
+    import gc;
+    import from uuid { uuid4 }
+    import from jac_scale.l1_invalidation {
+        register_l1,
+        evict_local_l1,
+        new_l1_id,
+        _l1_registry,
+        _stale_marks
+    }
+
+    aid = uuid4();
+    lid = new_l1_id();
+    mem = _FakeL1(__mem__={aid: "x"});
+    register_l1(lid, mem);
+    evict_local_l1(str(aid), new_l1_id());  # leave a mark under lid
+    assert lid in _l1_registry , "registered id must be present";
+    assert lid in _stale_marks , "mark must be present";
+    del mem;
+    gc.collect();
+    # Without close(): the weak registry drops the entry and the finalizer clears
+    # the marks, so neither leaks.
+    assert lid not in _l1_registry , "weak entry must disappear on GC";
+    assert lid not in _stale_marks , "finalizer must clear stale marks on GC";
+}
+
+test "L1 invalidation: pub/sub delivers (origin suppressed) and recovers after a drop" {
+    import time;
+    import from uuid { uuid4 }
+    import from jac_scale.memory_hierarchy { ScaleTieredMemory, _process_cache }
+    import from jac_scale.l1_invalidation { stop_listener, consume_stale }
+
+    _reset_redis();
+    _reset_process_cache();
+    _redis_result = _get_redis();
+    redis_client: any = _redis_result[0];
+    redis_url: str = cast(str, _redis_result[1]);
+    os.environ["REDIS_URL"] = redis_url;
+    os.environ.pop("MONGODB_URI", None);
+
+    try {
+        mem_a = ScaleTieredMemory();
+        mem_b = ScaleTieredMemory();
+        assert mem_a.l2 is not None and mem_b.l2 is not None , "Redis L2 required";
+
+        # Baseline delivery: sibling B is marked, writer A is not (self-suppression).
+        aid1 = uuid4();
+        cast(dict, mem_b.__mem__)[aid1] = "x";
+        cast(dict, mem_a.__mem__)[aid1] = "x";
+        delivered1 = False;
+        deadline = time.time() + 5.0;
+        while time.time() < deadline and not delivered1 {
+            cast(any, mem_a.l2).publish_invalidation(str(aid1), mem_a._l1_id);
+            time.sleep(0.05);
+            if consume_stale(mem_b._l1_id, aid1) {
+                delivered1 = True;
+            }
+        }
+        assert delivered1 , "baseline pub/sub delivery must work";
+        assert not consume_stale(mem_a._l1_id, aid1) , "writer's own L1 must not be marked";
+
+        # Kill the subscriber connection; the listener must reconnect and resume.
+        with contextlib.suppress(Exception) {
+            redis_client.execute_command("CLIENT", "KILL", "TYPE", "pubsub");
+        }
+        time.sleep(1.0);
+
+        aid2 = uuid4();
+        cast(dict, mem_b.__mem__)[aid2] = "y";
+        delivered2 = False;
+        deadline = time.time() + 8.0;
+        while time.time() < deadline and not delivered2 {
+            cast(any, mem_a.l2).publish_invalidation(str(aid2), mem_a._l1_id);
+            time.sleep(0.1);
+            if consume_stale(mem_b._l1_id, aid2) {
+                delivered2 = True;
+            }
+        }
+        assert delivered2 , "delivery must resume after a connection drop";
+    } finally {
+        stop_listener(_process_cache);
+        os.environ.pop("REDIS_URL", None);
+        _reset_process_cache();
+    }
+}
+
+test "L1 invalidation: ensure_listener is idempotent and self-heals" {
+    import time;
+    import from jac_scale.l1_invalidation { ensure_listener, stop_listener }
+
+    _reset_process_cache();
+    _redis_result = _get_redis();
+    redis_url: str = cast(str, _redis_result[1]);
+    cache: dict = {};
+    try {
+        ensure_listener(cache, redis_url, "jac:test:invalidate");
+        first: any = cache.get("l1_listener");
+        assert first is not None and first.is_alive() , "listener must start";
+
+        ensure_listener(cache, redis_url, "jac:test:invalidate");
+        assert cache.get("l1_listener") is first , (
+            "a live listener must be reused, not replaced"
+        );
+
+        # Simulate an unrecoverable death; ensure_listener must replace it.
+        first.stop();
+        first.join(2.0);
+        time.sleep(0.1);
+        assert not first.is_alive() , "listener must stop on request";
+        ensure_listener(cache, redis_url, "jac:test:invalidate");
+        second: any = cache.get("l1_listener");
+        assert second is not None and second is not first , (
+            "a dead listener must be replaced"
+        );
+        assert second.is_alive() , "replacement listener must be running";
+
+        empty: dict = {};
+        ensure_listener(empty, None, "jac:test:invalidate");
+        assert "l1_listener" not in empty , "no listener without a redis url";
+    } finally {
+        stop_listener(cache);
+        os.environ.pop("REDIS_URL", None);
+        _reset_process_cache();
+    }
+}
+
+
+obj _L2CachePerson(Root) {
+    has name: str = "";
+}
+
+
+test "RedisBackend loads carry a field-hash snapshot (L2 parity with L3 loads)" {
+    import from jac_scale.memory_hierarchy { RedisBackend }
+    import from jaclang.runtimelib.changeset { derive_dirty_fields }
+
+    _reset_redis();
+    (rclient, redis_url) = _get_redis();
+    be = RedisBackend(redis_url=cast(str, redis_url));
+
+    person = _L2CachePerson(name="cached").__jac__;
+    person.persistent = True;
+    be.put(person);
+
+    loaded = be.get(person.id);
+    assert loaded is not None , "anchor must round-trip through Redis";
+    assert loaded.archetype.__dict__.get('__jac_field_hashes__') , (
+        "L2-loaded anchors must carry a field-hash snapshot like L3 loads do; "
+        "without one, derive_dirty_fields() is blind for this anchor and the "
+        "collect pass can drop its field mutations (or fall back to full "
+        "rewrites) for the rest of the request"
+    );
+    assert derive_dirty_fields(loaded) == set() , (
+        "a freshly L2-loaded anchor must derive as clean"
+    );
+    loaded.archetype.name = "renamed";
+    assert derive_dirty_fields(loaded) == {'name'} , (
+        "field mutations on an L2-loaded anchor must be derivable"
+    );
 }

@@ -85,7 +85,7 @@ impl StaticAnalysisPass._check_unused_symbols(scope: uni.UniScopeNode) -> None {
 
 """Walk all Name nodes and warn if a name reference was never resolved."""
 impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
-    all_names = mod.get_all_sub_nodes(typ=uni.Name, brute_force=True);
+    all_names = mod.get_all_sub_nodes(typ=uni.Name);
     for name_nd in all_names {
         if name_nd.sym {
             continue;
@@ -111,6 +111,19 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         # Skip keyword argument keys (e.g., `name` in `name="check"`)
         if isinstance(parent, uni.KWPair) and parent.key is name_nd {
             continue;
+        }
+        # Hard-error unresolved types in native/clib annotation positions (E2018).
+        if not name_nd.is_kwesc {
+            native_position = self._native_type_position(name_nd);
+            if native_position is not None {
+                self.emit(
+                    E2018,
+                    node_override=name_nd,
+                    name=name_nd.value,
+                    position=native_position
+                );
+                continue;
+            }
         }
         # Skip names that are part of import statements
         if name_nd.find_parent_of_type(uni.Import) is not None {
@@ -200,6 +213,41 @@ impl StaticAnalysisPass._osp_shape_position(name_nd: uni.Name) -> (str | None) {
     return None;
 }
 
+"""Return a position label for an undefined type name in a native annotation, else None.
+
+Applies to clib import declarations (always) and type annotations in native-context
+code (`.na.jac` / `na {}`). Mirrors `_osp_shape_position`: bounded walk to the
+enclosing `SubTag` or function return type, then checks context."""
+impl StaticAnalysisPass._native_type_position(name_nd: uni.Name) -> (str | None) {
+    cur: uni.UniNode = name_nd;
+    parent = cur.parent;
+    in_type_pos = False;
+    # Bound the walk so an unrelated nested name can't reach an ancestor tag.
+    for _ in range(8) {
+        if parent is None {
+            break;
+        }
+        if isinstance(parent, uni.SubTag)
+        or (isinstance(parent, uni.FuncSignature) and parent.return_type is cur) {
+            in_type_pos = True;
+            break;
+        }
+        cur = parent;
+        parent = cur.parent;
+    }
+    if not in_type_pos {
+        return None;
+    }
+    imp = name_nd.find_parent_of_type(uni.Import);
+    if imp is not None and imp.clib_decls {
+        return "C library declaration type position";
+    }
+    if name_nd.in_native_context() {
+        return "native type annotation position";
+    }
+    return None;
+}
+
 """Detect unreachable code by scanning code blocks for statements after return/break/continue."""
 impl StaticAnalysisPass._check_unreachable_code(mod: uni.Module) -> None {
     # Collect all code body containers
@@ -215,7 +263,7 @@ impl StaticAnalysisPass._check_unreachable_code(mod: uni.Module) -> None {
     ];
     containers: list = [];
     for typ in container_types {
-        containers.extend(mod.get_all_sub_nodes(typ=typ, brute_force=True));
+        containers.extend(mod.get_all_sub_nodes(typ=typ));
     }
 
     for container in containers {
@@ -248,7 +296,7 @@ f-string without placeholders, redundant boolean comparison, overly broad except
 return in finally, disengage outside walker."""
 impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
     # W2070: division by zero
-    for nd in mod.get_all_sub_nodes(typ=uni.BinaryExpr, brute_force=True) {
+    for nd in mod.get_all_sub_nodes(typ=uni.BinaryExpr) {
         if nd.op is not None and isinstance(nd.op, uni.Token) {
             if nd.op.value in ("/", "//", "%") {
                 if isinstance(nd.right, uni.Int) and nd.right.value == "0" {
@@ -261,7 +309,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
     }
 
     # W2058: None comparison with == or !=
-    for nd in mod.get_all_sub_nodes(typ=uni.CompareExpr, brute_force=True) {
+    for nd in mod.get_all_sub_nodes(typ=uni.CompareExpr) {
         for (i, op) in enumerate(nd.ops) {
             if op.value in ("==", "!=") {
                 right = nd.rights[i] if i < len(nd.rights) else None;
@@ -274,7 +322,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
     }
 
     # W2063: self-assignment (x = x)
-    for nd in mod.get_all_sub_nodes(typ=uni.Assignment, brute_force=True) {
+    for nd in mod.get_all_sub_nodes(typ=uni.Assignment) {
         if nd.aug_op is not None or nd.value is None {
             continue;
         }
@@ -289,7 +337,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
     }
 
     # W2074: f-string with no placeholders
-    for nd in mod.get_all_sub_nodes(typ=uni.FString, brute_force=True) {
+    for nd in mod.get_all_sub_nodes(typ=uni.FString) {
         has_expr = False;
         for part in nd.parts {
             if isinstance(part, uni.FormattedValue) {
@@ -303,7 +351,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
     }
 
     # W2075: redundant boolean comparison (x == True, x == False)
-    for nd in mod.get_all_sub_nodes(typ=uni.CompareExpr, brute_force=True) {
+    for nd in mod.get_all_sub_nodes(typ=uni.CompareExpr) {
         for (i, op) in enumerate(nd.ops) {
             if op.value in ("==", "!=", "is", "is not") {
                 right = nd.rights[i] if i < len(nd.rights) else None;
@@ -315,7 +363,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
     }
 
     # E2055: return in finally block
-    for nd in mod.get_all_sub_nodes(typ=uni.FinallyStmt, brute_force=True) {
+    for nd in mod.get_all_sub_nodes(typ=uni.FinallyStmt) {
         for stmt in nd.body {
             if isinstance(stmt, uni.ReturnStmt) {
                 self.emit(E2055, node_override=stmt);
@@ -324,15 +372,13 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
     }
 
     # E2083: disengage outside walker
-    for nd in mod.get_all_sub_nodes(typ=uni.DisengageStmt, brute_force=True) {
+    for nd in mod.get_all_sub_nodes(typ=uni.DisengageStmt) {
         # Walk up to find if we're inside a walker ability
         in_walker = False;
         parent = nd.parent;
         while parent is not None {
             if isinstance(parent, uni.Archetype) {
-                if parent.arch_type is not None
-                and isinstance(parent.arch_type, uni.Token)
-                and parent.arch_type.value == "walker" {
+                if parent.arch_kind == "walker" {
                     in_walker = True;
                 }
                 break;
@@ -341,6 +387,18 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
         }
         if not in_walker {
             self.emit(E2083, node_override=nd);
+        }
+    }
+
+    # E2027: an edge endpoint clause `: Src --> Tgt` is only meaningful on edges.
+    for nd in mod.get_all_sub_nodes(typ=uni.Archetype) {
+        if nd.src_endpoint is not None and nd.arch_kind != "edge" {
+            self.emit(
+                E2027,
+                node_override=nd.src_endpoint,
+                arch_type=(nd.arch_kind or nd.arch_type.value),
+                name=nd.name.value
+            );
         }
     }
 }
@@ -368,7 +426,7 @@ impl StaticAnalysisPass._check_redundant_imports(mod: uni.Module) -> None {
     if not registry {
         return;
     }
-    for nd in mod.get_all_sub_nodes(typ=uni.Import, brute_force=True) {
+    for nd in mod.get_all_sub_nodes(typ=uni.Import) {
         if nd.from_loc is None {
             continue;
         }

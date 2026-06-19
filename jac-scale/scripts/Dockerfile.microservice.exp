@@ -56,4 +56,10 @@ bad = [(n, l) for n, l in locs.items() if not l.startswith('/build/')]; \
 assert not bad, f'expected local-source install, got PyPI: {bad}'; \
 print('local-source install verified:', locs)"
 
+# Build identity (B-01): auto-build passes --build-arg JAC_BUILD_SHA
+# (12-char git commit SHA, +`-dirty` on uncommitted changes); kept LAST so
+# a changing SHA only rebuilds this tiny build-time layer.
+ARG JAC_BUILD_SHA=unknown
+ENV JAC_BUILD_SHA=${JAC_BUILD_SHA}
+
 EXPOSE 8000

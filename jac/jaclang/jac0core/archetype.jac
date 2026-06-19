@@ -114,7 +114,11 @@ obj Anchor {
 obj NodeAnchor(Anchor) {
     has archetype: NodeArchetype,
         edges: list[EdgeAnchor],
-        topology_index_data: (bytes | None) = None;
+        topology_index_data: (bytes | None) = None,
+        # Optimistic-concurrency version. The backend CASes on this when
+        # flushing edge-list changes: a concurrent committer that bumped it
+        # makes this request's commit conflict, triggering walker replay.
+        version: int = 0;
 
     def __getstate__ -> dict[(str, object)];
     def is_populated -> bool;
@@ -228,6 +232,17 @@ obj Root(NodeArchetype) {
 
     @cached_property
     def __jac__ -> NodeAnchor;
+
+    """Dynamic-attribute hook backing `root.shared` — the deployment's
+    shared root: the root every unauthenticated request runs on. Lets any
+    walker address the public graph without an `allroots()` scan; normal
+    permission checks still apply. In single-user contexts (CLI, scripts)
+    this is the current root itself. Deliberately NOT a property: the
+    serializer walks `dir()` for non-callable attributes, so a property
+    would be evaluated (and recursed into) during persistence and leak a
+    computed `shared` field into every serialized Root.
+    """
+    def __getattr__(name: str) -> Root;
 
     def __repr__ -> str;
 }

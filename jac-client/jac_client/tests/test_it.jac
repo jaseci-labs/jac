@@ -82,7 +82,7 @@ def _wait_for_endpoint(
 """Create a Jac app, copy all-in-one into it, install packages from jac.toml, then verify endpoints."""
 test "all in one app endpoints" {
     print(
-        "[DEBUG] Starting test_all_in_one_app_endpoints using jac create --use client + @all-in-one"
+        "[DEBUG] Starting test_all_in_one_app_endpoints using jac create --kind mobile + @all-in-one"
     );
 
     # Resolve the path to jac_client/examples/all-in-one relative to this test file.
@@ -103,9 +103,9 @@ test "all in one app endpoints" {
             print(f"[DEBUG] Changed working directory to {temp_dir}");
 
             # 1. Create a new Jac app via CLI
-            print(f"[DEBUG] Running 'jac create --use client {app_name}'");
+            print(f"[DEBUG] Running 'jac create --kind mobile {app_name}'");
             process = Popen(
-                ["jac", "create", "--use", "client", app_name],
+                ["jac", "create", "--kind", "mobile", app_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -115,20 +115,20 @@ test "all in one app endpoints" {
             returncode = process.returncode;
 
             print(
-                "[DEBUG] 'jac create --use client' completed "
+                "[DEBUG] 'jac create --kind mobile' completed "
                 f"returncode={returncode}\n"
                 f"STDOUT:\n{stdout}\n"
                 f"STDERR:\n{stderr}\n"
             );
 
-            if returncode != 0 and "unrecognized arguments: --use" in stderr {
+            if returncode != 0 and "unrecognized arguments: --kind" in stderr {
                 pytest.fail(
-                    "Test failed: installed `jac` CLI does not support `create --use client`."
+                    "Test failed: installed `jac` CLI does not support `create --kind mobile`."
                 );
             }
 
             assert returncode == 0 , (
-                f"jac create --use client failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
+                f"jac create --kind mobile failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
             );
 
             project_path = os.path.join(temp_dir, app_name);
@@ -759,7 +759,7 @@ test "all in one app endpoints" {
     }
 }
 
-"""Test that a default jac create --use client app renders correctly when served."""
+"""Test that a default jac create --kind mobile app renders correctly when served."""
 test "default client app renders" {
     print("[DEBUG] Starting test_default_client_app_renders");
 
@@ -776,10 +776,10 @@ test "default client app renders" {
             jac_cmd = get_jac_command();
             env = get_env_with_npm();
             print(
-                f"[DEBUG] Running '{' '.join(jac_cmd)} create --use client {app_name}'"
+                f"[DEBUG] Running '{' '.join(jac_cmd)} create --kind mobile {app_name}'"
             );
             process = Popen(
-                [*jac_cmd, "create", "--use", "client", app_name],
+                [*jac_cmd, "create", "--kind", "mobile", app_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -790,19 +790,19 @@ test "default client app renders" {
             returncode = process.returncode;
 
             print(
-                f"[DEBUG] 'jac create --use client' completed returncode={returncode}\n"
+                f"[DEBUG] 'jac create --kind mobile' completed returncode={returncode}\n"
                 f"STDOUT:\n{stdout}\n"
                 f"STDERR:\n{stderr}\n"
             );
 
-            if returncode != 0 and "unrecognized arguments: --use" in stderr {
+            if returncode != 0 and "unrecognized arguments: --kind" in stderr {
                 pytest.fail(
-                    "Test failed: installed `jac` CLI does not support `create --use client`."
+                    "Test failed: installed `jac` CLI does not support `create --kind mobile`."
                 );
             }
 
             assert returncode == 0 , (
-                f"jac create --use client failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
+                f"jac create --kind mobile failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
             );
 
             project_path = os.path.join(temp_dir, app_name);
@@ -996,9 +996,9 @@ test "configurable api base url in bundle" {
             # 1. Create a client app and copy all-in-one into it
             jac_cmd = get_jac_command();
             env = get_env_with_npm();
-            print(f"[DEBUG] Running 'jac create --use client {app_name}'");
+            print(f"[DEBUG] Running 'jac create --kind mobile {app_name}'");
             process = Popen(
-                [*jac_cmd, "create", "--use", "client", app_name],
+                [*jac_cmd, "create", "--kind", "mobile", app_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -1009,19 +1009,19 @@ test "configurable api base url in bundle" {
             returncode = process.returncode;
 
             print(
-                f"[DEBUG] 'jac create --use client' completed returncode={returncode}\n"
+                f"[DEBUG] 'jac create --kind mobile' completed returncode={returncode}\n"
                 f"STDOUT:\n{stdout}\n"
                 f"STDERR:\n{stderr}\n"
             );
 
-            if returncode != 0 and "unrecognized arguments: --use" in stderr {
+            if returncode != 0 and "unrecognized arguments: --kind" in stderr {
                 pytest.fail(
-                    "Test failed: installed `jac` CLI does not support `create --use client`."
+                    "Test failed: installed `jac` CLI does not support `create --kind mobile`."
                 );
             }
 
             assert returncode == 0 , (
-                f"jac create --use client failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
+                f"jac create --kind mobile failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
             );
 
             project_path = os.path.join(temp_dir, app_name);
@@ -1197,7 +1197,7 @@ def _setup_all_in_one_project(temp_dir: str, app_name: str) -> str {
 
     # Create a new Jac client app
     process = Popen(
-        [*jac_cmd, "create", "--use", "client", app_name],
+        [*jac_cmd, "create", "--kind", "mobile", app_name],
         stdin=PIPE,
         stdout=PIPE,
         stderr=PIPE,
@@ -1205,13 +1205,13 @@ def _setup_all_in_one_project(temp_dir: str, app_name: str) -> str {
         env=env,
     );
     (stdout, stderr) = process.communicate();
-    if process.returncode != 0 and "unrecognized arguments: --use" in stderr {
+    if process.returncode != 0 and "unrecognized arguments: --kind" in stderr {
         pytest.fail(
-            "Test failed: installed `jac` CLI does not support `create --use client`."
+            "Test failed: installed `jac` CLI does not support `create --kind mobile`."
         );
     }
     assert process.returncode == 0 , (
-        f"jac create --use client failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
+        f"jac create --kind mobile failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
     );
 
     project_path = os.path.join(temp_dir, app_name);
@@ -1575,10 +1575,10 @@ test "pwa build generates manifest and service worker" {
             jac_cmd = get_jac_command();
             env = get_env_with_npm();
             print(
-                f"[DEBUG] Running '{' '.join(jac_cmd)} create --use client {app_name}'"
+                f"[DEBUG] Running '{' '.join(jac_cmd)} create --kind mobile {app_name}'"
             );
             process = Popen(
-                [*jac_cmd, "create", "--use", "client", app_name],
+                [*jac_cmd, "create", "--kind", "mobile", app_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -1589,19 +1589,19 @@ test "pwa build generates manifest and service worker" {
             returncode = process.returncode;
 
             print(
-                f"[DEBUG] 'jac create --use client' completed returncode={returncode}\n"
+                f"[DEBUG] 'jac create --kind mobile' completed returncode={returncode}\n"
                 f"STDOUT:\n{stdout}\n"
                 f"STDERR:\n{stderr}\n"
             );
 
-            if returncode != 0 and "unrecognized arguments: --use" in stderr {
+            if returncode != 0 and "unrecognized arguments: --kind" in stderr {
                 pytest.fail(
-                    "Test failed: installed `jac` CLI does not support `create --use client`."
+                    "Test failed: installed `jac` CLI does not support `create --kind mobile`."
                 );
             }
 
             assert returncode == 0 , (
-                f"jac create --use client failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
+                f"jac create --kind mobile failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}\n"
             );
 
             project_path = os.path.join(temp_dir, app_name);

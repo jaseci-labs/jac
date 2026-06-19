@@ -55,8 +55,10 @@ obj AWSProvider(ClusterProvider) {
     }
 
     def prometheus_scrape_port(container_port: int) -> int {
-        # AWS LoadBalancer listens on port 80; Prometheus must scrape that port.
-        return 80;
+        # Prometheus scrapes the in-cluster `{app_name}-service` ClusterIP, which
+        # is always created on the container port (the external LoadBalancer's
+        # port 80 is irrelevant for in-cluster scraping).
+        return container_port;
     }
 
     def ingress_controller_service(

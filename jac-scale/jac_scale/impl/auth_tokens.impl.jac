@@ -7,7 +7,7 @@ impl AuthTokenStore.postinit -> None {
     db_cfg = get_scale_config().get_database_config();
     if db_cfg.get('mongodb_uri') {
         try {
-            self._db = Db(client=get_mongo_client(), db_name='jac_db');
+            self._db = MongoDb(client=get_mongo_client(), db_name='jac_db');
             # TTL index on expires_at - Mongo prunes expired records automatically.
             try {
                 col = self._db._get_mongo_collection(self._collection);

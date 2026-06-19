@@ -20,6 +20,10 @@ impl Arg.create(
     if auto_short is None and len(name) > 0 and kind != ArgKind.POSITIONAL {
         auto_short = name[0];
     }
+    # Required by default when a positional has no default value.
+    if kind == ArgKind.POSITIONAL and `default is None {
+        required = True;
+    }
     return Arg(
         name=name,
         kind=kind,

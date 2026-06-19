@@ -31,6 +31,7 @@ Bug index:
   #HOGEN-1 - TypeVars not bound through function-typed args; blocks generic decorator-application
   #WITHAS-1 - `with cm() as x` bound x to the manager not __enter__'s result; async with used sync protocol
   #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
+  #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
   #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
 """
 
@@ -893,6 +894,15 @@ test "bug_withas_1_async_with_as_binds_and_checks" {
     assert program.errors_had == [] , (
         "Bug #WITHAS-1: `async with cm() as x` must verify the async protocol "
         "and bind x to the awaited __aenter__ result. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_byte_literal_typed_as_bytes" {
+    program = compile_and_check("checker_bytes_literal.jac");
+    assert program.errors_had == [] , (
+        "Bug : a byte-string literal (b\"...\") must be typed as bytes, "
+        "so it assigns to bytes and concatenates with other bytes. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

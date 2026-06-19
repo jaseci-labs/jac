@@ -1,6 +1,7 @@
 """Tests for the new factory-based architecture."""
 
 import unittest.mock;
+import from kubernetes.client.exceptions { ApiException }
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
 import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
@@ -8,6 +9,7 @@ import from jac_scale.factories.registry_factory { ImageRegistryFactory }
 import from jac_scale.factories.utility_factory { UtilityFactory }
 import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger }
 import from jac_scale.abstractions.autoscalers.hpa_autoscaler { HPAAutoscaler }
+import from jac_scale.abstractions.autoscalers.keda_autoscaler { KEDAAutoscaler }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
 test "deployment target factory creates kubernetes target" {
@@ -285,6 +287,117 @@ test "hpa autoscaler build manifests produces correct dict" {
         }
     };
     assert result == expected;
+}
+
+test "autoscaler factory creates keda autoscaler for engine=keda" {
+    # Ensures "keda" is a registered built-in engine — not just a custom override.
+    # This test will fail until KEDAAutoscaler and its factory registration exist.
+    autoscaler = AutoscalerFactory.create("keda", {});
+    assert isinstance(autoscaler, KEDAAutoscaler);
+}
+
+test "autoscaler factory error message lists both hpa and keda as valid engines" {
+    # When an operator typos the engine name they need to see valid options in the
+    # error.  A message that only says "hpa" after Phase 2 is shipped is misleading.
+    raised = False;
+    try {
+        AutoscalerFactory.create("unknown-engine", {});
+    } except ValueError as e {
+        raised = True;
+        assert "hpa" in str(e);
+        assert "keda" in str(e);
+    }
+    assert raised , "Expected ValueError for unknown engine";
+}
+
+test "hpa resource_name_for returns target name with hpa suffix" {
+    # Callers that formerly hardcoded f'{name}-hpa' must switch to this method.
+    # The test pins the exact contract so a rename doesn't silently break destroy.
+    hpa = AutoscalerFactory.create("hpa", {});
+    assert hpa.resource_name_for("my-app") == "my-app-hpa";
+}
+
+test "keda resource_name_for returns target name with scaledobject suffix" {
+    # destroy() on the Kubernetes target looks up the ScaledObject by name.
+    # A suffix mismatch means destroy() tries to delete a non-existent resource
+    # and the ScaledObject stays alive, continuing to scale the workload.
+    keda = AutoscalerFactory.create("keda", {});
+    assert keda.resource_name_for("my-app") == "my-app-scaledobject";
+}
+
+test "hpa apply deletes competing ScaledObject when switching from keda engine" {
+    # If an operator switches autoscaler_engine from keda to hpa and redeploys,
+    # the old ScaledObject stays on the cluster and fights the new HPA for
+    # spec.replicas.  apply() must attempt to remove it before writing the HPA.
+    spec = AutoscalerSpec(
+        scale_target_name="svc-deployment",
+        app_name="svc",
+        namespace="default",
+        triggers=[Trigger(type="cpu", metadata={})]
+    );
+    with unittest.mock.patch(
+        "jac_scale.abstractions.autoscalers.hpa_autoscaler.AutoscalingV2Api"
+    ) as mock_v2_cls {
+        with unittest.mock.patch(
+            "jac_scale.abstractions.autoscalers.hpa_autoscaler.client"
+        ) as mock_client {
+            mock_v2_cls.return_value.read_namespaced_horizontal_pod_autoscaler.side_effect = ApiException(
+                status=404
+            );
+            HPAAutoscaler().apply(spec);
+            mock_client.CustomObjectsApi.return_value.delete_namespaced_custom_object.assert_called_once_with(
+                group="keda.sh",
+                version="v1alpha1",
+                namespace="default",
+                plural="scaledobjects",
+                name="svc-scaledobject"
+            );
+        }
+    }
+}
+
+test "hpa apply engine-switch ScaledObject deletion is a no-op when no ScaledObject exists" {
+    # 404 or 422 on the ScaledObject delete means nothing to clean up; must not raise.
+    spec = AutoscalerSpec(
+        scale_target_name="svc-deployment",
+        app_name="svc",
+        namespace="default",
+        triggers=[Trigger(type="cpu", metadata={})]
+    );
+    with unittest.mock.patch(
+        "jac_scale.abstractions.autoscalers.hpa_autoscaler.AutoscalingV2Api"
+    ) as mock_v2_cls {
+        with unittest.mock.patch(
+            "jac_scale.abstractions.autoscalers.hpa_autoscaler.client"
+        ) as mock_client {
+            mock_v2_cls.return_value.read_namespaced_horizontal_pod_autoscaler.side_effect = ApiException(
+                status=404
+            );
+            mock_client.CustomObjectsApi.return_value.delete_namespaced_custom_object.side_effect = ApiException(
+                status=404
+            );
+            result = HPAAutoscaler().apply(spec);
+            assert result == True;
+        }
+    }
+}
+
+test "hpa destroy collection also sweeps competing KEDA resources" {
+    # destroy_collection is called on teardown.  Any ScaledObjects and
+    # TriggerAuthentications left from a prior keda-engine deploy must be removed.
+    with unittest.mock.patch(
+        "jac_scale.abstractions.autoscalers.hpa_autoscaler.AutoscalingV2Api"
+    ) {
+        with unittest.mock.patch(
+            "jac_scale.abstractions.autoscalers.hpa_autoscaler.client"
+        ) as mock_client {
+            mock_client.CustomObjectsApi.return_value.list_namespaced_custom_object.return_value = {
+                "items": []
+            };
+            HPAAutoscaler().destroy_collection("default", "managed=jac-scale");
+            assert mock_client.CustomObjectsApi.return_value.list_namespaced_custom_object.call_count == 2;
+        }
+    }
 }
 
 test "image registry factory register and create custom registry" {

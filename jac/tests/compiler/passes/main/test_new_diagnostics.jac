@@ -403,6 +403,14 @@ test "E0076: duplicate method definition" {
     assert has_diagnostic_code(prog, "E0076");
 }
 
+test "E0076: Python __init__ and init are distinct methods" {
+    # Issue #6556: a Python class with both `__init__` and a plain `init`
+    # method (e.g. Pillow's PIL.ImageFile.PyCodec) is valid Python; raising
+    # `__init__` to Jac's `init` constructor must not collide with it.
+    (prog, _) = compile_only("parser_E0076_py_init_distinct.py");
+    assert not has_diagnostic_code(prog, "E0076");
+}
+
 test "E0077: empty f-string expression" {
     pytest.skip("E0077 not yet implemented");
     (has_err, _) = parse_and_validate('with entry { x = f"hello {}"; }');
@@ -1098,6 +1106,43 @@ test "redundant `{...}` slot wrapping inside slot body raises E2023" {
     assert parse_cascade == 0 , (
         f"E2023 recovery must avoid the E0001/E0002 parse cascade, got {parse_cascade} E0002 errors"
     );
+}
+
+test "redundant `{expr}` slot wrapping inside slot body raises E2028 (issue #6733)" {
+    # `RedundantExprSlotWrap` re-wraps three *expression* bodies — a string
+    # literal `{"none"}`, an arithmetic expr `{n + 1}` and a JSX element
+    # `{<li>{n}</li>}`. Before #6733 these fell through to the misleading
+    # `E0002 Missing ';'` (pointing at the *next* line). The parser now
+    # recovers the wrap and reports the redundancy as E2028 at the `{` — the
+    # expression sibling of the control-flow E2023, co-located in the parser —
+    # with no E0002 cascade.
+    (program, _) = compile_and_check("view_body_rules.jac");
+    n = count_diagnostic_code(program, "E2028");
+    assert n >= 3 , (
+        f"E2028 should fire once per redundant single-expression wrap, got {n}"
+    );
+    # The two statement wraps (`RedundantSlotWrap`) stay the E2023 error; the
+    # expression wraps must not inflate that count.
+    e2023 = count_diagnostic_code(program, "E2023");
+    assert e2023 == 2 , (
+        f"only the two control-flow wraps stay E2023 errors, got {e2023}"
+    );
+    parse_cascade = count_diagnostic_code(program, "E0002");
+    assert parse_cascade == 0 , (
+        f"E2028 recovery must avoid the E0002 parse cascade, got {parse_cascade} E0002 errors"
+    );
+}
+
+test "genuine collection literals in a slot body are not mistaken for slot wraps" {
+    # A multi-element set `{1, 2}` and a dict `{a: 1}` are real collection
+    # expressions, not redundant single-expression slot wraps — the `,`/`:`
+    # disambiguates them, so the parser leaves them as collection literals and
+    # must NOT raise E2028. Uses `parse_with_prog` so the parser diagnostics
+    # (E2028 is parser-emitted) are captured.
+    src = 'def:pub C(a: int) -> JsxElement { ' + 'return <ul>{for x in [a] { {1, 2}; {a: 1}; }}</ul>; }';
+    (prog, _) = parse_with_prog(src);
+    n = count_diagnostic_code(prog, "E2028");
+    assert n == 0 , f"genuine collection literals must not raise E2028, got {n}";
 }
 
 test "view body check warns on a keyless while (W2019)" {

@@ -52,11 +52,9 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     } elif isinstance(nd, uni.UnaryExpr) {
         _result = self._codegen_unary(nd);
     } elif isinstance(nd, uni.FuncCall) {
-        _call_result = self._codegen_call(nd);
-        if _call_result is not None and isinstance(_call_result.type, ir.PointerType) {
-            self._mark_owned(_call_result);
-        }
-        _result = _call_result;
+        # Ownership of the pointer result is applied at the dispatch tail
+        # below, from the central invariant.
+        _result = self._codegen_call(nd);
     } elif isinstance(nd, uni.AtomTrailer) {
         _result = self._codegen_atom_trailer(nd);
     } elif isinstance(nd, uni.BoolExpr) {
@@ -111,6 +109,11 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         # independent tasks; no actual parallelism.
     } elif isinstance(nd, uni.ConcurrentExpr) {
         _result = self._codegen_expr(nd.target);
+    } elif isinstance(nd, uni.EdgeRefTrailer) {
+        # `[-->]` / `[->:Edge:->]`: query the native edge adjacency from `here`,
+        # yielding a `list` of neighbor handles (the kernel's `visit` target
+        # shape). issue #6146.
+        _result = self._codegen_edge_ref_trailer(nd);
     } elif (
         isinstance(nd, uni.Slice)
         or isinstance(nd, uni.IndexSlice)
@@ -135,6 +138,17 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     # allocations without needing a loc parameter threaded through.
     if _result is not None {
         _result.jac_loc = _jac_loc;
+        # The single seam where AST-result ownership is applied: the central
+        # invariant (compiler/ownership.jac) says which expression results
+        # arrive carrying a +1 reference; emission marks exactly those.
+        # Emitter-created temporaries (boxing, coercions, concat buffers)
+        # are marked by their own mechanics at creation.
+        if isinstance(_result.type, ir.PointerType) {
+            import from jaclang.compiler.ownership { Ownership, result_ownership }
+            if result_ownership(nd) == Ownership.OWNED {
+                self._mark_owned(_result);
+            }
+        }
     }
     return _result;
 }
@@ -163,36 +177,6 @@ impl NaIRGenPass._codegen_required(nd: (uni.UniNode | None)) -> (ir.Value | None
     return val;
 }
 
-"""Collect free variable names referenced in a lambda body that are not
-in the lambda's own parameter list. Walks the AST looking for Name nodes.
-"""
-impl NaIRGenPass._find_free_vars(body: object, param_names: list[str]) -> list[str] {
-    free: list[str] = [];
-    seen: set[str] = set(param_names);
-    stack: list = [body] if not isinstance(body, list) else list(body);
-    while stack {
-        cur = stack.pop();
-        if cur is None {
-            continue;
-        }
-        if isinstance(cur, uni.Name) {
-            vname = cur.value;
-            if vname not in seen and vname in self.local_vars {
-                seen.add(vname);
-                free.append(vname);
-            }
-            continue;
-        }
-        # Walk children via kid list
-        if cur?.kid and cur.kid {
-            for child in cur.kid {
-                stack.append(child);
-            }
-        }
-    }
-    return free;
-}
-
 """Generate IR for a lambda expression.
 
 Emits an anonymous LLVM function from the lambda body and returns a
@@ -209,11 +193,9 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     if sig is not None and sig.params {
         for p in sig.params {
             p_name = p.name.value if p?.name and p.name else f"arg{len(param_names)}";
-            # Pass the annotation Expr inside the SubTag (not the SubTag
-            # wrapper); SubTag has no `.type`, so the unified-path lowering
-            # in _resolve_jac_type only kicks in when given .tag.
-            p_type = self._resolve_jac_type(p.type_tag.tag)
-                if p?.type_tag and p.type_tag and p.type_tag?.tag
+            # ParamVar.type is checker-stamped; lower it directly.
+            p_type = self._resolve_jac_type(p)
+                if p?.type_tag and p.type_tag is not None
                 else ir.IntType(64);
             param_types.append(p_type);
             param_names.append(p_name);
@@ -224,8 +206,17 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         ret_type = self._resolve_jac_type(sig.return_type);
     }
     # --- Detect captured (free) variables from the enclosing scope ---
+    # Free variables come from the symbol-table-derived `captures` fact on
+    # the lambda; the `local_vars` filter below keeps only names with live
+    # allocas in the function currently being generated (e.g. it excludes
+    # sibling nested functions, which live in func_symtab instead).
     captures: list[tuple] = [];  # list of (name, ir.Value, ir.Type)
-    free_var_names = self._find_free_vars(nd.body, param_names);
+    free_var_names: list[str] = [];
+    for cap_sym in nd.captures {
+        if cap_sym.sym_name not in free_var_names {
+            free_var_names.append(cap_sym.sym_name);
+        }
+    }
     for fv_name in free_var_names {
         if fv_name in self.local_vars {
             alloca = self.local_vars[fv_name];
@@ -310,10 +301,6 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     var_name = nd.value;
     if var_name in self.local_vars {
         alloca = self.local_vars[var_name];
-        # Set type node hint for subsequent chained access
-        if var_name in self.var_type_node {
-            self._last_type_node_hint = self.var_type_node[var_name];
-        }
         return self.builder.load(alloca, name=var_name);
     }
     if var_name in self.func_symtab {
@@ -408,6 +395,11 @@ impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
 
 """Generate binary expression."""
 impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    # Edge connect (`a ++> b`, `a +>: Edge() :+> b`): the operator node is a
+    # ConnectOp, not a Token. Lower to the native edge adjacency (issue #6146).
+    if isinstance(nd.op, uni.ConnectOp) {
+        return self._codegen_connect(nd);
+    }
     op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
     # Inspect the op before recursing into operands. Some operators
     # (walrus `:=`, pipe-forward `|>`) have non-standard evaluation
@@ -478,15 +470,42 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
     } elif right_is_walker {
         (walker_name, walker_val, loc_val) = (right_name, right_val, left_val);
     } else {
-        self.emit(E5090, node_override=nd, kind="binary operator", name="KW_SPAWN");
+        # An IMPORTED walker is not in the local OSP model's kind map, so neither
+        # side classifies as a walker here — name the import in the E5090
+        # instead of leaving a generic unsupported-op (#6636 / #6146).
+        self.emit(
+            E5090,
+            node_override=nd,
+            kind="binary operator",
+            name="KW_SPAWN",
+            help_text=self._xmod_osp_help([left_name, right_name])
+        );
         return left_val;
+    }
+    # A LOCAL walker spawned on an imported location cannot dispatch: the
+    # location's constructor (in the defining module's IR) stamps that
+    # module's tag numbering, mismatching the local descriptor tables. Fail
+    # loudly with the import named rather than walking garbage tags (#6636).
+    _loc_name = right_name if left_is_walker else left_name;
+    _xhelp = self._xmod_osp_help([_loc_name]);
+    if _xhelp is not None {
+        self.emit(
+            E5090,
+            node_override=nd,
+            kind="binary operator",
+            name="KW_SPAWN",
+            help_text=_xhelp
+        );
+        return walker_val;
     }
     # `walker spawn loc` lowers to the portable osp_kernel (issue #6146):
     # dispatch by the location's RUNTIME type tag, so computed locations,
     # subtype / tuple triggers, exit abilities, and nested spawns all work. The
     # kernel + descriptors are always registered for an OSP program (see
     # _register_archetypes Pass 4.7), so this is the single spawn path.
-    if (walker_name in self.osp_tags)
+    _spawn_model = self.ir_in.gen.osp_model;
+    if (_spawn_model is not None)
+    and (walker_name in _spawn_model.tags)
     and (self._osp_rt_global is not None)
     and ("osp_spawn" in self.func_symtab) {
         return self._codegen_kernel_spawn(walker_name, walker_val, loc_val);
@@ -524,8 +543,13 @@ impl NaIRGenPass._codegen_kernel_spawn(
     self._rc_call_with_ctx(
         _h["append"], [_starts, self._coerce_type(loc_val, i64)], op="append", loc=""
     );
-    # wdesc = (WalkerDesc*) __ospDESC[walker_tag]
-    _wtag = self.osp_tags.get(walker_name, 0);
+    # wdesc = (WalkerDesc*) __ospDESC[walker_local_idx] -- the descriptor table
+    # is keyed by the dense LOCAL index, not the globally-stable hash tag.
+    _ks_model = self.ir_in.gen.osp_model;
+    _wtag = _ks_model.local_index(walker_name) if (_ks_model is not None) else -1;
+    if _wtag < 0 {
+        _wtag = 0;
+    }
     _descp = self.builder.load(
         self.builder.gep(
             self._osp_desc_global,
@@ -553,20 +577,15 @@ impl NaIRGenPass._spawn_operand_name(nd: uni.UniNode) -> (str | None) {
         return self._get_name(nd.target);
     }
     if isinstance(nd, uni.Name) {
-        return self.type_var_map.get(nd.value);
+        return self._struct_name_of(nd);
     }
     return None;
 }
 
-"""True if `name` is a walker archetype."""
+"""True if `name` is a walker archetype, per the shared OSP model's kind map."""
 impl NaIRGenPass._is_walker_arch(name: str) -> bool {
-    arch = self.arch_ast_map.get(name);
-    return (
-        arch is not None
-        and isinstance(arch, uni.Archetype)
-        and arch.arch_type is not None
-        and arch.arch_type.name == Tok.KW_WALKER
-    );
+    _model = self.ir_in.gen.osp_model;
+    return (_model is not None) and (_model.arch_kind.get(name) == "walker");
 }
 
 """Generate comparison expression."""
@@ -795,6 +814,20 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
             }
             return result;
         }
+        # bytes membership: `needle in haystack` — length-aware (#6749). Must
+        # precede the i8* strstr path, which assumes NUL-terminated operands.
+        if self._is_bytes_value(left) and self._is_bytes_value(right) {
+            i64 = ir.IntType(64);
+            is_found = self._emit_bytes_contains(left, right);
+            result = self.builder.zext(is_found, i64, name="by.in.i64");
+            if is_not_in {
+                result = self.builder.icmp_signed(
+                    "==", result, ir.Constant(i64, 0), name="by.notin"
+                );
+                result = self.builder.zext(result, i64, name="by.notin.i64");
+            }
+            return result;
+        }
         # Check if right is a string (i8*): left in right → strstr
         if isinstance(right.type, ir.PointerType)
         and isinstance(left.type, ir.PointerType) {
@@ -950,6 +983,13 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
             zero = ir.Constant(operand.type, 0);
             return self.builder.icmp_signed("==", operand, zero, name="not");
         }
+        # Everything else (containers, floats, pointers): negate the value's
+        # truthiness so `not x` agrees with `if x` -- _to_bool implements
+        # Python semantics (an EMPTY list/dict/set is falsy, not a null one).
+        # Without this, `not <list>` fell through unhandled and the enclosing
+        # statement was dropped, silently inverting kernel guards like
+        # `if not filtered { return False; }` in osp_visit (visit-else).
+        return self.builder.not_(self._to_bool(operand), name="not");
     } elif op == Tok.BW_NOT {
         # Bitwise NOT: ~x = x XOR -1 (all 1s)
         if isinstance(operand.type, ir.IntType) {
@@ -1123,12 +1163,7 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 and "sys" in self._native_stdlib_modules
             ) {
                 if right_name == "argv" {
-                    result = self._emit_sys_argv();
-                    if result is not None {
-                        # Track as list[str] so indexing/iteration works
-                        self.var_list_elem_type["__sys_argv_tmp"] = "ptr";
-                    }
-                    return result;
+                    return self._emit_sys_argv();
                 }
                 if right_name == "platform" {
                     import platform as _plat;
@@ -1162,81 +1197,64 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             if full_name in self.enum_values {
                 return self.enum_values[full_name];
             }
-            # Check enum .value / .name attribute: kind.value, kind.name
-            if (right_name == "value" or right_name == "name")
-            and target_name is not None
-            and target_name in self.var_enum_type {
-                enum_name = self.var_enum_type[target_name];
-                ordinal_val = self._codegen_expr(nd.target);
-                if ordinal_val is not None {
-                    use_name = right_name == "name";
-                    return self._codegen_enum_value_lookup(
-                        enum_name, ordinal_val, use_name=use_name
-                    );
-                }
-            }
-            # Check chained enum .value / .name: self.kind.value
-            if (right_name == "value" or right_name == "name")
-            and isinstance(nd.target, uni.AtomTrailer)
-            and nd.target.is_attr {
-                inner_target = self._get_name(nd.target.target);
-                inner_field = self._get_name(nd.target.right);
-                if inner_target is not None and inner_field is not None {
-                    inner_type = self.type_var_map.get(inner_target);
-                    if inner_type is not None
-                    and inner_type in self.struct_field_enum_type {
-                        enum_name = self.struct_field_enum_type[inner_type].get(
-                            inner_field
+            # Enum .value / .name attribute: kind.value, self.kind.name —
+            # enum-ness comes from the checked type of the target expression
+            # (covers bare vars, params, and chained field access alike).
+            if (right_name == "value" or right_name == "name") {
+                enum_name = self._enum_name_of(nd.target);
+                if enum_name is not None and enum_name in self.enum_types {
+                    ordinal_val = self._codegen_expr(nd.target);
+                    if ordinal_val is not None {
+                        use_name = right_name == "name";
+                        return self._codegen_enum_value_lookup(
+                            enum_name, ordinal_val, use_name=use_name
                         );
-                        if enum_name is not None {
-                            ordinal_val = self._codegen_expr(nd.target);
-                            if ordinal_val is not None {
-                                use_name = right_name == "name";
-                                return self._codegen_enum_value_lookup(
-                                    enum_name, ordinal_val, use_name=use_name
-                                );
-                            }
-                        }
                     }
                 }
             }
-            # Check field access on a known-type variable: self.x, p.x
-            if target_name in self.type_var_map {
-                type_name = self.type_var_map[target_name];
+            # Check field access on a struct-typed target: self.x, p.x —
+            # struct-ness comes from the checked type of the target expression.
+            _fa_type_name = self._struct_name_of(nd.target);
+            if _fa_type_name is not None {
+                type_name = _fa_type_name;
                 obj_val = self._codegen_expr(nd.target);
                 if obj_val is not None {
-                    result = self._codegen_field_access(obj_val, right_name, type_name);
-                    # Set type node hint for chained access
-                    if type_name in self.field_type_node {
-                        self._last_type_node_hint = self.field_type_node[type_name].get(
-                            right_name
-                        );
-                    }
-                    return result;
+                    return self._codegen_field_access(obj_val, right_name, type_name);
                 }
             }
         }
         # Chained field access: expr.field where expr is a complex expression
+        # (a subscript, call, ...). Prefer the checker-resolved struct type of
+        # the receiver, then fall back to inferring it from the LLVM value type.
+        # The checker path is what resolves an edge-ref / node-ref element
+        # (`ports[0].cx`), whose value is a raw i64 handle that LLVM-type
+        # inference cannot name -- _codegen_field_access recovers the pointer
+        # from the handle once it knows the struct (issue #6646).
         if right_name is not None {
             obj_val = self._codegen_expr(nd.target);
             if obj_val is not None {
-                type_name = self._infer_type_name(obj_val);
-                if type_name is not None {
-                    result = self._codegen_field_access(obj_val, right_name, type_name);
-                    if type_name in self.field_type_node {
-                        self._last_type_node_hint = self.field_type_node[type_name].get(
-                            right_name
-                        );
-                    }
-                    return result;
+                type_name = self._struct_name_of(nd.target);
+                if type_name is None {
+                    type_name = self._infer_type_name(obj_val);
                 }
+                if type_name is not None {
+                    return self._codegen_field_access(obj_val, right_name, type_name);
+                }
+                # An unresolved receiver here (no checker struct type, no
+                # LLVM-inferable struct) falls through to the dead-end E5090
+                # below. The common case -- a field read off an untyped (`any`)
+                # graph-traversal handle -- is rejected pre-codegen by the
+                # native capability authority (`native_capability_violations`,
+                # issues #6646 / #6657), so this module never reaches codegen.
             }
         }
     }
     # Handle slice/range attribute access: sl.start, sl.stop, sl.step
     if nd.is_attr and target_name is not None and right_name is not None {
         _slice_field_map: dict[(str, int)] = {"start": 0, "stop": 1, "step": 2};
-        if (target_name in self.var_slice and right_name in _slice_field_map) {
+        if (
+            self._type_key_of(nd.target) == "slice" and right_name in _slice_field_map
+        ) {
             obj_val = self._codegen_expr(nd.target);
             if obj_val is not None {
                 i32 = ir.IntType(32);
@@ -1255,15 +1273,16 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
         slices = nd.right.slices or [];
         if slices {
             s = slices[0];
-            # List slicing
-            if target_name is not None and target_name in self.var_list_elem_type {
-                elem_type_name = self.var_list_elem_type[target_name];
+            # List slicing — list-ness comes from the checked type; the spec
+            # prefers the value's actual LLVM shape (bare `list` annotations).
+            _slice_list_spec = self._list_spec_of(nd.target);
+            if _slice_list_spec is not None {
                 target_val = self._codegen_expr(nd.target);
                 if target_val is not None {
+                    _shape = self._infer_list_elem_type(target_val);
+                    elem_type_name = _shape if _shape is not None else _slice_list_spec;
                     result = self._codegen_list_slice(target_val, s, elem_type_name);
                     if result is not None {
-                        # Track sliced list as same elem type
-                        self.var_list_elem_type[f"__slice_tmp_{id(nd)}"] = elem_type_name;
                         return result;
                     }
                 }
@@ -1275,7 +1294,12 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 target_val = self._codegen_expr(nd.target);
                 if target_val is not None {
                     i8p = ir.IntType(8).as_pointer();
-                    if target_val.type == i8p {
+                    if self._is_bytes_value(target_val) {
+                        result = self._codegen_bytes_slice(target_val, s);
+                        if result is not None {
+                            return result;
+                        }
+                    } elif target_val.type == i8p {
                         result = self._codegen_string_slice(target_val, s);
                         if result is not None {
                             return result;
@@ -1287,7 +1311,6 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                                 target_val, s, elem_type_name
                             );
                             if result is not None {
-                                self.var_list_elem_type[f"__slice_tmp_{id(nd)}"] = elem_type_name;
                                 return result;
                             }
                         }
@@ -1299,11 +1322,15 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
     # Handle index access: items[i] or expr[i]
     if not nd.is_attr and nd.right?.slices {
         target_name = self._get_name(nd.target);
-        # Simple name: use tracked list type
-        if target_name is not None and target_name in self.var_list_elem_type {
-            elem_type_name = self.var_list_elem_type[target_name];
+        # Simple name with a checked list type
+        _idx_list_spec = self._list_spec_of(nd.target)
+            if target_name is not None
+            else None;
+        if _idx_list_spec is not None {
             target_val = self._codegen_expr(nd.target);
             if target_val is not None {
+                _shape = self._infer_list_elem_type(target_val);
+                elem_type_name = _shape if _shape is not None else _idx_list_spec;
                 slices = nd.right.slices or [];
                 if slices {
                     idx_node = slices[0];
@@ -1315,21 +1342,16 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                         result = self._codegen_index(
                             target_val, idx_val, elem_type_name
                         );
-                        # Bitcast ptr list elements to correct inner type
+                        # Bitcast ptr list elements to the checked inner type
                         if result is not None and elem_type_name == "ptr" {
-                            var_tn = self.var_type_node.get(target_name);
-                            cast_type = self._resolve_ptr_elem_cast_type(var_tn);
-                            if cast_type is not None and result.type != cast_type {
+                            cast_type = self._list_elem_llvm_of(nd.target);
+                            if (
+                                isinstance(cast_type, ir.PointerType)
+                                and result.type != cast_type
+                            ) {
                                 result = self.builder.bitcast(
                                     result, cast_type, name="idx.cast"
                                 );
-                            }
-                            # Propagate inner type node for further chaining
-                            if var_tn is not None {
-                                (inner_node, inner_llvm, inner_elem) = self._peel_list_type(
-                                    var_tn
-                                );
-                                self._last_type_node_hint = inner_node;
                             }
                         }
                         return result;
@@ -1338,34 +1360,28 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             }
         } else {
             # Chained index: evaluate target expression, infer list type or string
-            # Capture the type node hint before evaluating (set by field access in chain)
-            pre_type_hint = self._last_type_node_hint;
-            self._last_type_node_hint = None;
             target_val = self._codegen_expr(nd.target);
-            # Grab the hint set during target evaluation (e.g. field access sets it)
-            chain_type_hint = self._last_type_node_hint;
-            if chain_type_hint is None {
-                chain_type_hint = pre_type_hint;
-            }
             if target_val is not None {
+                # bytes[i] -> int (length-aware; embedded NULs are reachable).
+                if self._is_bytes_value(target_val) {
+                    slices = nd.right.slices or [];
+                    if slices {
+                        idx_node = slices[0];
+                        idx_val = self._codegen_expr(idx_node);
+                        if idx_val is None and idx_node?.start {
+                            idx_val = self._codegen_expr(idx_node.start);
+                        }
+                        if idx_val is not None {
+                            return self._codegen_bytes_index(target_val, idx_val);
+                        }
+                    }
+                }
                 # Check for string indexing: s[i] (only real i8* strings, not list ptrs)
                 i8p = ir.IntType(8).as_pointer();
                 if target_val.type == i8p {
-                    # If chain type hint indicates this is a list, don't string-index
-                    is_list_from_hint = (
-                        chain_type_hint is not None
-                        and self._get_list_elem_from_type_node(
-                            chain_type_hint
-                        ) is not None
-                    );
-                    inner_target_name = self._get_name(nd.target)
-                        if isinstance(nd.target, uni.Name)
-                        else None;
-                    is_known_list = (
-                        inner_target_name is not None
-                        and inner_target_name in self.var_list_elem_type
-                    );
-                    if not is_known_list and not is_list_from_hint {
+                    # If the checked type says this is a list, don't string-index
+                    is_known_list = self._list_spec_of(nd.target) is not None;
+                    if not is_known_list {
                         slices = nd.right.slices or [];
                         if slices {
                             idx_node = slices[0];
@@ -1393,23 +1409,18 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                             result = self._codegen_index(
                                 target_val, idx_val, elem_type_name
                             );
-                            # Bitcast ptr list elements using chain type hint
-                            if result is not None
-                            and elem_type_name == "ptr"
-                            and chain_type_hint is not None {
-                                cast_type = self._resolve_ptr_elem_cast_type(
-                                    chain_type_hint
-                                );
-                                if cast_type is not None and result.type != cast_type {
+                            # Bitcast ptr list elements using the checked
+                            # element type of the target list expression.
+                            if result is not None and elem_type_name == "ptr" {
+                                cast_type = self._list_elem_llvm_of(nd.target);
+                                if (
+                                    isinstance(cast_type, ir.PointerType)
+                                    and result.type != cast_type
+                                ) {
                                     result = self.builder.bitcast(
                                         result, cast_type, name="chain.idx.cast"
                                     );
                                 }
-                                # Propagate inner type node for further chaining
-                                (inner_node, inner_llvm, inner_elem) = self._peel_list_type(
-                                    chain_type_hint
-                                );
-                                self._last_type_node_hint = inner_node;
                             }
                             return result;
                         }
@@ -1458,9 +1469,9 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 }
             }
         }
-        # Check for named dict access: d[key] where d is a known dict variable
-        if target_name is not None and target_name in self.var_dict_type {
-            dict_type_key = self.var_dict_type[target_name];
+        # Check for typed dict access: d[key] where d's checked type is a dict
+        dict_type_key = self._dict_key_of(nd.target);
+        if dict_type_key is not None {
             parts = dict_type_key.split(":");
             if len(parts) == 2 {
                 (key_type_name, val_type_name) = (parts[0], parts[1]);

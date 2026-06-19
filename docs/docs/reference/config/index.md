@@ -22,9 +22,14 @@ This creates a `jac.toml` with default settings. When using `--use client`, the 
 
 ```
 myapp/
-├── main.jac       # Entry point with server and client code
-├── jac.toml       # Project configuration (auto-generated)
-└── styles.css     # Default stylesheet
+├── main.jac                  # Entry point with the client app
+├── jac.toml                  # Project configuration (auto-generated)
+├── components/
+│   └── Button.cl.jac         # Example client component
+├── assets/                   # Static assets
+├── README.md
+├── AGENTS.md                 # Points AI coding agents at `jac guide`
+└── .gitignore
 ```
 
 The auto-generated `jac.toml` for a `--use client` project looks like:
@@ -32,8 +37,17 @@ The auto-generated `jac.toml` for a `--use client` project looks like:
 ```toml
 [project]
 name = "myapp"
-version = "0.0.1"
+version = "1.0.0"
+description = "Jac client application: myapp"
 entry-point = "main.jac"
+
+[dependencies.npm]
+jac-client-node = "1.0.7"
+
+[serve]
+base_route_app = "app"
+
+[plugins.client]
 ```
 
 You typically don't need to modify this file until you add dependencies or customize settings.
@@ -52,6 +66,7 @@ name = "myapp"
 version = "1.0.0"
 description = "My Jac application"
 entry-point = "main.jac"
+kind = "api-service"   # drives `jac run` (omit to infer from the entry-point)
 jac-version = ">=0.15.0"
 
 # Publishing metadata -- only needed to run `jac bundle`
@@ -73,6 +88,7 @@ repository = "https://github.com/user/repo"
 | `version` | string | Semantic version (default: `0.1.0`) |
 | `description` | string | One-line summary (also shown on PyPI) |
 | `entry-point` | string | Main file for `jac run` (default: `main.jac`) |
+| `kind` | string | Project kind that drives `jac run` dispatch (execute / serve / build). Empty = inferred from the entry-point codespace. One of: `cli`, `native-app`, `native-binary`, `shared-library`, `api-service`, `microservices`, `pypi-package`, `npm-package`, `fullstack`, `wasm`, `desktop`, `mobile` |
 | `jac-version` | string | Required Jac compiler version |
 | `license` | string | SPDX license identifier (e.g. `"MIT"`) |
 | `readme` | string | Path to README file (default: `README.md`) |
@@ -185,7 +201,16 @@ session = ""             # Session name
 main = true              # Run as main module
 cl_route_prefix = "cl"   # URL prefix for client apps
 base_route_app = ""      # Client app to serve at /
+
+# Optimistic-concurrency policy for concurrent check-then-create races
+# (see Persistence -> Concurrent writes).
+on_conflict = "retry"        # "retry": abort + replay so the loser converges
+                             # "fail":  no replay, return HTTP 409 immediately
+conflict_max_attempts = 5    # max walker/function attempts under "retry"
+conflict_backoff_ms = 0      # linear backoff between replay attempts (0 = none)
 ```
+
+`on_conflict` controls what happens when two concurrent requests race a "look it up, create it if missing" against the same node and the loser's commit is rejected. `retry` (default) re-runs the request against the now-current graph so it converges on the winner's node; `fail` surfaces a typed `409 write_conflict` for the client to handle. See [Persistence -> Concurrent writes: check-then-create](../persistence.md#concurrent-writes-check-then-create-and-convergence) for the full model.
 
 ---
 
@@ -214,12 +239,16 @@ Defaults for `jac test`:
 
 ```toml
 [test]
-directory = ""          # Test directory (empty = current directory)
+directory = ""          # Scopes no-argument `jac test` discovery (empty = walk project root)
 filter = ""             # Filter pattern
 verbose = false         # Verbose output
 fail_fast = false       # Stop on first failure
 max_failures = 0        # Max failures (0 = unlimited)
 ```
+
+When `directory` is set, `jac test` with no file argument collects tests only
+from that directory (resolved against the project root), so application modules
+whose top-level `with entry` runs on import are not pulled into test collection.
 
 ---
 
@@ -338,8 +367,9 @@ Bytecode cache settings:
 
 ```toml
 [cache]
-enabled = true      # Enable caching
-dir = ".jac_cache"  # Cache directory
+enabled = true   # Enable caching
+dir = "cache"    # Cache subdirectory under the build dir (i.e. .jac/cache).
+                 # An absolute path relocates the cache wholesale.
 ```
 
 ---

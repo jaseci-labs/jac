@@ -39,11 +39,15 @@ def _get_save -> Callable[..., any];
 
 def _get_commit -> Callable[..., any];
 
+def _get_on_commit -> Callable[..., any];
+
 def _get_store -> Callable[..., any];
 
 def _get_llm -> LLMModel;
 
 def _get_archetype_alias -> Callable[..., any];
+
+def _get_schema_builder(name: str) -> Callable[..., any];
 
 def __getattr__(name: str) -> object;
 
@@ -97,6 +101,7 @@ glob __all__ = [
          'allroots',
          'save',
          'commit',
+         'on_commit',
          'store',
          'llm',
          'new',
@@ -109,5 +114,9 @@ glob __all__ = [
          'ScheduleTrigger',
          'APIProtocol',
          'archetype_alias',
+         'schema_was',
+         'schema_alias',
+         'schema_drop',
+         'schema_upgrade',
          'unsafe_html'
      ];

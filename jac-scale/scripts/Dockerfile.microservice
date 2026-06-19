@@ -40,5 +40,11 @@ RUN if [ -f jac.toml ]; then jac install || true; fi
 # on first import anyway, so no pre-compile needed).
 RUN jac --version
 
+# Build identity (B-01): auto-build passes --build-arg JAC_BUILD_SHA
+# (12-char git SHA, +`-dirty` on uncommitted changes); in-pod code reads it
+# to report "running build X" with zero RBAC. Kept LAST for layer caching.
+ARG JAC_BUILD_SHA=unknown
+ENV JAC_BUILD_SHA=${JAC_BUILD_SHA}
+
 # Pod-spec sets command + args; no ENTRYPOINT needed.
 EXPOSE 8000

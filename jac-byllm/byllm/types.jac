@@ -107,6 +107,26 @@ obj MockToolCall {
     def to_tool_call -> ToolCall;
 }
 
+"""Raw text response for MockLLM that flows through parse_response.
+
+Use in a MockLLM `outputs` list to simulate the literal text a model emits for a
+structured return type: valid JSON parses to the typed object, malformed JSON
+raises OutputConversionError (triggering typed-output retries), and an empty
+string is returned verbatim. A bare string in `outputs` is still returned as-is.
+"""
+obj MockRawResponse {
+    has content: str;
+}
+
+"""Error response for MockLLM: raises the wrapped exception when dispatched.
+
+Use in a MockLLM `outputs` list to simulate a model/dispatch failure, e.g. to
+verify that errors which are not OutputConversionError propagate without retry.
+"""
+obj MockError {
+    has error: object;
+}
+
 """Result of the completion from the LLM."""
 obj CompletionResult {
     has output: object,

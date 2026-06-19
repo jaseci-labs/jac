@@ -50,6 +50,14 @@ test "mongodb crud" {
     db.delete_by_id("users", doc_id);
     assert db.find_by_id("users", doc_id) is None;
 
+    # A non-ObjectId id reports not-found via the return type rather than
+    # raising bson.errors.InvalidId.
+    assert db.find_by_id("users", "not-an-objectid") is None;
+    assert db.update_by_id(
+        "users", "not-an-objectid", {"$set": {"x": 1}}
+    ).matched_count == 0;
+    assert db.delete_by_id("users", "not-an-objectid").deleted_count == 0;
+
     # Bulk operations
     db.insert_many("scores", [{"score": 100}, {"score": 200}, {"score": 300}]);
     assert (
@@ -75,56 +83,18 @@ test "mongodb kv api" {
     cleanup_connections();
 }
 
-test "mongodb rejects redis methods" {
+test "mongodb returns None for redis-only methods" {
     db = kvstore(db_name="test_db", db_type="mongodb", uri=MONGO_URI);
 
-    raised = False;
-    try {
-        db.set_with_ttl("key", {"v": 1}, ttl=60);
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for set_with_ttl on mongodb";
-
-    raised = False;
-    try {
-        db.incr("counter");
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for incr on mongodb";
-
-    raised = False;
-    try {
-        db.expire("key", 300);
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for expire on mongodb";
-
-    raised = False;
-    try {
-        db.scan_keys("pattern:*");
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for scan_keys on mongodb";
-
-    raised = False;
-    try {
-        db.set_nx_with_ttl("lock", {"v": 1}, ttl=10);
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for set_nx_with_ttl on mongodb";
-
-    raised = False;
-    try {
-        db.delete_if_equals("lock", {"v": 1});
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for delete_if_equals on mongodb";
+    # Redis-only abilities are not overridden by MongoDb, so the abstract Db
+    # default applies and the call returns None (Jac does not enforce abstract
+    # overrides at compile time).
+    assert db.set_with_ttl("key", {"v": 1}, ttl=60) is None;
+    assert db.incr("counter") is None;
+    assert db.expire("key", 300) is None;
+    assert db.scan_keys("pattern:*") is None;
+    assert db.set_nx_with_ttl("lock", {"v": 1}, ttl=10) is None;
+    assert db.delete_if_equals("lock", {"v": 1}) is None;
 
     cleanup_connections();
 }
@@ -151,12 +121,17 @@ test "redis kv operations" {
     assert db.incr("page:views") == 2;
     assert db.incr("page:views") == 3;
 
-    # Pattern scan
+    # Pattern scan. Keys deliberately contain ':' so that scan_keys must return
+    # the full original key (e.g. "session:user1") and not truncate it to
+    # "user1" — the key prefix is stripped, not every colon-delimited segment.
     db.set("session:user1", {"id": "1"});
     db.set("session:user2", {"id": "2"});
     db.set("config:app", {"theme": "dark"});
-    assert len(db.scan_keys("session:*")) == 2;
-    assert len(db.scan_keys("config:*")) == 1;
+    session_keys = db.scan_keys("session:*");
+    assert len(session_keys) == 2;
+    assert "session:user1" in session_keys;
+    assert "session:user2" in session_keys;
+    assert db.scan_keys("config:*") == ["config:app"];
 
     cleanup_connections();
 }
@@ -195,48 +170,16 @@ test "redis distlock primitives" {
     cleanup_connections();
 }
 
-test "redis rejects mongodb methods" {
+test "redis returns None for mongodb-only methods" {
     db = kvstore(db_name="cache", db_type="redis", uri=REDIS_URI);
 
-    raised = False;
-    try {
-        db.find_one("users", {"name": "Alice"});
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for find_one on redis";
-
-    raised = False;
-    try {
-        db.find("users", {});
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for find on redis";
-
-    raised = False;
-    try {
-        db.insert_one("users", {"name": "Bob"});
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for insert_one on redis";
-
-    raised = False;
-    try {
-        db.update_one("users", {"name": "Bob"}, {"$set": {"age": 30}});
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for update_one on redis";
-
-    raised = False;
-    try {
-        db.delete_many("users", {});
-    } except NotImplementedError {
-        raised = True;
-    }
-    assert raised , "Expected NotImplementedError for delete_many on redis";
+    # MongoDB-only abilities are not overridden by RedisDb, so the abstract Db
+    # default applies and the call returns None.
+    assert db.find_one("users", {"name": "Alice"}) is None;
+    assert db.find("users", {}) is None;
+    assert db.insert_one("users", {"name": "Bob"}) is None;
+    assert db.update_one("users", {"name": "Bob"}, {"$set": {"age": 30}}) is None;
+    assert db.delete_many("users", {}) is None;
 
     cleanup_connections();
 }

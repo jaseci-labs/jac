@@ -300,6 +300,12 @@ impl JacAPIServerCore.start(
         }
     }
     self.user_manager.create_internal_user(Con.GUEST.value, '__no_password__');
+    # Back `root.shared`: map the guest user (created above) to its root id.
+    _um = self.user_manager;
+    def _shared_root_id -> (str | None) {
+        return _um.get_root_id(Con.GUEST.value);
+    }
+    Jac.set_shared_root_resolver(_shared_root_id);
     self.setup_emailer();
     self._setup_scheduler();
     self._setup_events();
@@ -327,6 +333,11 @@ impl JacAPIServerCore.start(
 """Print startup banner with correct port."""
 impl JacAPIServerCore._print_startup_banner(dev: bool, no_client: bool) -> None {
     import from importlib.metadata { version as pkg_version }
+
+    # Dev+client: skip — self.port is the API; the on_ready banner has the real URLs.
+    if dev and not no_client {
+        return;
+    }
 
     # Print header
     try {
@@ -501,6 +512,33 @@ impl JacAPIServerCore.register_health_endpoint -> None {
     );
 }
 
+"""Register /__build_status: dev-mode build health from the hot reloader.
+HTTP 200 alone can't tell a clean build from a broken one (compile errors
+still serve the error-overlay page); "unavailable" outside dev mode."""
+impl JacAPIServerCore.register_build_status_endpoint -> None {
+    async def build_status -> dict {
+        import from jaclang.runtimelib.hmr { get_build_status }
+        return get_build_status();
+    }
+
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/__build_status',
+            callback=build_status,
+            parameters=[],
+            response_model=None,
+            tags=['Health'],
+            summary='Dev build health',
+            description=(
+                'Hot-reload build status: "ok", "compiling", or "error" '
+                '(with the failing file and message); "unavailable" when '
+                'not running in dev mode.'
+            )
+        )
+    );
+}
+
 """Register the /cl/__error__ endpoint for client-side error reporting."""
 impl JacAPIServerCore._register_client_error_endpoint -> None {
     import from fastapi { Request }
@@ -591,6 +629,7 @@ impl JacAPIServerCore.enable_hmr(hot_reloader: any) -> None {
 impl JacAPIServerCore._register_endpoints -> None {
     # Core endpoints
     self.register_health_endpoint();
+    self.register_build_status_endpoint();
     self.register_auth_endpoints();
     self.register_page_endpoint();
     self.register_client_js_endpoint();
@@ -598,8 +637,13 @@ impl JacAPIServerCore._register_endpoints -> None {
     self.register_graph_endpoint();
     self.register_admin_endpoints();
     self.register_llm_telemetry_endpoints();
+    self.register_workloads_endpoints();
     self.register_logs_endpoints();
     self.register_traces_endpoints();
+    self.register_ops_endpoints();
+    self.register_deploy_health_endpoints();
+    self.register_network_endpoints();
+    self.register_podenv_endpoints();
     # User-defined endpoints (walkers, functions, webhooks)
     self.register_walkers_endpoints();
     self.register_functions_endpoints();
@@ -627,27 +671,57 @@ impl JacAPIServerCore._refresh_dev_endpoints -> None {
 
 """Create the __system__ user, initialise JacScaleScheduler, and register /jobs endpoints."""
 impl JacAPIServerCore._setup_scheduler -> None {
-    scheduler_config = get_scale_config().get_scheduler_config();
-    system_password = scheduler_config.get('system_user_password', 'system_secret');
+    logger.info("Initializing scheduler subsystem");
+    scheduler_cfg = get_scale_config().get_scheduler_config();
     try {
         self.user_manager.create_internal_user(
-            '__system__', system_password, role='system'
+            '__system__',
+            scheduler_cfg.get('system_user_password', '__no_login__'),
+            role='system'
         );
     } except Exception { }
-    system_token = self.user_manager.create_jwt_token('__system__');
+    system_user = self.user_manager.get_user('__system__');
+    if system_user is None {
+        logger.error("Scheduler: __system__ user not found; using sentinel id");
+    }
+    system_user_id = system_user.get('user_id', '__system__')
+        if system_user
+        else '__system__';
 
     # Initialise JacScaleScheduler singleton
     jac_scheduler = JacScaleScheduler.instance();
-    jac_scheduler.setup(system_token=system_token or '', server=self);
+    jac_scheduler.setup(system_user_id=system_user_id, server=self);
 
     # Register static tasks (walkers/functions with STATIC trigger)
-    jac_scheduler.register_static_tasks(self.get_walkers(), self.get_functions(), self);
+    jac_scheduler.register_static_tasks(
+        self.introspector._walkers or {}, self.introspector._functions or {}, self
+    );
 
     # Reload persisted dynamic jobs from DB
     jac_scheduler.register_dynamic_tasks_from_db();
 
     # Start APScheduler background thread
     jac_scheduler.start();
+    logger.info("Scheduler subsystem ready");
+
+    # Drain scheduled jobs on SIGTERM/graceful shutdown. Timeout is configurable
+    # via [plugins.scale.scheduler] shutdown_timeout in jac.toml (default 10s).
+    timeout_sec = int(scheduler_cfg.get('shutdown_timeout', 10));
+    async def _shutdown_scheduler {
+        import asyncio;
+        try {
+            await asyncio.wait_for(
+                asyncio.to_thread(JacScaleScheduler.instance().stop, drain=True),
+                timeout=float(timeout_sec)
+            );
+        } except asyncio.TimeoutError {
+            logger.warning(
+                f"Scheduler drain exceeded {timeout_sec}s — forcing shutdown"
+            );
+            JacScaleScheduler.instance().stop(drain=False);
+        }
+    }
+    self.server.app.add_event_handler('shutdown', _shutdown_scheduler);
 }
 
 """Create a wrapper around the metrics endpoint that requires admin authentication."""

@@ -175,7 +175,7 @@ test "sem target names produce no spurious warnings" {
     # of the resolved symbol — sym bound for the type checker / static
     # analysis passes, AND present in Symbol.uses so find-references and
     # refactor tooling see each segment as a real reference site.
-    sem_defs = mod.get_all_sub_nodes(typ=uni.SemDef, brute_force=True);
+    sem_defs = mod.get_all_sub_nodes(typ=uni.SemDef);
     for semdef in sem_defs {
         for part in semdef.target {
             assert part.sym is not None , (

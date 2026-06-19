@@ -2,7 +2,23 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.22 (Latest Release)
+## jac-client 0.3.24 (Latest Release)
+
+### New Features
+
+- **Feature: `fullstack` / `wasm` / `mobile` create kinds**: jac-client now contributes project-kind templates to the kind-aware `jac create`. `jac create --kind fullstack` scaffolds a server + client app, `--kind wasm` a client-only page (the former `client` template), and `--kind mobile` a mobile client app. Each stamps `[project] kind` so the project's bare `jac run` does the right thing.
+
+## jac-client 0.3.23
+
+### New Features
+
+- **Feature: google-auth example wired to system-browser SSO**: The example's login and register buttons now drive the runtime's `jacSsoLogin()`, completing the previously missing `lib/auth` (AuthProvider/route guard) and storing the token under the canonical `jac_token` key so authenticated walker calls work. (jaseci-labs/jaseci#6485)
+
+### Refactors
+
+- **Examples drop redundant `cl` markers**: Bundled `.cl.jac` examples rely on the file extension for client context. (jaseci-labs/jaseci#6557)
+
+## jac-client 0.3.22
 
 ### Bug Fixes
 

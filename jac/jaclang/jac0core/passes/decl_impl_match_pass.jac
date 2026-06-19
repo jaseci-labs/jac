@@ -33,11 +33,14 @@ import from jaclang.jac0core.diagnostics {
     W2013,
     E2016,
     E2017,
+    E2026,
     W2080
 }
 
 """Decls and Def matching pass."""
 class DeclImplMatchPass(Transform[uni.Module, uni.Module]) {
+    has _e2026_reported: set[int];
+
     """Connect Decls and Defs."""
     def transform(self: DeclImplMatchPass, ir_in: uni.Module) -> uni.Module;
 

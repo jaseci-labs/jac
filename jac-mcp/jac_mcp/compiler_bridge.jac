@@ -60,7 +60,7 @@ obj CompilerBridge {
 
     """Create a new Jac project from a template."""
     static def create_project(
-        name: str, template: str = "default", directory: str = ""
+        name: str, template: str = "cli", directory: str = ""
     ) -> dict[str, any];
 
     """Start a Jac REST API server as a background process."""

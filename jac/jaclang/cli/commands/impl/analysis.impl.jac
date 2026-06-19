@@ -603,7 +603,31 @@ impl `test(
     directory: str = "",
     verbose: bool = False
 ) -> int {
+    import os;
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    # With neither an explicit file nor --directory, scope discovery to the
+    # project's `[test] directory` (jac.toml) when configured -- pytest's
+    # `testpaths`. This keeps `jac test` from walking the whole project and
+    # importing app modules whose top-level `with entry` would execute (and
+    # crash collection) as a side effect of being imported. The directory is
+    # resolved against the project root so it holds from any working directory.
+    if (not filepath and not directory) {
+        import from jaclang.project.config { get_config }
+        cfg = get_config();
+        if (cfg and cfg.test.directory) {
+            directory = cfg.test.directory;
+            if (cfg.project_root and not os.path.isabs(directory)) {
+                directory = os.path.join(str(cfg.project_root), directory);
+            }
+            if not Path(directory).is_dir() {
+                console.error(
+                    f"Error: [test] directory '{cfg.test.directory}' "
+                    f"(resolved to '{directory}') does not exist."
+                );
+                return 1;
+            }
+        }
+    }
     # e.g. jac test --test_name "typevar7 constrained operations"  (no filepath given)
     if (test_name and not filepath) {
         console.error(

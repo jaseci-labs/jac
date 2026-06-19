@@ -172,6 +172,18 @@ test "logging stream react" {
     assert "REACT_LOGGING_PASS" in stdout_value;
 }
 
+test "logging stream str answer without finish_tool delivers on chunk" {
+    # a `-> str` agent whose model skips finish_tool and
+    # returns plain text must deliver that terminal text on the `chunk` channel,
+    # not leave it stranded as `thought`-only.
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("logging_stream_str_skip_finish", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "STR_SKIP_FINISH_CHUNK_PASS" in stdout_value;
+}
+
 test "conversation kwarg writes back history with tool calls preserved" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;
@@ -188,6 +200,20 @@ test "streaming + conversation persists assistant message and emits dicts" {
     sys.stdout = sys.__stdout__;
     stdout_value = captured_output.getvalue();
     assert "STREAM_CONV_PASS" in stdout_value;
+}
+
+test "streaming generator survives consumption from a foreign Context" {
+    # Regression test: a streaming by llm() generator must be safe to consume
+    # from a different contextvars.Context than the one that created it — e.g. a
+    # thread-pool worker, which is how jac-scale's sse_frame_stream drives SSE.
+    # Pre-fix, the wrapper reset a ContextVar Token across Context boundaries and
+    # raised "Token was created in a different Context", killing the stream.
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("streaming_cross_context", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "CROSS_CONTEXT_PASS" in stdout_value;
 }
 
 test "by expr" {
@@ -1637,4 +1663,107 @@ test "gemma models default to the text tool protocol" {
     # A model without the gemma template keeps native tools.
     m3 = Model(model_name="gpt-4o");
     assert m3.supports_native_tools == True;
+}
+
+
+# ---------------------------------------------------------------------------
+# Typed-output retry, driven through real `by llm()` calls
+# ---------------------------------------------------------------------------
+# The llm_typed_retry fixture declares `by llm()` functions backed by MockLLM.
+# MockRawResponse routes text through parse_response (malformed JSON raises
+# OutputConversionError, valid JSON parses to the typed object); MockError raises
+# a non-conversion error; each MockLLM records seen_prompts per attempt. Tests
+# import the fixture, call the functions, and inspect each llm, exercising the
+# full invoke -> react loop -> parse -> retry path. The module is imported once
+# (not reloaded, so exception classes stay identical to the test's) and every
+# fixture function is invoked by exactly one test, so the mock outputs are
+# consumed exactly once.
+def _load_retry_fixture -> object {
+    return jac_import("llm_typed_retry", base_path=FIXTURE_DIR + "/")[0];
+}
+
+test "typed retry regenerates after broken json and echoes it" {
+    mod = _load_retry_fixture();
+    person = mod.get_person_recovering();
+    assert person.name == "Ada" and person.age == 36 , f"malformed-then-valid JSON should retry and recover the typed value, got {person}";
+    assert len(mod.recover_llm.seen_prompts) == 2 , f"expected one retry (2 attempts), got {len(
+        mod.recover_llm.seen_prompts
+    )}";
+    # seen_prompts[1] is the retry attempt: original prompt + injected feedback.
+    retry_prompt = mod.recover_llm.seen_prompts[1];
+    assert "{\"name\": \"Ada\", \"age\":" in retry_prompt , f"retry prompt missing the broken output:\n{retry_prompt}";
+    assert "age" in retry_prompt , "retry prompt should re-show the schema (fields)";
+}
+
+test "async typed retry regenerates after broken json" {
+    # The async no-tools path (ainvoke fast path) must retry too, not just sync.
+    mod = _load_retry_fixture();
+    person = asyncio.run(mod.aget_person_recovering());
+    assert person.name == "Zoe" and person.age == 27 , f"async malformed-then-valid JSON should retry and recover, got {person}";
+    assert len(mod.arecover_llm.seen_prompts) == 2 , f"async path expected one retry (2 attempts), got {len(
+        mod.arecover_llm.seen_prompts
+    )}";
+}
+
+test "typed retry raises after exhausting attempts" {
+    mod = _load_retry_fixture();
+    # Catch broadly and check the type by name: a fixture loaded via jac_import
+    # can carry a distinct OutputConversionError class object, so `except <class>`
+    # is unreliable across that boundary.
+    err_name = "";
+    err_msg = "";
+    try {
+        mod.get_person_failing();
+    } except Exception as e {
+        err_name = type(e).__name__;
+        err_msg = str(e);
+    }
+    assert err_name == "OutputConversionError" , f"expected OutputConversionError once retries are exhausted, got {err_name}";
+    # Default 3 retries = 4 attempts, all malformed.
+    assert len(mod.exhaust_llm.seen_prompts) == 4 , f"expected exactly 4 attempts, got {len(
+        mod.exhaust_llm.seen_prompts
+    )}";
+    assert "4 attempt" in err_msg , f"final error should report the attempt count, got: {err_msg}";
+    assert "3 retries" in err_msg , f"final error should report the retry count, got: {err_msg}";
+}
+
+test "typed retry limit honors the config flow" {
+    mod = _load_retry_fixture();
+    # Instance call_params on the MockLLM caps retries at 1 -> 2 attempts.
+    try {
+        mod.get_person_limited();
+    } except Exception { }
+    assert len(mod.limited_llm.seen_prompts) == 2 , f"instance retries=1 should give 2 attempts, got {len(
+        mod.limited_llm.seen_prompts
+    )}";
+
+    # jac.toml/default config surfaces the knob through get_call_params_config.
+    reset_byllm_config();
+    cfg = get_byllm_config(Path(FIXTURE_DIR));
+    assert cfg.get_call_params_config().get("max_output_retries") == 3 , "default config flow should expose max_output_retries=3";
+    reset_byllm_config();
+}
+
+test "typed retry only fires for structured output failures" {
+    mod = _load_retry_fixture();
+    # (a) a non-empty string for a structured type (MockLLM passthrough) is
+    # accepted, not treated as a failure.
+    assert mod.get_person_passthrough() == "Average: 86.75" , "a non-empty string should pass through for a structured type";
+    assert len(mod.passthrough_llm.seen_prompts) == 1 , "passthrough must not retry";
+
+    # (b) a str return type passes an empty response through unchanged.
+    assert mod.get_text() == "" , "empty str return should pass through";
+    assert len(mod.str_llm.seen_prompts) == 1 , "str return must not retry";
+
+    # (c) a non-conversion error propagates without any retry.
+    raised = False;
+    try {
+        mod.get_person_erroring();
+    } except ValueError {
+        raised = True;
+    }
+    assert raised , "a ValueError must propagate, not be retried";
+    assert len(mod.error_llm.seen_prompts) == 1 , f"non-conversion error must not retry, got {len(
+        mod.error_llm.seen_prompts
+    )}";
 }

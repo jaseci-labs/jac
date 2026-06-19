@@ -352,6 +352,17 @@ impl Root.__jac__ -> NodeAnchor {
     return NodeAnchor(archetype=self, persistent=True, edges=[]);
 }
 
+"""Resolve `root.shared` (the deployment's shared root) on attribute miss."""
+impl Root.__getattr__(name: str) -> Root {
+    if name == 'shared' {
+        # Lazy import: archetype loads before the runtime during bootstrap.
+        import from jaclang.jac0core.runtime { JacRuntime }
+        import from typing { cast }
+        return cast(Root, JacRuntime.get_shared_root());
+    }
+    raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'");
+}
+
 """Override repr for archetype."""
 impl Root.__repr__ -> str {
     return f"{self.__class__.__name__}()";

@@ -30,7 +30,11 @@ obj MicroserviceManifestBuilder {
     has k8s_config: KubernetesConfig,
         secrets: dict[str, str] = {},
         deploy_context: DeployContext = DeployContext(),
-        logger: any = None;
+        logger: any = None,
+        # no-image mode: serve source from a ConfigMap + install jac at pod
+        # startup on a generic Python base image (no docker build/push).
+        no_image: bool = False,
+        project_dir: str = "";
 
     """Lift pod-specs into full Deployment + Service + HPA + PDB
     bundle. Returns `{deployments, services, autoscalers, pdbs, pod_specs}`,
@@ -63,6 +67,18 @@ obj MicroserviceManifestBuilder {
             "pdbs": pdbs,
             "pod_specs": pod_specs
         };
+        # no-image mode: pack local source into a ConfigMap mounted by every
+        # pod's bootstrap initContainer (see _build_pod_spec).
+        if self.no_image {
+            import from jac_scale.targets.kubernetes.microservice.source_bundle {
+                build_source_configmap
+            }
+            bundle["source_configmap"] = build_source_configmap(
+                k8s_safe_name(self.k8s_config.app_name),
+                self.k8s_config.namespace,
+                self.project_dir or app_config.code_folder
+            );
+        }
         pvcs = self._build_shared_pvc_manifests();
         if pvcs {
             bundle["pvcs"] = pvcs;
@@ -81,6 +97,28 @@ obj MicroserviceManifestBuilder {
         ingress = self._build_ingress_manifest(ingress_cfg);
         if ingress is not None {
             bundle["ingress"] = ingress;
+        }
+        # Ops Console: read-only namespace Role + RoleBinding on the
+        # gateway SA (opt-in). Mutation verbs only when ops_console_mutations.
+        if getattr(self.k8s_config, "ops_console", False) {
+            import from jac_scale.targets.kubernetes.microservice.ops_rbac {
+                build_ops_rbac
+            }
+            bundle["ops_rbac"] = build_ops_rbac(
+                self.k8s_config.app_name,
+                self.k8s_config.namespace,
+                self._service_account_name(),
+                bool(getattr(self.k8s_config, "ops_console_mutations", False))
+            );
+        } elif getattr(self.k8s_config, "ops_console_mutations", False) {
+            # Mutations need the parent flag; warn instead of shipping no Role.
+            if self.logger {
+                self.logger.warning(
+                    "[plugins.scale.kubernetes].ops_console_mutations is set but "
+                    "ops_console is false; no Ops Console RBAC will be provisioned. "
+                    "Set ops_console = true to enable it."
+                );
+            }
         }
         return bundle;
     }
@@ -364,6 +402,14 @@ obj MicroserviceManifestBuilder {
         }
 
         routes: dict[str, str] = self._microservice_routes();
+        # Propagate the full routes table to every pod as JSON so the gateway
+        # + get_sv_registry resolve prefixes/peers even when the in-cluster
+        # jac.toml has no [routes] table (zero-config `--scale` deploys). The
+        # config loader reads JAC_SV_ROUTES when its own routes are empty.
+        if routes {
+            import json;
+            env.append({"name": "JAC_SV_ROUTES", "value": json.dumps(dict(routes))});
+        }
         seen_peer_keys: set = set();
         for peer_name in routes {
             if peer_name == svc_name {
@@ -581,14 +627,23 @@ obj MicroserviceManifestBuilder {
 
     """Autoscaler config for a service; None if autoscaling is disabled."""
     def _get_autoscaler_config(svc_name: str) -> dict[str, any] | None {
-        cfg: dict[str, any] = self._service_config(svc_name).get("hpa", {});
-        if not cfg.get("enabled", True) {
+        svc: dict[str, any] = self._service_config(svc_name);
+        # 'hpa' block name is historical — applies to whichever autoscaler_engine is active
+        hpa: dict[str, any] = svc.get("hpa", {});
+        if not hpa.get("enabled", True) {
             return None;
         }
+        raw_triggers: list[dict[str, any]] = [];
+        for item in svc.get("triggers", []) {
+            if isinstance(item, dict) {
+                raw_triggers.append(dict(item));
+            }
+        }
         return {
-            "min": int(cfg.get("min", 1)),
-            "max": int(cfg.get("max", 3)),
-            "cpu_target": int(cfg.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET))
+            "min": int(hpa.get("min", 1)),
+            "max": int(hpa.get("max", 3)),
+            "cpu_target": int(hpa.get("cpu_target", DEFAULT_CPU_UTILIZATION_TARGET)),
+            "triggers": raw_triggers
         };
     }
 
@@ -698,14 +753,31 @@ obj MicroserviceManifestBuilder {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
+        # no-image mode runs on the generic Python base image; the per-service
+        # image_tag override is meaningless without a built image.
+        resolved_image: str = (
+            self.k8s_config.python_image
+                if self.no_image
+                else self._resolve_image(image, svc_cfg)
+        );
+        # JAC_IMAGE_REF (B-01): the resolved ref incl. K-29's content-id
+        # suffix, surfaced so an in-pod self-check can report "running build X"
+        # with zero RBAC. Strip any user-set copy first so the rendered YAML
+        # has a single, system-owned entry (no duplicate-env reliance).
+        env_list = [
+            e
+            for e in self._build_env(svc_name, svc_cfg)
+            if e["name"] != "JAC_IMAGE_REF"
+        ];
+        env_list.append({"name": "JAC_IMAGE_REF", "value": resolved_image});
         # Container name must be DNS-1123 (no underscores); JAC_SV_NAME
         # env carries the raw name.
         container: dict[str, any] = {
             "name": k8s_safe_name(svc_name),
-            "image": self._resolve_image(image, svc_cfg),
+            "image": resolved_image,
             "command": entry["command"],
             "args": entry["args"],
-            "env": self._build_env(svc_name, svc_cfg),
+            "env": env_list,
             "ports": [{"containerPort": self.k8s_config.container_port}],
             "readinessProbe": self._build_readiness_probe(),
             "livenessProbe": self._build_liveness_probe(),
@@ -716,8 +788,32 @@ obj MicroserviceManifestBuilder {
             container["resources"] = resources;
         }
         (shared_vols, shared_mounts) = self._shared_volumes_for_service(svc_name);
-        if shared_mounts {
-            container["volumeMounts"] = shared_mounts;
+        # no-image mode: run from the extracted source on a shared emptyDir,
+        # resolving jac + deps the bootstrap initContainer installed under
+        # PYDEPS_DIR (added to PATH/PYTHONPATH). entry["args"]'s `jac` then
+        # resolves to the installed console script.
+        no_image_mounts: list[dict[str, any]] = [];
+        if self.no_image {
+            import from jac_scale.targets.kubernetes.microservice.source_bundle {
+                APP_VOLUME_NAME,
+                APP_MOUNT_PATH,
+                PYDEPS_DIR
+            }
+            container["workingDir"] = APP_MOUNT_PATH;
+            env_list.append({"name": "PYTHONPATH", "value": PYDEPS_DIR});
+            env_list.append(
+                {
+                    "name": "PATH",
+                    "value": f"{PYDEPS_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
+                }
+            );
+            no_image_mounts.append(
+                {"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH}
+            );
+        }
+        all_mounts = shared_mounts + no_image_mounts;
+        if all_mounts {
+            container["volumeMounts"] = all_mounts;
         }
         # envFrom for the user secret: created BEFORE Deployments in
         # apply_manifests so the secretRef resolves at pod startup.
@@ -732,11 +828,37 @@ obj MicroserviceManifestBuilder {
         if sa_name {
             spec["serviceAccountName"] = sa_name;
         }
-        if shared_vols {
-            spec["volumes"] = shared_vols;
+        all_volumes = list(shared_vols);
+        init_containers = list(self.deploy_context.init_containers);
+        if self.no_image {
+            import from jac_scale.targets.kubernetes.microservice.source_bundle {
+                APP_VOLUME_NAME,
+                SOURCE_VOLUME_NAME,
+                source_configmap_name,
+                build_bootstrap_init_container
+            }
+            all_volumes.append({"name": APP_VOLUME_NAME, "emptyDir": {}});
+            all_volumes.append(
+                {
+                    "name": SOURCE_VOLUME_NAME,
+                    "configMap": {
+                        "name": source_configmap_name(
+                            k8s_safe_name(self.k8s_config.app_name)
+                        )
+                    }
+                }
+            );
+            # Bootstrap runs first: extract source + install jac before the
+            # db-wait init containers (order is cosmetic; both must finish).
+            init_containers = [
+                build_bootstrap_init_container(self.k8s_config.python_image)
+            ] + init_containers;
         }
-        if self.deploy_context.init_containers {
-            spec["initContainers"] = list(self.deploy_context.init_containers);
+        if all_volumes {
+            spec["volumes"] = all_volumes;
+        }
+        if init_containers {
+            spec["initContainers"] = init_containers;
         }
         return spec;
     }

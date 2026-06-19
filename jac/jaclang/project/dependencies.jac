@@ -24,7 +24,9 @@ obj DependencyInstaller {
     has config: JacConfig | None = None,
         venv_dir: Path | None = None,
         verbose: bool = False,
-        install_flags: list[str] | None = None;
+        install_flags: list[str] | None = None,
+        use_uv: bool = True,
+        _warned_prefer_binary: bool = False;
 
     def postinit -> None;
     def ensure_venv -> None;
@@ -34,6 +36,7 @@ obj DependencyInstaller {
     def get_pip_package_specs(include_dev: bool = False) -> list[str];
     def get_git_package_specs -> list[str];
     def get_extra_package_specs(groups: list[str]) -> list[str];
+    def _snapshot_installed -> tuple[bool, set[tuple]];
     def install_package(specs: list[str]) -> bool;
     def uninstall_package(name: str) -> bool;
     def is_installed(name: str) -> bool;
@@ -50,6 +53,9 @@ obj DependencyResolver {
     def parse_spec(spec: str) -> tuple[str, str];
     def resolve(include_dev: bool = False) -> list[ResolvedDependency];
 }
+
+"""Build a pip-equivalent command for the given interpreter, preferring `uv pip` when available."""
+def pip_command(python: str, args: list[str], use_uv: bool = True) -> list[str];
 
 def get_venv_site_packages(venv_dir: Path) -> Path;
 

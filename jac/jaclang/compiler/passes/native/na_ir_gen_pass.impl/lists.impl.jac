@@ -140,11 +140,13 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     # is a boxed tuple so the enclosing assignment can seed var_list_elem_struct.
     self._pending_list_elem_struct = None;
     if not nd.values {
-        # Empty list: infer type from context
+        # Empty list: the checker stamps the literal with the expected
+        # type (bidirectional inference from the assignment target or the
+        # declared return type), so the element spec comes off the tree.
         elem_type_name = "i64";
-        # 1. Check the type hint set by assignment/field context
-        if self._list_type_hint is not None {
-            elem_type_name = self._list_type_hint;
+        _own_spec = self._elem_spec_of(nd);
+        if _own_spec is not None {
+            elem_type_name = _own_spec;
         } elif self._builder and self._builder.function {
             # 2. Fallback: infer from function return type
             ret_type = self.builder.function.return_value.type;
@@ -171,11 +173,10 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             _empty_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
                 if nd.loc
                 else 0}";
-            _empty = self._rc_call_with_ctx(
+            # Fresh allocation: ownership applied at the _codegen_expr seam.
+            return self._rc_call_with_ctx(
                 helpers["new"], [], op="new", loc=_empty_loc, name="list.empty"
             );
-            self._mark_owned(_empty);
-            return _empty;
         }
         return None;
     }
@@ -274,8 +275,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             }
         }
     }
-    # List literal is a fresh allocation — mark as owned so callers don't double-retain.
-    self._mark_owned(list_val);
+    # Fresh allocation: ownership applied at the _codegen_expr seam.
     return list_val;
 }
 

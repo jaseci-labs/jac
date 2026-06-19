@@ -50,6 +50,7 @@ Native compilation is ideal for:
 | **C interop (out)** | `jac nacompile --shared` exports `:pub` symbols as a `.so`/`.dylib`/`.dll` |
 | **Std library** | `import math` / `time` / `sys` / `os` / `random` (Python-congruent subset) |
 | **Memory model** | Automatic reference counting |
+| **Testing** | `test "description" { }` blocks compile native and run via `jac test` |
 
 ---
 
@@ -760,8 +761,9 @@ This is the form used for the libm example above. Any library that exposes a C A
 | Linux | aarch64 | Supported |
 | macOS | x86_64 | Supported |
 | macOS | arm64 (Apple Silicon) | Supported |
+| Windows | x86_64 | Supported (cross-build via `--target windows`, producing a PE `.exe` / `.dll`) |
 
-The platform and architecture are auto-detected at compile time. The correct binary format (ELF on Linux, Mach-O on macOS) is produced automatically -- no external compiler or linker is needed on any platform.
+The platform and architecture are auto-detected at compile time. The correct binary format (ELF on Linux, Mach-O on macOS, PE on Windows) is produced automatically -- no external compiler or linker is needed on any platform.
 
 !!! note "macOS arm64"
     On Apple Silicon, ad-hoc code signing is applied automatically as required by macOS.
@@ -774,6 +776,36 @@ Native Jac uses **automatic reference counting** for memory management. Heap-all
 
 !!! warning "Current Status"
     Deep release of nested structures is currently disabled to prevent use-after-free in complex ownership scenarios. This means certain long-running native programs may leak memory. Programs with bounded allocation are unaffected. Proper ownership tracking is a planned improvement.
+
+---
+
+## Testing
+
+`test` blocks in native context compile to native code and run through `jac test` -- the same harness used everywhere else in Jac. A test in a `.na.jac` module, or inside an inline `na { }` block, executes inside the module's JIT engine with full native semantics: the same integer, float, string, and object behavior as the code it exercises.
+
+```jac
+# vectors.na.jac
+
+def dot(x1: float, y1: float, x2: float, y2: float) -> float {
+    return x1 * x2 + y1 * y2;
+}
+
+test "dot product" {
+    assert dot(1.0, 0.0, 0.0, 1.0) == 0.0;
+    assert dot(2.0, 3.0, 4.0, 5.0) == 23.0;
+}
+```
+
+```bash
+jac test vectors.na.jac
+```
+
+Each native test runs under an implicit exception handler: a failing `assert` -- or any uncaught runtime raise (`IndexError`, `ZeroDivisionError`, ...) -- fails that one test and reports through the standard pass/fail pipeline. The failure message carries the assert site as `file:line`. All `jac test` options (`-t` name filtering, directory discovery, `--maxfail`, `--xit`) behave identically for native tests, and a mixed module can hold Python and native tests side by side -- each runs in its own codespace.
+
+Assert messages in native tests are limited to string literals: `assert cond, "message"` includes the literal in the failure report, while a dynamic message such as an f-string is not evaluated (the report falls back to the assert location).
+
+!!! warning "Process isolation"
+    Native tests run in-process via the JIT. A test that crashes the process outright -- for example a segfault through a bad C-interop pointer -- takes the test runner down with it, unlike an assert failure, which is caught and reported.
 
 ---
 

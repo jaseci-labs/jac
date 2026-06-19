@@ -69,6 +69,11 @@ obj TypeBase(ABC) {
     has category: TypeCategory { getter; }
 
     static def unknown -> UnknownType;
+    # Canonical, stable string key for this type ("int", "list[int]",
+    # "dict[str,MyStruct]"). The ONLY string form of a type intended for
+    # keying (backend emission caches, layout tables, cached semantics);
+    # `__str__` stays the human-facing display form.
+    def mangle -> str;
     def is_instantiable -> bool;
     def is_instance -> bool;
     def is_instantiable_class -> bool;

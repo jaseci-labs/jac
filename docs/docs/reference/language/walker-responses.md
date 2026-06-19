@@ -81,7 +81,7 @@ When the walker reports a *collection* once at exit, the element type is itself 
 
 ```jac
 walker ListTasks {
-    has reports: list[list[Task]];
+    has reports: list[list[Task]] = [];
 
     can collect with Root entry {
         report [-->][?:Task];
@@ -93,6 +93,8 @@ with entry {
     tasks: list[Task] = result.reports[0];   # type-safe single-shot collection
 }
 ```
+
+The `= []` default is required: without it, `reports` becomes a required spawn parameter and `root spawn ListTasks()` fails with E1050.
 
 #### How the type checker enforces the declaration
 
@@ -117,7 +119,7 @@ node Item {
 }
 
 walker:priv ListItems {
-    has reports: list[list[str]];
+    has reports: list[list[str]] = [];
     has items: list[str] = [];
 
     can collect with Root entry {

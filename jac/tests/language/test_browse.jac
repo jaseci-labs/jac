@@ -16,12 +16,19 @@ import socket;
 import struct;
 import tempfile;
 import threading;
+import time;
+import from pathlib { Path }
 import from jaclang.cli.browser_engine {
     CDP,
     connect,
     _walk_ax,
     _key_code,
-    _cookie_param
+    _cookie_param,
+    _chrome_args,
+    _parse_viewport,
+    _format_console_event,
+    _locate,
+    cmd_wait
 }
 
 
@@ -384,4 +391,253 @@ test "_cookie_param projects a CDP cookie to Network.setCookies shape" {
         "httpOnly": False,
         "secure": False
     };
+}
+
+
+# ---------------------------------------------------------------------------
+# Launch configuration: viewport + software WebGL (issue #6597, gaps 3 + 4)
+# ---------------------------------------------------------------------------
+test "_parse_viewport accepts WxH forms and rejects garbage" {
+    assert _parse_viewport("1280x720") == (1280, 720);
+    assert _parse_viewport("800X600") == (800, 600);
+    assert _parse_viewport("1024,768") == (1024, 768);
+    raised = False;
+    try {
+        _parse_viewport("huge");
+    } except ValueError {
+        raised = True;
+    }
+    assert raised , "a non-WxH viewport spec must raise ValueError";
+}
+
+
+test "_chrome_args sets a real viewport and software WebGL, drops --disable-gpu" {
+    args = _chrome_args("/usr/bin/chrome", Path("/tmp/profile-x"), "1280x720");
+    assert args[0] == "/usr/bin/chrome";
+    assert "--window-size=1280,720" in args;
+    # SwiftShader software GL: without it headless WebGL contexts are null.
+    assert "--use-angle=swiftshader" in args;
+    assert "--enable-unsafe-swiftshader" in args;
+    # --disable-gpu is what killed WebGL; it must be gone.
+    assert "--disable-gpu" not in args;
+    assert "--user-data-dir=/tmp/profile-x" in args;
+
+    custom = _chrome_args("/usr/bin/chrome", Path("/tmp/profile-x"), "800x600");
+    assert "--window-size=800,600" in custom;
+}
+
+
+# ---------------------------------------------------------------------------
+# Console capture (issue #6597, gap 2)
+# ---------------------------------------------------------------------------
+test "_format_console_event formats console, exception, and log events" {
+    line = _format_console_event(
+        "Runtime.consoleAPICalled",
+        {
+            "type": "warning",
+            "args": [
+                {"type": "string", "value": "missing key"},
+                {"type": "number", "value": 7},
+                {
+                    "type": "object",
+                    "className": "HTMLDivElement",
+                    "description": "div#root"
+                }
+            ]
+        }
+    );
+    assert line == "[warning] missing key 7 div#root";
+
+    exc = _format_console_event(
+        "Runtime.exceptionThrown",
+        {
+            "exceptionDetails": {
+                "text": "Uncaught",
+                "exception": {"description": "TypeError: x is not a function"}
+            }
+        }
+    );
+    assert exc == "[error] TypeError: x is not a function";
+
+    net = _format_console_event(
+        "Log.entryAdded",
+        {
+            "entry": {
+                "source": "network",
+                "level": "error",
+                "text": "404 Not Found",
+                "url": "http://x/a.js",
+                "lineNumber": 3
+            }
+        }
+    );
+    assert net == "[error] 404 Not Found (http://x/a.js:3)";
+
+    # console-api log entries duplicate Runtime.consoleAPICalled; skip them.
+    dup = _format_console_event(
+        "Log.entryAdded",
+        {"entry": {"source": "console-api", "level": "log", "text": "hi"}}
+    );
+    assert dup is None;
+
+    # Unrelated CDP events are not console output.
+    assert _format_console_event("Page.frameNavigated", {}) is None;
+}
+
+
+"""Serve many calls on one connection; replies come from `handler(req)`."""
+def _serve_script(srv: socket.socket, handler: any) {
+    conn = _accept_ws(srv);
+    try {
+        while True {
+            req = json.loads(_read_client_frame(conn).decode());
+            for msg in handler(req) {
+                _send_server_frame(conn, json.dumps(msg).encode());
+            }
+        }
+    } except Exception {
+    # client closed the socket / sent a CLOSE frame
+    }
+}
+
+
+"""Reply to Runtime.enable with its result plus replayed console/log events."""
+def _console_replay_handler(req: dict) -> list {
+    if req["method"] == "Runtime.enable" {
+        return [
+            {"id": req["id"], "result": {}},
+            {
+                "method": "Runtime.consoleAPICalled",
+                "params": {
+                    "type": "log",
+                    "args": [{"type": "string", "value": "hello"}]
+                }
+            },
+            {
+                "method": "Log.entryAdded",
+                "params": {
+                    "entry": {"source": "network", "level": "error", "text": "boom"}
+                }
+            }
+        ];
+    }
+    return [{"id": req["id"], "result": {}}];
+}
+
+
+test "CDP.drain_events collects event frames stashed around calls" {
+    (srv, port, t) = _serve_in_thread(_console_replay_handler, _serve_script);
+    cdp = _connect_cdp(port);
+    cdp.call("Runtime.enable");
+    # The replayed events land while waiting for this reply (stash path) ...
+    cdp.call("Log.enable");
+    # ... and drain_events returns them plus anything still in flight.
+    events = cdp.drain_events(idle=0.3);
+    methods = [e["method"] for e in events];
+    assert "Runtime.consoleAPICalled" in methods;
+    assert "Log.entryAdded" in methods;
+    cdp.close();
+    t.join(timeout=5);
+    srv.close();
+}
+
+
+# ---------------------------------------------------------------------------
+# Actionability: scroll-into-view + viewport/hit checks (issue #6597, gap 1)
+# ---------------------------------------------------------------------------
+glob _FN_DECLS: list = [];
+
+
+def _actionability_replies(req: dict, state: dict) -> list {
+    if req["method"] == "Runtime.evaluate" {
+        return [{"id": req["id"], "result": {"result": {"objectId": "node-1"}}}];
+    }
+    if req["method"] == "Runtime.callFunctionOn" {
+        _FN_DECLS.append(req["params"].get("functionDeclaration", ""));
+        return [{"id": req["id"], "result": {"result": {"value": state}}}];
+    }
+    return [{"id": req["id"], "result": {}}];
+}
+
+
+def _onscreen_handler(req: dict) -> list {
+    return _actionability_replies(
+        req, {"ok": True, "x": 100.0, "y": 200.0, "hitOk": True, "hit": "input#below"}
+    );
+}
+
+
+def _offscreen_handler(req: dict) -> list {
+    return _actionability_replies(
+        req,
+        {"ok": False, "reason": "point (437,-1680) is outside the 1280x720 viewport"}
+    );
+}
+
+
+def _intercepted_handler(req: dict) -> list {
+    return _actionability_replies(
+        req, {"ok": True, "x": 50.0, "y": 60.0, "hitOk": False, "hit": "div#overlay"}
+    );
+}
+
+
+test "_locate scrolls into view, hit-tests, and returns a stable point" {
+    _FN_DECLS.clear();
+    (srv, port, t) = _serve_in_thread(_onscreen_handler, _serve_script);
+    cdp = _connect_cdp(port);
+    pt = _locate(cdp, "tsess", "#below", timeout=3.0);
+    assert pt == (100.0, 200.0);
+    # The in-page actionability check must scroll and hit-test for real.
+    assert len(_FN_DECLS) >= 1;
+    assert "scrollIntoView" in _FN_DECLS[0];
+    assert "elementFromPoint" in _FN_DECLS[0];
+    cdp.close();
+    t.join(timeout=5);
+    srv.close();
+}
+
+
+test "_locate hard-errors when the action point is outside the viewport" {
+    (srv, port, t) = _serve_in_thread(_offscreen_handler, _serve_script);
+    cdp = _connect_cdp(port);
+    raised = False;
+    try {
+        _locate(cdp, "tsess", "#below", timeout=1.0);
+    } except RuntimeError as e {
+        raised = True;
+        assert "outside the" in str(e);
+    }
+    assert raised , "an offscreen action point must be a hard error, not a no-op";
+    cdp.close();
+    t.join(timeout=5);
+    srv.close();
+}
+
+
+test "_locate hard-errors when another element would receive the click" {
+    (srv, port, t) = _serve_in_thread(_intercepted_handler, _serve_script);
+    cdp = _connect_cdp(port);
+    raised = False;
+    try {
+        _locate(cdp, "tsess", "#below", timeout=1.0);
+    } except RuntimeError as e {
+        raised = True;
+        assert "div#overlay" in str(e);
+    }
+    assert raised , "a covered target must be a hard error, not a wrong click";
+    cdp.close();
+    t.join(timeout=5);
+    srv.close();
+}
+
+
+# ---------------------------------------------------------------------------
+# wait action (issue #6597, minor)
+# ---------------------------------------------------------------------------
+test "cmd_wait sleeps for a millisecond count without a browser" {
+    start = time.time();
+    out = cmd_wait("no-such-session", "120");
+    assert time.time() - start >= 0.12;
+    assert "120" in out;
 }

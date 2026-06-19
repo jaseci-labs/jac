@@ -26,7 +26,8 @@ impl JacAPIServerEndpoints.register_walkers_endpoints -> None {
                 response_model=None,
                 tags=['Walkers'],
                 summary='API Entry',
-                description='API Entry'
+                description='API Entry',
+                forward_undeclared_query_params=False
             )
         );
         self.server.add_endpoint(
@@ -40,7 +41,8 @@ impl JacAPIServerEndpoints.register_walkers_endpoints -> None {
                 response_model=None,
                 tags=['Walkers'],
                 summary='API Root',
-                description='API Root'
+                description='API Root',
+                forward_undeclared_query_params=False
             )
         );
     }
@@ -183,7 +185,8 @@ impl JacAPIServerEndpoints.register_functions_endpoints -> None {
                 response_model=None,
                 tags=['Functions'],
                 summary='This is a summary',
-                description='This is a description'
+                description='This is a description',
+                forward_undeclared_query_params=False
             )
         );
     }
@@ -312,12 +315,20 @@ impl JacAPIServerEndpoints.get_walker_protocol(walker_name: str) -> str {
 impl JacAPIServerEndpoints.create_webhook_callback(
     walker_name: str
 ) -> Callable[..., TransportResponse] {
-    async def callback(request: Request, **kwargs: JsonValue) -> TransportResponse {
+    async def _process(request: Request, **kwargs: JsonValue) -> TransportResponse {
+        import time;
+
         webhook_config = get_scale_config().get_webhook_config();
         signature_header = webhook_config.get(
             'signature_header', 'X-Webhook-Signature'
         );
+        timestamp_header = webhook_config.get(
+            'timestamp_header', 'X-Webhook-Timestamp'
+        );
         verify_signature = webhook_config.get('verify_signature', True);
+        replay_tolerance = int(webhook_config.get('replay_tolerance_seconds', 300));
+        max_body_bytes = int(webhook_config.get('max_body_bytes', 1048576));
+        rate_limit = int(webhook_config.get('rate_limit_per_minute', 0));
 
         # Get API key from header
         api_key = request.headers.get('X-API-Key');
@@ -329,14 +340,60 @@ impl JacAPIServerEndpoints.create_webhook_callback(
             );
         }
 
-        # Validate API key and get username
-        username = self.get_api_key_manager().validate_api_key(api_key);
-        if not username {
+        key_doc = self.get_api_key_manager().resolve_key(api_key);
+        user_id = key_doc.get('user_id') if key_doc else None;
+        # Invalid/inactive key, or its owning user no longer exists.
+        if not user_id or not self.user_manager.user_exists(user_id) {
             return TransportResponse.fail(
                 code='UNAUTHORIZED',
                 message='Invalid or expired API key',
                 meta=Meta(extra={'http_status': 401})
             );
+        }
+        # Enforce per-key walker scoping (empty allow-list = unscoped)
+        allowed_walkers = key_doc.get('allowed_walkers') or [];
+        if allowed_walkers and walker_name not in allowed_walkers {
+            return TransportResponse.fail(
+                code='FORBIDDEN',
+                message='API key is not permitted to call this webhook',
+                meta=Meta(extra={'http_status': 403})
+            );
+        }
+        # Per-key rate limit (best-effort, per-process; off when <= 0)
+        if not self.get_api_key_manager().check_rate_limit(
+            key_doc.get('_id', ''), rate_limit
+        ) {
+            return TransportResponse.fail(
+                code='RATE_LIMITED',
+                message='Rate limit exceeded',
+                meta=Meta(extra={'http_status': 429})
+            );
+        }
+        # Reject oversized payloads. Check the declared length first so a
+        # huge body is refused before it is buffered into memory.
+        def _too_large -> TransportResponse {
+            return TransportResponse.fail(
+                code='PAYLOAD_TOO_LARGE',
+                message='Request body too large',
+                meta=Meta(extra={'http_status': 413})
+            );
+        }
+        content_length = request.headers.get('content-length');
+        if content_length {
+            try {
+                if int(content_length) > max_body_bytes {
+                    return _too_large();
+                }
+            } except Exception {
+            # Malformed Content-Length: fall through to the post-read cap
+            }
+        }
+
+        # Read the raw request body once and reuse it for both signature
+        # verification and field parsing.
+        raw_body = await request.body();
+        if len(raw_body) > max_body_bytes {
+            return _too_large();
         }
 
         # Verify HMAC-SHA256 signature if enabled
@@ -349,11 +406,47 @@ impl JacAPIServerEndpoints.create_webhook_callback(
                     meta=Meta(extra={'http_status': 401})
                 );
             }
-            # Get raw body for signature verification
-            body = await request.body();
+            # Replay protection: require a fresh timestamp and bind it into
+            # the signature so a captured request cannot be replayed later.
+            timestamp = request.headers.get(timestamp_header);
+            if not timestamp {
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message=f"Missing {timestamp_header} header",
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
+            try {
+                request_ts = int(timestamp);
+            } except Exception {
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message='Invalid webhook timestamp',
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
+            if abs(int(time.time()) - request_ts) > replay_tolerance {
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message='Webhook timestamp outside allowed window',
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
+            signing_secret = key_doc.get('signing_secret');
+            if not signing_secret {
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message='Invalid webhook signature',
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
+            # The signature covers "<timestamp>." + raw body, so the
+            # timestamp cannot be altered independently of the signature.
+            signed_payload = f"{timestamp}.".encode('utf-8') + raw_body;
             extracted_signature = WebhookUtils.extract_signature(signature);
-            # Use the API key as the secret for HMAC verification
-            if not WebhookUtils.verify_signature(body, extracted_signature, api_key) {
+            if not WebhookUtils.verify_signature(
+                signed_payload, extracted_signature, signing_secret
+            ) {
                 return TransportResponse.fail(
                     code='UNAUTHORIZED',
                     message='Invalid webhook signature',
@@ -364,24 +457,39 @@ impl JacAPIServerEndpoints.create_webhook_callback(
 
         # Parse body for walker fields
         try {
-            body_bytes = await request.body();
-            body_data = json.loads(body_bytes) if body_bytes else {};
+            body_data = json.loads(raw_body) if raw_body else {};
         } except Exception {
             body_data = {};
         }
 
-        walker_kwargs: dict[str, any] = dict(body_data) if body_data else {};
+        walker_fields = self.introspector.introspect_walker(
+            self.get_walkers()[walker_name]
+        )['fields'];
+        walker_kwargs: dict[str, any] = {};
+        if isinstance(body_data, dict) {
+            for (field_name, value) in body_data.items() {
+                if field_name in walker_fields and field_name != '_jac_spawn_node' {
+                    walker_kwargs[field_name] = value;
+                }
+            }
+        }
 
         # Execute the walker
         result = await self.execution_manager.spawn_walker(
-            self.get_walkers()[walker_name], walker_kwargs, username
+            self.get_walkers()[walker_name], walker_kwargs, user_id
         );
 
         if 'error' in result {
+            # Webhooks are called by external services. Log the detailed
+            # error and traceback server-side, but return only a generic
+            # message so internal state is not disclosed to the caller.
+            logger.error(
+                f"Webhook walker '{walker_name}' failed: "
+                f"{result.get('error')} {result.get('traceback', '')}"
+            );
             return TransportResponse.fail(
                 code='EXECUTION_ERROR',
-                message=result.get('error', 'Walker execution failed'),
-                details=result.get('traceback') if 'traceback' in result else None,
+                message='Webhook processing failed',
                 meta=Meta(extra={'http_status': 500})
             );
         }
@@ -389,6 +497,22 @@ impl JacAPIServerEndpoints.create_webhook_callback(
         return TransportResponse.success(
             data=result, meta=Meta(extra={'http_status': 200})
         );
+    }
+    async def callback(request: Request, **kwargs: JsonValue) -> TransportResponse {
+        client_ip = request.client.host if request?.client else '-';
+        resp = await _process(request, **kwargs);
+        status = resp.meta.extra.get('http_status') if resp?.meta else None;
+        outcome = 'ok' if resp.ok else (resp.error.code if resp?.error else 'error');
+        audit_line = (
+            f"webhook audit walker={walker_name} ip={client_ip} "
+            f"status={status} outcome={outcome}"
+        );
+        if resp.ok {
+            logger.info(audit_line);
+        } else {
+            logger.warning(audit_line);
+        }
+        return resp;
     }
     return callback;
 }
@@ -398,8 +522,6 @@ impl JacAPIServerEndpoints.create_webhook_parameters(
     walker_name: str
 ) -> list[APIParameter] {
     parameters: list[APIParameter] = [];
-    # API key header (required for webhooks)
-    # Use underscore naming for valid Python identifiers - FastAPI auto-converts to hyphenated headers
     parameters.append(
         APIParameter(
             name='x_api_key',
@@ -418,7 +540,18 @@ impl JacAPIServerEndpoints.create_webhook_parameters(
             data_type='string',
             required=False,
             default=None,
-            description='HMAC-SHA256 signature of the request body (X-Webhook-Signature header)',
+            description='HMAC-SHA256 signature of "<timestamp>." + body, signed with the signing_secret (X-Webhook-Signature header)',
+            type=ParameterType.HEADER
+        )
+    );
+    # Timestamp header (for replay protection)
+    parameters.append(
+        APIParameter(
+            name='x_webhook_timestamp',
+            data_type='string',
+            required=False,
+            default=None,
+            description='Unix timestamp (seconds) of the request, bound into the signature (X-Webhook-Timestamp header)',
             type=ParameterType.HEADER
         )
     );

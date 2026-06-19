@@ -26,6 +26,10 @@ import from jac_scale.microservices.runtime.util {
 import from jac_scale.admin.admin_portal { JacAPIServerAdmin }
 import from jac_scale.admin.logs { JacAPIServerLogs }
 import from jac_scale.admin.traces { JacAPIServerTraces }
+import from jac_scale.admin.ops { JacAPIServerOps }
+import from jac_scale.admin.deploy_health { JacAPIServerDeployHealth }
+import from jac_scale.admin.network { JacAPIServerNetwork }
+import from jac_scale.admin.podenv { JacAPIServerPodEnv }
 import from jac_scale.admin.llm_telemetry { JacAPIServerLLMTelemetry }
 
 glob logger = logging.getLogger(__name__),
@@ -51,7 +55,7 @@ gateway's existing FastAPI app, then calls the inherited
 `register_admin_endpoints` + `register_logs_endpoints` +
 `register_llm_telemetry_endpoints`.
 """
-obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerLLMTelemetry) {
+obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerLLMTelemetry) {
     has registry: ServiceRegistry,
         app: FastAPI | None = None,
         port: int = DEFAULT_GATEWAY_PORT,

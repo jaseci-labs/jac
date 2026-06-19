@@ -129,8 +129,11 @@ jobs:
             --head "$BRANCH_NAME")
           echo "::notice::Release PR created: $PR_URL"
 
-          # Trigger CI workflows (GITHUB_TOKEN can trigger workflow_dispatch)
-          gh workflow run test-jaseci.yml --ref "$BRANCH_NAME"
-          gh workflow run jac-check.yml --ref "$BRANCH_NAME"
-          gh workflow run contribution-checks.yml --ref "$BRANCH_NAME"
-          echo "::notice::CI workflows triggered on $BRANCH_NAME"
+          # CI does NOT run here: the PR is authored by the GITHUB_TOKEN actor, and
+          # GitHub blocks workflows triggered by GITHUB_TOKEN from triggering further
+          # workflows (anti-recursion), so no pull_request checks attach. A maintainer
+          # must CLOSE AND REOPEN the PR so the reopen event comes from a real user;
+          # only then do the checks run and attach (enabling auto-merge). See
+          # CONTRIBUTING.md "Release Flow". Permanent fix: author the PR with a
+          # GitHub App / PAT token instead of GITHUB_TOKEN.
+          echo "::notice::Close & reopen this PR to run its checks, then enable auto-merge (see CONTRIBUTING.md)"

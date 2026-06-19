@@ -205,8 +205,12 @@ impl _serve_in_background(server_entry: str, base_path: str) -> Iterator[int] {
 
     try {
         # Wait until the server accepts TCP connections (server-class agnostic),
-        # failing fast if the child dies first.
-        deadline = time.monotonic() + 30.0;
+        # failing fast if the child dies first. A cold-cache start compiles the
+        # fixture and any uncached package modules through full type inference
+        # (typed-tree contract), which can exceed 30s on slower CI runners, so
+        # give the boot a generous budget; warm starts connect within seconds.
+        boot_budget = 90.0;
+        deadline = time.monotonic() + boot_budget;
         while True {
             if proc.poll() is not None {
                 raise RuntimeError(
@@ -231,7 +235,7 @@ impl _serve_in_background(server_entry: str, base_path: str) -> Iterator[int] {
             if time.monotonic() > deadline {
                 raise RuntimeError(
                     f"cl test server ({server_entry}) was not reachable within "
-                    f"30s:\n{_server_log() or 'no output'}"
+                    f"{boot_budget:.0f}s:\n{_server_log() or 'no output'}"
                 );
             }
             time.sleep(0.1);

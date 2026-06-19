@@ -139,12 +139,12 @@ obj RichRenderer(ConsoleRenderer) {
         }
     }
 
-    """Header: title (and version) in cyan, no rule (Rich house style)."""
+    """Header: title (and version) in highlight role, no rule (Rich house style)."""
     def header(title: str, version: (str | None) = None) {
         if version {
-            self.emit([Span(f"{title} v{version}", 'cyan')]);
+            self.emit([Span(f"{title} v{version}", 'highlight')]);
         } else {
-            self.emit([Span(title, 'cyan')]);
+            self.emit([Span(title, 'highlight')]);
         }
     }
 

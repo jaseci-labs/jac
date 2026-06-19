@@ -1,8 +1,8 @@
 """Common utilities shared between ELF and Mach-O linkers.
 
 Extracts duplicated patterns: alignment, string table building,
-section blob collection, virtual address resolution, patch target
-dispatch, and entry point lookup.
+section blob collection, virtual address resolution, relocation
+patch-site resolution, and entry point lookup.
 """
 
 def _align(value: int, alignment: int) -> int;
@@ -19,7 +19,8 @@ def _resolve_seg_vaddr(
     seg: str, seg_off: int, code_vaddr: int, rodata_vaddr: int, data_vaddr: int
 ) -> int;
 
-def _find_patch_target(
+def _resolve_patch_site(
+    reloc_offset: int,
     target_sec: str,
     code_sections: dict[str, tuple[int, int]],
     rodata_sections: dict[str, tuple[int, int]],

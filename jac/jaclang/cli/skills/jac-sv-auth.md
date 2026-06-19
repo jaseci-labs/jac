@@ -1,13 +1,15 @@
 ---
 name: jac-sv-auth
-description: The server-side auth model - deciding which endpoints are public versus authenticated, and isolating data per user. Load when deciding which server functions need login or whose data they should see. Pair with `jac-sv-endpoints` (endpoint visibility), `jac-cl-auth` (client side of the auth loop).
+description: The server-side auth model - JWT, register/login REST endpoints, tokens, roles, and which endpoints need login versus anonymous access. Canonical statement of def:pub / def:priv / plain-def semantics. Load when deciding which server functions need login or whose data they should see. Pair with `jac-sv-endpoints` (endpoint shapes), `jac-cl-auth` (client side), `jac-sv-multi-user` (cross-user sharing).
 ---
 
-Jac's server auth model is built on **per-user data isolation**. There's no explicit user id to check - the runtime handles login via `@jac/runtime` client helpers (`jacLogin`, etc.) and then routes each user's queries to their own subgraph. You pick the endpoint prefix; the runtime does the rest. (For data that *specific* users share, isolation has an escape hatch - see "Sharing data with specific users" below.)
+Jac's server auth is built on **per-user data isolation**: every registered user gets their own root, and authenticated endpoints run against the caller's root. There is no user-id parameter to check - identity is implicit in which `root` the endpoint sees.
 
-- **`def:pub`** - anonymous. Anyone can call. `root` is the **shared global graph** - every caller sees the same data.
-- **`def:priv`** - authenticated. Requires login. `root` is the **current user's isolated subgraph** - same code, different data per caller.
-- **Client calls to `def:priv` without a session** throw `UNAUTHORIZED`; the client catches and redirects to `/login` (see `jac-cl-auth`).
+## Endpoint auth semantics (canonical - verified against the live server)
+
+- **`def:pub` / `walker:pub`** - no auth required. An **anonymous** caller runs on the shared guest graph (`root` is `root.shared`); a caller who *does* send a valid token runs on **their own root**. So `root` inside a `:pub` endpoint is not one fixed graph - it depends on the caller's token.
+- **Plain `def` / `def:priv`** (and plain `walker` / `walker:priv`) - JWT required (`401 UNAUTHORIZED` without one); runs on the caller's own isolated root. **Plain and `:priv` behave identically** - secure by default; `:priv` is just the explicit spelling.
+- **`def _helper`** - underscore prefix keeps a function off the API entirely (underscore *walkers* become middleware - see `jac-sv-endpoints`).
 
 ```jac
 node Todo {
@@ -15,14 +17,14 @@ node Todo {
 }
 
 
-# PUBLIC - shared root, everyone sees the same data.
-def:pub total_public_todos() -> int {
+# PUBLIC - anonymous callers all share the guest graph.
+def:pub public_feed_size() -> int {
     return len([root -->][?:Todo]);
 }
 
 
-# PRIVATE - per-user root, each caller sees only their own data.
-# Same query code, different subgraph per user.
+# AUTHENTICATED (plain def == def:priv) - per-user root, each caller
+# sees only their own data. Same query code, different subgraph per user.
 def:priv my_todos() -> list[Todo] {
     return [root -->][?:Todo];
 }
@@ -32,30 +34,63 @@ def:priv add_todo(title: str) -> Todo {
 }
 ```
 
-For full CRUD shapes (update / toggle / delete + typed returns + async), see `jac-sv-endpoints`.
+CRUD shapes, return types, walkers: `jac-sv-endpoints`.
+
+## REST auth flow (any non-jac-client caller)
+
+The jac client wraps this (`jacLogin` etc. - see `jac-cl-auth`); raw REST consumers drive it directly. **Register takes an identity array, NOT a flat `{username, password}` body** (that returns 422):
+
+```bash
+curl -X POST http://localhost:8000/user/register -H "Content-Type: application/json" -d '{
+  "identities": [{"type": "username", "value": "alice"},
+                 {"type": "email", "value": "a@example.com"}],
+  "credential": {"type": "password", "password": "secret123"},
+  "profile": {"firstname": "Alice"}}'              # profile optional; 201, no token
+
+curl -X POST http://localhost:8000/user/login -H "Content-Type: application/json" -d '{
+  "identity": {"type": "username", "value": "alice"},
+  "credential": {"type": "password", "password": "secret123"}}'
+# -> {"ok": true, "data": {"user_id": "...", "token": "eyJ...", "root_id": "...", "role": "user"}}
+
+curl -X POST http://localhost:8000/function/my_todos \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{}'
+
+curl http://localhost:8000/user/me -H "Authorization: Bearer $TOKEN"   # profile, identities, role
+```
+
+Identity types: `username`, `email` (max one of each; login works with either). Also available: `POST /user/refresh-token`, `PUT /user/password`, password-reset/verify endpoints via a configured emailer.
+
+## Roles
+
+jac-scale HAS a built-in role system: `admin` / `system` / `user`, stored on the user and carried in JWT claims (login and `/user/me` return it). New registrations are `user`; the bootstrap admin is created on first start. Set roles via the admin API or the admin portal at `/admin`:
+
+```bash
+curl -X PUT http://localhost:8000/admin/users/alice \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"role": "admin"}'
+```
+
+The built-in roles gate *platform* surfaces (admin portal, `/metrics`). For **app-domain** roles (moderator, team owner, ...), the in-Jac pattern is still a role field on a node hanging off the user's root, checked inside an authenticated endpoint - see `jac-sv-multi-user`.
+
+## JWT production footgun
+
+The default signing secret is `supersecretkey_for_testing_only!` - anyone who knows it can forge tokens for any user. Always set a real secret in production:
+
+```toml
+[plugins.scale.jwt]
+secret = "long-random-string"     # or env JWT_SECRET; algorithm HS256, exp_delta_days 7
+```
+
+No token revocation exists - tokens stay valid until expiry. SSO (Google/Apple/GitHub): configure `[plugins.scale.sso.<platform>]` and send users to `/sso/<platform>/login`.
 
 ## Sharing data with specific users
 
-`def:pub` (one shared global graph) and `def:priv` (per-user isolated graph) are
-not the only two options. For data shared across logged-in users - a shared
-document, team workspace, or two-player game, but also a multi-user social
-feed, comments, follows, or moderation/admin views - keep the endpoints
-`def:priv` and use the ambient permission builtins (no import needed):
-
-- `grant(node, level)` - give another user access to a specific node.
-- `revoke(node)` - withdraw that access.
-- `allroots()` - list every user's `root` (returns `list[Root]`), for admin or
-  cross-user views.
-
-This opens chosen nodes to chosen users instead of dumping shared state into
-the global `def:pub` graph. **Load `jac-sv-multi-user`** for the full
-cross-user permission model (access levels, granting against another user's
-root, per-user roles) - required for any multi-user-shared feature.
+`grant(node, level)` opens a node to **every** logged-in user - it is NOT a per-user grant. Per-user sharing uses `allow_root` / `disallow_root`, and truly-public data belongs on `root.shared`. **Load `jac-sv-multi-user`** for all of it.
 
 ## Pitfalls
 
-- `def:pub` and `def:priv` can live in the **same file** - visibility is per-function, not per-module.
-- On the client side, a call to a `def:priv` endpoint without a valid session raises an error containing `"UNAUTHORIZED"`. Wrap in try/except and redirect to login - see `jac-cl-auth`.
-- There is **no `current_user()` helper**. User identity is implicit in which `root` the endpoint sees. Store per-user metadata (preferences, roles) on nodes reachable from that user's `root` and read it inside `def:priv` endpoints.
-- **`walker:pub`** is a third endpoint flavor for complex traversal-style queries. The client calls it and reads `result.reports`. Niche - prefer `def:pub` / `def:priv` first.
-- **Shared `root` on `def:pub` = shared data - wrong visibility = silent data-leak.** Writing user-specific data (e.g. a user's notes) from a `def:pub` endpoint puts it in the global graph; *every other user calling the same endpoint reads it back*. NO compile error, NO runtime error - only surfaces when User B sees User A's data. If the endpoint writes user-specific data it **must** be `def:priv` (per-user-isolated root). Verify: log in as two different users; if reads from one show the other's data, the visibility is wrong.
+- **Wrong visibility = silent data leak.** Writing user-specific data from a `def:pub` endpoint puts anonymous users' data on the shared guest graph, and the same code does different things for token-holders. No compile or runtime error - it only surfaces when user B sees user A's data. User-specific data ⇒ authenticated endpoint (plain `def` or `def:priv`). Verify by logging in as two users and checking reads don't cross.
+- Don't "fix" a 401 by making the endpoint `:pub` - that changes whose graph it runs on, not just who may call it.
+- `:pub` and authenticated endpoints can live in the same file - visibility is per-declaration.
+- Client calls to an authenticated endpoint without a session raise an error containing `"UNAUTHORIZED"` - catch and redirect to login (`jac-cl-auth`).
+- `register` returns **no token** - call `/user/login` after it. Keep `root_id` from the login response if you plan to use per-user grants (`jac-sv-multi-user`).

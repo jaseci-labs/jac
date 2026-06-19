@@ -134,7 +134,14 @@ impl NaIRGenPass._emit_set_helpers(
 """Generate code for a set literal {a, b, c, ...}."""
 impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
     if not nd.values {
-        # Empty set: need type hint
+        # Empty set: the checker stamps the literal with the expected type
+        # (bidirectional inference); lowering it registers the set helpers.
+        _sk = self._set_spec_of(nd);
+        _helpers = self.set_helpers.get(_sk) if _sk is not None else None;
+        if _helpers is not None {
+            # Fresh allocation: ownership applied at the _codegen_expr seam.
+            return self.builder.call(_helpers["new"], [], name="set.empty");
+        }
         return None;
     }
     # Get first element to determine type
@@ -188,35 +195,6 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
             }
         }
     }
-    # Set literal is a fresh allocation — mark as owned.
-    self._mark_owned(set_val);
+    # Fresh allocation: ownership applied at the _codegen_expr seam.
     return set_val;
-}
-
-"""Check if element is in set."""
-impl NaIRGenPass._codegen_set_contains(
-    set_val: ir.Value, elem_val: ir.Value, elem_type_name: str
-) -> (ir.Value | None) {
-    helpers = self.set_helpers.get(elem_type_name);
-    if helpers is None {
-        return None;
-    }
-    elem_type = helpers["elem_type"];
-    elem_val = self._coerce_type(elem_val, elem_type);
-    return self.builder.call(
-        helpers["contains"], [set_val, elem_val], name="set.contains"
-    );
-}
-
-"""Add element to set."""
-impl NaIRGenPass._codegen_set_add(
-    set_val: ir.Value, elem_val: ir.Value, elem_type_name: str
-) -> None {
-    helpers = self.set_helpers.get(elem_type_name);
-    if helpers is None {
-        return;
-    }
-    elem_type = helpers["elem_type"];
-    elem_val = self._coerce_type(elem_val, elem_type);
-    self.builder.call(helpers["add"], [set_val, elem_val]);
 }

@@ -179,6 +179,56 @@ impl TypeEvaluator._get_iterable_element_type(
     return None;
 }
 
+"""Native (#6403 phase 2) iter()/next() result type, or None to fall through.
+
+Structural binding of `list[int]` against `Iterable[_T]` does not bind the
+element TypeVar in the native checker, so the element type of a first-class
+iterator is resolved through the same `__iter__`/`__next__` machinery the
+for-loop uses (`_get_iterable_element_type`):
+  - `iter(x)`  -> native `Iterator[elem(x)]`  (lowered to a boxed JacIter)
+  - `next(it)` -> `elem(it)`  (it: Iterator[T] iterates to T nominally)
+Only the native ambient `iter`/`next` builtins are claimed; a user-defined
+shadow of either name resolves normally.
+"""
+impl TypeEvaluator._native_iter_next_result(expr: uni.FuncCall) -> TypeBase | None {
+    if not (
+        isinstance(expr.target, uni.Name)
+        and expr.target.value in ("iter", "next")
+        and len(expr.params or []) == 1
+    ) {
+        return None;
+    }
+    sym = expr.target.sym;
+    if sym is None or sym.parent_tab is not self.na_builtins_module {
+        return None;
+    }
+    arg = expr.params[0];
+    # `iter`/`next` are positional-only (the `na_builtins.pyi` stubs name their
+    # params `__o`/`__i`), matching CPython where both reject keyword arguments.
+    # Don't claim a keyword call here: fall through so normal stub resolution
+    # rejects it, instead of typing a form the backend can't lower. (#6403)
+    if isinstance(arg, uni.KWPair) {
+        return None;
+    }
+    arg_expr = arg;
+    arg_type = self.get_type_of_expression(arg_expr);
+    if isinstance(arg_type, types.UnknownType) {
+        return None;
+    }
+    elem = self._get_iterable_element_type(arg_type, arg_expr);
+    if elem is None {
+        return None;
+    }
+    if expr.target.value == "next" {
+        return elem;
+    }
+    iter_cls = self._get_type_from_module(self.na_builtins_module, "Iterator");
+    if not isinstance(iter_cls, types.ClassType) {
+        return None;
+    }
+    return self._convert_to_instance(iter_cls.specialize_generics([elem]));
+}
+
 """Walk `tuple_type` through a positional index path and return the
 element type at the leaf, or None if any step fails."""
 impl TypeEvaluator._extract_tuple_element_type_path(

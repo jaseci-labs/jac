@@ -37,6 +37,62 @@ def ast_to_list(`node: ast3.AST) -> list[ast3.AST] {
     return nodes;
 }
 
+def joinedstr_invariant_violations(`node: ast3.AST) -> list[str] {
+    violations: list[str] = [];
+    def walk(nd: ast3.AST, path: str) {
+        if isinstance(nd, ast3.JoinedStr) {
+            for (i, value) in enumerate(nd.values) {
+                piece_path = path + f".values[{i}]";
+                if isinstance(value, ast3.JoinedStr) {
+                    violations.append(f"nested JoinedStr at {piece_path}");
+                } elif isinstance(value, ast3.Constant) {
+                    if not isinstance(value.value, str) {
+                        violations.append(
+                            f"non-str Constant in JoinedStr at {piece_path}: " + repr(
+                                value.value
+                            )[:80]
+                        );
+                    }
+                } elif not isinstance(value, ast3.FormattedValue) {
+                    violations.append(
+                        f"unexpected {type(value).__name__} in JoinedStr at {piece_path}"
+                    );
+                }
+                walk(value, piece_path);
+            }
+        } else {
+            for (_, field_value) in ast3.iter_fields(nd) {
+                if isinstance(field_value, list) {
+                    for item in field_value {
+                        if isinstance(item, ast3.AST) {
+                            walk(item, path);
+                        }
+                    }
+                } elif isinstance(field_value, ast3.AST) {
+                    walk(field_value, path);
+                }
+            }
+        }
+    }
+    walk(`node, "module");
+    return violations;
+}
+
+
+test "joinedstr fstring quotes produce flat ast" {
+    # Regression for jaseci-labs/jaseci#6564: MultiString-wrapped f-strings must not
+    # nest JoinedStr nodes (breaks ast.unparse in jac2py).
+    fixture = os.path.join(FIXTURES, "joinedstr_fstring_quotes.jac");
+    prog = JacProgram();
+    code_gen = prog.compile(fixture);
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    py_mod = code_gen.gen.py_ast[0];
+    violations = joinedstr_invariant_violations(py_mod);
+    assert not violations , (
+        "JoinedStr AST invariant violated:\n" + "\n".join(violations)
+    );
+    ast3.unparse(py_mod);
+}
 
 test "hodge podge" {
     (out := JacProgram()).compile(

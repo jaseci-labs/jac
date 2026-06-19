@@ -22,24 +22,6 @@ impl NaIRGenPass._get_or_declare_extern(
     return func;
 }
 
-"""Call an extern function with automatic argument coercion.
-Handles type mismatches between internal callers (using i8*) and user-
-declared C functions (using i64), or vice versa.  Uses _coerce_type for
-ptrtoint / inttoptr / bitcast as needed."""
-impl NaIRGenPass._call_extern(
-    b: ir.IRBuilder, func: ir.Function, args: list[ir.Value], name: str = ""
-) -> ir.Value {
-    coerced: list[ir.Value] = [];
-    for (i, arg) in enumerate(args) {
-        if i < len(func.args) and arg.type != func.args[i].type {
-            coerced.append(self._coerce_type(arg, func.args[i].type));
-        } else {
-            coerced.append(arg);
-        }
-    }
-    return b.call(func, coerced, name=name);
-}
-
 # ─── Print Support ───────────────────────────────────────────
 """Get or create the printf external function declaration."""
 impl NaIRGenPass._get_printf -> ir.Function {
@@ -236,7 +218,13 @@ shared decoder keeps the na ⊆ sv guarantee true by construction rather than
 re-deriving an inevitably-incomplete escape table here (regression: #6442).
 """
 impl NaIRGenPass._codegen_string(nd: uni.String) -> (ir.Value | None) {
-    return self._make_global_string(nd.lit_value);
+    # A byte-string literal (b"...") decodes to a Python `bytes` via lit_value;
+    # emit it as a length-aware bytes value rather than a NUL-terminated str.
+    _lit = nd.lit_value;
+    if isinstance(_lit, bytes) {
+        return self._make_global_bytes(_lit);
+    }
+    return self._make_global_string(_lit);
 }
 
 """Generate f-string by building a printf-style format string and calling snprintf."""

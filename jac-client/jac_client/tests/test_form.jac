@@ -35,7 +35,7 @@ def _setup_form_project(
     env = get_env_with_npm();
 
     process = Popen(
-        [*jac_cmd, "create", "--use", "client", app_name],
+        [*jac_cmd, "create", "--kind", "mobile", app_name],
         stdin=PIPE,
         stdout=PIPE,
         stderr=PIPE,

@@ -52,7 +52,7 @@ Classifiers appear as `Classifier:` headers in the wheel's `METADATA` and contro
     error and will produce malformed wheel metadata. Always use `[...]` syntax
     as shown above.
 
-Runtime dependencies declared under `[dependencies]` are written into the wheel's `METADATA` as `Requires-Dist` entries, so `pip install mylib` pulls them in automatically. `[dev-dependencies]` are **not** shipped. `[optional-dependencies.<group>]` become wheel extras (`pip install mylib[<group>]`).
+Runtime dependencies declared under `[dependencies]` are written into the wheel's `METADATA` as `Requires-Dist` entries, so `pip install mylib` pulls them in automatically. `[dev-dependencies]` are **not** installed by default -- they ship as a `dev` extra (`pip install mylib[dev]`). `[optional-dependencies.<group>]` become wheel extras (`pip install mylib[<group>]`).
 
 See the [Configuration Reference](config/index.md#project) for the full field list.
 

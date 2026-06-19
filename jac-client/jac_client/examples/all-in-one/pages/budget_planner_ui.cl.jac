@@ -2,17 +2,17 @@
 # Main application page with budget tracking features
 
 # Local JAC file imports
-cl import from ..context.BudgetContext { useBudgetContext }
-cl import from ..components.Header { Header }
-cl import from ..components.Summary { Summary }
-cl import from ..components.ProfitOverview { ProfitOverview }
-cl import from ..components.TransactionForm { TransactionForm }
-cl import from ..components.TransactionList { TransactionList }
-cl import from ..components.CategoryFilter { CategoryFilter }
-cl import from ..constants.categories { CATEGORY_COLORS }
+import from ..context.BudgetContext { useBudgetContext }
+import from ..components.Header { Header }
+import from ..components.Summary { Summary }
+import from ..components.ProfitOverview { ProfitOverview }
+import from ..components.TransactionForm { TransactionForm }
+import from ..components.TransactionList { TransactionList }
+import from ..components.CategoryFilter { CategoryFilter }
+import from ..constants.categories { CATEGORY_COLORS }
 
 # cl import from "..components.PieChart.tsx" { PieChart }
-cl def:pub BudgetPlanner -> JsxElement {
+def:pub BudgetPlanner -> JsxElement {
     has filter: str = "ALL";
     budget = useBudgetContext();
 

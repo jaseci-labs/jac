@@ -55,6 +55,23 @@ codegen backends instead of each re-deriving it.
 def primitive_type_name_of(ty: (types.TypeBase | None)) -> (str | None);
 
 """
+Primitive type name of an EXPRESSION, resolved through the program's type
+authority, or "" when unknown.
+
+This is the sanctioned codegen-time read of expression types: the
+evaluator is the single type authority and `Expr.type` is its
+memoization, populated lazily - checking stamps what its rules evaluate,
+and the first query for anything else computes and caches it (diagnostics
+from such late queries are deferred/managed by the checker's reporter
+machinery, see TypeCheckPass.emit). Backends call this instead of
+importing the evaluator, so expression-type derivation has exactly one
+owner. (Measured across the ES + OSP corpora: a stamp, when present,
+never disagrees with the evaluator - the lazy query only ever fills
+gaps.)
+"""
+def expr_primitive_name(prog: object, expr_node: uni.UniNode) -> str;
+
+"""
 Tracks parameter assignments for function calls.
 
     This class helps in tracking which parameters have been matched

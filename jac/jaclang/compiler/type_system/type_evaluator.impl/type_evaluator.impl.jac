@@ -66,6 +66,14 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.MultiString():
             if self.prefetch and self.prefetch.str_class {
+                for s in expr.strings {
+                    if isinstance(s, uni.String) and isinstance(s.lit_value, bytes) {
+                        if self.prefetch.bytes_class {
+                            return self._convert_to_instance(self.prefetch.bytes_class);
+                        }
+                        return types.UnknownType();
+                    }
+                }
                 # Forward-reference resolution for single-string type annotations.
                 # When 'Path' is used as a type annotation, the parser wraps
                 # the String in a MultiString. Check if this is in a type context.
@@ -153,6 +161,19 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.ListVal():
             if self.prefetch and self.prefetch.list_class {
                 list_inst = self._convert_to_instance(self.prefetch.list_class);
+                if isinstance(list_inst, types.ClassType) and not expr.values {
+                    # Empty literal: adopt the expected element type outright
+                    # (there are no elements to contradict it), so
+                    # `x: list[str] = []` stamps `list[str]` rather than bare
+                    # `list` and backends never re-derive element types from
+                    # the annotation AST.
+                    expected_elem = self._get_expected_element_type(
+                        expected_type, self.prefetch.list_class
+                    );
+                    if expected_elem is not None {
+                        list_inst.private.type_args = [expected_elem];
+                    }
+                }
                 if isinstance(list_inst, types.ClassType) and expr.values {
                     # Always infer element types bottom-up first.
                     elem_types: list[types.TypeBase] = [];
@@ -206,6 +227,16 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.DictVal():
             if self.prefetch and self.prefetch.dict_class {
                 dict_inst = self._convert_to_instance(self.prefetch.dict_class);
+                if isinstance(dict_inst, types.ClassType) and not expr.kv_pairs {
+                    # Empty literal: adopt the expected key/value types (see
+                    # the ListVal case above).
+                    expected_kv_e = self._get_expected_kv_types(
+                        expected_type, self.prefetch.dict_class
+                    );
+                    if expected_kv_e is not None {
+                        dict_inst.private.type_args = list(expected_kv_e);
+                    }
+                }
                 if isinstance(dict_inst, types.ClassType) and expr.kv_pairs {
                     # Always infer key/value types bottom-up first.
                     key_types: list[types.TypeBase] = [];
@@ -283,7 +314,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # Always infer element types bottom-up first.
                     elem_types_t: list[types.TypeBase] = [];
                     for _val in expr.values {
-                        et = self.get_type_of_expression(_val);
+                        # Kw-tuples `(a=1, b=2)` carry KWPair (not Expr)
+                        # elements; the element type is the pair's value.
+                        et = self.get_type_of_expression(
+                            _val.value if isinstance(_val, uni.KWPair) else _val
+                        );
                         if not isinstance(et, types.UnknownType) {
                             elem_types_t.append(et);
                         }
@@ -324,6 +359,16 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.SetVal():
             if self.prefetch and self.prefetch.set_class {
                 set_inst = self._convert_to_instance(self.prefetch.set_class);
+                if isinstance(set_inst, types.ClassType) and not expr.values {
+                    # Empty literal: adopt the expected element type (see the
+                    # ListVal case above).
+                    expected_elem_se = self._get_expected_element_type(
+                        expected_type, self.prefetch.set_class
+                    );
+                    if expected_elem_se is not None {
+                        set_inst.private.type_args = [expected_elem_se];
+                    }
+                }
                 if isinstance(set_inst, types.ClassType) and expr.values {
                     # Always infer element types bottom-up first.
                     set_elem_types: list[types.TypeBase] = [];
@@ -433,10 +478,29 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                     }
                 }
-                elem_type = self.get_type_of_expression(expr.out_expr);
-                if isinstance(list_inst, types.ClassType)
-                and not isinstance(elem_type, types.UnknownType) {
-                    list_inst.private.type_args = [elem_type];
+                # Bidirectional: flow the expected element type into the
+                # output expression (so nested comprehensions and literals
+                # adopt it too) and adopt it as this comprehension's element
+                # type when the inferred output is assignable. This types
+                # `[[None for _ in range(n)] for _ in range(n)]` under a
+                # `list[list[T | None]]` annotation as nested `T | None`
+                # lists instead of `list[None]`.
+                expected_elem_lc = self._get_expected_element_type(
+                    expected_type, self.prefetch.list_class
+                );
+                elem_type = self.get_type_of_expression(
+                    expr.out_expr, expected_elem_lc
+                );
+                if isinstance(list_inst, types.ClassType) {
+                    if expected_elem_lc is not None
+                    and (
+                        isinstance(elem_type, types.UnknownType)
+                        or self.assign_type(elem_type, expected_elem_lc)
+                    ) {
+                        list_inst.private.type_args = [expected_elem_lc];
+                    } elif not isinstance(elem_type, types.UnknownType) {
+                        list_inst.private.type_args = [elem_type];
+                    }
                 }
                 return list_inst;
             }
@@ -476,6 +540,7 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.LambdaExpr():
             return_type: TypeBase = types.UnknownType();
             parameters: list[types.Parameter] = [];
+            has_unresolved_param = False;
             # Bidirectional inference: if expected_type is a FunctionType,
             # seed untyped lambda params from the expected callable signature.
             expected_func: types.FunctionType | None = None;
@@ -492,6 +557,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     );
                 }
                 sig_params = expr.signature.get_parameters();
+                seeded_param = False;
                 for (idx, param) in enumerate(sig_params) {
                     param_type: TypeBase | None = None;
                     if param.type_tag {
@@ -504,6 +570,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                         and idx < len(expected_func.parameters)
                     ) {
                         param_type = expected_func.parameters[idx].param_type;
+                        # Seed onto the Name (read by _get_type_of_symbol) and
+                        # the ParamVar (read by hover).
+                        if param_type is not None {
+                            param.name.type = param_type;
+                            param.type = param_type;
+                            seeded_param = True;
+                        }
+                    }
+                    if param_type is None {
+                        has_unresolved_param = True;
                     }
                     parameters.append(
                         types.Parameter(
@@ -514,6 +590,19 @@ impl TypeEvaluator._get_type_of_expression_core(
                         )
                     );
                 }
+                # Re-resolve the body against the seeded params.
+                if seeded_param and isinstance(expr.body, uni.Expr) {
+                    self._invalidate_expr_type_cache(expr.body);
+                }
+            }
+            # Skip the body for a speculative overload candidate whose param
+            # is still Unknown; the matching overload re-evaluates it seeded.
+            if has_unresolved_param {
+                return types.FunctionType(
+                    func_name="<lambda>",
+                    return_type=types.UnknownType(),
+                    parameters=parameters,
+                );
             }
             if isinstance(expr.body, uni.Expr) {
                 body_type = self.get_type_of_expression(expr.body);
@@ -2099,6 +2188,9 @@ impl TypeEvaluator._get_type_of_expression_core(
             #   1. FilterCompr `[?:T]` directly in chain (e.g. [-->[?:Todo]])
             #   2. EdgeOpRef typed-edge filter `->:T:->` — when edges_only,
             #      the result element is T itself. Issue #5885 gap 6.
+            #   3. EdgeOpRef whose edge T declares endpoint node types
+            #      (`edge T: Src --> Tgt`) — a neighbour traversal narrows to
+            #      the declared node type for the direction. Issue #6657.
             # Bare untyped traversals stay as `list[<Any>]` so visit, spawn,
             # and other consumers retain their gradual-typing semantics.
             if self.prefetch and self.prefetch.list_class {
@@ -2119,6 +2211,22 @@ impl TypeEvaluator._get_type_of_expression_core(
                         ft = self.get_type_of_expression(chain_item.filter_cond.f_type);
                         if isinstance(ft, types.ClassType) and ft.is_edge_type() {
                             element_type = self._convert_to_instance(ft);
+                        }
+                    } elif (
+                        isinstance(chain_item, uni.EdgeOpRef)
+                        and not expr.edges_only
+                        and chain_item.filter_cond is not None
+                        and chain_item.filter_cond.f_type is not None
+                    ) {
+                        # `[... ->:T:-> ...]` neighbour: if T declares endpoint
+                        # node types, narrow to the declared node for the
+                        # traversal direction (out -> target, in -> source).
+                        ft = self.get_type_of_expression(chain_item.filter_cond.f_type);
+                        if isinstance(ft, types.ClassType) and ft.is_edge_type() {
+                            ep = self._edge_endpoint_type(ft, chain_item.edge_dir);
+                            if ep is not None {
+                                element_type = self._convert_to_instance(ep);
+                            }
                         }
                     }
                 }
@@ -2199,6 +2307,10 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     return param_type;
                 }
                 return self._convert_to_instance(annotation_type);
+            }
+            # Honor a type seeded onto the Name by lambda inference.
+            if node_.name.type is not None {
+                return node_.name.type;
             }
 
         # This actually defined in the function getTypeForDeclaration();
@@ -3004,6 +3116,12 @@ impl TypeEvaluator._in_native_context -> bool {
     if cur is None or not isinstance(cur, uni.UniNode) {
         return False;
     }
+    # An explicit `na { ... }` block is native regardless of file extension —
+    # use the canonical ancestor walk so a fixture or app written as `.jac`
+    # gets the same native ABI/coercion rules as a whole `.na.jac` module.
+    if cur.in_native_context() {
+        return True;
+    }
     mod = cur.find_parent_of_type(uni.Module);
     if mod is None or mod.loc is None {
         return False;
@@ -3125,6 +3243,14 @@ impl TypeEvaluator.assign_type(
         if isinstance(dest_type, types.TypeVarType) {
             return True;
         }
+        # Native lowers `any` to a tagged `JacVal` union and unboxes it to the
+        # destination type at the coercion seam (`_unbox_from_jacval`), so
+        # `any -> concrete` is a real runtime coercion here, not a silent leak.
+        # Restore gradual typing in native code to keep e.g. `z: int = a`
+        # (a: any) congruent with the sv pathway (#6421).
+        if self._in_native_context() {
+            return True;
+        }
         return False;
     }
     # Literal type assignability rules (similar to Pyright's literalValue handling)
@@ -3229,6 +3355,18 @@ impl TypeEvaluator.assign_type(
                     return self._assign_callable(call_type, dest_type, strict);
                 }
             }
+        }
+        # int → function reference: in native code a function value is a
+        # 64-bit pointer, so an integer may initialize a Callable slot —
+        # typically the literal 0 for a C NULL function pointer in clib
+        # vtable struct fields (e.g. CEF/libuv callback slots). Mirrors the
+        # function → int rule below and is gated to native modules so
+        # regular Jac keeps its function/int distinction.
+        if isinstance(src_type, types.ClassType)
+        and src_type.is_class_instance()
+        and src_type.is_builtin("int")
+        and self._in_native_context() {
+            return True;
         }
     }
     # Source is FunctionType assigned to a different type
@@ -3461,12 +3599,23 @@ impl TypeEvaluator.get_type_of_expression(
     if isinstance(node_, uni.Ability) {
         return self.get_type_of_ability(node_);
     }
-    # Use cached result if available, UNLESS expected_type is provided
-    # for a container literal that could benefit from bidirectional inference.
+    # Use cached result if available, UNLESS expected_type is provided for a
+    # container literal, comprehension, or lambda that benefits from
+    # bidirectional inference (ListCompr also covers Set/Gen comprehensions; a
+    # lambda re-evaluates so the expected callable can seed its params).
     if node_.type is not None {
         if expected_type is None
         or not isinstance(
-            node_, (uni.ListVal, uni.DictVal, uni.SetVal, uni.TupleVal)
+            node_,
+            (
+                uni.ListVal,
+                uni.DictVal,
+                uni.SetVal,
+                uni.TupleVal,
+                uni.ListCompr,
+                uni.LambdaExpr,
+
+            )
         ) {
             # Whole-expression CFG narrowing: chained subscripts like
             # `self.squares[r][c]` aren't narrowed by the AtomTrailer
@@ -3638,11 +3787,6 @@ impl TypeEvaluator._is_sv_async_call(expr: uni.FuncCall) -> bool {
     mod_key = id(mod);
     syms = self._sv_async_syms_cache.get(mod_key);
     if syms is None {
-        # A whole `.cl.jac` module is client code; a `cl { ... }` block makes
-        # an individual import client code even inside a server module.
-        mod_is_client_file = (
-            mod.loc is not None and mod.loc.mod_path.endswith(".cl.jac")
-        );
         syms = set();
         for imp in mod.get_all_sub_nodes(uni.Import) {
             tok = imp._source_context_token();
@@ -3651,7 +3795,9 @@ impl TypeEvaluator._is_sv_async_call(expr: uni.FuncCall) -> bool {
             }
             # Only the cl->sv edge becomes an async stub; an sv->sv import
             # stays synchronous, so its calls are not coroutines.
-            if not (mod_is_client_file or imp.in_client_context()) {
+            # (`in_client_context` covers both a `.cl.jac` module and a
+            # `cl { ... }` block inside a server module.)
+            if not imp.in_client_context() {
                 continue;
             }
             for item in imp.items {

@@ -355,8 +355,10 @@ async walker PrivateBroadcastChat {
 import datetime;
 
 glob execution_log: list = [],
+     # Scheduler default TZ is UTC — compute the static date trigger in UTC
+     # so the same fixture value lands at the same moment on dev and CI.
      _future_date: str = (
-         datetime.datetime.now() + datetime.timedelta(seconds=5)
+         datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=5)
      ).strftime("%Y-%m-%d %H:%M:%S");
 
 @schedule(trigger=ScheduleTrigger.STATIC, interval=0.3)
@@ -415,4 +417,10 @@ walker:pub NormalWalker {
 
 def normal_func -> dict {
     return {"message": "normal function endpoint"};
+}
+
+# Exposes the in-memory execution_log so tests can verify scheduled tasks
+# actually fired (not just that they were registered).
+def get_execution_log -> dict {
+    return {"log": list(execution_log)};
 }

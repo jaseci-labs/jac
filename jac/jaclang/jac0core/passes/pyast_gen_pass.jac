@@ -142,6 +142,15 @@ ctypes.
         """
     def _gen_native_interop_stubs(nd: uni.NativeBlock) -> None;
 
+    """Build shim body statements for a natively-lowered test block.
+
+        The shim calls the test's native function through the module's JIT
+        engine and re-raises its failure message as an AssertionError, so
+        native tests report through the same unittest pipeline as Python
+        tests.
+        """
+    def _native_test_shim_stmts(nd: uni.Test) -> list;
+
     """Generate Python HTTP client stubs for sv-to-sv microservice imports.
 
         For each function imported via an sv import from another server module,

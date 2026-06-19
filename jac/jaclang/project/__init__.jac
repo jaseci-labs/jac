@@ -25,6 +25,14 @@ import from jaclang.project.config {
     is_in_project,
     set_config
 }
+import from jaclang.project.kinds {
+    RunPlan,
+    VALID_KINDS,
+    is_valid_kind,
+    plan_project_run,
+    resolve_entry,
+    resolve_project_kind
+}
 import from jaclang.project.dependencies {
     DependencyInstaller,
     DependencyResolver,

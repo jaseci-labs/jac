@@ -45,7 +45,6 @@ jac-scale/build
 **/.jac/logs
 **/.jac/run
 **/.jac/__pycache__
-**/__jac_gen__
 
 # Frontend
 **/node_modules

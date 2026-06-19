@@ -41,6 +41,21 @@ impl UniNode._construct_sub_node_tab -> None {
     }
 }
 
+"""Invalidate the memoized sub node table on this node and its ancestors.
+
+Constructing a node's table forces construction of its whole subtree, so a
+materialized (non-None) node always implies materialized descendants. The
+contrapositive guarantees that the first ancestor whose table is already None
+has only None ancestors above it -- so we can stop walking there.
+"""
+impl UniNode._invalidate_sub_node_tab -> None {
+    cur: (UniNode | None) = self;
+    while cur is not None and cur.__sub_node_tab is not None {
+        cur.__sub_node_tab = None;
+        cur = cur.parent;
+    }
+}
+
 """Get symbol table.
 
 For version conditionals, some scopes (IfStmt, ElseStmt) are unlinked.
@@ -81,6 +96,7 @@ impl UniNode.add_kids_left(
             i.parent = self;
         }
     }
+    self._invalidate_sub_node_tab();
     return self;
 }
 
@@ -99,6 +115,7 @@ impl UniNode.add_kids_right(
             i.parent = self;
         }
     }
+    self._invalidate_sub_node_tab();
     return self;
 }
 
@@ -113,6 +130,7 @@ impl UniNode.insert_kids_at_pos(
         }
         self.loc.update_token_range(*self.resolve_tok_range());
     }
+    self._invalidate_sub_node_tab();
     return self;
 }
 
@@ -123,6 +141,7 @@ impl UniNode.set_kids(nodes: Sequence[UniNode]) -> UniNode {
         i.parent = self;
     }
     self.loc.update_token_range(*self.resolve_tok_range());
+    self._invalidate_sub_node_tab();
     return self;
 }
 
@@ -164,9 +183,9 @@ impl UniNode.gen_token(name: Tok, value: (str | None) = None) -> Token {
 }
 
 """Get all sub nodes of type."""
-impl UniNode.get_all_sub_nodes(typ: type[T], brute_force: bool = True) -> list[T] {
+impl UniNode.get_all_sub_nodes(typ: type[T]) -> list[T] {
     import from jaclang.jac0core.passes { UniPass }
-    return UniPass.get_all_sub_nodes(nd=self, typ=typ, brute_force=brute_force);
+    return UniPass.get_all_sub_nodes(nd=self, typ=typ);
 }
 
 """Get parent of type."""
@@ -187,8 +206,11 @@ impl UniNode.parent_of_type(typ: type[T]) -> T {
 """Check if this node is in a client-side context.
 
         This covers:
+        - Any node in a `.cl.jac` module - the file suffix IS the client
+          marker, so bare top-level constructs (globs, imports, calls) are
+          client context without a redundant `cl` prefix
         - Nodes inside an explicit cl {} block in a .jac file
-        - Nodes inside a function marked with CLIENT context in .cl.jac files
+        - Nodes inside a function marked with CLIENT context
         - Overridden by sv {} blocks (server takes precedence)
 
         Uses single traversal for efficiency since this is called frequently.
@@ -207,6 +229,9 @@ impl UniNode.in_client_context -> bool {
             if (context == CodeContext.CLIENT) {
                 return True;
             }
+        }
+        if isinstance(nd, Module) {
+            return (nd.loc is not None and nd.loc.mod_path.endswith(".cl.jac"));
         }
         nd = nd.parent;
     }
@@ -337,6 +362,66 @@ impl Symbol.symbol_table.getter -> (UniScopeNode | None) {
         return self.parent_tab.find_scope(self.sym_name);
     }
     return None;
+}
+
+"""Storage class of this symbol, derived from its owning scope.
+
+Fully derived from `parent_tab`/`defn`/`uses` (all JIR-serialized), so it
+needs no serialization and is always consistent after cache loads. Backends
+must consume this instead of re-deriving scoping facts.
+"""
+impl Symbol.storage.getter -> SymbolStorage {
+    owner = self.parent_tab;
+    while (
+        owner is not None
+        and not isinstance(owner, UniScopeNode.get_python_scoping_nodes())
+    ) {
+        owner = owner.parent_scope;
+    }
+    if (owner is None) or isinstance(owner, Module) {
+        return SymbolStorage.MODULE_GLOBAL;
+    }
+    if isinstance(owner, (Archetype, Enum)) {
+        return SymbolStorage.CLASS_FIELD;
+    }
+    # Function-like scope (Ability, ImplDef, Test).
+    if isinstance(self.decl.name_of, ParamVar) {
+        return SymbolStorage.PARAM;
+    }
+    # Captured: any use whose nearest runtime scope (function-like node or
+    # lambda -- lambdas share the symbol table but capture at runtime)
+    # differs from the declaration's runtime scope.
+    barriers = UniScopeNode.get_python_scoping_nodes();
+    def_scope: (UniNode | None) = self.decl.parent;
+    while (
+        def_scope is not None
+        and not isinstance(def_scope, barriers)
+        and not isinstance(def_scope, LambdaExpr)
+    ) {
+        def_scope = def_scope.parent;
+    }
+    for use in self.uses {
+        cur = use.parent;
+        while (
+            cur is not None
+            and not isinstance(cur, barriers)
+            and not isinstance(cur, LambdaExpr)
+        ) {
+            cur = cur.parent;
+        }
+        if (cur is None) or (cur is def_scope) {
+            continue;
+        }
+        # An ImplDef body shares its declaration's scope (see lookup()).
+        if isinstance(cur, ImplDef) and (cur.decl_link is def_scope) {
+            continue;
+        }
+        if isinstance(def_scope, ImplDef) and (def_scope.decl_link is cur) {
+            continue;
+        }
+        return SymbolStorage.CAPTURED;
+    }
+    return SymbolStorage.LOCAL;
 }
 
 """Add defn."""
@@ -477,6 +562,39 @@ impl UniScopeNode.find_scope(name: str) -> (UniScopeNode | None) {
         }
     }
     return None;
+}
+
+"""Collect free variables of this scope from the symbol tables.
+
+A symbol is a capture when its defining scope is a function-like scope
+(Ability/ImplDef/LambdaExpr/Test) that strictly encloses this scope.
+Module/Archetype/Enum-level symbols (globals, members) are not captures.
+"""
+impl UniScopeNode.get_enclosing_captures -> list[Symbol] {
+    out: list[Symbol] = [];
+    func_scopes = (Ability, ImplDef, LambdaExpr, Test);
+    for name in self.get_all_sub_nodes(Name) {
+        sym = name.sym;
+        if (sym is None) {
+            continue;
+        }
+        tab = sym.parent_tab;
+        if ((tab is None) or (tab is self) or not isinstance(tab, func_scopes)) {
+            continue;
+        }
+        # The defining scope must strictly enclose this scope.
+        scope = self.parent_scope;
+        while (scope is not None) {
+            if (scope is tab) {
+                if sym not in out {
+                    out.append(sym);
+                }
+                break;
+            }
+            scope = scope.parent_scope;
+        }
+    }
+    return out;
 }
 
 """Push a new scope onto the symbol table."""
@@ -790,6 +908,16 @@ impl NameAtom.sym_name.getter -> str {
 
 impl NameAtom.sym_category.getter -> SymbolType {
     return self._sym_category;
+}
+
+"""True when this name is the first binding of its symbol in scope.
+
+Derived from `Symbol.defn` ordering (JIR-serialized), so it survives cache
+loads without recomputation. Note: this is the Python-function-scope answer;
+ES block-scope `let` placement still needs the active-scope stack (#5930).
+"""
+impl NameAtom.binds_new_var.getter -> bool {
+    return (self.sym is not None) and (self.sym.decl is self);
 }
 
 """Create symbol."""
@@ -1266,6 +1394,16 @@ impl Archetype.is_abstract.getter -> bool {
     return `any((isinstance(i, Ability) and i.is_abstract) for i in body);
 }
 
+impl Archetype.arch_kind.getter -> (str | None) {
+    return {
+        SymbolType.NODE_ARCH: "node",
+        SymbolType.EDGE_ARCH: "edge",
+        SymbolType.WALKER_ARCH: "walker"
+    }.get(
+        self.sym_category
+    );
+}
+
 impl Archetype.get_has_vars -> list[HasVar] {
     body = self._get_impl_resolved_body();
     has_vars: list[HasVar] = [];
@@ -1503,6 +1641,34 @@ impl Ability.py_resolve_name -> str {
     } else {
         raise NotImplementedError;
     }
+}
+
+"""Trigger type names from the checker-resolved `event_triggers`.
+
+Each resolved TypeBase is mangled to its canonical key; class-object forms
+(`type[X]`) are unwrapped to `X`, union keys are split on `|`, and names are
+deduped in order. Returns None when the checker recorded no resolution for
+this ability, signalling callers to fall back to flattening the trigger AST.
+Single owner of this derivation: native and ECMAScript OSP emission both
+consume it.
+"""
+impl Ability.event_trigger_type_names -> (list[str] | None) {
+    if self.event_triggers is None {
+        return None;
+    }
+    names: list[str] = [];
+    for t in self.event_triggers {
+        for part in t.mangle().split("|") {
+            name = part.strip();
+            if name.startswith("type[") and name.endswith("]") {
+                name = name[5:-1];
+            }
+            if name and name not in names {
+                names.append(name);
+            }
+        }
+    }
+    return names;
 }
 
 impl FuncSignature.postinit -> None {
@@ -1813,6 +1979,10 @@ impl LambdaExpr.postinit -> None {
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
 }
 
+impl LambdaExpr.captures.getter -> list[Symbol] {
+    return self.get_enclosing_captures();
+}
+
 
 impl UnaryExpr.postinit -> None {
     UniNode.postinit(self);
@@ -1960,6 +2130,7 @@ impl YieldExpr.postinit -> None {
 
 impl FuncCall.postinit -> None {
     self.params = `list(self.params) if self.params else [];
+    self.callee_decl = None;
     UniNode.postinit(self);
     Expr.postinit(self);
 }
@@ -2304,7 +2475,6 @@ impl Name.init(
     self._sym_name = '';
     self._sym_category = SymbolType.UNKNOWN;
     self._py_ctx_func = ast3.Load;
-    self.js_decl_kind = None;
     Expr.postinit(self);
     AstSymbolNode._init_symbol(
         self, sym_name=value, name_spec=self, sym_category=SymbolType.VAR

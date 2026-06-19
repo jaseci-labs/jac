@@ -93,10 +93,15 @@ impl __getApiBaseUrl -> str {
 impl __getEndpointEffects -> dict {
     if not globalThis.__jacEndpointEffects__ {
         initEl = None;
-        try {
-            initEl = document.getElementById("__jac_init__");
-        } except Exception as e {
-            console.warn("[jac-client] Failed to find __jac_init__ element:", e);
+        # Bare `document` throws ReferenceError outside the browser (Node test
+        # harness), and `except Exception` does not catch JS errors - probe via
+        # globalThis instead.
+        if globalThis.document {
+            try {
+                initEl = document.getElementById("__jac_init__");
+            } except Exception as e {
+                console.warn("[jac-client] Failed to find __jac_init__ element:", e);
+            }
         }
         if initEl {
             try {

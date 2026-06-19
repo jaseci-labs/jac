@@ -90,6 +90,24 @@ test "native osp: spawn returns the walker" {
     assert collect_one(0) == 0;
 }
 
+test "native osp: skip in an impl-annex walker event ability (issue #6794)" {
+    # `skip` is a valid Return-family statement in a walker `with X entry` event
+    # ability, and native lowers it there. When the ability is split decl/impl,
+    # the `skip` lives in an `impl Walker.ability with X entry` ImplDef in the
+    # annex. Before the fix the native capability check — now scanning annex
+    # bodies (#6754) — saw the ImplDef (not an inline Ability) around the `skip`
+    # and falsely rejected it (E5090), producing no IR; a module importing it
+    # then failed to link (E5024) and `jac test` reported "native engine
+    # unavailable". Here `grab` skips val==0 nodes and sums the rest.
+    (eng, _) = compile_native("osp_skip_annex.na.jac");
+    collect = get_func(
+        eng, "collect", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    assert collect(10, 0, 32) == 42;  # the val==0 node is skipped
+    assert collect(0, 0, 0) == 0;  # every node skipped
+    assert collect(5, 5, 5) == 15;
+}
+
 test "arithmetic negate" {
     (eng, _) = compile_native("arithmetic.na.jac");
     neg = get_func(eng, "negate", ctypes.c_int64, ctypes.c_int64);
@@ -167,6 +185,22 @@ test "nested functions helper recursion and module global" {
     # x + BASE, BASE == 100
     assert uses_global(0) == 100;
     assert uses_global(7) == 107;
+}
+
+test "glob declared in an impl annex resolves on native (issue #6754)" {
+    # A `glob` declared in the canonical bare IMPL ANNEX
+    # (`impl/annex_glob.impl.jac`, base name resolved before the `.na` variant
+    # suffix), not the head file, must be registered in the native module's
+    # globals and resolved by references in the annexed ability bodies. Before
+    # the fix, native global collection swept only the head module's `body`, so
+    # the annex glob was never emitted and references bailed with E5090
+    # 'Name'/'BinaryExpr'. The byte-identical program with the glob in the head
+    # file always compiled.
+    (eng, _) = compile_native("annex_glob.na.jac");
+    get_sz = get_func(eng, "get_sz", ctypes.c_int64);
+    double_sz = get_func(eng, "double_sz", ctypes.c_int64);
+    assert get_sz() == 21;  # bare `Name` reference to the annex glob
+    assert double_sz() == 42;  # `BinaryExpr` reference to the annex glob
 }
 
 # --- TestNativeContextIsolation ---
@@ -305,6 +339,23 @@ test "strings concat" {
         eng, "concat_strings", ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p
     );
     assert f(b"hello ", b"world") == b"hello world";
+}
+
+# --- TestNativeGetenvDefault (regression: issue #6688) ---
+test "os getenv honors default for unset var issue 6688" {
+    # `os.getenv(key, default)` ignored its default and returned NULL for an
+    # unset var; any downstream string op (`len`/`+`/`!=`) then `strlen`'d NULL
+    # and segfaulted at startup. quakepassion's `os.getenv("QP_SMOKE", "") != ""`
+    # crashed `./main` instantly (misread as a render-loop use-after-free). The
+    # default must now be substituted. GETENV_UNSET_6688 is never set here.
+    os.environ.pop("GETENV_UNSET_6688", None);
+    (eng, _) = compile_native("fix_getenv_default.na.jac");
+    f1 = get_func(eng, "getenv_unset_string_default", ctypes.c_int64);
+    assert f1() == 8 , "os.getenv unset must return the string default ('fallback')";
+    f2 = get_func(eng, "getenv_unset_empty_default", ctypes.c_int64);
+    assert f2() == 0 , "os.getenv unset must return the empty-string default";
+    f3 = get_func(eng, "getenv_unset_concat", ctypes.c_int64);
+    assert f3() == 5 , "concatenating an unset os.getenv default must not crash";
 }
 
 # UTF-8 byte primitives the rune-aware lexer depends on. bytes.decode() was
@@ -1888,6 +1939,24 @@ test "clib import produces extern declares" {
     assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
 }
 
+test "clib decl with no return arrow lowers to void, not i64" {
+    prog = JacProgram();
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES, "_clib_void_ret.na.jac")),
+        use_str="import from \"/usr/lib/libm.so.6\" {\n"
+        "    def no_arrow(x: f64);\n"
+        "    def explicit_none(x: f64) -> None;\n"
+        "}\n"
+        "def use_it(n: f64) -> f64 { return n; }\n"
+    );
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    s = str(ir.gen.llvm_ir);
+    assert 'declare void @"no_arrow"(double' in s , f"omitted return arrow did not lower to void: {s}";
+    assert 'declare i64 @"no_arrow"' not in s , "omitted return arrow silently lowered to i64";
+    # Parity with the explicit `-> None` spelling.
+    assert 'declare void @"explicit_none"(double' in s , "explicit -> None did not lower to void";
+}
+
 test "clib import inside na block" {
     prog = JacProgram();
     ir = prog.compile(str(os.path.join(FIXTURES, "clib_import_na_block.jac")));
@@ -2003,14 +2072,21 @@ test "clib struct value-type coercion" {
     # --- Small struct (Color: 32-bit, integer fields) ABI coercion ---
     # Color struct type should be defined
     assert '%"Color" = type {i8, i8, i8, i8}' in llvm_ir_str , "Color struct type not found";
-    # Extern draw should have Color param ABI-coerced to i32
-    assert 'declare void @"draw"(i32 %"x", i32 %"y", i32 %"color")' in llvm_ir_str , "draw should use i32 for Color param (ABI coercion)";
     # Jac test_draw function should use Color pointer internally
     assert 'define void @"test_draw"' in llvm_ir_str;
-    # System V ABI coercion at the call site: the Color value is reinterpreted
-    # as its register coerce type ({i32}) and the eightbyte is loaded out.
-    assert "clib.arg.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
+    # Struct-by-value coercion at the call site: the small struct is passed in
+    # an integer register, loaded out of the struct slot.
     assert "clib.arg.load" in llvm_ir_str , "Missing struct ABI register load";
+    import platform;
+    if "x86_64" in platform.machine() or "AMD64" in platform.machine() {
+        # System V AMD64: the 4-byte Color eightbyte coerces to i32 and the
+        # value is reinterpreted via a struct-to-ABI bitcast.
+        assert 'declare void @"draw"(i32 %"x", i32 %"y", i32 %"color")' in llvm_ir_str , "draw should use i32 for Color param (SysV ABI coercion)";
+        assert "clib.arg.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
+    } elif platform.machine() in ("arm64", "aarch64") {
+        # AAPCS64: composites are rounded up to the 8-byte register size.
+        assert 'declare void @"draw"(i32 %"x", i32 %"y", i64 %"color")' in llvm_ir_str , "draw should use i64 for Color param (AAPCS64 coercion)";
+    }
 }
 
 test "clib System V AMD64 ABI lowering" {
@@ -2042,6 +2118,67 @@ test "clib System V AMD64 ABI lowering" {
     # The non-injective return-boxing (gap #7) is gone: a scalar return is never
     # rerouted through struct boxing.
     assert "clib.cabi.arg" in s , "nested struct packed to C layout for byval";
+}
+
+test "jac run loads a transitive imported-module clib (issue #6687)" {
+    # `jac run` JIT-executes a native module in-process via MCJIT. A C shared
+    # library declared in an IMPORTED module through a dotted logical import
+    # carries an `$ORIGIN`-relative path; the imported-dependency clib loader
+    # did not strip that loader token, so the library was never loaded into the
+    # JIT and its FFI symbols resolved to NULL -- the process SIGSEGV'd after a
+    # clean compile, while the byte-identical `jac nacompile` binary ran fine.
+    # The library must now be loaded so the cross-module FFI call returns 21.
+    import platform;
+    import shutil;
+    import tempfile;
+    if "x86_64" not in platform.machine() and "AMD64" not in platform.machine() {
+        import pytest;
+        pytest.skip("x86_64-only shared-library build");
+    }
+    cc = shutil.which("cc") or shutil.which("gcc");
+    if not cc {
+        import pytest;
+        pytest.skip("no C compiler available to build the test shared library");
+    }
+    with tempfile.TemporaryDirectory() as tmpdir {
+        os.makedirs(os.path.join(tmpdir, "libs"));
+        # Build libs/libclibjit6687.so from the C fixture.
+        so_path = os.path.join(tmpdir, "libs", "libclibjit6687.so");
+        build = subprocess.run(
+            [
+                cc,
+                "-shared",
+                "-fPIC",
+                "-o",
+                so_path,
+                str(os.path.join(FIXTURES, "clib_jit_xmod.c"))
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60
+        );
+        assert build.returncode == 0 , f"cc failed: {build.stderr}";
+        # The `$ORIGIN` token strips to the cwd at JIT time, so the .na.jac
+        # fixtures and the lib subdir must sit together in the run directory.
+        for _f in ["clib_jit_xmod_lib.na.jac", "clib_jit_xmod_main.na.jac"] {
+            shutil.copy(os.path.join(FIXTURES, _f), os.path.join(tmpdir, _f));
+        }
+        result = subprocess.run(
+            [sys.executable, "-m", "jaclang", "run", "clib_jit_xmod_main.na.jac"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=tmpdir
+        );
+        assert result.returncode == 0 , (
+            f"`jac run` crashed (transitive clib unresolved): "
+            f"exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        assert result.stdout.strip() == "21" , (
+            f"Expected '21', got stdout={result.stdout!r} stderr={result.stderr!r}"
+        );
+    }
 }
 
 test "clib AArch64 AAPCS ABI lowering" {
@@ -2193,6 +2330,22 @@ test "dicts items iteration sum" {
     (eng, _) = compile_native("dicts_sets.na.jac");
     f = get_func(eng, "dict_items_iter_sum", ctypes.c_int64);
     assert f() == 60;
+}
+
+# --- TestNativeDictItemsRefcount (regression: issue #6688) ---
+test "dict items iteration does not over release key val issue 6688" {
+    # `__dict_get_key`/`__dict_get_val` hand back BORROWED pointers into the
+    # dict's backing arrays. `for (k, v) in d.items()` bound them into pointer
+    # locals that scope-exit cleanup releases, but never retained them -- so the
+    # dict's last key+val were over-released, freeing their heap backing under
+    # the still-live dict. In a long-running native OSP loop that read a node's
+    # str field each spawn, this surfaced as a dangling `char*` strlen'd by a
+    # C-FFI call. `verify_items_rc` drains a dict via `.items()` in a helper,
+    # churns same-size allocations to reuse the freed block, then re-reads the
+    # value: it returns 1 when the value survived intact, 0 when corrupted.
+    (eng, _) = compile_native("fix_dict_items_rc.na.jac");
+    f = get_func(eng, "verify_items_rc", ctypes.c_int64);
+    assert f() == 1 , "dict .items() over-released its key/val (issue #6688)";
 }
 
 # --- TestNativeEmptyGlobDict (regression: empty-dict-glob-var-init-null-ptr) ---
@@ -2435,6 +2588,155 @@ test "sys argv via nacompile" {
         # DONE should NOT appear (sys.exit called before it)
         assert "DONE" not in exit_result.stdout , (
             f"DONE should not appear after sys.exit()\nstdout: {exit_result.stdout}"
+        );
+    }
+}
+
+test "native osp kernel links transitively through an imported module (issue #6669)" {
+    # A thin entry that uses no OSP itself but imports a module whose `run_it`
+    # does the `spawn`. The kernel's glob-init is referenced only transitively,
+    # so the entry module's manifest carries no `osp_kernel` mark. The link gate
+    # must still pull the kernel in. Before the fix the binary built cleanly but
+    # failed at load with: undefined symbol: __jac_glob_init_osp_kernel.
+    import tempfile;
+    fixture = str(os.path.join(FIXTURES, "osp_kernel_transitive_main.na.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "osp_kernel_transitive");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        result = subprocess.run([out_bin], capture_output=True, text=True, timeout=10);
+        assert result.returncode == 0 , (
+            f"Native binary crashed at load: exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        assert result.stdout.strip() == "7" , (
+            f"Expected '7', got stdout={result.stdout!r} stderr={result.stderr!r}"
+        );
+    }
+}
+
+test "native osp graph survives a cross-module spawn (kernel glob-init runs once)" {
+    # The graph is BUILT in an imported module (`build`) and SPAWNED in the entry
+    # module. The OSP kernel's adjacency globals (`_e_src`/`_walk_stack`) are
+    # link-merged singletons, but `__osp_setup` + its `__osp_inited` guard are
+    # per-module (internal). The entry module's first `spawn` therefore hit its
+    # OWN (unset) guard and re-ran the SHARED kernel glob-init via
+    # `__osp_ensure_init`, re-initializing `_e_src = []` and wiping the graph the
+    # imported module had built -- so `[root -->]` collapsed from 2 to 0 after a
+    # single spawn. The kernel glob-init must run exactly once program-wide.
+    import tempfile;
+    fixture = str(os.path.join(FIXTURES, "osp_xmod_buildsplit_main.na.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "osp_xmod_buildsplit");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        result = subprocess.run([out_bin], capture_output=True, text=True, timeout=10);
+        assert result.returncode == 0 , (
+            f"Native binary crashed: exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        # before=2, after=2 (graph survives the spawn), seen=1+2=3.
+        assert result.stdout.strip() == "2 2 3" , (
+            f"Expected '2 2 3', got stdout={result.stdout!r} stderr={result.stderr!r}"
+        );
+    }
+}
+
+test "native osp node constructed in a non-OSP module carries its dispatch tag (issue #6683)" {
+    # The entry module CONSTRUCTS an OSP node (`Hub`) but uses no OSP construct
+    # of its own; the spawn happens inside the imported `run_probe`. Tag-table
+    # population is gated on a module actually using OSP, so the construct-only
+    # entry assigned the node NO tag -- its reserved `__type_tag` field stayed 0.
+    # When `run_probe` spawned on it, the kernel's `tag_of` read 0 and
+    # `node_desc(0)` returned a null descriptor, aborting the walk
+    # (`Aborted (core dumped)`, exit 134). The construction site must write the
+    # node's globally-stable tag regardless of whether the constructing module
+    # uses OSP. The byte-identical program with the spawn in the entry module
+    # always ran clean. Fixed: prints `7`.
+    import tempfile;
+    fixture = str(os.path.join(FIXTURES, "osp_ctor_only_main.na.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "osp_ctor_only");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed: exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        result = subprocess.run([out_bin], capture_output=True, text=True, timeout=10);
+        assert result.returncode == 0 , (
+            f"Native binary aborted mid-walk (null dispatch descriptor): "
+            f"exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        assert result.stdout.strip() == "7" , (
+            f"Expected '7', got stdout={result.stdout!r} stderr={result.stderr!r}"
+        );
+    }
+}
+
+test "native osp construct living only in an impl annex materializes imported archetypes" {
+    # A builder module IMPORTS OSP archetypes (`Hub`/`Area`) from another native
+    # module and wires them (`++>`) from an IMPL ANNEX (`.na.impl.jac`), not its
+    # head file. DeclImplMatchPass attaches an annex body via `decl.body =
+    # <ImplDef from the annex module>`, never splicing it into the head decl's
+    # `kid`, so the OSP construct is reachable only through `mod.impl_mod`.
+    # The OSP construct scan (now `OspAnalysis._uses_construct`) swept just the
+    # head module's `iter_context_stmts` + kid tree, classified the builder as a
+    # non-OSP user, and never gave the imported archetypes their stable type-tag
+    # -- the annexed `++>` then failed with
+    # E5090 ("not materialized") at nacompile (or mis-codegen SIGSEGV in a fuller
+    # graph). The byte-identical program with `build`'s body INLINE in the head
+    # file always compiled. Fixed: prints `2 2 3` (graph built, walker sums 1+2).
+    import tempfile;
+    fixture = str(os.path.join(FIXTURES, "osp_xmod_annexbuild_main.na.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "osp_xmod_annexbuild");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed (annexed OSP construct not materialized): "
+            f"exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        result = subprocess.run([out_bin], capture_output=True, text=True, timeout=10);
+        assert result.returncode == 0 , (
+            f"Native binary crashed (imported archetype tag not materialized): "
+            f"exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        # before=2 (graph built via annexed `build`), after=2 (survives spawn),
+        # seen=1+2=3 (walker reaches both Area nodes and sums their tags).
+        assert result.stdout.strip() == "2 2 3" , (
+            f"Expected '2 2 3', got stdout={result.stdout!r} stderr={result.stderr!r}"
         );
     }
 }
@@ -2999,6 +3301,159 @@ test "fnptr call_via_local stores and calls pointer" {
     mul_addr = eng.get_function_address("mul");
     assert call_via_local(add_addr, 6, 7) == 13;
     assert call_via_local(mul_addr, 6, 7) == 42;
+}
+
+# --- Callable null (`= 0`) field defaults (issue #6569) ---
+test "callable field accepts int 0 default in native (issue #6569)" {
+    (eng, _) = compile_native("fnptr_null_default.na.jac");
+    op_default = get_func(eng, "op_default_is_null", ctypes.c_int64);
+    assert op_default() == 0;
+    vt_default = get_func(eng, "vt_default_is_null", ctypes.c_int64);
+    assert vt_default() == 0;
+}
+
+test "callable field slot resets to null via int 0 (issue #6569)" {
+    (eng, _) = compile_native("fnptr_null_default.na.jac");
+    reset = get_func(eng, "op_slot_reset_to_null", ctypes.c_int64, ctypes.c_int64);
+    assert reset(5) == 0;
+}
+
+# --- C→Jac callback trampolines for clib vtable structs (issue #6570) ---
+test "clib vtable slot store emits C-ABI trampoline (issue #6570)" {
+    (_, ir) = compile_native("clib_vtable_trampoline.na.jac");
+    llvm_ir_str = str(ir.gen.llvm_ir);
+    # The Jac def has native signature i64(i64, i64); the slot declares
+    # i32(i32, i32). Storing it must go through a __clibcb trampoline with
+    # the C signature, not a raw bitcast of the Jac function.
+    assert "__clibcb" in llvm_ir_str , "no trampoline emitted for vtable slot";
+    assert 'define internal i32 @"_on_event.__clibcb.0"(i32' in llvm_ir_str , "trampoline must carry the C function signature";
+    # The trampoline calls back into the Jac function.
+    assert '@"_on_event"' in llvm_ir_str;
+}
+
+test "clib vtable trampolines are cached per (fn, type) pair (issue #6570)" {
+    (_, ir) = compile_native("clib_vtable_trampoline.na.jac");
+    llvm_ir_str = str(ir.gen.llvm_ir);
+    # One store site → exactly one trampoline definition.
+    assert llvm_ir_str.count("define internal i32 @\"_on_event.__clibcb.0\"") == 1;
+    assert "_on_event.__clibcb.1" not in llvm_ir_str;
+}
+
+# --- Flat (no-RC) allocation for clib vtable structs (issue #6571) ---
+test "clib vtable structs allocate flat without RC header (issue #6571)" {
+    (_, ir) = compile_native("clib_vtable_trampoline.na.jac");
+    llvm_ir_str = str(ir.gen.llvm_ir);
+    # C reads the vtable starting at field 0 (CEF validates struct->size
+    # there) and owns its lifetime, so the instance must be plain zeroed C
+    # memory — no RC header, no destructor, no type tag.
+    assert "clib.vt.raw" in llvm_ir_str , "vtable must allocate through the flat calloc path";
+    assert "__rc_release_event_handler_vt" not in llvm_ir_str , "C-owned vtable struct must not get an RC destructor";
+}
+
+test "clib vtable: C invokes Jac callback through trampoline (issue #6570)" {
+    import shutil;
+    if not shutil.which("gcc") {
+        import pytest;
+        pytest.skip("gcc not installed");
+    }
+    td = tempfile.mkdtemp();
+    c_src_path = os.path.join(td, "cbtest.c");
+    c_lines = [
+        "typedef struct {",
+        "    long size;",
+        "    int (*on_event)(int, int);",
+        "    void (*on_close)(long);",
+        "} event_handler_vt;",
+        "",
+        "long invoke_event(event_handler_vt* h, int a, int b) {",
+        "    if (h->on_event) { return (long)h->on_event(a, b); }",
+        "    return -1;",
+        "}",
+
+    ];
+    with open(c_src_path, "w") as f {
+        f.write("\n".join(c_lines) + "\n");
+    }
+    lib_path = os.path.join(td, "libcbtest.so");
+    r = subprocess.run(
+        ["gcc", "-shared", "-fPIC", "-o", lib_path, c_src_path],
+        capture_output=True,
+        text=True
+    );
+    assert r.returncode == 0 , f"gcc failed: {r.stderr}";
+    jac_lines = [
+        f'import from "{lib_path}" {{',
+        "    obj event_handler_vt {",
+        "        has size: int = 0,",
+        "            on_event: Callable[[i32, i32], i32] = 0,",
+        "            on_close: Callable[[int], None] = 0;",
+        "    }",
+        "    def invoke_event(h: int, a: i32, b: i32) -> int;",
+        "}",
+        "",
+        "def _on_event(a: int, b: int) -> int {",
+        "    return a * 10 + b;",
+        "}",
+        "",
+        "def run_with_cb(a: int, b: int) -> int {",
+        "    h = event_handler_vt(size=24, on_event=_on_event);",
+        "    return invoke_event(h, a, b);",
+        "}",
+        "",
+        "def run_null(a: int, b: int) -> int {",
+        "    h = event_handler_vt(size=24);",
+        "    return invoke_event(h, a, b);",
+        "}",
+        "",
+        "def make_handler_ptr() -> int {",
+        "    h = event_handler_vt(size=24, on_event=_on_event);",
+        "    return h;",
+        "}",
+        "",
+        "def invoke_after_maker_returns(a: int, b: int) -> int {",
+        "    p = make_handler_ptr();",
+        "    return invoke_event(p, a, b);",
+        "}",
+
+    ];
+    jac_src_path = os.path.join(td, "cb_fixture.na.jac");
+    with open(jac_src_path, "w") as f {
+        f.write("\n".join(jac_lines) + "\n");
+    }
+    prog = JacProgram();
+    ir = prog.compile(jac_src_path);
+    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
+    assert not prog.errors_had , f"Compilation errors: {errors}";
+    eng = ir.gen.native_engine;
+    assert eng is not None , "No native engine produced";
+    # C calls back into the Jac def via the trampoline: i32 args widen to
+    # the Jac i64 params, the i64 result narrows to the slot's i32.
+    run_cb = get_func(
+        eng, "run_with_cb", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    assert run_cb(3, 4) == 34;
+    assert run_cb(0, 0) == 0;
+    # Negative args prove real C-ABI marshalling: the trampoline must
+    # sign-extend the C i32 args into the Jac i64 params (a raw bitcast of
+    # the Jac function leaves the upper 32 bits of the registers undefined).
+    assert run_cb(-3, 4) == -26;
+    assert run_cb(3, -4) == 26;
+    # A defaulted (`= 0`) slot stays NULL — C sees a null fn ptr and skips it.
+    run_null = get_func(
+        eng, "run_null", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    assert run_null(3, 4) == -1;
+    # CEF pattern: the vtable is registered by one function and invoked by
+    # the C runtime after that function has returned — the C-owned flat
+    # allocation must outlive the creating scope (issue #6571).
+    invoke_later = get_func(
+        eng,
+        "invoke_after_maker_returns",
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64
+    );
+    assert invoke_later(5, 6) == 56;
 }
 
 # --- TestCrossModuleGlobInit ---
@@ -3926,14 +4381,120 @@ test "tuple-trigger union gives `here` a usable field layout (issue #6470)" {
     addr = eng.get_function_address("W.on_either");
     assert addr != 0 , "event ability 'W.on_either' was dropped from the module";
     fn = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)(addr);
-    # Both node structs lower to `{ header_ptr, header_i64, value_i64 }`, so the
-    # user field (`either` / `val`) sits at index 2 (byte offset 16).
-    self_buf = (ctypes.c_int64 * 3)(0, 0, 0);
+    # `self` is the walker W: { vtable@0, __type_tag@1, reports@2, either@3 } --
+    # walkers carry the built-in `reports` list at index 2, so the user field
+    # `either` sits at index 3. `here` is a node: { vtable@0, __type_tag@1,
+    # val@2 } (nodes have no reports field), so `val` sits at index 2.
+    self_buf = (ctypes.c_int64 * 4)(0, 0, 0, 0);
     here_buf = (ctypes.c_int64 * 3)(0, 0, 5);
     fn(ctypes.cast(self_buf, ctypes.c_void_p), ctypes.cast(here_buf, ctypes.c_void_p));
-    assert self_buf[2] == 5 , "here.val was not read through the union member layout";
+    assert self_buf[3] == 5 , "here.val was not read through the union member layout";
     # A second member instance must accumulate the same way.
     here_buf2 = (ctypes.c_int64 * 3)(0, 0, 7);
     fn(ctypes.cast(self_buf, ctypes.c_void_p), ctypes.cast(here_buf2, ctypes.c_void_p));
-    assert self_buf[2] == 12;
+    assert self_buf[3] == 12;
+}
+
+# --- TestNativeTestBlocks ---
+test "native test blocks compile to pass/fail functions" {
+    (eng, ir) = compile_native("test_blocks.na.jac");
+    layout = ir.gen.native_layout;
+    assert layout is not None;
+    tests = layout.tests;
+    assert len(tests) == 3 , f"expected 3 test entries in layout, got {len(tests)}";
+    by_name = {t.name: t for t in tests};
+    assert set(by_name.keys()) == {
+        "test_add_works",
+        "test_globals_visible_in_tests",
+        "test_deliberate_failure"
+    };
+    assert by_name["test_add_works"].description == "add works";
+    # Globals must be initialized before tests touch them.
+    glob_init = get_func(eng, "__jac_glob_init", None);
+    glob_init();
+    # Convention: null (None) = pass, static message pointer = fail.
+    passing = get_func(eng, by_name["test_add_works"].symbol, ctypes.c_char_p);
+    assert passing() is None , "passing test returned a failure message";
+    uses_glob = get_func(
+        eng, by_name["test_globals_visible_in_tests"].symbol, ctypes.c_char_p
+    );
+    assert uses_glob() is None , "test reading module globals failed";
+    failing = get_func(eng, by_name["test_deliberate_failure"].symbol, ctypes.c_char_p);
+    msg = failing();
+    assert msg is not None , "failing assert did not produce a message";
+    text = msg.decode("utf-8");
+    assert "assertion failed" in text;
+    # The failing assert sits on line 23 of the fixture; the message must
+    # carry the source location so the host report can point at it.
+    assert "test_blocks.na.jac:23" in text , f"no source location in: {text}";
+}
+
+test "a failing native test must not abort the host process" {
+    # The implicit per-test handler is what stands between a failing assert
+    # and the no-handler abort() path -- calling the failing test twice in
+    # one process proves the handler is popped/re-armed correctly too.
+    (eng, ir) = compile_native("test_blocks.na.jac");
+    by_name = {t.name: t for t in ir.gen.native_layout.tests};
+    failing = get_func(eng, by_name["test_deliberate_failure"].symbol, ctypes.c_char_p);
+    assert failing() is not None;
+    assert failing() is not None;
+}
+
+test "jac test runs .na.jac test blocks end to end" {
+    fixture = os.path.join(FIXTURES, "test_blocks.na.jac");
+    result = subprocess.run(
+        [sys.executable, "-m", "jaclang", "test", fixture],
+        capture_output=True,
+        text=True,
+        timeout=300
+    );
+    output = result.stdout + result.stderr;
+    assert "Ran 3 tests" in output , (
+        f"expected 3 tests to run.\nstdout: {result.stdout[-800:]}\n"
+        f"stderr: {result.stderr[-800:]}"
+    );
+    assert "FAILED (failures=1)" in output , (
+        f"expected exactly the deliberate failure.\noutput tail: {output[-800:]}"
+    );
+    assert "test_blocks.na.jac:23" in output , (
+        f"failure report must point at the failing assert.\noutput tail: {output[-800:]}"
+    );
+    assert result.returncode != 0 , "jac test must exit non-zero on failure";
+}
+
+test "jac test runs test blocks inside inline na blocks (no false green)" {
+    fixture = os.path.join(FIXTURES, "test_blocks_inline.jac");
+    result = subprocess.run(
+        [sys.executable, "-m", "jaclang", "test", fixture],
+        capture_output=True,
+        text=True,
+        timeout=300
+    );
+    output = result.stdout + result.stderr;
+    assert "NO TESTS RAN" not in output , "inline na-block tests were silently dropped";
+    assert "Ran 2 tests" in output , (
+        f"expected 2 tests to run.\nstdout: {result.stdout[-800:]}\n"
+        f"stderr: {result.stderr[-800:]}"
+    );
+    assert "FAILED (failures=1)" in output , (
+        f"expected exactly the deliberate failure.\noutput tail: {output[-800:]}"
+    );
+    assert result.returncode != 0 , "jac test must exit non-zero on failure";
+}
+
+# isinstance over a tuple mixing a supported and an unsupported type must raise
+# a structured error, not silently drop the unsupported arm (review of #6421).
+test "isinstance mixed tuple unsupported type errors" {
+    prog = JacProgram();
+    prog.compile(
+        file_path=str(os.path.join(FIXTURES, "na_isinstance_mixed_tuple.na.jac"))
+    );
+    codes = [
+        e.code.code
+        for e in (prog.errors_had or [])
+        if e.code
+    ];
+    assert "E5090" in codes , (
+        f"expected E5090 for mixed-tuple isinstance, got {codes}"
+    );
 }

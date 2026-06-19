@@ -381,10 +381,8 @@ impl NaIRGenPass._codegen_try(nd: uni.TryStmt) -> None {
         if not self.builder.block.is_terminated {
             self.builder.branch(finally_bb);
         }
-    } else {
-        if not self.builder.block.is_terminated {
-            self.builder.branch(finally_bb);
-        }
+    } elif not self.builder.block.is_terminated {
+        self.builder.branch(finally_bb);
     }
     # ── except.dispatch: match exception type against handlers ──
     self.builder.position_at_end(dispatch_bb);

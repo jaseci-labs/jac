@@ -635,6 +635,8 @@ Roles are stored in the user document and included in JWT claims. The admin user
 - System accounts (role `system`)
 - The guest account (identity `__guest__`)
 
+The guest account's root is the deployment's public graph - every unauthenticated request runs on it, and Jac code addresses it from any request as `root.shared` (see [The Shared Root](../language/osp.md#6-the-shared-root-rootshared)).
+
 Roles are managed via the admin portal API or programmatically through the `UserManager`:
 
 ```bash
@@ -1289,7 +1291,7 @@ with entry {
 All walker and function endpoints are **protected by default** -- they require JWT authentication. You must explicitly opt-in to public access using the `:pub` modifier. This secure-by-default approach prevents accidentally exposing endpoints without authentication.
 
 ```jac
-# Protected (default) -- requires JWT token
+# Protected (default) -- requires JWT token, runs on the caller's own isolated root
 walker get_profile {
     can fetch with Root entry { report [-->]; }
 }
@@ -1299,7 +1301,7 @@ walker :pub health_check {
     can check with Root entry { report {"status": "ok"}; }
 }
 
-# Private -- requires authentication, per-user isolated
+# Private -- identical to the default; `:priv` is the explicit spelling
 walker :priv internal_process {
     can run with Root entry { }
 }
@@ -1307,13 +1309,12 @@ walker :priv internal_process {
 
 ### Walker Access Levels
 
-Walkers have three access levels when served as API endpoints:
+Walkers have two access levels when served as API endpoints (`:priv` is the explicit spelling of the default):
 
 | Access | Description |
 |--------|-------------|
-| Public (`:pub`) | Accessible without authentication |
-| Protected (default) | Requires JWT authentication |
-| Private (`:priv`) | Requires JWT authentication; per-user isolated (each user operates on their own graph) |
+| Public (`:pub`) | Accessible without authentication. Anonymous callers run on the shared guest graph (`root.shared`); a caller presenting a valid token runs on their own root. |
+| Protected (default) and Private (`:priv`) | Require JWT authentication; per-user isolated (each user operates on their own graph). The unmarked default and `:priv` behave identically. |
 
 ### Permission Functions Reference
 
@@ -2406,6 +2407,8 @@ shelf_db_path = ".jac/data/anchor_store.db"  # SQLite/shelf path for local dev
 | `mongodb_uri`| None | External MongoDB URI. When set, K8s MongoDB StatefulSet is not provisioned. |
 | `redis_url`  | None | External Redis URL. When set, K8s Redis is not provisioned. |
 | `shelf_db_path` | `.jac/data/anchor_store.db` | Local shelf/SQLite storage path for `jac start` (no K8s) |
+| `redis_l1_invalidation_enabled` | `true` | Broadcast/apply cross-pod L1 cache evictions over Redis pub/sub (see [Memory Hierarchy](#cross-pod-l1-invalidation)). |
+| `redis_l1_invalidation_channel` | `"jac:anchor:invalidate"` | Pub/sub channel for L1 invalidation messages; all pods sharing a cache must match. |
 
 ---
 
@@ -2477,6 +2480,39 @@ graph TD
     L1 --- L2["L2: Redis (cache)"]
     L2 --- L3["L3: MongoDB (persistent)"]
 ```
+
+#### Cross-Pod L1 Invalidation
+
+L1 is an in-process cache: each request gets a fresh, request-scoped L1 that
+loads anchors from L3 and serves repeated reads of the same anchor from memory
+for the rest of that request. This is what makes a single request fast, but it
+also means that while a request holds an anchor in its L1, a **concurrent
+request on another pod** can commit a new version of that same anchor to L3.
+Without coordination, the first request keeps serving the stale snapshot it
+already loaded.
+
+To prevent that, every write broadcasts a small invalidation message over a
+**Redis pub/sub channel**. One daemon listener per process subscribes to that
+channel and, on each message, flags the named anchor _stale_ in every _other_
+live L1 in the process. The listener never mutates a sibling's cache directly;
+instead each owning request, on its next read of that anchor, drops its copy and
+reloads fresh from L3 -- but **only if the copy is unmodified**. A request that
+has its own uncommitted change to that anchor keeps it, so an in-flight write is
+never silently discarded. The writer's own L1 is excluded from the broadcast (it
+already holds the freshly merged copy), and deletes/quarantines flag everyone.
+The listener self-heals across Redis restarts with capped exponential backoff,
+and if Redis or the `redis` extra is unavailable the feature simply stays off:
+the system degrades to plain per-request L1s with no cross-pod coherence.
+
+This is on by default whenever a Redis URL resolves. Tune it under
+`[plugins.scale.database]`:
+
+| `jac.toml` key | Default | Description |
+|----------------|---------|-------------|
+| `redis_l1_invalidation_enabled` | `true` | Broadcast and apply cross-pod L1 evictions over Redis pub/sub. |
+| `redis_l1_invalidation_channel` | `"jac:anchor:invalidate"` | Pub/sub channel used for invalidation messages. All pods sharing a cache must agree on this value. |
+
+L1 invalidation keeps re-reads fresh, but it is a _post-commit_ signal -- it cannot stop two pods that both read an empty `[-->(?:X)]` _before_ either writes from both creating a child (the check-then-create race). That race is closed separately by node-level optimistic concurrency, which converges the loser via replay; see [Persistence -> Concurrent writes: check-then-create](../persistence.md#concurrent-writes-check-then-create-and-convergence).
 
 ---
 
@@ -2784,7 +2820,7 @@ Kubernetes uses readiness and liveness probes to decide when a pod is ready to s
 
 | TOML Key | Default | Description |
 |----------|---------|-------------|
-| `health_check_path` | Endpoint probed by both readiness and liveness checks |
+| `health_check_path` | `"/docs"` | Endpoint probed by both readiness and liveness checks |
 | `readiness_initial_delay` | `10` | Seconds to wait before first readiness check |
 | `readiness_period` | `20` | Seconds between readiness checks |
 | `liveness_initial_delay`  | `10` | Seconds to wait before first liveness check |
@@ -2807,19 +2843,26 @@ liveness_failure_threshold = 5
 
 ---
 
-### Horizontal Pod Autoscaling (HPA)
+### Autoscaling
 
-jac-scale creates a Kubernetes HPA that scales the application pod count up or down based on average CPU utilization across all pods.
+jac-scale supports two autoscaler engines selected via `autoscaler_engine`. Both engines share `min_replicas`, `max_replicas`, and `cpu_utilization_target`; they differ in what additional triggers and behaviours they support.
 
 **Defaults:**
 
 | TOML Key | Default | Description |
 |----------|---------|-------------|
-| `min_replicas` | `1` | Minimum number of pods (HPA lower bound) |
-| `max_replicas` | `3` | Maximum number of pods (HPA upper bound) |
-| `cpu_utilization_target`  | `50` | Average CPU % across pods that triggers scale-out |
+| `autoscaler_engine` | `"hpa"` | Autoscaler engine: `"hpa"` (CPU/memory, default) or `"keda"` (event-driven, scale-to-zero) |
+| `min_replicas` | `1` | Minimum number of pods |
+| `max_replicas` | `3` | Maximum number of pods |
+| `cpu_utilization_target` | `50` | Average CPU % that triggers scale-out. Seeds the CPU trigger for both engines unless explicitly overridden. |
 
-**To change in `jac.toml`:**
+> **Note:** CPU-based scaling requires `cpu_request` to be set. Without a CPU request, Kubernetes cannot compute a utilization percentage.
+
+#### HPA Engine (Default)
+
+The `"hpa"` engine creates a standard Kubernetes `HorizontalPodAutoscaler` that scales pods based on average CPU utilization.
+
+**To configure in `jac.toml`:**
 
 ```toml
 [plugins.scale.kubernetes]
@@ -2828,7 +2871,71 @@ max_replicas = 10
 cpu_utilization_target = 70   # Scale out when average CPU exceeds 70%
 ```
 
-> HPA requires `cpu_request` to be set. Without a CPU request, Kubernetes cannot compute a utilization percentage.
+#### KEDA Engine (Event-Driven Autoscaling)
+
+The `"keda"` engine creates a `ScaledObject` custom resource instead of an HPA. It supports the full [KEDA trigger catalogue](https://keda.sh/docs/latest/scalers/) (Prometheus, Redis, RabbitMQ, Kafka, HTTP, and more) and enables scale-to-zero.
+
+!!! note
+    KEDA must be installed on the cluster before using this engine. If KEDA CRDs are absent at deploy time, jac-scale emits an install warning with a link to the [KEDA installation docs](https://keda.sh/docs/latest/deploy/) and falls back to static replicas rather than failing the deploy.
+
+**Switching between engines is safe.** Each engine removes the other engine's resource (`ScaledObject` or `HPA`) on apply, so two autoscalers never compete for `spec.replicas` on the same Deployment.
+
+!!! warning "CPU/memory triggers: scale-down always takes ~5 minutes"
+    When using CPU or memory triggers, KEDA implements scaling through an internal Kubernetes `HorizontalPodAutoscaler`. Kubernetes applies a built-in 5-minute scale-down stabilization window (`stabilizationWindowSeconds = 300`) to every HPA regardless of the `autoscaler_cooldown` value set in `jac.toml`. Replicas will not decrease until CPU/memory has stayed below the target for a full 5 minutes. The `autoscaler_cooldown` setting is effective only for **event-driven triggers** (e.g. Prometheus, Redis, RabbitMQ) where KEDA directly controls the replica count without going through the HPA stabilization window.
+
+!!! tip "Startup CPU spikes causing unwanted scale-up?"
+    Pod initialization (Python imports, FastAPI startup, Jac runtime boot) can briefly spike CPU above the target, causing KEDA to scale up immediately after a fresh deploy before the app has finished starting. Set `autoscaler_initial_cooldown` to delay KEDA's first evaluation and give pods time to settle:
+    ```toml
+    autoscaler_initial_cooldown = 120  # wait 2 minutes after deploy before scaling
+    ```
+
+**KEDA-specific configuration (`[plugins.scale.kubernetes]`):**
+
+| TOML Key | Default | Description |
+|----------|---------|-------------|
+| `idle_replicas` | `null` | Replica count when all triggers go inactive. Set to `0` for scale-to-zero. Omit to fall back to `min_replicas`. |
+| `autoscaler_polling_interval` | `30` | Seconds between trigger evaluations. |
+| `autoscaler_cooldown` | `300` | Seconds of continuous inactivity before scaling down to `idle_replicas`. |
+| `autoscaler_initial_cooldown` | `0` | Seconds after a fresh deploy before scale-to-zero becomes eligible. Prevents cold-start thrash on slow-booting apps. |
+| `extra_triggers` | `[]` | Array of additional KEDA trigger tables applied to every service. See trigger entry keys below. |
+
+**Trigger entry keys (`[[plugins.scale.kubernetes.extra_triggers]]`):**
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `type` | (required) | KEDA trigger type (e.g. `"prometheus"`, `"redis"`, `"rabbitmq"`, `"kafka"`, `"http"`). See the [KEDA trigger catalogue](https://keda.sh/docs/latest/scalers/). |
+| `metadata` | `{}` | Dict of trigger-specific key/value pairs. All values are coerced to strings before being sent to KEDA. |
+| `name` | `null` | Name for this trigger. Required when using `auth.secret_refs`; used as the `TriggerAuthentication` resource name. |
+| `auth.secret_refs` | `{}` | KEDA `TriggerAuthentication` bindings. Each key is a KEDA parameter name; the value is a table with `name` (Kubernetes Secret name) and `key` (key within that Secret). |
+
+**To configure in `jac.toml`:**
+
+```toml
+[plugins.scale.kubernetes]
+autoscaler_engine = "keda"
+min_replicas = 1
+max_replicas = 10
+cpu_utilization_target = 50       # Seeds the automatic CPU trigger
+idle_replicas = 0                 # Scale to zero when all triggers are inactive
+autoscaler_polling_interval = 15
+autoscaler_cooldown = 120
+autoscaler_initial_cooldown = 30  # Wait 30s after deploy before allowing scale-to-zero
+
+# Add a Prometheus trigger alongside the automatic CPU trigger
+[[plugins.scale.kubernetes.extra_triggers]]
+type = "prometheus"
+name = "queue-depth"
+metadata = { serverAddress = "http://prometheus:9090", metricName = "job_queue_depth", threshold = "100", query = "sum(job_queue_depth)" }
+
+# Trigger with authentication: credential pulled from a Kubernetes Secret
+[[plugins.scale.kubernetes.extra_triggers]]
+type = "rabbitmq"
+name = "orders-queue"
+metadata = { queueName = "orders", mode = "QueueLength", value = "50", protocol = "amqp" }
+
+[plugins.scale.kubernetes.extra_triggers.auth.secret_refs]
+host = { name = "rabbitmq-secret", key = "host" }
+```
 
 ---
 
@@ -3048,7 +3155,7 @@ All Kubernetes resources created by jac-scale are labeled `managed: jac-scale` f
 kubectl get all -l managed=jac-scale -A
 ```
 
-Tagged resource types: Deployments, StatefulSets, Services, ConfigMaps, Secrets, PersistentVolumeClaims, HorizontalPodAutoscalers.
+Tagged resource types: Deployments, StatefulSets, Services, ConfigMaps, Secrets, PersistentVolumeClaims, HorizontalPodAutoscalers, ScaledObjects (KEDA engine), TriggerAuthentications (KEDA engine).
 
 ---
 
@@ -3413,9 +3520,10 @@ Each microservice entry takes optional per-service overrides under `[plugins.sca
 | `rpc_timeout` | float (seconds) | Per-service sv-to-sv RPC timeout. Default 10s, fine for CRUD; bump to 120-300s for LLM workers. |
 | `image_tag` | str | Override the image tag for just this service (rare; most apps use the same image and select via `JAC_SV_NAME`). |
 | `env` | dict | Extra env vars merged into the pod spec. `JAC_SV_NAME` and `JAC_SV_*_URL` are protected (cannot be overridden). |
-| `hpa.enabled` | bool | Set to `false` to fix replicas at the configured `replicas` count. |
-| `hpa.min` / `hpa.max` | int | HPA replica bounds. |
-| `hpa.cpu_target` | int (percent) | Target CPU utilization for HPA. Default 70%. |
+| `hpa.enabled` | bool | Set to `false` to fix replicas at the configured `replicas` count. Applies to both `"hpa"` and `"keda"` engines. |
+| `hpa.min` / `hpa.max` | int | Autoscaler replica bounds. Applies to both engines. |
+| `hpa.cpu_target` | int (percent) | Target CPU utilization percentage. Default 70%. Applies to both engines. |
+| `[[services.NAME.triggers]]` | list | Per-service KEDA event-driven triggers. Each entry: `type` (str), `metadata` (dict), optional `name` (str), optional `auth.secret_refs` (dict). Requires `autoscaler_engine = "keda"` in `[plugins.scale.kubernetes]`. |
 
 ```toml
 # Example: scale jac_coder_sv hot during LLM workloads, fix the gateway at 2.
@@ -3426,6 +3534,12 @@ hpa = { enabled = true, min = 2, max = 10, cpu_target = 60 }
 [plugins.scale.microservices.services.__gateway__]
 replicas = 2
 hpa = { enabled = false }
+
+# KEDA per-service trigger (requires autoscaler_engine = "keda" in [plugins.scale.kubernetes])
+[[plugins.scale.microservices.services.orders_app.triggers]]
+type = "prometheus"
+name = "order-queue"
+metadata = { serverAddress = "http://prometheus:9090", metricName = "pending_orders", threshold = "20", query = "sum(pending_orders_total)" }
 ```
 
 ### Centralised Logs

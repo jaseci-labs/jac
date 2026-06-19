@@ -31,11 +31,9 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
     # Build parameter types
     param_types: list[ir.Type] = [];
     for p in sig.get_parameters() {
-        if p.type_tag and p.type_tag.tag {
-            param_types.append(self._resolve_jac_type(p.type_tag.tag));
-        } else {
-            param_types.append(ir.IntType(64));
-        }
+        param_types.append(
+            self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
+        );
     }
     # Return type
     ret_type = self._resolve_jac_type(sig.return_type);
@@ -49,8 +47,25 @@ impl NaIRGenPass._maybe_declare_ability(nd: uni.ElementStmt) -> None {
     self.func_symtab[name] = func;
     # Store line info for use when the body is generated (codegen_ability)
     self._func_loc[name] = nd.loc.first_line if nd.loc else 0;
-    # Store AST signature for return type propagation in for-loops
-    self.method_ast_sigs[name] = sig;
+    # Interop-marshalling return facts, recorded while the declaration is
+    # in hand (replacing the deleted name-keyed AST-signature cache):
+    # tuple-element struct hints, and the union-peeled return annotation
+    # name for enum-return recovery. Consumed by build_interop_layout.
+    if sig.return_type is not None {
+        hints = self._extract_tuple_struct_hints(sig.return_type);
+        if hints {
+            self.func_ret_tuple_hints[name] = hints;
+        }
+        _rt = sig.return_type;
+        # Peel `T | None` (and general unions) to the first member.
+        if isinstance(_rt, uni.BinaryExpr) and getattr(_rt.op, 'value', '') == "|" {
+            _rt = _rt.left;
+        }
+        _rname = self._get_name(_rt);
+        if _rname is not None {
+            self.func_ret_ann_name[name] = _rname;
+        }
+    }
     self.has_native_code = True;
 }
 
@@ -64,116 +79,79 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     }
     name = nd.name_ref.sym_name if nd.name_ref else "unnamed";
     sig = nd.signature;
-    # The System V ABI plan is only needed when a by-value struct actually
-    # crosses the boundary. Pure-scalar foreign functions (sqrt, strlen, calloc,
-    # …) keep the legacy path — which also correctly handles reuse of the
-    # compiler's canonical extern declarations (e.g. a user re-declaring strlen
-    # with an `int` parameter still binds to the pre-declared i8* signature).
-    _clib_has_struct = False;
-    for _cp in sig.get_parameters() {
-        _cptn = self._clib_type_name(_cp.type_tag.tag)
-            if (_cp.type_tag and _cp.type_tag.tag)
-            else None;
-        if _cptn is not None and _cptn in self.clib_struct_names {
-            _clib_has_struct = True;
-        }
-    }
-    _crtn = self._clib_type_name(sig.return_type);
-    if _crtn is not None and _crtn in self.clib_struct_names {
-        _clib_has_struct = True;
-    }
-    # Classify struct arguments/returns per the platform psABI (System V AMD64
-    # or AArch64 AAPCS) and record a marshalling plan on self.clib_fn_abi.
-    # Targets without an ABI classifier fall through to the legacy path below.
+    # Whether and how the ABI plan applies is the central target library's
+    # decision (classify_foreign_fn): it returns None when no by-value foreign
+    # struct crosses the boundary, so pure-scalar foreign functions (sqrt,
+    # strlen, calloc, ...) keep the legacy path below - which also correctly
+    # handles reuse of the compiler's canonical extern declarations (e.g. a
+    # user re-declaring strlen with an `int` parameter still binds to the
+    # pre-declared i8* signature). Targets without an ABI classifier always
+    # take the legacy path.
     _abi_triple = str(self.llvm_module.triple or "");
     _abi_supported = (
         "x86_64" in _abi_triple or "aarch64" in _abi_triple or "arm64" in _abi_triple
     );
-    if _clib_has_struct and _abi_supported {
+    _decl_params = sig.get_parameters();
+    plan: (dict | None) = None;
+    if _abi_supported {
+        import from jaclang.compiler.targets.abi { classify_foreign_fn }
+        # The declared signature names come from the foreign declaration
+        # model (collect_foreign_fns) - the central owner of WHAT was
+        # declared at the C boundary - not from re-walking the annotation
+        # AST here. A function absent from the model is one the collector
+        # skipped (unnamed declaration), which cannot name a foreign struct
+        # in its signature - so falling through to the legacy scalar path
+        # below is the correct (and only) outcome, same as a plan of None.
+        _fdecl = self._foreign_fns().get(name);
+        if _fdecl is not None {
+            plan = classify_foreign_fn(
+                self._foreign_model(), _fdecl["params"], _fdecl["ret"], _abi_triple
+            );
+        }
+    }
+    if plan is not None {
+        # Materialize the central plan. Identified struct types are
+        # LLVM-module-context-bound and scalar lowering consults the
+        # checker-typed annotation, so only type construction happens here -
+        # classification, argument layout, and sret promotion are decided.
         sysv_param_types: list[ir.Type] = [];
-        param_plan: list = [];
-        for p in sig.get_parameters() {
-            pname = p.name.value if p.name else f"arg{len(param_plan)}";
-            ptn = self._clib_type_name(p.type_tag.tag)
-                if (p.type_tag and p.type_tag.tag)
-                else None;
-            if ptn is not None and ptn in self.clib_struct_names {
-                pcls = self._classify_clib_struct(ptn);
-                if pcls["memory"] {
-                    param_plan.append(
-                        {
-                            "kind": "struct_mem",
-                            "sname": ptn,
-                            "pname": pname,
-                            "align": pcls["align"],
-                            "byval": pcls["byval"],
-                            "argpos": len(sysv_param_types)
-                        }
-                    );
-                    sysv_param_types.append(self._clib_c_type(ptn).as_pointer());
-                } else {
-                    start = len(sysv_param_types);
-                    for ct in pcls["coerce"] {
-                        sysv_param_types.append(ct);
-                    }
-                    param_plan.append(
-                        {
-                            "kind": "struct_reg",
-                            "sname": ptn,
-                            "pname": pname,
-                            "coerce": pcls["coerce"],
-                            "safe": pcls["safe"],
-                            "argpos": start
-                        }
-                    );
-                }
+        for slot in plan["sig"] {
+            if slot[0] == "structptr" or slot[0] == "sretptr" {
+                sysv_param_types.append(self._clib_c_type(slot[1]).as_pointer());
+            } elif slot[0] == "coerce" {
+                sysv_param_types.append(slot[1]);
             } else {
-                lt = self._resolve_clib_type(p.type_tag.tag)
-                    if (p.type_tag and p.type_tag.tag)
-                    else ir.IntType(64);
-                param_plan.append(
-                    {
-                        "kind": "scalar",
-                        "type": lt,
-                        "pname": pname,
-                        "argpos": len(sysv_param_types)
-                    }
+                _sp = _decl_params[slot[1]];
+                sysv_param_types.append(
+                    self._resolve_clib_type(_sp.type_tag.tag)
+                        if (_sp.type_tag and _sp.type_tag.tag)
+                        else ir.IntType(64)
                 );
-                sysv_param_types.append(lt);
             }
         }
-        rtn = self._clib_type_name(sig.return_type);
-        sysv_sret = False;
-        sysv_ret_plan: dict = {};
-        sysv_ret_type: ir.Type = ir.VoidType();
-        if rtn is not None and rtn in self.clib_struct_names {
-            rcls = self._classify_clib_struct(rtn);
-            if rcls["memory"] {
-                sysv_sret = True;
-                sysv_ret_type = ir.VoidType();
-                sysv_param_types = [
-                    self._clib_c_type(rtn).as_pointer()
-                ] + sysv_param_types;
-                for pp in param_plan {
-                    pp["argpos"] += 1;
-                }
-                sysv_ret_plan = {"kind": "sret", "sname": rtn, "align": rcls["align"]};
+        # Scalar plan entries carry their resolved LLVM type for call-site
+        # argument coercion (the central plan is symbolic by design).
+        param_plan = plan["params"];
+        for pp in param_plan {
+            if pp["kind"] == "scalar" {
+                pp["type"] = sysv_param_types[pp["argpos"]];
+            }
+        }
+        sysv_sret = plan["sret"];
+        sysv_ret_plan = plan["ret"];
+        _sig_ret = plan["sig_ret"];
+        if _sig_ret[0] == "void" {
+            sysv_ret_type = ir.VoidType();
+        } elif _sig_ret[0] == "coerce" {
+            _rco = _sig_ret[1];
+            if len(_rco) == 1 {
+                sysv_ret_type = _rco[0];
             } else {
-                if len(rcls["coerce"]) == 1 {
-                    sysv_ret_type = rcls["coerce"][0];
-                } else {
-                    sysv_ret_type = ir.LiteralStructType(rcls["coerce"]);
-                }
-                sysv_ret_plan = {
-                    "kind": "struct_reg",
-                    "sname": rtn,
-                    "coerce": rcls["coerce"],
-                    "safe": rcls["safe"]
-                };
+                sysv_ret_type = ir.LiteralStructType(_rco);
             }
         } else {
             sysv_ret_type = self._resolve_clib_type(sig.return_type);
-            sysv_ret_plan = {"kind": "scalar", "type": sysv_ret_type};
+            sysv_ret_plan["type"] = sysv_ret_type;
         }
         sysv_fnty = ir.FunctionType(sysv_ret_type, sysv_param_types);
         if name in self.extern_funcs {
@@ -286,69 +264,31 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
-    self.var_dict_type = {};
-    self.var_set_elem_type = {};
-    # Reset per-function borrowed-param promotion state (see _codegen_assignment).
-    self._param_store_instr = {};
-    self._param_promoted = set();
-    # Reset per-function global-scoping state. Inside an ability a bare
-    # assignment to a glob-named var is a local unless a `global x;` declares
-    # it — see GlobalStmt handling and _codegen_assignment.
-    self._declared_globals = set();
-    self._in_module_scope = False;
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     self._attach_di_subprogram(
         func, name, self._func_loc.get(name, nd.loc.first_line if nd.loc else 0)
     );
     # Store parameters as local variables (alloca + store pattern)
     sig = (nd).signature;
+    import from jaclang.compiler.ownership { param_plainly_rebound }
     for (i, p) in enumerate(sig.get_parameters()) {
         param_name = p.name.value if p.name else f"arg{i}";
         arg_val = func.args[i];
         alloca = self.builder.alloca(arg_val.type, name=param_name);
-        _store_instr = self.builder.store(arg_val, alloca);
+        self.builder.store(arg_val, alloca);
         self.local_vars[param_name] = alloca;
-        self.param_vars.add(param_name);
-        self._param_store_instr[param_name] = _store_instr;  # for entry-block retain on reassign
-        # Track type annotations for parameters
-        if p.type_tag and p.type_tag.tag {
-            self.var_type_node[param_name] = p.type_tag.tag;
-            for (ename, ltype) in self.list_types.items() {
-                if arg_val.type == ltype.as_pointer() {
-                    self.var_list_elem_type[param_name] = ename;
-                    break;
-                }
-            }
-            # Track dict type for dict parameters
-            for (dkey, dtype) in self.dict_types.items() {
-                if arg_val.type == dtype.as_pointer() {
-                    self.var_dict_type[param_name] = dkey;
-                    break;
-                }
-            }
-            # Track set element type for set parameters
-            for (ename, stype) in self.set_types.items() {
-                if arg_val.type == stype.as_pointer() {
-                    self.var_set_elem_type[param_name] = ename;
-                    break;
-                }
-            }
-            # Track struct types (including union T | None)
-            tag_name = self._get_name(p.type_tag.tag);
-            tag_node = p.type_tag.tag;
-            if tag_name is None and isinstance(tag_node, uni.BinaryExpr) {
-                op_val = getattr(tag_node.op, 'value', '');
-                if op_val == "|" {
-                    tag_name = self._get_name(tag_node.left);
-                }
-            }
-            if tag_name is not None and tag_name in self.struct_types {
-                self.type_var_map[param_name] = tag_name;
-            }
-            # Track enum type for enum-typed parameters
-            if tag_name is not None and tag_name in self.enum_types {
-                self.var_enum_type[param_name] = tag_name;
-            }
+        # A borrowed param rebound by a plain assignment somewhere in the
+        # body owns its slot from birth (central analysis fact,
+        # compiler/ownership.jac): take one entry-block +1 so every
+        # overwrite-release stays balanced, and leave it out of param_vars
+        # so scope exits release it on ALL paths - including early returns
+        # emitted before the rebinding statement, which the old lazy
+        # promote-at-first-reassignment scheme leaked.
+        if isinstance(arg_val.type, ir.PointerType)
+        and param_plainly_rebound(p.name.sym if p.name else None) {
+            self._emit_rc_retain(arg_val, op="param_promote", loc=name);
+        } else {
+            self.param_vars.add(param_name);
         }
     }
     # Generate body via manual tree-walking (handle ImplDef wrapper from DeclImplMatchPass)
@@ -405,6 +345,89 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     self._builder = None;
 }
 
+"""Lower a test block to a zero-argument native function.
+
+The function returns i8*: null means the test passed, a non-null pointer is
+a static failure message. The body runs under an implicit exception handler
+(the same setjmp/longjmp machinery as try/except) so a failing assert or any
+uncaught runtime raise fails THIS test instead of hitting the no-handler
+abort() path and killing the host test runner.
+"""
+impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
+    import from jaclang.jac0core.codeinfo { native_test_symbol }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    if self._exc_raise_fn is None {
+        self._declare_exception_runtime();
+    }
+    test_name = nd.name.sym_name;
+    line = nd.loc.first_line if nd.loc else 0;
+    symbol = native_test_symbol(test_name, line);
+    fnty = ir.FunctionType(i8p, []);
+    func = ir.Function(self.llvm_module, fnty, name=symbol);
+    # Locals must survive the setjmp/longjmp round trip (same rationale as
+    # _codegen_try): without optnone, mem2reg promotes them to registers and
+    # values written between setjmp and the raise are lost.
+    func.attributes.add("optnone");
+    func.attributes.add("noinline");
+    entry_bb = func.append_basic_block(name="entry");
+    body_bb = func.append_basic_block(name="test.body");
+    success_bb = func.append_basic_block(name="test.success");
+    fail_bb = func.append_basic_block(name="test.fail");
+    self._builder = ir.IRBuilder(entry_bb);
+    self.local_vars = {};
+    saved_param_vars = self.param_vars;
+    self.param_vars = set();
+    self._attach_di_subprogram(func, symbol, line);
+    # ── entry: install the implicit handler ──
+    exc_state = self.builder.alloca(self._exc_state_type, name="exc.state");
+    self.builder.call(self._exc_push_fn, [exc_state]);
+    env_ptr = self.builder.gep(
+        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
+    );
+    env_i8p = self.builder.bitcast(env_ptr, i8p, name="env.i8p");
+    setjmp_fn = self.extern_funcs["setjmp"];
+    setjmp_result = self.builder.call(setjmp_fn, [env_i8p], name="setjmp.result");
+    is_exception = self.builder.icmp_signed(
+        "!=", setjmp_result, ir.Constant(i32, 0), name="is.exception"
+    );
+    self.builder.cbranch(is_exception, fail_bb, body_bb);
+    # ── test.body ──
+    self.builder.position_at_end(body_bb);
+    self._codegen_body(nd.body);
+    if not self.builder.block.is_terminated {
+        self.builder.branch(success_bb);
+    }
+    # ── test.success: pop handler, release locals, return null (pass) ──
+    self.builder.position_at_end(success_bb);
+    self.builder.call(self._exc_pop_fn, []);
+    _tc_loc = f"{self.ir_in.loc.mod_path}:{nd.loc.last_line if nd.loc else 0}";
+    self._emit_scope_cleanup(skip_var=None, loc=_tc_loc);
+    self.builder.ret(ir.Constant(i8p, None));
+    # ── test.fail: pop handler, return the exception message (fail) ──
+    # Locals are deliberately not released here: the longjmp skipped an
+    # unknown suffix of the body, so slot states can't be trusted. Leaking
+    # on a failing test is acceptable in a test-runner process.
+    self.builder.position_at_end(fail_bb);
+    self.builder.call(self._exc_pop_fn, []);
+    exc_obj_ptr = self.builder.gep(
+        exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="exc.obj.ptr"
+    );
+    exc_msg = self.builder.load(exc_obj_ptr, name="exc.msg");
+    self.builder.ret(exc_msg);
+    self._finalize_di_locations(func, line);
+    self.param_vars = saved_param_vars;
+    self._builder = None;
+    desc = nd.description.lit_value if nd.description else "";
+    self.native_tests.append((test_name, symbol, desc, line));
+    self.has_native_code = True;
+    # Mark the node native so PyastGenPass.exit_test emits the host-side shim
+    # instead of a Python lowering of the body. Top-level tests in a .na.jac
+    # are already coerced; this matters for tests inside inline na {} blocks,
+    # whose code_context still carries the SERVER default.
+    nd.code_context = CodeContext.NATIVE;
+}
+
 """Generate a nested function definition (a `def` inside another function).
 
 The inner function is lifted to a uniquely-named private LLVM function and
@@ -426,8 +449,9 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     sig_params = sig.get_parameters() if sig is not None else [];
     for (i, p) in enumerate(sig_params) {
         p_name = p.name.value if p?.name and p.name else f"arg{i}";
-        p_type = self._resolve_jac_type(p.type_tag.tag)
-            if p?.type_tag and p.type_tag and p.type_tag?.tag
+        # ParamVar.type is checker-stamped; lower it directly.
+        p_type = self._resolve_jac_type(p)
+            if p?.type_tag and p.type_tag is not None
             else ir.IntType(64);
         param_types.append(p_type);
         param_names.append(p_name);
@@ -437,9 +461,15 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         ret_type = self._resolve_jac_type(sig.return_type);
     }
     body = ModuleCodegenPass.unwrap_body(nd);
-    # Reject closures over enclosing locals (see docstring): _find_free_vars
-    # only reports names bound in the current (enclosing) local scope.
-    free_vars = self._find_free_vars(body, param_names);
+    # Reject closures over enclosing locals (see docstring). Free variables
+    # come from the symbol-table-derived capture fact; the `local_vars`
+    # filter keeps only names bound to live allocas in the enclosing
+    # function (excluding e.g. sibling nested functions in func_symtab).
+    free_vars = [
+        s.sym_name
+        for s in nd.get_enclosing_captures()
+        if s.sym_name in self.local_vars
+    ];
     if free_vars {
         self.emit(
             E5090,
@@ -467,36 +497,16 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     saved_builder = self._builder;
     saved_locals = self.local_vars;
     saved_param_vars = self.param_vars;
-    saved_type_var_map = self.type_var_map;
-    saved_var_type_node = self.var_type_node;
-    saved_var_list = self.var_list_elem_type;
     saved_var_list_struct = self.var_list_elem_struct;
-    saved_var_dict = self.var_dict_type;
-    saved_var_set = self.var_set_elem_type;
-    saved_var_enum = self.var_enum_type;
     self._builder = ir.IRBuilder(fn.append_basic_block("entry"));
     self.local_vars = {};
     self.param_vars = set();
-    self.type_var_map = {};
-    self.var_type_node = {};
-    self.var_list_elem_type = {};
     self.var_list_elem_struct = {};
-    self.var_dict_type = {};
-    self.var_set_elem_type = {};
-    self.var_enum_type = {};
     for (i, arg) in enumerate(fn.args) {
         alloca = self._entry_alloca(arg.type, param_names[i]);
         self.builder.store(arg, alloca);
         self.local_vars[param_names[i]] = alloca;
         self.param_vars.add(param_names[i]);
-        sigp = sig_params[i];
-        if sigp?.type_tag and sigp.type_tag and sigp.type_tag?.tag {
-            self.var_type_node[param_names[i]] = sigp.type_tag.tag;
-            tag_name = self._get_name(sigp.type_tag.tag);
-            if tag_name is not None and tag_name in self.struct_types {
-                self.type_var_map[param_names[i]] = tag_name;
-            }
-        }
     }
     if body is not None {
         self._codegen_body(body);
@@ -518,13 +528,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     self._builder = saved_builder;
     self.local_vars = saved_locals;
     self.param_vars = saved_param_vars;
-    self.type_var_map = saved_type_var_map;
-    self.var_type_node = saved_var_type_node;
-    self.var_list_elem_type = saved_var_list;
     self.var_list_elem_struct = saved_var_list_struct;
-    self.var_dict_type = saved_var_dict;
-    self.var_set_elem_type = saved_var_set;
-    self.var_enum_type = saved_var_enum;
     nd.gen.llvm_ir = fn;
 }
 
@@ -615,12 +619,6 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
-    self.var_dict_type = {};
-    self.var_set_elem_type = {};
-    # Module-level code: an assignment to a glob is a genuine global store
-    # (module scope == global scope, as in CPython).
-    self._declared_globals = set();
-    self._in_module_scope = True;
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     entry_line = nd.loc.first_line if nd.loc else 0;
     self._attach_di_subprogram(func, "jac_entry", entry_line);
@@ -680,6 +678,44 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
             imp_init_fn = ir.Function(self.llvm_module, imp_init_fnty, name=init_name);
             self.func_symtab[init_name] = imp_init_fn;
         }
+        # The OSP kernel glob-init initializes link-merged SINGLETON globals
+        # (`_e_src`/`_walk_stack`) shared by every module, and __osp_ensure_init
+        # also runs it (lazily, for library-call entry). Route this startup call
+        # through the same shared `__osp_kernel_inited` flag so the two paths run
+        # it exactly once between them — otherwise a module-level glob-initializer
+        # that connects (triggering __osp_ensure_init) followed by this startup
+        # call would re-empty the adjacency the initializer just populated.
+        #
+        # Match the kernel glob-init by IDENTITY against the Function
+        # _emit_osp_setup stashed (`_osp_kernel_glob_init_fn`), not by re-deriving
+        # its symbol name here: a name re-match would silently no-op if the kernel
+        # source string or `__jac_glob_init_` prefix ever changed, whereas the
+        # identity follows whatever symbol the kernel link actually produces (and
+        # a true mismatch surfaces loudly as an undefined-symbol link error). Both
+        # `_osp_kernel_inited_gv` and `_osp_kernel_glob_init_fn` are set together
+        # in _emit_osp_setup, gated on this module using OSP.
+        _guard_kernel = (
+            (self._osp_kernel_inited_gv is not None)
+            and (imp_init_fn is self._osp_kernel_glob_init_fn)
+        );
+        if _guard_kernel {
+            _i8 = ir.IntType(8);
+            _gk_run = self.builder.function.append_basic_block("osp_kinit_run");
+            _gk_done = self.builder.function.append_basic_block("osp_kinit_done");
+            self.builder.cbranch(
+                self.builder.icmp_unsigned(
+                    "!=",
+                    self.builder.load(
+                        self._osp_kernel_inited_gv, name="osp.kinited.entry"
+                    ),
+                    ir.Constant(_i8, 0)
+                ),
+                _gk_done,
+                _gk_run
+            );
+            self.builder.position_at_end(_gk_run);
+            self.builder.store(ir.Constant(_i8, 1), self._osp_kernel_inited_gv);
+        }
         _init_call = self.builder.call(imp_init_fn, []);
         # Tag the call with a per-module DISubprogram + DILocation so that
         # jac-gdb correctly names the module whose glob_init crashed,
@@ -723,6 +759,10 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
             } except Exception {
             # best-effort; debug quality degrades but safety unaffected
             }
+        }
+        if _guard_kernel {
+            self.builder.branch(_gk_done);
+            self.builder.position_at_end(_gk_done);
         }
     }
     # Generate body statements

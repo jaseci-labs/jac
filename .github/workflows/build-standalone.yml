@@ -92,6 +92,23 @@ jobs:
       - name: Install pex
         run: pip install pex
 
+      # Index propagation lags the upload API, so poll the real pip resolver
+      # over the full dependency tree before pex builds against it.
+      - name: Wait for jaclang to be installable from PyPI
+        run: |
+          VERSION="${{ needs.resolve-versions.outputs.jaclang_version }}"
+          for i in $(seq 1 30); do
+            if pip install --dry-run --ignore-installed "jaclang==${VERSION}" >/dev/null 2>&1; then
+              echo "jaclang==${VERSION} resolvable on attempt ${i}"
+              exit 0
+            fi
+            echo "jaclang==${VERSION} not yet resolvable (attempt ${i}/30); retrying in 20s..."
+            sleep 20
+          done
+          echo "::error::jaclang==${VERSION} did not become resolvable on PyPI in time"
+          pip install --dry-run --ignore-installed "jaclang==${VERSION}" || true
+          exit 1
+
       - name: Build standalone binary
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -186,6 +203,23 @@ jobs:
 
       - name: Install pex
         run: pip install pex
+
+      # See the jaclang job. jaseci pulls the full plugin set, so one lagging
+      # transitive dep fails the pex resolve until the whole tree propagates.
+      - name: Wait for jaseci (and all deps) to be installable from PyPI
+        run: |
+          VERSION="${{ needs.resolve-versions.outputs.jaseci_version }}"
+          for i in $(seq 1 30); do
+            if pip install --dry-run --ignore-installed "jaseci==${VERSION}" >/dev/null 2>&1; then
+              echo "jaseci==${VERSION} (full dependency tree) resolvable on attempt ${i}"
+              exit 0
+            fi
+            echo "jaseci==${VERSION} deps not yet fully resolvable (attempt ${i}/30); retrying in 20s..."
+            sleep 20
+          done
+          echo "::error::jaseci==${VERSION} dependency tree did not become resolvable on PyPI in time"
+          pip install --dry-run --ignore-installed "jaseci==${VERSION}" || true
+          exit 1
 
       - name: Build standalone binary
         env:

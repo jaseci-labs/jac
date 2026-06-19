@@ -4,6 +4,7 @@
 impl DeclImplMatchPass.transform(
     self: DeclImplMatchPass, ir_in: uni.Module
 ) -> uni.Module {
+    self._e2026_reported = set();
     self.cur_node = ir_in;
     self.connect_impls(ir_in.sym_tab, ir_in.sym_tab);
     for impl_module in ir_in.impl_mod {
@@ -229,6 +230,38 @@ impl DeclImplMatchPass.connect_impls(
             self._populate_self_member_symbols(
                 sym.decl.name_of, name_of_links[0].name_of
             );
+        }
+    }
+    # Detect bare re-declaring definitions in .impl.jac files that match
+    # unlinked stubs in the parent module. This catches the common mistake
+    # of writing `def foo() { ... }` instead of `impl foo() { ... }`.
+    if (source_sym_tab is not target_sym_tab) {
+        for sym in source_sym_tab.names_in_scope.values() {
+            if isinstance(sym.decl.name_of, uni.ImplDef) {
+                continue;
+            }
+            if not isinstance(sym.decl.name_of, uni.AstImplNeedingNode) {
+                continue;
+            }
+            lookup = target_sym_tab.lookup(sym.sym_name, deep=False);
+            if not lookup {
+                continue;
+            }
+            decl_node = self.defn_lookup(lookup);
+            if (
+                not decl_node
+                or not isinstance(decl_node.name_of, uni.AstImplNeedingNode)
+                or decl_node.name_of.body
+            ) {
+                continue;
+            }
+            bare_node = sym.decl.name_of;
+            node_key = id(bare_node);
+            if node_key in self._e2026_reported {
+                continue;
+            }
+            self._e2026_reported.add(node_key);
+            self.emit(E2026, node_override=bare_node, name=sym.sym_name);
         }
     }
     for source_scope in source_sym_tab.kid_scope {

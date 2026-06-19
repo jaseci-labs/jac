@@ -2432,6 +2432,12 @@ impl DocIRGenPass.exit_archetype(nd: uni.Archetype) -> None {
             parts.pop();
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.COLON)) {
+            # Edge endpoint clause `: Src --> Tgt` -- bind the colon tight to the
+            # preceding name/base list, as `Name: Src --> Tgt` (issue #6657).
+            parts.pop();
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
         } elif (isinstance(nd.body, Sequence) and (i in nd.body)) {
             if not in_body {
                 body_parts.append(self.hard_line());

@@ -72,8 +72,14 @@ class AutoscalerFactory {
             }
             return HPAAutoscaler(logger=logger);
         }
+        if engine == "keda" {
+            import from jac_scale.abstractions.autoscalers.keda_autoscaler {
+                KEDAAutoscaler
+            }
+            return KEDAAutoscaler(logger=logger);
+        }
         raise ValueError(
-            f"Unsupported autoscaler engine: '{engine}'. Supported engines: 'hpa'."
+            f"Unsupported autoscaler engine: '{engine}'. Supported built-in engines: 'hpa', 'keda'."
         );
     }
 }

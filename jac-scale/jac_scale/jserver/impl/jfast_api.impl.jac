@@ -577,7 +577,8 @@ impl JFastApiServer._create_endpoint_function(
     callback: Callable[(..., Any)],
     parameters: list[APIParameter],
     dependencies: list[any],
-    request_model: (type[BaseModel] | None) = None
+    request_model: (type[BaseModel] | None) = None,
+    forward_undeclared_query_params: bool = True
 ) -> Callable[..., any] {
     sig = inspect.signature(callback);
     accepts_kwargs = any(
@@ -592,7 +593,9 @@ impl JFastApiServer._create_endpoint_function(
                 ) -> EndpointResponse {
                     import from jaclang.runtimelib.transport { TransportResponse }
                     try {
-                        query_params = dict(__jac_request__.query_params);
+                        query_params = dict(__jac_request__.query_params)
+                            if forward_undeclared_query_params
+                            else {};
                         if needs_request_no_params {
                             result = await callback(
                                 **{'request': __jac_request__, ** query_params}
@@ -616,7 +619,9 @@ impl JFastApiServer._create_endpoint_function(
                 ) -> EndpointResponse {
                     import from jaclang.runtimelib.transport { TransportResponse }
                     try {
-                        query_params = dict(__jac_request__.query_params);
+                        query_params = dict(__jac_request__.query_params)
+                            if forward_undeclared_query_params
+                            else {};
                         if needs_request_no_params {
                             result = callback(
                                 **{'request': __jac_request__, ** query_params}
@@ -846,7 +851,7 @@ impl JFastApiServer._create_endpoint_function(
     }
     callback_args_str = '\n'.join(callback_args_lines);
     extra_query_params_code = '';
-    if accepts_kwargs {
+    if accepts_kwargs and forward_undeclared_query_params {
         declared_params = [
             p.name
             for p in parameters
@@ -953,7 +958,8 @@ impl JFastApiServer._create_fastapi_route(
         endpoint.callback,
         (endpoint.parameters or []),
         [],
-        request_model=endpoint.request_model
+        request_model=endpoint.request_model,
+        forward_undeclared_query_params=endpoint.forward_undeclared_query_params
     );
     route_kwargs: dict[(str, Any)] = {
         'response_model': endpoint.response_model,
@@ -1229,16 +1235,13 @@ impl JFastApiServer.init(
         }
 
         try {
+            # No commit here: the request lifecycle is core-owned.
+            # ExecutionManager commits on success and aborts on walker
+            # failure; a second unconditional commit at the middleware
+            # would flush a failed walker's partial mutations (#6619) and
+            # pay a redundant full-L1 hash sweep. Non-spawn endpoints that
+            # mutate are covered by the close-time backstop in `finally`.
             response = await call_next(request);
-            try {
-                await ctx.mem.acommit();
-            } except Exception as e {
-                logger.error(
-                    f"CRITICAL: Failed to commit request data: {e}. Request will fail.",
-                    exc_info=True
-                );
-                raise;
-            }
 
             # Echo the trace id on the response so clients (and our
             # e2e) can verify end-to-end propagation.

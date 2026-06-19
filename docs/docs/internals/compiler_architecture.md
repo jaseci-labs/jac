@@ -107,11 +107,11 @@ graph TD
         FE5[SemDefMatchPass]
         FE6[CFGBuildPass]
         FE7[MTIRGenPass]
-        FE8[UniTreeEnrichPass]
+        FE8[CapabilityCheckPass]
     end
 
     FRONTEND --> FE1 --> FE2 --> FE3 --> FE4 --> FE5 --> FE6 --> FE7 --> FE8
-    FE8 --> TYPECK["Type Check<br/>TypeCheckPass / StaticAnalysisPass / PortabilityCheckPass"]
+    FE8 --> TYPECK["Type Check<br/>TypeCheckPass / StaticAnalysisPass / PortabilityWarnPass"]
     TYPECK --> INTEROP["InteropAnalysisPass<br/>(boundary discovery)"]
     INTEROP --> SV[PyastGenPass + PyBytecodeGenPass]
     INTEROP --> CL[EsastGenPass]
@@ -192,14 +192,104 @@ These passes run regardless of codespace and are collected by
 | `SemDefMatchPass` | [`compiler/passes/main/sem_def_match_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/sem_def_match_pass.jac) | Matches `sem` blocks to definitions for `by llm` |
 | `CFGBuildPass` | [`compiler/passes/main/cfg_build_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/cfg_build_pass.jac) | Builds control-flow graphs |
 | `MTIRGenPass` | [`compiler/passes/main/mtir_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/mtir_gen_pass.jac) | Generates Meaning-Typed IR for `by llm` calls |
-| `UniTreeEnrichPass` | [`compiler/passes/main/unitree_enrich_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/unitree_enrich_pass.jac) | Annotates the tree with derived data needed by later passes |
+| `CapabilityCheckPass` | [`compiler/passes/main/capability_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/capability_check_pass.jac) | Stamps capability/portability facts (native auto-promotion eligibility) on module nodes |
 | `TypeCheckPass` | [`compiler/passes/main/type_checker_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/type_checker_pass.jac) | Static type checking against the type registry |
-| `PortabilityCheckPass` | [`compiler/passes/main/portability_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/portability_check_pass.jac) | Validates that types and ops used in `cl` / `na` regions exist in the target backend |
+| `PortabilityWarnPass` | [`compiler/passes/main/capability_check_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/main/capability_check_pass.jac) | Emits portability warnings (W6001-W6004) for JS-idiom violations; diagnostic-only, runs in the check-extras schedule |
 
 The pipeline uses a **re-entrancy guard** (`_ir_sched_loading`,
 `_codegen_sched_loading`, `_typecheck_sched_loading`) so that compiling the
 compiler's own pass modules degrades gracefully to the bootstrap subset
 instead of recursing forever.
+
+---
+
+## One Owner Per Analysis: The Analysis Contract
+
+Every semantic fact about a Jac program is computed exactly once, by the
+central analysis pipeline, and recorded on the unitree or in a registry
+hanging off it. The backends are pure consumers: they read annotations
+and emit target code. The contract (tracked in jaseci-labs/jaseci#6542):
+
+1. **Single owner.** For every analysis there is one pass or module that
+   computes it. A second implementation - even a "cheap local check" -
+   is a defect.
+2. **No fallbacks.** When a backend needs a fact and the annotation is
+   absent, that is an internal-contract diagnostic (E9002), never a
+   silent default.
+3. **The unitree is the program.** Semantic facts live on nodes
+   (annotate, never mutate surface syntax - the formatter/LSP fidelity
+   constraint stands).
+4. **Analysis before codegen.** Codegen passes may not invoke the type
+   evaluator, walk annotation ASTs, or run symbol-table lookups; they
+   read stamped facts and registries. `tests/compiler/test_backend_purity.jac`
+   enforces this mechanically with a ratcheting allowlist.
+5. **Tighten semantics where it simplifies.** Where backends used to
+   guess independently, the semantic is defined once centrally and all
+   backends hold to it (e.g. user-shadowed builtins are decided by the
+   stamped call classification everywhere).
+6. **Representation growth is cached growth.** New unitree fields are
+   either serialized through the JIR registry with a format bump, or
+   documented recompute-on-load (`by postinit` fields like `Expr.type`).
+
+### The authority map
+
+| Fact | Owner | Stamped/queried as |
+|------|-------|--------------------|
+| Expression types | TypeCheckPass / TypeEvaluator | `Expr.type` (recompute-on-load) |
+| Symbol storage class, rebinding | Symbol tables | `Symbol.storage`, `NameAtom.binds_new_var`, defn/uses |
+| Call classification | `symbol_utils.classify_call` via checker | `FuncCall.call_kind` |
+| Resolved callee | `symbol_utils.ability_of_symbol` via checker | `FuncCall.callee_decl` (recompute-on-load) |
+| OSP archetype kind / event triggers | checker + unitree getters | `Archetype.arch_kind`, `Ability.event_triggers`, `Ability.event_trigger_type_names()` |
+| Closure captures | scope tables | `UniScopeNode.get_enclosing_captures`, `LambdaExpr.captures` |
+| Class hierarchy, MRO, vtable need | `LayoutPass` / `LayoutRegistry` | `get_layout_registry(module)` queries (no copies) |
+| Result ownership (+1 transfer) | `compiler/ownership.jac` | `result_ownership(expr)`, applied at one emission seam |
+| Borrowed-param promotion | `compiler/ownership.jac` | `param_plainly_rebound(sym)`, entry-block retain |
+| Loop-exit release lists | `compiler/ownership.jac` | `loop_body_locals(body)` |
+| Capability / portability | `capability_check_pass.jac` | declarative disqualifier + stdlib + explicit-native rejection tables, `native_capability_violations(mod)` pre-codegen sweep, W6001-W6004 |
+| Foreign declarations (clib surface) | `compiler/targets/foreign.jac` | `collect_foreign_structs/fns`, `foreign_struct_layout` (declared names in, layouts out) |
+| Foreign ABI classification + call plans | `compiler/targets/abi.jac` | `classify_struct(...)`, `classify_foreign_fn(...)` (pure, unit-tested) |
+| Codegen-time expression-type reads | `type_system/type_utils.jac` | `expr_primitive_name(prog, expr)`: stamp when present, lazy authority query otherwise |
+
+What stays per-backend by design: target IR construction and emission,
+runtime libraries, backend-idiomatic lowering choices, emitter-created
+temporaries (boxing, coercion buffers - their bookkeeping is driven by
+the central classification of their source expressions), and
+annotation-surface-shape decisions (what the user literally wrote,
+which stamped types deliberately erase).
+
+### The end-state purity contract
+
+The relocation plan (jaseci-labs/jaseci#6542) is complete.
+`tests/compiler/test_backend_purity.jac` is its standing contract:
+`MIGRATION_DEBT` is empty, and every remaining analysis-API match in a
+backend source is `SANCTIONED` with a per-entry rationale and an exact
+count - growth means unreviewed analysis crept back in, shrink means an
+entry earned tightening; both fail the test until the table is edited
+deliberately.
+
+Two design decisions bound what "fully stamped" means:
+
+- **Lazy expression types.** `Expr.type` is the evaluator's memoization,
+  populated by whatever checking rules evaluate; measured across the ES
+  and OSP corpora, a present stamp never disagrees with the evaluator -
+  the gap is purely coverage over arbitrary shapes (call results,
+  compare results, member chains). Eager completion is unsound without a
+  side-effect-free evaluator query mode (standalone evaluation binds
+  member symbols and caches results, perturbing later context-aware
+  checking - measured, twice). So codegen-time reads go through
+  `expr_primitive_name`, which fills gaps lazily; late-query diagnostics
+  ride the checker's deferral machinery.
+
+- **Ownership seam tables (Phase 7 follow-up): not pursued.** The
+  central facts that pay for themselves are landed
+  (`result_ownership`, `param_plainly_rebound`, `loop_body_locals`).
+  The remaining `_mark_owned`/`_is_owned` sites track emitter-created
+  temporaries - values with no AST identity, created and consumed inside
+  single lowering routines. A central table for them would mirror
+  emission order rather than describe the program; the invariant
+  (every value-consumption seam releases its owned temps) is enforced by
+  the leak-check gates (chess fixture under JAC_RC_DEBUG_CODEGEN, the GC
+  suite) rather than by a second bookkeeping layer.
 
 ---
 
@@ -373,16 +463,21 @@ user-facing reference, [Primitives & Codespace Semantics](../reference/language/
 |-----------|--------|--------------|
 | `cl → sv` | HTTP `POST` to the walker / function endpoint exposed by `jac start` | `EsastGenPass` emits `fetch(...)` against the URL recorded in the binding |
 | `sv → cl` | None at runtime -- the client mounts its own DOM. The server only ships the bootstrap payload | `PyastGenPass` emits the static-file route for the bundle |
-| `sv → na` | ctypes call into the native shared object | `PyastGenPass` emits a `ctypes.CFUNCTYPE` stub; `NaIRGenPass` exposes the function with C ABI |
-| `na → sv` | C-callable thunk that re-enters CPython via the limited API | Generated alongside the `sv → na` stub |
+| `sv → na` | In-process `ctypes.CFUNCTYPE` over the JIT'd function address (MCJIT); an AOT `--shared` build is loaded across the process boundary instead | `PyastGenPass` emits the ctypes stub; `NaIRGenPass` exposes the function with C ABI |
+| `na → sv` | Python callback wrapped in a `ctypes.CFUNCTYPE` and registered as a JIT symbol (`llvm.add_symbol`), so MCJIT resolves the native call back into CPython | `interop_bridge.register_py_callbacks`, alongside the `sv → na` stub |
 | `na → na` | Direct symbol reference resolved by the in-tree linker | `InteropAnalysisPass` records the import; `NativeCompilePass` emits the relocation |
-| `sv → sv` (microservice) | HTTP between processes when an `sv import` resolves to a different deployment | `PyastGenPass` emits an `httpx` call; the manifest is consumed by `jac-scale` |
+| `sv → sv` (microservice) | HTTP between processes when an `sv import` resolves to a different deployment | `PyastGenPass` emits a generated `__jac_sv_client` RPC stub; the manifest is consumed by `jac-scale` |
 
 Boundary types are serialised through the schemas in
 [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/codeinfo.jac).
 The primitive contract guarantees that types like `int` and `list[str]`
 mean the same thing on both sides; non-primitive types must be reachable
 in both codespaces (typically as plain `obj` archetypes).
+
+For the full interop matrix -- every ordered pair plus the foreign (C),
+WebAssembly, and Python boundaries, the marshalling format, and how desktop
+apps stitch several boundaries together -- see
+[Cross-Codespace & Foreign Interop](interop.md).
 
 ---
 
@@ -421,6 +516,20 @@ rm -rf ~/.cache/jac/jir/modules/
 ```
 
 ---
+
+### The JIR-carries-semantics decision (Phase 10 gate)
+
+Measured 2026-06-11 on the chess fixture (3 runs each): warm cache-hit
+runs ~4.9s with the analysis pipeline fully skipped (bytecode and LLVM
+sections load directly); cold compiles ~182s with inference vs ~76s
+with inference disabled - inference is ~59% of a cold compile and ~0%
+of a warm one. Decision: semantic annotations (`Expr.type`,
+`callee_decl`, ownership facts) stay **recompute-on-load**; serializing
+them as JIR TLV sections would not improve warm compiles (already
+analysis-free) and cannot help the changed module on a miss (its
+analysis must run regardless). The actionable cost is typeshed stub
+processing inside cold-compile inference - an incremental-checking
+workstream, not a cache-format one.
 
 ## Key Files
 

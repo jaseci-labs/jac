@@ -1,9 +1,11 @@
 """Tests for TLS-safe redeployment in IngressDeployer._deploy_ingress_resource.
 
 _deploy_ingress_resource uses patch_namespaced_ingress so it only sends the
-fields jac-scale owns.  spec.tls and spec.rules[*].host are written exclusively
-by enable_tls and are intentionally absent from the patch body; the API server
-leaves them untouched without any read-before-write logic.
+fields jac-scale owns.  On the dedicated path spec.tls and spec.rules[*].host
+are written exclusively by enable_tls and are intentionally absent from the
+patch body; the API server leaves them untouched without any read-before-write
+logic.  On the shared-ingress path this method owns spec.tls and adds it only
+when a cert-manager issuer annotation is present (and nulls it otherwise).
 """
 
 import unittest.mock;
@@ -14,6 +16,17 @@ import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def _make_deployer(domain: str = '', cert_email: str = '') -> IngressDeployer {
     cfg = KubernetesConfig(domain=domain, cert_manager_email=cert_email);
+    return IngressDeployer(k8s_config=cfg);
+}
+
+def _make_shared_deployer(annotations: dict) -> IngressDeployer {
+    cfg = KubernetesConfig(
+        domain='app.example.com',
+        shared_ingress=True,
+        shared_ingress_tls=True,
+        shared_ingress_class='jb-custom',
+        shared_ingress_annotations=annotations
+    );
     return IngressDeployer(k8s_config=cfg);
 }
 
@@ -119,6 +132,39 @@ test "non-404 patch error propagates" {
         raised = e.status == 500;
     }
     assert raised , "Non-404 ApiException from patch_namespaced_ingress must propagate";
+}
+
+test "shared ingress with a cert-manager issuer annotation adds spec.tls" {
+    # The shared path adds a per-domain spec.tls ONLY when the Ingress carries a
+    # cert-manager issuer annotation, so cert-manager's ingress-shim issues the
+    # cert. Host + secretName must match the domain and the {app}-tls convention.
+    networking_v1 = unittest.mock.MagicMock();
+    core_v1 = unittest.mock.MagicMock();
+
+    deployer = _make_shared_deployer(
+        {'cert-manager.io/cluster-issuer': 'letsencrypt-prod'}
+    );
+    _call_deploy(deployer, networking_v1, core_v1);
+
+    body = networking_v1.patch_namespaced_ingress.call_args[1]['body'];
+    tls = body.get('spec', {}).get('tls');
+    assert tls , "shared ingress + cert-manager annotation must add spec.tls";
+    assert tls[0]['hosts'] == ['app.example.com'] , "tls host must be the domain";
+    assert tls[0]['secretName'] == 'myapp-tls' , "tls secretName must be {app}-tls";
+}
+
+test "shared ingress without a cert-manager annotation adds no cert tls block" {
+    # Without an issuer annotation, cert-manager would never issue a cert, so the
+    # cert block must not be added. tls is nulled (not the cert list) so a
+    # strategic-merge patch also clears any stale block from a prior deploy.
+    networking_v1 = unittest.mock.MagicMock();
+    core_v1 = unittest.mock.MagicMock();
+
+    deployer = _make_shared_deployer({});
+    _call_deploy(deployer, networking_v1, core_v1);
+
+    body = networking_v1.patch_namespaced_ingress.call_args[1]['body'];
+    assert body.get('spec', {}).get('tls') is None , "no issuer annotation must not add a cert tls block";
 }
 
 test "redis ingress patch body never contains spec.tls or host" {

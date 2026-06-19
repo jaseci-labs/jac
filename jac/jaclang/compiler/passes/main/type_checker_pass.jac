@@ -12,6 +12,7 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.diagnostics {
+    DiagnosticInfo,
     E1001,
     E1002,
     E1003,
@@ -41,13 +42,45 @@ import from jaclang.jac0core.diagnostics {
     W2014,
     E2015
 }
+# The checker's assignability and call-classification rules consult the type
+# registry mid-check (numeric-kind refinement, CallKind.CLIB). Importing it at
+# module level pins the bootstrap invariant that the registry — a zero-import
+# leaf — is fully compiled before any module runs inference. Without this the
+# registry's compile position is an accident of runtime import discovery:
+# a content change once pushed it AFTER the type-system modules, and
+# bootstrapping those without the registry ballooned the rebuild from ~5.5GB
+# to >10GB of resident memory.
+import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
 """Type checker pass for JacLang."""
 class TypeCheckPass(UniPass) {
+    # When True (TypeInferencePass), non-ICE diagnostics are gated; direct
+    # TypeCheckPass invocations always emit in full. See before_pass/emit.
+    static has inference_only: bool = False;
+    # Depth of expression-bodied lambdas being traversed; gates the O(1)
+    # defer in the expr exit handlers. See enter_lambda_expr.
+    has _lambda_depth: int = 0;
+
     def before_pass(self: TypeCheckPass) -> None;
+    def after_pass(self: TypeCheckPass) -> None;
+    """Diagnostic gate for the typed-tree contract: inference always runs,
+    but TYPE diagnostics are only surfaced in full-diagnostic mode (`jac
+    check` / options.type_check, or native-context modules per #6049).
+    ICE-category diagnostics are never suppressed. See before_pass."""
+    def emit(
+        self: TypeCheckPass,
+        diag: DiagnosticInfo,
+        node_override: (uni.UniNode | None) = None,
+        related: (list[tuple[str, uni.UniNode]] | None) = None,
+        help_text: (str | None) = None,
+        **kwargs: any
+    ) -> bool;
+
     def _insert_builtin_symbols(self: TypeCheckPass) -> None;
     def enter_ability(self: TypeCheckPass, nd: uni.Ability) -> None;
     def exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None;
+    def enter_lambda_expr(self: TypeCheckPass, nd: uni.LambdaExpr) -> None;
+    def exit_lambda_expr(self: TypeCheckPass, nd: uni.LambdaExpr) -> None;
     def exit_type_alias(self: TypeCheckPass, nd: uni.TypeAlias) -> None;
     def exit_archetype(self: TypeCheckPass, nd: uni.Archetype) -> None;
     def exit_enum(self: TypeCheckPass, nd: uni.Enum) -> None;
@@ -96,4 +129,13 @@ class TypeCheckPass(UniPass) {
     ) -> object;
 
     def _check_event_trigger_archetype(self: TypeCheckPass, nd: uni.Ability) -> None;
+}
+
+"""Typed-tree contract inference entry: identical analysis to TypeCheckPass
+(populates Expr.type for every backend), but non-ICE diagnostics are only
+surfaced when the compile asked for them (options.type_check) or the module
+is native-context (#6049). Scheduled by get_inference_sched for every
+codegen-bearing compile."""
+class TypeInferencePass(TypeCheckPass) {
+    static has inference_only: bool = True;
 }

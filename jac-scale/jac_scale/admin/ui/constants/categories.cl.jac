@@ -6,24 +6,30 @@ reflects what actually works. Add an entry here (and a matching route
 in DashboardLayout's PAGE_ROUTES) when a page goes live.
 """
 
-cl {
-    glob:pub navGroups = [
-             {
-                 "label": "Authentication",
-                 "items": [
-                     {"id": "users", "label": "Users"},
-                     {"id": "sso", "label": "SSO"}
-                 ]
-             },
-             {
-                 "label": "Monitoring",
-                 "items": [
-                     {"id": "metrics", "label": "Metrics"},
-                     {"id": "llm_metrics", "label": "LLM Metrics"},
-                     {"id": "llm_traces", "label": "LLM Traces"},
-                     {"id": "traces", "label": "Traces"},
-                     {"id": "logs", "label": "Logs"}
-                 ]
-             }
-         ];
-}
+glob:pub navGroups = [
+         {
+             "label": "Authentication",
+             "items": [{"id": "users", "label": "Users"}, {"id": "sso", "label": "SSO"}]
+         },
+         {
+             "label": "Monitoring",
+             "items": [
+                 {"id": "metrics", "label": "Metrics"},
+                 {"id": "workloads", "label": "Workloads"},
+                 {"id": "usage", "label": "Usage"},
+                 {"id": "llm_metrics", "label": "LLM Metrics"},
+                 {"id": "llm_traces", "label": "LLM Traces"},
+                 {"id": "traces", "label": "Traces"},
+                 {"id": "logs", "label": "Logs"}
+             ]
+         },
+         {
+             "label": "Operations",
+             "items": [
+                 {"id": "ops", "label": "Self-Check"},
+                 {"id": "deploy", "label": "Deploy Health"},
+                 {"id": "network", "label": "Endpoints & Storage"},
+                 {"id": "podenv", "label": "Pod Env"}
+             ]
+         }
+     ];

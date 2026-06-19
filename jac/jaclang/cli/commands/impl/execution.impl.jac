@@ -80,9 +80,171 @@ def _populate_native_argv(engine: object, argv: list[str]) -> None {
     engine._jac_argv_refs = (c_strings, c_argv);
 }
 
+"""Print a resolved project run plan (the `jac run --show` output)."""
+def _print_plan(plan: object) {
+    console.print(f"project kind : {plan.kind}");
+    console.print(f"action       : {plan.action}");
+    console.print(f"summary      : {plan.summary}");
+    if plan.entry_path {
+        console.print(f"entry-point  : {plan.entry_path}");
+    }
+    console.print(f"equivalent   : {plan.command_line()}");
+    if plan.requires_plugin {
+        console.print(f"requires     : {plan.requires_plugin} plugin");
+    }
+}
+
+"""True if an optional plugin package (e.g. 'jac-client') is importable."""
+def _plugin_available(pkg: str) -> bool {
+    import importlib.util;
+    try {
+        return importlib.util.find_spec(pkg.replace("-", "_")) is not None;
+    } except (ImportError, ValueError) {
+        return False;
+    }
+}
+
+"""Execute a resolved project run plan by delegating to the primitive command."""
+def _execute_plan(
+    plan: object,
+    main: bool,
+    cache: bool,
+    autonative: bool,
+    diagnostics: str,
+    args: list
+) -> int {
+    # Kinds that depend on a plugin fail cleanly up front when it is missing,
+    # rather than erroring deep inside the delegated command.
+    if plan.requires_plugin and not _plugin_available(plan.requires_plugin) {
+        console.error(
+            f"Project kind '{plan.kind}' requires the {plan.requires_plugin} plugin, "
+            f"which is not installed. Install it, then: {plan.command_line()}"
+        );
+        return 1;
+    }
+    if plan.action == "execute" {
+        # native-app (.na.jac) and cli (.jac) both flow through the normal
+        # file-run path; the existing logic picks native JIT vs interpreted.
+        return run(
+            filename=plan.entry_path,
+            main=main,
+            cache=cache,
+            autonative=autonative,
+            diagnostics=diagnostics,
+            args=args
+        );
+    }
+    if plan.action == "serve" {
+        if "client" in plan.flags {
+            # desktop kind: the plugin is installed (checked above), but core
+            # start() has no --client parameter to forward -- the plugin only
+            # adds that flag at the CLI layer. Direct the user to the command.
+            console.error(
+                f"Project kind '{plan.kind}' is run via the {plan.requires_plugin} "
+                f"plugin command: {plan.command_line()}"
+            );
+            return 1;
+        }
+        # api-service / microservices / fullstack / client are valid core `start`
+        # invocations; the client plugin (when present) hooks in during start.
+        # The plan carries the project's [serve] port (from jac.toml) in flags.
+        return start(
+            filename=plan.entry_path,
+            port=plan.flags.get("port", 8000),
+            no_client=plan.flags.get("no_client", False),
+            dev=plan.flags.get("dev", False)
+        );
+    }
+    if plan.action == "build" {
+        if plan.verb == "nacompile" {
+            import from jaclang.cli.commands.nacompile { nacompile }
+            out = plan.flags.get("output", "");
+            if out {
+                # Ensure the artifact's parent dir exists (e.g. dist/); the
+                # native linker writes the output file without creating it.
+                out_dir = os.path.dirname(out);
+                if out_dir {
+                    os.makedirs(out_dir, exist_ok=True);
+                }
+            }
+            return nacompile(
+                filename=plan.entry_path,
+                output=out,
+                shared=plan.flags.get("shared", False)
+            );
+        }
+        if plan.verb == "bundle" {
+            import from jaclang.cli.commands.project { bundle }
+            return bundle(target=plan.flags.get("target", "wheel"));
+        }
+        # build verbs provided only by a plugin (e.g. mobile via jac-client).
+        console.error(
+            f"Project kind '{plan.kind}' builds via the {plan.requires_plugin} "
+            f"plugin command: {plan.command_line()}"
+        );
+        return 1;
+    }
+    console.error(f"Unsupported run action '{plan.action}' for kind '{plan.kind}'.");
+    return 1;
+}
+
+"""Dispatch `jac run` with no explicit file based on the project's kind."""
+def _run_project(
+    show: bool, main: bool, cache: bool, autonative: bool, diagnostics: str, args: list
+) -> int {
+    import from pathlib { Path }
+    import from jaclang.project.config { get_config }
+    import from jaclang.project.kinds { plan_project_run, is_valid_kind, VALID_KINDS }
+    # Preserve any active `--profile` overlay across the re-discovery below:
+    # force_discover allocates a fresh JacConfig that would otherwise drop the
+    # overlay the CLI framework applied before run() was called.
+    existing_config = get_config();
+    active_profile = existing_config.active_profile if existing_config else None;
+    cfg = get_config(start_path=Path.cwd(), force_discover=True);
+    if cfg is None {
+        console.error(
+            "No file given and no jac.toml found.\n"
+            "  Usage: jac run <file.jac>, or run inside a Jac project directory."
+        );
+        return 1;
+    }
+    if active_profile {
+        cfg.apply_profile_overlay(active_profile);
+    }
+    if cfg.project.kind and not is_valid_kind(cfg.project.kind) {
+        console.error(
+            f"Unknown [project] kind '{cfg.project.kind}'.\n"
+            f"  Valid kinds: {', '.join(VALID_KINDS)}"
+        );
+        return 1;
+    }
+    project_root = str(cfg.project_root) if cfg.project_root else os.getcwd();
+    plan = plan_project_run(cfg, project_root);
+    if plan is None {
+        console.error(
+            "Could not resolve an entry-point for this project.\n"
+            f"  Set [project] entry-point in jac.toml (project root: {project_root})."
+        );
+        return 1;
+    }
+    if show {
+        _print_plan(plan);
+        return 0;
+    }
+    return _execute_plan(
+        plan,
+        main=main,
+        cache=cache,
+        autonative=autonative,
+        diagnostics=diagnostics,
+        args=args
+    );
+}
+
 """Run the specified .jac file."""
 impl run(
-    filename: str,
+    filename: str = "",
+    show: bool = False,
     main: bool = True,
     cache: bool = True,
     autonative: bool = False,
@@ -91,19 +253,28 @@ impl run(
 ) -> int {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jaclang.project.config { get_config }
+    # No explicit file: dispatch on the project's kind (jac.toml). `jac run`
+    # then executes, serves, or builds the project as appropriate.
+    if not filename {
+        return _run_project(
+            show=show,
+            main=main,
+            cache=cache,
+            autonative=autonative,
+            diagnostics=diagnostics,
+            args=args
+        );
+    }
+    if show {
+        console.print(f"jac run {filename}  ->  execute (explicit file)");
+        return 0;
+    }
     # Re-discover config from the file's directory (handles absolute paths)
     _discover_config_from_file(filename);
-    # --no-cache: wipe all .jac_ir/ cache directories under the file's source tree.
+    # --no-cache: wipe cached compilation artifacts under the file's source tree.
     if not cache {
-        import glob as _glob;
-        import shutil;
-        _src_root = os.path.dirname(os.path.abspath(filename)) or ".";
-        cache_dirs = _glob.glob(
-            os.path.join(_src_root, "**", ".jac_ir"), recursive=True
-        );
-        for cache_dir in cache_dirs {
-            shutil.rmtree(cache_dir, ignore_errors=True);
-        }
+        import from jaclang.jac0core.jir { scrub_cache_dirs }
+        scrub_cache_dirs(os.path.dirname(os.path.abspath(filename)) or ".");
     }
     # Resolve diagnostics level: CLI flag > jac.toml > default ("error")
     if not diagnostics {
@@ -368,7 +539,8 @@ impl start(
     }
     # Initialize HMR if dev mode enabled
     hot_reloader = None;
-    vite_process = None;
+    # Filled by on_ready; read by the shutdown paths.
+    vite_holder: list = [];
     if dev {
         # Auto-install watchdog if not available
         if not _ensure_watchdog_installed() {
@@ -407,35 +579,46 @@ impl start(
                 console.print("  ✔ Initial client compilation completed");
             } except Exception as e {
                 console.error(f"Warning: Initial client compilation failed: {e}");
+                # A server that comes up broken must not report ok via /__build_status.
+                if hot_reloader {
+                    hot_reloader.record_error(str(filename), str(e));
+                }
             }
-            vite_process = _start_vite_dev_server(base, vite_port, server.port);
         }
     }
-    # Pass startup banner callback so it's printed AFTER compilation/bundling completes
-    # The actual_port parameter receives the port that was actually bound (may differ if original was in use)
-    # In dev mode with client, vite_port is separate from API port
-    try {
-        server.start(
+    # Vite starts after the API's port is known so the proxy is wired right;
+    # skip_port keeps Vite off that port (on_ready fires before the API binds).
+    def _announce_ready(actual_port: int) {
+        primary_port = actual_port;
+        if dev and not no_client {
+            free_vite_port = _find_free_port(vite_port, skip_port=actual_port);
+            (started_vite, bound_port) = _start_vite_dev_server(
+                base, free_vite_port, actual_port
+            );
+            if started_vite {
+                vite_holder.append(started_vite);
+            }
+            primary_port = bound_port;
+        }
+        _print_startup_message(
             dev=dev,
             no_client=no_client,
-            on_ready=lambda actual_port :
-                _print_startup_message(
-                    dev=dev,
-                    no_client=no_client,
-                    primary_port=vite_port if (dev and not no_client) else actual_port,
-                    api_port=actual_port,
-                    base_path=base
-                )
+            primary_port=primary_port,
+            api_port=actual_port,
+            base_path=base
         );
+    }
+    try {
+        server.start(dev=dev, no_client=no_client, on_ready=_announce_ready);
         return 0;
     } except KeyboardInterrupt {
         console.print('\nShutting down...');
         if hot_reloader {
             hot_reloader.stop();
         }
-        if vite_process {
-            vite_process.terminate();
-            vite_process.wait(timeout=5);
+        for started_vite in vite_holder {
+            started_vite.terminate();
+            started_vite.wait(timeout=5);
         }
         mach.close();
         return 0;
@@ -446,8 +629,8 @@ impl start(
         if hot_reloader {
             hot_reloader.stop();
         }
-        if vite_process {
-            vite_process.terminate();
+        for started_vite in vite_holder {
+            started_vite.terminate();
         }
         mach.close();
         return 1;
@@ -572,8 +755,8 @@ def _print_startup_message(
         console.print("  🚀 Server ready", style="bold green");
         console.print();
         console.print("  Mode: Development (with HMR)", style="muted");
-        console.print(f"    Vite:  http://localhost:{primary_port}/", style="muted");
-        console.print(f"    API:   http://localhost:{api_port}/", style="muted");
+        console.print(f"    App:  http://localhost:{primary_port}/", style="muted");
+        console.print(f"    API:  http://localhost:{api_port}/", style="muted");
         console.print();
         # Count and show watching files
         file_count = _count_jac_files(base_path);
@@ -600,7 +783,32 @@ def _print_startup_message(
     console.print();
 }
 
-"""Start Vite dev server for HMR mode."""
+"""First free 0.0.0.0 port from `start`, never `skip_port`."""
+def _find_free_port(start: int, skip_port: int = 0) -> int {
+    import socket;
+    candidate = start;
+    for _ in range(50) {
+        if candidate != skip_port {
+            try {
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe {
+                    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
+                    probe.bind(('0.0.0.0', candidate));
+                }
+                return candidate;
+            } except OSError {
+                ;
+            }
+        }
+        candidate += 1;
+    }
+    console.warning(
+        f"[Vite] No free port found in {start}-{start + 49}; falling back."
+    );
+    # Never hand back skip_port — Vite would steal the API's not-yet-bound port.
+    return start if start != skip_port else start + 50;
+}
+
+"""Start Vite dev server for HMR mode. Returns (process, bound_port)."""
 def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> any {
     import from pathlib { Path }
 
@@ -623,15 +831,16 @@ def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> any
         }
 
         # Start the dev server (messages handled by bundler)
-        return bundler.start_dev_server(vite_port, suppress_initial_output=True);
+        process = bundler.start_dev_server(vite_port, suppress_initial_output=True);
+        return (process, bundler.dev_server_port or vite_port);
     } except ImportError as e {
         console.error(
             f"[Vite] Warning: jac-client not installed, skipping Vite dev server: {e}"
         );
-        return None;
+        return (None, vite_port);
     } except Exception as e {
         console.error(f"[Vite] Warning: Could not start Vite dev server: {e}");
-        return None;
+        return (None, vite_port);
     }
 }
 

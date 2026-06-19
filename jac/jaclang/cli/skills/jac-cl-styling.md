@@ -1,9 +1,39 @@
 ---
 name: jac-cl-styling
-description: Styling patterns in Jac - Tailwind conditional classes, cn() utility with clsx+tailwind-merge, semantic color tokens, and auto-scoped .style.css annex files. Load when writing dynamic, theme-aware, or component-scoped styles.
+description: Styling patterns in Jac - Tailwind v4 setup from scratch, conditional classes, cn() utility with clsx+tailwind-merge, semantic color tokens, and auto-scoped .style.css annex files. Load when adding Tailwind to a project or writing dynamic, theme-aware, or component-scoped styles.
 ---
 
+## Tailwind v4 setup (non-shadcn projects)
+
+jac-shadcn projects ship Tailwind pre-wired - skip this section. For any other client project, three steps:
+
+```bash
+jac add --npm --dev tailwindcss @tailwindcss/vite
+```
+
+```toml
+# jac.toml - registers the Vite plugin
+[plugins.client.vite]
+plugins = ["tailwindcss()"]
+lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
+```
+
+```css
+/* assets/main.css - the whole entry CSS; no tailwind.config.js needed in v4 */
+@import "tailwindcss";
+```
+
+Then import it once in the app entry: `import "./assets/main.css";` inside the `cl { }` block of `main.jac` (or at the top of the entry `.cl.jac`). Utility classes (`min-h-screen`, `p-8`, `text-3xl`...) now work in any `className`.
+
 ## Scoped CSS (`.style.css` annex)
+
+> **jac-shadcn projects: `.style.css` is an anti-pattern.**
+> jac-shadcn components resolve styles through `cn()` + Tailwind utilities. Adding a
+> `.style.css` annex fights that system and creates specificity conflicts.
+> Use `cn()` with Tailwind utility classes (see below) instead.
+> `cn()`, semantic tokens (`text-muted-foreground`, `bg-card`, `border`), and conditional
+> Tailwind classes from this skill ARE correct in shadcn projects - only the separate
+> scoped CSS file approach is wrong.
 
 For plain (non-Tailwind) component CSS, write a `.style.css` file with the
 **same base name** as the component. Its classes are auto-scoped to that
@@ -45,7 +75,7 @@ Rules:
 Ternary is Python-style (`A if cond else B`). String concatenation for dynamic classes:
 
 ```jac
-def:pub TabButton(active: bool, children: any) -> JsxElement {
+def:pub TabButton(active: bool, children: any = None) -> JsxElement {
     tab_cls = "border-primary text-foreground" if active else "border-transparent text-muted-foreground";
     return <button className={"px-2.5 py-1.5 border-b-2 " + tab_cls}>{children}</button>;
 }
@@ -90,3 +120,8 @@ CORRECT:  text-foreground  bg-background  border-border
 
 AVOID:    text-gray-900  bg-white  border-gray-200  #3b82f6
 ```
+
+## See also
+
+- `jac-cl-components` - component shape, `className` prop, event handlers
+- `jac-shadcn-components` - jac-shadcn import paths, `cn()` usage, theming with `jac retheme`

@@ -13,6 +13,7 @@ import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     COMPANION_DEFS,
     check_deployment_status,
+    check_pods_restarted,
     create_k8s_secret,
     delete_k8s_secret,
     delete_if_exists,
@@ -41,7 +42,7 @@ import from jac_scale.factories.registry_factory { ImageRegistryFactory }
 import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
 import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
-import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger }
+import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger, TriggerAuth }
 import time;
 
 """Kubernetes deployment target implementation."""
@@ -253,7 +254,13 @@ obj KubernetesTarget(DeploymentTarget) {
             }
             commands.append('git submodule update --init --recursive');
             commands.append('pip install pluggy');
-            commands.append('pip install -e ./jac');
+            # The image pre-installs jaclang from PyPI; if that released version
+            # is newer than this branch, a plain `pip install -e ./jac` is a
+            # no-op (pip sees the requirement already satisfied) and the pod runs
+            # released jaclang instead of the local checkout. --force-reinstall
+            # makes the local editable win regardless of version; --no-deps
+            # keeps it from re-resolving the already-installed dependency tree.
+            commands.append('pip install --force-reinstall --no-deps -e ./jac');
             commands.append('jac install -e ./jac-scale --extras all');
             commands.append('jac install -e ./jac-client');
             commands.append('jac install -e ./jac-byllm');
@@ -1048,7 +1055,9 @@ obj KubernetesTarget(DeploymentTarget) {
                     }
                 ]
             },
-            # Prometheus — allow grafana to query on port 9090
+            # Prometheus — allow grafana and the main app to query on port 9090.
+            # The main app reads Prometheus directly for the admin Deployments
+            # view, so it needs ingress here alongside Grafana.
             {
                 'name': f"{app_name}-prometheus-network-policy",
                 'pod_selector': {'matchLabels': {'app': f"{app_name}-prometheus"}},
@@ -1059,7 +1068,8 @@ obj KubernetesTarget(DeploymentTarget) {
                                 'podSelector': {
                                     'matchLabels': {'app': f"{app_name}-grafana"}
                                 }
-                            }
+                            },
+                            {'podSelector': {'matchLabels': {'app': app_name}}}
                         ],
                         'ports': [{'protocol': 'TCP', 'port': 9090}]
                     }
@@ -1187,6 +1197,31 @@ obj KubernetesTarget(DeploymentTarget) {
         # Failure is a warning, not an error — the CNAME record may not have
         # propagated yet or DNS may not be configured yet.
         if self.k8s_config.shared_ingress {
+            # For a user's custom domain (pointed at the shared controller only
+            # after the deploy), the reachability probe can never pass at deploy
+            # time, so skip it and let the deploy complete on app readiness; DNS
+            # and the cert resolve asynchronously once the user points DNS.
+            if self.k8s_config.shared_ingress_skip_reachability {
+                if self.logger {
+                    self.logger.info(
+                        f"Shared ingress mode: skipping reachability probe for "
+                        f"'{self.k8s_config.domain}' (DNS is pointed post-deploy)."
+                    );
+                }
+                # Skip only the external DNS/HTTP probe (the user points DNS
+                # post-deploy), NOT pod readiness: still fail a crash-looping /
+                # OOMKilled / bad-image deploy rather than reporting success.
+                if check_pods_restarted(namespace, app_name) {
+                    raise Exception(
+                        "Deployment failed: application pods are restarting "
+                        "(crash loop / bad image); not marking the deploy ready."
+                    );
+                }
+                return (
+                    "Shared ingress: reachability probe skipped (pods healthy); "
+                    "point DNS at the shared controller to finish DNS/TLS."
+                );
+            }
             domain_url = f"http://{self.k8s_config.domain}";
             if self.logger {
                 self.logger.info(
@@ -1363,6 +1398,11 @@ obj KubernetesTarget(DeploymentTarget) {
 
             # 3. Load environment variables
             self.env_list = load_env_variables(app_config.code_folder);
+            # Inject K8S_APP_NAME / K8S_NAMESPACE so in-pod code (admin
+            # deployments view, monitoring helpers) can resolve sibling
+            # services like {app_name}-prometheus-service without guessing.
+            self.env_list.append({"name": "K8S_APP_NAME", "value": app_name});
+            self.env_list.append({"name": "K8S_NAMESPACE", "value": namespace});
             details["load_env_variables"] = "Successful";
 
             # 3b. Create K8s Secret from resolved secrets if configured
@@ -1522,7 +1562,34 @@ obj KubernetesTarget(DeploymentTarget) {
             }
             details["create_jaseci_application_service"] = "Successful";
             # 16. Enable horizontal pod autoscaling
-            AutoscalerFactory.create(
+            triggers = [];
+            if not self.k8s_config.extra_triggers {
+                triggers = [
+                    Trigger(
+                        type="cpu",
+                        metadata={
+                            "averageUtilization": str(
+                                self.k8s_config.cpu_utilization_target
+                            )
+                        }
+                    )
+                ];
+            }
+            for raw in self.k8s_config.extra_triggers {
+                t = Trigger(
+                    type=str(raw.get("type", "")),
+                    metadata=dict(raw.get("metadata", {})),
+                    name=raw.get("name")
+                );
+                raw_auth = raw.get("auth");
+                if raw_auth {
+                    t.auth = TriggerAuth(
+                        secret_refs=dict(raw_auth.get("secret_refs", {}))
+                    );
+                }
+                triggers.append(t);
+            }
+            autoscaler_applied = AutoscalerFactory.create(
                 self.k8s_config.autoscaler_engine,
                 self.k8s_config.to_dict(),
                 self.logger
@@ -1532,19 +1599,18 @@ obj KubernetesTarget(DeploymentTarget) {
                     namespace=namespace,
                     min_replicas=self.k8s_config.min_replicas,
                     max_replicas=self.k8s_config.max_replicas,
-                    triggers=[
-                        Trigger(
-                            type="cpu",
-                            metadata={
-                                "averageUtilization": str(
-                                    self.k8s_config.cpu_utilization_target
-                                )
-                            }
-                        )
-                    ]
+                    idle_replicas=self.k8s_config.idle_replicas,
+                    polling_interval=self.k8s_config.autoscaler_polling_interval,
+                    cooldown_period=self.k8s_config.autoscaler_cooldown,
+                    initial_cooldown_period=self.k8s_config.autoscaler_initial_cooldown,
+                    triggers=triggers
                 )
             );
-            details["create_horizontal_auto_scaler"] = "Successful";
+            # apply() returns False when preflight bailed (e.g. KEDA not installed);
+            # stamping "Successful" in that case would misreport the deploy state.
+            details["create_horizontal_auto_scaler"] = "Successful"
+                if autoscaler_applied
+                else "Skipped: autoscaler engine not available on cluster";
             # 15. Deploy monitoring stack (Prometheus / Grafana) if enabled
             monitoring = MonitoringDeployer(self.k8s_config, self.logger);
             monitoring.deploy(app_name, namespace, apps_v1, core_v1, provider);
@@ -1831,11 +1897,10 @@ obj KubernetesTarget(DeploymentTarget) {
     def _destroy_application(
         app_name: str, namespace: str, apps_v1: any, core_v1: any
     ) {
-        AutoscalerFactory.create(
+        autoscaler = AutoscalerFactory.create(
             self.k8s_config.autoscaler_engine, self.k8s_config.to_dict(), self.logger
-        ).destroy(
-            f"{app_name}-hpa", namespace
         );
+        autoscaler.destroy(autoscaler.resource_name_for(app_name), namespace);
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, app_name, namespace, 'Deployment'
         );

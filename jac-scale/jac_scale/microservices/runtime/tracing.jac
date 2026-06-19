@@ -45,6 +45,12 @@ glob _TP_VERSION: str = "00",
 # forward to downstream hops. Request-scoped; empty when no active span.
 glob _current_tp: ContextVar[str] = ContextVar("_jac_current_tp", default="");
 
+# Live SERVER span for the active request. It is not the OTel
+# current-context span, so memory child spans parent to it via this.
+glob _current_span: ContextVar[any] = ContextVar(
+         "_jac_current_span", default=None
+     );
+
 # Trace id to force on the next ROOT span (read by `_JacIdGenerator`), so
 # a parentless root gets trace_id == the UUID and Tempo treats it as the
 # trace root.
@@ -308,11 +314,13 @@ def start_server_span(
     if tp {
         _current_tp.set(tp);
     }
+    _current_span.set(span);
     return span;
 }
 
-"""End a span started by `start_server_span` and clear `_current_tp`.
-No-op/best-effort: a span-end error must never break request handling."""
+"""End a span started by `start_server_span` and clear `_current_tp` /
+`_current_span`. No-op/best-effort: a span-end error must never break
+request handling."""
 def end_span(span: any) {
     if span is not None {
         try {
@@ -322,6 +330,44 @@ def end_span(span: any) {
         }
     }
     _current_tp.set("");
+    _current_span.set(None);
+}
+
+"""Start a CLIENT child span for a memory/DB op, parented to the active
+SERVER span. No-op (returns None) when tracing is inactive or no request
+span is active. Caller MUST pass the result to `end_memory_span`."""
+def start_memory_span(name: str, attributes: dict | None = None) -> any {
+    if not _tracing_active or _tracer is None or not HAS_OTEL {
+        return None;
+    }
+    parent = _current_span.get(None);
+    if parent is None {
+        return None;
+    }
+    try {
+        ctx = set_span_in_context(parent);
+        span = _tracer.start_span(name, context=ctx, kind=SpanKind.CLIENT);
+        if attributes {
+            for (k, v) in attributes.items() {
+                span.set_attribute(k, v);
+            }
+        }
+        return span;
+    } except Exception as e {
+        _logger.debug(f"start_memory_span error (ignored): {e}");
+        return None;
+    }
+}
+
+"""End a span from `start_memory_span` (best-effort; never raises)."""
+def end_memory_span(span: any) {
+    if span is not None {
+        try {
+            span.end();
+        } except Exception as e {
+            _logger.debug(f"memory span.end error (ignored): {e}");
+        }
+    }
 }
 
 """Build a `traceparent` from a live span's context, or None."""

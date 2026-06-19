@@ -1,5 +1,11 @@
 """MongoDB PersistenceBackend Implementation."""
 
+import from jac_scale.microservices.runtime.tracing {
+    start_memory_span,
+    end_memory_span
+}
+import from jaclang.runtimelib.exceptions { WriteConflict }
+
 """Post-initialization: connect to MongoDB and load DB-resident aliases.
 
 On connect we also ensure the companion collections exist as logical
@@ -10,7 +16,6 @@ collections on first write, so all we do here is load any existing
 aliases into the in-process Serializer map.
 """
 impl MongoBackend.postinit -> None {
-    self._atomic_written = set();
     if self.mongo_url is None {
         self.mongo_url = _get_db_config().get('mongodb_uri');
     }
@@ -39,13 +44,21 @@ impl MongoBackend.postinit -> None {
         } except Exception as e {
             logger.debug(f"MongoBackend: index creation skipped: {e}");
         }
+        # Deploy-the-fix-and-data-heals: with classes, aliases, and drift
+        # rules now registered, re-attempt quarantined docs this deploy may
+        # have fixed. Never blocks startup on failure.
+        try {
+            self._auto_retry_quarantine();
+        } except Exception as e {
+            logger.debug(f"MongoBackend: quarantine auto-retry skipped: {e}");
+        }
     }
 }
 
 
 """Create indexes that make type-based pushdown queries efficient.
 
-Idempotent — `create_index` is a no-op when an index of the same shape and
+Idempotent -- `create_index` is a no-op when an index of the same shape and
 name already exists, so this can be called on every connect without cost.
 
 The compound `(arch_type, type)` index is what makes `execute_plan`
@@ -84,79 +97,8 @@ def _anchor_has_structural_change(anchor: Anchor) -> bool {
     return anchor.hash == 0;
 }
 
-"""Recursively remove empty-dict leaves from a serialized value.
-
-MongoDB's aggregation-pipeline $set (used in _put_node_atomic) rejects any
-embedded empty document with error 40180 (EmptyObjectInUpdate).  The default
-Permission / Access values always produce `access.roots.anchors = {}`, so
-every NodeAnchor update fails unless we strip those leaves before building
-the set_doc.  The Serializer restores default empty dicts on deserialize via
-field(default_factory=dict), so stripping them from the stored document is
-safe and lossless.
-"""
-def _strip_empty_dicts(v: object) -> object {
-    if isinstance(v, dict) {
-        cleaned = {k: _strip_empty_dicts(vv) for (k, vv) in v.items()};
-        return {
-            k: vv
-            for (k, vv) in cleaned.items()
-            if not (isinstance(vv, dict) and not vv)
-        };
-    }
-    if isinstance(v, list) {
-        return [_strip_empty_dicts(item) for item in v];
-    }
-    return v;
-}
-
-
-"""Stable hash of any serialized field value (dict, list, or scalar)."""
-def _field_hash(val: object) -> int {
-    import from json { dumps }
-    try {
-        return hash(dumps(val, sort_keys=True, default=str));
-    } except Exception {
-        return hash(str(val));
-    }
-}
-
-"""Snapshot per-field hashes onto the archetype after a successful save or load."""
-def _snapshot_field_hashes(anchor: Anchor) -> None {
-    if not anchor.is_populated() or anchor.archetype is None {
-        return;
-    }
-    arch = anchor.archetype;
-    known = get_field_types(type(arch)).keys();
-    _seen: tuple[set, set] = (set(), set());
-    hashes: dict[str, int] = {};
-    for name in known {
-        val = getattr(arch, name, None);
-        serialized = Serializer._serialize_value(val, include_type=True, _seen=_seen);
-        hashes[name] = _field_hash(serialized);
-    }
-    object.__setattr__(arch, '__jac_field_hashes__', hashes);
-}
-
-"""Derive the dirty field set by comparing current field hashes to the stored snapshot."""
-def _derive_dirty_from_field_hashes(anchor: Anchor) -> set[str] {
-    if not anchor.is_populated() or anchor.archetype is None {
-        return set();
-    }
-    arch = anchor.archetype;
-    stored: dict[str, int] = arch.__dict__.get('__jac_field_hashes__', {});
-    known = get_field_types(type(arch)).keys();
-    dirty: set[str] = set();
-    _seen: tuple[set, set] = (set(), set());
-    for name in known {
-        val = getattr(arch, name, None);
-        serialized = Serializer._serialize_value(val, include_type=True, _seen=_seen);
-        if _field_hash(serialized) != stored.get(name) {
-            dirty.add(name);
-        }
-    }
-    return dirty;
-}
-
+# Field-hash dirty detection lives in jaclang.runtimelib.changeset -- one
+# shared implementation for the runtime's collect pass and every backend.
 """Build a stored document for an anchor, including Layer 2 fingerprint
 and Layer 1 archetype identity fields. Parallels _anchor_to_row in
 SqliteMemory; kept here so schema evolution stays per-backend."""
@@ -184,10 +126,64 @@ def _anchor_to_doc(anchor: Anchor) -> dict {
     };
 }
 
+"""Persist a read-repaired anchor back to its document (lazy migration).
+
+The Serializer records applied drift-rule steps on the archetype
+(`__jac_schema_repairs__`); when present, the upgraded form is written
+back with compare-and-set on the originally stored fingerprint, so a
+concurrent writer on an older code version cleanly wins and the doc
+simply repairs again on its next read. Never raises -- a failed
+write-back just means the repair re-runs next load (idempotent).
+"""
+def _mongo_persist_repairs(
+    backend: MongoBackend, id_str: str, anchor: Anchor, stored_fp: (str | None)
+) -> None {
+    arch = anchor.archetype if anchor.is_populated() else None;
+    if arch is None {
+        return;
+    }
+    steps = arch.__dict__.get('__jac_schema_repairs__');
+    if not steps {
+        return;
+    }
+    try {
+        doc = _anchor_to_doc(anchor);
+        result = backend.collection.update_one(
+            {'_id': id_str, 'fingerprint': stored_fp}, {'$set': doc}
+        );
+        if result.matched_count {
+            logger.info(
+                f"MongoBackend: persisted read-repair of {id_str} "
+                f"({doc.get('arch_module')}.{doc.get('arch_type')}): {steps}"
+            );
+            if backend._l2_ref {
+                backend._l2_ref.delete(to_uuid(anchor.id));
+            }
+        } else {
+            logger.info(
+                f"MongoBackend: read-repair write-back of {id_str} skipped "
+                "(concurrent write since load); will repair on next read."
+            );
+        }
+        # Either way the in-memory anchor is current; drop the marker so a
+        # later full save doesn't re-log this as a fresh repair.
+        arch.__dict__.pop('__jac_schema_repairs__', None);
+    } except Exception as e {
+        logger.warning(f"MongoBackend: read-repair write-back of {id_str} failed: {e}");
+    }
+}
+
+
 """Move an unreadable document into the quarantine collection.
 
 Never raises: we'd rather fail loud on load (caller quarantines + None)
 than leak exceptions into walker traversal.
+
+`reason_code` is a stable, machine-readable classification used by the
+startup auto-retry to decide which quarantined docs a new deploy might
+fix: CLASS_MISSING (archetype unresolvable), FIELD_RECONSTRUCT (class
+resolved but field deserialization failed), DESER_ERROR (deserialize
+raised), CASCADE (edge orphaned by a quarantined node).
 
 When quarantining a NodeAnchor, also cascade-quarantine every EdgeAnchor
 whose data.source or data.target references this node, then strip those
@@ -204,7 +200,8 @@ def _mongo_quarantine(
     data: any,
     error: str,
     from_format_version: (int | None) = None,
-    l2: (any | None) = None
+    l2: (any | None) = None,
+    reason_code: str = 'DESER_ERROR'
 ) {
     try {
         q_col = _mongo_q_collection(backend);
@@ -219,6 +216,7 @@ def _mongo_quarantine(
                     'fingerprint': fingerprint,
                     'data': data,
                     'error': error,
+                    'reason_code': reason_code,
                     'quarantined_at': now_ts,
                     'from_format_version': from_format_version
                 }
@@ -228,6 +226,7 @@ def _mongo_quarantine(
         backend.collection.delete_one({'_id': id_str});
         if l2 {
             l2.delete(to_uuid(id_str));
+            l2.publish_invalidation(str(to_uuid(id_str)), None);
         }
         # Cascade: when a NodeAnchor is quarantined, orphan its edges too.
         if anchor_type == 'NodeAnchor' {
@@ -263,6 +262,7 @@ def _mongo_quarantine(
                                 'fingerprint': edge_doc.get('fingerprint'),
                                 'data': edge_doc.get('data'),
                                 'error': cascade_error,
+                                'reason_code': 'CASCADE',
                                 'quarantined_at': now_ts,
                                 'from_format_version': edge_doc.get('format_version')
                             }
@@ -275,6 +275,7 @@ def _mongo_quarantine(
                 if l2 {
                     for eid in orphan_edge_ids {
                         l2.delete(to_uuid(eid));
+                        l2.publish_invalidation(str(to_uuid(eid)), None);
                     }
                 }
                 backend.collection.update_many(
@@ -284,6 +285,7 @@ def _mongo_quarantine(
                 if l2 {
                     for nid in affected_node_ids {
                         l2.delete(to_uuid(nid));
+                        l2.publish_invalidation(str(to_uuid(nid)), None);
                     }
                 }
                 logger.info(
@@ -297,19 +299,19 @@ def _mongo_quarantine(
     }
 }
 
-"""Set reference to parent TieredMemory's __mem__ for sync()."""
-impl MongoBackend.set_memory_ref(mem: dict[UUID, Anchor]) -> None {
-    self._mem_ref = mem;
-}
-
 """Store a reference to the L2 cache so quarantine operations can invalidate it."""
 impl MongoBackend.set_cache_ref(cache: (any | None)) -> None {
     self._l2_ref = cache;
 }
 
+"""Record the owning context's L1 id so this backend's broadcasts self-exclude."""
+impl MongoBackend.set_l1_id(l1_id: str) -> None {
+    self._l1_id = l1_id;
+}
+
 """Check if MongoDB is available and connected."""
 impl MongoBackend.is_available -> bool {
-    # Only cache a confirmed True — caching False would prevent later contexts
+    # Only cache a confirmed True -- caching False would prevent later contexts
     # (e.g. test files that configure MongoDB after others that don't) from ever
     # reaching MongoDB in the same process.
     if _process_cache.get('mongo_available') is True {
@@ -339,7 +341,7 @@ impl MongoBackend.is_available -> bool {
 
 On any deserialization failure or unresolvable archetype class, the row
 is moved to the `_quarantine` collection (never silently dropped) so an
-operator can inspect and recover with `jac db` — parallel to the
+operator can inspect and recover with `jac db` -- parallel to the
 SqliteMemory contract.
 """
 impl MongoBackend.get(id: UUID) -> (Anchor | None) {
@@ -348,11 +350,17 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     }
     self.fetch_count += 1;
     _id = to_uuid(id);
+    span = start_memory_span(
+        "memory.get mongodb",
+        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
+    );
     try {
         db_obj = self.collection.find_one({'_id': str(_id)});
     } except Exception as e {
         logger.debug(f"MongoDB get failed: {e}");
         return None;
+    } finally {
+        end_memory_span(span);
     }
     if not db_obj {
         return None;
@@ -393,7 +401,8 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
             data,
             f"deserialize error: {type(e).__name__}: {e}",
             from_format_version=fmt_version,
-            l2=self._l2_ref
+            l2=self._l2_ref,
+            reason_code='DESER_ERROR'
         );
         return None;
     }
@@ -405,12 +414,14 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
         );
         if cls_resolved is None {
             reason = f"class {arch_module}.{arch_type} unresolvable";
+            code = 'CLASS_MISSING';
             logger.warning(
                 f"MongoBackend: class {arch_module}.{arch_type} unresolvable "
                 f"for anchor {id}. Moving to quarantine."
             );
         } else {
             reason = f"archetype field deserialization failed: {arch_module}.{arch_type}";
+            code = 'FIELD_RECONSTRUCT';
             logger.warning(
                 f"MongoBackend: archetype field deserialization failed for "
                 f"{arch_module}.{arch_type} (anchor {id}). Moving to quarantine."
@@ -426,15 +437,17 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
             data,
             reason,
             from_format_version=fmt_version,
-            l2=self._l2_ref
+            l2=self._l2_ref,
+            reason_code=code
         );
         return None;
     }
-    _snapshot_field_hashes(cast(Anchor, anchor));
+    _mongo_persist_repairs(self, str(_id), cast(Anchor, anchor), fingerprint);
+    snapshot_field_hashes(cast(Anchor, anchor));
     return cast(Anchor, anchor);
 }
 
-"""Stage anchor for persistence — all writes are deferred to sync()."""
+"""Stage anchor for persistence -- all writes are deferred to sync()."""
 impl MongoBackend.put(anchor: Anchor) -> None { }
 
 """Full document upsert for an anchor. Used by sync() when no partial or
@@ -450,12 +463,12 @@ impl MongoBackend._write_to_db(anchor: Anchor) -> None {
         doc = _anchor_to_doc(anchor);
         self.collection.update_one({'_id': str(_id)}, {'$set': doc}, upsert=True);
         anchor.hash = Serializer._compute_hash(anchor);
-        if arch is not None {
-            arch.__dict__.pop('__jac_dirty_fields__', None);
-        }
-        _snapshot_field_hashes(anchor);
+        snapshot_field_hashes(anchor);
     } except Exception as e {
+        # Propagate: apply() must know a structural write failed so it can
+        # poison dependents instead of minting a dangling reference.
         logger.error(f"MongoDB _write_to_db failed: {e}");
+        raise;
     }
 }
 
@@ -466,6 +479,7 @@ impl MongoBackend.put_partial(anchor: Anchor, field_names: set[str]) -> None {
     }
     _id = to_uuid(anchor.id);
     try {
+        # Classic operator $set (below) accepts empty dicts; no strip needed.
         partial_data = Serializer.serialize_fields(anchor, field_names);
         if not partial_data {
             return;
@@ -476,39 +490,24 @@ impl MongoBackend.put_partial(anchor: Anchor, field_names: set[str]) -> None {
         update['updated_at'] = datetime.now(timezone.utc).isoformat();
         self.collection.update_one({'_id': str(_id)}, {'$set': update});
         anchor.hash = Serializer._compute_hash(anchor);
-        arch = anchor.archetype if anchor.is_populated() else None;
-        if arch is not None {
-            arch.__dict__.pop('__jac_dirty_fields__', None);
-        }
-        _snapshot_field_hashes(anchor);
+        snapshot_field_hashes(anchor);
     } except Exception as e {
         logger.error(f"MongoDB put_partial failed: {e}");
+        raise;
     }
 }
 
-"""Delete anchor from MongoDB."""
-impl MongoBackend.delete(id: UUID) -> None {
-    if self.client is None {
-        return;
-    }
-    _id = to_uuid(id);
-    try {
-        self.collection.delete_one({'_id': str(_id)});
-    } except Exception as e {
-        logger.debug(f"MongoDB delete failed: {e}");
-    }
-}
+"""Forget backend-local cache state for an anchor. MongoBackend keeps no
+local cache, so this is a no-op: the document is removed by apply()
+executing a delete intent, in dependency order with the edge-list repairs
+that must precede it -- never inline (issue #6587)."""
+impl MongoBackend.delete(id: UUID) -> None { }
 
-"""Flush pending writes and release local reference to the shared client."""
+"""Release local reference to the shared client. Flushing is the runtime's
+job (commit -> apply); close must not write."""
 impl MongoBackend.close -> None {
-    try {
-        self.sync();
-    } except Exception as e {
-        logger.warning(f"MongoBackend.close sync failed: {e}");
-    }
     # Don't close the shared process-level client; just drop local reference.
     self.client = None;
-    self._mem_ref = None;
     self._l2_ref = None;
 }
 
@@ -547,7 +546,7 @@ impl MongoBackend.query(
 
 """Get all root anchors using an indexed type filter (no full collection scan).
 
-Uses the `(arch_type, type)` compound index — IXSCAN, not COLLSCAN. The
+Uses the `(arch_type, type)` compound index -- IXSCAN, not COLLSCAN. The
 Python-side `isinstance` check is kept as a defense-in-depth filter in case
 schema drift left a non-Root archetype with `arch_type='Root'`.
 """
@@ -576,7 +575,7 @@ declarative field predicates (`data.archetype.<f>` paths), `_id IN (...)`
 narrowing (primary index), and contiguous slicing (`skip`+`limit`).
 
 The planner combines these with the topology_index narrowing automatically
-— see `jaclang.runtimelib.planner` for the strategy chooser.
+-- see `jaclang.runtimelib.planner` for the strategy chooser.
 """
 impl MongoBackend.capabilities -> set[str] {
     return {'type_pushdown', 'field_pushdown', 'id_in', 'slice'};
@@ -587,7 +586,7 @@ impl MongoBackend.capabilities -> set[str] {
 
 Filter shape (only includes keys the plan actually populates):
   - `arch_type`: archetype class name (final hop's `node_type` or `node_type_final`)
-  - `type`: 'NodeAnchor' (we only push down node queries — edges are handled
+  - `type`: 'NodeAnchor' (we only push down node queries -- edges are handled
             via the source/target subdoc separately, not by execute_plan)
   - `_id`:  `{'$in': [...]}` when the planner narrowed via topology_index
   - `data.archetype.<f>`: each archetype-field predicate, value passed through
@@ -641,7 +640,7 @@ This is the backend's pushdown entry point. The planner only calls us when
     the candidate UUIDs) OR there is no chain (a pure type/field query)
   - `field_predicates` use cross-backend operators (`$eq`, `$lt`, `$in`...)
   - `slc` is either absent or contiguous-step (we early-rejected stepped
-    slices by leaving skip/limit as None — caller applies them)
+    slices by leaving skip/limit as None -- caller applies them)
 
 We never raise to the caller: any error logs at debug and returns an empty
 generator so the planner can fall back if it wants to.
@@ -704,139 +703,281 @@ impl MongoBackend.commit(anchor: (Anchor | None) = None) -> None {
 }
 
 # PersistentMemory-specific methods
-"""Sync - flush L1 memory to MongoDB (only changed anchors).
+"""Flush a unit of work in dependency order -- the changeset's stages.
 
-Returns the set of anchor IDs written via the edge-delta atomic path this
-cycle; those entries have already been invalidated in L2, so the caller
-(ScaleTieredMemory.commit) skips re-caching them from the stale in-memory
-snapshot."""
-impl MongoBackend.sync -> set {
-    import from jaclang { JacRuntimeInterface as Jac }
-    if not self._mem_ref or not self.client {
-        return set();
+MongoDB multi-document transactions require a replica set, which many
+deployments (and the standalone default) don't run, so crash-safety comes
+from ORDER: truncating this sequence at any point can only leave an
+unreferenced document (orphan), never a dangling reference. A failed
+structural write poisons its dependents (e.g. a node delete after a failed
+edge delete is skipped) instead of corrupting the graph. Decision logic
+(what changed, access control) ran in the runtime's collect pass -- this
+method only executes intents."""
+impl MongoBackend.apply(changeset: ChangeSet) -> ApplyReport {
+    apply_report = ApplyReport();
+    if changeset.is_empty() or self.client is None {
+        return apply_report;
     }
-    self._atomic_written = set();
-    for (_, anchor) in list(self._mem_ref.items()) {
-        if not anchor.persistent {
-            continue;
-        }
-        # Check hash first — skip unchanged anchors without access check
-        current_hash = Serializer._compute_hash(anchor);
-        if current_hash == anchor.hash {
-            continue;
-        }
-        if not Jac.check_write_access(anchor) {
-            continue;
-        }
-        try {
-            if isinstance(anchor, NodeAnchor) {
-                delta = anchor.edge_delta();
-                if delta is not None {
-                    added = [str(eid) for eid in delta[0]];
-                    removed = [str(eid) for eid in delta[1]];
-                    if added or removed {
-                        self._put_node_atomic(anchor, added, removed);
-                        continue;
-                    }
+    span = start_memory_span(
+        "memory.apply mongodb",
+        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "apply"}
+    );
+    try {
+        poisoned: set[UUID] = set();
+        # OCC precheck: a read-gated intent (cas_version set) whose stored
+        # version already moved means this request lost the race. Detect it
+        # BEFORE staging any writes, so the loser's child/edge docs are never
+        # written -- MongoDB has no cross-document rollback here, so prevention
+        # beats compensation. The in-line CAS in _put_node_atomic stays as the
+        # backstop for the narrow window where a winner commits *during* this
+        # apply (after the precheck read); any orphan from that window is
+        # collected by `jac db fsck` (half-linked-edge sweep).
+        # Collect the read-gated intents (cas_version set) and read their stored
+        # versions in ONE $in query, so a walker that read several nodes still
+        # costs a single round-trip rather than one find per node.
+        read_gated: dict[str, int] = {};
+        for stage in changeset.staged() {
+            for intent in stage {
+                if intent.cas_version is not None {
+                    read_gated[str(to_uuid(intent.anchor.id))] = intent.cas_version;
                 }
             }
-            # Union __setattr__-tracked fields (direct assignments) with
-            # field-hash-derived fields (in-place mutations) to get the complete
-            # dirty set. Both must be combined — running only one silently drops
-            # the other category (e.g. direct + in-place in the same request).
-            if anchor.hash != 0 {
-                arch = anchor.archetype if anchor.is_populated() else None;
-                setattr_dirty: set[str] = (
-                    arch.__dict__.get('__jac_dirty_fields__') or set()
-                ).copy()
-                    if arch is not None
-                    else set();
-                derived = _derive_dirty_from_field_hashes(anchor);
-                dirty = setattr_dirty | derived;
-                if dirty {
-                    self.put_partial(anchor, dirty);
+        }
+        precheck: list = [];
+        if read_gated {
+            stored_versions: dict[str, int] = {};
+            for vdoc in self.collection.find(
+                {'_id': {'$in': list(read_gated.keys())}}, {'data.version': 1}
+            ) {
+                stored_versions[str(vdoc.get('_id'))] = int(
+                    vdoc.get('data', {}).get('version', 0)
+                );
+            }
+            # Absent docs are omitted from stored_versions -> skipped here, so
+            # the staged CAS path (upsert=False -> no match -> conflict) is what
+            # handles a node that vanished since this request read it.
+            for (gid, expected) in read_gated.items() {
+                if gid in stored_versions and stored_versions[gid] != expected {
+                    precheck.append(
+                        WriteConflict(
+                            anchor_id=to_uuid(gid),
+                            expected_version=expected,
+                            actual_version=stored_versions[gid]
+                        )
+                    );
+                }
+            }
+        }
+        if precheck {
+            # Abort the whole unit of work: write nothing. The request
+            # boundary replays (retry) or fails (fail). A partial apply would
+            # orphan the loser's just-written child.
+            for wc in precheck {
+                apply_report.failed[wc.anchor_id] = wc.message();
+                apply_report.conflicts.append(wc);
+            }
+            if span {
+                span.set_attribute("mem.count", 0);
+            }
+            return apply_report;
+        }
+        for stage in changeset.staged() {
+            for intent in stage {
+                if (deps := intent.depends_on & poisoned) {
+                    dep = next(iter(deps));
+                    apply_report.skipped[intent.anchor.id] = f"dependency {dep} failed";
+                    poisoned.add(intent.anchor.id);
+                    logger.error(
+                        f"MongoDB apply: skipping {intent.op.name} on "
+                        f"{intent.anchor.id}: dependency {dep} failed"
+                    );
                     continue;
                 }
+                try {
+                    self._apply_one(intent);
+                    apply_report.applied.append(intent.anchor.id);
+                } except WriteConflict as wc {
+                    # Optimistic-concurrency miss: poison like any failed write
+                    # (skips dependents), but carry the typed conflict so
+                    # commit() can raise it and the boundary can replay. DEBUG,
+                    # not ERROR: a losing racer is expected, not noise.
+                    poisoned.add(intent.anchor.id);
+                    apply_report.failed[intent.anchor.id] = wc.message();
+                    apply_report.conflicts.append(wc);
+                    logger.debug(
+                        f"MongoDB apply: write conflict on {intent.anchor.id}: "
+                        f"{wc.message()}"
+                    );
+                } except Exception as e {
+                    poisoned.add(intent.anchor.id);
+                    apply_report.failed[intent.anchor.id] = str(e);
+                    logger.error(
+                        f"MongoDB apply: {intent.op.name} failed for "
+                        f"{intent.anchor.id}: {type(e).__name__}: {e}"
+                    );
+                }
             }
-            # First insert (hash == 0) or no field changes found — full upsert.
-            self._write_to_db(anchor);
-        } except Exception as e {
-            logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
         }
+        if span {
+            span.set_attribute("mem.count", len(apply_report.applied));
+        }
+        return apply_report;
+    } finally {
+        end_memory_span(span);
     }
-    return self._atomic_written;
 }
 
-"""Atomically update a NodeAnchor, merging only dirty archetype fields and
-edge delta with DB state."""
+"""Execute one intent against MongoDB."""
+impl MongoBackend._apply_one(intent: WriteIntent) -> None {
+    anchor = intent.anchor;
+    if intent.is_delete() {
+        self.collection.delete_one({'_id': str(to_uuid(anchor.id))});
+        return;
+    }
+    if intent.op == WriteOp.EDGE_LIST_DELTA {
+        self._put_node_atomic(
+            cast(NodeAnchor, anchor),
+            [str(eid) for eid in intent.edges_added],
+            [str(eid) for eid in intent.edges_removed],
+            intent.fields,
+            intent.cas_version
+        );
+        return;
+    }
+    if intent.op == WriteOp.FIELD_UPDATE {
+        self.put_partial(anchor, intent.fields);
+        return;
+    }
+    # NODE_CREATE / EDGE_CREATE (and full merged rewrites): whole-document upsert.
+    self._write_to_db(anchor);
+}
+
+"""Atomically update a NodeAnchor, merging the intent's archetype fields and
+edge delta with DB state. `fields` comes from the runtime's collect pass --
+the single owner of dirty detection AND write-access decisions. Re-deriving
+dirtiness here would persist fields the collect pass never authorized."""
 impl MongoBackend._put_node_atomic(
-    anchor: NodeAnchor, edges_added: list[str], edges_removed: list[str]
+    anchor: NodeAnchor,
+    edges_added: list[str],
+    edges_removed: list[str],
+    fields: set[str],
+    cas_version: (int | None) = None
 ) -> None {
     if self.client is None {
         return;
     }
     _id = str(to_uuid(anchor.id));
     try {
-        arch = anchor.archetype if anchor.is_populated() else None;
+        # Serialize the intent's dirty archetype fields (`fields` = collect pass's dirty set, the sole owner of dirty detection).
+        partial_data: dict[str, object] = Serializer.serialize_fields(anchor, fields)
+            if fields
+            else {};
 
-        # Compute dirty archetype fields: union of __setattr__-tracked writes
-        # and hash-derived in-place mutations (mirrors sync() → put_partial).
-        setattr_dirty: set[str] = (
-            arch.__dict__.get('__jac_dirty_fields__') or set()
-        ).copy()
-            if arch is not None
-            else set();
-        hash_dirty = _derive_dirty_from_field_hashes(anchor);
-        dirty = setattr_dirty | hash_dirty;
-
-        # Serialize only the dirty archetype fields.
-        partial_data = Serializer.serialize_fields(anchor, dirty) if dirty else {};
-
-        # Non-archetype, non-edge top-level data fields (e.g. access control).
-        # Strip empty nested dicts before including in the aggregation-pipeline
-        # $set: MongoDB rejects empty embedded documents (error 40180) in that
-        # context.  access.roots.anchors defaults to {} and is the common trigger.
+        # Non-archetype top-level fields (e.g. access), whole-object replaced.
+        # 'version' is excluded: it's bumped via $inc below, not $set verbatim.
         full = dict(Serializer.serialize(anchor, include_type=True));
         non_arch_top = {
-            k: _strip_empty_dicts(v)
+            k: v
             for (k, v) in full.items()
-            if k not in ('edges', 'archetype')
+            if k not in ('edges', 'archetype', 'version')
         };
 
-        # Build a flat $set document:
-        #   data.<k>               — non-arch top-level fields (e.g. access)
-        #   data.archetype.<field> — only dirty scalar fields (concurrent-safe)
-        #   data.edges             — atomic $setUnion/$setDifference expression
+        # Pipeline $set evaluates values as expressions (bare {} → error 40180, $-keys misread); wrap all data in $literal to store verbatim, leaving data.edges the only expression.
         set_doc: dict[str, object] = {
             'type': 'NodeAnchor',
             'updated_at': datetime.now(timezone.utc).isoformat()
         };
         for (k, v) in non_arch_top.items() {
-            set_doc[f"data.{k}"] = v;
+            set_doc[f"data.{k}"] = {'$literal': v};
         }
         for (k, v) in partial_data.items() {
-            set_doc[f"data.archetype.{k}"] = v;
+            set_doc[f"data.archetype.{k}"] = {'$literal': v};
         }
+        # Order-preserving edge merge (issue #6785): out-edge order is part of
+        # OSP semantics (connection/insertion order), so it must survive the
+        # atomic merge. $setUnion / $setDifference return *sets* — they sort and
+        # dedup, discarding array order — so they cannot be used here. Instead
+        # keep existing edges in place ($filter out the removed ones) and append
+        # only the genuinely-new added edges ($filter out any already present,
+        # which keeps the merge idempotent under write retries).
         set_doc['data.edges'] = {
-            '$setUnion': [
-                {'$setDifference': [{'$ifNull': ['$data.edges', []]}, edges_removed]},
-                edges_added
-            ]
+            '$let': {
+                'vars': {'cur': {'$ifNull': ['$data.edges', []]}},
+                'in': {
+                    '$concatArrays': [
+                        {
+                            '$filter': {
+                                'input': '$$cur',
+                                'as': 'e',
+                                'cond': {'$not': [{'$in': ['$$e', edges_removed]}]}
+                            }
+                        },
+                        {
+                            '$filter': {
+                                'input': edges_added,
+                                'as': 'e',
+                                'cond': {'$not': [{'$in': ['$$e', '$$cur']}]}
+                            }
+                        }
+                    ]
+                }
+            }
         };
+        # Bump the OCC version as part of the same atomic update.
+        set_doc['data.version'] = {'$add': [{'$ifNull': ['$data.version', 0]}, 1]};
 
         import from pymongo { ReturnDocument }
+        # Read-set OCC: CAS on the version only when this request READ a
+        # traversal from this node (cas_version set). A blind append takes no
+        # dependency -> plain upsert + $setUnion merges lock-free (#5644).
+        cas_filter: dict = {'_id': _id};
+        if cas_version is not None {
+            # A doc written before this feature shipped has no `data.version`;
+            # MongoDB equality won't match a missing field, so when the request
+            # expects v0 also accept the absent case (treat absent == 0). This
+            # keeps legacy nodes from spuriously conflicting on first write.
+            if cas_version == 0 {
+                cas_filter = {
+                    '_id': _id,
+                    '$or': [{'data.version': 0}, {'data.version': {'$exists': False}}]
+                };
+            } else {
+                cas_filter = {'_id': _id, 'data.version': cas_version};
+            }
+        }
         merged_doc = self.collection.find_one_and_update(
-            {'_id': _id},
+            cas_filter,
             [{'$set': set_doc}],
-            projection={'data.edges': 1},
-            upsert=True,
+            projection={'data.edges': 1, 'data.version': 1},
+            upsert=(cas_version is None),
             return_document=ReturnDocument.AFTER
+            # upsert only on the no-CAS (blind append) path: a version miss must
+            # NOT mint a spurious duplicate doc.
         );
+        if merged_doc is None {
+            # Version-gated path (upsert=False) with no match: the node moved or
+            # vanished since this request read it. Either way the optimistic
+            # assumption failed -> conflict, and the request boundary replays
+            # (re-reading the now-current graph). We do NOT fall back to an
+            # upsert here: that read-then-upsert was a TOCTOU window, and an
+            # EDGE_LIST_DELTA only targets a node the request already loaded, so
+            # a genuinely absent doc is itself a stale-read to converge on.
+            # The find_one is diagnostic only (best-effort actual version).
+            actual = -1;
+            existing = self.collection.find_one({'_id': _id}, {'data.version': 1});
+            if existing is not None {
+                actual = existing.get('data', {}).get('version', -1);
+            }
+            raise WriteConflict(
+                anchor_id=anchor.id, expected_version=cas_version, actual_version=actual
+            );
+        }
 
-        self._atomic_written.add(anchor.id);
         if self._l2_ref {
             try {
                 self._l2_ref.invalidate(anchor.id);
+                # Evict siblings' stale pre-write edge list cross-pod.
+                self._l2_ref.publish_invalidation(str(anchor.id), self._l1_id);
             } except Exception as inv_err {
                 logger.debug(
                     f"MongoDB _put_node_atomic L2 invalidation failed: {inv_err}"
@@ -859,51 +1000,30 @@ impl MongoBackend._put_node_atomic(
                     for e in anchor.edges
                     if e.id in merged_ids
                 ];
+                # Re-baseline the local OCC version to the just-committed one,
+                # so a subsequent commit this request CASes on the right value.
+                anchor.version = merged_doc.get('data', {}).get(
+                    'version', anchor.version + 1
+                );
             }
         } except Exception as rb_err {
             logger.debug(f"MongoDB _put_node_atomic read-back failed: {rb_err}");
         }
 
         anchor.hash = Serializer._compute_hash(anchor);
-        if arch is not None {
-            arch.__dict__.pop('__jac_dirty_fields__', None);
-        }
         try {
-            _snapshot_field_hashes(anchor);
+            snapshot_field_hashes(anchor);
         } except Exception as shf_err {
             logger.debug(
                 f"MongoDB _put_node_atomic _snapshot_field_hashes failed: {shf_err}"
             );
         }
+    } except WriteConflict {
+        # Expected under contention; apply() records + commit() raises it.
+        raise;
     } except Exception as e {
         logger.error(f"MongoDB _put_node_atomic failed: {e}");
-    }
-}
-
-"""Bulk store multiple anchors with Layer 1+2 fingerprint + metadata."""
-impl MongoBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
-    if self.client is None {
-        return;
-    }
-    ops: list = [];
-    for anchor in anchors {
-        if not anchor.persistent {
-            continue;
-        }
-        _id = to_uuid(anchor.id);
-        try {
-            doc = _anchor_to_doc(anchor);
-            ops.append(UpdateOne({'_id': str(_id)}, {'$set': doc}, upsert=True));
-        } except Exception as e {
-            logger.debug(f"MongoDB bulk_put serialization failed: {e}");
-        }
-    }
-    if ops {
-        try {
-            self.collection.bulk_write(ops);
-        } except Exception as e {
-            logger.debug(f"MongoDB bulk_write failed: {e}");
-        }
+        raise;
     }
 }
 
@@ -915,6 +1035,15 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     }
     self.fetch_count += len(ids);
     str_ids = [str(to_uuid(id)) for id in ids];
+    span = start_memory_span(
+        "memory.batch_get mongodb",
+        {
+            "db.system": "mongodb",
+            "mem.tier": "L3",
+            "mem.op": "batch_get",
+            "mem.count": len(ids)
+        }
+    );
     try {
         for doc in self.collection.find({'_id': {'$in': str_ids}}) {
             if (anchor := self._load_anchor(doc)) {
@@ -924,6 +1053,8 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
         }
     } except Exception as e {
         logger.debug(f"MongoDB batch_get failed: {e}");
+    } finally {
+        end_memory_span(span);
     }
     return result;
 }
@@ -964,14 +1095,21 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
             data,
             f"deserialize error: {type(e).__name__}: {e}",
             from_format_version=fmt_version,
-            l2=self._l2_ref
+            l2=self._l2_ref,
+            reason_code='DESER_ERROR'
         );
         return None;
     }
     if anchor is None {
+        cls_resolved = (
+            Serializer._get_class(arch_module, arch_type)
+                if (arch_module and arch_type)
+                else None
+        );
+        code = 'CLASS_MISSING' if cls_resolved is None else 'FIELD_RECONSTRUCT';
         logger.warning(
-            f"MongoBackend: class {arch_module}.{arch_type} unresolvable "
-            f"for anchor {doc_id}. Moving to quarantine."
+            f"MongoBackend: failed to load {arch_module}.{arch_type} "
+            f"for anchor {doc_id} ({code}). Moving to quarantine."
         );
         _mongo_quarantine(
             self,
@@ -981,19 +1119,21 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
             arch_type,
             fingerprint,
             data,
-            f"class {arch_module}.{arch_type} unresolvable",
+            f"load failed for class {arch_module}.{arch_type}",
             from_format_version=fmt_version,
-            l2=self._l2_ref
+            l2=self._l2_ref,
+            reason_code=code
         );
         return None;
     }
-    _snapshot_field_hashes(cast(Anchor, anchor));
+    _mongo_persist_repairs(self, doc_id, cast(Anchor, anchor), fingerprint);
+    snapshot_field_hashes(cast(Anchor, anchor));
     return cast(Anchor, anchor);
 }
 
 
 # ----------------------------------------------------------------------
-# Layer 1+2+3 operator surface — parity with SqliteMemory.
+# Layer 1+2+3 operator surface -- parity with SqliteMemory.
 # ----------------------------------------------------------------------
 """Attempt to re-deserialize one quarantined Mongo doc, re-stamped with
 the live class's identity + fingerprint on success. Returns (ok, reason)."""
@@ -1069,8 +1209,10 @@ def _format_q_doc(d: dict) -> dict {
         'arch_type': d.get('arch_type'),
         'fingerprint': d.get('fingerprint'),
         'error': d.get('error'),
+        'reason_code': d.get('reason_code'),
         'quarantined_at': d.get('quarantined_at'),
         'from_format_version': d.get('from_format_version'),
+        'retry_count': d.get('retry_count'),
         'data': d.get('data')
     };
 }
@@ -1147,6 +1289,7 @@ impl MongoBackend.list_quarantined(limit: int = 50) -> list {
             'arch': ((d.get('arch_module') or '?') + '.' + (d.get('arch_type') or '?')),
             'fingerprint': str(d.get('fingerprint') or ''),
             'error': str(d.get('error') or ''),
+            'reason_code': str(d.get('reason_code') or ''),
             'quarantined_at': str(d.get('quarantined_at') or '')
         } for d in docs
     ];
@@ -1237,6 +1380,343 @@ impl MongoBackend.recover_all -> tuple {
 }
 
 
+"""File a dangling reference under DANGLING_REF (read-path healer hook).
+
+Mirrors SqliteMemory.quarantine_dangling: upsert into the `_quarantine`
+companion collection keyed by the missing referent's id, with the shared
+DANGLING_REF reason_code so `jac db quarantine list/show` and the startup
+auto-retry treat it uniformly. Idempotent; never raises."""
+impl MongoBackend.quarantine_dangling(
+    missing_id: UUID, referrer_id: (UUID | None), kind: str
+) -> None {
+    if self.client is None {
+        return;
+    }
+    try {
+        q_col = _mongo_q_collection(self);
+        now_ts = datetime.now(timezone.utc).isoformat();
+        anchor_type = 'EdgeAnchor' if kind == 'edge' else 'NodeAnchor';
+        ref_str = str(to_uuid(referrer_id)) if referrer_id is not None else '?';
+        mid = str(to_uuid(missing_id));
+        err = f"DANGLING_REF: missing {kind} {mid} cited by {ref_str}";
+        q_col.update_one(
+            {'_id': mid},
+            {
+                '$set': {
+                    'type': anchor_type,
+                    'arch_module': None,
+                    'arch_type': 'DANGLING_REF',
+                    'fingerprint': None,
+                    'data': {'referrer': ref_str, 'kind': kind},
+                    'error': err,
+                    'reason_code': 'DANGLING_REF',
+                    'quarantined_at': now_ts,
+                    'from_format_version': None
+                }
+            },
+            upsert=True
+        );
+    } except Exception as e {
+        logger.error(f"MongoBackend: failed to record dangling ref {missing_id}: {e}");
+    }
+}
+
+
+"""True if `id` is quarantined under a recoverable reason. DANGLING_REF docs
+are excluded (they are the read-path healer's own forensic records), so a
+genuine dangler keeps being pruned instead of mistaken for schema drift."""
+impl MongoBackend.is_recoverable_quarantine(id: UUID) -> bool {
+    if self.client is None {
+        return False;
+    }
+    try {
+        return _mongo_q_collection(self).find_one(
+            {'_id': str(to_uuid(id)), 'reason_code': {'$ne': 'DANGLING_REF'}},
+            {'_id': 1}
+        ) is not None;
+    } except Exception {
+        return False;
+    }
+}
+
+
+"""Scan the anchor collection for referential-integrity violations; optionally
+repair. See the PersistentMemory.fsck contract for the report shape. Repair
+prunes dangling citations (`$pullAll`), files each under DANGLING_REF, and
+collects orphan/broken edge + node docs (`delete_many`), invalidating L2."""
+impl MongoBackend.fsck(repair: bool = False) -> dict {
+    loc = (
+        (self.mongo_url or '<no mongo url>') + '/' + self.db_name + '.' + self.collection_name
+    );
+    fsck_report: dict = {
+        'location': loc,
+        'dangling_node_edge': [],
+        'dangling_edge_node': [],
+        'orphan_edges': [],
+        'orphan_nodes': [],
+        # Edges cited by exactly one of their two (existing) endpoints -- the
+        # optimistic-concurrency orphan signature (a loser's child + edge that
+        # the root's edge-list CAS refused after the docs were written, in the
+        # narrow window the apply() precheck can't cover). (edge, citing, rejecting).
+        'half_linked_edges': [],
+        'repaired': repair,
+        'repaired_counts': {'pruned': 0, 'quarantined': 0, 'collected': 0}
+    };
+    if self.client is None {
+        return fsck_report;
+    }
+    node_ids: set[str] = set();
+    edge_ids: set[str] = set();
+    node_edges: dict[str, list[str]] = {};
+    edge_endpoints: dict[str, tuple[(str | None), (str | None)]] = {};
+    node_is_root: dict[str, bool] = {};
+    try {
+        for doc in self.collection.find(
+            {}, {'_id': 1, 'type': 1, 'arch_type': 1, 'data': 1}
+        ) {
+            rid = str(doc.get('_id'));
+            rtype = doc.get('type');
+            d = doc.get('data') or {};
+            if rtype == 'NodeAnchor' {
+                node_ids.add(rid);
+                node_edges[rid] = [str(e) for e in (d.get('edges') or [])];
+                node_is_root[rid] = doc.get('arch_type') == 'Root';
+            } elif rtype == 'EdgeAnchor' {
+                edge_ids.add(rid);
+                src = d.get('source');
+                tgt = d.get('target');
+                edge_endpoints[rid] = (
+                    (str(src) if src is not None else None),
+                    (str(tgt) if tgt is not None else None)
+                );
+            }
+        }
+    } except Exception as e {
+        logger.error(f"MongoBackend.fsck: scan failed: {e}");
+        return fsck_report;
+    }
+    cited_edges: set[str] = set();
+    for (nid, eids) in node_edges.items() {
+        for eid in eids {
+            cited_edges.add(eid);
+            if eid not in edge_ids {
+                fsck_report['dangling_node_edge'].append((nid, eid));
+            }
+        }
+    }
+    referenced_nodes: set[str] = set();
+    broken_edge_ids: set[str] = set();  # cite a missing node (typed mirror)
+    for (eid, endpoints) in edge_endpoints.items() {
+        for endp in endpoints {
+            if endp is not None {
+                referenced_nodes.add(endp);
+                if endp not in node_ids {
+                    fsck_report['dangling_edge_node'].append((eid, endp));
+                    broken_edge_ids.add(eid);
+                }
+            }
+        }
+    }
+    orphan_edge_ids: set[str] = set();  # cited by nobody (typed mirror)
+    for eid in edge_ids {
+        if eid not in cited_edges {
+            fsck_report['orphan_edges'].append(eid);
+            orphan_edge_ids.add(eid);
+        }
+    }
+    # Half-linked edge (OCC orphan signature): both endpoints exist, but only
+    # one cites the edge. The non-citing endpoint authoritatively rejected the
+    # link (an optimistic-concurrency loser whose root edge-list CAS was
+    # refused after its child + edge docs were written). A symmetric edge is
+    # healthy; an edge cited by neither endpoint is already an orphan_edge.
+    half_linked_ids: set[str] = set();
+    for (eid, ep) in edge_endpoints.items() {
+        if (
+            ep[0] is None
+            or ep[1] is None
+            or ep[0] not in node_ids
+            or ep[1] not in node_ids
+        ) {
+            continue;  # missing endpoint -> dangling_edge_node, handled
+        }
+        src = cast(str, ep[0]);
+        tgt = cast(str, ep[1]);
+        src_cites = src in node_edges and eid in node_edges[src];
+        tgt_cites = tgt in node_edges and eid in node_edges[tgt];
+        if src_cites != tgt_cites {
+            (citing, rejecting) = (src, tgt) if src_cites else (tgt, src);
+            fsck_report['half_linked_edges'].append((eid, citing, rejecting));
+            half_linked_ids.add(eid);
+        }
+    }
+    # Edges collected on repair (orphan + half-linked + endpoint-missing): a
+    # node left edgeless once these go, and unreferenced by any SURVIVING edge,
+    # is itself an orphan to collect -- how an OCC loser's stranded child is
+    # reclaimed once its half-linked edge is removed.
+    collectible_edges: set[str] = orphan_edge_ids | half_linked_ids | broken_edge_ids;
+    surviving_referenced: set[str] = set();
+    for (eid, ep) in edge_endpoints.items() {
+        if eid not in collectible_edges {
+            if ep[0] is not None {
+                surviving_referenced.add(ep[0]);
+            }
+            if ep[1] is not None {
+                surviving_referenced.add(ep[1]);
+            }
+        }
+    }
+    for nid in node_ids {
+        remaining = [
+            e
+            for e in node_edges.get(nid, [])
+            if e not in collectible_edges
+        ];
+        if (
+            not node_is_root.get(nid)
+            and not remaining
+            and nid not in surviving_referenced
+        ) {
+            fsck_report['orphan_nodes'].append(nid);
+        }
+    }
+    if not repair {
+        return fsck_report;
+    }
+    counts = fsck_report['repaired_counts'];
+    try {
+        remove_by_node: dict[str, set[str]] = {};
+        for (nid, eid) in fsck_report['dangling_node_edge'] {
+            remove_by_node.setdefault(nid, set()).add(eid);
+            self.quarantine_dangling(to_uuid(eid), to_uuid(nid), 'edge');
+            counts['quarantined'] += 1;
+        }
+        for (eid, nid) in fsck_report['dangling_edge_node'] {
+            self.quarantine_dangling(to_uuid(nid), to_uuid(eid), 'node');
+            counts['quarantined'] += 1;
+        }
+        # Broken (cites a missing node) + orphan + half-linked edges; pruning a
+        # half-linked edge from its citing endpoint strands the loser's child
+        # for the orphan-node collection below. (Typed mirrors built above.)
+        collect_edges: set[str] = broken_edge_ids | orphan_edge_ids | half_linked_ids;
+        for (nid, eids) in node_edges.items() {
+            also = set(eids) & collect_edges;
+            if also {
+                remove_by_node.setdefault(nid, set()).update(also);
+            }
+        }
+        for (nid, rem) in remove_by_node.items() {
+            self.collection.update_one(
+                {'_id': nid}, {'$pullAll': {'data.edges': list(rem)}}
+            );
+            counts['pruned'] += len(rem);
+            if self._l2_ref {
+                self._l2_ref.delete(to_uuid(nid));
+                self._l2_ref.publish_invalidation(nid, None);
+            }
+        }
+        to_collect: list[str] = list(collect_edges) + list(fsck_report['orphan_nodes']);
+        if to_collect {
+            res = self.collection.delete_many({'_id': {'$in': to_collect}});
+            counts['collected'] += res.deleted_count or 0;
+            if self._l2_ref {
+                for cid in to_collect {
+                    self._l2_ref.delete(to_uuid(cid));
+                    self._l2_ref.publish_invalidation(cid, None);
+                }
+            }
+        }
+    } except Exception as e {
+        logger.error(f"MongoBackend.fsck: repair failed: {e}");
+        fsck_report['repaired'] = False;
+    }
+    return fsck_report;
+}
+
+
+"""Auto-retry quarantined documents that a new deploy plausibly fixed.
+
+Runs once at backend startup (after class/alias registration). A doc is
+eligible when its archetype class now resolves AND one of: its reason
+code is CLASS_MISSING (the class/alias appearing IS the fix signal), the
+class declares `__jac_schema__` drift rules (a rule may now repair it),
+or it was CASCADE-quarantined (its node may have recovered). Each failed
+attempt increments `retry_count`; docs give up loudly after 5. Recovery
+itself reuses `_mongo_attempt_recover`, so repaired forms are re-stamped
+with the live fingerprint. Gated off when JAC_SCHEMA_REPAIR=off.
+"""
+impl MongoBackend._auto_retry_quarantine(limit: int = 500) -> tuple {
+    import from jaclang.runtimelib.schema_rules { merged_rules_for, repair_mode }
+    if self.client is None or repair_mode() == 'off' {
+        return (0, 0);
+    }
+    try {
+        docs = list(
+            _mongo_q_collection(self).find(
+                {
+                    '$or': [
+                        {'retry_count': {'$exists': False}},
+                        {'retry_count': {'$lt': 5}}
+                    ]
+                }
+            ).limit(
+                limit
+            )
+        );
+    } except Exception as e {
+        logger.debug(f"MongoBackend: quarantine auto-retry scan failed: {e}");
+        return (0, 0);
+    }
+    if not docs {
+        return (0, 0);
+    }
+    # Nodes before edges so cascade re-link finds live nodes.
+    docs.sort(key=lambda d : 0 if d.get('type') == 'NodeAnchor' else 1);
+    attempted = 0;
+    recovered = 0;
+    for d in docs {
+        cls = Serializer._get_class(d.get('arch_module'), d.get('arch_type'));
+        if cls is None {
+            continue;
+        }
+        code = d.get('reason_code');
+        if not (
+            code == 'CLASS_MISSING'
+            or code == 'CASCADE'
+            or merged_rules_for(cls) is not None
+        ) {
+            continue;
+        }
+        attempted += 1;
+        (ok, reason) = _mongo_attempt_recover(self, d);
+        if ok {
+            recovered += 1;
+        } else {
+            doc_id = str(d.get('_id', ''));
+            try {
+                _mongo_q_collection(self).update_one(
+                    {'_id': doc_id}, {'$inc': {'retry_count': 1}}
+                );
+            } except Exception { }
+            retries = int(d.get('retry_count') or 0) + 1;
+            if retries >= 5 {
+                logger.warning(
+                    f"MongoBackend: quarantined doc {doc_id} still failing "
+                    f"after {retries} auto-retries ({reason}); giving up "
+                    "until `jac db recover` is run manually."
+                );
+            }
+        }
+    }
+    if attempted {
+        logger.info(
+            f"MongoBackend: quarantine auto-retry attempted {attempted}, "
+            f"recovered {recovered} (of {len(docs)} scanned)."
+        );
+    }
+    return (attempted, recovered);
+}
+
+
 """List DB-resident aliases."""
 impl MongoBackend.list_aliases -> list {
     if self.client is None {
@@ -1306,6 +1786,10 @@ impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
         _process_cache['async_mongo_client'] = AsyncMongoClient(self.mongo_url);
     }
     coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
+    span = start_memory_span(
+        "memory.get mongodb",
+        {"db.system": "mongodb", "mem.tier": "L3", "mem.op": "get"}
+    );
     try {
         db_obj = await coll.find_one({'_id': str(to_uuid(id))});
         if not db_obj {
@@ -1315,46 +1799,13 @@ impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
     } except Exception as e {
         logger.debug(f"Async aget failed: {e}");
         return None;
+    } finally {
+        end_memory_span(span);
     }
 }
 
 """Store anchor using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
 impl MongoBackend.aput(anchor: Anchor) -> None { }
-
-"""Flush dirty anchors using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
-impl MongoBackend.acommit(anchor: (Anchor | None) = None) -> None {
-    import from jac_scale._optdeps.pymongo { AsyncMongoClient }
-    if AsyncMongoClient is None or self.mongo_url is None {
-        await super.acommit(anchor);
-        return;
-    }
-    if self._mem_ref is None {
-        await super.acommit(anchor);
-        return;
-    }
-    if 'async_mongo_client' not in _process_cache {
-        _process_cache['async_mongo_client'] = AsyncMongoClient(self.mongo_url);
-    }
-    coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
-    dirty = [];
-    targets = [anchor] if anchor is not None else list(self._mem_ref.values());
-    for a in targets {
-        if a.persistent and Jac.check_write_access(a) {
-            dirty.append(a);
-        }
-    }
-    if dirty {
-        ops = [
-            UpdateOne({'_id': str(a.id)}, {'$set': _anchor_to_doc(a)}, upsert=True)
-            for a in dirty
-        ];
-        try {
-            await coll.bulk_write(ops, ordered=False);
-        } except Exception as e {
-            logger.warning(f"Async acommit bulk_write failed: {e}");
-        }
-    }
-}
 
 """Load DB-resident aliases into the in-process Serializer registry."""
 impl MongoBackend._load_db_aliases -> int {
