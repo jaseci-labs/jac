@@ -420,6 +420,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     # Lowered LLVM element type of a checked Iterator[T] expression (#6403).
     def _iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
+    # Lowered LLVM element type of a checked ptr[T] expression (#6707).
+    def _ptr_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     # Element spec ("i64"/"f64"/"ptr"/"jacval") of a checked list type.
     def _elem_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     def _resolve_type_str(type_name: str) -> ir.Type;
@@ -655,6 +657,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _codegen_index_set(
         target_val: ir.Value, index_val: ir.Value, value: ir.Value, elem_type_name: str
+    ) -> None;
+    # Load element i of a typed raw pointer (ptr[T] lowered to T*).
+    def _codegen_ptr_index(target_val: ir.Value, index_val: ir.Value) -> (ir.Value | None);
+    # Store value at element i of a typed raw pointer (ptr[T] lowered to T*).
+    def _codegen_ptr_index_set(
+        target_val: ir.Value, index_val: ir.Value, value: ir.Value
     ) -> None;
     # Phase 5: Inheritance, Vtables, and C3 MRO
     def _build_vtable(arch_name: str) -> None;

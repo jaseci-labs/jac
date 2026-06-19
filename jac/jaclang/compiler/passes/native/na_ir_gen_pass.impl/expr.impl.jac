@@ -1321,6 +1321,24 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
     }
     # Handle index access: items[i] or expr[i]
     if not nd.is_attr and nd.right?.slices {
+        # ptr[T] subscript read: target lowers to T*, so GEP + load.
+        if self._ptr_elem_llvm_of(nd.target) is not None {
+            ptr_val = self._codegen_expr(nd.target);
+            slices = nd.right.slices or [];
+            if ptr_val is not None and slices {
+                idx_node = slices[0];
+                idx_val = self._codegen_expr(idx_node);
+                if idx_val is None and idx_node?.start {
+                    idx_val = self._codegen_expr(idx_node.start);
+                }
+                if idx_val is not None {
+                    result = self._codegen_ptr_index(ptr_val, idx_val);
+                    if result is not None {
+                        return result;
+                    }
+                }
+            }
+        }
         target_name = self._get_name(nd.target);
         # Simple name with a checked list type
         _idx_list_spec = self._list_spec_of(nd.target)

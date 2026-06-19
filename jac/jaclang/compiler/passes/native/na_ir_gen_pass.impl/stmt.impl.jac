@@ -805,7 +805,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     if idx_val is None and idx_node?.start {
                         idx_val = self._codegen_expr(idx_node.start);
                     }
-                    if idx_val is not None {
+                    if idx_val is not None and self._ptr_elem_llvm_of(target_expr.target) is not None {
+                        # ptr[T] subscript write: target lowers to T*, so GEP + store.
+                        self._codegen_ptr_index_set(target_val, idx_val, value);
+                        _idx_stored = True;
+                    } elif idx_val is not None {
                         # Check if this is a dict assignment (checked type first)
                         dict_type_key = self._dict_key_of(target_expr.target);
                         if dict_type_key is None {

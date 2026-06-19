@@ -256,6 +256,25 @@ impl NaIRGenPass._iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | No
     return self._lower_type(args[0]);
 }
 
+"""Return the lowered LLVM element type of a checked `ptr[T]` expression, or
+None when the expression is not a typed raw pointer. Bare `ptr` yields i8.
+Mirrors `_list_elem_llvm_of` (#6707)."""
+impl NaIRGenPass._ptr_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return None;
+    }
+    mangled = expr.type.mangle();
+    if mangled != "ptr" and not mangled.startswith("ptr[") {
+        return None;
+    }
+    args = expr.type.private.type_args or [];
+    if not args {
+        return ir.IntType(8);
+    }
+    elem = self._lower_type(args[0]);
+    return elem if elem is not None else ir.IntType(8);
+}
+
 """Return the native element spec of a checked list type's element
 ("i64"/"f64"/"ptr"/"jacval"), or None when the expression isn't a typed list."""
 impl NaIRGenPass._elem_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
@@ -323,6 +342,21 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
     if cname in ("Iterator", "Iterable") {
         self._ensure_iter_types();
         return self._jac_iter_type.as_pointer();
+    }
+    # ptr[T] -> T* (bare `ptr` defaults to i8*); the element type drives the
+    # pointer's pointee and the subscript load/store stride.
+    if cname == "ptr" {
+        if not type_args {
+            return ir.IntType(8).as_pointer();
+        }
+        _pe = self._lower_type(type_args[0]);
+        if _pe is None {
+            return None;
+        }
+        if isinstance(_pe, ir.VoidType) {
+            return ir.IntType(8).as_pointer();
+        }
+        return _pe.as_pointer();
     }
     # list[T] — bare `list` defaults to a list of i64.
     if cname == "list" {

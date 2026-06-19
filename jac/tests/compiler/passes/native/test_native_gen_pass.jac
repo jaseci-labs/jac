@@ -58,6 +58,24 @@ test "arithmetic multiply" {
     assert mul(0, 999) == 0;
 }
 
+# --- Typed raw pointer subscript read/write (#6707, #6708) ---
+test "native ptr[T] subscript read and write round-trip" {
+    (eng, _) = compile_native("ptr_subscript.na.jac");
+    buf = (ctypes.c_int64 * 8)();
+    addr = ctypes.cast(buf, ctypes.c_void_p);
+    sum_roundtrip = get_func(
+        eng, "sum_roundtrip", ctypes.c_int64, ctypes.c_void_p, ctypes.c_int64
+    );
+    assert sum_roundtrip(addr, 8) == 280;
+    assert buf[3] == 30;
+    write_then_read = get_func(
+        eng, "write_then_read", ctypes.c_int64,
+        ctypes.c_void_p, ctypes.c_int64, ctypes.c_int64
+    );
+    assert write_then_read(addr, 5, 999) == 999;
+    assert buf[5] == 999;
+}
+
 # --- Function pointers in struct fields (the OSP dispatch-slot shape) ---
 test "native callable struct field: indirect call through a field" {
     (eng, _) = compile_native("callable_field.na.jac");

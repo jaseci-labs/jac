@@ -13,11 +13,26 @@ type-checks accurately instead of degrading to UnknownType.
 
 from __future__ import annotations
 
-from typing import Literal, Protocol, TypeVar, overload
+from typing import Generic, Literal, Protocol, TypeVar, overload
 
-__all__ = ["File", "BinaryFile", "open", "Iterable", "Iterator", "iter", "next"]
+__all__ = [
+    "File",
+    "BinaryFile",
+    "open",
+    "Iterable",
+    "Iterator",
+    "iter",
+    "next",
+    "ptr",
+]
 
 _T = TypeVar("_T")
+
+class ptr(Generic[_T]):  # noqa: N801
+    # Typed raw pointer (`ptr[T]` lowers to an LLVM `T*`). Subscripting reads
+    # or writes the element at offset i, matching C typed-pointer semantics.
+    def __getitem__(self, index: int) -> _T: ...
+    def __setitem__(self, index: int, value: _T) -> None: ...
 
 class Iterable(Protocol[_T]):
     def __iter__(self) -> Iterator[_T]: ...

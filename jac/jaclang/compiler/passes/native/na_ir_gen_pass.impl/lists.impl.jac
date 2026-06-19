@@ -349,4 +349,28 @@ impl NaIRGenPass._codegen_index_set(
         self._emit_rc_release_simple(value, op="list_set", loc=_lset_ctx_loc);
     }
 }
+
+"""Load element i of a typed raw pointer (ptr[T] lowered to T*)."""
+impl NaIRGenPass._codegen_ptr_index(
+    target_val: ir.Value, index_val: ir.Value
+) -> (ir.Value | None) {
+    if not isinstance(target_val.type, ir.PointerType) {
+        return None;
+    }
+    idx = self._coerce_type(index_val, ir.IntType(64));
+    addr = self.builder.gep(target_val, [idx], name="ptr.idx");
+    return self.builder.load(addr, name="ptr.get");
+}
+
+"""Store value at element i of a typed raw pointer (ptr[T] lowered to T*)."""
+impl NaIRGenPass._codegen_ptr_index_set(
+    target_val: ir.Value, index_val: ir.Value, value: ir.Value
+) -> None {
+    if not isinstance(target_val.type, ir.PointerType) {
+        return;
+    }
+    idx = self._coerce_type(index_val, ir.IntType(64));
+    addr = self.builder.gep(target_val, [idx], name="ptr.idx");
+    self.builder.store(self._coerce_type(value, target_val.type.pointee), addr);
+}
 # ─── Phase 5: Inheritance and Vtables ────────────────────────
