@@ -2,7 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.16.6 (Latest Release)
+## jaclang 0.16.7 (Latest Release)
+
+### Breaking Changes
+
+- **Lambda parameters now require a known type (#6804)**: A lambda whose parameter type cannot be inferred from context, such as a bare `f = lambda x: -x;`, is now a type error (`E1119`) instead of silently typing the parameter as unknown. Annotate the parameter (`lambda x: int : x + 1`; the return type is still inferred) or use the lambda where its type is fixed, e.g. as a typed callback (`sorted(xs, key=lambda x: ...)`) or bound to a `Callable`-typed target.
+
+## jaclang 0.16.6
 
 ### New Features
 
