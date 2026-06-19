@@ -308,6 +308,16 @@ def tty_cols -> int {
     return g_tty.cols;
 }
 
+def tty_x_pixels -> int {
+    # Windows Console API does not expose terminal pixel dimensions; return 0
+    # so callers fall back to their default cell-pixel estimates.
+    return 0;
+}
+
+def tty_y_pixels -> int {
+    return 0;
+}
+
 # ── poll ─────────────────────────────────────────────────────────────────────
 def tty_poll(timeout_ms: int) {
     g_tty.stdin_ready = 0;

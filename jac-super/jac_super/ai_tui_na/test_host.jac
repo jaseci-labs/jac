@@ -45,23 +45,34 @@ def main -> int {
     lib = ctypes.CDLL(lib_path);
     sys.stdout.write(f"ok: CDLL loaded {lib_path}\n");
 
-    lib.tui_apply_frame.restype = ctypes.c_int64;
-    lib.tui_apply_frame.argtypes = [ctypes.c_char_p];
-    lib.tui_render_buf.restype = ctypes.c_char_p;
-    lib.tui_render_buf.argtypes = [];
-    lib.tui_next_command.restype = ctypes.c_char_p;
-    lib.tui_next_command.argtypes = [];
-    lib.tui_quit_requested.restype = ctypes.c_int64;
-    lib.tui_quit_requested.argtypes = [];
+    # On macOS, nacompile-generated Mach-O exports symbols with a leading '_'
+    # (e.g. '_tui_render_buf'). dlsym() does exact-name lookup — it does NOT
+    # strip the underscore automatically — so we must include it on Darwin.
+    # lib[name] creates a new _FuncPtr each call; cache the objects so that
+    # restype/argtypes set below survive to the actual call.
+    p = "_" if sys.platform == "darwin" else "";
 
-    rc = lib.tui_apply_frame(frame.encode("utf-8"));
+    fn_apply_frame = lib[p + "tui_apply_frame"];
+    fn_apply_frame.restype = ctypes.c_int64;
+    fn_apply_frame.argtypes = [ctypes.c_char_p];
+    fn_render_buf = lib[p + "tui_render_buf"];
+    fn_render_buf.restype = ctypes.c_char_p;
+    fn_render_buf.argtypes = [];
+    fn_next_command = lib[p + "tui_next_command"];
+    fn_next_command.restype = ctypes.c_char_p;
+    fn_next_command.argtypes = [];
+    fn_quit_requested = lib[p + "tui_quit_requested"];
+    fn_quit_requested.restype = ctypes.c_int64;
+    fn_quit_requested.argtypes = [];
+
+    rc = fn_apply_frame(frame.encode("utf-8"));
     if rc != 0 {
         sys.stderr.write(f"FAIL: tui_apply_frame returned {rc}\n");
         return 1;
     }
     sys.stdout.write("ok: tui_apply_frame parsed the canned frame\n");
 
-    buf = lib.tui_render_buf();
+    buf = fn_render_buf();
     screen = (buf or b"").decode("utf-8", "replace");
     if not screen {
         sys.stderr.write("FAIL: tui_render_buf produced no bytes\n");
@@ -77,14 +88,14 @@ def main -> int {
     }
     sys.stdout.write("ok: both event texts appear in the rendered screen\n");
 
-    cmd = lib.tui_next_command();
+    cmd = fn_next_command();
     if cmd {
         sys.stderr.write(f"FAIL: tui_next_command should be empty, got {repr(cmd)}\n");
         return 1;
     }
     sys.stdout.write('ok: tui_next_command drained empty ("")\n');
 
-    if lib.tui_quit_requested() != 0 {
+    if fn_quit_requested() != 0 {
         sys.stderr.write("FAIL: tui_quit_requested should be 0 before any quit\n");
         return 1;
     }

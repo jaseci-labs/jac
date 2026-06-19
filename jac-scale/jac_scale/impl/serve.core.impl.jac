@@ -229,7 +229,7 @@ impl JacAPIServerCore.start(
     no_client: bool = False,
     on_ready: Callable[..., None] | None = None
 ) -> None {
-    import from jaclang.runtimelib.server { write_server_ready_file }
+    import os;
     self.introspector.load();
     self._ensure_sv_siblings();
     # Eagerly build client bundle if there are client exports (skip in dev, no_client, or PWA mode)
@@ -340,7 +340,13 @@ impl JacAPIServerCore.start(
     }
     # Print startup banner with correct port
     self._print_startup_banner(dev, no_client);
-    write_server_ready_file(self.port);
+    _ready_file = os.environ.get("JAC_SERVER_READY_FILE", "");
+    if _ready_file {
+        import from pathlib { Path }
+        try {
+            Path(_ready_file).write_text(str(self.port), encoding="utf-8");
+        } except OSError { }
+    }
     # Call the ready callback with the actual port (e.g., to print startup banner)
     if on_ready {
         on_ready(self.port);
