@@ -1100,6 +1100,20 @@ test "lambda_param_inferred_from_expected_callable" {
     )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
 }
 
+test "lambda_param_unresolved_requires_annotation" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_lambda_unresolved_param.jac");
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    e1119 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1119"
+    ];
+    assert len(e1119) == 3 , f"Expected 3 E1119, got {len(e1119)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in e1119
+    );
+}
+
 test "ability_trigger_archetype" {
     # Walker abilities must trigger on a node/edge/Root; node/edge
     # abilities must trigger on a walker. Tuple and union triggers are
