@@ -1,4 +1,4 @@
-name: TUI macOS port CI
+name: Run tests for TUI macOS
 
 # Phase 4 of the macOS port (PLAN-tui-macos.md §Phase 4).
 #
@@ -20,14 +20,14 @@ on:
       - 'jac-super/jac_super/ai_tui_na/**'
       - 'jac-super/jac_super/ai_agent/tui_host.jac'
       - 'jac-super/jac_super/ai_agent/tui_shared.jac'
-      - '.github/workflows/tui-macos.yml'
+      - '.github/workflows/test-tui-macos.yml'
   pull_request:
     branches: [main]
     paths:
       - 'jac-super/jac_super/ai_tui_na/**'
       - 'jac-super/jac_super/ai_agent/tui_host.jac'
       - 'jac-super/jac_super/ai_agent/tui_shared.jac'
-      - '.github/workflows/tui-macos.yml'
+      - '.github/workflows/test-tui-macos.yml'
   workflow_dispatch:
 
 jobs:
@@ -36,8 +36,7 @@ jobs:
   # runner. Cannot run the output, but `file` asserts it is Mach-O 64-bit and
   # links libSystem — enough to validate the Mach-O codegen path for this
   # module's FFI shape before any macOS runner is involved.
-  macos-cross-compile:
-    name: "Cross-compile (Linux → Darwin Mach-O)"
+  test-macos-cross-compile:
     runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
@@ -96,8 +95,7 @@ jobs:
   #   2. test_pickers    — picker logic (no TTY)
   #   3. test_tty_darwin.jac — PTY termios harness (validates the Darwin flag
   #                            table and raw-mode masks against live xnu)
-  macos-native:
-    name: "Native macOS build + PTY harness"
+  test-macos-native:
     runs-on: macos-latest
 
     steps:

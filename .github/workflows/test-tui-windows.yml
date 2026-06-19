@@ -1,4 +1,4 @@
-name: TUI Windows port CI
+name: Run tests for TUI Windows
 
 # Phase 4 of the Windows port (PLAN-tui-windows.md §Phase 4).
 #
@@ -23,14 +23,14 @@ on:
       - 'jac-super/jac_super/ai_tui_na/**'
       - 'jac-super/jac_super/ai_agent/tui_host.jac'
       - 'jac-super/jac_super/ai_agent/tui_shared.jac'
-      - '.github/workflows/tui-windows.yml'
+      - '.github/workflows/test-tui-windows.yml'
   pull_request:
     branches: [main]
     paths:
       - 'jac-super/jac_super/ai_tui_na/**'
       - 'jac-super/jac_super/ai_agent/tui_host.jac'
       - 'jac-super/jac_super/ai_agent/tui_shared.jac'
-      - '.github/workflows/tui-windows.yml'
+      - '.github/workflows/test-tui-windows.yml'
   workflow_dispatch:
 
 jobs:
@@ -39,8 +39,7 @@ jobs:
   # Linux runner. Cannot run the output, but `file` asserts PE32+ format and a
   # Python byte-check confirms the MZ magic — enough to validate the PE codegen
   # path for this module's FFI shape before any Windows runner is involved.
-  windows-cross-compile:
-    name: "Cross-compile (Linux → Windows PE/COFF)"
+  test-windows-cross-compile:
     runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
@@ -96,8 +95,7 @@ jobs:
   #   2. test_host.jac      — CDLL (tui.dll) load + apply_frame/render (no TTY)
   #   3. test_console_win32.jac — Win32 constant probe + VT output gate
   #                               (VT live section auto-skips on headless runners)
-  windows-native:
-    name: "Native Windows build + console gate"
+  test-windows-native:
     runs-on: windows-latest
 
     steps:
