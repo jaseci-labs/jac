@@ -225,7 +225,7 @@ needs_enum)
     def _next_temp_name(prefix: str) -> str;
 
     """Convert Jac identifiers to Python runtime identifiers."""
-    def _py_name(nd: uni.AstSymbolNode) -> str;
+    def _py_name(nd: uni.AstSymbolNode | None) -> str;
 
     """Convert a synthesized function definition into an executable expression.
 
