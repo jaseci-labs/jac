@@ -28,7 +28,8 @@ glob:pub navGroups = [
              "items": [
                  {"id": "ops", "label": "Self-Check"},
                  {"id": "deploy", "label": "Deploy Health"},
-                 {"id": "network", "label": "Endpoints & Storage"}
+                 {"id": "network", "label": "Endpoints & Storage"},
+                 {"id": "podenv", "label": "Pod Env"}
              ]
          }
      ];

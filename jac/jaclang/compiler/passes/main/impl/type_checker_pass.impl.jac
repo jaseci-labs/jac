@@ -897,6 +897,33 @@ impl TypeCheckPass._check_bare_generic(
     }
 }
 
+"""Flag E1119 on lambda params left Unknown once the module is fully typed.
+
+Runs in after_pass, not exit_lambda_expr: a param is seeded by the enclosing
+call/assignment, whose handler runs after the lambda's own, so the settled
+type is only trustworthy once the whole module is typed."""
+impl TypeCheckPass._check_unresolved_lambda_params(self: TypeCheckPass) -> None {
+    import from jaclang.compiler.type_system { types }
+    if self.ir_in is None {
+        return;
+    }
+    for lam in self.ir_in.get_all_sub_nodes(uni.LambdaExpr) {
+        if lam.signature is None {
+            continue;
+        }
+        for param in lam.signature.get_parameters() {
+            if param.type_tag is not None {
+                continue;
+            }
+            # Context-seeding writes the inferred type onto the param's Name.
+            resolved = param.name.type;
+            if resolved is None or isinstance(resolved, types.UnknownType) {
+                self.emit(E1119, node_override=param.name, name=param.name.value);
+            }
+        }
+    }
+}
+
 """Emit W1037 for explicit `any` type annotations.
 
 `any` is the gradual-typing escape hatch: annotating something `any`
@@ -1082,12 +1109,12 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
 }
 
 impl TypeCheckPass.after_pass(self: TypeCheckPass) -> None {
-    # Full-diagnostic runs replay diagnostics deferred by earlier suppressed
-    # inference runs on this module: evaluator memoization (Expr.type cache)
-    # means this run could not re-derive them live. Live re-emissions during
-    # this run already evicted their stash entries in emit(), so whatever
-    # remains here is exactly the cache-swallowed remainder.
+    # Full-diagnostic-only. Lambda check first, so a live E1119 evicts any
+    # stashed copy before the replay loop reaches it.
     if getattr(self, '_emit_diagnostics', True) {
+        self._check_unresolved_lambda_params();
+        # Replay diagnostics deferred by earlier suppressed inference runs:
+        # Expr.type memoization means this run couldn't re-derive them live.
         stash = self.ir_in?._deferred_type_diags;
         if stash {
             for (diag, node_override, related, help_text, kwargs) in list(

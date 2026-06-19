@@ -36,6 +36,7 @@ import from jaclang.jac0core.diagnostics {
     E1113,
     E1116,
     E1117,
+    E1119,
     W1036,
     W1037,
     W1052,
@@ -129,6 +130,7 @@ class TypeCheckPass(UniPass) {
     ) -> object;
 
     def _check_event_trigger_archetype(self: TypeCheckPass, nd: uni.Ability) -> None;
+    def _check_unresolved_lambda_params(self: TypeCheckPass) -> None;
 }
 
 """Typed-tree contract inference entry: identical analysis to TypeCheckPass
