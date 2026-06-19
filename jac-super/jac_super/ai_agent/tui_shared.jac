@@ -141,25 +141,34 @@ def _list_project_files(project: str) -> str {
 }
 
 
+def _any_stream_is_tty -> bool {
+    # Single isatty probe shared by _sidecar_tty_device (POSIX) and
+    # _tty_is_available (Windows). stderr first — matches historical probe order.
+    import sys;
+
+    for stream in (sys.stderr, sys.stdin, sys.stdout) {
+        try {
+            if stream.isatty() {
+                return True;
+            }
+        } except Exception { }
+    }
+    return False;
+}
+
+
 def _sidecar_tty_device -> str {
     # Resolve the interactive terminal the user is sitting at. Both backends use
     # it: the subprocess sidecar gets it via JAC_AI_TUI_TTY (its stdin is a pipe);
     # the in-process host opens it directly with tui_init's tty_dev arg.
     #
-    # On Windows there is no /dev/pts path. Return "" as a success sentinel when
-    # any stream is a TTY; tty_open_dev("") attaches the parent console.
-    # The caller (run_tui_in_process) must NOT treat "" as failure on win32.
+    # On Windows there is no /dev/pts path — return "" and let tty_open_dev("")
+    # attach the parent console. Availability is checked separately via
+    # _tty_is_available (which calls _any_stream_is_tty on win32).
     import os;
     import sys;
 
     if sys.platform == "win32" {
-        for stream in (sys.stderr, sys.stdin, sys.stdout) {
-            try {
-                if stream.isatty() {
-                    return "";
-                }
-            } except Exception { }
-        }
         return "";
     }
     for stream in (sys.stderr, sys.stdin, sys.stdout) {
@@ -175,20 +184,12 @@ def _sidecar_tty_device -> str {
 
 def _tty_is_available(tty_dev: str) -> bool {
     # True when the process has an interactive terminal. On POSIX, `tty_dev`
-    # is the non-empty path returned by `_sidecar_tty_device`; on Windows,
-    # `_sidecar_tty_device` always returns "" so we re-check isatty() directly.
-    # Single copy shared by both backends so the platform logic can't drift.
+    # is the non-empty path from `_sidecar_tty_device`. On Windows, `tty_dev`
+    # is always "" — probe streams via the shared _any_stream_is_tty helper.
     import sys;
 
     if sys.platform == "win32" {
-        for stream in (sys.stderr, sys.stdin, sys.stdout) {
-            try {
-                if stream.isatty() {
-                    return True;
-                }
-            } except Exception { }
-        }
-        return False;
+        return _any_stream_is_tty();
     }
     return bool(tty_dev);
 }
