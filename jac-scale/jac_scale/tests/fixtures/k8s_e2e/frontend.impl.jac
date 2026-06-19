@@ -1,54 +1,34 @@
 """Implementations for the Jac Shop frontend.
 
-In microservice mode, the client calls gateway function endpoints:
-  /api/products/function/list_products
-  /api/cart/function/add_to_cart
-  /api/orders/function/create_order
+The cross-service functions are `sv import`ed directly (see frontend.cl.jac).
+The compiler stamps each generated stub with its source-module provenance, so
+the runtime routes each call to the owning service's gateway prefix:
+  list_products -> /api/products/function/list_products
+  add_to_cart   -> /api/cart/function/add_to_cart
+  create_order  -> /api/orders/function/create_order
+The stub already unwraps the function response envelope, returning the result
+value directly.
 """
-
-impl app.apiCall(service: str, endpoint: str, body: dict = {}) -> any {
-    token = localStorage.getItem("jac_token");
-    options: dict = {
-        "method": "POST",
-        "headers": {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + (token or "")
-        }
-    };
-    options["body"] = JSON.stringify(body or {});
-    resp = await fetch(f"/api/{service}/function/{endpoint}", options);
-    return await resp.json();
-}
 
 impl app.fetchProducts -> None {
     loading = True;
-    data = await apiCall("products", "list_products", {});
-    # Function response envelope: { ok, data: { result: [...] } }
-    products = data.data.result if data.data and data.data.result else [];
+    products = await list_products() or [];
     loading = False;
 }
 
 impl app.addToCart(productId: str, name: str, price: float) -> None {
-    await apiCall(
-        "cart",
-        "add_to_cart",
-        {"product_id": productId, "product_name": name, "price": price, "qty": 1}
-    );
+    await add_to_cart(productId, name, price, 1);
     fetchCart();
 }
 
 impl app.fetchCart -> None {
-    data = await apiCall("cart", "view_cart", {});
-    cart = data.data.result
-        if data.data and data.data.result
-        else {"items": [], "total": 0};
+    cart = await view_cart() or {"items": [], "total": 0};
 }
 
 impl app.placeOrder -> None {
     # create_order handles everything server-side via sv import:
     # orders_app -> view_cart() on cart_app -> creates order -> clear_cart()
-    result = await apiCall("orders", "create_order", {});
-    order = result.data.result if result.data and result.data.result else {};
+    order = await create_order() or {};
 
     if order.error {
         console.log("Order error:", order.error);
@@ -61,8 +41,7 @@ impl app.placeOrder -> None {
 }
 
 impl app.fetchOrders -> None {
-    data = await apiCall("orders", "list_orders", {});
-    orders = data.data.result if data.data and data.data.result else [];
+    orders = await list_orders() or [];
 }
 
 impl app.handleLogin -> None {

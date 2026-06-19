@@ -4,8 +4,17 @@ import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
 
 import from .components.AuthForm { AuthForm }
 
-# In microservice mode, walkers are called via gateway API
-# /api/products/walker/ListProducts, /api/cart/walker/AddToCart, etc.
+# Cross-service functions, imported directly. The compiler generates HTTP
+# stubs and - because each service lives behind its own gateway prefix -
+# stamps every stub with its source-module provenance so the runtime routes
+# the call to the owning service (/api/products, /api/cart, /api/orders)
+# automatically. No hand-written `apiCall("orders", ...)` helper needed.
+sv import from .products_app { list_products }
+
+sv import from .cart_app { add_to_cart, view_cart }
+
+sv import from .orders_app { create_order, list_orders }
+
 def:pub app -> any {
     has isLoggedIn: bool = False,
         checkingAuth: bool = True,
@@ -35,7 +44,6 @@ def:pub app -> any {
         }
     }
 
-    async def apiCall(service: str, endpoint: str, body: dict = {}) -> any;
     async def fetchProducts -> None;
     async def addToCart(productId: str, name: str, price: float) -> None;
     async def fetchCart -> None;

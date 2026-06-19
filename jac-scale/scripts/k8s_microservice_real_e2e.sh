@@ -230,6 +230,25 @@ for prefix in ${ROUTES}; do
     echo "  ${prefix}/walker/__missing__ -> ${code}"
 done
 
+echo "=== verify client-stub service routing (serviceRoutes in SPA) ==="
+# The gateway injects a live {module: /api/<prefix>} map into the served
+# index.html's __jac_init__ JSON. The frontend's `sv import`ed stubs carry
+# their source-module stem, so this map is what routes e.g. create_order()
+# to /api/orders. Assert the map and every configured prefix are present.
+SPA_HTML=$(curl -fsS -H "Accept: text/html" "http://localhost:${GATEWAY_LOCAL_PORT}/" || echo "")
+if ! printf '%s' "${SPA_HTML}" | grep -q '"serviceRoutes"'; then
+    echo "FAIL: served index.html has no serviceRoutes in __jac_init__" >&2
+    printf '%s\n' "${SPA_HTML}" | head -c 2000 >&2
+    exit 1
+fi
+for prefix in ${ROUTES}; do
+    if ! printf '%s' "${SPA_HTML}" | grep -q "${prefix}"; then
+        echo "FAIL: serviceRoutes is missing prefix ${prefix}" >&2
+        exit 1
+    fi
+    echo "  serviceRoutes carries ${prefix}"
+done
+
 echo "=== M-14.a: verify observability stack (logs.enabled) ==="
 # When [plugins.scale.microservices.logs].enabled = true (the fixture
 # default) the microservice target also calls MonitoringDeployer, which
