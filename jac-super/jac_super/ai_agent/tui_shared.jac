@@ -24,6 +24,12 @@ so the two backends cannot drift on the env contract.
 (compile `bin/jac-na-tui` / `bin/libtui.so` from `*.na.jac` on first launch);
 both backends' `_ensure_tui_binary` / `_ensure_tui_lib` delegate to it so the
 build contract cannot drift between them.
+
+`_probe_tty` is the single TTY probe: it calls `_first_tty_stream` once and
+returns `{"available": bool, "device": str}` — `device` is the /dev path on
+POSIX or "" on Windows. `_require_tty` wraps it with the user-facing error and
+the `None`-on-failure contract; both backends call `_require_tty` so that
+message and contract cannot drift between them.
 """
 
 def _debug_log(msg: str) -> None {
@@ -156,47 +162,41 @@ def _first_tty_stream -> object {
 }
 
 
-def _any_stream_is_tty -> bool {
-    return _first_tty_stream() is not None;
-}
-
-
-def _sidecar_tty_device -> str {
-    # Resolve the interactive terminal the user is sitting at. Both backends use
-    # it: the subprocess sidecar gets it via JAC_AI_TUI_TTY (its stdin is a pipe);
-    # the in-process host opens it directly with tui_init's tty_dev arg.
-    #
-    # On Windows there is no /dev/pts path — return "" and let tty_open_dev("")
-    # attach the parent console. Availability is checked separately via
-    # _tty_is_available (which calls _any_stream_is_tty on win32).
+def _probe_tty -> dict {
+    # Returns {"available": bool, "device": str}. Calls _first_tty_stream once.
+    # POSIX: device is the /dev/pts path (or "" if ttyname() fails but the stream
+    # is still a tty). Windows: device is always ""; tty_open_dev("") attaches the
+    # parent console.
     import os;
     import sys;
 
-    if sys.platform == "win32" {
-        return "";
-    }
     stream = _first_tty_stream();
     if stream is None {
-        return "";
+        return {"available": False, "device": ""};
+    }
+    if sys.platform == "win32" {
+        return {"available": True, "device": ""};
     }
     try {
-        return os.ttyname(stream.fileno());
+        return {"available": True, "device": os.ttyname(stream.fileno())};
     } except Exception {
-        return "";
+        return {"available": True, "device": ""};
     }
 }
 
 
-def _tty_is_available(tty_dev: str) -> bool {
-    # True when the process has an interactive terminal. On POSIX, `tty_dev`
-    # is the non-empty path from `_sidecar_tty_device`. On Windows, `tty_dev`
-    # is always "" — probe streams via the shared _any_stream_is_tty helper.
-    import sys;
-
-    if sys.platform == "win32" {
-        return _any_stream_is_tty();
+def _require_tty -> str {
+    # Full TTY guard shared by both backends: probe + emit the user-facing error +
+    # return None on failure. Returns the tty device path on success ('' on Windows).
+    import from jaclang.cli.console { console }
+    probe = _probe_tty();
+    if not probe["available"] {
+        console.error(
+            "jac ai --tui needs an interactive terminal (stdin or stderr must be a TTY)"
+        );
+        return None;
     }
-    return bool(tty_dev);
+    return probe["device"];
 }
 
 

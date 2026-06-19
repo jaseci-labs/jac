@@ -157,17 +157,143 @@ test "_list_project_files enumerates files under a project dir" {
 }
 
 
+test "_probe_tty on win32 returns available=True with empty device and skips ttyname" {
+    import os;
+    import sys;
+    import unittest.mock;
+
+    shared_mod = importlib.import_module("jac_super.ai_agent.tui_shared");
+    probe_tty = getattr(shared_mod, "_probe_tty");
+
+    mock_stream = unittest.mock.MagicMock();
+    mock_stream.fileno.return_value = 3;
+
+    with unittest.mock.patch.object(sys, "platform", "win32") {
+        with unittest.mock.patch.object(
+            shared_mod, "_first_tty_stream", return_value=mock_stream
+        ) {
+            with unittest.mock.patch(
+                "os.ttyname",
+                side_effect=AssertionError("ttyname must not run on win32")
+            ) {
+                result = probe_tty();
+                assert result["available"] == True , result;
+                assert result["device"] == "" , result;
+            }
+        }
+    }
+}
+
+
+test "_probe_tty on win32 returns available=False when no stream is a tty" {
+    import sys;
+    import unittest.mock;
+
+    shared_mod = importlib.import_module("jac_super.ai_agent.tui_shared");
+    probe_tty = getattr(shared_mod, "_probe_tty");
+
+    with unittest.mock.patch.object(sys, "platform", "win32") {
+        with unittest.mock.patch.object(
+            shared_mod, "_first_tty_stream", return_value=None
+        ) {
+            result = probe_tty();
+            assert result["available"] == False , result;
+            assert result["device"] == "" , result;
+        }
+    }
+}
+
+
+test "_probe_tty on posix resolves ttyname from first tty stream" {
+    import os;
+    import sys;
+    import unittest.mock;
+
+    shared_mod = importlib.import_module("jac_super.ai_agent.tui_shared");
+    probe_tty = getattr(shared_mod, "_probe_tty");
+
+    mock_stream = unittest.mock.MagicMock();
+    mock_stream.fileno.return_value = 7;
+
+    with unittest.mock.patch.object(sys, "platform", "linux") {
+        with unittest.mock.patch.object(
+            shared_mod, "_first_tty_stream", return_value=mock_stream
+        ) {
+            with unittest.mock.patch.object(
+                os, "ttyname", return_value="/dev/pts/42"
+            ) as ttyname {
+                result = probe_tty();
+                assert result["available"] == True , result;
+                assert result["device"] == "/dev/pts/42" , result;
+                ttyname.assert_called_once_with(7);
+            }
+        }
+    }
+}
+
+
+test "_probe_tty on posix returns available=False when no tty stream" {
+    import sys;
+    import unittest.mock;
+
+    shared_mod = importlib.import_module("jac_super.ai_agent.tui_shared");
+    probe_tty = getattr(shared_mod, "_probe_tty");
+
+    with unittest.mock.patch.object(sys, "platform", "linux") {
+        with unittest.mock.patch.object(
+            shared_mod, "_first_tty_stream", return_value=None
+        ) {
+            result = probe_tty();
+            assert result["available"] == False , result;
+            assert result["device"] == "" , result;
+        }
+    }
+}
+
+
+test "_probe_tty on posix falls back to empty device when ttyname raises" {
+    import os;
+    import sys;
+    import unittest.mock;
+
+    shared_mod = importlib.import_module("jac_super.ai_agent.tui_shared");
+    probe_tty = getattr(shared_mod, "_probe_tty");
+
+    mock_stream = unittest.mock.MagicMock();
+    mock_stream.fileno.return_value = 5;
+
+    with unittest.mock.patch.object(sys, "platform", "linux") {
+        with unittest.mock.patch.object(
+            shared_mod, "_first_tty_stream", return_value=mock_stream
+        ) {
+            with unittest.mock.patch.object(
+                os, "ttyname", side_effect=OSError("not a tty")
+            ) {
+                result = probe_tty();
+                assert result["available"] == True , result;
+                assert result["device"] == "" , result;
+            }
+        }
+    }
+}
+
+
 test "run_tui_session suppresses terminal prints only for the session lifetime" {
     tui_mod = importlib.import_module("jac_super.ai_agent.run_tui_session");
     runner = getattr(tui_mod, "run_tui_session");
+    old_ensure = getattr(tui_mod, "_ensure_tui_binary");
     old_resolve = getattr(tui_mod, "_resolve_tui_command");
     old_spawn = getattr(tui_mod, "_spawn_tui_backend");
-    old_tty_device = getattr(tui_mod, "_sidecar_tty_device");
+    old_require_tty = getattr(tui_mod, "_require_tty");
     old_configure = getattr(ai_mod, "ui_configure");
     old_stream = getattr(ai_mod, "ui_stream");
     old_stop = getattr(ai_mod, "ui_stop");
     prior = os.environ.get("JAC_AI_UI_ACTIVE");
     seen: list[str] = [];
+
+    def fake_ensure(_pkg_root: any) -> dict {
+        return {"ok": True, "error": "", "hint": ""};
+    }
 
     def fake_resolve(_pkg_root: any, _initial: str) -> dict {
         return {"ok": True, "cmd_args": ["dummy"], "error": "", "hint": ""};
@@ -177,9 +303,10 @@ test "run_tui_session suppresses terminal prints only for the session lifetime" 
         return DummySpawnedProc();
     }
 
-    def fake_sidecar_tty_device -> str {
-        # Headless CI has no controlling tty; bypass the gate so we exercise
-        # _configure_ui_env / ui_configure without a real /dev/pts path.
+    def fake_require_tty -> str {
+        # Patch the gate directly: _probe_tty lives in tui_shared and is not
+        # reachable via tui_mod, so patching tui_mod._require_tty (which IS in
+        # tui_mod's namespace) is the stable bypass for headless CI.
         return "/dev/pts/99";
     }
 
@@ -195,9 +322,10 @@ test "run_tui_session suppresses terminal prints only for the session lifetime" 
 
     def fake_stop { }
 
+    setattr(tui_mod, "_ensure_tui_binary", fake_ensure);
     setattr(tui_mod, "_resolve_tui_command", fake_resolve);
     setattr(tui_mod, "_spawn_tui_backend", fake_spawn);
-    setattr(tui_mod, "_sidecar_tty_device", fake_sidecar_tty_device);
+    setattr(tui_mod, "_require_tty", fake_require_tty);
     setattr(ai_mod, "ui_configure", fake_configure);
     setattr(ai_mod, "ui_stream", fake_stream);
     setattr(ai_mod, "ui_stop", fake_stop);
@@ -205,9 +333,10 @@ test "run_tui_session suppresses terminal prints only for the session lifetime" 
         os.environ.pop("JAC_AI_UI_ACTIVE", None);
         rc = runner(AgentRequest(tui=True, cwd=os.getcwd()));
     } finally {
+        setattr(tui_mod, "_ensure_tui_binary", old_ensure);
         setattr(tui_mod, "_resolve_tui_command", old_resolve);
         setattr(tui_mod, "_spawn_tui_backend", old_spawn);
-        setattr(tui_mod, "_sidecar_tty_device", old_tty_device);
+        setattr(tui_mod, "_require_tty", old_require_tty);
         setattr(ai_mod, "ui_configure", old_configure);
         setattr(ai_mod, "ui_stream", old_stream);
         setattr(ai_mod, "ui_stop", old_stop);
