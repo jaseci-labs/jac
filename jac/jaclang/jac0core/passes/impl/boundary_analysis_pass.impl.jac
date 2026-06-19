@@ -735,7 +735,7 @@ impl BoundaryAnalysisPass._collect_boundary_type(
 
     if isinstance(arch_node, uni.Archetype) {
         _ak = arch_node.arch_kind;
-        kind = _ak if _ak in ("node", "walker") else "obj";
+        kind = _ak if (_ak is not None and _ak in ("node", "walker")) else "obj";
         fields: list[tuple[(str, str)]] = [];
         nested: list[str] = [];
 
@@ -1073,7 +1073,7 @@ impl BoundaryAnalysisPass._resolved_body(
                 return resolved;
             }
         } except Exception {
-            pass;
+            ;
         }
     }
     body = owner?.body;
