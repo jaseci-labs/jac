@@ -87,18 +87,44 @@ impl PeLinker.parse_object -> bool {
     if len(raw) < 20 {
         return False;
     }
-    (machine, nsec, _ts, psym, nsym, ohsz, _ch) = struct.unpack_from(
-        "<HHIIIHH", raw, 0
-    );
-    if machine != IMAGE_FILE_MACHINE_AMD64 {
-        # Only x86_64 is supported in this first cut.
-        return False;
+
+    # ── Detect BigObj (COFF extended format) ──────────────────────
+    # LLVM on Windows emits BigObj when a translation unit produces
+    # >65535 sections or symbols. BigObj signature: sig1=0x0000 at
+    # byte 0, sig2=0xFFFF at byte 2. Standard COFF has machine at
+    # byte 0 (0x8664 for AMD64) so the signatures never collide.
+    # BigObj header: 56 bytes. Symbol records: 20 bytes each (vs 18).
+    # SectionNumber in symbol is int32 (vs int16 in standard COFF).
+    is_bigobj = raw[0:2] == b"\x00\x00" and raw[2:4] == b"\xff\xff";
+
+    if is_bigobj {
+        if len(raw) < 56 {
+            return False;
+        }
+        (machine, ) = struct.unpack_from("<H", raw, 6);
+        if machine != IMAGE_FILE_MACHINE_AMD64 {
+            return False;
+        }
+        (nsec, ) = struct.unpack_from("<I", raw, 44);
+        (psym, ) = struct.unpack_from("<I", raw, 48);
+        (nsym, ) = struct.unpack_from("<I", raw, 52);
+        sec_table_off = 56;
+        sym_size = 20;
+    } else {
+        (machine, nsec, _ts, psym, nsym, ohsz, _ch) = struct.unpack_from(
+            "<HHIIIHH", raw, 0
+        );
+        if machine != IMAGE_FILE_MACHINE_AMD64 {
+            return False;
+        }
+        sec_table_off = 20 + ohsz;
+        sym_size = 18;
     }
-    strtab_off = psym + nsym * 18;
+    strtab_off = psym + nsym * sym_size;
 
     # ── Section headers ───────────────────────────────────────────
+    # Section header format is identical in standard and BigObj COFF.
     self.sections = [];
-    sec_table_off = 20 + ohsz;
     for i in range(nsec) {
         off = sec_table_off + i * 40;
         nameb = raw[off:off + 8];
@@ -121,7 +147,7 @@ impl PeLinker.parse_object -> bool {
         }
         sec = CoffSection(name=name, characteristics=chars, data=data, vsize=vsize);
         self.sections.append(sec);
-        # Parse this section's relocations now (REL-style, 10 bytes each).
+        # Parse this section's relocations (REL-style, 10 bytes each).
         for r in range(nrel) {
             ro = prel + r * 10;
             (rva, symidx, rtype) = struct.unpack_from("<IIH", raw, ro);
@@ -132,15 +158,18 @@ impl PeLinker.parse_object -> bool {
     }
 
     # ── Symbol table (keep aux slots as None so indices line up) ──
+    # BigObj: 20-byte records, int32 SectionNumber ("<IiHBB").
+    # Standard:  18-byte records, int16 SectionNumber ("<IhHBB").
+    sym_fmt = "<IiHBB" if is_bigobj else "<IhHBB";
     self.symbols = [];
     i = 0;
     while i < nsym {
-        off = psym + i * 18;
+        off = psym + i * sym_size;
         name = _coff_name(raw, off, strtab_off);
-        (val, secn, _typ, sc, naux) = struct.unpack_from("<IhHBB", raw, off + 8);
+        (val, secn, _typ, sc, naux) = struct.unpack_from(sym_fmt, raw, off + 8);
         wtag = -1;
         if sc == SYM_CLASS_WEAK_EXTERNAL and naux >= 1 {
-            wtag = struct.unpack_from("<I", raw, off + 18)[0];
+            wtag = struct.unpack_from("<I", raw, off + sym_size)[0];
         }
         self.symbols.append(
             CoffSymbol(
@@ -1266,13 +1295,25 @@ def _pe_write_shdr(
 impl PeLinker.link(
     obj_bytes: bytes,
     output_path: str,
-    needed_libs: list[str] = ["msvcrt.dll"],
-    symbol_lib_map: dict[str, str] = {},
+    needed_libs: list[str] | None = None,
+    symbol_lib_map: dict[str, str] | None = None,
     shared: bool = False,
-    export_symbols: list[str] = [],
-    init_funcs: list[str] = [],
+    export_symbols: list[str] | None = None,
+    init_funcs: list[str] | None = None,
     soname: str = ""
 ) -> bool {
+    if needed_libs is None {
+        needed_libs = ["msvcrt.dll"];
+    }
+    if symbol_lib_map is None {
+        symbol_lib_map = {};
+    }
+    if export_symbols is None {
+        export_symbols = [];
+    }
+    if init_funcs is None {
+        init_funcs = [];
+    }
     linker = PeLinker(
         obj_data=obj_bytes,
         symbols=[],

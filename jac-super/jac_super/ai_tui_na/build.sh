@@ -60,12 +60,16 @@ if [ "$TTY" = "win32" ]; then
     BINNAME="jac-na-tui.exe"
 fi
 
-# Cross-compile flags: win32 target must be explicit because nacompile derives
-# is_windows from --target, not from sys.platform.
-XFLAGS=()
-if [ "$TTY" = "win32" ]; then
-    XFLAGS=(--target windows)
-fi
+# Cross-compile flags: win32 and darwin targets must be explicit on a foreign
+# host because nacompile derives is_windows/is_macos from --target, not from
+# sys.platform.  XFLAGS is a plain string (not an array) so bash 3.x (macOS
+# default /bin/bash) does not raise "unbound variable" on empty expansion when
+# set -u is active — a bash 3.2 quirk that only affects empty arrays.
+XFLAGS=""
+case "$TTY" in
+    darwin) [[ "$HOST" != Darwin* ]] && XFLAGS="--target darwin" ;;
+    win32)  XFLAGS="--target windows" ;;
+esac
 
 echo "==> TTY backend: $TTY  shared-lib: $LIBNAME"
 
@@ -80,7 +84,7 @@ mkdir -p bin
 
 # ── build main NA binary (subprocess fallback renderer) ──────────────────────
 echo "==> Compiling $BINNAME ..."
-"${JAC[@]}" nacompile tui.na.jac "${XFLAGS[@]}" -o "bin/$BINNAME"
+"${JAC[@]}" nacompile tui.na.jac ${XFLAGS:+$XFLAGS} -o "bin/$BINNAME"
 echo "==> Done. Binary: $SCRIPT_DIR/bin/$BINNAME"
 
 # ── build in-process shared library (host.na.jac :pub surface, plan §5/§11.2) ─
@@ -88,7 +92,7 @@ echo "==> Done. Binary: $SCRIPT_DIR/bin/$BINNAME"
 # ctypes.CDLL's this. Needs the PT_GNU_STACK compiler fix (§11.1, already landed)
 # so CPython's dlopen accepts the .so on a hardened kernel.
 echo "==> Compiling $LIBNAME (in-process host) ..."
-"${JAC[@]}" nacompile host.na.jac --shared "${XFLAGS[@]}" -o "bin/$LIBNAME"
+"${JAC[@]}" nacompile host.na.jac --shared ${XFLAGS:+$XFLAGS} -o "bin/$LIBNAME"
 echo "==> Done. Shared lib: $SCRIPT_DIR/bin/$LIBNAME"
 
 if [ "$QUICK" -eq 1 ]; then
@@ -111,12 +115,7 @@ echo "==> Tests passed."
 
 # ── headless host gate: load libtui.so under CPython, parse+render (no TTY) ───
 echo "==> Running in-process host gate (ctypes) ..."
-if [ -x "$REPO_VENV/bin/python" ]; then
-    PYBIN="$REPO_VENV/bin/python"
-else
-    PYBIN="python3"
-fi
-"$PYBIN" "$SCRIPT_DIR/test_host.py"
+"${JAC[@]}" run test_host.jac
 echo "==> Host gate passed."
 
 # ── quick smoke-test ─────────────────────────────────────────────────────────

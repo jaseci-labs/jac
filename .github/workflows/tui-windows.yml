@@ -93,9 +93,9 @@ jobs:
   # ── Windows native job ──────────────────────────────────────────────────────
   # Native x64 Windows build and three headless gates:
   #   1. test_pickers      — picker logic (no TTY, no ctypes, pure NA)
-  #   2. test_host.py      — CDLL (tui.dll) load + apply_frame/render (no TTY)
-  #   3. test_console_win32.py — Win32 constant probe + VT output gate
-  #                             (VT live section auto-skips on headless runners)
+  #   2. test_host.jac      — CDLL (tui.dll) load + apply_frame/render (no TTY)
+  #   3. test_console_win32.jac — Win32 constant probe + VT output gate
+  #                               (VT live section auto-skips on headless runners)
   windows-native:
     name: "Native Windows build + console gate"
     runs-on: windows-latest
@@ -139,9 +139,9 @@ jobs:
       - name: Headless host gate (ctypes CDLL load + frame parse)
         working-directory: jac-super/jac_super/ai_tui_na
         shell: pwsh
-        run: python test_host.py
+        run: python -m jaclang run test_host.jac
 
       - name: Win32 console constant + VT gate
         working-directory: jac-super/jac_super/ai_tui_na
         shell: pwsh
-        run: python test_console_win32.py
+        run: python -m jaclang run test_console_win32.jac

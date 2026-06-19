@@ -55,14 +55,14 @@ try {
 
         # ── headless host gate ────────────────────────────────────────────────
         Write-Host "==> Running in-process host gate (ctypes) ..."
-        & $Py "$ScriptDir\test_host.py"
-        if ($LASTEXITCODE -ne 0) { throw "test_host.py failed" }
+        & $Py -m jaclang run "$ScriptDir\test_host.jac"
+        if ($LASTEXITCODE -ne 0) { throw "test_host.jac failed" }
         Write-Host "==> Host gate passed."
 
         # ── Win32 console constant + VT gate ─────────────────────────────────
         Write-Host "==> Running Win32 console gate ..."
-        & $Py "$ScriptDir\test_console_win32.py"
-        if ($LASTEXITCODE -ne 0) { throw "test_console_win32.py failed" }
+        & $Py -m jaclang run "$ScriptDir\test_console_win32.jac"
+        if ($LASTEXITCODE -ne 0) { throw "test_console_win32.jac failed" }
         Write-Host "==> Console gate passed."
     } else {
         Write-Host "==> Quick build complete (skipped tests)."

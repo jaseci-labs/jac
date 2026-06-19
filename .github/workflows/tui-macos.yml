@@ -92,10 +92,10 @@ jobs:
 
   # ── macOS native job ────────────────────────────────────────────────────────
   # Native arm64 macOS build, codesign, and three headless gates:
-  #   1. test_host.py   — CDLL load + apply_frame/render (no TTY)
-  #   2. test_pickers   — picker logic (no TTY)
-  #   3. test_tty_darwin.py — PTY termios harness (validates the Darwin flag
-  #                           table and raw-mode masks against live xnu)
+  #   1. test_host.jac   — CDLL load + apply_frame/render (no TTY)
+  #   2. test_pickers    — picker logic (no TTY)
+  #   3. test_tty_darwin.jac — PTY termios harness (validates the Darwin flag
+  #                            table and raw-mode masks against live xnu)
   macos-native:
     name: "Native macOS build + PTY harness"
     runs-on: macos-latest
@@ -129,7 +129,7 @@ jobs:
 
       - name: Headless host gate (ctypes CDLL load + frame parse)
         working-directory: jac-super/jac_super/ai_tui_na
-        run: python test_host.py
+        run: python -m jaclang run test_host.jac
 
       - name: Picker logic tests
         working-directory: jac-super/jac_super/ai_tui_na
@@ -140,4 +140,4 @@ jobs:
 
       - name: PTY termios harness (Darwin flag-table + raw-mode gate)
         working-directory: jac-super/jac_super/ai_tui_na
-        run: python test_tty_darwin.py
+        run: python -m jaclang run test_tty_darwin.jac

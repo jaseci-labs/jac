@@ -609,7 +609,11 @@ impl nacompile(
         }
 
         if not success {
-            console.error("PE linking failed: could not parse object file.");
+            _peek: bytes = obj_bytes[:8] if len(obj_bytes) >= 8 else obj_bytes;
+            console.error(
+                f"PE linking failed: could not parse object file "
+                f"(first 8 bytes: {_peek.hex()}, size: {len(obj_bytes)})."
+            );
             return 1;
         }
     } elif is_macos {
