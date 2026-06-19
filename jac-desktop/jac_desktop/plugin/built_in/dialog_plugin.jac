@@ -9,7 +9,7 @@ Transpiled to dependency-free Python at build time.
 """
 import subprocess;
 import from desktop_plugin { PluginError, ErrorCode, OsPlugin, DesktopPlugin }
-import from manifest { PluginManifest, CommandSpec, PluginContext }
+import from manifest { PluginManifest, PluginContext }
 
 
 """Native dialog capability via platform tools."""
@@ -22,26 +22,6 @@ obj DialogPlugin(OsPlugin) {
             config_key="dialog",
             module="built_in.dialog_plugin",
             class_name="DialogPlugin",
-            commands=[
-                CommandSpec(
-                    name="open_file",
-                    params={"title": "str", "filters": "list"},
-                    returns="dict",
-                    doc="Show native open-file dialog."
-                ),
-                CommandSpec(
-                    name="save_file",
-                    params={"title": "str", "default_name": "str"},
-                    returns="dict",
-                    doc="Show native save-file dialog."
-                ),
-                CommandSpec(
-                    name="message",
-                    params={"title": "str", "body": "str", "kind": "str"},
-                    returns="dict",
-                    doc="Show native message dialog."
-                )
-            ],
             default_on=False
         );
     }

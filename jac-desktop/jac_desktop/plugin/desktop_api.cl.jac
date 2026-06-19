@@ -3,9 +3,10 @@
 Importable from `cl` code so consumers stop hand-writing
 `window.__jac.invoke("jac.fs", "read_file", {...})` with magic strings.
 
-Short term: hand-written (this file). Long term: GENERATED from each plugin's
-PluginManifest.commands at build time and staged beside the user's client code,
-so the host and the SDK can never drift.
+Hand-written, not generated. Two tests guard it against drift with the host
+plugins: "client SDK commands map to host plugin commands" (every `_invoke`
+call resolves to a real plugin command) and "desktop_sdk exports match api
+declarations" (the export list tracks the `obj` declarations in this file).
 
 Binding note: the bridge is injected by the host's BOOTSTRAP_JS onto the browser
 global and is reached via `globalThis.__jac` (see `_invoke`). `globalThis` is

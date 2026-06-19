@@ -1177,6 +1177,39 @@ test "client SDK commands map to host plugin commands" {
 }
 
 
+"""The hand-maintained `desktop_sdk_exports` list tracks the `obj` declarations
+in desktop_api.cl.jac.
+
+`desktop_sdk_exports` (in plugin_config.jac) is the authoritative export list
+the `@jac/desktop` module entry point hands to jaclang's client compiler —
+`obj` types that the generic export extractor misses. It is hand-maintained, so
+adding an `obj foo {}` to the SDK without listing `'foo'` here silently breaks
+the import. This test pins the two together so that drift fails in CI rather
+than at app startup."""
+test "desktop_sdk exports match api declarations" {
+    import re;
+    plugin_dir = _plugin_src_dir();
+    sdk_text = (plugin_dir / "desktop_api.cl.jac").read_text();
+    declared = set(re.findall(r'^obj\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{', sdk_text, re.M));
+    # `_invoke` is a free `def`, not an exported `obj`; we only compare obj
+    # surfaces, so non-obj helpers can't perturb the result.
+    assert len(declared) > 0 , "no obj declarations found in desktop_api.cl.jac";
+    # Scope to the desktop_sdk_exports function body so unrelated string
+    # literals elsewhere in plugin_config.jac can't create false matches.
+    cfg_text = (_pkg_root() / "plugin_config.jac").read_text();
+    fn = re.search(
+        r'def\s+desktop_sdk_exports.*?return\s*\[([^\]]*)\]', cfg_text, re.S
+    );
+    assert fn is not None , "desktop_sdk_exports not found in plugin_config.jac";
+    listed = set(re.findall(r"'([A-Za-z_][A-Za-z0-9_]*)'", fn.group(1)));
+    assert listed == declared , (
+        f"desktop_sdk_exports drifted from desktop_api.cl.jac obj declarations: "
+        f"missing from exports={sorted(declared - listed)}, "
+        f"stale in exports={sorted(listed - declared)}"
+    );
+}
+
+
 # ---------------------------------------------------------------------------
 # 7. Config loading -> plugin registration
 # ---------------------------------------------------------------------------

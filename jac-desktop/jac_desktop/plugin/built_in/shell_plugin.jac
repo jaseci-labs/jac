@@ -19,7 +19,7 @@ import fnmatch;
 import shlex;
 import subprocess;
 import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
-import from manifest { PluginManifest, CommandSpec, PluginContext }
+import from manifest { PluginManifest, PluginContext }
 
 
 """True iff argv is permitted by a single pattern's token list.
@@ -71,14 +71,6 @@ obj ShellPlugin(DesktopPlugin) {
             config_key="shell",
             module="built_in.shell_plugin",
             class_name="ShellPlugin",
-            commands=[
-                CommandSpec(
-                    name="exec",
-                    params={"command": "str", "timeout": "int", "cwd": "str"},
-                    returns="dict",
-                    doc="Execute a shell command."
-                )
-            ],
             default_on=False
         );
     }

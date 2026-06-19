@@ -7,7 +7,7 @@ Transpiled to dependency-free Python at build time.
 """
 import ctypes;
 import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
-import from manifest { PluginManifest, CommandSpec, PluginContext }
+import from manifest { PluginManifest, PluginContext }
 
 
 """Controls the native webview window via ctypes -> libwebview."""
@@ -21,16 +21,6 @@ obj WindowPlugin(DesktopPlugin) {
             config_key="window",
             module="built_in.window_plugin",
             class_name="WindowPlugin",
-            commands=[
-                CommandSpec(name="set_title", params={"title": "str"}, returns="dict"),
-                CommandSpec(
-                    name="set_size",
-                    params={"width": "int", "height": "int", "hint": "int"},
-                    returns="dict"
-                ),
-                CommandSpec(name="fullscreen", returns="dict"),
-                CommandSpec(name="terminate", returns="dict")
-            ],
             default_on=False
         );
     }

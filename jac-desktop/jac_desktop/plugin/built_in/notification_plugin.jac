@@ -10,7 +10,7 @@ Transpiled to dependency-free Python at build time.
 import os;
 import subprocess;
 import from desktop_plugin { PluginError, ErrorCode, OsPlugin, DesktopPlugin }
-import from manifest { PluginManifest, CommandSpec, PluginContext }
+import from manifest { PluginManifest, PluginContext }
 
 
 """Desktop notification capability via platform tools."""
@@ -23,14 +23,6 @@ obj NotificationPlugin(OsPlugin) {
             config_key="notification",
             module="built_in.notification_plugin",
             class_name="NotificationPlugin",
-            commands=[
-                CommandSpec(
-                    name="send",
-                    params={"title": "str", "body": "str"},
-                    returns="dict",
-                    doc="Send a desktop notification."
-                )
-            ],
             default_on=False
         );
     }

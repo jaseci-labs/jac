@@ -9,7 +9,7 @@ Transpiled to dependency-free Python at build time.
 """
 import subprocess;
 import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
-import from manifest { PluginManifest, CommandSpec, PluginContext }
+import from manifest { PluginManifest, PluginContext }
 
 
 """System clipboard read/write via platform tools."""
@@ -23,15 +23,6 @@ obj ClipboardPlugin(DesktopPlugin) {
             config_key="clipboard",
             module="built_in.clipboard_plugin",
             class_name="ClipboardPlugin",
-            commands=[
-                CommandSpec(name="read", returns="dict", doc="Read system clipboard."),
-                CommandSpec(
-                    name="write",
-                    params={"text": "str"},
-                    returns="dict",
-                    doc="Write to system clipboard."
-                )
-            ],
             default_on=False
         );
     }
