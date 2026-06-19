@@ -224,11 +224,38 @@ test "experimental bootstrap git-clones the branch into a shared venv" {
     );
     script = init["args"][0];
     assert "python3 -m venv /app/.venv" in script;
-    assert "git clone --branch fix/no-image-bootstrap-deps" in script;
     assert "jac install -e ./jac-scale --extras all" in script;
     assert "jac install -e ./jac-client" in script;
     # No PyPI pin in experimental mode.
     assert "pip install --no-cache-dir --target" not in script;
+    # repo/branch ride as env data, referenced as $VARs - never spliced into the
+    # script, so a hostile branch name can't inject shell.
+    assert 'git clone --branch "$JACX_BRANCH"' in script;
+    assert "fix/no-image-bootstrap-deps" not in script;
+    env = {e["name"]: e["value"] for e in init["env"]};
+    assert env["JACX_BRANCH"] == "fix/no-image-bootstrap-deps";
+    assert env["JACX_REPO_URL"] == "https://github.com/udithishanka/jaseci.git";
+    # git install works on Debian and Alpine bases, and only when missing.
+    assert "command -v git" in script;
+    assert "apk add" in script;
+    # jac-client install is guarded so a fork without it doesn't kill the pod.
+    assert "[ ! -d ./jac-client ]" in script;
+}
+
+test "experimental clone URL normalizes SCP/ssh GitHub URLs to https" {
+    scp = build_bootstrap_init_container(
+        "python:3.12-slim", experimental=True, repo_url="git@github.com:org/repo.git"
+    );
+    scp_env = {e["name"]: e["value"] for e in scp["env"]};
+    assert scp_env["JACX_REPO_URL"] == "https://github.com/org/repo.git";
+
+    ssh = build_bootstrap_init_container(
+        "python:3.12-slim",
+        experimental=True,
+        repo_url="ssh://git@github.com/org/repo.git"
+    );
+    ssh_env = {e["name"]: e["value"] for e in ssh["env"]};
+    assert ssh_env["JACX_REPO_URL"] == "https://github.com/org/repo.git";
 }
 
 # =============================================================================

@@ -328,48 +328,49 @@ def _ensure_jac_toml_cmd -> str {
 }
 
 
-"""The `&&`-joined shell script the bootstrap initContainer runs in
-experimental mode: extract the source, then clone the jaseci repo/branch into a
-venv on the shared app volume and editable-install jac + jac-scale[all] +
-jac-client (the jac plugins can't go into PYDEPS_DIR via `pip --target`, so a
-venv on the shared volume carries them to the main container)."""
-def experimental_bootstrap_script(repo_url: str, branch: str, commit: str) -> str {
-    # Normalize SCP/ssh GitHub URLs to anonymous HTTPS (the pod has no SSH key).
-    url = repo_url;
-    if url.startswith("git@") and ":" in url {
-        host = url[4:].split(":", 1)[0];
-        path = url[4:].split(":", 1)[1];
-        url = f"https://{host}/{path}";
-    } elif url.startswith("ssh://git@") {
-        url = "https://" + url[len("ssh://git@"):];
+"""Normalize an SCP-style or `ssh://` GitHub URL to anonymous HTTPS; init pods
+have no SSH key. Other URLs pass through unchanged."""
+def _https_clone_url(repo_url: str) -> str {
+    if repo_url.startswith("git@") and ":" in repo_url {
+        (host, path) = repo_url[4:].split(":", 1);
+        return f"https://{host}/{path}";
     }
+    if repo_url.startswith("ssh://git@") {
+        return "https://" + repo_url[len("ssh://git@"):];
+    }
+    return repo_url;
+}
+
+
+"""Bootstrap script for experimental mode: clone the jaseci repo/branch into a
+venv on the shared volume and editable-install it. repo/branch/commit arrive as
+`JACX_*` env vars (data, never spliced into shell code), so a value with a space
+or `$(...)` can't break or inject the clone."""
+def experimental_bootstrap_script -> str {
     steps: list[str] = [
         "set -eu",
-        "export DEBIAN_FRONTEND=noninteractive",
-        "apt-get update",
-        "apt-get install -y --no-install-recommends git",
+        # Install git via whichever package manager the base image ships (Debian
+        # slim -> apt, Alpine -> apk); skip entirely when it's already present.
+        "command -v git >/dev/null 2>&1 || { apt-get update && apt-get install -y --no-install-recommends git || apk add --no-cache git; }",
         f"tar xzf {SOURCE_MOUNT_PATH}/{SOURCE_ARCHIVE_KEY} -C {APP_MOUNT_PATH}",
         _ensure_jac_toml_cmd(),
         f"python3 -m venv {VENV_DIR}",
         f". {VENV_DIR}/bin/activate",
         f"rm -rf {APP_MOUNT_PATH}/jaseci",
-        f"git clone --branch {branch} --single-branch {url} {APP_MOUNT_PATH}/jaseci",
-        f"cd {APP_MOUNT_PATH}/jaseci"
+        f'git clone --branch "$JACX_BRANCH" --single-branch "$JACX_REPO_URL" {APP_MOUNT_PATH}/jaseci',
+        f"cd {APP_MOUNT_PATH}/jaseci",
+        # Optional pin: skip when unset, but surface a real checkout failure.
+        '[ -z "$JACX_COMMIT" ] || git checkout "$JACX_COMMIT"',
+        "git submodule update --init --recursive",
+        "pip install pluggy",
+        # --force-reinstall --no-deps so the local checkout wins over any
+        # already-resolved release of the same version.
+        "pip install --force-reinstall --no-deps -e ./jac",
+        "jac install -e ./jac-scale --extras all",
+        # Only when the fork ships jac-client: skip-when-absent, but let a genuine
+        # install failure propagate (don't blanket-swallow with `|| true`).
+        '[ ! -d ./jac-client ] || jac install -e ./jac-client'
     ];
-    if commit {
-        steps.append(f"git checkout {commit}");
-    }
-    steps.extend(
-        [
-            "git submodule update --init --recursive",
-            "pip install pluggy",
-            # --force-reinstall --no-deps so the local checkout wins over any
-            # already-resolved release of the same version.
-            "pip install --force-reinstall --no-deps -e ./jac",
-            "jac install -e ./jac-scale --extras all",
-            "jac install -e ./jac-client"
-        ]
-    );
     return " && ".join(steps);
 }
 
@@ -385,27 +386,34 @@ def build_bootstrap_init_container(
     branch: str = "main",
     commit: str = ""
 ) -> dict[str, any] {
-    if experimental {
-        script = experimental_bootstrap_script(repo_url, branch, commit);
-    } else {
-        # Single-quote each spec so the `[all]` extras marker isn't treated as a
-        # shell glob char-class by the `sh -c` bootstrap.
-        install = " ".join([f"'{spec}'" for spec in pinned_install_specs()]);
-        script = (
-            "set -eu; "
-            f"tar xzf {SOURCE_MOUNT_PATH}/{SOURCE_ARCHIVE_KEY} -C {APP_MOUNT_PATH}; "
-            f"{_ensure_jac_toml_cmd()}; "
-            f"pip install --no-cache-dir --target={PYDEPS_DIR} {install}"
-        );
-    }
-    return {
+    container: dict[str, any] = {
         "name": "jac-bootstrap",
         "image": base_image,
         "command": ["sh", "-c"],
-        "args": [script],
         "volumeMounts": [
             {"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH},
             {"name": SOURCE_VOLUME_NAME, "mountPath": SOURCE_MOUNT_PATH}
         ]
     };
+    if experimental {
+        container["args"] = [experimental_bootstrap_script()];
+        # Untrusted repo/branch/commit ride as env data, not shell code, so they
+        # can't break or inject the clone (see experimental_bootstrap_script).
+        container["env"] = [
+            {"name": "JACX_REPO_URL", "value": _https_clone_url(repo_url)},
+            {"name": "JACX_BRANCH", "value": branch},
+            {"name": "JACX_COMMIT", "value": commit}
+        ];
+    } else {
+        # Single-quote each spec so the `[all]` extras marker isn't treated as a
+        # shell glob char-class by the `sh -c` bootstrap.
+        install = " ".join([f"'{spec}'" for spec in pinned_install_specs()]);
+        container["args"] = [
+            "set -eu; "
+            f"tar xzf {SOURCE_MOUNT_PATH}/{SOURCE_ARCHIVE_KEY} -C {APP_MOUNT_PATH}; "
+            f"{_ensure_jac_toml_cmd()}; "
+            f"pip install --no-cache-dir --target={PYDEPS_DIR} {install}"
+        ];
+    }
+    return container;
 }
