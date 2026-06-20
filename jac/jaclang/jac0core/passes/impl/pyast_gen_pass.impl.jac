@@ -3908,7 +3908,8 @@ impl PyastGenPass.exit_name(nd: uni.Name) -> None {
 }
 
 """True only for unresolved free references. Attribute members and keyword
-keys emit as string labels, not global loads, so they never need the import."""
+keys (call or match-pattern) emit as string labels, not global loads, so they
+never need the import."""
 impl PyastGenPass._is_ambient_ref(nd: uni.Name) -> bool {
     if (nd.sym is not None) {
         return False;
@@ -3919,7 +3920,9 @@ impl PyastGenPass._is_ambient_ref(nd: uni.Name) -> bool {
     ) {
         return False;
     }
-    if (isinstance(parent, uni.KWPair) and (parent.key is nd)) {
+    if (
+        isinstance(parent, (uni.KWPair, uni.MatchKVPair)) and (parent.key is nd)
+    ) {
         return False;
     }
     return True;

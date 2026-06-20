@@ -35,4 +35,9 @@ with entry {
     b.schedule = schedule;
     # keyword-argument key (`printgraph`) -> no import
     print(new(restspec), takes_kw(printgraph=1), Sequence, b.schedule);
+    # match-pattern keyword key (`schedule`) -> no import
+    match b {
+        case Box(schedule=1): print("one");
+        case _: print("other");
+    }
 }
