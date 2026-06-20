@@ -171,13 +171,6 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
     return types.UnknownType();
 }
 
-"""Import a submodule with the proper context (importer path) resolved from the parent module."""
-impl TypeEvaluator._import_submodule(path: str, mod: uni.Module) -> uni.Module {
-    return self._import_module_from_path(
-        path, importer_path=self._resolve_importer_path(mod)
-    );
-}
-
 """Resolve a symbol through star imports (from .X import *) in a module.
 
 Python packages like asyncio re-export symbols from submodules via star imports
@@ -214,7 +207,9 @@ impl TypeEvaluator._resolve_star_import_symbol(
             for ext in (".pyi", ".py", ".jac") {
                 candidate = submod_base + ext;
                 if Path(candidate).exists() {
-                    submod = self._import_submodule(candidate, mod);
+                    submod = self._import_module_from_path(
+                        candidate, importer_path=self._resolve_importer_path(mod)
+                    );
                     break;
                 }
             }
@@ -223,13 +218,17 @@ impl TypeEvaluator._resolve_star_import_symbol(
                 # Explicit: single-segment, use directly
                 submod_path = resolved[0];
                 if submod_path and Path(submod_path).exists() {
-                    submod = self._import_submodule(submod_path, mod);
+                    submod = self._import_module_from_path(
+                        submod_path, importer_path=self._resolve_importer_path(mod)
+                    );
                 }
             } elif not resolved {
                 # Explicit: resolver failed, use fallback
                 submod_path = star_mod_path.resolve_relative_path();
                 if submod_path and Path(submod_path).exists() {
-                    submod = self._import_submodule(submod_path, mod);
+                    submod = self._import_module_from_path(
+                        submod_path, importer_path=self._resolve_importer_path(mod)
+                    );
                 }
             }
         }
