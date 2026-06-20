@@ -62,6 +62,7 @@ nav:
               - Mobile App: "tutorials/fullstack/mobile.md"
       - Deployment & Scaling:
           - jac-scale Reference: "reference/plugins/jac-scale.md"
+          - Custom Storage Backends: "reference/storage-backends.md"
           - Learn by Doing:
               - Local API Server: "tutorials/production/local.md"
               - Microservices with sv import: "tutorials/production/microservices.md"

@@ -466,3 +466,55 @@ test "non-final node predicate in multi-hop chain applies at runtime" {
         set_config(JacConfig());
     }
 }
+
+
+test "chained comparison filter is not silently dropped" {
+    # `[?:TypeA, 20 <= val < 50]` must keep BOTH bounds. The compiler used to
+    # require the field on the left of every clause, so chained comparisons
+    # (field in the middle) were dropped entirely from the generated lambda,
+    # returning every node. Pin the runtime semantics on the in-process floor.
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    ctx = ExecutionContext();
+    JacRuntime.set_context(ctx);
+    try {
+        r = root;
+        for v in [10, 20, 35, 49, 50, 80] {
+            r +>: EdgeX :+> TypeA(val=v);
+        }
+        got = sorted([n.val for n in [r->:EdgeX:->[?:TypeA, 20<=val<50]]]);
+        assert got == [20, 35, 49] , (
+            f"chained `20 <= val < 50` must keep both bounds; got {got}, "
+            f"expected [20, 35, 49]"
+        );
+    } finally {
+        ctx.close();
+        set_config(JacConfig());
+    }
+}
+
+
+test "constant-on-left comparison filter is not silently dropped" {
+    # `[?:TypeA, 30 > val]` puts the field on the right of the operator. The
+    # compiler used to drop any clause whose left operand was not the field,
+    # so this returned every node. Must behave like `val < 30`.
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    ctx = ExecutionContext();
+    JacRuntime.set_context(ctx);
+    try {
+        r = root;
+        for v in [10, 20, 30, 40] {
+            r +>: EdgeX :+> TypeA(val=v);
+        }
+        got = sorted([n.val for n in [r->:EdgeX:->[?:TypeA, 30>val]]]);
+        assert got == [10, 20] , (
+            f"`30 > val` must filter like `val < 30`; got {got}, expected [10, 20]"
+        );
+    } finally {
+        ctx.close();
+        set_config(JacConfig());
+    }
+}

@@ -544,3 +544,71 @@ test "import type wraps in TYPE_CHECKING and resolves circular imports" {
         }
     }
 }
+
+test "FilterSpec emitted for every typed filter; predicates extracted structurally" {
+    # Every [?:Type, ...] filter emits a FilterSpec carrier so the planner reads
+    # type_name + field predicates structurally (no lambda bytecode inspection).
+    # Condition-only filters ([?cond], no type) stay a plain lambda.
+    fixture = os.path.join(FIXTURES, "filter_spec_emission.jac");
+    code_gen = (prog := JacProgram()).compile(fixture);
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    assert code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module);
+
+    py_src = ast3.unparse(code_gen.gen.py_ast[0]);
+
+    # FilterSpec import must appear in the generated module preamble.
+    assert "FilterSpec" in py_src , (
+        "Expected FilterSpec in generated source.\nSource:\n" + py_src
+    );
+
+    # Simple predicate carries type_name + a lt FieldPredicate on age.
+    assert "FilterSpec(type_name='User'" in py_src , (
+        "Expected FilterSpec(type_name='User', ...).\nSource:\n" + py_src
+    );
+    assert "FieldPredicate(op='lt', value=28)" in py_src , (
+        "Expected FieldPredicate(op='lt', value=28) for `age < 28`.\nSource:\n" + py_src
+    );
+
+    # Multi-field predicate keeps both fields.
+    assert "'role'" in py_src , (
+        "Expected role predicate for the multi-field filter.\nSource:\n" + py_src
+    );
+
+    # Type-only filter is a carrier with empty predicates (NOT a bare lambda).
+    assert "FilterSpec(type_name='User', predicates={}," in py_src , (
+        "Expected type-only [?:User] to emit FilterSpec with empty predicates.\n"
+        "Source:\n" + py_src
+    );
+
+    # Negative literal: UnaryOp(USub, 1) folds to value=-1.
+    assert "FieldPredicate(op='lt', value=-1)" in py_src , (
+        "Expected negative literal `views < -1` to fold to value=-1.\nSource:\n" + py_src
+    );
+
+    # Constant-on-left normalizes (`28 > age` -> age lt 28) — still emitted.
+    # (Same textual predicate as `age < 28`; presence already asserted above.)
+
+    # Chained comparison expands into two ANDed predicates on the same field.
+    assert "FieldPredicate(op='gte', value=20)" in py_src , (
+        "Expected chained `20 <= age` to yield op='gte', value=20.\nSource:\n" + py_src
+    );
+    assert "FieldPredicate(op='lt', value=50)" in py_src , (
+        "Expected chained `age < 50` to yield op='lt', value=50.\nSource:\n" + py_src
+    );
+
+    # Membership operators.
+    assert "FieldPredicate(op='in', value=['admin', 'mod'])" in py_src , (
+        "Expected `role in [...]` to yield op='in' with the literal list.\nSource:\n" + py_src
+    );
+    assert "FieldPredicate(op='nin', value=['guest'])" in py_src , (
+        "Expected `role not in [...]` to yield op='nin'.\nSource:\n" + py_src
+    );
+
+    # Condition-only filter (no type) must NOT be wrapped — it is a plain lambda
+    # with no carrier. Exactly the 8 typed filters above produce carriers.
+    filter_spec_count = py_src.count("FilterSpec(type_name=");
+    assert filter_spec_count == 8 , (
+        f"Expected 8 FilterSpec emissions (one per typed filter), got "
+        f"{filter_spec_count}.\nSource:\n" + py_src
+    );
+}

@@ -612,8 +612,8 @@ def _plan_to_mongo_filter(plan: QueryPlan) -> tuple[dict, int, (int | None)] {
     if plan.id_in is not None {
         filt['_id'] = {'$in': [str(u) for u in plan.id_in]};
     }
-    for (k, v) in plan.field_predicates.items() {
-        filt[f'data.archetype.{k}'] = v;
+    for (k, preds) in plan.field_predicates.items() {
+        filt[f'data.archetype.{k}'] = {('$' + p.op): p.value for p in preds};
     }
     skip_n: int = 0;
     limit_n: (int | None) = None;
@@ -638,7 +638,7 @@ This is the backend's pushdown entry point. The planner only calls us when
 `plan.needs() <= self.capabilities()`, so we can assume:
   - any chain in the plan has been already narrowed (`plan.id_in` carries
     the candidate UUIDs) OR there is no chain (a pure type/field query)
-  - `field_predicates` use cross-backend operators (`$eq`, `$lt`, `$in`...)
+  - `field_predicates` use backend-neutral `FieldPredicate(op, value)` objects
   - `slc` is either absent or contiguous-step (we early-rejected stepped
     slices by leaving skip/limit as None -- caller applies them)
 
@@ -660,6 +660,7 @@ impl MongoBackend.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None]
         }
         for doc in cursor {
             if (anchor := self._load_anchor(doc)) {
+                self.execute_plan_fetch_count += 1;
                 yield anchor;
             }
         }
@@ -1063,6 +1064,7 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
 impl MongoBackend.reset_counters -> None {
     self.fetch_count = 0;
     self.put_count = 0;
+    self.execute_plan_fetch_count = 0;
 }
 
 """Load anchor from raw MongoDB document, quarantining on failure."""

@@ -34,6 +34,7 @@ import from collections.abc { Generator }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor }
+import from jaclang.jac0core.filter_spec { FilterSpec }
 import from jaclang.runtimelib.query_plan { QueryPlan }
 
 glob logger = logging.getLogger(__name__),

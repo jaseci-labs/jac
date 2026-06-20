@@ -70,6 +70,25 @@ def _filter_has_predicates(filt: any) -> bool {
 }
 
 
+"""Structural view of a destination filter: `(type_name, has_predicates,
+field_predicates)`.
+
+A compiler-emitted `FilterSpec` carries all three directly — the common case
+for `[?:Type, ...]` node filters, read with no bytecode inspection. Other
+callables (the `:EdgeType:` edge-ref syntax, condition-only `[?cond]` lambdas,
+or bare instance/list filters) have no carrier, so we fall back to inspecting
+the lambda: its type via `_filter_type_name`, and — conservatively — whether it
+carries predicates via `_filter_has_predicates`. Non-carriers never expose
+pushable field predicates, so that channel is always empty for them.
+"""
+def _filter_info(filt: any) -> tuple {
+    if isinstance(filt, FilterSpec) {
+        return (filt.type_name, bool(filt.predicates), filt.predicates);
+    }
+    return (_filter_type_name(filt), _filter_has_predicates(filt), {});
+}
+
+
 """Log the chosen strategy for a plan. No-op when trace is off."""
 def _trace(strategy: str, plan: QueryPlan, extra: str = '') -> None {
     if not _trace_enabled() {
@@ -246,7 +265,13 @@ def _execute_mixed(mem: any, plan: QueryPlan, narrowed: set[UUID]) -> list[any] 
         _trace('mixed', plan, f"narrowed={len(narrowed)}");
         result: list = [];
         for anchor in mem.execute_plan(reduced) {
-            if plan.post_filter is not None and not plan.post_filter(anchor) {
+            # post_filter is the node-filter callable — it takes the archetype,
+            # exactly as the pure-pushdown path does.
+            if (
+                plan.post_filter is not None
+                and anchor.archetype is not None
+                and not plan.post_filter(anchor.archetype)
+            ) {
                 continue;
             }
             result.append(anchor);
@@ -371,20 +396,20 @@ def _build_plan_from_path(
     chain: list[HopSpec] = [];
     last_idx = len(destinations) - 1;
     last_post_filter: any = None;
+    last_field_preds: dict = {};
     has_filter = False;
     for (i, dest) in enumerate(destinations) {
-        # Edge filter: type-only or bail.
-        if _filter_has_predicates(dest.`edge) {
+        # Edge filter: type-only or bail (edge predicates aren't pushable).
+        (edge_type, edge_has_pred, _) = _filter_info(dest.`edge);
+        if edge_has_pred {
             return None;
         }
         # Non-final node filters must be type-only too; the final hop's
         # predicates can be applied post-narrowing as post_filter.
-        node_has_pred = _filter_has_predicates(dest.nd);
+        (node_type, node_has_pred, node_preds) = _filter_info(dest.nd);
         if i != last_idx and node_has_pred {
             return None;
         }
-        edge_type = _filter_type_name(dest.`edge);
-        node_type = _filter_type_name(dest.nd);
         chain.append(
             HopSpec(
                 edge_type=edge_type, node_type=node_type, direction=dest.direction.value
@@ -395,6 +420,8 @@ def _build_plan_from_path(
         }
         if i == last_idx and node_has_pred {
             last_post_filter = dest.node_filter;
+            # Carrier predicates enable backend-native field pushdown.
+            last_field_preds = node_preds;
         }
     }
     if not has_filter and last_post_filter is None {
@@ -404,6 +431,7 @@ def _build_plan_from_path(
     return QueryPlan(
         root_id=origin_anchor.root or origin_anchor.id,
         chain=chain,
+        field_predicates=last_field_preds,
         node_type_final=chain[-1].node_type if chain else None,
         slc=slc,
         post_filter=last_post_filter

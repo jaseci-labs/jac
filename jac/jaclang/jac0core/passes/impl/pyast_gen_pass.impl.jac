@@ -3654,8 +3654,139 @@ impl PyastGenPass.exit_connect_op(nd: uni.ConnectOp) -> None {
     ];
 }
 
+impl PyastGenPass._is_literal_scalar(expr: ast3.AST) -> bool {
+    # A compile-time-knowable scalar: a constant, or a unary +/- on a constant
+    # (so `-5` / `+5`, which parse as UnaryOp, count as literals).
+    if isinstance(expr, ast3.Constant) {
+        return True;
+    }
+    return (
+        isinstance(expr, ast3.UnaryOp)
+        and isinstance(expr.op, (ast3.USub, ast3.UAdd))
+        and isinstance(expr.operand, ast3.Constant)
+    );
+}
+
+impl PyastGenPass._pushdown_value(expr: ast3.AST, op_name: str) -> (ast3.expr | None) {
+    # The value side of a pushable predicate. Membership ops (`in`/`nin`) take
+    # a literal collection of scalars; all others take a single literal scalar.
+    if op_name in ('in', 'nin') {
+        if isinstance(expr, (ast3.List, ast3.Tuple, ast3.Set))
+        and all(self._is_literal_scalar(e) for e in expr.elts) {
+            return expr;
+        }
+        return None;
+    }
+    return expr if self._is_literal_scalar(expr) else None;
+}
+
+impl PyastGenPass._compare_predicates(
+    operands: list, ops: list, field_name: str
+) -> (list | None) {
+    # Expand a (possibly chained) comparison into backend-neutral predicates on
+    # `field_name`. Each adjacent operand pair becomes one predicate; the field
+    # may sit on either side (the operator flips when it is on the right).
+    # Returns None if any pair is not a `field <op> literal` clause.
+    _op_map: dict[str, str] = {
+        'Lt': 'lt',
+        'LtE': 'lte',
+        'Gt': 'gt',
+        'GtE': 'gte',
+        'Eq': 'eq',
+        'NotEq': 'ne',
+        'In': 'in',
+        'NotIn': 'nin'
+    };
+    _flip: dict[str, str] = {
+        'lt': 'gt',
+        'gt': 'lt',
+        'lte': 'gte',
+        'gte': 'lte',
+        'eq': 'eq',
+        'ne': 'ne'
+    };
+    preds: list = [];
+    for k in range(len(ops)) {
+        (a, b) = (operands[k], operands[k + 1]);
+        op_name = _op_map.get(`type(ops[k]).__name__);
+        if op_name is None {
+            return None;  # `is` / `is not` — not pushable
+        }
+        a_is_field = isinstance(a, ast3.Name) and a.id == field_name;
+        b_is_field = isinstance(b, ast3.Name) and b.id == field_name;
+        if a_is_field and not b_is_field {
+            value = self._pushdown_value(b, op_name);
+            if value is None {
+                return None;
+            }
+            preds.append((op_name, value));
+        } elif b_is_field and not a_is_field {
+            if op_name in ('in', 'nin') {
+                return None;  # `const in field` is membership-in-field, not pushable
+            }
+            value = self._pushdown_value(a, op_name);
+            if value is None {
+                return None;
+            }
+            preds.append((_flip[op_name], value));
+        } else {
+            return None;  # field-to-field or const-to-const clause
+        }
+    }
+    return preds;
+}
+
+impl PyastGenPass._analyze_compare(nd_x: uni.UniNode) -> (tuple | None) {
+    # Normalize one filter comparison into (lambda_clause, predicates):
+    #   - lambda_clause: the comparison rewritten with the field operand bound
+    #     to the iteration variable `i` (operator structure/order preserved, so
+    #     chained comparisons stay native Python). Used to build the lambda.
+    #   - predicates: list[(neutral_op, value_ast)] when every clause is a
+    #     pushable `field <op> literal`, else None (lambda-only).
+    # Returns None when there is no bare-field operand to bind — such a clause
+    # cannot be a node-field filter, so it is left out of the lambda entirely.
+    py = self.py_ast_val(nd_x);
+    if not isinstance(py, ast3.Compare) {
+        return None;
+    }
+    operands: list = [py.left] + `list(py.comparators);
+    # The first bare-Name operand is the archetype field; everything else is an
+    # external value. (`age < 28`, `28 > age`, and `20 <= age < 50` all bind
+    # `age` — wherever it appears.)
+    field_idx = -1;
+    for (k, operand) in enumerate(operands) {
+        if isinstance(operand, ast3.Name) {
+            field_idx = k;
+            break;
+        }
+    }
+    if field_idx == -1 {
+        return None;
+    }
+    field_name = operands[field_idx].id;
+    bound: list = `list(operands);
+    bound[field_idx] = self.sync(
+        ast3.Attribute(
+            value=self.sync(ast3.Name(id='i', ctx=ast3.Load()), jac_node=nd_x),
+            attr=field_name,
+            ctx=ast3.Load()
+        ),
+        jac_node=nd_x
+    );
+    clause = self.sync(
+        ast3.Compare(left=bound[0], ops=py.ops, comparators=bound[1:]), jac_node=nd_x
+    );
+    preds = self._compare_predicates(operands, py.ops, field_name);
+    typed_preds = [(field_name, op, value) for (op, value) in preds]
+        if preds is not None
+        else None;
+    return (clause, typed_preds);
+}
+
 impl PyastGenPass.exit_filter_compr(nd: uni.FilterCompr) -> None {
     iter_name = 'i';
+    # Normalize each comparison once; reuse for both the lambda and predicates.
+    analyses = [self._analyze_compare(x) for x in nd.compares];
     comprs: list[(ast3.Compare | ast3.Call)] = [
         self.sync(
             ast3.Call(
@@ -3674,28 +3805,9 @@ impl PyastGenPass.exit_filter_compr(nd: uni.FilterCompr) -> None {
         if nd.f_type
         else [];
     comprs.extend(
-        self.sync(
-            ast3.Compare(
-                left=self.sync(
-                    ast3.Attribute(
-                        value=self.sync(
-                            ast3.Name(id=iter_name, ctx=ast3.Load()), jac_node=x
-                        ),
-                        attr=self.py_ast_val(x).left.id,
-                        ctx=ast3.Load()
-                    ),
-                    jac_node=x
-                ),
-                ops=self.py_ast_val(x).ops,
-                comparators=self.py_ast_val(x).comparators
-            ),
-            jac_node=x
-        )
-        for x in nd.compares
-        if (
-            isinstance(self.py_ast_val(x), ast3.Compare)
-            and isinstance(self.py_ast_val(x).left, ast3.Name)
-        )
+        a[0]
+        for a in analyses
+        if a is not None
     );
     if (
         body := (
@@ -3709,23 +3821,95 @@ impl PyastGenPass.exit_filter_compr(nd: uni.FilterCompr) -> None {
                 else comprs[0] if comprs else None
         )
     ) {
-        nd.gen.py_ast = [
-            self.sync(
-                ast3.Lambda(
-                    args=self.sync(
-                        ast3.arguments(
-                            posonlyargs=[],
-                            args=[self.sync(ast3.arg(arg=iter_name))],
-                            kwonlyargs=[],
-                            kw_defaults=[],
-                            defaults=[]
-                        )
-                    ),
-                    body=body
-                )
+        lambda_node = self.sync(
+            ast3.Lambda(
+                args=self.sync(
+                    ast3.arguments(
+                        posonlyargs=[],
+                        args=[self.sync(ast3.arg(arg=iter_name))],
+                        kwonlyargs=[],
+                        kw_defaults=[],
+                        defaults=[]
+                    )
+                ),
+                body=body
             )
-        ];
+        );
+        # A typed filter ([?:Type, ...]) always emits a FilterSpec carrier so
+        # the planner reads the archetype type structurally (no lambda bytecode
+        # inspection). Field predicates ride along when every clause is a simple
+        # `field <op> literal`; otherwise the carrier holds an empty dict and the
+        # lambda alone enforces the conditions.
+        type_py = self.py_ast_val(nd.f_type) if nd.f_type else None;
+        type_name_str: (str | None) = (
+            type_py.id if isinstance(type_py, ast3.Name) else None
+        );
+        if type_name_str is not None {
+            pushable = bool(analyses)
+            and all(a is not None and a[1] is not None for a in analyses);
+            pred_ast = self._predicates_dict_ast(analyses)
+                if pushable
+                else self.sync(ast3.Dict(keys=[], values=[]));
+            self.jaclib_imports.add('FilterSpec');
+            self.jaclib_imports.add('FieldPredicate');
+            nd.gen.py_ast = [
+                self.sync(
+                    ast3.Call(
+                        func=self.sync(ast3.Name(id='FilterSpec', ctx=ast3.Load())),
+                        args=[],
+                        keywords=[
+                            self.sync(
+                                ast3.keyword(
+                                    arg='type_name',
+                                    value=self.sync(ast3.Constant(type_name_str))
+                                )
+                            ),
+                            self.sync(ast3.keyword(arg='predicates', value=pred_ast)),
+                            self.sync(ast3.keyword(arg='func', value=lambda_node))
+                        ]
+                    )
+                )
+            ];
+        } else {
+            nd.gen.py_ast = [lambda_node];
+        }
     }
+}
+
+impl PyastGenPass._predicates_dict_ast(analyses: list) -> ast3.Dict {
+    # Group the (field, op, value) triples from analyzed comparisons into the
+    # `{field: [FieldPredicate(...), ...]}` AST literal. Caller guarantees every
+    # analysis carries pushable predicates.
+    fields: dict[str, list] = {};
+    for a in analyses {
+        for (field, op_name, value) in a[1] {
+            fp_call = self.sync(
+                ast3.Call(
+                    func=self.sync(ast3.Name(id='FieldPredicate', ctx=ast3.Load())),
+                    args=[],
+                    keywords=[
+                        self.sync(
+                            ast3.keyword(
+                                arg='op', value=self.sync(ast3.Constant(op_name))
+                            )
+                        ),
+                        self.sync(ast3.keyword(arg='value', value=value))
+                    ]
+                )
+            );
+            if field not in fields {
+                fields[field] = [];
+            }
+            fields[field].append(fp_call);
+        }
+    }
+    keys: list[ast3.expr] = [];
+    values: list[ast3.expr] = [];
+    for (field, preds) in fields.items() {
+        keys.append(self.sync(ast3.Constant(field)));
+        values.append(self.sync(ast3.List(elts=preds, ctx=ast3.Load())));
+    }
+    return self.sync(ast3.Dict(keys=keys, values=values));
 }
 
 impl PyastGenPass.exit_assign_compr(nd: uni.AssignCompr) -> None {
