@@ -264,6 +264,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
+    self.clib_local_struct_names = {};
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     self._attach_di_subprogram(
         func, name, self._func_loc.get(name, nd.loc.first_line if nd.loc else 0)
@@ -277,6 +278,13 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         alloca = self.builder.alloca(arg_val.type, name=param_name);
         self.builder.store(arg_val, alloca);
         self.local_vars[param_name] = alloca;
+        # Track clib struct parameters for subscript codegen (#6707, #6708)
+        if p.type_tag is not None and isinstance(p.type_tag.tag, uni.Name) {
+            _ptag_name = p.type_tag.tag.value;
+            if _ptag_name in self.struct_types {
+                self.clib_local_struct_names[param_name] = _ptag_name;
+            }
+        }
         # A borrowed param rebound by a plain assignment somewhere in the
         # body owns its slot from birth (central analysis fact,
         # compiler/ownership.jac): take one entry-block +1 so every

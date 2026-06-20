@@ -116,6 +116,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
         clib_extern_names: set[str] = set(),
         clib_struct_names: set[str] = set(),
         clib_struct_abi_types: dict[str, ir.Type] = {},
+        # Maps local variable / parameter name → clib struct name for
+        # subscript codegen when annotations are unstamped (#6707, #6708).
+        clib_local_struct_names: dict[str, str] = {},
         # Foreign declaration model (Phase 8): module universe for the
         # central collector, and its memoized result. The memo is keyed on
         # the universe size (_foreign_model_nmods) because _foreign_modules

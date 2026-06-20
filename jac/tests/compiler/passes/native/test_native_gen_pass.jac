@@ -4498,3 +4498,27 @@ test "isinstance mixed tuple unsupported type errors" {
         f"expected E5090 for mixed-tuple isinstance, got {codes}"
     );
 }
+
+# ─── FIX: clib struct pointer subscript read/write (#6707, #6708) ─────────────
+# Before the fix, buf[i] on a clib struct pointer emitted E5090.
+# Fix: NaIRGenPass tracks clib struct param/local names and emits
+# inttoptr+GEP for buf[i] and inttoptr+GEP+store for buf[i]=val.
+test "ptr subscript read/write: no E5090 and correct GEP IR (#6707, #6708)" {
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "ptr_subscript.na.jac")));
+    e5090 = [
+        e.code.code
+        for e in (prog.errors_had or [])
+        if e.code and e.code.code == "E5090"
+    ];
+    assert not e5090 , f"Unexpected E5090 errors: {e5090}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    s = str(ir.gen.llvm_ir);
+    # Read path (#6708): inttoptr the i64 buf address, GEP to element i,
+    # ptrtoint the element pointer back to i64 for the unstamped local.
+    assert "arr.ptr" in s , "Expected inttoptr to struct ptr (arr.ptr)";
+    assert "ptr.elem.ptr" in s , "Expected array-element GEP (ptr.elem.ptr)";
+    assert "arr.elem.i64" in s , "Expected ptrtoint element addr (arr.elem.i64)";
+    # Write path (#6707): inttoptr buf, GEP element, load src struct, store.
+    assert "arr.val.struct" in s , "Expected struct load for write (arr.val.struct)";
+}

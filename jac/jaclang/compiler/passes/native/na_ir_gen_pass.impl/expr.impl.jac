@@ -1426,6 +1426,45 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                         }
                     }
                 }
+                # Named struct (clib) pointer used as array: buf[i] (#6708).
+                # Native annotations are unstamped; look up the struct name
+                # via clib_local_struct_names, then inttoptr the i64 address.
+                _rd_sname: (str | None) = (
+                    self.clib_local_struct_names[target_name]
+                        if target_name is not None
+                        and target_name in self.clib_local_struct_names
+                        else None
+                );
+                if _rd_sname is not None and _rd_sname in self.struct_types {
+                    slices = nd.right.slices or [];
+                    if slices {
+                        idx_node = slices[0];
+                        idx_val = self._codegen_expr(idx_node);
+                        if idx_val is None and idx_node?.start {
+                            idx_val = self._codegen_expr(idx_node.start);
+                        }
+                        if idx_val is not None {
+                            _i64 = ir.IntType(64);
+                            _struct_ptr_t = self.struct_types[_rd_sname].as_pointer();
+                            arr_ptr = self.builder.inttoptr(
+                                target_val, _struct_ptr_t, name="arr.ptr"
+                            );
+                            if idx_val.type != _i64 {
+                                idx_val = self.builder.sext(
+                                    idx_val, _i64, name="arr.idx.i64"
+                                );
+                            }
+                            elem_ptr = self.builder.gep(
+                                arr_ptr, [idx_val], name="ptr.elem.ptr"
+                            );
+                            # Return element address as i64; field access via
+                            # clib_local_struct_names uses inttoptr to recover ptr.
+                            return self.builder.ptrtoint(
+                                elem_ptr, _i64, name="arr.elem.i64"
+                            );
+                        }
+                    }
+                }
                 # Check for tuple indexing (value or pointer to LiteralStructType)
                 tsub_struct: (ir.LiteralStructType | None) = None;
                 if isinstance(target_val.type, ir.LiteralStructType) {

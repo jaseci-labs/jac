@@ -824,14 +824,61 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 _idx_stored = True;
                             }
                         } else {
-                            # List assignment: list[idx] = value
+                            # List / clib struct-array assignment.
                             elem_type_name: (str | None) = (
                                 self._infer_list_elem_type(target_val)
+                            );
+                            # Named struct pointer array write: buf[i] = val (#6707).
+                            # Native annotations are unstamped; use clib_local_struct_names.
+                            _wr_sname: (str | None) = (
+                                self.clib_local_struct_names[idx_target_name]
+                                    if idx_target_name is not None
+                                    and idx_target_name in self.clib_local_struct_names
+                                    else None
                             );
                             if elem_type_name is not None {
                                 self._codegen_index_set(
                                     target_val, idx_val, value, elem_type_name
                                 );
+                                _idx_stored = True;
+                            } elif _wr_sname is not None
+                            and _wr_sname in self.struct_types {
+                                _i64 = ir.IntType(64);
+                                _struct_t = self.struct_types[_wr_sname];
+                                _struct_ptr_t = _struct_t.as_pointer();
+                                arr_ptr = self.builder.inttoptr(
+                                    target_val, _struct_ptr_t, name="arr.ptr"
+                                );
+                                _wide_idx = (
+                                    idx_val
+                                        if idx_val.type == _i64
+                                        else self.builder.sext(
+                                            idx_val, _i64, name="arr.idx.i64"
+                                        )
+                                );
+                                elem_ptr = self.builder.gep(
+                                    arr_ptr, [_wide_idx], name="ptr.elem.ptr"
+                                );
+                                if isinstance(value.type, ir.IdentifiedStructType) {
+                                    self.builder.store(value, elem_ptr);
+                                } elif (
+                                    isinstance(value.type, ir.PointerType)
+                                    and value.type.pointee == _struct_t
+                                ) {
+                                    self.builder.store(
+                                        self.builder.load(value, name="arr.val.struct"),
+                                        elem_ptr
+                                    );
+                                } else {
+                                    # value is i64 (pointer-as-int, e.g. from _clib_alloc_box)
+                                    c_ptr = self.builder.inttoptr(
+                                        value, _struct_ptr_t, name="arr.val.ptr"
+                                    );
+                                    self.builder.store(
+                                        self.builder.load(c_ptr, name="arr.val.struct"),
+                                        elem_ptr
+                                    );
+                                }
                                 _idx_stored = True;
                             }
                         }
@@ -1457,6 +1504,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             var_type = value.type;
             if nd.type_tag and nd.type_tag.tag {
                 tag_node = nd.type_tag.tag;
+                # Track clib struct local annotations for subscript codegen (#6707, #6708)
+                if isinstance(tag_node, uni.Name)
+                and tag_node.value in self.struct_types {
+                    self.clib_local_struct_names[var_name] = tag_node.value;
+                }
                 # Bare unparameterized collection annotations (list/dict/set/frozenset):
                 # infer the variable type from the RHS value rather than defaulting,
                 # so `a: list = [1, 2]`, `d: dict = {"k": v}`, `s: set = {1, 2}` all work
