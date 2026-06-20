@@ -51,11 +51,11 @@ def _register_builtin_client_providers() -> None:
     commands (``build`` / ``setup`` / ``start`` + ``--npm`` / ``--cl``).
     """
     try:
-        from jaclang.runtimelib.client.plugin_config import JacClientPluginConfig
+        from jaclang.runtimelib.client.cli import JacClientCmd
         from jaclang.runtimelib.client.desktop_plugin_config import (
             JacDesktopPluginConfig,
         )
-        from jaclang.runtimelib.client.cli import JacClientCmd
+        from jaclang.runtimelib.client.plugin_config import JacClientPluginConfig
     except Exception as exc:  # keep core usable if the framework fails to import
         import warnings
 
