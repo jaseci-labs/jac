@@ -20,7 +20,7 @@ edge Posted {}
 # reachable by OTHER users. littleX is built on exactly this.
 def post_tweet(content: str) -> str {
     prof = [root --> [?:Profile]][0];
-    t = (prof +>:Posted:+> Tweet(content=content))[0];
+    t = prof +>:Posted:+> Tweet(content=content);
     grant(t, level=WritePerm);   # likes/comments MUTATE tweet fields -> WritePerm
     return t.content;
 }
