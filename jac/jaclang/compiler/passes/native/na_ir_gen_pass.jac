@@ -734,7 +734,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _make_bytes_iter(bytes_val: ir.Value) -> ir.Value;
     def _bytes_iter_next_fn -> ir.Function;
     # Phase 8: Entry Block
-    def _codegen_entry(nd: uni.ModuleCode) -> None;
+    def _codegen_entry(nodes: list[uni.ModuleCode]) -> None;
     # Phase 9: Tuples
     def _codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None);
     def _codegen_tuple_unpack(

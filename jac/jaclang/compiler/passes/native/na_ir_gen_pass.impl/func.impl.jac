@@ -608,10 +608,18 @@ impl NaIRGenPass._emit_glob_init_func -> None {
 }
 
 """Generate jac_entry() function for with entry { ... } blocks."""
-impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
+impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
+    # No `with entry { ... }` blocks: nothing to emit. The caller's
+    # has_native_code fallback still guarantees __jac_glob_init is defined.
+    if not nodes {
+        return;
+    }
     i64 = ir.IntType(64);
     import re;
-    # Create jac_entry function: void jac_entry()
+    # Create the single jac_entry function: void jac_entry(). Every `with entry`
+    # block's body is appended into this one function in source order (#6660),
+    # so the startup preamble (glob-init, JAC_NO_GC, imported-module init) is
+    # emitted exactly once here, before any entry body runs.
     fnty = ir.FunctionType(ir.VoidType(), []);
     func = ir.Function(self.llvm_module, fnty, name="jac_entry");
     self.func_symtab["jac_entry"] = func;
@@ -619,8 +627,9 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
-    # DWARF debug info (JAC_NATIVE_DEBUG=1)
-    entry_line = nd.loc.first_line if nd.loc else 0;
+    # DWARF debug info (JAC_NATIVE_DEBUG=1) — anchor at the first entry block.
+    _first = nodes[0];
+    entry_line = _first.loc.first_line if _first.loc else 0;
     self._attach_di_subprogram(func, "jac_entry", entry_line);
     # Emit __jac_glob_init() (current module) and call it first.
     # This initialises all list/dict globs declared in THIS module before any
@@ -765,9 +774,16 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
             self.builder.position_at_end(_gk_done);
         }
     }
-    # Generate body statements
-    if (nd).body {
-        self._codegen_body((nd).body);
+    # Generate body statements: concatenate every `with entry { ... }` body in
+    # source order into this single jac_entry function (#6660). Stop if a body
+    # emits an unconditional terminator so we never append into a closed block.
+    for _ent in nodes {
+        if self.builder.block.is_terminated {
+            break;
+        }
+        if (_ent).body {
+            self._codegen_body((_ent).body);
+        }
     }
     # Flush all stdio buffers before returning to caller
     if not self.builder.block.is_terminated {
@@ -777,10 +793,11 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
         null_ptr = ir.Constant(i8p, None);
         self.builder.call(fflush_fn, [null_ptr]);
         # release all pointer-typed locals at end of entry block.
+        _last = nodes[-1];
         self._emit_scope_cleanup(
             skip_var=None,
-            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
-                if nd.loc
+            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{_last.loc.last_line
+                if _last.loc
                 else 0}"
         );
         # Emit live-objects dump (only if debug was enabled at runtime).

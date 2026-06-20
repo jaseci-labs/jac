@@ -121,6 +121,39 @@ test "ELF executable links, runs, and prints through the C ABI" {
 }
 
 
+test "multiple `with entry` blocks emit a single jac_entry (issue #6660)" {
+    # Pre-fix, _compile_ir raises DuplicatedNameError: jac_entry while lowering
+    # the second `with entry` block, so reaching this assert at all proves the
+    # crash is gone; the count asserts the concatenate-into-one invariant.
+    ir_txt = _compile_ir("multi_entry.na.jac", llvm.get_default_triple());
+    n = ir_txt.count('define void @"jac_entry"');
+    assert n == 1 , f"expected exactly one jac_entry definition, got {n}";
+}
+
+
+test "concatenated `with entry` blocks run in source order (issue #6660)" {
+    triple = llvm.get_default_triple();
+    relobj = _emit_object(
+        _inject_elf(_compile_ir("multi_entry.na.jac", triple)), triple
+    );
+    d = tempfile.mkdtemp();
+    out = os.path.join(d, "multi_entry");
+    ok = ElfLinker.link(
+        obj_bytes=relobj, output_path=out, needed_libs=["libc.so.6"], shared=False
+    );
+    assert ok , "ElfLinker.link(shared=False) returned False";
+    # Only a Linux x86_64 host can execute the produced ELF.
+    if sys.platform.startswith("linux") and ("x86_64" in triple) {
+        res = subprocess.run([out], capture_output=True, timeout=30);
+        assert res.returncode == 0 , f"exec exited {res.returncode}, stderr={res.stderr}";
+        i = res.stdout.find(b"FIRST");
+        j = res.stdout.find(b"SECOND");
+        assert i != -1 and j != -1 , f"missing markers in stdout: {res.stdout}";
+        assert i < j , f"entry blocks ran out of order: {res.stdout}";
+    }
+}
+
+
 test "Mach-O executable has MH_EXECUTE filetype and an LC_MAIN entry" {
     triple = "x86_64-apple-darwin";
     relobj = _emit_object(_inject_macho(_compile_ir(FIXTURE, triple)), triple);
