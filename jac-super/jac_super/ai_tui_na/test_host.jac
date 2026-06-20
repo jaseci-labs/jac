@@ -45,14 +45,14 @@ def main -> int {
     lib = ctypes.CDLL(lib_path);
     sys.stdout.write(f"ok: CDLL loaded {lib_path}\n");
 
-    # nacompile-generated Mach-O exports symbols with a leading '_' in the
-    # symbol table (e.g. '_tui_render_buf'), but macOS dlsym() prepends the
-    # underscore itself: you pass the bare C name 'tui_render_buf' and dlsym
-    # resolves '_tui_render_buf'. Passing '_tui_render_buf' would make dlsym
-    # look up '__tui_render_buf' and fail. So no prefix on any platform.
-    # lib[name] creates a new _FuncPtr each call; cache the objects so that
-    # restype/argtypes set below survive to the actual call.
-    p = "";
+    # Mach-O C symbols carry a leading '_' in the export trie (e.g.
+    # '_tui_render_buf'). dlsym() does exact-name lookup — it does NOT
+    # strip or prepend underscores at runtime — so on Darwin we must
+    # include the prefix. On Linux/Windows the trie/PE exports the bare
+    # C name, so no prefix is needed.
+    # lib[name] creates a new _FuncPtr each call; cache the objects so
+    # that restype/argtypes set below survive to the actual call.
+    p = "_" if sys.platform == "darwin" else "";
 
     fn_apply_frame = lib[p + "tui_apply_frame"];
     fn_apply_frame.restype = ctypes.c_int64;
