@@ -108,12 +108,12 @@ def _chain_triples(chain: list[any]) -> list[tuple[(str | None), (str | None), i
 
 """Narrow the plan via the topology_index on the given root.
 
-Returns the set of candidate UUIDs the chain resolves to, or None when the
-index isn't usable (disabled, missing, or empty). The chain comes from the
-plan; the function ignores `plan.id_in` (the caller decides whether to AND
-the existing narrowing with the new one).
+Returns the ordered list of candidate UUIDs the chain resolves to, or None
+when the index isn't usable (disabled, missing, or empty). The chain comes
+from the plan; the function ignores `plan.id_in` (the caller decides whether
+to AND the existing narrowing with the new one).
 """
-def _topology_narrow(root_anchor: any, plan: QueryPlan) -> (set[UUID] | None) {
+def _topology_narrow(root_anchor: any, plan: QueryPlan) -> (list[UUID] | None) {
     if not plan.chain {
         return None;
     }
@@ -179,7 +179,9 @@ def _materialize_ids(
 Used when the backend declares no useful capabilities, or to back up a
 backend that returned no results from a partial pushdown."""
 def _execute_floor(mem: any, plan: QueryPlan, root_anchor: any) -> list[any] {
-    candidate_ids: (set[UUID] | None) = plan.id_in;
+    candidate_ids: (list[UUID] | None) = (
+        list(plan.id_in) if plan.id_in is not None else None
+    );
     if candidate_ids is None {
         candidate_ids = _topology_narrow(root_anchor, plan);
         if candidate_ids is None {
@@ -189,7 +191,7 @@ def _execute_floor(mem: any, plan: QueryPlan, root_anchor: any) -> list[any] {
     }
     _trace('floor', plan, f"candidates={len(candidate_ids)}");
     return _materialize_ids(
-        mem, list(candidate_ids), post_filter=plan.post_filter, slc=plan.slc
+        mem, candidate_ids, post_filter=plan.post_filter, slc=plan.slc
     );
 }
 
@@ -223,12 +225,12 @@ def _execute_pushdown(mem: any, plan: QueryPlan) -> list[any] {
 
 The planner uses this when the backend can handle field predicates but not
 the full chain (the common case for type+field queries against Mongo). The
-topology_index gives us the candidate set for free; the backend then runs
+topology_index gives us the candidate list for free; the backend then runs
 `_id IN (...) AND field_predicates...` in a single round-trip — much better
-than batch_get + Python filtering for large candidate sets with sparse field
+than batch_get + Python filtering for large candidate lists with sparse field
 matches.
 """
-def _execute_mixed(mem: any, plan: QueryPlan, narrowed: set[UUID]) -> list[any] {
+def _execute_mixed(mem: any, plan: QueryPlan, narrowed: list[UUID]) -> list[any] {
     # Build a reduced plan: chain is consumed (narrowing did its job), id_in
     # carries the candidate set, field_predicates and node_type_final are
     # preserved for the backend.
@@ -236,7 +238,7 @@ def _execute_mixed(mem: any, plan: QueryPlan, narrowed: set[UUID]) -> list[any] 
         root_id=plan.root_id,
         chain=[],
         field_predicates=plan.field_predicates,
-        id_in=narrowed,
+        id_in=set(narrowed),
         slc=plan.slc,
         node_type_final=plan.node_type_final,
         post_filter=None  # applied above
@@ -259,9 +261,7 @@ def _execute_mixed(mem: any, plan: QueryPlan, narrowed: set[UUID]) -> list[any] 
     # Backend can't handle the reduced plan; fall back to pure floor with the
     # narrowing we already computed.
     _trace('mixed→floor', plan, f"narrowed={len(narrowed)}");
-    return _materialize_ids(
-        mem, list(narrowed), post_filter=plan.post_filter, slc=plan.slc
-    );
+    return _materialize_ids(mem, narrowed, post_filter=plan.post_filter, slc=plan.slc);
 }
 
 
@@ -413,20 +413,17 @@ def _build_plan_from_path(
 
 """High-level path entry point. Builds a QueryPlan, runs it, returns NodeAnchors.
 
+`plan_chain` returns results in canonical edge-insertion order, so slicing
+and single-hop ordering work without a separate ordered resolver.
+
 Strategy ladder, picked by query shape:
 
-  * **sliced, no post_filter** → `plan_chain_ordered` (works for single-hop
-    AND multi-hop; multi-hop resolves the prefix as a set then walks the
-    final adj_list in order with the slice applied). This bounds L3 fetches
-    to roughly the slice size — critical for paginated queries on large
-    fanouts where the legacy unbounded path loaded the whole result first.
-
-  * **single-hop, no slice, no post_filter** → `plan_chain_ordered` with a
-    full-open slice. Canonical edge-walk order is preserved so existing
-    visit semantics are unchanged from the legacy edge-walk path.
+  * **no post_filter, sliced or single-hop** → `plan_chain` gives the
+    ordered result; apply the slice directly, then materialize. This bounds
+    L3 fetches to roughly the slice size — critical for paginated queries.
 
   * **anything else** (multi-hop unsliced, or any post_filter present) →
-    set narrowing via `plan_chain`, then backend pushdown if capabilities
+    `plan_chain` for ordered narrowing, then backend pushdown if capabilities
     cover the reduced plan, otherwise `batch_get`. post_filter applied
     above the materialized list before any leftover slicing.
 
@@ -446,67 +443,40 @@ impl execute_path(
     origin_ids: set[UUID] = {cast(UUID, nd.__jac__.id) for nd in path.origin};
     chain_triples = _chain_triples(plan.chain);
 
-    # Ordered fast path covers single-hop walks AND sliced multi-hop. The
-    # ordered resolver applies the slice itself, so materialize doesn't.
-    use_ordered = plan.post_filter is None
-    and (slc is not None or len(plan.chain) == 1);
-    if use_ordered {
-        effective_slc = slc if slc is not None else slice(None, None, None);
-        ordered = plan_chain_ordered(
-            root_anchor, origin_ids, chain_triples, effective_slc
-        );
-        if ordered is None {
-            return None;
-        }
-        _trace('ordered', plan, f"ids={len(ordered)}");
-        return _materialize_ids(mem, ordered);
-    }
-
-    # Set-narrowing branch: multi-hop without slice, or anything with a
-    # post_filter (predicates invalidate the ordered slice invariant).
-    narrowed = plan_chain(root_anchor, origin_ids, chain_triples);
-    if narrowed is None {
+    result = plan_chain(root_anchor, origin_ids, chain_triples);
+    if result is None {
         return None;
     }
-    plan.id_in = narrowed;
+
+    # Fast path: no post_filter and (sliced or single-hop). Apply slice on
+    # the ordered list directly, then materialize.
+    if plan.post_filter is None and (slc is not None or len(plan.chain) == 1) {
+        if slc is not None {
+            result = result[slc];
+        }
+        _trace('ordered', plan, f"ids={len(result)}");
+        return _materialize_ids(mem, result);
+    }
+
+    # Narrowing branch: multi-hop without slice, or post_filter present.
+    plan.id_in = set(result);
     plan.chain = [];  # consumed by narrowing
-    _trace('path', plan, f"narrowed={len(narrowed)}");
+    _trace('path', plan, f"narrowed={len(result)}");
 
     # Backend pushdown if capable, else floor through batch_get.
     if plan.needs() <= mem.capabilities() {
         return _execute_pushdown(mem, plan);
     }
-    return _materialize_ids(
-        mem, list(narrowed), post_filter=plan.post_filter, slc=plan.slc
-    );
+    return _materialize_ids(mem, result, post_filter=plan.post_filter, slc=plan.slc);
 }
 
 
-"""Compatibility helper. Resolves a chain using the topology_index on the
-given root and returns the resulting UUID set. None when not usable."""
+"""Resolve a chain using the topology_index on the given root and return
+the resulting ordered UUID list. None when not usable."""
 impl plan_chain(
     root_anchor: any,
     origin_ids: set[UUID],
     chain: list[tuple[(str | None), (str | None), int]]
-) -> (set[UUID] | None) {
-    if root_anchor is None or not chain {
-        return None;
-    }
-    import from jaclang.runtimelib.topology_index { TopologyIndex }
-    idx = root_anchor.get_topology_index();
-    if not isinstance(idx, TopologyIndex) or len(idx) == 0 {
-        return None;
-    }
-    return idx.resolve_chain(origin_ids, chain, bail_on_intermediate_foreign=True);
-}
-
-
-"""Compatibility helper. Ordered single-hop resolution with slice applied."""
-impl plan_chain_ordered(
-    root_anchor: any,
-    origin_ids: set[UUID],
-    chain: list[tuple[(str | None), (str | None), int]],
-    slc: slice
 ) -> (list[UUID] | None) {
     if root_anchor is None or not chain {
         return None;
@@ -516,15 +486,5 @@ impl plan_chain_ordered(
     if not isinstance(idx, TopologyIndex) or len(idx) == 0 {
         return None;
     }
-    # Multi-hop prefix resolves via the set-based walker; the final hop runs
-    # ordered. Order between hops isn't observable to the slice.
-    if len(chain) > 1 {
-        prev = idx.resolve_chain(origin_ids, chain[:-1]);
-        if not prev {
-            return [];
-        }
-        origin_ids = prev;
-    }
-    (f_edge, f_node, f_dir) = chain[-1];
-    return idx.resolve_chain_ordered(origin_ids, f_edge, f_node, f_dir, slc);
+    return idx.resolve_chain(origin_ids, chain, bail_on_intermediate_foreign=True);
 }

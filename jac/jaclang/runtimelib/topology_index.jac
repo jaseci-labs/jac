@@ -7,9 +7,11 @@ Two layered structures are kept in sync:
   * Canonical adj_list — `(src_lid, edge_type_id, tgt_lid)` triples; preserves
     multi-edge multiplicity, source of truth for encode/decode.
   * type-keyed lookup map — type-keyed dict
-    `buckets[src_lid][col_key] = (in_lids, out_lids)` where `col_key` is
-    `"n:<type_id>"` or `"e:<edge_type_id>"`. Gives O(1) per-type lookup and
-    holds MRO fan-out (each target indexed under every ancestor type).
+    `buckets[src_lid][col_key] = (in_adj_indices, out_adj_indices)` where
+    `col_key` is `"n:<type_id>"` or `"e:<edge_type_id>"`. Each entry is an
+    index into `adj_list`, kept in sorted order so ordered merge-intersections
+    preserve edge insertion order. MRO fan-out indexes each target under every
+    ancestor type.
 
 Encoding format (version 2):
   [1B version][2B num_types][2B num_nodes][4B num_edges]
@@ -26,7 +28,7 @@ import from uuid { UUID }
 glob SELF_ROOT: UUID = UUID(int=0),
      TOPO_VERSION: int = 2;
 
-"""In-memory topology index with type-keyed adjacency matrix and MRO fan-out."""
+"""In-memory topology index with ordered adjacency buckets and MRO fan-out."""
 obj TopologyIndex {
     has type_table: list[str] = [],
         type_to_id: dict[str, int] = {},
@@ -34,7 +36,7 @@ obj TopologyIndex {
         node_table: list[tuple[UUID, int, UUID]] = [],
         node_to_lid: dict[UUID, int] = {},
         adj_list: list[tuple[int, int, int]] = [],
-        buckets: dict[int, dict[str, tuple[set[int], set[int]]]] = {};
+        buckets: dict[int, dict[str, tuple[list[int], list[int]]]] = {};
 
     def _ensure_type(type_name: str, mro_chain: (list[str] | None) = None) -> int;
     def add_node(
@@ -50,7 +52,8 @@ obj TopologyIndex {
         source_id: UUID, target_id: UUID, edge_type_name: (str | None) = None
     ) -> None;
 
-    """Walk the chain entirely inside this index.
+    """Walk the chain entirely inside this index using ordered
+    merge-intersections. Returns results in edge-insertion order.
 
     With `bail_on_intermediate_foreign=True`, returns `None` the moment
     any non-final hop lands on a node owned by a *different* root. Those
@@ -61,22 +64,7 @@ obj TopologyIndex {
         origin_ids: set[UUID],
         chain: list[tuple[(str | None), (str | None), int]],
         bail_on_intermediate_foreign: bool = False
-    ) -> (set[UUID] | None);
-
-    """Single-hop ordered resolution: walk the canonical adj_list in
-    insertion order, filtering by origin / edge_type / node_type / direction
-    (with MRO fan-out), and return the slice of resulting target UUIDs.
-
-    Returns the ordered list of UUIDs after applying `slc`. Order matches the
-    natural edge-walk that `edges_to_nodes` would produce, so the bounded
-    fast path stays semantically equivalent to materialize-then-slice."""
-    def resolve_chain_ordered(
-        origin_ids: set[UUID],
-        edge_type: (str | None),
-        node_type: (str | None),
-        direction: int,
-        slc: slice
-    ) -> list[UUID];
+    ) -> (list[UUID] | None);
 
     def get_cross_root_ids(node_ids: set[UUID]) -> dict[UUID, set[UUID]];
     def encode -> bytes;

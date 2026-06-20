@@ -5,7 +5,7 @@ The planner is the only place that knows about all three layers:
   1. Backend native pushdown (`Memory.execute_plan`, declared via
      `Memory.capabilities()`). Fastest when the backend can handle the plan
      because it bypasses the topology_index entirely.
-  2. Root topology_index (`TopologyIndex.resolve_chain[_ordered]`). The
+  2. Root topology_index (`TopologyIndex.resolve_chain`). The
      universal in-process narrowing path. Always available when the index is
      enabled and the relevant root carries one.
   3. `batch_get` (every backend has this). The bulk-load primitive used after
@@ -37,7 +37,7 @@ import from jaclang.jac0core.archetype { Anchor, NodeAnchor }
 import from jaclang.runtimelib.query_plan { QueryPlan }
 
 glob logger = logging.getLogger(__name__),
-     __all__ = ['execute_plan', 'execute_path', 'plan_chain', 'plan_chain_ordered'];
+     __all__ = ['execute_plan', 'execute_path', 'plan_chain'];
 
 
 """Top-level entry point: execute a QueryPlan against a memory.
@@ -73,23 +73,14 @@ def execute_path(
 ) -> (list[any] | None);
 
 
-"""Resolve a chain on a given root's topology_index to a `set[UUID]`.
+"""Resolve a chain on a given root's topology_index to an ordered `list[UUID]`.
 
-Used internally by `execute_path` (and available to callers that want the
-candidate set without materializing anchors). Returns None when no fast
-path applies (index disabled, root has no index, or origin not persistent)."""
+Returns results in canonical edge-insertion order. Used internally by
+`execute_path` (and available to callers that want the candidate list
+without materializing anchors). Returns None when no fast path applies
+(index disabled, root has no index, or origin not persistent)."""
 def plan_chain(
     root_anchor: any,
     origin_ids: set[UUID],
     chain: list[tuple[(str | None), (str | None), int]]
-) -> (set[UUID] | None);
-
-
-"""Compatibility helper: resolve the final hop in canonical edge-insertion
-order with `slc` applied. Returns None when no ordered fast path applies."""
-def plan_chain_ordered(
-    root_anchor: any,
-    origin_ids: set[UUID],
-    chain: list[tuple[(str | None), (str | None), int]],
-    slc: slice
 ) -> (list[UUID] | None);

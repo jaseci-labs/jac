@@ -2,9 +2,11 @@
 
 The canonical `adj_list` is the source of truth for encode/decode and preserves
 multi-edge multiplicity. The `buckets` map is a derived index keyed by
-`(src_lid, col_key) -> (in_lids, out_lids)` where `col_key` is `"n:<type_id>"`
-or `"e:<edge_type_id>"`. Targets are fanned out under every ancestor type id so
-parent-type queries resolve in O(1).
+`(src_lid, col_key) -> (in_adj_indices, out_adj_indices)` where `col_key` is
+`"n:<type_id>"` or `"e:<edge_type_id>"`. Each entry is an index into `adj_list`,
+kept in sorted order so ordered intersections preserve edge insertion order.
+Targets are fanned out under every ancestor type id so parent-type queries
+resolve via a single merge-intersection.
 """
 
 """Build a lookup column key for a node-type id."""
@@ -17,15 +19,12 @@ def _e_key(edge_type_id: int) -> str {
     return "e:" + str(edge_type_id);
 }
 
-"""Get or create the (in, out) sets for `(src_lid, col_key)` in the lookup.
-
-Backed by sets (not lists) so add/discard/membership are all O(1) â keeps
-add_edge linear-per-call even for hub nodes with thousands of outgoing
-edges. Order is not preserved, but the canonical adj_list already provides
-deterministic ordering for any caller that needs it."""
+"""Get or create the (in, out) sorted adj_list index lists for `(src_lid, col_key)`."""
 def _get_col(
-    buckets: dict[int, dict[str, tuple[set[int], set[int]]]], src_lid: int, col_key: str
-) -> tuple[set[int], set[int]] {
+    buckets: dict[int, dict[str, tuple[list[int], list[int]]]],
+    src_lid: int,
+    col_key: str
+) -> tuple[list[int], list[int]] {
     bucket = buckets.get(src_lid);
     if bucket is None {
         bucket = {};
@@ -33,10 +32,72 @@ def _get_col(
     }
     col = bucket.get(col_key);
     if col is None {
-        col = (set(), set());
+        col = ([], []);
         bucket[col_key] = col;
     }
     return col;
+}
+
+"""Ordered intersection of two sorted integer lists."""
+def _intersect_sorted(a: list[int], b: list[int]) -> list[int] {
+    result: list[int] = [];
+    i = 0;
+    j = 0;
+    while i < len(a) and j < len(b) {
+        if a[i] < b[j] {
+            i += 1;
+        } elif a[i] > b[j] {
+            j += 1;
+        } else {
+            result.append(a[i]);
+            i += 1;
+            j += 1;
+        }
+    }
+    return result;
+}
+
+"""Fan out one edge into the bucket index under MRO ancestors."""
+def _index_edge(
+    buckets: dict[int, dict[str, tuple[list[int], list[int]]]],
+    adj_idx: int,
+    src: int,
+    etid: int,
+    tgt: int,
+    type_mro_ids: list[list[int]],
+    node_table: list[tuple[UUID, int, UUID]]
+) {
+    (_, src_type_id, _) = node_table[src];
+    (_, tgt_type_id, _) = node_table[tgt];
+    src_ancestors = type_mro_ids[src_type_id] or [src_type_id];
+    tgt_ancestors = type_mro_ids[tgt_type_id] or [tgt_type_id];
+
+    for anc in tgt_ancestors {
+        out_col = _get_col(buckets, src, _n_key(anc));
+        out_col[1].append(adj_idx);
+    }
+    e_out = _get_col(buckets, src, _e_key(etid));
+    e_out[1].append(adj_idx);
+
+    for anc in src_ancestors {
+        in_col = _get_col(buckets, tgt, _n_key(anc));
+        in_col[0].append(adj_idx);
+    }
+    e_in = _get_col(buckets, tgt, _e_key(etid));
+    e_in[0].append(adj_idx);
+}
+
+"""Rebuild all buckets from scratch by replaying adj_list."""
+def _rebuild_buckets(
+    adj_list: list[tuple[int, int, int]],
+    type_mro_ids: list[list[int]],
+    node_table: list[tuple[UUID, int, UUID]]
+) -> dict[int, dict[str, tuple[list[int], list[int]]]] {
+    buckets: dict[int, dict[str, tuple[list[int], list[int]]]] = {};
+    for (adj_idx, (src, etid, tgt)) in enumerate(adj_list) {
+        _index_edge(buckets, adj_idx, src, etid, tgt, type_mro_ids, node_table);
+    }
+    return buckets;
 }
 
 """Return type_id for type_name, registering it (and its MRO chain) if new."""
@@ -87,7 +148,7 @@ impl TopologyIndex.add_node(
     return lid;
 }
 
-"""Remove a node and every edge involving it."""
+"""Remove a node and every edge involving it. Rebuilds buckets from scratch."""
 impl TopologyIndex.remove_node(node_id: UUID) -> None {
     lid = self.node_to_lid.get(node_id);
     if lid is None {
@@ -98,13 +159,7 @@ impl TopologyIndex.remove_node(node_id: UUID) -> None {
         for (s, et, t) in self.adj_list
         if s != lid and t != lid
     ];
-    self.buckets.pop(lid, None);
-    for (_, bucket) in self.buckets.items() {
-        for (_, col) in bucket.items() {
-            col[0].discard(lid);
-            col[1].discard(lid);
-        }
-    }
+    self.buckets = _rebuild_buckets(self.adj_list, self.type_mro_ids, self.node_table);
 }
 
 """Add an edge to `adj_list` and fan out into the buckets under MRO ancestors."""
@@ -117,26 +172,17 @@ impl TopologyIndex.add_edge(
         return;
     }
     etid = self._ensure_type(edge_type_name);
+    adj_idx = len(self.adj_list);
     self.adj_list.append((src_lid, etid, tgt_lid));
-
-    (_, src_type_id, _) = self.node_table[src_lid];
-    (_, tgt_type_id, _) = self.node_table[tgt_lid];
-    src_ancestors = self.type_mro_ids[src_type_id] or [src_type_id];
-    tgt_ancestors = self.type_mro_ids[tgt_type_id] or [tgt_type_id];
-
-    for anc in tgt_ancestors {
-        out_col = _get_col(self.buckets, src_lid, _n_key(anc));
-        out_col[1].add(tgt_lid);
-    }
-    e_out = _get_col(self.buckets, src_lid, _e_key(etid));
-    e_out[1].add(tgt_lid);
-
-    for anc in src_ancestors {
-        in_col = _get_col(self.buckets, tgt_lid, _n_key(anc));
-        in_col[0].add(src_lid);
-    }
-    e_in = _get_col(self.buckets, tgt_lid, _e_key(etid));
-    e_in[0].add(src_lid);
+    _index_edge(
+        self.buckets,
+        adj_idx,
+        src_lid,
+        etid,
+        tgt_lid,
+        self.type_mro_ids,
+        self.node_table
+    );
 }
 
 """Remove a single edge between source and target. If `edge_type_name` is None,
@@ -151,105 +197,63 @@ impl TopologyIndex.remove_edge(
     }
     filter_etid = self.type_to_id.get(edge_type_name) if edge_type_name else None;
 
+    # Find and remove the first matching edge.
+    removed_pos: int = -1;
     new_adj: list[tuple[int, int, int]] = [];
-    removed_etid: int = 0;
-    removed_any = False;
-    for entry in self.adj_list {
+    for (i, entry) in enumerate(self.adj_list) {
         (s, et, t) = entry;
-        if not removed_any and s == src_lid and t == tgt_lid {
+        if removed_pos < 0 and s == src_lid and t == tgt_lid {
             if filter_etid is None or et == filter_etid {
-                removed_etid = et;
-                removed_any = True;
+                removed_pos = i;
                 continue;
             }
         }
         new_adj.append(entry);
     }
-    if not removed_any {
+    if removed_pos < 0 {
         return;
     }
     self.adj_list = new_adj;
 
-    edge_type_still_connects = False;
-    any_edge_remains = False;
-    for (s, et, t) in self.adj_list {
-        if s == src_lid and t == tgt_lid {
-            any_edge_remains = True;
-            if et == removed_etid {
-                edge_type_still_connects = True;
+    # Reindex all bucket lists: remove the deleted position and shift
+    # everything above it down by one.
+    empty_nodes: list[int] = [];
+    for (node_lid, bucket) in self.buckets.items() {
+        empty_keys: list[str] = [];
+        for (key, col) in bucket.items() {
+            col[0][:] = [
+                x - 1 if x > removed_pos else x
+                for x in col[0]
+                if x != removed_pos
+            ];
+            col[1][:] = [
+                x - 1 if x > removed_pos else x
+                for x in col[1]
+                if x != removed_pos
+            ];
+            if not col[0] and not col[1] {
+                empty_keys.append(key);
             }
+        }
+        for k in empty_keys {
+            bucket.pop(k, None);
+        }
+        if not bucket {
+            empty_nodes.append(node_lid);
         }
     }
-
-    src_bucket = self.buckets.get(src_lid);
-    tgt_bucket = self.buckets.get(tgt_lid);
-
-    if not edge_type_still_connects {
-        e_key = _e_key(removed_etid);
-        if src_bucket is not None {
-            e_col = src_bucket.get(e_key);
-            if e_col is not None {
-                e_col[1].discard(tgt_lid);
-                if not e_col[0] and not e_col[1] {
-                    src_bucket.pop(e_key, None);
-                }
-            }
-        }
-        if tgt_bucket is not None {
-            e_col_rev = tgt_bucket.get(e_key);
-            if e_col_rev is not None {
-                e_col_rev[0].discard(src_lid);
-                if not e_col_rev[0] and not e_col_rev[1] {
-                    tgt_bucket.pop(e_key, None);
-                }
-            }
-        }
-    }
-
-    if not any_edge_remains {
-        if src_bucket is not None {
-            empty: list[str] = [];
-            for (key, col) in src_bucket.items() {
-                if key.startswith("n:") {
-                    col[1].discard(tgt_lid);
-                    if not col[0] and not col[1] {
-                        empty.append(key);
-                    }
-                }
-            }
-            for k in empty {
-                src_bucket.pop(k, None);
-            }
-        }
-        if tgt_bucket is not None {
-            empty_rev: list[str] = [];
-            for (key, col) in tgt_bucket.items() {
-                if key.startswith("n:") {
-                    col[0].discard(src_lid);
-                    if not col[0] and not col[1] {
-                        empty_rev.append(key);
-                    }
-                }
-            }
-            for k in empty_rev {
-                tgt_bucket.pop(k, None);
-            }
-        }
-    }
-
-    if src_bucket is not None and not src_bucket {
-        self.buckets.pop(src_lid, None);
-    }
-    if tgt_bucket is not None and not tgt_bucket {
-        self.buckets.pop(tgt_lid, None);
+    for n in empty_nodes {
+        self.buckets.pop(n, None);
     }
 }
 
-"""Walk the buckets using type filters. `chain` is a list of
+"""Walk the buckets using ordered merge-intersections. `chain` is a list of
 `(edge_type, node_type, direction)` where direction is 1=IN, 2=OUT, 3=ANY.
 
+Returns results in canonical edge-insertion order (adj_list order).
+
 When `bail_on_intermediate_foreign` is True, returns None if any hop
-*before* the final hop produces a node owned by another root -- those
+*before* the final hop produces a node owned by a different root — those
 nodes' outgoing edges live in their owner's index, not this one, so the
 chain would silently miss them. The final hop is allowed to land on
 foreign nodes because their incoming edges are mirrored into this
@@ -258,28 +262,31 @@ impl TopologyIndex.resolve_chain(
     origin_ids: set[UUID],
     chain: list[tuple[(str | None), (str | None), int]],
     bail_on_intermediate_foreign: bool = False
-) -> (set[UUID] | None) {
-    current_lids: set[int] = set();
+) -> (list[UUID] | None) {
+    current_lids: list[int] = [];
+    seen_lids: set[int] = set();
     for uid in origin_ids {
         lid = self.node_to_lid.get(uid);
-        if lid is not None {
-            current_lids.add(lid);
+        if lid is not None and lid not in seen_lids {
+            seen_lids.add(lid);
+            current_lids.append(lid);
         }
     }
     if not current_lids {
-        return set();
+        return [];
     }
     last_idx = len(chain) - 1;
     for (hop_idx, (edge_type, node_type, direction)) in enumerate(chain) {
         etid = self.type_to_id.get(edge_type) if edge_type else None;
         ntid = self.type_to_id.get(node_type) if node_type else None;
         if edge_type and etid is None {
-            return set();
+            return [];
         }
         if node_type and ntid is None {
-            return set();
+            return [];
         }
-        next_lids: set[int] = set();
+        want_out = direction in (2, 3);
+        want_in = direction in (1, 3);
         col_keys: list[str] = [];
         if etid is not None {
             col_keys.append(_e_key(etid));
@@ -287,54 +294,93 @@ impl TopologyIndex.resolve_chain(
         if ntid is not None {
             col_keys.append(_n_key(ntid));
         }
+
+        # Collect (adj_idx, neighbor_lid) from all origins.
+        candidates: list[tuple[int, int]] = [];
         for src_lid in current_lids {
             bucket = self.buckets.get(src_lid);
             if bucket is None {
                 continue;
             }
             if not col_keys {
+                # Wildcard: union all adj indices from all columns, deduped.
+                out_set: set[int] = set();
+                in_set: set[int] = set();
                 for (_, col) in bucket.items() {
-                    if direction in (2, 3) {
-                        for tgt in col[1] {
-                            next_lids.add(tgt);
+                    if want_out {
+                        for ai in col[1] {
+                            out_set.add(ai);
                         }
                     }
-                    if direction in (1, 3) {
-                        for src in col[0] {
-                            next_lids.add(src);
+                    if want_in {
+                        for ai in col[0] {
+                            in_set.add(ai);
                         }
                     }
+                }
+                for ai in out_set {
+                    candidates.append((ai, self.adj_list[ai][2]));
+                }
+                for ai in in_set {
+                    candidates.append((ai, self.adj_list[ai][0]));
                 }
                 continue;
             }
-            candidates_out: (set[int] | None) = None;
-            candidates_in: (set[int] | None) = None;
-            for ck in col_keys {
-                col = bucket.get(ck);
-                if col is None {
-                    candidates_out = set();
-                    candidates_in = set();
-                    break;
+
+            # Intersect column lists for OUT and IN separately.
+            if want_out {
+                out_result: (list[int] | None) = None;
+                for ck in col_keys {
+                    col = bucket.get(ck);
+                    if col is None {
+                        out_result = [];
+                        break;
+                    }
+                    out_result = col[1]
+                        if out_result is None
+                        else _intersect_sorted(out_result, col[1]);
                 }
-                co: set[int] = set(col[1]);
-                ci: set[int] = set(col[0]);
-                candidates_out = co if candidates_out is None else candidates_out & co;
-                candidates_in = ci if candidates_in is None else candidates_in & ci;
-            }
-            if direction in (2, 3) and candidates_out is not None {
-                for tgt in candidates_out {
-                    next_lids.add(tgt);
+                if out_result {
+                    for ai in out_result {
+                        candidates.append((ai, self.adj_list[ai][2]));
+                    }
                 }
             }
-            if direction in (1, 3) and candidates_in is not None {
-                for src in candidates_in {
-                    next_lids.add(src);
+            if want_in {
+                in_result: (list[int] | None) = None;
+                for ck in col_keys {
+                    col = bucket.get(ck);
+                    if col is None {
+                        in_result = [];
+                        break;
+                    }
+                    in_result = col[0]
+                        if in_result is None
+                        else _intersect_sorted(in_result, col[0]);
+                }
+                if in_result {
+                    for ai in in_result {
+                        candidates.append((ai, self.adj_list[ai][0]));
+                    }
                 }
             }
         }
+
+        # Sort by adj_list index to recover insertion order, dedupe neighbors.
+        candidates.sort();
+        next_lids: list[int] = [];
+        next_seen: set[int] = set();
+        for (_, neighbor) in candidates {
+            if neighbor not in next_seen {
+                next_seen.add(neighbor);
+                next_lids.append(neighbor);
+            }
+        }
+
         current_lids = next_lids;
+        seen_lids = next_seen;
         if not current_lids {
-            return set();
+            return [];
         }
         if bail_on_intermediate_foreign and hop_idx < last_idx {
             for lid in current_lids {
@@ -344,137 +390,7 @@ impl TopologyIndex.resolve_chain(
             }
         }
     }
-    return {self.node_table[lid][0] for lid in current_lids};
-}
-
-"""Single-hop ordered resolution for the slice-pushdown fast path.
-
-The buckets index is set-keyed (fast type membership but order-lossy), so we
-walk the canonical adj_list (which preserves edge insertion order) and gate
-each triple by:
-  * source lid in `origin_lids`
-  * edge type id matches `edge_type` (with the special wildcard when None)
-  * target node type id matches `node_type` via MRO fan-out (or wildcard)
-  * direction: 1=IN (consider when target is the origin), 2=OUT (source is
-    the origin), 3=ANY
-
-The buckets membership lookup gives us the type-filtered "pass-set" — the
-adj_list walk recovers the order. We dedupe (a single neighbor may have
-multiple parallel edges), apply the slice, and return."""
-impl TopologyIndex.resolve_chain_ordered(
-    origin_ids: set[UUID],
-    edge_type: (str | None),
-    node_type: (str | None),
-    direction: int,
-    slc: slice
-) -> list[UUID] {
-    origin_lids: set[int] = set();
-    for uid in origin_ids {
-        lid = self.node_to_lid.get(uid);
-        if lid is not None {
-            origin_lids.add(lid);
-        }
-    }
-    if not origin_lids {
-        return [];
-    }
-
-    etid: (int | None) = self.type_to_id.get(edge_type) if edge_type else None;
-    if edge_type and etid is None {
-        # Edge type referenced doesn't exist in the index — empty result.
-        return [];
-    }
-    ntid: (int | None) = self.type_to_id.get(node_type) if node_type else None;
-    if node_type and ntid is None {
-        return [];
-    }
-
-    # Build the type-filtered candidate sets per origin lid using buckets.
-    # `cand_pairs` collects (src_lid, allowed_target_lids) so the adj_list walk
-    # can quickly check membership without re-running MRO logic per edge.
-    out_allowed: dict[int, set[int]] = {};
-    in_allowed: dict[int, set[int]] = {};
-    want_out = direction in (2, 3);
-    want_in = direction in (1, 3);
-    for src_lid in origin_lids {
-        bucket = self.buckets.get(src_lid);
-        if bucket is None {
-            continue;
-        }
-        col_keys: list[str] = [];
-        if etid is not None {
-            col_keys.append(_e_key(etid));
-        }
-        if ntid is not None {
-            col_keys.append(_n_key(ntid));
-        }
-        if not col_keys {
-            # Wildcard: union all columns for this src.
-            out_set: set[int] = set();
-            in_set: set[int] = set();
-            for (_, col) in bucket.items() {
-                if want_out {
-                    out_set |= col[1];
-                }
-                if want_in {
-                    in_set |= col[0];
-                }
-            }
-            if want_out and out_set {
-                out_allowed[src_lid] = out_set;
-            }
-            if want_in and in_set {
-                in_allowed[src_lid] = in_set;
-            }
-            continue;
-        }
-        cand_out: (set[int] | None) = None;
-        cand_in: (set[int] | None) = None;
-        for ck in col_keys {
-            col = bucket.get(ck);
-            if col is None {
-                cand_out = set();
-                cand_in = set();
-                break;
-            }
-            cand_out = set(col[1]) if cand_out is None else cand_out & col[1];
-            cand_in = set(col[0]) if cand_in is None else cand_in & col[0];
-        }
-        if want_out and cand_out {
-            out_allowed[src_lid] = cand_out;
-        }
-        if want_in and cand_in {
-            in_allowed[src_lid] = cand_in;
-        }
-    }
-
-    if not out_allowed and not in_allowed {
-        return [];
-    }
-
-    # Walk adj_list in insertion order; collect ordered target UUIDs that
-    # pass the per-origin allow-sets. Dedupe across parallel edges.
-    ordered: list[UUID] = [];
-    seen: set[int] = set();
-    for (s, _et, t) in self.adj_list {
-        # OUT: origin is the source, target is the neighbor.
-        if want_out and s in out_allowed and t in out_allowed[s] {
-            if t not in seen {
-                seen.add(t);
-                ordered.append(self.node_table[t][0]);
-            }
-            continue;
-        }
-        # IN: origin is the target, source is the neighbor.
-        if want_in and t in in_allowed and s in in_allowed[t] {
-            if s not in seen {
-                seen.add(s);
-                ordered.append(self.node_table[s][0]);
-            }
-        }
-    }
-
-    return ordered[slc];
+    return [self.node_table[lid][0] for lid in current_lids];
 }
 
 """For a set of node UUIDs, return mapping of foreign_root_uuid -> {node_ids}."""
@@ -600,31 +516,18 @@ impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
         idx.node_table.append((node_id, type_id, owner_root));
         idx.node_to_lid[node_id] = i;
     }
-    # Pass 3: edges. Replay through the fan-out helper (skipping the public
-    # add_edge so we don't re-resolve UUIDs back to lids).
+    # Pass 3: edges. Replay through the fan-out helper.
     for _ in range(num_edges) {
         unpacked = struct.unpack_from("<HHH", data, offset);
         src: int = int(unpacked[0]);
         etid: int = int(unpacked[1]);
         tgt: int = int(unpacked[2]);
         offset += 6;
+        adj_idx = len(idx.adj_list);
         idx.adj_list.append((src, etid, tgt));
-        (_, src_t, _) = idx.node_table[src];
-        (_, tgt_t, _) = idx.node_table[tgt];
-        src_ancestors = idx.type_mro_ids[src_t] or [src_t];
-        tgt_ancestors = idx.type_mro_ids[tgt_t] or [tgt_t];
-        for anc in tgt_ancestors {
-            out_col = _get_col(idx.buckets, src, _n_key(anc));
-            out_col[1].add(tgt);
-        }
-        e_out = _get_col(idx.buckets, src, _e_key(etid));
-        e_out[1].add(tgt);
-        for anc in src_ancestors {
-            in_col = _get_col(idx.buckets, tgt, _n_key(anc));
-            in_col[0].add(src);
-        }
-        e_in = _get_col(idx.buckets, tgt, _e_key(etid));
-        e_in[0].add(src);
+        _index_edge(
+            idx.buckets, adj_idx, src, etid, tgt, idx.type_mro_ids, idx.node_table
+        );
     }
     return idx;
 }
