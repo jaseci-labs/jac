@@ -6,7 +6,6 @@ import from .asset_processor { AssetProcessor }
 import from .config_loader { JacClientConfig }
 import from .import_processor { ImportProcessor }
 import from .jac_to_js { JacToJSCompiler }
-import from .package_installer { PackageInstaller }
 import from .vite_bundler { ViteBundler }
 import from .route_scanner { RouteScanner, RouteEntry }
 import from .compiler { ViteCompiler }
@@ -20,7 +19,6 @@ glob __all__ = [
          'JacClientConfig',
          'ImportProcessor',
          'JacToJSCompiler',
-         'PackageInstaller',
          'ViteBundler',
          'RouteScanner',
          'RouteEntry',

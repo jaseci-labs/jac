@@ -1,11 +1,9 @@
 """Shared constants and low-level helpers for the mobile (Capacitor) target."""
-import json;
 import re;
 import subprocess;
 import from pathlib { Path }
 import from typing { Optional }
 import from jaclang.cli.console { console }
-import from jaclang.runtimelib.client { get_bun }
 
 # ==============================================================================
 # Constants
@@ -143,37 +141,10 @@ def _run_cap_cmd(project_dir: Path, args: list[str], label: str) {
     subprocess.run(cmd, cwd=project_dir, check=True, capture_output=False);
 }
 
-"""Run an npm/bun install command."""
+"""Run an npm/bun install command (delegates to the single owner, ViteBundler.add_packages)."""
 def _run_install_cmd(project_dir: Path, packages: list[str], dev: bool = False) {
-    pkg_json = project_dir / "package.json";
-    if not pkg_json.exists() {
-        pkg_data = {
-            "name": "jac-mobile-app",
-            "version": "1.0.0",
-            "private": True,
-            "type": "module"
-        };
-        pkg_json.write_text(json.dumps(pkg_data, indent=2), encoding="utf-8");
-        console.print("  ✔ Created package.json", style="success");
-    }
-    (npm_ok, _) = _check_command_available(["npm", "--version"]);
-    if npm_ok {
-        cmd = ["npm", "install"];
-        if dev {
-            cmd.append("--save-dev");
-        }
-        cmd.extend(packages);
-    } else {
-        # Fall back to bun (auto-installs to .jac/bin if not on PATH).
-        bun = get_bun();
-        cmd = [bun or "bun", "add"];
-        if dev {
-            cmd.append("--dev");
-        }
-        cmd.extend(packages);
-    }
-    console.print(f"  Installing: {' '.join(packages)}", style="muted");
-    subprocess.run(cmd, cwd=project_dir, check=True, capture_output=False);
+    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
+    ViteBundler(project_dir).add_packages(packages, dev=dev);
 }
 
 """Allow http:// LAN dev URLs in the WebView (Android 9+ blocks cleartext by default)."""

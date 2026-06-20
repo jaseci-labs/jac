@@ -9,11 +9,10 @@ configuration system, registering:
 """
 
 import os;
-import shutil;
-import subprocess;
 import from pathlib { Path }
 import from jaclang.jac0core.runtime { hookimpl }
 import from jaclang.project.config { JacConfig }
+import from jaclang.runtimelib.client_bundle { ClientBundleError }
 
 """Plugin configuration hooks for jac-client."""
 class JacClientPluginConfig {
@@ -218,20 +217,15 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
             return;
         }
 
-        # Create ViteBundler instance
+        # Create ViteBundler instance and generate package.json with default packages
         bundler = ViteBundler(project_path);
-
-        # Generate package.json with default packages
         bundler.create_package_json(project_name=project_name);
 
         # Ensure .jac/client directory exists
         client_dir = bundler._get_client_dir();
         client_dir.mkdir(parents=True, exist_ok=True);
 
-        # Copy package.json to .jac/client/ for bun install
         configs_package_json = client_dir / 'configs' / 'package.json';
-        build_package_json = client_dir / 'package.json';
-
         if not configs_package_json.exists() {
             console.error(
                 "Warning: package.json was not generated, skipping package installation"
@@ -239,17 +233,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
             return;
         }
 
-        shutil.copy2(configs_package_json, build_package_json);
-
-        # Copy .npmrc for scoped registry auth during install
-        configs_npmrc = client_dir / 'configs' / '.npmrc';
-        build_npmrc = client_dir / '.npmrc';
-        if configs_npmrc.exists() {
-            shutil.copy2(configs_npmrc, build_npmrc);
-        }
-
         # Resolve bun binary (system PATH → .jac/bin/ → auto-download)
-        import from jaclang.runtimelib.client { get_bun }
         bun = get_bun();
         if not bun {
             console.warning("Bun is required but could not be found or installed.");
@@ -258,42 +242,18 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
                 "  💡 You can install packages later with: jac add --cl\n",
                 style="muted"
             );
-            # Clean up temporary package.json
-            if build_package_json.exists() {
-                build_package_json.unlink();
-            }
             return;
         }
 
         try {
-            console.print("\n  ⏳ Installing packages...\n", style="cyan");
-            subprocess.run([bun, 'install'], cwd=client_dir, check=True, timeout=300);
-
-            # Move bun.lockb to configs/ if it was created
-            build_bun_lockb = client_dir / 'bun.lockb';
-            configs_bun_lockb = client_dir / 'configs' / 'bun.lockb';
-            if build_bun_lockb.exists() {
-                if configs_bun_lockb.exists() {
-                    configs_bun_lockb.unlink();
-                }
-                shutil.move(str(build_bun_lockb), str(configs_bun_lockb));
-            }
-
-            console.print("  ✔ Packages installed", style="success");
-        } except subprocess.CalledProcessError as e {
+            # force=True so a freshly-created project always installs (build/dev skip
+            # when node_modules already exists)
+            bundler.install_packages(force=True);
+        } except ClientBundleError as e {
             console.warning(f"Failed to install packages: {e}");
             console.print(
                 "  💡 You can install packages later with: jac add --cl\n", style="muted"
             );
-        } finally {
-            # Clean up temporary package.json
-            if build_package_json.exists() {
-                build_package_json.unlink();
-            }
-            # Clean up temporary .npmrc
-            if build_npmrc.exists() {
-                build_npmrc.unlink();
-            }
         }
     } except Exception as e {
         console.warning(f"Could not install default packages: {e}");
@@ -313,8 +273,6 @@ def _npm_install_handler(
     version: str | None = None,
     is_dev: bool = False
 ) {
-    import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
-
     if config.project_root is None {
         raise RuntimeError("No project root found");
     }
@@ -364,71 +322,21 @@ def _regenerate_and_install(project_dir: Path) {
     import from jaclang.runtimelib.client { get_bun }
 
     # Ensure Bun is installed before proceeding (auto-installs to .jac/bin if missing)
-    if get_bun() is None {
+    bun = get_bun();
+    if not bun {
         raise RuntimeError(
-            "Bun is required. Install manually: https://bun.sh"
+            "Bun is required but could not be found or installed. "
+            "Install manually: https://bun.sh"
         ) from None;
     }
 
     bundler = ViteBundler(project_dir);
     bundler.create_package_json();
 
-    # Install to .jac/client/ directory
-    client_dir = bundler._get_client_dir();
-    client_dir.mkdir(parents=True, exist_ok=True);
-
-    # Copy package.json to .jac/client/ for bun install
-    configs_package_json = client_dir / 'configs' / 'package.json';
-    build_package_json = client_dir / 'package.json';
-    if configs_package_json.exists() {
-        shutil.copy2(configs_package_json, build_package_json);
-    }
-
-    # Copy .npmrc to .jac/client/ for scoped registry auth during install
-    configs_npmrc = client_dir / 'configs' / '.npmrc';
-    build_npmrc = client_dir / '.npmrc';
-    if configs_npmrc.exists() {
-        shutil.copy2(configs_npmrc, build_npmrc);
-    }
-
+    # force=True so dependency add/remove always re-runs install to reflect jac.toml
     try {
-        # Resolve bun binary
-        import from jaclang.runtimelib.client { get_bun }
-        bun = get_bun();
-        if not bun {
-            raise RuntimeError(
-                "Bun is required but could not be found or installed. "
-                "Install manually: https://bun.sh"
-            );
-        }
-        subprocess.run([bun, 'install'], cwd=client_dir, check=True, timeout=300);
-    } except subprocess.CalledProcessError as e {
+        bundler.install_packages(force=True);
+    } except ClientBundleError as e {
         raise RuntimeError(f"Failed to install packages: {e}") from e;
-    } finally {
-        # Clean up temporary package.json
-        if build_package_json.exists() {
-            build_package_json.unlink();
-        }
-        # Clean up temporary .npmrc
-        if build_npmrc.exists() {
-            build_npmrc.unlink();
-        }
-        # Move bun.lockb to configs/ if it exists
-        build_bun_lockb = client_dir / 'bun.lockb';
-        if build_bun_lockb.exists() {
-            configs_bun_lockb = client_dir / 'configs' / 'bun.lockb';
-            if configs_bun_lockb.exists() {
-                configs_bun_lockb.unlink();
-            }
-            build_bun_lockb.rename(configs_bun_lockb);
-        }
     }
-}
-
-"""Regenerate `.jac/client` package.json from jac.toml and run bun install.
-
-Public entry for tooling (e.g. PyTauri `[plugins.desktop].tauri_plugins` npm sync).
-"""
-def regenerate_client_npm_install(project_dir: Path) {
-    _regenerate_and_install(project_dir);
 }

@@ -167,43 +167,153 @@ impl ViteBundler.create_tsconfig(self: ViteBundler) -> Path {
     return tsconfig_path;
 }
 
-"""
-Clean up root package.json and move bun.lockb to configs/.
+"""Stage `configs/package.json` (+ `.npmrc`), run `bun install`, then clean up.
 
-        Remove root package.json and move bun.lockb to configs/.
+The single install primitive shared by `build()`, the dev server, and the jac-client
+`--npm` handlers. `install_dir` defaults to `.jac/client/`. When `force` is False the
+install is skipped if `node_modules/` already exists; set `clean_stale` to also wipe a
+`node_modules/` left without a vite binary (a prior failed install). `capture_output`
+buffers bun output into the raised `ClientBundleError` (build) instead of streaming it
+live (dev / `--npm`). Any generated `bun.lockb` is stashed into `configs/`.
 """
-impl ViteBundler._cleanup_root_package_files(self: ViteBundler) -> None {
-    root_package_json = self.project_dir / 'package.json';
-    root_bun_lockb = self.project_dir / 'bun.lockb';
-    build_dir = self._get_client_dir();
-    configs_dir = build_dir / 'configs';
-    configs_bun_lockb = configs_dir / 'bun.lockb';
-    if root_bun_lockb.exists() {
-        configs_dir.mkdir(exist_ok=True);
-        if configs_bun_lockb.exists() {
-            configs_bun_lockb.unlink();
+impl ViteBundler.install_packages(
+    self: ViteBundler,
+    install_dir: Optional[Path] = None,
+    force: bool = False,
+    capture_output: bool = False,
+    clean_stale: bool = False
+) -> None {
+    import time;
+    import shutil;
+    import subprocess;
+    bun = _require_bun();
+    build_dir = install_dir if install_dir is not None else self._get_client_dir();
+    node_modules = build_dir / 'node_modules';
+
+    if not force {
+        if clean_stale {
+            # A node_modules without a vite binary is a prior failed/partial install
+            vite_bin = node_modules / '.bin' / 'vite';
+            if node_modules.exists() and not vite_bin.exists() {
+                shutil.rmtree(node_modules);
+            }
         }
-        shutil.move(str(root_bun_lockb), str(configs_bun_lockb));
+        if node_modules.exists() {
+            return;
+        }
     }
-    if root_package_json.exists() {
-        root_package_json.unlink();
+
+    # Ensure the generated package.json exists, then stage it (+ .npmrc) for bun install
+    configs_package_json = build_dir / 'configs' / 'package.json';
+    if not configs_package_json.exists() {
+        self.create_package_json();
+    }
+    build_package_json = build_dir / 'package.json';
+    if configs_package_json.exists() and not build_package_json.exists() {
+        shutil.copy2(configs_package_json, build_package_json);
+    }
+    configs_npmrc = build_dir / 'configs' / '.npmrc';
+    build_npmrc = build_dir / '.npmrc';
+    if configs_npmrc.exists() and not build_npmrc.exists() {
+        shutil.copy2(configs_npmrc, build_npmrc);
+    }
+
+    try {
+        console.print("\n  ⏳ Installing dependencies...\n");
+        start_time = time.time();
+        result = subprocess.run(
+            [bun, 'install'],
+            cwd=build_dir,
+            check=False,
+            text=True,
+            capture_output=capture_output
+        );
+        elapsed = time.time() - start_time;
+        if result.returncode != 0 {
+            if capture_output {
+                error_output = result.stderr or result.stdout;
+                raise ClientBundleError(
+                    f"Dependency installation failed after {elapsed:.1f}s\n\n{error_output}\nCommand: bun install"
+                ) from None;
+            }
+            console.error(f"\n  ✖ bun install failed after {elapsed:.1f}s");
+            raise ClientBundleError("Failed to install dependencies") from None;
+        }
+        console.print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)");
+    } finally {
+        # Clean up temporary build files
+        if build_package_json.exists() {
+            build_package_json.unlink();
+        }
+        if build_npmrc.exists() {
+            build_npmrc.unlink();
+        }
+        # Stash bun.lockb into configs/ if it was created
+        build_bun_lockb = build_dir / 'bun.lockb';
+        if build_bun_lockb.exists() {
+            configs_bun_lockb = build_dir / 'configs' / 'bun.lockb';
+            if configs_bun_lockb.exists() {
+                configs_bun_lockb.unlink();
+            }
+            shutil.move(str(build_bun_lockb), str(configs_bun_lockb));
+        }
     }
 }
 
-"""
-Ensure root package.json exists temporarily for bun commands.
+"""Add specific packages into a target dir (npm-preferred, bun fallback).
 
-        Create root package.json temporarily if it doesn't exist.
+Used by the mobile/Capacitor target: it writes a minimal root package.json if one is
+missing, then runs `npm install <packages>` (or `bun add <packages>` when npm is absent)
+in `install_dir` (defaults to the project root). Unlike install_packages, this installs a
+caller-supplied package list rather than the staged .jac/client bundle.
 """
-impl ViteBundler._ensure_root_package_json(self: ViteBundler) -> None {
-    generated_package_json = self._get_client_dir() / 'configs' / 'package.json';
-    root_package_json = self.project_dir / 'package.json';
-    if not generated_package_json.exists() {
-        self.create_package_json();
+impl ViteBundler.add_packages(
+    self: ViteBundler,
+    packages: list[str],
+    install_dir: Optional[Path] = None,
+    dev: bool = False
+) -> None {
+    import json;
+    import subprocess;
+    import from jaclang.runtimelib.client { get_bun }
+    target_dir = install_dir if install_dir is not None else self.project_dir;
+    pkg_json = target_dir / 'package.json';
+    if not pkg_json.exists() {
+        pkg_data = {
+            'name': 'jac-mobile-app',
+            'version': '1.0.0',
+            'private': True,
+            'type': 'module'
+        };
+        pkg_json.write_text(json.dumps(pkg_data, indent=2), encoding='utf-8');
+        console.print("  ✔ Created package.json");
     }
-    if not root_package_json.exists() {
-        shutil.copy2(generated_package_json, root_package_json);
+    # Prefer npm; fall back to bun (auto-installs to .jac/bin if not on PATH)
+    npm_ok = False;
+    try {
+        probe = subprocess.run(
+            ['npm', '--version'], capture_output=True, text=True, timeout=10
+        );
+        npm_ok = probe.returncode == 0;
+    } except Exception {
+        npm_ok = False;
     }
+    if npm_ok {
+        cmd = ['npm', 'install'];
+        if dev {
+            cmd.append('--save-dev');
+        }
+        cmd.extend(packages);
+    } else {
+        bun = get_bun();
+        cmd = [bun or 'bun', 'add'];
+        if dev {
+            cmd.append('--dev');
+        }
+        cmd.extend(packages);
+    }
+    console.print(f"  Installing: {' '.join(packages)}");
+    subprocess.run(cmd, cwd=target_dir, check=True, capture_output=False);
 }
 
 """Format config object as JavaScript object string."""
@@ -872,9 +982,7 @@ impl ViteBundler.find_bundle(self: ViteBundler) -> Optional[Path] {
 
 """Run Vite build with generated config in .jac/client/configs/."""
 impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> None {
-    import sys;
     import time;
-    import shutil;
     import from jaclang.runtimelib.client { ensure_client_deps }
     # Resolve bun binary (system PATH → .jac/bin/ → auto-download)
     bun = _require_bun();
@@ -888,101 +996,42 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
     self.output_dir.mkdir(parents=True, exist_ok=True);
     # Always regenerate package.json to pick up any dependency changes
     self.create_package_json();
-    try {
-        build_dir = self._get_client_dir();
-        node_modules = build_dir / 'node_modules';
-        # Reinstall if node_modules is missing or stale (e.g. empty from a prior failed install)
-        vite_bin = node_modules / '.bin' / 'vite';
-        if node_modules.exists() and not vite_bin.exists() {
-            shutil.rmtree(node_modules);
-        }
-        if not node_modules.exists() {
-            # Temporarily copy package.json to client build dir for bun install
-            build_package_json = build_dir / 'package.json';
-            configs_package_json = build_dir / 'configs' / 'package.json';
-            if configs_package_json.exists() and not build_package_json.exists() {
-                import shutil;
-                shutil.copy2(configs_package_json, build_package_json);
-            }
-            # Copy .npmrc for scoped registry auth during install
-            configs_npmrc = build_dir / 'configs' / '.npmrc';
-            build_npmrc = build_dir / '.npmrc';
-            if configs_npmrc.exists() and not build_npmrc.exists() {
-                shutil.copy2(configs_npmrc, build_npmrc);
-            }
-            # Install to .jac/client/node_modules with progress feedback
-            console.print("\n  ⏳ Installing dependencies...\n");
-            start_time = time.time();
-            result = subprocess.run(
-                [bun, 'install'],
-                cwd=build_dir,
-                check=False,
-                text=True,
-                capture_output=True
-            );
-            elapsed = time.time() - start_time;
-            if result.returncode != 0 {
-                error_output = result.stderr or result.stdout;
-                error_msg = f"Dependency installation failed after {elapsed:.1f}s\n\n{error_output}\nCommand: bun install";
-                raise ClientBundleError(error_msg) from None;
-            }
-            console.print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)");
-        }
-        if self.config_path {
-            # Make config path relative to build_dir (where vite runs from)
-            try {
-                config_rel = self.config_path.relative_to(build_dir);
-                command = [bun, 'x', 'vite', 'build', '--config', str(config_rel)];
-            } except ValueError {
-                # Config is outside client build dir, use absolute path
-                command = [
-                    bun,
-                    'x',
-                    'vite',
-                    'build',
-                    '--config',
-                    str(self.config_path)
-                ];
-            }
-        } elif entry_file {
-            generated_config = self.create_vite_config(entry_file);
-            # Config is in configs/, make it relative to build_dir
-            config_rel = generated_config.relative_to(build_dir);
+    build_dir = self._get_client_dir();
+    # Install deps into .jac/client/ (skips when node_modules is already present;
+    # clean_stale wipes a node_modules left without a vite binary)
+    self.install_packages(install_dir=build_dir, capture_output=True, clean_stale=True);
+    if self.config_path {
+        # Make config path relative to build_dir (where vite runs from)
+        try {
+            config_rel = self.config_path.relative_to(build_dir);
             command = [bun, 'x', 'vite', 'build', '--config', str(config_rel)];
-        } else {
-            command = [bun, 'run', 'build'];
+        } except ValueError {
+            # Config is outside client build dir, use absolute path
+            command = [bun, 'x', 'vite', 'build', '--config', str(self.config_path)];
         }
-        # Run vite from client build directory so it can find node_modules
-        console.print("\n  ⏳ Building client bundle...\n");
-        start_time = time.time();
-        result = subprocess.run(
-            command, cwd=build_dir, check=False, text=True, capture_output=True
-        );
-        elapsed = time.time() - start_time;
-        if result.returncode != 0 {
-            error_output = result.stderr or result.stdout;
-            error_msg = f"Vite build failed after {elapsed:.1f}s\n\n{error_output}\nCommand: {' '.join(
-                command
-            )}";
-            raise ClientBundleError(error_msg) from None;
-        }
-        console.print(f"\n  ✔ Client bundle built ({elapsed:.1f}s)");
-    } finally {
-        # Clean up temporary package.json in client build dir
-        build_package_json = build_dir / 'package.json';
-        if build_package_json.exists() {
-            build_package_json.unlink();
-        }
-        # Move bun.lockb to configs/ if it exists
-        build_bun_lockb = build_dir / 'bun.lockb';
-        if build_bun_lockb.exists() {
-            configs_bun_lockb = build_dir / 'configs' / 'bun.lockb';
-            if configs_bun_lockb.exists() {
-                configs_bun_lockb.unlink();
-            }
-            build_bun_lockb.rename(configs_bun_lockb);
-        }
+    } elif entry_file {
+        generated_config = self.create_vite_config(entry_file);
+        # Config is in configs/, make it relative to build_dir
+        config_rel = generated_config.relative_to(build_dir);
+        command = [bun, 'x', 'vite', 'build', '--config', str(config_rel)];
+    } else {
+        command = [bun, 'run', 'build'];
     }
+    # Run vite from the client build directory so it can find node_modules
+    console.print("\n  ⏳ Building client bundle...\n");
+    start_time = time.time();
+    result = subprocess.run(
+        command, cwd=build_dir, check=False, text=True, capture_output=True
+    );
+    elapsed = time.time() - start_time;
+    if result.returncode != 0 {
+        error_output = result.stderr or result.stdout;
+        error_msg = f"Vite build failed after {elapsed:.1f}s\n\n{error_output}\nCommand: {' '.join(
+            command
+        )}";
+        raise ClientBundleError(error_msg) from None;
+    }
+    console.print(f"\n  ✔ Client bundle built ({elapsed:.1f}s)");
 }
 
 """Initialize the Vite bundler."""
@@ -1280,50 +1329,8 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
 
 """Ensure dev dependencies are installed."""
 impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) -> None {
-    bun = _require_bun();
-    import time;
-    node_modules = build_dir / 'node_modules';
-    if node_modules.exists() {
-        return;
-    }
-    generated_package_json = build_dir / 'configs' / 'package.json';
-    if not generated_package_json.exists() {
-        self.create_package_json();
-    }
-    # Temporarily copy package.json for bun install
-    build_package_json = build_dir / 'package.json';
-    if not build_package_json.exists() {
-        shutil.copy2(generated_package_json, build_package_json);
-    }
-    # Copy .npmrc for scoped registry auth during install
-    configs_npmrc = build_dir / 'configs' / '.npmrc';
-    build_npmrc = build_dir / '.npmrc';
-    if configs_npmrc.exists() and not build_npmrc.exists() {
-        shutil.copy2(configs_npmrc, build_npmrc);
-    }
-    try {
-        console.print("\n  ⏳ Installing dependencies...\n");
-        start_time = time.time();
-        result = subprocess.run(
-            [bun, 'install'], cwd=build_dir, check=False, text=True
-        );
-        elapsed = time.time() - start_time;
-
-        if result.returncode != 0 {
-            console.error(f"\n  ✖ bun install failed after {elapsed:.1f}s");
-            raise ClientBundleError("Failed to install dependencies");
-        }
-        console.print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)");
-    } finally {
-        # Clean up temp package.json
-        if build_package_json.exists() {
-            build_package_json.unlink();
-        }
-        # Clean up temp .npmrc
-        if build_npmrc.exists() {
-            build_npmrc.unlink();
-        }
-    }
+    # Streams bun output live (capture_output=False) and skips when node_modules exists.
+    self.install_packages(install_dir=build_dir);
 }
 
 """Start Vite with output capture for clean startup messaging."""
