@@ -30,7 +30,7 @@ def:priv my_todos() -> list[Todo] {
 }
 
 def:priv add_todo(title: str) -> Todo {
-    return (root ++> Todo(title=title))[0];
+    return root ++> Todo(title=title);
 }
 ```
 

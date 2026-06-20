@@ -69,7 +69,9 @@ obj JacAutoLintPass(UniPass) {
         _exclude_patterns: list[str] = [],
         _project_root: str = "",
         _did_convert_usestate: bool = False,
-        _pending_setters: list[dict[str, str]] = [];
+        _pending_setters: list[dict[str, str]] = [],
+        _base_decl_cache: list[uni.Archetype] = [],
+        _base_decls_loaded: bool = False;
 
     """Initialize the pass with linting options."""
     def postinit -> None;
@@ -122,6 +124,14 @@ obj JacAutoLintPass(UniPass) {
     def exit_bool_expr(bool_node: uni.BoolExpr) -> None;
     def _is_future_annotations_import(stmt: uni.UniNode) -> bool;
     def _fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> None;
+    """Top-level archetype declarations of an annex file's base module.
+
+    Annex (.impl.jac) files are formatted as their own tool programs, so the
+    declarations an impl is matched against live in a different file. Parse that
+    base file (once, cached) so cross-file signature mismatches can still be
+    fixed when formatting the annex in isolation."""
+    def _base_decl_archetypes(annex_path: str) -> list[uni.Archetype];
+
     def _signatures_match(
         decl_sig: uni.FuncSignature, impl_sig: uni.FuncSignature
     ) -> bool;

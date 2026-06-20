@@ -26,7 +26,7 @@ def:pub list_items() -> list[Item] {
 }
 
 def:pub add_item(title: str) -> Item {
-    return (root ++> Item(title=title))[0];
+    return root ++> Item(title=title);
 }
 
 def:pub toggle_item(id: str) -> Item | None {
@@ -53,7 +53,7 @@ walker:pub add_task {
     has title: str;                       # request body field
 
     can create with Root entry {
-        task = (root ++> Item(title=self.title))[0] as Item;   # ++> returns a list
+        task = (root ++> Item(title=self.title)) as Item;   # ++> returns the connected node
         report {"id": jid(task), "title": task.title};   # response payload
     }
 }

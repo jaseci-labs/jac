@@ -1,7 +1,7 @@
 """Connect sem strings from source symbol table to declarations in target symbol table.
 
 When source_sym_tab and target_sym_tab are the same, this connects within the same module.
-When different, it connects implementations from impl_mod to declarations in the main module.
+When different, it connects implementations in one scope to declarations in another.
 
 Walking each SemDef's `target: Sequence[NameAtom]` directly (rather than splitting
 the string-form `sem.A.B.C` of the SemDef's symbol name) lets us bind each target
@@ -65,9 +65,8 @@ impl SemDefMatchPass.resolve_sem_target(
 """Connect Decls and Defs."""
 impl SemDefMatchPass.transform(ir_in: uni.Module) -> uni.Module {
     self.cur_node = ir_in;
+    # sem defs from annex files are merged into ir_in's own tree, so a single
+    # same-module connect covers them along with the head's.
     self.connect_sems(ir_in.sym_tab, ir_in.sym_tab);
-    for impl_module in ir_in.impl_mod {
-        self.connect_sems(impl_module.sym_tab, ir_in.sym_tab);
-    }
     return ir_in;
 }

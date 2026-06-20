@@ -164,7 +164,7 @@ impl JacLangServer.type_check_file(
         if cancel_token and cancel_token.is_set() {
             return False;
         }
-        self.update_modules(main_path, build);
+        self.update_modules(main_path, build, files=files_to_check);
 
         # Publish diagnostics to all involved files
         all_errors = list(self.errors_had);
@@ -777,9 +777,9 @@ impl JacLangServer.get_token_at_position(
 ) -> Optional[uni.UniNode] {
     fs_path = uris.to_fs_path(file_path);
     with self._state_lock.read_lock() {
-        if fs_path not in self.mod.hub {
-            return None;
-        }
+        # Annex files (.impl/.test) have no hub entry of their own -- their
+        # nodes live in the merged head module -- but they do get a
+        # provenance-filtered sem manager, so gate on that rather than the hub.
         sem_mgr = self.sem_managers.get(fs_path);
         if not sem_mgr {
             return None;
@@ -799,11 +799,14 @@ impl JacLangServer.get_token_at_position(
 
 """Update modules in JacProgram's hub and semantic managers."""
 impl JacLangServer.update_modules(
-    file_path: str, build: uni.Module, need: bool = True
+    file_path: str,
+    build: uni.Module,
+    need: bool = True,
+    files: (list[str] | None) = None
 ) -> None {
     self.log_py(f"'Updating modules for '{file_path}");
     with self._state_lock.write_lock() {
-        self.module_manager.update(file_path, build, update_annexed=need);
+        self.module_manager.update(file_path, build, update_annexed=need, files=files);
     }
 }
 

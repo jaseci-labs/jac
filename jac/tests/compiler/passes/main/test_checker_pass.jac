@@ -2184,24 +2184,31 @@ test "impl_body_type_checking" {
     assert len(program.errors_had) == 3 , f"Expected 3 type errors, but got {len(
         program.errors_had
     )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+    # Order-independent: all three impl-body errors are reported from the impl
+    # file. The order they fire in (an enum member is checked eagerly when its
+    # decl is typed, a function/method body when its merged impl is traversed)
+    # is an implementation detail, not a contract.
+    all_pretty = "\n".join([err.pretty_print() for err in program.errors_had]);
     assert_error_pretty_found(
         """x = "wrong";  # <-- Error: Cannot assign str to int
         ^^^^^^^^^^^^""",
-        program.errors_had[0].pretty_print()
+        all_pretty
     );
-    assert "checker_impl_body.impl.jac" in program.errors_had[0].loc.mod_path;
     assert_error_pretty_found(
         """result = "wrong";  # <-- Error: Cannot assign str to int
         ^^^^^^^^^^^^^^^^^""",
-        program.errors_had[1].pretty_print()
+        all_pretty
     );
-    assert "checker_impl_body.impl.jac" in program.errors_had[1].loc.mod_path;
     assert_error_pretty_found(
         """PENDING: int = "wrong",  # <-- Error: Cannot assign str to int
         ^^^^^^^^^^^^^^^^^^^^^^""",
-        program.errors_had[2].pretty_print()
+        all_pretty
     );
-    assert "checker_impl_body.impl.jac" in program.errors_had[2].loc.mod_path;
+    for err in program.errors_had {
+        assert "checker_impl_body.impl.jac" in err.loc.mod_path , (
+            f"Error not from the impl file: {err.loc.mod_path}"
+        );
+    }
 }
 
 """Reassigning a module global from an impl-file body keeps the global's

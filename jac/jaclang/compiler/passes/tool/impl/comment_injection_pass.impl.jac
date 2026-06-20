@@ -1027,13 +1027,6 @@ impl CommentInjectionPass.transform(ir_in: uni.Module) -> uni.Module {
         self.emit(E5051, count=len(leftovers));
     }
     ir_in.gen.doc_ir = self._remove_redundant_lines(processed);
-    # Process impl modules (.impl.jac files)
-    # Only do this for the main module (not annex modules themselves)
-    if ir_in.annexable_by is None {
-        for impl_mod in ir_in.impl_mod {
-            self.transform(impl_mod);
-        }
-    }
     return ir_in;
 }
 
