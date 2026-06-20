@@ -1,5 +1,7 @@
 """Function/ability declaration and codegen for native compilation."""
 
+import from jaclang.compiler.targets.abi { classify_foreign_fn }
+
 """Non-Optional accessor for the active IRBuilder."""
 impl NaIRGenPass.builder.getter -> ir.IRBuilder {
     if self._builder is None {
@@ -94,7 +96,6 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     _decl_params = sig.get_parameters();
     plan: (dict | None) = None;
     if _abi_supported {
-        import from jaclang.compiler.targets.abi { classify_foreign_fn }
         # The declared signature names come from the foreign declaration
         # model (collect_foreign_fns) - the central owner of WHAT was
         # declared at the C boundary - not from re-walking the annotation
