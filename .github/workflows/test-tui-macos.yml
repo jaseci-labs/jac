@@ -95,15 +95,11 @@ jobs:
   #   1. test_tty_darwin.jac — PTY termios harness (validates the Darwin flag
   #                            table and raw-mode masks against live xnu)
   #
-  # TEMPORARY (two upstream defects, both gated out here):
-  #   * jaseci-labs/jaseci#6821 — libtui.dylib loads, codesigns, and its export
-  #     trie verifiably contains all 11 symbols (asserted below), but ctypes
-  #     dlsym fails with "_tui_apply_frame: symbol not found"; the test_host CDLL
-  #     round-trip gate is dropped.
+  # TEMPORARY (one upstream defect, gated out here):
   #   * jaseci-labs/jaseci#6822 — `nacompile test_pickers.na.jac` fails as an
   #     entry module (<Unknown> type cascade + E5090) though the same symbols
   #     compile inside host.na.jac; the picker logic gate is dropped.
-  # Restore both gates once each issue is fixed.
+  # Restore once #6822 is fixed.
   test-macos-native:
     runs-on: macos-latest
 
@@ -191,10 +187,9 @@ jobs:
           print("ok: all required exports in trie")
           PYEOF
 
-      # TEMPORARY: the test_host CDLL round-trip gate is dropped — ctypes dlsym
-      # cannot resolve the dylib's exported symbols on a native host even though
-      # the export trie is complete (asserted above). See jaseci-labs/jaseci#6821.
-      # Restore once native-host shared-library symbol resolution works.
+      - name: CDLL host gate (load + frame round-trip)
+        working-directory: jac-super/jac_super/ai_tui_na
+        run: python -m jaclang run test_host.jac
 
       # TEMPORARY: the native picker logic gate is dropped — `nacompile
       # test_pickers.na.jac` fails as an entry module with an <Unknown> type

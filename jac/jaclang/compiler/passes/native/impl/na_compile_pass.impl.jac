@@ -497,6 +497,9 @@ impl NativeCompilePass._compile_and_link_native_imports(
         # whole transitive public surface, not just the root module's exports.
         dep_exported_symbols: list[str] = [];
         dep_exported_cached: list = [];
+        # symbol → raw DLL path for Win32 import-table attribution. Propagated
+        # transitively so kernel32/ucrt symbols aren't all bucketed into msvcrt.
+        dep_clib_symbol_lib: dict[str, str] = {};
 
         try {
             with open(real_path, "rb") as _sf {
@@ -521,6 +524,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 dep_imported_symbols = _meta.get("imported_symbols", []);
                 dep_owned_symbols = _meta.get("owned_symbols", []);
                 dep_exported_cached = _meta.get("exported_symbols", []);
+                dep_clib_symbol_lib = _meta.get("clib_symbol_lib", {});
                 _cache_hit = True;
             }
         } except Exception { }
@@ -578,6 +582,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
             }
             imported_llvm_str_raw = str(imported_ir.gen.llvm_ir);
             dep_clib_paths = imported_ir.gen._clib_paths or [];
+            dep_clib_symbol_lib = imported_ir.gen._clib_symbol_lib or {};
             dep_exported_symbols = imported_ir.gen._exported_symbols or [];
             # Collect transitive dep paths for cache metadata
             dep_transitive_paths: list = [];
@@ -620,6 +625,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 }
                 _meta_obj = {
                     "clib_paths": dep_clib_paths,
+                    "clib_symbol_lib": dep_clib_symbol_lib,
                     "transitive_deps": dep_transitive_paths,
                     "imported_symbols": dep_imported_symbols,
                     "owned_symbols": dep_owned_symbols,
@@ -651,6 +657,16 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 try {
                     self._jit_load_clib(dep_lib_path);
                 } except Exception { }
+            }
+        }
+        # Propagate the symbol→DLL mapping so the PE linker attributes Win32
+        # API symbols to the correct DLL (kernel32, ucrt, …) rather than
+        # falling back to msvcrt for every symbol not owned by the root module.
+        if dep_clib_symbol_lib {
+            for (_sym, _dll) in dep_clib_symbol_lib.items() {
+                if _sym not in module.gen._clib_symbol_lib {
+                    module.gen._clib_symbol_lib[_sym] = _dll;
+                }
             }
         }
 

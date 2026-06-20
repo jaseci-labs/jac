@@ -96,16 +96,12 @@ jobs:
   #   1. test_console_win32.jac — Win32 constant probe + VT output gate
   #                               (VT live section auto-skips on headless runners)
   #
-  # TEMPORARY (two upstream defects, both gated out here):
+  # TEMPORARY (one upstream defect, gated out here):
   #   * jaseci-labs/jaseci#6818 — a native Windows host emits ELF for executable
   #     nacompile targets (jac-na-tui.exe, test_pickers.exe), so this job is
   #     reduced to DLL-only and the picker logic step is dropped. PE executable
   #     coverage is asserted by the Linux cross job above (PE32+ format check).
-  #   * jaseci-labs/jaseci#6821 — tui.dll loads via the OS loader but ctypes.CDLL
-  #     fails with WinError 127 (an import in the DLL's import table cannot be
-  #     resolved), so the test_host CDLL round-trip gate is dropped. The build
-  #     still proves tui.dll compiles + links as COFF.
-  # Restore the dropped steps once each issue is fixed.
+  # Restore the dropped steps once #6818 is fixed.
   test-windows-native:
     runs-on: windows-latest
 
@@ -148,10 +144,10 @@ jobs:
       # platform-independent NA code and is still exercised by the macOS native
       # job's test_pickers run; restore this step once #6818 is fixed.
 
-      # TEMPORARY: the test_host CDLL round-trip gate is dropped — tui.dll fails
-      # to load via ctypes with WinError 127 (unresolvable import in the DLL's
-      # import table). See jaseci-labs/jaseci#6821. Restore once native-host
-      # shared-library symbol resolution works.
+      - name: CDLL host gate (load + frame round-trip)
+        working-directory: jac-super/jac_super/ai_tui_na
+        shell: pwsh
+        run: python -m jaclang run test_host.jac
 
       - name: Win32 console constant + VT gate
         working-directory: jac-super/jac_super/ai_tui_na
