@@ -3541,6 +3541,29 @@ impl TypeEvaluator.assign_type(
         required_method = _protocol_methods.get(dest_type.shared.class_name);
         if required_method {
             if self._lookup_object_member(src_type, required_method) {
+                # For Iterable[T], also verify the element type matches T.
+                # Without this, str satisfies Iterable[int] via __iter__ alone.
+                if (
+                    dest_type.shared.class_name == "Iterable"
+                    and dest_type.private.type_args
+                ) {
+                    expected_elem = self._convert_to_instance(
+                        dest_type.private.type_args[0]
+                    );
+                    iter_type = self.get_type_of_magic_method_call(
+                        src_type, "__iter__", [], None
+                    );
+                    if not iter_type or not isinstance(iter_type, types.ClassType) {
+                        return True;
+                    }
+                    elem_type = self.get_type_of_magic_method_call(
+                        iter_type, "__next__", [], None
+                    );
+                    if not elem_type or isinstance(elem_type, types.UnknownType) {
+                        return True;
+                    }
+                    return self.assign_type(elem_type, expected_elem);
+                }
                 return True;
             }
         }

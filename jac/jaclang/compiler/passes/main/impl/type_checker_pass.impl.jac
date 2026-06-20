@@ -348,15 +348,50 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                         }
                     }
                 }
-                # Slice target (container[a:b] = value): skip assign_type — the write
-                # contract is __setitem__(slice, T), not the container type itself.
+                # Slice assignment (container[a:b] = value) uses __setitem__(slice, T)
+                # as the write contract — not the read type of container[a:b].
+                # Find the slice overload of __setitem__ and validate rhs against it.
                 if (
                     isinstance(target, uni.AtomTrailer)
                     and not target.is_attr
                     and isinstance(target.right, uni.IndexSlice)
                     and target.right.is_range
                 ) {
-                    self.evaluator.get_type_of_expression(nd.value);
+                    base_type = self.evaluator.get_type_of_expression(target.target);
+                    rhs_type = self.evaluator.get_type_of_expression(nd.value);
+                    if isinstance(base_type, types.ClassType) {
+                        setitem = self.evaluator._lookup_class_member(
+                            base_type, "__setitem__"
+                        );
+                        if setitem {
+                            for sym in ([setitem.symbol] + setitem.overloads) {
+                                fn_ty = self.evaluator.get_type_of_symbol(sym);
+                                if not isinstance(fn_ty, types.FunctionType) { continue; }
+                                fn = fn_ty.specialize(base_type);
+                                non_self = [
+                                    param for param in fn.parameters
+                                    if not param.is_self
+                                ];
+                                if (
+                                    len(non_self) >= 2
+                                    and non_self[0].param_type is not None
+                                    and isinstance(non_self[0].param_type, types.ClassType)
+                                    and non_self[0].param_type.is_builtin("slice")
+                                ) {
+                                    if not self.evaluator.assign_type(
+                                        rhs_type, non_self[1].param_type
+                                    ) {
+                                        self.emit(
+                                            E1001,
+                                            actual=str(rhs_type),
+                                            expected=str(non_self[1].param_type)
+                                        );
+                                    }
+                                    return;
+                                }
+                            }
+                        }
+                    }
                     return;
                 }
             }
