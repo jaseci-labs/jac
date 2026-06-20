@@ -511,6 +511,13 @@ system,
         items: list[Archetype], func: Callable[([Archetype], bool)]
     ) -> list[Archetype];
 
+    """Tag a filter callable with its `(field, op, value)` spec on
+    `__jac_predicates__` for predicate pushdown. Returns the callable
+    unchanged; the lambda stays authoritative."""
+    static def filter_spec(
+        func: Callable[([Archetype], bool)], predicates: tuple
+    ) -> Callable[([Archetype], bool)];
+
     """Jac's connect operator feature."""
     static def connect(
         left: (NodeArchetype | list[NodeArchetype]),

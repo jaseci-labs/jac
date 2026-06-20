@@ -341,6 +341,11 @@ jobs:
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_mongo_layer123.jac
 
+    - name: Run field-predicate pushdown tests (filter dict + e2e mongo)
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_field_predicate_mongo.jac
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_field_predicate_mongo_e2e.jac
+
     - name: Run Serializer tests
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac

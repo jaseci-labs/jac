@@ -3673,30 +3673,75 @@ impl PyastGenPass.exit_filter_compr(nd: uni.FilterCompr) -> None {
     ]
         if nd.f_type
         else [];
-    comprs.extend(
-        self.sync(
-            ast3.Compare(
-                left=self.sync(
-                    ast3.Attribute(
-                        value=self.sync(
-                            ast3.Name(id=iter_name, ctx=ast3.Load()), jac_node=x
+    spec_elts: list[ast3.Tuple] = [];
+    hoisted: list[ast3.expr] = [];
+    for x in nd.compares {
+        cmp_ast = self.py_ast_val(x);
+        if not (
+            isinstance(cmp_ast, ast3.Compare) and isinstance(cmp_ast.left, ast3.Name)
+        ) {
+            continue;
+        }
+        # Single-op compares mirror into the planner's `__jac_predicates__`
+        # spec; chained compares stay lambda-only. Non-constant comparators
+        # hoist into an IIFE param below so they resolve once and the spec and
+        # lambda share the value. Operator symbol is the Jac token value.
+        op_str = x.ops[0].value if len(x.ops) == 1 else None;
+        lambda_comparators = cmp_ast.comparators;
+        spec_val: (ast3.expr | None) = None;
+        if op_str is not None {
+            comparator = cmp_ast.comparators[0];
+            if isinstance(comparator, ast3.Constant) {
+                spec_val = self.sync(ast3.Constant(value=comparator.value), jac_node=x);
+            } else {
+                pname = f"_jfs{len(hoisted)}";
+                hoisted.append(comparator);
+                lambda_comparators = [
+                    self.sync(ast3.Name(id=pname, ctx=ast3.Load()), jac_node=x)
+                ];
+                spec_val = self.sync(ast3.Name(id=pname, ctx=ast3.Load()), jac_node=x);
+            }
+        }
+        comprs.append(
+            self.sync(
+                ast3.Compare(
+                    left=self.sync(
+                        ast3.Attribute(
+                            value=self.sync(
+                                ast3.Name(id=iter_name, ctx=ast3.Load()), jac_node=x
+                            ),
+                            attr=cmp_ast.left.id,
+                            ctx=ast3.Load()
                         ),
-                        attr=self.py_ast_val(x).left.id,
+                        jac_node=x
+                    ),
+                    ops=cmp_ast.ops,
+                    comparators=lambda_comparators
+                ),
+                jac_node=x
+            )
+        );
+        if op_str is not None and spec_val is not None {
+            spec_elts.append(
+                self.sync(
+                    ast3.Tuple(
+                        elts=cast(
+                            `list[ast3.expr],
+                            [
+                                self.sync(
+                                    ast3.Constant(value=cmp_ast.left.id), jac_node=x
+                                ),
+                                self.sync(ast3.Constant(value=op_str), jac_node=x),
+                                spec_val
+                            ]
+                        ),
                         ctx=ast3.Load()
                     ),
                     jac_node=x
-                ),
-                ops=self.py_ast_val(x).ops,
-                comparators=self.py_ast_val(x).comparators
-            ),
-            jac_node=x
-        )
-        for x in nd.compares
-        if (
-            isinstance(self.py_ast_val(x), ast3.Compare)
-            and isinstance(self.py_ast_val(x).left, ast3.Name)
-        )
-    );
+                )
+            );
+        }
+    }
     if (
         body := (
             self.sync(
@@ -3709,22 +3754,68 @@ impl PyastGenPass.exit_filter_compr(nd: uni.FilterCompr) -> None {
                 else comprs[0] if comprs else None
         )
     ) {
-        nd.gen.py_ast = [
-            self.sync(
-                ast3.Lambda(
-                    args=self.sync(
-                        ast3.arguments(
-                            posonlyargs=[],
-                            args=[self.sync(ast3.arg(arg=iter_name))],
-                            kwonlyargs=[],
-                            kw_defaults=[],
-                            defaults=[]
-                        )
-                    ),
-                    body=body
-                )
+        lambda_ast = self.sync(
+            ast3.Lambda(
+                args=self.sync(
+                    ast3.arguments(
+                        posonlyargs=[],
+                        args=[self.sync(ast3.arg(arg=iter_name))],
+                        kwonlyargs=[],
+                        kw_defaults=[],
+                        defaults=[]
+                    )
+                ),
+                body=body
             )
-        ];
+        );
+        if spec_elts {
+            tagged = self.sync(
+                ast3.Call(
+                    func=self.jaclib_obj('filter_spec'),
+                    args=cast(
+                        `list[ast3.expr],
+                        [
+                            lambda_ast,
+                            self.sync(
+                                ast3.Tuple(
+                                    elts=cast(`list[ast3.expr], spec_elts),
+                                    ctx=ast3.Load()
+                                )
+                            )
+                        ]
+                    ),
+                    keywords=[]
+                )
+            );
+            if hoisted {
+                tagged = self.sync(
+                    ast3.Call(
+                        func=self.sync(
+                            ast3.Lambda(
+                                args=self.sync(
+                                    ast3.arguments(
+                                        posonlyargs=[],
+                                        args=[
+                                            self.sync(ast3.arg(arg=f"_jfs{k}"))
+                                            for k in range(len(hoisted))
+                                        ],
+                                        kwonlyargs=[],
+                                        kw_defaults=[],
+                                        defaults=[]
+                                    )
+                                ),
+                                body=tagged
+                            )
+                        ),
+                        args=hoisted,
+                        keywords=[]
+                    )
+                );
+            }
+            nd.gen.py_ast = [tagged];
+        } else {
+            nd.gen.py_ast = [lambda_ast];
+        }
     }
 }
 

@@ -1272,6 +1272,13 @@ impl JacBasics.refs(
         } else {
             orig_nd = last.nd;
             last.nd = lambda i: any : (orig_nd(i) and post_filter(i));
+            # Conjunction, so both specs stay valid narrowing hints.
+            fused_spec = tuple(getattr(orig_nd, '__jac_predicates__', ())) + tuple(
+                getattr(post_filter, '__jac_predicates__', ())
+            );
+            if fused_spec {
+                last.nd.__jac_predicates__ = fused_spec;
+            }
         }
     }
     # Read-set OCC: record the origin versions this traversal reads up front,
@@ -1340,6 +1347,13 @@ impl JacBasics.filter_on(
         for item in items
         if func(item)
     ];
+}
+
+impl JacBasics.filter_spec(
+    func: Callable[([Archetype], bool)], predicates: tuple
+) -> Callable[([Archetype], bool)] {
+    func.__jac_predicates__ = predicates;
+    return func;
 }
 
 """Jac's connect operator feature."""

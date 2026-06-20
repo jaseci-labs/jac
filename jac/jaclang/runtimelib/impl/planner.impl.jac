@@ -70,6 +70,90 @@ def _filter_has_predicates(filt: any) -> bool {
 }
 
 
+"""Return True for values that compare verbatim once serialized (no datetime,
+objects, or nested structures)."""
+def _is_plain_scalar(val: any) -> bool {
+    return val is None or isinstance(val, (bool, int, float, str));
+}
+
+
+"""Convert a `__jac_predicates__` spec into `QueryPlan.field_predicates`
+operator dicts (`{field: {'$lt': 28}}`). Conservative: drops, never
+approximates, any entry whose operator or value can't match verbatim across
+backends, since the lambda re-applies the full filter above the result."""
+def _predicates_to_field_filters(spec: any) -> dict {
+    if not spec {
+        return {};
+    }
+    op_map = {
+        '==': '$eq',
+        '!=': '$ne',
+        '<': '$lt',
+        '<=': '$lte',
+        '>': '$gt',
+        '>=': '$gte',
+        'in': '$in',
+        'not in': '$nin'
+    };
+    try {
+        entries = list(spec);
+    } except TypeError {
+        return {};
+    }
+    out: dict = {};
+    for entry in entries {
+        if not (isinstance(entry, tuple) and len(entry) == 3) {
+            continue;
+        }
+        (field, op, val) = entry;
+        if not isinstance(field, str) {
+            continue;
+        }
+        if op in ('is', 'is not') {
+            if val is not None {
+                continue;
+            }
+            backend_op = '$eq' if op == 'is' else '$ne';
+        } elif op in op_map {
+            backend_op = op_map[op];
+        } else {
+            continue;
+        }
+        if backend_op in ('$in', '$nin') {
+            if not isinstance(val, (list, tuple))
+            or not all(_is_plain_scalar(v) for v in val) {
+                continue;
+            }
+            val = list(val);
+        } elif backend_op in ('$lt', '$lte', '$gt', '$gte') {
+            if val is None or isinstance(val, bool) or not _is_plain_scalar(val) {
+                continue;
+            }
+        } elif not _is_plain_scalar(val) {
+            continue;
+        }
+        slot = out.setdefault(field, {});
+        # On a repeated op for the same field, keep the *tighter* bound so the
+        # backend filters more, not less (the lambda still enforces the rest).
+        # Mismatched types fall back to first-wins.
+        if backend_op in slot {
+            try {
+                if backend_op in ('$gt', '$gte') {
+                    slot[backend_op] = max(slot[backend_op], val);
+                } elif backend_op in ('$lt', '$lte') {
+                    slot[backend_op] = min(slot[backend_op], val);
+                }
+            } except TypeError {
+                ;
+            }
+        } else {
+            slot[backend_op] = val;
+        }
+    }
+    return out;
+}
+
+
 """Log the chosen strategy for a plan. No-op when trace is off."""
 def _trace(strategy: str, plan: QueryPlan, extra: str = '') -> None {
     if not _trace_enabled() {
@@ -265,6 +349,79 @@ def _execute_mixed(mem: any, plan: QueryPlan, narrowed: set[UUID]) -> list[any] 
 }
 
 
+"""Split predicate evaluation across the candidate set: L1-resident anchors
+filter in Python (fresh, already loaded), cold ones push to the backend as
+`_id IN (cold) AND field_predicates`. Pushing stale-snapshot residents could
+drop in-session mutations that post_filter can't recover. Returns None when
+the backend or memory layout can't support the split."""
+def _execute_hybrid_fields(
+    mem: any, plan: QueryPlan, narrowed: set[UUID]
+) -> (list[any] | None) {
+    if not ({'id_in', 'field_pushdown'} <= mem.capabilities()) {
+        return None;
+    }
+    # `get_mem()` is the public L1 accessor on the Memory interface; prefer it
+    # over reaching into `__mem__` so a memory-layer refactor can't silently
+    # disable pushdown.
+    if not hasattr(mem, 'get_mem') {
+        return None;
+    }
+    l1 = mem.get_mem();
+    if not isinstance(l1, dict) {
+        return None;
+    }
+    resident: list = [];
+    cold: set = set();
+    for i in narrowed {
+        if i in l1 {
+            resident.append(i);
+        } else {
+            cold.add(i);
+        }
+    }
+    import from jaclang.jac0core.archetype { NodeAnchor }
+    result = _materialize_ids(mem, resident, post_filter=plan.post_filter);
+    if cold {
+        # The slice still applies over the resident+cold union below, so we
+        # can't push it verbatim. But a sliced query needs at most `stop` rows
+        # total, hence at most `stop` from the cold side: pass that as a safe
+        # upper bound so the backend caps the fetch instead of returning every
+        # matching cold row. Only for contiguous (step 1) slices with a stop.
+        cold_slc: (slice | None) = None;
+        if plan.slc is not None
+        and (plan.slc.step is None or plan.slc.step == 1)
+        and plan.slc.stop is not None {
+            cold_slc = slice(0, plan.slc.stop);
+        }
+        cold_plan = QueryPlan(
+            root_id=plan.root_id,
+            chain=[],
+            field_predicates=plan.field_predicates,
+            id_in=cold,
+            node_type_final=plan.node_type_final,
+            slc=cold_slc
+        );
+        for anchor in mem.execute_plan(cold_plan) {
+            # Mirror `_materialize_ids`: only node anchors with a live archetype
+            # reach the result, then the post_filter lambda decides membership.
+            if not (isinstance(anchor, NodeAnchor) and anchor.archetype is not None) {
+                continue;
+            }
+            if plan.post_filter is not None
+            and not plan.post_filter(anchor.archetype) {
+                continue;
+            }
+            result.append(anchor);
+        }
+    }
+    if plan.slc is not None {
+        result = result[plan.slc];
+    }
+    _trace('hybrid', plan, f"resident={len(resident)} cold={len(cold)}");
+    return result;
+}
+
+
 """Strategy chooser. See module docstring for the decision tree."""
 impl execute_plan(mem: any, plan: QueryPlan) -> list[any] {
     if plan.is_trivial() {
@@ -371,6 +528,7 @@ def _build_plan_from_path(
     chain: list[HopSpec] = [];
     last_idx = len(destinations) - 1;
     last_post_filter: any = None;
+    field_preds: dict = {};
     has_filter = False;
     for (i, dest) in enumerate(destinations) {
         # Edge filter: type-only or bail.
@@ -395,6 +553,9 @@ def _build_plan_from_path(
         }
         if i == last_idx and node_has_pred {
             last_post_filter = dest.node_filter;
+            # Pushable conjuncts from the codegen-tagged spec; the lambda
+            # stays on as post_filter so pushdown only narrows.
+            field_preds = _predicates_to_field_filters(dest.nd?.__jac_predicates__);
         }
     }
     if not has_filter and last_post_filter is None {
@@ -405,6 +566,7 @@ def _build_plan_from_path(
         root_id=origin_anchor.root or origin_anchor.id,
         chain=chain,
         node_type_final=chain[-1].node_type if chain else None,
+        field_predicates=field_preds,
         slc=slc,
         post_filter=last_post_filter
     );
@@ -426,9 +588,11 @@ Strategy ladder, picked by query shape:
     visit semantics are unchanged from the legacy edge-walk path.
 
   * **anything else** (multi-hop unsliced, or any post_filter present) →
-    set narrowing via `plan_chain`, then backend pushdown if capabilities
-    cover the reduced plan, otherwise `batch_get`. post_filter applied
-    above the materialized list before any leftover slicing.
+    set narrowing via `plan_chain`, then: hybrid L1/backend split when the
+    plan carries field_predicates and the backend can take them, else backend
+    pushdown if capabilities cover the reduced plan, otherwise `batch_get`.
+    post_filter applied above the materialized list before any leftover
+    slicing.
 
 Returns None to signal the caller should fall back to the legacy edge-walk.
 """
@@ -471,6 +635,15 @@ impl execute_path(
     plan.id_in = narrowed;
     plan.chain = [];  # consumed by narrowing
     _trace('path', plan, f"narrowed={len(narrowed)}");
+
+    # Field predicates prefer the freshness-aware hybrid route: L1-resident
+    # candidates evaluate in Python, cold ones push to the backend.
+    if plan.field_predicates {
+        hybrid = _execute_hybrid_fields(mem, plan, narrowed);
+        if hybrid is not None {
+            return hybrid;
+        }
+    }
 
     # Backend pushdown if capable, else floor through batch_get.
     if plan.needs() <= mem.capabilities() {
