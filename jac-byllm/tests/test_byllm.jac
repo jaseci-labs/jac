@@ -1284,6 +1284,66 @@ test "McpClient errors when neither command nor url is set" {
     assert err is not None , "McpClient must require command or url";
 }
 
+
+test "McpClient runs concurrent call_tool requests in parallel" {
+    # The stdio MCP fixture has one tool that sleeps 0.5s. Five sequential
+    # calls would take ~2.5s; if byllm forwards them as concurrent
+    # coroutines on the shared loop the ClientSession multiplexes them
+    # and wall-time stays close to a single call's latency.
+    import threading;
+    import time;
+
+    try {
+        import mcp;
+    } except ImportError {
+        pytest.skip("mcp package not installed");
+    }
+
+    server_path = os.path.join(FIXTURE_DIR, "mcp_slow_server.py");
+    client = McpClient(command=sys.executable, args=[server_path], timeout=30);
+
+    try {
+        tools = client.get_tools();
+        assert len(tools) == 1 , f"expected 1 tool, got {len(tools)}";
+
+        n_calls = 5;
+        results: list = [None] * n_calls;
+        errors: list = [None] * n_calls;
+
+        def _hit(i: int) -> None {
+            try {
+                results[i] = client.call_tool("slow", {});
+            } except Exception as e {
+                errors[i] = e;
+            }
+        }
+
+        threads = [threading.Thread(target=_hit, args=(i,)) for i in range(n_calls)];
+        t0 = time.perf_counter();
+        for t in threads { t.start(); }
+        for t in threads { t.join(); }
+        wall = time.perf_counter() - t0;
+
+        for (i, e) in enumerate(errors) {
+            assert e is None , f"call {i} raised: {e}";
+        }
+        for (i, r) in enumerate(results) {
+            assert r == "ok" , f"call {i} returned {r!r}, expected 'ok'";
+        }
+
+        # Each call sleeps 0.5s. Serialized -> ~2.5s. Multiplexed -> ~0.5s
+        # plus per-call overhead. 1.5s gives generous CI headroom while
+        # still failing loudly if the lock regresses (which would be ~2.5s+).
+        assert wall < 1.5 , (
+            f"5 concurrent call_tool requests took {wall:.2f}s "
+            f"(expected < 1.5s); the per-client lock has regressed and "
+            f"is serializing requests again."
+        );
+    } finally {
+        client.close();
+    }
+}
+
 test "McpClient raises McpError when mcp package is missing" {
     with unittest.mock.patch.dict(
         sys.modules, {"mcp": None, "mcp.client": None, "mcp.client.session": None}

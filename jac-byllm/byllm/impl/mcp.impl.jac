@@ -6,6 +6,12 @@ connect() and call_tool(). We run one persistent event loop in a
 daemon thread per McpClient. Sync methods post coroutines to it
 via asyncio.run_coroutine_threadsafe() and block on the result.
 
+The state lock guards connect/close transitions only. call_tool posts
+its coroutine and waits on the future without holding any lock, so N
+concurrent tool calls run as N concurrent coroutines on the shared
+loop — the MCP ClientSession multiplexes them by JSON-RPC id, which
+is exactly what async MCP clients are designed for.
+
 This will simplify when byllm adds native async support.
 """
 
@@ -38,10 +44,8 @@ impl _McpState.start_loop -> None {
 }
 
 impl _McpState.run(coro: object) -> str {
-    with self._lock {
-        future = asyncio.run_coroutine_threadsafe(coro, self.loop);
-        return future.result(timeout=120);
-    }
+    future = asyncio.run_coroutine_threadsafe(coro, self.loop);
+    return future.result(timeout=120);
 }
 
 impl _McpState.stop -> None {
@@ -182,42 +186,47 @@ async def _open_transport(client: McpClient, transport_type: str) -> tuple {
 # ─── McpClient ──────────────────────────────────────────────────────────────
 impl McpClient.connect -> None {
     state = _get_state(self);
-    if state.connected {
-        return;
-    }
-    try {
-        import from mcp.client.session { ClientSession }
-    } except ImportError {
-        raise McpError(
-            message="MCP support requires the 'mcp' package. "
-            "Install it with: pip install byllm[mcp]"
-        );
-    }
-    transport_type = self.transport;
-    if transport_type == "auto" {
-        if self.command {
-            transport_type = "stdio";
-        } elif self.url {
-            transport_type = "streamable-http";
-        } else {
+    with state._lock {
+        # Re-check inside the lock so concurrent first-use call_tool()s
+        # (each of which calls connect() if not state.connected) don't
+        # all race past the guard and double-spawn the loop+subprocess.
+        if state.connected {
+            return;
+        }
+        try {
+            import from mcp.client.session { ClientSession }
+        } except ImportError {
             raise McpError(
-                message="McpClient requires either 'command' (stdio) or 'url' (HTTP)."
+                message="MCP support requires the 'mcp' package. "
+                "Install it with: pip install byllm[mcp]"
             );
         }
-    }
-    state.start_loop();
-    try {
-        state.run(_do_connect(self, transport_type));
-    } except McpError {
-        state.stop();
-        raise;
-    } except Exception as e {
-        state.stop();
-        hint = "";
-        if transport_type == "streamable-http" and self.transport == "auto" {
-            hint = " If this is an SSE server, pass transport='sse' explicitly.";
+        transport_type = self.transport;
+        if transport_type == "auto" {
+            if self.command {
+                transport_type = "stdio";
+            } elif self.url {
+                transport_type = "streamable-http";
+            } else {
+                raise McpError(
+                    message="McpClient requires either 'command' (stdio) or 'url' (HTTP)."
+                );
+            }
         }
-        raise McpError(message=f"Failed to connect to MCP server: {e}{hint}") from e;
+        state.start_loop();
+        try {
+            state.run(_do_connect(self, transport_type));
+        } except McpError {
+            state.stop();
+            raise;
+        } except Exception as e {
+            state.stop();
+            hint = "";
+            if transport_type == "streamable-http" and self.transport == "auto" {
+                hint = " If this is an SSE server, pass transport='sse' explicitly.";
+            }
+            raise McpError(message=f"Failed to connect to MCP server: {e}{hint}") from e;
+        }
     }
 }
 
@@ -253,11 +262,13 @@ impl McpClient.call_tool(name: str, arguments: dict[str, any]) -> str {
 
 impl McpClient.close -> None {
     state = _get_state(self);
-    if not state.connected {
-        return;
+    with state._lock {
+        if not state.connected {
+            return;
+        }
+        state.stop();
+        _states.pop(self._id, None);
     }
-    state.stop();
-    _states.pop(self._id, None);
 }
 
 # ─── McpTool ────────────────────────────────────────────────────────────────
