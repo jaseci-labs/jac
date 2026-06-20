@@ -340,6 +340,9 @@ impl JacAPIServerCore.start(
     }
     # Print startup banner with correct port
     self._print_startup_banner(dev, no_client);
+    # Inlined from jaclang.runtimelib.server.write_server_ready_file — the
+    # deployed Docker image runs stock PyPI jaclang which may predate that
+    # helper. Keep in sync with jac/jaclang/runtimelib/impl/server.impl.jac.
     _ready_file = os.environ.get("JAC_SERVER_READY_FILE", "");
     if _ready_file {
         import from pathlib { Path }

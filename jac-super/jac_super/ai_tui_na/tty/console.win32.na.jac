@@ -315,6 +315,7 @@ def tty_x_pixels -> int {
 }
 
 def tty_y_pixels -> int {
+    # Same as tty_x_pixels: Windows has no pixel-dimension query; return 0.
     return 0;
 }
 

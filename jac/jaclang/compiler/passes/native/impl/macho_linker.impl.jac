@@ -368,7 +368,7 @@ def _build_code_signature(
     text_offset: int,
     text_size: int,
     ident: str = "jac-binary",
-    exec_seg_flags: int = CS_EXECSEG_MAIN_BINARY
+    exec_seg_flags: int = CS_EXECSEG_MAIN_BINARY  # pass 0 for dylibs/bundles
 ) -> bytes {
     hash_size = 32;
     n_code_slots = (code_limit + CS_PAGE_SIZE - 1) // CS_PAGE_SIZE;

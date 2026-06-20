@@ -47,10 +47,11 @@ def main -> int {
 
     # lib[name] creates a new _FuncPtr each call; cache the objects so
     # that restype/argtypes set below survive to the actual call.
-    # All platforms use the bare C name. macOS dlsym() prepends '_'
-    # before searching the export trie, so lib["tui_apply_frame"] →
-    # dlsym(handle, "tui_apply_frame") → looks up "_tui_apply_frame" ✓.
-    # Passing "_tui_apply_frame" would cause dlsym to search for
+    # All platforms use the bare C name. The Mach-O export trie stores
+    # symbols with a leading '_' (Apple ABI), but Python ctypes on macOS
+    # retries with '_'+name when the bare dlsym() lookup returns NULL, so
+    # lib["tui_apply_frame"] ultimately resolves _tui_apply_frame in the
+    # trie. Passing "_tui_apply_frame" would make ctypes retry with
     # "__tui_apply_frame" (double underscore), which is never found.
     fn_apply_frame = lib["tui_apply_frame"];
     fn_apply_frame.restype = ctypes.c_int64;
