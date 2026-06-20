@@ -62,29 +62,48 @@ test "pack_source archives jac files and skips build artifacts" {
     shutil.rmtree(tmp);
 }
 
-test "pack_source excludes secret files (.env, keys, certs, jac.toml)" {
+test "pack_source ships a [plugins.scale]-stripped jac.toml; excludes other secrets" {
     tmp = tempfile.mkdtemp();
     (Path(tmp) / "main.jac").write_text("to cl:\n");
     (Path(tmp) / ".env").write_text("DB_PASSWORD=hunter2\n");
     (Path(tmp) / ".env.production").write_text("API_KEY=sk_live\n");
     (Path(tmp) / "jac.toml").write_text(
-        "[plugins.scale.kubernetes]\ndocker_password='p'\n"
+        "[project]\nname = \"shop\"\n\n"
+        "[dependencies.npm]\nreact = \"^18\"\n\n"
+        "[plugins.scale.kubernetes]\ndocker_password = \"hunter2\"\n"
+        "registry_password = \"sekret\"\n\n"
+        "[plugins.scale.microservices.client]\nentry = \"main.jac\"\n"
     );
     (Path(tmp) / "tls.key").write_text("PRIVATE KEY");
     (Path(tmp) / "server.pem").write_text("CERT");
 
     raw = pack_source(tmp);
     names = set();
+    toml_body = "";
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
         for m in tar.getmembers() {
             names.add(m.name);
+            if m.name == "jac.toml" {
+                toml_body = tar.extractfile(m).read().decode();
+            }
         }
     }
 
     assert "main.jac" in names;
-    for secret in [".env", ".env.production", "jac.toml", "tls.key", "server.pem"] {
+    # .env / key / cert files are still excluded outright.
+    for secret in [".env", ".env.production", "tls.key", "server.pem"] {
         assert secret not in names , f"{secret} must not be packed into the ConfigMap";
     }
+    # jac.toml IS shipped, but with the [plugins.scale...] tables (deploy creds)
+    # stripped out...
+    assert "jac.toml" in names;
+    assert "docker_password" not in toml_body;
+    assert "registry_password" not in toml_body;
+    assert "plugins.scale" not in toml_body;
+    # ...while the app + client-build config is retained (so jac build / jac start work).
+    assert "[project]" in toml_body;
+    assert "[dependencies.npm]" in toml_body;
+    assert "react" in toml_body;
 
     shutil.rmtree(tmp);
 }
@@ -176,11 +195,15 @@ test "build_source_configmap rejects oversized source trees" {
     shutil.rmtree(tmp);
 }
 
-test "pinned_install_specs pins jaclang and jac-scale" {
+test "pinned_install_specs pins jaclang and jac-scale[all]" {
     specs = pinned_install_specs();
     joined = " ".join(specs);
     assert "jaclang" in joined;
-    assert "jac-scale" in joined;
+    assert "jac-scale[all]" in joined;
+    # requests is a scale-plugin runtime dep but ships only in jac-scale's
+    # `test` extra, so it must be installed explicitly or the plugin can't load
+    # in-pod (gateway crashes, services 404 on /healthz).
+    assert "requests" in joined;
 }
 
 test "bootstrap init container extracts source and installs to pydeps" {
@@ -190,9 +213,222 @@ test "bootstrap init container extracts source and installs to pydeps" {
     script = init["args"][0];
     assert "tar xzf" in script;
     assert f"--target={PYDEPS_DIR}" in script;
+    # jac-scale[all] must be quoted so `sh -c` doesn't glob the `[all]` marker.
+    assert "'jac-scale[all]" in script;
     mount_names = {m["name"] for m in init["volumeMounts"]};
     assert "jac-app" in mount_names;
     assert "jac-source" in mount_names;
+}
+
+test "no-image pods get a startup probe; built-image pods do not" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="jac-shop-dev");
+    ni = MicroserviceManifestBuilder(k8s_config=cfg, no_image=True);
+    nc = ni._build_service_pod_spec("orders_app", "ignored:image")["containers"][0];
+    assert "startupProbe" in nc;
+    assert nc["startupProbe"]["failureThreshold"] == 90;
+
+    plain = MicroserviceManifestBuilder(k8s_config=cfg);
+    pc = plain._build_service_pod_spec("orders_app", "jac-shop:dev-abc")["containers"][
+        0
+    ];
+    assert "startupProbe" not in pc;
+}
+
+test "no-image gateway entrypoint builds the client when a client entry is set" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="jac-shop-dev");
+    b = MicroserviceManifestBuilder(k8s_config=cfg, no_image=True);
+    p = mock.patch.object(b, "_client_entry", return_value="main.jac");
+    p.start();
+    gw = b._pod_entrypoint()["args"][0];
+    p.stop();
+    # The gateway builds the SPA before serving; non-fatal so the API still
+    # comes up if the FE build fails.
+    assert 'jac build "main.jac"' in gw;
+    assert "exec jac scale gateway" in gw;
+    assert "|| echo" in gw;
+
+    # Built-image mode never builds in-pod (the image already has the bundle).
+    plain = MicroserviceManifestBuilder(k8s_config=cfg);
+    assert "jac build" not in plain._pod_entrypoint()["args"][0];
+
+    # No-image but no client entry (backend-only app) -> no client build.
+    nc = MicroserviceManifestBuilder(k8s_config=cfg, no_image=True);
+    p2 = mock.patch.object(nc, "_client_entry", return_value="");
+    p2.start();
+    no_build = nc._pod_entrypoint()["args"][0];
+    p2.stop();
+    assert "jac build" not in no_build;
+}
+
+test "no-image pods default to higher memory (in-pod build); built-image stays small" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="jac-shop-dev");
+    ni = MicroserviceManifestBuilder(k8s_config=cfg, no_image=True);
+    # service default: 4Gi limit / 1Gi request (jac install + compile in-pod).
+    svc = ni._build_resources({});
+    assert svc["limits"]["memory"] == "4Gi";
+    assert svc["requests"]["memory"] == "1Gi";
+    # gateway default: 8Gi limit / 2Gi request (also builds the client bundle).
+    gw = ni._build_resources({}, is_gateway=True);
+    assert gw["limits"]["memory"] == "8Gi";
+    assert gw["requests"]["memory"] == "2Gi";
+    # explicit config still wins over the default.
+    assert ni._build_resources({"memory_limit": "512Mi"})["limits"]["memory"] == "512Mi";
+
+    # built-image keeps the small Burstable defaults (no in-pod build).
+    plain = MicroserviceManifestBuilder(k8s_config=cfg);
+    pr = plain._build_resources({});
+    assert pr["limits"]["memory"] == "1Gi";
+    assert pr["requests"]["memory"] == "128Mi";
+    assert plain._build_resources({}, is_gateway=True)["limits"]["memory"] == "2Gi";
+}
+
+test "injected microservices_config overrides the process jac.toml (platform deploys)" {
+    cfg = KubernetesConfig(app_name="other-app", namespace="other-ns");
+    injected = {"routes": {"svc_a": "/api/svc_a"}, "client": {"entry": "app.jac"}};
+    b = MicroserviceManifestBuilder(
+        k8s_config=cfg, no_image=True, microservices_config=injected
+    );
+    # _ms_cfg returns the injected config, not the deploying process's jac.toml.
+    assert b._ms_cfg() == injected;
+    # config consumers read through _ms_cfg, so the injected client entry drives
+    # the in-pod gateway client build.
+    assert b._client_entry() == "app.jac";
+
+    # no injection -> falls back to the process config (a dict, no crash).
+    plain = MicroserviceManifestBuilder(k8s_config=cfg, no_image=True);
+    assert isinstance(plain._ms_cfg(), dict);
+}
+
+test "shared_ingress routes the deploy domain to the gateway (no [...ingress])" {
+    cfg = KubernetesConfig(
+        app_name="jac-shop",
+        namespace="jac-shop-dev",
+        shared_ingress=True,
+        domain="shop.jaseci.app",
+        shared_ingress_class="alb",
+        shared_ingress_annotations={"alb.ingress.kubernetes.io/group.name": "shared"}
+    );
+    b = MicroserviceManifestBuilder(k8s_config=cfg, no_image=True);
+    # [...ingress] unset, but config.shared_ingress + domain -> a gateway ingress
+    # (this is the host-routed shared ALB/nginx subdomain a PaaS deploy needs).
+    ing = b._build_ingress_manifest({});
+    assert ing is not None;
+    rule = ing["spec"]["rules"][0];
+    assert rule["host"] == "shop.jaseci.app";
+    backend = rule["http"]["paths"][0]["backend"]["service"];
+    assert backend["name"] == "gateway-service";
+    assert ing["spec"]["ingressClassName"] == "alb";
+    annos = ing["metadata"]["annotations"];
+    assert annos["alb.ingress.kubernetes.io/group.name"] == "shared";
+    # ALB/ACM (no cert-manager annotation) terminates TLS at the LB -> no spec.tls.
+    assert "tls" not in ing["spec"];
+
+    # neither [...ingress] nor shared_ingress -> no ingress at all (unchanged).
+    plain_cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
+    plain = MicroserviceManifestBuilder(k8s_config=plain_cfg, no_image=True);
+    assert plain._build_ingress_manifest({}) is None;
+
+    # cert-manager (nginx) shared controller gets a spec.tls block for its cert.
+    cm_cfg = KubernetesConfig(
+        app_name="jac-shop",
+        namespace="ns",
+        shared_ingress=True,
+        domain="shop.example.com",
+        shared_ingress_class="nginx",
+        shared_ingress_tls=True,
+        shared_ingress_annotations={"cert-manager.io/cluster-issuer": "letsencrypt"}
+    );
+    cm_ing = MicroserviceManifestBuilder(
+        k8s_config=cm_cfg, no_image=True
+    )._build_ingress_manifest(
+        {}
+    );
+    assert cm_ing["spec"]["tls"][0]["hosts"] == ["shop.example.com"];
+}
+
+test "client entry auto-detects main.jac for a fullstack project (no [...client])" {
+    cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
+
+    # fullstack project (ships a .cl.jac) with no [client] table -> auto main.jac
+    # so the gateway still builds + serves the SPA.
+    fs = tempfile.mkdtemp();
+    (Path(fs) / "main.jac").write_text("to cl:\n");
+    (Path(fs) / "frontend.cl.jac").write_text("# client\n");
+    fs_b = MicroserviceManifestBuilder(
+        k8s_config=cfg,
+        no_image=True,
+        project_dir=fs,
+        microservices_config={"routes": {}}
+    );
+    assert fs_b._has_client_source();
+    assert fs_b._client_entry() == "main.jac";
+
+    # backend-only project (no .cl.jac) -> client build skipped.
+    be = tempfile.mkdtemp();
+    (Path(be) / "main.jac").write_text("to sv:\n");
+    be_b = MicroserviceManifestBuilder(
+        k8s_config=cfg,
+        no_image=True,
+        project_dir=be,
+        microservices_config={"routes": {}}
+    );
+    assert not be_b._has_client_source();
+    assert be_b._client_entry() == "";
+
+    # an explicit [client].entry always wins over auto-detection.
+    exp_b = MicroserviceManifestBuilder(
+        k8s_config=cfg,
+        no_image=True,
+        project_dir=fs,
+        microservices_config={"client": {"entry": "app.jac"}}
+    );
+    assert exp_b._client_entry() == "app.jac";
+
+    shutil.rmtree(fs);
+    shutil.rmtree(be);
+}
+
+test "experimental bootstrap git-clones the branch into a shared venv" {
+    init = build_bootstrap_init_container(
+        "python:3.12-slim",
+        experimental=True,
+        repo_url="https://github.com/udithishanka/jaseci.git",
+        branch="fix/no-image-bootstrap-deps"
+    );
+    script = init["args"][0];
+    assert "python3 -m venv /app/.venv" in script;
+    assert "jac install -e ./jac-scale --extras all" in script;
+    assert "jac install -e ./jac-client" in script;
+    # No PyPI pin in experimental mode.
+    assert "pip install --no-cache-dir --target" not in script;
+    # repo/branch ride as env data, referenced as $VARs - never spliced into the
+    # script, so a hostile branch name can't inject shell.
+    assert 'git clone --branch "$JACX_BRANCH"' in script;
+    assert "fix/no-image-bootstrap-deps" not in script;
+    env = {e["name"]: e["value"] for e in init["env"]};
+    assert env["JACX_BRANCH"] == "fix/no-image-bootstrap-deps";
+    assert env["JACX_REPO_URL"] == "https://github.com/udithishanka/jaseci.git";
+    # git install works on Debian and Alpine bases, and only when missing.
+    assert "command -v git" in script;
+    assert "apk add" in script;
+    # jac-client install is guarded so a fork without it doesn't kill the pod.
+    assert "[ ! -d ./jac-client ]" in script;
+}
+
+test "experimental clone URL normalizes SCP/ssh GitHub URLs to https" {
+    scp = build_bootstrap_init_container(
+        "python:3.12-slim", experimental=True, repo_url="git@github.com:org/repo.git"
+    );
+    scp_env = {e["name"]: e["value"] for e in scp["env"]};
+    assert scp_env["JACX_REPO_URL"] == "https://github.com/org/repo.git";
+
+    ssh = build_bootstrap_init_container(
+        "python:3.12-slim",
+        experimental=True,
+        repo_url="ssh://git@github.com/org/repo.git"
+    );
+    ssh_env = {e["name"]: e["value"] for e in ssh["env"]};
+    assert ssh_env["JACX_REPO_URL"] == "https://github.com/org/repo.git";
 }
 
 # =============================================================================

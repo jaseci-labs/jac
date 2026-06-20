@@ -594,6 +594,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " element types cannot be verified — use \"{type}[NodeType]\" or pass a"
          " concrete list of nodes instead"
      ),
+     E1119 = _err(
+         "E1119",
+         Category.TYPE,
+         "Lambda parameter '{name}' has no type and none could be inferred from context",
+         "Jac is strictly typed: a lambda's parameter types must be known. Annotate the"
+         " parameter, e.g. `lambda x: int : x + 1` (the return type is still inferred), or"
+         " place the lambda where its type is fixed by context — passed as a typed callback"
+         " (`sorted(xs, key=lambda x: ...)`) or bound to a `Callable`-typed target."
+     ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
          "W1051",
