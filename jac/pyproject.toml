@@ -28,7 +28,7 @@ Issues = "https://github.com/jaseci-labs/jaseci/issues"
 Changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community/release_notes/jaclang.md"
 
 [project.scripts]
-jac = "jaclang.jac0core.cli_boot:start_cli"
+jac = "_jac_launcher:main"
 
 [project.entry-points.pytest11]
 jaclang = "jaclang.pytest_plugin"
@@ -50,7 +50,7 @@ include = ["jaclang*"]
 jaclang = ["sitecustomize.py", "_precompiled/**/*.jir", "_precompiled/manifest.json", "cli/skills/*.md"]
 
 [tool.setuptools]
-py-modules = ["_jac_finder"]
+py-modules = ["_jac_finder", "_jac_launcher"]
 include-package-data = true
 
 [build-system]

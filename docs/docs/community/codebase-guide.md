@@ -58,7 +58,6 @@ jaseci/
 ├── jac-mcp/              # Plugin: MCP server for AI-assisted development
 ├── jac-super/            # Plugin: enhanced console output (Rich)
 ├── jac-plugins/          # Additional community plugins
-├── jaseci-package/       # Meta-package that bundles everything for pip install
 ├── docs/                 # MkDocs documentation site
 └── scripts/              # Release, CI, and utility scripts
 ```

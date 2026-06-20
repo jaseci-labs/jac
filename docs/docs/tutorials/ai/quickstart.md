@@ -9,7 +9,7 @@ In this tutorial, you'll set up byLLM, write your first AI-powered function, exp
 > **Prerequisites**
 >
 > - Completed: [Installation](../../quick-guide/install.md)
-> - Jac installed with `pip install jaseci`
+> - Jac installed with `pip install jaclang`
 > - **Either** an API key from OpenAI/Anthropic/Google, **or** Ollama installed for local inference (recommended), **or** ~5 GB of disk for the bundled in-process `local:*` runtime
 > - Time: ~20 minutes
 

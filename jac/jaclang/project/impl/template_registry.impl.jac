@@ -253,6 +253,18 @@ are contributed through the `register_project_template` hook.
 def _register_core_templates(registry: TemplateRegistry) {
     _hello = '"""Entry point for {{name}}."""\n\nwith entry {\n    print("Hello from {{name}}!");\n}\n';
     _lib = '"""Library module for {{name}}."""\n\ndef greet(name: str) -> str {\n    return f"Hello, {name}!";\n}\n';
+    # Offline stub for plugin-backed kinds. `jac create --kind <kind>` works with
+    # only jaclang installed; the kind's plugin (recorded in [dependencies]) is
+    # pulled in by `jac install` and contributes its richer scaffolding. When the
+    # plugin is already present its directory template (registered via the
+    # register_project_template hook under the SAME template name) overwrites this
+    # stub, so this content is only used in the plugin-absent path.
+    _plugin_stub = (
+        '"""Entry point for {{name}}.\n\n'
+        'This is a minimal scaffold. Run `jac install` to provision this\n'
+        "project kind's plugin, then `jac start` to run the app.\n"
+        '"""\n\nwith entry {\n    print("Hello from {{name}}!");\n}\n'
+    );
     _shared = '"""Shared library for {{name}} (exported C-ABI functions)."""\n\ndef add(a: int, b: int) -> int {\n    return a + b;\n}\n';
     _service = (
         '"""API service for {{name}}.\n\n'
@@ -318,6 +330,33 @@ def _register_core_templates(registry: TemplateRegistry) {
             "Distributable npm package (built into a tarball)",
             "lib.jac",
             {"lib.jac": _lib}
+        ),
+        # Offline stubs for plugin-backed kinds. Named after the kind so the
+        # owning plugin's directory template (same name) overwrites the stub
+        # when the plugin is installed.
+        _core_template(
+            "fullstack",
+            "Full-stack Jac app (server walkers + client UI; needs jac-client)",
+            "main.jac",
+            {"main.jac": _plugin_stub}
+        ),
+        _core_template(
+            "client",
+            "Client-only Jac app (browser, no backend; needs jac-client)",
+            "main.jac",
+            {"main.jac": _plugin_stub}
+        ),
+        _core_template(
+            "mobile",
+            "Jac mobile app (client UI, mobile target; needs jac-client)",
+            "main.jac",
+            {"main.jac": _plugin_stub}
+        ),
+        _core_template(
+            "desktop",
+            "Jac desktop app (OS webview + nacompile; needs jac-desktop)",
+            "main.jac",
+            {"main.jac": _plugin_stub}
         )
     ] {
         registry.register(info);

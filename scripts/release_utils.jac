@@ -95,14 +95,6 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
         submodules=True,
         precompile=True,
         extra_build_deps="jac-client"
-    ),
-    # Tier 4: the meta-package depends on everything above (incl. jac-desktop).
-    "jaseci": PackageInfo(
-        dir="jaseci-package",
-        pypi="jaseci",
-        tier=4,
-        release_notes="",
-        notes_display="jaseci"
     )
 },
      INTERNAL_DEPS: dict[(str, list[str])] = {
@@ -112,16 +104,7 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
     "jac-scale": ["jaclang"],
     "jac-super": ["jaclang"],
     "jac-mcp": ["jaclang"],
-    "jac-desktop": ["jaclang", "jac-client"],
-    "jaseci": [
-        "jaclang",
-        "byllm",
-        "jac-client",
-        "jac-scale",
-        "jac-super",
-        "jac-mcp",
-        "jac-desktop"
-    ]
+    "jac-desktop": ["jaclang", "jac-client"]
 },
      DEPENDENTS: dict[(str, list[str])] = {};
 with entry {

@@ -105,11 +105,16 @@ impl create(
         }
         plugin = kind_required_plugin(target_kind);
         if plugin and not _plugin_available(plugin) {
-            console.error(
-                f"Project kind '{target_kind}' requires the {plugin} plugin, which is not installed.",
-                hint=f"Install it (e.g. `pip install {plugin}` / `jac add {plugin}`), then retry."
+            # Not a hard error under the project-provisioned model: core ships a
+            # stub template for every plugin-backed kind, so `jac create` works
+            # offline with only jaclang installed. The plugin is recorded in
+            # [dependencies] (see _ensure_kind_plugin_dep) and pulled into the
+            # project's .jac/venv by `jac install`, which then supplies its
+            # richer scaffolding on subsequent runs.
+            console.info(
+                f"Kind '{target_kind}' uses the {plugin} plugin; it will be "
+                f"installed into the project when you run `jac install`."
             );
-            return 1;
         }
         tmpl = registry.get_by_kind(target_kind);
         if tmpl is None {
@@ -180,6 +185,12 @@ impl create(
     import copy;
     render_config = copy.deepcopy(tmpl.config);
     _stamp_kind(render_config, tmpl.kind);
+    # Record the kind's required plugin in [dependencies] so `jac install`
+    # provisions it into the project's .jac/venv. Covers both the core stub
+    # template (plugin absent) and the plugin's own richer template (whose
+    # bundled jac.toml leaves [dependencies] empty, listing the plugin only as
+    # build metadata under [jacpack]).
+    _ensure_kind_plugin_dep(render_config, tmpl.kind);
     # Generate jac.toml from config dict
     toml_content = _render_config_to_toml(render_config, project_name);
     with open(toml_path, "w", encoding="utf-8") as f {
@@ -287,6 +298,27 @@ def _stamp_kind(config: dict, kind: str) -> None {
     }
     if not proj.get("kind") {
         proj["kind"] = kind;
+    }
+}
+
+"""Record the kind's required plugin in the config's [dependencies] table.
+
+No-op for core kinds (no plugin). For plugin-backed kinds the plugin is added
+with an unpinned spec (empty string -> latest) unless already present, so
+`jac install` provisions it into the project's .jac/venv."""
+def _ensure_kind_plugin_dep(config: dict, kind: str) -> None {
+    import from jaclang.project.kinds { kind_required_plugin }
+    plugin = kind_required_plugin(kind);
+    if not plugin {
+        return;
+    }
+    deps = config.get("dependencies");
+    if not isinstance(deps, dict) {
+        deps = {};
+        config["dependencies"] = deps;
+    }
+    if plugin not in deps {
+        deps[plugin] = "";
     }
 }
 

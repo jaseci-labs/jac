@@ -8,7 +8,7 @@ Example PR title: "release: jaclang 1.2.3, jac-byllm 2.0.0"
 The output matrix `includes tier information for dependency-aware publishing:
   - Tier 1: jaclang (base package, no internal dependencies)
   - Tier 2: jac-byllm, jac-client, etc. (depend on jaclang)
-  - Tier 3: jaseci meta-package (depends on all)
+  - Tier 3: jac-desktop (depends on a tier-2 plugin)
 """
 import from __future__ { annotations }
 import argparse;

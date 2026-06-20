@@ -205,6 +205,14 @@ def _load_project_config {
         if config is not None {
             # Add venv site-packages to Python path
             add_venv_to_path(config);
+            # Re-run plugin discovery now that the project's .jac/venv is on
+            # sys.path. `import jaclang` already discovered plugins from the
+            # global environment before the venv path existed, so plugins
+            # installed into the project venv (declared in jac.toml) would
+            # otherwise have importable modules but unregistered hooks. This is
+            # the mechanism that lets a project provision its own plugins
+            # instead of requiring them in the CLI's environment.
+            _reload_project_plugins();
         }
 
         # Initialize plugin-registered dependency types
@@ -221,6 +229,27 @@ def _load_project_config {
         _exit_on_malformed_jac_toml(exc);
     } except Exception {
     # Silently ignore if project module not available or config discovery fails
+    }
+}
+
+
+"""Re-run plugin discovery after the project venv is on sys.path so plugins
+installed into .jac/venv register their hooks. Idempotent: already-registered
+plugins are skipped via plugin_manager.is_registered."""
+def _reload_project_plugins {
+    try {
+        import importlib;
+        import from jaclang.jac0core.runtime { plugin_manager }
+        import from jaclang.jac0core.helpers {
+            get_disabled_plugins,
+            load_plugins_with_disabling
+        }
+        # New site-packages dir may have just been added to sys.path; clear
+        # importer caches so entry-point discovery scans it.
+        importlib.invalidate_caches();
+        load_plugins_with_disabling(plugin_manager, get_disabled_plugins());
+    } except Exception {
+    # Non-fatal: project plugins simply won't register if discovery fails.
     }
 }
 

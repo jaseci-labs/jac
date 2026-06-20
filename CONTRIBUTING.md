@@ -185,10 +185,9 @@ After the release PR is merged, the **Publish Release** workflow triggers automa
      - **Tier 1**: `jaclang` (base package; everything depends on it)
      - **Tier 2**: `jac-byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp` (depend only on `jaclang`)
      - **Tier 3**: `jac-desktop` (depends on a tier-2 plugin, `jac-client`)
-     - **Tier 4**: `jaseci` (meta-package; depends on everything above)
-   - Pushes git tags (`{package}-v{version}`, plus `v{version}` for jaseci)
+   - Pushes git tags (`{package}-v{version}`)
    - Creates a GitHub Release with artifacts
-   - Builds standalone binaries (if jaseci was released)
+   - Builds standalone binaries (if `jaclang` was released)
 
 > **Note**: The workflow waits for each tier on PyPI before publishing the next, so a package never lands before a dependency it pins. Tiers are configured per package in `scripts/release_utils.jac`.
 

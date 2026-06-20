@@ -12,17 +12,13 @@ Install Jac with a single command -- no Python setup required:
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-This automatically installs [uv](https://docs.astral.sh/uv/) (if needed), a Python 3.12+ runtime, and the full Jac ecosystem including all plugins.
+This automatically installs [uv](https://docs.astral.sh/uv/) (if needed), a Python 3.12+ runtime, and `jaclang`.
+
+> **Plugins are no longer installed globally.** You install `jaclang` once; plugins like `byllm`, `jac-client`, and `jac-scale` are declared per-project in your `jac.toml` and provisioned automatically into the project's `.jac/venv` the first time you run `jac install` or `jac run`. See [Project dependencies](#project-dependencies-no-global-plugins) below.
 
 ### Installer Options
 
 Pass flags after `--` to customize the install:
-
-**Core language only (no plugins):**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --core
-```
 
 **Specific version:**
 
@@ -44,8 +40,8 @@ curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/ins
 
 | Flag | Description |
 |------|-------------|
-| `--core` | Install only the Jac language compiler, no plugins |
-| `--standalone` | Download a pre-built binary from GitHub Releases |
+| `--core` | Deprecated no-op (jaclang-only is now the only mode) |
+| `--standalone` | Download a pre-built jaclang binary from GitHub Releases |
 | `--version V` | Install a specific version |
 | `--uninstall` | Remove Jac |
 
@@ -57,19 +53,14 @@ Re-run the install command to upgrade to the latest version. The installer detec
 
 ## Install via pip
 
-If you already have Python 3.12+ and prefer pip:
+If you already have Python 3.12+ and prefer pip, install **just** `jaclang`:
 
 ```bash
-pip install jaseci
+pip install jaclang
 ```
 
-The `jaseci` package is a meta-package that bundles all Jac ecosystem packages together. This installs:
-
-- `jaclang` - The Jac language and compiler
-- `byllm` - AI/LLM integration
-- `jac-client` - Full-stack web development
-- `jac-scale` - Production deployment
-- `jac-super` - Enhanced console output
+That's the whole install. You do **not** install plugins globally anymore --
+`jaclang` provisions them per-project (see below).
 
 Verify the installation:
 
@@ -81,48 +72,39 @@ This also warms the cache, making subsequent commands faster.
 
 ---
 
-## Installation Options
+## Project dependencies (no global plugins)
 
-### Minimal Install (Language Only)
-
-If you only need the core language:
-
-```bash
-pip install jaclang
-```
-
-### Individual Plugins
-
-Install plugins as needed:
+Plugins (`byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp`,
+`jac-desktop`) and any third-party Python packages are declared per-project in
+your `jac.toml` and installed into the project's own `.jac/venv` -- never into
+the environment `jac` itself runs from.
 
 ```bash
-# AI/LLM integration
-pip install byllm
+# Scaffold a project; kind-backed plugins are added to jac.toml automatically.
+jac create my-app --kind fullstack     # adds jac-client to [dependencies]
+cd my-app
 
-# Full-stack web development
-pip install jac-client
+# Add any dependency (pip package or plugin) to jac.toml
+jac add byllm
 
-# Production deployment & scaling
-pip install jac-scale              # Core only (lightweight)
-pip install jac-scale[all]         # Full install with all features
-
-# Enhanced console output
-pip install jac-super
+# Provision the project's .jac/venv from jac.toml
+jac install
 ```
 
-### Virtual Environment (Recommended)
+When you run a project (`jac run`, `jac start`, ...), `jac` ensures the
+project's `.jac/venv` is provisioned from `jac.toml` and runs inside it
+automatically -- so a fresh `pip install jaclang` is enough to work on any Jac
+project, regardless of which plugins it uses.
 
-```bash
-# Create environment
-python -m venv jac-env
+Useful environment switches:
 
-# Activate it
-source jac-env/bin/activate   # Linux/Mac
-jac-env\Scripts\activate      # Windows
+| Variable / flag | Effect |
+|-----------------|--------|
+| `JAC_NO_SYNC=1` / `--frozen` | Use the existing `.jac/venv` as-is; don't auto-provision |
+| `JAC_NO_VENV=1` | Ignore the project venv entirely; run on the current environment (handy for editable/dev setups) |
 
-# Install Jac
-pip install jaseci
-```
+A project venv lives under `.jac/venv` and is safe to delete; the next `jac`
+command re-provisions it from `jac.toml`.
 
 ---
 
@@ -266,19 +248,15 @@ If you installed via the one-line installer, re-run it to upgrade:
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-If you installed via pip:
+If you installed via pip, upgrade `jaclang`:
 
 ```bash
-# Upgrade everything at once
-pip install --upgrade jaseci
-
-# Or upgrade individual packages
 pip install --upgrade jaclang
-pip install --upgrade byllm
-pip install --upgrade jac-client
-pip install --upgrade jac-scale
-pip install --upgrade jac-super
 ```
+
+Project plugins are versioned per-project in each `jac.toml`. To pick up newer
+plugin releases, bump the version in `jac.toml` (or run `jac update`) and
+re-provision with `jac install`.
 
 ---
 

@@ -49,7 +49,7 @@ The language spec covers all core Jac constructs:
 
 ```bash
 # 1. Install
-pip install jaseci
+pip install jaclang
 
 # 2. Scaffold a new project
 jac create myapp --use client

@@ -7,7 +7,7 @@ In this tutorial, you'll build a full-stack AI day planner from scratch -- a sin
 **Required Packages:** This tutorial uses **jaclang**, **jac-client**, **jac-scale**, and **byllm**. If you installed Jac using the [one-line installer](../../quick-guide/install.md#one-line-install-recommended), all packages are already included -- skip to the version check below. If you prefer pip:
 
 ```bash
-pip install jaseci
+pip install jaclang
 ```
 
 Verify your installation meets the minimum requirements:

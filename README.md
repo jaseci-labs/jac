@@ -37,14 +37,14 @@ Jac is a programming language designed for humans and AI to build together. With
 This repository houses the Jaseci stack -- the core libraries and tooling that make Jac work:
 
 - **[`jaclang`](jac/):** The Jac programming language -- compiles to Python bytecode, JavaScript, and native machine code. (`pip install jaclang`)
-- **[`byllm`](jac-byllm/):** Plugin for Jac enabling easy integration of large language models into your applications through the innovative [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965) concept. (`pip install byllm`)
-- **[`jac-client`](jac-client/):** Plugin for Jac to bundle full-stack web applications with full access to the entire npm/node package ecosystem. (`pip install jac-client`)
-- **[`jac-scale`](jac-scale/):** Plugin for Jac enabling fully abstracted and automated deployment and scaling with FastAPI, Redis, MongoDB, and Kubernetes integration. (`pip install jac-scale`)
-- **[`jac-super`](jac-super/):** Plugin for Jac providing enhanced console output with Rich formatting. (`pip install jac-super`)
-- **[`jac-mcp`](jac-mcp/):** Plugin for Jac providing an MCP server for AI-assisted Jac development with validation, formatting, and documentation tools. (`pip install jac-mcp`)
+- **[`byllm`](jac-byllm/):** Plugin for Jac enabling easy integration of large language models into your applications through the innovative [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965) concept.
+- **[`jac-client`](jac-client/):** Plugin for Jac to bundle full-stack web applications with full access to the entire npm/node package ecosystem.
+- **[`jac-scale`](jac-scale/):** Plugin for Jac enabling fully abstracted and automated deployment and scaling with FastAPI, Redis, MongoDB, and Kubernetes integration.
+- **[`jac-super`](jac-super/):** Plugin for Jac providing enhanced console output with Rich formatting.
+- **[`jac-mcp`](jac-mcp/):** Plugin for Jac providing an MCP server for AI-assisted Jac development with validation, formatting, and documentation tools.
 - **[`jac VSCE`](https://github.com/jaseci-labs/jac-vscode/blob/main/README.md):** The official VS Code extension for Jac.
 
-All of these components are bundled together as the [**Jaseci**](jaseci-package/) stack, which can be installed with a simple `pip install jaseci`.
+You install **only `jaclang`** (`pip install jaclang`). The plugins above are not installed globally -- each project declares the ones it needs in its `jac.toml`, and `jac` provisions them into the project's own `.jac/venv` on demand (`jac install` / `jac run`).
 
 ---
 
@@ -148,10 +148,11 @@ base_route_app = "app"
 default_model = "claude-sonnet-4-20250514"
 ```
 
-Install Jac, set your API key, and run:
+Install Jac, set your API key, and run. `jac start` provisions the project's
+plugins (declared in `jac.toml`) into its `.jac/venv` automatically:
 
 ```bash
-pip install jaseci
+pip install jaclang
 export ANTHROPIC_API_KEY="your-key-here"
 jac start main.jac
 ```
@@ -175,13 +176,16 @@ The best way to learn Jac is by building something real. The [**Build an AI Day 
 
 <br>
 
-Get the complete, stable toolkit from PyPI:
+Install the language from PyPI:
 
 ```bash
-pip install jaseci
+pip install jaclang
 ```
 
-The `jaseci` package is a meta-package that bundles `jaclang`, `byllm`, `jac-client`, `jac-scale`, `jac-super`, and `jac-mcp` together for convenience. This is the fastest way to get started with building applications.
+That's all you install globally. Each project declares the plugins it needs in
+its `jac.toml`; `jac` provisions them into the project's own `.jac/venv` on
+demand (`jac install` / `jac run`), so a single `pip install jaclang` works for
+every Jac project regardless of which plugins it uses.
 
 </details>
 

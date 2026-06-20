@@ -85,7 +85,7 @@ obj Person {
 
 ```bash
 # Full installation with all plugins
-pip install jaseci
+pip install jaclang
 
 # Minimal installation
 pip install jaclang
