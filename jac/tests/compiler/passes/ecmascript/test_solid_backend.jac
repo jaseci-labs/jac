@@ -364,7 +364,10 @@ test "solid runtime shim compiles and links its impl bodies" {
     assert not prog.errors_had , (
         f"Solid runtime failed to compile: {[str(e) for e in prog.errors_had]}"
     );
-    assert len(ir.impl_mod) >= 1 , "Solid runtime impl annex was not linked";
+    has_impl_node = any(
+        st.loc.mod_path and st.loc.mod_path.endswith(".impl.jac") for st in ir.body
+    );
+    assert has_impl_node , "Solid runtime impl annex was not linked";
     js = es_to_js(
         EsastGenPass(ir_in=ir, prog=prog, backend=SolidBackend()).ir_out.gen.es_ast
     );
