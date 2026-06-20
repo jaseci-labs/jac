@@ -14,7 +14,10 @@ import from jaclang.runtimelib.client.mobile_setup_env {
     mobile_setup_platform_env_restore,
     mobile_setup_platform_env_swap
 }
-import from jaclang.runtimelib.client.targets.mobile.bundle { _build_android, _build_ios }
+import from jaclang.runtimelib.client.targets.mobile.bundle {
+    _build_android,
+    _build_ios
+}
 import from jaclang.runtimelib.client.targets.mobile.common {
     DEFAULT_APP_ID,
     DEFAULT_APP_NAME,

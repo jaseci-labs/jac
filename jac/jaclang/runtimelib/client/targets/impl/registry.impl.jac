@@ -69,9 +69,7 @@ impl TargetFactory.create(name: str, project_dir: Path) -> ClientTarget {
     target = registry.get(target_name);
     if target is None {
         available = [t.name for t in registry.get_all()];
-        raise ValueError(
-            f"Unknown target: {name}. Available: {', '.join(available)}."
-        );
+        raise ValueError(f"Unknown target: {name}. Available: {', '.join(available)}.");
     }
     target.project_dir = project_dir;
     return target;

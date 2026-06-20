@@ -7,7 +7,9 @@ import from jaclang.runtimelib.client.targets.web_target { WebTarget }
 import from jaclang.runtimelib.client.targets.pwa_target { PWATarget }
 import from jaclang.runtimelib.client.targets.static_target { StaticTarget }
 import from jaclang.runtimelib.client.targets.mobile_target { MobileTarget }
-import from jaclang.runtimelib.client.targets.desktop.native_desktop_target { NativeDesktopTarget }
+import from jaclang.runtimelib.client.targets.desktop.native_desktop_target {
+    NativeDesktopTarget
+}
 
 """Register the built-in client build targets.
 

@@ -25,8 +25,9 @@ def _webview_dir -> Path {
         probe = probe.parent;
     }
     raise RuntimeError(
-        "jaclang/runtimelib/client/targets/desktop/webview/webview.na.jac not found from "
-        + str(here)
+        "jaclang/runtimelib/client/targets/desktop/webview/webview.na.jac not found from " + str(
+            here
+        )
     );
 }
 

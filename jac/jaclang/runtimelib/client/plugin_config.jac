@@ -154,8 +154,7 @@ def _load_template(template_name: str) -> dict[str, any] | None {
         try {
             package_root = str(files("jaclang"));
             template_dir = (
-                Path(package_root) / "runtimelib" / "client" / "templates"
-                / template_name
+                Path(package_root) / "runtimelib" / "client" / "templates" / template_name
             );
         } except (TypeError, ModuleNotFoundError) as e {
             console.warning(

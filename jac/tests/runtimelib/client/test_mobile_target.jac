@@ -4,15 +4,11 @@ import os;
 import from pathlib { Path }
 
 # Mobile target modules now ship with core under jaclang/runtimelib/client/.
-glob _client_dir = Path(
-    os.path.dirname(__file__)
-).parent.parent.parent / "jaclang" / "runtimelib" / "client";
+glob _client_dir = Path(os.path.dirname(__file__)).parent.parent.parent / "jaclang" / "runtimelib" / "client";
 
 test "mobile target files exist" {
     mobile_target_jac = _client_dir / "targets" / "mobile_target.jac";
-    mobile_target_impl = (
-        _client_dir / "targets" / "impl" / "mobile_target.impl.jac"
-    );
+    mobile_target_impl = _client_dir / "targets" / "impl" / "mobile_target.impl.jac";
     mobile_dir = _client_dir / "targets" / "mobile";
 
     assert mobile_target_jac.exists() , (
@@ -106,9 +102,7 @@ test "cli exposes mobile setup platform selector" {
     cli = (_client_dir / "cli.jac").read_text();
     assert "Platform for mobile setup (android, ios, all)" in cli;
     assert "JAC_MOBILE_SETUP_PLATFORM" in cli;
-    mobile_config = (
-        _client_dir / "targets" / "mobile" / "config.jac"
-    ).read_text();
+    mobile_config = (_client_dir / "targets" / "mobile" / "config.jac").read_text();
     assert "MOBILE_SETUP_PLATFORM_ENV" in mobile_config;
     assert "_resolve_mobile_setup_mode" in mobile_config;
 }

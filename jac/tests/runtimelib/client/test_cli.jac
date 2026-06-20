@@ -1153,9 +1153,17 @@ test "start dev with client does initial compilation" {
             if process.stderr {
                 process.stderr.close();
             }
-            assert found_watchdog , (
-                f"Expected watchdog auto-install message in output, but got: {output}"
-            );
+            # The watchdog auto-install message only appears when watchdog is not
+            # already installed in the test environment (e.g. test-client). When it
+            # is pre-installed (e.g. test-core-runtime), the dev server skips the
+            # install, so only assert the message in the not-pre-installed case.
+            import importlib.util;
+            watchdog_preinstalled = importlib.util.find_spec("watchdog") is not None;
+            if not watchdog_preinstalled {
+                assert found_watchdog , (
+                    f"Expected watchdog auto-install message in output, but got: {output}"
+                );
+            }
             assert found_compilation , (
                 f"Expected 'Initial client compilation completed' in output, but got: {output}"
             );

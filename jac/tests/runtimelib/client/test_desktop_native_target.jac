@@ -25,7 +25,10 @@ test "register_targets registers the native desktop target" {
 
 """Window geometry is read from [plugins.desktop.window]."""
 test "desktop window config loads from jac.toml" {
-    import from jaclang.runtimelib.client.desktop_config { get_desktop_config, reset_desktop_config }
+    import from jaclang.runtimelib.client.desktop_config {
+        get_desktop_config,
+        reset_desktop_config
+    }
     import from pathlib { Path }
     import tempfile;
 

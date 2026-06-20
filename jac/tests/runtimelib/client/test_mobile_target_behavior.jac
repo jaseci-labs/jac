@@ -26,7 +26,9 @@ import jaclang;
 import from jaclang.cli.registry { get_registry }
 import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
-import from jaclang.runtimelib.client.targets.mobile.deps { _check_android_dependencies }
+import from jaclang.runtimelib.client.targets.mobile.deps {
+    _check_android_dependencies
+}
 import from jaclang.runtimelib.client.targets.mobile.dev {
     _mobile_setup_android_port_reverse
 }
