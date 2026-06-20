@@ -487,6 +487,26 @@ auto_download  = false                # true = skip the first-run TTY prompt
 
 Bundled aliases are downloaded as Q4_K_M GGUFs into `~/.cache/jac/models/<alias>/` on first use and managed via `jac model list/pull/rm`. See [Built-in Local Models](../plugins/byllm.md#built-in-local-models) for the full reference and [`jac model`](../cli/index.md#jac-model) for cache management.
 
+**Frontend Framework (jac-client):**
+
+```toml
+[plugins.client]
+framework = "react"   # "react" (default), "solid" (experimental), or "preact"
+```
+
+Controls which JavaScript framework the `cl` compiler target emits. The default is `"react"`.
+
+| Value | Status | Notes |
+|-------|--------|-------|
+| `"react"` | Stable | Default. Uses React hooks and `@vitejs/plugin-react`. |
+| `"solid"` | Experimental | Uses Solid signals and `vite-plugin-solid`. API may change. |
+| `"preact"` | Stable | Drop-in React alternative with a smaller bundle. |
+
+Switching frameworks automatically adjusts the installed npm packages and the generated Vite config; no other changes are needed. Delete your `.jac/client/` build cache after switching so the previous framework's output is not mixed in.
+
+!!! warning "Solid support is experimental"
+    The `solid` framework target is under active development. Some jac-client features (error boundaries, suspense slots, advanced routing) may not yet be fully supported. Check the [release notes](../../community/release_notes/jac-client.md) before upgrading.
+
 **Import Path Aliases (jac-client):**
 
 ```toml

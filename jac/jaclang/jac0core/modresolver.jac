@@ -193,10 +193,10 @@ def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
     import jaclang.runtimelib as _runtimelib;
     runtime_dir = os.path.dirname(_runtimelib.__file__);
     module_name = target[len('@jac/'):];
-    # Well-known aliases explicitly mapped to their backing source.
-    module_map = {'runtime': 'client_runtime.cl.jac'};
-    if module_name in module_map {
-        path = os.path.join(runtime_dir, module_map[module_name]);
+    # `@jac/runtime` resolves to the framework-specific client runtime source.
+    if module_name == 'runtime' {
+        import from jaclang.runtimelib.runtime_source { resolve_client_runtime_cl_path }
+        path = resolve_client_runtime_cl_path();
         if os.path.isfile(path) {
             return (path, 'jac');
         }

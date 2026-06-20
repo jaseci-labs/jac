@@ -272,7 +272,9 @@ impl native_capability_violations(mod: uni.Module) -> list {
 }
 
 impl module_native_compat(mod: uni.Module) -> bool {
-    scan_mods = [mod] + list(mod.impl_mod) + list(mod.test_mod) + list(mod.variant_mod);
+    # Annex bodies are merged into mod's own tree; sub-node queries below cover
+    # them, so a single-module scan suffices.
+    scan_mods = [mod];
     has_entry = False;
     for mc in mod.get_all_sub_nodes(typ=uni.ModuleCode) {
         for k in mc.kid {
@@ -342,16 +344,12 @@ impl PortabilityWarnPass.postinit -> None {
 
 """Run all portability checks via bulk sub-node queries (no tree traversal)."""
 impl PortabilityWarnPass.transform(ir_in: uni.Module) -> uni.Module {
+    # Annex bodies are merged into ir_in's own tree, so these bulk sub-node
+    # queries cover head and annex content in one sweep.
     self._check_js_globals(ir_in);
     self._check_js_methods(ir_in);
     self._check_js_keywords(ir_in);
     self._check_js_properties(ir_in);
-    for annex_mod in ir_in.impl_mod + ir_in.test_mod + ir_in.variant_mod {
-        self._check_js_globals(annex_mod);
-        self._check_js_methods(annex_mod);
-        self._check_js_keywords(annex_mod);
-        self._check_js_properties(annex_mod);
-    }
     return ir_in;
 }
 

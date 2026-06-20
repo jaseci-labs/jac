@@ -380,11 +380,29 @@ impl ViteBundler._generate_vite_config_content(
     if self.config_loader.is_pwa_enabled() {
         pwa_alias_str = f'\n      "@jac/pwa": path.resolve(buildDir, "{compiled_pwa_relative}"),';
     }
+    # Framework backend aliases and plugin selection.
+    framework_alias_str = '';
+    framework_plugin_import = 'import react from "@vitejs/plugin-react";';
+    framework_plugin_call = 'react()';
+    try {
+        import from jaclang.compiler.passes.ecmascript.backends.registry {
+            resolve_active_backend
+        }
+        active_backend = resolve_active_backend();
+        for (k, v) in active_backend.vite_aliases().items() {
+            framework_alias_str += f'\n      "{k}": "{v}",';
+        }
+        plugin_lines = active_backend.vite_plugin_lines();
+        if plugin_lines is not None {
+            (framework_plugin_import, framework_plugin_call) = plugin_lines;
+        }
+    } except Exception as e {
+        console.error(f"[jac warning] Failed to resolve framework backend config: {e}");
+    }
     plugins = [];
     plugin_imports = [];
-    # TypeScript support is always enabled, so always include React plugin
-    plugin_imports.append('import react from "@vitejs/plugin-react";');
-    plugins.append('    react()');
+    plugin_imports.append(framework_plugin_import);
+    plugins.append(f'    {framework_plugin_call}');
     lib_imports = vite_config_data.get('lib_imports', []);
     for lib_import in lib_imports {
         if (isinstance(lib_import, str) and lib_import.strip()) {
@@ -647,7 +665,7 @@ export default defineConfig({{
   }},
   resolve: {{
     alias: {{
-      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}
+      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{framework_alias_str}
       "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
     }},
     extensions: [{extensions_str}],
@@ -769,7 +787,7 @@ export default defineConfig({{
   publicDir: false,
 {server_section}  resolve: {{
       alias: {{
-        "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}
+        "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}{framework_alias_str}
         "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
       }},
       extensions: [{extensions_str}],

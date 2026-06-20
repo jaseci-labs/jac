@@ -49,7 +49,7 @@ with entry {
 ## Pitfalls
 
 - Use `node` / `edge` for graph-persistent archetypes. Use `obj` for plain in-memory data that doesn't live on the graph.
-- **`++>` returns a LIST, not the node.** `new = here ++> Todo(text=t);` makes `new` a list - `new[0]` is the Todo. `report new;` or `new.text` right after creation are the classic bugs; index first.
+- **`++>` mirrors its right-hand side.** `new = here ++> Todo(text=t);` makes `new` the Todo node (a single-node connect returns the node, not a list); `new.text` works directly. Connecting to a **list** (`here ++> [a, b]`) returns a list. The old `new[0]` unwrap is gone - drop it.
 - `<++>` creates edges in BOTH directions - easy to double-count traversals. `<++` is just `++>` written from the other end (same single edge).
 - Typed edge creation uses `+>:E(args):+>` - `+` on BOTH sides of the colons.
 - Edge-type filter uses **single** arrows: `[src ->:E:->]`. The double-arrow form `[src -->:E:-->]` is a parse error.

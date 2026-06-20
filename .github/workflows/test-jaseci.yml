@@ -64,6 +64,45 @@ jobs:
     - name: Run runtime + langserve + language tests
       run: pytest -x jac -n auto --ignore=jac/tests/compiler
 
+  test-solid-jsdom:
+    # Runtime exec of the Solid framework backend: compile a Solid component +
+    # the @jac/runtime shim to JS and mount it in jsdom under node, asserting
+    # render + reactivity. Needs a real `bun install` (jsdom + solid-js), so the
+    # test self-skips unless JAC_CLIENT_INTEGRATION is set -- we set it here and
+    # run just that file in its own lean job.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-xdist
+        pip install watchdog
+
+    - name: Run Solid jsdom runtime test
+      env:
+        JAC_CLIENT_INTEGRATION: "1"
+      run: pytest -x -vv jac/tests/runtimelib/test_solid_jsdom.jac
+
   test-client:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:

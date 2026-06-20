@@ -26,6 +26,11 @@ glob TOK_LINE_DELTA = 0,
 obj SemTokManager {
     has ir: uni.Module,
         hub: dict = {},
+        # When set, only tokens for nodes originating from this source file are
+        # served. `ir` may be a head module that merged annex (.impl/.test) file
+        # bodies, so the per-node `loc.mod_path` distinguishes which file a token
+        # belongs to.
+        target_path: (str | None) = None,
         sem_tokens: List[int] by postinit,
         static_sem_tokens:
             List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] by postinit;
