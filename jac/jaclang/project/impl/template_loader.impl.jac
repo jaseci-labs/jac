@@ -102,10 +102,15 @@ impl load_template_from_directory(
     if ".jac/" not in root_gitignore_entries {
         root_gitignore_entries = root_gitignore_entries + [".jac/"];
     }
-    # Resolve post_create hook if specified
+    # Post-create hook. An explicit callable (passed by a plugin loading its own
+    # template) is used directly. Otherwise the "module.path:func" string from
+    # [jacpack.options] is stashed unresolved on `post_create_path` and resolved
+    # lazily at `jac create` time -- so a core-owned template can name a
+    # plugin-provided hook without importing the plugin on every registry load.
     hook = post_create_hook;
+    hook_path = "";
     if hook is None and "post_create_hook" in options {
-        hook = resolve_post_create_hook(options["post_create_hook"]);
+        hook_path = options["post_create_hook"] or "";
     }
     # Load all template files from the directory
     files: dict[str, str] = {};
@@ -148,7 +153,8 @@ impl load_template_from_directory(
         files=files,
         directories=directories,
         root_gitignore_entries=root_gitignore_entries,
-        post_create=hook
+        post_create=hook,
+        post_create_path=hook_path
     );
 }
 
@@ -274,8 +280,10 @@ impl resolve_post_create_hook(hook_path: str) -> Callable | None {
         }
 
         return hook;
-    } except ImportError as e {
-        console.print(f"Warning: Could not import hook module '{hook_path}': {e}");
+    } except ImportError {
+        # Expected when the hook's plugin isn't installed (e.g. scaffolding a
+        # plugin-backed kind offline). The scaffold's files are still written;
+        # the plugin's post-create step simply runs once the plugin is present.
         return None;
     } except AttributeError as e {
         console.print(f"Warning: Hook function not found '{hook_path}': {e}");

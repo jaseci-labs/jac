@@ -20,9 +20,6 @@ changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community
 [project.include]
 packages = ["jac_client*"]
 
-[project.include.data]
-"jac_client" = ["templates/**/*", "templates/**/.*"]
-
 [dependencies]
 jaclang = ">=0.16.6"
 

@@ -13,7 +13,8 @@ impl ProjectTemplate.to_dict -> dict[str, any] {
         "config": self.config,
         "files": self.files,
         "directories": self.directories,
-        "root_gitignore_entries": self.root_gitignore_entries
+        "root_gitignore_entries": self.root_gitignore_entries,
+        "post_create_path": self.post_create_path
     };
 }
 
@@ -51,10 +52,21 @@ impl TemplateRegistry.register(template_info: dict[str, any]) -> None {
         files=template_info.get("files", {}),
         directories=template_info.get("directories", []),
         root_gitignore_entries=template_info.get("root_gitignore_entries", []),
-        post_create=template_info.get("post_create")
+        post_create=template_info.get("post_create"),
+        post_create_path=template_info.get("post_create_path", "")
     );
     # Register the template
     self._templates[name] = template;
+}
+
+"""Register an already-built ProjectTemplate (e.g. a core directory template).
+
+Unlike `register`, which validates and constructs from a plugin's hook dict,
+this stores a pre-loaded template as-is -- preserving fields like
+`post_create_path` that the dict round-trip does not carry through.
+"""
+impl TemplateRegistry.register_template(template: ProjectTemplate) -> None {
+    self._templates[template.name] = template;
 }
 
 """Get template by name (e.g., 'default', 'client')."""
@@ -246,25 +258,18 @@ def _core_template(
 """Register the core, plugin-free project-kind templates.
 
 One canonical template per core kind (cli, native-app, native-binary,
-shared-library, api-service, microservices, pypi-package, npm-package). The
-plugin kinds (fullstack/wasm/mobile via jac-client, desktop via jac-desktop)
-are contributed through the `register_project_template` hook.
+shared-library, api-service, microservices, pypi-package, npm-package), plus the
+first-party plugin-backed kinds (fullstack/client/mobile, desktop) whose
+scaffolds are bundled directory templates under `jaclang/project/templates/`.
+Those carry a `post_create_hook` string referencing the owning plugin's
+post-create step, resolved lazily at `jac create` time -- so `jac create --kind
+fullstack` writes the real scaffold with only jaclang installed, and the
+plugin's bootstrap (Bun/npm) runs once the plugin is provisioned.
 """
 def _register_core_templates(registry: TemplateRegistry) {
+    _register_bundled_templates(registry);
     _hello = '"""Entry point for {{name}}."""\n\nwith entry {\n    print("Hello from {{name}}!");\n}\n';
     _lib = '"""Library module for {{name}}."""\n\ndef greet(name: str) -> str {\n    return f"Hello, {name}!";\n}\n';
-    # Offline stub for plugin-backed kinds. `jac create --kind <kind>` works with
-    # only jaclang installed; the kind's plugin (recorded in [dependencies]) is
-    # pulled in by `jac install` and contributes its richer scaffolding. When the
-    # plugin is already present its directory template (registered via the
-    # register_project_template hook under the SAME template name) overwrites this
-    # stub, so this content is only used in the plugin-absent path.
-    _plugin_stub = (
-        '"""Entry point for {{name}}.\n\n'
-        'This is a minimal scaffold. Run `jac install` to provision this\n'
-        "project kind's plugin, then `jac start` to run the app.\n"
-        '"""\n\nwith entry {\n    print("Hello from {{name}}!");\n}\n'
-    );
     _shared = '"""Shared library for {{name}} (exported C-ABI functions)."""\n\ndef add(a: int, b: int) -> int {\n    return a + b;\n}\n';
     _service = (
         '"""API service for {{name}}.\n\n'
@@ -330,36 +335,42 @@ def _register_core_templates(registry: TemplateRegistry) {
             "Distributable npm package (built into a tarball)",
             "lib.jac",
             {"lib.jac": _lib}
-        ),
-        # Offline stubs for plugin-backed kinds. Named after the kind so the
-        # owning plugin's directory template (same name) overwrites the stub
-        # when the plugin is installed.
-        _core_template(
-            "fullstack",
-            "Full-stack Jac app (server walkers + client UI; needs jac-client)",
-            "main.jac",
-            {"main.jac": _plugin_stub}
-        ),
-        _core_template(
-            "client",
-            "Client-only Jac app (browser, no backend; needs jac-client)",
-            "main.jac",
-            {"main.jac": _plugin_stub}
-        ),
-        _core_template(
-            "mobile",
-            "Jac mobile app (client UI, mobile target; needs jac-client)",
-            "main.jac",
-            {"main.jac": _plugin_stub}
-        ),
-        _core_template(
-            "desktop",
-            "Jac desktop app (OS webview + nacompile; needs jac-desktop)",
-            "main.jac",
-            {"main.jac": _plugin_stub}
         )
     ] {
         registry.register(info);
+    }
+}
+
+"""Register the bundled first-party plugin-backed kind templates.
+
+The fullstack/client/mobile (jac-client) and desktop (jac-desktop) scaffolds
+ship as directory templates under `jaclang/project/templates/<kind>/`. They are
+loaded here so `jac create --kind <kind>` produces the real scaffold with only
+jaclang installed; each template's jac.toml names its plugin's post-create hook,
+which is resolved lazily at create time (a no-op until the plugin is present).
+A plugin may still override a bundled template by registering one of the same
+name via the `register_project_template` hook.
+"""
+def _register_bundled_templates(registry: TemplateRegistry) {
+    import os;
+    import jaclang;
+    import from pathlib { Path }
+    import from jaclang.project.template_loader { load_template_from_directory }
+    import from jaclang.cli.console { console }
+    # Anchor on the jaclang package root (unambiguous regardless of whether this
+    # impl's __file__ resolves to the impl or merged-module path).
+    pkg_root = os.path.dirname(os.path.abspath(jaclang.__file__));
+    templates_dir = Path(pkg_root) / "project" / "templates";
+    for kind in ["fullstack", "client", "mobile", "desktop"] {
+        tdir = templates_dir / kind;
+        if not tdir.is_dir() {
+            continue;
+        }
+        try {
+            registry.register_template(load_template_from_directory(tdir));
+        } except Exception as e {
+            console.warning(f"Skipping bundled '{kind}' template: {e}");
+        }
     }
 }
 # ===============================================================================

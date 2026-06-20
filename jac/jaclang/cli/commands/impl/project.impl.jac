@@ -105,12 +105,12 @@ impl create(
         }
         plugin = kind_required_plugin(target_kind);
         if plugin and not _plugin_available(plugin) {
-            # Not a hard error under the project-provisioned model: core ships a
-            # stub template for every plugin-backed kind, so `jac create` works
-            # offline with only jaclang installed. The plugin is recorded in
-            # [dependencies] (see _ensure_kind_plugin_dep) and pulled into the
-            # project's .jac/venv by `jac install`, which then supplies its
-            # richer scaffolding on subsequent runs.
+            # Not a hard error under the project-provisioned model: the real
+            # scaffold ships as a bundled core template, so `jac create` lays
+            # down the full project offline with only jaclang installed. The
+            # plugin is recorded in [dependencies] (see _ensure_kind_plugin_dep)
+            # and provisioned into the project's .jac/venv by `jac install`,
+            # which is what makes the scaffolded app run.
             console.info(
                 f"Kind '{target_kind}' uses the {plugin} plugin; it will be "
                 f"installed into the project when you run `jac install`."
@@ -186,10 +186,9 @@ impl create(
     render_config = copy.deepcopy(tmpl.config);
     _stamp_kind(render_config, tmpl.kind);
     # Record the kind's required plugin in [dependencies] so `jac install`
-    # provisions it into the project's .jac/venv. Covers both the core stub
-    # template (plugin absent) and the plugin's own richer template (whose
-    # bundled jac.toml leaves [dependencies] empty, listing the plugin only as
-    # build metadata under [jacpack]).
+    # provisions it into the project's .jac/venv. The bundled template's jac.toml
+    # leaves [dependencies] empty (the plugin is build metadata under [jacpack]),
+    # so this is what guarantees the runtime plugin gets provisioned.
     _ensure_kind_plugin_dep(render_config, tmpl.kind);
     # Generate jac.toml from config dict
     toml_content = _render_config_to_toml(render_config, project_name);
@@ -227,11 +226,20 @@ impl create(
     if tmpl.root_gitignore_entries {
         _create_root_gitignore(project_path, tmpl.root_gitignore_entries);
     }
-    # Run post-create hook if defined
-    if tmpl.post_create is not None {
+    # Run post-create hook if defined. A bundled core template carries its hook
+    # as an unresolved "module.path:func" string (`post_create_path`) so the
+    # plugin isn't imported on every registry load; resolve it now, at create
+    # time. Resolution is a no-op when the plugin isn't installed (the scaffold's
+    # files are already written), so an offline `jac create` still succeeds.
+    post_create = tmpl.post_create;
+    if post_create is None and tmpl.post_create_path {
+        import from jaclang.project.template_loader { resolve_post_create_hook }
+        post_create = resolve_post_create_hook(tmpl.post_create_path);
+    }
+    if post_create is not None {
         try {
             # Post-create hook output will be shown by the hook itself
-            tmpl.post_create(project_path, project_name);
+            post_create(project_path, project_name);
         } except Exception as e {
             console.warning(f"Post-create hook failed: {e}");
         }

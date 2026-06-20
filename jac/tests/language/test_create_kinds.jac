@@ -13,8 +13,16 @@ import tempfile;
 import from pathlib { Path }
 import from jaclang.cli.commands { project }
 import from jaclang.project.config { JacConfig }
-import from jaclang.project.kinds { plan_project_run, is_valid_kind, kind_entry }
-import from jaclang.project.template_registry { initialize_template_registry }
+import from jaclang.project.kinds {
+    plan_project_run,
+    is_valid_kind,
+    kind_entry,
+    kind_required_plugin
+}
+import from jaclang.project.template_registry {
+    initialize_template_registry,
+    get_template_registry
+}
 
 glob _tmp_dirs: list[str] = [],
      _orig_cwd: str = os.getcwd();
@@ -126,4 +134,31 @@ test "kind_entry matches the scaffolded entry-point" {
     assert kind_entry("api-service") == "main.sv.jac";
     assert is_valid_kind("cli");
     assert not is_valid_kind("nope");
+}
+
+"""The kind->plugin mapping comes from the shared kinds.toml manifest (the
+single source of truth the launcher also reads), not a hardcoded table."""
+test "plugin-backed kinds map to their plugin via the manifest" {
+    assert kind_required_plugin("fullstack") == "jac-client";
+    assert kind_required_plugin("client") == "jac-client";
+    assert kind_required_plugin("mobile") == "jac-client";
+    assert kind_required_plugin("desktop") == "jac-desktop";
+    # Core kinds need no plugin.
+    assert kind_required_plugin("cli") == "";
+    assert kind_required_plugin("api-service") == "";
+}
+
+"""The first-party plugin-backed kinds scaffold from bundled core templates, so
+`jac create --kind <kind>` works with only jaclang installed (no plugin needed
+at create time). Each kind has a registered default template owned by core."""
+test "plugin-backed kinds have a bundled core template" {
+    initialize_template_registry();
+    registry = get_template_registry();
+    for kind in ["fullstack", "client", "mobile", "desktop"] {
+        tmpl = registry.get_by_kind(kind);
+        assert tmpl is not None , f"no bundled template registered for {kind}";
+        assert tmpl.kind == kind;
+        # Real scaffold, not a one-line stub: bundled templates ship multiple files.
+        assert len(tmpl.files) >= 1 , f"{kind} template has no files";
+    }
 }

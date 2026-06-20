@@ -114,72 +114,16 @@ class JacClientPluginConfig {
             "remove_handler": _npm_remove_handler
         };
     }
-
-    """Register the jac-client project-kind templates (fullstack/client/mobile)."""
-    @hookimpl
-    static def register_project_template -> list[dict[str, any]] {
-        templates: list[dict[str, any]] = [];
-
-        # Each directory carries its kind in its jac.toml [project] kind.
-        for template_name in ["fullstack", "client", "mobile"] {
-            template = _load_template(template_name);
-            if template {
-                templates.append(template);
-            }
-        }
-
-        return templates;
-    }
-}
-
-# ===============================================================================
-# Template Loader
-# ===============================================================================
-"""Load a template from a template directory containing jac.toml with [jacpack] section."""
-def _load_template(template_name: str) -> dict[str, any] | None {
-    import from jaclang.project.template_loader { load_template_from_directory }
-    import from jaclang.cli.console { console }
-
-    # Find the template directory relative to this module
-    # plugin_config.jac is in jac_client/plugin/, so .parent.parent = jac_client/
-    module_dir = Path(__file__).parent.parent;  # jac_client directory
-    template_dir = module_dir / "templates" / template_name;
-
-    if not template_dir.exists() {
-        # Fallback: look in installed package location
-        import from importlib.resources { files }
-        try {
-            package_root = str(files("jac_client"));
-            template_dir = Path(package_root) / "templates" / template_name;
-        } except (TypeError, ModuleNotFoundError) as e {
-            console.warning(
-                f"Failed to locate template directory for '{template_name}': {e}"
-            );
-            return None;
-        }
-    }
-
-    if not template_dir.exists() or not template_dir.is_dir() {
-        return None;
-    }
-
-    try {
-        template = load_template_from_directory(
-            template_dir, post_create_hook=_post_create_client
-        );
-        # Convert to dict for registry registration
-        data = template.to_dict();
-        data["post_create"] = _post_create_client;
-        return data;
-    } except Exception as e {
-        console.error(f"Warning: Could not load {template_name} template: {e}");
-        return None;
-    }
 }
 
 # ===============================================================================
 # Post-create Hook for Client Template
 # ===============================================================================
+# The fullstack/client/mobile (and jac-desktop's desktop) scaffolds now ship as
+# bundled directory templates in jaclang core. Each template's jac.toml names
+# this hook via [jacpack.options] post_create_hook =
+# "jac_client.plugin.plugin_config:_post_create_client"; core resolves it lazily
+# at `jac create` time, so this runs only when jac-client is installed.
 """Post-create hook to ensure Bun is installed and optionally install packages."""
 def _post_create_client(project_path: Path, project_name: str) -> None {
     import from jaclang.runtimelib.client.vite_bundler { ViteBundler }

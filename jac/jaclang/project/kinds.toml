@@ -1,0 +1,61 @@
+# Canonical project-kind table -- the single source of truth for the mapping
+# from a project `kind` to its scaffolded entry-point and the pip plugin it
+# requires. This file is read by BOTH:
+#   * jaclang core (jaclang/project/kinds.jac, loaded into KIND_SPECS), and
+#   * the pure-Python launcher (_jac_launcher.py, via tomllib),
+# so the two never drift -- the launcher no longer hardcodes its own copy.
+#
+# Each [kinds.<name>] entry:
+#   entry  -- the scaffolded entry-point filename (its codespace suffix)
+#   plugin -- the pip package that must be provisioned for the kind ("" = core)
+#
+# Table order is the canonical kind order (used in `jac create` error messages
+# and the kind listing).
+
+[kinds.cli]
+entry = "main.jac"
+plugin = ""
+
+[kinds.native-app]
+entry = "main.na.jac"
+plugin = ""
+
+[kinds.native-binary]
+entry = "main.na.jac"
+plugin = ""
+
+[kinds.shared-library]
+entry = "main.na.jac"
+plugin = ""
+
+[kinds.api-service]
+entry = "main.sv.jac"
+plugin = ""
+
+[kinds.microservices]
+entry = "main.sv.jac"
+plugin = ""
+
+[kinds.pypi-package]
+entry = "lib.jac"
+plugin = ""
+
+[kinds.npm-package]
+entry = "lib.jac"
+plugin = ""
+
+[kinds.fullstack]
+entry = "main.jac"
+plugin = "jac-client"
+
+[kinds.client]
+entry = "main.jac"
+plugin = "jac-client"
+
+[kinds.desktop]
+entry = "main.jac"
+plugin = "jac-desktop"
+
+[kinds.mobile]
+entry = "main.jac"
+plugin = "jac-client"

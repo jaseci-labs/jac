@@ -30,9 +30,6 @@ jac_desktop = [
     "native/webview/build_libwebview.sh",
     "native/webview/install_webkit_deps.sh",
     "native/webview/README.md",
-    # The `desktop` project-kind template scaffolded by `jac create --kind desktop`.
-    "templates/**/*",
-    "templates/**/.*",
 ]
 
 [dependencies]

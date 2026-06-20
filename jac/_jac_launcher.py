@@ -31,14 +31,38 @@ import os
 import sys
 from pathlib import Path
 
-# Kept in sync with KIND_SPECS in jaclang/project/kinds.jac. Only the
-# plugin-backed kinds matter here (core kinds map to no plugin).
-_KIND_PLUGIN = {
-    "fullstack": "jac-client",
-    "client": "jac-client",
-    "mobile": "jac-client",
-    "desktop": "jac-desktop",
-}
+
+def _load_kind_plugins() -> dict[str, str]:
+    """Map plugin-backed kinds -> required pip plugin, from the shared manifest.
+
+    Reads ``jaclang/project/kinds.toml`` -- the SAME single source of truth that
+    core (kinds.jac) loads -- so the launcher never carries its own drifting copy
+    of the kind->plugin table. Located via ``importlib.util.find_spec`` (which
+    does NOT execute ``jaclang/__init__.py`` and therefore does not trigger
+    plugin discovery, the whole reason this launcher avoids importing jaclang).
+    Returns only kinds that require a plugin; ``{}`` if the manifest can't be
+    read (the caller then simply treats no kind as plugin-backed).
+    """
+    import importlib.util
+    import tomllib
+
+    try:
+        spec = importlib.util.find_spec("jaclang")
+        if not spec or not spec.submodule_search_locations:
+            return {}
+        root = Path(next(iter(spec.submodule_search_locations)))
+        data = tomllib.loads((root / "project" / "kinds.toml").read_text())
+        kinds = data.get("kinds", {})
+        return {
+            name: info["plugin"]
+            for name, info in kinds.items()
+            if isinstance(info, dict) and info.get("plugin")
+        }
+    except Exception:
+        return {}
+
+
+_KIND_PLUGIN = _load_kind_plugins()
 
 # Subcommands that must never trigger provisioning/re-exec -- they are
 # environment-independent and must work even with a broken/absent venv.

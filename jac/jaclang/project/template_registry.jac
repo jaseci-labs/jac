@@ -28,7 +28,12 @@ obj ProjectTemplate {
         directories: list[str] = [],  # directories to create
         root_gitignore_entries: list[str] = [],  # entries for project-root .gitignore
         post_create:
-            Callable | None = None;  # optional callback(project_path, project_name)
+            Callable | None = None,  # optional callback(project_path, project_name)
+        # Unresolved "module.path:func" post-create hook, resolved lazily at
+        # `jac create` time (not at registry load). Lets a core-owned template
+        # reference a plugin-provided hook without importing the plugin -- or
+        # failing -- on every CLI invocation when the plugin isn't installed.
+        post_create_path: str = "";
 
     def to_dict -> dict[str, any];
 }
@@ -43,6 +48,7 @@ obj TemplateRegistry {
     has _templates: dict[str, ProjectTemplate] = {};
 
     def register(template_info: dict[str, any]) -> None;
+    def register_template(template: ProjectTemplate) -> None;
     def get(name: str) -> ProjectTemplate | None;
     def get_by_kind(kind: str) -> ProjectTemplate | None;
     def get_default -> ProjectTemplate;

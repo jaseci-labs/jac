@@ -15,26 +15,29 @@ happen. The CLI `run` command consumes the plan and either prints it
 import os;
 import from jaclang.project.config { JacConfig }
 
+"""Load the canonical project-kind table from the shared `kinds.toml` manifest.
+
+The manifest (jaclang/project/kinds.toml) is the single source of truth shared
+by core and the pure-Python launcher, so the kind -> (entry, plugin) mapping
+lives in exactly one place. Returns an insertion-ordered dict matching the
+manifest's table order.
+"""
+def _load_kind_specs -> dict[str, dict[str, str]] {
+    import tomllib;
+    manifest = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kinds.toml");
+    with open(manifest, "rb") as f {
+        data = tomllib.load(f);
+    }
+    return data.get("kinds", {});
+}
+
 # The canonical project-kind table: the single source of truth shared by
 # `jac create` (which template/entry-point to scaffold, which plugin a kind
 # needs) and `jac run` (which plugin a kind needs to dispatch). Each entry:
 #   entry  -- the scaffolded entry-point filename (its codespace suffix)
 #   plugin -- the pip package that must be installed for the kind ("" = core)
-# Insertion order is the canonical kind order (used in error messages).
-glob KIND_SPECS: dict[str, dict[str, str]] = {
-         "cli": {"entry": "main.jac", "plugin": ""},
-         "native-app": {"entry": "main.na.jac", "plugin": ""},
-         "native-binary": {"entry": "main.na.jac", "plugin": ""},
-         "shared-library": {"entry": "main.na.jac", "plugin": ""},
-         "api-service": {"entry": "main.sv.jac", "plugin": ""},
-         "microservices": {"entry": "main.sv.jac", "plugin": ""},
-         "pypi-package": {"entry": "lib.jac", "plugin": ""},
-         "npm-package": {"entry": "lib.jac", "plugin": ""},
-         "fullstack": {"entry": "main.jac", "plugin": "jac-client"},
-         "client": {"entry": "main.jac", "plugin": "jac-client"},
-         "desktop": {"entry": "main.jac", "plugin": "jac-desktop"},
-         "mobile": {"entry": "main.jac", "plugin": "jac-client"}
-     },
+# Loaded from kinds.toml; table order is the canonical kind order.
+glob KIND_SPECS: dict[str, dict[str, str]] = _load_kind_specs(),
      # The canonical set of project kinds, derived from KIND_SPECS so the two never
      # drift. Mirrors the jac-project-kinds skill.
      VALID_KINDS: list[str] = list(KIND_SPECS.keys());
