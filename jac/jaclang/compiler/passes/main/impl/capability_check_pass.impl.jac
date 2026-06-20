@@ -170,9 +170,21 @@ impl native_capability_violations(mod: uni.Module) -> list {
             if isinstance(nd, uni.CtrlStmt)
             and isinstance(nd.ctrl, uni.Token)
             and (nd.ctrl.name == Tok.KW_SKIP) {
+                # The event-ability test must also accept the decl/impl-split
+                # form: when the ability body lives in an annex, the `skip` is
+                # enclosed by an `impl Walker.ability with X entry` ImplDef
+                # (whose `spec` carries the EventSignature), not an inline
+                # Ability. Native lowers it identically; only the value-returning
+                # function case stays unsupported (issue #6794).
                 _encl = nd.find_parent_of_type(uni.Ability);
-                if (_encl is None)
-                or (not isinstance(_encl.signature, uni.EventSignature)) {
+                _in_event = (_encl is not None)
+                and isinstance(_encl.signature, uni.EventSignature);
+                if (_encl is None) {
+                    _encl_impl = nd.find_parent_of_type(uni.ImplDef);
+                    _in_event = (_encl_impl is not None)
+                    and isinstance(_encl_impl.spec, uni.EventSignature);
+                }
+                if not _in_event {
                     out.append((nd, "statement", "SkipStmt", _NATIVE_SKIP_HELP));
                 }
                 continue;

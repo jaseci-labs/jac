@@ -150,8 +150,8 @@ test "kind fullstack -> serve dev, needs jac-client" {
     assert p.requires_plugin == "jac-client";
 }
 
-test "kind wasm -> serve, needs jac-client" {
-    p = _plan("kind = \"wasm\"\nentry-point = \"page.cl.jac\"\n", "page.cl.jac");
+test "kind client -> serve, needs jac-client" {
+    p = _plan("kind = \"client\"\nentry-point = \"page.cl.jac\"\n", "page.cl.jac");
     assert p.action == "serve";
     assert p.verb == "start";
     assert p.requires_plugin == "jac-client";

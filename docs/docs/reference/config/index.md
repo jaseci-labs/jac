@@ -201,7 +201,16 @@ session = ""             # Session name
 main = true              # Run as main module
 cl_route_prefix = "cl"   # URL prefix for client apps
 base_route_app = ""      # Client app to serve at /
+
+# Optimistic-concurrency policy for concurrent check-then-create races
+# (see Persistence -> Concurrent writes).
+on_conflict = "retry"        # "retry": abort + replay so the loser converges
+                             # "fail":  no replay, return HTTP 409 immediately
+conflict_max_attempts = 5    # max walker/function attempts under "retry"
+conflict_backoff_ms = 0      # linear backoff between replay attempts (0 = none)
 ```
+
+`on_conflict` controls what happens when two concurrent requests race a "look it up, create it if missing" against the same node and the loser's commit is rejected. `retry` (default) re-runs the request against the now-current graph so it converges on the winner's node; `fail` surfaces a typed `409 write_conflict` for the client to handle. See [Persistence -> Concurrent writes: check-then-create](../persistence.md#concurrent-writes-check-then-create-and-convergence) for the full model.
 
 ---
 

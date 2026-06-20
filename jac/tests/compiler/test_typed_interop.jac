@@ -154,6 +154,22 @@ test "sv-to-sv: typed archetype return is rehydrated, not a raw dict (#6710)" {
     );
 }
 
+# A `.cl.jac` that `sv import`s a function AND the obj type it returns must not
+# emit an `async function <Type>()` RPC stub for the type. The type already
+# lowers to a wire `class <Type>`, so a second `<Type>` declaration collides at
+# bundle time with `The symbol "<Type>" has already been declared` (#6795 -- the
+# cl->sv analog of the Python-path #6710 fix). Only the function gets a stub.
+test "cl->sv: sv-imported type does not become a callable stub (#6795)" {
+    js = compile_fixture("sv_import_type_client.cl.jac").gen.js;
+    assert "async function Todo(" not in js , (
+        "an sv-imported type must not degrade into a callable RPC function stub"
+    );
+    assert "async function list_todos(" in js , (
+        "the sv-imported function must still get its RPC stub"
+    );
+    assert "__jacCallFunction" in js;
+}
+
 # Inline cl block with def:pub produces __jacCallFunction
 test "inline cl block with defpub generates stubs" {
     code = '"""Test."""\n\ndef:pub get_data(name: str) -> dict {\n    return {"message": "Hello " + name};\n}\n\ncl {\n    def:pub app() -> Any {\n        data = await get_data("World");\n        return <div>{data}</div>;\n    }\n}\n';

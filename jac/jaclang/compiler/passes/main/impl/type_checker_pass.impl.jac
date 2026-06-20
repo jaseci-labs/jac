@@ -29,7 +29,13 @@ impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: uni.Name) -> None {
         # - ModuleCode.name: the label of a named entry block (e.g. `__main__`
         #   in `with entry:__main__`) — an entry-point name, not a variable
         #   reference; it has no symbol and is not an expression.
+        # - HasVar `by postinit` name: `postinit` names __post_init__, bound by the HasVar handler.
         if isinstance(nd.parent, uni.AtomTrailer) and nd.parent.right is nd {
+            return;
+        }
+        if isinstance(nd.parent, uni.HasVar)
+        and nd.parent.defer
+        and nd is not nd.parent.name {
             return;
         }
         if isinstance(nd.parent, uni.KWPair) and nd.parent.key is nd {
@@ -159,12 +165,35 @@ impl TypeCheckPass.exit_filter_compr(self: TypeCheckPass, nd: uni.FilterCompr) -
     self.evaluator.get_type_of_expression(nd);
 }
 
+# Count only expression-bodied lambdas: their body is re-typed in-context
+# once params are seeded, so the expr exit handlers can safely defer it. A
+# block body has no such re-eval, so its statements stay on normal traversal.
+impl TypeCheckPass.enter_lambda_expr(self: TypeCheckPass, nd: uni.LambdaExpr) -> None {
+    if isinstance(nd.body, uni.Expr) {
+        self._lambda_depth += 1;
+    }
+}
+
+impl TypeCheckPass.exit_lambda_expr(self: TypeCheckPass, nd: uni.LambdaExpr) -> None {
+    if isinstance(nd.body, uni.Expr) {
+        self._lambda_depth -= 1;
+    }
+}
+
 """Handle the function call node."""
 impl TypeCheckPass.exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None {
     import from jaclang.compiler.symbol_utils {
         classify_call,
         ability_of_symbol,
         resolve_expr_symbol
+    }
+    # Inside a lambda body: defer arg validation to the lambda's own re-eval
+    # (params not yet seeded). Stamp call-kind/callee from shape/symbol only;
+    # evaluating the target would resolve it against an unseeded param.
+    if self._lambda_depth > 0 {
+        nd.call_kind = classify_call(nd).value;
+        nd.callee_decl = ability_of_symbol(resolve_expr_symbol(nd.target));
+        return;
     }
     self.evaluator.get_type_of_expression(nd);
 
@@ -201,11 +230,19 @@ impl TypeCheckPass.exit_jsx_element(self: TypeCheckPass, nd: uni.JsxElement) -> 
 
 """Handle the binary expression node."""
 impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> None {
+    # Defer inside a lambda body (see exit_func_call).
+    if self._lambda_depth > 0 {
+        return;
+    }
     self.evaluator.get_type_of_expression(nd);
 }
 
 """Handle the atom trailer node."""
 impl TypeCheckPass.exit_atom_trailer(self: TypeCheckPass, nd: uni.AtomTrailer) -> None {
+    # Defer inside a lambda body (see exit_func_call).
+    if self._lambda_depth > 0 {
+        return;
+    }
     self.evaluator.get_type_of_expression(nd);
 }
 
@@ -860,6 +897,33 @@ impl TypeCheckPass._check_bare_generic(
     }
 }
 
+"""Flag E1119 on lambda params left Unknown once the module is fully typed.
+
+Runs in after_pass, not exit_lambda_expr: a param is seeded by the enclosing
+call/assignment, whose handler runs after the lambda's own, so the settled
+type is only trustworthy once the whole module is typed."""
+impl TypeCheckPass._check_unresolved_lambda_params(self: TypeCheckPass) -> None {
+    import from jaclang.compiler.type_system { types }
+    if self.ir_in is None {
+        return;
+    }
+    for lam in self.ir_in.get_all_sub_nodes(uni.LambdaExpr) {
+        if lam.signature is None {
+            continue;
+        }
+        for param in lam.signature.get_parameters() {
+            if param.type_tag is not None {
+                continue;
+            }
+            # Context-seeding writes the inferred type onto the param's Name.
+            resolved = param.name.type;
+            if resolved is None or isinstance(resolved, types.UnknownType) {
+                self.emit(E1119, node_override=param.name, name=param.name.value);
+            }
+        }
+    }
+}
+
 """Emit W1037 for explicit `any` type annotations.
 
 `any` is the gradual-typing escape hatch: annotating something `any`
@@ -1045,12 +1109,12 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
 }
 
 impl TypeCheckPass.after_pass(self: TypeCheckPass) -> None {
-    # Full-diagnostic runs replay diagnostics deferred by earlier suppressed
-    # inference runs on this module: evaluator memoization (Expr.type cache)
-    # means this run could not re-derive them live. Live re-emissions during
-    # this run already evicted their stash entries in emit(), so whatever
-    # remains here is exactly the cache-swallowed remainder.
+    # Full-diagnostic-only. Lambda check first, so a live E1119 evicts any
+    # stashed copy before the replay loop reaches it.
     if getattr(self, '_emit_diagnostics', True) {
+        self._check_unresolved_lambda_params();
+        # Replay diagnostics deferred by earlier suppressed inference runs:
+        # Expr.type memoization means this run couldn't re-derive them live.
         stash = self.ir_in?._deferred_type_diags;
         if stash {
             for (diag, node_override, related, help_text, kwargs) in list(

@@ -2,7 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.24 (Latest Release)
+## jac-client 0.3.25 (Latest Release)
+
+### New Features
+
+- **Client-only apps (`kind = "client"`)**: A project with `kind = "client"` is now auto-detected by `jac build` and `jac start` (no `--client static` flag needed). `jac build` inlines the JS bundle and CSS into a self-contained `index.html` that opens directly from disk (`file://`), and `jac start` serves it with a minimal static server (no API server, auth, or database) that still maps `/static/<name>.wasm` for `na`->wasm modules. The build flavor is also available explicitly as `--client static`; an explicit `--client` overrides the auto-detection.
+
+## jac-client 0.3.24
 
 ### New Features
 

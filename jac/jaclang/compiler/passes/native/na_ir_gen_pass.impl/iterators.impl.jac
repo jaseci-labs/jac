@@ -286,6 +286,78 @@ impl NaIRGenPass._make_str_iter(str_val: ir.Value) -> ir.Value {
     return self._make_jac_iter(next_fn, state);
 }
 
+"""Monomorphic next-fn for bytes (#6749): yield the i64 byte value at idx,
+idx++. Reads the jacbytes len field (not strlen) so embedded NULs iterate."""
+impl NaIRGenPass._bytes_iter_next_fn -> ir.Function {
+    key = "bytes";
+    if key in self._iter_next_fns {
+        return self._iter_next_fns[key];
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i1 = ir.IntType(1);
+    state_ptr_type = self.struct_types["StrIterState"].as_pointer();
+    bt_ptr = self._get_bytes_struct_type().as_pointer();
+    nfty = ir.FunctionType(i1, [i8p, i8p]);
+    fn = ir.Function(self.llvm_module, nfty, name="__iter_next_bytes");
+    fn.linkage = "private";
+    fn.args[0].name = "state";
+    fn.args[1].name = "out";
+    entry_bb = fn.append_basic_block("entry");
+    cont = fn.append_basic_block("cont");
+    stop = fn.append_basic_block("stop");
+    b = ir.IRBuilder(entry_bb);
+    state = b.bitcast(fn.args[0], state_ptr_type, name="bit.state");
+    s_slot = b.gep(
+        state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="bit.s.slot"
+    );
+    bvp = b.inttoptr(b.load(s_slot, name="bit.s.i64"), bt_ptr, name="bit.bv");
+    idx_slot = b.gep(
+        state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="bit.idx.slot"
+    );
+    idx = b.load(idx_slot, name="bit.idx");
+    blen = b.load(
+        b.gep(bvp, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="bit.len.ptr"),
+        name="bit.len"
+    );
+    b.cbranch(b.icmp_signed("<", idx, blen, name="bit.ok"), cont, stop);
+    b.position_at_end(cont);
+    data = b.bitcast(
+        b.gep(bvp, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="bit.data.ptr"),
+        i8p,
+        name="bit.data"
+    );
+    byte = b.load(b.gep(data, [idx], name="bit.byte.ptr"), name="bit.byte");
+    out_t = b.bitcast(fn.args[1], i64.as_pointer(), name="bit.out");
+    b.store(b.zext(byte, i64, name="bit.val"), out_t);
+    b.store(b.add(idx, ir.Constant(i64, 1), name="bit.idx.next"), idx_slot);
+    b.ret(ir.Constant(i1, 1));
+    b.position_at_end(stop);
+    b.ret(ir.Constant(i1, 0));
+    self._iter_next_fns[key] = fn;
+    return fn;
+}
+
+"""Build a BytesIter over bytes_val (borrows it), yielding i64 byte values.
+Reuses StrIterState's {ptr, idx} shape."""
+impl NaIRGenPass._make_bytes_iter(bytes_val: ir.Value) -> ir.Value {
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    next_fn = self._bytes_iter_next_fn();
+    state = self._alloc_iter_struct("StrIterState");
+    s_i64 = self.builder.ptrtoint(bytes_val, i64, name="bit.s.store");
+    s_slot = self.builder.gep(
+        state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="bit.s.field"
+    );
+    self.builder.store(s_i64, s_slot);
+    idx_slot = self.builder.gep(
+        state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="bit.idx.field"
+    );
+    self.builder.store(ir.Constant(i64, 0), idx_slot);
+    return self._make_jac_iter(next_fn, state);
+}
+
 # ─── Dict-key / Set / Range iterators (#6403 M1) ─────────────
 """Monomorphic next-fn for a dict's keys: yield get_key(d, idx), idx++."""
 impl NaIRGenPass._dict_iter_next_fn(dict_key: str) -> ir.Function {
@@ -585,6 +657,11 @@ impl NaIRGenPass._make_iter_from_value(
             elem_type = self.set_helpers[sk]["elem_type"];
             return (self._make_set_iter(val, sk, elem_type), sk, elem_type);
         }
+    }
+    # bytes -> BytesIter yielding i64 byte values (#6749). Distinct struct
+    # type, so it can't be confused with the i8* str path below.
+    if self._is_bytes_value(val) {
+        return (self._make_bytes_iter(val), "bytes", ir.IntType(64));
     }
     if isinstance(val.type, ir.PointerType) and val.type == i8p {
         return (self._make_str_iter(val), "str", i8p);

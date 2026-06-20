@@ -75,7 +75,7 @@ Rules:
 Ternary is Python-style (`A if cond else B`). String concatenation for dynamic classes:
 
 ```jac
-def:pub TabButton(active: bool, children: any) -> JsxElement {
+def:pub TabButton(active: bool, children: any = None) -> JsxElement {
     tab_cls = "border-primary text-foreground" if active else "border-transparent text-muted-foreground";
     return <button className={"px-2.5 py-1.5 border-b-2 " + tab_cls}>{children}</button>;
 }

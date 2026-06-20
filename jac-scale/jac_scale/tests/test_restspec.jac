@@ -200,6 +200,44 @@ test "get func with params" {
     }
 }
 
+test "undeclared query params ignored on func" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        client.register_user("u1", "p1");
+        token = client.login_user("u1", "p1");
+
+        response = client.get(
+            "/function/get_func_with_params",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"name": "Bob", "age": 40, "v": "1708012345", "t": "abc"}
+        );
+        assert response.status_code == 200 , response.text;
+        data = extract_data(response.json());
+        assert data["result"]["message"] == "get_func_with_params executed";
+        assert data["result"]["name"] == "Bob";
+        assert data["result"]["age"] == 40;
+    } finally {
+        client.close();
+    }
+}
+
+test "undeclared query params ignored on walker" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        response = client.get(
+            "/walker/GetWalkerWithParams",
+            params={"name": "Alice", "age": 30, "v": "1708012345"}
+        );
+        assert response.status_code == 200 , response.text;
+        data = extract_data(response.json());
+        assert data["reports"][0]["message"] == "GetWalkerWithParams executed";
+        assert data["reports"][0]["name"] == "Alice";
+        assert data["reports"][0]["age"] == 30;
+    } finally {
+        client.close();
+    }
+}
+
 test "openapi specs" {
     client = make_client("restspec_fixtures.jac");
     try {

@@ -157,6 +157,7 @@ import from jaclang.jac0core.diagnostics {
     E0080,
     E0081,
     E2023,
+    E2028,
     W0060,
     W0061,
     W0063
@@ -4208,6 +4209,52 @@ impl Parser.parse_statement{
             self.advance();
         }
         return inner;
+    }
+    # Same redundant `{...}` re-wrap as the control-flow form above, but
+    # wrapping a single *expression* (`{"text"}`, `{n + 1}`, `{<li/>}`). It
+    # gets the same treatment, co-located here so the whole redundant-slot-wrap
+    # rule lives in one place: the parser is the only pass that can recover it,
+    # so it also owns the diagnostic (E2028, the expression sibling of E2023).
+    # The form has no keyword to anchor on, and unlike the control-flow form
+    # `{ <expr> }` is NOT a parse error — it's a valid set literal — so we
+    # speculatively parse it: consume the `{`, parse one expression, and if it
+    # parses cleanly and the brace closes right after it, it's a redundant
+    # single-expression wrap. Emit E2028 at the `{` and recover by dropping the
+    # redundant braces (exactly as the control-flow form drops them), yielding
+    # the inner expression as a bare slot statement. A bare `{ <expr> }` (no
+    # trailing `;`) would otherwise trip the very `E0002 Missing ';'` cascade
+    # we're eliminating (issue #6733). Anything else — a `,`/`:` (genuine
+    # set/dict literal), a malformed body (`{x +}`), or an empty `{}` — leaves
+    # a non-`}` token or trips a parse error, so we rewind (discarding the
+    # speculative diagnostics) and let normal statement parsing handle it.
+    if self._view_body_depth > 0 and self.check(TokenKind.LBRACE) {
+        save_pos = self.pos;
+        saved_error_count = self.error_count;
+        saved_errors_len = len(self.prog.errors_had) if self.prog is not None else 0;
+        saved_warns_len = len(self.prog.warnings_had) if self.prog is not None else 0;
+        redundant_lbrace_loc = self.current().loc;
+        self.advance();  # consume `{`
+        inner_expr = self.parse_expression();
+        parsed_clean = self.prog is None
+        or len(self.prog.errors_had) == saved_errors_len;
+        if parsed_clean and self.check(TokenKind.RBRACE) {
+            self.emit_diag(E2028, loc=redundant_lbrace_loc);
+            self.advance();  # consume the redundant `}`
+            expr_kid: list = [inner_expr];
+            if self.match_tok(TokenKind.SEMI) {  # tolerate a trailing `;`
+                expr_kid.append(self.make_semi());
+            }
+            return ExprStmt(expr=inner_expr, in_fstring=False, kid=expr_kid);
+        }
+        # Not a clean redundant single-expression wrap — rewind and discard
+        # any diagnostics the speculative expression parse produced so the
+        # normal re-parse below doesn't double-report them.
+        self.pos = save_pos;
+        self.error_count = saved_error_count;
+        if self.prog is not None {
+            del self.prog.errors_had[saved_errors_len:];
+            del self.prog.warnings_had[saved_warns_len:];
+        }
     }
     # Allow imports inside code blocks
     if self.check_any(TokenKind.KW_IMPORT, TokenKind.KW_INCLUDE) {
