@@ -63,16 +63,16 @@ glob O_RDWR: int = 2,
      INLCR: int = 0x00000040,
      IGNCR: int = 0x00000080,
      ICRNL: int = 0x00000100,
-     IXON: int = 0x00000400,
+     IXON: int = 0x00000200,  # xnu: 0x200  (linux glibc: 0x400) -- 0x400 is IXOFF
      OPOST: int = 0x00000001,
      ECHO: int = 0x00000008,
      ECHONL: int = 0x00000010,  # xnu: 0x10   (linux glibc: 0x40)
      ICANON: int = 0x00000100,  # xnu: 0x100  (linux glibc: 0x02)
      ISIG: int = 0x00000080,  # xnu: 0x80   (linux glibc: 0x01)
      IEXTEN: int = 0x00000400,  # xnu: 0x400  (linux glibc: 0x8000)
-     CSIZE: int = 0x00003000,  # xnu: 0x3000 (linux glibc: 0x30)
-     PARENB: int = 0x00000100,
-     CS8: int = 0x00003000,  # xnu: 0x3000 (linux glibc: 0x30)
+     CSIZE: int = 0x00000300,  # xnu: 0x300  (linux glibc: 0x30)
+     PARENB: int = 0x00001000,  # xnu: 0x1000 (linux glibc: 0x100)
+     CS8: int = 0x00000300,  # xnu: 0x300  (linux glibc: 0x30)
      TERMIOS_SZ: int = 44;  # xnu: 44 bytes (linux glibc: 60)
 
 obj TtyCtx {
