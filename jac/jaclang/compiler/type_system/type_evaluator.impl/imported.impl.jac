@@ -213,23 +213,12 @@ impl TypeEvaluator._resolve_star_import_symbol(
                     break;
                 }
             }
-        } else {
-            if resolved and len(resolved) == 1 {
-                # Explicit: single-segment, use directly
-                submod_path = resolved[0];
-                if submod_path and Path(submod_path).exists() {
-                    submod = self._import_module_from_path(
-                        submod_path, importer_path=self._resolve_importer_path(mod)
-                    );
-                }
-            } elif not resolved {
-                # Explicit: resolver failed, use fallback
-                submod_path = star_mod_path.resolve_relative_path();
-                if submod_path and Path(submod_path).exists() {
-                    submod = self._import_module_from_path(
-                        submod_path, importer_path=self._resolve_importer_path(mod)
-                    );
-                }
+        } elif resolved and len(resolved) == 1 {
+            submod_path = resolved[0];
+            if submod_path and Path(submod_path).exists() {
+                submod = self._import_module_from_path(
+                    submod_path, importer_path=self._resolve_importer_path(mod)
+                );
             }
         }
         if submod is None {
