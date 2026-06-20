@@ -47,7 +47,17 @@ include = ["jaclang*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.jac", "*.impl/*.jac", "*.cl/*.jac", "*.lark", "*.pyi", "py.typed"]
-jaclang = ["sitecustomize.py", "_precompiled/**/*.jir", "_precompiled/manifest.json", "cli/skills/*.md"]
+jaclang = [
+    "sitecustomize.py",
+    "_precompiled/**/*.jir",
+    "_precompiled/manifest.json",
+    "cli/skills/*.md",
+    # Built-in client/desktop framework: project templates + native webview assets
+    "runtimelib/client/templates/**/*",
+    "runtimelib/client/templates/**/.gitignore",
+    "runtimelib/client/targets/desktop/webview/*.sh",
+    "runtimelib/client/targets/desktop/webview/*.md",
+]
 
 [tool.setuptools]
 py-modules = ["_jac_finder"]

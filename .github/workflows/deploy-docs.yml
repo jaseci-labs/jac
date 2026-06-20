@@ -131,7 +131,6 @@ jobs:
 
           COPY docs/ ./docs/
           COPY jac/ ./jac/
-          COPY jac-client/ ./jac-client/
           COPY scripts/ ./scripts/
           COPY CONTRIBUTING.md ./CONTRIBUTING.md
           COPY .pre-commit-config.yaml ./.pre-commit-config.yaml

@@ -128,8 +128,6 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -e jac
-        jac install -e jac-client
-        jac install -e jac-desktop
         pip install pytest
         pip install pytest-xdist
         pip install playwright
@@ -142,15 +140,12 @@ jobs:
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run all client tests (including E2E in parallel)
-      # The dependency-free binding test runs in its own lean job
-      # (test-desktop-native), so it is excluded here along with the native
-      # binding sources; the remaining jac-desktop tests are plain unit tests.
-      run: pytest -x jac-client jac-desktop --ignore=jac-desktop/jac_desktop/native --ignore=jac-desktop/jac_desktop/tests/test_binding.jac -n auto
+      run: pytest -x jac/tests/runtimelib/client -n auto
 
     - name: Re-run auth roundtrip e2e against jac-scale backend
       run: |
         jac install -e jac-scale
-        pytest -x -vv jac-client/jac_client/tests/test_e2e.jac -k "jacSignup"
+        pytest -x -vv jac/tests/runtimelib/client/test_e2e.jac -k "jacSignup"
 
   test-packages-and-docs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -224,7 +219,7 @@ jobs:
         pip install pytest-xdist
 
     - name: Run dependency-free desktop tests
-      run: pytest -x jac-desktop/jac_desktop/tests/test_binding.jac -n auto
+      run: pytest -x jac/tests/runtimelib/client/test_desktop_binding.jac -n auto
 
   test-mcp:
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -271,7 +266,6 @@ jobs:
         python -m pip install --upgrade pip
         pip install -e jac
         jac install -e jac-scale
-        jac install -e jac-client
         pip install pytest pytest-asyncio
         pip install requests watchdog websockets
 
@@ -312,7 +306,7 @@ jobs:
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_microservice.jac
 
-    - name: Run jac-client examples
+    - name: Run client examples
       run: |
         pytest -x jac-scale/jac_scale/tests/test_examples.jac
 
@@ -377,7 +371,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e jac
           jac install -e jac-scale --extras deploy
-          jac install -e jac-client
           pip install pytest
           pip install pytest-xdist
           pip install pytest-asyncio
@@ -447,35 +440,30 @@ jobs:
     - name: Precompile all packages
       run: |
         jac run jac/jaclang/utils/precompile_bytecode.jac ./jac
-        jac run jac/jaclang/utils/precompile_bytecode.jac ./jac-client
         jac run jac/jaclang/utils/precompile_bytecode.jac ./jac-scale
         jac run jac/jaclang/utils/precompile_bytecode.jac ./jac-byllm
 
     - name: Pre-build admin dashboard UI
       run: |
-        jac install -e jac-client
         jac install -e jac-scale --extras all
         cd jac-scale && jac run scripts/build_admin_ui.jac
 
     - name: Uninstall editable packages
       run: |
-        pip uninstall -y jac-scale jac-client
+        pip uninstall -y jac-scale
 
     - name: Clean egg-info to simulate fresh build (like publish-release)
       run: |
         rm -rf jac/jaclang.egg-info
-        rm -rf jac-client/*.egg-info jac-client/jac_client/*.egg-info
         rm -rf jac-scale/*.egg-info jac-scale/jac_scale/*.egg-info
         rm -rf jac-byllm/*.egg-info
 
     - name: Build and install packages
       run: |
         python -m build jac --wheel
-        (cd jac-client && jac bundle)
         (cd jac-scale && jac bundle)
         (cd jac-byllm && jac bundle)
         pip install jac/dist/jaclang-*.whl
-        pip install jac-client/dist/jac_client-*.whl
         SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && pip install "${SCALE_WHL}[all]"
         pip install jac-byllm/dist/byllm-*.whl
         pip install pytest
@@ -495,7 +483,7 @@ jobs:
     - name: Run tests on built packages
       run: |
         jac check jac/tests/compiler/passes/main/fixtures/checker/checker_type_ref.jac
-        pytest "jac-client/jac_client/tests/test_cli.jac::create jac app"
+        pytest "jac/tests/runtimelib/client/test_cli.jac::create jac app"
         pytest jac-byllm/tests/test_byllm.jac
 
     # ========== jac-gpt test ==========

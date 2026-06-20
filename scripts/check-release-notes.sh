@@ -10,7 +10,6 @@ set -euo pipefail
 declare -A FOLDER_TO_FRAGMENTS=(
     ["jac/jaclang/"]="docs/docs/community/release_notes/unreleased/jaclang/"
     ["jac-scale/jac_scale/"]="docs/docs/community/release_notes/unreleased/jac-scale/"
-    ["jac-client/jac_client/"]="docs/docs/community/release_notes/unreleased/jac-client/"
     ["jac-byllm/byllm/"]="docs/docs/community/release_notes/unreleased/byllm/"
     ["jac-super/jac_super/"]="docs/docs/community/release_notes/unreleased/jac-super/"
     ["jac-mcp/jac_mcp/"]="docs/docs/community/release_notes/unreleased/jac-mcp/"

@@ -14,8 +14,6 @@ keywords = [
     "llm",
     "full-stack",
     "web-apps",
-    "jac-client",
-    "jac-desktop",
     "jac-scale",
     "programming-language",
     "machine-learning",
@@ -37,8 +35,6 @@ packages = ["jaseci*"]
 [dependencies]
 jaclang = ">=0.16.7"
 byllm = ">=0.6.17"
-jac-client = ">=0.3.25"
 jac-scale = ">=0.2.30"
 jac-super = ">=0.1.22"
 jac-mcp = ">=0.1.23"
-jac-desktop = ">=0.2.2"
