@@ -236,7 +236,7 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
                 unfixable_count += 1;
             }
             error_count = fixed_count + unfixable_count;
-            # Write if there were lint violations that were fixed
+            # Write the head back if it had lint violations that were fixed.
             if fixed_count > 0 {
                 changed = formatted_code != original_code;
                 if changed {
@@ -244,28 +244,39 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
                         f.write(formatted_code);
                     }
                 }
-                # Annex files (.impl.jac/.test.jac) are formatted as their own
-                # tool programs and written back independently.
-                import from jaclang.jac0core.bccache { discover_annex_files }
-                annex_paths = (
-                    discover_annex_files(str(path_obj), '.impl.jac') + discover_annex_files(
-                        str(path_obj), '.test.jac'
-                    )
-                );
-                for annex_path in annex_paths {
-                    try {
-                        annex_prog = JacProgram.jac_file_formatter(
-                            annex_path, auto_lint=True
-                        );
-                        annex_formatted = annex_prog.mod.main.gen.jac;
-                        annex_original = annex_prog.mod.main.source.code;
-                    } except Exception {
-                        continue;
-                    }
-                    if (annex_formatted and annex_formatted != annex_original) {
-                        with open(annex_path, 'w', encoding='utf-8') as f {
-                            f.write(annex_formatted);
-                        }
+            }
+            # Annex files (.impl.jac/.test.jac) are formatted as their own tool
+            # programs and written back independently. This runs regardless of
+            # the head's fixed_count: a fixable violation (e.g. a signature
+            # mismatch) can live entirely in the annex while the head is clean.
+            import from jaclang.jac0core.bccache { discover_annex_files }
+            annex_paths = (
+                discover_annex_files(str(path_obj), '.impl.jac') + discover_annex_files(
+                    str(path_obj), '.test.jac'
+                )
+            );
+            for annex_path in annex_paths {
+                try {
+                    annex_prog = JacProgram.jac_file_formatter(
+                        annex_path, auto_lint=True
+                    );
+                    annex_formatted = annex_prog.mod.main.gen.jac;
+                    annex_original = annex_prog.mod.main.source.code;
+                } except Exception {
+                    continue;
+                }
+                for warning in annex_prog.warnings_had {
+                    console.warning(f"{warning}");
+                    error_count += 1;
+                }
+                for error in annex_prog.errors_had {
+                    console.error(f"{error}");
+                    error_count += 1;
+                    unfixable_count += 1;
+                }
+                if (annex_formatted and annex_formatted != annex_original) {
+                    with open(annex_path, 'w', encoding='utf-8') as f {
+                        f.write(annex_formatted);
                     }
                 }
             }

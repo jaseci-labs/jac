@@ -71,9 +71,29 @@ declarations in another.
         target_sym_tab: UniScopeNode
     ) -> None;
 
+    """Connect a single ImplDef to its declaration in target_sym_tab.
+
+        Run once per ImplDef that defines a symbol: after annexes/variants are
+        merged, several ImplDefs (a head impl plus an annex's) can share one
+        symbol, and visiting each is what surfaces a duplicate implementation
+        (E2017) -- the second to resolve a decl that is already bodied."""
+    def _connect_one_impl(
+        self: DeclImplMatchPass,
+        impl_node: uni.ImplDef,
+        sym_name: str,
+        target_sym_tab: UniScopeNode
+    ) -> None;
+
+    """Detect bare re-declaring definitions (`def foo {...}` written instead of
+    `impl foo {...}`) merged from annex files that shadow an unlinked stub."""
+    def _report_bare_redecls(self: DeclImplMatchPass, sym_tab: UniScopeNode) -> None;
+
     """Validate if the parameters match."""
     def validate_params_match(
-        self: DeclImplMatchPass, sym: Symbol, valid_decl: uni.AstSymbolNode
+        self: DeclImplMatchPass,
+        impl_node: uni.ImplDef,
+        sym_name: str,
+        valid_decl: uni.AstSymbolNode
     ) -> None;
 
     """Resolve unresolved Name and AtomTrailer symbols in a subtree."""
