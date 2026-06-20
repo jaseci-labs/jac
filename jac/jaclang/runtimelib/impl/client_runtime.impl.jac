@@ -428,6 +428,7 @@ impl JacForm(props: dict) -> JsxElement {
                 >
                     <input
                         type="checkbox"
+                        name={fieldName}
                         checked={field.state.value || False}
                         onChange={lambda e: any { field.handleChange(
                             e.target.checked
@@ -445,6 +446,7 @@ impl JacForm(props: dict) -> JsxElement {
             options = getEnumOptions(fieldSchema);
             return (
                 <select
+                    name={fieldName}
                     value={field.state.value || ""}
                     onChange={lambda e: any { field.handleChange(e.target.value); }}
                     onBlur={field.handleBlur}
@@ -473,6 +475,7 @@ impl JacForm(props: dict) -> JsxElement {
                         >
                             <input
                                 type="radio"
+                                name={fieldName}
                                 value={opt}
                                 checked={field.state.value == opt}
                                 onChange={lambda e: any { field.handleChange(
@@ -493,6 +496,7 @@ impl JacForm(props: dict) -> JsxElement {
             rows = config.rows or 4;
             return (
                 <textarea
+                    name={fieldName}
                     placeholder={placeholder}
                     rows={rows}
                     value={field.state.value}
@@ -521,6 +525,7 @@ impl JacForm(props: dict) -> JsxElement {
                     <div style={{position: "relative"}}>
                         <input
                             type={"text" if isVisible else "password"}
+                            name={fieldName}
                             placeholder={placeholder}
                             value={field.state.value}
                             onChange={lambda e: any { field.handleChange(
@@ -572,6 +577,7 @@ impl JacForm(props: dict) -> JsxElement {
         return (
             <input
                 type={fieldType}
+                name={fieldName}
                 placeholder={placeholder}
                 value={field.state.value}
                 onChange={lambda e: any { field.handleChange(
