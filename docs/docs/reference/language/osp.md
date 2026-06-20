@@ -697,13 +697,12 @@ with entry {
 }
 ```
 
-!!! note "The `++>` operator returns a list"
-    The `++>` operator returns a **list** containing the created node(s). Access the node with `[0]` index:
+!!! note "The `++>` operator mirrors its right-hand side"
+    A `++>` connection returns whatever its right-hand side is: connecting to a **single** node returns that node, connecting to a **list** of nodes returns a list. No `[0]` indexing is needed for a single-node connect:
 
     <!-- jac-skip: fragment shown in context of a walker ability -->
     ```jac
-    new_node = here ++> Todo(title="Buy groceries");
-    created_todo = new_node[0];  # Access the actual node
+    created_todo = here ++> Todo(title="Buy groceries");  # the created node
     report created_todo;
     ```
 
@@ -846,7 +845,7 @@ walker:pub publish {
     can run with Root entry {
         # Lands on the public graph whoever the caller is.
         fresh = root.shared +>: Posted() :+> Post(text=self.text);
-        grant(fresh[0], level=ReadPerm);   # author opens the post to readers
+        grant(fresh, level=ReadPerm);   # author opens the post to readers
     }
 }
 
@@ -1145,7 +1144,7 @@ walker:priv CreateItem {
     has name: str;
     can create with Root entry {
         new_item = here ++> Item(name=self.name);
-        report new_item[0];
+        report new_item;
     }
 }
 

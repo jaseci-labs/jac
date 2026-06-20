@@ -172,7 +172,7 @@ def:pub get_tasks -> list[Task] {
 
 def:pub create_task(title: str) -> Task {
     task = root ++> Task(title=title);
-    return task[0];
+    return task;
 }
 
 # Client: receives hydrated Task instances

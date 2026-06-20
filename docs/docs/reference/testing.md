@@ -299,13 +299,13 @@ walker Incrementer {
 test "walker increments" {
     counter = root ++> Counter();
     root spawn Incrementer();
-    assert counter[0].count == 1;
+    assert counter.count == 1;
 }
 
 test "walker custom amount" {
     counter = root ++> Counter();
     root spawn Incrementer(amount=5);
-    assert counter[0].count == 5;
+    assert counter.count == 5;
 }
 ```
 
@@ -714,7 +714,7 @@ test "all math operations" {
 test "counter increment" {
     counter = root ++> Counter();
     root spawn Incrementer();
-    assert counter[0].count == 1;
+    assert counter.count == 1;
 }
 
 # Each test should be independent
