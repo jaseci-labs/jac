@@ -18,7 +18,7 @@ def _webview_dir -> Path {
     here = Path(os.path.abspath(__file__)).parent;
     probe = here;
     for _ in range(8) {
-        cand = probe / "jaclang" / "runtimelib" / "client" / "targets" / "desktop" / "webview";
+        cand = probe / "jaclang" / "runtimelib" / "client" / "targets" / "desktop" / "native" / "webview";
         if (cand / "webview.na.jac").exists() {
             return cand;
         }
@@ -31,18 +31,22 @@ def _webview_dir -> Path {
     );
 }
 
-"""Locate the native plugin bridge (this file is tests/<x> beside it)."""
+"""Locate the native plugin bridge (beside the webview, under .../desktop/native/)."""
 def _native_dir -> Path {
     here = Path(os.path.abspath(__file__)).parent;
     probe = here;
-    for _ in range(6) {
-        cand = probe / "native";
+    for _ in range(8) {
+        cand = probe / "jaclang" / "runtimelib" / "client" / "targets" / "desktop" / "native";
         if (cand / "plugin_bridge.na.jac").exists() {
             return cand;
         }
         probe = probe.parent;
     }
-    raise RuntimeError("native/plugin_bridge.na.jac not found from " + str(here));
+    raise RuntimeError(
+        "jaclang/runtimelib/client/targets/desktop/native/plugin_bridge.na.jac not found from " + str(
+            here
+        )
+    );
 }
 
 """Compile a generated host (with the binding staged beside it) to a native ELF.

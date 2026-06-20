@@ -56,6 +56,27 @@ obj MockPlugin(DesktopPlugin) {
 }
 
 
+"""A plugin whose handle() always raises a PluginError (declared at module level:
+a nested archetype inheriting an imported one fails to construct)."""
+obj FailPlugin(DesktopPlugin) {
+    has plugin_name: str = "fail";
+
+    def handle(command: str, args: dict) -> dict {
+        raise PluginError("FORBIDDEN", "Access denied");
+    }
+}
+
+
+"""A plugin whose handle() raises an unexpected (non-PluginError) exception."""
+obj CrashPlugin(DesktopPlugin) {
+    has plugin_name: str = "crash";
+
+    def handle(command: str, args: dict) -> dict {
+        raise RuntimeError("boom");
+    }
+}
+
+
 """Dispatch routes to the correct plugin by name."""
 test "dispatch routes to correct plugin" {
     host = PluginHost();
@@ -105,15 +126,6 @@ test "dispatch returns error for unhandled command" {
 """Dispatch catches PluginError and returns structured error."""
 test "dispatch catches PluginError" {
     host = PluginHost();
-
-    obj FailPlugin(DesktopPlugin) {
-        has plugin_name: str = "fail";
-
-        def handle(command: str, args: dict) -> dict {
-            raise PluginError("FORBIDDEN", "Access denied");
-        }
-    }
-
     host.register("fail", FailPlugin());
     result = json.loads(
         host.dispatch(json.dumps({"plugin": "fail", "command": "do_it", "args": {}}))
@@ -126,15 +138,6 @@ test "dispatch catches PluginError" {
 """Dispatch catches unexpected exceptions as INTERNAL_ERROR."""
 test "dispatch catches unexpected exceptions" {
     host = PluginHost();
-
-    obj CrashPlugin(DesktopPlugin) {
-        has plugin_name: str = "crash";
-
-        def handle(command: str, args: dict) -> dict {
-            raise RuntimeError("boom");
-        }
-    }
-
     host.register("crash", CrashPlugin());
     result = json.loads(
         host.dispatch(json.dumps({"plugin": "crash", "command": "explode", "args": {}}))
