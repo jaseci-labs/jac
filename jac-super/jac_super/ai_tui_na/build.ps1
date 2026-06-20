@@ -4,8 +4,16 @@
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File build.ps1           # full build + tests
 #   powershell -ExecutionPolicy Bypass -File build.ps1 -Quick    # shared-lib + exe only
+#   powershell -ExecutionPolicy Bypass -File build.ps1 -DllOnly  # tui.dll only (see below)
+#
+# TEMPORARY: -DllOnly builds ONLY tui.dll and skips every executable target
+# (jac-na-tui.exe, test_pickers.exe). A native Windows host currently emits ELF
+# for executable nacompile targets, so they fail the COFF format guard, while the
+# --shared (DLL) path emits COFF correctly. See jaseci-labs/jaseci#6818. Remove
+# the -DllOnly switch (and restore the exe targets) once the native-host emit is
+# fixed. PE executable coverage is meanwhile asserted by the Linux cross job.
 
-param([switch]$Quick)
+param([switch]$Quick, [switch]$DllOnly)
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -33,10 +41,16 @@ $null = New-Item -ItemType Directory -Force -Path "bin"
 
 try {
     # ── build main NA binary (subprocess fallback renderer) ───────────────────
-    Write-Host "==> Compiling jac-na-tui.exe ..."
-    & $Py -m jaclang nacompile tui.na.jac --target windows -o bin\jac-na-tui.exe
-    if ($LASTEXITCODE -ne 0) { throw "jac-na-tui.exe compile failed" }
-    Write-Host "==> Done. Binary: $ScriptDir\bin\jac-na-tui.exe"
+    # TEMPORARY: skipped under -DllOnly — native Windows host emits ELF for exe
+    # targets (fails the COFF guard). See jaseci-labs/jaseci#6818.
+    if (-not $DllOnly) {
+        Write-Host "==> Compiling jac-na-tui.exe ..."
+        & $Py -m jaclang nacompile tui.na.jac --target windows -o bin\jac-na-tui.exe
+        if ($LASTEXITCODE -ne 0) { throw "jac-na-tui.exe compile failed" }
+        Write-Host "==> Done. Binary: $ScriptDir\bin\jac-na-tui.exe"
+    } else {
+        Write-Host "==> TEMPORARY: skipping jac-na-tui.exe (native exe emit broken, jaseci-labs/jaseci#6818)"
+    }
 
     # ── build in-process shared library ──────────────────────────────────────
     Write-Host "==> Compiling tui.dll (in-process host) ..."
@@ -46,12 +60,18 @@ try {
 
     if (-not $Quick) {
         # ── headless logic tests ──────────────────────────────────────────────
-        Write-Host "==> Building + running picker logic tests ..."
-        & $Py -m jaclang nacompile test_pickers.na.jac --target windows -o bin\test_pickers.exe
-        if ($LASTEXITCODE -ne 0) { throw "test_pickers.exe compile failed" }
-        & ".\bin\test_pickers.exe"
-        if ($LASTEXITCODE -ne 0) { throw "test_pickers.exe failed" }
-        Write-Host "==> Tests passed."
+        # TEMPORARY: skipped under -DllOnly — test_pickers.exe is an executable
+        # target and fails the native COFF guard. See jaseci-labs/jaseci#6818.
+        if (-not $DllOnly) {
+            Write-Host "==> Building + running picker logic tests ..."
+            & $Py -m jaclang nacompile test_pickers.na.jac --target windows -o bin\test_pickers.exe
+            if ($LASTEXITCODE -ne 0) { throw "test_pickers.exe compile failed" }
+            & ".\bin\test_pickers.exe"
+            if ($LASTEXITCODE -ne 0) { throw "test_pickers.exe failed" }
+            Write-Host "==> Tests passed."
+        } else {
+            Write-Host "==> TEMPORARY: skipping test_pickers.exe (native exe emit broken, jaseci-labs/jaseci#6818)"
+        }
 
         # ── headless host gate ────────────────────────────────────────────────
         Write-Host "==> Running in-process host gate (ctypes) ..."

@@ -9,9 +9,11 @@ name: Run tests for TUI Windows
 #                            this module's FFI shape (calloc'd INPUT_RECORD
 #                            buffers, kernel32 imports) before a Windows runner
 #                            is involved.
-#   windows-native         — windows-latest runner, native build + full test suite:
-#                            picker logic, CDLL load + frame round-trip (test_host),
+#   windows-native         — windows-latest runner, native tui.dll build + headless
+#                            gates: CDLL load + frame round-trip (test_host),
 #                            Win32 console constant probe + VT gate (test_console_win32).
+#                            TEMPORARY: reduced to DLL-only — native exe targets are
+#                            broken on a Windows host (jaseci-labs/jaseci#6818).
 #
 # CI green is necessary but NOT sufficient to merge — Phase 5 (human sign-off
 # on Windows Terminal / PowerShell / VT-enabled cmd) gates the final merge.
@@ -90,11 +92,18 @@ jobs:
           echo "ok: jac-na-tui.exe is PE32+"
 
   # ── Windows native job ──────────────────────────────────────────────────────
-  # Native x64 Windows build and three headless gates:
-  #   1. test_pickers      — picker logic (no TTY, no ctypes, pure NA)
-  #   2. test_host.jac      — CDLL (tui.dll) load + apply_frame/render (no TTY)
-  #   3. test_console_win32.jac — Win32 constant probe + VT output gate
+  # Native x64 Windows build of tui.dll, plus two headless gates:
+  #   1. test_host.jac      — CDLL (tui.dll) load + apply_frame/render (no TTY)
+  #   2. test_console_win32.jac — Win32 constant probe + VT output gate
   #                               (VT live section auto-skips on headless runners)
+  #
+  # TEMPORARY: this job is reduced to DLL-only. A native Windows host currently
+  # emits ELF for executable nacompile targets (jac-na-tui.exe, test_pickers.exe),
+  # which fail the COFF format guard, while the --shared DLL path emits COFF
+  # correctly. Tracked upstream at jaseci-labs/jaseci#6818. The dropped picker
+  # logic step and the native exe build should be restored once that is fixed.
+  # PE executable coverage is meanwhile asserted by the Linux cross job above,
+  # which builds and format-checks jac-na-tui.exe as valid PE32+.
   test-windows-native:
     runs-on: windows-latest
 
@@ -115,24 +124,19 @@ jobs:
           pip install -e ./jac
           jac install -e ./jac-super
 
-      - name: Build NA TUI (native Windows, quick)
+      # TEMPORARY: -DllOnly builds only tui.dll (COFF). The native exe targets are
+      # broken on a Windows host — see jaseci-labs/jaseci#6818. Restore -Quick (and
+      # the picker logic step below) once the native-host exe emit is fixed.
+      - name: Build NA TUI DLL (native Windows)
         working-directory: jac-super/jac_super/ai_tui_na
         shell: pwsh
-        run: ./build.ps1 -Quick
+        run: ./build.ps1 -DllOnly
 
-      - name: Picker logic tests
-        working-directory: jac-super/jac_super/ai_tui_na
-        shell: pwsh
-        run: |
-          Copy-Item "tty\console.win32.na.jac" "libc_tty.na.jac"
-          try {
-            python -m jaclang nacompile test_pickers.na.jac --target windows -o bin\test_pickers.exe
-            if ($LASTEXITCODE -ne 0) { throw "test_pickers.exe compile failed" }
-            .\bin\test_pickers.exe
-            if ($LASTEXITCODE -ne 0) { throw "test_pickers.exe failed" }
-          } finally {
-            Remove-Item "libc_tty.na.jac" -ErrorAction SilentlyContinue
-          }
+      # TEMPORARY: the native picker logic step (build + run test_pickers.exe) is
+      # dropped because test_pickers.exe is an executable target that fails the
+      # native COFF guard (jaseci-labs/jaseci#6818). The picker logic is
+      # platform-independent NA code and is still exercised by the macOS native
+      # job's test_pickers run; restore this step once #6818 is fixed.
 
       - name: Headless host gate (ctypes CDLL load + frame parse)
         working-directory: jac-super/jac_super/ai_tui_na
