@@ -533,6 +533,32 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
 }
 
 # ─── Body / Statement Codegen ─────────────────────────────────
+"""Define a module-level LLVM function, guarding against accidental re-emission.
+
+Fixed-name runtime singletons (jac_entry, __jac_glob_init, the __rc_*/__jac_exc_*/
+__osp_* helpers) are each meant to be emitted exactly once per module. If an
+emitter is reached twice — e.g. a per-node codegen loop that wrongly assumes one
+matching node, as two `with entry` blocks did in issue #6660 — llvmlite raises an
+opaque `DuplicatedNameError` deep in ir._utils. Routing those definitions through
+this helper turns that whole class of mistake into a clear, actionable internal
+error naming the symbol, instead of a cryptic crash. Lazily-emitted helpers that
+legitimately re-enter (iterator/bytes next-fns) keep their own memoized
+get-or-emit guard and must NOT use this path."""
+impl NaIRGenPass._define_function(name: str, fnty: ir.FunctionType) -> ir.Function {
+    try {
+        self.llvm_module.get_global(name);
+    } except KeyError {
+        # Not yet defined — the expected path.
+        return ir.Function(self.llvm_module, fnty, name=name);
+    }
+    raise RuntimeError(
+        f"native codegen internal error: duplicate definition of '{name}'. "
+        f"This fixed-name runtime symbol must be emitted exactly once per module, "
+        f"but its emitter was reached a second time. Collect the source nodes and "
+        f"emit once, or add a memoized get-or-emit guard (see issue #6660)."
+    );
+}
+
 """Emit __jac_glob_init() — a standalone void function containing all
 non-const glob initializers (list = [] / dict = {} defaults).
 
@@ -548,7 +574,7 @@ impl NaIRGenPass._emit_glob_init_func -> None {
     saved_di_sp = self._di_current_sp;
     # Emit void __jac_glob_init()
     fnty = ir.FunctionType(ir.VoidType(), []);
-    func = ir.Function(self.llvm_module, fnty, name="__jac_glob_init");
+    func = self._define_function("__jac_glob_init", fnty);
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
@@ -621,7 +647,7 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
     # so the startup preamble (glob-init, JAC_NO_GC, imported-module init) is
     # emitted exactly once here, before any entry body runs.
     fnty = ir.FunctionType(ir.VoidType(), []);
-    func = ir.Function(self.llvm_module, fnty, name="jac_entry");
+    func = self._define_function("jac_entry", fnty);
     self.func_symtab["jac_entry"] = func;
     # Create entry block
     block = func.append_basic_block(name="entry");
