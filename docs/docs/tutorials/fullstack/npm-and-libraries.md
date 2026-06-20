@@ -279,7 +279,7 @@ def:pub Tab(props: any) -> JsxElement {
 ### Installation & Setup
 
 ```bash
-pip install jac-super
+jac add jac-super
 ```
 
 Create a new themed project (fully offline -- the component set, styles, and color themes all ship with the plugin):
@@ -598,7 +598,7 @@ def:pub SplitView() -> JsxElement {
 | Import package | `import from "<package>" { named_export }` |
 | Import React hooks | `import from react { useRef, useCallback }` |
 | Setup Tailwind | Add vite plugin config + CSS import |
-| Setup shadcn | `pip install jac-super` + `[jac-shadcn]` in jac.toml |
+| Setup shadcn | `jac add jac-super` + `[jac-shadcn]` in jac.toml |
 | Use cn() utility | Write in Jac with clsx + tailwind-merge |
 
 ---

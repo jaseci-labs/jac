@@ -122,10 +122,10 @@ The `jac` command is your primary interface to the Jac toolchain. For the full r
 
 | Plugin | Package | Description |
 |--------|---------|-------------|
-| byllm | `pip install byllm` | LLM integration |
-| jac-client | `pip install jac-client` | Full-stack web development |
-| jac-scale | `pip install jac-scale` | Production deployment |
-| jac-super | `pip install jac-super` | Enhanced console output |
+| byllm | `jac add byllm` | LLM integration |
+| jac-client | `jac add jac-client` | Full-stack web development |
+| jac-scale | `jac add jac-scale` | Production deployment |
+| jac-super | `jac add jac-super` | Enhanced console output |
 
 ### Managing Plugins
 

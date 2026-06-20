@@ -84,16 +84,13 @@ obj Person {
 ### 1 Installation
 
 ```bash
-# Full installation with all plugins
+# Install the language (this is all you install globally)
 pip install jaclang
 
-# Minimal installation
-pip install jaclang
-
-# Individual plugins
-pip install byllm        # LLM integration
-pip install jac-client   # Full-stack web
-pip install jac-scale    # Production deployment
+# Add plugins per-project (written to jac.toml; provisioned into .jac/venv)
+jac add byllm        # LLM integration
+jac add jac-client   # Full-stack web
+jac add jac-scale    # Production deployment
 ```
 
 ### 2 Your First Program

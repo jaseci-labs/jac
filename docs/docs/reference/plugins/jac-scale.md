@@ -12,25 +12,25 @@ jac-scale is lightweight by default. Install only the extras you need:
 
 ```bash
 # Core only - FastAPI server, auth, CLI (no heavy dependencies)
-pip install jac-scale
+jac add jac-scale
 
 # Add MongoDB + Redis for persistent storage and distributed cache
-pip install jac-scale[data]
+jac add "jac-scale[data]"
 
 # Add Prometheus metrics and observability
-pip install jac-scale[monitoring]
+jac add "jac-scale[monitoring]"
 
 # Add APScheduler for cron and background task scheduling
-pip install jac-scale[scheduler]
+jac add "jac-scale[scheduler]"
 
 # Add Kubernetes + Docker for deployment and image building
-pip install jac-scale[deploy]
+jac add "jac-scale[deploy]"
 
 # Everything - recommended for production or if unsure
-pip install jac-scale[all]
+jac add "jac-scale[all]"
 ```
 
-Groups are combinable: `pip install jac-scale[data,monitoring]`
+Groups are combinable: `jac add "jac-scale[data,monitoring]"`
 
 After installing, enable the plugin:
 
@@ -2241,7 +2241,7 @@ backoff_seconds = [1, 5, 30]
 dead_letter_suffix = ".dlq"
 ```
 
-To use Redis Streams you need the `[data]` extra: `pip install jac-scale[data]`. Without it, jac-scale silently uses `LocalEventStream` and logs a warning at startup.
+To use Redis Streams you need the `[data]` extra: `jac add "jac-scale[data]"`. Without it, jac-scale silently uses `LocalEventStream` and logs a warning at startup.
 
 ### Publishing
 

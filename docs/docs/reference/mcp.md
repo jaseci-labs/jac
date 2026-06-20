@@ -9,7 +9,7 @@ If you installed Jaseci via PyPI or the install script, `jac-mcp` is likely alre
 Otherwise, install it separately:
 
 ```bash
-pip install jac-mcp
+jac add jac-mcp
 ```
 
 ## Quick Start

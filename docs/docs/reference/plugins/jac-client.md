@@ -9,8 +9,10 @@ You also get project scaffolding (`jac create --use client`), npm dependency man
 ## Installation
 
 ```bash
-pip install jac-client
+jac add jac-client
 ```
+
+`jac` provisions the plugin into the project's `.jac/venv`.
 
 ---
 
@@ -1825,7 +1827,7 @@ jac start --dev              # Dev server with HMR
 The desktop target is provided by the optional **[jac-desktop](jac-desktop.md)** plugin. It reuses jac-client's Vite frontend pipeline and compiles a native host (`jac nacompile`) that embeds the OS webview to render your `cl` UI - one self-contained binary, no Rust toolchain, no PyInstaller, no setup step.
 
 ```bash
-pip install jac-client jac-desktop
+jac add jac-client jac-desktop
 jac build --client desktop
 jac start --client desktop
 ```

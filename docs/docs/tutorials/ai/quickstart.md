@@ -25,7 +25,7 @@ In this tutorial, you'll set up byLLM, write your first AI-powered function, exp
 If you haven't already:
 
 ```bash
-pip install byllm
+jac add byllm
 ```
 
 ### 2. Pick a Backend

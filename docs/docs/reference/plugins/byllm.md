@@ -60,7 +60,7 @@ This means your Jac type system functions as the LLM's output schema. Declaring 
 ## Installation
 
 ```bash
-pip install byllm
+jac add byllm
 ```
 
 For local inference without an API key, byLLM supports two paths -- pick the one that fits your environment (see [Built-in Local Models](#built-in-local-models) for the full discussion):
@@ -78,18 +78,18 @@ For local inference without an API key, byLLM supports two paths -- pick the one
 
 === "In-process `local:*` (opt-in extra)"
     ```bash
-    pip install 'byllm[local]'
+    jac add "byllm[local]"
     ```
     ```toml
     [plugins.byllm.model]
     default_model = "local:gemma-4-e4b"
     ```
-    No daemon, single `pip install`, fully in-process. Adds `llama-cpp-python` and `huggingface_hub` as dependencies. See [Built-in Local Models](#built-in-local-models) for bundled aliases, GPU build flags, and the `jac model` cache CLI.
+    No daemon, single `jac add`, fully in-process. Adds `llama-cpp-python` and `huggingface_hub` as dependencies. See [Built-in Local Models](#built-in-local-models) for bundled aliases, GPU build flags, and the `jac model` cache CLI.
 
 For video support, install with the `video` extra:
 
 ```bash
-pip install byllm[video]
+jac add "byllm[video]"
 ```
 
 ---
@@ -1522,7 +1522,7 @@ with entry {
 ```
 
 !!! note "Video requires extra dependency"
-    Video support requires `pip install byllm[video]`.
+    Video support requires `jac add "byllm[video]"`.
 
 #### Video Parameters
 

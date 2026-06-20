@@ -461,7 +461,7 @@ UI into **one `jac nacompile`d binary that embeds the OS webview** (WebKitGTK /
 WKWebView / WebView2) - no Rust toolchain, no PyInstaller, no separate process.
 
 ```bash
-pip install jac-desktop      # adds the "desktop" client target (no setup step)
+jac add jac-desktop      # adds the "desktop" client target (no setup step)
 
 jac build --client desktop            # -> .jac/client/desktop/<app>  (single binary)
 jac start --client desktop            # build + launch the native window

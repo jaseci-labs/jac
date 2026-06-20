@@ -2,9 +2,9 @@
 
 The `jac` command is your primary interface for working with Jac projects. It handles the full development lifecycle: running programs (`jac run`), type-checking code (`jac check`), running tests (`jac test`), formatting and linting (`jac format`, `jac lint`), managing dependencies (`jac add`, `jac install`), serving APIs (`jac start`), and even compiling to native binaries (`jac nacompile`). Think of it as combining the roles of `python`, `pip`, `pytest`, `black`, and `flask` into a single unified tool.
 
-The CLI is extensible through plugins. When you install plugins like `jac-scale` or `jac-client`, they add new commands and flags automatically -- for example, `jac start --scale` for Kubernetes deployment or `jac build --client desktop` for desktop app packaging.
+The CLI is extensible through plugins. When a project adds plugins like `jac-scale` or `jac-client` (via `jac add`), they add new commands and flags automatically -- for example, `jac start --scale` for Kubernetes deployment or `jac build --client desktop` for desktop app packaging.
 
-> **💡 Enhanced Output**: For beautiful, colorful terminal output with Rich formatting, install the optional `jac-super` plugin: `pip install jac-super`. All CLI commands will automatically use enhanced output with themes, panels, and spinners.
+> **💡 Enhanced Output**: For beautiful, colorful terminal output with Rich formatting, add the optional `jac-super` plugin to your project: `jac add jac-super`. All CLI commands will automatically use enhanced output with themes, panels, and spinners.
 
 ## Quick Reference
 
@@ -761,9 +761,9 @@ jac plugins disabled
 >
 > **💡 Popular Plugins**:
 >
-> - **jac-super**: Enhanced console output with Rich formatting, colors, and spinners (`pip install jac-super`)
-> - **jac-client**: Full-stack web development with client-side rendering (`pip install jac-client`)
-> - **jac-scale**: Kubernetes deployment and scaling (`pip install jac-scale`)
+> - **jac-super**: Enhanced console output with Rich formatting, colors, and spinners (`jac add jac-super`)
+> - **jac-client**: Full-stack web development with client-side rendering (`jac add jac-client`)
+> - **jac-scale**: Kubernetes deployment and scaling (`jac add jac-scale`)
 
 ---
 
@@ -1980,7 +1980,7 @@ Plugins can add new commands and extend existing ones. These commands are availa
 
 ### jac-client Commands
 
-Requires: `pip install jac-client`
+Requires: `jac add jac-client`
 
 #### jac build
 
@@ -2050,7 +2050,7 @@ jac setup mobile --platform all
 
 #### Desktop builds
 
-The `desktop` client target is provided by `pip install jac-desktop`. There is no
+The `desktop` client target is provided by `jac add jac-desktop`. There is no
 separate `jac desktop` command and no setup step - build and run with
 `jac build --client desktop` / `jac start --client desktop`. See the
 [jac-desktop Reference](../plugins/jac-desktop.md) for configuration.

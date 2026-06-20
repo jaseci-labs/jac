@@ -19,7 +19,7 @@ jac-client's plugin hook system so `jac build --client desktop` and
 ## Installation
 
 ```bash
-pip install jac-client jac-desktop
+jac add jac-client jac-desktop
 ```
 
 Building a desktop app links a small native webview wrapper (`libwebview.so`),
