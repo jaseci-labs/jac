@@ -33,6 +33,14 @@ jac = "jaclang.jac0core.cli_boot:start_cli"
 [project.entry-points.pytest11]
 jaclang = "jaclang.pytest_plugin"
 
+# Virtual `@jac/desktop` SDK module (the built-in desktop OS-capability plugins),
+# resolved by the modresolver's jac.modules mechanism. Ships in core now.
+[project.entry-points."jac.modules"]
+desktop = "jaclang.runtimelib.client.desktop_plugin_config:desktop_sdk_path"
+
+[project.entry-points."jac.module_exports"]
+desktop = "jaclang.runtimelib.client.desktop_plugin_config:desktop_sdk_exports"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.2.1",
@@ -52,11 +60,13 @@ jaclang = [
     "_precompiled/**/*.jir",
     "_precompiled/manifest.json",
     "cli/skills/*.md",
-    # Built-in client/desktop framework: project templates + native webview assets
+    # Built-in client/desktop framework: project templates + the desktop target's
+    # native webview assets and the @jac/desktop plugin SDK (transpiled at build time)
     "runtimelib/client/templates/**/*",
     "runtimelib/client/templates/**/.gitignore",
-    "runtimelib/client/targets/desktop/webview/*.sh",
-    "runtimelib/client/targets/desktop/webview/*.md",
+    "runtimelib/client/targets/desktop/**/*.jac",
+    "runtimelib/client/targets/desktop/native/webview/*.sh",
+    "runtimelib/client/targets/desktop/native/webview/*.md",
 ]
 
 [tool.setuptools]

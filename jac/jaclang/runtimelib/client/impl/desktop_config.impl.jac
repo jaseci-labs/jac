@@ -49,6 +49,15 @@ impl JacDesktopConfig.get_window_config(self: JacDesktopConfig) -> WindowConfig 
     return WindowConfig.from_dict(window_data, title_fallback=identity.name);
 }
 
+impl JacDesktopConfig.get_plugin_configs(self: JacDesktopConfig) -> dict[str, any] {
+    config = self.load();
+    plugins = config.get('plugins', {});
+    if not isinstance(plugins, dict) {
+        return {};
+    }
+    return plugins;
+}
+
 impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
     config = self.load();
     name = str(config.get('name', ''));
@@ -73,6 +82,53 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
             f"Desktop configuration error: window.min_height ({min_height}) "
             f"cannot be greater than window.height ({height})"
         );
+    }
+    plugins = config.get('plugins', {});
+    if isinstance(plugins, dict) {
+        _validate_plugin_keys(plugins);
+    }
+}
+
+"""Reject unknown plugin names and unknown plugin sub-keys at build time.
+
+Without this, a typo under [plugins.desktop.plugins.*] is silently ignored:
+a misspelled `allow_read` leaves the fs allow-list empty (no file access),
+and a misspelled plugin name disables the capability — both with no warning.
+Valid keys are derived from the declared config schema (the single source of
+truth), so this never drifts from what the plugins actually accept. Only
+sub-keys for plugins that declare structured config (fs, shell, clipboard) are
+checked; bool-toggle plugins accept any value form.
+"""
+def _validate_plugin_keys(plugins: dict[str, any]) -> None {
+    import from jaclang.runtimelib.client.desktop_plugin_config {
+        _desktop_config_schema
+    }
+    plugins_spec = _desktop_config_schema().options.get('plugins', None);
+    if plugins_spec is None {
+        return;
+    }
+    known = plugins_spec.nested;
+    for (plugin_name, value) in plugins.items() {
+        if plugin_name not in known {
+            valid = ", ".join(sorted(known.keys()));
+            raise ValueError(
+                f"Desktop configuration error: unknown plugin "
+                f"'[plugins.desktop.plugins.{plugin_name}]'. Valid plugins: {valid}."
+            );
+        }
+        sub_schema = known[plugin_name].nested;
+        if isinstance(value, dict) and sub_schema {
+            for sub_key in value.keys() {
+                if sub_key not in sub_schema {
+                    valid = ", ".join(sorted(sub_schema.keys()));
+                    raise ValueError(
+                        f"Desktop configuration error: unknown option '{sub_key}' "
+                        f"under [plugins.desktop.plugins.{plugin_name}]. "
+                        f"Valid options: {valid}."
+                    );
+                }
+            }
+        }
     }
 }
 

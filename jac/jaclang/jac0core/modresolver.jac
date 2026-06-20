@@ -208,6 +208,26 @@ def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
             return (path, lang);
         }
     }
+    # Fallback: check packages that registered a jac.modules entry point.
+    # Plugins (e.g. jac-desktop) self-register their @jac/* modules this way
+    # without writing files into jaclang's runtimelib directory.
+    # Entry point value is "module.path:attr_or_callable". If the loaded object
+    # is callable, it is invoked and must return an absolute path string.
+    # If it is already a string, it is used directly.
+    try {
+        import importlib.metadata as _meta;
+        for ep in _meta.entry_points(group='jac.modules') {
+            if ep.name == module_name {
+                loaded = ep.load();
+                path = loaded() if callable(loaded) else loaded;
+                if isinstance(path, str) and os.path.isfile(path) {
+                    return (path, 'jac');
+                }
+            }
+        }
+    } except Exception {
+        ;
+    }
     return None;
 }
 
@@ -220,6 +240,36 @@ ECMAScript pass (so the client manifest registers the same file).
 def resolve_jac_virtual_module_path(target: str) -> (str | None) {
     result = _resolve_jac_virtual_module(target);
     return result[0] if result else None;
+}
+
+"""Return the public export names a `@jac/*` module advertises, or [].
+
+Packages whose virtual module is built from `obj` types (which the generic
+export extractor can't see) self-describe their public symbols via a
+`jac.module_exports` entry point named for the module (e.g. `desktop`). The
+entry point resolves to a list, or a callable returning one. This keeps the
+per-SDK symbol list in the owning package instead of hardcoded in the compiler.
+"""
+def resolve_jac_virtual_module_exports(target: str) -> list[str] {
+    if not target.startswith('@jac/') {
+        return [];
+    }
+    module_name = target[len('@jac/'):];
+    try {
+        import importlib.metadata as _meta;
+        for ep in _meta.entry_points(group='jac.module_exports') {
+            if ep.name == module_name {
+                loaded = ep.load();
+                names = loaded() if callable(loaded) else loaded;
+                if isinstance(names, list) {
+                    return names;
+                }
+            }
+        }
+    } except Exception {
+        ;
+    }
+    return [];
 }
 
 """Get path aliases from project config [plugins.client.paths]."""

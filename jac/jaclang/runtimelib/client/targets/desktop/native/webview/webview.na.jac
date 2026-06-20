@@ -54,6 +54,14 @@ glob HINT_NONE: int = 0,
      HINT_MAX: int = 2,
      HINT_FIXED: int = 3;
 
+"""Opaque handle of the webview created by the most recent new_webview() call.
+
+nacompile cannot pass wv.get_handle() into C ABI calls from host code (the
+lowered value is wrong). Hosts should call run_main_loop() and pass this glob
+to CPython bootstrap helpers instead of wv.get_handle().
+"""
+glob LAST_WEBVIEW_HANDLE: int = 0;
+
 """An OS-native webview window.
 
 Thin ergonomic wrapper over the C handle. Construct with `new_webview(...)`,
@@ -107,25 +115,37 @@ obj:pub Webview {
     }
 
     """Run the main loop. Blocks until the window is closed."""
-    def run {
+    def:pub run {
         webview_run(self.handle);
     }
 
     """Stop the main loop (callable from another thread / a bound handler)."""
-    def terminate {
+    def:pub terminate {
         webview_terminate(self.handle);
     }
 
     """Destroy the webview and release its resources."""
-    def destroy {
+    def:pub destroy {
         webview_destroy(self.handle);
     }
+
+    """Return the opaque C webview_t handle (for hosts that wire plugins in CPython)."""
+    def:pub get_handle -> int {
+        return self.handle;
+    }
+}
+
+"""Block in the GTK main loop for LAST_WEBVIEW_HANDLE (generated desktop hosts)."""
+def:pub run_main_loop {
+    webview_run(LAST_WEBVIEW_HANDLE);
 }
 
 """Create a window-owning webview. debug=True enables devtools where supported."""
 def:pub new_webview(debug: bool = False) -> Webview {
     dbg: i32 = 1 if debug else 0;
-    return Webview(handle=webview_create(dbg, 0));
+    h = webview_create(dbg, 0);
+    LAST_WEBVIEW_HANDLE = h;
+    return Webview(handle=h);
 }
 
 """Reply to a bound call from inside a handler.

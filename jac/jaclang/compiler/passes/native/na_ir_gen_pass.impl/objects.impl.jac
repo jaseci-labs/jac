@@ -388,8 +388,15 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                     seen_fields.add(fname);
                     ftype = ir.IntType(64);
                     if var.type_tag is not None {
-                        # HasVar.type is checker-stamped; lower it directly.
-                        ftype = self._resolve_jac_type(var);
+                        # HasVar.type is checker-stamped for regular Jac archetypes.
+                        # For clib imports the checker leaves .type unstamped, so we
+                        # resolve via the raw type-tag node which _resolve_primitive_name
+                        # can process (handles Callable[[...], ret] → fn-ptr type).
+                        if arch_name in self.clib_struct_names {
+                            ftype = self._resolve_jac_type(var.type_tag);
+                        } else {
+                            ftype = self._resolve_jac_type(var);
+                        }
                         # Track enum-typed fields
                         ftag_name = self._get_name(var.type_tag.tag);
                         if ftag_name is not None and ftag_name in self.enum_types {

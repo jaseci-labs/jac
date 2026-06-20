@@ -48,7 +48,7 @@ import from pathlib { Path }
             default="web",
             help=(
                 "Build client target (web, pwa, mobile, desktop). "
-                "Choices reflect installed targets (desktop requires jac-desktop)."
+                "Choices reflect installed targets (desktop builds a native webview app)."
             ),
             choices=["web", "pwa", "mobile"],
             short=""  # Disable auto-generated -t (may conflict with other plugins)
@@ -210,7 +210,7 @@ class JacClientCmd {
                         default="web",
                         help=(
                             "Client build target for dev server (web, pwa, mobile, desktop). "
-                            "Choices reflect installed targets (desktop requires jac-desktop)."
+                            "Choices reflect installed targets (desktop builds a native webview app)."
                         ),
                         choices=["web", "pwa", "mobile"],
                         short=""  # Disable auto-generated short flag
@@ -477,7 +477,8 @@ def _handle_build_target(ctx: HookContext) -> None {
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
     } except Exception as e {
-        console.error(f"Build failed: {e}");
+        import traceback;
+        console.error(f"Build failed: {e}\n{traceback.format_exc()}");
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
     }

@@ -15,7 +15,7 @@ import tempfile;
 import from urllib.request { Request, urlopen }
 import from urllib.error { HTTPError }
 import from urllib.parse { parse_qs, unquote, urlparse }
-import from jaclang.runtimelib.client.targets.desktop.oauth_broker {
+import from jaclang.runtimelib.client.targets.desktop.native.oauth_broker {
     SessionStore,
     build_sso_login_url,
     make_handler

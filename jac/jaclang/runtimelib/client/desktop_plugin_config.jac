@@ -2,6 +2,7 @@
 
 Registers metadata and schema for the [plugins.desktop] section in jac.toml.
 """
+import os;
 
 import from importlib.metadata { version as pkg_version }
 import from pathlib { Path }
@@ -21,6 +22,28 @@ obj PluginMetadata {
             'description': self.description
         };
     }
+}
+
+
+"""Return the absolute path of desktop_api.cl.jac for the jac.modules entry point.
+
+The SDK file ships beside this module as package data, so the same relative
+path resolves from both a source checkout and an installed wheel."""
+def desktop_sdk_path -> str {
+    this_dir = os.path.dirname(os.path.abspath(__file__));
+    return os.path.join(this_dir, 'targets', 'desktop', 'plugin', 'desktop_api.cl.jac');
+}
+
+
+"""Public symbol names exported by the @jac/desktop client SDK.
+
+The authoritative export list for desktop_api.cl.jac, kept beside the SDK it
+describes. jaclang's client compiler reads it via the `jac.module_exports`
+entry point (so the desktop symbol set lives here, not in core) because the SDK
+is built from `obj` types that the generic export extractor doesn't pick up.
+Keep in sync with the top-level `obj` declarations in desktop_api.cl.jac."""
+def desktop_sdk_exports -> list[str] {
+    return ['app_window', 'clipboard', 'dialog', 'fs', 'notification', 'path', 'shell'];
 }
 
 """Single option spec in a plugin config schema."""
@@ -141,6 +164,48 @@ def _desktop_config_schema -> PluginConfigSchema {
                     "min_width": schema_int_option(800, ""),
                     "min_height": schema_int_option(600, ""),
                     "resizable": schema_bool_option(True, "")
+                }
+            ),
+            "plugins": schema_dict_option(
+                "Desktop capability plugins: each key is a plugin name (window, path, fs, notification, clipboard, dialog, shell). Value can be true (enabled with defaults) or a dict of plugin-specific config.",
+                nested={
+                    "window": schema_bool_option(True, "Enable window control plugin"),
+                    "path": schema_bool_option(True, "Enable path resolution plugin"),
+                    "fs": schema_dict_option(
+                        "Filesystem plugin config",
+                        nested={
+                            "allow_read": schema_list_option(
+                                ["$HOME"], "Glob paths allowed for read operations"
+                            ),
+                            "allow_write": schema_list_option(
+                                ["$APP_DATA"], "Glob paths allowed for write operations"
+                            )
+                        }
+                    ),
+                    "notification": schema_bool_option(
+                        True, "Enable notification plugin"
+                    ),
+                    "clipboard": schema_dict_option(
+                        "Clipboard plugin config",
+                        nested={
+                            "allow_read": schema_bool_option(
+                                True, "Allow clipboard read"
+                            ),
+                            "allow_write": schema_bool_option(
+                                True, "Allow clipboard write"
+                            )
+                        }
+                    ),
+                    "dialog": schema_bool_option(True, "Enable dialog plugin"),
+                    "shell": schema_dict_option(
+                        "Shell plugin config (deny-all by default)",
+                        nested={
+                            "allow": schema_list_option(
+                                [],
+                                "Glob patterns for allowed commands (e.g. ['git *'])"
+                            )
+                        }
+                    )
                 }
             )
         }
