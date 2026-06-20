@@ -662,6 +662,9 @@ impl NativeCompilePass._compile_and_link_native_imports(
         # Propagate the symbol→DLL mapping so the PE linker attributes Win32
         # API symbols to the correct DLL (kernel32, ucrt, …) rather than
         # falling back to msvcrt for every symbol not owned by the root module.
+        # Pattern mirrors dep_clib_paths (lines ~645) and dep_exported_symbols
+        # (lines ~676): guard non-empty, iterate, skip if already present
+        # (first-seen wins). Add new clib metadata fields the same way.
         if dep_clib_symbol_lib {
             for (_sym, _dll) in dep_clib_symbol_lib.items() {
                 if _sym not in module.gen._clib_symbol_lib {
