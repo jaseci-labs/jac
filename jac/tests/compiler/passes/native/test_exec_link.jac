@@ -151,3 +151,31 @@ test "Mach-O executable has MH_EXECUTE filetype and an LC_MAIN entry" {
     }
     assert has_main , "missing LC_MAIN entry command";
 }
+
+
+# ─── #6819: Windows AOT must emit COFF, not ELF ───────────────────────────────
+# llvmlite appends "-elf" to the triple only when os.name == "nt" and
+# codemodel == "jitdefault" (its MCJIT-on-Windows workaround). nacompile's AOT
+# executable branch and NaIRGenPass.postinit therefore pin an explicit code
+# model so a Windows host emits a COFF object for a COFF target rather than a
+# bogus ELF one. This forces the Windows branch on any host by patching os.name,
+# catching a regression at the shared llvmlite seam without a Windows runner.
+test "AOT executable code model keeps a Windows triple as COFF (no -elf)" {
+    import llvmlite.binding.targets as _tgt;
+    llvm.initialize_all_targets();
+    win_triple = "x86_64-pc-windows-msvc";
+    target = llvm.Target.from_triple(win_triple);
+    saved = _tgt.os.name;
+    _tgt.os.name = "nt";
+    try {
+        # The default jitdefault model demonstrates the quirk this guards against.
+        bad_tm = target.create_target_machine();
+        assert bad_tm.triple.endswith("-elf") , f"expected llvmlite to append -elf under jitdefault, got {bad_tm.triple}";
+        # nacompile pins codemodel="large" for the executable branch (postinit
+        # does the same for the module triple) — the triple stays COFF.
+        good_tm = target.create_target_machine(opt=2, codemodel="large");
+        assert not good_tm.triple.endswith("-elf") , f"pinned code model still produced an ELF triple: {good_tm.triple}";
+    } finally {
+        _tgt.os.name = saved;
+    }
+}

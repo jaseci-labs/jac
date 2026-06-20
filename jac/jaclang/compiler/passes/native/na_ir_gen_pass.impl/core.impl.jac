@@ -27,8 +27,10 @@ impl NaIRGenPass.postinit -> None {
     # codemodel="large" (not the default "jitdefault"): llvmlite appends
     # "-elf" to the triple when os.name == "nt" and codemodel == "jitdefault",
     # which would stamp a bogus "...-windows-msvc-elf" triple onto the module
-    # on a Windows host. An explicit code model keeps the triple intact; "large"
-    # matches what nacompile emits with so the module triple is consistent.
+    # on a Windows host. This site only reads the triple/data layout, so any
+    # non-"jitdefault" model keeps the triple intact (the code model does not
+    # otherwise affect it here); "large" is chosen to mirror the executable AOT
+    # path in nacompile. The relocation-model coupling lives at that emit site.
     _tm = _target.create_target_machine(codemodel="large");
     self.llvm_module.data_layout = str(_tm.target_data);
     self.llvm_module.triple = _tm.triple;
