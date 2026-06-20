@@ -26,7 +26,8 @@ impl JacAPIServerEndpoints.register_walkers_endpoints -> None {
                 response_model=None,
                 tags=['Walkers'],
                 summary='API Entry',
-                description='API Entry'
+                description='API Entry',
+                forward_undeclared_query_params=False
             )
         );
         self.server.add_endpoint(
@@ -40,7 +41,8 @@ impl JacAPIServerEndpoints.register_walkers_endpoints -> None {
                 response_model=None,
                 tags=['Walkers'],
                 summary='API Root',
-                description='API Root'
+                description='API Root',
+                forward_undeclared_query_params=False
             )
         );
     }
@@ -183,7 +185,8 @@ impl JacAPIServerEndpoints.register_functions_endpoints -> None {
                 response_model=None,
                 tags=['Functions'],
                 summary='This is a summary',
-                description='This is a description'
+                description='This is a description',
+                forward_undeclared_query_params=False
             )
         );
     }

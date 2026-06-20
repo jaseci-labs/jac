@@ -264,7 +264,7 @@ def _run_blurb(kind: str) -> str {
         "pypi-package": "Build a wheel into dist/",
         "npm-package": "Build an npm package into dist/",
         "fullstack": "Serve the app (dev mode)",
-        "wasm": "Serve the wasm page",
+        "client": "Serve the client-only app (static)",
         "desktop": "Run the desktop app",
         "mobile": "Build the mobile app"
     };

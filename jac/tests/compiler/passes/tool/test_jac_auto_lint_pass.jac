@@ -695,15 +695,15 @@ test "ternary no lint preserves" {
 
 # ── TestSignatureMismatchFix ─────────────────────────────────────────────
 test "signature mismatch fixed" {
-    input_path = auto_lint_fixture_path("sig_mismatch.jac");
+    # Annex files are formatted as their own tool programs now; the auto-lint
+    # pass loads the base file's decls on demand to fix mismatched impl
+    # signatures, so we format the .impl.jac annex directly.
+    input_path = auto_lint_fixture_path(os.path.join("impl", "sig_mismatch.impl.jac"));
 
     prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
 
-    # Verify impl module is discovered
-    assert len(prog.mod.main.impl_mod) == 1 , "Should have one impl module";
-
     # Check the impl signatures were fixed by examining the AST nodes directly
-    impl_mod = prog.mod.main.impl_mod[0];
+    impl_mod = prog.mod.main;
 
     # Helper to get param names from an ImplDef
     def get_impl_params(impl_def: uni.ImplDef) -> list[str] {
@@ -746,14 +746,15 @@ test "signature mismatch fixed" {
 
 # ── TestNestedClassSignatureFix ──────────────────────────────────────────
 test "nested class impl signature fixed" {
-    input_path = auto_lint_fixture_path("nested_class_sig.jac");
+    # Format the .impl.jac annex directly; the auto-lint pass resolves nested
+    # archetype decls (OuterClass.InnerClass.init, ...) from the base file.
+    input_path = auto_lint_fixture_path(
+        os.path.join("impl", "nested_class_sig.impl.jac")
+    );
 
     prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
 
-    # Verify impl module is discovered
-    assert len(prog.mod.main.impl_mod) == 1 , "Should have one impl module";
-
-    impl_mod = prog.mod.main.impl_mod[0];
+    impl_mod = prog.mod.main;
 
     # Helper to get the full target path as a string
     def get_target_path(impl_def: uni.ImplDef) -> str {

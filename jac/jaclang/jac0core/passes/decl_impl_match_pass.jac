@@ -62,8 +62,8 @@ target symbol table.
 
         When source_sym_tab and target_sym_tab are the same, this connects
 within the same module.
-        When different, it connects implementations from impl_mod to
-declarations in the main module.
+        When different, it connects implementations in one scope to
+declarations in another.
         """
     def connect_impls(
         self: DeclImplMatchPass,
@@ -71,9 +71,29 @@ declarations in the main module.
         target_sym_tab: UniScopeNode
     ) -> None;
 
+    """Connect a single ImplDef to its declaration in target_sym_tab.
+
+        Run once per ImplDef that defines a symbol: after annexes/variants are
+        merged, several ImplDefs (a head impl plus an annex's) can share one
+        symbol, and visiting each is what surfaces a duplicate implementation
+        (E2017) -- the second to resolve a decl that is already bodied."""
+    def _connect_one_impl(
+        self: DeclImplMatchPass,
+        impl_node: uni.ImplDef,
+        sym_name: str,
+        target_sym_tab: UniScopeNode
+    ) -> None;
+
+    """Detect bare re-declaring definitions (`def foo {...}` written instead of
+    `impl foo {...}`) merged from annex files that shadow an unlinked stub."""
+    def _report_bare_redecls(self: DeclImplMatchPass, sym_tab: UniScopeNode) -> None;
+
     """Validate if the parameters match."""
     def validate_params_match(
-        self: DeclImplMatchPass, sym: Symbol, valid_decl: uni.AstSymbolNode
+        self: DeclImplMatchPass,
+        impl_node: uni.ImplDef,
+        sym_name: str,
+        valid_decl: uni.AstSymbolNode
     ) -> None;
 
     """Resolve unresolved Name and AtomTrailer symbols in a subtree."""

@@ -324,7 +324,9 @@ test "hash init check" {
 
 test "edge expr not type" {
     output = run_jac(os.path.join(FIXTURES, "edgetypeissue.jac"));
-    assert "[x()]" in output;
+    # A single-node connect returns the node itself, not a list.
+    assert "x()" in output;
+    assert "[x()]" not in output;
 }
 
 test "blank with entry" {

@@ -2512,6 +2512,8 @@ This is on by default whenever a Redis URL resolves. Tune it under
 | `redis_l1_invalidation_enabled` | `true` | Broadcast and apply cross-pod L1 evictions over Redis pub/sub. |
 | `redis_l1_invalidation_channel` | `"jac:anchor:invalidate"` | Pub/sub channel used for invalidation messages. All pods sharing a cache must agree on this value. |
 
+L1 invalidation keeps re-reads fresh, but it is a _post-commit_ signal -- it cannot stop two pods that both read an empty `[-->(?:X)]` _before_ either writes from both creating a child (the check-then-create race). That race is closed separately by node-level optimistic concurrency, which converges the loser via replay; see [Persistence -> Concurrent writes: check-then-create](../persistence.md#concurrent-writes-check-then-create-and-convergence).
+
 ---
 
 ## Kubernetes Deployment

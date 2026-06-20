@@ -54,7 +54,29 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # path. Test path keeps them False -> parent KubernetesTarget
         # behavior (build_via_registry / python_image fallback).
         auto_build: bool = False,
-        guard_fallback_image: bool = False;
+        guard_fallback_image: bool = False,
+        # no-image mode: copy local source into the cluster + install jac at
+        # pod startup instead of building/pushing an image. Set by
+        # _scale_pre_hook for `jac start --scale --no-image`.
+        no_image: bool = False,
+        # The app's [plugins.scale.microservices] config. When set (a platform
+        # deploying a different app's fleet), it's used and threaded into the
+        # manifest builder instead of the running process's own jac.toml.
+        microservices_config: dict[str, any] = {};
+
+    """The app's microservices config: injected when provided, else read from
+    the running process's jac.toml."""
+    def _ms_cfg -> dict[str, any] {
+        if self.microservices_config {
+            return self.microservices_config;
+        }
+        try {
+            import from jac_scale.config_loader { get_scale_config }
+            return get_scale_config().get_microservices_config();
+        } except Exception {
+            return {};
+        }
+    }
 
     """Auto-build path when `auto_build=True`: prefer user's pre-built
     docker_image_name, else auto_build_and_distribute. Else parent behavior."""
@@ -138,7 +160,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # real cluster); the provisioning helper is idempotent for re-deploys.
         try {
             self._deploy_context = MicroserviceDatabaseProvisioner(
-                k8s_target=self, logger=self.logger, enabled=self.auto_build
+                k8s_target=self,
+                logger=self.logger,
+                enabled=self.auto_build or self.no_image
             ).provision(
                 app_name
             );
@@ -181,6 +205,19 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
+        # Block until the fleet actually rolls out, so callers don't surface a
+        # live link at a not-yet-ready (or crash-looping) fleet - matching the
+        # monolith path, which waits via _wait_for_deployment.
+        try {
+            self._wait_for_fleet_rollout(bundle);
+        } except Exception as e {
+            return DeploymentResult(
+                success=False,
+                message=f"fleet did not become ready: {e}",
+                details=bundle
+            );
+        }
+
         svc_count = len(bundle["pod_specs"]) - 1;
         success_msg = (
             f"Applied {svc_count} service Deployment+Service pair(s) "
@@ -200,6 +237,72 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
         }
         return DeploymentResult(success=True, message=success_msg, details=bundle);
+    }
+
+    """Block until every fleet Deployment has a ready replica (or `timeout`
+    elapses). Raises on a crash-looping pod so a broken fleet fails fast
+    instead of timing out. No-image pods build jac in-pod, hence the long
+    default timeout."""
+    def _wait_for_fleet_rollout(bundle: dict[str, any], timeout: int = 1200) -> None {
+        import time;
+        import from kubernetes { client }
+        names: list[str] = [];
+        for dep in bundle.get("deployments", {}).values() {
+            names.append(dep["metadata"]["name"]);
+        }
+        if not names {
+            return;
+        }
+        self._load_kube_config();
+        apps_v1 = client.AppsV1Api();
+        core_v1 = client.CoreV1Api();
+        ns = self.k8s_config.namespace;
+        elapsed = 0;
+        ready = 0;
+        while elapsed < timeout {
+            ready = 0;
+            for name in names {
+                try {
+                    d = apps_v1.read_namespaced_deployment(name=name, namespace=ns);
+                    if (d.status.ready_replicas or 0) >= 1 {
+                        ready += 1;
+                    }
+                } except Exception {
+                    _ = 0;
+                }
+            }
+            if ready == len(names) {
+                if self.logger {
+                    self.logger.info(
+                        f"Fleet ready: {ready}/{len(names)} deployments serving"
+                    );
+                }
+                return;
+            }
+            crash = "";
+            try {
+                for p in core_v1.list_namespaced_pod(namespace=ns).items {
+                    for cs in (p.status.container_statuses or []) {
+                        if (cs.restart_count or 0) >= 3 {
+                            crash = (
+                                f"pod '{p.metadata.name}' crash-looping "
+                                f"({cs.restart_count} restarts)"
+                            );
+                        }
+                    }
+                }
+            } except Exception {
+                _ = 0;
+            }
+            if crash {
+                raise Exception(crash);
+            }
+            time.sleep(10);
+            elapsed += 10;
+        }
+        raise Exception(
+            f"timed out after {timeout}s ({ready}/{len(names)} deployments ready)"
+        );
     }
 
     """Deploy the observability stack (Loki/Tempo + Grafana Alloy + the
@@ -328,7 +431,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     failure (missing block, malformed TOML, loader exception)."""
     def _read_microservices_logs_config -> dict[str, Any] {
         try {
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return dict(ms_cfg.get("logs", {}));
         } except Exception as e {
             if self.logger {
@@ -345,7 +448,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     failure (missing block, malformed TOML, loader exception)."""
     def _read_microservices_tracing_config -> dict[str, Any] {
         try {
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return dict(ms_cfg.get("tracing", {}));
         } except Exception as e {
             if self.logger {
@@ -363,6 +466,25 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     which produces pod specs without DB env / init containers."""
     def generate_manifests(app_config: AppConfig) -> dict[str, any] {
         app_name = app_config.app_name or self.k8s_config.app_name;
+
+        # no-image mode skips the whole image pipeline: pods run the generic
+        # python base + install jac at startup against ConfigMap-mounted
+        # source. Pass the base image straight through (the builder ignores it
+        # and uses python_image) and wire the source dir into the builder.
+        if self.no_image or app_config.no_image {
+            builder = MicroserviceManifestBuilder(
+                k8s_config=self.k8s_config,
+                secrets=self.secrets,
+                deploy_context=self._deploy_context,
+                logger=self.logger,
+                no_image=True,
+                experimental=app_config.experimental,
+                project_dir=app_config.code_folder,
+                microservices_config=self.microservices_config
+            );
+            return builder.generate_manifests(app_config, self.k8s_config.python_image);
+        }
+
         image = self._handle_image_registry(app_name, app_config);
 
         # Fail loud on python_image fallback so users don't get a silent
@@ -391,7 +513,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             k8s_config=self.k8s_config,
             secrets=self.secrets,
             deploy_context=self._deploy_context,
-            logger=self.logger
+            logger=self.logger,
+            microservices_config=self.microservices_config
         );
         return builder.generate_manifests(app_config, image);
     }
@@ -473,6 +596,19 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 self.logger.info(
                     f"Applied PVC for shared volume '{pvc_name}'",
                     {"name": pvc_manifest["metadata"]["name"]}
+                );
+            }
+        }
+
+        # no-image source ConfigMap must exist before the Deployments so the
+        # bootstrap initContainer can mount + extract it at pod startup.
+        source_cm = bundle.get("source_configmap");
+        if source_cm {
+            self._apply_or_replace_configmap(core_v1, namespace, source_cm);
+            if self.logger {
+                self.logger.info(
+                    f"Applied source ConfigMap (no-image mode)",
+                    {"name": source_cm["metadata"]["name"]}
                 );
             }
         }
@@ -698,6 +834,26 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
+    def _apply_or_replace_configmap(
+        core_v1: any, namespace: str, manifest: dict[str, any]
+    ) {
+        name: str = manifest["metadata"]["name"];
+        try {
+            core_v1.read_namespaced_config_map(name=name, namespace=namespace);
+            core_v1.replace_namespaced_config_map(
+                name=name, namespace=namespace, body=manifest
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_config_map(
+                    namespace=namespace, body=manifest
+                );
+            } else {
+                raise;
+            }
+        }
+    }
+
     def _apply_or_replace_pvc(core_v1: any, namespace: str, manifest: dict[str, any]) {
         name: str = manifest["metadata"]["name"];
         try {
@@ -868,6 +1024,18 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     }
                 }
             }
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
+        # no-image source ConfigMap(s), labeled managed=jac-scale.
+        try {
+            core_v1.delete_collection_namespaced_config_map(
+                namespace=namespace,
+                label_selector="managed=jac-scale,jac-scale.role=source"
+            );
         } except ApiException as e {
             if e.status != 404 {
                 raise;
