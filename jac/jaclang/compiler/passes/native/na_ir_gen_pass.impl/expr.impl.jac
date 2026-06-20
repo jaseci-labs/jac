@@ -470,7 +470,7 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
     } elif right_is_walker {
         (walker_name, walker_val, loc_val) = (right_name, right_val, left_val);
     } else {
-        # An IMPORTED walker is not in the local osp_arch_kind, so neither
+        # An IMPORTED walker is not in the local OSP model's kind map, so neither
         # side classifies as a walker here — name the import in the E5090
         # instead of leaving a generic unsupported-op (#6636 / #6146).
         self.emit(
@@ -503,7 +503,9 @@ impl NaIRGenPass._codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None) {
     # subtype / tuple triggers, exit abilities, and nested spawns all work. The
     # kernel + descriptors are always registered for an OSP program (see
     # _register_archetypes Pass 4.7), so this is the single spawn path.
-    if (walker_name in self.osp_tags)
+    _spawn_model = self.ir_in.gen.osp_model;
+    if (_spawn_model is not None)
+    and (walker_name in _spawn_model.tags)
     and (self._osp_rt_global is not None)
     and ("osp_spawn" in self.func_symtab) {
         return self._codegen_kernel_spawn(walker_name, walker_val, loc_val);
@@ -543,7 +545,11 @@ impl NaIRGenPass._codegen_kernel_spawn(
     );
     # wdesc = (WalkerDesc*) __ospDESC[walker_local_idx] -- the descriptor table
     # is keyed by the dense LOCAL index, not the globally-stable hash tag.
-    _wtag = self.osp_local_idx.get(walker_name, 0);
+    _ks_model = self.ir_in.gen.osp_model;
+    _wtag = _ks_model.local_index(walker_name) if (_ks_model is not None) else -1;
+    if _wtag < 0 {
+        _wtag = 0;
+    }
     _descp = self.builder.load(
         self.builder.gep(
             self._osp_desc_global,
@@ -576,9 +582,10 @@ impl NaIRGenPass._spawn_operand_name(nd: uni.UniNode) -> (str | None) {
     return None;
 }
 
-"""True if `name` is a walker archetype (kind registered at OSP-tag time)."""
+"""True if `name` is a walker archetype, per the shared OSP model's kind map."""
 impl NaIRGenPass._is_walker_arch(name: str) -> bool {
-    return self.osp_arch_kind.get(name) == "walker";
+    _model = self.ir_in.gen.osp_model;
+    return (_model is not None) and (_model.arch_kind.get(name) == "walker");
 }
 
 """Generate comparison expression."""
@@ -804,6 +811,20 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
                     "==", result, ir.Constant(i64, 0), name="rin.notin"
                 );
                 result = self.builder.zext(result, i64, name="rin.notin.i64");
+            }
+            return result;
+        }
+        # bytes membership: `needle in haystack` — length-aware (#6749). Must
+        # precede the i8* strstr path, which assumes NUL-terminated operands.
+        if self._is_bytes_value(left) and self._is_bytes_value(right) {
+            i64 = ir.IntType(64);
+            is_found = self._emit_bytes_contains(left, right);
+            result = self.builder.zext(is_found, i64, name="by.in.i64");
+            if is_not_in {
+                result = self.builder.icmp_signed(
+                    "==", result, ir.Constant(i64, 0), name="by.notin"
+                );
+                result = self.builder.zext(result, i64, name="by.notin.i64");
             }
             return result;
         }
@@ -1273,7 +1294,12 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                 target_val = self._codegen_expr(nd.target);
                 if target_val is not None {
                     i8p = ir.IntType(8).as_pointer();
-                    if target_val.type == i8p {
+                    if self._is_bytes_value(target_val) {
+                        result = self._codegen_bytes_slice(target_val, s);
+                        if result is not None {
+                            return result;
+                        }
+                    } elif target_val.type == i8p {
                         result = self._codegen_string_slice(target_val, s);
                         if result is not None {
                             return result;
@@ -1336,6 +1362,20 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             # Chained index: evaluate target expression, infer list type or string
             target_val = self._codegen_expr(nd.target);
             if target_val is not None {
+                # bytes[i] -> int (length-aware; embedded NULs are reachable).
+                if self._is_bytes_value(target_val) {
+                    slices = nd.right.slices or [];
+                    if slices {
+                        idx_node = slices[0];
+                        idx_val = self._codegen_expr(idx_node);
+                        if idx_val is None and idx_node?.start {
+                            idx_val = self._codegen_expr(idx_node.start);
+                        }
+                        if idx_val is not None {
+                            return self._codegen_bytes_index(target_val, idx_val);
+                        }
+                    }
+                }
                 # Check for string indexing: s[i] (only real i8* strings, not list ptrs)
                 i8p = ir.IntType(8).as_pointer();
                 if target_val.type == i8p {

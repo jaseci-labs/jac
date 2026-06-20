@@ -305,6 +305,7 @@ ctrl_stmt ::= ("break" | "continue" | "skip") ";" | "disengage" ";"
 statement ::=
     ";"
     | jsx_element ";"?
+    | "{" expression ("}" ";"?)?
     | import_stmt
     | if_stmt
     | while_stmt

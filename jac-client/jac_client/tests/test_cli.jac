@@ -10,7 +10,7 @@ import from pathlib { Path }
 import from subprocess { PIPE, Popen, run }
 import unittest.mock;
 
-"""Test jac create --use client command."""
+"""Test jac create --kind mobile command."""
 test "create jac app" {
     test_project_name = "test-jac-app";
 
@@ -21,9 +21,9 @@ test "create jac app" {
             # Change to temp directory
             os.chdir(temp_dir);
 
-            # Run jac create --use client command
+            # Run jac create --kind mobile command
             process = Popen(
-                ["jac", "create", "--use", "client", test_project_name],
+                ["jac", "create", "--kind", "mobile", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -115,7 +115,7 @@ test "create jac app" {
     }
 }
 
-"""Test jac create --use client command with project names containing spaces."""
+"""Test jac create --kind mobile command with project names containing spaces."""
 test "create jac app invalid name" {
     with tempfile.TemporaryDirectory() as temp_dir {
         original_cwd = os.getcwd();
@@ -124,7 +124,7 @@ test "create jac app invalid name" {
 
             # Test with name containing spaces (currently allowed)
             result = run(
-                ["jac", "create", "--use", "client", "--skip", "name with spaces"],
+                ["jac", "create", "--kind", "mobile", "--skip", "name with spaces"],
                 capture_output=True,
                 text=True,
             );
@@ -142,7 +142,7 @@ test "create jac app invalid name" {
     }
 }
 
-"""Test jac create --use client command when directory already exists."""
+"""Test jac create --kind mobile command when directory already exists."""
 test "create jac app existing directory" {
     test_project_name = "existing-test-app";
 
@@ -156,7 +156,7 @@ test "create jac app existing directory" {
 
             # Try to create app with same name
             process = Popen(
-                ["jac", "create", "--use", "client", test_project_name],
+                ["jac", "create", "--kind", "mobile", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -174,7 +174,7 @@ test "create jac app existing directory" {
     }
 }
 
-"""Test jac create --use client command creates Button.cl.jac component."""
+"""Test jac create --kind mobile command creates Button.cl.jac component."""
 test "create jac app with button component" {
     test_project_name = "test-jac-app-component";
 
@@ -185,9 +185,9 @@ test "create jac app with button component" {
             # Change to temp directory
             os.chdir(temp_dir);
 
-            # Run jac create --use client command
+            # Run jac create --kind mobile command
             process = Popen(
-                ["jac", "create", "--use", "client", test_project_name],
+                ["jac", "create", "--kind", "mobile", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -279,7 +279,7 @@ test "create jac app with button component" {
     }
 }
 
-"""Test jac create --use client --skip command skips package installation."""
+"""Test jac create --kind mobile --skip command skips package installation."""
 test "create jac app with skip flag" {
     test_project_name = "test-jac-app-skip";
 
@@ -290,9 +290,9 @@ test "create jac app with skip flag" {
             # Change to temp directory
             os.chdir(temp_dir);
 
-            # Run jac create --use client --skip command
+            # Run jac create --kind mobile --skip command
             process = Popen(
-                ["jac", "create", "--use", "client", "--skip", test_project_name],
+                ["jac", "create", "--kind", "mobile", "--skip", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -328,7 +328,7 @@ test "create jac app with skip flag" {
     }
 }
 
-"""Test jac create --use client command attempts to install default packages."""
+"""Test jac create --kind mobile command attempts to install default packages."""
 test "create jac app installs default packages" {
     test_project_name = "test-jac-app-install";
 
@@ -339,9 +339,9 @@ test "create jac app installs default packages" {
             # Change to temp directory
             os.chdir(temp_dir);
 
-            # Run jac create --use client command
+            # Run jac create --kind mobile command
             process = Popen(
-                ["jac", "create", "--use", "client", test_project_name],
+                ["jac", "create", "--kind", "mobile", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
@@ -972,7 +972,7 @@ test "npmrc from jac toml" {
     }
 }
 
-"""Test that jac create --use client + jac run doesn't create files outside .jac/ directory."""
+"""Test that jac create --kind mobile + jac run doesn't create files outside .jac/ directory."""
 test "create cl and run no root files" {
     test_project_name = "test-cl-no-root-files";
 
@@ -981,16 +981,16 @@ test "create cl and run no root files" {
         try {
             os.chdir(temp_dir);
 
-            # Run jac create --use client command
+            # Run jac create --kind mobile command
             process = Popen(
-                ["jac", "create", "--use", "client", test_project_name],
+                ["jac", "create", "--kind", "mobile", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
                 text=True,
             );
             (stdout, stderr) = process.communicate();
-            assert process.returncode == 0 , f"jac create --use client failed: {stderr}";
+            assert process.returncode == 0 , f"jac create --kind mobile failed: {stderr}";
 
             project_path = os.path.join(temp_dir, test_project_name);
 
@@ -1096,7 +1096,7 @@ test "start dev with client does initial compilation" {
             os.chdir(temp_dir);
             # Create a client project
             process = Popen(
-                ["jac", "create", "--use", "client", test_project_name],
+                ["jac", "create", "--kind", "mobile", test_project_name],
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,

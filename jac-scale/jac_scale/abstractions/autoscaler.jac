@@ -3,11 +3,20 @@
 """Single authoritative CPU utilization default for all autoscaler paths."""
 glob DEFAULT_CPU_UTILIZATION_TARGET: int = 50;
 
+"""Single authoritative memory utilization default for all autoscaler paths."""
+glob DEFAULT_MEMORY_UTILIZATION_TARGET: int = 80;
+
+"""Secret references for a KEDA TriggerAuthentication resource."""
+obj TriggerAuth {
+    has secret_refs: dict[str, dict[str, str]] = {};
+}
+
 """A single scaling trigger with engine-specific metadata."""
 obj Trigger {
     has type: str,
         metadata: dict[str, any] = {},
-        name: (str | None) = None;
+        name: (str | None) = None,
+        auth: (TriggerAuth | None) = None;
 }
 
 """Specification for an autoscaler resource."""
@@ -18,7 +27,12 @@ obj AutoscalerSpec {
         max_replicas: int = 3,
         target_kind: str = "Deployment",
         triggers: list[Trigger] = [],
-        autoscaler_name: (str | None) = None;
+        autoscaler_name: (str | None) = None,
+        app_name: (str | None) = None,
+        idle_replicas: (int | None) = None,
+        polling_interval: int = 30,
+        cooldown_period: int = 300,
+        initial_cooldown_period: int = 0;
 }
 
 
@@ -35,10 +49,17 @@ class Autoscaler {
 
     """Create or update the autoscaler resource on the cluster.
 
+    Returns True when the resource was written to the cluster, False when a
+    preflight check determined the engine is unavailable and apply() exited
+    early without writing anything.  Callers must check the return value
+    before stamping a success detail or emitting an 'applied' log line —
+    engines like KEDAAutoscaler can degrade gracefully (no raise) yet still
+    have written nothing, so an unconditional 'Successful' would be a lie.
+
     Args:
         spec: Autoscaler specification including target, replicas, and triggers
     """
-    def apply(self: Autoscaler, spec: AutoscalerSpec) {
+    def apply(self: Autoscaler, spec: AutoscalerSpec) -> bool {
         raise NotImplementedError(
             "apply() must be implemented by a concrete Autoscaler subclass"
         );
@@ -79,5 +100,13 @@ class Autoscaler {
     """
     def preflight(self: Autoscaler) -> list[str] {
         return [];
+    }
+
+    """Return the cluster resource name for the given scale target.
+    Override in each engine: HPA returns `{target}-hpa, KEDA returns `{target}-scaledobject`."""
+    def resource_name_for(self: Autoscaler, target: str) -> str {
+        raise NotImplementedError(
+            "resource_name_for() must be implemented by a concrete Autoscaler subclass."
+        );
     }
 }

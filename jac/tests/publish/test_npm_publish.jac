@@ -10,6 +10,7 @@ Covers the npm-package counterparts of the wheel pipeline:
 
 import io;
 import os;
+import re;
 import json;
 import tarfile;
 import tempfile;
@@ -34,8 +35,11 @@ import from jaclang.publish.npm_sources { collect_npm_sources, NpmBoundaryError 
 import from jaclang.publish.npm_builder { NpmBuilder }
 import from jaclang.publish.runtime_npm {
     build_runtime_tarball,
-    runtime_export_names,
-    RUNTIME_PKG_NAME
+    runtime_api_names,
+    runtime_peer_deps,
+    runtime_pkg_name,
+    RUNTIME_PKG_NAME,
+    CORE_RUNTIME_SYMBOLS
 }
 
 
@@ -54,6 +58,30 @@ def _scaffold_lib(tmp_path: str, name: str = "mylib") {
         'def:pub add(a: int, b: int) -> int {\n    return a + b;\n}\n\n'
         'def:pub greet(name: str) -> str {\n    return f"Hello, {name}!";\n}\n'
     );
+}
+
+
+"""All names a JS module exports: from `export { a, b as c }` clauses (the bound
+name is the alias after `as`, else the name) plus inline `export function/const/...`
+declarations. Used to assert the runtime emits each export exactly once — a
+duplicate is invalid ESM (`SyntaxError: Duplicate export of '...'`)."""
+def _exported_names(js: str) -> list[str] {
+    names: list[str] = [];
+    for block in re.finditer(r"export\s*\{([^}]*)\}", js) {
+        for part in block.group(1).split(",") {
+            piece = part.strip();
+            if piece {
+                names.append(re.split(r"\s+as\s+", piece)[-1].strip());
+            }
+        }
+    }
+    for m in re.finditer(
+        r"(?m)^export\s+(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*)",
+        js
+    ) {
+        names.append(m.group(1));
+    }
+    return names;
 }
 
 
@@ -285,19 +313,120 @@ test "build_runtime_tarball packages the runtime with exports" {
         pj = json.loads(tf.extractfile("package/package.json").read().decode());
         assert pj["name"] == RUNTIME_PKG_NAME;
         assert pj["version"] == "1.2.3";
-        js_name = [
-            n
-            for n in names
-            if n.endswith(".js")
-        ][0];
-        js = tf.extractfile(js_name).read().decode();
+        # The split-out shared core must travel inside the package, or it fails to
+        # load at runtime (ERR_MODULE_NOT_FOUND on `./jaclang/.../client_runtime_core.js`).
+        assert "package/index.js" in names;
+        assert "package/jaclang/runtimelib/client_runtime_core.js" in names;
+        js = tf.extractfile("package/index.js").read().decode();
         assert "export {" in js;
-        assert "__jacJsx" in js;
-        # The export list is drawn from the runtime's public API.
-        exports = runtime_export_names(js);
-        assert "__jacJsx" in exports;
-        assert "__jacSpawn" in exports;
+        # The public API is exported exactly once — no duplicate export (invalid ESM).
+        exported = _exported_names(js);
+        assert "__jacJsx" in exported;
+        assert "__jacSpawn" in exported;
+        assert len(exported) == len(set(exported)) , (
+            f"duplicate export in runtime index.js: {sorted(exported)}"
+        );
+        # The entry imports the core's symbols from the bundled sibling module.
+        assert "./jaclang/runtimelib/client_runtime_core.js" in js;
+        # The runtime is built on @tanstack/react-form, so NO `.js` in the package
+        # pulls in the legacy react-hook-form library (checked across the entry
+        # AND the bundled core).
+        for member in names {
+            if member.endswith(".js") {
+                src = tf.extractfile(member).read().decode();
+                assert "react-hook-form" not in src , f"{member} imports react-hook-form";
+                assert "@hookform" not in src , f"{member} imports @hookform";
+            }
+        }
+        # peerDependencies reflect the packages the runtime actually imports,
+        # versioned from the canonical React client-dep set. `react-dom` lives in
+        # the generated entry script (not this module), so it is absent here.
+        peers = pj["peerDependencies"];
+        assert peers["react"] == "^18.2.0";
+        assert peers["react-router-dom"] == "^6.22.0";
+        assert peers["@tanstack/react-form"] == "^1.33.0";
+        assert peers["zod"] == "^4.3.6";
+        assert "react-dom" not in peers;
+        assert "react-hook-form" not in peers;
     }
+}
+
+test "runtime_peer_deps raises for unknown imported packages" {
+    raised = False;
+    try {
+        runtime_peer_deps('import foo from "left-pad";\n');
+    } except ValueError {
+        raised = True;
+    }
+    assert raised;
+    peers = runtime_peer_deps('import { useState } from "react";\n');
+    assert peers["react"] == "^18.2.0";
+}
+
+test "runtime_pkg_name suffixes non-react backends so packages never collide" {
+    # React and Preact share `client_runtime.cl.jac` → the canonical package name.
+    assert runtime_pkg_name("react") == RUNTIME_PKG_NAME;
+    assert runtime_pkg_name("preact") == RUNTIME_PKG_NAME;
+    # Solid compiles its own shim → a suffixed package.
+    assert runtime_pkg_name("solid") == f"{RUNTIME_PKG_NAME}-solid";
+}
+
+test "build_runtime_tarball packages the Solid runtime with no React ecosystem" {
+    data = build_runtime_tarball("1.2.3", framework="solid");
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf {
+        names = tf.getnames();
+        pj = json.loads(tf.extractfile("package/package.json").read().decode());
+        assert pj["name"] == f"{RUNTIME_PKG_NAME}-solid";
+        assert pj["version"] == "1.2.3";
+        # The shared core travels in the package at its relative import path.
+        assert "package/index.js" in names;
+        assert "package/jaclang/runtimelib/client_runtime_core.js" in names;
+        js = tf.extractfile("package/index.js").read().decode();
+        # Branch 5: solid-js/h hyperscript import removed; user component code
+        # uses the JSX compiler path (vite-plugin-solid). Core symbols are present.
+        assert "solid-js/h" not in js;
+        assert "jacIsLoggedIn" in js;
+        assert "JacClientErrorBoundary" in js;
+        # __jacJsx is NOT part of the public surface; it must not appear in
+        # the export clause (impl-JSX may still call it internally).
+        exported = _exported_names(js);
+        assert "jacIsLoggedIn" in exported;
+        assert "__jacJsx" not in exported;
+        assert len(exported) == len(set(exported)) , (
+            f"duplicate export in solid index.js: {sorted(exported)}"
+        );
+        # The whole point of the split: NO `.js` in the package pulls in a React
+        # ecosystem package (checked across the entry AND the bundled core).
+        for member in names {
+            if member.endswith(".js") {
+                src = tf.extractfile(member).read().decode();
+                assert 'from "react"' not in src , f"{member} imports react";
+                assert "react-dom" not in src , f"{member} imports react-dom";
+                assert "react-router" not in src , f"{member} imports react-router";
+            }
+        }
+        # Solid peerDependencies — Solid-native packages only, versioned from the
+        # canonical Solid client-dep set; no React-ecosystem peer.
+        peers = pj["peerDependencies"];
+        assert peers["solid-js"] == "^1.9.13";
+        assert peers["@solidjs/router"] == "^0.16.1";
+        assert peers["@tanstack/solid-form"] == "^1.33.0";
+        assert peers["zod"] == "^4.3.6";
+        assert "react" not in peers;
+        assert "react-dom" not in peers;
+    }
+}
+
+test "@jac/runtime surface-parity: all core symbols appear in React and Solid shims" {
+    react_names = runtime_api_names("react");
+    solid_names = runtime_api_names("solid");
+    for sym in CORE_RUNTIME_SYMBOLS {
+        assert sym in react_names , f"React shim missing core symbol: {sym}";
+        assert sym in solid_names , f"Solid shim missing core symbol: {sym}";
+    }
+    # Each shim exposes framework-specific extras beyond the shared core.
+    assert len(react_names) > len(CORE_RUNTIME_SYMBOLS);
+    assert len(solid_names) > len(CORE_RUNTIME_SYMBOLS);
 }
 
 test "react import is recorded as a peerDependency" {

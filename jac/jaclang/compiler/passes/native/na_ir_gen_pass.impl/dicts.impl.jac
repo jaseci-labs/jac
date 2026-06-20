@@ -34,6 +34,29 @@ impl NaIRGenPass._codegen_int_pow(base: ir.Value, exp: ir.Value) -> ir.Value {
     return self.builder.load(result_alloca, name="pow.final");
 }
 
+"""LLVM key type -> (dict/set registry name, key byte size).
+
+Single source of truth for the key-spec ladder so dict creation and lookup
+agree on the name. bytes keys must be named 'bytes' (not the generic 'ptr',
+which would fall back to pointer-identity comparison) so #6749 key lookups
+match by value. f64/tuple/ptr/i64 mirror the prior inline ladders."""
+impl NaIRGenPass._dict_key_spec(key_type: ir.Type) -> tuple {
+    if isinstance(key_type, ir.DoubleType) {
+        return ("f64", 0);
+    }
+    if self._is_bytes_type(key_type) {
+        return ("bytes", 0);
+    }
+    if isinstance(key_type, ir.PointerType) {
+        if isinstance(key_type.pointee, ir.LiteralStructType) {
+            _sz = self._get_struct_size(key_type.pointee);
+            return (f"tuple{_sz}", _sz);
+        }
+        return ("ptr", 0);
+    }
+    return ("i64", 0);
+}
+
 """Emit LLVM IR helper functions for a dictionary with given key/value types.
 
 Uses a simple linear-search dictionary: {len, cap, keys*, vals*}
@@ -460,20 +483,9 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     # gradual `any` (dict[str, any]), read off the tree.
     _own_dk = self._dict_key_of(nd);
     use_jacval = _own_dk is not None and _own_dk.endswith(":jacval");
-    # Determine type names
+    # Determine type names (bytes keys -> "bytes" for length-aware compare, #6749)
     key_type = first_key.type;
-    key_type_name = "i64";
-    key_size = 0;
-    if isinstance(key_type, ir.DoubleType) {
-        key_type_name = "f64";
-    } elif isinstance(key_type, ir.PointerType) {
-        key_type_name = "ptr";
-        # Check if key is a tuple (pointer to LiteralStructType)
-        if isinstance(key_type.pointee, ir.LiteralStructType) {
-            key_size = self._get_struct_size(key_type.pointee);
-            key_type_name = f"tuple{key_size}";
-        }
-    }
+    (key_type_name, key_size) = self._dict_key_spec(key_type);
     if use_jacval {
         val_type = self.jacval_type;
         val_type_name = "jacval";

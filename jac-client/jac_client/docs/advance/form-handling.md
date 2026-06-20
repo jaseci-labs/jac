@@ -51,7 +51,7 @@ def:pub MyForm -> JsxElement {
 | `submitLabel` | `string` | `"Submit"` | Submit button text |
 | `submitClassName` | `string` | `""` | CSS class for submit button |
 | `className` | `string` | `""` | CSS class for form element |
-| `validateMode` | `string` | `"onTouched"` | Validation timing: `onChange`, `onBlur`, `onTouched`, `onSubmit` |
+| `validateMode` | `string` | `"onTouched"` | Validation timing: `onChange`, `onBlur`, `onTouched`, `onSubmit`. `onTouched` wires both `onBlur` and `onChange` validators; `JacForm` suppresses error display until the field is touched. See [form migration guide](./form-migration.md). |
 
 **Example**
 
@@ -317,6 +317,7 @@ For comprehensive examples demonstrating all field types and features, see:
 
 ## Related Documentation
 
+- [Form Migration Guide](./form-migration.md) - Migrating from React Hook Form to TanStack Form
 - [Routing](../routing.md) - Navigate between forms
 - [Error Handling](./error-handling.md) - Handle form submission errors
 - [Styling Guide](../styling/) - Style your forms

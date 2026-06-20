@@ -7,6 +7,45 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### Version 0.16.4
+
+#### 1. Connect Operator Returns the Right-Hand Side As-Is (Node or List)
+
+The connect operators (`++>`, `<++`, `<++>`, and the typed `+>:Edge:+>` form) no longer always wrap their result in a list. A connect expression now **mirrors the operand it connects to** -- connecting to a single node returns that node, and connecting to a list of nodes returns a list. Previously every connect returned a `list[NodeArchetype]`, even when the right-hand side was a single node.
+
+This also changes the static type of a connect expression: `a ++> b` is now typed as the type of `b` (a node) instead of `list[...]`.
+
+**Impact:** The common `(a ++> b)[0]` idiom -- used to unwrap the single connected node from the result list -- now fails. `b` is already the node, so subscripting it raises an error at runtime and is flagged as a type error by the checker. Any code that assigned a connect result and then indexed or iterated it as a list must be updated. Connecting to a **list** is unchanged; it still returns a list.
+
+**Before:**
+
+```jac
+node Todo { has title: str; }
+
+def:priv add_todo(title: str) -> Todo {
+    return (root ++> Todo(title=title))[0];   # unwrap the result list
+}
+```
+
+**After:**
+
+```jac
+node Todo { has title: str; }
+
+def:priv add_todo(title: str) -> Todo {
+    return root ++> Todo(title=title);        # already the node, no [0]
+}
+```
+
+**Migration:**
+
+- Drop the trailing `[0]` (and any `... [0] as T` cast) wherever you connected to a single node: `x = (a ++> B())[0];` becomes `x = a ++> B();`.
+- Connecting to a **list** of nodes still returns a list -- `a ++> [b, c]` is unchanged.
+- Chaining is unaffected: `a ++> b ++> c` still works, because each step now returns the connected node.
+- Statement-form connects that discard the result (`a ++> b;`) need no change.
+
+---
+
 ### jac-scale 0.2.15
 
 #### 1. Identity-Based Authentication System

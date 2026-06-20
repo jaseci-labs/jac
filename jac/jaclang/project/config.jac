@@ -83,7 +83,15 @@ obj ServeConfig {
         session: str = "",
         main: bool = True,
         cl_route_prefix: str = "cl",
-        base_route_app: str = "";
+        base_route_app: str = "",
+        # Optimistic-concurrency policy for check-then-create races (#6266).
+        # "retry": the request boundary aborts + replays so the loser converges
+        # on the winner; "fail": no replay, return a typed 409 immediately.
+        on_conflict: str = "retry",
+        # Max walker/function attempts under "retry" (1 = effectively fail-fast).
+        conflict_max_attempts: int = 5,
+        # Linear backoff between replay attempts (0 = none).
+        conflict_backoff_ms: int = 0;
 }
 
 """Format command defaults from [format] section."""
@@ -129,10 +137,14 @@ obj DotConfig {
         format: str = "dot";
 }
 
-"""Cache settings from [cache] section."""
+"""Cache settings from [cache] section.
+
+`dir` is the cache subdirectory name resolved under the build dir by
+`JacConfig.get_cache_dir` (e.g. `.jac/cache`); an absolute path relocates it.
+"""
 obj CacheConfig {
     has enabled: bool = True,
-        dir: str = ".jac_cache";
+        dir: str = "cache";
 }
 
 """Plugin settings from [plugins] section."""
@@ -172,6 +184,11 @@ obj ClientErrorsConfig {
     # frames are auto-generated and not user-actionable. Set True to keep
     # them, e.g. when diagnosing a broken or stale per-file source map.
     has verbose: bool = False;
+}
+
+"""Client-side compilation settings from [client] section."""
+obj ClientConfig {
+    has framework: str = "react";
 }
 
 # Interpolate environment variables in a string value.
@@ -214,6 +231,7 @@ obj JacConfig {
         plugins_config: PluginsConfig = PluginsConfig(),
         environment: EnvironmentConfig = EnvironmentConfig(),
         client_errors: ClientErrorsConfig = ClientErrorsConfig(),
+        client: ClientConfig = ClientConfig(),
         # Dependencies
         dependencies: dict[str, str] = {},
         dev_dependencies: dict[str, str] = {},

@@ -118,6 +118,13 @@ Only invoked when a test imports `@jac/runtime`. Resolves the runtime through
 jac-client plugin is required."""
 def _compile_runtime_js -> str;
 
+"""Compile the framework-agnostic runtime core sibling to JS.
+
+The `@jac/runtime` shim re-exports `client_runtime_core.cl.jac` and its compiled
+form imports the core by dotted module path. We compile that sibling so the
+harness can emit it flat alongside `jac_runtime.js` (mirroring the Vite bundler)."""
+def _compile_runtime_core_js -> str;
+
 """Plan stubs for npm imports across *js_sources*.
 
 The compiled `@jac/runtime` pulls in React and friends for its JSX/forms

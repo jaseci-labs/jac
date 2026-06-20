@@ -7,6 +7,7 @@ import type from jaclang.compiler.passes.ecmascript.estree { IndexInfo, SliceInf
 import type from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
 import type from jaclang.compiler.passes.tool.doc_ir { Doc }
 import type from jaclang.jac0core.unitree { Source, Token }
+import type from jaclang.jac0core.osp_model { OspModel }
 import type from llvmlite.binding { ModuleRef, ExecutionEngine }
 
 """Client-side rendering manifest metadata."""
@@ -265,6 +266,10 @@ obj CodeGenTarget {
         interop_py_funcs: dict[(str, Any)] = field(default_factory=`dict),
         _interop_callbacks: list[any] = field(default_factory=`list),
         native_layout: (NativeModuleLayout | None) = None,
+        # The one OSP-fact store (kinds/tags/is_a/slots/uses), derived once per
+        # compile by OspAnalysis.compute and read by every backend; no backend
+        # keeps its own OSP tag/kind/slot state. None until a backend computes it.
+        osp_model: (OspModel | None) = None,
         native_compat: bool = False,
         layout_registry: any = None,
         # Paths to C shared libraries discovered during native compilation.

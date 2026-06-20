@@ -13,7 +13,15 @@ def proc_file(filename: str) -> tuple {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     (base, mod) = os.path.split(filename);
     base = base or './';
-    if filename.endswith('.na.jac') {
+    # Compound codespace suffixes (.na.jac / .sv.jac / .cl.jac) must collapse
+    # to the bare module stem; stripping only the trailing `.jac` would leave
+    # e.g. `main.sv`, which the meta-importer misreads as the package `main.sv`
+    # ("No module named 'main.sv'"). See issue #6696.
+    if (
+        filename.endswith('.na.jac')
+        or filename.endswith('.sv.jac')
+        or filename.endswith('.cl.jac')
+    ) {
         mod = mod[:-7];
     } elif filename.endswith('.jac') {
         mod = mod[:-4];

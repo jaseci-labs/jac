@@ -6,8 +6,9 @@ Native lowers `spawn` / `visit` / `disengage` / `report` into the portable
 the per-program glue the kernel needs through its `OspRuntime` seam, mirroring
 the cl/ECMAScript backend (PR #6332):
 
-  * a stable integer type-tag per OSP archetype (walker / node / edge), stored
-    in an `i64 __type_tag` field on every instance (`_register_osp_tags`);
+  * a stable integer type-tag per OSP archetype (walker / node / edge) -- derived
+    by the shared `OspModel` and stored in an `i64 __type_tag` field on every
+    instance;
   * a `(JacVal, JacVal) -> JacVal` dispatch thunk per ability that adapts the
     raw `(self*, here*)` ability to the kernel's generic `Slot.fn`
     (`_emit_osp_thunk`);
@@ -88,7 +89,7 @@ glob-init are linked in by NativeCompilePass. No-op when the program has no OSP
 archetypes. Reuses the cross-module import walkers so layouts/decls are built by
 the same machinery as an explicit `.na.jac` import."""
 impl NaIRGenPass._register_osp_kernel_module -> None {
-    if not self.osp_tags {
+    if not self._osp_active() {
         return;
     }
     kernel_mod = _load_native_osp_kernel_module();
@@ -110,150 +111,54 @@ impl NaIRGenPass._register_osp_kernel_module -> None {
     }
 }
 
-"""Deterministic 64-bit FNV-1a hash of an archetype name, masked to a
-non-negative i64 (so it is never the -1 UNTYPED / generic-edge sentinel).
-Computed identically in every module, so a shared OSP archetype gets the SAME
-tag in the library that defines it and in any module that imports it (#6642)."""
-impl NaIRGenPass._stable_osp_tag(name: str) -> int {
-    _h = 14695981039346656037;
-    for _c in name {
-        _h = ((_h ^ ord(_c)) * 1099511628211) & 18446744073709551615;
-    }
-    return _h & 9223372036854775807;
-}
-
-"""Assign a stable int type-tag to every walker/node/edge archetype, but only
-when the program actually participates in OSP: some walker/node/edge declares
-an event ability (`can ... with T entry/exit`) OR the module's native code uses
-an OSP construct (connect / spawn / visit / edge ref). Keying on usage rather
-than walker presence keeps a graph-builder module that only WIRES nodes
-(defining no walker) on the kernel path instead of E5090 (issue #6636), while a
-module that merely declares archetypes it never wires/walks still skips the
-kernel.
-
-The tag itself is a GLOBALLY STABLE content hash of the archetype name (unique
-within a program by symbol resolution), so a library and any module that imports
-it independently compute the IDENTICAL tag regardless of what else either
-defines -- the cross-module materialization #6642 needs, without recompiling
-library code (which would collide at link, E5026) and without the fragility of
-position-based numbering. `osp_tags[name]` is that stable tag, stored in the
-instance `__type_tag` field, in adjacency edge tags, and in dispatch-slot
-triggers. `osp_local_idx[name]` is the dense per-compile index into THIS
-module's descriptor + is_a tables; the runtime callbacks translate a stable tag
-to a local index through the `__ospHASH` table (see `_emit_osp_setup`)."""
-impl NaIRGenPass._register_osp_tags(archetypes: list[uni.Archetype]) -> None {
-    has_osp = False;
+"""Derive the single OSP-fact store for this compile and hold it on
+`self.ir_in.gen.osp_model`. Runs before struct bodies are laid out (Pass 1.6) so
+header reservation and tag values are available downstream. The archetype set is
+the local native archetypes plus every imported archetype AST already recorded
+in `arch_ast_map` (cross-module materialization, #6642). `OspAnalysis.compute`
+filters to OSP kinds, de-dupes, and assigns globally-stable content-hash tags so
+a library and any importer agree regardless of what else either defines (no
+position-based numbering, no recompiling library code). Astronomically-rare tag
+collisions are surfaced as E5090 here rather than silently mis-dispatching.
+Native lowering reads the model's tags/kinds/is_a/slots; it keeps no mirror of
+them. (Imported OSP archetypes are already in `arch_ast_map` from Phase 1a, so
+the model reserves the same OSP header layout (#6659) and assigns the same tag
+the defining module does, independent of OSP usage.)"""
+impl NaIRGenPass._compute_osp_model(archetypes: list[uni.Archetype]) -> None {
     for arch in archetypes {
-        if arch.arch_kind is None {
-            continue;
-        }
-        name = arch.name.value if arch.name else None;
-        if name is not None {
-            self.osp_arch_kind[name] = arch.arch_kind;
-            self.arch_ast_map[name] = arch;
-        }
-        if arch.body is not None {
-            for stmt in arch.body {
-                if isinstance(stmt, uni.Ability)
-                and isinstance(stmt.signature, uni.EventSignature) {
-                    has_osp = True;
-                }
-            }
+        _n = arch.name.value if arch.name else None;
+        if (_n is not None) and (arch.arch_kind is not None) {
+            self.arch_ast_map[_n] = arch;
         }
     }
-    # `osp_arch_kind` already carries any imported OSP archetypes registered by
-    # `_register_imported_osp_archetypes`; if the module uses OSP at all, tag
-    # the whole set with globally-stable hashes.
-    if (not has_osp) and self.osp_arch_kind {
-        has_osp = self._module_uses_osp(self.ir_in);
+    _model = OspAnalysis.compute(
+        self.ir_in,
+        list(archetypes) + list(self.arch_ast_map.values()),
+        CodeContext.NATIVE
+    );
+    for (_name, _other) in _model.collisions {
+        # Astronomically rare 64-bit hash collision between two distinct
+        # archetype names -- fail loudly rather than silently mis-dispatch.
+        self.emit(
+            E5090,
+            node_override=self.arch_ast_map.get(_name),
+            kind="archetype",
+            name=f"{_name} (OSP type-tag hash collides with '{_other}')"
+        );
     }
-    if not has_osp {
-        return;
-    }
-    _by_tag: dict[int, str] = {};
-    for name in sorted(self.osp_arch_kind.keys()) {
-        if name in self.osp_tags {
-            continue;
-        }
-        _tag = self._stable_osp_tag(name);
-        if _tag in _by_tag {
-            # Astronomically rare 64-bit hash collision between two distinct
-            # archetype names -- fail loudly rather than silently mis-dispatch.
-            self.emit(
-                E5090,
-                node_override=self.arch_ast_map.get(name),
-                kind="archetype",
-                name=f"{name} (OSP type-tag hash collides with '{_by_tag[_tag]}')"
-            );
-            continue;
-        }
-        _by_tag[_tag] = name;
-        self.osp_tags[name] = _tag;
-        self.osp_local_idx[name] = len(self.osp_local_idx);
-    }
+    self.ir_in.gen.osp_model = _model;
 }
 
-"""Register OSP archetypes IMPORTED from other native modules into
-`osp_arch_kind` / `arch_ast_map` so their struct layout reserves the OSP header
-fields (vtable@0 + `__type_tag`@1) to MATCH the defining module, and so
-`_register_osp_tags` gives them their globally-stable tag.
-
-Registration is UNCONDITIONAL: a LOCAL node/walker/edge always reserves the OSP
-header (`_register_osp_tags` records every local archetype in `osp_arch_kind`
-regardless of OSP usage), so the defining library always lays its archetypes out
-WITH the header. An importing module must therefore reserve the same header even
-when it merely constructs/reads an imported node and never spawns/connects/visits
--- otherwise its field offsets disagree with the library and a plain `a.field`
-read returns the vtable slot (garbage), the silent cross-module corruption in
-issue #6659 (Bug 1, and the union-return read in Bug 3). The header is a fixed
-two-field reservation; it does NOT pull in the kernel. Loading the kernel and
-assigning dense tags stays gated on actual OSP usage (`_register_osp_tags`
-re-checks `_module_uses_osp`; `_emit_osp_setup` / `_register_osp_kernel_module`
-gate on a non-empty `osp_tags`), so a construct-only consumer still skips the
-kernel (issue #6642 Blocker 2). Must run before imported struct bodies are filled
-(`_codegen_archetype` reads `osp_arch_kind` for the layout)."""
-impl NaIRGenPass._register_imported_osp_archetypes(imported_mod: uni.Module) -> None {
-    for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
-        if (
-            isinstance(stmt, uni.ContextAwareNode)
-            and stmt.code_context == CodeContext.CLIENT
-        ) {
-            continue;
-        }
-        if isinstance(stmt, uni.Archetype) and (stmt.arch_kind is not None) {
-            _name = stmt.name.value if stmt.name else None;
-            if (_name is not None) and (_name not in self.osp_arch_kind) {
-                self.osp_arch_kind[_name] = stmt.arch_kind;
-                self.arch_ast_map[_name] = stmt;
-            }
-        }
-    }
-}
-
-"""True when the module's native code USES an OSP construct — an edge connect
-(`++>`), a `spawn`, a `visit`, or an edge ref (`[-->]`) — anywhere in its
-native-context statements. Distinct from declaring OSP archetypes: usage is
-what requires the kernel + adjacency at runtime. Same work-stack sweep idiom
-as `native_capability_violations`."""
-impl NaIRGenPass._module_uses_osp(module: uni.Module) -> bool {
-    for stmt in ModuleCodegenPass.iter_context_stmts(module, CodeContext.NATIVE) {
-        work: list = [stmt];
-        while work {
-            nd = work.pop();
-            if isinstance(nd, (uni.ConnectOp, uni.VisitStmt, uni.EdgeOpRef)) {
-                return True;
-            }
-            if isinstance(nd, uni.BinaryExpr)
-            and isinstance(nd.op, uni.Token)
-            and (nd.op.name == Tok.KW_SPAWN) {
-                return True;
-            }
-            for k in nd.kid {
-                work.append(k);
-            }
-        }
-    }
-    return False;
+"""True when this module participates in OSP -- some walker/node/edge declares an
+event ability (`with T entry/exit`) OR its native code uses an OSP construct
+(connect / spawn / visit / edge ref). The gate for loading the kernel and
+emitting the descriptor tables; a module that merely declares (or constructs) OSP
+archetypes without using them reserves the header but skips the kernel (#6642
+Blocker 2)."""
+impl NaIRGenPass._osp_active -> bool {
+    _model = self.ir_in.gen.osp_model;
+    return (_model is not None)
+    and (_model.has_event_ability() or _model.uses_construct);
 }
 
 """Cross-module OSP E5090 help: when one of `names` resolves to an OSP
@@ -264,11 +169,11 @@ defensive fallback (e.g. an OSP archetype the consumer imports but its module
 was not available as native source). None when no name matches, so callers fall
 back to the generic E5090 (issue #6642)."""
 impl NaIRGenPass._xmod_osp_help(names: list) -> (str | None) {
+    _model = self.ir_in.gen.osp_model;
+    _tags = _model.tags if (_model is not None) else {};
     for _n in names {
         if (
-            (_n is not None)
-            and (_n not in self.osp_tags)
-            and (_n in self.imported_osp_archs)
+            (_n is not None) and (_n not in _tags) and (_n in self.imported_osp_archs)
         ) {
             (_kind, _mod) = self.imported_osp_archs[_n];
             return (
@@ -338,26 +243,6 @@ impl NaIRGenPass._emit_osp_thunk(arch_name: str, method: uni.Ability) -> None {
     self.osp_thunk_funcs[full] = thunk;
 }
 
-"""Flatten an OSP ability trigger (`with <T> entry`) into archetype names.
-None -> [] (untyped); a tuple/union -> each member; a plain type -> [name]."""
-impl NaIRGenPass._osp_trigger_names(nd: (uni.UniNode | None)) -> list[str] {
-    if nd is None {
-        return [];
-    }
-    names: list[str] = [];
-    if isinstance(nd, uni.TupleVal) {
-        for member in nd.values {
-            names.extend(self._osp_trigger_names(member));
-        }
-        return names;
-    }
-    head = self._get_name(nd);
-    if head is not None {
-        names.append(head);
-    }
-    return names;
-}
-
 # ───────────────────────────── descriptor / runtime setup ──────────────────
 # `_emit_osp_setup` emits a `__osp_setup()` function (called from the program's
 # glob-init) that builds the per-archetype `WalkerDesc`/`NodeDesc` descriptors
@@ -407,62 +292,44 @@ impl NaIRGenPass._osp_make_immortal(ptr: ir.Value) -> None {
     );
 }
 
-"""LOCAL indices an OSP archetype `is-a`: itself plus every OSP ancestor in its
-MRO. These index the dense `__ospISA` subtype matrix, so they are local indices
-(`osp_local_idx`), not the globally-stable hash tags."""
+"""LOCAL indices an OSP archetype `is-a`: itself plus every OSP ancestor. These
+index the dense `__ospISA` subtype matrix, so they are local indices
+(`OspModel.local_index`), not the globally-stable hash tags. The is-a closure
+itself is the shared `OspModel.isa`."""
 impl NaIRGenPass._osp_isa_bases(arch_name: str) -> list[int] {
-    bases: list[int] = [];
-    _self_idx = self.osp_local_idx.get(arch_name);
-    if _self_idx is not None {
-        bases.append(_self_idx);
+    _model = self.ir_in.gen.osp_model;
+    if _model is None {
+        return [];
     }
-    for anc in self._mro_of(arch_name) {
-        if (anc != arch_name) and (anc in self.osp_local_idx) {
-            bases.append(self.osp_local_idx[anc]);
+    bases: list[int] = [];
+    for _anc in _model.isa.get(arch_name, []) {
+        _idx = _model.local_index(_anc);
+        if _idx >= 0 {
+            bases.append(_idx);
         }
     }
     return bases;
 }
 
 """Collect (trig_tag, thunk) dispatch slots for an archetype's entry (or exit)
-abilities. Untyped `with entry` -> trig_tag UNTYPED (-1); a typed/tuple trigger
--> one slot per matched type tag."""
+abilities, wiring each shared `OspModel` slot to the thunk emitted for its
+ability. Untyped `with entry` -> trig_tag UNTYPED (-1); a typed/tuple trigger ->
+one slot per matched type tag. An ability with no emitted thunk (a body-less /
+unmaterialized one) is skipped."""
 impl NaIRGenPass._osp_collect_slots(arch_name: str, is_entry: bool) -> list {
     slots: list = [];
-    arch = self.arch_ast_map.get(arch_name);
-    if (not isinstance(arch, uni.Archetype)) or (arch.body is None) {
+    _model = self.ir_in.gen.osp_model;
+    if _model is None {
         return slots;
     }
-    for stmt in arch.body {
-        if (not isinstance(stmt, uni.Ability))
-        or (not isinstance(stmt.signature, uni.EventSignature)) {
-            continue;
-        }
-        ev = stmt.signature;
-        if (ev.event.name == Tok.KW_ENTRY) != is_entry {
-            continue;
-        }
-        mname = stmt.name_ref.sym_name if stmt.name_ref else None;
-        thunk = self.osp_thunk_funcs.get(f"{arch_name}.{mname}")
-            if mname is not None
-            else None;
+    _src = _model.entry_slots(arch_name) if is_entry else _model.exit_slots(arch_name);
+    for _slot in _src {
+        thunk = self.osp_thunk_funcs.get(f"{arch_name}.{_slot.ability}");
         if thunk is None {
             continue;
         }
-        # Prefer the checker-resolved trigger types; fall back to flattening
-        # the trigger AST when no resolution was recorded.
-        trigs = stmt.event_trigger_type_names();
-        if trigs is None {
-            trigs = self._osp_trigger_names(ev.arch_tag_info)
-                if ev.arch_tag_info is not None
-                else [];
-        }
-        if not trigs {
-            slots.append((-1, thunk));
-        } else {
-            for tname in trigs {
-                slots.append((self.osp_tags.get(tname, -1), thunk));
-            }
+        for _tag in _model.trigger_tags(_slot) {
+            slots.append((_tag, thunk));
         }
     }
     return slots;
@@ -821,7 +688,8 @@ impl NaIRGenPass._osp_emit_filter_fn(
 and the `OspRuntime` singleton, all reachable from program globals. Called from
 the program's glob-init. No-op for non-OSP programs."""
 impl NaIRGenPass._emit_osp_setup -> None {
-    if not self.osp_tags {
+    _model = self.ir_in.gen.osp_model;
+    if (_model is None) or (not self._osp_active()) {
         return;
     }
     # Requires the kernel's descriptor structs to be registered (which only
@@ -834,7 +702,7 @@ impl NaIRGenPass._emit_osp_setup -> None {
             return;
         }
     }
-    n = len(self.osp_local_idx);
+    n = len(_model.order);
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
@@ -851,7 +719,7 @@ impl NaIRGenPass._emit_osp_setup -> None {
     for _i in range(n * n) {
         _isa_vals.append(0);
     }
-    for (_name, _li) in self.osp_local_idx.items() {
+    for (_li, _name) in enumerate(_model.order) {
         for _b in self._osp_isa_bases(_name) {
             _isa_vals[_li * n + _b] = 1;
         }
@@ -871,8 +739,8 @@ impl NaIRGenPass._emit_osp_setup -> None {
     for _i in range(n) {
         _hash_vals.append(0);
     }
-    for (_name, _li) in self.osp_local_idx.items() {
-        _hash_vals[_li] = self.osp_tags.get(_name, 0);
+    for (_li, _name) in enumerate(_model.order) {
+        _hash_vals[_li] = _model.tags.get(_name, 0);
     }
     _hash_ty = ir.ArrayType(i64, n);
     _hash_global = ir.GlobalVariable(self.llvm_module, _hash_ty, name="__ospHASH");
@@ -899,15 +767,13 @@ impl NaIRGenPass._emit_osp_setup -> None {
     self._osp_setup_fn = _setup;
     _saved = self._builder;
     self._builder = ir.IRBuilder(_setup.append_basic_block("entry"));
-    for (_name, _lidx) in self.osp_local_idx.items() {
-        _sn = "WalkerDesc"
-            if (self.osp_arch_kind.get(_name) == "walker")
-            else "NodeDesc";
+    for (_lidx, _name) in enumerate(_model.order) {
+        _sn = "WalkerDesc" if (_model.arch_kind.get(_name) == "walker") else "NodeDesc";
         # The descriptor's own type_tag carries the STABLE hash (its identity);
         # the __ospDESC slot is keyed by the LOCAL index.
         _desc = self._osp_build_descriptor(
             _sn,
-            self.osp_tags.get(_name, 0),
+            _model.tags.get(_name, 0),
             self._osp_collect_slots(_name, True),
             self._osp_collect_slots(_name, False)
         );
@@ -1113,7 +979,10 @@ impl NaIRGenPass._codegen_connect(nd: uni.BinaryExpr) -> (ir.Value | None) {
             _etname = self._spawn_operand_name(co.conn_type);
         }
         if _etname is not None {
-            edge_tag = self.osp_tags.get(_etname, -1);
+            _ce_model = self.ir_in.gen.osp_model;
+            edge_tag = _ce_model.tags.get(_etname, -1)
+                if (_ce_model is not None)
+                else -1;
         }
     } else {
         edge_obj = self._osp_generic_edge();
@@ -1206,13 +1075,15 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
     # single-hop chain reduction, so this module never reaches codegen; the
     # reduction below can assume a clean `[origin?, EdgeOpRef, FilterCompr?]`.
     # ── edge-type filter tag ────────────────────────────────────────────────
+    _er_model = self.ir_in.gen.osp_model;
+    _er_tags = _er_model.tags if (_er_model is not None) else {};
     _dir = int(step.edge_dir.value);
     _edge_tag = -1;
     _fcond = step.filter_cond;
     if (_fcond is not None) and (_fcond.f_type is not None) {
         _etname = self._get_name(_fcond.f_type);
         if _etname is not None {
-            _edge_tag = self.osp_tags.get(_etname, -1);
+            _edge_tag = _er_tags.get(_etname, -1);
             # An unknown edge type has no tag; lowering as -1 would silently
             # BROADEN the filter to match-any, so fail loudly.
             if _edge_tag < 0 {
@@ -1241,7 +1112,7 @@ impl NaIRGenPass._codegen_edge_ref_trailer(
     );
     # ── node-type filter ────────────────────────────────────────────────────
     if _node_filter is not None {
-        _ntag = self.osp_tags.get(_node_filter, -1);
+        _ntag = _er_tags.get(_node_filter, -1);
         if (_ntag < 0) or (self._osp_filter_fn is None) {
             self.emit(
                 E5090,

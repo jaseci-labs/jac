@@ -123,7 +123,10 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
         # The edge handle (`ptrtoint` of the edge object, as carried by an
         # `[edge ...]` ref) keys the row `osp_disconnect` drops.
         _del_arch = self._struct_name_of(target_expr);
-        if (_del_arch is not None) and (self.osp_arch_kind.get(_del_arch) == "edge") {
+        _del_model = self.ir_in.gen.osp_model;
+        if (_del_arch is not None)
+        and (_del_model is not None)
+        and (_del_model.arch_kind.get(_del_arch) == "edge") {
             _disc_fn = self.func_symtab.get("osp_disconnect");
             _edge_h = self._codegen_expr(target_expr);
             if (_disc_fn is not None) and (_edge_h is not None) {
@@ -1738,6 +1741,21 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             return;
         }
     }
+    # ── Bytes iteration: for x in b ── yields i64 byte values (#6749).
+    # A distinct struct type, so it precedes the str/list paths cleanly.
+    if _coll_memo is not None and self._is_bytes_value(_coll_memo) {
+        self._codegen_for_indexed(
+            nd,
+            kind="bytes",
+            collection_val=_coll_memo,
+            helpers=None,
+            var_names=[loop_var_name],
+            var_types=[ir.IntType(64)],
+            rc_vars=False,
+            coll_release_op="forby_coll"
+        );
+        return;
+    }
     # ── String iteration: for c in s ── (before the list path: a raw i8*
     # would otherwise be misclassified as list[ptr])
     if self._list_spec_of(nd.collection) is None
@@ -1872,6 +1890,8 @@ impl NaIRGenPass._codegen_for_indexed(
                 "strlen", i64, [ir.IntType(8).as_pointer()]
             );
             len_val = self.builder.call(strlen_fn, [collection_val], name="for.len");
+        } elif kind == "bytes" {
+            len_val = self._bytes_len_val(collection_val);
         } else {
             len_val = self.builder.call(
                 helpers["len"], [collection_val], name="for.len"
@@ -1963,6 +1983,15 @@ impl NaIRGenPass._codegen_for_indexed(
             if char_str is not None {
                 self.builder.store(char_str, allocas[0]);
             }
+        } elif kind == "bytes" {
+            # Load the byte at body_idx and zero-extend to the i64 loop var.
+            _by_ptr = self.builder.gep(
+                self._bytes_data_ptr(collection_val), [body_idx], name="for.by.ptr"
+            );
+            _by = self.builder.load(_by_ptr, name="for.by.byte");
+            self.builder.store(
+                self.builder.zext(_by, i64, name="for.by.val"), allocas[0]
+            );
         } elif kind in ("list", "dict") {
             fetch_fn = helpers["get"] if kind == "list" else helpers["get_key"];
             elem_val = self.builder.call(

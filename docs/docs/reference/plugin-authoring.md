@@ -572,7 +572,7 @@ through a delete intent.
 | `remove_alias(old)` | `True` if an entry was deleted; also `pop` from `Serializer._aliases` |
 | `quarantine_dangling(missing_id, referrer_id, kind)` | File a quarantine row for a citation to a now-missing document, under the `DANGLING_REF` reason code. Idempotent; never raises |
 | `is_recoverable_quarantine(id)` | `True` iff `id` is quarantined under a **recoverable** reason. MUST exclude `DANGLING_REF` rows, else the read-path healer is poisoned by its own forensic records and stops pruning a genuine dangler |
-| `fsck(repair=False)` | Scan for dangling references and orphans; return the report dict (`dangling_node_edge`, `dangling_edge_node`, `orphan_edges`, `orphan_nodes`, `repaired`, `repaired_counts`). With `repair=True`, prune danglers (filing each via `quarantine_dangling`) and collect orphans, atomically where the store allows |
+| `fsck(repair=False)` | Scan for dangling references and orphans; return the report dict (`dangling_node_edge`, `dangling_edge_node`, `orphan_edges`, `orphan_nodes`, `half_linked_edges`, `repaired`, `repaired_counts`). `half_linked_edges` are edges cited by only one of their two endpoints -- the optimistic-concurrency residual: the non-citing endpoint refused the link, so on `repair=True` the edge and the node it strands are collected. With `repair=True`, prune danglers (filing each via `quarantine_dangling`) and collect orphans + half-linked edges, atomically where the store allows |
 
 **Required guarantees:**
 

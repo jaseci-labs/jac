@@ -2,15 +2,17 @@
 
 import from contextvars { ContextVar }
 import from dataclasses { MISSING }
+import from logging { getLogger }
 import from queue { Queue }
-import from typing { cast }
+import from typing { Callable, cast }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, PermissionDenied, Root }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.runtimelib.memory { Memory, TieredMemory }
 
-glob __all__ = ['ExecutionContext'];
+glob __all__ = ['ExecutionContext'],
+     logger = getLogger(__name__);
 
 """Call State for managing function, spawn calls.
 
@@ -44,6 +46,18 @@ obj ExecutionContext {
         # on the wire so callers can see why a write silently no-opped.
         # Always per-instance (not shared with `_parent` fork).
         diagnostics: list[PermissionDenied] = [],
+        # Request-scoped queue of post-commit effect callbacks registered
+        # via the `on_commit(...)` ambient builtin. Drained and cleared by
+        # `commit`/`acommit` once the unit of work flushes; left untouched
+        # (so never fired) when a request aborts before committing. Always
+        # per-instance, never shared with a `_parent` fork.
+        pending_effects: list[Callable] = [],
+        # Read-set OCC: node id -> the version observed the first time this
+        # request read an out-traversal from that node. The collect pass copies
+        # it onto edge-list write intents so the backend CASes only on nodes the
+        # request actually read (a blind append takes no dependency). Per-instance,
+        # cleared on replay; never shared with a `_parent` fork.
+        read_versions: dict[UUID, int] = {},
         custom: any = MISSING,
         system_root: NodeAnchor by postinit,
         user_root: NodeAnchor by postinit,
@@ -73,6 +87,9 @@ obj ExecutionContext {
     def set_user_root(root_id: str) -> None;
     def set_entry_node(entry_node: (str | None)) -> None;
     def close -> None;
+    def on_commit(callback: Callable) -> None;
+    def run_pending_effects -> None;
+    def note_traversal_reads(origins: list[NodeAnchor]) -> None;
     def get_root -> Root;
     # Async mirrors — resolve root / entry via the async Memory surface so
     # the calling event loop is not blocked on L3 reads.

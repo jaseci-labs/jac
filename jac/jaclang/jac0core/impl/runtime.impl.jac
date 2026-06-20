@@ -329,6 +329,13 @@ impl JacNode.edges_to_nodes(
     origin: list[NodeArchetype], destination: ObjectSpatialDestination
 ) -> list[NodeArchetype] {
     _prefetch_edges(origin);
+    # Read-set OCC: snapshot the version of every node this request reads an
+    # out-traversal from (here the per-hop origins, so multi-hop fallback walks
+    # take a dependency on intermediate nodes too). `refs` already recorded the
+    # path's first origin before the strategy split; this covers the rest.
+    JacRuntimeInterface.get_context().note_traversal_reads(
+        [nd.__jac__ for nd in origin]
+    );
     nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
@@ -694,6 +701,7 @@ impl JacBasics.commit(anchor: Anchor | Archetype | None = None) -> None {
     }
     ctx = JacRuntimeInterface.get_context();
     ctx.mem.commit(anchor);
+    ctx.run_pending_effects();
 }
 
 """Async commit - persists through the async Memory surface."""
@@ -703,6 +711,12 @@ impl JacBasics.acommit(anchor: Anchor | Archetype | None = None) -> None {
     }
     ctx = JacRuntimeInterface.get_context();
     await ctx.mem.acommit(anchor);
+    ctx.run_pending_effects();
+}
+
+"""Register a post-commit effect on the current execution context."""
+impl JacBasics.on_commit(callback: Callable) -> None {
+    JacRuntimeInterface.get_context().on_commit(callback);
 }
 
 """Purge current or target graph."""
@@ -1260,6 +1274,14 @@ impl JacBasics.refs(
             last.nd = lambda i: any : (orig_nd(i) and post_filter(i));
         }
     }
+    # Read-set OCC: record the origin versions this traversal reads up front,
+    # independent of which strategy resolves it. The planner fast path
+    # (topology_index / backend pushdown) and the edge-only path both return
+    # without ever touching `edges_to_nodes`, so capturing here is what keeps a
+    # check-then-create resolved by the index from silently skipping the
+    # commit-time CAS that stops duplicate child creation (#6266).
+    ctx = JacRuntimeInterface.get_context();
+    ctx.note_traversal_reads([nd.__jac__ for nd in path.origin]);
     # Try the storage-aware planner for non-edge-only queries. The planner
     # owns the strategy ladder: backend pushdown (e.g. Mongo `_id $in + field`
     # predicates) → topology_index narrowing → batch_get materialization. It
@@ -1267,7 +1289,6 @@ impl JacBasics.refs(
     # the caller must fall back to the linear edge-walk below.
     if not path.edge_only {
         import from jaclang.runtimelib.planner { execute_path }
-        ctx = JacRuntimeInterface.get_context();
         planned = execute_path(ctx.mem, path, slc);
         if planned is not None {
             return [
@@ -1329,9 +1350,10 @@ impl JacBasics.connect(
     undir: bool = False,
     conn_assign: (tuple[(tuple, tuple)] | None) = None,
     edges_only: bool = False
-) -> (list[NodeArchetype] | list[EdgeArchetype]) {
+) -> (NodeArchetype | list[NodeArchetype] | list[EdgeArchetype]) {
     left = [left] if isinstance(left, NodeArchetype) else left;
-    right = [right] if isinstance(right, NodeArchetype) else right;
+    right_is_node = isinstance(right, NodeArchetype);
+    right = [right] if right_is_node else right;
     edges = [];
     for i in left {
         _left = i.__jac__;
@@ -1354,7 +1376,12 @@ impl JacBasics.connect(
             }
         }
     }
-    return right if not edges_only else edges;
+    if edges_only {
+        return edges;
+    }
+    # Mirror the right-hand side: a single node yields a node, a list yields
+    # a list. Keeps `a ++> b` returning `b` instead of wrapping it in `[b]`.
+    return right[0] if right_is_node else right;
 }
 
 """Jac's disconnect operator feature."""

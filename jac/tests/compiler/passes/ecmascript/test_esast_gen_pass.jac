@@ -6,7 +6,32 @@ import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import jaclang.compiler.passes.ecmascript.estree as es;
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
+import from jaclang.compiler.passes.ecmascript.backends.react { ReactBackend }
 import from jaclang.jac0core.program { JacProgram }
+
+"""Signals-style test backend: wraps a reactive read as `name()` so the
+value-read seam (contract §4.1.1) can be audited without a real Solid backend.
+React/Preact lower the same read to a bare identifier (a no-op)."""
+obj _WrapReadBackend(ReactBackend) {
+    def lower_state_read(name: str) -> es.Expression;
+}
+
+impl _WrapReadBackend.lower_state_read(name: str) -> es.Expression {
+    return es.CallExpression(callee=es.Identifier(name=name), arguments=[]);
+}
+
+"""Signals-style test backend: thunks a dynamic JSX position as `__view(expr)`
+so the view seam (contract §4.2) can be audited without a real Solid backend.
+The `__view(...)` marker is a test sentinel (not real Solid output); it makes the
+routing observable and unambiguous against event handlers, which stay unwrapped.
+React/Preact lower the same positions to the bare expr (a no-op)."""
+obj _ThunkViewBackend(ReactBackend) {
+    def lower_view_expr(expr: es.Expression) -> es.Expression;
+}
+
+impl _ThunkViewBackend.lower_view_expr(expr: es.Expression) -> es.Expression {
+    return es.CallExpression(callee=es.Identifier(name="__view"), arguments=[expr]);
+}
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURES = os.path.join(
@@ -43,6 +68,22 @@ def compile_to_esast(filename: str) -> es.Program {
     es_ir = es_pass.ir_out;
 
     assert hasattr(es_ir.gen, "es_ast") , "es_ast attribute missing";
+    assert isinstance(es_ir.gen.es_ast, es.Program);
+    return es_ir.gen.es_ast;
+}
+
+"""Compile Jac source to an ESTree program with an explicit FrameworkBackend."""
+def compile_to_esast_with_backend(filename: str, backend: object) -> es.Program {
+    prog = JacProgram();
+    ir = prog.compile(file_path=filename, no_cgen=True);
+
+    assert not prog.errors_had , (
+        f"Compilation errors in {filename}: {[str(e) for e in prog.errors_had]}"
+    );
+
+    es_pass = EsastGenPass(ir_in=ir, prog=prog, backend=backend);
+    es_ir = es_pass.ir_out;
+
     assert isinstance(es_ir.gen.es_ast, es.Program);
     return es_ir.gen.es_ast;
 }
@@ -315,6 +356,98 @@ test "reactive state scoping across functions" {
     assert "const [cart, setCart] = useState([])" in js_code;
     assert "setCart(useCart())" not in js_code;
     assert "let cart = useCart()" in js_code;
+}
+
+test "react read seam lowers a reactive read to a bare identifier (#6677)" {
+    # The #6677 contract: lower_state_read(name) -> bare Identifier on hooks
+    # backends. This is the no-op that keeps React/Preact output byte-identical.
+    read_node = ReactBackend().lower_state_read("count");
+    assert isinstance(read_node, es.Identifier) , "react read seam must return an Identifier";
+    assert read_node.name == "count";
+}
+
+test "react read seam keeps reactive reads unwrapped (zero-diff)" {
+    # Under React the value-read seam must not alter reactive reads anywhere.
+    js_code = es_to_js(
+        compile_to_esast_with_backend(
+            fixture_path("reactive_read_audit.cl.jac"), ReactBackend()
+        )
+    );
+    assert "let doubled = (count + count)" in js_code;
+    assert 'let info = {"count": count}' in js_code;
+    assert "[count]" in js_code , "JSX child read stays a bare identifier";
+    assert "count()" not in js_code , "React must never wrap a reactive read";
+}
+
+test "read seam wraps only value positions under a signals backend" {
+    # Contract §4.1.1 audit, made executable with a signals-style backend that
+    # wraps reads as `count()`. Value positions MUST wrap; write targets,
+    # property keys, and string literals MUST NOT.
+    js_code = es_to_js(
+        compile_to_esast_with_backend(
+            fixture_path("reactive_read_audit.cl.jac"), _WrapReadBackend()
+        )
+    );
+
+    # Value positions wrap.
+    assert "let doubled = (count() + count())" in js_code , "RHS reads should wrap";
+    assert "let nested = [count(), (count() + 1)]" in js_code , "list reads should wrap";
+    assert "[count()]" in js_code , "JSX child read should wrap";
+
+    # Dict value wraps; the string key is a Literal, never the Name seam.
+    assert 'let info = {"count": count()}' in js_code , "dict value wraps, key untouched";
+
+    # Write target lowers to its setter — never an assignment to a call.
+    assert "setCount((count() + 1))" in js_code , "write target uses setter; RHS read wraps";
+    assert "count() =" not in js_code , "a reactive write target must not be wrapped";
+
+    # Member property keys and attribute string literals are reconstructed from
+    # sym_name / literals and must stay untouched.
+    assert "items[0].count" in js_code , "member property must not wrap";
+    assert ".count()" not in js_code , "member property key must not become a call";
+    assert 'data-count": "count"' in js_code , "attribute string literal untouched";
+}
+
+test "react view seam returns the expression unchanged (zero-diff)" {
+    # Contract §4.2: lower_view_expr is identity on hooks backends.
+    expr = es.Identifier(name="count");
+    out = ReactBackend().lower_view_expr(expr);
+    assert out is expr , "react view seam must return the same expression node";
+}
+
+test "react view seam keeps dynamic JSX unwrapped (zero-diff)" {
+    # Under React the dynamic-view seam must not alter JSX children or attributes.
+    js_code = es_to_js(
+        compile_to_esast_with_backend(
+            fixture_path("reactive_view_audit.cl.jac"), ReactBackend()
+        )
+    );
+    assert "__view(" not in js_code , "React must never thunk a dynamic JSX position";
+    assert '"value": count' in js_code , "dynamic attribute stays a bare read";
+    assert "[count]" in js_code , "dynamic JSX child stays a bare read";
+}
+
+test "view seam thunks only dynamic positions under a signals backend" {
+    # Contract §4.2 audit, made executable with a thunking backend that wraps a
+    # dynamic JSX position as `__view(expr)`. Dynamic child + dynamic attribute
+    # value MUST route through the seam; event handlers and static literals MUST NOT.
+    js_code = es_to_js(
+        compile_to_esast_with_backend(
+            fixture_path("reactive_view_audit.cl.jac"), _ThunkViewBackend()
+        )
+    );
+
+    # Dynamic attribute value and dynamic child route through the seam.
+    assert '"value": __view(count)' in js_code , "dynamic attribute value should thunk";
+    assert "[__view(count)]" in js_code , "dynamic JSX child should thunk";
+
+    # Event handler is emitted as-is — never view-wrapped.
+    assert '"onClick":' in js_code , "event handler attribute is still emitted";
+    assert '"onClick": __view(' not in js_code , "event handler must not be view-wrapped";
+
+    # Static string literal bypasses the seam entirely.
+    assert '"type": "text"' in js_code , "static literal attribute untouched";
+    assert "__view(\"text\")" not in js_code , "static literal must not thunk";
 }
 
 test "reactive writes transform inside nested and deferred closures" {
@@ -1020,5 +1153,31 @@ test "user function shadowing a builtin name is called, not the builtin" {
     assert len(user_len_calls) >= 1 , (
         "expected a call to the user-defined len(), but the builtin emitter "
         "was used instead:\n" + es_to_js(es_ast)
+    );
+}
+
+test "augmented reactive assignments do not double-apply the lhs" {
+    # Regression: count += 5 must emit setCount(count + 5), not
+    # setCount(count + (count + 5)).  The bug was that exit_assignment built
+    # the full BinaryExpression and also passed aug_op to StateUpdate, causing
+    # lower_state_update to wrap it a second time.
+    es_ast = compile_to_esast(fixture_path("reactive_aug_assign.cl.jac"));
+    js = es_to_js(es_ast);
+
+    # Each setter call must appear exactly once as a simple binary: setCount((count op N)).
+    # gen_binary_expression always wraps in parens, so the argument is (count op N).
+    assert "setCount((count + 5))" in js , (
+        "expected setCount((count + 5)) but got:\n" + js
+    );
+    assert "setCount((count - 2))" in js , (
+        "expected setCount((count - 2)) but got:\n" + js
+    );
+    assert "setCount((count * 3))" in js , (
+        "expected setCount((count * 3)) but got:\n" + js
+    );
+    # Double-application fingerprint: with parens from gen_binary_expression the bug
+    # produces setCount((count + (count + 5))) — catch the nested `(count + (count` shape.
+    assert "setCount((count + (count" not in js , (
+        "double-application bug detected in:\n" + js
     );
 }

@@ -140,9 +140,8 @@ glob CORE_DEPS = {
          "react-dom",
          "react-router-dom",
          "react-error-boundary",
-         "react-hook-form",
-         "zod",
-         "@hookform/resolvers"
+         "@tanstack/react-form",
+         "zod"
      },
      DEV_DEPS = {
          "vite",

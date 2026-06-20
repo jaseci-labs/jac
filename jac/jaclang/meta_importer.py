@@ -24,6 +24,7 @@ from types import ModuleType
 import jaclang.jac0 as _jac0_mod
 from jaclang.jac0 import compile_jac as _jac0_compile  # noqa: E402
 from jaclang.jac0 import discover_impl_files as _jac0_discover_impls  # noqa: E402
+from jaclang.jac0core.cache_paths import get_bootstrap_cache_dir  # noqa: E402
 
 _jac0_source_path = getattr(_jac0_mod, "__file__", "")
 _jac0_hash = (
@@ -44,23 +45,12 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
 # haven't changed.  The cache lives at ~/.cache/jac/jir/bootstrap/ as plain
 # marshalled code objects: the cache *filename* already encodes a digest over
 # the Python version, the jac0 transpiler, and all source/impl contents, so no
-# in-file header or validation is needed.  This is pure Python so it works
-# before the JIR Jac modules have been bootstrapped (which is why it does not
-# share `jaclang.jac0core.jir.compute_module_key`, its sibling key formula).
+# in-file header or validation is needed.  The directory is resolved by the
+# pure-Python `jaclang.jac0core.cache_paths` (importable here, before the JIR
+# Jac modules are bootstrapped), so it shares one platform-resolution rule with
+# `jaclang.jac0core.jir`; the cache *key*, however, stays independent of that
+# module's `compute_module_key` since it must work before jac0core compiles.
 # ---------------------------------------------------------------------------
-
-
-def _get_bootstrap_cache_dir() -> Path:
-    """Return the platform-appropriate bootstrap JIR cache directory."""
-    if sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-        return base / "jac" / "cache" / "jir" / "bootstrap"
-    elif sys.platform == "darwin":
-        return Path.home() / "Library" / "Caches" / "jac" / "jir" / "bootstrap"
-    else:
-        xdg = os.environ.get("XDG_CACHE_HOME")
-        base = Path(xdg) if xdg else (Path.home() / ".cache")
-        return base / "jac" / "jir" / "bootstrap"
 
 
 def _bootstrap_compile(
@@ -81,7 +71,7 @@ def _bootstrap_compile(
     digest = h.hexdigest()[:16]
 
     base_name = os.path.splitext(os.path.basename(file_path))[0]
-    cache_file = _get_bootstrap_cache_dir() / f"{base_name}.{digest}.jbc"
+    cache_file = get_bootstrap_cache_dir() / f"{base_name}.{digest}.jbc"
 
     if cache_file.is_file():
         try:

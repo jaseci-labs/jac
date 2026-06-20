@@ -223,6 +223,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 arg_val = self._codegen_expr(params_l[0]);
                 if arg_val is not None {
                     _len_result: (ir.Value | None) = None;
+                    # bytes: read the explicit length field (never strlen — the
+                    # buffer may contain embedded NULs).
+                    if self._is_bytes_value(arg_val) {
+                        _len_result = self._bytes_len_val(arg_val);
+                    }
                     # Check for dict type by inferring from value
                     if _len_result is None {
                         for (dict_key, helpers) in self.dict_helpers.items() {
@@ -283,6 +288,23 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                     }
                 }
             }
+        }
+        # First-class iterator builtins (#6403 phase 2). `iter(x)` boxes a
+        # JacIter over x (its element type flows from the checker's
+        # Iterator[T]); `next(it)` pulls one element and raises StopIteration
+        # at exhaustion. For-loop driving of map/filter/... and of a stored
+        # iterator is handled earlier in `_try_iter_protocol_for`.
+        if func_name == "iter" {
+            built = self._build_iter_from_expr(nd);
+            if built is not None {
+                (iter_val, _ename, _etype) = built;
+                return iter_val;
+            }
+            self._emit_unsupported_builtin_call(nd, "iter");
+            return None;
+        }
+        if func_name == "next" {
+            return self._codegen_next(nd);
         }
         # Handle complex() constructor: complex(real, imag) -> JacComplex*
         if func_name == "complex" {

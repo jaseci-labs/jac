@@ -90,6 +90,24 @@ test "native osp: spawn returns the walker" {
     assert collect_one(0) == 0;
 }
 
+test "native osp: skip in an impl-annex walker event ability (issue #6794)" {
+    # `skip` is a valid Return-family statement in a walker `with X entry` event
+    # ability, and native lowers it there. When the ability is split decl/impl,
+    # the `skip` lives in an `impl Walker.ability with X entry` ImplDef in the
+    # annex. Before the fix the native capability check — now scanning annex
+    # bodies (#6754) — saw the ImplDef (not an inline Ability) around the `skip`
+    # and falsely rejected it (E5090), producing no IR; a module importing it
+    # then failed to link (E5024) and `jac test` reported "native engine
+    # unavailable". Here `grab` skips val==0 nodes and sums the rest.
+    (eng, _) = compile_native("osp_skip_annex.na.jac");
+    collect = get_func(
+        eng, "collect", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
+    );
+    assert collect(10, 0, 32) == 42;  # the val==0 node is skipped
+    assert collect(0, 0, 0) == 0;  # every node skipped
+    assert collect(5, 5, 5) == 15;
+}
+
 test "arithmetic negate" {
     (eng, _) = compile_native("arithmetic.na.jac");
     neg = get_func(eng, "negate", ctypes.c_int64, ctypes.c_int64);
@@ -167,6 +185,22 @@ test "nested functions helper recursion and module global" {
     # x + BASE, BASE == 100
     assert uses_global(0) == 100;
     assert uses_global(7) == 107;
+}
+
+test "glob declared in an impl annex resolves on native (issue #6754)" {
+    # A `glob` declared in the canonical bare IMPL ANNEX
+    # (`impl/annex_glob.impl.jac`, base name resolved before the `.na` variant
+    # suffix), not the head file, must be registered in the native module's
+    # globals and resolved by references in the annexed ability bodies. Before
+    # the fix, native global collection swept only the head module's `body`, so
+    # the annex glob was never emitted and references bailed with E5090
+    # 'Name'/'BinaryExpr'. The byte-identical program with the glob in the head
+    # file always compiled.
+    (eng, _) = compile_native("annex_glob.na.jac");
+    get_sz = get_func(eng, "get_sz", ctypes.c_int64);
+    double_sz = get_func(eng, "double_sz", ctypes.c_int64);
+    assert get_sz() == 21;  # bare `Name` reference to the annex glob
+    assert double_sz() == 42;  # `BinaryExpr` reference to the annex glob
 }
 
 # --- TestNativeContextIsolation ---
@@ -1905,6 +1939,24 @@ test "clib import produces extern declares" {
     assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
 }
 
+test "clib decl with no return arrow lowers to void, not i64" {
+    prog = JacProgram();
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES, "_clib_void_ret.na.jac")),
+        use_str="import from \"/usr/lib/libm.so.6\" {\n"
+        "    def no_arrow(x: f64);\n"
+        "    def explicit_none(x: f64) -> None;\n"
+        "}\n"
+        "def use_it(n: f64) -> f64 { return n; }\n"
+    );
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    s = str(ir.gen.llvm_ir);
+    assert 'declare void @"no_arrow"(double' in s , f"omitted return arrow did not lower to void: {s}";
+    assert 'declare i64 @"no_arrow"' not in s , "omitted return arrow silently lowered to i64";
+    # Parity with the explicit `-> None` spelling.
+    assert 'declare void @"explicit_none"(double' in s , "explicit -> None did not lower to void";
+}
+
 test "clib import inside na block" {
     prog = JacProgram();
     ir = prog.compile(str(os.path.join(FIXTURES, "clib_import_na_block.jac")));
@@ -2642,6 +2694,49 @@ test "native osp node constructed in a non-OSP module carries its dispatch tag (
         );
         assert result.stdout.strip() == "7" , (
             f"Expected '7', got stdout={result.stdout!r} stderr={result.stderr!r}"
+        );
+    }
+}
+
+test "native osp construct living only in an impl annex materializes imported archetypes" {
+    # A builder module IMPORTS OSP archetypes (`Hub`/`Area`) from another native
+    # module and wires them (`++>`) from an IMPL ANNEX (`.na.impl.jac`), not its
+    # head file. The annex body is spliced into the head module's tree by
+    # JacAnnexPass while keeping its own `loc.mod_path`, so the OSP construct
+    # lives off the head but originates in the annex file.
+    # The OSP construct scan (now `OspAnalysis._uses_construct`) historically
+    # swept just the head file's own statements, classified the builder as a
+    # non-OSP user, and never gave the imported archetypes their stable type-tag
+    # -- the annexed `++>` then failed with
+    # E5090 ("not materialized") at nacompile (or mis-codegen SIGSEGV in a fuller
+    # graph). The byte-identical program with `build`'s body INLINE in the head
+    # file always compiled. Fixed: prints `2 2 3` (graph built, walker sums 1+2).
+    import tempfile;
+    fixture = str(os.path.join(FIXTURES, "osp_xmod_annexbuild_main.na.jac"));
+    with tempfile.TemporaryDirectory() as tmpdir {
+        out_bin = os.path.join(tmpdir, "osp_xmod_annexbuild");
+        comp = subprocess.run(
+            [sys.executable, "-m", "jaclang", "nacompile", fixture, "-o", out_bin],
+            capture_output=True,
+            text=True,
+            timeout=120
+        );
+        assert comp.returncode == 0 , (
+            f"nacompile failed (annexed OSP construct not materialized): "
+            f"exit={comp.returncode}\n"
+            f"stderr: {comp.stderr[-500:] if comp.stderr else '(empty)'}"
+        );
+        assert os.path.exists(out_bin) , f"Binary not created at {out_bin}";
+        result = subprocess.run([out_bin], capture_output=True, text=True, timeout=10);
+        assert result.returncode == 0 , (
+            f"Native binary crashed (imported archetype tag not materialized): "
+            f"exit={result.returncode}\n"
+            f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
+        );
+        # before=2 (graph built via annexed `build`), after=2 (survives spawn),
+        # seen=1+2=3 (walker reaches both Area nodes and sums their tags).
+        assert result.stdout.strip() == "2 2 3" , (
+            f"Expected '2 2 3', got stdout={result.stdout!r} stderr={result.stderr!r}"
         );
     }
 }
