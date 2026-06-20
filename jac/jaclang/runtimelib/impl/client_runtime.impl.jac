@@ -649,16 +649,6 @@ impl JacForm(props: dict) -> JsxElement {
     layoutStyle = getLayoutStyle();
     formClassName = className or "";
     buttonClassName = submitClassName or "";
-    # onTouched: treat form as valid before any field is touched so the eager
-    # onChange validator does not disable the button before the user blurs once.
-    effectiveIsValid = (
-        True
-            if (validateMode == "onTouched" and not form.state.isTouched)
-            else form.state.isValid
-    );
-    isFormDisabled = (
-        form.state.isSubmitting or not form.state.isDirty or not effectiveIsValid
-    );
     return (
         <form
             onSubmit={lambda e: any {
@@ -669,18 +659,41 @@ impl JacForm(props: dict) -> JsxElement {
             className={formClassName}
         >
             <div style={layoutStyle}>{fields}</div>
-            <button
-                type="submit"
-                disabled={isFormDisabled}
-                className={buttonClassName}
-                style={{
-                    width: "100%",
-                    cursor: ("not-allowed" if isFormDisabled else "pointer")
-                }}
+            <form.Subscribe
+                selector={lambda s: any { return {
+                    isDirty: s.isDirty,
+                    isValid: s.isValid,
+                    isTouched: s.isTouched,
+                    isSubmitting: s.isSubmitting
+                }; }}
             >
-                {form.state.isSubmitting and "Submitting..."}{not form.state.isSubmitting
-                and submitLabel}
-            </button>
+                {lambda fs: JsxElement {
+                    # onTouched: treat form as valid before any field is touched so the
+                    # eager onChange validator does not disable the button prematurely.
+                    btnEffectiveIsValid = (
+                        True
+                            if (validateMode == "onTouched" and not fs.isTouched)
+                            else fs.isValid
+                    );
+                    btnDisabled = (
+                        fs.isSubmitting or not fs.isDirty or not btnEffectiveIsValid
+                    );
+                    return (
+                        <button
+                            type="submit"
+                            disabled={btnDisabled}
+                            className={buttonClassName}
+                            style={{
+                                width: "100%",
+                                cursor: ("not-allowed" if btnDisabled else "pointer")
+                            }}
+                        >
+                            {fs.isSubmitting and "Submitting..."}{not fs.isSubmitting
+                            and submitLabel}
+                        </button>
+                    );
+                }}
+            </form.Subscribe>
         </form>
     );
 }
