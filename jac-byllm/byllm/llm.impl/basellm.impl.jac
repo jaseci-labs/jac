@@ -13,6 +13,33 @@ def _should_parallelize(mt_run: MTRuntime) -> bool {
 }
 
 
+"""Split tool_calls at the first finish_tool. Anything after it is dropped."""
+def _split_finish_tc(tool_calls: list) -> tuple {
+    non_finish: list = [];
+    finish_tc = None;
+    for tc in tool_calls {
+        if tc.is_finish_call() {
+            finish_tc = tc;
+            break;
+        }
+        non_finish.append(tc);
+    }
+    return (non_finish, finish_tc);
+}
+
+
+"""Group non-finish calls into dispatch batches.
+
+Parallel mode: one batch with all calls. Sequential: one batch per call.
+"""
+def _batches_for(non_finish_calls: list, mt_run: MTRuntime) -> list {
+    if _should_parallelize(mt_run) {
+        return [non_finish_calls];
+    }
+    return [[tc] for tc in non_finish_calls];
+}
+
+
 """Check if the model is eligible for Anthropic prompt caching."""
 def _is_prompt_caching_eligible(model_name: str) -> bool {
     pc_config = _byllm_config.get_prompt_caching_config();
@@ -867,26 +894,14 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
         }
         if resp.tool_calls {
             # Split at first finish_tool - anything after it is discarded.
-            # This normalizes history regardless of parallel/sequential mode:
-            # both modes see the same tool calls and produce the same mt_run.messages.
-            non_finish_calls: list = [];
-            finish_tc = None;
-            for tc in resp.tool_calls {
-                if tc.is_finish_call() {
-                    finish_tc = tc;
-                    break;
-                }
-                non_finish_calls.append(tc);
-            }
+            # Normalizes history for both parallel/sequential modes; both see
+            # the same tool calls and produce the same mt_run.messages.
+            (non_finish_calls, finish_tc) = _split_finish_tc(resp.tool_calls);
 
             # Always route through dispatch_batch - one code path for both modes.
             # Parallel: full batch (concurrent). Sequential: one-at-a-time (inline, no pool overhead).
             if non_finish_calls {
-                batches = (
-                    [non_finish_calls]
-                        if _should_parallelize(mt_run)
-                        else [[tc] for tc in non_finish_calls]
-                );
+                batches = _batches_for(non_finish_calls, mt_run);
                 for batch in batches {
                     raw_results: list = list(dispatch_batch(batch));
                     ordered: dict = {};
@@ -1914,15 +1929,7 @@ impl BaseLLM._invoke_streaming(
             # `thought` events while the call was in flight.
             if resp.tool_calls {
                 # Split at first finish_tool - normalizes history for both modes.
-                non_finish_calls: list = [];
-                finish_tc = None;
-                for tc in resp.tool_calls {
-                    if tc.is_finish_call() {
-                        finish_tc = tc;
-                        break;
-                    }
-                    non_finish_calls.append(tc);
-                }
+                (non_finish_calls, finish_tc) = _split_finish_tc(resp.tool_calls);
 
                 if non_finish_calls {
                     max_result_len = int(
@@ -1932,12 +1939,7 @@ impl BaseLLM._invoke_streaming(
                         or 500
                     );
 
-                    # Parallel: full batch. Sequential: one-at-a-time via dispatch_batch.
-                    batches = (
-                        [non_finish_calls]
-                            if _should_parallelize(mt_run)
-                            else [[tc] for tc in non_finish_calls]
-                    );
+                    batches = _batches_for(non_finish_calls, mt_run);
 
                     for batch in batches {
                         # Announce tool calls before execution
