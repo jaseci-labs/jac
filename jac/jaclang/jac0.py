@@ -2336,7 +2336,14 @@ class CodeGen:
         self.indent -= 1
 
     def _emit_match(self, node: MatchStmt) -> None:
-        self._line(f"match {self._strip_parens(node.subject)}:")
+        subject = self._strip_parens(node.subject)
+        if not node.cases:
+            # `match X:` with no case arms is a Python SyntaxError. Emit the
+            # subject as a bare expression statement so any side effects of
+            # evaluating it still happen, and skip the match entirely.
+            self._line(f"{subject}")
+            return
+        self._line(f"match {subject}:")
         self.indent += 1
         for pattern, body in node.cases:
             self._line(f"case {pattern}:")
@@ -2347,18 +2354,35 @@ class CodeGen:
 
     def _emit_switch(self, node: SwitchStmt) -> None:
         subject = self._strip_parens(node.subject)
-        first = True
-        for pattern, body in node.cases:
-            if pattern is None:
-                # default case
-                self._line("else:")
-            elif first:
-                self._line(f"if ({subject}) == ({pattern}):")
-                first = False
-            else:
-                self._line(f"elif ({subject}) == ({pattern}):")
+
+        # Python's if/elif/else chain must start with `if` and `else:` must
+        # come last. Emitting the source-order `case`/`default` arms directly
+        # produces invalid Python whenever `default:` appears first, alone, or
+        # ahead of value arms. Split the default out and always place it at
+        # the end. If multiple `default:` arms slip past the parser, the first
+        # one wins (matches lexical-dominance intuition).
+        value_cases = [(p, b) for (p, b) in node.cases if p is not None]
+        default_body = next((b for (p, b) in node.cases if p is None), None)
+
+        if not value_cases:
+            # No value arms: there is nothing for `if` to start. Emit the
+            # subject for its side effects, then the default body if present.
+            # `else:` on its own is invalid Python.
+            self._line(f"{subject}")
+            if default_body is not None:
+                self._emit_body(default_body)
+            return
+
+        for i, (pattern, body) in enumerate(value_cases):
+            keyword = "if" if i == 0 else "elif"
+            self._line(f"{keyword} ({subject}) == ({pattern}):")
             self.indent += 1
             self._emit_body(body)
+            self.indent -= 1
+        if default_body is not None:
+            self._line("else:")
+            self.indent += 1
+            self._emit_body(default_body)
             self.indent -= 1
 
 
