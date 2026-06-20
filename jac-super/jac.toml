@@ -33,7 +33,6 @@ jac_super = [
 [dependencies]
 jaclang = ">=0.16.4"
 rich = ">=13.0.0"
-"jac-client" = ">=0.1.0"
 
 [entrypoints.jac]
 console = "jac_super.plugin.console:JacSuperPlugin"

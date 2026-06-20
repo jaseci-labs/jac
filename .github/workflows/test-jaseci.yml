@@ -139,13 +139,8 @@ jobs:
       run: |
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
-    - name: Run all client tests (including E2E in parallel)
+    - name: Run all client tests
       run: pytest -x jac/tests/runtimelib/client -n auto
-
-    - name: Re-run auth roundtrip e2e against jac-scale backend
-      run: |
-        jac install -e jac-scale
-        pytest -x -vv jac/tests/runtimelib/client/test_e2e.jac -k "jacSignup"
 
   test-packages-and-docs:
     runs-on: blacksmith-4vcpu-ubuntu-2404

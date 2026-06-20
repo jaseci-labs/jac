@@ -114,9 +114,12 @@ class JacClientPluginConfig {
         };
     }
 
-    """Register the jac-client project-kind templates (fullstack/client/mobile)."""
-    @hookimpl
-    static def register_project_template -> list[dict[str, any]] {
+    """The built-in client project-kind templates (fullstack/client/mobile).
+
+    Called directly by core's template-registry init (not via the
+    `register_project_template` hook) so the templates survive a JacRuntime reset.
+    """
+    static def client_project_templates -> list[dict[str, any]] {
         templates: list[dict[str, any]] = [];
 
         # Each directory carries its kind in its jac.toml [project] kind.

@@ -59,7 +59,7 @@ def _register_builtin_client_providers() -> None:
     except Exception as exc:  # keep core usable if the framework fails to import
         import warnings
 
-        warnings.warn(f"Built-in client framework unavailable: {exc}")
+        warnings.warn(f"Built-in client framework unavailable: {exc}", stacklevel=2)
         return
     for _provider in (JacClientPluginConfig, JacDesktopPluginConfig, JacClientCmd):
         if not plugin_manager.is_registered(_provider):

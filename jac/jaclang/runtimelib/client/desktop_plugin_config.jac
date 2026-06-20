@@ -163,9 +163,12 @@ class JacDesktopPluginConfig {
         return _desktop_config_schema().to_dict();
     }
 
-    """Contribute the `desktop` project-kind template to `jac create`."""
-    @hookimpl
-    static def register_project_template -> dict[str, object] | None {
+    """The built-in `desktop` project-kind template.
+
+    Called directly by core's template-registry init (not via the
+    `register_project_template` hook) so the template survives a JacRuntime reset.
+    """
+    static def desktop_project_template -> dict[str, object] | None {
         return _load_desktop_template();
     }
 }
