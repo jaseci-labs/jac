@@ -1,6 +1,6 @@
 # Jac Super
 
-Enhanced console output plugin for Jac CLI with Rich formatting, plus shadcn-style UI components for Jac projects.
+[shadcn/ui](https://ui.shadcn.com)-style UI components for Jac projects.
 
 ## Installation
 
@@ -8,28 +8,11 @@ Enhanced console output plugin for Jac CLI with Rich formatting, plus shadcn-sty
 pip install jac-super
 ```
 
-Once installed, the plugin automatically registers and enhances all Jac CLI command output.
-
-## Usage
-
-No configuration required. After installation, jac-super automatically enhances output for all Jac commands:
-
-- `jac create` - Enhanced project creation messages
-- `jac start` - Server startup and status messages
-- `jac run` - Formatted execution output
-- `jac config` - Styled configuration display
-
-## Environment Variables
-
-| Variable | Effect |
-|----------|--------|
-| `NO_COLOR` | Disables colors (fallback to base console) |
-| `NO_EMOJI` | Disables emojis (uses text labels) |
-| `TERM=dumb` | Disables both colors and emojis |
+Once installed, the plugin registers the `create`, `retheme`, `add`, and `remove` shadcn commands with the Jac CLI.
 
 ## Shadcn Components
 
-jac-super also brings [shadcn/ui](https://ui.shadcn.com)-style components to Jac projects. The components, styles, and color themes all ship **bundled with the plugin** (under `jac_super/shadcn/registry/`), so create, theme, add, and remove all work fully offline -- no network calls.
+jac-super brings [shadcn/ui](https://ui.shadcn.com)-style components to Jac projects. The components, styles, and color themes all ship **bundled with the plugin** (under `jac_super/shadcn/registry/`), so create, theme, add, and remove all work fully offline -- no network calls.
 
 ### Create a themed project
 
