@@ -65,7 +65,7 @@ walker me {
     can go with Root entry {
         if not [-->(?:UserProfile)] {
             new = here ++> UserProfile(tier="free");
-            on_commit(lambda () { grant_signup_bonus(new[0]); });   # once, post-commit
+            on_commit(lambda () { grant_signup_bonus(new); });   # once, post-commit
         }
     }
 }

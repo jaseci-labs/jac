@@ -50,7 +50,7 @@ def _get_or_seed_anchor -> Products {
     if existing {
         return existing[0];
     }
-    anchor = (root() ++> Products())[0];
+    anchor = root() ++> Products();
     for p in CATALOG {
         anchor ++> Product(
             id=p["id"],

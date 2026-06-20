@@ -1350,9 +1350,10 @@ impl JacBasics.connect(
     undir: bool = False,
     conn_assign: (tuple[(tuple, tuple)] | None) = None,
     edges_only: bool = False
-) -> (list[NodeArchetype] | list[EdgeArchetype]) {
+) -> (NodeArchetype | list[NodeArchetype] | list[EdgeArchetype]) {
     left = [left] if isinstance(left, NodeArchetype) else left;
-    right = [right] if isinstance(right, NodeArchetype) else right;
+    right_is_node = isinstance(right, NodeArchetype);
+    right = [right] if right_is_node else right;
     edges = [];
     for i in left {
         _left = i.__jac__;
@@ -1375,7 +1376,12 @@ impl JacBasics.connect(
             }
         }
     }
-    return right if not edges_only else edges;
+    if edges_only {
+        return edges;
+    }
+    # Mirror the right-hand side: a single node yields a node, a list yields
+    # a list. Keeps `a ++> b` returning `b` instead of wrapping it in `[b]`.
+    return right[0] if right_is_node else right;
 }
 
 """Jac's disconnect operator feature."""

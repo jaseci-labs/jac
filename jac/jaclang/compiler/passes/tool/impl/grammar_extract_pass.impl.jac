@@ -258,12 +258,6 @@ impl GrammarExtractPass.before_pass -> None {
 }
 
 impl GrammarExtractPass.after_pass -> None {
-    # Also traverse impl_mod sub-modules to find ImplDef nodes
-    if self.ir_in?.impl_mod {
-        for impl_mod in self.ir_in.impl_mod {
-            self.traverse(impl_mod);
-        }
-    }
     # Post-processing pipeline
     self.rules = self._stage_simplify(self.rules);
     self.rules = self._stage_unwrap_top_opt(self.rules);

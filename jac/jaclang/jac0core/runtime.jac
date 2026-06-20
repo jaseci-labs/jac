@@ -519,7 +519,7 @@ system,
         undir: bool = False,
         conn_assign: (tuple[(tuple, tuple)] | None) = None,
         edges_only: bool = False
-    ) -> (list[NodeArchetype] | list[EdgeArchetype]);
+    ) -> (NodeArchetype | list[NodeArchetype] | list[EdgeArchetype]);
 
     """Jac's disconnect operator feature."""
     static def disconnect(

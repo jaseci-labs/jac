@@ -3025,7 +3025,7 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
             nd.gen.es_ast = self._build_spawn_runtime_call(nd, spawn_parts);
             # Endpoint effects for walker:<name> are precomputed (at the
             # walker's declaration, in its own module) by BoundaryAnalysisPass and
-            # propagated into this manifest via _populate_client_manifest.
+            # folded into this manifest via populate_client_manifest.
         }
         return;
     }
@@ -5669,29 +5669,16 @@ impl EsastGenPass.exit_sub_tag(nd: uni.SubTag[uni.T]) -> None {
     }
 }
 
-"""Recursively populate client manifest from module declarations."""
-impl EsastGenPass._populate_client_manifest(nd: uni.Module) -> None {
-    for item in nd.gen.client_manifest.exports {
-        self.client_manifest.exports.append(item);
-    }
-    for item in nd.gen.client_manifest.globals {
-        self.client_manifest.globals.append(item);
-    }
-    for (import_key, resolved_path) in nd.gen.client_manifest.imports.items() {
-        self.client_manifest.imports[import_key] = resolved_path;
-    }
-    for sub_mod in nd.gen.client_manifest.params {
-        self.client_manifest.params[sub_mod] = nd.gen.client_manifest.params[sub_mod];
-    }
+"""Fold module-level interop endpoint effects into the client manifest.
+
+    Exports/globals/imports are accumulated into self.client_manifest during
+    traversal of the (annex-merged) module. Endpoint effects, by contrast, are
+    computed by BoundaryAnalysisPass and live on the module's interop manifest,
+    so they are copied across here.
+"""
+impl EsastGenPass.populate_client_manifest(nd: uni.Module) -> None {
     for (ename, eeffect) in nd.gen.interop_manifest.endpoint_effects.items() {
         self.client_manifest.endpoint_effects[ename] = eeffect;
-    }
-}
-
-"""Populate client manifest from module declarations."""
-impl EsastGenPass.populate_client_manifest(nd: uni.Module) -> None {
-    for mod in nd.impl_mod {
-        self._populate_client_manifest(mod);
     }
 }
 
@@ -6394,37 +6381,6 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     body.extend(self.sv_import_stubs);
     # Emit JS class stubs for types crossing the SV/CL boundary
     body.extend(self._emit_boundary_type_stubs(nd));
-    # Collect import source paths already present to avoid duplicates
-    # when impl modules re-inject the same import (e.g. __jacCallFunction).
-    seen_imports: set[str] = set();
-    for imp in self.imports {
-        if (isinstance(imp.source, es.Literal) and isinstance(imp.source.value, str)) {
-            seen_imports.add(imp.source.value);
-        }
-    }
-    for mod in nd.impl_mod {
-        if (mod.gen.es_ast and isinstance(mod.gen.es_ast, es.Program)) {
-            for import_decl in mod.gen.es_ast.body {
-                if isinstance(import_decl, es.ImportDeclaration) {
-                    src_val = (
-                        import_decl.source.value
-                            if (
-                                isinstance(import_decl.source, es.Literal)
-                                and isinstance(import_decl.source.value, str)
-                            )
-                            else None
-                    );
-                    if (src_val is not None and src_val in seen_imports) {
-                        continue;
-                    }
-                    if src_val is not None {
-                        seen_imports.add(src_val);
-                    }
-                    body.append(import_decl);
-                }
-            }
-        }
-    }
     scope = self.scope_map.get(nd);
     if (scope and scope.hoisted) {
         hoisted = list(scope.hoisted);

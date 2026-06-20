@@ -30,55 +30,52 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
     }
 
     """Ordered (body, strip_impl_defs) segments that contribute top-level
-    statements to a module's codegen: the head body plus every impl/variant/test
-    annex body, in weave order (impls first, then head, then variants, then
-    tests).
+    statements to a module's codegen.
 
-    This is the single source of truth for annex weaving. Every backend derives
-    the set of bodies an annexed module contributes from this one traversal,
-    closing the gap (issue #6754) where native's scan omitted the annex bodies
-    that @sv/ecmascript wove in -- so an annex-declared construct (a `glob`,
-    `enum`, standalone `def`/archetype, ...) reaches every backend's codegen.
-    `iter_context_stmts` (native) and `BaseAstGenPass._merge_module_bodies`
-    (@sv/ecmascript) both build on it; each still applies its own context filter
-    to the woven statements.
+    This is the single source of truth for annex weaving, shared by both
+    backends -- `iter_context_stmts` (native) and
+    `BaseAstGenPass._merge_module_bodies` (@sv/ecmascript) -- each of which then
+    applies its own context filter. Annex (.impl/.test) and variant bodies are
+    spliced into the head module's own `body` by JacAnnexPass, so every
+    annex-declared construct (a `glob`, `enum`, standalone `def`/archetype, ...)
+    is already present in it (issue #6754).
 
-    `strip_impl_defs` is True for the head and variant bodies: their `ImplDef`s
-    are reached through the decls DeclImplMatchPass connects them to (the decl
-    emits the construct from the impl's body), so the standalone `ImplDef` node
-    is redundant in the merged list. It is False for annex bodies, which carry
-    the standalone constructs (globs, enums, free defs) that have no head decl,
-    plus the annex's own `ImplDef`s. Only `_merge_module_bodies` consults this
-    flag; `iter_context_stmts` type-dispatches and ignores `ImplDef`s anyway.
+    Annex-origin statements are woven BEFORE head-origin ones (partitioned by
+    `loc.mod_path`): a head module's top-level executable code (e.g. a
+    `with entry { ... }` that calls a function whose standalone definition lives
+    in an impl annex) runs at module load, so the annex's definitions must be
+    emitted first or the call hits an undefined name. (This restores the
+    impl-before-head order the pre-merge weave produced.)
+
+    `strip_impl_defs` is True: matched `ImplDef`s are reached through the decls
+    DeclImplMatchPass connects them to (the decl emits the construct from the
+    impl's body), so the standalone `ImplDef` node is redundant in the merged
+    list. Only `_merge_module_bodies` consults the flag; `iter_context_stmts`
+    type-dispatches and ignores `ImplDef`s anyway.
     """
     static def iter_woven_segments(module: uni.Module) -> list[tuple[Sequence, bool]] {
-        segments: list[tuple[Sequence, bool]] = [];
-        for mod in module.impl_mod {
-            segments.append((mod.body, False));
-        }
-        segments.append((module.body, True));
-        for variant in module.variant_mod {
-            for vimpl in variant.impl_mod {
-                segments.append((vimpl.body, False));
-            }
-            segments.append((variant.body, True));
-        }
-        for mod in module.test_mod {
-            segments.append((mod.body, False));
-        }
-        return segments;
+        own = module.loc.mod_path;
+        annex_stmts = [
+            stmt
+            for stmt in module.body
+            if stmt.loc.mod_path and stmt.loc.mod_path != own
+        ];
+        head_stmts = [
+            stmt
+            for stmt in module.body
+            if not (stmt.loc.mod_path and stmt.loc.mod_path != own)
+        ];
+        return [(annex_stmts, True), (head_stmts, True)];
     }
 
-    """Iterate top-level statements for a given context, across the head module
-    AND its impl/variant/test annexes (see iter_woven_segments).
+    """Iterate top-level statements for a given context (see iter_woven_segments).
 
     Unwraps NativeBlock/ClientBlock/ServerBlock and yields their children
     matching the given CodeContext. When ctx is None, yields all statements from
-    all blocks (flat iteration). Annex statements participate in the same context
-    filter, so e.g. a native module only ever sees its NATIVE-context annex
-    statements: a `.na.jac` head and its impl/test annexes are all coerced to
-    NATIVE in the front end (parse_str), so the annex's globals/defs survive the
-    filter.
+    all blocks (flat iteration). Annex statements are merged into the head body
+    and coerced to the head's context by JacAnnexPass, so e.g. a native module
+    only ever sees its NATIVE-context statements -- the annex's globals/defs
+    survive the filter.
     """
     static def iter_context_stmts(
         module: uni.Module, ctx: (CodeContext | None) = None

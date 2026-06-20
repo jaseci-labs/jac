@@ -24,7 +24,7 @@ walker:pub PostMessage {
         reports: list[Message] = [];
 
     can post with Root entry {
-        report (here ++> Message(author=self.author, text=self.text))[0];
+        report here ++> Message(author=self.author, text=self.text);
     }
 }
 

@@ -62,7 +62,7 @@ walker:pub add_todo {
 
     can create with Root entry {
         todo = here ++> Todo(title=self.title);
-        report {"title": todo[0].title, "done": todo[0].done};
+        report {"title": todo.title, "done": todo.done};
     }
 }
 

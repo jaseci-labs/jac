@@ -345,12 +345,11 @@ graph LR
     root --> T3["Task(#quot;Go for a run#quot;)"]
 ```
 
-The `++>` operator returns a list containing the newly created node. You can capture it:
+The `++>` operator mirrors its right-hand side: connecting to a single node returns that node (connecting to a list returns a list). You can capture it:
 
 <!-- jac-skip -->
 ```jac
-result = root ++> Task(title="Buy groceries");
-task = result[0];  # The new Task node
+task = root ++> Task(title="Buy groceries");  # The new Task node
 print(task.title);  # "Buy groceries"
 ```
 
@@ -511,7 +510,7 @@ In Part 2, you learned that every node has a built-in unique identifier. The `ji
 
 <!-- jac-skip -->
 ```jac
-task = (root ++> Task(title="Buy groceries"))[0];
+task = root ++> Task(title="Buy groceries");
 print(jid(task));  # e.g., "1be2c28fc5924de28c55f68cc5ccaeb6"
 ```
 
@@ -528,7 +527,7 @@ This is one of the most powerful ideas in Jac. Simply mark a function `def:pub` 
 """Add a task and return it."""
 def:pub add_task(title: str) -> Task {
     task = root ++> Task(title=title);
-    return task[0];
+    return task;
 }
 ```
 
@@ -552,7 +551,7 @@ node Task {
 """Add a task and return it."""
 def:pub add_task(title: str) -> Task {
     task = root ++> Task(title=title);
-    return task[0];
+    return task;
 }
 
 """Get all tasks."""
@@ -945,7 +944,7 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
     """Add a task and return it."""
     def:pub add_task(title: str) -> Task {
         task = root ++> Task(title=title);
-        return task[0];
+        return task;
     }
 
     """Get all tasks."""
@@ -1185,7 +1184,7 @@ Then update `add_task` to call the AI:
 def:pub add_task(title: str) -> Task {
     category = str(categorize(title)).split(".")[-1].lower();
     task = root ++> Task(title=title, category=category);
-    return task[0];
+    return task;
 }
 ```
 
@@ -1736,7 +1735,7 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     def:pub add_task(title: str) -> Task {
         category = str(categorize(title)).split(".")[-1].lower();
         task = root ++> Task(title=title, category=category);
-        return task[0];
+        return task;
     }
 
     """Get all tasks."""
@@ -2228,7 +2227,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     def:priv add_task(title: str) -> Task {
         category = str(categorize(title)).split(".")[-1].lower();
         task = root ++> Task(title=title, category=category);
-        return task[0];
+        return task;
     }
 
     """Get all tasks."""
@@ -2872,7 +2871,7 @@ The best way to understand walkers is to compare them directly with the function
 def:priv add_task(title: str) -> Task {
     category = str(categorize(title)).split(".")[-1].lower();
     task = root ++> Task(title=title, category=category);
-    return task[0];
+    return task;
 }
 ```
 
@@ -2888,7 +2887,7 @@ walker AddTask {
             title=self.title,
             category=category
         );
-        report new_task[0];
+        report new_task;
     }
 }
 ```
@@ -2900,7 +2899,7 @@ Study the differences carefully -- each maps directly to a concept from the func
 - **`can create with Root entry`** -- an **ability** that fires when the walker enters a `Root` node. The `with Root entry` part means "execute this code when I arrive at a Root node."
 - **`here`** -- the current node the walker is visiting. In the function version, you wrote `root` directly; in the walker version, `here` is whatever node the walker is currently at.
 - **`self.title`** -- the walker's own properties. Since the walker *is* an object, its data is accessed through `self`.
-- **`report new_task[0]`** -- sends the typed `Task` node back to whoever spawned the walker. This replaces `return`. The reported object crosses the client-server boundary as a fully typed object, just like function return values.
+- **`report new_task`** -- sends the typed `Task` node back to whoever spawned the walker. This replaces `return`. The reported object crosses the client-server boundary as a fully typed object, just like function return values.
 
 Spawn it:
 
@@ -2924,7 +2923,7 @@ walker AddTask {
     can create with Root entry {
         category = str(categorize(self.title)).split(".")[-1].lower();
         new_task = here ++> Task(title=self.title, category=category);
-        report new_task[0];
+        report new_task;
     }
 }
 ```
@@ -2933,7 +2932,7 @@ walker AddTask {
 
 The shape of the type depends on what you report:
 
-- **One typed object per ability** -- `report new_task[0];` reporting a `Task` → `reports: list[Task] = []`
+- **One typed object per ability** -- `report new_task;` reporting a `Task` → `reports: list[Task] = []`
 - **A whole list at once** -- `report self.results;` where `results: list[Task]` → `reports: list[list[Task]] = []`
 - **Plain dicts** -- `report {"deleted": id};` → you can leave `reports` undeclared; the channel stays `list[any]`, which is fine for status responses
 
@@ -3270,7 +3269,7 @@ The three files that change are in the collapsible sections below. Copy the unch
         can create with Root entry {
             category = str(categorize(self.title)).split(".")[-1].lower();
             new_task = here ++> Task(title=self.title, category=category);
-            report new_task[0];
+            report new_task;
         }
     }
 

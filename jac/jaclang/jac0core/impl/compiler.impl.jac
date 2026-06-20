@@ -596,21 +596,10 @@ impl JacCompiler.parse_str(
     }
     import from pathlib { Path as _HubPath }
     target_program.mod.hub[str(_HubPath(mod.loc.mod_path).resolve())] = mod;
+    # JacAnnexPass splices each annex's body into the head module and coerces it
+    # to the head's deployment context (so a native head's annex globals/enums/
+    # defs survive native codegen's context filter -- issue #6754).
     JacAnnexPass(ir_in=mod, prog=target_program);
-    # An annex inherits its head module's code-context. A native (`.na.jac`)
-    # head's impl/test annexes were compiled standalone above and defaulted to
-    # SERVER; coerce them to NATIVE now that they are attached to a known-native
-    # head, so native codegen's context-filtered scan
-    # (`iter_context_stmts(..., NATIVE)`) sees the annex's globals/enums/
-    # standalone defs (issue #6754). Keyed off the HEAD's `.na.jac`, this covers
-    # both the bare `foo.impl.jac` and the variant-specific `foo.na.impl.jac`
-    # annex forms; a variant `.na.jac`'s own annexes are coerced by its own
-    # parse_str pass (same path, run while loading the variant above).
-    if file_path.endswith('.na.jac') {
-        for _annex in mod.impl_mod + mod.test_mod {
-            _coerce_native_module(_annex);
-        }
-    }
     return mod;
 }
 
@@ -764,10 +753,6 @@ impl JacCompiler.compile(
                 passes=get_inference_sched(),
                 cancel_token=options.cancel_token
             );
-            # Type the head module's annexes too: a glob/enum/standalone def in
-            # an impl annex lives off the head's `kid` tree, so the pass above
-            # never reaches it, leaving native codegen with no type (#6754).
-            self._infer_module_annexes(mod_targ, actual_program, options.cancel_token);
         } except Exception {
             # A partial inference run must not satisfy the dep-sweep guard:
             # the module would be skipped on retry with an incompletely
@@ -803,13 +788,6 @@ impl JacCompiler.compile(
                         target_program=actual_program,
                         passes=get_inference_sched(),
                         cancel_token=options.cancel_token
-                    );
-                    # Same annex-typing gap as the entry module, but for an
-                    # imported native dependency: type its impl annex so
-                    # cross-module codegen of an annex-declared glob resolves
-                    # (#6754, the imported half of the repro).
-                    self._infer_module_annexes(
-                        dep_mod, actual_program, options.cancel_token
                     );
                 } except Exception {
                     dep_mod._inference_started = False;
@@ -992,39 +970,6 @@ impl JacCompiler.run_schedule(
     }
 }
 
-impl JacCompiler._infer_module_annexes(
-    mod: uni.Module, target_program: JacProgram, cancel_token: (Event | None) = None
-) -> None {
-    sched = get_inference_sched();
-    if not sched {
-        return;
-    }
-    for annex_mod in mod.impl_mod + mod.test_mod + mod.variant_mod {
-        if annex_mod?._inference_started {
-            continue;
-        }
-        annex_mod._inference_started = True;
-        # Quiet: populate Expr.type for codegen only. User-facing type
-        # diagnostics for annex code are owned by the head module's own compile,
-        # not this auxiliary pass (same rationale as the quiet dep-inference
-        # sweep above).
-        annex_mod._inference_quiet = True;
-        try {
-            self.run_schedule(
-                mod=annex_mod,
-                target_program=target_program,
-                passes=sched,
-                cancel_token=cancel_token
-            );
-        } except Exception {
-            annex_mod._inference_started = False;
-            raise;
-        } finally {
-            annex_mod._inference_quiet = False;
-        }
-    }
-}
-
 impl JacCompiler._count_module_blocking_errors(
     target_program: JacProgram, mod_path: str
 ) -> int {
@@ -1051,10 +996,7 @@ Shared scaffold for jac_file_formatter, jac_str_formatter, and jac_file_linter.
 Returns (prog, current_mod) or (prog, None) if parse errors occurred.
 """
 impl JacCompiler._prepare_tool_program(
-    source_str: str,
-    file_path: str,
-    load_impl_annexes: bool = False,
-    load_test_annexes: bool = False
+    source_str: str, file_path: str
 ) -> tuple[JacProgram, (uni.Module | None)] {
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.jac0core.parser { parse as rd_parse }
@@ -1064,35 +1006,8 @@ impl JacCompiler._prepare_tool_program(
         prog.mod = uni.ProgramModule(main_mod=current_mod);
         return (prog, None);
     }
-    # Parse-only annex loading: just parse .impl.jac/.test.jac files
-    # without running SymTabBuildPass or any compilation passes.
-    # This avoids cascading import resolution that would compile the
-    # entire dependency graph for each formatted file.
-    if load_impl_annexes or load_test_annexes {
-        import from jaclang.jac0core.bccache { discover_annex_files }
-        if load_impl_annexes {
-            for annex_path in discover_annex_files(file_path, '.impl.jac') {
-                try {
-                    annex_src = read_file_with_encoding(annex_path);
-                    (annex_mod, _) = rd_parse(annex_src, annex_path, prog=prog);
-                    current_mod.impl_mod.append(annex_mod);
-                } except Exception {
-                    ;
-                }
-            }
-        }
-        if load_test_annexes {
-            for annex_path in discover_annex_files(file_path, '.test.jac') {
-                try {
-                    annex_src = read_file_with_encoding(annex_path);
-                    (annex_mod, _) = rd_parse(annex_src, annex_path, prog=prog);
-                    current_mod.test_mod.append(annex_mod);
-                } except Exception {
-                    ;
-                }
-            }
-        }
-    }
+    # Tooling formats each file independently; annex files are formatted as
+    # their own tool programs by the caller, so nothing is attached here.
     return (prog, current_mod);
 }
 
@@ -1101,9 +1016,7 @@ impl JacCompiler.jac_file_formatter(
     file_path: str, auto_lint: bool = False
 ) -> JacProgram {
     source_str = read_file_with_encoding(file_path);
-    (prog, current_mod) = JacCompiler._prepare_tool_program(
-        source_str, file_path, load_impl_annexes=auto_lint, load_test_annexes=auto_lint
-    );
+    (prog, current_mod) = JacCompiler._prepare_tool_program(source_str, file_path);
     if current_mod is None {
         return prog;
     }
@@ -1132,9 +1045,7 @@ impl JacCompiler.jac_str_formatter(
 """Lint a Jac file (report only, no formatting or output generation)."""
 impl JacCompiler.jac_file_linter(file_path: str) -> JacProgram {
     source_str = read_file_with_encoding(file_path);
-    (prog, current_mod) = JacCompiler._prepare_tool_program(
-        source_str, file_path, load_impl_annexes=True
-    );
+    (prog, current_mod) = JacCompiler._prepare_tool_program(source_str, file_path);
     if current_mod is None {
         return prog;
     }
