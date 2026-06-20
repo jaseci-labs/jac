@@ -21,10 +21,7 @@ walker LocalCreateTask {
 
     can create with Root entry {
         task = here ++> LocalTask(title=self.task_title);
-        created = task if task else None;
-        if created {
-            report created;
-        }
+        report task;
     }
 }
 
