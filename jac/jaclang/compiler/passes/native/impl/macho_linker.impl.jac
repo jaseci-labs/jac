@@ -368,7 +368,7 @@ def _build_code_signature(
     text_offset: int,
     text_size: int,
     ident: str = "jac-binary",
-    exec_seg_flags: int = CS_EXECSEG_MAIN_BINARY  # pass 0 for dylibs/bundles
+    exec_seg_flags: int = 0  # pass CS_EXECSEG_MAIN_BINARY for MH_EXECUTE binaries
 ) -> bytes {
     hash_size = 32;
     n_code_slots = (code_limit + CS_PAGE_SIZE - 1) // CS_PAGE_SIZE;
@@ -1526,7 +1526,13 @@ impl MachOLinker.build_executable -> bytes {
 
     # ── Build and write code signature (arm64) ───────────────────
     if is_arm64 {
-        sig = _build_code_signature(bytes(output), codesig_off, 0, text_seg_size);
+        sig = _build_code_signature(
+            bytes(output),
+            codesig_off,
+            0,
+            text_seg_size,
+            exec_seg_flags=CS_EXECSEG_MAIN_BINARY
+        );
         codesig_size = len(sig);
         actual_total = codesig_off + codesig_size;
 
@@ -1574,7 +1580,11 @@ impl MachOLinker.build_executable -> bytes {
         # Re-hash: the binary changed after writing the signature
         # (LC_CODE_SIGNATURE was patched), so rehash
         sig = _build_code_signature(
-            bytes(output[:codesig_off]), codesig_off, 0, text_seg_size
+            bytes(output[:codesig_off]),
+            codesig_off,
+            0,
+            text_seg_size,
+            exec_seg_flags=CS_EXECSEG_MAIN_BINARY
         );
         output[codesig_off:codesig_off + len(sig)] = sig;
     }
