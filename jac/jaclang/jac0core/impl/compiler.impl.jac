@@ -596,6 +596,9 @@ impl JacCompiler.parse_str(
     }
     import from pathlib { Path as _HubPath }
     target_program.mod.hub[str(_HubPath(mod.loc.mod_path).resolve())] = mod;
+    # JacAnnexPass splices each annex's body into the head module and coerces it
+    # to the head's deployment context (so a native head's annex globals/enums/
+    # defs survive native codegen's context filter -- issue #6754).
     JacAnnexPass(ir_in=mod, prog=target_program);
     return mod;
 }
@@ -993,10 +996,7 @@ Shared scaffold for jac_file_formatter, jac_str_formatter, and jac_file_linter.
 Returns (prog, current_mod) or (prog, None) if parse errors occurred.
 """
 impl JacCompiler._prepare_tool_program(
-    source_str: str,
-    file_path: str,
-    load_impl_annexes: bool = False,
-    load_test_annexes: bool = False
+    source_str: str, file_path: str
 ) -> tuple[JacProgram, (uni.Module | None)] {
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.jac0core.parser { parse as rd_parse }
@@ -1006,35 +1006,8 @@ impl JacCompiler._prepare_tool_program(
         prog.mod = uni.ProgramModule(main_mod=current_mod);
         return (prog, None);
     }
-    # Parse-only annex loading: just parse .impl.jac/.test.jac files
-    # without running SymTabBuildPass or any compilation passes.
-    # This avoids cascading import resolution that would compile the
-    # entire dependency graph for each formatted file.
-    if load_impl_annexes or load_test_annexes {
-        import from jaclang.jac0core.bccache { discover_annex_files }
-        if load_impl_annexes {
-            for annex_path in discover_annex_files(file_path, '.impl.jac') {
-                try {
-                    annex_src = read_file_with_encoding(annex_path);
-                    (annex_mod, _) = rd_parse(annex_src, annex_path, prog=prog);
-                    current_mod.impl_mod.append(annex_mod);
-                } except Exception {
-                    ;
-                }
-            }
-        }
-        if load_test_annexes {
-            for annex_path in discover_annex_files(file_path, '.test.jac') {
-                try {
-                    annex_src = read_file_with_encoding(annex_path);
-                    (annex_mod, _) = rd_parse(annex_src, annex_path, prog=prog);
-                    current_mod.test_mod.append(annex_mod);
-                } except Exception {
-                    ;
-                }
-            }
-        }
-    }
+    # Tooling formats each file independently; annex files are formatted as
+    # their own tool programs by the caller, so nothing is attached here.
     return (prog, current_mod);
 }
 
@@ -1043,9 +1016,7 @@ impl JacCompiler.jac_file_formatter(
     file_path: str, auto_lint: bool = False
 ) -> JacProgram {
     source_str = read_file_with_encoding(file_path);
-    (prog, current_mod) = JacCompiler._prepare_tool_program(
-        source_str, file_path, load_impl_annexes=auto_lint, load_test_annexes=auto_lint
-    );
+    (prog, current_mod) = JacCompiler._prepare_tool_program(source_str, file_path);
     if current_mod is None {
         return prog;
     }
@@ -1074,9 +1045,7 @@ impl JacCompiler.jac_str_formatter(
 """Lint a Jac file (report only, no formatting or output generation)."""
 impl JacCompiler.jac_file_linter(file_path: str) -> JacProgram {
     source_str = read_file_with_encoding(file_path);
-    (prog, current_mod) = JacCompiler._prepare_tool_program(
-        source_str, file_path, load_impl_annexes=True
-    );
+    (prog, current_mod) = JacCompiler._prepare_tool_program(source_str, file_path);
     if current_mod is None {
         return prog;
     }

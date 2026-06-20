@@ -33,7 +33,7 @@ def _resolve_app_path(explicit: str) -> (str | None) {
         return str(p);
     }
     # The cache directory `.jac/` matches `*.jac` because its name ends
-    # in `.jac` — filter to regular files.
+    # in `.jac` -- filter to regular files.
     jacs = sorted(
         p
         for p in Path.cwd().glob("*.jac")
@@ -351,9 +351,10 @@ def _cmd_fsck(app: str, repair: bool) -> int {
     den = r.get('dangling_edge_node') or [];
     orphan_edges = r.get('orphan_edges') or [];
     orphan_nodes = r.get('orphan_nodes') or [];
+    half_linked = r.get('half_linked_edges') or [];
     dangling_total = len(dne) + len(den);
     # Distinct referrers: nodes citing a missing edge + edges citing a missing
-    # node. Not roots specifically — any document on the citing side.
+    # node. Not roots specifically -- any document on the citing side.
     referrers_affected = len({p[0] for p in dne} | {p[0] for p in den});
     console.print_header(f"Jac DB fsck: {r.get('location', '?')}");
     console.info(
@@ -363,6 +364,11 @@ def _cmd_fsck(app: str, repair: bool) -> int {
     );
     console.info(f"orphan edges  : {len(orphan_edges)}", emoji=False);
     console.info(f"orphan nodes  : {len(orphan_nodes)}", emoji=False);
+    console.info(
+        f"half-linked   : {len(half_linked)}   "
+        "(edge cited by one endpoint only -- OCC residual)",
+        emoji=False
+    );
     if r.get('repaired') {
         c = r.get('repaired_counts') or {};
         console.success(
@@ -370,7 +376,12 @@ def _cmd_fsck(app: str, repair: bool) -> int {
             f"quarantined {c.get('quarantined', 0)} dangler(s) under "
             f"DANGLING_REF, collected {c.get('collected', 0)} orphan(s)."
         );
-    } elif dangling_total == 0 and not orphan_edges and not orphan_nodes {
+    } elif (
+        dangling_total == 0
+        and not orphan_edges
+        and not orphan_nodes
+        and not half_linked
+    ) {
         console.success("Clean: no referential-integrity violations.");
     } else {
         console.info(
@@ -384,7 +395,7 @@ def _cmd_fsck(app: str, repair: bool) -> int {
 
 def _cmd_schema_rules(app: str) -> int {
     # Loading the backend imports the app, which registers archetypes and
-    # collects their __jac_schema__ rules — the registry we list from.
+    # collects their __jac_schema__ rules -- the registry we list from.
     backend = _get_backend(app);
     if not backend {
         return 1;
@@ -420,7 +431,7 @@ def _cmd_schema_rules(app: str) -> int {
 }
 
 
-"""Entry point — dispatches to the right subcommand."""
+"""Entry point -- dispatches to the right subcommand."""
 impl db(
     action: str = 'inspect',
     sub: str = '',

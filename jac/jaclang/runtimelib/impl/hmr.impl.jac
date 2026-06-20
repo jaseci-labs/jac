@@ -274,8 +274,8 @@ impl HotReloader._recompile_client_code(
 
         # Prepend the runtime-global import the compiler relies on (shared with
         # the jac2js build, eject, and the cl test harness).
-        import from jaclang.runtimelib.client_surface { with_runtime_globals }
-        js_code = with_runtime_globals(js_code);
+        import from jaclang.runtimelib.client_surface { prepend_active_runtime_globals }
+        js_code = prepend_active_runtime_globals(js_code);
 
         # Recursively compile missing dependencies BEFORE writing this file's JS to ensure all dependencies are up to date
         manifest = mod.gen.client_manifest if mod else None;
@@ -460,13 +460,16 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
 
 """Update the entry point to reflect changes in modules."""
 impl HotReloader._update_entry_point -> None {
-    import from jaclang.runtimelib.react_entry { build_simple_react_entry_script }
+    import from jaclang.compiler.passes.ecmascript.backends.registry {
+        resolve_active_backend
+    }
+    backend = resolve_active_backend();
     output_base = Path(self.base_path) / self._client_output_dir;
     output_base.mkdir(parents=True, exist_ok=True);
     output_path = output_base / "_entry.js";
     # Skip __jacInstallErrorHandlers — handlers were bound to window during the
     # initial mount and persist across HMR re-renders.
-    entry_content = build_simple_react_entry_script(
+    entry_content = backend.build_entry_script(
         self.module_name, install_global_handlers=False
     );
     output_path.write_text(entry_content, encoding='utf-8');

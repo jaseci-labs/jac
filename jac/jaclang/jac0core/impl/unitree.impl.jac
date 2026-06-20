@@ -1036,13 +1036,45 @@ impl Module.format -> str {
 impl Module.unparse(requires_format: bool = True) -> str {
     import from jaclang.compiler.passes.tool.normalize_pass { NormalizePass }
     import from jaclang.jac0core.program { JacProgram }
-    NormalizePass(ir_in=self, prog=JacProgram());
-    if requires_format {
-        return self.format();
+    # Annex (.impl/.test) and variant statements were spliced into this tree by
+    # JacAnnexPass but belong to their own files. Unparsing the head must emit
+    # only its own statements: inlining the spliced ones would write another
+    # file's content into the head and duplicate what the annex pass re-merges
+    # on the next compile (round-trip tooling relies on each node's loc.mod_path
+    # to write changes back to the right file). Restrict the tree to head-origin
+    # nodes for the unparse, then restore. A module with nothing spliced in is
+    # left untouched.
+    own = self.loc.mod_path;
+    saved_body = self.body;
+    saved_kid = self.kid;
+    head_kid = [
+        k
+        for k in saved_kid
+        if (not k.loc.mod_path) or (k.loc.mod_path == own)
+    ];
+    filtered = len(head_kid) != len(saved_kid);
+    if filtered {
+        self.body = [
+            st
+            for st in saved_body
+            if (not st.loc.mod_path) or (st.loc.mod_path == own)
+        ];
+        self.set_kids(nodes=head_kid or [EmptyToken()]);
     }
-    import from jaclang.compiler.passes.tool.unparse_pass { UnparsePass }
-    UnparsePass(ir_in=self, prog=JacProgram());
-    return self.gen.jac;
+    try {
+        NormalizePass(ir_in=self, prog=JacProgram());
+        if requires_format {
+            return self.format();
+        }
+        import from jaclang.compiler.passes.tool.unparse_pass { UnparsePass }
+        UnparsePass(ir_in=self, prog=JacProgram());
+        return self.gen.jac;
+    } finally {
+        if filtered {
+            self.body = saved_body;
+            self.set_kids(nodes=saved_kid);
+        }
+    }
 }
 
 """Initialize whole program node."""

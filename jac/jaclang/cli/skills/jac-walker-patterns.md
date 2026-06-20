@@ -58,7 +58,7 @@ with entry {
 ## Traversal control
 
 - `skip;` ends the *current ability only* (like an early return) - the walker continues with its queue. `disengage;` halts the whole walker immediately - queued visits are discarded. Use `disengage` for search-style early exits.
-- `visit ... else { ... }` - the else body runs only when the visit enqueued **nothing**. Its main use is **get-or-create**: try to walk into a node, create it on miss, and visit the fresh one - found or created, the same downstream ability runs. `visit fresh` works directly on the connect-result list (`++>` returns a list):
+- `visit ... else { ... }` - the else body runs only when the visit enqueued **nothing**. Its main use is **get-or-create**: try to walk into a node, create it on miss, and visit the fresh one - found or created, the same downstream ability runs. `visit fresh` works directly on the connect result (`++>` returns the connected node):
 
 ```jac
 node Day {

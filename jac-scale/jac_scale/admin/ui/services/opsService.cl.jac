@@ -20,3 +20,8 @@ async def:pub getDeployHealth(token: str) -> dict {
 async def:pub getNetwork(token: str) -> dict {
     return await get("/admin/ops/network", token);
 }
+
+# pod env (allowlist-redacted).
+async def:pub getPodEnv(token: str) -> dict {
+    return await get("/admin/ops/podenv", token);
+}

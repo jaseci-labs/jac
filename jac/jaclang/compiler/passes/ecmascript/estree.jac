@@ -559,6 +559,90 @@ obj ExportAllDeclaration(Node) {
         `type: TypingLiteral['ExportAllDeclaration'] = 'ExportAllDeclaration';
 }
 
+# === JSX nodes (ESTree-JSX) ==================================================
+# Mirror the ESTree-JSX spec (https://github.com/facebook/jsx/blob/main/AST.md),
+# named with the `Jsx` casing used throughout this codebase (`uni.JsxElement`,
+# `EsJsxProcessor`, `JsxExpression`) rather than the spec's all-caps `JSX` prefix:
+# the unparser dispatches on `gen_{pascal_to_snake(type)}`, and a consecutive-caps
+# `JSX` prefix would mangle the method name (`j_s_x_element`). These print as JSX
+# *text* via `es_unparse` (Solid's `lower_view` path, Branch 3) and are never
+# handed to a real ESTree consumer, so the internal `Jsx` casing is harmless.
+"""JSX identifier — a tag or attribute name (`div`, `className`, `Foo`)."""
+obj JsxIdentifier(Node) {
+    has name: str = '',
+        `type: TypingLiteral['JsxIdentifier'] = 'JsxIdentifier';
+}
+
+"""JSX member expression — a dotted component name (`Foo.Bar`, `a.b.c`)."""
+obj JsxMemberExpression(Node) {
+    has object: (JsxMemberExpression | JsxIdentifier | None) = None,
+        property: (JsxIdentifier | None) = None,
+        `type: TypingLiteral['JsxMemberExpression'] = 'JsxMemberExpression';
+}
+
+"""JSX empty expression — the contents of an empty container `{}` (e.g. a bare
+JSX comment). Emitted as nothing."""
+obj JsxEmptyExpression(Node) {
+    has `type: TypingLiteral['JsxEmptyExpression'] = 'JsxEmptyExpression';
+}
+
+"""JSX expression container — `{expr}` in attribute-value or child position."""
+obj JsxExpressionContainer(Node) {
+    has expression: (Expression | JsxEmptyExpression | None) = None,
+        `type: TypingLiteral['JsxExpressionContainer'] = 'JsxExpressionContainer';
+}
+
+"""JSX spread attribute — `{...obj}`."""
+obj JsxSpreadAttribute(Node) {
+    has argument: (Expression | None) = None,
+        `type: TypingLiteral['JsxSpreadAttribute'] = 'JsxSpreadAttribute';
+}
+
+"""JSX attribute — `name`, `name="x"`, or `name={expr}`. A value-less attribute
+(`disabled`) carries `value = None`."""
+obj JsxAttribute(Node) {
+    has name: (JsxIdentifier | None) = None,
+        value: (Literal | JsxExpressionContainer | JsxElement | None) = None,
+        `type: TypingLiteral['JsxAttribute'] = 'JsxAttribute';
+}
+
+"""JSX opening element — `<tag …>` or `<tag … />` (self-closing)."""
+obj JsxOpeningElement(Node) {
+    has name: (JsxIdentifier | JsxMemberExpression | None) = None,
+        attributes: list[(JsxAttribute | JsxSpreadAttribute)] = [],
+        selfClosing: bool = False,
+        `type: TypingLiteral['JsxOpeningElement'] = 'JsxOpeningElement';
+}
+
+"""JSX closing element — `</tag>`."""
+obj JsxClosingElement(Node) {
+    has name: (JsxIdentifier | JsxMemberExpression | None) = None,
+        `type: TypingLiteral['JsxClosingElement'] = 'JsxClosingElement';
+}
+
+"""JSX text — literal character data between tags. `raw` (if set) is emitted
+verbatim; otherwise `value` is."""
+obj JsxText(Node) {
+    has value: str = '',
+        raw: (str | None) = None,
+        `type: TypingLiteral['JsxText'] = 'JsxText';
+}
+
+"""JSX element — an opening element, children, and (unless self-closing) a
+closing element."""
+obj JsxElement(Node) {
+    has openingElement: (JsxOpeningElement | None) = None,
+        children: list[JsxText | JsxExpressionContainer | JsxElement | JsxFragment] = [],
+        closingElement: (JsxClosingElement | None) = None,
+        `type: TypingLiteral['JsxElement'] = 'JsxElement';
+}
+
+"""JSX fragment — `<>…</>`."""
+obj JsxFragment(Node) {
+    has children: list[JsxText | JsxExpressionContainer | JsxElement | JsxFragment] = [],
+        `type: TypingLiteral['JsxFragment'] = 'JsxFragment';
+}
+
 """Represents slice operation info (e.g., arr[start:stop])."""
 obj SliceInfo {
     has start: (Node | None) = None,
@@ -572,7 +656,7 @@ obj IndexInfo {
 
 glob Statement = ExpressionStatement | BlockStatement | EmptyStatement | DebuggerStatement | WithStatement | ReturnStatement | LabeledStatement | BreakStatement | ContinueStatement | IfStatement | SwitchStatement | ThrowStatement | TryStatement | WhileStatement | DoWhileStatement | ForStatement | ForInStatement | ForOfStatement | FunctionDeclaration | VariableDeclaration | ClassDeclaration,
      Expression = (
-         Identifier | Literal | ThisExpression | ArrayExpression | ObjectExpression | FunctionExpression | ArrowFunctionExpression | UnaryExpression | UpdateExpression | BinaryExpression | AssignmentExpression | LogicalExpression | MemberExpression | ConditionalExpression | CallExpression | ChainExpression | NewExpression | SequenceExpression | YieldExpression | AwaitExpression | TemplateLiteral | TaggedTemplateExpression | ClassExpression | ImportExpression
+         Identifier | Literal | ThisExpression | ArrayExpression | ObjectExpression | FunctionExpression | ArrowFunctionExpression | UnaryExpression | UpdateExpression | BinaryExpression | AssignmentExpression | LogicalExpression | MemberExpression | ConditionalExpression | CallExpression | ChainExpression | NewExpression | SequenceExpression | YieldExpression | AwaitExpression | TemplateLiteral | TaggedTemplateExpression | ClassExpression | ImportExpression | JsxElement | JsxFragment
      ),
      Pattern = Identifier | ArrayPattern | ObjectPattern | AssignmentPattern | RestElement,
      Declaration = FunctionDeclaration | VariableDeclaration | ClassDeclaration,

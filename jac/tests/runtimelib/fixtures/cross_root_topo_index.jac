@@ -40,7 +40,7 @@ walker:priv setup_profile_only {
             visit existing;
         } else {
             fresh = here ++> Profile(username=self.username);
-            grant(fresh[0], level=ConnectPerm);
+            grant(fresh, level=ConnectPerm);
             visit fresh;
         }
     }

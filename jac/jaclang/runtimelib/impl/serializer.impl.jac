@@ -125,6 +125,10 @@ impl Serializer._serialize_value(
         }
         if isinstance(val, NodeAnchor) {
             result['edges'] = [str(e.id) for e in val.edges];
+            # Optimistic-concurrency version: the backend CASes on this when
+            # flushing edge-list changes, so a node carries its last-seen
+            # version across read -> mutate -> commit.
+            result['version'] = val.version;
             # Topology index lives only on root anchors
             if val.topology_index_data is not None
             and isinstance(val.archetype, Root) {
@@ -633,6 +637,8 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
                 '_initial_edge_ids',
                 frozenset(UUID(eid) for eid in (edge_ids or []))
             );
+            # Last-seen OCC version, CASed at commit (default 0 for legacy docs).
+            anchor.version = data.get('version', 0);
             # Topology index lives only on root anchors
             anchor.topology_index_data = None;
             if isinstance(anchor.__dict__.get('archetype'), Root) {

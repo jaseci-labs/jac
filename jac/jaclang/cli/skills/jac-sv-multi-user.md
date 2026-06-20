@@ -20,7 +20,7 @@ edge Posted {}
 # reachable by OTHER users. littleX is built on exactly this.
 def post_tweet(content: str) -> str {
     prof = [root --> [?:Profile]][0];
-    t = (prof +>:Posted:+> Tweet(content=content))[0];
+    t = prof +>:Posted:+> Tweet(content=content);
     grant(t, level=WritePerm);   # likes/comments MUTATE tweet fields -> WritePerm
     return t.content;
 }
@@ -77,7 +77,7 @@ Every served deployment has one public graph besides the per-user roots: the gue
 ```jac
 def publish(text: str) {                     # authenticated author, public post
     fresh = root.shared ++> Tweet(content=text);
-    grant(fresh[0], level=ReadPerm);         # author still owns it; open it to readers
+    grant(fresh, level=ReadPerm);            # author still owns it; open it to readers
 }
 
 def:pub read_feed() -> list[str] {           # works anonymous or logged-in

@@ -71,9 +71,9 @@ node Tweet {
     can comment with comment_tweet entry {
         current_profile = [root-->[?:Profile]];
         comment_node = current_profile[0] +>:Post():+> Comment(content=visitor.content);
-        grant(comment_node[0], level=ConnectPerm);
-        self ++> comment_node[0];
-        report comment_node[0];
+        grant(comment_node, level=ConnectPerm);
+        self ++> comment_node;
+        report comment_node;
     }
 
     def get_info -> TweetInfo {
@@ -123,7 +123,7 @@ walker visit_profile {
     can visit_profile with Root entry {
         visit [-->[?:Profile]] else {
             new_profile = here ++> Profile();
-            grant(new_profile[0], level=ConnectPerm);
+            grant(new_profile, level=ConnectPerm);
             visit new_profile;
         }
     }
@@ -158,7 +158,7 @@ walker create_tweet(visit_profile) {
 
     can tweet with Profile entry {
         tweet_node = here +>:Post():+> Tweet(content=self.content, embedding=[]);
-        grant(tweet_node[0], level=ConnectPerm);
+        grant(tweet_node, level=ConnectPerm);
         report tweet_node;
     }
 }
