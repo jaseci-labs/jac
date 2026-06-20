@@ -215,15 +215,16 @@ def _project_firestore_doc(doc: dict | None, plan: dict | None) -> dict | None {
         }
         return result;
     }
+    result = doc.copy();
     for field in plan['fields'] {
-        if field in doc {
-            del doc[field];
+        if field in result {
+            del result[field];
         }
     }
-    if plan['drop_id'] and '_id' in doc {
-        del doc['_id'];
+    if plan['drop_id'] and '_id' in result {
+        del result['_id'];
     }
-    return doc;
+    return result;
 }
 
 """Bump pending count and flush the Firestore batch when the limit is reached."""
@@ -342,7 +343,17 @@ impl FirestoreDb.find(
 impl FirestoreDb.count_documents(col_name: str, filter: dict) -> int {
     query = _apply_firestore_filters(self._get_firestore_collection(col_name), filter);
     results = query.count().get();
-    return results[0][0].value;
+    return results[0][0].value if results else 0;
+}
+
+impl FirestoreDb.create_index(
+    col_name: str, keys: dict, unique: bool = False, name: str | None = None
+) -> str {
+    raise NotImplementedError(
+        "Firestore indexes are managed via the Firebase console or "
+        "firestore.indexes.json, not through the SDK. "
+        "See https://firebase.google.com/docs/firestore/query-data/indexing"
+    );
 }
 
 impl FirestoreDb.insert_one(col_name: str, document: dict) -> InsertResult {

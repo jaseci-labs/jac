@@ -115,12 +115,7 @@ impl S3Storage.list_files(
     for page in paginator.paginate(**kwargs) {
         if "Contents" in page {
             for obj in page["Contents"] {
-                key = obj["Key"];
-                if self.prefix {
-                    yield key.replace(f"{self.prefix}/", "", 1);
-                } else {
-                    yield key;
-                }
+                yield self._strip_key_prefix(obj["Key"]);
             }
         }
     }

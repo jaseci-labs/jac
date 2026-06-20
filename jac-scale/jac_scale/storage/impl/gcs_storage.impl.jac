@@ -97,11 +97,7 @@ impl GcsStorage.list_files(
         if key.endswith("/") {
             continue;
         }
-        if self.prefix and key.startswith(f"{self.prefix}/") {
-            yield key.replace(f"{self.prefix}/", "", 1);
-        } else {
-            yield key;
-        }
+        yield self._strip_key_prefix(key);
     }
 }
 

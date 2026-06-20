@@ -25,6 +25,19 @@ class BucketStorage(Storage) {
         return path;
     }
 
+    """Strip the storage prefix from a blob key returned by the backend.
+
+    Both S3 and GCS list operations return full object keys; callers expect
+    paths relative to the configured prefix. Using startswith avoids replacing
+    a prefix occurrence buried inside the key.
+    """
+    def _strip_key_prefix(self: BucketStorage, key: str) -> str {
+        if self.prefix and key.startswith(f"{self.prefix}/") {
+            return key[len(self.prefix) + 1:];
+        }
+        return key;
+    }
+
     """Move a file by copying it to the destination then deleting the source.
 
     Note: `delete()` returns True on S3 unconditionally (DeleteObject is

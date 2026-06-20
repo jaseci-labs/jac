@@ -14,7 +14,6 @@ def get_db -> Db {
     return MongoDb(client=get_mongo_client(), db_name='jac_db');
 }
 
-"""Return a Firestore-backed Db using config/env project ID resolution."""
 impl get_firestore_db(db_name: str = 'jac_db', project_id: (str | None) = None) -> Db {
     import from jac_scale.db { get_firestore_client }
     import from jac_scale.firestore_db { FirestoreDb }

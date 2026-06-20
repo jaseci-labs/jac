@@ -32,6 +32,10 @@ obj FirestoreDb(Db) {
     ) -> list;
 
     def count_documents(col_name: str, filter: dict) -> int;
+    def create_index(
+        col_name: str, keys: dict, unique: bool = False, name: str | None = None
+    ) -> str;
+
     def insert_one(col_name: str, document: dict) -> InsertResult;
     def update_one(
         col_name: str, filter: dict, update_data: dict, upsert_mode: bool = False

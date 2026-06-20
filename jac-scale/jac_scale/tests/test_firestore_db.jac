@@ -486,6 +486,37 @@ test "firestore returns None for redis-only methods and graph persistence" {
 }
 
 
+test "firestore rejects $or filter with NotImplementedError" {
+    client = _FakeFirestoreClient();
+    db = FirestoreDb(client=client, db_name='app');
+    db.insert_one('items', {'status': 'a'});
+    db.insert_one('items', {'status': 'b'});
+
+    raised = False;
+    try {
+        db.find('items', {'$or': [{'status': 'a'}, {'status': 'b'}]});
+    } except NotImplementedError {
+        raised = True;
+    }
+    assert raised , 'Expected NotImplementedError for $or filter';
+}
+
+
+test "firestore rejects unsupported filter operator with ValueError" {
+    client = _FakeFirestoreClient();
+    db = FirestoreDb(client=client, db_name='app');
+    db.insert_one('items', {'count': 5});
+
+    raised = False;
+    try {
+        db.find('items', {'count': {'$exists': True}});
+    } except ValueError {
+        raised = True;
+    }
+    assert raised , 'Expected ValueError for unsupported operator $exists';
+}
+
+
 test "firestore config fallback" {
     old_project_id = os.environ.get('FIRESTORE_PROJECT_ID');
 
