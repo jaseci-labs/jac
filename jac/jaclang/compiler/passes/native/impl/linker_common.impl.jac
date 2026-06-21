@@ -57,7 +57,22 @@ impl _resolve_seg_vaddr(
 }
 
 
-impl _find_patch_target(
+"""Resolve a relocation's patch site. Locates the output blob holding
+`target_sec` and returns (patch_buf, patch_off, patch_vaddr): the buffer to
+write into, the byte offset of the fixup within that buffer, and the final
+virtual address of the fixup. Returns None when `target_sec` is not placed in
+the loadable image (e.g. metadata like .eh_frame), so the caller skips it.
+
+A section sits at `sec_off` within its segment's blob, and that blob loads at
+`<seg>_vaddr`; the fixup is `reloc_offset` bytes into the section. So both the
+buffer offset and the vaddr are `sec_off + reloc_offset` past the segment base.
+This is the arithmetic every ELF/Mach-O relocation loop (executable and
+shared-object) used to inline by hand — centralized here so the two cannot
+drift. (ELF previously added `sec_off` a second time to the vaddr, which only
+agreed with the correct value while a segment held a single section, i.e.
+`sec_off == 0`; this unifies on the correct form.)"""
+impl _resolve_patch_site(
+    reloc_offset: int,
     target_sec: str,
     code_sections: dict[str, tuple[int, int]],
     rodata_sections: dict[str, tuple[int, int]],
@@ -69,21 +84,27 @@ impl _find_patch_target(
     rodata_vaddr: int,
     data_vaddr: int
 ) -> tuple[bytearray, int, int] | None {
-    # Returns (buffer, sec_blob_off, segment_base_vaddr).
-    # The caller computes patch_off = sec_blob_off + rela.offset (offset within the
-    # whole buffer) and patch_vaddr = segment_base_vaddr + patch_off. Returning the
-    # SEGMENT base (not the section base sec_blob_off + segment_base) avoids
-    # double-counting sec_blob_off when multiple sections are packed into one blob
-    # (e.g. when CRT objects introduce a second .text alongside the main .ltext).
     if target_sec in code_sections {
-        off = code_sections[target_sec][0];
-        return (code_bytes, off, code_vaddr);
+        sec_off = code_sections[target_sec][0];
+        return (
+            code_bytes,
+            sec_off + reloc_offset,
+            code_vaddr + sec_off + reloc_offset
+        );
     } elif target_sec in rodata_sections {
-        off = rodata_sections[target_sec][0];
-        return (rodata_bytes, off, rodata_vaddr);
+        sec_off = rodata_sections[target_sec][0];
+        return (
+            rodata_bytes,
+            sec_off + reloc_offset,
+            rodata_vaddr + sec_off + reloc_offset
+        );
     } elif target_sec in data_sections {
-        off = data_sections[target_sec][0];
-        return (data_bytes, off, data_vaddr);
+        sec_off = data_sections[target_sec][0];
+        return (
+            data_bytes,
+            sec_off + reloc_offset,
+            data_vaddr + sec_off + reloc_offset
+        );
     }
     return None;
 }

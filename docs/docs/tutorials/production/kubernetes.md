@@ -62,7 +62,7 @@ walker:pub add_todo {
 
     can create with Root entry {
         todo = here ++> Todo(title=self.title);
-        report {"title": todo[0].title, "done": todo[0].done};
+        report {"title": todo.title, "done": todo.done};
     }
 }
 
@@ -174,6 +174,38 @@ Configure deployment via environment variables in `.env`:
 | `JWT_EXP_DELTA_DAYS` | Token expiration (days) | `7` |
 | `SSO_GOOGLE_CLIENT_ID` | Google OAuth client ID | - |
 | `SSO_GOOGLE_CLIENT_SECRET` | Google OAuth secret | - |
+
+---
+
+## Autoscaling
+
+By default jac-scale creates a Kubernetes `HorizontalPodAutoscaler` that scales pods based on average CPU utilization. Configure the bounds in `jac.toml`:
+
+```toml
+[plugins.scale.kubernetes]
+min_replicas = 2
+max_replicas = 10
+cpu_utilization_target = 70   # Scale out when average CPU exceeds 70%
+```
+
+For event-driven scaling or scale-to-zero, switch to the KEDA engine:
+
+```toml
+[plugins.scale.kubernetes]
+autoscaler_engine = "keda"
+min_replicas = 1              # default 1; floor while triggers are active
+max_replicas = 10             # default 3; ceiling for scale-out
+cpu_utilization_target = 50   # default 50; seeds a CPU trigger (requires cpu_request)
+idle_replicas = 0             # default null (uses min_replicas); set 0 for scale-to-zero
+autoscaler_polling_interval = 30   # default 30; seconds between trigger evaluations
+autoscaler_cooldown = 300          # default 300; seconds of inactivity before scaling down
+autoscaler_initial_cooldown = 0    # default 0; seconds after deploy before scale-to-zero kicks in
+```
+
+!!! note
+    KEDA must be installed on your cluster before setting `autoscaler_engine = "keda"`. See the [KEDA installation guide](https://keda.sh/docs/latest/deploy/).
+
+For the full list of autoscaling options (including event triggers, polling intervals, cooldown tuning, and authenticated triggers), see the [jac-scale Reference](../../reference/plugins/jac-scale.md#autoscaling).
 
 ---
 

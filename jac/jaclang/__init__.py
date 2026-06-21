@@ -38,6 +38,36 @@ _disabled_list = get_disabled_plugins()
 # load_setuptools_entrypoints). The disable list may be empty.
 load_plugins_with_disabling(plugin_manager, _disabled_list)
 
+
+def _register_builtin_client_providers() -> None:
+    """Register the built-in client/desktop framework hook providers.
+
+    These shipped as the separate ``jac-client`` / ``jac-desktop`` plugins; they are
+    now part of core and register directly (no entry points, no separate package).
+    Serving hooks (render_page / get_client_js / send_static_file / format_build_error)
+    are inlined into core's defaults; these providers contribute the ``[plugins.client]``
+    / ``[plugins.desktop]`` config schema, the npm dependency type, the project
+    templates (fullstack/client/mobile/desktop), plugin metadata, and the client CLI
+    commands (``build`` / ``setup`` / ``start`` + ``--npm`` / ``--cl``).
+    """
+    try:
+        from jaclang.runtimelib.client.cli import JacClientCmd
+        from jaclang.runtimelib.client.desktop_plugin_config import (
+            JacDesktopPluginConfig,
+        )
+        from jaclang.runtimelib.client.plugin_config import JacClientPluginConfig
+    except Exception as exc:  # keep core usable if the framework fails to import
+        import warnings
+
+        warnings.warn(f"Built-in client framework unavailable: {exc}", stacklevel=2)
+        return
+    for _provider in (JacClientPluginConfig, JacDesktopPluginConfig, JacClientCmd):
+        if not plugin_manager.is_registered(_provider):
+            plugin_manager.register(_provider)
+
+
+_register_builtin_client_providers()
+
 # Schedule deferred native acceleration if autonative is enabled in jac.toml
 try:
     from jaclang.project.config import get_config as _get_jac_config

@@ -2432,6 +2432,12 @@ impl DocIRGenPass.exit_archetype(nd: uni.Archetype) -> None {
             parts.pop();
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.COLON)) {
+            # Edge endpoint clause `: Src --> Tgt` -- bind the colon tight to the
+            # preceding name/base list, as `Name: Src --> Tgt` (issue #6657).
+            parts.pop();
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
         } elif (isinstance(nd.body, Sequence) and (i in nd.body)) {
             if not in_body {
                 body_parts.append(self.hard_line());
@@ -2663,13 +2669,6 @@ impl DocIRGenPass.exit_module(nd: uni.Module) -> None {
         first_kid = False;
     }
     nd.gen.doc_ir = self.concat(parts, ast_node=nd);
-    # Traverse impl modules (.impl.jac files)
-    # Only do this for the main module (not annex modules themselves)
-    if nd.annexable_by is None {
-        for impl_mod in nd.impl_mod {
-            self.traverse(impl_mod);
-        }
-    }
 }
 
 """Recursively remove all space nodes from a doc_ir tree."""

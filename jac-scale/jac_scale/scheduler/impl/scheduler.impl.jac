@@ -349,7 +349,7 @@ impl JacScaleScheduler.setup(system_user_id: str, server: Any | None = None) -> 
     db_cfg = get_scale_config().get_database_config();
     if db_cfg.get('mongodb_uri') {
         try {
-            mongo_db = Db(client=get_mongo_client());
+            mongo_db = MongoDb(client=get_mongo_client());
             self._store = MongoJobStore(_db=mongo_db, _collection=collection);
             logger.debug("MongoDB configured — jobs will be persisted");
         } except Exception as e {

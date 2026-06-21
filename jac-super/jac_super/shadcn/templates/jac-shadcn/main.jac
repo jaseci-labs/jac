@@ -1,7 +1,7 @@
 import from .app { app }
 
 cl import from ".app" { app }
-cl import ".global.css";
+cl import ".styles.global.css";
 
 cl {
     def:pub App -> JsxElement {

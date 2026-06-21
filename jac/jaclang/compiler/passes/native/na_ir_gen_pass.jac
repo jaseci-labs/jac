@@ -12,7 +12,8 @@ import from llvmlite { ir }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
-import from jaclang.jac0core.diagnostics { E5026, E5060, E5090, E5091, E9002 }
+import from jaclang.jac0core.diagnostics { E2018, E5026, E5060, E5090, E5091, E9002 }
+import from jaclang.jac0core.osp_model { OspAnalysis, OspModel, stable_osp_tag }
 
 
 # time-module function names lowered by _emit_time_call. Gated explicitly (not
@@ -55,6 +56,11 @@ glob NATIVE_RANDOM_FUNCS: set[str] = {
          "uniform",
 
      };
+
+# struct-module function names lowered by _emit_struct_call (#6404). The format
+# string is a compile-time literal, so pack/unpack/calcsize are fully resolved
+# in codegen — the canonical, sv-congruent way to reinterpret bytes ↔ scalars.
+glob NATIVE_STRUCT_FUNCS: set[str] = {"pack", "unpack", "calcsize", };
 
 # ── Sentinel refcount value for static (immortal) strings.
 # INT64_MAX = 0x7FFFFFFFFFFFFFFF — never reaches 0 even if accidentally decremented.
@@ -179,16 +185,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
         vtable_globals: dict[str, ir.GlobalVariable] = {},
         _non_overridden_methods: dict[str, set[str]] = {},
         # Object-Spatial kernel lowering (Phase 4 / issue #6146).
-        # osp_tags: stable per-archetype int type-tag (walker/node/edge),
-        #   shared by the instance __type_tag field, the is_a table, and the
-        #   descriptor table.
-        # osp_arch_kind: archetype name -> "walker" | "node" | "edge".
+        # The OSP "program facts" (archetype kinds, stable type tags, is_a
+        # relation, dispatch slots, construct usage) are NOT stored here: they are
+        # derived once by OspAnalysis.compute and held on the single store
+        # `self.ir_in.gen.osp_model`. Only target-specific codegen artifacts live
+        # on the pass.
         # osp_type_tag_field: archetype name -> struct field index holding the
         #   i64 __type_tag (fixed at 1: vtable slot is field 0).
         # osp_thunk_funcs: f"{Arch}.{ability}" -> the (JacVal,JacVal)->JacVal
         #   dispatch thunk that adapts the raw ability to a kernel Slot.fn.
-        osp_tags: dict[str, int] = {},
-        osp_arch_kind: dict[str, str] = {},
         osp_type_tag_field: dict[str, int] = {},
         # osp_reports_field: walker archetype name -> struct field index of the
         #   built-in `reports` list (fixed at 2: vtable@0, __type_tag@1). The
@@ -200,14 +205,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # thunks, so a consumer's thunk never collides with the library's
         # own `__ospthunk` symbol at link time (issue #6642 Blocker 2).
         _osp_thunk_uid: int = 0,
-        # Whether cross-module OSP materialization is SOUND for this compile.
-        # The deterministic sorted-name tag scheme only makes a library and its
-        # importer agree when the consumer's sorted OSP set equals the library's
-        # -- i.e. no local OSP archetypes and a single OSP-defining import. When
-        # this is False, imported OSP archetypes are NOT materialized, so
-        # spawn/connect/edge-ref on them fail loudly (E5090) instead of running
-        # on mismatched tags and silently computing the wrong walk (issue #6642).
-        _osp_xmod_safe: bool = True,
         # OSP archetypes IMPORTED from another native module: name ->
         #   (arch_kind, defining module name). Cross-module OSP lowering is
         #   not supported until #6146 Phases 3-4 (tag numbering and the
@@ -228,10 +225,29 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # that spawn lowering calls, so descriptors/_walk_stack exist regardless
         # of whether the program ran through a `with entry`.
         _osp_ensure_fn: (object | None) = None,
+        # __osp_kernel_inited (i8, weak): SHARED run-once guard for the OSP kernel
+        # glob-init. The kernel's adjacency / walk-stack globals (_e_src, ...) are
+        # link-merged singletons shared by every module, but __osp_setup +
+        # __osp_inited are per-module (internal). Routing the kernel glob-init
+        # through this one weak flag keeps it from re-running per module and
+        # wiping a graph an earlier module built (the cross-module spawn bug).
+        _osp_kernel_inited_gv: (object | None) = None,
+        # The kernel glob-init Function (`__jac_glob_init_osp_kernel`), stashed by
+        # _emit_osp_setup. _codegen_entry guards the program-entry call to it by
+        # IDENTITY against this, not by re-matching the symbol name — so the guard
+        # can never silently drift from the symbol the kernel link produces (a
+        # name mismatch surfaces as a loud undefined-symbol link error instead).
+        _osp_kernel_glob_init_fn: (object | None) = None,
         # __osp_filter_type(list, node_tag) -> list: filters edge-ref neighbor
-        # handles by node type via the is_a table (`[--> [?:Area]]`); built once
-        # in _emit_osp_setup alongside the runtime callbacks (issue #6642).
+        # handles by node type via the is_a callback (`[--> [?:Area]]`); built
+        # once in _emit_osp_setup alongside the runtime callbacks (issue #6642).
         _osp_filter_fn: (object | None) = None,
+        # __osp_h2i(stable_tag) -> i64 and __osp_is_a(t, b) -> i1: the stable-tag
+        # -> local-index translation and the subtype query, emitted in
+        # _emit_osp_setup and reused by the callbacks and the filter so
+        # cross-module dispatch agrees on globally-stable hash tags (#6642).
+        _osp_h2i_fn: (object | None) = None,
+        _osp_is_a_fn: (object | None) = None,
         # Tuple support (Phase 9)
         tuple_types: dict[str, object] = {},
         # Global variable support (Phase 11)
@@ -255,6 +271,17 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # File I/O support (Phase 15)
         _file_struct_type: (object | None) = None,
         _file_helpers_emitted: bool = False,
+        # Binary file objects: open(path, "rb") -> BinaryFile whose read()
+        # returns length-aware bytes (#6404). Same struct layout as File.
+        _binary_file_struct_type: (object | None) = None,
+        _binary_file_helpers_emitted: bool = False,
+        # Length-aware bytes type: pointer to { i64 len, [0 x i8] data } — a
+        # single rc_alloc'd block so embedded NULs survive and len() is exact
+        # (#6404 Track 0). Distinct from str (i8*) so dispatch never confuses
+        # the two.
+        _bytes_struct_type: (object | None) = None,
+        # #6749: memoized __jac_bytes_repr helper (one per module).
+        _bytes_repr_function: (object | None) = None,
         # Iterator protocol (#6403): boxed JacIter + per-kind state structs.
         _jac_iter_type: (object | None) = None,
         _iter_structs_registered: bool = False,
@@ -363,12 +390,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Print support
     def _get_printf -> ir.Function;
     def _emit_print(nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None);
+    def _jacval_tags_for_type(name: str) -> list[int];
     def _get_fmt_string(fmt: str) -> ir.GlobalVariable;
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     def _parse_callable_type_string(s: str) -> (ir.Type | None);
     def _resolve_primitive_name(expr: (uni.UniNode | None)) -> (ir.Type | None);
+    def _emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type;
     # Unified TypeBase -> LLVM lowering (consumes the central type checker's
     # result; returns None when a type category is not yet handled).
     def _lower_type(t: any) -> (ir.Type | None);
@@ -390,6 +420,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _struct_name_of(expr: (uni.UniNode | None)) -> (str | None);
     # Lowered LLVM type of a checked list type's element.
     def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
+    # Lowered LLVM element type of a checked Iterator[T] expression (#6403).
+    def _iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     # Element spec ("i64"/"f64"/"ptr"/"jacval") of a checked list type.
     def _elem_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     def _resolve_type_str(type_name: str) -> ir.Type;
@@ -472,20 +504,22 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _walk_imported_module_types(imported_mod: uni.Module) -> None;
     def _walk_imported_module_type_names(imported_mod: uni.Module) -> None;
     def _walk_imported_module_abilities(imported_mod: uni.Module) -> None;
+    def _register_imported_hierarchy(imported_mod: uni.Module) -> None;
     def _register_imported_archetype(arch: uni.Archetype) -> None;
     def _forward_declare_archetype_methods(arch: uni.Archetype) -> None;
     def _register_imported_globals(nd: uni.GlobalVars, source_path: str = "") -> None;
     def _forward_declare_imported_ability(nd: uni.Ability) -> None;
     def _register_archetypes(module: uni.Module) -> None;
     # Object-Spatial kernel lowering (Phase 4 / issue #6146)
-    def _register_osp_tags(archetypes: list[uni.Archetype]) -> None;
-    def _register_imported_osp_archetypes(imported_mod: uni.Module) -> None;
-    def _osp_cross_module_safe(imported_mods: list) -> bool;
-    def _module_uses_osp(module: uni.Module) -> bool;
+    # Derive the single OSP-fact store (`self.ir_in.gen.osp_model`) over the
+    # local + imported OSP archetypes; the backends read it, never re-deriving.
+    def _compute_osp_model(archetypes: list[uni.Archetype]) -> None;
+    # True when this module participates in OSP (declares an event ability or
+    # uses a construct), the gate for kernel registration + descriptor setup.
+    def _osp_active -> bool;
     def _xmod_osp_help(names: list) -> (str | None);
     def _register_osp_kernel_module -> None;
     def _emit_osp_thunk(arch_name: str, method: uni.Ability) -> None;
-    def _osp_trigger_names(nd: (uni.UniNode | None)) -> list[str];
     def _emit_osp_setup -> None;
     def _osp_rc_new(struct_name: str) -> (ir.Value | None);
     def _osp_make_immortal(ptr: ir.Value) -> None;
@@ -496,6 +530,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _osp_build_slot_list(pairs: list) -> ir.Value;
     def _osp_collect_slots(arch_name: str, is_entry: bool) -> list;
+    def _osp_emit_h2i_fn(hash_global: ir.GlobalVariable, n: int) -> ir.Function;
     def _osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> dict;
     def _osp_emit_filter_fn(
         isa_global: ir.GlobalVariable, n: int
@@ -534,7 +569,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _osp_generic_edge -> (ir.Value | None);
     def _spawn_operand_name(nd: uni.UniNode) -> (str | None);
     def _is_walker_arch(name: str) -> bool;
-    def _codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None);
+    def _codegen_instantiation(nd: (uni.FuncCall | uni.Name)) -> (ir.Value | None);
     def _codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _codegen_field_access(
         obj_val: ir.Value, field_name: str, type_name: str
@@ -554,6 +589,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         key_size: int = 0
     ) -> ir.Value;
 
+    def _dict_key_spec(key_type: ir.Type) -> tuple;
     def _emit_rc_alloc_container(
         b: ir.IRBuilder,
         container_ptr_type: ir.Type,
@@ -667,6 +703,36 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Native stdlib: random module (CPython-faithful MT19937, issue #6404)
     def _mt_ensure -> None;
     def _emit_random_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    # Native stdlib: struct module (byte ↔ scalar reinterpret, issue #6404)
+    def _emit_struct_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_struct_pack(
+        nd: uni.FuncCall, params: list, fields: list, total: int, little: bool
+    ) -> (ir.Value | None);
+
+    def _emit_struct_unpack(
+        nd: uni.FuncCall, params: list, fields: list, total: int, little: bool
+    ) -> (ir.Value | None);
+    # Length-aware bytes type (#6404 Track 0)
+    def _get_bytes_struct_type -> ir.Type;
+    def _bytes_alloc(n: ir.Value) -> ir.Value;
+    def _bytes_data_ptr(bv: ir.Value) -> ir.Value;
+    def _bytes_len_val(bv: ir.Value) -> ir.Value;
+    def _bytes_from_raw(src: ir.Value, n: ir.Value) -> ir.Value;
+    def _make_global_bytes(data: bytes) -> ir.Value;
+    def _is_bytes_value(v: ir.Value) -> bool;
+    def _codegen_bytes_index(bv: ir.Value, idx: ir.Value) -> (ir.Value | None);
+    def _codegen_bytes_slice(bv: ir.Value, slice_node: object) -> (ir.Value | None);
+    def _emit_bytes_eq(left: ir.Value, right: ir.Value, negate: bool) -> ir.Value;
+    # #6749: the rest of the bytes op surface, length-aware on jacbytes*.
+    def _is_bytes_type(t: ir.Type) -> bool;
+    def _emit_bytes_truthy(bv: ir.Value) -> ir.Value;
+    def _emit_bytes_repeat(bv: ir.Value, count: ir.Value) -> ir.Value;
+    def _emit_bytes_contains(needle: ir.Value, haystack: ir.Value) -> ir.Value;
+    def _emit_bytes_cmp(left: ir.Value, right: ir.Value, op_sym: str) -> ir.Value;
+    def _emit_bytes_repr(bv: ir.Value) -> ir.Value;
+    def _bytes_repr_fn -> ir.Function;
+    def _make_bytes_iter(bytes_val: ir.Value) -> ir.Value;
+    def _bytes_iter_next_fn -> ir.Function;
     # Phase 8: Entry Block
     def _codegen_entry(nd: uni.ModuleCode) -> None;
     # Phase 9: Tuples
@@ -772,7 +838,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_try(nd: uni.TryStmt) -> None;
     # Phase 15: File I/O
     def _get_file_struct_type -> ir.Type;
+    def _get_binary_file_struct_type -> ir.Type;
+    def _register_file_like_struct(name: str) -> ir.Type;
     def _emit_file_helpers -> None;
+    def _emit_binary_file_helpers -> None;
+    def _emit_file_like_helpers(
+        struct_name: str, struct_type: ir.Type, binary: bool
+    ) -> None;
+
     def _emit_open(nd: uni.FuncCall) -> (ir.Value | None);
     # Iterator protocol (#6403)
     def _ensure_iter_types -> None;
@@ -793,12 +866,36 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> ir.Value;
 
     def _make_str_iter(str_val: ir.Value) -> ir.Value;
+    # Container iterators for first-class iter() over dict/set/range (#6403 M1).
+    def _dict_iter_next_fn(dict_key: str) -> ir.Function;
+    def _make_dict_iter(dict_val: ir.Value, dict_key: str) -> ir.Value;
+    def _set_iter_next_fn(elem_type_name: str, elem_type: ir.Type) -> ir.Function;
+    def _make_set_iter(
+        set_val: ir.Value, elem_type_name: str, elem_type: ir.Type
+    ) -> ir.Value;
+
+    def _range_iter_next_fn -> ir.Function;
+    def _make_range_iter(range_val: ir.Value) -> ir.Value;
     def _make_iter_from_value(val: ir.Value, expr: uni.UniNode) -> (tuple | None);
     def _build_iter_from_expr(expr: uni.UniNode) -> (tuple | None);
+    # First-class next(it): pull one element (StopIteration at exhaustion).
+    def _codegen_next(nd: uni.FuncCall) -> (ir.Value | None);
     def _make_map_iter(up: tuple, fn: ir.Function) -> (tuple | None);
     def _make_filter_iter(up: tuple, pred: ir.Function) -> (tuple | None);
     def _make_enumerate_iter(up: tuple) -> (tuple | None);
     def _make_zip_iter(up_a: tuple, up_b: tuple) -> (tuple | None);
+    # User-defined __iter__/__next__ bridged into the protocol (#6403 M2).
+    def _resolve_method(arch_name: str, method_name: str) -> (ir.Function | None);
+    def _arch_implements_iter(arch_name: str) -> bool;
+    def _user_iter_next_fn(
+        iter_struct: str, next_method_fn: ir.Function, elem_type: ir.Type
+    ) -> ir.Function;
+
+    def _make_user_iter(it_obj: ir.Value, iter_struct: str) -> (tuple | None);
+    def _make_user_iter_from_obj(
+        obj_val: ir.Value, struct_name: str, expr: uni.UniNode
+    ) -> (tuple | None);
+
     def _try_iter_protocol_for(nd: uni.InForStmt) -> bool;
     # Phase 16: Context Managers
     def _codegen_with(nd: uni.WithStmt) -> None;

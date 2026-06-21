@@ -540,6 +540,7 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.LambdaExpr():
             return_type: TypeBase = types.UnknownType();
             parameters: list[types.Parameter] = [];
+            has_unresolved_param = False;
             # Bidirectional inference: if expected_type is a FunctionType,
             # seed untyped lambda params from the expected callable signature.
             expected_func: types.FunctionType | None = None;
@@ -556,6 +557,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     );
                 }
                 sig_params = expr.signature.get_parameters();
+                seeded_param = False;
                 for (idx, param) in enumerate(sig_params) {
                     param_type: TypeBase | None = None;
                     if param.type_tag {
@@ -568,6 +570,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                         and idx < len(expected_func.parameters)
                     ) {
                         param_type = expected_func.parameters[idx].param_type;
+                        # Seed onto the Name (read by _get_type_of_symbol) and
+                        # the ParamVar (read by hover).
+                        if param_type is not None {
+                            param.name.type = param_type;
+                            param.type = param_type;
+                            seeded_param = True;
+                        }
+                    }
+                    if param_type is None {
+                        has_unresolved_param = True;
                     }
                     parameters.append(
                         types.Parameter(
@@ -578,6 +590,19 @@ impl TypeEvaluator._get_type_of_expression_core(
                         )
                     );
                 }
+                # Re-resolve the body against the seeded params.
+                if seeded_param and isinstance(expr.body, uni.Expr) {
+                    self._invalidate_expr_type_cache(expr.body);
+                }
+            }
+            # Skip the body for a speculative overload candidate whose param
+            # is still Unknown; the matching overload re-evaluates it seeded.
+            if has_unresolved_param {
+                return types.FunctionType(
+                    func_name="<lambda>",
+                    return_type=types.UnknownType(),
+                    parameters=parameters,
+                );
             }
             if isinstance(expr.body, uni.Expr) {
                 body_type = self.get_type_of_expression(expr.body);
@@ -2163,6 +2188,9 @@ impl TypeEvaluator._get_type_of_expression_core(
             #   1. FilterCompr `[?:T]` directly in chain (e.g. [-->[?:Todo]])
             #   2. EdgeOpRef typed-edge filter `->:T:->` — when edges_only,
             #      the result element is T itself. Issue #5885 gap 6.
+            #   3. EdgeOpRef whose edge T declares endpoint node types
+            #      (`edge T: Src --> Tgt`) — a neighbour traversal narrows to
+            #      the declared node type for the direction. Issue #6657.
             # Bare untyped traversals stay as `list[<Any>]` so visit, spawn,
             # and other consumers retain their gradual-typing semantics.
             if self.prefetch and self.prefetch.list_class {
@@ -2183,6 +2211,22 @@ impl TypeEvaluator._get_type_of_expression_core(
                         ft = self.get_type_of_expression(chain_item.filter_cond.f_type);
                         if isinstance(ft, types.ClassType) and ft.is_edge_type() {
                             element_type = self._convert_to_instance(ft);
+                        }
+                    } elif (
+                        isinstance(chain_item, uni.EdgeOpRef)
+                        and not expr.edges_only
+                        and chain_item.filter_cond is not None
+                        and chain_item.filter_cond.f_type is not None
+                    ) {
+                        # `[... ->:T:-> ...]` neighbour: if T declares endpoint
+                        # node types, narrow to the declared node for the
+                        # traversal direction (out -> target, in -> source).
+                        ft = self.get_type_of_expression(chain_item.filter_cond.f_type);
+                        if isinstance(ft, types.ClassType) and ft.is_edge_type() {
+                            ep = self._edge_endpoint_type(ft, chain_item.edge_dir);
+                            if ep is not None {
+                                element_type = self._convert_to_instance(ep);
+                            }
                         }
                     }
                 }
@@ -2263,6 +2307,10 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     return param_type;
                 }
                 return self._convert_to_instance(annotation_type);
+            }
+            # Honor a type seeded onto the Name by lambda inference.
+            if node_.name.type is not None {
+                return node_.name.type;
             }
 
         # This actually defined in the function getTypeForDeclaration();
@@ -3068,6 +3116,12 @@ impl TypeEvaluator._in_native_context -> bool {
     if cur is None or not isinstance(cur, uni.UniNode) {
         return False;
     }
+    # An explicit `na { ... }` block is native regardless of file extension —
+    # use the canonical ancestor walk so a fixture or app written as `.jac`
+    # gets the same native ABI/coercion rules as a whole `.na.jac` module.
+    if cur.in_native_context() {
+        return True;
+    }
     mod = cur.find_parent_of_type(uni.Module);
     if mod is None or mod.loc is None {
         return False;
@@ -3187,6 +3241,14 @@ impl TypeEvaluator.assign_type(
             return True;
         }
         if isinstance(dest_type, types.TypeVarType) {
+            return True;
+        }
+        # Native lowers `any` to a tagged `JacVal` union and unboxes it to the
+        # destination type at the coercion seam (`_unbox_from_jacval`), so
+        # `any -> concrete` is a real runtime coercion here, not a silent leak.
+        # Restore gradual typing in native code to keep e.g. `z: int = a`
+        # (a: any) congruent with the sv pathway (#6421).
+        if self._in_native_context() {
             return True;
         }
         return False;
@@ -3537,14 +3599,23 @@ impl TypeEvaluator.get_type_of_expression(
     if isinstance(node_, uni.Ability) {
         return self.get_type_of_ability(node_);
     }
-    # Use cached result if available, UNLESS expected_type is provided
-    # for a container literal or comprehension that could benefit from
-    # bidirectional inference (ListCompr also covers Set/Gen comprehensions
-    # by inheritance).
+    # Use cached result if available, UNLESS expected_type is provided for a
+    # container literal, comprehension, or lambda that benefits from
+    # bidirectional inference (ListCompr also covers Set/Gen comprehensions; a
+    # lambda re-evaluates so the expected callable can seed its params).
     if node_.type is not None {
         if expected_type is None
         or not isinstance(
-            node_, (uni.ListVal, uni.DictVal, uni.SetVal, uni.TupleVal, uni.ListCompr)
+            node_,
+            (
+                uni.ListVal,
+                uni.DictVal,
+                uni.SetVal,
+                uni.TupleVal,
+                uni.ListCompr,
+                uni.LambdaExpr,
+
+            )
         ) {
             # Whole-expression CFG narrowing: chained subscripts like
             # `self.squares[r][c]` aren't narrowed by the AtomTrailer

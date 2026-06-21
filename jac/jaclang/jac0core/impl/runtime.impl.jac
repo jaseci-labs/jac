@@ -186,14 +186,45 @@ impl JacNode.get_edges(
     edges: OrderedDict[(EdgeAnchor, EdgeArchetype)] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
-        for anchor in nanch.edges {
+        # Snapshot: resolve_ref may prune nanch.edges while healing a dangler.
+        for stub in `list(nanch.edges) {
+            `edge = resolve_ref(stub, nanch);
+            if `edge is None {
+                continue;  # dangling edge doc: healed (pruned + quarantined)
+            }
+            source = resolve_ref(`edge.source, `edge);
+            target = resolve_ref(`edge.target, `edge);
+            if source is None or target is None {
+                # Edge points at a ghost endpoint. Prune the dead edge ONLY if
+                # that endpoint is genuinely gone; a recoverable (quarantined)
+                # endpoint keeps its edge so `jac db recover` can restore it.
+                gmem = JacRuntimeInterface.get_context().mem;
+                # Prune the dead edge if EITHER missing endpoint is genuinely
+                # gone. resolve_ref already filed a DANGLING_REF row for the
+                # missing endpoint; is_recoverable_quarantine excludes those,
+                # so that fresh row does not poison this check into skipping
+                # the prune. An endpoint that is only recoverable-quarantined
+                # (schema drift) keeps its edge for `jac db recover`.
+                dead = (
+                    (
+                        source is None
+                        and not gmem.is_recoverable_quarantine(`edge.source.id)
+                    )
+                    or (
+                        target is None
+                        and not gmem.is_recoverable_quarantine(`edge.target.id)
+                    )
+                );
+                if dead {
+                    gmem.quarantine_ref(nanch, `edge);
+                }
+                continue;
+            }
             effective_dir = EdgeDir.ANY
-                if anchor.is_undirected
+                if `edge.is_undirected
                 else destination.direction;
             if (
-                (source := anchor.source)
-                and (target := anchor.target)
-                and destination.edge_filter(anchor.archetype)
+                destination.edge_filter(`edge.archetype)
                 and source.archetype
                 and target.archetype
             ) {
@@ -203,7 +234,7 @@ impl JacNode.get_edges(
                     and destination.node_filter(target.archetype)
                     and JacRuntimeInterface.check_read_access(target)
                 ) {
-                    edges[anchor] = anchor.archetype;
+                    edges[`edge] = `edge.archetype;
                 }
                 if (
                     (effective_dir in [EdgeDir.IN, EdgeDir.ANY])
@@ -211,7 +242,7 @@ impl JacNode.get_edges(
                     and destination.node_filter(source.archetype)
                     and JacRuntimeInterface.check_read_access(source)
                 ) {
-                    edges[anchor] = anchor.archetype;
+                    edges[`edge] = `edge.archetype;
                 }
             }
         }
@@ -229,14 +260,43 @@ impl JacNode.get_edges_with_node(
     loc: OrderedDict[((NodeAnchor | EdgeAnchor), (NodeArchetype | EdgeArchetype))] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
-        for anchor in nanch.edges {
+        for stub in `list(nanch.edges) {
+            `edge = resolve_ref(stub, nanch);
+            if `edge is None {
+                continue;
+            }
+            source = resolve_ref(`edge.source, `edge);
+            target = resolve_ref(`edge.target, `edge);
+            if source is None or target is None {
+                # Edge points at a ghost endpoint; prune only if genuinely gone
+                # (a recoverable quarantined endpoint keeps its edge).
+                gmem = JacRuntimeInterface.get_context().mem;
+                # Prune the dead edge if EITHER missing endpoint is genuinely
+                # gone. resolve_ref already filed a DANGLING_REF row for the
+                # missing endpoint; is_recoverable_quarantine excludes those,
+                # so that fresh row does not poison this check into skipping
+                # the prune. An endpoint that is only recoverable-quarantined
+                # (schema drift) keeps its edge for `jac db recover`.
+                dead = (
+                    (
+                        source is None
+                        and not gmem.is_recoverable_quarantine(`edge.source.id)
+                    )
+                    or (
+                        target is None
+                        and not gmem.is_recoverable_quarantine(`edge.target.id)
+                    )
+                );
+                if dead {
+                    gmem.quarantine_ref(nanch, `edge);
+                }
+                continue;
+            }
             effective_dir = EdgeDir.ANY
-                if anchor.is_undirected
+                if `edge.is_undirected
                 else destination.direction;
             if (
-                (source := anchor.source)
-                and (target := anchor.target)
-                and destination.edge_filter(anchor.archetype)
+                destination.edge_filter(`edge.archetype)
                 and source.archetype
                 and target.archetype
             ) {
@@ -246,7 +306,7 @@ impl JacNode.get_edges_with_node(
                     and destination.node_filter(target.archetype)
                     and JacRuntimeInterface.check_read_access(target)
                 ) {
-                    loc[anchor] = anchor.archetype;
+                    loc[`edge] = `edge.archetype;
                     loc[target] = target.archetype;
                 }
                 if (
@@ -255,7 +315,7 @@ impl JacNode.get_edges_with_node(
                     and destination.node_filter(source.archetype)
                     and JacRuntimeInterface.check_read_access(source)
                 ) {
-                    loc[anchor] = anchor.archetype;
+                    loc[`edge] = `edge.archetype;
                     loc[source] = source.archetype;
                 }
             }
@@ -269,17 +329,53 @@ impl JacNode.edges_to_nodes(
     origin: list[NodeArchetype], destination: ObjectSpatialDestination
 ) -> list[NodeArchetype] {
     _prefetch_edges(origin);
+    # Read-set OCC: snapshot the version of every node this request reads an
+    # out-traversal from (here the per-hop origins, so multi-hop fallback walks
+    # take a dependency on intermediate nodes too). `refs` already recorded the
+    # path's first origin before the strategy split; this covers the rest.
+    JacRuntimeInterface.get_context().note_traversal_reads(
+        [nd.__jac__ for nd in origin]
+    );
     nodes: OrderedDict[(NodeAnchor, NodeArchetype)] = OrderedDict();
     for nd in origin {
         nanch = nd.__jac__;
-        for anchor in nanch.edges {
+        for stub in `list(nanch.edges) {
+            `edge = resolve_ref(stub, nanch);
+            if `edge is None {
+                continue;
+            }
+            source = resolve_ref(`edge.source, `edge);
+            target = resolve_ref(`edge.target, `edge);
+            if source is None or target is None {
+                # Edge points at a ghost endpoint; prune only if genuinely gone
+                # (a recoverable quarantined endpoint keeps its edge).
+                gmem = JacRuntimeInterface.get_context().mem;
+                # Prune the dead edge if EITHER missing endpoint is genuinely
+                # gone. resolve_ref already filed a DANGLING_REF row for the
+                # missing endpoint; is_recoverable_quarantine excludes those,
+                # so that fresh row does not poison this check into skipping
+                # the prune. An endpoint that is only recoverable-quarantined
+                # (schema drift) keeps its edge for `jac db recover`.
+                dead = (
+                    (
+                        source is None
+                        and not gmem.is_recoverable_quarantine(`edge.source.id)
+                    )
+                    or (
+                        target is None
+                        and not gmem.is_recoverable_quarantine(`edge.target.id)
+                    )
+                );
+                if dead {
+                    gmem.quarantine_ref(nanch, `edge);
+                }
+                continue;
+            }
             effective_dir = EdgeDir.ANY
-                if anchor.is_undirected
+                if `edge.is_undirected
                 else destination.direction;
             if (
-                (source := anchor.source)
-                and (target := anchor.target)
-                and destination.edge_filter(anchor.archetype)
+                destination.edge_filter(`edge.archetype)
                 and source.archetype
                 and target.archetype
             ) {
@@ -605,6 +701,7 @@ impl JacBasics.commit(anchor: Anchor | Archetype | None = None) -> None {
     }
     ctx = JacRuntimeInterface.get_context();
     ctx.mem.commit(anchor);
+    ctx.run_pending_effects();
 }
 
 """Async commit - persists through the async Memory surface."""
@@ -614,6 +711,12 @@ impl JacBasics.acommit(anchor: Anchor | Archetype | None = None) -> None {
     }
     ctx = JacRuntimeInterface.get_context();
     await ctx.mem.acommit(anchor);
+    ctx.run_pending_effects();
+}
+
+"""Register a post-commit effect on the current execution context."""
+impl JacBasics.on_commit(callback: Callable) -> None {
+    JacRuntimeInterface.get_context().on_commit(callback);
 }
 
 """Purge current or target graph."""
@@ -826,10 +929,34 @@ impl JacBasics.jac_import(
         module_name = target;
     }
     caller_dir = base_path if os.path.isdir(base_path) else os.path.dirname(base_path);
+    # Anchor imports to the project root (the nearest `jac.toml` dir) in addition
+    # to the importing file's own directory. This lets a no-dot import like
+    # `engine.math.vec3` resolve as "project-root absolute" from anywhere in the
+    # project -- including a test file sitting in a `tests/` subdirectory -- and
+    # lets Python's PathFinder build pure namespace packages (directories with no
+    # direct `.jac` file, only sub-packages) that the Jac meta-importer skips.
+    # The file's own directory still comes first so sibling imports are unchanged.
+    project_root = find_jac_project_root(caller_dir);
+    roots_to_add = [];
+    for d in [caller_dir, project_root] {
+        if (d and (d not in sys.path) and (d not in roots_to_add)) {
+            roots_to_add.append(d);
+        }
+    }
     original_path = None;
-    if (caller_dir and (caller_dir not in sys.path)) {
+    if roots_to_add {
         original_path = sys.path.copy();
-        sys.path.insert(0, caller_dir);
+        for d in reversed(roots_to_add) {
+            sys.path.insert(0, d);
+        }
+    }
+    # Mark the importing file's directory as the active import base so that any
+    # bare imports executed while this module loads resolve against it first
+    # (own-directory-first), matching compile-time resolution. Balanced by the
+    # pop_import_base() in the finally below.
+    pushed_base = bool(caller_dir);
+    if pushed_base {
+        push_import_base(caller_dir);
     }
     try {
         if (override_name == '__main__') {
@@ -916,6 +1043,9 @@ impl JacBasics.jac_import(
         }
         return (module, );
     } finally {
+        if pushed_base {
+            pop_import_base();
+        }
         if (original_path is not None) {
             sys.path[:] = original_path;
         }
@@ -1144,6 +1274,14 @@ impl JacBasics.refs(
             last.nd = lambda i: any : (orig_nd(i) and post_filter(i));
         }
     }
+    # Read-set OCC: record the origin versions this traversal reads up front,
+    # independent of which strategy resolves it. The planner fast path
+    # (topology_index / backend pushdown) and the edge-only path both return
+    # without ever touching `edges_to_nodes`, so capturing here is what keeps a
+    # check-then-create resolved by the index from silently skipping the
+    # commit-time CAS that stops duplicate child creation (#6266).
+    ctx = JacRuntimeInterface.get_context();
+    ctx.note_traversal_reads([nd.__jac__ for nd in path.origin]);
     # Try the storage-aware planner for non-edge-only queries. The planner
     # owns the strategy ladder: backend pushdown (e.g. Mongo `_id $in + field`
     # predicates) → topology_index narrowing → batch_get materialization. It
@@ -1151,7 +1289,6 @@ impl JacBasics.refs(
     # the caller must fall back to the linear edge-walk below.
     if not path.edge_only {
         import from jaclang.runtimelib.planner { execute_path }
-        ctx = JacRuntimeInterface.get_context();
         planned = execute_path(ctx.mem, path, slc);
         if planned is not None {
             return [
@@ -1213,9 +1350,10 @@ impl JacBasics.connect(
     undir: bool = False,
     conn_assign: (tuple[(tuple, tuple)] | None) = None,
     edges_only: bool = False
-) -> (list[NodeArchetype] | list[EdgeArchetype]) {
+) -> (NodeArchetype | list[NodeArchetype] | list[EdgeArchetype]) {
     left = [left] if isinstance(left, NodeArchetype) else left;
-    right = [right] if isinstance(right, NodeArchetype) else right;
+    right_is_node = isinstance(right, NodeArchetype);
+    right = [right] if right_is_node else right;
     edges = [];
     for i in left {
         _left = i.__jac__;
@@ -1238,7 +1376,12 @@ impl JacBasics.connect(
             }
         }
     }
-    return right if not edges_only else edges;
+    if edges_only {
+        return edges;
+    }
+    # Mirror the right-hand side: a single node yields a node, a list yields
+    # a list. Keeps `a ++> b` returning `b` instead of wrapping it in `[b]`.
+    return right[0] if right_is_node else right;
 }
 
 """Jac's disconnect operator feature."""
@@ -1471,15 +1614,12 @@ impl JacClientBundle.build_client_bundle(
     return builder.build(module, force=force);
 }
 
-"""Format a build error for display.
-
-    Plugins can override this hook to provide rich error formatting.
-    Default implementation returns the raw error output.
-    """
+"""Format a build error for display (built-in client diagnostics)."""
 impl JacClientBundle.format_build_error(
     error_output: str, project_dir: Path, config: object = None
 ) -> str {
-    return error_output;
+    import from jaclang.runtimelib.client.serving { JacClient }
+    return JacClient.format_build_error(error_output, project_dir, config);
 }
 
 """Get the console instance to use for CLI output.
@@ -1818,63 +1958,21 @@ impl JacAPIServer.create_server(
     );
 }
 
-"""Render HTML page for client function."""
+"""Render HTML page for client function (built-in client framework)."""
 impl JacAPIServer.render_page(
     introspector: ModuleIntrospector,
     function_name: str,
     args: dict[(str, Any)],
     username: str
 ) -> dict[(str, Any)] {
-    import from jaclang.runtimelib.serializer { Serializer }
-    introspector.load();
-    available_exports = (
-        `set(introspector._client_manifest.get('exports', []))
-        or `set(introspector.get_client_functions().keys())
-    );
-    if (function_name not in available_exports) {
-        raise ValueError(f"Client function '{function_name}' not found");
-    }
-    bundle_hash = introspector.ensure_bundle();
-    arg_order = `list(
-        introspector._client_manifest.get('params', {}).get(function_name, [])
-    );
-    globals_payload = {
-        name: Serializer.serialize(value, api_mode=True)
-        for (name, value) in introspector._collect_client_globals().items()
-    };
-    initial_state = {
-        'module': introspector._module.__name__
-            if introspector._module
-            else introspector.module_name,
-        'function': function_name,
-        'args': {
-            key: Serializer.serialize(value, api_mode=True)
-            for (key, value) in args.items()
-        },
-        'globals': globals_payload,
-        'argOrder': arg_order,
-        'endpointEffects': introspector._client_manifest.get('endpoint_effects', {})
-    };
-    safe_initial_json = json.dumps(initial_state).replace('</', '<\\/');
-    page = f'<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><title>{html.escape(
-        function_name
-    )}</title></head><body><div id="__jac_root"></div><script id="__jac_init__" type="application/json">{safe_initial_json}</script><script type="module" src="/static/client.js?hash={bundle_hash}"></script></body></html>';
-    return {
-        'html': page,
-        'bundle_hash': bundle_hash,
-        'bundle_code': introspector._bundle.code
-    };
+    import from jaclang.runtimelib.client.serving { JacClient }
+    return JacClient.render_page(introspector, function_name, args, username);
 }
 
-"""Get the client JavaScript bundle code.
-
-    Plugins can override this hook to provide custom bundle serving logic
-    (e.g., serving Vite-built PWA bundles).
-"""
+"""Get the client JavaScript bundle code (built-in client framework)."""
 impl JacAPIServer.get_client_js(introspector: ModuleIntrospector) -> str {
-    introspector.load();
-    introspector.ensure_bundle();
-    return introspector._bundle.code;
+    import from jaclang.runtimelib.client.serving { JacClient }
+    return JacClient.get_client_js(introspector);
 }
 
 """Send JSON response."""
@@ -1909,11 +2007,12 @@ impl JacResponseBuilder.send_css(
     ResponseBuilder.send_css(handler, css_code);
 }
 
-"""Send static file response (images, fonts, etc.)."""
+"""Send static file response (images, fonts, etc.) — built-in client framework."""
 impl JacResponseBuilder.send_static_file(
     handler: BaseHTTPRequestHandler, file_path: Path, content_type: (str | None) = None
 ) -> None {
-    raise NotImplementedError('send_static_file method is not implemented');
+    import from jaclang.runtimelib.client.serving { JacClient }
+    JacClient.send_static_file(handler, file_path, content_type);
 }
 
 """Get byLLM library."""
@@ -2477,6 +2576,15 @@ impl JacRuntimeInterface.store(
 ) -> any {
     import from jaclang.runtimelib.storage { LocalStorage }
     return LocalStorage(base_path=base_path, create_dirs=create_dirs);
+}
+
+"""Core default: no plugin backend, so the runtime falls back to SqliteMemory.
+
+    A DB-backend plugin overrides this hookimpl to return its own
+    PersistentMemory; firstresult means a non-None return wins.
+    """
+impl JacRuntimeInterface.get_persistent_memory(config: dict) -> any {
+    return None;
 }
 
 """Get or create the JacCompiler singleton.

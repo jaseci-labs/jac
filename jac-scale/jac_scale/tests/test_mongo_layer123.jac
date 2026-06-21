@@ -46,6 +46,12 @@ obj _MongoRequiredField(Root) {
     has name: str;
 }
 
+# Used by issue-#6167 regression: archetype with default empty-dict fields.
+obj _MongoEmptyDictNode(Root) {
+    has label: str = "",
+        settings: dict = {},
+        metadata: dict = {};
+}
 
 """Lazily start a shared MongoDB container; return (MongoClient, uri)."""
 def _get_mongo -> tuple {
@@ -675,23 +681,11 @@ test "_put_node_atomic persists node despite default empty access.roots.anchors 
         f"added edge must appear in data.edges; got: {stored_edges}"
     );
 
-    def _has_empty_dict(v: object) -> bool {
-        if isinstance(v, dict) {
-            if not v {
-                return True;
-            }
-            return bool(any(_has_empty_dict(vv) for vv in v.values()));
-        }
-        if isinstance(v, list) {
-            return bool(any(_has_empty_dict(item) for item in v));
-        }
-        return False;
-    }
-    data_field = doc.get('data', {});
-    assert not _has_empty_dict(data_field) , (
-        "stored document must not contain any empty dicts — "
-        "MongoDB aggregation-pipeline $set rejects them (error 40180). "
-        f"Offending data: {data_field}"
+    # $literal lets the pipeline $set store the default empty access dict instead of raising 40180; a non-None access proves the write went through.
+    stored_access = doc.get('data', {}).get('access');
+    assert stored_access is not None , (
+        "access (which carries the default empty roots.anchors dict) must be "
+        f"persisted through the atomic pipeline $set; got data: {doc.get('data', {})}"
     );
 
     backend.close();
@@ -736,6 +730,181 @@ test "_put_node_atomic written document round-trips correctly after fix (issue #
 
     backend.close();
     backend2.close();
+}
+
+
+# Regression: issue #6785 — deterministic (insertion-order) out-edge ordering.
+# The atomic edge-merge pipeline must preserve insertion order in data.edges.
+# MongoDB's $setUnion / $setDifference return *sets*: they sort + dedup and
+# discard array order, so a node's persisted out-edges came back in BSON sort
+# order rather than connection order. That silently broke ordered/nested OSP
+# structures (ASTs, DOM/JSX trees, grammars) on the scale backend, where edge
+# order is the structure. These tests pin the order-preserving contract.
+test "data.edges preserves insertion order on atomic add (issue #6785)" {
+    _reset_mongo();
+    (client, uri) = _get_mongo();
+    backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+
+    person_node = _MongoLayer123Person(name="seq", age=1);
+    anchor = cast(NodeAnchor, person_node.__jac__);
+    anchor.persistent = True;
+    backend._write_to_db(anchor);
+
+    # Edge IDs chosen so connection order is the REVERSE of BSON/lexicographic
+    # sort order: a set-based merge would re-sort them ascending, exposing the
+    # bug deterministically (no reliance on random UUID layout).
+    edge_ids = [str(UUID(int=200 - i)) for i in range(10)];
+    backend._put_node_atomic(anchor, edge_ids, [], set());
+
+    doc = client["jac_test_l123"]["_anchors"].find_one({'_id': str(anchor.id)});
+    assert doc is not None;
+    stored = doc.get('data', {}).get('edges', []);
+    assert stored == edge_ids , (
+        "out-edges must persist in connection (insertion) order; "
+        f"expected {edge_ids}, got {stored}"
+    );
+
+    backend.close();
+}
+
+
+test "data.edges preserves order when a middle edge is removed (issue #6785)" {
+    _reset_mongo();
+    (client, uri) = _get_mongo();
+    backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+
+    person_node = _MongoLayer123Person(name="seq2", age=2);
+    anchor = cast(NodeAnchor, person_node.__jac__);
+    anchor.persistent = True;
+    backend._write_to_db(anchor);
+
+    edge_ids = [str(UUID(int=200 - i)) for i in range(10)];
+    backend._put_node_atomic(anchor, edge_ids, [], set());
+
+    # Drop a middle edge; the remaining edges must keep their relative order.
+    removed = edge_ids[4];
+    expected = [
+        e
+        for e in edge_ids
+        if e != removed
+    ];
+    backend._put_node_atomic(anchor, [], [removed], set());
+
+    doc = client["jac_test_l123"]["_anchors"].find_one({'_id': str(anchor.id)});
+    assert doc is not None;
+    stored = doc.get('data', {}).get('edges', []);
+    assert stored == expected , (
+        "removing an edge must preserve the relative order of the rest; "
+        f"expected {expected}, got {stored}"
+    );
+
+    backend.close();
+}
+
+
+test "_put_node_atomic stores a dict field with $-prefixed keys verbatim on the atomic path" {
+    # Pins that the whole-value $literal wrap stores `$`-prefixed keys (e.g. the Serializer's `$ref`/`$type`) as data, not as misread pipeline operators.
+    _reset_mongo();
+    (client, uri) = _get_mongo();
+    backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+
+    ref_like = {"$ref": "deadbeefdeadbeefdeadbeefdeadbeef", "$type": "node"};
+    inst = _MongoEmptyDictNode(label="seed");
+    anchor = cast(NodeAnchor, inst.__jac__);
+    anchor.persistent = True;
+    backend._write_to_db(anchor);
+
+    inst.settings = ref_like;
+    inst.__dict__['__jac_dirty_fields__'] = {'settings'};
+    fake_edge_id = str(uuid4());
+    backend._put_node_atomic(anchor, [fake_edge_id], [], {'settings'});
+
+    col = client["jac_test_l123"]["_anchors"];
+    doc = col.find_one({'_id': str(anchor.id)});
+    assert doc is not None , (
+        "None document means the pipeline $set tried to evaluate the "
+        "$-prefixed keys as operators — the $literal wrap must store them "
+        "as data."
+    );
+    arch_data = cast(dict, doc.get('data', {}).get('archetype', {}));
+    assert arch_data.get('settings') == ref_like , (
+        "a dict with $-prefixed keys must round-trip verbatim through the "
+        f"atomic path; got settings={arch_data.get('settings')!r}"
+    );
+
+    backend.close();
+}
+
+
+# mongo:6.0 (the shipped image) is the only supported version that rejects a bare {} in a pipeline $set with 40180; 6.1+ accept it. See #6167.
+glob _MONGO_40180_IMAGE = "mongo:6.0";
+
+
+"""Lazily start a shared mongo:6.0 container (reproduces 40180); return (MongoClient, uri)."""
+def _get_mongo_40180 -> tuple {
+    if "mongo40180_client" not in _shared {
+        container = MongoDbContainer(_MONGO_40180_IMAGE);
+        container.start();
+        uri = container.get_connection_url();
+        _shared["mongo40180_container"] = container;
+        _shared["mongo40180_uri"] = uri;
+        _shared["mongo40180_client"] = MongoClient(uri);
+        atexit.register(container.stop);
+    }
+    return (_shared["mongo40180_client"], _shared["mongo40180_uri"]);
+}
+
+
+"""Drop all non-system databases on the shared mongo:6.0 container."""
+def _reset_mongo_40180 -> None {
+    if "mongo40180_client" not in _shared {
+        return;
+    }
+    system_dbs = {"admin", "config", "local"};
+    for db_name in _shared["mongo40180_client"].list_database_names() {
+        if db_name not in system_dbs {
+            _shared["mongo40180_client"].drop_database(db_name);
+        }
+    }
+}
+
+
+test "_put_node_atomic persists a cleared-to-{} dict field on mongo:6.0 via $literal (#6167/#6294)" {
+    # On mongo:6.0 a bare {} in a pipeline $set raises 40180; $literal lets the clear-to-{} write through and store a real empty object.
+    _reset_mongo_40180();
+    _process_cache.pop('mongo_client', None);
+    _process_cache.pop('mongo_available', None);
+    (client, uri) = _get_mongo_40180();
+    backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+
+    inst = _MongoEmptyDictNode(label="seed", settings={"keep": 1});
+    anchor = cast(NodeAnchor, inst.__jac__);
+    anchor.persistent = True;
+    backend._write_to_db(anchor);
+
+    # Mirror the __setattr__ hook: clear the dict field and force it dirty.
+    inst.settings = {};
+    inst.__dict__['__jac_dirty_fields__'] = {'settings'};
+    fake_edge_id = str(uuid4());
+    # `fields` = collect pass's dirty set; pass {'settings'} to authorize persisting the cleared field.
+    backend._put_node_atomic(anchor, [fake_edge_id], [], {'settings'});
+
+    col = client["jac_test_l123"]["_anchors"];
+    doc = col.find_one({'_id': str(anchor.id)});
+    assert doc is not None , (
+        "None document means the pipeline $set raised 40180 — the $literal "
+        "wrap must let an empty dict through on mongo:6.0."
+    );
+
+    arch_data = cast(dict, doc.get('data', {}).get('archetype', {}));
+    assert arch_data.get('settings') == {} , (
+        "clearing a non-empty dict field to {} on the atomic path must "
+        "persist a real empty object on mongo:6.0 (via $literal); stale value "
+        "means the clear was silently swallowed. Got settings="
+        f"{arch_data.get('settings')!r}"
+    );
+
+    backend.close();
 }
 
 
@@ -921,9 +1090,15 @@ test "sync writes endpoint nodes before the edges that reference them" {
         written.append(anchor);
         orig_write(anchor);
     }
-    def _rec_atomic(anchor: NodeAnchor, added: list, removed: list, fields: set) {
+    def _rec_atomic(
+        anchor: NodeAnchor,
+        added: list,
+        removed: list,
+        fields: set,
+        cas_version: (int | None) = None
+    ) {
         written.append(anchor);
-        orig_atomic(anchor, added, removed, fields);
+        orig_atomic(anchor, added, removed, fields, cas_version);
     }
     backend._write_to_db = _rec_write;
     backend._put_node_atomic = _rec_atomic;

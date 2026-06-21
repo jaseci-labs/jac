@@ -96,7 +96,7 @@ def loop_body_locals(body: (list | tuple | None)) -> list[str] {
         return out;
     }
     for stmt in body {
-        for nm in stmt.get_all_sub_nodes(typ=uni.Name, brute_force=True) {
+        for nm in stmt.get_all_sub_nodes(typ=uni.Name) {
             sym = nm.sym;
             if sym is None or not sym.defn {
                 continue;

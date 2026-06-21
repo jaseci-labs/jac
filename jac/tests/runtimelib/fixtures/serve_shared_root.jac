@@ -28,7 +28,7 @@ walker:pub leave_note {
         fresh = root.shared +>: HasNote() :+> Note(text=self.text);
         if fresh {
             # The note is owned by its author; open it to all readers.
-            grant(fresh[0], level=ReadPerm);
+            grant(fresh, level=ReadPerm);
         }
         report jid(root.shared);
     }

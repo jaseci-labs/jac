@@ -77,6 +77,10 @@ impl NaIRGenPass.postinit -> None {
         self.type_map["bool"] = _spec_map["i1"];
         self.type_map["str"] = _spec_map["i8*"];
     }
+    # `LiteralString` (the checker's type for string literals) is `str` at
+    # runtime — alias it so literal-typed values lower like any other string
+    # (e.g. the element of `iter("hi")` -> Iterator[LiteralString]).
+    self.type_map["LiteralString"] = self.type_map.get("str", _spec_map["i8*"]);
 
     # Initialize LLVM struct types that depend on llvm_module.context
     self.complex_struct_type = self.llvm_module.context.get_identified_type(
@@ -571,16 +575,19 @@ impl NaIRGenPass._register_imported_struct_types -> None {
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_type_names(imported_mod);
     }
-    # ── Phase 1a.5: mark imported OSP archetypes (issue #6642 Blocker 2) ──────
-    # Before bodies are laid out, so an imported node/walker/edge reserves the
-    # OSP header (vtable + __type_tag) matching its defining module and joins
-    # the deterministic tag numbering -- but ONLY when the sorted-name tag
-    # scheme is provably sound (see _osp_cross_module_safe); otherwise the
-    # archetypes stay un-materialized and cross-module ops on them E5090.
-    self._osp_xmod_safe = self._osp_cross_module_safe(imported_mods);
+    # ── Phase 1a.4: import each module's archetype hierarchy (issue #6659) ────
+    # Copy class_parents / MRO from each imported module's registry so the
+    # consumer can flatten an imported subtype's inherited fields (a consumer's
+    # own registry never sees imported archetypes' base classes).
     for (_, imported_mod) in imported_mods {
-        self._register_imported_osp_archetypes(imported_mod);
+        self._register_imported_hierarchy(imported_mod);
     }
+    # Imported OSP archetypes need no separate registration: their ASTs are
+    # already in `arch_ast_map` (Phase 1a), OSP-ness is read straight off each
+    # archetype (`arch.arch_kind`) where layout reserves the header, and
+    # `_compute_osp_model` folds them into the single OSP store with their
+    # globally-stable content-hash tags so a library and any importer agree
+    # (#6642 Blocker 2, #6659).
     # ── Phase 1b: fill ALL struct bodies, enums, globals ─────────────────────
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_types(imported_mod);
@@ -708,7 +715,7 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
             and isinstance(stmt.signature, uni.FuncSignature) {
                 self._forward_declare_method(aname, stmt);
             } elif isinstance(stmt.signature, uni.EventSignature)
-            and (aname in self.osp_arch_kind) {
+            and (arch.arch_kind is not None) {
                 # An imported OSP event ability (`can ... with T entry`): the
                 # body is linked from the defining module, but the consumer must
                 # forward-declare it and build its kernel dispatch thunk so its
@@ -716,6 +723,52 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
                 # #6642 Blocker 2). Mirrors the local Pass-3 handling.
                 self._forward_declare_event_method(aname, stmt);
                 self._emit_osp_thunk(aname, stmt);
+            }
+        }
+    }
+}
+
+"""Make the consumer's LayoutRegistry aware of an imported module's archetype
+hierarchy, and record every imported archetype's AST in `arch_ast_map`.
+
+A module's LayoutRegistry is built from that module's OWN sub-nodes, so a
+consumer never sees an imported archetype's base classes -- `_mro_of` returns a
+single-element MRO and `_codegen_archetype` flattens NO inherited fields, making
+an inherited field of an imported subtype invisible (read returns null, write
+raised E5090; issue #6659 Bug 2). The defining module already computed the
+correct hierarchy + C3 MRO in its own registry, so copy those entries across
+(never overwriting a local archetype's). Field layouts are NOT copied -- the
+consumer rebuilds LLVM struct bodies itself in `_codegen_archetype` -- only the
+parent/MRO relations the layout flatten needs. Must run before imported struct
+bodies are filled (Phase 1b)."""
+impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None {
+    import from jaclang.compiler.passes.main.layout_pass { get_layout_registry }
+    _imp_reg = get_layout_registry(imported_mod, self.prog);
+    _cons_reg = get_layout_registry(self.ir_in, self.prog);
+    for (_name, _parents) in _imp_reg.class_parents.items() {
+        if _name not in _cons_reg.class_parents {
+            _cons_reg.class_parents[_name] = _parents;
+        }
+    }
+    for (_name, _mro) in _imp_reg.mro_order.items() {
+        if _name not in _cons_reg.mro_order {
+            _cons_reg.mro_order[_name] = _mro;
+        }
+    }
+    # arch_ast_map for every imported archetype (any kind) so the ancestor-first
+    # layout in _register_imported_archetype can reach an imported base's AST,
+    # even one defined in a different imported module.
+    for stmt in ModuleCodegenPass.iter_context_stmts(imported_mod) {
+        if (
+            isinstance(stmt, uni.ContextAwareNode)
+            and stmt.code_context == CodeContext.CLIENT
+        ) {
+            continue;
+        }
+        if isinstance(stmt, uni.Archetype) {
+            _aname = stmt.name.value if stmt.name else None;
+            if (_aname is not None) and (_aname not in self.arch_ast_map) {
+                self.arch_ast_map[_aname] = stmt;
             }
         }
     }
@@ -737,6 +790,27 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
     }
     # Guard: skip body fill if already done (e.g., called twice due to multiple
     # import paths, or after Phase 1a + Phase 1b sequencing).
+    if aname in self._struct_bodies_done {
+        return;
+    }
+    # Lay out imported ANCESTORS before this subtype: _codegen_archetype flattens
+    # an ancestor's fields by reading its already-built field indices, so an
+    # imported base must be emitted first regardless of source order across
+    # modules. The MRO is now correct (see _register_imported_hierarchy); recurse
+    # into any ancestor whose AST we imported and have not yet laid out. The
+    # _struct_bodies_done guard makes this safe against re-entry (issue #6659).
+    for _anc in self._mro_of(aname) {
+        if (
+            _anc != aname
+            and _anc in self.arch_ast_map
+            and _anc not in self._struct_bodies_done
+        ) {
+            _anc_arch = self.arch_ast_map[_anc];
+            if isinstance(_anc_arch, uni.Archetype) {
+                self._register_imported_archetype(_anc_arch);
+            }
+        }
+    }
     if aname in self._struct_bodies_done {
         return;
     }

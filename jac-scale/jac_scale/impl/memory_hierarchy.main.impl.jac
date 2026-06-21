@@ -39,9 +39,29 @@ impl ScaleTieredMemory.postinit -> None {
         self.l2 = None;
         logger.debug("Redis not available, running without distributed cache");
     }
-    # L3: Try MongoDB first (replaces SqliteMemory), fall back to SqliteMemory
-    mongo_backend = MongoBackend();
-    if mongo_backend.is_available() {
+    # L3: a get_persistent_memory plugin backend wins (a Postgres backend is
+    # then just a PersistentMemory subclass + one hookimpl, composing with
+    # jac-scale's L1/L2); else MongoDB; else SqliteMemory.
+    hooked_l3 = None;
+    try {
+        import from jaclang { JacRuntimeInterface as Jac }
+        hooked_l3 = Jac.get_persistent_memory(
+            {'base_path': self.base_path, 'target_path': self.target_path}
+        );
+    } except Exception as e {
+        logger.debug(f"get_persistent_memory hook failed: {e}");
+    }
+    if hooked_l3 is not None {
+        self.l3 = hooked_l3;
+        if isinstance(hooked_l3, MongoBackend) {
+            hooked_l3.set_cache_ref(self.l2);
+            hooked_l3.set_l1_id(self._l1_id);
+            self._persistence_type = PersistenceType.MONGODB;
+        } else {
+            self._persistence_type = PersistenceType.SQLITE;
+        }
+        logger.debug("Using get_persistent_memory plugin backend for persistence");
+    } elif (mongo_backend := MongoBackend()).is_available() {
         self.l3 = mongo_backend;
         # Give MongoDB access to L2 cache so quarantine ops can invalidate Redis
         mongo_backend.set_cache_ref(self.l2);
@@ -125,6 +145,11 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     }
     self._post_apply(apply_report);
     self.changes.clear();
+    # Surface optimistic-concurrency conflicts after re-baselining (mirrors
+    # core TieredMemory.commit); the request boundary converges via replay.
+    if (conflict := apply_report.primary_conflict()) {
+        raise conflict;
+    }
 }
 
 """Batch get with full tiered read-through: L1 → L2 MGET → L3 $in."""

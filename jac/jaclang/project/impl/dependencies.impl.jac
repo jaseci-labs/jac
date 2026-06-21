@@ -7,6 +7,7 @@ import from jaclang.cli.console { console }
 # ===============================================================================
 impl DependencyInstaller.postinit -> None {
     import from jaclang.project.config { get_config }
+    import os;
     if self.config is None {
         self.config = get_config();
     }
@@ -18,6 +19,11 @@ impl DependencyInstaller.postinit -> None {
     self.venv_dir = self.config.get_venv_dir();
     if self.install_flags is None {
         self.install_flags = [];
+    }
+    # JAC_NO_UV=1 provides a system-wide opt-out covering all commands
+    # (add, remove, update, watchdog) not just `jac install --no-uv`.
+    if os.environ.get("JAC_NO_UV") {
+        self.use_uv = False;
     }
 }
 
@@ -72,6 +78,45 @@ impl DependencyInstaller.ensure_venv -> None {
     }
 }
 
+"""Translate pip-only flags to their `uv pip` equivalents, dropping any without a counterpart."""
+def _pip_flags_for_uv(args: list[str]) -> list[str] {
+    rename: dict[str, str | None] = {
+        "-y": None,
+        "--force-reinstall": "--reinstall",
+        "--no-cache-dir": "--no-cache",
+        "--pre": "--prerelease=allow",
+        "--prefer-binary": None,
+
+    };
+    translated: list[str] = [];
+    for arg in args {
+        if arg in rename {
+            mapped = rename[arg];
+            if mapped is not None {
+                translated.append(mapped);
+            }
+        } else {
+            translated.append(arg);
+        }
+    }
+    return translated;
+}
+
+impl pip_command(python: str, args: list[str], use_uv: bool = True) -> list[str] {
+    import shutil;
+    # Prefer uv's pip-compatible interface (much faster resolver/installer);
+    # fall back to the interpreter's own pip when uv isn't on PATH or disabled.
+    uv_path = shutil.which("uv") if use_uv else None;
+    # `and args` guards against an empty args list to avoid IndexError on args[0].
+    if uv_path and args {
+        subcommand = args[0];
+        return [uv_path, "pip", subcommand, "--python", python] + _pip_flags_for_uv(
+            args[1:]
+        );
+    }
+    return [python, "-m", "pip"] + args;
+}
+
 impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
     import subprocess;
     import sys;
@@ -81,7 +126,17 @@ impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
     } else {
         venv_python = str(self.venv_dir / "bin" / "python");
     }
-    cmd = [venv_python, "-m", "pip"] + args;
+    # Warn once when --prefer-binary is requested but uv has no equivalent,
+    # so users know their flag was silently dropped rather than honoured.
+    if self.use_uv and "--prefer-binary" in args and not self._warned_prefer_binary {
+        self._warned_prefer_binary = True;
+        console.print(
+            "  note: --prefer-binary has no uv equivalent and will be ignored"
+            " (pass --no-uv or set JAC_NO_UV=1 to keep it)",
+            style="muted"
+        );
+    }
+    cmd = pip_command(venv_python, args, use_uv=self.use_uv);
     if self.verbose {
         console.print(f"Running: {' '.join(cmd)}");
     }
@@ -180,32 +235,49 @@ impl DependencyInstaller._make_git_spec(
     return f"git+{git_url}";
 }
 
+impl DependencyInstaller._snapshot_installed -> tuple[bool, set[tuple]] {
+    import json;
+    try {
+        (rc, out, _) = self._run_pip(["list", "--format=json"]);
+        if rc == 0 {
+            return (True, {(p["name"].lower(), p["version"]) for p in json.loads(out)});
+        }
+    } except Exception { }
+    return (False, set());
+}
+
 """Install packages given a list of pip specs."""
 impl DependencyInstaller.install_package(specs: list[str]) -> bool {
     if not specs {
         return True;
     }
     self.ensure_venv();
-    import re;
+    is_dry_run = "--dry-run" in self.install_flags;
+    (before_snapshot_ok, before_set) = (
+        self._snapshot_installed() if not is_dry_run else (False, set())
+    );
     (returncode, stdout, stderr) = self._run_pip(
         ["install", "--upgrade"] + self.install_flags + specs
     );
     if returncode == 0 {
-        if "--dry-run" in self.install_flags {
-            if stdout {
-                console.print(stdout, style="dim");
+        if is_dry_run {
+            # uv writes to stderr, pip to stdout; pick whichever is non-empty
+            # so the fallback to pip (when uv is not on PATH) is also covered.
+            preview = stderr or stdout;
+            if preview {
+                console.print(preview, style="dim");
             }
             return True;
         }
-        # Parse and display what was actually installed
-        if "Successfully installed" in stdout {
+        newly_installed: list[tuple] = [];
+        (after_ok, after_set) = self._snapshot_installed();
+        if after_ok and before_snapshot_ok {
+            newly_installed = sorted(after_set - before_set);
+        }
+        if newly_installed {
             console.print("✔ Installation complete:", style="success");
-            installed = re.search(r"Successfully installed (.+)", stdout);
-            if installed {
-                packages = installed.group(1).split();
-                for pkg in packages {
-                    console.print(f"  ✓ {pkg}", style="dim");
-                }
+            for (pkg_name, pkg_ver) in newly_installed {
+                console.print(f"  ✓ {pkg_name}=={pkg_ver}", style="dim");
             }
         } else {
             console.print(
@@ -214,7 +286,6 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
         }
         return True;
     }
-    # Batch failed - show error and suggest checking for conflicts
     console.error(f"✗ Batch installation failed: {stderr}");
     console.print("  Tip: Check for version conflicts in jac.toml", style="muted");
     return False;
@@ -226,17 +297,19 @@ impl DependencyInstaller.uninstall_package(name: str) -> bool {
         return False;
     }
     console.print(f"Uninstalling {name}...");
+    # Check presence first so we get consistent behaviour across backends:
+    # pip exits non-zero for a missing package, uv exits 0 with a warning.
+    if not self.is_installed(name) {
+        if self.verbose {
+            console.print(f"  {name} was not installed");
+        }
+        return False;
+    }
     (returncode, stdout, stderr) = self._run_pip(["uninstall", "-y", name]);
     if returncode == 0 {
         console.print(f"  {name} uninstalled successfully");
         return True;
     } else {
-        if "not installed" in stderr.lower() or "not installed" in stdout.lower() {
-            if self.verbose {
-                console.print(f"  {name} was not installed");
-            }
-            return False;
-        }
         console.error(f"  Failed to uninstall {name}: {stderr}");
         return False;
     }

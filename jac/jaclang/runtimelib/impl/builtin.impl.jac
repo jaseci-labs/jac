@@ -86,6 +86,8 @@ impl __getattr__(name: str) -> object {
         return _get_save();
     } elif (name == 'commit') {
         return _get_commit();
+    } elif (name == 'on_commit') {
+        return _get_on_commit();
     } elif (name == 'store') {
         return _get_store();
     } elif (name == 'llm') {
@@ -101,6 +103,11 @@ impl __getattr__(name: str) -> object {
 """Get commit lazily."""
 impl _get_commit -> Callable[..., any] {
     return _get_jac().commit;
+}
+
+"""Get on_commit lazily."""
+impl _get_on_commit -> Callable[..., any] {
+    return _get_jac().on_commit;
 }
 
 """Get storage backend lazily."""

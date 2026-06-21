@@ -41,7 +41,6 @@ import from jaclang.jac0core.bccache { discover_annex_files }
 # Directories never worth compiling -- generated output, vendored deps, VCS.
 glob _SKIP_DIRS: set[str] = {
          "__pycache__",
-         "__jac_gen__",
          ".git",
          ".venv",
          "venv",

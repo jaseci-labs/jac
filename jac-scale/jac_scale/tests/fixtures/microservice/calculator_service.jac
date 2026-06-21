@@ -29,3 +29,15 @@ def:pub dot_product(a: list[int], b: list[int]) -> int {
 def:pub safe_divide(a: float, b: float) -> DivResult {
     return divide(a, b);
 }
+
+"""Reads attributes off the typed return value of the remote divide.
+
+Unlike `safe_divide` (which passes the DivResult straight back out, so
+the cl->sv response re-serializes it), this consumes the archetype IN
+the gateway process: `res.result` / `res.error` must resolve as real
+attributes. If the sv->sv return value arrives as a plain dict the
+attribute access raises `'dict' object has no attribute ...` (#6710)."""
+def:pub describe_divide(a: float, b: float) -> dict {
+    res: DivResult = divide(a, b);
+    return {"value": res.result, "error": res.error};
+}

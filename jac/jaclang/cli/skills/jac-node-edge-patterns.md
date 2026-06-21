@@ -12,7 +12,7 @@ node Person {
     has verified: bool = False;
 }
 
-edge Follows {
+edge Follows: Person --> Person {                  # typed endpoints: source --> target
     has since: int = 2024;
 }
 
@@ -26,7 +26,7 @@ with entry {
     alice +>:Follows(since=2023):+> carol;
 
     all_out     = [alice -->];                         # every outgoing node
-    via_follows = [alice ->:Follows:->];               # filter by edge type (single-arrow form)
+    via_follows = [alice ->:Follows:->];               # typed edge -> inferred list[Person]
     old_links   = [alice ->:Follows:since < 2022:->];  # edge-attribute predicate
     adults      = [alice -->[?:Person, age > 30]];     # node type + field predicate (nested)
     named_bob   = [alice -->[?name == "bob"]];         # node-field predicate
@@ -49,18 +49,25 @@ with entry {
 ## Pitfalls
 
 - Use `node` / `edge` for graph-persistent archetypes. Use `obj` for plain in-memory data that doesn't live on the graph.
-- **`++>` returns a LIST, not the node.** `new = here ++> Todo(text=t);` makes `new` a list - `new[0]` is the Todo. `report new;` or `new.text` right after creation are the classic bugs; index first.
+- **`++>` mirrors its right-hand side.** `new = here ++> Todo(text=t);` makes `new` the Todo node (a single-node connect returns the node, not a list); `new.text` works directly. Connecting to a **list** (`here ++> [a, b]`) returns a list. The old `new[0]` unwrap is gone - drop it.
 - `<++>` creates edges in BOTH directions - easy to double-count traversals. `<++` is just `++>` written from the other end (same single edge).
 - Typed edge creation uses `+>:E(args):+>` - `+` on BOTH sides of the colons.
 - Edge-type filter uses **single** arrows: `[src ->:E:->]`. The double-arrow form `[src -->:E:-->]` is a parse error.
 - **Edge abilities are a silent no-op.** A `can x with SomeWalker entry` inside an `edge` compiles cleanly and never fires (documented Known Limitation). Modeling toll/cost/logging behavior on the edge gives zero effect with no error - put the logic in the walker's node abilities and read edge data via `[edge ...]`.
-- **Edge-typed traversal returns `Unknown`-typed nodes - add `[?:NodeType]` to recover the type.** `[src ->:E:->]` doesn't tell the type checker which node type the edge points to. Direct attribute access then only *warns* (W1051) and `jac check` still passes - but passing such a node to a typed function parameter fails `E1053`, and the untyped access is a latent bug. Nest the destination node type to narrow (chaining `[...][?:NodeType]` narrows identically):
+- **An *untyped* edge's traversal returns `Unknown`-typed nodes - declare the edge's endpoints, or add `[?:NodeType]` to recover the type.** Over a bare `edge E {}`, `[src ->:E:->]` doesn't tell the type checker which node type the edge points to. Direct attribute access then only *warns* (W1051) and `jac check` still passes - but passing such a node to a typed function parameter fails `E1053`, and the untyped access is a latent bug. Two fixes, prefer the first:
+  - **Declare endpoint types on the edge** - `edge E: Src --> Tgt {}` - so *every* `[src ->:E:->]` infers `Tgt` (and `[src <-:E:<-]` infers `Src`) with no per-read filter. A subtype edge inherits its base's endpoints; the clause is edge-only (`E2027` otherwise). This is the durable fix and it also makes the field read compile on the native backend.
+  - **Nest `[?:NodeType]`** at the read site to narrow further (or for an intentionally-untyped edge). Chaining `[...][?:NodeType]` narrows identically.
 
 ```
-# FRAGILE - conn is Unknown; conn.username warns W1051, and `show(conn)` fails E1053
+# UNTYPED edge - conn is Unknown; conn.username warns W1051, and `show(conn)` fails E1053
+edge Connected {}
 for conn in [p ->:Connected:->] { print(conn.username); }
 
-# CORRECT - nest [?:NodeType] to narrow
+# FIX 1 (durable) - declare endpoints; every traversal over Connected now infers UserProfile
+edge Connected: UserProfile --> UserProfile {}
+for conn in [p ->:Connected:->] { print(conn.username); }
+
+# FIX 2 - nest [?:NodeType] at the read site to narrow further
 for conn in [p ->:Connected:->[?:UserProfile]] { print(conn.username); }
 ```
 

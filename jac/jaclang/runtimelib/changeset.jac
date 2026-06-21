@@ -30,6 +30,7 @@ import from uuid { UUID }
 import from jaclang.jac0core.archetype { Anchor, EdgeAnchor, NodeAnchor }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.typecache { get_field_types }
+import from jaclang.runtimelib.exceptions { WriteConflict }
 
 
 enum WriteOp {
@@ -54,7 +55,12 @@ obj WriteIntent {
         fields: set[str] by postinit,
         edges_added: list[UUID] by postinit,
         edges_removed: list[UUID] by postinit,
-        depends_on: set[UUID] by postinit;
+        depends_on: set[UUID] by postinit,
+        # Read-set OCC: the node version this request observed when it read a
+        # traversal from this anchor, or None if the request never read it.
+        # The backend CASes on it only when set, so a blind append (no read)
+        # merges lock-free while a check-then-create conflicts and replays.
+        cas_version: (int | None) = None;
 
     def postinit {
         self.fields = set();
@@ -78,16 +84,32 @@ error, and which were skipped because a dependency failed (id -> reason)."""
 obj ApplyReport {
     has applied: list[UUID] by postinit,
         failed: dict[UUID, str] by postinit,
-        skipped: dict[UUID, str] by postinit;
+        skipped: dict[UUID, str] by postinit,
+        # Optimistic-concurrency conflicts; commit() raises these so the
+        # request boundary can abort + replay the walker (converge).
+        conflicts: list[WriteConflict] by postinit;
 
     def postinit {
         self.applied = [];
         self.failed = {};
         self.skipped = {};
+        self.conflicts = [];
     }
 
     def ok -> bool {
         return not self.failed and not self.skipped;
+    }
+
+    """First write conflict with the rest attached as siblings, or None."""
+    def primary_conflict -> (WriteConflict | None) {
+        if not self.conflicts {
+            return None;
+        }
+        primary = self.conflicts[0];
+        if len(self.conflicts) > 1 {
+            primary.siblings = self.conflicts[1:];
+        }
+        return primary;
     }
 }
 
@@ -123,7 +145,18 @@ obj ChangeSet {
         if existing is not None {
             existing.op = op;
         } else {
-            self.intents[anchor.id] = WriteIntent(op=op, anchor=anchor);
+            existing = WriteIntent(op=op, anchor=anchor);
+            self.intents[anchor.id] = existing;
+        }
+        # An edge can't be written before its endpoints exist: a failed
+        # endpoint create poisons it (mirrors the delete-direction wiring),
+        # so a rejected unique node create never mints a dangling edge.
+        if isinstance(anchor, EdgeAnchor) and anchor.is_populated() {
+            for endp in (anchor.source, anchor.target) {
+                if endp is not None {
+                    existing.depends_on.add(endp.id);
+                }
+            }
         }
     }
 
@@ -164,11 +197,15 @@ obj ChangeSet {
                 existing.edges_removed.remove(eid);
             } elif eid not in existing.edges_added {
                 existing.edges_added.append(eid);
+                # The list-add depends on the edge's create; a failed edge
+                # (poisoned by a rejected endpoint) skips this list entry too.
+                existing.depends_on.add(eid);
             }
         }
         for eid in removed {
             if eid in existing.edges_added {
                 existing.edges_added.remove(eid);
+                existing.depends_on.discard(eid);
             } elif eid not in existing.edges_removed {
                 existing.edges_removed.append(eid);
             }

@@ -293,7 +293,7 @@ test "jacpack template has required files" {
     template_dir = Path(__file__).resolve().parent.parent / "jac_super" / "shadcn" / "templates" / "jac-shadcn";
     template = load_template_from_directory(template_dir);
     assert "main.jac" in template.files;
-    assert "global.css" in template.files;
+    assert "styles/global.css" in template.files;
 }
 
 

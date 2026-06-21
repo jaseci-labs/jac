@@ -18,7 +18,7 @@ import from pydantic { BaseModel, Field }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.db { Db, get_mongo_client }
-import from jac_scale.factories.database_factory { DatabaseType }
+import from jac_scale.mongo_db { MongoDb }
 
 glob logger = logging.getLogger(__name__);
 
@@ -70,9 +70,7 @@ obj WebhookUtils {
 def _create_api_key_db -> Db | None {
     db_config = get_scale_config().get_database_config();
     if db_config.get('mongodb_uri') is not None {
-        return Db(
-            client=get_mongo_client(), db_name='jac_db', db_type=DatabaseType.MONGODB
-        );
+        return MongoDb(client=get_mongo_client(), db_name='jac_db');
     }
     return None;
 }

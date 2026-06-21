@@ -1354,8 +1354,13 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
 """Build the `_jac.exc` IIFE from the canonical exception hierarchy.
 
 Emits one JS class per exception (in topological order so each `extends`
-references an already-declared parent) and returns the export map, all derived
-from JAC_TYPE_REGISTRY so the hierarchy lives in exactly one place.
+references an already-declared parent), plus a `matches(e, name)` predicate that
+the try/except codegen calls to decide whether a caught value is handled. The
+predicate encodes Python catch semantics — crucially, that native JS errors
+(`SyntaxError`, interop `TypeError`, host/library `Error`, thrown non-Errors)
+are caught by `except Exception` / `except BaseException` even though they are
+not part of the `_jac.exc` class hierarchy. The whole thing is derived from
+JAC_TYPE_REGISTRY so the hierarchy lives in exactly one place.
 """
 def _build_exc_runtime_js -> str {
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
@@ -1375,7 +1380,24 @@ def _build_exc_runtime_js -> str {
             (name + ": " + local) if name in _JS_RESERVED_EXC_NAMES else name
         );
     }
-    lines.append("    return { " + ", ".join(exports) + " };");
+    lines.append("    const _all = { " + ", ".join(exports) + " };");
+    # `matches` is the single source of truth for except-clause membership.
+    # - BaseException (and bare `except`) catches everything thrown.
+    # - Exception catches every Jac Exception PLUS any non-Jac throw (native JS
+    #   errors, host errors, thrown non-Errors): i.e. everything except the Jac
+    #   BaseException-only types (KeyboardInterrupt/SystemExit/GeneratorExit).
+    #   This is exactly Python's `except Exception`.
+    # - Any other builtin: hierarchy-aware `instanceof` against its Jac class
+    #   (a native error is intentionally NOT caught by a narrow builtin type).
+    lines.append("    function matches(e, name) {");
+    lines.append("      if (name === 'BaseException') return true;");
+    lines.append(
+        "      if (name === 'Exception') return (e instanceof _all.Exception) || !(e instanceof _all.BaseException);"
+    );
+    lines.append("      const cls = _all[name];");
+    lines.append("      return cls ? (e instanceof cls) : false;");
+    lines.append("    }");
+    lines.append("    return Object.assign(_all, { matches });");
     lines.append("  })()");
     return "\n".join(lines);
 }

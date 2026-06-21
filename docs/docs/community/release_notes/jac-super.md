@@ -2,7 +2,21 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Super**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-super 0.1.20 (Latest Release)
+## jac-super 0.1.22 (Latest Release)
+
+### New Features
+
+- **Feature: `jac-shadcn` is a `fullstack` create variant**: with the now-aggregating `register_project_template` hook, the shadcn template registers as a non-default variant of the `fullstack` kind. `jac create --use jac-shadcn` scaffolds the themed shadcn starter, while `jac create --kind fullstack` gives the plain jac-client fullstack template. The previous direct-registry workaround is removed.
+
+### Bug Fixes
+
+- **Fix: Rich console theme roles match the ANSI backend**: jac-super's Rich renderer now applies semantic roles (`highlight`, `muted`, etc.) from Span styles instead of raw color names, so styled CLI chrome renders correctly when jac-super is installed.
+
+### Refactors
+
+- **Refactor: Move `global.css` into `styles/` subfolder for jac-shadcn projects**: `jac create --use jac-shadcn` and `jac retheme` now write the themed stylesheet to `styles/global.css`.
+
+## jac-super 0.1.20
 
 ### New Features
 

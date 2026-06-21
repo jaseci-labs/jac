@@ -528,14 +528,9 @@ def get_type_of_binary_operation(
                     }
                 }
             }
-            # Connect operator returns list of nodes (right operand)
-            if evaluator.prefetch and evaluator.prefetch.list_class {
-                list_type = evaluator.prefetch.list_class.clone_as_instance();
-                if isinstance(list_type, jtypes.ClassType) {
-                    list_type.private.type_args = [right_type];
-                    return list_type;
-                }
-            }
+            # Connect operator mirrors the right operand: a single node yields
+            # a node, a list of nodes yields a list. So the expression type is
+            # simply the right operand's type.
             return right_type;
         }
         if isinstance(expr.op, uni.DisconnectOp) {

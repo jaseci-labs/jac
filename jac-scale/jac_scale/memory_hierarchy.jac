@@ -172,6 +172,13 @@ obj MongoBackend(PersistentMemory) {
     def list_aliases -> list;
     def add_alias(old_name: str, new_name: str) -> None;
     def remove_alias(old_name: str) -> bool;
+    # Referential-integrity surface (read-path healing + `jac db fsck`)
+    def quarantine_dangling(
+        missing_id: UUID, referrer_id: (UUID | None), kind: str
+    ) -> None;
+
+    def fsck(repair: bool = False) -> dict;
+    def is_recoverable_quarantine(id: UUID) -> bool;
     # Internal
     def _load_anchor(raw: dict[(str, Any)]) -> (Anchor | None);
     def _load_db_aliases -> int;
@@ -179,7 +186,8 @@ obj MongoBackend(PersistentMemory) {
         anchor: NodeAnchor,
         edges_added: list[str],
         edges_removed: list[str],
-        fields: set[str]
+        fields: set[str],
+        cas_version: (int | None) = None
     ) -> None;
 
     def _write_to_db(anchor: Anchor) -> None;

@@ -228,6 +228,48 @@ with entry {
 }
 ```
 
+### 4 Typed Edge Endpoints
+
+By default an edge can connect *any* node types, so a neighbour traversal such as `[here ->:Friend:->]` has element type `any` and needs a `[?:Type]` filter before you can read a field off the result. You can instead declare the **source** and **target** node types an edge connects, after a `:`, using the traversal arrow so it reads like the navigation it enables:
+
+```jac
+node Profile { has name: str = ""; }
+node Tweet { has content: str = ""; }
+
+edge Follow: Profile --> Profile {}      # Profile → Profile
+edge Post: Profile --> Tweet {}          # Profile → Tweet
+```
+
+With endpoints declared, a neighbour traversal **infers the declared node type** -- no `[?:Type]` filter needed:
+
+```jac
+with entry {
+    me = Profile(name="me");
+    following = [me ->:Follow:->];   # inferred list[Profile] (target)
+    followers = [me <-:Follow:<-];   # inferred list[Profile] (source)
+    my_tweets = [me ->:Post:->];     # inferred list[Tweet]
+
+    # The element type is concrete, so field access resolves statically
+    # (and compiles on the native backend) -- no filter required:
+    if following {
+        print(following[0].name);
+    }
+}
+```
+
+An outgoing traversal (`->:Edge:->`) narrows to the **target** type; an incoming traversal (`<-:Edge:<-`) narrows to the **source** type. A `[?:Sub]` filter can still narrow *further* to a subtype.
+
+Typed endpoints are **opt-in and gradual**: an untyped `edge Link {}` keeps `any → any` connectivity and `list[any]` traversal results, so existing code is unaffected. The endpoint type is a **bound** -- `Profile` *or a subtype* -- so subclass-heterogeneous graphs stay valid.
+
+The `()` after the name remains reserved for **edge inheritance**, orthogonal to the endpoints. A subtype edge inherits its base edge's endpoints unless it re-declares them:
+
+```jac
+edge TimedFollow(Follow) { has at: str = ""; }          # inherits Profile → Profile
+edge BlockedFollow(Follow): Profile --> Profile {}      # re-declares its endpoints
+```
+
+The endpoint clause is only valid on an `edge`; placing it on a `node`, `walker`, or `obj` is a compile error (`E2027`).
+
 ---
 
 ## Walkers
@@ -655,13 +697,12 @@ with entry {
 }
 ```
 
-!!! note "The `++>` operator returns a list"
-    The `++>` operator returns a **list** containing the created node(s). Access the node with `[0]` index:
+!!! note "The `++>` operator mirrors its right-hand side"
+    A `++>` connection returns whatever its right-hand side is: connecting to a **single** node returns that node, connecting to a **list** of nodes returns a list. No `[0]` indexing is needed for a single-node connect:
 
     <!-- jac-skip: fragment shown in context of a walker ability -->
     ```jac
-    new_node = here ++> Todo(title="Buy groceries");
-    created_todo = new_node[0];  # Access the actual node
+    created_todo = here ++> Todo(title="Buy groceries");  # the created node
     report created_todo;
     ```
 
@@ -771,9 +812,10 @@ walker:priv DeleteWithChildren {
 | `allroots()` | Get all root references |
 | `save(node)` | Persist node to storage |
 | `commit()` | Commit pending changes |
+| `on_commit(callback)` | Register a callback to run **after** the next successful commit (discarded on abort/replay) -- for deferred external side effects that must fire exactly once |
 | `printgraph(root)` | Print graph structure to stdout (output depends on graph size; may require logging configuration to see results) |
 
-> See [Persistence & Schema Migration](../persistence.md) for how persisted graph data tolerates schema changes across runs (added/removed fields, type changes, class renames) and how to inspect or rescue data with [`jac db`](../cli/index.md#database-operations).
+> See [Persistence & Schema Migration](../persistence.md) for how persisted graph data tolerates schema changes across runs (added/removed fields, type changes, class renames) and how to inspect or rescue data with [`jac db`](../cli/index.md#database-operations). For concurrent find-or-create safety (and why `on_commit` matters when a request replays), see [Concurrent writes: check-then-create](../persistence.md#concurrent-writes-check-then-create-and-convergence).
 
 ```jac
 node Person { has name: str; }
@@ -803,7 +845,7 @@ walker:pub publish {
     can run with Root entry {
         # Lands on the public graph whoever the caller is.
         fresh = root.shared +>: Posted() :+> Post(text=self.text);
-        grant(fresh[0], level=ReadPerm);   # author opens the post to readers
+        grant(fresh, level=ReadPerm);   # author opens the post to readers
     }
 }
 
@@ -903,6 +945,9 @@ walker FilteredWalker {
     }
 }
 ```
+
+!!! tip "Skip the `[?:Type]` filter"
+    If an edge declares its endpoint node types (see [Typed Edge Endpoints](#4-typed-edge-endpoints)), a neighbour traversal already infers the concrete node type, so the trailing `[?:Type]` filter is only needed to narrow *further* to a subtype.
 
 ### 3 Entry and Exit Events
 
@@ -1099,7 +1144,7 @@ walker:priv CreateItem {
     has name: str;
     can create with Root entry {
         new_item = here ++> Item(name=self.name);
-        report new_item[0];
+        report new_item;
     }
 }
 

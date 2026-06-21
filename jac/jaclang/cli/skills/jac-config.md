@@ -9,7 +9,7 @@ description: The jac.toml control plane - every section ([project], [dependencie
 
 | Section | Purpose |
 |---|---|
-| `[project]` | name (required), version, description, **`entry-point`** (default for `jac run`/`jac start`, defaults to `main.jac`), `jac-version` compiler pin; publishing fields (`license`, `readme`, `requires-python`, `classifiers`, `authors`) feed `jac bundle` (see `jac-packaging`) |
+| `[project]` | name (required), version, description, **`entry-point`** (default for `jac run`/`jac start`, defaults to `main.jac`), **`kind`** (project kind that makes a bare `jac run` execute / serve / build the project - empty = inferred from the entry-point codespace; see `jac-project-kinds`), `jac-version` compiler pin; publishing fields (`license`, `readme`, `requires-python`, `classifiers`, `authors`) feed `jac bundle` (see `jac-packaging`) |
 | `[dependencies]` | PyPI packages + Jac plugins, pip-style specs (`requests = ">=2.28.0"`) |
 | `[dependencies.npm]` / `[dependencies.npm.dev]` | npm packages for client code (see `jac-npm-packages`) |
 | `[dependencies.git]` | `mylib = { git = "https://...", branch = "main" }` |

@@ -521,6 +521,42 @@ impl TypeEvaluator._convert_to_instance(jtype: TypeBase) -> TypeBase {
     return type_utils.convert_to_instance(jtype);
 }
 
+"""Resolve the node type an edge connects in a given traversal direction.
+
+For an edge declared with endpoint types (`edge E: Src --> Tgt {}`, issue
+#6657), an outgoing traversal (`->:E:->`, `EdgeDir.OUT`) yields the target
+node type and an incoming traversal (`<-:E:<-`, `EdgeDir.IN`) yields the
+source. The declaration is inherited: a subtype edge that does not re-declare
+its endpoints picks up its base edge's, so the MRO is walked until an endpoint
+is found. Returns the resolved node *class* type (the caller converts it to an
+instance), or None when the edge declares no endpoint for that direction (which
+keeps a bare/untyped traversal `any`, preserving gradual typing).
+"""
+impl TypeEvaluator._edge_endpoint_type(
+    edge_type: types.ClassType, edge_dir: EdgeDir
+) -> TypeBase | None {
+    for cls in edge_type.shared.mro {
+        arch = cls.shared.symbol_table;
+        if not isinstance(arch, uni.Archetype) {
+            continue;
+        }
+        endpoint: uni.Expr | None = None;
+        if edge_dir == EdgeDir.OUT {
+            endpoint = arch.tgt_endpoint;
+        } elif edge_dir == EdgeDir.IN {
+            endpoint = arch.src_endpoint;
+        }
+        if endpoint is not None {
+            ep_type = self.get_type_of_expression(endpoint);
+            if isinstance(ep_type, types.ClassType) {
+                return ep_type;
+            }
+            return None;
+        }
+    }
+    return None;
+}
+
 """Check if a type is already represented in a list (using shared identity for ClassType)."""
 impl TypeEvaluator._type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool {
     for existing in type_list {
@@ -1017,6 +1053,17 @@ impl TypeEvaluator.emit_diag(
 ) -> None {
     if self._pass is not None {
         self._pass.emit(diag, node_override=nd, **kwargs);
+    }
+}
+
+impl TypeEvaluator._invalidate_expr_type_cache(node_: uni.UniNode) -> None {
+    # Walk `.kid`, not `_sub_node_tab`: the latter is keyed off the enclosing
+    # statement, so an AtomTrailer body exposes none of its inner Exprs.
+    if isinstance(node_, uni.Expr) {
+        node_.type = None;
+    }
+    for kid in node_.kid {
+        self._invalidate_expr_type_cache(kid);
     }
 }
 

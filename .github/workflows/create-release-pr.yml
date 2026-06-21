@@ -13,11 +13,6 @@ on:
         type: choice
         default: skip
         options: [skip, patch, minor, major]
-      jac-client:
-        description: "jac-client bump"
-        type: choice
-        default: skip
-        options: [skip, patch, minor, major]
       jac-scale:
         description: "jac-scale bump"
         type: choice
@@ -30,11 +25,6 @@ on:
         options: [skip, patch, minor, major]
       jac-mcp:
         description: "jac-mcp bump"
-        type: choice
-        default: skip
-        options: [skip, patch, minor, major]
-      jac-desktop:
-        description: "jac-desktop bump"
         type: choice
         default: skip
         options: [skip, patch, minor, major]
@@ -79,11 +69,9 @@ jobs:
           jac run scripts/validate_release.jac \
             --jaclang "${{ inputs.jaclang }}" \
             --jac-byllm "${{ inputs.jac-byllm }}" \
-            --jac-client "${{ inputs.jac-client }}" \
             --jac-scale "${{ inputs.jac-scale }}" \
             --jac-super "${{ inputs.jac-super }}" \
             --jac-mcp "${{ inputs.jac-mcp }}" \
-            --jac-desktop "${{ inputs.jac-desktop }}" \
             --jaseci "${{ inputs.jaseci }}"
 
       - name: Bump versions
@@ -92,11 +80,9 @@ jobs:
           jac run scripts/release.jac \
             --jaclang "${{ inputs.jaclang }}" \
             --jac-byllm "${{ inputs.jac-byllm }}" \
-            --jac-client "${{ inputs.jac-client }}" \
             --jac-scale "${{ inputs.jac-scale }}" \
             --jac-super "${{ inputs.jac-super }}" \
             --jac-mcp "${{ inputs.jac-mcp }}" \
-            --jac-desktop "${{ inputs.jac-desktop }}" \
             --jaseci "${{ inputs.jaseci }}"
 
       - name: Configure git

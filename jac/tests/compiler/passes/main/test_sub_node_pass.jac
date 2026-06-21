@@ -16,7 +16,7 @@ test "sub node pass" {
     for i in code_gen.kid[1].kid {
         for (k, v) in i._sub_node_tab.items() {
             for n in v {
-                assert n in UniPass.get_all_sub_nodes(i, k, brute_force=True);
+                assert n in UniPass.get_all_sub_nodes(i, k);
             }
         }
     }

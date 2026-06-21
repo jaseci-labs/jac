@@ -24,15 +24,15 @@ jobs:
           libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
           libasound2
         python -m pip install --upgrade pip
-        pip install -e jac -e jac-client -e jac-desktop
+        pip install -e jac
 
     - name: Build cef-smoke example
       run: |
-        cd jac-client/jac_client/examples/cef-smoke
+        cd jac/examples/cef-smoke
         jac build --client desktop-cef
 
     - name: Bundle existence audit
-      working-directory: jac-client/jac_client/examples/cef-smoke
+      working-directory: jac/examples/cef-smoke
       run: |
         BUNDLE=.jac/client/desktop-cef/cef-smoke
         test -f $BUNDLE/libcef.so
@@ -43,7 +43,7 @@ jobs:
         ldd $BUNDLE/cef-smoke | grep 'not found' && exit 1 || true
 
     - name: Headless smoke with timeout (X11)
-      working-directory: jac-client/jac_client/examples/cef-smoke/.jac/client/desktop-cef/cef-smoke
+      working-directory: jac/examples/cef-smoke/.jac/client/desktop-cef/cef-smoke
       run: |
         Xvfb :99 -screen 0 1280x720x24 &
         XVFB_PID=$!

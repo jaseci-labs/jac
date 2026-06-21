@@ -4,9 +4,8 @@
 
 This monorepo contains:
 
-- `jac/`: Jac language compiler, runtime, and language server
+- `jac/`: Jac language compiler, runtime, language server, and the client/desktop runtimes (`jac/jaclang/runtimelib/client/`)
 - `jac-byllm/`: LLM integration and model-driven features
-- `jac-client/`: Client libraries and SDKs
 - `docs/`: Documentation site and reference materials
 - `scripts/`: Build, test, and maintenance scripts
 
@@ -48,9 +47,9 @@ Full test suite across all packages:
 - Schema definitions: `schema.py`
 - Examples: `examples/agentic_ai/`, `examples/tool_calling/`
 
-### jac-client/ (Client SDKs)
+### Client & Desktop Runtimes
 
-- Plugin: `jac_client/plugin/`
+- Now part of `jaclang` core: `jac/jaclang/runtimelib/client/`
 
 ## Jac Language Conventions
 

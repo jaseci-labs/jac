@@ -119,6 +119,42 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
 }
 
+"""CFG-only schedule: the flow-narrowing prerequisite.
+
+    TypeInferencePass's `is not None` / isinstance flow-narrowing walks the
+    control-flow graph (UniCFGNode.bb_in/bb_out edges). A full compile builds
+    that CFG as part of `get_ir_gen_sched` (CFGBuildPass), but a lightweight
+    `symtab_ir_only` compile -- used to resolve an imported dependency or lower
+    a cross-module provider's annotations on demand -- skips it. Native still
+    runs inference on those modules (it consumes `Expr.type`), so without this
+    the narrowing silently no-ops and a `T | None` guarded by `is not None`
+    stays `T | None` only on the imported-module path (issue #6667). Run this
+    before inference whenever the CFG was not already built so the narrowing is
+    identical to the entry-module path.
+
+    CFGBuildPass is purely structural (it reads symbols populated by
+    SymTabBuildPass, which the symtab schedule already ran, and does not depend
+    on SemanticAnalysisPass / SemDefMatchPass), so it is sound to run on its own
+    on a symtab-only tree. Same re-entrancy guard as `get_ir_gen_sched`: during
+    bootstrap of the pass modules themselves the import would recurse, so it
+    returns an empty schedule for only those modules.
+    """
+def get_cfg_sched -> list[type[Transform[uni.Module, uni.Module]]] {
+    global _ir_sched_loading;
+    if _ir_sched_loading {
+        return [];
+    }
+    _ir_sched_loading = True;
+    try {
+        import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
+        return [CFGBuildPass];
+    } except ImportError {
+        return [];
+    } finally {
+        _ir_sched_loading = False;
+    }
+}
+
 """Check-extras schedule (`jac check`).
 
     Diagnostic-only passes layered on top of the unconditional inference
@@ -486,10 +522,7 @@ obj JacCompiler {
     ) -> int;
 
     static def _prepare_tool_program(
-        source_str: str,
-        file_path: str,
-        load_impl_annexes: bool = False,
-        load_test_annexes: bool = False
+        source_str: str, file_path: str
     ) -> tuple[JacProgram, (uni.Module | None)];
 
     static def jac_file_formatter(

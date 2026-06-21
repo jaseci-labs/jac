@@ -336,6 +336,23 @@ impl NaIRGenPass._list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | No
     return self._lower_type(args[0]);
 }
 
+"""Return the lowered LLVM element type of a checked `Iterator[T]` expression
+(the `T` a `next()` call or for-loop over the iterator yields), or None when
+the expression isn't a typed iterator. Mirrors `_list_elem_llvm_of` (#6403)."""
+impl NaIRGenPass._iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
+    if not isinstance(expr, uni.Expr) or expr.type is None {
+        return None;
+    }
+    if not expr.type.mangle().startswith("Iterator[") {
+        return None;
+    }
+    args = expr.type.private.type_args or [];
+    if not args {
+        return None;
+    }
+    return self._lower_type(args[0]);
+}
+
 """Return the native element spec of a checked list type's element
 ("i64"/"f64"/"ptr"/"jacval"), or None when the expression isn't a typed list."""
 impl NaIRGenPass._elem_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
@@ -383,11 +400,27 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
     if cname == "File" {
         return self._get_file_struct_type().as_pointer();
     }
+    # Native binary file object: open(path, "rb") -> BinaryFile, whose read()
+    # returns length-aware bytes (same struct layout as File).
+    if cname == "BinaryFile" {
+        return self._get_binary_file_struct_type().as_pointer();
+    }
+    # Length-aware bytes (#6404 Track 0): pointer to { i64 len, [0 x i8] data }.
+    if cname == "bytes" {
+        return self._get_bytes_struct_type().as_pointer();
+    }
     # User-defined object/struct -> pointer to struct.
     if cname in self.struct_types {
         return self.struct_types[cname].as_pointer();
     }
     type_args = t.private.type_args or [];
+    # Iterator[T] / Iterable[T] (#6403): a first-class iterator is a boxed
+    # JacIter pointer. The element type T is recovered at the use site
+    # (next / for-loop) via _iter_elem_llvm_of, not from this layout.
+    if cname in ("Iterator", "Iterable") {
+        self._ensure_iter_types();
+        return self._jac_iter_type.as_pointer();
+    }
     # list[T] — bare `list` defaults to a list of i64.
     if cname == "list" {
         elem_llvm: ir.Type = ir.IntType(64);
@@ -420,18 +453,8 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
             k_llvm = _k;
             v_llvm = _v;
         }
-        # Key spec: i64 / f64 / ptr / tuple{size}.
-        k_spec = "i64";
-        k_size = 0;
-        if isinstance(k_llvm, ir.DoubleType) {
-            k_spec = "f64";
-        } elif isinstance(k_llvm, ir.PointerType) {
-            k_spec = "ptr";
-            if isinstance(k_llvm.pointee, ir.LiteralStructType) {
-                k_size = self._get_struct_size(k_llvm.pointee);
-                k_spec = f"tuple{k_size}";
-            }
-        }
+        # Key spec: i64 / f64 / bytes / tuple{size} / ptr (#6749).
+        (k_spec, k_size) = self._dict_key_spec(k_llvm);
         # Value spec: i64 / f64 / ptr / jacval.
         v_spec = "i64";
         if isinstance(v_llvm, ir.DoubleType) {
@@ -522,25 +545,19 @@ An annotation Expr carries a `.type` (TypeBase) populated by TypeCheckPass;
 _lower_type maps it to an LLVM type. Most native types flow through the
 central checker -- primitives, user structs/enums, collections, and the
 runtime `File` (modeled by na_builtins.pyi) -- including annotations in
-imported .na.jac modules (type-checked on load, #6117). The former name-based
-fallback (struct_types / type_map lookups) is gone: with `File` modeled
-centrally (#6118) it was reached zero times across the native suite.
+imported .na.jac modules (type-checked on load). The former name-based
+fallback (struct_types / type_map lookups) is gone.
 
-Two paths reach codegen WITHOUT a `.type`, and both fall back rather than ICE:
+A present-but-unlowerable type is reported via `_emit_unlowerable_type`
+(E2018 for UnknownType, E5090 otherwise) rather than silently defaulting to
+i64; it still returns a defensive i64 so codegen can continue.
 
-  * clib-import annotations (parameter/field types on `import from \"lib\"
-    { def ...; }`). The type checker skips these nodes entirely (the
-    `clib_decls` short-circuit in TypeCheckPass), so their `.type` is always
-    None. Codegen falls back to `_resolve_primitive_name`, which maps raw
-    primitive names (int, i32, f64, str, …) directly to LLVM IR types.
-  * a present-but-unlowerable type (a capability gap, E5090 territory).
-
-When neither resolves, `_resolve_jac_type` defaults to i64 and emits a debug
-breadcrumb -- it does NOT raise. This is a known soundness hole: an
-unrecognized C type is silently widened to signed i64. The proper fix is to
-type-check clib decls so `.type` is populated and a genuinely missing type can
-ICE honestly (the typed-tree contract this comment used to claim was already
-enforced) -- tracked in #6676.
+The exception is clib-import annotations (parameter types on `import from
+\"lib\" { def ...; }`). The type checker skips these nodes entirely, so their
+`.type` is always None. Rather than forcing the checker to process C-FFI
+declarations, the codegen falls back to `_resolve_primitive_name`, which maps
+raw primitive type names (int, i32, f64, str, …) directly to LLVM IR types,
+defaulting to i64 only when even that fails.
 """
 # Primitive type name → LLVM IR type.  Used as a fallback when the type
 # checker did not stamp `.type` on an annotation (e.g. clib import params).
@@ -629,7 +646,7 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         if lowered is not None {
             return lowered;
         }
-        return ir.IntType(64);
+        return self._emit_unlowerable_type(type_expr, _ptb);
     }
     if isinstance(type_expr, uni.Expr) {
         if type_expr.type is None {
@@ -645,23 +662,40 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
             # Annotation not resolved by checker or primitive table.
             # Default to i64 (opaque pointer) instead of ICE — this
             # handles user-defined types the checker hasn't stamped.
-            # Soundness hole: an unrecognized clib C type is silently widened
-            # to signed i64. Log it so the fallback is observable; the real
-            # fix is to type-check clib decls (see #6676).
-            import logging as _logging;
-            _logging.getLogger("jaclang.native").debug(
-                "[NaIRGenPass] _resolve_jac_type: unresolved clib annotation "
-                "%r (type=%s) — defaulting to i64; the type checker does not "
-                "stamp clib import decls (see #6676)",
-                type_expr,
-                type(type_expr).__name__,
-            );
             return ir.IntType(64);
         }
         lowered = self._lower_type(type_expr.type);
         if lowered is not None {
             return lowered;
         }
+        return self._emit_unlowerable_type(type_expr, type_expr.type);
+    }
+    return ir.IntType(64);
+}
+
+"""Emit E2018 for UnknownType, E5090 for other unlowerable types; return defensive i64."""
+impl NaIRGenPass._emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type {
+    is_unknown = False;
+    try {
+        import from jaclang.compiler.type_system.types { UnknownType as _UnknownType }
+        is_unknown = isinstance(tb, _UnknownType);
+    } except ImportError { }
+    # Use type_tag for HasVar/Param so E2018 shows the written name, not '<Unknown>'.
+    if isinstance(type_expr, uni.Expr) {
+        _label = type_expr.unparse();
+    } else {
+        _tag = type_expr?.type_tag;
+        _label = self._get_name(_tag?.tag) or str(tb);
+    }
+    if is_unknown {
+        self.emit(
+            E2018,
+            node_override=type_expr,
+            name=_label,
+            position="native type annotation position"
+        );
+    } else {
+        self.emit(E5090, node_override=type_expr, kind="type", name=_label);
     }
     # Catch-all: an annotated type the checker stamped but _lower_type could
     # not lower (capability gap). Default to i64, but log so it is observable
@@ -679,7 +713,8 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
 """Resolve a type for C library declarations -- clib structs use value types, not pointers."""
 impl NaIRGenPass._resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
-        return ir.IntType(64);
+        # Omitted return on a clib decl is void per Jac semantics, not i64.
+        return ir.VoidType();
     }
     # Check if this is a clib struct name -- return VALUE type (not pointer)
     type_name: (str | None) = None;
@@ -787,6 +822,11 @@ impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
             return self.builder.icmp_unsigned(
                 "!=", _len, ir.Constant(ir.IntType(64), 0), name="tobool"
             );
+        }
+        # bytes: empty is falsy, like the containers above — NOT a null test
+        # (a bytes value is never null), which is the bug #6749 item 4 hit.
+        if self._is_bytes_value(val) {
+            return self._emit_bytes_truthy(val);
         }
         null_ptr = ir.Constant(val.type, None);
         return self.builder.icmp_unsigned("!=", val, null_ptr, name="tobool");
@@ -1059,6 +1099,40 @@ impl NaIRGenPass._emit_binary_op(
         # Mark it so the assign handler skips the extra RETAIN (avoiding rc=2 leak).
         self._mark_owned(buf);
         return buf;
+    }
+    # bytes concatenation (jacbytes* + jacbytes*) — check before numeric dispatch.
+    # bytes are the length-aware struct, not i8*, so the str branch above misses
+    # them; allocate len(a)+len(b) and memcpy both data regions (embedded NULs
+    # survive). _bytes_alloc marks the result owned, so the caller owns it (rc=1).
+    if op == Tok.PLUS and self._is_bytes_value(left) and self._is_bytes_value(right) {
+        i8p = ir.IntType(8).as_pointer();
+        i64 = ir.IntType(64);
+        llen = self._bytes_len_val(left);
+        rlen = self._bytes_len_val(right);
+        total = self.builder.add(llen, rlen, name="by.cat.total");
+        result = self._bytes_alloc(total);
+        dst = self._bytes_data_ptr(result);
+        memcpy_fn = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+        self.builder.call(memcpy_fn, [dst, self._bytes_data_ptr(left), llen]);
+        rdst = self.builder.gep(dst, [llen], name="by.cat.rdst");
+        self.builder.call(memcpy_fn, [rdst, self._bytes_data_ptr(right), rlen]);
+        return result;
+    }
+    # bytes repeat (jacbytes* * i64 or i64 * jacbytes*) — length-aware (#6749);
+    # the i8* str-repeat path below matches on i8* and would miss the struct.
+    if op == Tok.STAR_MUL {
+        by_val: (ir.Value | None) = None;
+        rep_val: (ir.Value | None) = None;
+        if self._is_bytes_value(left) and isinstance(right.type, ir.IntType) {
+            by_val = left;
+            rep_val = right;
+        } elif self._is_bytes_value(right) and isinstance(left.type, ir.IntType) {
+            by_val = right;
+            rep_val = left;
+        }
+        if by_val is not None and rep_val is not None {
+            return self._emit_bytes_repeat(by_val, rep_val);
+        }
     }
     # String repeat (i8* * i64 or i64 * i8*): allocate n*len buffer, loop-copy
     if op == Tok.STAR_MUL {
@@ -1654,6 +1728,31 @@ impl NaIRGenPass._emit_comparison(
     if isinstance(left.type, ir.PointerType)
     and isinstance(right.type, ir.PointerType) {
         i8_ptr = ir.IntType(8).as_pointer();
+        # bytes comparison (#6749): == / != via length+memcmp, and ordering
+        # < > <= >= lexicographically (unsigned bytes, length tiebreak). A
+        # distinct struct type, so this never reaches the i8* string path.
+        if self._is_bytes_value(left) and self._is_bytes_value(right) {
+            if op == Tok.EE or op == Tok.NE {
+                return self._emit_bytes_eq(left, right, negate=op == Tok.NE);
+            }
+            if op in (Tok.LT, Tok.GT, Tok.LTE, Tok.GTE) {
+                _sym = "<"
+                    if op == Tok.LT
+                    else (">" if op == Tok.GT else ("<=" if op == Tok.LTE else ">="));
+                _ord = self._emit_bytes_cmp(left, right, _sym);
+                _zero = ir.Constant(ir.IntType(32), 0);
+                if op == Tok.LT {
+                    return self.builder.icmp_signed("<", _ord, _zero, name="by.lt");
+                }
+                if op == Tok.GT {
+                    return self.builder.icmp_signed(">", _ord, _zero, name="by.gt");
+                }
+                if op == Tok.LTE {
+                    return self.builder.icmp_signed("<=", _ord, _zero, name="by.lte");
+                }
+                return self.builder.icmp_signed(">=", _ord, _zero, name="by.gte");
+            }
+        }
         # String comparison: both operands must be i8* (char pointers)
         if left.type == i8_ptr and right.type == i8_ptr {
             strcmp_fn = self._get_or_declare_extern(

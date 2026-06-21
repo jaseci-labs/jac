@@ -147,6 +147,73 @@ test "guardrail: yield expression is rejected" {
     )}";
 }
 
+# Reading a field off an UNFILTERED node-ref element over an *untyped* edge is
+# unsupported: the checker types the neighbour as `any` (a bare edge can connect
+# any node types, so the adjacency returns untyped handles), so native cannot
+# resolve the element to a struct layout. It must E5090 -- and crucially must
+# NOT throw an uncaught codegen traceback (issue #6646 Bug 3) -- AND the
+# diagnostic must guide the author to a narrowing: a `[?:Type]` node filter, or
+# declaring the edge's endpoint node types. A typed receiver (edge ref, a
+# `[?:Type]`-filtered node ref, or -- since #6657 -- a neighbour over an edge
+# with declared endpoints) IS supported and reads correctly on native; see
+# test_osp_equivalence.jac "osp field access" and "osp typed edge endpoints".
+test "guardrail: field access on an untyped (any) node-ref element is rejected with a filter hint" {
+    prog = compile_na_inline(
+        "node_ref_any_field",
+        "node N { has tag: int = 0; }\n"
+        "edge Portal {}\n"
+        "walker W {\n"
+        "    has v: int = 0;\n"
+        "    can go with N entry {\n"
+        "        nbrs = [here ->:Portal:->];\n"
+        "        if len(nbrs) > 0 { self.v = nbrs[0].tag; }\n"
+        "    }\n"
+        "}\n"
+        "with entry { a = N(); b = N(tag=9); a +>: Portal() :+> b; a spawn W(); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for any-typed node-ref field access, got: {fmt_errors(
+        prog
+    )}";
+    hinted = False;
+    for alrt in prog.errors_had {
+        if (
+            alrt.code is not None
+            and alrt.code.code == "E5090"
+            and alrt.help_text is not None
+            and "[?:" in alrt.help_text
+        ) {
+            hinted = True;
+        }
+    }
+    assert hinted , f"E5090 help should suggest a `[?:Type]` filter: {fmt_errors(
+        prog
+    )}";
+    # The native capability authority now rejects this pre-codegen, so the same
+    # E5090 surfaces under `jac check` (codegen OFF), not only at `nacompile`.
+    check_prog = check_na_inline(
+        "node_ref_any_field",
+        "node N { has tag: int = 0; }\n"
+        "edge Portal {}\n"
+        "walker W {\n"
+        "    has v: int = 0;\n"
+        "    can go with N entry {\n"
+        "        nbrs = [here ->:Portal:->];\n"
+        "        if len(nbrs) > 0 { self.v = nbrs[0].tag; }\n"
+        "    }\n"
+        "}\n"
+        "with entry { a = N(); b = N(tag=9); a +>: Portal() :+> b; a spawn W(); }\n"
+    );
+    assert has_error_code(check_prog, "E5090") , f"Expected E5090 at check time (codegen OFF) for any-typed node-ref field access, got: {fmt_errors(
+        check_prog
+    )}";
+}
+
+
+# (The typed-endpoint counterpart -- that the UNFILTERED field read over an edge
+# with declared endpoints compiles AND reads the right value on native -- is a
+# behavioral test in test_osp_equivalence.jac "osp typed edge endpoints", per
+# this file's convention of migrating a feature to a behavioral test once it
+# gains real support.)
 
 # ─────────────────────────────────────────────────────────────────────
 # Import / builtin gaps (issue #6357)
@@ -355,48 +422,16 @@ test "osp gate: connect-only module (no walker) lowers without E5090" {
     )}";
 }
 
-# NOTE (issue #6642 Blocker 2): the cross-module spawn/connect/edge-ref guardrail
-# that asserted E5090 for ALL imported OSP was REMOVED -- in the SOUND shape
-# (a single imported OSP module, no local OSP archetypes) those archetypes now
-# materialize into the consumer's deterministic tag space and lower, pinned by
-# the native run in test_osp_equivalence.jac ("osp cross-module ...").
-
-# But the deterministic sorted-name tag scheme is only sound when the consumer's
-# OSP archetype set matches the library's. A consumer that ALSO defines a local
-# OSP archetype (here `AAA`, which sorts before the library's `Area`) shifts the
-# shared tags, so the library walker body would dispatch on mismatched tags and
-# silently mis-walk. That unsound shape must fail LOUDLY (E5090), not silently
-# materialize -- the soundness invariant of the #6636 lineage.
-test "osp gate: cross-module OSP with a tag-shifting local archetype is rejected" {
-    prog = compile_na_inline(
-        "xmod_unsafe",
-        "import from osp_xmod_lib { Area, Portal, Counter }\n"
-        "node AAA { has v: int = 0; }\n"  # sorts before Area -> shifts tags
-        "with entry {\n"
-        "    a1 = Area(tag=1);\n"
-        "    a2 = Area(tag=2);\n"
-        "    a1 +>: Portal(w=1) :+> a2;\n"
-        "    c = Counter();\n"
-        "    c spawn a1;\n"
-        "    print(c.seen);\n"
-        "}\n"
-    );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsound cross-module OSP, got: {fmt_errors(
-        prog
-    )}";
-    named = False;
-    for alrt in prog.errors_had {
-        if (
-            alrt.code is not None
-            and alrt.code.code == "E5090"
-            and alrt.help_text is not None
-            and "osp_xmod_lib" in alrt.help_text
-        ) {
-            named = True;
-        }
-    }
-    assert named , f"E5090 help should name the defining module: {fmt_errors(prog)}";
-}
+# NOTE (issue #6642): the cross-module spawn/connect/edge-ref guardrail that
+# asserted E5090 was REMOVED, and so was its follow-up that asserted E5090 for a
+# consumer with a tag-shifting LOCAL archetype. OSP type tags are now globally
+# stable content hashes (not position-based), so imported OSP archetypes
+# materialize and lower correctly in EVERY configuration -- including a consumer
+# that defines its own OSP archetypes or imports from multiple modules. The
+# end-to-end behavior (including the local-archetype shape) is pinned by the
+# native runs in test_osp_equivalence.jac ("osp cross-module ..." and
+# "osp cross-module general ..."). A guardrail asserting E5090 here would now be
+# a false negative.
 
 # ─────────────────────────────────────────────────────────────────────
 # Diagnostic rendering + check/nacompile parity (issue #6636 follow-ups)
@@ -479,6 +514,108 @@ test "nacompile still rejects skip in a value-returning native function" {
         "with entry { print(f(5)); }\n"
     );
     assert has_error_code(prog, "E5090") , f"Expected E5090 at full compile for skip-in-value-fn, got: {fmt_errors(
+        prog
+    )}";
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# C-library (clib) import decl type resolution
+# ─────────────────────────────────────────────────────────────────────
+test "check rejects clib decl with an unknown parameter type" {
+    prog = check_na_inline(
+        "clib_unknown_param",
+        "import from \"/usr/lib/libm.so.6\" {\n"
+        "    def takes_unknown(x: uint32_t) -> f64;\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown clib param type 'uint32_t', got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "check rejects clib decl with an unknown return type" {
+    prog = check_na_inline(
+        "clib_unknown_ret",
+        "import from \"/usr/lib/libm.so.6\" {\n"
+        "    def make_handle(x: f64) -> some_handle;\n"
+        "}\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown clib return type 'some_handle', got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "nacompile rejects clib decl with an unknown type (no silent i64)" {
+    prog = compile_na_inline(
+        "clib_unknown_cg",
+        "import from \"/usr/lib/libm.so.6\" {\n"
+        "    def takes_unknown(x: uint32_t) -> some_handle;\n"
+        "}\n"
+        "def use_it(n: f64) -> f64 { return n; }\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 (not a silent i64 declare) for unknown clib types, got: {fmt_errors(
+        prog
+    )}";
+}
+
+# Native signatures with unresolved annotation types are E2018, not W2001.
+test "check rejects a native def with an unknown parameter type" {
+    prog = check_na_inline(
+        "native_unknown_param", "def takes_unknown(x: uint32_t) -> int { return 0; }\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown native param type 'uint32_t', got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "check rejects a native def with an unknown return type" {
+    prog = check_na_inline(
+        "native_unknown_ret", "def make_it(x: int) -> some_handle { return x; }\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown native return type 'some_handle', got: {fmt_errors(
+        prog
+    )}";
+}
+
+# Object field annotations are caught at codegen; E2018 must name the written type.
+test "native object field with an unknown type names the type, not '<Unknown>'" {
+    prog = compile_na_inline(
+        "obj_field_unknown",
+        "obj Handle { has raw: uint32_t; }\n"
+        "with entry { h = Handle(raw=0); print(h.raw); }\n"
+    );
+    assert has_error_code(prog, "E2018") , f"Expected E2018 for unknown object field type, got: {fmt_errors(
+        prog
+    )}";
+    named = False;
+    for alrt in prog.errors_had {
+        if (
+            alrt.code is not None
+            and alrt.code.code == "E2018"
+            and "uint32_t" in str(alrt)
+            and "<Unknown>" not in str(alrt)
+        ) {
+            named = True;
+        }
+    }
+    assert named , f"E2018 should name 'uint32_t', not '<Unknown>': {fmt_errors(prog)}";
+}
+
+# Negative control: known clib types must compile without E2018/E5090.
+test "clib decl with known types is not rejected" {
+    prog = compile_na_inline(
+        "clib_known_ok",
+        "import from \"/usr/lib/libm.so.6\" {\n"
+        "    obj Vec2 { has x: f64, y: f64; }\n"
+        "    def sqrt(x: f64) -> f64;\n"
+        "    def scale(v: Vec2, s: f64) -> Vec2;\n"
+        "}\n"
+        "def hypot(a: f64, b: f64) -> f64 { return sqrt(a * a + b * b); }\n"
+    );
+    assert not has_error_code(prog, "E2018") , f"Known clib types triggered E2018: {fmt_errors(
+        prog
+    )}";
+    assert not has_error_code(prog, "E5090") , f"Known clib types triggered E5090: {fmt_errors(
         prog
     )}";
 }

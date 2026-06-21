@@ -12,10 +12,7 @@ import from pathlib { Path }
 
 import from jaclang.project.config { find_project_root }
 
-glob JacClientExamples: Path = (
-         Path(__file__).parent.parent.parent.parent / "jac-client" / "jac_client" / "examples"
-     ),
-     JacScaleFixtures: Path = Path(__file__).parent / "fixtures";
+glob JacScaleFixtures: Path = Path(__file__).parent / "fixtures";
 
 """Get a free port by binding to port 0 and releasing it."""
 def get_free_port -> int {
@@ -394,69 +391,6 @@ obj JacScaleTestRunner {
         exc_type: type | None, exc_val: BaseException | None, exc_tb: object | None
     ) {
         self.stop_server();
-    }
-}
-
-# TestJacClientExamples
-"""Test the all-in-one example file."""
-test "all in one" {
-    example_file = JacClientExamples / "all-in-one" / "main.jac";
-    with JacScaleTestRunner(
-        example_file, session_name="custom_test", setup_npm=True
-    ) as runner {
-        assert "background-image" in runner.request_raw("GET", "/styles/styles.css");
-        assert "PNG" in runner.request_raw("GET", "/static/assets/burger.png");
-        assert "/static/client.js" in runner.request_raw("GET", "/cl/app");
-        assert (
-            runner.request_raw("GET", "/static/client.js") != "Static file not found"
-        );
-        assert (
-            runner.request_raw("GET", "/static/client.jss") == "Static file not found"
-        );
-    }
-}
-
-"""Test JS and styling example file."""
-test "js styling" {
-    example_file = JacClientExamples / "css-styling" / "js-styling" / "main.jac";
-    with JacScaleTestRunner(
-        example_file, session_name="js_styling_test", setup_npm=True
-    ) as runner {
-        assert "const countDisplay" in runner.request_raw("GET", "/styles.js");
-        assert "/static/client.js" in runner.request_raw("GET", "/cl/app");
-    }
-}
-
-"""Test Material-UI styling example."""
-test "material ui" {
-    example_file = JacClientExamples / "css-styling" / "material-ui" / "main.jac";
-    with JacScaleTestRunner(
-        example_file, session_name="material_ui_test", setup_npm=True
-    ) as runner {
-        assert "/static/client.js" in runner.request_raw("GET", "/cl/app");
-    }
-}
-
-"""Test Pure CSS example."""
-test "pure css" {
-    example_file = JacClientExamples / "css-styling" / "pure-css" / "main.jac";
-    with JacScaleTestRunner(
-        example_file, session_name="pure_css_test", setup_npm=True
-    ) as runner {
-        page_content = runner.request_raw("GET", "/cl/app");
-        assert "/static/client.js" in page_content;
-        assert ".container {" in runner.request_raw("GET", "/styles.css");
-    }
-}
-
-"""Test Styled Components example."""
-test "styled components" {
-    example_file = JacClientExamples / "css-styling" / "styled-components" / "main.jac";
-    with JacScaleTestRunner(
-        example_file, session_name="styled_components_test", setup_npm=True
-    ) as runner {
-        assert "/static/client.js" in runner.request_raw("GET", "/cl/app");
-        assert "import styled from" in runner.request_raw("GET", "/styled.js");
     }
 }
 

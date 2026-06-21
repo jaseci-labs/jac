@@ -119,7 +119,9 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="name", kind=4),
                  FieldDesc(name="arch_type", kind=4),
                  FieldDesc(name="base_classes", kind=5),
-                 FieldDesc(name="type_params", kind=5)
+                 FieldDesc(name="type_params", kind=5),
+                 FieldDesc(name="src_endpoint", kind=6),
+                 FieldDesc(name="tgt_endpoint", kind=6)
              )
          ),
          NodeSpec(
@@ -1177,9 +1179,6 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="body", kind=5),
                  FieldDesc(name="terminals", kind=5),
                  FieldDesc(name="stub_only", kind=2),
-                 FieldDesc(name="impl_mod", kind=5),
-                 FieldDesc(name="test_mod", kind=5),
-                 FieldDesc(name="variant_mod", kind=5),
                  FieldDesc(name="src_terminals", kind=5),
                  FieldDesc(name="is_raised_from_py", kind=2)
              )

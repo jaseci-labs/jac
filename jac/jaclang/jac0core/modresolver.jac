@@ -3,11 +3,91 @@ import importlib.util;
 import os;
 import site;
 import sys;
+
+# Cache of resolved project roots, keyed by the directory we started the
+# upward walk from. A `None` value records "no jac.toml above here" so we
+# never re-walk a non-project directory on the hot import path.
+glob _project_root_cache: dict = {},
+     # Stack of directories for the files currently being imported, innermost last.
+     # `jac_import` pushes the importing file's directory before executing it and
+     # pops it after. `get_jac_search_paths` reads the top so that at runtime a
+     # bare (no-dot) import resolves against the importing file's OWN directory
+     # first -- matching the compile-time resolver's own-directory-first rule (and
+     # Python's sibling-first intuition). Mirrors the existing sys.path push/pop in
+     # jac_import; the same single-threaded import assumptions apply.
+     _import_base_stack: list = [];
+
+"""Push the importing file's directory as the active import base."""
+def push_import_base(base_dir: str) {
+    _import_base_stack.append(base_dir);
+}
+
+"""Pop the active import base pushed by the most recent push_import_base."""
+def pop_import_base {
+    if _import_base_stack {
+        _import_base_stack.pop();
+    }
+}
+
+"""Find the nearest project root (the directory holding `jac.toml`).
+
+Walks upward from `start` (a file or directory path); when `start` is None the
+walk begins at the current working directory. Returns the project-root directory
+as a string, or None for standalone scripts that live outside any project.
+
+This is the anchor for "project-root absolute" imports: a no-dot import like
+`engine.math.vec3` resolves against this directory from anywhere in the project,
+independent of how deep the importing file sits. Kept as a dependency-free
+filesystem walk (no jaclang.project.config import) because it runs on the hot
+import-resolution path; results are memoized in `_project_root_cache`.
+"""
+def find_jac_project_root(start: (str | None) = None) -> (str | None) {
+    if start {
+        current = os.path.abspath(start);
+        if os.path.isfile(current) {
+            current = os.path.dirname(current);
+        }
+    } else {
+        current = os.getcwd();
+    }
+    if (current in _project_root_cache) {
+        return _project_root_cache[current];
+    }
+    found = None;
+    probe = current;
+    while True {
+        if os.path.isfile(os.path.join(probe, 'jac.toml')) {
+            found = probe;
+            break;
+        }
+        parent = os.path.dirname(probe);
+        if (parent == probe) {
+            break;
+        }
+        probe = parent;
+    }
+    _project_root_cache[current] = found;
+    return found;
+}
+
 """Construct a list of paths to search for Jac modules."""
 def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     paths = [];
     if base_path {
         paths.append(base_path);
+    }
+    # The directory of the file currently being imported takes priority, so a
+    # bare (no-dot) import of a sibling module resolves to that sibling rather
+    # than a same-named module at the project root or cwd. This mirrors the
+    # compile-time resolver's own-directory-first rule, keeping native and
+    # interpreted resolution consistent.
+    active_base = _import_base_stack[-1] if _import_base_stack else None;
+    if active_base {
+        paths.append(active_base);
+    }
+    project_root = find_jac_project_root(base_path or active_base);
+    if project_root {
+        paths.append(project_root);
     }
     paths.append(os.getcwd());
     if ('JACPATH' in os.environ) {
@@ -113,10 +193,10 @@ def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
     import jaclang.runtimelib as _runtimelib;
     runtime_dir = os.path.dirname(_runtimelib.__file__);
     module_name = target[len('@jac/'):];
-    # Well-known aliases explicitly mapped to their backing source.
-    module_map = {'runtime': 'client_runtime.cl.jac'};
-    if module_name in module_map {
-        path = os.path.join(runtime_dir, module_map[module_name]);
+    # `@jac/runtime` resolves to the framework-specific client runtime source.
+    if module_name == 'runtime' {
+        import from jaclang.runtimelib.runtime_source { resolve_client_runtime_cl_path }
+        path = resolve_client_runtime_cl_path();
         if os.path.isfile(path) {
             return (path, 'jac');
         }
@@ -127,6 +207,26 @@ def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
         if os.path.isfile(path) {
             return (path, lang);
         }
+    }
+    # Fallback: check packages that registered a jac.modules entry point.
+    # Plugins (e.g. jac-desktop) self-register their @jac/* modules this way
+    # without writing files into jaclang's runtimelib directory.
+    # Entry point value is "module.path:attr_or_callable". If the loaded object
+    # is callable, it is invoked and must return an absolute path string.
+    # If it is already a string, it is used directly.
+    try {
+        import importlib.metadata as _meta;
+        for ep in _meta.entry_points(group='jac.modules') {
+            if ep.name == module_name {
+                loaded = ep.load();
+                path = loaded() if callable(loaded) else loaded;
+                if isinstance(path, str) and os.path.isfile(path) {
+                    return (path, 'jac');
+                }
+            }
+        }
+    } except Exception {
+        ;
     }
     return None;
 }
@@ -140,6 +240,36 @@ ECMAScript pass (so the client manifest registers the same file).
 def resolve_jac_virtual_module_path(target: str) -> (str | None) {
     result = _resolve_jac_virtual_module(target);
     return result[0] if result else None;
+}
+
+"""Return the public export names a `@jac/*` module advertises, or [].
+
+Packages whose virtual module is built from `obj` types (which the generic
+export extractor can't see) self-describe their public symbols via a
+`jac.module_exports` entry point named for the module (e.g. `desktop`). The
+entry point resolves to a list, or a callable returning one. This keeps the
+per-SDK symbol list in the owning package instead of hardcoded in the compiler.
+"""
+def resolve_jac_virtual_module_exports(target: str) -> list[str] {
+    if not target.startswith('@jac/') {
+        return [];
+    }
+    module_name = target[len('@jac/'):];
+    try {
+        import importlib.metadata as _meta;
+        for ep in _meta.entry_points(group='jac.module_exports') {
+            if ep.name == module_name {
+                loaded = ep.load();
+                names = loaded() if callable(loaded) else loaded;
+                if isinstance(names, list) {
+                    return names;
+                }
+            }
+        }
+    } except Exception {
+        ;
+    }
+    return [];
 }
 
 """Get path aliases from project config [plugins.client.paths]."""

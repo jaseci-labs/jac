@@ -49,7 +49,7 @@ impl LayoutPass.transform(ir_in: uni.Module) -> uni.Module {
 """Collect all Archetype nodes from the module, deduplicating forward declarations."""
 impl LayoutPass._collect_archetypes(module: uni.Module) -> dict[str, uni.Archetype] {
     arch_map: dict[str, uni.Archetype] = {};
-    for nd in UniPass.get_all_sub_nodes(module, uni.Archetype, brute_force=True) {
+    for nd in UniPass.get_all_sub_nodes(module, uni.Archetype) {
         aname = nd.name.value if nd.name else None;
         if aname is None {
             continue;

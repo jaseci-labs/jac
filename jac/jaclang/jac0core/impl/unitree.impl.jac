@@ -41,6 +41,21 @@ impl UniNode._construct_sub_node_tab -> None {
     }
 }
 
+"""Invalidate the memoized sub node table on this node and its ancestors.
+
+Constructing a node's table forces construction of its whole subtree, so a
+materialized (non-None) node always implies materialized descendants. The
+contrapositive guarantees that the first ancestor whose table is already None
+has only None ancestors above it -- so we can stop walking there.
+"""
+impl UniNode._invalidate_sub_node_tab -> None {
+    cur: (UniNode | None) = self;
+    while cur is not None and cur.__sub_node_tab is not None {
+        cur.__sub_node_tab = None;
+        cur = cur.parent;
+    }
+}
+
 """Get symbol table.
 
 For version conditionals, some scopes (IfStmt, ElseStmt) are unlinked.
@@ -81,6 +96,7 @@ impl UniNode.add_kids_left(
             i.parent = self;
         }
     }
+    self._invalidate_sub_node_tab();
     return self;
 }
 
@@ -99,6 +115,7 @@ impl UniNode.add_kids_right(
             i.parent = self;
         }
     }
+    self._invalidate_sub_node_tab();
     return self;
 }
 
@@ -113,6 +130,7 @@ impl UniNode.insert_kids_at_pos(
         }
         self.loc.update_token_range(*self.resolve_tok_range());
     }
+    self._invalidate_sub_node_tab();
     return self;
 }
 
@@ -123,6 +141,7 @@ impl UniNode.set_kids(nodes: Sequence[UniNode]) -> UniNode {
         i.parent = self;
     }
     self.loc.update_token_range(*self.resolve_tok_range());
+    self._invalidate_sub_node_tab();
     return self;
 }
 
@@ -164,9 +183,9 @@ impl UniNode.gen_token(name: Tok, value: (str | None) = None) -> Token {
 }
 
 """Get all sub nodes of type."""
-impl UniNode.get_all_sub_nodes(typ: type[T], brute_force: bool = True) -> list[T] {
+impl UniNode.get_all_sub_nodes(typ: type[T]) -> list[T] {
     import from jaclang.jac0core.passes { UniPass }
-    return UniPass.get_all_sub_nodes(nd=self, typ=typ, brute_force=brute_force);
+    return UniPass.get_all_sub_nodes(nd=self, typ=typ);
 }
 
 """Get parent of type."""
@@ -1017,13 +1036,45 @@ impl Module.format -> str {
 impl Module.unparse(requires_format: bool = True) -> str {
     import from jaclang.compiler.passes.tool.normalize_pass { NormalizePass }
     import from jaclang.jac0core.program { JacProgram }
-    NormalizePass(ir_in=self, prog=JacProgram());
-    if requires_format {
-        return self.format();
+    # Annex (.impl/.test) and variant statements were spliced into this tree by
+    # JacAnnexPass but belong to their own files. Unparsing the head must emit
+    # only its own statements: inlining the spliced ones would write another
+    # file's content into the head and duplicate what the annex pass re-merges
+    # on the next compile (round-trip tooling relies on each node's loc.mod_path
+    # to write changes back to the right file). Restrict the tree to head-origin
+    # nodes for the unparse, then restore. A module with nothing spliced in is
+    # left untouched.
+    own = self.loc.mod_path;
+    saved_body = self.body;
+    saved_kid = self.kid;
+    head_kid = [
+        k
+        for k in saved_kid
+        if (not k.loc.mod_path) or (k.loc.mod_path == own)
+    ];
+    filtered = len(head_kid) != len(saved_kid);
+    if filtered {
+        self.body = [
+            st
+            for st in saved_body
+            if (not st.loc.mod_path) or (st.loc.mod_path == own)
+        ];
+        self.set_kids(nodes=head_kid or [EmptyToken()]);
     }
-    import from jaclang.compiler.passes.tool.unparse_pass { UnparsePass }
-    UnparsePass(ir_in=self, prog=JacProgram());
-    return self.gen.jac;
+    try {
+        NormalizePass(ir_in=self, prog=JacProgram());
+        if requires_format {
+            return self.format();
+        }
+        import from jaclang.compiler.passes.tool.unparse_pass { UnparsePass }
+        UnparsePass(ir_in=self, prog=JacProgram());
+        return self.gen.jac;
+    } finally {
+        if filtered {
+            self.body = saved_body;
+            self.set_kids(nodes=saved_kid);
+        }
+    }
 }
 
 """Initialize whole program node."""

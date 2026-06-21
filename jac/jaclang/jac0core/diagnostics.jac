@@ -594,6 +594,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " element types cannot be verified — use \"{type}[NodeType]\" or pass a"
          " concrete list of nodes instead"
      ),
+     E1119 = _err(
+         "E1119",
+         Category.TYPE,
+         "Lambda parameter '{name}' has no type and none could be inferred from context",
+         "Jac is strictly typed: a lambda's parameter types must be known. Annotate the"
+         " parameter, e.g. `lambda x: int : x + 1` (the return type is still inferred), or"
+         " place the lambda where its type is fixed by context — passed as a typed callback"
+         " (`sorted(xs, key=lambda x: ...)`) or bound to a `Callable`-typed target."
+     ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
          "W1051",
@@ -694,6 +703,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      E2083 = _err(
          "E2083", Category.SEMANTIC, "'disengage' is only valid inside a walker ability"
+     ),
+     E2027 = _err(
+         "E2027",
+         Category.SEMANTIC,
+         "Endpoint clause ': Src --> Tgt' is only valid on an 'edge' archetype, not on {arch_type} '{name}'"
      ),
      # Def-impl match errors
      E2009 = _err(
@@ -802,6 +816,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "reactive state there would compile to a conditional 'useState' "
          "and violate React's rules of hooks. Declare 'has'-fields at the "
          "component scope (the enclosing 'def -> JsxElement' body)."
+     ),
+     E2028 = _err(
+         "E2028",
+         Category.SEMANTIC,
+         "Redundant '{{...}}' around a single expression inside a JSX slot "
+         "body — slot bodies are already in slot mode, so the value renders "
+         "without the extra braces. Drop them: write the expression directly, "
+         "terminated with ';' (e.g. 'name;' instead of '{{name}}')."
      ),
      W2021 = _warn(
          "W2021",
@@ -1161,6 +1183,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "Argument '{name}' for server function '{func}' is given both positionally and by keyword"
      ),
+     E5081 = _err("E5081", Category.CODEGEN, "Unknown client framework '{framework}'"),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Portability warnings (W6xxx) — JS-idiomatic usage that breaks cross-codespace portability
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

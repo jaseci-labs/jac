@@ -29,30 +29,21 @@ obj UniPass(ModuleCodegenPass) {
     """Prune traversal."""
     def prune -> None;
 
-    """Get all sub nodes of type."""
-    static def get_all_sub_nodes(
-        nd: uni.UniNode, typ: type[T], brute_force: bool = False
-    ) -> list[T] {
+    """Get all sub nodes of type.
+
+    Reads from the node's memoized sub node table, which is kept correct by
+    invalidation on every kid mutation (see UniNode._invalidate_sub_node_tab),
+    so the table is always authoritative -- no brute force walk is needed.
+    """
+    static def get_all_sub_nodes(nd: uni.UniNode, typ: type[T]) -> list[T] {
         result: list[T] = [];
         if not nd {
             return result;
-        } elif len(nd._sub_node_tab) {
-            if (typ in nd._sub_node_tab) {
-                for i in nd._sub_node_tab[typ] {
-                    if isinstance(i, typ) {
-                        result.append(i);
-                    }
-                }
-            }
-        } elif len(nd.kid) {
-            if not brute_force {
-                raise ValueError("Node has no sub_node_tab. " + str(nd));
-            } else {
-                for i in nd.kid {
-                    if isinstance(i, typ) {
-                        result.append(i);
-                    }
-                    result.extend(UniPass.get_all_sub_nodes(i, typ, brute_force));
+        }
+        if (typ in nd._sub_node_tab) {
+            for i in nd._sub_node_tab[typ] {
+                if isinstance(i, typ) {
+                    result.append(i);
                 }
             }
         }

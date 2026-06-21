@@ -19,10 +19,6 @@ on:
         description: "Publish jac-byllm (byllm)"
         type: boolean
         default: false
-      jac-client:
-        description: "Publish jac-client"
-        type: boolean
-        default: false
       jac-scale:
         description: "Publish jac-scale"
         type: boolean
@@ -33,10 +29,6 @@ on:
         default: false
       jac-mcp:
         description: "Publish jac-mcp"
-        type: boolean
-        default: false
-      jac-desktop:
-        description: "Publish jac-desktop"
         type: boolean
         default: false
       jaseci:
@@ -88,15 +80,13 @@ jobs:
           # Collect the checked packages (empty string when unchecked).
           IN_JACLANG: ${{ inputs.jaclang && 'jaclang' || '' }}
           IN_BYLLM: ${{ inputs['jac-byllm'] && 'jac-byllm' || '' }}
-          IN_CLIENT: ${{ inputs['jac-client'] && 'jac-client' || '' }}
           IN_SCALE: ${{ inputs['jac-scale'] && 'jac-scale' || '' }}
           IN_SUPER: ${{ inputs['jac-super'] && 'jac-super' || '' }}
           IN_MCP: ${{ inputs['jac-mcp'] && 'jac-mcp' || '' }}
-          IN_DESKTOP: ${{ inputs['jac-desktop'] && 'jac-desktop' || '' }}
           IN_JASECI: ${{ inputs.jaseci && 'jaseci' || '' }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            PACKAGES="$IN_JACLANG $IN_BYLLM $IN_CLIENT $IN_SCALE $IN_SUPER $IN_MCP $IN_DESKTOP $IN_JASECI"
+            PACKAGES="$IN_JACLANG $IN_BYLLM $IN_SCALE $IN_SUPER $IN_MCP $IN_JASECI"
             echo "Manual dispatch - selected packages: $PACKAGES"
             jac run scripts/parse_release.jac --packages "$PACKAGES"
           else
@@ -170,7 +160,7 @@ jobs:
         if: matrix.extra_build_cmd != '' && matrix.name != 'jaclang'
         run: jac install -e ./${{ matrix.dir }}
 
-      # Install extra pip dependencies for build commands (e.g., jac-client for admin UI)
+      # Install extra pip dependencies for build commands (a sibling plugin a build step needs)
       - name: Install extra build dependencies
         if: matrix.extra_build_deps != ''
         run: jac install -e ./${{ matrix.extra_build_deps }}
@@ -227,8 +217,8 @@ jobs:
         working-directory: ${{ matrix.dir }}
         env:
           JAC_PRECOMPILE_LOCAL_INSTALL: ${{ github.workspace }}/jac
-          # Precompile a sibling plugin (e.g. jac-desktop's jac-client) from local
-          # source so its not-yet-published version pin resolves without PyPI.
+          # Precompile a sibling plugin from local source so its not-yet-published
+          # version pin resolves without PyPI.
           JAC_PRECOMPILE_LOCAL_DEPS: ${{ matrix.extra_build_deps != '' && format('{0}/{1}', github.workspace, matrix.extra_build_deps) || '' }}
         run: jac bundle ${{ matrix.precompile == true && '--precompile' || '' }}
 
@@ -431,7 +421,7 @@ jobs:
         run: jac run scripts/wait_for_pypi.jac --matrix "$MATRIX" --tier 2
 
   # ============================================================================
-  # Publish Tier 3: plugins that depend on a tier-2 plugin (e.g. jac-desktop -> jac-client)
+  # Publish Tier 3: plugins that depend on a tier-2 plugin (currently none)
   # ============================================================================
   publish-tier3:
     needs: [parse-release, build, wait-tier2]

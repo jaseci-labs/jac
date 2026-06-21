@@ -1,21 +1,16 @@
-"""Eject command: convert a Jac project to standalone Python + JavaScript.
-
-Walks a Jac project, compiles every .jac source file to its Python and
-JavaScript equivalents, copies static assets, and writes a runnable project
-folder containing zero .jac files. The ejected backend still imports from
-the installed `jaclang` runtime library at execution time, but no Jac source
-or compilation step is required to run it.
-"""
+"""Eject command: compile a Jac project into a runnable FastAPI + JavaScript app.
+Writes an `ejected/{backend,frontend}` folder with zero .jac files: a FastAPI
+backend running walkers on `jaclang` plus the compiled `.cl.jac` UI on Vite."""
 
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Eject a Jac project to standalone Python + JavaScript."""
+"""Eject a Jac project to a runnable FastAPI + JavaScript app."""
 @registry.command(
     name="eject",
-    help="Eject a Jac project to standalone Python + JavaScript",
+    help="Eject a Jac project to a runnable FastAPI + JavaScript app",
     args=[
         Arg.create(
             "source",
@@ -26,7 +21,7 @@ glob registry = get_registry();
         Arg.create(
             "output",
             default="",
-            help="Output directory (default: <name>-ejected next to source)",
+            help="Output directory (default: <project>/ejected)",
             short="o"
         ),
         Arg.create(
@@ -39,7 +34,7 @@ glob registry = get_registry();
 
     ],
     examples=[
-        ("jac eject", "Eject the current project to ./<name>-ejected/"),
+        ("jac eject", "Eject the current project to ./ejected/"),
         ("jac eject . -o /tmp/myapp", "Eject current project to /tmp/myapp"),
         ("jac eject myapp --force", "Eject myapp/, overwriting existing output"),
 

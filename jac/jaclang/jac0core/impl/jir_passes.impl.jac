@@ -584,6 +584,7 @@ impl JirReader._init_caches -> None {
         Source,
         ParamVar,
         ParamKind,
+        FuncCall,
         Token,
         Module,
         Import,
@@ -621,6 +622,7 @@ impl JirReader._init_caches -> None {
     self._WalkerStmtOnlyNode = WalkerStmtOnlyNode;
     self._Source = Source;
     self._ParamVar = ParamVar;
+    self._FuncCall = FuncCall;
     self._ParamKind_NORMAL = ParamKind.NORMAL;
     self._Token = Token;
     self._Module = Module;
@@ -874,6 +876,18 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
         nd.setdefault('param_kind', self._ParamKind_NORMAL);
     }
 
+    # FuncCall postinit: call_kind, callee_decl. Neither is serialized to JIR
+    # (the checker restamps them on a real inference run), but `__new__`-based
+    # construction skips postinit, so a JIR-reloaded FuncCall would otherwise
+    # have no attribute at all. Seed the postinit defaults so backends that
+    # read `.callee_decl`/`.call_kind` (native + client/JS codegen) see a clean
+    # `None` — an unresolved call — instead of crashing with AttributeError on
+    # a warm build. See jaseci-labs/jaseci#6656 (Ask #2).
+    if isinstance(ir_node, self._FuncCall) {
+        nd.setdefault('call_kind', None);
+        nd.setdefault('callee_decl', None);
+    }
+
     # WalkerStmtOnlyNode.init: from_walker
     if isinstance(ir_node, self._WalkerStmtOnlyNode) {
         nd.setdefault('from_walker', False);
@@ -913,9 +927,6 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
 
     # Module.init: extra attributes
     if isinstance(ir_node, self._Module) {
-        nd.setdefault('impl_mod', []);
-        nd.setdefault('test_mod', []);
-        nd.setdefault('variant_mod', []);
         nd.setdefault('src_terminals', None);
         nd.setdefault('is_raised_from_py', False);
     }

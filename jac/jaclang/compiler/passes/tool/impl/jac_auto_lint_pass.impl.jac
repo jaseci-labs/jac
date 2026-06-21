@@ -115,6 +115,7 @@ impl JacAutoLintPass._remove_staticmethod_from_kids(ability_node: uni.Ability) -
         i += 1;
     }
     ability_node.kid = new_kids;
+    ability_node._invalidate_sub_node_tab();
 }
 
 """Process ability to convert @staticmethod decorator to static keyword, __init__/__post_init__ to init/postinit,
@@ -165,6 +166,7 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
                 }
             }
             ability_node.kid = new_kid;
+            ability_node._invalidate_sub_node_tab();
         }
     }
     if not ability_node.is_method {
@@ -262,6 +264,7 @@ impl JacAutoLintPass.enter_enum(nd: uni.Enum) -> None {
                 }
             }
             enum_node.kid = new_kid;
+            enum_node._invalidate_sub_node_tab();
         }
     }
 }
@@ -297,6 +300,7 @@ impl JacAutoLintPass.enter_archetype(nd: uni.Archetype) -> None {
                 }
             }
             arch.kid = new_kid;
+            arch._invalidate_sub_node_tab();
         }
     }
 }
@@ -560,9 +564,6 @@ impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
     module = nd;
     if self.main_module is None {
         self.main_module = module;
-        for impl_mod in module.impl_mod {
-            self.traverse(impl_mod);
-        }
     }
     new_body: list[uni.UniNode] = [];
     for stmt in module.body {
@@ -923,6 +924,7 @@ impl JacAutoLintPass._replace_child_in_parent(
         new_kid.append(new if k is old else k);
     }
     parent.kid = new_kid;
+    parent._invalidate_sub_node_tab();
     if isinstance(parent, uni.CfgExpr) {
         if parent.expr is old {
             parent.expr = new;
@@ -1068,6 +1070,7 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
         replacement.parent = cfg_wrapper;
         cfg_wrapper.expr = replacement;
         cfg_wrapper.kid = [replacement];
+        cfg_wrapper._invalidate_sub_node_tab();
         if isinstance(parent, uni.IfElseExpr)
         and parent.condition is cfg_wrapper
         and attr_name is not None
@@ -1111,6 +1114,7 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
         }
     }
     parent.kid = new_kids;
+    parent._invalidate_sub_node_tab();
 }
 
 """Recursively collect all AtomTrailer nodes from a subtree."""
@@ -1316,6 +1320,7 @@ impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> boo
             }
         }
         parent.kid = new_kids;
+        parent._invalidate_sub_node_tab();
     }
     if isinstance(parent, uni.Assignment) {
         if parent.value is if_else_node {
@@ -1506,6 +1511,18 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> Non
                 }
             }
         }
+        if arch_node is None {
+            # The decl is not in the file being formatted. When that file is an
+            # annex (.impl.jac), its declarations live in the base module, which
+            # is no longer merged in during tool-mode formatting — load it on
+            # demand so cross-file signature mismatches still get fixed.
+            for stmt in self._base_decl_archetypes(impl_node.loc.mod_path) {
+                if stmt.name_spec and stmt.name_spec.sym_name == root_arch_name {
+                    arch_node = stmt;
+                    break;
+                }
+            }
+        }
         if arch_node is None or not arch_node.body {
             return;
         }
@@ -1593,6 +1610,37 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> Non
         }
     }
     impl_node.kid = new_kids;
+    impl_node._invalidate_sub_node_tab();
+}
+
+"""Top-level archetype declarations of an annex file's base module."""
+impl JacAutoLintPass._base_decl_archetypes(annex_path: str) -> list[uni.Archetype] {
+    if self._base_decls_loaded {
+        return self._base_decl_cache;
+    }
+    self._base_decls_loaded = True;
+    import from jaclang.jac0core.bccache { discover_base_file }
+    import from jaclang.jac0core.parser { parse as rd_parse }
+    import from jaclang.jac0core.helpers { read_file_with_encoding }
+    import from jaclang.jac0core.program { JacProgram }
+    base_path = discover_base_file(annex_path);
+    if base_path is None {
+        return self._base_decl_cache;
+    }
+    try {
+        source_str = read_file_with_encoding(base_path);
+        # Parse-only, on a throwaway program: we just need the base's decls for
+        # signature lookup, and its diagnostics must not leak into the format run.
+        (base_mod, _had_error) = rd_parse(source_str, base_path, prog=JacProgram());
+    } except Exception {
+        return self._base_decl_cache;
+    }
+    self._base_decl_cache = [
+        stmt
+        for stmt in base_mod.body
+        if isinstance(stmt, uni.Archetype)
+    ];
+    return self._base_decl_cache;
 }
 
 """Check if two FuncSignatures match structurally without calling unparse().
@@ -1669,6 +1717,7 @@ impl JacAutoLintPass.enter_import(import_node: uni.Import) -> None {
             for k in parent.kid
             if k is not semi
         ];
+        parent._invalidate_sub_node_tab();
     }
 }
 
@@ -1706,6 +1755,7 @@ impl JacAutoLintPass._remove_empty_parens_from_sig(
             }
         }
         target_node.kid = new_kid;
+        target_node._invalidate_sub_node_tab();
     } else {
         has_parens = any(
             isinstance(kid, uni.Token) and kid.name in (Tok.LPAREN, Tok.RPAREN)
@@ -2322,6 +2372,7 @@ impl JacAutoLintPass._check_unnecessary_none_return(
                 for k in nd.kid
                 if k is not sig
             ];
+            nd._invalidate_sub_node_tab();
         }
     }
 }
@@ -2578,6 +2629,7 @@ impl JacAutoLintPass._convert_usestate_vars(ability_node: uni.Ability) -> None {
         ability_node.body = new_body;
         self.recalculate_parents(ability_node);
         ability_node.kid = [replaced.get(id(k), k) for k in ability_node.kid];
+        ability_node._invalidate_sub_node_tab();
     }
     # Always push (even if empty) so exit_ability can always pop safely.
     # Without this, a nested def exiting would pop the outer ability's map.
@@ -2645,6 +2697,7 @@ impl JacAutoLintPass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
         parent.body = [assign if s is nd else s for s in parent.body];
     }
     parent.kid = [assign if k is nd else k for k in parent.kid];
+    parent._invalidate_sub_node_tab();
 }
 
 """Remove useState from each import statement in the module, dropping the whole statement
@@ -2928,6 +2981,7 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
         parent.expr = list_compr;
     }
     parent.kid = [list_compr if k is nd else k for k in parent.kid];
+    parent._invalidate_sub_node_tab();
     return True;
 }
 
@@ -3128,6 +3182,7 @@ impl JacAutoLintPass._convert_properties(container: uni.Archetype) -> None {
         }
     }
     container.kid = new_kid;
+    container._invalidate_sub_node_tab();
     self.recalculate_parents(container);
 }
 
@@ -3188,6 +3243,7 @@ impl JacAutoLintPass._convert_property_impl(nd: uni.ImplDef) -> None {
         }
     }
     nd.kid = new_kid;
+    nd._invalidate_sub_node_tab();
     # Strip any redundant `@property`/`@x.setter`/`@x.deleter` decorator from the
     # impl itself: the dotted `.getter/.setter/.deleter` target already marks it
     # as a property accessor (jac0core impls historically carried the decorator
@@ -3231,6 +3287,7 @@ impl JacAutoLintPass._convert_property_impl(nd: uni.ImplDef) -> None {
                 stripped_kid.append(k);
             }
             nd.kid = stripped_kid;
+            nd._invalidate_sub_node_tab();
         }
     }
     self.recalculate_parents(nd);

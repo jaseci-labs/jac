@@ -15,7 +15,6 @@ import from packaging.utils { canonicalize_name }
 
 glob PLUGIN_DIRS: list[str] = [
          "jac-byllm",
-         "jac-client",
          "jac-mcp",
          "jac-scale",
          "jac-super",
