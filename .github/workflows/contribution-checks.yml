@@ -21,6 +21,7 @@ on:
 jobs:
   contribution-checks:
     name: Contribution Checks
+    environment: ci-approval
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4

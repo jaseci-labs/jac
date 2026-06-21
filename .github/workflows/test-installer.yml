@@ -11,6 +11,7 @@ on:
 jobs:
   test-installer:
     name: Test install methods
+    environment: ci-approval
     runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:

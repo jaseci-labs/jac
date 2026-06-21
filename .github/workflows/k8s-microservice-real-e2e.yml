@@ -11,6 +11,7 @@ on:
 jobs:
   real-e2e:
     name: microk8s real-app smoke
+    environment: ci-approval
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 25
 
