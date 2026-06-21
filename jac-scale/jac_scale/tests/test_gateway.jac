@@ -1408,7 +1408,8 @@ test "http_forward_timeout precedence: per-service > global > default" {
         setattr(
             cfg_mod,
             "get_scale_config",
-            lambda : _TimeoutStubCfg(data={"http_forward_timeout": 45.0, "services": {}})
+            lambda :
+                _TimeoutStubCfg(data={"http_forward_timeout": 45.0, "services": {}})
         );
         assert http_forward_timeout(None) == 45.0;
         assert http_forward_timeout("any_service") == 45.0;
