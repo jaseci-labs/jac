@@ -21,7 +21,7 @@ jac create myapp --kind desktop         # OS-webview app         (needs jac-desk
 jac create myapp --use ./my-template/   # from a local template DIRECTORY
 jac create myapp --use ./local.jacpack  # from a local jacpack archive
 jac create --use https://.../t.jacpack  # from a URL
-jac create --use jac-shadcn             # shadcn variant of fullstack (needs jac-super)
+jac create --use jac-shadcn             # shadcn variant of fullstack (built into jaclang)
 jac create --list_jacpacks              # list available kinds and named variants
 jac create myapp --force                # overwrite an existing dir / reinit
 ```
@@ -55,7 +55,7 @@ Named variants (selected with `--use`, not `--kind`) layer on a kind:
 
 | `--use <variant>` | Kind | Provider | What it adds |
 |---|---|---|---|
-| `jac-shadcn` | fullstack | jac-super | shadcn `components/ui/`, `lib/utils.cl.jac` (`cn()`), themed `global.css`, `[jac-shadcn]` block |
+| `jac-shadcn` | fullstack | jaclang (built-in) | shadcn `components/ui/`, `lib/utils.cl.jac` (`cn()`), themed `global.css`, `[jac-shadcn]` block |
 
 The `cli` template's `main.jac` is a minimal `with entry { ... }` stub - it does **not** pre-wire endpoints; use `--kind api-service` for a server, or add `node`/`walker:pub` declarations yourself (see `jac-sv-endpoints`).
 

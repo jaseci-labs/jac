@@ -11,7 +11,6 @@ declare -A FOLDER_TO_FRAGMENTS=(
     ["jac/jaclang/"]="docs/docs/community/release_notes/unreleased/jaclang/"
     ["jac-scale/jac_scale/"]="docs/docs/community/release_notes/unreleased/jac-scale/"
     ["jac-byllm/byllm/"]="docs/docs/community/release_notes/unreleased/byllm/"
-    ["jac-super/jac_super/"]="docs/docs/community/release_notes/unreleased/jac-super/"
     ["jac-mcp/jac_mcp/"]="docs/docs/community/release_notes/unreleased/jac-mcp/"
 )
 
@@ -48,7 +47,6 @@ PROTECTED_FILES=(
     "docs/docs/community/release_notes/byllm.md"
     "docs/docs/community/release_notes/jac-client.md"
     "docs/docs/community/release_notes/jac-scale.md"
-    "docs/docs/community/release_notes/jac-super.md"
     "docs/docs/community/release_notes/jac-mcp.md"
 )
 

@@ -5,7 +5,7 @@ Every PR that changes package code must include a release note fragment file.
 ## How to add a release note
 
 1. Create a file at `docs/docs/community/release_notes/unreleased/<package>/<PR#>.<category>.md`
-   - **Packages**: `jaclang`, `byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp`
+   - **Packages**: `jaclang`, `byllm`, `jac-client`, `jac-scale`, `jac-mcp`
    - **Categories**: `feature`, `bugfix`, `breaking`, `refactor`, or `docs`
    - **Example**: `docs/docs/community/release_notes/unreleased/jaclang/1234.bugfix.md`
 

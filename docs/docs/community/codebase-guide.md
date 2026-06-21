@@ -56,7 +56,6 @@ jaseci/
 ├── jac-client/           # Plugin: full-stack web apps (JSX, server, auth)
 ├── jac-scale/            # Plugin: cloud deployment (FastAPI, Kubernetes, Docker)
 ├── jac-mcp/              # Plugin: MCP server for AI-assisted development
-├── jac-super/            # Plugin: enhanced console output (Rich)
 ├── jac-plugins/          # Additional community plugins
 ├── jaseci-package/       # Meta-package that bundles everything for pip install
 ├── docs/                 # MkDocs documentation site
@@ -205,7 +204,6 @@ Registration happens in `pyproject.toml`:
 | `jac-client` | Full-stack web app framework -- JSX components, client-side state, server rendering. Uses a Node.js toolchain under the hood. |
 | `jac-scale` | Cloud deployment -- wraps `jac start` with FastAPI, adds Kubernetes deployment, Docker builds, MongoDB/Redis storage backends. |
 | `jac-mcp` | Exposes the Jac project as an MCP server so AI coding assistants can query it. |
-| `jac-super` | Pretty-printed console output via `rich`. |
 
 For the full how-to on writing your own plugin -- CLI extension, runtime hook overrides, jac.toml schemas, project templates, and the entry-point setup -- see the [Plugin Authoring Guide](../reference/plugin-authoring.md).
 

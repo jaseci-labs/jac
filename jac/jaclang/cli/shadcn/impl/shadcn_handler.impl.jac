@@ -16,7 +16,7 @@ impl _read_shadcn_config(config: any) -> any {
 }
 
 impl _registry_dir -> any {
-    # shadcn_handler.impl.jac is in jac_super/shadcn/impl/, so .parent.parent = jac_super/shadcn/
+    # shadcn_handler.impl.jac is in jaclang/cli/shadcn/impl/, so .parent.parent = jaclang/cli/shadcn/
     base = Path(__file__).parent.parent / "registry";
     if base.exists() {
         return base;
@@ -24,7 +24,7 @@ impl _registry_dir -> any {
     # Fallback: resolve via installed package location
     import from importlib.resources { files }
     try {
-        return Path(str(files("jac_super.shadcn"))) / "registry";
+        return Path(str(files("jaclang.cli.shadcn"))) / "registry";
     } except (TypeError, ModuleNotFoundError) {
         return base;
     }

@@ -69,7 +69,6 @@ The `jaseci` package is a meta-package that bundles all Jac ecosystem packages t
 - `byllm` - AI/LLM integration
 - `jac-client` - Full-stack web development
 - `jac-scale` - Production deployment
-- `jac-super` - Enhanced console output
 
 Verify the installation:
 
@@ -105,9 +104,6 @@ pip install jac-client
 # Production deployment & scaling
 pip install jac-scale              # Core only (lightweight)
 pip install jac-scale[all]         # Full install with all features
-
-# Enhanced console output
-pip install jac-super
 ```
 
 ### Virtual Environment (Recommended)
@@ -277,7 +273,6 @@ pip install --upgrade jaclang
 pip install --upgrade byllm
 pip install --upgrade jac-client
 pip install --upgrade jac-scale
-pip install --upgrade jac-super
 ```
 
 ---

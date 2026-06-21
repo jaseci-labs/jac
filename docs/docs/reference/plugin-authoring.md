@@ -2,7 +2,7 @@
 
 This guide is for developers who want to write a Jaclang plugin: a Python (or Jac) package that extends the `jac` CLI, replaces parts of the runtime, ships project templates, or otherwise customizes how Jac behaves on a user's machine. If you just want to *use* an existing plugin like `jac-scale` or `jac-client`, see its page under [CLI Plugins](plugins/jac-scale.md) instead.
 
-The five plugins shipped in the Jaclang monorepo -- [jac-scale](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-scale), [jac-client](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-client), [jac-byllm](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-byllm), [jac-super](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-super), and [jac-mcp](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-mcp) -- between them exercise every extension point in this guide. Where a recipe references a real plugin, the file:line citations point to the canonical implementation you can read alongside the explanation.
+The four plugins shipped in the Jaclang monorepo -- [jac-scale](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-scale), [jac-client](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-client), [jac-byllm](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-byllm), and [jac-mcp](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-mcp) -- between them exercise every extension point in this guide. Where a recipe references a real plugin, the file:line citations point to the canonical implementation you can read alongside the explanation.
 
 ## What a plugin can do
 
@@ -58,7 +58,7 @@ There are three "layers" of hooks a plugin can implement, defined as classes in 
 | **Runtime** | `JacRuntimeInterface` (and its mixins: `JacAPIServer`, `JacConsole`, `JacClientBundle`, `JacByLLM`, …) | Many hooks called throughout program execution. Plugins override individual methods (`get_user_manager`, `create_server`, `get_console`, …) to swap in their own implementations. |
 | **Config / packaging** | `JacPluginConfig` | Metadata, jac.toml schema, project templates, and custom dependency types. Called by `jac plugins`, `jac create`, `jac add`, and config validation. |
 
-A plugin class implements whatever subset of hooks it needs. You don't have to implement all three layers -- `jac-super` only implements `get_console`, `jac-byllm` only implements LLM-related runtime hooks, and `jac-mcp` only adds a CLI command.
+A plugin class implements whatever subset of hooks it needs. You don't have to implement all three layers -- `jac-byllm` only implements LLM-related runtime hooks, and `jac-mcp` only adds a CLI command.
 
 ## Recipes
 
@@ -260,7 +260,7 @@ The most commonly overridden hooks:
 | `create_server` | `(jac_server, host, port, max_retries=10) -> HTTPServer` | The actual server *instance* used by `jac start`. Plugins can return a custom server with different lifecycle semantics. |
 | `get_user_manager` | `(base_path: str) -> UserManager` | The user manager used for register/login/auth. Default: SQLite-backed `UserManager`. jac-scale returns a JWT/SSO-backed implementation. |
 | `store` | `(base_path='./storage', create_dirs=True) -> Storage` | The graph/object storage backend. Default: `LocalStorage`. jac-scale returns S3/GCS/Azure backends from `[plugins.scale]` config. |
-| `get_console` | `() -> ConsoleImpl` | The console used for all CLI output. jac-super returns a Rich-backed implementation with colors, panels, and spinners. |
+| `get_console` | `() -> ConsoleImpl` | The console used for all CLI output. The default `get_console` returns jaclang's built-in Rich-style console (box panels/tables, animated spinner) implemented in pure Jac; plugins may still override it. |
 | `get_client_bundle_builder` | `() -> ClientBundleBuilder` | The bundler used to compile `.cl.jac` modules to JS. jac-client returns a Vite-backed builder. |
 | `render_page` | `(introspector, function_name, args, username) -> dict[str, any]` | Server-side rendering of client components. jac-client implements full SSR. |
 | `format_build_error` | `(error_output: str, project_dir: Path, config) -> str` | Pretty error messages for client build failures. |
@@ -797,7 +797,6 @@ Each plugin in the monorepo exercises a different subset of the extension surfac
 | [**jac-client**](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-client) | Full-stack web framework: JSX components, Vite dev server, client-side rendering, npm dependency type, project templates. | Multiple plugin entry points (`serve`, `cli`, `plugin_config`), dependency-type registration, project template loading from disk with post-create hooks, and the polymorphic `TargetFactory` pattern for web/PWA/mobile build targets. |
 | [**jac-desktop**](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-desktop) | Native desktop target (PyTauri shell + PyInstaller sidecar), `jac desktop plugin` CLI, `[plugins.desktop]` config. | `jac_client` entry-point group + `JacClientPluginSpec.get_client_targets` hook (typed `ClientTarget`), separate from jaclang core. |
 | [**jac-byllm**](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-byllm) | The `by llm()` language feature -- annotate a function and have an LLM implement it at runtime. | Pure runtime-hook plugin with no CLI commands. Shows how to bridge compile-time IR to runtime via `get_mtir`, and how a single hook (`call_llm`) can dispatch across many providers via LiteLLM. |
-| [**jac-super**](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-super) | Rich-formatted console output (colors, panels, spinners). | The smallest possible plugin -- a single `@hookimpl` for `get_console`, no CLI, no config. A great copy-paste starting point. |
 | [**jac-mcp**](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-mcp) | An MCP (Model Context Protocol) server that exposes the Jac project to AI coding assistants. | Single new CLI command (`jac mcp`) with the "module-level `@registry.command` + pre-hook" pattern, three-tier config fallback (CLI arg → `jac.toml` → default), and an `--inspect` mode that dumps the server's resources/tools/prompts. |
 
 ## See also

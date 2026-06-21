@@ -4,7 +4,7 @@ The `jac` command is your primary interface for working with Jac projects. It ha
 
 The CLI is extensible through plugins. When you install plugins like `jac-scale` or `jac-client`, they add new commands and flags automatically -- for example, `jac start --scale` for Kubernetes deployment or `jac build --client desktop` for desktop app packaging.
 
-> **💡 Enhanced Output**: For beautiful, colorful terminal output with Rich formatting, install the optional `jac-super` plugin: `pip install jac-super`. All CLI commands will automatically use enhanced output with themes, panels, and spinners.
+> **💡 Enhanced Output**: All CLI commands render beautiful, colorful Rich-style output out of the box -- themes, panels, and spinners are built into jaclang by default, with no extra install needed.
 
 ## Quick Reference
 
@@ -273,7 +273,7 @@ jac create myapp --kind native-binary
 # Scaffold a full-stack app (requires jac-client)
 jac create myapp --kind fullstack
 
-# Scaffold a shadcn-themed fullstack app (requires jac-super)
+# Scaffold a shadcn-themed fullstack app
 jac create myapp --use jac-shadcn
 
 # Create from a local .jacpack file / directory / URL
@@ -761,7 +761,6 @@ jac plugins disabled
 >
 > **💡 Popular Plugins**:
 >
-> - **jac-super**: Enhanced console output with Rich formatting, colors, and spinners (`pip install jac-super`)
 > - **jac-client**: Full-stack web development with client-side rendering (`pip install jac-client`)
 > - **jac-scale**: Kubernetes deployment and scaling (`pip install jac-scale`)
 

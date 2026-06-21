@@ -36,5 +36,4 @@ packages = ["jaseci*"]
 jaclang = ">=0.16.7"
 byllm = ">=0.6.17"
 jac-scale = ">=0.2.30"
-jac-super = ">=0.1.22"
 jac-mcp = ">=0.1.23"

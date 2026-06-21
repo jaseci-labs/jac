@@ -1012,13 +1012,13 @@ test "format tracks changed files" {
 
 test "format -s preserves bracketed Jac syntax through Rich console" {
     # Regression: `jac format -s` prints formatted source via `console.print`.
-    # Under the jac-super (Rich-backed) console — which is what real users see
-    # when they run the `jac` CLI — bracketed Jac syntax like `[root-->]` or
-    # `todos + [t]` looks like Rich markup and gets silently stripped unless
-    # the call passes `markup=False, highlight=False`. This test must invoke
-    # the `jac` binary via subprocess so that the jac-super plugin's console
-    # is installed (calling `analysis.format` from inside pytest hits the
-    # plain JacConsole and would not catch the regression).
+    # The built-in Rich-style console — what real users see when they run the
+    # `jac` CLI — must emit bracketed Jac syntax like `[root-->]` or
+    # `todos + [t]` verbatim; it looks like terminal markup but the console
+    # never interprets markup/highlight in caller data. This test invokes the
+    # `jac` binary via subprocess so the full CLI console + stdout path is
+    # exercised end-to-end (calling `analysis.format` from inside pytest covers
+    # the same console but not the real CLI stdout path).
     with tempfile.TemporaryDirectory() as tmpdir {
         src_path = os.path.join(tmpdir, "brackets.jac");
         # Deliberately unformatted so --to_screen has something to print.

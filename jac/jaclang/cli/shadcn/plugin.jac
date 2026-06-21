@@ -84,7 +84,7 @@ def retheme(
 ) -> int {
     import from jaclang.project.config { get_config }
     import from jaclang.cli.console { console }
-    import from jac_super.shadcn.theme_handler { retheme_project }
+    import from jaclang.cli.shadcn.theme_handler { retheme_project }
 
     config = get_config();
     overrides: dict = {

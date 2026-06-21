@@ -123,7 +123,7 @@ impl _handle_create_theme(ctx: HookContext) -> None {
 
 impl _shadcn_post_create(project_path: any, project_name: str) -> None {
     import from jaclang.cli.console { console }
-    import from jac_super.shadcn.theme_handler {
+    import from jaclang.cli.shadcn.theme_handler {
         normalize_shadcn_config,
         materialize_themed_starter
     }
@@ -145,7 +145,7 @@ impl _handle_shadcn_add(ctx: HookContext) -> None {
 
     import from jaclang.project.config { get_config }
     import from jaclang.cli.console { console }
-    import from jac_super.shadcn.shadcn_handler { add_shadcn_components }
+    import from jaclang.cli.shadcn.shadcn_handler { add_shadcn_components }
 
     config = get_config();
     if config is None {
@@ -185,7 +185,7 @@ impl _handle_shadcn_remove(ctx: HookContext) -> None {
 
     import from jaclang.project.config { get_config }
     import from jaclang.cli.console { console }
-    import from jac_super.shadcn.shadcn_handler { remove_shadcn_components }
+    import from jaclang.cli.shadcn.shadcn_handler { remove_shadcn_components }
 
     config = get_config();
     if config is None {
@@ -223,15 +223,15 @@ impl _build_shadcn_template_info -> dict[str, any] | None {
     import from jaclang.cli.console { console }
 
     # Find template directory relative to this module
-    # plugin.impl.jac is in jac_super/shadcn/impl/, so .parent.parent = jac_super/shadcn/
-    module_dir = Path(__file__).parent.parent;  # jac_super/shadcn directory
+    # plugin.impl.jac is in jaclang/cli/shadcn/impl/, so .parent.parent = jaclang/cli/shadcn/
+    module_dir = Path(__file__).parent.parent;  # jaclang/cli/shadcn directory
     template_dir = module_dir / "templates" / "jac-shadcn";
 
     if not template_dir.exists() {
         # Fallback: look in installed package location
         import from importlib.resources { files }
         try {
-            package_root = str(files("jac_super.shadcn"));
+            package_root = str(files("jaclang.cli.shadcn"));
             template_dir = Path(package_root) / "templates" / "jac-shadcn";
         } except (TypeError, ModuleNotFoundError) as e {
             console.warning(f"Failed to locate jac-shadcn template directory: {e}");

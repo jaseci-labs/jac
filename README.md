@@ -40,7 +40,6 @@ This repository houses the Jaseci stack -- the core libraries and tooling that m
 - **[`byllm`](jac-byllm/):** Plugin for Jac enabling easy integration of large language models into your applications through the innovative [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965) concept. (`pip install byllm`)
 - **[`jac-client`](jac-client/):** Plugin for Jac to bundle full-stack web applications with full access to the entire npm/node package ecosystem. (`pip install jac-client`)
 - **[`jac-scale`](jac-scale/):** Plugin for Jac enabling fully abstracted and automated deployment and scaling with FastAPI, Redis, MongoDB, and Kubernetes integration. (`pip install jac-scale`)
-- **[`jac-super`](jac-super/):** Plugin for Jac providing enhanced console output with Rich formatting. (`pip install jac-super`)
 - **[`jac-mcp`](jac-mcp/):** Plugin for Jac providing an MCP server for AI-assisted Jac development with validation, formatting, and documentation tools. (`pip install jac-mcp`)
 - **[`jac VSCE`](https://github.com/jaseci-labs/jac-vscode/blob/main/README.md):** The official VS Code extension for Jac.
 
@@ -181,7 +180,7 @@ Get the complete, stable toolkit from PyPI:
 pip install jaseci
 ```
 
-The `jaseci` package is a meta-package that bundles `jaclang`, `byllm`, `jac-client`, `jac-scale`, `jac-super`, and `jac-mcp` together for convenience. This is the fastest way to get started with building applications.
+The `jaseci` package is a meta-package that bundles `jaclang`, `byllm`, `jac-client`, `jac-scale`, and `jac-mcp` together for convenience. This is the fastest way to get started with building applications.
 
 </details>
 

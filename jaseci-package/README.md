@@ -13,7 +13,6 @@ When you install `jaseci`, you automatically get:
 - **jac-client** - Full-stack web applications with React-like components in Jac
 - **jac-desktop** - Native desktop target and PyTauri plugin manager for Jac apps
 - **jac-scale** - Scalable cloud/runtime services for Jac
-- **jac-super** - Jaseci super plugin
 - **jac-mcp** - MCP server for AI-assisted Jac development
 
 ## Installation

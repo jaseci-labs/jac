@@ -1522,7 +1522,7 @@ This generates `.jac/client/configs/postcss.config.js` and `.jac/client/configs/
 
 ### shadcn/ui Configuration
 
-The `[jac-shadcn]` section configures the shadcn/ui component system, provided by the [`jac-super`](https://pypi.org/project/jac-super/) plugin. It controls the visual style, color theme, font, and border radius used by shadcn components in your project. Everything is resolved **offline** from data bundled with `jac-super`:
+The `[jac-shadcn]` section configures the shadcn/ui component system, provided as a built-in feature of jaclang core. It controls the visual style, color theme, font, and border radius used by shadcn components in your project. Everything is resolved **offline** from data bundled with `jaclang`:
 
 - `jac create --use jac-shadcn [--style … --theme … --font … --radius … --baseColor … --menuAccent …]` scaffolds a themed starter and writes these fields here.
 - `jac retheme [--theme … --font … --style …]` regenerates `global.css` from this section (and re-resolves installed components when `style` changes).

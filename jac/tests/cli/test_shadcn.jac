@@ -1,56 +1,65 @@
-"""Tests for jac-shadcn plugin."""
+"""Tests for the built-in shadcn provider (component handler + registry)."""
 
 import os;
 import tempfile;
 import from pathlib { Path }
-import from jac_super.shadcn.shadcn_handler { _read_shadcn_config }
-import from jac_super.shadcn.shadcn_handler { _resolve_peer_deps }
-import from jac_super.shadcn.shadcn_handler { _update_npm_deps }
-import from jac_super.shadcn.shadcn_handler { add_shadcn_components }
-import from jac_super.shadcn.shadcn_handler { remove_shadcn_components }
-import from jac_super.shadcn.shadcn_handler { load_registry }
-import from jac_super.shadcn.shadcn_handler { parse_style_css }
-import from jac_super.shadcn.shadcn_handler { resolve_component }
-import from jac_super.shadcn.shadcn_handler { resolve_single_component }
-import from jac_super.shadcn.plugin { JacShadcnPlugin }
+import from importlib.resources { files }
+import from jaclang.cli.shadcn.shadcn_handler { _read_shadcn_config }
+import from jaclang.cli.shadcn.shadcn_handler { _resolve_peer_deps }
+import from jaclang.cli.shadcn.shadcn_handler { _update_npm_deps }
+import from jaclang.cli.shadcn.shadcn_handler { add_shadcn_components }
+import from jaclang.cli.shadcn.shadcn_handler { remove_shadcn_components }
+import from jaclang.cli.shadcn.shadcn_handler { load_registry }
+import from jaclang.cli.shadcn.shadcn_handler { parse_style_css }
+import from jaclang.cli.shadcn.shadcn_handler { resolve_component }
+import from jaclang.cli.shadcn.shadcn_handler { resolve_single_component }
+import from jaclang.cli.shadcn.plugin { JacShadcnPlugin }
+
+
+# The jac-shadcn template dir, resolved from the installed package (robust to
+# the test file's own location).
+glob _TEMPLATE_DIR: any = Path(str(files("jaclang.cli.shadcn"))) / "templates" / "jac-shadcn";
+
+
+# Module-level config mocks. A dataclass declared inside a test function can't
+# resolve its `__module__`, so these must live at module scope. `MockConfig`
+# carries an explicit `_raw_data`; `MockConfigBare` omits it (to exercise the
+# handler's `not hasattr(config, "_raw_data")` branch).
+obj MockConfig {
+    has project_root: any = None,
+        _raw_data: any = None;
+}
+
+obj MockConfigBare {
+    has project_root: any = None;
+}
 
 
 # ── Config Reader Tests ──
 test "read shadcn config returns none when no project root" {
-    obj MockConfig {
-        has project_root: None = None;
-    }
-    result = _read_shadcn_config(MockConfig());
+    result = _read_shadcn_config(MockConfigBare());
     assert result is None;
 }
 
 test "read shadcn config returns none when no raw data" {
-    obj MockConfig {
-        has project_root: str = "/tmp";
-    }
-    result = _read_shadcn_config(MockConfig());
+    result = _read_shadcn_config(MockConfigBare(project_root="/tmp"));
     assert result is None;
 }
 
 test "read shadcn config returns section when present" {
-    obj MockConfig {
-        has project_root: str = "/tmp",
-            _raw_data: dict = {
-                "jac-shadcn": {"style": "nova", "registry": "http://localhost:8004"}
-            };
-    }
-    result = _read_shadcn_config(MockConfig());
+    config = MockConfig(
+        project_root="/tmp",
+        _raw_data={"jac-shadcn": {"style": "nova", "registry": "http://localhost:8004"}}
+    );
+    result = _read_shadcn_config(config);
     assert result is not None;
     assert result["style"] == "nova";
     assert result["registry"] == "http://localhost:8004";
 }
 
 test "read shadcn config returns none when section missing" {
-    obj MockConfig {
-        has project_root: str = "/tmp",
-            _raw_data: dict = {"dependencies": {"npm": {}}};
-    }
-    result = _read_shadcn_config(MockConfig());
+    config = MockConfig(project_root="/tmp", _raw_data={"dependencies": {"npm": {}}});
+    result = _read_shadcn_config(config);
     assert result is None;
 }
 
@@ -127,11 +136,7 @@ test "update npm deps adds new dependency" {
     with tempfile.TemporaryDirectory() as tmpdir {
         toml_path = Path(tmpdir) / "jac.toml";
         toml_path.write_text('[dependencies.npm]\nclsx = "^2.1.1"\n');
-        obj MockConfig {
-            has project_root: str;
-        }
-        config = MockConfig(project_root=tmpdir);
-        _update_npm_deps(config, {"tailwind-merge": "^3.5.0"});
+        _update_npm_deps(MockConfig(project_root=tmpdir), {"tailwind-merge": "^3.5.0"});
         content = toml_path.read_text();
         assert "tailwind-merge" in content;
         assert "clsx" in content;
@@ -143,11 +148,7 @@ test "update npm deps skips existing dependency" {
         toml_path = Path(tmpdir) / "jac.toml";
         original = '[dependencies.npm]\nclsx = "^2.1.1"\n';
         toml_path.write_text(original);
-        obj MockConfig {
-            has project_root: str;
-        }
-        config = MockConfig(project_root=tmpdir);
-        _update_npm_deps(config, {"clsx": "^2.1.1"});
+        _update_npm_deps(MockConfig(project_root=tmpdir), {"clsx": "^2.1.1"});
         content = toml_path.read_text();
         assert content == original;
     }
@@ -158,11 +159,7 @@ test "update npm deps does nothing for empty deps" {
         toml_path = Path(tmpdir) / "jac.toml";
         original = '[dependencies.npm]\n';
         toml_path.write_text(original);
-        obj MockConfig {
-            has project_root: str;
-        }
-        config = MockConfig(project_root=tmpdir);
-        _update_npm_deps(config, {});
+        _update_npm_deps(MockConfig(project_root=tmpdir), {});
         content = toml_path.read_text();
         assert content == original;
     }
@@ -175,11 +172,7 @@ test "remove existing component" {
         ui_dir = Path(tmpdir) / "components" / "ui";
         ui_dir.mkdir(parents=True);
         (ui_dir / "button.cl.jac").write_text("// button component");
-        obj MockConfig {
-            has project_root: str;
-        }
-        config = MockConfig(project_root=tmpdir);
-        result = remove_shadcn_components(config, ["button"]);
+        result = remove_shadcn_components(MockConfig(project_root=tmpdir), ["button"]);
         assert result == True;
         assert not (ui_dir / "button.cl.jac").exists();
     }
@@ -189,22 +182,16 @@ test "remove nonexistent component returns false" {
     with tempfile.TemporaryDirectory() as tmpdir {
         ui_dir = Path(tmpdir) / "components" / "ui";
         ui_dir.mkdir(parents=True);
-        obj MockConfig {
-            has project_root: str;
-        }
-        config = MockConfig(project_root=tmpdir);
-        result = remove_shadcn_components(config, ["nonexistent"]);
+        result = remove_shadcn_components(
+            MockConfig(project_root=tmpdir), ["nonexistent"]
+        );
         assert result == False;
     }
 }
 
 test "remove from missing ui dir returns false" {
     with tempfile.TemporaryDirectory() as tmpdir {
-        obj MockConfig {
-            has project_root: str;
-        }
-        config = MockConfig(project_root=tmpdir);
-        result = remove_shadcn_components(config, ["button"]);
+        result = remove_shadcn_components(MockConfig(project_root=tmpdir), ["button"]);
         assert result == False;
     }
 }
@@ -215,11 +202,9 @@ test "remove multiple components" {
         ui_dir.mkdir(parents=True);
         (ui_dir / "button.cl.jac").write_text("// button");
         (ui_dir / "card.cl.jac").write_text("// card");
-        obj MockConfig {
-            has project_root: str;
-        }
-        config = MockConfig(project_root=tmpdir);
-        result = remove_shadcn_components(config, ["button", "card"]);
+        result = remove_shadcn_components(
+            MockConfig(project_root=tmpdir), ["button", "card"]
+        );
         assert result == True;
         assert not (ui_dir / "button.cl.jac").exists();
         assert not (ui_dir / "card.cl.jac").exists();
@@ -227,19 +212,18 @@ test "remove multiple components" {
 }
 
 test "remove resolves registry filename mismatch" {
-    # `jac add --shadcn input-otp` installs as otp-input.cl.jac; remove by the
-    # same registry name must resolve to that file, not input-otp.cl.jac.
+    # `jac add --shadcn input-otp` installs as otp_input.cl.jac (registry file
+    # `otp-input.cl.jac`, dashes → underscores); remove by the registry name
+    # must resolve to that file, not input_otp.cl.jac.
     with tempfile.TemporaryDirectory() as tmpdir {
         ui_dir = Path(tmpdir) / "components" / "ui";
         ui_dir.mkdir(parents=True);
-        (ui_dir / "otp-input.cl.jac").write_text("// otp input");
-        obj MockConfig {
-            has project_root: str;
-        }
-        config = MockConfig(project_root=tmpdir);
-        result = remove_shadcn_components(config, ["input-otp"]);
+        (ui_dir / "otp_input.cl.jac").write_text("// otp input");
+        result = remove_shadcn_components(
+            MockConfig(project_root=tmpdir), ["input-otp"]
+        );
         assert result == True;
-        assert not (ui_dir / "otp-input.cl.jac").exists();
+        assert not (ui_dir / "otp_input.cl.jac").exists();
     }
 }
 
@@ -247,17 +231,15 @@ test "remove resolves registry filename mismatch" {
 # ── Jacpack Template Tests ──
 test "jacpack template directory exists and loads" {
     import from jaclang.project.template_loader { load_template_from_directory }
-    template_dir = Path(__file__).resolve().parent.parent / "jac_super" / "shadcn" / "templates" / "jac-shadcn";
-    assert template_dir.exists();
-    assert template_dir.is_dir();
-    template = load_template_from_directory(template_dir);
+    assert _TEMPLATE_DIR.exists();
+    assert _TEMPLATE_DIR.is_dir();
+    template = load_template_from_directory(_TEMPLATE_DIR);
     assert template is not None;
 }
 
 test "jacpack template has required fields" {
     import from jaclang.project.template_loader { load_template_from_directory }
-    template_dir = Path(__file__).resolve().parent.parent / "jac_super" / "shadcn" / "templates" / "jac-shadcn";
-    template = load_template_from_directory(template_dir);
+    template = load_template_from_directory(_TEMPLATE_DIR);
     assert template.name == "jac-shadcn";
     assert template.description != "";
     assert template.config is not None;
@@ -267,8 +249,7 @@ test "jacpack template has required fields" {
 
 test "jacpack template config has shadcn section" {
     import from jaclang.project.template_loader { load_template_from_directory }
-    template_dir = Path(__file__).resolve().parent.parent / "jac_super" / "shadcn" / "templates" / "jac-shadcn";
-    template = load_template_from_directory(template_dir);
+    template = load_template_from_directory(_TEMPLATE_DIR);
     config = template.config;
     assert "jac-shadcn" in config;
     shadcn = config["jac-shadcn"];
@@ -280,8 +261,7 @@ test "jacpack template config has shadcn section" {
 
 test "jacpack template has npm dependencies" {
     import from jaclang.project.template_loader { load_template_from_directory }
-    template_dir = Path(__file__).resolve().parent.parent / "jac_super" / "shadcn" / "templates" / "jac-shadcn";
-    template = load_template_from_directory(template_dir);
+    template = load_template_from_directory(_TEMPLATE_DIR);
     npm = template.config["dependencies"]["npm"];
     assert "clsx" in npm;
     assert "tailwind-merge" in npm;
@@ -290,8 +270,7 @@ test "jacpack template has npm dependencies" {
 
 test "jacpack template has required files" {
     import from jaclang.project.template_loader { load_template_from_directory }
-    template_dir = Path(__file__).resolve().parent.parent / "jac_super" / "shadcn" / "templates" / "jac-shadcn";
-    template = load_template_from_directory(template_dir);
+    template = load_template_from_directory(_TEMPLATE_DIR);
     assert "main.jac" in template.files;
     assert "styles/global.css" in template.files;
 }
@@ -343,10 +322,6 @@ test "add components from bundled registry" {
         toml_path.write_text(
             '[project]\nname = "test"\n\n[jac-shadcn]\nstyle = "nova"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
         );
-        obj MockConfig {
-            has project_root: str,
-                _raw_data: dict;
-        }
         config = MockConfig(
             project_root=tmpdir, _raw_data={"jac-shadcn": {"style": "nova"}}
         );
@@ -365,10 +340,6 @@ test "add components from bundled registry" {
 
 test "add components fails without shadcn config" {
     with tempfile.TemporaryDirectory() as tmpdir {
-        obj MockConfig {
-            has project_root: str,
-                _raw_data: dict;
-        }
         config = MockConfig(project_root=tmpdir, _raw_data={});
         result = add_shadcn_components(config, ["button"]);
         assert result == False;

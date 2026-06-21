@@ -1,8 +1,8 @@
-"""Tests for the jac-shadcn theme handler (offline themed create + retheme)."""
+"""Tests for the shadcn theme handler (offline themed create + retheme)."""
 
 import tempfile;
 import from pathlib { Path }
-import from jac_super.shadcn.theme_handler {
+import from jaclang.cli.shadcn.theme_handler {
     normalize_shadcn_config,
     load_themes,
     find_theme,
@@ -12,6 +12,14 @@ import from jac_super.shadcn.theme_handler {
     set_shadcn_section,
     materialize_themed_starter,
     retheme_project
+}
+
+
+# Module-level mock (a dataclass declared inside a test function can't resolve
+# its `__module__`, so config mocks must live at module scope).
+obj MockConfig {
+    has project_root: any = None,
+        _raw_data: any = None;
 }
 
 
@@ -170,10 +178,6 @@ test "retheme regenerates global css and persists config" {
         toml_path.write_text(
             '[project]\nname = "demo"\n\n[jac-shadcn]\nstyle = "nova"\ntheme = "neutral"\nfont = "figtree"\n\n[dependencies.npm]\nclsx = "^2.1.1"\n'
         );
-        obj MockConfig {
-            has project_root: str,
-                _raw_data: dict;
-        }
         config = MockConfig(
             project_root=tmpdir,
             _raw_data={
@@ -191,8 +195,5 @@ test "retheme regenerates global css and persists config" {
 }
 
 test "retheme fails gracefully without a project" {
-    obj MockConfig {
-        has project_root: None = None;
-    }
     assert retheme_project(MockConfig(), {}) == False;
 }

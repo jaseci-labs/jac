@@ -17,7 +17,6 @@ glob PLUGIN_DIRS: list[str] = [
          "jac-byllm",
          "jac-mcp",
          "jac-scale",
-         "jac-super",
          "jaseci-package",
 
      ];

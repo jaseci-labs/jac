@@ -335,8 +335,8 @@ types.impl.jac
 useBudget.jac
 useLocalStorage.jac
 wikipedia_react.jac
-# jac-super shadcn handler — dynamic `config: any` + Path/file-IO false positives
-# (sibling plugin.jac / plugin.impl.jac are already ignored above)
+# Built-in shadcn handler (jac/jaclang/cli/shadcn) — dynamic `config: any` +
+# Path/file-IO false positives (sibling plugin.jac / plugin.impl.jac ignored above)
 shadcn_handler.jac
 shadcn_handler.impl.jac
 theme_handler.jac

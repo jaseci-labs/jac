@@ -1,19 +1,21 @@
 """Conformance tests for the JacConsole contract.
 
-The global `console` from `jaclang.cli.console` is a process-wide singleton
-that plugins may override (jac-super installs `JacSuperConsole`). These
-tests pin the parts of the base contract that must remain true regardless
-of which implementation is installed:
+The global `console` from `jaclang.cli.console` is a process-wide singleton.
+The base renderer now produces Rich-style output (box panels/tables, animated
+spinner) in pure Jac; these tests pin the parts of the contract that must hold
+regardless of which renderer is installed:
 
   1. `console.error` / `console.warning` honor `sys.stderr` redirection
      (the standard `sys.stderr = io.StringIO()` test idiom must capture them).
   2. `console.print` emits user content verbatim — no soft-wrap reflow,
      no markup stripping — so JSON, paths, and diagnostic snippets stay
      byte-exact.
+  3. Every data-bearing method emits caller data verbatim: terminal markup
+     (`[tag]...`) is an injection surface and must never be interpreted.
 
-A plugin console that breaks any of these regresses every in-process CLI
-caller silently. Keep this file passing for every implementation that
-appears at `jaclang.cli.console.console`.
+A renderer that breaks any of these regresses every in-process CLI caller
+silently. Keep this file passing for every implementation that appears at
+`jaclang.cli.console.console`.
 """
 
 import io;
@@ -113,9 +115,9 @@ test "console.print preserves bracketed content verbatim" {
 # data-bearing methods, not just `print`.
 # ---------------------------------------------------------------------------
 
-# A token that Rich's markup parser would consume-and-strip if (incorrectly)
-# interpreted as markup. Survival of this exact substring proves the data
-# field reached the terminal verbatim.
+# A token a markup parser would consume-and-strip if (incorrectly) interpreted
+# as markup. Survival of this exact substring proves the data field reached the
+# terminal verbatim.
 glob _BRACKET_BAIT: str = "[root()-->]";
 
 
@@ -133,7 +135,7 @@ def _cap_stdout(fn: any) -> str {
 
 
 test "console.print honors file= routing to an arbitrary stream" {
-    # The base console forwards `file=` to builtin print(); a plugin that
+    # The base console forwards `file=` to builtin print(); a renderer that
     # drops it silently sends output to the wrong stream (issue: file= drop).
     target = io.StringIO();
     sink = io.StringIO();

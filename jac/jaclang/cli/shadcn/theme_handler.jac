@@ -12,7 +12,10 @@ import re;
 import json as json_mod;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
-import from jac_super.shadcn.shadcn_handler { _registry_dir, resolve_single_component }
+import from jaclang.cli.shadcn.shadcn_handler {
+    _registry_dir,
+    resolve_single_component
+}
 
 glob _DEFAULTS: dict = {
          "style": "nova",
