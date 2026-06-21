@@ -65,9 +65,8 @@ pip install jaseci
 
 The `jaseci` package is a meta-package that bundles all Jac ecosystem packages together. This installs:
 
-- `jaclang` - The Jac language and compiler
+- `jaclang` - The Jac language and compiler (includes the built-in full-stack web and native-desktop app framework)
 - `byllm` - AI/LLM integration
-- `jac-client` - Full-stack web development
 - `jac-scale` - Production deployment
 
 Verify the installation:
@@ -97,9 +96,6 @@ Install plugins as needed:
 ```bash
 # AI/LLM integration
 pip install byllm
-
-# Full-stack web development
-pip install jac-client
 
 # Production deployment & scaling
 pip install jac-scale              # Core only (lightweight)
@@ -209,7 +205,7 @@ You should see `Hello from Jac!` printed to the console.
 
 ## Scaffold a Full-Stack App
 
-With the `jac-client` plugin installed, scaffold a complete full-stack project in one command:
+The full-stack client framework ships with `jaclang` core, so you can scaffold a complete full-stack project in one command:
 
 ```bash
 jac create example --use fullstack
@@ -271,7 +267,6 @@ pip install --upgrade jaseci
 # Or upgrade individual packages
 pip install --upgrade jaclang
 pip install --upgrade byllm
-pip install --upgrade jac-client
 pip install --upgrade jac-scale
 ```
 
