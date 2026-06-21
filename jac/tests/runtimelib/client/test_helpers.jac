@@ -145,7 +145,8 @@ def start_app_server(project_path: any, extra_args: list | None = None) -> tuple
         args = [*args, *extra_args];
     }
     args = [*args, "main.jac", "-p", str(port)];
-    server = Popen(args, cwd=project_path, env=env, stdout=PIPE, stderr=STDOUT);
+    import from subprocess { DEVNULL }
+    server = Popen(args, cwd=project_path, env=env, stdout=DEVNULL, stderr=DEVNULL);
     wait_for_port("127.0.0.1", port, timeout=120.0);
     return (server, port);
 }
