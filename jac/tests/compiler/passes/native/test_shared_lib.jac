@@ -16,6 +16,7 @@ import struct;
 import sys;
 import tempfile;
 import from pathlib { Path }
+import from tests.support { TESTS_DIR }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
@@ -24,12 +25,8 @@ import from jaclang.compiler.passes.native.macho_linker { MachOLinker }
 import from jaclang.compiler.passes.native.pe_linker { PeLinker }
 import llvmlite.binding as llvm;
 
-glob FIXTURES = str(
-         next(
-             p
-             for p in Path(__file__).resolve().parents
-             if p.name == "tests"
-         ) / "compiler" / "passes" / "native" / "fixtures"
+glob FIXTURES = os.path.join(
+         TESTS_DIR, "compiler", "passes", "native", "fixtures"
      ),
      FIXTURE = "shared_export.na.jac";
 

@@ -11,6 +11,7 @@ import os;
 import re;
 import sys;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { CodeContext }
@@ -20,14 +21,7 @@ import from jaclang.jac0core.helpers { read_file_with_encoding }
 import from jaclang.runtimelib.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
 
-glob JAC_ROOT = str(
-         next(
-             p
-             for p in Path(__file__).resolve().parents
-             if p.name == "tests"
-         ).parent
-     ),
-     FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "fixtures"),
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "fixtures"),
      LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
 
 def load_fixture(fixture: str) -> str {

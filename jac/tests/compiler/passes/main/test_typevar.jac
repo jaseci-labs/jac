@@ -1,19 +1,12 @@
 """TypeVar validation tests for the type checker."""
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(
-         next(
-             p
-             for p in Path(__file__).resolve().parents
-             if p.name == "tests"
-         ).parent
-     ),
-     CHECKER_FIXTURES = os.path.join(
+glob CHECKER_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "checker"
      ),
      TYPEVAR_FIXTURES = os.path.join(

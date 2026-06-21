@@ -2,15 +2,8 @@
 
 import os;
 import subprocess;
-import from pathlib { Path }
-glob JAC_ROOT = str(
-         next(
-             p
-             for p in Path(__file__).resolve().parents
-             if p.name == "tests"
-         ).parent
-     ),
-     FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
+import from tests.support { JAC_ROOT }
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      ERR_FILE = os.path.join(
          JAC_ROOT, "tests", "langserve", "fixtures", "circle_pure_err.jac"
      ),

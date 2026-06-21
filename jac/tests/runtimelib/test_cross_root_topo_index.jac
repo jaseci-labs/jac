@@ -15,19 +15,12 @@ optimizer actually runs):
 """
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import from tempfile { mkdtemp }
 import jaclang;
 import from jaclang.runtimelib.testing { JacTestClient }
 
-glob JAC_ROOT = str(
-         next(
-             p
-             for p in Path(__file__).resolve().parents
-             if p.name == "tests"
-         ).parent
-     ),
-     FIXTURE = os.path.join(
+glob FIXTURE = os.path.join(
          JAC_ROOT, "tests", "runtimelib", "fixtures", "cross_root_topo_index.jac"
      );
 

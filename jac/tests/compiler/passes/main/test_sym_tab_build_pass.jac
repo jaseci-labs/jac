@@ -1,19 +1,13 @@
 """Symbol table build pass tests – migrated from test_sym_tab_build_pass.py."""
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
-         str(
-             next(
-                 p
-                 for p in Path(__file__).resolve().parents
-                 if p.name == "tests"
-             ).parent
-         ),
+         JAC_ROOT,
          "tests",
          "compiler",
          "passes",

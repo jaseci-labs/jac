@@ -14,21 +14,14 @@ in CI as an executable spec; this PR keeps CI green.
 """
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import jaclang.compiler.passes.ecmascript.estree as es;
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(
-         next(
-             p
-             for p in Path(__file__).resolve().parents
-             if p.name == "tests"
-         ).parent
-     ),
-     SLOT_EXT = os.path.join(
+glob SLOT_EXT = os.path.join(
          JAC_ROOT,
          "tests",
          "compiler",

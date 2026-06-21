@@ -1,24 +1,12 @@
 """Portability check pass tests."""
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
-         str(
-             next(
-                 p
-                 for p in Path(__file__).resolve().parents
-                 if p.name == "tests"
-             ).parent
-         ),
-         "tests",
-         "compiler",
-         "passes",
-         "main",
-         "fixtures",
-         "portability"
+         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "portability"
      );
 
 def has_warning_code(prog: JacProgram, code: str) -> bool {

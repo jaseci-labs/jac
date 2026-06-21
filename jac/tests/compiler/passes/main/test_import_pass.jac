@@ -6,25 +6,14 @@ Note: test_py_raise_map and test_py_raised_mods are skipped (TODO: Fix when we h
 import os;
 import io;
 import sys;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.bccache { discover_annex_files, discover_base_file }
 import from jaclang.cli.commands { execution }
 
 glob FIXTURES = os.path.join(
-         str(
-             next(
-                 p
-                 for p in Path(__file__).resolve().parents
-                 if p.name == "tests"
-             ).parent
-         ),
-         "tests",
-         "compiler",
-         "passes",
-         "main",
-         "fixtures"
+         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      );
 
 test "pygen jac cli" {

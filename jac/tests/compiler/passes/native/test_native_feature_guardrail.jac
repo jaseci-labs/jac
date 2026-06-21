@@ -14,16 +14,12 @@ class of bug this guardrail exists to prevent.
 """
 
 import os;
-import from pathlib { Path }
+import from tests.support { TESTS_DIR }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 
-glob FIXTURES_DIR = str(
-         next(
-             p
-             for p in Path(__file__).resolve().parents
-             if p.name == "tests"
-         ) / "compiler" / "passes" / "native" / "fixtures"
+glob FIXTURES_DIR = os.path.join(
+         TESTS_DIR, "compiler", "passes", "native", "fixtures"
      );
 
 """Compile a snippet through the native pipeline and return the program.

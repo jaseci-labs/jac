@@ -10,19 +10,15 @@ import os;
 import subprocess;
 import sys;
 import tempfile;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT, TESTS_DIR }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.runtime { JacRuntime }
 import jaclang.jac0core.unitree as uni;
 import from llvmlite.binding { ExecutionEngine }
 
-glob FIXTURES = str(
-         next(
-             p
-             for p in Path(__file__).resolve().parents
-             if p.name == "tests"
-         ) / "compiler" / "passes" / "native" / "fixtures"
+glob FIXTURES = os.path.join(
+         TESTS_DIR, "compiler", "passes", "native", "fixtures"
      );
 
 """Compile a .na.jac fixture and return the JIT engine."""
@@ -2433,13 +2429,7 @@ test "default params omitted trailing defaults" {
 }
 
 # --- Auto-Promotion Tests ---
-glob CHESS_JAC = str(
-         next(
-             p
-             for p in Path(__file__).resolve().parents
-             if p.name == "tests"
-         ).parent / "examples" / "chess" / "chess.jac"
-     );
+glob CHESS_JAC = os.path.join(JAC_ROOT, "examples", "chess", "chess.jac");
 
 """Compile a regular .jac file with auto-promotion and return the engine."""
 def compile_auto_native(file_path: str) -> tuple[uni.Module, JacProgram] {

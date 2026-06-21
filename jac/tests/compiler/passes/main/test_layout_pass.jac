@@ -16,15 +16,11 @@ import from jaclang.compiler.passes.main.layout_pass {
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
 import os;
-import from pathlib { Path }
+import from tests.support { TESTS_DIR }
 import jaclang;
 
-glob FIXTURES = str(
-         next(
-             p
-             for p in Path(__file__).resolve().parents
-             if p.name == "tests"
-         ) / "compiler" / "passes" / "main" / "fixtures" / "layout"
+glob FIXTURES = os.path.join(
+         TESTS_DIR, "compiler", "passes", "main", "fixtures", "layout"
      );
 
 """Compile a .jac fixture through semantic analysis and return the LayoutRegistry."""

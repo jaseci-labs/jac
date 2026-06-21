@@ -1,25 +1,14 @@
 """MTIR generation pass tests – migrated from test_mtir_gen_pass.py."""
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang { JacRuntime as Jac }
 import from jaclang.jac0core.mtp { ClassInfo, FunctionInfo, MethodInfo }
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
-         str(
-             next(
-                 p
-                 for p in Path(__file__).resolve().parents
-                 if p.name == "tests"
-             ).parent
-         ),
-         "tests",
-         "compiler",
-         "passes",
-         "main",
-         "fixtures"
+         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      );
 
 test "mtir gen basic" {

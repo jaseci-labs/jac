@@ -11,6 +11,7 @@ import sys;
 import tempfile;
 import traceback;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.cli.commands {
     analysis,
@@ -26,14 +27,7 @@ import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
 import from jaclang.project.config { set_config }
 import from jaclang.runtimelib.builtin { printgraph }
 
-glob JAC_ROOT = str(
-         next(
-             p
-             for p in Path(__file__).resolve().parents
-             if p.name == "tests"
-         ).parent
-     ),
-     FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      _template_state = {"initialized": False},
      _CONFIG_TOML = (
          '[project]\nname = "test-project"\nversion = "1.0.0"\n'

@@ -6,19 +6,12 @@ Tests that manual code examples compile and execute correctly.
 import io;
 import sys;
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import from contextlib { suppress }
 import jaclang;
 import from jaclang.cli.commands { analysis, execution, tools }
 
-glob JAC_ROOT = str(
-         next(
-             p
-             for p in Path(__file__).resolve().parents
-             if p.name == "tests"
-         ).parent
-     ),
-     FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
 
 test "circle jac" {
     captured = io.StringIO();

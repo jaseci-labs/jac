@@ -6,7 +6,7 @@ import os;
 import sys;
 import contextlib;
 
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 
 import jaclang.lsp.types as lspt;
 
@@ -16,14 +16,9 @@ import from jaclang.langserve.engine { JacLangServer }
 import from jaclang.lsp { uris }
 import from jaclang.lsp.server { Workspace }
 
-glob JAC_ROOT = str(
-         next(
-             p
-             for p in Path(__file__).resolve().parents
-             if p.name == "tests"
-         ).parent
+glob FIXTURE_DIR = os.path.join(
+         os.path.dirname(os.path.abspath(__file__)), "fixtures"
      ),
-     FIXTURE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures"),
      _active_servers: list = [];
 
 def _clear_jac_modules {

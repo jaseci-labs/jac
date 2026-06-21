@@ -10,6 +10,7 @@ import ctypes;
 import os;
 import sys;
 import from pathlib { Path }
+import from tests.support { TESTS_DIR }
 import from typing { Callable }
 import jaclang;
 import from jaclang.jac0core.codeinfo { NativeFunctionInfo }
@@ -22,13 +23,7 @@ import jaclang.jac0core.unitree as uni;
 glob NA_LEXER_PATH = str(
          Path(jaclang.__file__).parent / "jac0core" / "parser" / "lexer.na.jac"
      ),
-     FIXTURES = str(
-         next(
-             p
-             for p in Path(__file__).resolve().parents
-             if p.name == "tests"
-         ) / "compiler" / "passes" / "native" / "fixtures"
-     );
+     FIXTURES = os.path.join(TESTS_DIR, "compiler", "passes", "native", "fixtures");
 
 def compile_fixture(fixture: str) -> tuple[ExecutionEngine | None, uni.Module] {
     prog = JacProgram();

@@ -4,21 +4,14 @@ import io;
 import os;
 import sys;
 import shutil;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import from tempfile { mkdtemp }
 import jaclang;
 import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
 import from tests.conftest { get_object }
 
-glob JAC_ROOT = str(
-         next(
-             p
-             for p in Path(__file__).resolve().parents
-             if p.name == "tests"
-         ).parent
-     ),
-     FIXTURES = os.path.join(JAC_ROOT, "tests", "runtimelib", "fixtures");
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "runtimelib", "fixtures");
 
 def capture_start -> io.StringIO {
     captured = io.StringIO();

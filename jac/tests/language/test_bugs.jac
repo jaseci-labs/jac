@@ -1,22 +1,11 @@
 """Bug regression tests – migrated from tests/language/test_bugs.py."""
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 
-glob FIXTURES = os.path.join(
-         str(
-             next(
-                 p
-                 for p in Path(__file__).resolve().parents
-                 if p.name == "tests"
-             ).parent
-         ),
-         "tests",
-         "language",
-         "fixtures"
-     );
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
 
 test "impl match confusion issue" {
     mypass = JacProgram();
