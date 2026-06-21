@@ -273,6 +273,88 @@ test "Mach-O arm64 dylib is ad-hoc signed with execSegFlags == 0" {
 }
 
 
+test "Mach-O dylib dlopen/dlsym round-trip resolves :pub exports (macOS host only)" {
+    # The issue (#6821) reported the produced dylib "loads, codesigns" but
+    # dlsym fails — a symbol-resolution symptom distinct from the load-command
+    # fixes covered by the structural tests above. This test closes that gap by
+    # actually dlopen-ing the dylib and calling its :pub exports through ctypes,
+    # mirroring the ELF round-trip. The CI native suite runs on Linux, where a
+    # Mach-O dylib can't be loaded, so this is a no-op there; on a macOS host it
+    # exercises the full load -> resolve -> call chain the issue described.
+    triple = llvm.get_default_triple();
+    if not (sys.platform == "darwin" and "apple" in triple) {
+        return;
+    }
+    (relobj, exports) = emit_shared_object("shared_export_scalar.na.jac", triple);
+    d = tempfile.mkdtemp();
+    out = os.path.join(d, "libdlopen_roundtrip.dylib");
+    ok = MachOLinker.link(
+        obj_bytes=relobj,
+        output_path=out,
+        needed_libs=["/usr/lib/libSystem.B.dylib"],
+        shared=True,
+        export_symbols=exports,
+        init_funcs=["__jac_shared_init"],
+        soname="libdlopen_roundtrip.dylib"
+    );
+    assert ok , "MachOLinker.link(shared=True) returned False";
+
+    import ctypes;
+    lib = ctypes.CDLL(out);  # dlopen — fails if the load-command fix regressed
+    # Resolve whichever spelling the export trie carries — bare (the linker's
+    # convention) or leading-underscore (macOS C convention). The dedicated
+    # trie-naming test below pins which; this one only cares that a consumer
+    # can actually dlsym + call the export (the issue's reported symptom).
+    jadd = lib?.jadd or lib?._jadd;
+    assert jadd is not None , "neither 'jadd' nor '_jadd' resolved via dlsym";
+    jadd.restype = ctypes.c_int64;
+    jadd.argtypes = [ctypes.c_int64, ctypes.c_int64];
+    assert jadd(2, 3) == 5 , "jadd resolved but returned wrong value";
+    jmul = lib?.jmul or lib?._jmul;
+    assert jmul is not None , "neither 'jmul' nor '_jmul' resolved via dlsym";
+    jmul.restype = ctypes.c_int64;
+    jmul.argtypes = [ctypes.c_int64, ctypes.c_int64];
+    assert jmul(4, 5) == 20 , "jmul resolved but returned wrong value";
+    counter = lib?.get_counter or lib?._get_counter;
+    assert counter is not None , "neither 'get_counter' nor '_get_counter' resolved";
+    counter.restype = ctypes.c_int64;
+    assert counter() == 7 , "get_counter resolved but returned wrong value";
+}
+
+
+test "Mach-O dylib export trie uses bare (non-underscored) :pub names (macOS host only)" {
+    # The issue flagged the leading-underscore convention as an open question.
+    # On macOS a C symbol `jadd` is conventionally exported as `_jadd` in the
+    # trie, but the Jac linker emits the bare name to match the ELF/PE paths.
+    # Pin that invariant so a regression in the export-trie builder flips this
+    # test rather than silently breaking dlsym for consumers. No-op on non-macOS.
+    triple = llvm.get_default_triple();
+    if not (sys.platform == "darwin" and "apple" in triple) {
+        return;
+    }
+    (relobj, exports) = emit_shared_object("shared_export_scalar.na.jac", triple);
+    d = tempfile.mkdtemp();
+    out = os.path.join(d, "libtrie_probe.dylib");
+    ok = MachOLinker.link(
+        obj_bytes=relobj,
+        output_path=out,
+        needed_libs=["/usr/lib/libSystem.B.dylib"],
+        shared=True,
+        export_symbols=exports,
+        init_funcs=["__jac_shared_init"],
+        soname="libtrie_probe.dylib"
+    );
+    assert ok , "MachOLinker.link(shared=True) returned False";
+
+    import ctypes;
+    lib = ctypes.CDLL(out);
+    bare = lib?.jadd;
+    under = lib?._jadd;
+    assert bare is not None , "bare 'jadd' missing from export trie — trie empty or mis-built";
+    assert under is None , "both 'jadd' and '_jadd' resolve — trie naming convention changed";
+}
+
+
 test "PE dll has IMAGE_FILE_DLL, export directory, and a non-zero entry" {
     (relobj, exports) = emit_shared_object(FIXTURE, "x86_64-pc-windows-msvc");
     d = tempfile.mkdtemp();
