@@ -28,15 +28,41 @@ PY="$PBS/install/bin/python3.12"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 site="$WORK/site"; stage="$WORK/stage"
 
-echo "==> pip install jaclang (from source) into site/"
+echo "==> assembling jaclang site from source (no pyproject build)"
 "$PY" -m ensurepip --upgrade >/dev/null 2>&1 || true
 "$PY" -m pip install --quiet --upgrade pip >/dev/null 2>&1 || true
-"$PY" -m pip install --quiet "$JACSRC" --target "$site"
+mkdir -p "$site"
+# jaclang is pure source + data (no compiled extension of its own), so copy it
+# straight from the tree instead of building a wheel -- no pyproject backend.
+cp -R "$JACSRC/jaclang" "$site/jaclang"
+cp "$JACSRC/_jac_finder.py" "$site/"
+[ -f "$JACSRC/sitecustomize.py" ] && cp "$JACSRC/sitecustomize.py" "$site/"
+find "$site/jaclang" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
+find "$site/jaclang" -name '*.pyc' -delete 2>/dev/null || true
+rm -rf "$site/jaclang/_precompiled" 2>/dev/null || true
 [ -f "$site/_jac_finder.py" ] || { echo "error: _jac_finder.py missing from site"; exit 1; }
 
-# Strip build-time-only tooling (never needed at runtime).
-( cd "$site" && rm -rf pip pip-* setuptools setuptools-* pkg_resources _distutils_hack \
-    && rm -f ./*.dist-info/RECORD ) 2>/dev/null || true
+# Minimal dist-info so importlib.metadata sees jaclang -- the version drives JIR
+# keying (pkg_version('jaclang')) and the entry points back the pytest11 plugin
+# (`jac test`) and the built-in `jac.modules` (desktop). Version comes from
+# jac.toml, so the build never reads pyproject.toml.
+ver="$("$PY" -c "import tomllib,sys; print(tomllib.load(open(sys.argv[1],'rb'))['project']['version'])" "$JACSRC/jac.toml")"
+di="$site/jaclang-${ver}.dist-info"; mkdir -p "$di"
+printf 'Metadata-Version: 2.1\nName: jaclang\nVersion: %s\n' "$ver" > "$di/METADATA"
+cat > "$di/entry_points.txt" <<EOT
+[pytest11]
+jaclang = jaclang.pytest_plugin
+
+[jac.modules]
+desktop = jaclang.runtimelib.client.desktop_plugin_config:desktop_sdk_path
+
+[jac.module_exports]
+desktop = jaclang.runtimelib.client.desktop_plugin_config:desktop_sdk_exports
+EOT
+
+# The sole runtime dependency (a binary wheel; from PyPI, not the jaclang repo).
+echo "==> fetching runtime dep: llvmlite"
+"$PY" -m pip install --quiet llvmlite --target "$site"
 
 if [ "$PRECOMPILE" = "1" ]; then
   echo "==> precompiling jaclang -> _precompiled JIR (fast first run)"
