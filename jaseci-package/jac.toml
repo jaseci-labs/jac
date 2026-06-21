@@ -33,7 +33,8 @@ changelog = "https://github.com/jaseci-labs/jaseci/releases"
 packages = ["jaseci*"]
 
 [dependencies]
-jaclang = ">=0.16.7"
+# jaclang is provided by the jac binary at runtime (host dependency), not
+# pulled from PyPI -- it is no longer published there.
 byllm = ">=0.6.17"
 jac-scale = ">=0.2.30"
 jac-mcp = ">=0.1.23"
