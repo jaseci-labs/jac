@@ -92,6 +92,11 @@ fn boot(rt: []const u8, init: std.process.Init) u8 {
     _ = setenv("PYTHONHOME", home, 1);
     _ = setenv("PYTHONPATH", sitepath, 1);
     _ = setenv("PYTHONUTF8", "1", 1);
+    // Force UTF-8 stdio directly. PYTHONUTF8 alone does not pin the stdout/stderr
+    // encoding under this Py_Initialize path, so a C/POSIX locale (no LANG, as in
+    // minimal containers/cron) would otherwise crash on non-ASCII output (emoji,
+    // box-drawing) with UnicodeEncodeError.
+    _ = setenv("PYTHONIOENCODING", "utf-8", 1);
     _ = setenv("PYTHONDONTWRITEBYTECODE", "1", 1);
     _ = setenv("PYTHONNOUSERSITE", "1", 1);
 
