@@ -68,6 +68,30 @@ def _register_builtin_client_providers() -> None:
 
 _register_builtin_client_providers()
 
+
+def _register_builtin_shadcn_provider() -> None:
+    """Register the built-in shadcn/ui CLI provider.
+
+    This shipped as the ``shadcn`` entry point of the separate ``jac-super``
+    plugin; it is now part of core and registers directly (no entry point, no
+    separate package). Importing the module also registers the ``jac retheme``
+    command (via its ``@registry.command`` decorator); registering the plugin
+    class wires its ``create_cmd`` / ``register_project_template`` hooks, which
+    add the ``--shadcn`` flags and the ``jac-shadcn`` project template.
+    """
+    try:
+        from jaclang.cli.shadcn.plugin import JacShadcnPlugin
+    except Exception as exc:  # keep core usable if shadcn fails to import
+        import warnings
+
+        warnings.warn(f"Built-in shadcn provider unavailable: {exc}", stacklevel=2)
+        return
+    if not plugin_manager.is_registered(JacShadcnPlugin):
+        plugin_manager.register(JacShadcnPlugin)
+
+
+_register_builtin_shadcn_provider()
+
 # Schedule deferred native acceleration if autonative is enabled in jac.toml
 try:
     from jaclang.project.config import get_config as _get_jac_config

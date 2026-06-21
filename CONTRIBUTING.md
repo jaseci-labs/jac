@@ -29,7 +29,6 @@ source .venv/bin/activate
 pip install -e jac
 jac install -e jac-byllm
 jac install -e jac-scale
-jac install -e jac-super
 jac install -e jac-mcp
 pip install pre-commit
 pre-commit install
@@ -93,7 +92,7 @@ python docs/scripts/mkdocs_serve.py
 Every PR that changes package code must include a release note fragment file:
 
 1. Create a file at `docs/docs/community/release_notes/unreleased/<package>/<PR#>.<category>.md`
-   - **Packages**: `jaclang`, `byllm`, `jac-scale`, `jac-super`, `jac-mcp`
+   - **Packages**: `jaclang`, `byllm`, `jac-scale`, `jac-mcp`
    - **Note**: The Jac client and desktop runtimes are now part of `jaclang` core (under `jac/jaclang/runtimelib/client/`); changes to them use the `jaclang` package fragment.
    - **Categories**: `feature`, `bugfix`, `breaking`, `refactor`, or `docs`
    - **Example**: `docs/docs/community/release_notes/unreleased/jaclang/1234.bugfix.md`
@@ -162,7 +161,7 @@ Releasing new versions to PyPI is a two-step process using GitHub Actions.
 1. Go to **GitHub Actions** → **Create Release PR**
 2. Click **Run workflow**
 3. For each package, select the version bump type (`skip`, `patch`, `minor`, or `major`):
-   - `jaclang`, `jac-byllm`, `jac-scale`, `jac-super`, `jac-mcp`, `jaseci`
+   - `jaclang`, `jac-byllm`, `jac-scale`, `jac-mcp`, `jaseci`
 4. Click **Run workflow**
 5. The workflow validates versions against PyPI, bumps them, and creates a PR from a `release/*` branch
 6. **Close and reopen the PR** to make CI run. The PR is authored by `github-actions[bot]`, and GitHub does not run `pull_request` checks for PRs opened by the `GITHUB_TOKEN` actor (workflows triggered by `GITHUB_TOKEN` can't trigger further workflows, to prevent recursion). Closing and reopening makes the reopen event come from *you* (a real user), so the PR checks run and attach to the PR. *(Permanent fix: author the PR with a GitHub App / PAT token instead.)*
@@ -183,7 +182,7 @@ After the release PR is merged, the **Publish Release** workflow triggers automa
    - Builds all packages once ([precompiling bytecode](https://docs.jaseci.org/reference/publishing/) for packages that need it)
    - Publishes in dependency order (tiered):
      - **Tier 1**: `jaclang` (base package; everything depends on it; includes the client and desktop runtimes)
-     - **Tier 2**: `jac-byllm`, `jac-scale`, `jac-super`, `jac-mcp` (depend only on `jaclang`)
+     - **Tier 2**: `jac-byllm`, `jac-scale`, `jac-mcp` (depend only on `jaclang`)
      - **Tier 4**: `jaseci` (meta-package; depends on everything above)
    - Pushes git tags (`{package}-v{version}`, plus `v{version}` for jaseci)
    - Creates a GitHub Release with artifacts

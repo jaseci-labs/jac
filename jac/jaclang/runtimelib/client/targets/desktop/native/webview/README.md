@@ -1,12 +1,12 @@
 # Jac-native webview binding
 
-The native foundation for the `jac-desktop` `desktop` target (issue #6436): a Jac
+The native foundation for the `desktop` target (issue #6436): a Jac
 binding to the OS web engine via the small cross-platform `webview` C library
 (WebKitGTK on Linux, WKWebView on macOS, WebView2 on Windows). A `na` host that
 imports this binding compiles - with `jac nacompile` and Jac's pure-Jac linker
 (no cc/ld) - to a single binary that owns an OS-native window.
 
-The `desktop` build target ([`jac_desktop/targets/native_desktop_target.jac`](../../targets/native_desktop_target.jac))
+The `desktop` build target ([`native_desktop_target.jac`](../../native_desktop_target.jac))
 generates and compiles such a host at build time; this directory ships the
 binding it links against.
 
@@ -18,8 +18,8 @@ binding it links against.
 | `build_libwebview.sh` | Builds `libwebview.so` from the pinned upstream `webview/webview` source against the system WebKitGTK. Invoked on first build by the desktop target. |
 | `install_webkit_deps.sh` | Installs the toolchain + WebKitGTK dev headers (Debian/Ubuntu). |
 
-The binding's dependency-free test lives with the package's other tests at
-[`jac_desktop/tests/test_binding.jac`](../../tests/test_binding.jac) (jac toolchain
+The binding's dependency-free test lives with the framework's other tests at
+`jac/tests/runtimelib/client/test_desktop_binding.jac` (jac toolchain
 only - no WebKitGTK/libpython/display): a host that uses the binding compiles and
 links `libwebview.so` with an `$ORIGIN` runpath, and an embedded-CPython host
 links libpython.

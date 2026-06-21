@@ -55,15 +55,6 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
         extra_build_cmd="jac run scripts/build_admin_ui.jac",
         needs_nodejs=True
     ),
-    "jac-super": PackageInfo(
-        dir="jac-super",
-        pypi="jac-super",
-        tier=2,
-        release_notes="docs/docs/community/release_notes/jac-super.md",
-        notes_display="jac-super",
-        submodules=True,
-        precompile=True
-    ),
     "jac-mcp": PackageInfo(
         dir="jac-mcp",
         pypi="jac-mcp",
@@ -87,13 +78,11 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
     "jaclang": [],
     "byllm": ["jaclang"],
     "jac-scale": ["jaclang"],
-    "jac-super": ["jaclang"],
     "jac-mcp": ["jaclang"],
     "jaseci": [
         "jaclang",
         "byllm",
         "jac-scale",
-        "jac-super",
         "jac-mcp"
     ]
 },

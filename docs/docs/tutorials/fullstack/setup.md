@@ -325,5 +325,5 @@ Click the button - the count should increase!
 - [Components](components.md) - Build reusable UI components
 - [State Management](state.md) - Reactive state with hooks
 - [Backend Integration](backend.md) - Connect to walkers
-- [Building a Desktop App](desktop.md) - Package the same app as a single `jac nacompile`d binary that embeds the OS webview - no Rust toolchain (`pip install jac-desktop`; see [jac-desktop Reference](../../reference/plugins/jac-desktop.md))
+- [Building a Desktop App](desktop.md) - Package the same app as a single `jac nacompile`d binary that embeds the OS webview - no Rust toolchain (ships with `jaclang` core; see [jac-desktop Reference](../../reference/plugins/jac-desktop.md))
 - [Build an AI Day Planner](../first-app/build-ai-day-planner.md) - Complete full-stack example with AI

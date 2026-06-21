@@ -71,6 +71,11 @@ jaclang = [
     "runtimelib/client/targets/desktop/native/cef/*.sh",
     "runtimelib/client/targets/desktop/native/cef/*.md",
     "runtimelib/client/targets/desktop/native/cef/*.conf",
+    # Built-in shadcn/ui provider: component registry (json/css/.cl.jac), themes,
+    # and the jac-shadcn project template (formerly the jac-super shadcn plugin).
+    "cli/shadcn/registry/**/*",
+    "cli/shadcn/templates/**/*",
+    "cli/shadcn/templates/**/.gitignore",
 ]
 
 [tool.setuptools]

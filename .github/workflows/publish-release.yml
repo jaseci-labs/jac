@@ -23,10 +23,6 @@ on:
         description: "Publish jac-scale"
         type: boolean
         default: false
-      jac-super:
-        description: "Publish jac-super"
-        type: boolean
-        default: false
       jac-mcp:
         description: "Publish jac-mcp"
         type: boolean
@@ -81,12 +77,11 @@ jobs:
           IN_JACLANG: ${{ inputs.jaclang && 'jaclang' || '' }}
           IN_BYLLM: ${{ inputs['jac-byllm'] && 'jac-byllm' || '' }}
           IN_SCALE: ${{ inputs['jac-scale'] && 'jac-scale' || '' }}
-          IN_SUPER: ${{ inputs['jac-super'] && 'jac-super' || '' }}
           IN_MCP: ${{ inputs['jac-mcp'] && 'jac-mcp' || '' }}
           IN_JASECI: ${{ inputs.jaseci && 'jaseci' || '' }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            PACKAGES="$IN_JACLANG $IN_BYLLM $IN_SCALE $IN_SUPER $IN_MCP $IN_JASECI"
+            PACKAGES="$IN_JACLANG $IN_BYLLM $IN_SCALE $IN_MCP $IN_JASECI"
             echo "Manual dispatch - selected packages: $PACKAGES"
             jac run scripts/parse_release.jac --packages "$PACKAGES"
           else

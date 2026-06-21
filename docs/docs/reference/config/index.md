@@ -441,9 +441,8 @@ api_key_expiry_days = 365
 
 # Kubernetes version pinning (jac-scale)
 [plugins.scale.kubernetes.plugin_versions]
-jaclang = "latest"
+jaclang = "latest"           # also provides the full-stack client/desktop framework
 jac_scale = "latest"
-jac_client = "latest"
 jac_byllm = "none"           # Use "none" to skip installation
 jac_mcp = "latest"
 ```

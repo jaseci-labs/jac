@@ -289,6 +289,10 @@ jobs:
 
   test-scale:
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [server, data, microservices, deploy, misc]
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -303,91 +307,28 @@ jobs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Install base jac-scale and test deps
+    - name: Install jac-scale with all test extras
       run: |
         python -m pip install --upgrade pip
         pip install -e jac
-        jac install -e jac-scale
+        jac install -e jac-scale --extras test
         pip install pytest pytest-asyncio
         pip install requests watchdog websockets
 
-    - name: Run Backend tests
+    - name: Run ${{ matrix.group }} tests
       run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_serve.jac
-
-    - name: Run cl test-runner full-stack test (jac-scale server)
-      run: |
-        pytest -x -vv jac-scale/jac_scale/tests/test_cl_test_runner.jac
-
-    - name: Run middleware async root tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_middleware_async_root.jac
-
-    - name: Run SSO tests
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_sso.jac
-
-    - name: Run admin API tests
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_admin.jac
-
-    - name: Run RestSpec tests
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_restspec.jac
-
-    - name: Install jac-scale[aws] and moto
-      run: |
-        jac install -e jac-scale --extras aws
-        pip install "moto[s3]>=5.0.0"
-
-    - name: Run Storage tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_s3_storage.jac
-
-    - name: Run Microservice interop tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_microservice.jac
-
-    - name: Run client examples
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_examples.jac
-
-    - name: Install jac-scale[data] extras
-      run: |
-        jac install -e jac-scale --extras data
-        pip install testcontainers
-
-    - name: Run Webhook tests (without and with MongoDB)
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_webhook.jac
-
-    - name: Run Memory Hierarchy tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.jac
-
-    - name: Run scalar-clobber cross-process regression tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_scalar_clobber_cross_process.jac
-
-    - name: Run MongoDB user manager tests
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_mongo_user_manager.jac
-
-    - name: Run MongoDB Layer 1+2+3 parity tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_mongo_layer123.jac
-
-    - name: Run Serializer tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac
-
-    - name: Install jac-scale[scheduler] extras
-      run: |
-        jac install -e jac-scale --extras scheduler
-
-    - name: Run Scheduling tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
+        set +e
+        failed=""
+        # One pytest process per file: the suite relies on per-file isolation.
+        for f in jac-scale/jac_scale/tests/${{ matrix.group }}/test_*.jac; do
+          echo "::group::$f"
+          pytest -vv -s "$f" || failed="$failed $f"
+          echo "::endgroup::"
+        done
+        if [ -n "$failed" ]; then
+          echo "::error::Failed ${{ matrix.group }} test files:$failed"
+          exit 1
+        fi
 
   test-scale-k8s:
     # Runs by default; add the 'skip-k8s' label to a PR to skip it.

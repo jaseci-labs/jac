@@ -28,7 +28,6 @@ jobs:
           pip install -e ./jac
           jac install -e ./jac-scale --extras all
           jac install -e ./jac-byllm
-          jac install -e ./jac-super
 
       - name: Warm up compiler cache
         run: jac --version

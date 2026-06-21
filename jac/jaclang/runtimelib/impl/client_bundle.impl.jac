@@ -110,14 +110,15 @@ impl ClientBundleBuilder._extract_client_globals(
 }
 
 """Produce the browser-ready bundle. The base builder only compiles and
-extracts; concrete bundling is the jac-client plugin's Vite/Bun pipeline, which
-overrides this. Invoked standalone (no plugin), it raises."""
+extracts; concrete bundling is the built-in client framework's Vite/Bun pipeline,
+which overrides this. Invoked without that provider registered, it raises."""
 impl ClientBundleBuilder._compile_bundle(
     module: ModuleType, module_path: Path
 ) -> ClientBundle {
     raise ClientBundleError(
-        "Client bundling requires the jac-client plugin (Vite/Bun pipeline). "
-        "Install jac-client to build and serve client (.cl.jac) code."
+        "Client bundling requires the built-in client framework (Vite/Bun pipeline), "
+        "which ships with jaclang core; the base builder cannot bundle client "
+        "(.cl.jac) code on its own."
     );
 }
 
