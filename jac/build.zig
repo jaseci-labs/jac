@@ -52,9 +52,12 @@ pub fn build(b: *std.Build) void {
         const mk = b.addSystemCommand(&.{ "bash", "launcher/mkpayload.sh", pbs_python, b.pathFromRoot(".") });
         mk.step.dependOn(&fetch.step);
         const out = mk.addOutputFileArg("payload.tar.zst");
-        // Track the jaclang source so the payload rebuilds when it changes; the
-        // extra trailing arg is ignored by mkpayload.sh (it reads $1/$2/$3).
+        // Track the payload's real inputs so it rebuilds when any change; these
+        // trailing args are ignored by mkpayload.sh (it reads $1/$2/$3).
         mk.addDirectoryArg(b.path("jaclang"));
+        mk.addFileArg(b.path("jac.toml"));
+        mk.addFileArg(b.path("launcher/mkpayload.sh"));
+        mk.addFileArg(b.path("launcher/fetch-pbs.sh"));
         break :payload out;
     };
 
