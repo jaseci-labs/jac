@@ -240,11 +240,11 @@ jobs:
     - name: Run jac-mcp tests
       run: pytest -x jac-mcp -n auto
 
-  test-scale:
+  scale-tests:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       # Split the test files across runners by subsystem so failures are
-      # readable at a glance (test-scale (data) vs an opaque shard index). Each
+      # readable at a glance (scale-tests (data) vs an opaque shard index). Each
       # group is a separate machine, so files that bind fixed ports never
       # collide across groups, and within a group files run sequentially in
       # their own process. `misc` is the catch-all: any file not matched by a
@@ -332,6 +332,26 @@ jobs:
           exit 1
         fi
         echo "All jac-scale test files in group '$GROUP' passed."
+
+  # Aggregator that reports the single `test-scale` status check required by
+  # branch protection. The matrix above reports per-group checks
+  # (scale-tests (server), ...), which do not satisfy a required check named
+  # `test-scale`; this job depends on all of them and is green only when every
+  # group passes.
+  test-scale:
+    needs: scale-tests
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Gate on scale-tests result
+      run: |
+        result="${{ needs.scale-tests.result }}"
+        echo "scale-tests result: $result"
+        if [ "$result" != "success" ]; then
+          echo "::error::One or more jac-scale test groups failed."
+          exit 1
+        fi
+        echo "All jac-scale test groups passed."
 
   test-scale-k8s:
     # Runs by default; add the 'skip-k8s' label to a PR to skip it.
