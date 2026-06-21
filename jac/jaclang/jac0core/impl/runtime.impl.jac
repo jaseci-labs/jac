@@ -401,22 +401,6 @@ impl JacGraph.edges_to_nodes(
     return `list(nodes.values());
 }
 
-"""Remove reference without checking sync status."""
-impl JacGraph.remove_edge(nd: NodeAnchor, `edge: EdgeAnchor) -> None {
-    for (idx, ed) in enumerate(nd.edges) {
-        if (ed.id == `edge.id) {
-            nd.edges.pop(idx);
-            break;
-        }
-    }
-}
-
-"""Detach edge from nodes."""
-impl JacGraph.detach(`edge: EdgeAnchor) -> None {
-    JacRuntimeInterface.remove_edge(nd=`edge.source, `edge=`edge);
-    JacRuntimeInterface.remove_edge(nd=`edge.target, `edge=`edge);
-}
-
 """Jac's visit stmt feature."""
 impl JacWalker.`visit(
     `walker: WalkerArchetype,
@@ -1414,7 +1398,7 @@ impl JacGraph.disconnect(
                 ) {
                     JacRuntimeInterface.destroy([anchor])
                         if anchor.persistent
-                        else JacRuntimeInterface.detach(anchor);
+                        else anchor.detach();
                     disconnect_occurred = True;
                 }
                 if (
@@ -1427,7 +1411,7 @@ impl JacGraph.disconnect(
                 ) {
                     JacRuntimeInterface.destroy([anchor])
                         if anchor.persistent
-                        else JacRuntimeInterface.detach(anchor);
+                        else anchor.detach();
                     disconnect_occurred = True;
                 }
             }
@@ -1557,7 +1541,7 @@ impl JacPersistence.destroy(
                     if anchor.is_populated() {
                         on_edge_destroyed(anchor.source, anchor.target, anchor);
                     }
-                    JacRuntimeInterface.detach(anchor);
+                    anchor.detach();
 
                 case _:
                     ;

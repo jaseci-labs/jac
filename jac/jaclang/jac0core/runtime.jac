@@ -424,12 +424,6 @@ class JacGraph {
         origin: list[NodeArchetype], destination: ObjectSpatialDestination
     ) -> list[NodeArchetype];
 
-    """Remove reference without checking sync status."""
-    static def remove_edge(nd: NodeAnchor, `edge: EdgeAnchor) -> None;
-
-    """Detach edge from nodes."""
-    static def detach(`edge: EdgeAnchor) -> None;
-
     """Jac's apply_dir stmt feature.
 
     `slc`, when given, requests storage-layer pagination: for single-hop
