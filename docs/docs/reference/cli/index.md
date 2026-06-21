@@ -2,7 +2,7 @@
 
 The `jac` command is your primary interface for working with Jac projects. It handles the full development lifecycle: running programs (`jac run`), type-checking code (`jac check`), running tests (`jac test`), formatting and linting (`jac format`, `jac lint`), managing dependencies (`jac add`, `jac install`), serving APIs (`jac start`), and even compiling to native binaries (`jac nacompile`). Think of it as combining the roles of `python`, `pip`, `pytest`, `black`, and `flask` into a single unified tool.
 
-The CLI is extensible through plugins. When you install plugins like `jac-scale` or `jac-client`, they add new commands and flags automatically -- for example, `jac start --scale` for Kubernetes deployment or `jac build --client desktop` for desktop app packaging.
+The CLI is extensible through plugins. When you install a plugin like `jac-scale`, it adds new commands and flags automatically -- for example, `jac start --scale` for Kubernetes deployment. The built-in full-stack client framework (formerly the `jac-client` / `jac-desktop` plugins, now part of `jaclang` core) contributes others, such as `jac build --client desktop` for desktop app packaging.
 
 > **💡 Enhanced Output**: All CLI commands render beautiful, colorful Rich-style output out of the box -- themes, panels, and spinners are built into jaclang by default, with no extra install needed.
 
@@ -241,7 +241,7 @@ jac start --scale --build
 
 Initialize a new Jac project with configuration. Creates a project folder with the given name containing the project files, including an `AGENTS.md` that points AI coding agents at `jac guide`.
 
-`jac create` is kind-aware: `--kind <kind>` scaffolds a project for a specific project kind, stamping `[project] kind` into `jac.toml` so the new project's bare `jac run` dispatches correctly (see `jac run`). The 8 core kinds ship with `jaclang`; `fullstack`/`wasm`/`mobile` need jac-client and `desktop` needs jac-desktop.
+`jac create` is kind-aware: `--kind <kind>` scaffolds a project for a specific project kind, stamping `[project] kind` into `jac.toml` so the new project's bare `jac run` dispatches correctly (see `jac run`). All built-in kinds ship with `jaclang` -- including `fullstack`, `wasm`, `mobile`, and `desktop`, which previously required the separate `jac-client` / `jac-desktop` plugins and now need no extra install.
 
 ```bash
 jac create [-h] [-f] [-k KIND] [-u USE] [-l] [name]
@@ -270,7 +270,7 @@ jac create myapp --kind api-service
 # Scaffold a natively-compiled binary
 jac create myapp --kind native-binary
 
-# Scaffold a full-stack app (requires jac-client)
+# Scaffold a full-stack app (built into jaclang core)
 jac create myapp --kind fullstack
 
 # Scaffold a shadcn-themed fullstack app
@@ -761,8 +761,9 @@ jac plugins disabled
 >
 > **💡 Popular Plugins**:
 >
-> - **jac-client**: Full-stack web development with client-side rendering (`pip install jac-client`)
 > - **jac-scale**: Kubernetes deployment and scaling (`pip install jac-scale`)
+>
+> (Full-stack web and native-desktop app building ships with `jaclang` core -- no plugin install needed.)
 
 ---
 
@@ -1218,7 +1219,7 @@ jac add [-h] [-d] [-g GIT] [-v] [packages ...]
 | `-g, --git` | Git repository URL | None |
 | `-v, --verbose` | Show detailed output | `False` |
 
-**With jac-client plugin:**
+**With the built-in client framework:**
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -1242,7 +1243,7 @@ jac add pytest --dev
 # Add from git repository
 jac add --git https://github.com/user/package.git
 
-# Add npm package (requires jac-client)
+# Add npm package (client framework built into jaclang core)
 jac add react --npm
 ```
 
@@ -1363,7 +1364,7 @@ jac remove [-h] [-d] [packages ...]
 | `packages` | Package names to remove | None |
 | `-d, --dev` | Remove from dev dependencies | `False` |
 
-**With jac-client plugin:**
+**With the built-in client framework:**
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -1381,7 +1382,7 @@ jac remove numpy pandas
 # Remove dev dependency
 jac remove pytest --dev
 
-# Remove npm package (requires jac-client)
+# Remove npm package (client framework built into jaclang core)
 jac remove react --npm
 ```
 
@@ -1979,7 +1980,7 @@ Plugins can add new commands and extend existing ones. These commands are availa
 
 ### jac-client Commands
 
-Requires: `pip install jac-client`
+These commands ship with `jaclang` core -- no separate install needed.
 
 #### jac build
 
@@ -2049,7 +2050,7 @@ jac setup mobile --platform all
 
 #### Desktop builds
 
-The `desktop` client target is provided by `pip install jac-desktop`. There is no
+The `desktop` client target ships with `jaclang` core -- no separate install. There is no
 separate `jac desktop` command and no setup step - build and run with
 `jac build --client desktop` / `jac start --client desktop`. See the
 [jac-desktop Reference](../plugins/jac-desktop.md) for configuration.

@@ -90,7 +90,7 @@ jac start
 # Custom port
 jac start --port 3000
 
-# Development with HMR (requires jac-client)
+# Development with HMR (client framework built into jaclang core)
 jac start --dev
 
 # API only -- skip client bundling

@@ -5,7 +5,7 @@ on:
 
 jobs:
   release-byllm:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     defaults:
       run:
         working-directory: jac-byllm

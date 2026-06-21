@@ -36,9 +36,8 @@ Jac is a programming language designed for humans and AI to build together. With
 
 This repository houses the Jaseci stack -- the core libraries and tooling that make Jac work:
 
-- **[`jaclang`](jac/):** The Jac programming language -- compiles to Python bytecode, JavaScript, and native machine code. (`pip install jaclang`)
+- **[`jaclang`](jac/):** The Jac programming language -- compiles to Python bytecode, JavaScript, and native machine code. Ships with the built-in full-stack web/desktop app framework (React-like `cl` components, server, and bundler with full access to the entire npm/node ecosystem). (`pip install jaclang`)
 - **[`byllm`](jac-byllm/):** Plugin for Jac enabling easy integration of large language models into your applications through the innovative [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965) concept. (`pip install byllm`)
-- **[`jac-client`](jac-client/):** Plugin for Jac to bundle full-stack web applications with full access to the entire npm/node package ecosystem. (`pip install jac-client`)
 - **[`jac-scale`](jac-scale/):** Plugin for Jac enabling fully abstracted and automated deployment and scaling with FastAPI, Redis, MongoDB, and Kubernetes integration. (`pip install jac-scale`)
 - **[`jac-mcp`](jac-mcp/):** Plugin for Jac providing an MCP server for AI-assisted Jac development with validation, formatting, and documentation tools. (`pip install jac-mcp`)
 - **[`jac VSCE`](https://github.com/jaseci-labs/jac-vscode/blob/main/README.md):** The official VS Code extension for Jac.
@@ -180,7 +179,7 @@ Get the complete, stable toolkit from PyPI:
 pip install jaseci
 ```
 
-The `jaseci` package is a meta-package that bundles `jaclang`, `byllm`, `jac-client`, `jac-scale`, and `jac-mcp` together for convenience. This is the fastest way to get started with building applications.
+The `jaseci` package is a meta-package that bundles `jaclang`, `byllm`, `jac-scale`, and `jac-mcp` together for convenience. This is the fastest way to get started with building applications.
 
 </details>
 
@@ -193,8 +192,8 @@ The `jac` CLI is your primary interface for interacting with the Jaseci ecosyste
 | **`jac run <file.jac>`** | Executes a Jac file, much like `python3`. |
 | **`jac start <file.jac>`** | Starts a REST API server for a Jac program. |
 | **`jac start <file.jac> --scale`** | Deploys to Kubernetes with Redis and MongoDB auto-provisioning. |
-| **`jac create --use client <name>`** | Creates a new full-stack Jac project with frontend support. |
-| **`jac plugins`** | Manages Jac plugins (enable/disable jac-scale, jac-client, etc.). |
+| **`jac create <name> --kind fullstack`** | Creates a new full-stack Jac project with frontend support. |
+| **`jac plugins`** | Manages Jac plugins (enable/disable jac-scale, byllm, etc.). |
 
 ---
 

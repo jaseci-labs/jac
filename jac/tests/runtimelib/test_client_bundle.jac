@@ -1,10 +1,11 @@
 """Tests for the core client bundle builder base.
 
 The base `ClientBundleBuilder` provides the shared compile-to-JS + manifest
-extraction + caching used by the jac-client Vite/Bun builder. Concrete bundling
-(`_compile_bundle`) lives in the jac-client plugin; invoked standalone the base
-raises, since there is a single client pathway (Vite/Bun) and no bare-serve
-inline bundler anymore.
+extraction + caching used by the built-in client framework's Vite/Bun builder.
+Concrete bundling (`_compile_bundle`) is provided by the built-in client
+framework that ships with jaclang core; invoked standalone the base raises,
+since there is a single client pathway (Vite/Bun) and no bare-serve inline
+bundler anymore.
 """
 
 import from pathlib { Path }
@@ -26,7 +27,7 @@ test "base builder compiles a client module to JS and extracts its manifest surf
     assert isinstance(globals_map, dict);
 }
 
-test "base builder bundling requires the jac-client plugin" {
+test "base builder bundling requires the built-in client framework" {
     (module, ) = Jac.jac_import("client_app", FIXTURES);
     builder = ClientBundleBuilder();
     source_path = Path(module.__file__.replace(".py", ".jac")).resolve();
@@ -35,7 +36,7 @@ test "base builder bundling requires the jac-client plugin" {
         builder._compile_bundle(module, source_path);
     } except ClientBundleError as err {
         raised = True;
-        assert "jac-client" in str(err);
+        assert "built-in client framework" in str(err);
     }
     assert raised , "base _compile_bundle should raise ClientBundleError without the plugin";
 }

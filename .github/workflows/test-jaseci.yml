@@ -11,7 +11,7 @@ on:
 
 jobs:
   test-core-compiler:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -35,7 +35,7 @@ jobs:
       run: pytest -x jac/tests/compiler -n auto
 
   test-core-runtime:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -70,7 +70,7 @@ jobs:
     # render + reactivity. Needs a real `bun install` (jsdom + solid-js), so the
     # test self-skips unless JAC_CLIENT_INTEGRATION is set -- we set it here and
     # run just that file in its own lean job.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -104,7 +104,7 @@ jobs:
       run: pytest -x -vv jac/tests/runtimelib/test_solid_jsdom.jac
 
   test-client:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -143,7 +143,7 @@ jobs:
       run: pytest -x jac/tests/runtimelib/client -n auto
 
   test-packages-and-docs:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -194,7 +194,7 @@ jobs:
     # linked artifacts (DT_NEEDED / $ORIGIN) and run handler logic through the sv
     # pathway - NO WebKitGTK, no libpython-dev, no display/Xvfb. The webview /
     # embedded-Python *runtime* behavior is covered by a separate, gated tier.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -217,7 +217,7 @@ jobs:
       run: pytest -x jac/tests/runtimelib/client/test_desktop_binding.jac -n auto
 
   test-mcp:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -241,7 +241,7 @@ jobs:
       run: pytest -x jac-mcp -n auto
 
   test-scale:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -345,7 +345,7 @@ jobs:
   test-scale-k8s:
     # Runs by default; add the 'skip-k8s' label to a PR to skip it.
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
       matrix:
@@ -404,7 +404,7 @@ jobs:
           pytest  -s -x "jac-scale/jac_scale/tests/test_deploy_k8s.jac::early exit"
 
   test-pypi-build:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
       uses: actions/checkout@v5

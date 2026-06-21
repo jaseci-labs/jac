@@ -8,7 +8,7 @@ the shell is a single self-contained binary plus the platform's own web engine
 (WebKitGTK on Linux / WKWebView on macOS / WebView2 on Windows).
 
 The native binding + build tooling ship inside this package under
-`jac_desktop/native/webview/`.
+`targets/desktop/native/webview/`.
 """
 import from pathlib { Path }
 import from typing { Optional }
