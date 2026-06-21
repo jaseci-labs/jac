@@ -107,7 +107,7 @@ test "kubernetes config from dict" {
         "redis_enabled": False
     };
 
-    config = KubernetesConfig.from_dict(config_dict);
+    config = KubernetesConfig.from_dict(KubernetesConfig, config_dict);
 
     assert config.app_name == "my-app";
     assert config.namespace == "test-ns";

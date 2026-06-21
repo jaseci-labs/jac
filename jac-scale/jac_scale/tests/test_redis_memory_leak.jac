@@ -46,12 +46,23 @@ def extract(resp: any) -> any {
 }
 
 def register_user(base_url: str, username: str) -> str {
-    res = requests.post(
+    requests.post(
         f"{base_url}/user/register",
-        json={"username": username, "password": "pass123"},
+        json={
+            "identities": [{"type": "username", "value": username}],
+            "credential": {"type": "password", "password": "pass123"}
+        },
         timeout=5
     );
-    assert res.status_code == 201;
+    res = requests.post(
+        f"{base_url}/user/login",
+        json={
+            "identity": {"type": "username", "value": username},
+            "credential": {"type": "password", "password": "pass123"}
+        },
+        timeout=5
+    );
+    assert res.status_code == 200;
     return cast(dict, extract(res.json()))["token"];
 }
 

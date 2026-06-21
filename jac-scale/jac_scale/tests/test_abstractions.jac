@@ -54,11 +54,11 @@ test "resource status info not ready" {
 }
 
 test "resource status enum" {
-    assert ResourceStatus.UNKNOWN == "unknown";
-    assert ResourceStatus.PENDING == "pending";
-    assert ResourceStatus.RUNNING == "running";
-    assert ResourceStatus.FAILED == "failed";
-    assert ResourceStatus.STOPPED == "stopped";
+    assert ResourceStatus.UNKNOWN.value == "unknown";
+    assert ResourceStatus.PENDING.value == "pending";
+    assert ResourceStatus.RUNNING.value == "running";
+    assert ResourceStatus.FAILED.value == "failed";
+    assert ResourceStatus.STOPPED.value == "stopped";
 }
 
 test "app config get code path" {

@@ -296,7 +296,9 @@ jobs:
           echo "$f" | grep -qE "$skip_re" && continue
           if [ $(( i % SHARD_TOTAL )) -eq "$SHARD_INDEX" ]; then
             echo "::group::$f"
-            pytest -x -vv -s "$f"
+            # No -x: report every failure in the file, not just the first, so a
+            # single run enumerates the full backlog instead of one-at-a-time.
+            pytest -vv -s -rfE "$f"
             [ $? -ne 0 ] && failed="$failed $f"
             echo "::endgroup::"
             ran=$((ran + 1))

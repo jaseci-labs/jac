@@ -1090,6 +1090,10 @@ test "admin index served at /admin/" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
     gw.setup();
+    # Pin the static-fallback path: when the admin API installs, /admin/ is
+    # served from cwd/.jac/admin and ignores the injected admin_dist_dir, which
+    # made this test order/environment dependent. Force the static branch.
+    gw.server = None;
 
     import from fastapi.testclient { TestClient }
     client = TestClient(gw.app);
