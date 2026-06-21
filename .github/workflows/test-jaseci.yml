@@ -242,6 +242,14 @@ jobs:
 
   test-scale:
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    strategy:
+      # One job per subsystem folder under jac-scale/jac_scale/tests/. Each runs
+      # on its own runner (no fixed-port collisions across groups). Tests in
+      # tests/quarantine/ are deliberately omitted here (disabled, tracked in
+      # issue #6853); k8s-cluster tests run in the test-scale-k8s job below.
+      fail-fast: false
+      matrix:
+        group: [server, data, microservices, deploy, misc]
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -267,27 +275,22 @@ jobs:
         pip install pytest pytest-asyncio
         pip install requests watchdog websockets
 
-    # Discover every test_*.jac automatically (new files run without editing CI)
-    # and run each in its own pytest process to preserve per-file isolation (the
-    # suite relies on a fresh Jac runtime/context per file rather than teardown).
-    - name: Run jac-scale tests
+    - name: Run ${{ matrix.group }} tests
       run: |
         set +e
-        # Skip k8s-cluster tests (they run in the test-scale-k8s job) and the
-        # quarantined pre-existing failures tracked in issue #6853.
-        skip='test_(deploy_k8s|k8s_utils|pod_env|image_build|connection_overhead|redis_batch_overhead|redis_memory_leak|topology_slice_pushdown|file_upload|user_identity)\.jac$'
+        # Run each file in its own pytest process to preserve per-file isolation
+        # (the suite relies on a fresh Jac runtime/context per file, not teardown).
         failed=""
-        for f in jac-scale/jac_scale/tests/test_*.jac; do
-          echo "$f" | grep -qE "$skip" && continue
+        for f in jac-scale/jac_scale/tests/${{ matrix.group }}/test_*.jac; do
           echo "::group::$f"
           pytest -vv -s "$f" || failed="$failed $f"
           echo "::endgroup::"
         done
         if [ -n "$failed" ]; then
-          echo "::error::Failed jac-scale test files:$failed"
+          echo "::error::Failed ${{ matrix.group }} test files:$failed"
           exit 1
         fi
-        echo "All jac-scale test files passed."
+        echo "All ${{ matrix.group }} test files passed."
 
   test-scale-k8s:
     # Runs by default; add the 'skip-k8s' label to a PR to skip it.

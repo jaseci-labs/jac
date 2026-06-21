@@ -203,7 +203,7 @@ import tempfile;
 import from pathlib { Path }
 import from jac_scale.tests.scale_test_client { ScaleTestClient }
 
-glob FIXTURES_DIR: str = str(Path(__file__).parent / "fixtures");
+glob FIXTURES_DIR: str = str(Path(__file__).parent.parent / "fixtures");
 
 test "admin metrics endpoint returns valid response" {
     tmp = tempfile.mkdtemp();

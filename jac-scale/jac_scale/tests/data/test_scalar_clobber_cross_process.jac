@@ -31,7 +31,7 @@ import requests;
 import from testcontainers.mongodb { MongoDbContainer }
 import from testcontainers.redis { RedisContainer }
 
-glob FIXTURES_DIR = Path(__file__).parent / "fixtures",
+glob FIXTURES_DIR = Path(__file__).parent.parent / "fixtures",
      JAC_FILE = FIXTURES_DIR / "clobber_app.jac";
 
 def get_free_port -> int {

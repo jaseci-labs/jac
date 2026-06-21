@@ -24,7 +24,7 @@ import from jac_scale.tests.auth_test_helpers {
     register_and_login as _get_token
 }
 
-glob FIXTURES_DIR: Path = Path(__file__).parent / "fixtures";
+glob FIXTURES_DIR: Path = Path(__file__).parent.parent / "fixtures";
 
 def get_free_port -> int {
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {

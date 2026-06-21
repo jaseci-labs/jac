@@ -12,7 +12,7 @@ import from pathlib { Path }
 
 import from jaclang.project.config { find_project_root }
 
-glob JacScaleFixtures: Path = Path(__file__).parent / "fixtures";
+glob JacScaleFixtures: Path = Path(__file__).parent.parent / "fixtures";
 
 """Get a free port by binding to port 0 and releasing it."""
 def get_free_port -> int {
