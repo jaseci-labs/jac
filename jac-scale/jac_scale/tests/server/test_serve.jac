@@ -263,7 +263,7 @@ def _create_very_old_token(username: str, days_ago: int = 15) -> str {
 # =============================================================================
 # SERVER CONFIGURATION (used by websocket, dev mode, and port fallback tests)
 # =============================================================================
-glob sv_fixtures_dir: Path = Path(__file__).parent / "fixtures",
+glob sv_fixtures_dir: Path = Path(__file__).parent.parent / "fixtures",
      sv_test_file: Path = sv_fixtures_dir / "test_api.jac",
      sv_port: int = get_free_port(),
      sv_base_url: str = f"http://localhost:{sv_port}",
@@ -1684,7 +1684,7 @@ test "websocket functionality" {
 # =============================================================================
 # GROUP 6: DEV MODE TESTS
 # =============================================================================
-glob dm_fixtures_dir: Path = Path(__file__).parent / "fixtures",
+glob dm_fixtures_dir: Path = Path(__file__).parent.parent / "fixtures",
      dm_test_file: Path = dm_fixtures_dir / "test_api.jac",
      dm_vite_port: int = get_free_port(),
      dm_api_port: int = get_free_port(),

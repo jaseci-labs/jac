@@ -10,7 +10,7 @@ import from jac_scale.microservices.discovery {
     scan_markers
 }
 
-glob _K8S_E2E_FIXTURE: Path = Path(__file__).parent / "fixtures" / "k8s_e2e";
+glob _K8S_E2E_FIXTURE: Path = Path(__file__).parent.parent / "fixtures" / "k8s_e2e";
 
 # =============================================================================
 # Parity against the real example: auto-detection (ignoring the toml) must find

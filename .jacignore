@@ -129,8 +129,6 @@ mtir.jac
 serve.jac
 serve.core.impl.jac
 api.cl.jac
-# cli.jac — jaclang passes, jac-client fails
-jac-client/jac_client/plugin/cli.jac
 bunch_of_statements.jac
 chess.impl.jac
 compiler_bridge.impl.jac
@@ -162,9 +160,6 @@ client_bundle.jac
 client_deps.impl.jac
 client_deps.jac
 client_runtime.impl.jac
-# config_loader — jac-byllm and jac-scale pass, jac-client fails
-jac-client/jac_client/plugin/src/impl/config_loader.impl.jac
-jac-client/jac_client/plugin/src/config_loader.jac
 core.impl.jac
 dicts.impl.jac
 engine.impl.jac

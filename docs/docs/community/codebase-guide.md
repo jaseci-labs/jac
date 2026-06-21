@@ -39,7 +39,7 @@ Here's a quick map from contribution type to the right part of the codebase:
 | Fix a runtime bug | `jac/jaclang/runtimelib/` |
 | Improve the formatter/linter | `jac/jaclang/compiler/passes/tool/` |
 | Improve IDE support | `jac/jaclang/lsp/` + `langserve/` |
-| Work on a plugin | `jac-byllm/`, `jac-client/`, `jac-scale/`, etc. |
+| Work on a plugin | `jac-byllm/`, `jac-scale/`, etc. |
 | Write or fix docs | `docs/docs/reference/` (most features go here) |
 | Add a test | `jac/tests/` (mirror the directory of the code you're testing) |
 
@@ -51,9 +51,8 @@ The repo is a **monorepo** with the core language and a family of plugins:
 
 ```
 jaseci/
-├── jac/                  # Core language: compiler, runtime, CLI, LSP
+├── jac/                  # Core language: compiler, runtime, CLI, LSP, full-stack client/desktop framework
 ├── jac-byllm/            # Plugin: LLM integration (Meaning Typed Programming)
-├── jac-client/           # Plugin: full-stack web apps (JSX, server, auth)
 ├── jac-scale/            # Plugin: cloud deployment (FastAPI, Kubernetes, Docker)
 ├── jac-mcp/              # Plugin: MCP server for AI-assisted development
 ├── jac-plugins/          # Additional community plugins
@@ -201,7 +200,6 @@ Registration happens in `pyproject.toml`:
 | Plugin | What it adds |
 |--------|-------------|
 | `jac-byllm` | LLM-powered functions -- annotate a function signature with a docstring and byLLM calls an LLM to implement it at runtime. Depends on `litellm`. |
-| `jac-client` | Full-stack web app framework -- JSX components, client-side state, server rendering. Uses a Node.js toolchain under the hood. |
 | `jac-scale` | Cloud deployment -- wraps `jac start` with FastAPI, adds Kubernetes deployment, Docker builds, MongoDB/Redis storage backends. |
 | `jac-mcp` | Exposes the Jac project as an MCP server so AI coding assistants can query it. |
 

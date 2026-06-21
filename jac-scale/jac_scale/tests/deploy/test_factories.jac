@@ -107,7 +107,7 @@ test "kubernetes config from dict" {
         "redis_enabled": False
     };
 
-    config = KubernetesConfig.from_dict(config_dict);
+    config = KubernetesConfig.from_dict(KubernetesConfig, config_dict);
 
     assert config.app_name == "my-app";
     assert config.namespace == "test-ns";
@@ -129,8 +129,10 @@ test "app config creation" {
 }
 
 test "deployment target with logger" {
+    # KubernetesTarget is lazily imported inside create() (gated by
+    # require_optional), so patch it at its source module, not on the factory.
     with unittest.mock.patch(
-        "jac_scale.factories.deployment_factory.KubernetesTarget"
+        "jac_scale.targets.kubernetes.kubernetes_target.KubernetesTarget"
     ) as mock_kubernetes_target {
         mock_target = unittest.mock.MagicMock();
         mock_kubernetes_target.return_value = mock_target;

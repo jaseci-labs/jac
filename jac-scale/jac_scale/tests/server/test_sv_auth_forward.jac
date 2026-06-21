@@ -607,19 +607,21 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
 
 
 # ensure_sv_service registers DNS URLs in K8s mode (no subprocess spawn).
+# Defined at module scope: a Jac `obj` declared inside a test block compiles to
+# a dataclass whose __module__ is not in sys.modules, breaking dataclass
+# processing with `NoneType has no attribute __dict__`.
+obj _K8sStubMsCfg {
+    has data: dict[str, any];
+
+    def get_microservices_config -> dict[str, any] {
+        return self.data;
+    }
+}
+
 test "ensure_sv_service registers DNS URL when in K8s mode" {
     import os;
     import jac_scale.config_loader as cfg_mod;
     import from jac_scale.plugin { JacScalePlugin }
-
-    # Stub config so we don't need a jac.toml.
-    obj _StubMsCfg {
-        has data: dict[str, any];
-
-        def get_microservices_config -> dict[str, any] {
-            return self.data;
-        }
-    }
 
     orig_k8s_host = os.environ.get("KUBERNETES_SERVICE_HOST");
     orig_ns = os.environ.get("POD_NAMESPACE");
@@ -631,7 +633,7 @@ test "ensure_sv_service registers DNS URL when in K8s mode" {
         cfg_mod,
         "get_scale_config",
         lambda :
-            _StubMsCfg(
+            _K8sStubMsCfg(
                 data={"routes": {"k9_2_peer": "/api/peer"}, "gateway_port": 8000}
             )
     );

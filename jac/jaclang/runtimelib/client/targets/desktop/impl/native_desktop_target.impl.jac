@@ -36,8 +36,8 @@ def _read_between(path: Path, start_marker: str, end_marker: str) -> str {
 
 """Locate the shipped native/webview assets (binding + build tooling).
 
-native/webview lives inside this package, two dirs up from this targets module
-(jac_desktop/targets/ -> jac_desktop/native/webview). Verified by the presence
+native/webview lives inside this package, one dir up from this targets module
+(targets/desktop/ -> targets/desktop/native/webview). Verified by the presence
 of webview.na.jac; walks up as a fallback for unusual layouts.
 """
 def _find_webview_dir -> Path {
@@ -53,7 +53,9 @@ def _find_webview_dir -> Path {
             return cand;
         }
     }
-    raise RuntimeError("jac-desktop: native/webview assets not found in the package.");
+    raise RuntimeError(
+        "desktop target: native/webview assets not found in the package."
+    );
 }
 
 """Resolve the jac CLI for nacompile (we're running under it)."""
@@ -80,7 +82,7 @@ def _ensure_libwebview(webview_dir: Path) -> Path {
     if res.returncode != 0 or not lib.exists() {
         raise RuntimeError(
             f"Failed to build {libwebview_name()} - is WebKitGTK + a C toolchain installed? "
-            "See jac_desktop/native/webview/README.md."
+            "See jaclang/runtimelib/client/targets/desktop/native/webview/README.md."
         );
     }
     return lib;

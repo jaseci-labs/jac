@@ -24,10 +24,11 @@ test "AWSProvider and LocalProvider honour their per-provider contracts" {
     assert aws.needs_nlb_wait() is True;
     assert local.needs_nlb_wait() is False;
 
-    # prometheus_scrape_port: AWS NLB listener is on 80 regardless of the app's
-    # container port; local scrapes the container port directly.
-    assert aws.prometheus_scrape_port(8000) == 80;
-    assert aws.prometheus_scrape_port(3000) == 80;
+    # prometheus_scrape_port: Prometheus scrapes the in-cluster service on the
+    # container port (the external LB port is irrelevant for in-cluster scraping),
+    # so both providers return the container port directly.
+    assert aws.prometheus_scrape_port(8000) == 8000;
+    assert aws.prometheus_scrape_port(3000) == 3000;
     assert local.prometheus_scrape_port(8000) == 8000;
     assert local.prometheus_scrape_port(3000) == 3000;
 

@@ -273,15 +273,18 @@ test "cache aside pattern" {
 }
 
 # ===== FIND_NODES =====
+# Defined at module scope: a Jac `node`/`obj` declared inside a test block
+# compiles to a dataclass whose __module__ is not in sys.modules, breaking
+# dataclass processing with `NoneType has no attribute __dict__`.
+node TestNode {
+    has name: str,
+        age: int,
+        status: str = "active";
+}
+
 test "find_nodes basic" {
     import from jaclang.runtimelib.serializer { Serializer }
 
-    # Test node for find_nodes test
-    node TestNode {
-        has name: str,
-            age: int,
-            status: str = "active";
-    }
     db = kvstore(db_name="test_find_nodes", db_type="mongodb", uri=MONGO_URI);
 
     # Create test nodes manually

@@ -24,7 +24,7 @@ env:
 
 jobs:
   deploy-jac-lang-website:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
 
@@ -43,8 +43,8 @@ jobs:
           fetch-depth: 0  # Full git history for changelog generation
           submodules: true
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Setup Blacksmith Builder
+        uses: useblacksmith/setup-docker-builder@v1
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -183,7 +183,7 @@ jobs:
 
   summary:
     needs: [deploy-jac-lang-website]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     if: always()
     steps:
       - name: Build and Push Summary

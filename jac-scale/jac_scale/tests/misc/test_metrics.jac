@@ -135,7 +135,8 @@ test "factory raises for unsupported type" {
 # --- MetricsCollector interface compliance tests ---
 test "noop implements interface" {
     collector = NoOpMetricsCollector();
-    assert hasattr(collector, "init");
+    # `init` is the Jac constructor (compiles to __init__), not a queryable
+    # attribute, so it is exercised by construction above rather than hasattr.
     assert hasattr(collector, "record_request");
     assert hasattr(collector, "request_started");
     assert hasattr(collector, "request_finished");
@@ -148,7 +149,7 @@ test "prometheus implements interface" {
     collector = PrometheusMetricsCollector(
         config={"enabled": True, "namespace": "iface_test"}
     );
-    assert hasattr(collector, "init");
+    # `init` is the Jac constructor (compiles to __init__), exercised above.
     assert hasattr(collector, "record_request");
     assert hasattr(collector, "request_started");
     assert hasattr(collector, "request_finished");
@@ -202,7 +203,7 @@ import tempfile;
 import from pathlib { Path }
 import from jac_scale.tests.scale_test_client { ScaleTestClient }
 
-glob FIXTURES_DIR: str = str(Path(__file__).parent / "fixtures");
+glob FIXTURES_DIR: str = str(Path(__file__).parent.parent / "fixtures");
 
 test "admin metrics endpoint returns valid response" {
     tmp = tempfile.mkdtemp();

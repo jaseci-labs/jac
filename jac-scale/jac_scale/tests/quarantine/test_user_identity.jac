@@ -20,7 +20,7 @@ import from jac_scale.tests.auth_test_helpers {
     register_and_login as _register_and_login
 }
 
-glob FIXTURES_DIR: Path = Path(__file__).parent / "fixtures" / "identity_api";
+glob FIXTURES_DIR: Path = Path(__file__).parent.parent / "fixtures" / "identity_api";
 
 # =============================================================================
 # Helpers

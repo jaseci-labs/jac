@@ -72,7 +72,7 @@ test "factory_uses_registered_name" {
 
 test "factory_imports_dotted_path" {
     # Stash a class in this test module's globals via sys.modules and import via dotted path.
-    fixtures_dir = Path(__file__).parent / "fixtures" / "identity_api";
+    fixtures_dir = Path(__file__).parent.parent / "fixtures" / "identity_api";
     sys.path.insert(0, str(fixtures_dir));
     try {
         cfg = {

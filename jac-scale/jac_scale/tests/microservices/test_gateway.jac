@@ -1090,6 +1090,10 @@ test "admin index served at /admin/" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
     gw.setup();
+    # Pin the static-fallback path: when the admin API installs, /admin/ is
+    # served from cwd/.jac/admin and ignores the injected admin_dist_dir, which
+    # made this test order/environment dependent. Force the static branch.
+    gw.server = None;
 
     import from fastapi.testclient { TestClient }
     client = TestClient(gw.app);
@@ -1383,17 +1387,20 @@ test "http_forward_timeout falls back to 30s default when config read fails" {
     assert t == 30.0 , f"expected 30.0 default, got {t}";
 }
 
+# Defined at module scope: a Jac `obj` declared inside a test block compiles to
+# a dataclass whose __module__ is not registered in sys.modules, so dataclass
+# processing fails with `NoneType has no attribute __dict__`.
+obj _TimeoutStubCfg {
+    has data: dict[str, any];
+
+    def get_microservices_config -> dict[str, any] {
+        return self.data;
+    }
+}
+
 test "http_forward_timeout precedence: per-service > global > default" {
     import from jac_scale.microservices.runtime.util { http_forward_timeout }
     import jac_scale.config_loader as cfg_mod;
-
-    obj _StubCfg {
-        has data: dict[str, any];
-
-        def get_microservices_config -> dict[str, any] {
-            return self.data;
-        }
-    }
 
     original = getattr(cfg_mod, "get_scale_config");
     try {
@@ -1401,7 +1408,8 @@ test "http_forward_timeout precedence: per-service > global > default" {
         setattr(
             cfg_mod,
             "get_scale_config",
-            lambda : _StubCfg(data={"http_forward_timeout": 45.0, "services": {}})
+            lambda :
+                _TimeoutStubCfg(data={"http_forward_timeout": 45.0, "services": {}})
         );
         assert http_forward_timeout(None) == 45.0;
         assert http_forward_timeout("any_service") == 45.0;
@@ -1411,7 +1419,7 @@ test "http_forward_timeout precedence: per-service > global > default" {
             cfg_mod,
             "get_scale_config",
             lambda :
-                _StubCfg(
+                _TimeoutStubCfg(
                     data={
                         "http_forward_timeout": 45.0,
                         "services": {"llm_app": {"http_forward_timeout": 300.0}}
@@ -1426,7 +1434,7 @@ test "http_forward_timeout precedence: per-service > global > default" {
             cfg_mod,
             "get_scale_config",
             lambda :
-                _StubCfg(
+                _TimeoutStubCfg(
                     data={"services": {"llm_app": {"http_forward_timeout": 120.0}}}
                 )
         );
@@ -1440,7 +1448,7 @@ test "http_forward_timeout precedence: per-service > global > default" {
             cfg_mod,
             "get_scale_config",
             lambda :
-                _StubCfg(
+                _TimeoutStubCfg(
                     data={
                         "http_forward_timeout": 45.0,
                         "services": {"llm_app": {"rpc_timeout": 120.0}}

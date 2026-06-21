@@ -13,7 +13,7 @@ import from pathlib { Path }
 import from jaclang.runtimelib.cl_test_runner { run_cl_test_file }
 
 glob FIXTURE = str(
-         Path(__file__).parent / "fixtures" / "cl_fullstack" / "test_echo.cl.jac"
+         Path(__file__).parent.parent / "fixtures" / "cl_fullstack" / "test_echo.cl.jac"
      );
 
 test "cl runner boots jac-scale server for a full-stack client test" {

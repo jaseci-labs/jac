@@ -31,7 +31,7 @@ obj _FakeL1 {
     has __mem__: dict;
 }
 
-glob FIXTURES_DIR = Path(__file__).parent / "fixtures",
+glob FIXTURES_DIR = Path(__file__).parent.parent / "fixtures",
      JAC_FILE = FIXTURES_DIR / "todo_app.jac",
      _shared: dict = {};
 

@@ -579,7 +579,7 @@ def run_webhook_scoped_api_key_test(base_url: str) {
 # Test class 1: Webhook tests WITHOUT MongoDB (file-based storage)
 # Uses ScaleTestClient (in-process, no subprocess)
 # =========================================================================
-glob wh_fixtures_dir: Path = Path(__file__).parent / "fixtures",
+glob wh_fixtures_dir: Path = Path(__file__).parent.parent / "fixtures",
      wh_test_file: Path = wh_fixtures_dir / "test_api.jac";
 
 test "webhook without mongo - endpoint exists" {

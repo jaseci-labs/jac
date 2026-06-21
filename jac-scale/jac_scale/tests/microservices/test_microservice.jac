@@ -21,7 +21,7 @@ import from jaclang.runtimelib { sv_client as __jac_sv }
 import from starlette.testclient { TestClient }
 import from jac_scale.serve { JacAPIServer }
 
-glob FIXTURES: Path = Path(__file__).parent / "fixtures" / "microservice";
+glob FIXTURES: Path = Path(__file__).parent.parent / "fixtures" / "microservice";
 
 def make_server(mod: str, tmp: str) -> TestClient {
     if mod in Jac.loaded_modules {

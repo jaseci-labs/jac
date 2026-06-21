@@ -280,8 +280,9 @@ def _core_template(
 
 One canonical template per core kind (cli, native-app, native-binary,
 shared-library, api-service, microservices, pypi-package, npm-package). The
-plugin kinds (fullstack/wasm/mobile via jac-client, desktop via jac-desktop)
-are contributed through the `register_project_template` hook.
+client-framework kinds (fullstack/client/mobile and desktop) are contributed
+through the `register_project_template` hook by the built-in client provider
+in `jaclang.runtimelib.client`.
 """
 def _register_core_templates(registry: TemplateRegistry) {
     _hello = '"""Entry point for {{name}}."""\n\nwith entry {\n    print("Hello from {{name}}!");\n}\n';

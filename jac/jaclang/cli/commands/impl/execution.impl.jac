@@ -94,7 +94,7 @@ def _print_plan(plan: object) {
     }
 }
 
-"""True if an optional plugin package (e.g. 'jac-client') is importable."""
+"""True if an optional plugin package (e.g. 'jac-scale') is importable."""
 def _plugin_available(pkg: str) -> bool {
     import importlib.util;
     try {
@@ -835,7 +835,7 @@ def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> any
         return (process, bundler.dev_server_port or vite_port);
     } except ImportError as e {
         console.error(
-            f"[Vite] Warning: jac-client not installed, skipping Vite dev server: {e}"
+            f"[Vite] Warning: client bundler unavailable, skipping Vite dev server: {e}"
         );
         return (None, vite_port);
     } except Exception as e {
