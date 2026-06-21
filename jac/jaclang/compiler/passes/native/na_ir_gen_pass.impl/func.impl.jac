@@ -653,7 +653,13 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
-    # DWARF debug info (JAC_NATIVE_DEBUG=1) — anchor at the first entry block.
+    # DWARF debug info (JAC_NATIVE_DEBUG=1) — anchor the single jac_entry
+    # subprogram at the FIRST entry block's line. Known limitation: when several
+    # `with entry` blocks are concatenated, debug line attribution is coarse —
+    # one subprogram spans them all, so a debugger sees a single source range
+    # rather than per-block ranges. The scope-cleanup epilogue (below) is
+    # likewise tagged with the LAST block's last line. Acceptable for now; a
+    # finer mapping would need per-block lexical scopes.
     _first = nodes[0];
     entry_line = _first.loc.first_line if _first.loc else 0;
     self._attach_di_subprogram(func, "jac_entry", entry_line);
@@ -802,7 +808,14 @@ impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
     }
     # Generate body statements: concatenate every `with entry { ... }` body in
     # source order into this single jac_entry function (#6660). Stop if a body
-    # emits an unconditional terminator so we never append into a closed block.
+    # leaves the current LLVM block terminated so we never append into a closed
+    # block. A top-level `raise` lowers to __jac_exc_raise + `unreachable`, so a
+    # block that unconditionally raises terminates here and the remaining blocks
+    # are intentionally skipped — this matches the Python target, where a
+    # module-level raise propagates and textually-later top-level code never
+    # runs. (The fflush/scope-cleanup epilogue below is `is_terminated`-guarded
+    # for the same reason; that guard predates this change and already applied
+    # to the single-entry case, so concatenation introduces no new behavior.)
     for _ent in nodes {
         if self.builder.block.is_terminated {
             break;
