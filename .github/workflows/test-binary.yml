@@ -2,20 +2,18 @@ name: jac single-binary self-test
 
 # Builds the self-contained `jac` binary with one `zig build` (fetches pbs,
 # assembles the payload, packs it onto the launcher stub) and exercises it with
-# no system Python, then runs the test suite through the binary's own runner
-# (`jac test` -> bundled pytest + xdist). This is the path toward using the
-# binary as the CI gate (replacing `pip install ./jac[dev]` + pytest).
+# no system Python, then runs the FULL repo suite through the binary's own
+# runner (`jac test` -> bundled pytest + xdist). This is the jaclang test gate:
+# it replaces the editable `pip install -e jac` + pytest jobs (test-core-compiler
+# / test-core-runtime in test-jaseci.yml). Runs on PRs to main so it gates the
+# same changes those jobs used to.
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
-    branches: ["feat/**"]
-    paths:
-      - "jac/launcher/**"
-      - "jac/build.zig"
-      - "jac/build.zig.zon"
-      - "jac/jaclang/**"
-      - ".github/workflows/test-binary.yml"
+    branches: [main, "feat/**"]
 
 permissions:
   contents: read
@@ -96,23 +94,25 @@ jobs:
       - name: Set up Bun (JS backend tests)
         uses: oven-sh/setup-bun@v2
 
-      - name: Full repo suite via the binary (informational)
+      - name: Full repo suite via the binary (jaclang test gate)
         working-directory: jac
         # The whole `tests/` suite, run through the binary's own runner instead
-        # of `pip install -e ./jac` + pytest. This is the candidate replacement
-        # for the editable gate (test-jaseci.yml). Non-blocking while the last
-        # binary-specific divergences are driven to zero; the path/fixture and
-        # subprocess coupling are already resolved (#6852). The binary is placed
-        # on PATH as `jac` so `["jac", ...]` subprocess tests resolve it, and
+        # of `pip install -e ./jac` + pytest -- this is the jaclang test gate
+        # that replaces test-core-compiler / test-core-runtime. The path/fixture
+        # and subprocess coupling are resolved (#6852): the binary is placed on
+        # PATH as `jac` so `["jac", ...]` subprocess tests resolve it, and
         # `sys.executable`/`-m jaclang` self-invocation is handled by worker mode.
-        continue-on-error: true
         run: |
           set -uxo pipefail
           BINDIR="$(mktemp -d)"; ln -sf "$PWD/zig-out/bin/jac" "$BINDIR/jac"
           WORK="$(mktemp -d)"
+          rc=0
           PATH="$BINDIR:$PATH" HOME="$WORK" JAC_TEST_JOBS=auto \
-            "$BINDIR/jac" test tests/ | tee /tmp/full.log
-          echo "## binary full-suite result" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          grep -E '^(FAILED|ERROR)|passed' /tmp/full.log | tail -60 >> "$GITHUB_STEP_SUMMARY" || true
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+            "$BINDIR/jac" test tests/ | tee /tmp/full.log || rc=$?
+          {
+            echo "## binary full-suite result"
+            echo '```'
+            grep -E '^(FAILED|ERROR)|passed|failed' /tmp/full.log | tail -60 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
