@@ -4,7 +4,6 @@ import tempfile;
 import os;
 import sys;
 import threading;
-import io;
 """Extract line, col, and message from an Alert object."""
 def _extract_error_info(alert: object) -> dict[str, any] {
     return {
@@ -467,10 +466,25 @@ impl CompilerBridge.jac_to_js(code: str) -> dict[str, any] {
     return result;
 }
 
-"""Execute Jac code and return output."""
+"""Execute Jac code and return output.
+
+Runs the snippet in a dedicated child process (`_run_worker.py`) rather than
+in this long-lived server. The child owns all the global Jac runtime state the
+run creates -- program `mod.hub`, `loaded_modules`, native caches, `sys.modules`
+pollution -- so it is reclaimed by process exit instead of accumulating here.
+The child also gives a *real* timeout: a hung snippet is killed via its process
+group (CPython cannot interrupt an in-process thread, so the old thread-based
+timeout left runaway work alive forever).
+"""
 impl CompilerBridge.run_snippet(
     code: str, entrypoint: str = "", timeout: int = 10
 ) -> dict[str, any] {
+    import subprocess;
+    import json;
+    import signal;
+    import shutil;
+    import jac_mcp;
+
     if len(code) > MAX_INPUT_SIZE {
         return {
             "stdout": "",
@@ -479,137 +493,57 @@ impl CompilerBridge.run_snippet(
             "error": f"Input exceeds maximum size of {MAX_INPUT_SIZE} bytes"
         };
     }
-    def _do_run -> dict[str, any] {
-        import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        import from jaclang.jac0core.constructs { WalkerArchetype }
 
-        # Create temp file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".jac", delete=False, dir=tempfile.gettempdir()
-        ) as f {
-            f.write(code);
-            tmp_path = f.name;
-        }
+    worker = os.path.join(os.path.dirname(jac_mcp.__file__), "_run_worker.py");
+    tmp_dir = tempfile.mkdtemp();
+    jac_path = os.path.join(tmp_dir, "snippet.jac");
+    out_path = os.path.join(tmp_dir, "result.json");
+    with open(jac_path, "w") as f {
+        f.write(code);
+    }
 
-        # Capture stdout and stderr
-        old_stdout = sys.stdout;
-        old_stderr = sys.stderr;
-        captured_out = io.StringIO();
-        captured_err = io.StringIO();
-        sys.stdout = captured_out;
-        sys.stderr = captured_err;
-
-        original_argv = sys.argv;
-        sys.argv = [tmp_path];
-
+    # Run the worker in its own session/process group so a snippet that spawns
+    # children can be torn down as a group on timeout.
+    cmd = [sys.executable, worker, jac_path, out_path, entrypoint];
+    try {
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
+        );
         try {
-            (base, mod_name) = os.path.split(tmp_path);
-            base = base or './';
-            mod_name = mod_name[:-4];  # Remove .jac
-
-            if not Jac.get_base_path_dir() {
-                Jac.set_base_path(base);
-            }
-            mach = Jac.create_j_context(
-                user_root=None,
-                base_path_dir=Jac.get_base_path_dir(),
-                full_target_path=Jac.get_full_target_path()
-            );
-            Jac.set_context(mach);
-
+            (proc_out, proc_err) = proc.communicate(timeout=timeout);
+        } except subprocess.TimeoutExpired {
             try {
-                if entrypoint {
-                    # Load module then run specific entrypoint
-                    ret = Jac.jac_import(
-                        target=mod_name, base_path=base, override_name='__main__'
-                    );
-                    if ret {
-                        (loaded_mod, ) = ret;
-                        if loaded_mod and hasattr(loaded_mod, entrypoint) {
-                            archetype = getattr(loaded_mod, entrypoint)();
-                            if (
-                                isinstance(archetype, WalkerArchetype)
-                                and Jac.check_read_access(mach.entry_node)
-                            ) {
-                                Jac.spawn(mach.entry_node.archetype, archetype);
-                            }
-                        } else {
-                            sys.stderr.write(
-                                f"Entrypoint '{entrypoint}' not found in module\n"
-                            );
-                        }
-                    }
-                } else {
-                    # Run as main module
-                    Jac.jac_import(
-                        target=mod_name,
-                        base_path=base,
-                        override_name='__main__',
-                        lng='jac'
-                    );
-                }
-
-                # Collect reports from execution context
-                reports = [];
-                if mach?.reports and mach.reports {
-                    for r in mach.reports {
-                        try {
-                            reports.append(str(r));
-                        } except Exception {
-                            reports.append(repr(r));
-                        }
-                    }
-                }
-
-                mach.close();
-                stdout_val = captured_out.getvalue();
-                stderr_val = captured_err.getvalue();
-
-                result: dict[str, any] = {
-                    "stdout": stdout_val,
-                    "stderr": stderr_val,
-                    "exit_code": 0
-                };
-                if reports {
-                    result["reports"] = reports;
-                }
-                return result;
-            } except SystemExit as se {
-                mach.close();
-                exit_code = se.code if se.code is not None else 0;
-                return {
-                    "stdout": captured_out.getvalue(),
-                    "stderr": captured_err.getvalue(),
-                    "exit_code": int(exit_code) if isinstance(exit_code, int) else 1
-                };
-            } except Exception as e {
-                mach.close();
-                return {
-                    "stdout": captured_out.getvalue(),
-                    "stderr": captured_err.getvalue(),
-                    "exit_code": 1,
-                    "error": str(e)
-                };
-            }
-        } finally {
-            sys.stdout = old_stdout;
-            sys.stderr = old_stderr;
-            sys.argv = original_argv;
-            try {
-                os.unlink(tmp_path);
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL);
             } except Exception { }
+            proc.wait();
+            return {
+                "stdout": "",
+                "stderr": "Operation timed out",
+                "exit_code": 1,
+                "error": "Operation timed out"
+            };
         }
-    }
-    (success, result) = run_with_timeout(_do_run, timeout=timeout);
-    if not success {
+
+        if os.path.exists(out_path) {
+            with open(out_path) as f {
+                return json.load(f);
+            }
+        }
+
+        # Worker died before writing a result (e.g. crash on import). Surface
+        # whatever it emitted on its real stderr for diagnostics.
+        err_text = proc_err.decode() if proc_err else "";
         return {
-            "stdout": "",
-            "stderr": str(result),
-            "exit_code": 1,
-            "error": str(result)
+            "stdout": proc_out.decode() if proc_out else "",
+            "stderr": err_text or "Worker exited without producing a result",
+            "exit_code": proc.returncode or 1,
+            "error": "Worker produced no result"
         };
+    } finally {
+        try {
+            shutil.rmtree(tmp_dir);
+        } except Exception { }
     }
-    return result;
 }
 
 """Generate graph visualization from Jac code."""
