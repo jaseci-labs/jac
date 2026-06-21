@@ -33,7 +33,13 @@ impl _ThunkViewBackend.lower_view_expr(expr: es.Expression) -> es.Expression {
     return es.CallExpression(callee=es.Identifier(name="__view"), arguments=[expr]);
 }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+glob JAC_ROOT = str(
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ).parent
+     ),
      FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
      );

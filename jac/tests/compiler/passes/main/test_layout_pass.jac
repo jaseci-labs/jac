@@ -20,7 +20,11 @@ import from pathlib { Path }
 import jaclang;
 
 glob FIXTURES = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "main" / "fixtures" / "layout"
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ) / "compiler" / "passes" / "main" / "fixtures" / "layout"
      );
 
 """Compile a .jac fixture through semantic analysis and return the LayoutRegistry."""

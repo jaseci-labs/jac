@@ -12,7 +12,13 @@ import from jaclang.langserve.engine { JacLangServer }
 import from jaclang.lsp { uris }
 import from jaclang.lsp.server { Workspace }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+glob JAC_ROOT = str(
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ).parent
+     ),
      FIXTURE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures"),
      EXAMPLES_DIR = os.path.join(JAC_ROOT, "examples"),
      PASSES_FIXTURES = os.path.join(

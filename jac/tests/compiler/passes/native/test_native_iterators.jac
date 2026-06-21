@@ -13,7 +13,11 @@ import jaclang.jac0core.unitree as uni;
 import from llvmlite.binding { ExecutionEngine }
 
 glob FIXTURES = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ) / "compiler" / "passes" / "native" / "fixtures"
      );
 
 """Compile a .na.jac fixture and return the JIT engine."""

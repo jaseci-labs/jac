@@ -26,7 +26,13 @@ import from jaclang.runtimelib.runtime_source {
     resolve_client_runtime_cl_path
 }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+glob JAC_ROOT = str(
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ).parent
+     ),
      FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
      );

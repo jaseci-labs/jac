@@ -11,7 +11,13 @@ import from contextlib { suppress }
 import jaclang;
 import from jaclang.cli.commands { analysis, execution, tools }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+glob JAC_ROOT = str(
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ).parent
+     ),
      FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
 
 test "circle jac" {

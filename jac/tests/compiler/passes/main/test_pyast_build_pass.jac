@@ -16,7 +16,13 @@ import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.unitree { PythonModuleAst, Source }
 
 glob FIXTURES = os.path.join(
-         str(Path(jaclang.__file__).parent.parent),
+         str(
+             next(
+                 p
+                 for p in Path(__file__).resolve().parents
+                 if p.name == "tests"
+             ).parent
+         ),
          "tests",
          "compiler",
          "passes",

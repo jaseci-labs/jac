@@ -22,7 +22,13 @@ import jaclang;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+glob JAC_ROOT = str(
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ).parent
+     ),
      CHECKER_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "checker"
      );

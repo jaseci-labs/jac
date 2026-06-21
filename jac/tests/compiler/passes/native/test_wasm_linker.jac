@@ -32,7 +32,11 @@ import from jaclang.compiler.passes.native.wasm_linker {
 import llvmlite.binding as llvm;
 
 glob FIXTURES = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ) / "compiler" / "passes" / "native" / "fixtures"
      ),
      WASM_TRIPLE = "wasm32-unknown-unknown",
      FIXTURE = "wasm_objects.na.jac";

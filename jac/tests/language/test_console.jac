@@ -3,9 +3,13 @@
 import os;
 import subprocess;
 import from pathlib { Path }
-import jaclang;
-
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+glob JAC_ROOT = str(
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ).parent
+     ),
      FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      ERR_FILE = os.path.join(
          JAC_ROOT, "tests", "langserve", "fixtures", "circle_pure_err.jac"

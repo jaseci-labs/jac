@@ -11,7 +11,13 @@ import from jaclang { JacRuntime as Jac }
 import from jaclang.cli.commands { execution }
 import from tests.conftest { get_object }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+glob JAC_ROOT = str(
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ).parent
+     ),
      FIXTURES = os.path.join(JAC_ROOT, "tests", "runtimelib", "fixtures");
 
 def capture_start -> io.StringIO {

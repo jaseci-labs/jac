@@ -6,7 +6,16 @@ import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
-         str(Path(jaclang.__file__).parent.parent), "tests", "language", "fixtures"
+         str(
+             next(
+                 p
+                 for p in Path(__file__).resolve().parents
+                 if p.name == "tests"
+             ).parent
+         ),
+         "tests",
+         "language",
+         "fixtures"
      );
 
 test "impl match confusion issue" {

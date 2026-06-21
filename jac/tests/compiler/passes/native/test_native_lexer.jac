@@ -23,7 +23,11 @@ glob NA_LEXER_PATH = str(
          Path(jaclang.__file__).parent / "jac0core" / "parser" / "lexer.na.jac"
      ),
      FIXTURES = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ) / "compiler" / "passes" / "native" / "fixtures"
      );
 
 def compile_fixture(fixture: str) -> tuple[ExecutionEngine | None, uni.Module] {

@@ -13,7 +13,13 @@ import from pathlib { Path }
 import jaclang;
 import from jaclang.jac0core.runtime { JacRuntime }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+glob JAC_ROOT = str(
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ).parent
+     ),
      FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      EXAMPLES = os.path.join(JAC_ROOT, "examples"),
      COMPILER_FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "fixtures");

@@ -10,7 +10,13 @@ import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.cli.commands { analysis }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+glob JAC_ROOT = str(
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ).parent
+     ),
      EXAMPLES = os.path.join(JAC_ROOT, "examples"),
      FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"

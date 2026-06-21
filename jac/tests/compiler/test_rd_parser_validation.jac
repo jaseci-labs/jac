@@ -16,7 +16,13 @@ import from tests.fixtures_list { MICRO_JAC_FILES }
 import from jaclang.jac0core.passes.ast_validation_pass { ASTValidationPass }
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+glob JAC_ROOT = str(
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ).parent
+     ),
      GAP_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "fixtures", "rd_parser_gaps"
      );

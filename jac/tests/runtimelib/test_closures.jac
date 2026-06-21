@@ -5,11 +5,17 @@ generated JS directly rather than building a full bundle.
 """
 
 import os;
-import jaclang;
+import from pathlib { Path }
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
-         str(os.path.dirname(os.path.dirname(jaclang.__file__))),
+         str(
+             next(
+                 p
+                 for p in Path(__file__).resolve().parents
+                 if p.name == "tests"
+             ).parent
+         ),
          "tests",
          "runtimelib",
          "fixtures"

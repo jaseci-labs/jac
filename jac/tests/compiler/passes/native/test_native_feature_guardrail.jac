@@ -19,7 +19,11 @@ import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES_DIR = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ) / "compiler" / "passes" / "native" / "fixtures"
      );
 
 """Compile a snippet through the native pipeline and return the program.

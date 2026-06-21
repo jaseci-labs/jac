@@ -26,7 +26,11 @@ import from jaclang.compiler.passes.native.pe_linker { PeLinker }
 import llvmlite.binding as llvm;
 
 glob FIXTURES = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ) / "compiler" / "passes" / "native" / "fixtures"
      ),
      WIN_TRIPLE = "x86_64-pc-windows-msvc",
      FIXTURE = "pe_smoke.na.jac";

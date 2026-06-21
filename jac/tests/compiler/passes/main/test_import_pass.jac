@@ -13,7 +13,13 @@ import from jaclang.jac0core.bccache { discover_annex_files, discover_base_file 
 import from jaclang.cli.commands { execution }
 
 glob FIXTURES = os.path.join(
-         str(Path(jaclang.__file__).parent.parent),
+         str(
+             next(
+                 p
+                 for p in Path(__file__).resolve().parents
+                 if p.name == "tests"
+             ).parent
+         ),
          "tests",
          "compiler",
          "passes",

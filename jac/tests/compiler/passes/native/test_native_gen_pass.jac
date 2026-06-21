@@ -18,7 +18,11 @@ import jaclang.jac0core.unitree as uni;
 import from llvmlite.binding { ExecutionEngine }
 
 glob FIXTURES = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ) / "compiler" / "passes" / "native" / "fixtures"
      );
 
 """Compile a .na.jac fixture and return the JIT engine."""
@@ -2430,7 +2434,11 @@ test "default params omitted trailing defaults" {
 
 # --- Auto-Promotion Tests ---
 glob CHESS_JAC = str(
-         Path(jaclang.__file__).parent.parent / "examples" / "chess" / "chess.jac"
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ).parent / "examples" / "chess" / "chess.jac"
      );
 
 """Compile a regular .jac file with auto-promotion and return the engine."""

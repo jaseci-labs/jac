@@ -6,7 +6,13 @@ import jaclang;
 import from jaclang.compiler.passes.main.cfg_build_pass { cfg_dot_from_file }
 
 glob FIXTURES = os.path.join(
-         str(Path(jaclang.__file__).parent.parent),
+         str(
+             next(
+                 p
+                 for p in Path(__file__).resolve().parents
+                 if p.name == "tests"
+             ).parent
+         ),
          "tests",
          "compiler",
          "passes",

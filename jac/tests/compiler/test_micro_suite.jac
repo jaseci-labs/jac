@@ -21,7 +21,13 @@ import from jaclang.jac0core.program { JacProgram }
 import from jaclang.runtimelib.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent);
+glob JAC_ROOT = str(
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ).parent
+     );
 
 def parent_scrub(`node: uni.UniNode) -> bool {
     for i in `node.kid {

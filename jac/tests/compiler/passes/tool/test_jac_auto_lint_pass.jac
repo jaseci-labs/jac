@@ -10,7 +10,13 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.project.config { JacConfig, CheckConfig, LintConfig, set_config }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+glob JAC_ROOT = str(
+         next(
+             p
+             for p in Path(__file__).resolve().parents
+             if p.name == "tests"
+         ).parent
+     ),
      AUTO_LINT_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "tool", "fixtures", "auto_lint"
      ),

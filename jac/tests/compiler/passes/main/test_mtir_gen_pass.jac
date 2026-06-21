@@ -8,7 +8,13 @@ import from jaclang.jac0core.mtp { ClassInfo, FunctionInfo, MethodInfo }
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
-         str(Path(jaclang.__file__).parent.parent),
+         str(
+             next(
+                 p
+                 for p in Path(__file__).resolve().parents
+                 if p.name == "tests"
+             ).parent
+         ),
          "tests",
          "compiler",
          "passes",
