@@ -8,6 +8,11 @@ on:
     types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
+# Cancel superseded PR runs; never cancel a run for a commit on main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   jac-check:
     runs-on: blacksmith-4vcpu-ubuntu-2404
