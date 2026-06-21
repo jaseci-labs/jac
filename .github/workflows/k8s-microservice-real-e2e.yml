@@ -9,9 +9,17 @@ on:
   pull_request:
 
 jobs:
+  approval:
+    # Approval gate: real-e2e depends on this. One approval of the deployment
+    # to the protected 'ci-approval' environment releases the run.
+    environment: ci-approval
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "CI approved by required reviewer."
+
   real-e2e:
     name: microk8s real-app smoke
-    environment: ci-approval
+    needs: approval
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 25
 

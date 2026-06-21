@@ -10,8 +10,17 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-core-compiler:
+  approval:
+    # Single approval gate: all test jobs depend on this one. Approving its
+    # deployment to the protected 'ci-approval' environment releases the whole
+    # run, so the PR timeline shows one approval instead of one per job.
     environment: ci-approval
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "CI approved by required reviewer."
+
+  test-core-compiler:
+    needs: approval
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -36,7 +45,7 @@ jobs:
       run: pytest -x jac/tests/compiler -n auto
 
   test-core-runtime:
-    environment: ci-approval
+    needs: approval
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -67,7 +76,7 @@ jobs:
       run: pytest -x jac -n auto --ignore=jac/tests/compiler
 
   test-solid-jsdom:
-    environment: ci-approval
+    needs: approval
     # Runtime exec of the Solid framework backend: compile a Solid component +
     # the @jac/runtime shim to JS and mount it in jsdom under node, asserting
     # render + reactivity. Needs a real `bun install` (jsdom + solid-js), so the
@@ -107,7 +116,7 @@ jobs:
       run: pytest -x -vv jac/tests/runtimelib/test_solid_jsdom.jac
 
   test-client:
-    environment: ci-approval
+    needs: approval
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -147,7 +156,7 @@ jobs:
       run: pytest -x jac/tests/runtimelib/client -n auto
 
   test-packages-and-docs:
-    environment: ci-approval
+    needs: approval
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -194,7 +203,7 @@ jobs:
       run: pytest docs/tests/e2e/test_code_blocks.jac -v
 
   test-desktop-native:
-    environment: ci-approval
+    needs: approval
     # Jac-native desktop tests (issue #6436). Dependency-free by design: they
     # only need the jac toolchain to compile the example hosts and inspect the
     # linked artifacts (DT_NEEDED / $ORIGIN) and run handler logic through the sv
@@ -223,7 +232,7 @@ jobs:
       run: pytest -x jac/tests/runtimelib/client/test_desktop_binding.jac -n auto
 
   test-mcp:
-    environment: ci-approval
+    needs: approval
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -248,7 +257,7 @@ jobs:
       run: pytest -x jac-mcp -n auto
 
   test-scale:
-    environment: ci-approval
+    needs: approval
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -351,7 +360,7 @@ jobs:
         pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
 
   test-scale-k8s:
-    environment: ci-approval
+    needs: approval
     # Runs by default; add the 'skip-k8s' label to a PR to skip it.
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -413,7 +422,7 @@ jobs:
           pytest  -s -x "jac-scale/jac_scale/tests/test_deploy_k8s.jac::early exit"
 
   test-pypi-build:
-    environment: ci-approval
+    needs: approval
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code

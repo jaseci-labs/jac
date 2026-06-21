@@ -9,9 +9,17 @@ on:
   workflow_dispatch:
 
 jobs:
+  approval:
+    # Approval gate: test-installer depends on this. One approval of the
+    # deployment to the protected 'ci-approval' environment releases the run.
+    environment: ci-approval
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "CI approved by required reviewer."
+
   test-installer:
     name: Test install methods
-    environment: ci-approval
+    needs: approval
     runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
