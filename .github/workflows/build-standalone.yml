@@ -31,7 +31,7 @@ jobs:
   # The jaseci version comes from the release tag or manual input.
   # The jaclang version is read from jaseci's pinned dependency on PyPI.
   resolve-versions:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       jaseci_version: ${{ steps.versions.outputs.jaseci_version }}
       jaclang_version: ${{ steps.versions.outputs.jaclang_version }}
@@ -73,7 +73,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: blacksmith-4vcpu-ubuntu-2404
             platform: linux-x86_64
           - os: macos-latest
             platform: macos-aarch64
@@ -185,7 +185,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: blacksmith-4vcpu-ubuntu-2404
             platform: linux-x86_64
           - os: macos-latest
             platform: macos-aarch64
@@ -287,7 +287,7 @@ jobs:
 
   summary:
     needs: [resolve-versions, build-jaclang, build-jaseci]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     if: always()
     steps:
       - name: Build summary
