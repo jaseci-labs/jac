@@ -594,6 +594,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " element types cannot be verified — use \"{type}[NodeType]\" or pass a"
          " concrete list of nodes instead"
      ),
+     E1119 = _err(
+         "E1119",
+         Category.TYPE,
+         "Lambda parameter '{name}' has no type and none could be inferred from context",
+         "Jac is strictly typed: a lambda's parameter types must be known. Annotate the"
+         " parameter, e.g. `lambda x: int : x + 1` (the return type is still inferred), or"
+         " place the lambda where its type is fixed by context — passed as a typed callback"
+         " (`sorted(xs, key=lambda x: ...)`) or bound to a `Callable`-typed target."
+     ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
          "W1051",
@@ -838,6 +847,74 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Definition '{name}' in .impl.jac file is not linked to its declaration stub. "
          "Use an `impl` block instead of a bare re-declaration.",
          help="In Jac, implementation files use `impl Name {{ ... }}` or `impl Name(...) {{ ... }}` blocks to provide bodies for declaration stubs. A bare re-declaration in a `.impl.jac` file is treated as a separate definition and will not be linked to the stub."
+     ),
+     # ─────────────────────────────────────────────────────────────────────
+     # Access control (E/W 2034-2038)
+     #
+     # Member encapsulation (has/def declared inside an archetype):
+     #   pub -> anywhere, protect -> declaring class + subclasses,
+     #   priv -> declaring class only.
+     # Module/project visibility (top-level glob/obj/def/enum/walker):
+     #   pub -> any module incl. consuming projects,
+     #   protect -> any module in the same project (jac.toml root),
+     #   priv -> declaring module only.
+     # Warnings by default; promoted to errors via `[check] enforce_access`.
+     # ─────────────────────────────────────────────────────────────────────
+     E2034 = _err(
+         "E2034",
+         Category.SEMANTIC,
+         "'{name}' is a private member of '{owner}' and is only accessible "
+         "inside '{owner}'.",
+         help="Mark the member `:protect` to share it with subclasses, or `:pub` to expose it. Private (`:priv`) members are visible only in the methods of the class that declares them."
+     ),
+     W2034 = _warn(
+         "W2034",
+         Category.SEMANTIC,
+         "'{name}' is a private member of '{owner}' and is only accessible "
+         "inside '{owner}'.",
+         help="Mark the member `:protect` to share it with subclasses, or `:pub` to expose it. Private (`:priv`) members are visible only in the methods of the class that declares them."
+     ),
+     E2035 = _err(
+         "E2035",
+         Category.SEMANTIC,
+         "'{name}' is a protected member of '{owner}' and is only accessible "
+         "inside '{owner}' and its subclasses.",
+         help="Access protected (`:protect`) members from within the declaring class or a subclass, or mark the member `:pub` to expose it more broadly."
+     ),
+     W2035 = _warn(
+         "W2035",
+         Category.SEMANTIC,
+         "'{name}' is a protected member of '{owner}' and is only accessible "
+         "inside '{owner}' and its subclasses.",
+         help="Access protected (`:protect`) members from within the declaring class or a subclass, or mark the member `:pub` to expose it more broadly."
+     ),
+     E2037 = _err(
+         "E2037",
+         Category.SEMANTIC,
+         "'{name}' is private to module '{module}' and cannot be used from "
+         "another module.",
+         help="Private (`:priv`) names are visible only inside their own module. Mark '{name}' `:protect` to use it elsewhere in the project, or `:pub` to export it."
+     ),
+     W2037 = _warn(
+         "W2037",
+         Category.SEMANTIC,
+         "'{name}' is private to module '{module}' and cannot be used from "
+         "another module.",
+         help="Private (`:priv`) names are visible only inside their own module. Mark '{name}' `:protect` to use it elsewhere in the project, or `:pub` to export it."
+     ),
+     E2038 = _err(
+         "E2038",
+         Category.SEMANTIC,
+         "'{name}' is protected to project '{project}' and cannot be used from "
+         "another project.",
+         help="Protected (`:protect`) names are visible only within their own project (the directory tree rooted at its jac.toml). Mark '{name}' `:pub` to export it as a library endpoint."
+     ),
+     W2038 = _warn(
+         "W2038",
+         Category.SEMANTIC,
+         "'{name}' is protected to project '{project}' and cannot be used from "
+         "another project.",
+         help="Protected (`:protect`) names are visible only within their own project (the directory tree rooted at its jac.toml). Mark '{name}' `:pub` to export it as a library endpoint."
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)
@@ -1174,6 +1251,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "Argument '{name}' for server function '{func}' is given both positionally and by keyword"
      ),
+     E5081 = _err("E5081", Category.CODEGEN, "Unknown client framework '{framework}'"),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Portability warnings (W6xxx) — JS-idiomatic usage that breaks cross-codespace portability
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

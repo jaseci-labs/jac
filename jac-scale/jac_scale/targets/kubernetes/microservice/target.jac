@@ -58,7 +58,25 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # no-image mode: copy local source into the cluster + install jac at
         # pod startup instead of building/pushing an image. Set by
         # _scale_pre_hook for `jac start --scale --no-image`.
-        no_image: bool = False;
+        no_image: bool = False,
+        # The app's [plugins.scale.microservices] config. When set (a platform
+        # deploying a different app's fleet), it's used and threaded into the
+        # manifest builder instead of the running process's own jac.toml.
+        microservices_config: dict[str, any] = {};
+
+    """The app's microservices config: injected when provided, else read from
+    the running process's jac.toml."""
+    def _ms_cfg -> dict[str, any] {
+        if self.microservices_config {
+            return self.microservices_config;
+        }
+        try {
+            import from jac_scale.config_loader { get_scale_config }
+            return get_scale_config().get_microservices_config();
+        } except Exception {
+            return {};
+        }
+    }
 
     """Auto-build path when `auto_build=True`: prefer user's pre-built
     docker_image_name, else auto_build_and_distribute. Else parent behavior."""
@@ -187,6 +205,19 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
+        # Block until the fleet actually rolls out, so callers don't surface a
+        # live link at a not-yet-ready (or crash-looping) fleet - matching the
+        # monolith path, which waits via _wait_for_deployment.
+        try {
+            self._wait_for_fleet_rollout(bundle);
+        } except Exception as e {
+            return DeploymentResult(
+                success=False,
+                message=f"fleet did not become ready: {e}",
+                details=bundle
+            );
+        }
+
         svc_count = len(bundle["pod_specs"]) - 1;
         success_msg = (
             f"Applied {svc_count} service Deployment+Service pair(s) "
@@ -206,6 +237,72 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
         }
         return DeploymentResult(success=True, message=success_msg, details=bundle);
+    }
+
+    """Block until every fleet Deployment has a ready replica (or `timeout`
+    elapses). Raises on a crash-looping pod so a broken fleet fails fast
+    instead of timing out. No-image pods build jac in-pod, hence the long
+    default timeout."""
+    def _wait_for_fleet_rollout(bundle: dict[str, any], timeout: int = 1200) -> None {
+        import time;
+        import from kubernetes { client }
+        names: list[str] = [];
+        for dep in bundle.get("deployments", {}).values() {
+            names.append(dep["metadata"]["name"]);
+        }
+        if not names {
+            return;
+        }
+        self._load_kube_config();
+        apps_v1 = client.AppsV1Api();
+        core_v1 = client.CoreV1Api();
+        ns = self.k8s_config.namespace;
+        elapsed = 0;
+        ready = 0;
+        while elapsed < timeout {
+            ready = 0;
+            for name in names {
+                try {
+                    d = apps_v1.read_namespaced_deployment(name=name, namespace=ns);
+                    if (d.status.ready_replicas or 0) >= 1 {
+                        ready += 1;
+                    }
+                } except Exception {
+                    _ = 0;
+                }
+            }
+            if ready == len(names) {
+                if self.logger {
+                    self.logger.info(
+                        f"Fleet ready: {ready}/{len(names)} deployments serving"
+                    );
+                }
+                return;
+            }
+            crash = "";
+            try {
+                for p in core_v1.list_namespaced_pod(namespace=ns).items {
+                    for cs in (p.status.container_statuses or []) {
+                        if (cs.restart_count or 0) >= 3 {
+                            crash = (
+                                f"pod '{p.metadata.name}' crash-looping "
+                                f"({cs.restart_count} restarts)"
+                            );
+                        }
+                    }
+                }
+            } except Exception {
+                _ = 0;
+            }
+            if crash {
+                raise Exception(crash);
+            }
+            time.sleep(10);
+            elapsed += 10;
+        }
+        raise Exception(
+            f"timed out after {timeout}s ({ready}/{len(names)} deployments ready)"
+        );
     }
 
     """Deploy the observability stack (Loki/Tempo + Grafana Alloy + the
@@ -334,7 +431,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     failure (missing block, malformed TOML, loader exception)."""
     def _read_microservices_logs_config -> dict[str, Any] {
         try {
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return dict(ms_cfg.get("logs", {}));
         } except Exception as e {
             if self.logger {
@@ -351,7 +448,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     failure (missing block, malformed TOML, loader exception)."""
     def _read_microservices_tracing_config -> dict[str, Any] {
         try {
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return dict(ms_cfg.get("tracing", {}));
         } except Exception as e {
             if self.logger {
@@ -381,7 +478,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 deploy_context=self._deploy_context,
                 logger=self.logger,
                 no_image=True,
-                project_dir=app_config.code_folder
+                experimental=app_config.experimental,
+                project_dir=app_config.code_folder,
+                microservices_config=self.microservices_config
             );
             return builder.generate_manifests(app_config, self.k8s_config.python_image);
         }
@@ -414,7 +513,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             k8s_config=self.k8s_config,
             secrets=self.secrets,
             deploy_context=self._deploy_context,
-            logger=self.logger
+            logger=self.logger,
+            microservices_config=self.microservices_config
         );
         return builder.generate_manifests(app_config, image);
     }

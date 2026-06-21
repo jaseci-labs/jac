@@ -4,20 +4,17 @@
 `jaclang/runtimelib/client_runtime.cl.jac` (React-backed). Two pieces derive
 from here so the rule lives in one place:
 
-  * the ECMAScript pass asks `runtime_import_source` where each emitted runtime
-    symbol is imported from (`@jac/runtime`, or `react` for primitives taken
-    straight from React like `useRef`);
+  * the ECMAScript pass asks the active backend where each emitted runtime
+    symbol is imported from;
   * the `eject` and HMR bundle paths build their prepended JSX-runtime import
     from `prepended_runtime_import`.
 """
 
 """A `@jac/runtime` symbol that needs special compiler handling.
 
-`source` is the module the compiler imports the symbol from - `@jac/runtime` for
-everything the runtime backs, `react` for primitives (e.g. `useRef`) taken
-straight from React. `prepend` marks the bare global identifiers the compiler
-emits without an explicit import node; the bundle paths prepend a single import
-statement covering them.
+`source` is the module the compiler imports the symbol from. `prepend` marks
+bare global identifiers the compiler emits without an explicit import node;
+the bundle paths prepend a single import statement covering them.
 """
 obj RuntimeSymbol {
     has name: str,
@@ -25,9 +22,8 @@ obj RuntimeSymbol {
         prepend: bool = False;
 }
 
-glob CLIENT_RUNTIME_SURFACE: list[RuntimeSymbol] = [
-         # JSX factory + walker spawn - emitted as bare globals, prepended as a
-         # single bundle import.
+# Static React surface for backward-compatible callers that have no backend.
+glob _REACT_RUNTIME_SURFACE: list[RuntimeSymbol] = [
          RuntimeSymbol(name="__jacJsx", prepend=True),
          RuntimeSymbol(name="__jacSpawn", prepend=True),
          # `useRef` is imported straight from `react`, so it never resolves
@@ -41,7 +37,7 @@ glob CLIENT_RUNTIME_SURFACE: list[RuntimeSymbol] = [
 
 """The declared symbol for `name`, or `None` if it needs no special handling."""
 def runtime_symbol(name: str) -> (RuntimeSymbol | None) {
-    for sym in CLIENT_RUNTIME_SURFACE {
+    for sym in _REACT_RUNTIME_SURFACE {
         if sym.name == name {
             return sym;
         }
@@ -51,11 +47,16 @@ def runtime_symbol(name: str) -> (RuntimeSymbol | None) {
 
 """Module the compiler imports `name` from.
 
-Returns the declared source (`@jac/runtime`, or `react` for React primitives).
-Undeclared names fall back to `@jac/runtime` - the historical default - so an
-unforeseen emission never breaks a build.
+When `backend` is provided, delegates to the backend's `import_source`. Falls
+back to the hard-coded React surface when backend is None.
 """
-def runtime_import_source(name: str) -> str {
+def runtime_import_source(name: str, backend: (object | None) = None) -> str {
+    if backend is not None {
+        src = backend.import_source(name);
+        if isinstance(src, str) and src {
+            return src;
+        }
+    }
     sym = runtime_symbol(name);
     if sym is not None {
         return sym.source;
@@ -63,12 +64,33 @@ def runtime_import_source(name: str) -> str {
     return "@jac/runtime";
 }
 
-"""The single import statement the bundle paths prepend for the bare global
-identifiers the compiler emits (`__jacJsx`, `__jacSpawn`)."""
-def prepended_runtime_import -> str {
+"""JSX factory identifier for `backend`, defaulting to React's `__jacJsx`."""
+def backend_jsx_factory_name(backend: (object | None) = None) -> str {
+    if backend is not None {
+        name = backend.jsx_factory_name();
+        if isinstance(name, str) and name {
+            return name;
+        }
+    }
+    return "__jacJsx";
+}
+
+"""The single import statement bundle paths prepend for bare globals.
+
+When `backend` is provided, uses the backend's `required_globals` and
+`runtime_module`. Otherwise falls back to React defaults.
+"""
+def prepended_runtime_import(backend: (object | None) = None) -> str {
+    if backend is not None {
+        names = backend.required_globals();
+        src = backend.runtime_module();
+        if (isinstance(names, list) and names and isinstance(src, str) and src) {
+            return 'import {' + ", ".join(names) + '} from "' + src + '";';
+        }
+    }
     names = [
         sym.name
-        for sym in CLIENT_RUNTIME_SURFACE
+        for sym in _REACT_RUNTIME_SURFACE
         if sym.prepend
     ];
     return 'import {' + ", ".join(names) + '} from "@jac/runtime";';
@@ -76,21 +98,32 @@ def prepended_runtime_import -> str {
 
 """Prepend the runtime-global import to a compiled-JS module.
 
-`JacProgram(...).gen.js` emits the `prepend` globals (`__jacJsx`, `__jacSpawn`)
-as bare free identifiers; every path that assembles runnable JS from that output
--- the jac2js build, `eject`, HMR, and the cl test harness -- must add the one
-covering import. This is that single operation, so the rule cannot drift between
-them (e.g. emitting a `__jacSpawn` spawn without the import). Skips the runtime
-module itself, which defines the globals, and is idempotent.
+When `backend` is provided, uses the backend's requirements. Otherwise falls
+back to React defaults. Skips the runtime module itself, which defines the
+globals, and is idempotent.
 """
-def with_runtime_globals(js_code: str) -> str {
-    # The runtime module defines these globals; importing them there is circular.
-    if "function __jacJsx(" in js_code {
+def with_runtime_globals(js_code: str, backend: (object | None) = None) -> str {
+    # The runtime module defines the JSX factory; importing it there is circular.
+    # Detect the factory function signature so any backend's runtime is recognised.
+    factory_name = backend_jsx_factory_name(backend);
+    if f"function {factory_name}(" in js_code {
         return js_code;
     }
-    line = prepended_runtime_import();
+    line = prepended_runtime_import(backend);
     if line in js_code {
         return js_code;
     }
     return line + '\n' + js_code;
+}
+
+"""Resolve the active backend and prepend its runtime-global import.
+
+Shared by `JacToJSCompiler.add_runtime_imports`, eject, HMR, and the cl test
+harness so runtime-import behavior stays in one place.
+"""
+def prepend_active_runtime_globals(js_code: str) -> str {
+    import from jaclang.compiler.passes.ecmascript.backends.registry {
+        resolve_active_backend
+    }
+    return with_runtime_globals(js_code, resolve_active_backend());
 }

@@ -364,8 +364,8 @@ Key components of the client backend:
   is shared between the server and client AST generators so JSX tags compile
   consistently regardless of where they appear.
 
-The `jac-client` plugin packages the generated `module.gen.js`, the JS
-runtime, and an HTML shell into a static bundle. Cross-codespace calls
+The client framework (built into `jaclang` core) packages the generated
+`module.gen.js`, the JS runtime, and an HTML shell into a static bundle. Cross-codespace calls
 (`cl → sv`) are lowered into HTTP requests against the walker / function
 endpoints exposed by `jac start`. The client is currently **CSR-only**:
 the server returns an HTML shell with a bootstrapping payload, and the

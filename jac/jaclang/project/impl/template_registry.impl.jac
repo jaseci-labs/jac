@@ -169,6 +169,12 @@ impl initialize_template_registry -> None {
     registry = get_template_registry();
     # Register the core (plugin-free) kind templates first.
     _register_core_templates(registry);
+    # Register the built-in client/desktop directory templates directly (they ship
+    # in core now). Done here -- not via the `register_project_template` hook -- so
+    # they are present whenever the registry is initialized, independent of plugin-
+    # manager state (the pytest harness resets it between runs, which would otherwise
+    # drop these from the aggregating hook).
+    _register_builtin_client_templates(registry);
     # `register_project_template` is an aggregating hook: every plugin that
     # implements it contributes. The call returns a list with one entry per
     # implementing plugin, where each entry is itself a template dict OR a list
@@ -200,6 +206,33 @@ def _iter_template_dicts(results: any) -> list[dict[str, any]] {
         }
     }
     return out;
+}
+
+"""Register the built-in client/desktop directory templates (fullstack/client/mobile/
+desktop), which ship in core. Called directly so they do not depend on plugin-hook
+dispatch surviving a JacRuntime reset (e.g. the pytest harness between tests)."""
+def _register_builtin_client_templates(registry: TemplateRegistry) -> None {
+    try {
+        import from jaclang.runtimelib.client.plugin_config { JacClientPluginConfig }
+        import from jaclang.runtimelib.client.desktop_plugin_config {
+            JacDesktopPluginConfig
+        }
+    } except Exception {
+        return;  # client framework unavailable -- core remains usable
+    }
+    entries: list[any] = list(JacClientPluginConfig.client_project_templates());
+    desktop = JacDesktopPluginConfig.desktop_project_template();
+    if desktop is not None {
+        entries.append(desktop);
+    }
+    for entry in _iter_template_dicts(entries) {
+        try {
+            registry.register(entry);
+        } except Exception as e {
+            import from jaclang.cli.console { console }
+            console.warning(f"Skipping invalid client template: {e}");
+        }
+    }
 }
 
 """Build a core (plugin-free) project-template dict for a kind.
@@ -247,8 +280,9 @@ def _core_template(
 
 One canonical template per core kind (cli, native-app, native-binary,
 shared-library, api-service, microservices, pypi-package, npm-package). The
-plugin kinds (fullstack/wasm/mobile via jac-client, desktop via jac-desktop)
-are contributed through the `register_project_template` hook.
+client-framework kinds (fullstack/client/mobile and desktop) are contributed
+through the `register_project_template` hook by the built-in client provider
+in `jaclang.runtimelib.client`.
 """
 def _register_core_templates(registry: TemplateRegistry) {
     _hello = '"""Entry point for {{name}}."""\n\nwith entry {\n    print("Hello from {{name}}!");\n}\n';
@@ -264,7 +298,7 @@ def _register_core_templates(registry: TemplateRegistry) {
         '    """Append a message and report the created node."""\n'
         '    has author: str,\n        text: str,\n        reports: list[Message] = [];\n\n'
         '    can post with `root entry {\n'
-        '        report (here ++> Message(author=self.author, text=self.text))[0];\n'
+        '        report here ++> Message(author=self.author, text=self.text);\n'
         '    }\n}\n\n'
         'walker:pub ListMessages {\n'
         '    """Report every message in the guestbook."""\n'

@@ -16,12 +16,12 @@ the entry-point in the right codespace, and produces a project whose bare
 jac create myapp                        # cli kind (default): a runnable script
 jac create myapp --kind api-service     # headless server walkers (serve)
 jac create myapp --kind native-binary   # natively-compiled binary (build dist/)
-jac create myapp --kind fullstack       # server + client UI    (needs jac-client)
-jac create myapp --kind desktop         # OS-webview app         (needs jac-desktop)
+jac create myapp --kind fullstack       # server + client UI    (built into jaclang)
+jac create myapp --kind desktop         # OS-webview app         (built into jaclang)
 jac create myapp --use ./my-template/   # from a local template DIRECTORY
 jac create myapp --use ./local.jacpack  # from a local jacpack archive
 jac create --use https://.../t.jacpack  # from a URL
-jac create --use jac-shadcn             # shadcn variant of fullstack (needs jac-super)
+jac create --use jac-shadcn             # shadcn variant of fullstack (built into jaclang)
 jac create --list_jacpacks              # list available kinds and named variants
 jac create myapp --force                # overwrite an existing dir / reinit
 ```
@@ -34,7 +34,7 @@ Without a project name, `jac create` initializes the **current directory** and n
 
 ## Project kinds and what each scaffolds
 
-`--kind` accepts any of the 12 project kinds. The 8 **core** kinds ship with `jaclang`; the rest are contributed by plugins and `jac create --kind <kind>` fails fast with an install hint when the plugin is absent.
+`--kind` accepts any of the 12 project kinds -- **all built into `jaclang` core**, so none require a separate plugin install. (The full-stack client/desktop kinds were folded in from the former `jac-client` / `jac-desktop` plugins.)
 
 | `--kind` | Provider | `jac run` does | Entry-point |
 |---|---|---|---|
@@ -46,16 +46,16 @@ Without a project name, `jac create` initializes the **current directory** and n
 | `microservices` | core | serve microservice | `main.sv.jac` |
 | `pypi-package` | core | build a wheel into `dist/` | `lib.jac` |
 | `npm-package` | core | build an npm tarball into `dist/` | `lib.jac` |
-| `fullstack` | jac-client | serve app (dev mode) | `main.jac` + `.sv`/`.cl` |
-| `wasm` | jac-client | serve client-only page | `main.jac` |
-| `mobile` | jac-client | build the mobile app | `main.jac` |
-| `desktop` | jac-desktop | run the OS-webview app | `main.jac` |
+| `fullstack` | core | serve app (dev mode) | `main.jac` + `.sv`/`.cl` |
+| `wasm` | core | serve client-only page | `main.jac` |
+| `mobile` | core | build the mobile app | `main.jac` |
+| `desktop` | core | run the OS-webview app | `main.jac` |
 
 Named variants (selected with `--use`, not `--kind`) layer on a kind:
 
 | `--use <variant>` | Kind | Provider | What it adds |
 |---|---|---|---|
-| `jac-shadcn` | fullstack | jac-super | shadcn `components/ui/`, `lib/utils.cl.jac` (`cn()`), themed `global.css`, `[jac-shadcn]` block |
+| `jac-shadcn` | fullstack | jaclang (built-in) | shadcn `components/ui/`, `lib/utils.cl.jac` (`cn()`), themed `global.css`, `[jac-shadcn]` block |
 
 The `cli` template's `main.jac` is a minimal `with entry { ... }` stub - it does **not** pre-wire endpoints; use `--kind api-service` for a server, or add `node`/`walker:pub` declarations yourself (see `jac-sv-endpoints`).
 

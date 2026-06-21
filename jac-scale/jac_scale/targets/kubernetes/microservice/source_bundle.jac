@@ -32,11 +32,12 @@ glob _EXCLUDE_DIRS: set[str] = {
      };
 # Secret-bearing files are NEVER packed into the ConfigMap (it's stored
 # unencrypted in etcd and readable by anyone with `kubectl get configmap`).
-# .env / key / cert files are excluded outright; jac.toml is excluded because
-# it can hold registry + DB credentials and the pod doesn't need it in
-# no-image mode (routes arrive via JAC_SV_ROUTES env, DB creds via injected
-# Secret env). Put real secrets in [plugins.scale.secrets] (-> K8s Secret) or
-# build an image instead.
+# .env / key / cert files are excluded outright. The raw jac.toml is excluded
+# too (it can hold registry + DB creds under `[plugins.scale]`), but a
+# `[plugins.scale]`-stripped copy is added back by `pack_source` (see
+# `_sanitized_jac_toml`) so pods still get the app + client-build config they
+# need. Keep app-level secrets out of jac.toml; use [plugins.scale.secrets]
+# (-> K8s Secret) or env.
 glob _EXCLUDE_FILES: set[str] = {
          ".env",
          "jac.toml",
@@ -66,7 +67,11 @@ glob SOURCE_ARCHIVE_KEY: str = "source.tar.gz",
      SOURCE_MOUNT_PATH: str = "/jac-src",
      APP_VOLUME_NAME: str = "jac-app",
      APP_MOUNT_PATH: str = "/app",
-     PYDEPS_DIR: str = "/app/.pydeps";
+     PYDEPS_DIR: str = "/app/.pydeps",
+     # Experimental mode installs an editable jaseci checkout into a venv on
+     # the shared app volume (jac plugins can't go into PYDEPS_DIR via
+     # `pip --target`); the main container runs out of this venv instead.
+     VENV_DIR: str = "/app/.venv";
 
 
 """ConfigMap name holding a service app's packed source (caller pre-sanitizes
@@ -231,6 +236,35 @@ def _is_excluded(rel: any) -> bool {
 }
 
 
+"""The project's jac.toml with the `[plugins.scale...]` tables (deploy creds)
+removed, or None when there's no jac.toml."""
+def _sanitized_jac_toml(base: any) -> (str | None) {
+    src = base / "jac.toml";
+    if not src.is_file() {
+        return None;
+    }
+    out: list[str] = [];
+    skipping = False;
+    for line in src.read_text().splitlines() {
+        stripped = line.lstrip();
+        if stripped.startswith("[") {
+            header = stripped.lstrip("[").rstrip().rstrip("]").strip();
+            skipping = header == "plugins.scale" or header.startswith("plugins.scale.");
+            if skipping {
+                continue;
+            }
+        } elif stripped == "plugins.scale" or stripped.startswith("plugins.scale.") {
+            # Dotted-key form of a jac-scale setting; drop it defensively.
+            continue;
+        }
+        if not skipping {
+            out.append(line);
+        }
+    }
+    return "\n".join(out) + "\n";
+}
+
+
 """Tar+gzip the project dir (excluding build artifacts + secret files) into
 raw bytes."""
 def pack_source(project_dir: str) -> bytes {
@@ -246,6 +280,13 @@ def pack_source(project_dir: str) -> bytes {
                 continue;
             }
             tar.add(str(path), arcname=str(rel));
+        }
+        sanitized = _sanitized_jac_toml(base);
+        if sanitized is not None {
+            data = sanitized.encode("utf-8");
+            info = tarfile.TarInfo(name="jac.toml");
+            info.size = len(data);
+            tar.addfile(info, io.BytesIO(data));
         }
     }
     return buf.getvalue();
@@ -284,42 +325,132 @@ def build_source_configmap(
 }
 
 
-"""Resolve the jaclang/jac-scale versions installed locally so the in-pod
-install pins the same releases the developer ran. Returns pip-style specs
-(e.g. 'jaclang==0.16.4'); unpinned package name when the version can't be
-read."""
+"""In-pod pip specs, pinned to the versions the developer ran. `requests` is a
+runtime dep of the scale plugin but jac-scale ships it only in the `test`
+extra, so it (and the `[all]` deploy extras) must be installed explicitly or
+the plugin fails to load in every pod. jac-client is added only when present
+locally (fullstack apps)."""
 def pinned_install_specs -> list[str] {
     import importlib.metadata as _md;
     specs: list[str] = [];
-    for pkg in ["jaclang", "jac-scale"] {
+    # (pip spec name, distribution name, required-even-if-absent).
+    targets: list[tuple[str, str, bool]] = [
+        ("jaclang", "jaclang", True),
+        ("jac-scale[all]", "jac-scale", True),
+        ("requests", "requests", True),
+        ("jac-client", "jac-client", False)
+    ];
+    for (pip_name, dist_name, required) in targets {
         try {
-            specs.append(f"{pkg}=={_md.version(pkg)}");
+            specs.append(f"{pip_name}=={_md.version(dist_name)}");
         } except Exception {
-            specs.append(pkg);
+            if required {
+                specs.append(pip_name);
+            }
         }
     }
     return specs;
 }
 
 
-"""initContainer that extracts the packed source into the shared app volume
-and pip-installs jac into a target dir on that same volume. The slow install
-runs here (no probes) so the main container starts fast against a ready tree."""
-def build_bootstrap_init_container(base_image: str) -> dict[str, any] {
-    install = " ".join(pinned_install_specs());
-    script = (
-        "set -eu; "
-        f"tar xzf {SOURCE_MOUNT_PATH}/{SOURCE_ARCHIVE_KEY} -C {APP_MOUNT_PATH}; "
-        f"pip install --no-cache-dir --target={PYDEPS_DIR} {install}"
+"""Shell command that writes a minimal jac.toml into the extracted source if
+one isn't there. The real jac.toml is excluded from the bundle (it can hold
+credentials), but `jac start <svc>.jac` requires a project jac.toml to exist,
+so the service pods need at least a stub."""
+def _ensure_jac_toml_cmd -> str {
+    return (
+        f"[ -f {APP_MOUNT_PATH}/jac.toml ] || "
+        f"printf '[project]\\nname = \"app\"\\n' > {APP_MOUNT_PATH}/jac.toml"
     );
-    return {
+}
+
+
+"""Normalize an SCP-style or `ssh://` GitHub URL to anonymous HTTPS; init pods
+have no SSH key. Other URLs pass through unchanged."""
+def _https_clone_url(repo_url: str) -> str {
+    if repo_url.startswith("git@") and ":" in repo_url {
+        (host, path) = repo_url[4:].split(":", 1);
+        return f"https://{host}/{path}";
+    }
+    if repo_url.startswith("ssh://git@") {
+        return "https://" + repo_url[len("ssh://git@"):];
+    }
+    return repo_url;
+}
+
+
+"""Bootstrap script for experimental mode: clone the jaseci repo/branch into a
+venv on the shared volume and editable-install it. repo/branch/commit arrive as
+`JACX_*` env vars (data, never spliced into shell code), so a value with a space
+or `$(...)` can't break or inject the clone."""
+def experimental_bootstrap_script -> str {
+    steps: list[str] = [
+        "set -eu",
+        # Install git via whichever package manager the base image ships (Debian
+        # slim -> apt, Alpine -> apk); skip entirely when it's already present.
+        "command -v git >/dev/null 2>&1 || { apt-get update && apt-get install -y --no-install-recommends git || apk add --no-cache git; }",
+        f"tar xzf {SOURCE_MOUNT_PATH}/{SOURCE_ARCHIVE_KEY} -C {APP_MOUNT_PATH}",
+        _ensure_jac_toml_cmd(),
+        f"python3 -m venv {VENV_DIR}",
+        f". {VENV_DIR}/bin/activate",
+        f"rm -rf {APP_MOUNT_PATH}/jaseci",
+        f'git clone --branch "$JACX_BRANCH" --single-branch "$JACX_REPO_URL" {APP_MOUNT_PATH}/jaseci',
+        f"cd {APP_MOUNT_PATH}/jaseci",
+        # Optional pin: skip when unset, but surface a real checkout failure.
+        '[ -z "$JACX_COMMIT" ] || git checkout "$JACX_COMMIT"',
+        "git submodule update --init --recursive",
+        "pip install pluggy",
+        # --force-reinstall --no-deps so the local checkout wins over any
+        # already-resolved release of the same version.
+        "pip install --force-reinstall --no-deps -e ./jac",
+        "jac install -e ./jac-scale --extras all",
+        # Only when the fork ships jac-client: skip-when-absent, but let a genuine
+        # install failure propagate (don't blanket-swallow with `|| true`).
+        '[ ! -d ./jac-client ] || jac install -e ./jac-client'
+    ];
+    return " && ".join(steps);
+}
+
+
+"""initContainer that extracts the packed source into the shared app volume and
+installs jac onto that same volume (so the main container starts fast against a
+ready tree). PyPI-pinned by default; in experimental mode it git-clones the
+jaseci repo/branch into a venv on the shared volume instead."""
+def build_bootstrap_init_container(
+    base_image: str,
+    experimental: bool = False,
+    repo_url: str = "",
+    branch: str = "main",
+    commit: str = ""
+) -> dict[str, any] {
+    container: dict[str, any] = {
         "name": "jac-bootstrap",
         "image": base_image,
         "command": ["sh", "-c"],
-        "args": [script],
         "volumeMounts": [
             {"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH},
             {"name": SOURCE_VOLUME_NAME, "mountPath": SOURCE_MOUNT_PATH}
         ]
     };
+    if experimental {
+        container["args"] = [experimental_bootstrap_script()];
+        # Untrusted repo/branch/commit ride as env data, not shell code, so they
+        # can't break or inject the clone (see experimental_bootstrap_script).
+        container["env"] = [
+            {"name": "JACX_REPO_URL", "value": _https_clone_url(repo_url)},
+            {"name": "JACX_BRANCH", "value": branch},
+            {"name": "JACX_COMMIT", "value": commit}
+        ];
+    } else {
+        # Single-quote each spec so the `[all]` extras marker isn't treated as a
+        # shell glob char-class by the `sh -c` bootstrap.
+        install = " ".join([f"'{spec}'" for spec in pinned_install_specs()]);
+        container["args"] = [
+            "set -eu; "
+            f"tar xzf {SOURCE_MOUNT_PATH}/{SOURCE_ARCHIVE_KEY} -C {APP_MOUNT_PATH}; "
+            f"{_ensure_jac_toml_cmd()}; "
+            f"pip install --no-cache-dir --target={PYDEPS_DIR} {install}"
+        ];
+    }
+    return container;
 }

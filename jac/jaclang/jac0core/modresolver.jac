@@ -193,10 +193,10 @@ def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
     import jaclang.runtimelib as _runtimelib;
     runtime_dir = os.path.dirname(_runtimelib.__file__);
     module_name = target[len('@jac/'):];
-    # Well-known aliases explicitly mapped to their backing source.
-    module_map = {'runtime': 'client_runtime.cl.jac'};
-    if module_name in module_map {
-        path = os.path.join(runtime_dir, module_map[module_name]);
+    # `@jac/runtime` resolves to the framework-specific client runtime source.
+    if module_name == 'runtime' {
+        import from jaclang.runtimelib.runtime_source { resolve_client_runtime_cl_path }
+        path = resolve_client_runtime_cl_path();
         if os.path.isfile(path) {
             return (path, 'jac');
         }
@@ -207,6 +207,26 @@ def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
         if os.path.isfile(path) {
             return (path, lang);
         }
+    }
+    # Fallback: check packages that registered a jac.modules entry point.
+    # Plugins (e.g. jac-desktop) self-register their @jac/* modules this way
+    # without writing files into jaclang's runtimelib directory.
+    # Entry point value is "module.path:attr_or_callable". If the loaded object
+    # is callable, it is invoked and must return an absolute path string.
+    # If it is already a string, it is used directly.
+    try {
+        import importlib.metadata as _meta;
+        for ep in _meta.entry_points(group='jac.modules') {
+            if ep.name == module_name {
+                loaded = ep.load();
+                path = loaded() if callable(loaded) else loaded;
+                if isinstance(path, str) and os.path.isfile(path) {
+                    return (path, 'jac');
+                }
+            }
+        }
+    } except Exception {
+        ;
     }
     return None;
 }
@@ -220,6 +240,36 @@ ECMAScript pass (so the client manifest registers the same file).
 def resolve_jac_virtual_module_path(target: str) -> (str | None) {
     result = _resolve_jac_virtual_module(target);
     return result[0] if result else None;
+}
+
+"""Return the public export names a `@jac/*` module advertises, or [].
+
+Packages whose virtual module is built from `obj` types (which the generic
+export extractor can't see) self-describe their public symbols via a
+`jac.module_exports` entry point named for the module (e.g. `desktop`). The
+entry point resolves to a list, or a callable returning one. This keeps the
+per-SDK symbol list in the owning package instead of hardcoded in the compiler.
+"""
+def resolve_jac_virtual_module_exports(target: str) -> list[str] {
+    if not target.startswith('@jac/') {
+        return [];
+    }
+    module_name = target[len('@jac/'):];
+    try {
+        import importlib.metadata as _meta;
+        for ep in _meta.entry_points(group='jac.module_exports') {
+            if ep.name == module_name {
+                loaded = ep.load();
+                names = loaded() if callable(loaded) else loaded;
+                if isinstance(names, list) {
+                    return names;
+                }
+            }
+        }
+    } except Exception {
+        ;
+    }
+    return [];
 }
 
 """Get path aliases from project config [plugins.client.paths]."""

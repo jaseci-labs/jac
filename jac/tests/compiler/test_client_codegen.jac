@@ -155,9 +155,10 @@ test "endpoint effects follow helper calls" {
 }
 
 test "jac call function sends params directly" {
-    # The canonical @jac/runtime now lives in core runtimelib.
+    # The framework-agnostic surface (incl. __jacCallFunction) now lives in the
+    # shared core runtime; the per-framework shim re-exports it.
     runtime_path = (
-        Path(jaclang.__file__).resolve().parent / "runtimelib" / "impl" / "client_runtime.impl.jac"
+        Path(jaclang.__file__).resolve().parent / "runtimelib" / "impl" / "client_runtime_core.impl.jac"
     );
 
     if not runtime_path.exists() {

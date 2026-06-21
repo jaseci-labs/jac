@@ -147,6 +147,11 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
 
     # Lazily import the compiler and AST surface — expensive at CLI startup.
     import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.runtimelib.client_surface { prepend_active_runtime_globals }
+
+    # Imports needed to classify walkers/defs as public vs private from the
+    # AST. These modules are expensive to pull in at CLI-startup time, so
+    # we defer them to the eject path.
     import jaclang.jac0core.unitree as uni;
     import from jaclang.jac0core.constant { SymbolType }
 
@@ -187,7 +192,9 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
             js_rel = _to_js_rel_path(rel);
             js_out = frontend_src_dir / js_rel;
             js_out.parent.mkdir(parents=True, exist_ok=True);
-            js_out.write_text(_inject_runtime_imports(js_code), encoding="utf-8");
+            js_out.write_text(
+                prepend_active_runtime_globals(js_code), encoding="utf-8"
+            );
             js_count += 1;
             # Is this the entry module, and does it export a client `app`?
             stem = str(_strip_jac_suffix(rel.name));
@@ -406,15 +413,13 @@ def _js_exports_app(js_code: str) -> bool {
 }
 
 
-def _inject_runtime_imports(js_code: str) -> str {
-    import from jaclang.runtimelib.client_surface { with_runtime_globals }
-    return with_runtime_globals(js_code);
-}
+"""Decide whether a unparsed Python module has any real content worth writing.
 
-
-"""Decide whether an unparsed Python module has real content worth writing.
-A `.cl.jac` compiles to a Python module of only a docstring + imports (no
-backend behavior); skip those so the backend holds only modules that do work."""
+Files like `frontend.cl.jac` produce a Python module that contains only a
+docstring and a couple of `from __future__` / runtime imports — there is no
+behavior to ship to the backend. We skip those so the ejected backend
+directory only contains modules that actually do something.
+"""
 def _is_meaningful_python(py_code: str) -> bool {
     if not py_code.strip() {
         return False;
@@ -670,9 +675,12 @@ def _emit_index_html(frontend_dir: Path, project_name: str) {
 (which main.js exports but never renders), wraps it in the runtime
 ErrorBoundary, and createRoot()s it onto <div id="root">. Without it: blank page."""
 def _emit_entry_js(frontend_src_dir: Path, entry_module: str) {
-    import from jaclang.runtimelib.react_entry { build_simple_react_entry_script }
+    import from jaclang.compiler.passes.ecmascript.backends.registry {
+        resolve_active_backend
+    }
+    backend = resolve_active_backend();
     (frontend_src_dir / "__jac_entry.js").write_text(
-        build_simple_react_entry_script(entry_module), encoding="utf-8"
+        backend.build_entry_script(entry_module), encoding="utf-8"
     );
 }
 
