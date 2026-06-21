@@ -243,10 +243,6 @@ jobs:
   test-scale:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
-      # One job per subsystem folder under jac-scale/jac_scale/tests/. Each runs
-      # on its own runner (no fixed-port collisions across groups). Tests in
-      # tests/quarantine/ are deliberately omitted here (disabled, tracked in
-      # issue #6853); k8s-cluster tests run in the test-scale-k8s job below.
       fail-fast: false
       matrix:
         group: [server, data, microservices, deploy, misc]
@@ -268,9 +264,6 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -e jac
-        # The `test` extra bundles jac-scale[all] (data/monitoring/tracing/
-        # scheduler/deploy/aws -> redis, pymongo, prometheus-client, kubernetes)
-        # plus testcontainers[mongodb,redis] and moto[s3].
         jac install -e jac-scale --extras test
         pip install pytest pytest-asyncio
         pip install requests watchdog websockets
@@ -278,9 +271,8 @@ jobs:
     - name: Run ${{ matrix.group }} tests
       run: |
         set +e
-        # Run each file in its own pytest process to preserve per-file isolation
-        # (the suite relies on a fresh Jac runtime/context per file, not teardown).
         failed=""
+        # One pytest process per file: the suite relies on per-file isolation.
         for f in jac-scale/jac_scale/tests/${{ matrix.group }}/test_*.jac; do
           echo "::group::$f"
           pytest -vv -s "$f" || failed="$failed $f"
@@ -290,7 +282,6 @@ jobs:
           echo "::error::Failed ${{ matrix.group }} test files:$failed"
           exit 1
         fi
-        echo "All ${{ matrix.group }} test files passed."
 
   test-scale-k8s:
     # Runs by default; add the 'skip-k8s' label to a PR to skip it.
