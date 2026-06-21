@@ -73,11 +73,9 @@ jobs:
 
       - name: jac test runner (self-contained test file)
         working-directory: jac
-        # Validates the binary's test runner (pytest collection + execution) on a
-        # self-contained `.jac` test. The full repo suite is NOT run here: many
-        # tests are coupled to the `pip install -e ./jac` dev layout (fixtures via
-        # `jaclang.__file__`, `jac` on PATH), so it stays on the pip+pytest gate
-        # (test-jaseci.yml) until decoupled. Tracked in #6852.
+        # Blocking smoke check: the binary's test runner (pytest collection +
+        # execution via the bundled pytest) works on a self-contained `.jac`
+        # test under a fully hermetic env (no system Python, minimal PATH).
         run: |
           set -euxo pipefail
           BIN="$PWD/zig-out/bin/jac"
@@ -88,3 +86,33 @@ jobs:
           test "strings" { assert "ja" + "c" == "jac"; }
           JAC
           env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_TEST_JOBS=0 "$BIN" test "$WORK/test_smoke.jac"
+
+      # Toolchains the full suite shells out to: JS backend tests need node/bun,
+      # native-link tests need a C compiler (gcc ships on the runner).
+      - name: Set up Node.js (JS backend tests)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Set up Bun (JS backend tests)
+        uses: oven-sh/setup-bun@v2
+
+      - name: Full repo suite via the binary (informational)
+        working-directory: jac
+        # The whole `tests/` suite, run through the binary's own runner instead
+        # of `pip install -e ./jac` + pytest. This is the candidate replacement
+        # for the editable gate (test-jaseci.yml). Non-blocking while the last
+        # binary-specific divergences are driven to zero; the path/fixture and
+        # subprocess coupling are already resolved (#6852). The binary is placed
+        # on PATH as `jac` so `["jac", ...]` subprocess tests resolve it, and
+        # `sys.executable`/`-m jaclang` self-invocation is handled by worker mode.
+        continue-on-error: true
+        run: |
+          set -uxo pipefail
+          BINDIR="$(mktemp -d)"; ln -sf "$PWD/zig-out/bin/jac" "$BINDIR/jac"
+          WORK="$(mktemp -d)"
+          PATH="$BINDIR:$PATH" HOME="$WORK" JAC_TEST_JOBS=auto \
+            "$BINDIR/jac" test tests/ | tee /tmp/full.log
+          echo "## binary full-suite result" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E '^(FAILED|ERROR)|passed' /tmp/full.log | tail -60 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
