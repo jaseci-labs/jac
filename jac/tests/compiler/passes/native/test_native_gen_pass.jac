@@ -3705,6 +3705,25 @@ test "transitive clib: _clib_paths of dep module propagated to entry module" {
     assert any("/libm" in p or "libm" in p for p in clib_paths) , f"libm not found in transitive _clib_paths: {clib_paths}";
 }
 
+test "transitive clib: _clib_symbol_lib of dep module propagated to entry module" {
+    # The symbol→library map that the PE linker uses to attribute each import
+    # to the right DLL must propagate transitively, just like _clib_paths.
+    # Before the fix only _clib_paths crossed the module boundary while
+    # _clib_symbol_lib was dropped, so on Windows every Win32 symbol imported
+    # from a sub-module fell back to msvcrt.dll → WinError 127 at runtime.
+    # The dep declares `sqrt` from libm; assert the entry module inherits that
+    # symbol→lib mapping (regression guard for PR #6828).
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_clib_transitive_entry.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    sym_lib = ir.gen._clib_symbol_lib;
+    assert sym_lib , "_clib_symbol_lib not propagated to entry module IR";
+    assert "sqrt" in sym_lib , f"transitive symbol 'sqrt' missing from _clib_symbol_lib: {sym_lib}";
+    assert "libm" in sym_lib["sqrt"] , f"sqrt attributed to wrong library: {sym_lib[
+        'sqrt'
+    ]}";
+}
+
 test "transitive clib: JIT call through dep-module extern returns correct value" {
     # wrapped_sqrt(9.0) must return 3.0 — proves libm was actually JIT-loaded.
     # Before the fix this would segfault because sqrt was unresolved at JIT time.

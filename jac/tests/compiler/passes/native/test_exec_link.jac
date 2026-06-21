@@ -96,6 +96,44 @@ def _inject_macho(ir_txt: str) -> str {
 }
 
 
+"""Parse execSegFlags out of an embedded ad-hoc code signature.
+
+`sig_off` is the LC_CODE_SIGNATURE dataoff. Walks the SuperBlob to its
+CodeDirectory and returns the 8-byte execSegFlags field (CD offset 80). Returns
+None if the magics don't match (unsigned x86_64 binary)."""
+def _exec_seg_flags(raw: bytes, sig_off: int) -> (int | None) {
+    if struct.unpack_from(">I", raw, sig_off)[0] != 0xFADE0CC0 {  # SuperBlob
+        return None;
+    }
+    count = struct.unpack_from(">I", raw, sig_off + 8)[0];
+    idx = sig_off + 12;
+    for _ in range(count) {
+        boff = struct.unpack_from(">II", raw, idx)[1];  # (blobType, offset)
+        cd = sig_off + boff;
+        if struct.unpack_from(">I", raw, cd)[0] == 0xFADE0C02 {  # CodeDirectory
+            return struct.unpack_from(">Q", raw, cd + 80)[0];  # execSegFlags
+        }
+        idx += 8;
+    }
+    return None;
+}
+
+
+"""Return the LC_CODE_SIGNATURE dataoff (0 if the binary is unsigned)."""
+def _codesig_off(raw: bytes) -> int {
+    ncmds = struct.unpack_from("<I", raw, 16)[0];
+    off = 32;
+    for _ in range(ncmds) {
+        (cmd, cmdsize) = struct.unpack_from("<II", raw, off);
+        if cmd == 0x1D {  # LC_CODE_SIGNATURE
+            return struct.unpack_from("<I", raw, off + 8)[0];
+        }
+        off += cmdsize;
+    }
+    return 0;
+}
+
+
 # ─── tests ───────────────────────────────────────────────────────────────────
 test "ELF executable links, runs, and prints through the C ABI" {
     triple = llvm.get_default_triple();
@@ -150,4 +188,30 @@ test "Mach-O executable has MH_EXECUTE filetype and an LC_MAIN entry" {
         off += cmdsize;
     }
     assert has_main , "missing LC_MAIN entry command";
+}
+
+
+test "Mach-O arm64 executable is ad-hoc signed with CS_EXECSEG_MAIN_BINARY" {
+    # The arm64 path emits an embedded code signature. The main executable's
+    # __TEXT segment must set CS_EXECSEG_MAIN_BINARY (0x1) in execSegFlags —
+    # the counterpart to the dylib's execSegFlags == 0 (PR #6828). This pins
+    # the executable intent at the linker level so the inverted-default
+    # refactor can't silently drop the flag for executables.
+    triple = "arm64-apple-darwin";
+    relobj = _emit_object(_inject_macho(_compile_ir(FIXTURE, triple)), triple);
+    d = tempfile.mkdtemp();
+    out = os.path.join(d, "exec_smoke_arm64");
+    ok = MachOLinker.link(
+        obj_bytes=relobj,
+        output_path=out,
+        needed_libs=["/usr/lib/libSystem.B.dylib"],
+        shared=False
+    );
+    assert ok , "MachOLinker.link(shared=False) returned False for arm64";
+    raw = Path(out).read_bytes();
+    assert struct.unpack_from("<I", raw, 12)[0] == 2 , "expected MH_EXECUTE (2)";
+    sig_off = _codesig_off(raw);
+    assert sig_off != 0 , "arm64 executable is not code-signed";
+    flags = _exec_seg_flags(raw, sig_off);
+    assert flags == 0x1 , f"executable execSegFlags must be CS_EXECSEG_MAIN_BINARY (0x1), got {flags}";
 }
