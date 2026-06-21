@@ -63,7 +63,11 @@ impl JacCompiler.internal_program.getter -> JacProgram {
 """Get the jaclang package root path."""
 impl JacCompiler._get_jaclang_root(cls: any) -> str {
     if (cls._jaclang_root is None) {
-        cls._jaclang_root = os.path.dirname(os.path.dirname(__file__));
+        # realpath so the root matches realpath-resolved module paths even when
+        # jaclang is materialized under a symlinked dir (the single binary cache).
+        cls._jaclang_root = os.path.realpath(
+            os.path.dirname(os.path.dirname(__file__))
+        );
     }
     return cls._jaclang_root;
 }
@@ -72,7 +76,12 @@ impl JacCompiler._get_jaclang_root(cls: any) -> str {
 impl JacCompiler._resolve_program(
     file_path: str, target_program: JacProgram
 ) -> JacProgram {
-    normalized_path = os.path.normpath(file_path);
+    # realpath (not normpath) so symlinked roots resolve consistently: the
+    # single-binary cache lives under a symlinked temp dir (e.g. macOS
+    # /var -> /private/var), and stub paths arrive already `.resolve()`d, so a
+    # plain prefix check against an unresolved jaclang root would miss and leak
+    # jaclang-internal stubs into the user program's hub.
+    normalized_path = os.path.realpath(file_path);
     jaclang_root = self._get_jaclang_root();
     if normalized_path.startswith((jaclang_root + os.sep)) {
         return self.internal_program;
