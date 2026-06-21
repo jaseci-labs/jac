@@ -14,24 +14,22 @@ it is copied into a `TemporaryDirectory`). Builds are slow, so timeouts are
 generous (`wait_for_port` up to 120s).
 """
 
-import gc;
 import json;
 import os;
-import re;
 import shutil;
 import tempfile;
 import time;
 import pytest;
-import from http.client { RemoteDisconnected }
-import from subprocess { PIPE, STDOUT, Popen, run }
-import from urllib.error { HTTPError, URLError }
-import from urllib.request { Request, urlopen }
+import from subprocess { Popen, run }
+import from urllib.error { HTTPError }
+import from urllib.request { urlopen }
 
 import from .test_helpers {
     get_env_with_bun,
-    get_free_port,
     get_jac_command,
-    wait_for_port
+    request_endpoint,
+    start_app_server,
+    stop_server
 }
 
 # ===========================================================================
@@ -122,90 +120,6 @@ def _setup_littlex_project(temp_dir: any) -> tuple {
     return (project_dir, jac_cmd, env);
 }
 
-"""Block until an HTTP endpoint returns OK or times out.
-
-Retries on 503/connection errors (server still warming up / building);
-raises on 500 (a real compile failure). Returns the body as bytes.
-"""
-def _request_endpoint(
-    url: str,
-    timeout: float = 120.0,
-    poll_interval: float = 2.0,
-    request_timeout: float = 30.0,
-) -> bytes {
-    deadline = time.time() + timeout;
-    last_err: any = None;
-    while time.time() < deadline {
-        try {
-            resp = urlopen(url, timeout=request_timeout);
-            try {
-                data: bytes = bytes(resp.read());
-                return data;
-            } finally {
-                resp.close();
-            }
-        } except HTTPError as exc {
-            if exc.code == 503 {
-                exc.close();
-                last_err = exc;
-                time.sleep(poll_interval);
-            } else {
-                raise;
-            }
-        } except (URLError, RemoteDisconnected, TimeoutError) as exc {
-            last_err = exc;
-            time.sleep(poll_interval);
-        }
-    }
-    raise TimeoutError(
-        f"Timed out waiting for {url} to become available. Last error: {last_err}"
-    );
-}
-
-"""Start ``jac start`` on ``project_dir`` and wait for the port.
-
-``extra_args`` lets callers add flags such as ``["--client", "pwa"]``.
-Returns ``(server_process, port)``.
-"""
-def _start_server(
-    project_dir: any, jac_cmd: any, env: any, extra_args: list | None = None
-) -> tuple {
-    port = get_free_port();
-    args = [*jac_cmd, "start", "main.jac", "-p", str(port)];
-    if extra_args {
-        args = [*jac_cmd, "start", *extra_args, "main.jac", "-p", str(port)];
-    }
-    server = Popen(args, cwd=project_dir, env=env, stdout=PIPE, stderr=STDOUT);
-    wait_for_port("127.0.0.1", port, timeout=120.0);
-    return (server, port);
-}
-
-"""Terminate a server process, escalating to kill if it lingers."""
-def _stop_server(server: Popen | None) -> None {
-    if server is None {
-        return;
-    }
-    if server.stdout {
-        try {
-            server.stdout.close();
-        } except Exception {
-            0;
-        }
-    }
-    server.terminate();
-    try {
-        server.wait(timeout=15);
-    } except Exception {
-        server.kill();
-        try {
-            server.wait(timeout=5);
-        } except Exception {
-            0;
-        }
-    }
-    time.sleep(1);
-    gc.collect();
-}
 
 """Skip the test unless Playwright + a Chromium build are installed."""
 def _require_playwright -> any {
@@ -292,11 +206,11 @@ test "littlex builds and serves /cl/app" {
         (project_dir, jac_cmd, env) = _setup_littlex_project(temp_dir);
         server: Popen | None = None;
         try {
-            (server, port) = _start_server(project_dir, jac_cmd, env);
+            (server, port) = start_app_server(project_dir);
             base = f"http://127.0.0.1:{port}";
 
             # /cl/app -- littleX mounts its base_route_app at "app".
-            page_bytes = _request_endpoint(f"{base}/cl/app");
+            page_bytes = request_endpoint(f"{base}/cl/app");
             page_body = page_bytes.decode("utf-8", errors="ignore");
             assert "<html" in page_body.lower() , (
                 f"/cl/app should return HTML, got:\n{page_body[:500]}"
@@ -306,7 +220,7 @@ test "littlex builds and serves /cl/app" {
             );
 
             # /static/client.js -- the real bundle, not a 404 sentinel.
-            js_bytes = _request_endpoint(f"{base}/static/client.js");
+            js_bytes = request_endpoint(f"{base}/static/client.js");
             js_body = js_bytes.decode("utf-8", errors="ignore");
             assert len(js_body) > 0 , "client.js bundle should not be empty";
             assert "Static file not found" not in js_body , (
@@ -331,7 +245,7 @@ test "littlex builds and serves /cl/app" {
                 exc.close();
             }
         } finally {
-            _stop_server(server);
+            stop_server(server);
         }
     }
 }
@@ -366,10 +280,10 @@ test "littlex serves its CSS bundle" {
         );
         server: Popen | None = None;
         try {
-            (server, port) = _start_server(project_dir, jac_cmd, env);
+            (server, port) = start_app_server(project_dir);
             base = f"http://127.0.0.1:{port}";
 
-            css_bytes = _request_endpoint(f"{base}/static/styles.css");
+            css_bytes = request_endpoint(f"{base}/static/styles.css");
             css_body = css_bytes.decode("utf-8", errors="ignore");
             assert len(css_body.strip()) > 0 , "served CSS should not be empty";
             assert "not found" not in css_body.lower() , (
@@ -384,7 +298,7 @@ test "littlex serves its CSS bundle" {
                 f"got:\n{css_body[:300]}"
             );
         } finally {
-            _stop_server(server);
+            stop_server(server);
         }
     }
 }
@@ -463,10 +377,10 @@ test "navigating without auth shows the auth screen" {
         (project_dir, jac_cmd, env) = _setup_littlex_project(temp_dir);
         server: Popen | None = None;
         try {
-            (server, port) = _start_server(project_dir, jac_cmd, env);
+            (server, port) = start_app_server(project_dir);
             url = f"http://127.0.0.1:{port}";
             # Warm the page so the client bundle is built before the browser hits it.
-            _request_endpoint(f"{url}/cl/app");
+            request_endpoint(f"{url}/cl/app");
 
             with sync_playwright() as p {
                 browser = p.chromium.launch(headless=True);
@@ -487,7 +401,7 @@ test "navigating without auth shows the auth screen" {
                 }
             }
         } finally {
-            _stop_server(server);
+            stop_server(server);
         }
     }
 }
@@ -503,9 +417,9 @@ test "signup creates account and logs in" {
         (project_dir, jac_cmd, env) = _setup_littlex_project(temp_dir);
         server: Popen | None = None;
         try {
-            (server, port) = _start_server(project_dir, jac_cmd, env);
+            (server, port) = start_app_server(project_dir);
             url = f"http://127.0.0.1:{port}";
-            _request_endpoint(f"{url}/cl/app");
+            request_endpoint(f"{url}/cl/app");
 
             with sync_playwright() as p {
                 browser = p.chromium.launch(headless=True);
@@ -524,7 +438,7 @@ test "signup creates account and logs in" {
                 }
             }
         } finally {
-            _stop_server(server);
+            stop_server(server);
         }
     }
 }
@@ -541,9 +455,9 @@ test "login valid and invalid" {
         (project_dir, jac_cmd, env) = _setup_littlex_project(temp_dir);
         server: Popen | None = None;
         try {
-            (server, port) = _start_server(project_dir, jac_cmd, env);
+            (server, port) = start_app_server(project_dir);
             url = f"http://127.0.0.1:{port}";
-            _request_endpoint(f"{url}/cl/app");
+            request_endpoint(f"{url}/cl/app");
 
             with sync_playwright() as p {
                 browser = p.chromium.launch(headless=True);
@@ -602,7 +516,7 @@ test "login valid and invalid" {
                 }
             }
         } finally {
-            _stop_server(server);
+            stop_server(server);
         }
     }
 }
@@ -619,9 +533,9 @@ test "logout returns to auth" {
         (project_dir, jac_cmd, env) = _setup_littlex_project(temp_dir);
         server: Popen | None = None;
         try {
-            (server, port) = _start_server(project_dir, jac_cmd, env);
+            (server, port) = start_app_server(project_dir);
             url = f"http://127.0.0.1:{port}";
-            _request_endpoint(f"{url}/cl/app");
+            request_endpoint(f"{url}/cl/app");
 
             with sync_playwright() as p {
                 browser = p.chromium.launch(headless=True);
@@ -664,7 +578,7 @@ test "logout returns to auth" {
                 }
             }
         } finally {
-            _stop_server(server);
+            stop_server(server);
         }
     }
 }
