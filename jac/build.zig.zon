@@ -1,0 +1,12 @@
+.{
+    .name = .jac,
+    .version = "0.16.7",
+    .minimum_zig_version = "0.16.0",
+    .fingerprint = 0x125cfde06c37a26a,
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "launcher",
+    },
+}
