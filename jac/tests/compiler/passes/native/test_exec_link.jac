@@ -18,16 +18,13 @@ import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
 import from jaclang.compiler.passes.native.macho_linker { MachOLinker }
 import llvmlite.binding as llvm;
 
-glob FIXTURES = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
-     ),
+glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      FIXTURE = "exec_smoke.na.jac";
 
 
