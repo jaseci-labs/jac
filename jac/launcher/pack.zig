@@ -41,4 +41,9 @@ pub fn main(init: std.process.Init) !void {
     try out.writeStreamingAll(io, runtime.MAGIC);
     try out.writeStreamingAll(io, &lenle);
     try out.writeStreamingAll(io, &hex);
+
+    // Mark the output executable (the file is created 0644). Best-effort, posix.
+    const out_z = try gpa.dupeZ(u8, args[3]);
+    defer gpa.free(out_z);
+    _ = std.c.chmod(out_z.ptr, 0o755);
 }
