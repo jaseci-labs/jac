@@ -263,3 +263,36 @@ test "styled components build and serve" {
         }
     }
 }
+
+"""sass: the .scss is compiled (variables resolved) into the served CSS."""
+test "sass build and serve" {
+    with tempfile.TemporaryDirectory() as temp_dir {
+        project_path = _copy_fixture("sass", temp_dir);
+        server: Popen | None = None;
+        try {
+            (server, port) = _start_fixture_server(project_path);
+            base = f"http://127.0.0.1:{port}";
+
+            app_body = _request_endpoint(f"{base}/cl/app").decode(
+                "utf-8", errors="ignore"
+            );
+            assert "/static/styles.css" in app_body , (
+                f"/cl/app should link the compiled stylesheet; got:\n{app_body[:500]}"
+            );
+
+            css_body = _request_endpoint(f"{base}/static/styles.css").decode(
+                "utf-8", errors="ignore"
+            );
+            assert ".container" in css_body , (
+                "compiled stylesheet should contain the .container rule"
+            );
+            # $accent (#16a34a) only appears if the .scss was actually run
+            # through Sass rather than copied verbatim.
+            assert "#16a34a" in css_body , (
+                f"Sass variable should be compiled into the output; got:\n{css_body[:500]}"
+            );
+        } finally {
+            _shutdown_server(server);
+        }
+    }
+}
