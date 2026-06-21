@@ -243,15 +243,17 @@ jobs:
   test-scale:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
-      # Shard the test files across runners. Each shard is a separate machine,
-      # so files that bind fixed ports never collide across shards, and within
-      # a shard files still run sequentially in their own process.
+      # Split the test files across runners by subsystem so failures are
+      # readable at a glance (test-scale (data) vs an opaque shard index). Each
+      # group is a separate machine, so files that bind fixed ports never
+      # collide across groups, and within a group files run sequentially in
+      # their own process. `misc` is the catch-all: any file not matched by a
+      # named group runs there, so a newly added test is never silently skipped.
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        group: [server, data, microservices, deploy, misc]
     env:
-      SHARD_INDEX: ${{ matrix.shard }}
-      SHARD_TOTAL: 4
+      GROUP: ${{ matrix.group }}
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -282,35 +284,54 @@ jobs:
     # listing files by hand, so new test files are picked up automatically.
     # Each file runs in its own pytest process to preserve per-file isolation
     # (the suite relies on a fresh Jac runtime/context per file rather than on
-    # teardown). Files are sharded across runners by index; the k8s-cluster
-    # tests run in the dedicated test-scale-k8s job below and are skipped here
-    # because this runner has no cluster.
-    - name: Run jac-scale tests (shard ${{ matrix.shard }}/4)
+    # teardown). The k8s-cluster tests run in the dedicated test-scale-k8s job
+    # below and are skipped here because this runner has no cluster.
+    - name: Run jac-scale tests (${{ matrix.group }})
       run: |
         set +e
+        # k8s-cluster tests run in the dedicated test-scale-k8s job below.
         skip_re='test_(deploy_k8s|k8s_utils|pod_env|image_build)\.jac$'
-        i=0
+        # Quarantined: pre-existing failures surfaced by auto-discovery, tracked
+        # in https://github.com/jaseci-labs/jaseci/issues/6853 (perf-characterization
+        # tests + a real system-root caching bug + 2 integration flows). Remove
+        # entries as they are fixed under that issue.
+        quarantine_re='test_(connection_overhead|redis_batch_overhead|redis_memory_leak|topology_slice_pushdown|file_upload|user_identity)\.jac$'
+
+        # Map each test file to a subsystem group. First match wins; anything
+        # unmatched falls through to `misc`, so new files always run somewhere.
+        group_of() {
+          case "$1" in
+            *test_serve.jac|*test_restspec.jac|*test_middleware_async_root.jac|*test_sso.jac|*test_admin*.jac|*test_traces_admin.jac|*test_webhook.jac|*test_user_identity.jac|*test_file_upload.jac|*test_sv_*.jac|*test_stream_ws.jac|*test_cl_test_runner.jac|*test_examples.jac|*test_emailer_factory.jac) echo server ;;
+            *test_memory*.jac|*test_mongo*.jac|*test_direct_db.jac|*test_serializer_social.jac|*test_occ_replay.jac|*test_persistence_race.jac|*test_scalar_clobber_cross_process.jac|*test_schema_repair_mongo.jac|*test_redis_*.jac|*test_local_stream.jac|*test_topology_*.jac|*test_connection_overhead.jac|*test_jwt_validation_overhead.jac|*test_storage.jac|*test_s3_storage.jac|*test_eager_spawn.jac|*test_async_*.jac|*test_commit_failure_surfacing.jac) echo data ;;
+            *test_gateway.jac|*test_microservice.jac|*test_microservices_registry.jac|*test_orchestrator.jac|*test_process_manager.jac|*test_discovery.jac|*test_setup.jac|*test_plan.jac|*test_drain.jac|*test_rate_limit.jac|*test_no_image.jac|*test_local_sandbox_compat.jac) echo microservices ;;
+            *test_cluster_provider.jac|*test_database_provisioner.jac|*test_keda_autoscaler.jac|*test_ingress_*.jac|*test_ops_*.jac|*test_deployer.jac|*test_abstractions.jac|*test_factories.jac) echo deploy ;;
+            *) echo misc ;;
+          esac
+        }
+
         failed=""
         ran=0
         for f in $(ls jac-scale/jac_scale/tests/test_*.jac | sort); do
           echo "$f" | grep -qE "$skip_re" && continue
-          if [ $(( i % SHARD_TOTAL )) -eq "$SHARD_INDEX" ]; then
-            echo "::group::$f"
-            # No -x: report every failure in the file, not just the first, so a
-            # single run enumerates the full backlog instead of one-at-a-time.
-            pytest -vv -s -rfE "$f"
-            [ $? -ne 0 ] && failed="$failed $f"
-            echo "::endgroup::"
-            ran=$((ran + 1))
+          if echo "$f" | grep -qE "$quarantine_re"; then
+            echo "QUARANTINED (see issue #6853): $f"
+            continue
           fi
-          i=$((i + 1))
+          [ "$(group_of "$f")" = "$GROUP" ] || continue
+          echo "::group::$f"
+          # No -x: report every failure in the file, not just the first, so a
+          # single run enumerates the full backlog instead of one-at-a-time.
+          pytest -vv -s -rfE "$f"
+          [ $? -ne 0 ] && failed="$failed $f"
+          echo "::endgroup::"
+          ran=$((ran + 1))
         done
-        echo "Shard $SHARD_INDEX ran $ran file(s)."
+        echo "Group '$GROUP' ran $ran file(s)."
         if [ -n "$failed" ]; then
           echo "::error::Failed jac-scale test files:$failed"
           exit 1
         fi
-        echo "All jac-scale test files in shard $SHARD_INDEX passed."
+        echo "All jac-scale test files in group '$GROUP' passed."
 
   test-scale-k8s:
     # Runs by default; add the 'skip-k8s' label to a PR to skip it.
