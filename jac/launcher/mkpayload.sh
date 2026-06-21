@@ -56,7 +56,7 @@ if [ "$PRECOMPILE" = "1" ]; then
     # by the exit code (these modules just compile at runtime instead).
     PYTHONHOME="$PBS/install" PYTHONPATH="$site" PYTHONUTF8=1 HOME="$WORK" PATH=/usr/bin:/bin \
       "$PY" -S "$boot" >"$WORK/precompile.log" 2>&1 || true
-    jir=$(find "$site/jaclang/_precompiled" -name '*.jir' 2>/dev/null | wc -l | tr -d ' ')
+    jir=$( { find "$site/jaclang/_precompiled" -name '*.jir' 2>/dev/null || true; } | wc -l | tr -d ' ')
     skipped=$(grep -cE 'Error: FAIL:' "$WORK/precompile.log" 2>/dev/null || echo 0)
     if [ "${jir:-0}" -ge 300 ]; then
       echo "   _precompiled: ${jir} JIR generated (${skipped} core modules compile at runtime by design)"
@@ -66,6 +66,12 @@ if [ "$PRECOMPILE" = "1" ]; then
     fi
   fi
 fi
+
+# Bundle the test runner so `jac test` can route through pytest (+ xdist -n auto)
+# from the sealed binary with no system Python. Installed AFTER precompile so the
+# precompiler's package walk only sees jaclang (extra packages yield 0 JIR).
+echo "==> bundling pytest + pytest-xdist (jac test runner)"
+"$PY" -m pip install --quiet pytest pytest-xdist --target "$site"
 
 echo "==> staging runtime tree (shared libpython + stdlib + site)"
 mkdir -p "$stage/python/lib"

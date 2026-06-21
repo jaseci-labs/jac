@@ -688,6 +688,50 @@ impl `test(
         );
         return 1;
     }
+    # Route `jac test` through the bundled pytest (+ xdist for `-n auto`) when it
+    # is available -- the single-binary build ships it, so the suite runs with
+    # pytest collection and parallelism and no system Python. Falls back to the
+    # native runner when pytest is absent or `JAC_TEST_NATIVE=1` is set.
+    #   JAC_TEST_JOBS=auto (default) -> -n auto;  JAC_TEST_JOBS=0 -> serial
+    run_pytest = not os.environ.get('JAC_TEST_NATIVE', '');
+    if run_pytest {
+        try {
+            import pytest;
+        } except ImportError {
+            run_pytest = False;
+        }
+        if run_pytest {
+            pargs: list[str] = [];
+            target = filepath or directory;
+            if target {
+                pargs.append(target);
+            }
+            jobs = os.environ.get('JAC_TEST_JOBS', 'auto');
+            # No worker pool for a single named test (overhead > benefit).
+            if jobs and jobs != '0' and not test_name {
+                pargs.append('-n');
+                pargs.append(jobs);
+            }
+            if xit {
+                pargs.append('-x');
+            }
+            if maxfail {
+                pargs.append('--maxfail');
+                pargs.append(str(maxfail));
+            }
+            if test_name {
+                pargs.append('-k');
+                pargs.append(test_name);
+            } elif filter {
+                pargs.append('-k');
+                pargs.append(filter);
+            }
+            if verbose {
+                pargs.append('-vv');
+            }
+            return int(pytest.main(pargs));
+        }
+    }
     normalized_name = test_name.strip().replace(' ', '_') if test_name else '';
     failcount = Jac.run_test(
         filepath=filepath,

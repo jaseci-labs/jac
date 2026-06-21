@@ -31,6 +31,9 @@ const PySys_SetArgvEx_t = *const fn (argc: c_int, argv: ?[*]?*anyopaque, updatep
 const PyMem_RawFree_t = *const fn (p: ?*anyopaque) callconv(.c) void;
 const PyRun_SimpleString_t = *const fn (cmd: [*:0]const u8) callconv(.c) c_int;
 const Py_FinalizeEx_t = *const fn () callconv(.c) c_int;
+// The standard `python` entry point: handles -c/-m/-u/argv exactly like the
+// interpreter. Used for worker mode so the binary is a drop-in `sys.executable`.
+const Py_BytesMain_t = *const fn (argc: c_int, argv: [*c][*c]u8) callconv(.c) c_int;
 
 /// The validated boot dance: install the lazy `.jac` finder, then hand off to
 /// the jaclang CLI, which reads `sys.argv`.
@@ -95,6 +98,23 @@ fn boot(rt: []const u8, init: std.process.Init) u8 {
     const h = std.c.dlopen(libpath.ptr, .{ .NOW = true, .GLOBAL = true }) orelse
         die("dlopen libpython failed (payload not materialized?)");
 
+    // Worker mode: when re-invoked as a Python interpreter (execnet/xdist and
+    // multiprocessing re-spawn `sys.executable` with flags like `-u -c ...`),
+    // behave exactly like `python` via Py_BytesMain instead of the jac CLI. The
+    // env we set above points it at the bundled stdlib + site.
+    if (isPythonInvocation(init)) {
+        const Py_BytesMain: Py_BytesMain_t = sym(h, Py_BytesMain_t, "Py_BytesMain");
+        var argv_storage: [4096][*c]u8 = undefined;
+        var n: usize = 0;
+        var wit = init.minimal.args.iterate();
+        while (wit.next()) |arg| {
+            if (n >= argv_storage.len) break;
+            argv_storage[n] = @constCast(arg.ptr);
+            n += 1;
+        }
+        return @intCast(Py_BytesMain(@intCast(n), @ptrCast(&argv_storage)));
+    }
+
     const Py_Initialize: Py_Initialize_t = sym(h, Py_Initialize_t, "Py_Initialize");
     const Py_DecodeLocale: Py_DecodeLocale_t = sym(h, Py_DecodeLocale_t, "Py_DecodeLocale");
     const PySys_SetArgvEx: PySys_SetArgvEx_t = sym(h, PySys_SetArgvEx_t, "PySys_SetArgvEx");
@@ -120,6 +140,18 @@ fn boot(rt: []const u8, init: std.process.Init) u8 {
     const rc = PyRun_SimpleString(BOOT_SRC);
     _ = Py_FinalizeEx();
     return if (rc == 0) 0 else 1;
+}
+
+/// True if argv[1] is a Python interpreter short flag (`-c`, `-u`, `-m`, `-`,
+/// ...). Single-dash short flags mean "act like python"; jac subcommands (`run`,
+/// `test`) and long flags (`--version`) keep the jac CLI.
+fn isPythonInvocation(init: std.process.Init) bool {
+    var it = init.minimal.args.iterate();
+    _ = it.next(); // skip argv[0]
+    if (it.next()) |a| {
+        return a.len >= 1 and a[0] == '-' and (a.len == 1 or a[1] != '-');
+    }
+    return false;
 }
 
 fn sym(h: ?*anyopaque, comptime T: type, comptime name: [:0]const u8) T {
