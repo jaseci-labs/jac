@@ -29,8 +29,10 @@ impl NaIRGenPass.postinit -> None {
     # which would stamp a bogus "...-windows-msvc-elf" triple onto the module
     # on a Windows host. This site only reads the triple/data layout, so any
     # non-"jitdefault" model keeps the triple intact (the code model does not
-    # otherwise affect it here); "large" is chosen to mirror the executable AOT
-    # path in nacompile. The relocation-model coupling lives at that emit site.
+    # otherwise affect it here). "large" mirrors nacompile's executable branch;
+    # its shared branch uses "small", but the data layout is identical across
+    # code models on x86_64, so the stamped module metadata stays valid for
+    # either emit path. The relocation-model coupling lives at that emit site.
     _tm = _target.create_target_machine(codemodel="large");
     self.llvm_module.data_layout = str(_tm.target_data);
     self.llvm_module.triple = _tm.triple;
