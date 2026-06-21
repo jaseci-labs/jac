@@ -3526,6 +3526,7 @@ test "transitive .na.jac import: cross-module struct type survives incremental b
     # JIR cache's degraded link state.  So we use subprocess to run two
     # separate nacompile invocations — the first writes JIR cache, the
     # second reads it.
+    import re;
     import from jaclang.jac0core.jir { get_module_cache_path }
 
     # Fixture chain: entry -> core -> handler -> panel -> selector (struct type)
@@ -3539,7 +3540,10 @@ test "transitive .na.jac import: cross-module struct type survives incremental b
         "fix_6793_state.na.jac"
     ];
 
-    # Clear any existing JIR cache for these modules
+    # Defensive cleanup of any pre-fix JIR cache for these modules.  Post-fix,
+    # .na.jac modules never write a JIR cache, so this is normally a no-op; it
+    # only matters on a developer machine that ran an older build which did
+    # write one (a stale cache would otherwise re-trigger the very bug).
     for f in fixtures {
         cp = get_module_cache_path(str(os.path.join(FIXTURES, f)));
         if os.path.exists(str(cp)) {
@@ -3563,7 +3567,7 @@ test "transitive .na.jac import: cross-module struct type survives incremental b
     fresh_errors = [
         line
         for line in fresh_out.split("\n")
-        if "error[" in line
+        if re.search(r"\berror\[E\d+\]", line, re.IGNORECASE)
     ];
     assert r1.returncode == 0 , f"Fresh nacompile failed: {fresh_out}";
     assert not fresh_errors , f"Fresh nacompile errors: {fresh_errors}";
@@ -3580,7 +3584,7 @@ test "transitive .na.jac import: cross-module struct type survives incremental b
     incr_errors = [
         line
         for line in incr_out.split("\n")
-        if "error[" in line
+        if re.search(r"\berror\[E\d+\]", line, re.IGNORECASE)
     ];
     assert r2.returncode == 0 , (
         f"Incremental nacompile failed (issue #6793 regression): {incr_out}"
