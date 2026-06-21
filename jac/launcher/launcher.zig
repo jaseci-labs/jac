@@ -81,16 +81,20 @@ pub fn main(init: std.process.Init) !void {
 
 fn boot(rt: []const u8, init: std.process.Init) u8 {
     var b1: [std.Io.Dir.max_path_bytes]u8 = undefined;
-    var b2: [std.Io.Dir.max_path_bytes]u8 = undefined;
     var b3: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    var ppbuf: [2 * std.Io.Dir.max_path_bytes]u8 = undefined;
     const home = std.fmt.bufPrintZ(&b1, "{s}/python", .{rt}) catch die("path too long");
-    const sitepath = std.fmt.bufPrintZ(&b2, "{s}/site", .{rt}) catch die("path too long");
     const libpath = std.fmt.bufPrintZ(&b3, "{s}/python/lib/{s}", .{ rt, lib_basename }) catch die("path too long");
+    // PYTHONPATH = site + lib-dynload. lib-dynload is added explicitly because in
+    // worker mode (Py_BytesMain) on Linux the C-extension dir is otherwise not on
+    // sys.path even with PYTHONHOME set, so xdist/multiprocessing workers fail to
+    // import _decimal/_contextvars etc. Harmless (redundant) for the main path.
+    const pythonpath = std.fmt.bufPrintZ(&ppbuf, "{s}/site:{s}/python/lib/python3.12/lib-dynload", .{ rt, rt }) catch die("path too long");
 
     // We own a private, hermetic interpreter: point it at our tree, force UTF-8,
     // never write bytecode (shipped stdlib is .pyc), ignore user site.
     _ = setenv("PYTHONHOME", home, 1);
-    _ = setenv("PYTHONPATH", sitepath, 1);
+    _ = setenv("PYTHONPATH", pythonpath, 1);
     _ = setenv("PYTHONUTF8", "1", 1);
     // Force UTF-8 stdio directly. PYTHONUTF8 alone does not pin the stdout/stderr
     // encoding under this Py_Initialize path, so a C/POSIX locale (no LANG, as in
