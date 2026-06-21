@@ -3514,6 +3514,82 @@ test "transitive import: same result on repeated calls (no state corruption)" {
     assert run_fn() == 99 , f"Third call: expected 99, got {run_fn()}";
 }
 
+test "transitive .na.jac import: cross-module struct type survives incremental build (issue #6793)" {
+    # Regression test for #6793: a struct type used in a function annotation
+    # in a transitively-imported .na.jac module must resolve correctly even
+    # on an incremental build (JIR cache present).  Before the fix, JIR did
+    # not serialize Expr.type, so a second-process compile reading the JIR
+    # cache left the struct type as <Unknown>, causing E2018/E5090.
+    #
+    # The bug only manifests across process boundaries: in a single process
+    # the in-memory hub retains types from the first compile, masking the
+    # JIR cache's degraded link state.  So we use subprocess to run two
+    # separate nacompile invocations — the first writes JIR cache, the
+    # second reads it.
+    import from jaclang.jac0core.jir { get_module_cache_path }
+
+    # Fixture chain: entry -> core -> handler -> panel -> selector (struct type)
+    #                      -> state (struct type, imports selector)
+    fixtures = [
+        "fix_6793_entry.na.jac",
+        "fix_6793_core.na.jac",
+        "fix_6793_handler.na.jac",
+        "fix_6793_panel.na.jac",
+        "fix_6793_selector.na.jac",
+        "fix_6793_state.na.jac"
+    ];
+
+    # Clear any existing JIR cache for these modules
+    for f in fixtures {
+        cp = get_module_cache_path(str(os.path.join(FIXTURES, f)));
+        if os.path.exists(str(cp)) {
+            os.remove(str(cp));
+        }
+    }
+
+    entry_path = str(os.path.join(FIXTURES, "fix_6793_entry.na.jac"));
+    out_bin = os.path.join(tempfile.mkdtemp(), "fix_6793_test");
+
+    # First nacompile (fresh — no cache, writes JIR cache)
+    # 600s timeout: a cold-cache run also compiles the jaclang compiler
+    # modules (a few minutes on a loaded machine); the fixture itself is fast.
+    r1 = subprocess.run(
+        [sys.executable, "-m", "jaclang", "nacompile", entry_path, "-o", out_bin],
+        capture_output=True,
+        text=True,
+        timeout=600
+    );
+    fresh_out = r1.stdout + r1.stderr;
+    fresh_errors = [
+        line
+        for line in fresh_out.split("\n")
+        if "error[" in line
+    ];
+    assert r1.returncode == 0 , f"Fresh nacompile failed: {fresh_out}";
+    assert not fresh_errors , f"Fresh nacompile errors: {fresh_errors}";
+
+    # Second nacompile (incremental — JIR cache now present, new process)
+    # This is where #6793 manifested: E2018/E5090 on the cached build.
+    r2 = subprocess.run(
+        [sys.executable, "-m", "jaclang", "nacompile", entry_path, "-o", out_bin],
+        capture_output=True,
+        text=True,
+        timeout=600
+    );
+    incr_out = r2.stdout + r2.stderr;
+    incr_errors = [
+        line
+        for line in incr_out.split("\n")
+        if "error[" in line
+    ];
+    assert r2.returncode == 0 , (
+        f"Incremental nacompile failed (issue #6793 regression): {incr_out}"
+    );
+    assert not incr_errors , (
+        f"Incremental nacompile errors (issue #6793 regression): {incr_errors}"
+    );
+}
+
 test "del list item: length decrements after delete" {
     # Container starts with [10, 20, 30]; after del items[2] length must be 2.
     (eng, _) = compile_native("fix_del_list.na.jac");
