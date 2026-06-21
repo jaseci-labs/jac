@@ -75,7 +75,15 @@ echo "==> bundling pytest + pytest-xdist (jac test runner)"
 
 echo "==> staging runtime tree (shared libpython + stdlib + site)"
 mkdir -p "$stage/python/lib"
-cp "$PBS/install/lib/$LIBPY" "$stage/python/lib/"
+# Stage the shared libpython under its bare name. Linux pbs may ship it only as
+# libpython3.12.so.1.0 (with a .so symlink); the launcher dlopens the bare name,
+# so dereference (-L) the real library into "$LIBPY".
+srclib="$PBS/install/lib/$LIBPY"
+if [ ! -e "$srclib" ]; then
+  srclib="$(ls "$PBS/install/lib/${LIBPY}".* 2>/dev/null | head -1 || true)"
+fi
+[ -n "${srclib:-}" ] && [ -e "$srclib" ] || { echo "error: shared libpython not found under $PBS/install/lib" >&2; exit 1; }
+cp -L "$srclib" "$stage/python/lib/$LIBPY"
 cp -R "$PBS/install/lib/python3.12" "$stage/python/lib/python3.12"
 # Prune heavy/build-only stdlib bits. KEEP lib-dynload (extension .so for the
 # shared interpreter) and KEEP encodings/etc.

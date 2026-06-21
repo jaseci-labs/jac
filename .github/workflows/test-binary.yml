@@ -1,0 +1,63 @@
+name: jac single-binary self-test
+
+# Builds the self-contained `jac` binary with one `zig build` (fetches pbs,
+# assembles the payload, packs it onto the launcher stub) and exercises it with
+# no system Python, then runs the test suite through the binary's own runner
+# (`jac test` -> bundled pytest + xdist). This is the path toward using the
+# binary as the CI gate (replacing `pip install ./jac[dev]` + pytest).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["feat/**"]
+    paths:
+      - "jac/launcher/**"
+      - "jac/build.zig"
+      - "jac/build.zig.zon"
+      - "jac/jaclang/**"
+      - ".github/workflows/test-binary.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host tools (zstd for payload de/compression)
+        run: sudo apt-get update && sudo apt-get install -y zstd
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Build the jac binary (one command)
+        working-directory: jac
+        run: zig build --summary all
+
+      - name: Hermeticity + smoke (no system Python)
+        working-directory: jac
+        run: |
+          set -euxo pipefail
+          BIN="$PWD/zig-out/bin/jac"
+          # glibc-only / no libpython at link time
+          ldd "$BIN" || true
+          ! ldd "$BIN" | grep -qi python
+          WORK="$(mktemp -d)"
+          printf 'obj P { has x:int=0; def sq->int { return self.x*self.x; } }\nwith entry { print(P(x=7).sq()); }\n' > "$WORK/obj.jac"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" --version
+          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/obj.jac")"
+          echo "$out" | grep -q 49
+
+      - name: jac test through the binary (subset; informational)
+        working-directory: jac
+        # Not yet a hard gate: a few suite tests assert on dev-tool output and
+        # need migration (tracked in #6852). This proves `jac test` (pytest +
+        # xdist worker mode) runs from the binary on Linux.
+        continue-on-error: true
+        run: |
+          set -uxo pipefail
+          ./zig-out/bin/jac test tests/cli tests/utils
