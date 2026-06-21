@@ -146,6 +146,15 @@ impl SymTabBuildPass.exit_assignment(
     if nd.find_parent_of_type(uni.ImplDef) is not None {
         return;
     }
+    # Global-var assignments are owned by exit_global_vars, which inserts each
+    # target with the `glob :pub|:protect|:priv` access modifier carried on the
+    # GlobalVars node. Binding the target here first would create the symbol
+    # with the default PUBLIC access, and the later access-carrying insert only
+    # appends a defn (it does not overwrite an existing symbol's access), so the
+    # modifier would be silently dropped. Skip and let exit_global_vars bind.
+    if isinstance(nd.parent, uni.GlobalVars) {
+        return;
+    }
     bind_assignment_targets(nd);
 }
 
