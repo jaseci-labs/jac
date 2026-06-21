@@ -54,8 +54,12 @@ jobs:
 
       - name: jac test through the binary (full suite -- the gate)
         working-directory: jac
-        # The binary runs the whole jaclang suite via its own runner (pytest +
-        # xdist worker mode), replacing `pip install ./jac[dev]` + pytest. Some
-        # tests assert on dev-tool output and may still need migration; failures
-        # here are the triage list (tracked in #6852).
+        # The binary runs the whole jaclang suite via its own runner, replacing
+        # `pip install ./jac[dev]` + pytest. Serial for now (JAC_TEST_JOBS=0):
+        # xdist worker mode re-spawns the binary as a python interpreter and on
+        # Linux that init does not put lib-dynload on sys.path, so workers crash
+        # importing _decimal/_contextvars (tracked in #6852). The main
+        # interpreter resolves them fine, so serial is green.
+        env:
+          JAC_TEST_JOBS: "0"
         run: ./zig-out/bin/jac test tests
