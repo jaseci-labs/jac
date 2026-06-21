@@ -236,6 +236,28 @@ test "client_errors verbose loads from jac.toml" {
     }
 }
 
+test "client framework defaults to react" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        temp_project = make_temp_project(Path(tmpdir));
+        cfg = JacConfig.load(temp_project / "jac.toml");
+        assert cfg.client.framework == "react";
+    }
+}
+
+test "client framework loads from jac.toml" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        temp_project = Path(tmpdir) / "fw_project";
+        temp_project.mkdir();
+        (temp_project / "jac.toml").write_text(
+            "[project]\nname = \"fw\"\n\n[client]\nframework = \"preact\"\n"
+        );
+        cfg = JacConfig.load(temp_project / "jac.toml");
+        assert cfg.client.framework == "preact";
+    }
+}
+
 test "load scripts" {
     config_mod._config = None;
     with TemporaryDirectory() as tmpdir {

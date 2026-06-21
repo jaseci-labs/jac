@@ -464,12 +464,12 @@ def run_docker_push(image_tag: str) {
 }
 
 
-"""True if jac-client is importable. `jac build` lives in jac-client and
-silently no-ops if it's missing - we'd rather error early."""
+"""True if the built-in client framework is importable. `jac build` ships with
+jaclang core now; we still verify it loads so we can error early."""
 def _jac_client_installed -> bool {
     try {
         import importlib;
-        importlib.import_module("jac_client");
+        importlib.import_module("jaclang.runtimelib.client");
         return True;
     } except ImportError {
         return False;
@@ -492,8 +492,8 @@ def build_client_bundle(project_dir: Path, client_entry: str) -> None {
     }
     if not _jac_client_installed() {
         raise RuntimeError(
-            f"jac-client not installed but client.entry='{client_entry}' is set.\n"
-            "  Fix:    pip install jac-client\n"
+            f"The jaclang client framework is unavailable but client.entry='{client_entry}' is set.\n"
+            "  Fix:    reinstall jaclang\n"
             "  Or:     remove [plugins.scale.microservices.client] from jac.toml"
         );
     }

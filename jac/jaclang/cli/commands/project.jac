@@ -57,10 +57,7 @@ glob registry = get_registry(),
             "jac create myapp --kind native-binary",
             "Scaffold a natively-compiled binary"
         ),
-        (
-            "jac create myapp --kind fullstack",
-            "Scaffold a fullstack app (needs jac-client)"
-        ),
+        ("jac create myapp --kind fullstack", "Scaffold a fullstack app"),
         ("jac create --force", "Reinitialize existing project"),
         ("jac create --use ./my.jacpack", "Create from local .jacpack file"),
         ("jac create --use https://example.com/t.jacpack", "Create from URL"),

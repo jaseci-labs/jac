@@ -33,9 +33,9 @@ Jac is also batteries-included -- it bundles LLVM, ships its own native linker, 
 | [Full-stack package](#on-the-roadmap) 🚧 | ● | ● | | | attach | | -- |
 | [Mobile app (React Native)](#on-the-roadmap) 🚧 | ◐ | SDK | | | | RN | Android SDK / Xcode |
 
-**Legend** -- ● uses this block · ◐ talks to a *remote* server (doesn't bundle one) · ×N replicated per service · 🚧 not yet wired end-to-end ([see roadmap](#on-the-roadmap)). Columns 2–7 are *composition* (what it's made of): **sv / cl / na** = which runtimes compile (`na` to a host binary, or to WebAssembly for [in-browser native](#in-browser-native-wasm)) · **served** = hosted by `jac start` (exposing any `sv` walkers/functions as a REST API) · **packaged** = produces a distributable artifact · **shell** = wrapped in a native desktop/mobile shell. The **requires** column is a different axis -- *setup cost*: toolchains you install yourself, excluding Jac plugins (jac-scale, jac-client, jac-desktop), which install through the Jac ecosystem.
+**Legend** -- ● uses this block · ◐ talks to a *remote* server (doesn't bundle one) · ×N replicated per service · 🚧 not yet wired end-to-end ([see roadmap](#on-the-roadmap)). Columns 2–7 are *composition* (what it's made of): **sv / cl / na** = which runtimes compile (`na` to a host binary, or to WebAssembly for [in-browser native](#in-browser-native-wasm)) · **served** = hosted by `jac start` (exposing any `sv` walkers/functions as a REST API) · **packaged** = produces a distributable artifact · **shell** = wrapped in a native desktop/mobile shell. The **requires** column is a different axis -- *setup cost*: toolchains you install yourself, excluding the `jac-scale` plugin (which installs through the Jac ecosystem) and the full-stack client/desktop framework (which ships with `jaclang` core).
 
-<small>¹ Only to *upload* to PyPI; `jac bundle` itself needs nothing. &nbsp; ² Pulled in by the `jac-desktop` plugin via pip (no Rust); uses the OS webview. &nbsp; ³ Only to *publish* (`npm publish`); `jac bundle` builds the `.tgz` with no Node/npm.</small>
+<small>¹ Only to *upload* to PyPI; `jac bundle` itself needs nothing. &nbsp; ² The desktop target ships with `jaclang` core (no Rust); it embeds the OS webview. On Linux you need the WebKitGTK system libraries (a bundled helper script installs them). &nbsp; ³ Only to *publish* (`npm publish`); `jac bundle` builds the `.tgz` with no Node/npm.</small>
 
 Read across a row and the composition is the point: a full-stack app is just a *service* plus a *client*; in-browser native swaps the server for an `na` module compiled to wasm; a desktop app is a full-stack app plus a *shell*; microservices are a *service* replicated. The 🚧 rows aren't missing "kinds" -- they're capability combinations that aren't wired yet.
 
@@ -460,9 +460,9 @@ Wrap the *same* full-stack app in a native desktop window. Jac compiles your `cl
 UI into **one `jac nacompile`d binary that embeds the OS webview** (WebKitGTK /
 WKWebView / WebView2) - no Rust toolchain, no PyInstaller, no separate process.
 
-```bash
-pip install jac-desktop      # adds the "desktop" client target (no setup step)
+The `desktop` target ships with `jaclang` core -- no separate install or setup step.
 
+```bash
 jac build --client desktop            # -> .jac/client/desktop/<app>  (single binary)
 jac start --client desktop            # build + launch the native window
 ```

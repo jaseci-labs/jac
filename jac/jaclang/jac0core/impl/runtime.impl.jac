@@ -1614,15 +1614,12 @@ impl JacClientBundle.build_client_bundle(
     return builder.build(module, force=force);
 }
 
-"""Format a build error for display.
-
-    Plugins can override this hook to provide rich error formatting.
-    Default implementation returns the raw error output.
-    """
+"""Format a build error for display (built-in client diagnostics)."""
 impl JacClientBundle.format_build_error(
     error_output: str, project_dir: Path, config: object = None
 ) -> str {
-    return error_output;
+    import from jaclang.runtimelib.client.serving { JacClient }
+    return JacClient.format_build_error(error_output, project_dir, config);
 }
 
 """Get the console instance to use for CLI output.
@@ -1961,63 +1958,21 @@ impl JacAPIServer.create_server(
     );
 }
 
-"""Render HTML page for client function."""
+"""Render HTML page for client function (built-in client framework)."""
 impl JacAPIServer.render_page(
     introspector: ModuleIntrospector,
     function_name: str,
     args: dict[(str, Any)],
     username: str
 ) -> dict[(str, Any)] {
-    import from jaclang.runtimelib.serializer { Serializer }
-    introspector.load();
-    available_exports = (
-        `set(introspector._client_manifest.get('exports', []))
-        or `set(introspector.get_client_functions().keys())
-    );
-    if (function_name not in available_exports) {
-        raise ValueError(f"Client function '{function_name}' not found");
-    }
-    bundle_hash = introspector.ensure_bundle();
-    arg_order = `list(
-        introspector._client_manifest.get('params', {}).get(function_name, [])
-    );
-    globals_payload = {
-        name: Serializer.serialize(value, api_mode=True)
-        for (name, value) in introspector._collect_client_globals().items()
-    };
-    initial_state = {
-        'module': introspector._module.__name__
-            if introspector._module
-            else introspector.module_name,
-        'function': function_name,
-        'args': {
-            key: Serializer.serialize(value, api_mode=True)
-            for (key, value) in args.items()
-        },
-        'globals': globals_payload,
-        'argOrder': arg_order,
-        'endpointEffects': introspector._client_manifest.get('endpoint_effects', {})
-    };
-    safe_initial_json = json.dumps(initial_state).replace('</', '<\\/');
-    page = f'<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><title>{html.escape(
-        function_name
-    )}</title></head><body><div id="__jac_root"></div><script id="__jac_init__" type="application/json">{safe_initial_json}</script><script type="module" src="/static/client.js?hash={bundle_hash}"></script></body></html>';
-    return {
-        'html': page,
-        'bundle_hash': bundle_hash,
-        'bundle_code': introspector._bundle.code
-    };
+    import from jaclang.runtimelib.client.serving { JacClient }
+    return JacClient.render_page(introspector, function_name, args, username);
 }
 
-"""Get the client JavaScript bundle code.
-
-    Plugins can override this hook to provide custom bundle serving logic
-    (e.g., serving Vite-built PWA bundles).
-"""
+"""Get the client JavaScript bundle code (built-in client framework)."""
 impl JacAPIServer.get_client_js(introspector: ModuleIntrospector) -> str {
-    introspector.load();
-    introspector.ensure_bundle();
-    return introspector._bundle.code;
+    import from jaclang.runtimelib.client.serving { JacClient }
+    return JacClient.get_client_js(introspector);
 }
 
 """Send JSON response."""
@@ -2052,11 +2007,12 @@ impl JacResponseBuilder.send_css(
     ResponseBuilder.send_css(handler, css_code);
 }
 
-"""Send static file response (images, fonts, etc.)."""
+"""Send static file response (images, fonts, etc.) — built-in client framework."""
 impl JacResponseBuilder.send_static_file(
     handler: BaseHTTPRequestHandler, file_path: Path, content_type: (str | None) = None
 ) -> None {
-    raise NotImplementedError('send_static_file method is not implemented');
+    import from jaclang.runtimelib.client.serving { JacClient }
+    JacClient.send_static_file(handler, file_path, content_type);
 }
 
 """Get byLLM library."""

@@ -54,7 +54,13 @@ impl NaIRGenPass._fill_default_args(
     nd: uni.FuncCall, func: ir.Function, args: list, skip_self: bool = False
 ) -> None {
     callee_sig = self._callee_sig_of(nd);
-    if callee_sig is None or len(args) >= len(func.args) {
+    if len(args) >= len(func.args) {
+        return;
+    }
+    if callee_sig is None {
+        while len(args) < len(func.args) {
+            args.append(ir.Constant(func.args[len(args)].type, 0));
+        }
         return;
     }
     sig_params = callee_sig.get_parameters();

@@ -222,7 +222,7 @@ obj KubernetesTarget(DeploymentTarget) {
         }
         commands.append(f"apt-get install -y {' '.join(base_packages)}");
 
-        # Install Bun (required for jac-client frontend builds), pinned to the
+        # Install Bun (required for client framework frontend builds), pinned to the
         # same version jac auto-installs locally (BUN_VERSION is the single
         # source of truth in jaclang.runtimelib.client.bun_installer).
         commands.append(
@@ -262,7 +262,9 @@ obj KubernetesTarget(DeploymentTarget) {
             # keeps it from re-resolving the already-installed dependency tree.
             commands.append('pip install --force-reinstall --no-deps -e ./jac');
             commands.append('jac install -e ./jac-scale --extras all');
-            commands.append('jac install -e ./jac-client');
+            # Only when the checkout still ships jac-client (older forks pre-#6840):
+            # skip-when-absent. The client framework now lives in jaclang core.
+            commands.append('[ ! -d ./jac-client ] || jac install -e ./jac-client');
             commands.append('jac install -e ./jac-byllm');
             commands.append('jac install -e ./jac-mcp');
             commands.append('cd ..');
@@ -270,7 +272,6 @@ obj KubernetesTarget(DeploymentTarget) {
             packages = config.plugin_versions or {};
             jaclang_v = packages.get('jaclang', 'latest');
             scale_v = packages.get('jac_scale', 'latest');
-            client_v = packages.get('jac_client', 'latest');
             byllm_v = packages.get('jac_byllm', 'latest');
             mcp_v = packages.get('jac_mcp', 'latest');
             if jaclang_v == 'latest' {
@@ -282,11 +283,6 @@ obj KubernetesTarget(DeploymentTarget) {
                 commands.append('pip install "jac-scale[all]"');
             } else {
                 commands.append(f'pip install "jac-scale[all]=={scale_v}"');
-            }
-            if client_v == 'latest' {
-                commands.append('pip install jac-client');
-            } else {
-                commands.append(f'pip install jac-client=={client_v}');
             }
             if byllm_v and byllm_v != 'none' {
                 if byllm_v == 'latest' {

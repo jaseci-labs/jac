@@ -1,25 +1,27 @@
 # jac-desktop Reference
 
-**jac-desktop** adds a Jac-native desktop build target to full-stack Jac apps. A
+The **desktop target** (historically the standalone `jac-desktop` plugin, now built
+into `jaclang` core) adds a Jac-native desktop build to full-stack Jac apps. A
 desktop app is **one `jac nacompile`d binary plus the OS's own web engine** -
 no Rust toolchain, no PyInstaller, no separate process.
 
-It builds the same Vite frontend that **jac-client** produces (the `cl`
+It builds the same Vite frontend that the **jac-client** framework produces (the `cl`
 codespace), then compiles a native host (`na`) that embeds CPython to serve that
 bundle on a loopback port and renders it in the OS-native webview (WebKitGTK on
 Linux, WKWebView on macOS, WebView2 on Windows). The embedded interpreter is also
 where the `sv` backend runs in-process.
 
-Install jac-client first; jac-desktop registers the `desktop` target through
-jac-client's plugin hook system so `jac build --client desktop` and
-`jac start --client desktop` work once both packages are installed.
+The `desktop` target registers automatically as part of `jaclang` core, so
+`jac build --client desktop` and `jac start --client desktop` work out of the box.
 
 ---
 
 ## Installation
 
+The desktop target ships with `jaclang` core -- there is nothing extra to install:
+
 ```bash
-pip install jac-client jac-desktop
+pip install jaclang        # or: pip install jaseci  (the full stack)
 ```
 
 Building a desktop app links a small native webview wrapper (`libwebview.so`),
@@ -30,8 +32,9 @@ a C toolchain. On Debian/Ubuntu:
 sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
 ```
 
-(The `jac-desktop` package ships a helper,
-`jac_desktop/native/webview/install_webkit_deps.sh`, that installs these.)
+(`jaclang` ships a helper,
+`jaclang/runtimelib/client/targets/desktop/native/webview/install_webkit_deps.sh`,
+that installs these.)
 
 ---
 
@@ -86,7 +89,7 @@ resizable = true
    `$ORIGIN` runpath.
 
 The native webview binding, build tooling, and a dependency-free test suite live
-inside the package under `jac_desktop/native/webview/`.
+inside `jaclang` core under `jaclang/runtimelib/client/targets/desktop/native/webview/`.
 
 ---
 

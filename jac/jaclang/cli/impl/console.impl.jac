@@ -78,6 +78,91 @@ def _resolve_ansi_style(style: str | None) -> str {
 }
 
 # ===============================================================================
+# Pure-Jac Rich-parity primitives (box drawing + animated spinner)
+# ===============================================================================
+# Spinner animation frames: braille dots, with an ASCII fallback for terminals
+# that can't render the fancy glyphs.
+glob _SPINNER_FRAMES: list[str] = [
+         '⠋',
+         '⠙',
+         '⠹',
+         '⠸',
+         '⠼',
+         '⠴',
+         '⠦',
+         '⠧',
+         '⠇',
+         '⠏'
+     ],
+     _SPINNER_FRAMES_ASCII: list[str] = ['|', '/', '-', "\\"];
+
+# Box-drawing glyph sets for panels/tables. Unicode by default; ASCII fallback
+# when the terminal can't render the fancy glyphs (NO_EMOJI / dumb / legacy win).
+glob _BOX_UNICODE: dict[str, str] = {
+         'tl': '┌',
+         'tm': '┬',
+         'tr': '┐',
+         'ml': '├',
+         'mm': '┼',
+         'mr': '┤',
+         'bl': '└',
+         'bm': '┴',
+         'br': '┘',
+         'h': '─',
+         'v': '│',
+         'ptl': '╭',
+         'ptr': '╮',
+         'pbl': '╰',
+         'pbr': '╯'
+     },
+     _BOX_ASCII: dict[str, str] = {
+         'tl': '+',
+         'tm': '+',
+         'tr': '+',
+         'ml': '+',
+         'mm': '+',
+         'mr': '+',
+         'bl': '+',
+         'bm': '+',
+         'br': '+',
+         'h': '-',
+         'v': '|',
+         'ptl': '+',
+         'ptr': '+',
+         'pbl': '+',
+         'pbr': '+'
+     };
+
+"""Build one horizontal box border row spanning the given column widths."""
+def _table_border(widths: list[int], left: str, mid: str, right: str, h: str) -> str {
+    segs = [h * (w + 2) for w in widths];
+    return left + mid.join(segs) + right;
+}
+
+"""Create an animated stdout spinner, or None when it can't animate.
+
+Animation requires color + an interactive TTY; otherwise the caller falls back to
+a static status line (so redirected/captured streams are never animated).
+"""
+def _make_spinner(use_color: bool, use_emoji: bool, text: str) -> any {
+    if not use_color {
+        return None;
+    }
+    try {
+        if not sys.stdout.isatty() {
+            return None;
+        }
+    } except Exception {
+        return None;
+    }
+    frames = _SPINNER_FRAMES if use_emoji else _SPINNER_FRAMES_ASCII;
+    prefix = str(_ANSI_ROLES.get('highlight') or "");
+    return _Spinner(
+        text=text, stream=sys.stdout, frames=frames, style_prefix=prefix, reset=RESET
+    );
+}
+
+# ===============================================================================
 # ConsoleRenderer (ANSI backend) Implementation
 # ===============================================================================
 """Sync the renderer's capability flags with the facade's resolved decision."""
@@ -230,24 +315,54 @@ impl ConsoleRenderer.urls(items: list, symbol: str = '') -> None {
     }
 }
 
-"""Print a titled list of next steps. Step text is caller data (verbatim)."""
+"""Print next steps inside a bordered panel (pure-Jac equivalent of Rich's Panel).
+
+The index prefix and box borders are chrome (styled); each step's text is caller
+data, emitted verbatim. The title is embedded in the top border.
+"""
 impl ConsoleRenderer.next_steps(steps: list[str], title: str = 'Next Steps') -> None {
-    self.emit([Span("", None)]);
-    self.emit([Span(f"{title}:", 'bright_white')]);
+    box = _BOX_UNICODE if self.use_emoji else _BOX_ASCII;
+    rows: list[tuple[str, str]] = [];
+    content_w = 0;
     for (i, step) in enumerate(steps, 1) {
-        self.emit([Span(f"  {i}.", 'highlight'), Span(f" {step}", None)]);
+        prefix = f"  {i}  ";
+        content_w = max(content_w, len(prefix) + len(str(step)));
+        rows.append((prefix, str(step)));
     }
+    # Inner width must also fit the title in the top border ("h sp title sp h").
+    inner = max(content_w + 2, len(str(title)) + 4);
+    self.emit([Span("", None)]);
+    fill = inner - len(str(title)) - 3;
+    top = box['ptl'] + box['h'] + " " + str(title) + " " + box['h'] * fill + box['ptr'];
+    self.emit([Span(top, 'highlight')]);
+    for (prefix, step) in rows {
+        gap = (inner - 2) - (len(prefix) + len(step));
+        self.emit(
+            [
+                Span(box['v'], 'highlight'),
+                Span(" ", None),
+                Span(prefix, 'highlight'),
+                Span(step, None),
+                Span(" " * gap, None),
+                Span(" ", None),
+                Span(box['v'], 'highlight')
+            ]
+        );
+    }
+    self.emit([Span(box['pbl'] + box['h'] * inner + box['pbr'], 'highlight')]);
     self.emit([Span("", None)]);
 }
 
-"""Print a formatted table with colored headers. Cells are caller data."""
+"""Print a box-drawn table (pure-Jac equivalent of Rich's Table).
+
+Borders are dim chrome and headers are styled; every cell value is caller data,
+emitted verbatim (never markup-parsed). An optional title is printed above.
+"""
 impl ConsoleRenderer.table(
     headers: list[str], rows: list[list[str]], title: str | None = None
 ) -> None {
-    if title {
-        self.emit([Span(f"\n{title}:", 'bright_white')]);
-    }
-    col_widths: list[int] = [len(h) for h in headers];
+    box = _BOX_UNICODE if self.use_emoji else _BOX_ASCII;
+    col_widths: list[int] = [len(str(h)) for h in headers];
     for row in rows {
         for (i, cell) in enumerate(row) {
             if i < len(col_widths) {
@@ -255,50 +370,88 @@ impl ConsoleRenderer.table(
             }
         }
     }
-    # Header row: styled chrome, but separators around verbatim header text.
-    header_spans: list[Span] = [];
-    for (idx, (h, w)) in enumerate(zip(headers, col_widths)) {
-        if idx > 0 {
-            header_spans.append(Span(" | ", 'muted'));
-        }
-        header_spans.append(Span(h.ljust(w), 'bright_white'));
+    if title {
+        self.emit([Span(str(title), 'highlight')]);
+    }
+    self.emit(
+        [
+            Span(
+                _table_border(col_widths, box['tl'], box['tm'], box['tr'], box['h']),
+                'muted'
+            )
+        ]
+    );
+    # Header row: box separators are chrome, header labels are styled.
+    header_spans: list[Span] = [Span(box['v'], 'muted')];
+    for (h, w) in zip(headers, col_widths) {
+        header_spans.append(Span(" ", None));
+        header_spans.append(Span(str(h).ljust(w), 'highlight'));
+        header_spans.append(Span(" ", None));
+        header_spans.append(Span(box['v'], 'muted'));
     }
     self.emit(header_spans);
-    sep_len = sum(col_widths) + (len(col_widths) - 1) * 3;
-    self.emit([Span('-' * sep_len, 'muted')]);
-    # Data rows: cells emitted verbatim, only the separators styled.
+    self.emit(
+        [
+            Span(
+                _table_border(col_widths, box['ml'], box['mm'], box['mr'], box['h']),
+                'muted'
+            )
+        ]
+    );
+    # Data rows: cells emitted verbatim, only the box separators are styled.
     for row in rows {
-        row_spans: list[Span] = [];
-        for (i, cell) in enumerate(row) {
-            if i > 0 {
-                row_spans.append(Span(" | ", 'muted'));
-            }
-            width = col_widths[i] if i < len(col_widths) else 0;
-            row_spans.append(Span(str(cell).ljust(width), None));
+        row_spans: list[Span] = [Span(box['v'], 'muted')];
+        for (i, w) in enumerate(col_widths) {
+            cell = str(row[i]) if i < len(row) else "";
+            row_spans.append(Span(" ", None));
+            row_spans.append(Span(cell.ljust(w), None));
+            row_spans.append(Span(" ", None));
+            row_spans.append(Span(box['v'], 'muted'));
         }
         self.emit(row_spans);
     }
-    self.emit([Span("", None)]);
+    self.emit(
+        [
+            Span(
+                _table_border(col_widths, box['bl'], box['bm'], box['br'], box['h']),
+                'muted'
+            )
+        ]
+    );
 }
 
-"""Context manager for status during long operations."""
+"""Animated status line during long operations (Rich `console.status` parity).
+
+Spins on a color-capable TTY; otherwise prints the message once. The `spinner=`
+kwarg Rich callers pass is accepted and ignored (dots is the only style).
+"""
 @contextmanager
 impl ConsoleRenderer.status_ctx(args: list, kwargs: dict) -> object {
+    text = "";
     if args {
-        msg = args[0] if isinstance(args[0], str) else str(args[0]);
-        self.emit([Span(msg, 'muted')]);
+        text = args[0] if isinstance(args[0], str) else str(args[0]);
     }
-    yield None;
+    sp = _make_spinner(self.use_color, self.use_emoji, text);
+    if sp is None {
+        if text {
+            self.emit([Span(text, 'muted')]);
+        }
+        yield _NullStatus();
+    } else {
+        sp.start();
+        try {
+            yield sp;
+        } finally {
+            sp.stop();
+        }
+    }
 }
 
-"""Context manager for spinner during long operations."""
+"""Animated spinner during long operations (delegates to the status spinner)."""
 @contextmanager
 impl ConsoleRenderer.spinner_ctx(text: str) -> object {
-    self.emit([Span(f"{text}...", 'muted')]);
-    try {
-        yield None;
-    } finally {
-        self.emit([Span(" done", 'success')]);
+    with self.status_ctx([text], {}) as st {
+        yield st;
     }
 }
 
@@ -320,9 +473,8 @@ impl JacConsole.postinit -> None {
     self._renderer.configure(self.use_emoji, self.use_color);
 }
 
-"""Build the rendering backend. The base console renders with ANSI; plugins
-override this to return a different `ConsoleRenderer` (e.g. jac-super's Rich
-backend).
+"""Build the rendering backend. The base console renders Rich-style output in
+pure Jac; subclasses may override this to return a different `ConsoleRenderer`.
 """
 impl JacConsole._make_renderer -> ConsoleRenderer {
     return ConsoleRenderer();

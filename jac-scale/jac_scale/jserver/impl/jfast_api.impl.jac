@@ -55,9 +55,9 @@ def _convert_transport_response_to_json_response(
     return JSONResponse(status_code=status, content=response_body);
 }
 
-"""Custom logging handler that routes logs to jac-super console."""
+"""Custom logging handler that routes logs to the jac console."""
 class ConsoleLogHandler(logging.Handler) {
-    """A logging handler that forwards log messages to jac-super's console."""
+    """A logging handler that forwards log messages to the jac console."""
     def emit(self: ConsoleLogHandler, record: logging.LogRecord) {
         import from jaclang.cli.console { console }
         message = self.format(record);
@@ -103,7 +103,7 @@ impl JFastApiServer.run_server(
     if server_cfg.get('suppress_health_check_logs', False) {
         console_handler.addFilter(HealthCheckFilter());
     }
-    # Suppress startup logs but route access logs through jac-super console
+    # Suppress startup logs but route access logs through the jac console
     log_config = {
         "version": 1,
         "disable_existing_loggers": False,

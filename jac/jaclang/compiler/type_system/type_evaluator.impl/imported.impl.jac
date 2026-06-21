@@ -127,14 +127,13 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
             );
             return node_.name.type;
         } else {
-            mod_type = self.get_type_of_module(import_node.from_loc);
-            if not isinstance(mod_type, types.ModuleType) {
+            if not isinstance(from_mod_type, types.ModuleType) {
                 # Module resolution failed; W1100 was emitted by
                 # get_type_of_module on the from-clause node.
                 node_.name.type = types.UnknownType();
                 return node_.name.type;
             }
-            if mod_type.is_external {
+            if from_mod_type.is_external {
                 # Foreign-source module (JS/TS/asset/etc.). The Jac type
                 # system cannot see inside it; treat the imported name as
                 # gradual Any to avoid false-positive "name not found".
@@ -146,14 +145,14 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                 return node_.name.type;
             }
             if sym := type_utils.lookup_symtab(
-                mod_type.symbol_table, node_.name.value, self.builtins_module
+                from_mod_type.symbol_table, node_.name.value, self.builtins_module
             ) {
                 return self._set_module_item_symbol_and_type(node_, sym);
             }
             # Fallback: follow star imports for re-exported symbols.
-            if isinstance(mod_type.symbol_table, uni.Module) {
+            if isinstance(from_mod_type.symbol_table, uni.Module) {
                 if sym := self._resolve_star_import_symbol(
-                    mod_type.symbol_table, node_.name.value
+                    from_mod_type.symbol_table, node_.name.value
                 ) {
                     return self._set_module_item_symbol_and_type(node_, sym);
                 }

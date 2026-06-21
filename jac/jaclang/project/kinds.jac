@@ -30,10 +30,10 @@ glob KIND_SPECS: dict[str, dict[str, str]] = {
          "microservices": {"entry": "main.sv.jac", "plugin": ""},
          "pypi-package": {"entry": "lib.jac", "plugin": ""},
          "npm-package": {"entry": "lib.jac", "plugin": ""},
-         "fullstack": {"entry": "main.jac", "plugin": "jac-client"},
-         "client": {"entry": "main.jac", "plugin": "jac-client"},
-         "desktop": {"entry": "main.jac", "plugin": "jac-desktop"},
-         "mobile": {"entry": "main.jac", "plugin": "jac-client"}
+         "fullstack": {"entry": "main.jac", "plugin": ""},
+         "client": {"entry": "main.jac", "plugin": ""},
+         "desktop": {"entry": "main.jac", "plugin": ""},
+         "mobile": {"entry": "main.jac", "plugin": ""}
      },
      # The canonical set of project kinds, derived from KIND_SPECS so the two never
      # drift. Mirrors the jac-project-kinds skill.

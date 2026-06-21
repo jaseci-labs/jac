@@ -65,7 +65,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/buildkit-cache
-          key: buildkit-${{ runner.os }}-${{ hashFiles('jac/pyproject.toml', 'jac-scale/pyproject.toml', 'jac-client/pyproject.toml', 'jac-scale/scripts/Dockerfile.microservice.exp') }}
+          key: buildkit-${{ runner.os }}-${{ hashFiles('jac/pyproject.toml', 'jac-scale/pyproject.toml', 'jac-scale/scripts/Dockerfile.microservice.exp') }}
 
       - name: Show cluster info
         run: |

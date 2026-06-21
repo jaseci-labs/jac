@@ -11,7 +11,7 @@ Examples:
     jac run utils/precompile_bytecode.jac./jac-scale
     jac run utils/precompile_bytecode.jac./jac-client
     jac run utils/precompile_bytecode.jac./jac-byllm
-    jac run utils/precompile_bytecode.jac./jac-super
+    jac run utils/precompile_bytecode.jac./jac-mcp
 """
 
 import marshal;
