@@ -55,6 +55,22 @@ def _click_and_wait_status(
     return page.locator('[data-testid="status"]').inner_text();
 }
 
+"""Poll until a recorded request list reaches ``target`` (or times out).
+
+Returns the final count. Polling absorbs CI-vs-local timing variance: a slow
+fetch is waited out, while a genuinely-missing request still fails the caller's
+equality assertion after the deadline.
+"""
+def _wait_for_count(
+    page: any, requests: list, target: int, timeout: float = 15.0
+) -> int {
+    deadline = time.time() + timeout;
+    while len(requests) < target and time.time() < deadline {
+        page.wait_for_timeout(250);
+    }
+    return len(requests);
+}
+
 """A reader is fetched once then served from cache; a write invalidates it."""
 test "auto cache dedupes reader and invalidates on write" {
     sync_playwright = _require_playwright();
@@ -80,27 +96,35 @@ test "auto cache dedupes reader and invalidates on write" {
                     ping_btn = page.locator('[data-testid="ping-btn"]');
                     ping_btn.wait_for(state="visible", timeout=30000);
 
+                    # First ping: a single network fetch.
                     ping_btn.click();
-                    page.wait_for_timeout(2000);
+                    _wait_for_count(page, ping_requests, 1);
                     assert len(ping_requests) == 1 , (
                         f"first ping should hit the server once, got {len(
                             ping_requests
                         )}"
                     );
 
+                    # Second ping: served from cache -- no new request. Give it
+                    # ample time to (not) fire before asserting it stayed put.
                     ping_btn.click();
-                    page.wait_for_timeout(2000);
+                    page.wait_for_timeout(3000);
                     assert len(ping_requests) == 1 , (
                         f"second ping should be served from cache, got {len(
                             ping_requests
                         )}"
                     );
 
+                    # A write must invalidate the reader cache. Wait for the
+                    # write to actually complete (its marker mounts once the
+                    # walker response is processed) so invalidation propagates.
                     page.locator('[data-testid="create-btn"]').click();
-                    page.wait_for_timeout(2000);
+                    page.wait_for_selector('[data-testid="last-item"]', timeout=15000);
+                    page.wait_for_timeout(500);
 
+                    # Third ping: cache was invalidated, so it refetches.
                     ping_btn.click();
-                    page.wait_for_timeout(2000);
+                    _wait_for_count(page, ping_requests, 2);
                     assert len(ping_requests) == 2 , (
                         f"ping after a write should refetch, got {len(ping_requests)}"
                     );
