@@ -209,7 +209,8 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
         "format": self.format,
         "dot": self.dot,
         "cache": self.cache,
-        "environment": self.environment
+        "environment": self.environment,
+        "client": self.client
     };
     for (section, obj) in section_map.items() {
         if section in profile {
@@ -318,7 +319,8 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
         "format": self.format,
         "dot": self.dot,
         "cache": self.cache,
-        "environment": self.environment
+        "environment": self.environment,
+        "client": self.client
     };
     for (section, obj) in section_map.items() {
         if section in data {
@@ -964,6 +966,10 @@ impl _parse_toml_data(
         config.client_errors = ClientErrorsConfig(
             verbose=ce_data.get("verbose", False)
         );
+    }
+    if "client" in data {
+        client_data = data["client"];
+        config.client = ClientConfig(framework=client_data.get("framework", "react"));
     }
     if "plugins" in data {
         plugins_data = data["plugins"];

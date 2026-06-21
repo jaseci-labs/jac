@@ -84,9 +84,7 @@ react = "^18.2.0"
 react-dom = "^18.2.0"
 react-router-dom = "^6.22.0"
 react-error-boundary = "^5.0.0"
-react-hook-form = "^7.71.0"
 zod = "^4.3.6"
-"@hookform/resolvers" = "^5.2.2"
 
 [dependencies.npm.dev]
 vite = "^6.4.1"
@@ -327,5 +325,5 @@ Click the button - the count should increase!
 - [Components](components.md) - Build reusable UI components
 - [State Management](state.md) - Reactive state with hooks
 - [Backend Integration](backend.md) - Connect to walkers
-- [Building a Desktop App](desktop.md) - Package the same app as a single `jac nacompile`d binary that embeds the OS webview - no Rust toolchain (`pip install jac-desktop`; see [jac-desktop Reference](../../reference/plugins/jac-desktop.md))
+- [Building a Desktop App](desktop.md) - Package the same app as a single `jac nacompile`d binary that embeds the OS webview - no Rust toolchain (ships with `jaclang` core; see [jac-desktop Reference](../../reference/plugins/jac-desktop.md))
 - [Build an AI Day Planner](../first-app/build-ai-day-planner.md) - Complete full-stack example with AI

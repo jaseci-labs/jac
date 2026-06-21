@@ -1,9 +1,9 @@
 ---
 name: jac-shadcn-components
-description: Building with jac-shadcn primitives (delivered by the jac-super plugin) - getting components with `jac add --shadcn`, import paths, component selection, composition, styling, icons, and theming with `jac retheme`. Pair with `jac-shadcn-blocks` for design constants and composition patterns. Load when generating components for a project that has components/ui/ or a [jac-shadcn] section in jac.toml.
+description: Building with jac-shadcn primitives (built into jaclang core) - getting components with `jac add --shadcn`, import paths, component selection, composition, styling, icons, and theming with `jac retheme`. Pair with `jac-shadcn-blocks` for design constants and composition patterns. Load when generating components for a project that has components/ui/ or a [jac-shadcn] section in jac.toml.
 ---
 
-shadcn primitives in Jac are delivered by the **jac-super** plugin. A jac-shadcn project (`jac create --use jac-shadcn`, or any project with a `[jac-shadcn]` section in `jac.toml`) keeps the primitives in `components/ui/`.
+shadcn primitives in Jac are built into **jaclang core**. A jac-shadcn project (`jac create --use jac-shadcn`, or any project with a `[jac-shadcn]` section in `jac.toml`) keeps the primitives in `components/ui/`.
 
 **Never hand-write a primitive** (Button, Card, Input, Dialog, Table, Badge, etc.). If it already lives in `components/ui/`, import and compose it. If it does **not** exist yet, install it with `jac add --shadcn <name>` - do not re-implement it. Your job is to build **high-level page/feature components** in `components/` that compose these primitives.
 
@@ -282,7 +282,7 @@ jac retheme --style nova --baseColor neutral --theme indigo --font inter --radiu
 
 > **Flag names are camelCase** - matching jac.toml key names exactly: `--baseColor` not `--base-color`, `--menuAccent` not `--menu-accent`. Kebab-case variants are not recognized.
 >
-> **menuColor: exclude from retheme calls.** The `--menuColor` flag and `menuColor` jac.toml field exist, but `resolve_css_vars()` in jac-super does not process them. Any value set has zero CSS effect. Leave as default until jac-super ships support.
+> **menuColor: exclude from retheme calls.** The `--menuColor` flag and `menuColor` jac.toml field exist, but `resolve_css_vars()` in jaclang core does not process them. Any value set has zero CSS effect. Leave as default until core ships support.
 
 ### Understanding / hand-editing the generated CSS
 

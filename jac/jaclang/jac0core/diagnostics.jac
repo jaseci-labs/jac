@@ -1183,6 +1183,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.CODEGEN,
          "Argument '{name}' for server function '{func}' is given both positionally and by keyword"
      ),
+     E5081 = _err("E5081", Category.CODEGEN, "Unknown client framework '{framework}'"),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Portability warnings (W6xxx) — JS-idiomatic usage that breaks cross-codespace portability
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

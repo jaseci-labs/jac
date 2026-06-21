@@ -442,10 +442,12 @@ impl nacompile(
         # libm is part of libSystem on macOS.
         needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"];
     } else {
-        # libm.so.6 supplies math-module symbols (e.g. hypot) that are not all
-        # re-exported from libc; the loader only binds referenced symbols, so
-        # linking it unconditionally is harmless (issue #6404).
-        needed_libs: list[str] = ["libc.so.6", "libm.so.6"];
+        # User-specified libraries are appended below; libc/libm are added last
+        # so they appear AFTER user imports in NEEDED. This matters for libraries
+        # like libcef.so whose .init_array calls dlsym(RTLD_NEXT, "close") etc.:
+        # RTLD_NEXT searches the link map AFTER the calling library, so libc must
+        # be after libcef.so in the map for those lookups to resolve (issue #6572).
+        needed_libs: list[str] = [];
     }
 
     # Add C shared libraries discovered during compilation (e.g. libuv.so.1)
@@ -480,6 +482,18 @@ impl nacompile(
                 needed_libs.append(_needed);
             }
             _lib_norm[lib_path] = _needed;
+        }
+    }
+
+    # Append libc/libm after all user-specified libraries so the dynamic
+    # linker's link map puts libc AFTER any user library that needs RTLD_NEXT
+    # to resolve libc symbols from its .init_array (issue #6572).
+    if not is_macos and not is_windows {
+        if "libc.so.6" not in needed_libs {
+            needed_libs.append("libc.so.6");
+        }
+        if "libm.so.6" not in needed_libs {
+            needed_libs.append("libm.so.6");
         }
     }
 

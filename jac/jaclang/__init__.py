@@ -38,6 +38,60 @@ _disabled_list = get_disabled_plugins()
 # load_setuptools_entrypoints). The disable list may be empty.
 load_plugins_with_disabling(plugin_manager, _disabled_list)
 
+
+def _register_builtin_client_providers() -> None:
+    """Register the built-in client/desktop framework hook providers.
+
+    These shipped as the separate ``jac-client`` / ``jac-desktop`` plugins; they are
+    now part of core and register directly (no entry points, no separate package).
+    Serving hooks (render_page / get_client_js / send_static_file / format_build_error)
+    are inlined into core's defaults; these providers contribute the ``[plugins.client]``
+    / ``[plugins.desktop]`` config schema, the npm dependency type, the project
+    templates (fullstack/client/mobile/desktop), plugin metadata, and the client CLI
+    commands (``build`` / ``setup`` / ``start`` + ``--npm`` / ``--cl``).
+    """
+    try:
+        from jaclang.runtimelib.client.cli import JacClientCmd
+        from jaclang.runtimelib.client.desktop_plugin_config import (
+            JacDesktopPluginConfig,
+        )
+        from jaclang.runtimelib.client.plugin_config import JacClientPluginConfig
+    except Exception as exc:  # keep core usable if the framework fails to import
+        import warnings
+
+        warnings.warn(f"Built-in client framework unavailable: {exc}", stacklevel=2)
+        return
+    for _provider in (JacClientPluginConfig, JacDesktopPluginConfig, JacClientCmd):
+        if not plugin_manager.is_registered(_provider):
+            plugin_manager.register(_provider)
+
+
+_register_builtin_client_providers()
+
+
+def _register_builtin_shadcn_provider() -> None:
+    """Register the built-in shadcn/ui CLI provider.
+
+    This shipped as the ``shadcn`` entry point of the separate ``jac-super``
+    plugin; it is now part of core and registers directly (no entry point, no
+    separate package). Importing the module also registers the ``jac retheme``
+    command (via its ``@registry.command`` decorator); registering the plugin
+    class wires its ``create_cmd`` / ``register_project_template`` hooks, which
+    add the ``--shadcn`` flags and the ``jac-shadcn`` project template.
+    """
+    try:
+        from jaclang.cli.shadcn.plugin import JacShadcnPlugin
+    except Exception as exc:  # keep core usable if shadcn fails to import
+        import warnings
+
+        warnings.warn(f"Built-in shadcn provider unavailable: {exc}", stacklevel=2)
+        return
+    if not plugin_manager.is_registered(JacShadcnPlugin):
+        plugin_manager.register(JacShadcnPlugin)
+
+
+_register_builtin_shadcn_provider()
+
 # Schedule deferred native acceleration if autonative is enabled in jac.toml
 try:
     from jaclang.project.config import get_config as _get_jac_config

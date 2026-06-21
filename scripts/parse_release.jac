@@ -7,7 +7,7 @@ Example PR title: "release: jaclang 1.2.3, jac-byllm 2.0.0"
 
 The output matrix `includes tier information for dependency-aware publishing:
   - Tier 1: jaclang (base package, no internal dependencies)
-  - Tier 2: jac-byllm, jac-client, etc. (depend on jaclang)
+  - Tier 2: jac-byllm, jac-scale, etc. (depend on jaclang)
   - Tier 3: jaseci meta-package (depends on all)
 """
 import from __future__ { annotations }
@@ -33,7 +33,7 @@ def release_entry(pkg_name_lower: str, version: str) -> dict {
         "extra_build_deps": pkg_info.extra_build_deps
     };
 }
-"""Match patterns like 'jaclang 1.2.3' or 'jac-client 2.0.0'."""
+"""Match patterns like 'jaclang 1.2.3' or 'jac-scale 2.0.0'."""
 def parse_from_title(pr_title: str) -> list[dict] {
     releases = [];
     for (pkg_name, version) in re.findall(r"([\w-]+)\s+(\d+\.\d+\.\d+)", pr_title) {

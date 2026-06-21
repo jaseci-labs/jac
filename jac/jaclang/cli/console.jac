@@ -7,10 +7,11 @@ It is split into two collaborators:
   capability detection (NO_COLOR / NO_EMOJI / isatty / TERM), and stream
   routing. Every method composes its output once and delegates the actual
   drawing to a renderer.
-- `ConsoleRenderer` — the swappable *backend*. The base class renders with raw
-  ANSI. Plugins (like jac-super) subclass it to render with Rich, and install
-  their renderer on the facade. They do NOT re-implement the facade methods, so
-  the surface can never drift between implementations.
+- `ConsoleRenderer` — the swappable *backend*. The base class renders Rich-style
+  output (box-drawn panels/tables, an animated spinner) in pure Jac via raw ANSI
+  and box-drawing glyphs — no third-party dependency. The seam stays swappable so
+  a plugin could install a different backend, but it does NOT re-implement the
+  facade methods, so the surface can never drift between implementations.
 
 The split makes terminal styling a structural trust boundary: caller data is
 carried as `Span`s with no style, which every renderer must emit verbatim —
@@ -51,10 +52,86 @@ obj Span {
         style: str | None = None;
 }
 
+"""Background-thread spinner that animates a status line in place.
+
+Pure-Jac stand-in for Rich's `console.status(..., spinner='dots')`: a daemon
+thread rewrites `\r{frame} {text}` until stopped, then clears the line. Only used
+on a color-capable TTY; non-interactive streams get a static line instead (so a
+redirected `sys.stdout` in in-process CLI tests is never animated).
+"""
+obj _Spinner {
+    has text: str,
+        stream: any,
+        frames: list[str],
+        style_prefix: str,
+        reset: str,
+        interval: float = 0.08,
+        _stop: any by postinit,
+        _thread: any = None;
+
+    def postinit {
+        import from threading { Event }
+        self._stop = Event();
+    }
+
+    """Rich-compatible: update the message shown next to the spinner."""
+    def update(text: str = '') {
+        self.text = text;
+    }
+
+    def _run {
+        idx = 0;
+        while not self._stop.is_set() {
+            frame = self.frames[idx % len(self.frames)];
+            try {
+                self.stream.write(
+                    f"\r{self.style_prefix}{frame}{self.reset} {self.text}"
+                );
+                self.stream.flush();
+            } except (BrokenPipeError, OSError) {
+                return;
+            }
+            idx += 1;
+            self._stop.wait(self.interval);
+        }
+    }
+
+    def start {
+        import from threading { Thread }
+        self._thread = Thread(target=self._run, daemon=True);
+        self._thread.start();
+    }
+
+    def stop {
+        self._stop.set();
+        if self._thread is not None {
+            self._thread.join(timeout=1.0);
+        }
+        # Clear the spinner line (ANSI erase-to-EOL; only reached on a color TTY).
+        try {
+            self.stream.write("\r\033[K");
+            self.stream.flush();
+        } except (BrokenPipeError, OSError) {
+            ;
+        }
+    }
+}
+
+"""No-op status handle yielded when the spinner can't animate (non-TTY/no-color).
+
+Keeps the `with console.status(...) as st { st.update(...) }` call shape working.
+"""
+obj _NullStatus {
+    def update(text: str = '') -> None {
+        return;
+    }
+}
+
 """Swappable rendering backend for the console facade.
 
-The base implementation renders with raw ANSI escape codes. Subclasses override
-these primitives to render differently (e.g. jac-super's Rich backend). The
+The base implementation renders Rich-style output (color, box-drawn panels and
+tables, an animated spinner) with raw ANSI escapes and box-drawing glyphs, in
+pure Jac. Subclasses may override these primitives to render differently. The
 facade calls `configure` once after capability detection, then routes every
 method through these primitives.
 """
