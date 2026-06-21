@@ -85,7 +85,7 @@ jac plugins enable byllm
 jac plugins disabled          # list disabled
 ```
 
-Install/uninstall plugins with pip (`pip install jac-client`); `jac plugins` only toggles already-installed ones. **There is no `jac plugins info` action.** The env var `JAC_DISABLED_PLUGINS` disables plugins without touching jac.toml (useful when a broken plugin blocks the CLI itself).
+Install/uninstall plugins with pip (e.g. `pip install jac-scale`); `jac plugins` only toggles already-installed ones. **There is no `jac plugins info` action.** The env var `JAC_DISABLED_PLUGINS` disables plugins without touching jac.toml (useful when a broken plugin blocks the CLI itself).
 
 ## .jacignore
 

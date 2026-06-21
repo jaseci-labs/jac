@@ -92,8 +92,8 @@ pip install jaclang
 
 # Individual plugins
 pip install byllm        # LLM integration
-pip install jac-client   # Full-stack web
 pip install jac-scale    # Production deployment
+# (full-stack web + native-desktop app building ships with jaclang core)
 ```
 
 ### 2 Your First Program

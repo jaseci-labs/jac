@@ -35,10 +35,9 @@ jobs:
       - name: Pre-build admin dashboard UI
         run: |
           pip install -e ../jac
-          jac install -e ../jac-client
           jac install -e .
           jac run scripts/build_admin_ui.jac
-          pip uninstall -y jac-scale jac-client
+          pip uninstall -y jac-scale
 
       - name: Install build tools
         run: pip install twine
