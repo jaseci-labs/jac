@@ -103,6 +103,11 @@ fn boot(rt: []const u8, init: std.process.Init) u8 {
     _ = setenv("PYTHONIOENCODING", "utf-8", 1);
     _ = setenv("PYTHONDONTWRITEBYTECODE", "1", 1);
     _ = setenv("PYTHONNOUSERSITE", "1", 1);
+    // Marker so code can tell it runs under the self-contained binary (jaclang
+    // materialized in the cache, always loaded) rather than a pip/editable
+    // install. Set before the worker-mode branch so re-invoked workers inherit
+    // it too. Used e.g. to skip pip-`.pth`-shim-specific tests.
+    _ = setenv("JAC_STANDALONE", "1", 1);
 
     const h = std.c.dlopen(libpath.ptr, .{ .NOW = true, .GLOBAL = true }) orelse
         die("dlopen libpython failed (payload not materialized?)");

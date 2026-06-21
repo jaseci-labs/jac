@@ -80,7 +80,10 @@ if [ "$PRECOMPILE" = "1" ]; then
     # modules (jir/archetype/modresolver) and so exits non-zero -- that is
     # expected, not a failure. Judge success by the JIR actually produced, not
     # by the exit code (these modules just compile at runtime instead).
-    PYTHONHOME="$PBS/install" PYTHONPATH="$site" PYTHONUTF8=1 HOME="$WORK" PATH=/usr/bin:/bin \
+    # DONTWRITEBYTECODE so importing _jac_finder/jaclang here doesn't litter
+    # `site/__pycache__` -- its presence makes the later `pip install --target`
+    # refuse the directory. JIR generation is independent of .pyc writing.
+    PYTHONHOME="$PBS/install" PYTHONPATH="$site" PYTHONUTF8=1 PYTHONDONTWRITEBYTECODE=1 HOME="$WORK" PATH=/usr/bin:/bin \
       "$PY" -S "$boot" >"$WORK/precompile.log" 2>&1 || true
     jir=$( { find "$site/jaclang/_precompiled" -name '*.jir' 2>/dev/null || true; } | wc -l | tr -d ' ')
     skipped=$(grep -cE 'Error: FAIL:' "$WORK/precompile.log" 2>/dev/null || echo 0)
@@ -97,6 +100,8 @@ fi
 # from the sealed binary with no system Python. Installed AFTER precompile so the
 # precompiler's package walk only sees jaclang (extra packages yield 0 JIR).
 echo "==> bundling pytest + pytest-xdist (jac test runner)"
+# Drop any stray bytecode cache so pip doesn't refuse the populated --target dir.
+rm -rf "$site"/__pycache__ 2>/dev/null || true
 "$PY" -m pip install --quiet pytest pytest-xdist --target "$site"
 
 echo "==> staging runtime tree (shared libpython + stdlib + site)"
