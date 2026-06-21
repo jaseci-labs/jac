@@ -4,7 +4,7 @@ on: workflow_dispatch
 
 jobs:
   release-mcp:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: jac-mcp

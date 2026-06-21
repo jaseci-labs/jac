@@ -8,7 +8,7 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.12', '3.13', '3.14']
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
@@ -31,7 +31,7 @@ jobs:
 
   release-jaclang:
     needs: precompile
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: jac

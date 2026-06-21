@@ -21,7 +21,7 @@ on:
 jobs:
   contribution-checks:
     name: Contribution Checks
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
