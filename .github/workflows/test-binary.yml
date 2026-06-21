@@ -52,12 +52,10 @@ jobs:
           out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/obj.jac")"
           echo "$out" | grep -q 49
 
-      - name: jac test through the binary (subset; informational)
+      - name: jac test through the binary (full suite -- the gate)
         working-directory: jac
-        # Not yet a hard gate: a few suite tests assert on dev-tool output and
-        # need migration (tracked in #6852). This proves `jac test` (pytest +
-        # xdist worker mode) runs from the binary on Linux.
-        continue-on-error: true
-        run: |
-          set -uxo pipefail
-          ./zig-out/bin/jac test tests/cli tests/utils
+        # The binary runs the whole jaclang suite via its own runner (pytest +
+        # xdist worker mode), replacing `pip install ./jac[dev]` + pytest. Some
+        # tests assert on dev-tool output and may still need migration; failures
+        # here are the triage list (tracked in #6852).
+        run: ./zig-out/bin/jac test tests
