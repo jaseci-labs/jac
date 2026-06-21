@@ -11,10 +11,8 @@ on:
   # "already on PyPI" skip still apply, so re-running is safe.
   workflow_dispatch:
     inputs:
-      jaclang:
-        description: "Publish jaclang"
-        type: boolean
-        default: false
+      # jaclang is no longer published to PyPI -- it ships as the native `jac`
+      # binary (see release-jaclang.yml). Plugins below still publish to PyPI.
       jac-byllm:
         description: "Publish jac-byllm (byllm)"
         type: boolean
@@ -74,14 +72,13 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           # Collect the checked packages (empty string when unchecked).
-          IN_JACLANG: ${{ inputs.jaclang && 'jaclang' || '' }}
           IN_BYLLM: ${{ inputs['jac-byllm'] && 'jac-byllm' || '' }}
           IN_SCALE: ${{ inputs['jac-scale'] && 'jac-scale' || '' }}
           IN_MCP: ${{ inputs['jac-mcp'] && 'jac-mcp' || '' }}
           IN_JASECI: ${{ inputs.jaseci && 'jaseci' || '' }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            PACKAGES="$IN_JACLANG $IN_BYLLM $IN_SCALE $IN_MCP $IN_JASECI"
+            PACKAGES="$IN_BYLLM $IN_SCALE $IN_MCP $IN_JASECI"
             echo "Manual dispatch - selected packages: $PACKAGES"
             jac run scripts/parse_release.jac --packages "$PACKAGES"
           else
