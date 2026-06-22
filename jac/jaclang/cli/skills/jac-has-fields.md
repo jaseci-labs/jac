@@ -74,7 +74,7 @@ obj Account {
 - **Parent defaults force child defaults.** If any inherited field has a default, every field in the subclass needs one too (dataclass constraint). `obj Animal { has name: str = "x"; }` + `obj Dog(Animal) { has breed: str; }` **passes `jac check` but crashes at runtime**: `TypeError: non-default argument 'breed' follows default argument`. Give `breed` a default.
 - **All attributes must be `has`-declared.** `p.height = 175` on an object with no `has height` is the dynamic-attribute anti-pattern - it may run today but breaks portability (server/client/native) and will be rejected by future compilers. Declare every field upfront.
 - **Backtick-escaped keywords don't work in `has`** (`has \`class: str;` = runtime SyntaxError) - pick a non-keyword name. See `jac-core-cheatsheet`.
-- Access tags: `has:priv secret: str = "";` / `has:pub name: str = "";` control cross-module visibility, same as `def:priv`/`def:pub`.
+- Access tags on members are *encapsulation*: `has:pub` anywhere, `has:protect` the declaring class **and its subclasses**, `has:priv` the declaring class only (`has:priv secret: str = "";`). This differs from top-level `def`/`glob`, where the same tags mean module/project visibility.
 - `has name;` without a type is a parse error. Field access is attribute-style: `user.name`, NOT `user["name"]`.
 - For optional references use `T | None` and guard `is None` - full type rules in `jac-types`.
 - On **walkers**, `has` fields are also the spawn parameters (`root spawn W(field=...)`) - a required field with no default makes every spawn pass it (E1050 trap) - see `jac-walker-patterns`.

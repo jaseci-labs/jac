@@ -216,6 +216,7 @@ impl UniNode.parent_of_type(typ: type[T]) -> T {
         Uses single traversal for efficiency since this is called frequently.
         """
 impl UniNode.in_client_context -> bool {
+    import from jaclang.jac0core.ext_registry { is_client_module }
     nd: (UniNode | None) = self.parent;
     while (nd is not None) {
         if isinstance(nd, ServerBlock) {
@@ -231,7 +232,7 @@ impl UniNode.in_client_context -> bool {
             }
         }
         if isinstance(nd, Module) {
-            return (nd.loc is not None and nd.loc.mod_path.endswith(".cl.jac"));
+            return (nd.loc is not None and is_client_module(nd.loc.mod_path));
         }
         nd = nd.parent;
     }
@@ -1217,27 +1218,23 @@ impl Import.is_jac.getter -> bool {
 
 """Check if import is jac."""
 impl Import.__jac_detected.getter -> bool {
+    import from jaclang.jac0core.ext_registry { is_jac, INIT_FILES }
     if self.from_loc {
-        if self.from_loc.resolve_relative_path().endswith(('.jac', '.cl.jac')) {
+        if is_jac(self.from_loc.resolve_relative_path()) {
             return True;
         }
         if os.path.isdir(self.from_loc.resolve_relative_path()) {
-            if os.path.exists(
-                os.path.join(self.from_loc.resolve_relative_path(), '__init__.jac')
-            ) {
-                return True;
-            }
-            if os.path.exists(
-                os.path.join(self.from_loc.resolve_relative_path(), '__init__.cl.jac')
-            ) {
-                return True;
+            for init_name in INIT_FILES {
+                if os.path.exists(
+                    os.path.join(self.from_loc.resolve_relative_path(), init_name)
+                ) {
+                    return True;
+                }
             }
             for i in self.items {
                 if (
                     isinstance(i, ModuleItem)
-                    and self.from_loc.resolve_relative_path(i.name.value).endswith(
-                        ('.jac', '.cl.jac')
-                    )
+                    and is_jac(self.from_loc.resolve_relative_path(i.name.value))
                 ) {
                     return True;
                 }
@@ -1245,10 +1242,8 @@ impl Import.__jac_detected.getter -> bool {
         }
     }
     return `any(
-        (
-            isinstance(i, ModulePath)
-            and i.resolve_relative_path().endswith(('.jac', '.cl.jac'))
-        ) for i in self.items
+        (isinstance(i, ModulePath) and is_jac(i.resolve_relative_path()))
+        for i in self.items
     );
 }
 

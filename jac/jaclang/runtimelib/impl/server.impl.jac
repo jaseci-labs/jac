@@ -1132,6 +1132,13 @@ impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., Any)]] {
     export_names = set(self._client_manifest.get('exports', []));
     for (name, `obj) in inspect.getmembers(self._module) {
         if (inspect.isfunction(`obj) and not name.startswith('_')) {
+            # Skip framework builtins (connect/refs/visit/spawn/... from jaclib)
+            # that the compiler imports into every Jac module's namespace. They
+            # are not user endpoints, and their runtime signatures (e.g. refs'
+            # `slice` pagination param) are not request-body serializable.
+            if getattr(`obj, '__module__', '').startswith('jaclang.') {
+                continue;
+            }
             functions[name] = `obj;
             if (name in export_names) {
                 self._client_functions[name] = `obj;

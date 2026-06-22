@@ -9,7 +9,50 @@ on:
       - main
   workflow_dispatch:
 
+# Cancel superseded PR runs; never cancel a run for a commit on main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Cheap path filter on a free GitHub-hosted runner. Used ONLY to skip the
+  # NON-required jobs on PRs that can't affect them. The required jobs
+  # (test-core-compiler, test-core-runtime, test-client) are never gated, so the
+  # merge gate is unchanged. These outputs are only consulted for pull_request
+  # events - each gated job's `if` forces a run on push/dispatch, so main always
+  # keeps full coverage regardless of the filter result. `core` (jac/**) is the
+  # compiler+runtime, so it is folded into every downstream gate.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      scale: ${{ steps.filter.outputs.scale }}
+      byllm: ${{ steps.filter.outputs.byllm }}
+      mcp: ${{ steps.filter.outputs.mcp }}
+      docs: ${{ steps.filter.outputs.docs }}
+      desktop: ${{ steps.filter.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            # Editing this workflow re-runs the full gated suite so CI changes
+            # are validated end-to-end (folded into `core`, the broadest gate).
+            core:
+              - 'jac/**'
+              - '.github/workflows/test-jaseci.yml'
+            scale:
+              - 'jac-scale/**'
+            byllm:
+              - 'jac-byllm/**'
+            mcp:
+              - 'jac-mcp/**'
+            docs:
+              - 'docs/**'
+            desktop:
+              - 'jac-desktop/**'
+
   test-core-compiler:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
@@ -70,6 +113,9 @@ jobs:
     # render + reactivity. Needs a real `bun install` (jsdom + solid-js), so the
     # test self-skips unless JAC_CLIENT_INTEGRATION is set -- we set it here and
     # run just that file in its own lean job.
+    needs: changes
+    # Not a required check. Skip on PRs that don't touch jac core; always run on push/dispatch.
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -143,6 +189,10 @@ jobs:
       run: pytest -x jac/tests/runtimelib/client -n auto
 
   test-packages-and-docs:
+    needs: changes
+    # Not a required check. Tests jac-byllm + builds/validates docs. Skip on PRs
+    # that touch none of jac core, jac-byllm, docs; always run on push/dispatch.
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.docs == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -194,6 +244,9 @@ jobs:
     # linked artifacts (DT_NEEDED / $ORIGIN) and run handler logic through the sv
     # pathway - NO WebKitGTK, no libpython-dev, no display/Xvfb. The webview /
     # embedded-Python *runtime* behavior is covered by a separate, gated tier.
+    needs: changes
+    # Not a required check. Skip on PRs that touch neither jac core nor jac-desktop; always run on push/dispatch.
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.desktop == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -217,6 +270,9 @@ jobs:
       run: pytest -x jac/tests/runtimelib/client/test_desktop_binding.jac -n auto
 
   test-mcp:
+    needs: changes
+    # Not a required check. Skip on PRs that touch neither jac core nor jac-mcp; always run on push/dispatch.
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.mcp == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -241,6 +297,9 @@ jobs:
       run: pytest -x jac-mcp -n auto
 
   test-scale:
+    needs: changes
+    # Not a required check. Skip on PRs that touch neither jac core nor jac-scale; always run on push/dispatch.
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
@@ -284,8 +343,14 @@ jobs:
         fi
 
   test-scale-k8s:
-    # Runs by default; add the 'skip-k8s' label to a PR to skip it.
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
+    needs: changes
+    # Not a required check. Skips on PRs that touch neither jac core nor jac-scale,
+    # or that carry the 'skip-k8s' label; always runs on push/dispatch.
+    if: >-
+      (github.event_name != 'pull_request' ||
+       needs.changes.outputs.core == 'true' ||
+       needs.changes.outputs.scale == 'true') &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
     runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
@@ -345,6 +410,11 @@ jobs:
           pytest  -s -x "jac-scale/jac_scale/tests/test_deploy_k8s.jac::early exit"
 
   test-pypi-build:
+    needs: changes
+    # Not a required check, and the heaviest job (builds all wheels + jacpack
+    # smoke servers). Skip on PRs that touch none of jac core, jac-scale,
+    # jac-byllm; always run on push/dispatch so main stays packaging-clean.
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
