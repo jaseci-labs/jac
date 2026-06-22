@@ -345,10 +345,22 @@ def tty_key_ready -> int {
 
 # ── write ────────────────────────────────────────────────────────────────────
 def tty_write(fd: int, text: str) {
-    # fd is unused on Windows; always writes to out_handle.
+    # When a console is open (interactive TUI) we always render to out_handle and
+    # ignore fd — the diff renderer owns the screen. Only in the headless case
+    # (no tty_open_dev call, e.g. CI tests) do we honor fd, routing it to the
+    # matching std handle: fd 2 → STD_ERROR_HANDLE (-12), anything else →
+    # STD_OUTPUT_HANDLE (-11). This mirrors the POSIX backends' write(fd, ...) so
+    # platform-neutral test output (and stderr markers) are not silently lost.
     out_h: int = g_tty.out_handle;
     if out_h < 0 {
-        return;
+        std_id: int = -11;
+        if fd == 2 {
+            std_id = -12;
+        }
+        out_h = GetStdHandle(std_id);
+        if out_h <= 0 {
+            return;
+        }
     }
     n: int = len(text);
     if n <= 0 {

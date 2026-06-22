@@ -45,6 +45,12 @@ def _has_value(items: list[SelectItem], value: str) -> bool {
 }
 
 def run_tests -> int {
+    # Alive marker on stderr (fd 2), before any logic runs. Lets CI distinguish
+    # the failure mode when the binary exits non-zero with no stdout:
+    #   marker + checks visible  → an assertion failed (see the FAIL lines)
+    #   marker, then checks stop → crash mid-logic (right after the last `ok`)
+    #   marker only / none       → crash in startup/init or the stdout path
+    tty_write(2, "test_pickers: run_tests reached\n");
     emit("test_pickers");
     fails: int = 0;
 
