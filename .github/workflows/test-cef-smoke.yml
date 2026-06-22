@@ -12,19 +12,15 @@ jobs:
       with:
         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.12
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
 
-    - name: Install toolchain + display deps
+    - name: Install display deps
       run: |
         sudo apt-get update
         sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 \
           libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
           libasound2
-        python -m pip install --upgrade pip
-        pip install -e jac
 
     - name: Build cef-smoke example
       run: |
