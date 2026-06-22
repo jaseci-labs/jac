@@ -24,7 +24,16 @@ impl NaIRGenPass.postinit -> None {
         _llvm_bind.initialize_native_target();
         _target = _llvm_bind.Target.from_default_triple();
     }
-    _tm = _target.create_target_machine();
+    # codemodel="large" (not the default "jitdefault"): llvmlite appends
+    # "-elf" to the triple when os.name == "nt" and codemodel == "jitdefault",
+    # which would stamp a bogus "...-windows-msvc-elf" triple onto the module
+    # on a Windows host. This site only reads the triple/data layout, so any
+    # non-"jitdefault" model keeps the triple intact (the code model does not
+    # otherwise affect it here). "large" mirrors nacompile's executable branch;
+    # its shared branch uses "small", but the data layout is identical across
+    # code models on x86_64, so the stamped module metadata stays valid for
+    # either emit path. The relocation-model coupling lives at that emit site.
+    _tm = _target.create_target_machine(codemodel="large");
     self.llvm_module.data_layout = str(_tm.target_data);
     self.llvm_module.triple = _tm.triple;
     # DWARF debug metadata — populated below when JAC_NATIVE_DEBUG=1

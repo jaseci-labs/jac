@@ -533,7 +533,15 @@ impl nacompile(
             opt=2, reloc="pic", codemodel="small"
         );
     } else {
-        target_machine = target.create_target_machine(opt=2);
+        # codemodel="large" (not the default "jitdefault"): llvmlite appends
+        # "-elf" to the triple when os.name == "nt" and codemodel ==
+        # "jitdefault", making a Windows host emit an ELF object for a COFF
+        # target (the format guard below then trips). Pass an explicit code
+        # model so the requested triple stays intact. "large" is used (not
+        # "small") because "jitdefault" resolves to the large model on x86_64,
+        # which emits the absolute relocations the pure-Jac ELF linker handles;
+        # the small/medium models emit R_X86_64_32 absolutes it cannot resolve.
+        target_machine = target.create_target_machine(opt=2, codemodel="large");
     }
 
     # Read native build settings from jac.toml [build.native] (env vars as fallback)
