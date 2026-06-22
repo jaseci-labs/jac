@@ -87,5 +87,6 @@ jobs:
               --latest
             echo "Created release v$VERSION"
           fi
-          # Publishing the release triggers release-jaclang.yml, which builds
-          # the self-contained `jac` binary and attaches it to this release.
+
+    # The native `jac` binary (jaclang) is built and attached to this release by
+    # release-jaclang.yml, which fires on the release-publish event above.

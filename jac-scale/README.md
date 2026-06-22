@@ -61,36 +61,23 @@ cd jaseci
 git submodule update --init --recursive
 ```
 
-### 2. Create Python Virtual Environment
+### 2. Build the `jac` Binary
+
+Build the `jac` binary from the cloned repository and put it on your `PATH`:
 
 ```bash
-python -m venv venv
+./scripts/fresh_env.sh
 ```
 
-### 3. Activate the Virtual Environment
+### 3. Install JAC-Scale
 
-**Linux/Mac:**
-
-```bash
-source venv/bin/activate
-```
-
-**Windows:**
+Install JAC-Scale in editable mode from the cloned repository:
 
 ```bash
-venv\Scripts\activate
-```
-
-### 4. Install JAC and JAC-Scale
-
-Install both packages in editable mode from the cloned repository:
-
-```bash
-pip install -e ./jac
 jac install -e ./jac-scale
 ```
 
-### 5. Download the Demo Application
+### 4. Download the Demo Application
 
 Download the Travel Planner demo application from GitHub:
 
@@ -142,7 +129,7 @@ cd traveller
 cd traveller
 ```
 
-### 6. Configure Environment Variables
+### 5. Configure Environment Variables
 
 You should now be in the `traveller` folder. Create a `.env` file:
 
@@ -164,13 +151,14 @@ Add the following to your `.env` file:
 OPENAI_API_KEY=your-openai-api-key-here
 ```
 
-### 7. Install Demo Application Requirements
+### 6. Install Demo Application Requirements
 
 ```bash
-pip install byllm python-dotenv
+jac install byllm
+pip install python-dotenv
 ```
 
-### 8. Run the Application with JAC Start
+### 7. Run the Application with JAC Start
 
 To run your application using FastAPI with ShelfStorage (no Kubernetes required):
 
@@ -190,7 +178,7 @@ jac start main.jac
 - Application: http://localhost:8000
 - Swagger Documentation: http://localhost:8000/docs
 
-### 9. Set Up Kubernetes (For JAC Scale)
+### 8. Set Up Kubernetes (For JAC Scale)
 
 To use `jac start --scale`, you need Kubernetes installed on your machine.
 
@@ -204,7 +192,7 @@ To use `jac start --scale`, you need Kubernetes installed on your machine.
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - Enable Kubernetes in Docker Desktop settings (easier setup)
 
-### 10. Deploy with JAC Scale
+### 9. Deploy with JAC Scale
 
 Once Kubernetes is running, you have two deployment methods:
 
@@ -274,7 +262,7 @@ jac start main.jac --scale --build
 - Sharing your application with others
 - Creating reproducible deployments
 
-### 11. Clean Up Kubernetes Resources
+### 10. Clean Up Kubernetes Resources
 
 When you're done testing, remove all created Kubernetes resources:
 
@@ -314,38 +302,25 @@ cd jaseci
 git submodule update --init --recursive
 ```
 
-### 2. Create Python Virtual Environment
+### 2. Build the `jac` Binary
+
+Build the `jac` binary from the cloned repository and put it on your `PATH`:
 
 ```bash
-python -m venv venv
+./scripts/fresh_env.sh
 ```
 
-### 3. Activate the Virtual Environment
+### 3. Install JAC-Scale
 
-**Linux/Mac:**
-
-```bash
-source venv/bin/activate
-```
-
-**Windows:**
-
-```bash
-venv\Scripts\activate
-```
-
-### 4. Install JAC and JAC-Scale
-
-Install the packages in editable mode from the cloned repository (the full-stack
+Install JAC-Scale in editable mode from the cloned repository (the full-stack
 client framework ships inside `jac`/`jaclang`, so there is no separate `jac-client`
 package to install):
 
 ```bash
-pip install -e ./jac
 jac install -e ./jac-scale
 ```
 
-### 5. Create Todo application using jac-client
+### 4. Create Todo application using jac-client
 
 Lets create the todo application using jac client.For that lets run following command
 
@@ -360,7 +335,7 @@ cp jac-scale/examples/todo/app.jac todo/app.jac
 cd todo
 ```
 
-### 8. Run the Application Locally
+### 5. Run the Application Locally
 
 To run your application run the following command
 
@@ -377,7 +352,7 @@ jac start app.jac
 you can add new todo tasks
  from the frontend at http://localhost:8000/cl/app
 
-### 9. Set Up Kubernetes (For JAC Scale)
+### 6. Set Up Kubernetes (For JAC Scale)
 
 To use `jac start --scale`, you need Kubernetes installed on your machine.
 
@@ -391,7 +366,7 @@ To use `jac start --scale`, you need Kubernetes installed on your machine.
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - Enable Kubernetes in Docker Desktop settings (easier setup)
 
-### 10. Deploy with JAC Scale
+### 7. Deploy with JAC Scale
 
 Once Kubernetes is running, you have two deployment methods:
 
@@ -436,7 +411,7 @@ jac start app.jac --scale --build
 - Sharing your application with others
 - Creating reproducible deployments
 
-### 11. Clean Up Kubernetes Resources
+### 8. Clean Up Kubernetes Resources
 
 When you're done testing, remove all created Kubernetes resources:
 

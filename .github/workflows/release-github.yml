@@ -70,7 +70,7 @@ jobs:
           if [ "${{ steps.check.outputs.exists }}" = "true" ]; then
             echo "Release already existed — no action taken." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "GitHub Release created. The jac binary is attached by release-jaclang.yml (triggered on release publish)." >> "$GITHUB_STEP_SUMMARY"
+            echo "GitHub Release created. The native \`jac\` binary build is triggered by the release-publish event (release-jaclang.yml)." >> "$GITHUB_STEP_SUMMARY"
           fi
 
     outputs:
