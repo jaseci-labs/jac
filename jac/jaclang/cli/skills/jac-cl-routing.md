@@ -22,13 +22,54 @@ myapp/
     ├── posts/[slug].jac     # /posts/:slug
     ├── (public)/            # route group - organizes, adds NO URL segment
     │   └── login.jac        # /login
-    ├── (auth)/              # protected group (see AuthGuard below)
-    │   ├── layout.jac       # wraps the group
-    │   └── dashboard.jac    # /dashboard
+    ├── (auth)/              # protected group - AUTOMATIC auth guard, adds NO URL segment
+    │   └── dashboard.jac    # /dashboard  (protected automatically)
     └── [...notFound].jac    # * catch-all (404)
 ```
 
-Each page file exports a **`def:pub page()`**; each layout file a **`def:pub layout()`** containing `<Outlet />` where child routes render:
+**Which files become routes:** Only plain `.jac` files in `pages/` are treated as routes. The scanner skips files whose name contains `.cl.`, `.impl.`, or `.test.` : these are never turned into routes regardless of location.
+
+| File | Becomes a route? | Purpose |
+|---|---|---|
+| `pages/about.jac` | yes | page |
+| `pages/about.cl.jac` | **no** | co-located component |
+| `pages/about.impl.jac` | **no** | jac impl-separation file |
+| `pages/about.test.jac` | **no** | test file |
+
+**Co-location pattern** - when a page has a heavy or complex UI, split it into a thin route file (`.jac`, exports `page`) and a co-located component file (`.cl.jac`, exports a named component). Both live in `pages/` but only the `.jac` becomes a route:
+
+```
+pages/
+├── budget.jac               # /budget  - thin route, exports page()
+└── budget_ui.cl.jac         # skipped  - complex UI component, exported as BudgetUI
+```
+
+```jac
+# pages/budget_ui.cl.jac - complex component, NOT a route
+import from ..context.BudgetContext { useBudgetContext }
+
+def:pub BudgetUI -> JsxElement {
+    budget = useBudgetContext();
+    # ... all the complex UI logic
+    return <div>...</div>;
+}
+```
+
+```jac
+# pages/budget.jac - thin route wrapper, IS a route
+cl {
+    import from .budget_ui { BudgetUI }
+    import from ..context.BudgetContext { BudgetProvider }
+
+    def:pub page -> JsxElement {
+        return <BudgetProvider><BudgetUI/></BudgetProvider>;
+    }
+}
+```
+
+This keeps the route file minimal while the component can be developed, reused, and tested independently.
+
+Each page file exports a **`def:pub page`**; each layout file a **`def:pub layout`** containing `<Outlet />` where child routes render:
 
 ```jac
 # pages/users/[id].jac
@@ -58,18 +99,24 @@ cl {
 }
 ```
 
-**Protected route group** - put an `AuthGuard` layout in a `(auth)/` group; every page inside requires login:
+**Protected route group** - naming a group `(auth)/` is all that is needed; the build system automatically wraps every page inside with an `AuthGuard` in the generated entry script. No layout file or manual `AuthGuard` call required.
 
-```jac
-# pages/(auth)/layout.jac
-cl import from "@jac/runtime" { AuthGuard, Outlet }
-
-cl {
-    def:pub layout() -> JsxElement {
-        return <AuthGuard redirect="/login"><Outlet /></AuthGuard>;
-    }
-}
 ```
+pages/
+├── (public)/
+│   └── login.jac        # /login  - accessible without auth
+└── (auth)/
+    └── dashboard.jac    # /dashboard - automatically protected
+```
+
+The default redirect for unauthenticated users is `/login`. To change it, set `auth_redirect` in `jac.toml`:
+
+```toml
+[routing]
+auth_redirect = "/signin"
+```
+
+> **Do not place a `layout.jac` inside `(auth)/`.** Route groups do not add a URL segment, so `pages/(auth)/layout.jac` maps to the same layout key (`"/"`) as `pages/layout.jac`. Having both causes a **layout collision error** at build time. If only `pages/(auth)/layout.jac` exists, it becomes the root layout and wraps all routes - including public ones like `/login` - behind `AuthGuard`, causing an infinite redirect loop.
 
 ## Navigation
 
@@ -93,13 +140,13 @@ page = int(searchParams.get("page") or "1");
 Explicit route table in one component (typically `AppShell.cl.jac` or `main.jac`). Nested routes render into the parent element's `<Outlet />`:
 
 ```jac
-import from "@jac/runtime" { Router, Routes, Route, Navigate, Outlet }
+cl import from "@jac/runtime" { Router, Routes, Route, Navigate, Outlet }
 # Manual-routing components live OUTSIDE pages/ (e.g. a routes/ folder) - a
 # pages/ directory would trigger file-based routing and fight this Router.
-import from .routes.LoginPage { LoginPage }
-import from .routes.DashboardLayout { DashboardLayout }
-import from .routes.DashboardHome { DashboardHome }
-import from .routes.Settings { Settings }
+cl import from .routes.LoginPage { LoginPage }
+cl import from .routes.DashboardLayout { DashboardLayout }
+cl import from .routes.DashboardHome { DashboardHome }
+cl import from .routes.Settings { Settings }
 
 def:pub AppShell() -> JsxElement {
     return <Router>
@@ -123,5 +170,5 @@ Don't mix the two systems: a `pages/` directory and a manual `<Router>` will fig
 
 - `useParams()` returns a `dict` - **subscript access only** (`params["id"]`); `params.id` fails E1030 and `params.get("id")` crashes at runtime (it's a plain JS object). Missing params come back as JS `undefined`, which `is not None` MISSES - use truthy checks (`if not userId`). See `jac-cl-components`.
 - Routing uses clean BrowserRouter URLs (`/users/123`, not `#/users/123`). `jac start` handles the SPA fallback automatically (serves the app HTML for extensionless non-API paths when `[serve] base_route_app` is set - see `jac-fullstack-patterns`). **Any other production host must do the same SPA fallback** or deep links / refreshes 404.
-- Guards with `has`/hooks: a component's hooks must run before any conditional `return <Navigate/>` - see the rules-of-hooks pitfall in `jac-cl-components`. Prefer the `(auth)/layout.jac` + `AuthGuard` form, which avoids per-page guard code entirely.
+- Guards with `has`/hooks: a component's hooks must run before any conditional `return <Navigate/>` - see the rules-of-hooks pitfall in `jac-cl-components`. Prefer the `(auth)/` group convention for file-based routing, which avoids per-page guard code entirely.
 - Routing exports from `@jac/runtime`: `Router`, `Routes`, `Route`, `Link`, `Navigate`, `Outlet`, `AuthGuard`, `useNavigate`, `useLocation`, `useParams`, `useRouter`.
