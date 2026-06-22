@@ -28,6 +28,61 @@ sys.modules.setdefault("jaclang.runtimelib.runtime", _runtime_mod)
 
 plugin_manager.register(JacRuntimeImpl)
 
+
+def _add_project_venv_to_path() -> None:
+    """Put the current project's ``.jac/venv`` site-packages on ``sys.path``.
+
+    Plugins are enumerated below (during ``import jaclang``), which is *before*
+    the CLI runs ``add_venv_to_path``. So a plugin installed into a project venv
+    (``jac install [-e] <pkg>``) would not be discovered in time. This walks up
+    from the cwd to the nearest ``jac.toml`` and prepends its venv site-packages
+    so per-project plugins load. Plain Python (no jac imports) -- it runs during
+    the foundational bootstrap phase. Mirrors ``get_venv_site_packages`` /
+    ``add_venv_to_path`` in ``jaclang/project``; the CLI's later call is then a
+    no-op (the path is already present).
+    """
+    import os
+
+    try:
+        directory = os.getcwd()
+        toml = None
+        while True:
+            candidate = os.path.join(directory, "jac.toml")
+            if os.path.isfile(candidate):
+                toml = candidate
+                break
+            parent = os.path.dirname(directory)
+            if parent == directory:
+                break
+            directory = parent
+        if toml is None:
+            return
+        venv = os.path.join(os.path.dirname(toml), ".jac", "venv")
+        if os.name == "nt":
+            site_packages = os.path.join(venv, "Lib", "site-packages")
+        else:
+            site_packages = ""
+            lib = os.path.join(venv, "lib")
+            if os.path.isdir(lib):
+                for entry in sorted(os.listdir(lib)):
+                    cand = os.path.join(lib, entry, "site-packages")
+                    if entry.startswith("python") and os.path.isdir(cand):
+                        site_packages = cand
+                        break
+        if (
+            site_packages
+            and os.path.isdir(site_packages)
+            and site_packages not in sys.path
+        ):
+            sys.path.insert(0, site_packages)
+    except Exception:
+        # Plugin discovery falls back to the binary's own site; never fatal.
+        pass
+
+
+# Discover per-project venv plugins (jac install [-e] <pkg>) before enumerating.
+_add_project_venv_to_path()
+
 # Load external plugins with disabling support
 # Disabling can be configured via JAC_DISABLED_PLUGINS env var or jac.toml [plugins].disabled
 # Use "*" to disable all external plugins, "package:*" for all from a package,
