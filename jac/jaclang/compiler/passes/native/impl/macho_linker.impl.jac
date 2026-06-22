@@ -169,6 +169,12 @@ def _build_export_trie(symbols: list[tuple[str, int]]) -> bytes {
         # Minimal valid trie: a single empty, non-terminal root node.
         return bytes([0, 0]);
     }
+    # Sort by descending name length. dyld scans children edges in order and
+    # commits to the FIRST edge whose label is a prefix of the query — so a
+    # shorter name that is a prefix of a longer one (e.g. `_tui_render` being
+    # a prefix of `_tui_render_buf`) must come AFTER the longer name. Sorting
+    # by descending length guarantees this for any pair of symbols.
+    symbols = sorted(symbols, key=lambda x : -len(x[0]));
     # Terminal node bytes per symbol are independent of placement.
     term_nodes: list[bytes] = [];
     for (name, addr) in symbols {
