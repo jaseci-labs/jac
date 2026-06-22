@@ -2,7 +2,6 @@
 import os;
 import shutil;
 import json;
-import hashlib;
 import subprocess;
 import sysconfig;
 import from pathlib { Path }
@@ -15,6 +14,7 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     _find_webview_dir,
     _jac_bin,
     _jac_sdk_js,
+    _loopback_serve_py,
     _plugin_bootstrap_py,
     _stage_oauth_broker,
     _stage_plugins,
@@ -82,50 +82,13 @@ def _generate_host_source(
     app_name: str,
     plugin_configs: dict = {}
 ) -> str {
-    # Deterministic per-app port in the dynamic/private range (49152-65215) so
-    # the same app reuses the same origin across launches; computed at build
-    # time so the host needs no hashing at runtime.
-    pref_port = 49152 + (int(hashlib.sha1(app_name.encode()).hexdigest(), 16) % 16000);
-    serve_py = (
-        "import os, sys, socketserver, threading, importlib.util\n"
-        "if os.path.isfile('/proc/self/exe'):\n"
-        "    _exe = os.path.realpath('/proc/self/exe')\n"
-        "else:\n"
-        "    _exe = os.path.abspath(sys.argv[0])\n"
-        "_root = os.path.dirname(_exe)\n"
-        "_dir = os.path.join(_root, 'dist')\n"
-        "_spec = importlib.util.spec_from_file_location("
-        "'oauth_broker', os.path.join(_root, 'oauth_broker.py'))\n"
-        "_broker = importlib.util.module_from_spec(_spec)\n"
-        "_spec.loader.exec_module(_broker)\n"
-        # Persist the session under the user data dir (JAC_DATA_PATH honored),
-        # never inside the web-served dist/ tree.
-        "_data = os.environ.get('JAC_DATA_PATH', _root)\n"
-        "_store = _broker.SessionStore("
-        "os.path.join(_data, '.jac', 'desktop', 'session.json'))\n"
-        "_H = _broker.make_handler(_dir, _store)\n"
-        # Stable origin: rebind the same deterministic port each launch
-        # (SO_REUSEADDR clears TIME_WAIT); fall back through a small scan, then
-        # to an ephemeral port only if the whole range is contended.
-        "socketserver.TCPServer.allow_reuse_address = True\n"
-        f"_pref = {pref_port}\n"
-        "_srv = None; _port = None\n"
-        "for _i in range(64):\n"
-        "    try:\n"
-        "        _srv = socketserver.TCPServer(('127.0.0.1', _pref + _i), _H)\n"
-        "        _port = _pref + _i; break\n"
-        "    except OSError:\n"
-        "        continue\n"
-        "if _srv is None:\n"
-        "    _srv = socketserver.TCPServer(('127.0.0.1', 0), _H)\n"
-        "    _port = _srv.server_address[1]\n"
-        "threading.Thread(target=_srv.serve_forever, daemon=True).start()\n"
-        "print('JAC_DESKTOP_SERVING http://127.0.0.1:' + str(_port) + '/', flush=True)\n"
+    # Embedded-CPython loopback server (shared with the CEF target). Binds the
+    # stable per-app origin port, then splices in the plugin bootstrap so
+    # _host/_dispatch_fn are available to the webview bind. The native target
+    # serves single-threaded (no SSE push route); CEF passes threaded=True.
+    serve_py = _loopback_serve_py(
+        app_name, plugin_bootstrap=_plugin_bootstrap_py(plugin_configs), threaded=False
     );
-    # --- Plugin IPC bootstrap (embedded CPython) ---
-    # _plugin_bootstrap_py imports the plugin modules, bakes plugin_configs, and
-    # exposes _host/_dispatch_fn. Shared with the CEF target (desktop_build.jac).
-    serve_py = serve_py + "\n" + _plugin_bootstrap_py(plugin_configs);
     # --- JS SDK: window.__jac.invoke() + window.__jac.on() ---
     # Backward-compatible superset; also sets __JAC_DESKTOP__/__JAC_BROKER__.
     # Shared with the CEF target (desktop_build.jac).

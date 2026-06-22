@@ -103,7 +103,10 @@ def _loopback_serve_py(
             else "_S = socketserver.TCPServer\n"
     );
     return (
-        "import os, sys, socketserver, threading, importlib.util\n" + srv_setup + "_exe = os.path.realpath('/proc/self/exe')\n"
+        "import os, sys, socketserver, threading, importlib.util\n" + srv_setup + "if os.path.isfile('/proc/self/exe'):\n"
+        "    _exe = os.path.realpath('/proc/self/exe')\n"
+        "else:\n"
+        "    _exe = os.path.abspath(sys.argv[0])\n"
         "_root = os.path.dirname(_exe)\n"
         "_dir = os.path.join(_root, 'dist')\n"
         "_spec = importlib.util.spec_from_file_location("
@@ -204,42 +207,49 @@ def _plugin_bootstrap_py(plugin_configs: dict = {}) -> str {
     return plugin_py;
 }
 
+"""Read the canonical BOOTSTRAP_JS glob value out of cef_dispatch.na.jac.
+
+That glob is the single source of truth for the desktop JS bootstrap. It is a
+one-line native string literal with no embedded double-quotes, so the value is
+everything between the first `"` after the assignment and the closing `";`."""
+def _cef_bootstrap_js -> str {
+    src = (_find_cef_dir() / "cef_dispatch.na.jac").read_text();
+    anchor = "glob BOOTSTRAP_JS: str = \"";
+    i = src.find(anchor);
+    if i < 0 {
+        raise RuntimeError("BOOTSTRAP_JS glob not found in cef_dispatch.na.jac");
+    }
+    start = i + len(anchor);
+    end = src.find("\";", start);
+    if end < 0 {
+        raise RuntimeError("BOOTSTRAP_JS glob literal is not terminated");
+    }
+    return src[start:end];
+}
+
 """JS SDK injected at document start: window.__jac.invoke()/on()/__emit__().
 
 `invoke` delegates to the native `window.__jac_invoke(p,c,a)` primitive, which
 each target provides differently (webview bind vs. CEF fetch shim) but with the
-same contract: returns a promise of the dispatch JSON (string or object). Shared
-by both targets so the SDK surface stays byte-identical.
+same contract: returns a promise of the dispatch JSON (string or object).
 
-NOTE: the CEF target cannot inject this at build time (its bootstrap is a
-precompiled glob in cef_dispatch.na.jac); that copy must be kept in sync with
-this one by hand."""
+Single-sourced from `cef_dispatch.na.jac`'s BOOTSTRAP_JS glob, which is
+[CEF fetch shim] + [this SDK] + [EventSource pump]; we slice out the shared SDK
+between its IIFE boundary and the EventSource pump. The native target relies on
+the same extraction (see native_desktop_target's plugin-bridge `_read_between`),
+so the webview bind and the CEF fetch transport can never drift. A boundary that
+moves fails loudly here at build time rather than silently shipping two SDKs."""
 def _jac_sdk_js -> str {
-    return (
-        "(function(){"
-        "var _l={};"
-        "window.__jac={"
-        "invoke:function(p,c,a){"
-        "return window.__jac_invoke(p,c,a||{}).then(function(r){"
-        "if(typeof r==='string')r=JSON.parse(r);"
-        "if(r.ok)return r.data;"
-        "var e=new Error(r.error.message);"
-        "e.code=r.error.code;throw e;"
-        "});"
-        "},"
-        "on:function(ev,cb){"
-        "(_l[ev]=_l[ev]||[]).push(cb);"
-        "return function(){var a=_l[ev]||[];var i=a.indexOf(cb);"
-        "if(i!==-1)a.splice(i,1);};"
-        "},"
-        "__emit__:function(ev,p){"
-        "(_l[ev]||[]).forEach(function(h){try{h(p);}catch(_){}});"
-        "}"
-        "};"
-        "window.__JAC_DESKTOP__=true;"
-        "window.__JAC_BROKER__='/__jac';"
-        "})();"
-    );
+    boot = _cef_bootstrap_js();
+    start = boot.find("(function(){var _l={}");
+    end = boot.find("(function(){try{");
+    if start < 0 or end < 0 or end <= start {
+        raise RuntimeError(
+            "could not locate the shared JS SDK within BOOTSTRAP_JS "
+            "(cef_dispatch.na.jac bootstrap boundaries changed)"
+        );
+    }
+    return boot[start:end];
 }
 
 """Transpile every plugin/**/*.jac -> .py into out_dir for the embedded CPython.

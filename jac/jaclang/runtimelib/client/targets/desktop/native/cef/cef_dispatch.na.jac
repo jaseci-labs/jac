@@ -393,9 +393,12 @@ glob g_pending_url: str = "",
 # JS injected at document start in the render process. Three parts:
 #   1. the __jac_invoke fetch shim (CEF's render process can't bind into the host
 #      in-process, so it POSTs the wire array to the loopback /__jac/invoke route);
-#   2. the window.__jac SDK -- body MUST stay byte-identical to _jac_sdk_js() in
-#      desktop_build.jac (the native target injects that copy at build time; this
-#      precompiled .so carries its own literal);
+#   2. the window.__jac SDK -- the single source of truth for the desktop JS
+#      bootstrap. The native/webview target does NOT keep its own copy: it slices
+#      this SDK back out of this glob at build time (desktop_build._jac_sdk_js via
+#      _cef_bootstrap_js). Edit the SDK here; the native target follows. The SDK
+#      IIFE must start with `(function(){var _l={}` and the EventSource pump below
+#      with `(function(){try{` -- those are the extraction boundaries.
 #   3. an EventSource on /__jac/events that drives host->JS pushes: {eval} runs
 #      JS (WindowPlugin), {event,payload} fans out to __jac.__emit__ (on()).
 # Uses only single quotes so it embeds cleanly in this double-quoted glob.

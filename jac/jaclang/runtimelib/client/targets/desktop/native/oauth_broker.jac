@@ -368,6 +368,13 @@ def make_handler(
                 self.send_error(404);
                 return;
             }
+            # Each stream pins a server thread for its lifetime; refuse once the
+            # subscriber pool is full so connections can't exhaust the host.
+            q = events.subscribe();
+            if q is None {
+                self.send_error(503);
+                return;
+            }
             self.send_response(200);
             self.send_header("Content-Type", "text/event-stream");
             self.send_header("Cache-Control", "no-cache");
@@ -375,7 +382,6 @@ def make_handler(
             # Defeat proxy/output buffering so events flush immediately.
             self.send_header("X-Accel-Buffering", "no");
             self.end_headers();
-            q = events.subscribe();
             try {
                 self.wfile.write(b": connected\n\n");
                 self.wfile.flush();
@@ -427,6 +433,12 @@ def make_handler(
                     n = int(self.headers.get("Content-Length", 0) or 0);
                 } except (TypeError, ValueError) {
                     n = 0;
+                }
+                # Loopback-pinned, but still cap the body so a runaway/hostile
+                # page can't drive the host OOM with one giant POST.
+                if n > 1048576 {  # 1 MiB
+                    self.send_error(413);
+                    return;
                 }
                 raw = self.rfile.read(n) if n > 0 else b"";
                 body = raw.decode("utf-8") if raw else "[]";

@@ -15,6 +15,7 @@ def cef_stub_has_at_least_one_ref(self: int) -> int {
 }
 
 def cef_main_args_create -> int {
+    global g_cmdline_buf,g_argv_arr;
     pw: cef_ptr_wrap_t = cef_ptr_wrap_t();
     argv_wrap: cef_ptr_wrap_t = cef_ptr_wrap_t();
     fd: i32 = open("/proc/self/cmdline", 0);

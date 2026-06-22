@@ -134,10 +134,14 @@ obj PluginHost {
         return bool(rc);
     }
 
-    """Register a new SSE subscriber; returns its event queue."""
-    def subscribe -> queue.Queue {
+    """Register a new SSE subscriber; returns its event queue, or None if the
+    subscriber pool is full (each live subscriber pins a server thread)."""
+    def subscribe -> (queue.Queue | None) {
         q = queue.Queue();
         with self._sub_lock {
+            if len(self._subscribers) >= 256 {
+                return None;
+            }
             self._subscribers.append(q);
         }
         return q;
