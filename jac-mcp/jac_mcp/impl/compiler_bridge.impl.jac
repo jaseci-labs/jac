@@ -525,44 +525,52 @@ impl CompilerBridge.run_snippet(
                 start_new_session=True,
             );
         }
-        try {
-            (proc_out, proc_err) = proc.communicate(timeout=timeout);
-        } except subprocess.TimeoutExpired {
+        # `with` guarantees the child's stdout/stderr pipes are closed on every
+        # exit path -- including the early timeout return below -- so a snippet
+        # that hangs does not leak two file descriptors per call.
+        with proc {
             try {
-                if is_windows {
-                    subprocess.run(
-                        ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    );
-                } else {
-                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL);
-                }
-            } except Exception { }
-            proc.wait();
+                (proc_out, proc_err) = proc.communicate(timeout=timeout);
+            } except subprocess.TimeoutExpired {
+                try {
+                    if is_windows {
+                        subprocess.run(
+                            ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        );
+                    } else {
+                        os.killpg(os.getpgid(proc.pid), signal.SIGKILL);
+                    }
+                } except Exception { }
+                proc.wait();
+                return {
+                    "stdout": "",
+                    "stderr": "Operation timed out",
+                    "exit_code": 1,
+                    "error": "Operation timed out"
+                };
+            }
+            if os.path.exists(out_path) {
+                # The result file can exist yet be truncated or malformed if the
+                # worker was killed mid-write; treat an unreadable result as no
+                # result (fall through below) rather than crashing the server.
+                try {
+                    with open(out_path) as f {
+                        return json.load(f);
+                    }
+                } except (ValueError, OSError) { }
+            }
+            # Worker died before writing a result (e.g. crash on import). Surface
+            # whatever it emitted on its real stderr for diagnostics.
+            err_text = proc_err.decode() if proc_err else "";
             return {
-                "stdout": "",
-                "stderr": "Operation timed out",
-                "exit_code": 1,
-                "error": "Operation timed out"
+                "stdout": proc_out.decode() if proc_out else "",
+                "stderr": err_text or "Worker exited without producing a result",
+                "exit_code": proc.returncode or 1,
+                "error": "Worker produced no result"
             };
         }
-
-        if os.path.exists(out_path) {
-            with open(out_path) as f {
-                return json.load(f);
-            }
-        }
-
-        # Worker died before writing a result (e.g. crash on import). Surface
-        # whatever it emitted on its real stderr for diagnostics.
-        err_text = proc_err.decode() if proc_err else "";
-        return {
-            "stdout": proc_out.decode() if proc_out else "",
-            "stderr": err_text or "Worker exited without producing a result",
-            "exit_code": proc.returncode or 1,
-            "error": "Worker produced no result"
-        };
     } finally {
         try {
             shutil.rmtree(tmp_dir);
