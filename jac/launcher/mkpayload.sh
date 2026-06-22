@@ -96,13 +96,14 @@ if [ "$PRECOMPILE" = "1" ]; then
   fi
 fi
 
-# Bundle the test runner so `jac test` can route through pytest (+ xdist -n auto)
-# from the sealed binary with no system Python. Installed AFTER precompile so the
-# precompiler's package walk only sees jaclang (extra packages yield 0 JIR).
-echo "==> bundling pytest + pytest-xdist (jac test runner)"
+# Bundle the test runner (pytest + xdist) and watchdog so `jac test` and
+# `jac start --dev` (file watching) work from the sealed binary with no system
+# Python or pip. Installed AFTER precompile so the precompiler's package walk
+# only sees jaclang (extra packages yield 0 JIR).
+echo "==> bundling pytest + pytest-xdist (jac test) + watchdog (jac start --dev)"
 # Drop any stray bytecode cache so pip doesn't refuse the populated --target dir.
 rm -rf "$site"/__pycache__ 2>/dev/null || true
-"$PY" -m pip install --quiet pytest pytest-xdist --target "$site"
+"$PY" -m pip install --quiet pytest pytest-xdist "watchdog>=3.0.0" --target "$site"
 
 echo "==> staging runtime tree (shared libpython + stdlib + site)"
 mkdir -p "$stage/python/lib"
