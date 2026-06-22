@@ -58,13 +58,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install jaclang
-        run: pip install -e ./jac
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
       - name: Parse release info
         id: parse
@@ -140,11 +135,13 @@ jobs:
         with:
           python-version: "3.14"
 
-      # Install jaclang for plugin builds (jac bundle) and for any extra build commands.
-      # jaclang itself uses python -m build, so it doesn't need this step.
-      - name: Install jaclang
+      # Build the jac binary for plugin builds (jac bundle) + extra build commands.
+      # jaclang itself ships as the binary (released via release-jaclang.yml), not a
+      # PyPI wheel, so the parse step should not emit a 'jaclang' matrix entry; the
+      # jaclang-only steps below are legacy and no-op without one.
+      - name: Set up jac (build the binary)
         if: matrix.name != 'jaclang'
-        run: pip install -e ./jac
+        uses: ./.github/actions/setup-jac
 
       # Install the package itself for extra build commands.
       # Plugins have no pyproject.toml (jac.toml is the source of truth), so use `jac install`.
@@ -267,9 +264,9 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Install jaclang
+      - name: Set up jac (build the binary)
         if: steps.npm.outputs.any == 'true'
-        run: pip install -e ./jac
+        uses: ./.github/actions/setup-jac
 
       # Publish @jaseci/runtime (versioned to the jaclang release).
       - name: Build and publish @jaseci/runtime
@@ -343,8 +340,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install jaclang
-        run: pip install -e ./jac
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
       - name: Wait for tier 1 on PyPI
         env:
@@ -404,8 +401,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install jaclang
-        run: pip install -e ./jac
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
       - name: Wait for tier 2 on PyPI
         env:
@@ -465,8 +462,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install jaclang
-        run: pip install -e ./jac
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
       - name: Wait for tier 3 on PyPI
         env:
@@ -526,8 +523,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install jaclang
-        run: pip install -e ./jac
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
       - name: Wait for tier 4 on PyPI
         env:

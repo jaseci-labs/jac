@@ -135,7 +135,9 @@ jobs:
           COPY CONTRIBUTING.md ./CONTRIBUTING.md
           COPY .pre-commit-config.yaml ./.pre-commit-config.yaml
 
-          RUN pip install -e ./jac
+          # jaclang is the prebuilt single binary (copied in via jac/zig-out from
+          # the setup-jac build step), not a pip install.
+          ENV PATH="/app/jac/zig-out/bin:${PATH}"
           RUN jac install -e ./docs
 
           EXPOSE 8000
