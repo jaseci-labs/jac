@@ -61,8 +61,11 @@ desktop = jaclang.runtimelib.client.desktop_plugin_config:desktop_sdk_exports
 EOT
 
 # The sole runtime dependency (a binary wheel; from PyPI, not the jaclang repo).
-echo "==> fetching runtime dep: llvmlite"
-"$PY" -m pip install --quiet llvmlite --target "$site"
+# Pin to jac.toml's declared constraint (single source of truth) so a breaking
+# llvmlite release can't silently get baked into the binary.
+llvmlite_spec=$(grep -oE 'llvmlite[^"]+' "$JACSRC/jac.toml" | head -1)
+echo "==> fetching runtime dep: ${llvmlite_spec:-llvmlite>=0.43.0}"
+"$PY" -m pip install --quiet "${llvmlite_spec:-llvmlite>=0.43.0}" --target "$site"
 
 if [ "$PRECOMPILE" = "1" ]; then
   echo "==> precompiling jaclang -> _precompiled JIR (fast first run)"
@@ -90,8 +93,12 @@ if [ "$PRECOMPILE" = "1" ]; then
     if [ "${jir:-0}" -ge 300 ]; then
       echo "   _precompiled: ${jir} JIR generated (${skipped} core modules compile at runtime by design)"
     else
-      echo "   WARNING: only ${jir:-0} JIR produced -- first run will be slow. See $WORK/precompile.log"
-      tail -20 "$WORK/precompile.log" || true
+      # Below the healthy floor means the precompiler crashed, not the handful of
+      # by-design skips. Fail the build rather than silently shipping a binary
+      # that takes the slow cold-start path with no precompiled JIR.
+      echo "   ERROR: only ${jir:-0} JIR produced (expected >=300); precompiler likely crashed." >&2
+      tail -40 "$WORK/precompile.log" >&2 || true
+      exit 1
     fi
   fi
 fi

@@ -28,8 +28,8 @@ pub fn main(init: std.process.Init) !void {
 
     var digest: [32]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(payload, &digest, .{});
-    var hex: [runtime.HASH_LEN]u8 = undefined;
-    _ = std.fmt.bufPrint(&hex, "{x}", .{&digest}) catch unreachable;
+    // Exactly two lowercase hex chars per byte (64 total); see runtime.hexDigest.
+    const hex = runtime.hexDigest(&digest);
 
     var lenle: [8]u8 = undefined;
     std.mem.writeInt(u64, &lenle, payload.len, .little);

@@ -36,6 +36,26 @@ url="https://github.com/astral-sh/python-build-standalone/releases/download/${PB
 tmp="$DEST/.dl.$$"; mkdir -p "$tmp"; trap 'rm -rf "$tmp"' EXIT
 echo "fetch-pbs: downloading ${ASSET}"
 curl -fsSL -o "$tmp/pbs.tar.zst" "$url"
+
+# Verify integrity against the release's SHA256SUMS: this archive becomes the
+# libpython embedded in every distributed binary, so a swapped/MITM'd asset must
+# not slip through.
+curl -fsSL -o "$tmp/SHA256SUMS" \
+  "https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_TAG}/SHA256SUMS"
+expected="$(awk -v a="$ASSET" '$2 == a {print $1}' "$tmp/SHA256SUMS")"
+[ -n "$expected" ] || { echo "fetch-pbs: no checksum for ${ASSET} in SHA256SUMS" >&2; exit 1; }
+if command -v sha256sum >/dev/null 2>&1; then
+  actual="$(sha256sum "$tmp/pbs.tar.zst" | awk '{print $1}')"
+else
+  actual="$(shasum -a 256 "$tmp/pbs.tar.zst" | awk '{print $1}')"
+fi
+[ "$actual" = "$expected" ] || {
+  echo "fetch-pbs: checksum mismatch for ${ASSET}" >&2
+  echo "  expected $expected" >&2
+  echo "  actual   $actual" >&2
+  exit 1
+}
+
 zstd -d -q --long=31 -f "$tmp/pbs.tar.zst" -o "$tmp/pbs.tar"
 tar -C "$DEST" -xf "$tmp/pbs.tar"
 [ -f "$DEST/python/PYTHON.json" ] || { echo "fetch-pbs: extract failed (no PYTHON.json)" >&2; exit 1; }

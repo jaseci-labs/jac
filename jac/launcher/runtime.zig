@@ -47,24 +47,41 @@ pub const Error = error{
     BadMagic,
     PayloadOffsetUnderflow,
     ShortPayloadRead,
+    PayloadHashMismatch,
     NoWritableCacheDir,
     MaterializeFailed,
 };
 
-/// Parsed trailer: the compressed payload length and the cache key.
+/// Parsed trailer: the compressed payload length, its full digest, and the
+/// cache key (first 16 hex chars of the digest).
 pub const Trailer = struct {
     payload_len: u64,
-    /// First 16 hex chars of the sha256 digest; used as the `rt/<hash16>` dir.
+    /// Full sha256 hex of the compressed payload; verified on the cold path.
+    hash: [HASH_LEN]u8,
+    /// First 16 hex chars of `hash`; used as the `rt/<hash16>` dir name.
     hash16: [16]u8,
 };
+
+/// Lowercase hex of a 32-byte digest -- exactly HASH_LEN (64) chars, two per
+/// byte. (`{x}` on a byte array does not zero-pad each byte.)
+pub fn hexDigest(digest: *const [32]u8) [HASH_LEN]u8 {
+    var hex: [HASH_LEN]u8 = undefined;
+    const chars = "0123456789abcdef";
+    for (digest, 0..) |b, i| {
+        hex[i * 2] = chars[b >> 4];
+        hex[i * 2 + 1] = chars[b & 0xf];
+    }
+    return hex;
+}
 
 /// Decode an 80-byte trailer blob. Pure function (no I/O) so it is trivially
 /// testable and reused by the warm and cold paths.
 pub fn parseTrailer(bytes: *const [TRAILER_LEN]u8) Error!Trailer {
     if (!std.mem.eql(u8, bytes[0..MAGIC_LEN], MAGIC)) return Error.BadMagic;
     const payload_len = std.mem.readInt(u64, bytes[MAGIC_LEN..][0..8], .little);
-    var t: Trailer = .{ .payload_len = payload_len, .hash16 = undefined };
-    @memcpy(&t.hash16, bytes[MAGIC_LEN + 8 ..][0..16]);
+    var t: Trailer = .{ .payload_len = payload_len, .hash = undefined, .hash16 = undefined };
+    @memcpy(&t.hash, bytes[MAGIC_LEN + 8 ..][0..HASH_LEN]);
+    @memcpy(&t.hash16, t.hash[0..16]);
     return t;
 }
 
@@ -168,7 +185,15 @@ pub fn materialize(
     file.close(io);
     keep_open = false;
 
-    try extractPayload(io, gpa, zbuf, root, rt, pid);
+    // Integrity check before populating the cache: a truncated / bit-flipped /
+    // tampered payload must not silently extract and then be reused on every
+    // launch. Cold path only, so the `.ok` warm path stays cost-free.
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(zbuf, &digest, .{});
+    if (!std.mem.eql(u8, &hexDigest(&digest), &trailer.hash))
+        return Error.PayloadHashMismatch;
+
+    try extractPayload(io, gpa, zbuf, rt, pid);
     gcStale(io, root, &trailer.hash16);
     return rt;
 }
@@ -180,7 +205,6 @@ fn extractPayload(
     io: Io,
     gpa: Allocator,
     zbuf: []const u8,
-    root: []const u8,
     rt: []const u8,
     pid: i32,
 ) !void {
@@ -213,7 +237,6 @@ fn extractPayload(
 
     // Atomic publish. A lost race (target already exists) is fine as long as
     // the winner left a complete (`.ok`-bearing) tree.
-    _ = root;
     Io.Dir.rename(Io.Dir.cwd(), tmp, Io.Dir.cwd(), rt, io) catch {
         Io.Dir.cwd().deleteTree(io, tmp) catch {};
         if (!pathExists(io, rt, ".ok")) return Error.MaterializeFailed;
@@ -304,8 +327,7 @@ test "materialize extracts the fixture payload and is idempotent" {
     // Build the fake binary: 4-byte stub + payload + trailer.
     var digest: [32]u8 = undefined;
     std.crypto.hash.sha2.Sha256.hash(payload, &digest, .{});
-    var hex: [HASH_LEN]u8 = undefined;
-    _ = std.fmt.bufPrint(&hex, "{x}", .{&digest}) catch unreachable;
+    const hex = hexDigest(&digest);
 
     var bin = std.array_list.Managed(u8).init(testing.allocator);
     defer bin.deinit();

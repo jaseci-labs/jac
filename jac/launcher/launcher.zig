@@ -114,8 +114,11 @@ fn boot(rt: []const u8, exe_path: []const u8, init: std.process.Init) u8 {
 
     // We own a private, hermetic interpreter: point it at our tree, force UTF-8,
     // never write bytecode (shipped stdlib is .pyc), ignore user site.
-    _ = setenv("PYTHONHOME", home, 1);
-    _ = setenv("PYTHONPATH", pythonpath, 1);
+    // PYTHONHOME/PYTHONPATH are load-bearing: if setenv fails (e.g. environ full),
+    // Py_Initialize would fall back to a foreign/absent interpreter with confusing
+    // errors, so fail loudly instead.
+    if (setenv("PYTHONHOME", home, 1) != 0) die("setenv PYTHONHOME failed");
+    if (setenv("PYTHONPATH", pythonpath, 1) != 0) die("setenv PYTHONPATH failed");
     _ = setenv("PYTHONUTF8", "1", 1);
     // Force UTF-8 stdio directly. PYTHONUTF8 alone does not pin the stdout/stderr
     // encoding under this Py_Initialize path, so a C/POSIX locale (no LANG, as in
@@ -146,15 +149,21 @@ fn boot(rt: []const u8, exe_path: []const u8, init: std.process.Init) u8 {
     // env we set above points it at the bundled stdlib + site.
     if (isPythonInvocation(init)) {
         const Py_BytesMain: Py_BytesMain_t = sym(h, Py_BytesMain_t, "Py_BytesMain");
+        // POSIX requires argv[argc] == NULL; reserve the last slot for it and
+        // refuse a pathologically long argv rather than silently truncating.
         var argv_storage: [4096][*c]u8 = undefined;
         var n: usize = 0;
         var wit = init.minimal.args.iterate();
         while (wit.next()) |arg| {
-            if (n >= argv_storage.len) break;
+            if (n >= argv_storage.len - 1) die("too many arguments");
             argv_storage[n] = @constCast(arg.ptr);
             n += 1;
         }
-        return @intCast(Py_BytesMain(@intCast(n), @ptrCast(&argv_storage)));
+        argv_storage[n] = null;
+        // Exit codes are 8-bit (the OS masks them). Truncate rather than @intCast,
+        // which panics on a negative/out-of-range c_int in checked builds.
+        const code = Py_BytesMain(@intCast(n), @ptrCast(&argv_storage));
+        return @truncate(@as(u32, @bitCast(code)));
     }
 
     const Py_Initialize: Py_Initialize_t = sym(h, Py_Initialize_t, "Py_Initialize");
@@ -172,8 +181,14 @@ fn boot(rt: []const u8, exe_path: []const u8, init: std.process.Init) u8 {
     var argc: usize = 0;
     var it = init.minimal.args.iterate();
     while (it.next()) |arg| {
-        if (argc >= wargv.len) break;
-        wargv[argc] = Py_DecodeLocale(arg.ptr, null);
+        if (argc >= wargv.len) die("too many arguments");
+        // Py_DecodeLocale returns null on OOM; a null in the vector would make
+        // PySys_SetArgvEx -> PyUnicode_FromWideChar segfault. Free what we have
+        // and die instead.
+        wargv[argc] = Py_DecodeLocale(arg.ptr, null) orelse {
+            for (wargv[0..argc]) |w| PyMem_RawFree(w);
+            die("failed to decode argument");
+        };
         argc += 1;
     }
     PySys_SetArgvEx(@intCast(argc), &wargv, 0);
