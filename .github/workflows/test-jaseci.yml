@@ -347,8 +347,8 @@ jobs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Install jaclang for precompilation
-      run: pip install -e jac
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
 
     - name: Precompile all packages
       run: |
@@ -371,12 +371,10 @@ jobs:
         rm -rf jac-scale/*.egg-info jac-scale/jac_scale/*.egg-info
         rm -rf jac-byllm/*.egg-info
 
-    - name: Build and install packages
+    - name: Build plugin wheels (jaclang itself ships as the binary, not a wheel)
       run: |
-        python -m build jac --wheel
         (cd jac-scale && jac bundle)
         (cd jac-byllm && jac bundle)
-        pip install jac/dist/jaclang-*.whl
         SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && pip install "${SCALE_WHL}[all]"
         pip install jac-byllm/dist/byllm-*.whl
         pip install pytest
