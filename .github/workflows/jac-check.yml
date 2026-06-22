@@ -5,7 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
   workflow_dispatch:
 
 # Cancel superseded PR runs; never cancel a run for a commit on main.
@@ -14,6 +14,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Single job so the "Jac Type Check / jac-check" status always reports (a
+  # required check never hangs on "waiting for status"). The expensive whole-repo
+  # check runs ONLY when it can matter; otherwise the job passes in seconds.
+  #
+  # Run the type check when:
+  #   - workflow_dispatch (manual override), OR
+  #   - .jac/config files changed AND (push to main  OR  PR has 'ready-for-review')
+  # Skip (fast pass) for: md-only / non-.jac changes, and unlabeled PRs.
   jac-check:
     runs-on: blacksmith-4vcpu-ubuntu-2404
 
@@ -22,12 +30,50 @@ jobs:
         with:
           submodules: true
 
+      - name: Detect .jac / config changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # A dependency/config bump can break type-checking without a .jac edit,
+          # so those count too. The workflow file itself is included so changes
+          # to this gate are validated end-to-end.
+          filters: |
+            jac:
+              - '**/*.jac'
+              - '**/pyproject.toml'
+              - 'jac.toml'
+              - '.github/workflows/jac-check.yml'
+
+      - name: Decide whether to run the type check
+        id: gate
+        run: |
+          run=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            run=true
+          elif [ "${{ steps.filter.outputs.jac }}" = "true" ]; then
+            if [ "${{ github.event_name }}" = "push" ]; then
+              run=true                                  # merge to main: safety net
+            elif [ "${{ contains(github.event.pull_request.labels.*.name, 'ready-for-review') }}" = "true" ]; then
+              run=true                                  # PR marked ready for review
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "run=$run (jac_changed=${{ steps.filter.outputs.jac }}, event=${{ github.event_name }})"
+
+      - name: Skipped (no .jac changes or PR not ready-for-review)
+        if: steps.gate.outputs.run != 'true'
+        run: |
+          echo "Jac Type Check skipped."
+          echo "It runs on merge to main, or when a PR is labeled 'ready-for-review' and has .jac/config changes."
+
       - name: Set up Python
+        if: steps.gate.outputs.run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -e ./jac
@@ -35,22 +81,26 @@ jobs:
           jac install -e ./jac-byllm
 
       - name: Warm up compiler cache
+        if: steps.gate.outputs.run == 'true'
         run: jac --version
 
       - name: Run jac format (check formatting)
+        if: steps.gate.outputs.run == 'true'
         run: |
           find . -type f -name "*.jac" ! -path "*/fixtures/*" ! -path "./scripts/*" ! -name "*_err.jac" ! -name "*_syntax_err.jac" -print0 | xargs -0 --no-run-if-empty jac format --check --lintfix
 
       - name: Verify jir_registry.jac is up to date
+        if: steps.gate.outputs.run == 'true'
         run: |
           jac gen-jir-registry --verify
 
       - name: Run jac check (using .jacignore)
+        if: steps.gate.outputs.run == 'true'
         run: |
           jac check . --ignore tests checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ') --nowarn
 
       - name: Error-code breakdown (label "type-error-report")
-        if: contains(github.event.pull_request.labels.*.name, 'type-error-report')
+        if: steps.gate.outputs.run == 'true' && contains(github.event.pull_request.labels.*.name, 'type-error-report')
         run: |
           set +e
           echo "Scanning the whole codebase (no ignores) for an error-code breakdown..."
