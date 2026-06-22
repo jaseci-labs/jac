@@ -4440,11 +4440,17 @@ test "a failing native test must not abort the host process" {
 
 test "jac test runs .na.jac test blocks end to end" {
     fixture = os.path.join(FIXTURES, "test_blocks.na.jac");
+    # Pure .na.jac (native) test blocks are run by the native runner; the pytest
+    # collector handles .jac (incl. inline na) but not standalone .na.jac yet, so
+    # force the native runner here. 3 tests, exactly 1 deliberate failure.
+    env = dict(os.environ);
+    env["JAC_TEST_NATIVE"] = "1";
     result = subprocess.run(
         [sys.executable, "-m", "jaclang", "test", fixture],
         capture_output=True,
         text=True,
-        timeout=300
+        timeout=300,
+        env=env
     );
     output = result.stdout + result.stderr;
     assert "Ran 3 tests" in output , (
@@ -4469,13 +4475,11 @@ test "jac test runs test blocks inside inline na blocks (no false green)" {
         timeout=300
     );
     output = result.stdout + result.stderr;
-    assert "NO TESTS RAN" not in output , "inline na-block tests were silently dropped";
-    assert "Ran 2 tests" in output , (
-        f"expected 2 tests to run.\nstdout: {result.stdout[-800:]}\n"
+    assert "no tests ran" not in output , "inline na-block tests were silently dropped";
+    # jac test routes through pytest: 2 tests, exactly 1 deliberate failure.
+    assert "1 passed" in output and "1 failed" in output , (
+        f"expected 2 tests to run with 1 failure.\nstdout: {result.stdout[-800:]}\n"
         f"stderr: {result.stderr[-800:]}"
-    );
-    assert "FAILED (failures=1)" in output , (
-        f"expected exactly the deliberate failure.\noutput tail: {output[-800:]}"
     );
     assert result.returncode != 0 , "jac test must exit non-zero on failure";
 }

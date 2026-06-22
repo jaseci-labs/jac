@@ -25,14 +25,12 @@ test "circle jac" {
 
 test "circle jac test" {
     captured_output = io.StringIO();
-    stdout_block = io.StringIO();
-    sys.stderr = captured_output;
-    sys.stdout = stdout_block;
+    sys.stdout = captured_output;
+    # jac test routes through pytest, which reports the run on stdout.
     analysis.test(os.path.join(FIXTURES, "circle.jac"));
-    sys.stderr = sys.__stderr__;
     sys.stdout = sys.__stdout__;
-    stderr_value = captured_output.getvalue();
-    assert "Ran 3 tests" in stderr_value;
+    stdout_value = captured_output.getvalue();
+    assert "collected 3 items" in stdout_value;
 }
 
 test "clean circle jac" {
@@ -66,30 +64,24 @@ test "pure circle impl not double generated" {
 
 test "clean circle jac test" {
     captured_output = io.StringIO();
-    stdio_block = io.StringIO();
-    sys.stderr = captured_output;
-    sys.stdout = stdio_block;
+    sys.stdout = captured_output;
     with suppress(SystemExit) {
         analysis.test(os.path.join(FIXTURES, "circle_clean_tests.jac"));
     }
-    sys.stderr = sys.__stderr__;
     sys.stdout = sys.__stdout__;
-    stderr_value = captured_output.getvalue();
-    assert "Ran 3 tests" in stderr_value;
+    stdout_value = captured_output.getvalue();
+    assert "collected 3 items" in stdout_value;
 }
 
 test "pure circle jac test" {
     captured_output = io.StringIO();
-    stdio_block = io.StringIO();
-    sys.stderr = captured_output;
-    sys.stdout = stdio_block;
+    sys.stdout = captured_output;
     with suppress(SystemExit) {
         analysis.test(os.path.join(FIXTURES, "circle_pure.test.jac"));
     }
-    sys.stderr = sys.__stderr__;
     sys.stdout = sys.__stdout__;
-    stderr_value = captured_output.getvalue();
-    assert "Ran 3 tests" in stderr_value;
+    stdout_value = captured_output.getvalue();
+    assert "collected 3 items" in stdout_value;
 }
 
 test "jac name in sys mods" {
