@@ -375,10 +375,11 @@ jobs:
       run: |
         (cd jac-scale && jac bundle)
         (cd jac-byllm && jac bundle)
-        SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && pip install "${SCALE_WHL}[all]"
-        pip install jac-byllm/dist/byllm-*.whl
-        pip install pytest
-        pip install pytest-asyncio
+        # Install the freshly built wheels INTO the binary's runtime (not system
+        # Python -- jaclang is host-provided by the binary, so the plugins must
+        # be importable by it). pytest ships in the binary, so no pip pytest.
+        SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && jac install "${SCALE_WHL}"
+        jac install jac-byllm/dist/byllm-*.whl
 
     - name: Verify cold start with precompiled bytecode
       run: |
@@ -394,8 +395,10 @@ jobs:
     - name: Run tests on built packages
       run: |
         jac check jac/tests/compiler/passes/main/fixtures/checker/checker_type_ref.jac
-        pytest "jac/tests/runtimelib/client/test_cli.jac::create jac app"
-        pytest jac-byllm/tests/test_byllm.jac
+        # Run through the binary (its bundled pytest + the host jaclang). The
+        # `jac create` client flow is already covered by the blocking binary
+        # gate and the jacpack smokes below, so it is not duplicated here.
+        jac test jac-byllm/tests/test_byllm.jac
 
     # ========== jac-gpt test ==========
     - name: Create jac-gpt from jacpack
@@ -404,9 +407,10 @@ jobs:
         cd jac-gpt && jac install
 
     - name: Install Playwright dependencies
+      # Into the binary runtime, since the e2e test runs through the binary.
       run: |
-        pip install playwright
-        playwright install chromium --with-deps
+        jac install playwright
+        jac -m playwright install chromium --with-deps
 
     - name: Type check jac-gpt
       working-directory: jac-gpt
@@ -466,9 +470,12 @@ jobs:
         fi
 
     - name: Run E2E tests
+      working-directory: jac-gpt
       env:
         SERVER_URL: http://localhost:8000
-      run: pytest jac-gpt/tests/test_e2e.jac -v
+      # Run from the project dir so the binary loads jac-gpt's deps; the binary
+      # provides jaclang + pytest (system pytest has neither).
+      run: jac test tests/test_e2e.jac -vv
 
     - name: Stop jac-gpt server
       if: always()
