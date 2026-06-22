@@ -216,6 +216,32 @@ jobs:
     - name: Run dependency-free desktop tests
       run: pytest -x jac/tests/runtimelib/client/test_desktop_binding.jac -n auto
 
+  test-native-macos:
+    # Lean macOS-only coverage for the pure-Jac Mach-O linker changes: the
+    # dylib dlopen/dlsym round-trip that guards #6821 plus the executable /
+    # dylib arm64 code-signing invariants added in PR #6828.
+    runs-on: macos-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install the jac toolchain only
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-xdist
+
+    - name: Run native Mach-O linker regression tests
+      run: pytest -x jac/tests/compiler/passes/native/test_shared_lib.jac jac/tests/compiler/passes/native/test_exec_link.jac -n auto
+
   test-mcp:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
