@@ -933,7 +933,7 @@ def _x11_has_prop(dpy: int, w: int, prop: int) -> i32 {
 top-level -- the ancestor carrying WM_STATE. Falls back to the highest non-root
 ancestor when WM_STATE is absent (e.g. before the window is mapped)."""
 def _x11_toplevel(dpy: int, xid: int) -> int {
-    root: int = XDefaultRootWindow(dpy);
+    root_win: int = XDefaultRootWindow(dpy);
     wm_state: int = XInternAtom(dpy, "WM_STATE", 1);
     cur: int = xid;
     i: int = 0;
@@ -941,7 +941,7 @@ def _x11_toplevel(dpy: int, xid: int) -> int {
         if cur == 0 {
             return xid;
         }
-        if cur == root {
+        if cur == root_win {
             return xid;
         }
         if _x11_has_prop(dpy, cur, wm_state) != 0 {
@@ -951,7 +951,7 @@ def _x11_toplevel(dpy: int, xid: int) -> int {
         if parent == 0 {
             return cur;
         }
-        if parent == root {
+        if parent == root_win {
             return cur;
         }
         cur = parent;
