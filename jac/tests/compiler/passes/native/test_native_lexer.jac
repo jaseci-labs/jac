@@ -290,7 +290,8 @@ test "native tokenize returns correct tokens" {
     import from jaclang.jac0core.native_marshal {
         build_ctypes_classes,
         build_enum_maps,
-        wrap_native_function
+        wrap_native_function,
+        init_native_globals
     }
     import ctypes as ct;
 
@@ -301,15 +302,10 @@ test "native tokenize returns correct tokens" {
     assert eng is not None;
     assert layout is not None;
 
-    # Init globals: tokens module first (KEYWORDS dict), then lexer module
-    tokens_glob_addr = eng.get_function_address("__jac_glob_init_tokens_na");
-    if tokens_glob_addr {
-        ct.CFUNCTYPE(None)(tokens_glob_addr)();
-    }
-    glob_init_addr = eng.get_function_address("__jac_glob_init");
-    if glob_init_addr {
-        ct.CFUNCTYPE(None)(glob_init_addr)();
-    }
+    # Init globals: tokens module first (KEYWORDS dict), then lexer module.
+    # init_native_globals resolves the hash-suffixed __jac_glob_init_<safe>
+    # symbols via native_safe_sym, matching what the codegen emits.
+    init_native_globals(eng, ir.gen.interop_manifest);
 
     ct_classes = build_ctypes_classes(layout);
     enum_maps = build_enum_maps(layout, {});
@@ -343,7 +339,8 @@ test "native tokenize matches python lexer" {
     import from jaclang.jac0core.native_marshal {
         build_ctypes_classes,
         build_enum_maps,
-        wrap_native_function
+        wrap_native_function,
+        init_native_globals
     }
     import ctypes as ct;
 
@@ -353,14 +350,7 @@ test "native tokenize matches python lexer" {
     layout = ir.gen.native_layout;
     assert eng is not None;
     assert layout is not None;
-    tokens_glob_addr = eng.get_function_address("__jac_glob_init_tokens_na");
-    if tokens_glob_addr {
-        ct.CFUNCTYPE(None)(tokens_glob_addr)();
-    }
-    glob_init_addr = eng.get_function_address("__jac_glob_init");
-    if glob_init_addr {
-        ct.CFUNCTYPE(None)(glob_init_addr)();
-    }
+    init_native_globals(eng, ir.gen.interop_manifest);
 
     ct_classes = build_ctypes_classes(layout);
     enum_maps = build_enum_maps(layout, {});
@@ -397,7 +387,8 @@ test "native tokenize matches python lexer for fstrings" {
     import from jaclang.jac0core.native_marshal {
         build_ctypes_classes,
         build_enum_maps,
-        wrap_native_function
+        wrap_native_function,
+        init_native_globals
     }
     import ctypes as ct;
 
@@ -407,14 +398,7 @@ test "native tokenize matches python lexer for fstrings" {
     layout = ir.gen.native_layout;
     assert eng is not None;
     assert layout is not None;
-    tokens_glob_addr = eng.get_function_address("__jac_glob_init_tokens_na");
-    if tokens_glob_addr {
-        ct.CFUNCTYPE(None)(tokens_glob_addr)();
-    }
-    glob_init_addr = eng.get_function_address("__jac_glob_init");
-    if glob_init_addr {
-        ct.CFUNCTYPE(None)(glob_init_addr)();
-    }
+    init_native_globals(eng, ir.gen.interop_manifest);
 
     ct_classes = build_ctypes_classes(layout);
     enum_maps = build_enum_maps(layout, {});
@@ -452,7 +436,8 @@ test "native tokenize matches python lexer for unicode (byte offsets)" {
     import from jaclang.jac0core.native_marshal {
         build_ctypes_classes,
         build_enum_maps,
-        wrap_native_function
+        wrap_native_function,
+        init_native_globals
     }
     import ctypes as ct;
 
@@ -461,12 +446,7 @@ test "native tokenize matches python lexer for unicode (byte offsets)" {
     eng = ir.gen.native_engine;
     layout = ir.gen.native_layout;
     assert eng is not None and layout is not None;
-    for g in ["__jac_glob_init_tokens_na", "__jac_glob_init"] {
-        addr = eng.get_function_address(g);
-        if addr {
-            ct.CFUNCTYPE(None)(addr)();
-        }
-    }
+    init_native_globals(eng, ir.gen.interop_manifest);
     ct_classes = build_ctypes_classes(layout);
     enum_maps = build_enum_maps(layout, {});
     wrapper = wrap_native_function(
@@ -523,7 +503,8 @@ test "native tokenize error count matches python for illegal chars" {
     import from jaclang.jac0core.native_marshal {
         build_ctypes_classes,
         build_enum_maps,
-        wrap_native_function
+        wrap_native_function,
+        init_native_globals
     }
     import ctypes as ct;
 
@@ -532,12 +513,7 @@ test "native tokenize error count matches python for illegal chars" {
     eng = ir.gen.native_engine;
     layout = ir.gen.native_layout;
     assert eng is not None and layout is not None;
-    for g in ["__jac_glob_init_tokens_na", "__jac_glob_init"] {
-        addr = eng.get_function_address(g);
-        if addr {
-            ct.CFUNCTYPE(None)(addr)();
-        }
-    }
+    init_native_globals(eng, ir.gen.interop_manifest);
     ct_classes = build_ctypes_classes(layout);
     enum_maps = build_enum_maps(layout, {});
     wrapper = wrap_native_function(
@@ -562,7 +538,8 @@ test "native tokenize performance" {
     import from jaclang.jac0core.native_marshal {
         build_ctypes_classes,
         build_enum_maps,
-        wrap_native_function
+        wrap_native_function,
+        init_native_globals
     }
     import ctypes as ct;
     import time;
@@ -573,14 +550,7 @@ test "native tokenize performance" {
     layout = ir.gen.native_layout;
     assert eng is not None;
     assert layout is not None;
-    tokens_glob_addr = eng.get_function_address("__jac_glob_init_tokens_na");
-    if tokens_glob_addr {
-        ct.CFUNCTYPE(None)(tokens_glob_addr)();
-    }
-    glob_init_addr = eng.get_function_address("__jac_glob_init");
-    if glob_init_addr {
-        ct.CFUNCTYPE(None)(glob_init_addr)();
-    }
+    init_native_globals(eng, ir.gen.interop_manifest);
 
     ct_classes = build_ctypes_classes(layout);
     enum_maps = build_enum_maps(layout, {});
