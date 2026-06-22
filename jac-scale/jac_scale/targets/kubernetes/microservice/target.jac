@@ -581,6 +581,48 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
         ensure_namespace_exists(namespace);
 
+        # The service Deployment pod specs reference the configured
+        # `service_account_name` (manifest_builder._service_account_name), but
+        # jac-scale only generates that reference - it does not create the SA.
+        # On a fresh namespace the ReplicaSet controller then rejects every pod
+        # with "serviceaccount not found", the fleet never becomes ready, and
+        # the readiness wait below fails the whole deploy. Read-or-create a bare
+        # SA here (any RBAC/IRSA is bound out-of-band by the caller), mirroring
+        # the monolith path which ensures its own ServiceAccounts.
+        sa_name = str(
+            getattr(self.k8s_config, "service_account_name", "") or ""
+        ).strip();
+        if sa_name {
+            try {
+                core_v1.read_namespaced_service_account(
+                    name=sa_name, namespace=namespace
+                );
+            } except ApiException as e {
+                if e.status == 404 {
+                    core_v1.create_namespaced_service_account(
+                        namespace=namespace,
+                        body={
+                            "apiVersion": "v1",
+                            "kind": "ServiceAccount",
+                            "metadata": {
+                                "name": sa_name,
+                                "namespace": namespace,
+                                "labels": {"managed": "jac-scale"}
+                            }
+                        }
+                    );
+                    if self.logger {
+                        self.logger.info(
+                            f"Created ServiceAccount '{sa_name}' referenced by deployment pod specs",
+                            {"name": sa_name}
+                        );
+                    }
+                } else {
+                    raise;
+                }
+            }
+        }
+
         # Ops Console RBAC (opt-in). Applied right after the
         # namespace so the read-only Role + RoleBinding exist before the
         # gateway pod (which uses them) rolls. Best-effort: an RBAC failure
