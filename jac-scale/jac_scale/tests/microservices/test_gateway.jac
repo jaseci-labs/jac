@@ -946,9 +946,7 @@ test "gateway serves /static/assets from project assets dir when absent from dis
     (assets / "logo.svg").write_text("<svg>LOGO</svg>");
 
     reg = ServiceRegistry();
-    gw = MicroserviceGateway(
-        registry=reg, client_dist_dir=str(dist), base_path=tmp
-    );
+    gw = MicroserviceGateway(registry=reg, client_dist_dir=str(dist), base_path=tmp);
     gw.setup();
 
     import from fastapi.testclient { TestClient }
@@ -969,9 +967,7 @@ test "gateway /static project fallback 404s for a missing asset" {
     (Path(tmp) / "assets").mkdir();  # empty - nothing to serve
 
     reg = ServiceRegistry();
-    gw = MicroserviceGateway(
-        registry=reg, client_dist_dir=str(dist), base_path=tmp
-    );
+    gw = MicroserviceGateway(registry=reg, client_dist_dir=str(dist), base_path=tmp);
     gw.setup();
 
     import from fastapi.testclient { TestClient }
@@ -993,9 +989,7 @@ test "gateway serves nested /static/assets sub-path from project assets dir" {
     (worker_dir / "editor.worker.js").write_text("self.onmessage = () => {};");
 
     reg = ServiceRegistry();
-    gw = MicroserviceGateway(
-        registry=reg, client_dist_dir=str(dist), base_path=tmp
-    );
+    gw = MicroserviceGateway(registry=reg, client_dist_dir=str(dist), base_path=tmp);
     gw.setup();
 
     import from fastapi.testclient { TestClient }
@@ -1017,9 +1011,7 @@ test "gateway /static project fallback rejects path traversal outside assets" {
     (Path(tmp) / "jac.toml").write_text("[project]\nname = \"secret\"");
 
     reg = ServiceRegistry();
-    gw = MicroserviceGateway(
-        registry=reg, client_dist_dir=str(dist), base_path=tmp
-    );
+    gw = MicroserviceGateway(registry=reg, client_dist_dir=str(dist), base_path=tmp);
     gw.setup();
 
     import from fastapi.testclient { TestClient }
