@@ -1,17 +1,26 @@
 name: Test Installer
 
 on:
-  pull_request:
+  # PRs run this on-demand via `/test installer` (see ci-command.yml); push to
+  # main always runs it when the installer scripts change.
+  push:
+    branches:
+      - main
     paths:
       - "scripts/install.sh"
       - ".github/workflows/build-standalone.yml"
       - ".github/workflows/test-installer.yml"
   workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit SHA to test (PR head; defaults to the dispatched ref tip)"
+        required: false
+        type: string
 
-# Cancel superseded PR runs; never cancel a run for a commit on main.
+# Cancel superseded on-demand runs for the same commit; never cancel main.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ inputs.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
 
 jobs:
   test-installer:
@@ -20,6 +29,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.sha || github.sha }}
 
       # --- ShellCheck ---
       - name: ShellCheck install.sh
