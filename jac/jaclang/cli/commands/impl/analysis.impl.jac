@@ -643,7 +643,8 @@ impl `test(
     xit: bool = False,
     maxfail: int = None,
     directory: str = "",
-    verbose: bool = False
+    verbose: bool = False,
+    ignore: str = ""
 ) -> int {
     import os;
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
@@ -705,6 +706,12 @@ impl `test(
             target = filepath or directory;
             if target {
                 pargs.append(target);
+            }
+            # Skip a subtree during collection (pytest `--ignore`). Lets the suite
+            # be split across jobs, e.g. `jac test tests/ --ignore tests/compiler`
+            # runs everything the dedicated compiler job does not.
+            if ignore {
+                pargs.append('--ignore=' + ignore);
             }
             jobs = os.environ.get('JAC_TEST_JOBS', 'auto');
             # No worker pool for a single named test (overhead > benefit).
