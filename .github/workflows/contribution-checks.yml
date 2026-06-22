@@ -70,7 +70,9 @@ jobs:
 
       - name: Build documentation and check links
         working-directory: docs
-        run: mkdocs build --strict 2>&1 | tee build.log || true
+        # mkdocs installs into the binary's bundled interpreter; invoke it via
+        # `jac -m` rather than expecting a console script on PATH.
+        run: jac -m mkdocs build --strict 2>&1 | tee build.log || true
 
       - name: Report link warnings
         working-directory: docs

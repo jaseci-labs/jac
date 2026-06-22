@@ -142,14 +142,14 @@ jobs:
       run: jac test .
 
     - name: Install docs dependencies
-      run: |
-        jac install -e docs
-        # docs tooling (mkdocs + plugins) lives in the docs project venv
-        echo "$GITHUB_WORKSPACE/docs/.jac/venv/bin" >> "$GITHUB_PATH"
+      run: jac install -e docs
 
     - name: Build documentation
       working-directory: docs
-      run: mkdocs build --strict
+      # mkdocs + its plugins install into the binary's bundled interpreter, so
+      # run them through it (`jac -m`) rather than expecting a console script on
+      # PATH.
+      run: jac -m mkdocs build --strict
 
     - name: Run documentation validation tests
       working-directory: docs
@@ -159,7 +159,7 @@ jobs:
       working-directory: docs
       run: |
         jac install playwright
-        playwright install chromium --with-deps
+        jac -m playwright install chromium --with-deps
 
     - name: Run E2E code block tests
       working-directory: docs
@@ -306,7 +306,7 @@ jobs:
           jac test jac_scale/tests/test_image_build.jac -x
           jac test jac_scale/tests/test_pod_env.jac -x
           jac test jac_scale/tests/test_k8s_utils.jac -x
-          jac test jac_scale/tests/test_deploy_k8s.jac -x -f "not early exit"
+          jac test jac_scale/tests/test_deploy_k8s.jac -x -f "not (early and exit)"
 
       - name: Run K8 tests (failure-path)
         if: matrix.group == 'failure-path'

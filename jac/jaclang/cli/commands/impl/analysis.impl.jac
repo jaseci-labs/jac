@@ -720,9 +720,15 @@ impl `test(
                 pargs.append(str(maxfail));
             }
             if test_name {
+                # pytest `-k` is a boolean expression over name substrings, and
+                # each bare word must be a single identifier. A Jac test's
+                # display name can contain spaces (e.g. "early exit"), which `-k`
+                # rejects as two adjacent identifiers. AND the whitespace-split
+                # words so `--test_name "early exit"` selects that one test.
                 pargs.append('-k');
-                pargs.append(test_name);
+                pargs.append(' and '.join(test_name.split()) or test_name);
             } elif filter {
+                # `filter` is passed through verbatim as a pytest `-k` expression.
                 pargs.append('-k');
                 pargs.append(filter);
             }

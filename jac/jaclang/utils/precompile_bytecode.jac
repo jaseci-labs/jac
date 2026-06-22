@@ -123,9 +123,17 @@ Returns the marshal'd bytecode bytes, or None on failure.
 """
 def compile_and_extract(jac_path: str) -> bytes | None {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.program { JacProgram }
 
     compiler = Jac.get_compiler();
-    program = Jac.get_program();
+    # Compile into a FRESH, isolated program (not the shared Jac.get_program()).
+    # A handful of core modules (e.g. jac0core/jir.jac) intentionally cannot be
+    # bytecode-precompiled and so emit diagnostics; routing them through the
+    # global program would leave errors in `Jac.program.errors_had`, which
+    # `jac run` inspects on exit and would then report a non-zero status even
+    # though the precompile itself succeeded (those modules just compile at
+    # runtime instead). An isolated program keeps that bookkeeping local.
+    program = JacProgram();
     code = compiler.get_bytecode(full_target=jac_path, target_program=program);
     if code is None {
         return None;
