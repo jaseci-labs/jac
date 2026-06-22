@@ -100,11 +100,16 @@ auto` on 4 cores) and `test-core-runtime` (~7 min). On Blacksmith these are a
 single expensive job each. On free runners you can split them:
 
 - Shard `jac/tests/compiler` across 2-3 `ubuntu-latest` jobs (pytest-xdist
-  `--splits`/`--group`, or `pytest-split`, or path-based matrix). Wall-clock for
-  the long pole drops from ~11-18 min to ~5-7 min, at **$0**.
-- Same pattern for runtime.
+  `--splits`/`--group`, or `pytest-split`, or path-based matrix). **Measured:**
+  free-runner compiler is 27.1 min unsharded vs 11.6 min on Blacksmith; a 3-way
+  shard lands the long pole at 12.6 min - i.e. sharding closes the gap at **$0**.
+- Same pattern *should* apply to runtime (17.1 min unsharded on free vs 7.5 min
+  on Blacksmith), but **this is not yet measured** - no runtime shard benchmark
+  has been run. Treat the runtime free-runner wall-clock as unverified until a
+  shard benchmark confirms it.
 
-Net effect: equal-or-better wall-clock than today, on free infrastructure.
+Net effect (compiler measured; runtime projected): equal-or-better wall-clock
+than today on free infrastructure, *if* runtime shards as well as compiler does.
 
 ---
 
@@ -208,7 +213,14 @@ side only - which is still the main thing we want to prove).
 
 ---
 
-## Rollout plan (highest ROI first)
+## Rollout plan (alternative free-runner path - NOT the recommendation)
+
+> Note: the steps below describe the *free-runner migration* that was considered
+> first (move pure-pytest jobs to `ubuntu-latest` for ~80% savings via runner
+> tier). The **recommended** design is in Section G (path-driven test selection
+> + label/merge-gated `jac check`, heavy suite kept on Blacksmith for speed).
+> This table is retained as the documented alternative, not the chosen rollout.
+> See Section G's "Recommended rollout".
 
 | Step | Effort | Risk | Est. savings |
 |------|--------|------|--------------|
@@ -217,14 +229,9 @@ side only - which is still the main thing we want to prove).
 | 3. Move `test-pypi-build` smokes to push/nightly | Low | Low | ~10 min/PR |
 | 4. `preflight` gate on free runner | Med | Low-Med | ~80 min saved on lint-fail PRs |
 
-Steps 1 and 3 are independently shippable and do not touch the required merge
-gate (`test-core-compiler`, `test-core-runtime`, `test-client`) - though moving
-those three to `ubuntu-latest` keeps the *names* identical, so branch protection
-is unaffected. Step 4 changes job topology / check names if checks are folded in,
-so it needs a branch-protection update and should land last.
-
-Recommended: land **1 + 3** first, run the benchmark PR to confirm the ~80%
-figure on real runs, then do **2 + 4**.
+Trade-off of this path: free runners are 1.5-2.3x slower per job (recovered by
+sharding). The recommended Section G design keeps the heavy suite on Blacksmith
+so ready PRs stay fast, and gets its savings from *frequency* instead.
 
 ---
 
@@ -352,47 +359,85 @@ therefore miss cross-file type breaks - the same blind spot as diff-scoping.
 Making the cache transitively aware is a jaclang-core change (out of scope per
 project policy), so the fix is at the CI level, not the compiler.
 
-## G. Final architecture: static gate + label-gated full suite
+## G. Final architecture (recommended): path-driven tests + gated jac check
 
-Run the cheap signal on every push; run the authoritative full suite only once a
-PR is marked ready, via a `ready-for-review` label (implemented in
-`ci-tiered.yml`):
+Two independent gates: **what changed** selects which tests run, and a **label /
+merge** gate controls the expensive whole-repo `jac check`.
 
-| Trigger | Frequency | What runs | Runner |
-|---------|-----------|-----------|--------|
-| every push | often (incl. WIP) | policy gate, diff-scoped format, **diff-scoped** jac check | free `ubuntu-latest` |
-| `ready-for-review` label present | only when ready | **whole-repo (cold) jac check** + full test suite, all in parallel | **Blacksmith** (fast) |
-| nightly | daily | test-pypi-build + jacpack smokes | free or Blacksmith |
+### G.1 Test selection by changed path (every push)
 
-Runner choice: the always-on WIP signal runs on **free `ubuntu-latest`** (public
-repo, $0); the label-gated full suite stays on **Blacksmith** so a ready PR gets
-fast review feedback. Because the full suite runs only on ready PRs (not every
-push), keeping it on the paid-but-fast runners costs little - the savings come
-from *frequency*, not from the runner tier. (k8s needs Blacksmith regardless.)
+A `dorny/paths-filter` job classifies the diff; each test job is gated on its
+area. `core` (`jac/**`) folds into every gate because the compiler+runtime
+underlies everything.
 
-Why this is the right shape:
+| Changed files | Tests that run |
+|---------------|----------------|
+| **No `.jac`** (md / docs / yaml only) | **none** |
+| **core** (`jac/**`) | **all** test jobs |
+| **scale only** (`jac-scale/**`) | scale only |
+| **byllm only** (`jac-byllm/**`) | byllm only |
+| **mcp / desktop / client only** | that package only |
 
-- **Cheap WIP:** the expensive whole-repo check + full tests do not run on every
-  WIP push - only on a labeled (ready) PR. jac-check alone is 64,964 min/30d
-  today, most of it redundant per-push reruns; this is the single largest cut.
-- **Safe:** when labeled, the cold whole-repo `jac check .` catches cross-file
-  breaks that the diff-scoped check and the (non-dependency-aware) cache cannot.
-  Because it re-runs on every push *while labeled*, it stays current - no stale
-  "ready" run.
-- **Parallel at full:** Stage 2 runs all jobs in parallel (no fail-fast tiering).
+Build/dependency config (`*/pyproject.toml`, `jac.toml`, lockfiles, the workflow
+file itself) folds into `core` -> run all, since a dependency bump can break any
+test without a `.jac` change. This is why a pure-docs PR runs **zero** tests, but
+a `pyproject.toml` bump runs everything.
 
-Stable required check: `ready-status` always runs and passes unless something
-actually failed (skipped heavy jobs on label-less PRs count as ok). Make *that*
-the single required status check so branch protection never hangs on
-"waiting for status" when the label is absent.
+### G.2 Whole-repo `jac check` gate
 
-Tradeoff: a PR author sees only lint/type(diff)/format until they add the
-`ready-for-review` label. If desired, add the two highest-value fast jobs
-(runtime, client) to the always-on stage - they catch ~13% / ~8% of failures.
+`jac check` (the #1 cost job, 64,964 min/30d, runs on *every* PR today with no
+path filter) runs **only** when:
 
-Optional stronger guarantee: layer a merge queue (`merge_group`) on top so the
-full check also runs against the latest `main` immediately before landing. The
-label gate is the cost lever; the merge queue is the belt-and-suspenders.
+```
+(.jac files changed)  AND  (ready-for-review label present  OR  push to main)
+```
+
+- **md-only / non-`.jac` change** -> skipped (nothing to type-check).
+- **WIP push with `.jac` changes** -> a cheap **diff-scoped** `jac check`
+  (changed files only) for fast feedback; the whole-repo check does not run yet.
+- **`ready-for-review` label** -> authoritative whole-repo (cold) `jac check`.
+- **push to `main` (merge)** -> whole-repo (cold) `jac check` as the safety net,
+  catching cross-file breaks the diff-scoped PR check could miss.
+
+Whole-repo is required because the `.jir` cache is **not** dependency-aware
+(Section F): a changed type in A is not re-checked against an unchanged
+dependent B. Diff-scoping is fast feedback; the gated whole-repo run is the
+correctness guarantee.
+
+### G.3 Heavy test suite (label-gated)
+
+When the `ready-for-review` label is present, the selected test suite (G.1) runs
+in full on **Blacksmith** (fast, so ready PRs get quick feedback). Because this
+only happens on ready PRs, keeping it on paid-but-fast runners costs little - the
+savings come from *frequency*, not the runner tier. (k8s needs Blacksmith
+regardless.)
+
+### G.4 Required check + triggers
+
+- **Stable required check:** a single `ready-status` job always runs and passes
+  unless something actually failed (skipped jobs count as ok). Make *that* the
+  one required status check, so branch protection never hangs on
+  "waiting for status" when an area or the label is absent.
+- **Trigger event set:** the workflow listens on
+  `pull_request: [opened, synchronize, reopened, labeled, unlabeled,
+  ready_for_review]` and `push: [main]`. `labeled` fires the run when the label
+  is added; `synchronize` re-runs it on each subsequent push while labeled, so a
+  "ready" result never goes stale. To force a re-check after a flake with no new
+  commit, push an empty commit or re-run the job (GitHub does not re-fire
+  `labeled` if the label is already present).
+
+Optional stronger guarantee: layer a merge queue (`merge_group`) so the
+whole-repo check also runs against the latest `main` immediately before landing.
+
+### Recommended rollout
+
+1. Add the `dorny/paths-filter` selection (G.1) and gate the currently-ungated
+   required jobs (`test-core-compiler/runtime/client`) on `core`. Land the
+   `ready-status` shim and make it the required check first.
+2. Remove the per-PR-push run of `jac-check`; gate it per G.2 (diff-scoped on
+   push, whole-repo on label/merge).
+3. Label-gate the heavy suite (G.3).
+4. Move `test-pypi-build` + jacpack smokes to nightly.
 
 ## H. Projected savings (from the 30-day dashboard)
 
