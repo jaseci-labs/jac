@@ -44,6 +44,10 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
+          # Fresh cache each run: build.zig's payload step doesn't reliably
+          # invalidate on jaclang/ changes, so a cached payload could ship stale
+          # bits in a release. Force a rebuild.
+          use-cache: false
 
       - name: Read version (from jac.toml)
         id: ver

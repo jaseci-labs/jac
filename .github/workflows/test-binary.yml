@@ -36,6 +36,11 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
+          # Don't persist the zig cache across runs: build.zig's payload step
+          # (mkpayload) doesn't reliably invalidate on jaclang/ content changes
+          # (incl. the typeshed submodule), so a cached payload.tar.zst would mask
+          # source changes. A fresh cache each run forces the payload to rebuild.
+          use-cache: false
 
       - name: Build the jac binary (one command)
         working-directory: jac
