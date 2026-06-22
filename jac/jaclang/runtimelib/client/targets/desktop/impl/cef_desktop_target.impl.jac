@@ -183,8 +183,8 @@ def _stage_cef_runtime(cef_dist: Path, out_dir: Path) {
     sandbox_src = cef_dist / "chrome-sandbox";
     if sandbox_src.exists() {
         shutil.copy2(sandbox_src, out_dir / "chrome-sandbox");
-        mode = os.stat(out_dir / "chrome-sandbox").st_mode;
-        if not (mode & stat.S_ISUID) {
+        mode = int(os.stat(out_dir / "chrome-sandbox").st_mode);
+        if not (mode & int(stat.S_ISUID)) {
             console.print(
                 "  [yellow]⚠  chrome-sandbox lacks setuid root. "
                 "CEF will use --no-sandbox (less secure).[/yellow]"

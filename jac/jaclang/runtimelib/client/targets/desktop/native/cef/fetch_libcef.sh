@@ -220,7 +220,7 @@ for f in libEGL.so libGLESv2.so chrome-sandbox; do
 done
 echo ">> locales: $(ls "$DIST_DIR/locales/" 2>/dev/null | wc -l) files"
 
-# --- Stage CEF SDK headers (for build_cef_shim.sh, not shipped in the wheel) -
+# --- Stage CEF SDK headers (for build_cef_dispatch.sh, not shipped in the wheel) -
 if [ ! -f "$HEADERS_MARKER" ]; then
     echo ">> extracting CEF SDK headers to $HEADERS_DIR"
     rm -rf "$HEADERS_DIR"

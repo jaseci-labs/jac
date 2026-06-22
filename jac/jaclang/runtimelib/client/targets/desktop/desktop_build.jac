@@ -72,7 +72,7 @@ def _jac_bin -> str {
 
 """Libpython soname for clib import in generated host.na.jac."""
 def _libpython_soname -> str {
-    return (
+    return str(
         sysconfig.get_config_var("INSTSONAME")
         or f"libpython{sys.version_info.major}.{sys.version_info.minor}.so.1.0"
     );

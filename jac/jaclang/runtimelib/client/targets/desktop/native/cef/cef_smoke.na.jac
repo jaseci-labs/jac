@@ -1,8 +1,8 @@
-"""Minimal CEF smoke test — validates libcef_shim.so links and initializes CEF.
+"""Minimal CEF smoke test — validates the dispatch binding initializes CEF.
 
-Run from this directory after fetch_libcef.sh + build_cef_shim.sh:
+Run from this directory after fetch_libcef.sh + build_cef_dispatch.sh:
     jac nacompile cef_smoke.na.jac -o cef_smoke
-    LD_LIBRARY_PATH=. ./cef_smoke
+    LD_LIBRARY_PATH=cef_dist:. ./cef_smoke
 """
 
 import from cef { new_cef_browser, cef_cleanup }

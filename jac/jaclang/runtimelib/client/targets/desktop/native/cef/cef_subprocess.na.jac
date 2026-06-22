@@ -21,7 +21,14 @@ import from "libcef.so" {
     def cef_execute_process(args: int, app: int, sandbox: int) -> i32;  obj cef_ptr_wrap_t {
         has p0: int = 0,
             p1: int = 0;
-    }  obj cef_app_t {
+    }  """cef_app_t - 80 bytes (CEF capi cef_app_t).
+
+    MUST stay field-compatible with the copy in cef_dispatch.na.jac: same
+    field order + 80-byte size. Handlers are typed int here because the
+    subprocess only assigns cef_stub_* and passes the struct opaquely; the
+    dispatch copy types them as Callable. Keep the two in sync by hand until
+    nacompile can share a struct decl across the spliced modules."""
+    obj cef_app_t {
         has size: int = 0,
             add_ref: int = 0,
             release: int = 0,

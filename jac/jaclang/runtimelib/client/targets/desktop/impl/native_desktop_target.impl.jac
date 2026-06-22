@@ -11,6 +11,11 @@ import from jaclang.cli.console { console }
 import from jaclang.runtimelib.client.targets.desktop.plugin.webview_lib {
     libwebview_name
 }
+import from jaclang.runtimelib.client.targets.desktop.desktop_build {
+    _find_webview_dir,
+    _jac_bin,
+    _stage_oauth_broker,
+}
 
 """Read lines from a file between start_marker and end_marker (exclusive).
 
@@ -32,43 +37,6 @@ def _read_between(path: Path, start_marker: str, end_marker: str) -> str {
         }
     }
     return "".join(result);
-}
-
-"""Locate the shipped native/webview assets (binding + build tooling).
-
-native/webview lives inside this package, one dir up from this targets module
-(targets/desktop/ -> targets/desktop/native/webview). Verified by the presence
-of webview.na.jac; walks up as a fallback for unusual layouts.
-"""
-def _find_webview_dir -> Path {
-    here = Path(os.path.abspath(__file__)).parent;
-    candidates = [here.parent / "native" / "webview", here / "native" / "webview"];
-    p = here;
-    for _ in range(6) {
-        candidates.append(p / "native" / "webview");
-        p = p.parent;
-    }
-    for cand in candidates {
-        if (cand / "webview.na.jac").exists() {
-            return cand;
-        }
-    }
-    raise RuntimeError(
-        "desktop target: native/webview assets not found in the package."
-    );
-}
-
-"""Resolve the jac CLI for nacompile (we're running under it)."""
-def _jac_bin -> str {
-    found = shutil.which("jac");
-    if found {
-        return found;
-    }
-    cand = Path(os.path.dirname(os.sys.executable)) / "jac";
-    if cand.exists() {
-        return str(cand);
-    }
-    raise RuntimeError("jac CLI not found on PATH.");
 }
 
 """Ensure the platform webview shared library exists beside the binding (build it on first use)."""
@@ -342,18 +310,8 @@ impl NativeDesktopTarget.build(
     shutil.copy2(lib, out_dir / out_lib_name);
     shutil.copy2(webview_dir / "webview.na.jac", out_dir / "webview.na.jac");
 
-    # 5. Transpile oauth_broker.jac -> .py (unchanged from before).
-    broker_src = webview_dir.parent / "oauth_broker.jac";
-    console.print(
-        "  Transpiling oauth_broker.jac -> oauth_broker.py...", style="muted"
-    );
-    broker_res = subprocess.run(
-        [_jac_bin(), "jac2py", str(broker_src)], capture_output=True, text=True
-    );
-    if broker_res.returncode != 0 {
-        raise RuntimeError("oauth_broker transpile failed:\n" + broker_res.stderr);
-    }
-    (out_dir / "oauth_broker.py").write_text(broker_res.stdout);
+    # 5. Transpile oauth_broker.jac -> .py beside the binary.
+    _stage_oauth_broker(out_dir);
 
     # 6. Transpile all plugin .jac -> .py for the embedded CPython.
     plugin_src_dir = webview_dir.parent.parent / "plugin";

@@ -136,8 +136,13 @@ import from "libcef.so" {
             release: Callable[[int], int] = 0,
             has_one_ref: Callable[[int], int] = 0,
             has_at_least_one_ref: Callable[[int], int] = 0,
-            on_before_popup: Callable[[int, int, int, int, int, int, int, int, int, int, int, int, int], int] = 0,
-            on_before_dev_tools_popup: Callable[[int, int, int, int, int, int, int], None] = 0,
+            on_before_popup:
+                Callable[
+                    [int, int, int, int, int, int, int, int, int, int, int, int, int],
+                    int
+                ] = 0,
+            on_before_dev_tools_popup:
+                Callable[[int, int, int, int, int, int, int], None] = 0,
             on_after_created: Callable[[int, int], None] = 0,
             do_close: Callable[[int, int], int] = 0,
             on_before_close: Callable[[int, int], None] = 0;
@@ -199,7 +204,13 @@ import from "libcef.so" {
     obj cef_ptr_wrap_t {
         has p0: int = 0,
             p1: int = 0;
-    }  """cef_app_t - 80 bytes"""
+    }  """cef_app_t - 80 bytes (CEF capi cef_app_t).
+
+    MUST stay field-compatible with the copy in cef_subprocess.na.jac:
+    same field order + 80-byte size. This copy types the handler fields as
+    Callable because it assigns real dispatch callbacks; the subprocess copy
+    only assigns cef_stub_* and types them as int. nacompile cannot yet share
+    a struct decl across the spliced modules — keep the two in sync by hand."""
     obj cef_app_t {
         has size: int = 0,
             add_ref: Callable[[int], None] = 0,

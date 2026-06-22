@@ -20,7 +20,7 @@ import from jaclang.runtimelib.client.targets.registry { TargetType }
 
 """CEF desktop build target (Chromium + embedded-CPython host)."""
 obj CefDesktopTarget(WebTarget) {
-    has name: str = "desktop-cef",
+    has name: str = TargetType.DESKTOP_CEF.value,
         default: bool = False,
         requires_setup: bool = False,
         config_section: str = "plugins.desktop",
