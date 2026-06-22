@@ -1939,6 +1939,28 @@ test "clib import produces extern declares" {
     assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
 }
 
+test "single-file clib: _clib_symbol_lib attributes each symbol to its source lib" {
+    # The PE linker attributes each extern import to a DLL via symbol_lib_map
+    # (defaulting every unmapped symbol to needed_libs[0] = msvcrt.dll →
+    # WinError 127). For a single-file program the symbol→DLL map is built
+    # directly on the entry module during IR gen (NaIRGenPass sets
+    # _cur_lib = _clib_paths[-1] and writes _clib_symbol_lib[fn] = _cur_lib),
+    # so it needs no cross-module propagation. This test pins that path so a
+    # future regression in single-file clib attribution can't hide behind the
+    # multi-module propagation tests (PR #6828 review).
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_import.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    sym_lib = ir.gen._clib_symbol_lib;
+    assert sym_lib , "_clib_symbol_lib not set on single-file module IR";
+    assert "sqrt" in sym_lib , f"'sqrt' missing from _clib_symbol_lib: {sym_lib}";
+    assert "pow" in sym_lib , f"'pow' missing from _clib_symbol_lib: {sym_lib}";
+    assert "libm" in sym_lib["sqrt"] , f"sqrt attributed to wrong lib: {sym_lib[
+        'sqrt'
+    ]}";
+    assert "libm" in sym_lib["pow"] , f"pow attributed to wrong lib: {sym_lib['pow']}";
+}
+
 test "clib decl with no return arrow lowers to void, not i64" {
     prog = JacProgram();
     ir = prog.compile(
