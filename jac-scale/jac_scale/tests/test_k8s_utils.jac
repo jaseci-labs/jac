@@ -11,6 +11,7 @@ import from jac_scale.targets.kubernetes.utils { kubernetes_utils as utils }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     check_pods_restarted,
     create_tarball,
+    ensure_k8s_service_account,
     ensure_pvc_exists,
     load_env_variables,
     parse_cpu_quantity,
@@ -160,6 +161,47 @@ test "ensure pvc exists creates when missing" {
     assert body["spec"]["accessModes"] == ["ReadWriteOnce"];
     assert body["spec"]["resources"]["requests"]["storage"] == "10Gi";
     assert body["spec"]["storageClassName"] == "fast";
+}
+
+# --- ensure_k8s_service_account (read-or-create) ---
+test "ensure service account skips when present" {
+    core_v1 = unittest.mock.MagicMock();
+    core_v1.read_namespaced_service_account.return_value = object();
+
+    ensure_k8s_service_account(core_v1, "test-ns", "test-sa");
+
+    core_v1.create_namespaced_service_account.assert_not_called();
+}
+
+test "ensure service account creates when missing" {
+    # Regression (#6883): the microservice deploy emits pod specs that
+    # reference the configured ServiceAccount but used to never create it,
+    # so on a fresh namespace every pod was rejected ("serviceaccount not
+    # found"), the fleet never became ready, and the deploy failed. The SA
+    # must be created when absent.
+    core_v1 = unittest.mock.MagicMock();
+    core_v1.read_namespaced_service_account.side_effect = ApiException(status=404);
+
+    ensure_k8s_service_account(core_v1, "test-ns", "test-sa");
+
+    call_args = core_v1.create_namespaced_service_account.call_args;
+    assert call_args is not None , "ServiceAccount must be created when missing";
+    (args, kwargs) = call_args;
+    assert kwargs == {};
+    assert args[0] == "test-ns";
+    body = args[1];
+    assert body["kind"] == "ServiceAccount";
+    assert body["metadata"]["name"] == "test-sa";
+    assert body["metadata"]["labels"]["managed"] == "jac-scale";
+}
+
+test "ensure service account is a no-op for an empty name" {
+    core_v1 = unittest.mock.MagicMock();
+
+    ensure_k8s_service_account(core_v1, "test-ns", "");
+
+    core_v1.read_namespaced_service_account.assert_not_called();
+    core_v1.create_namespaced_service_account.assert_not_called();
 }
 
 # --- cluster_type detection ---

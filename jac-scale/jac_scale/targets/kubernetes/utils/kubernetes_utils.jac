@@ -101,6 +101,10 @@ def ensure_pvc_exists(
     access_mode: str = 'ReadWriteOnce'
 ) -> None;
 
+def ensure_k8s_service_account(
+    core_v1: client.CoreV1Api, namespace: str, sa_name: str
+) -> None;
+
 def parse_storage_quantity(quantity: str) -> int;
 
 def resize_pvc_if_needed(

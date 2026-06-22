@@ -16,6 +16,7 @@ import from jac_scale._optdeps.kubernetes {
 }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists,
+    ensure_k8s_service_account,
     create_k8s_secret,
     get_cluster_provider
 }
@@ -586,40 +587,19 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # jac-scale only generates that reference - it does not create the SA.
         # On a fresh namespace the ReplicaSet controller then rejects every pod
         # with "serviceaccount not found", the fleet never becomes ready, and
-        # the readiness wait below fails the whole deploy. Read-or-create a bare
-        # SA here (any RBAC/IRSA is bound out-of-band by the caller), mirroring
-        # the monolith path which ensures its own ServiceAccounts.
+        # the readiness wait below fails the whole deploy. Read-or-create the SA
+        # here (any RBAC/IRSA is bound out-of-band by the caller), mirroring the
+        # monolith path which ensures its own ServiceAccounts.
         sa_name = str(
             getattr(self.k8s_config, "service_account_name", "") or ""
         ).strip();
         if sa_name {
-            try {
-                core_v1.read_namespaced_service_account(
-                    name=sa_name, namespace=namespace
+            ensure_k8s_service_account(core_v1, namespace, sa_name);
+            if self.logger {
+                self.logger.info(
+                    f"Ensured ServiceAccount '{sa_name}' referenced by deployment pod specs",
+                    {"name": sa_name}
                 );
-            } except ApiException as e {
-                if e.status == 404 {
-                    core_v1.create_namespaced_service_account(
-                        namespace=namespace,
-                        body={
-                            "apiVersion": "v1",
-                            "kind": "ServiceAccount",
-                            "metadata": {
-                                "name": sa_name,
-                                "namespace": namespace,
-                                "labels": {"managed": "jac-scale"}
-                            }
-                        }
-                    );
-                    if self.logger {
-                        self.logger.info(
-                            f"Created ServiceAccount '{sa_name}' referenced by deployment pod specs",
-                            {"name": sa_name}
-                        );
-                    }
-                } else {
-                    raise;
-                }
             }
         }
 
