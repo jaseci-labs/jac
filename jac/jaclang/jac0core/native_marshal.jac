@@ -419,13 +419,19 @@ order.
 """
 def init_native_globals(engine: any, manifest: any) {
     import ctypes;
-    import re;
+    import from jaclang.jac0core.codeinfo { native_safe_sym }
     srcs = manifest.native_transitive_sources if manifest is not None else [];
     for src in (srcs or []) {
         if not src {
             continue;
         }
-        safe = re.sub(r'[^a-zA-Z0-9_]', '_', src);
+        # Must match the emit-side rename in na_compile_pass.impl.jac /
+        # func.impl.jac / nacompile.impl.jac. Centralized in
+        # codeinfo.native_safe_sym (slug + sha1 suffix) so a path that
+        # differs only in separator ('math_utils.na' vs 'math/utils.na')
+        # can't collide, and so this JIT lookup resolves the same symbol
+        # the compiler emitted.
+        safe = native_safe_sym(src);
         addr = engine.get_function_address(f"__jac_glob_init_{safe}");
         if addr {
             ctypes.CFUNCTYPE(None)(addr)();

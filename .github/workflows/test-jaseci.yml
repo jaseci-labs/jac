@@ -187,6 +187,69 @@ jobs:
     - name: Run dependency-free desktop tests
       run: jac test jac/tests/runtimelib/client/test_desktop_binding.jac
 
+  test-native-macos:
+    # Lean macOS-only coverage for the pure-Jac Mach-O linker changes: the
+    # dylib dlopen/dlsym round-trip that guards #6821 plus the executable /
+    # dylib arm64 code-signing invariants added in PR #6828.
+    needs: changes
+    # Not a required check. macos-latest is a premium runner; skip on PRs that
+    # don't touch jac core; always run on push/dispatch to keep main covered.
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    runs-on: macos-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install the jac toolchain only
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-xdist
+
+    - name: Run native Mach-O linker regression tests
+      run: pytest -x jac/tests/compiler/passes/native/test_shared_lib.jac jac/tests/compiler/passes/native/test_exec_link.jac -n auto
+
+  test-native-windows:
+    # Lean Windows-only coverage for the pure-Jac PE/COFF linker path: the
+    # #6819 COFF code-model fix and the import-directory / msvcrt symbol
+    # resolution behind the #6828 clib_symbol_lib fix. The cross-compiled PE
+    # tests already run on Linux; the value here is a *real* windows-latest host:
+    # the emitted .exe is loaded by the native OS loader, so a regression that
+    # only breaks on Windows (path handling, an unloadable PE) surfaces in CI.
+    needs: changes
+    # Not a required check. windows-latest is a premium runner; skip on PRs
+    # that don't touch jac core; always run on push/dispatch to keep main covered.
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    runs-on: windows-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install the jac toolchain only
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-xdist
+
+    - name: Run native PE/COFF linker regression tests
+      run: pytest -x jac/tests/compiler/passes/native/test_pe_linker.jac jac/tests/compiler/passes/native/test_exec_link.jac -n auto
+
   test-mcp:
     needs: changes
     # Not a required check. Skip on PRs that touch neither jac core nor jac-mcp; always run on push/dispatch.

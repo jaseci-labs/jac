@@ -96,31 +96,29 @@ Returns (new_ir, extra_export_names).
 def _inject_shared_init(
     llvm_ir_str: str, transitive_sources: list[str]
 ) -> tuple[str, list[str]] {
-    import re;
     init_calls: list[str] = [];
     # This module's own glob-init (NaIRGenPass always emits it when present).
-    if ('@"__jac_glob_init"' in llvm_ir_str)
-    or ("@__jac_glob_init(" in llvm_ir_str)
-    or ("define void @__jac_glob_init(" in llvm_ir_str) {
+    if "@__jac_glob_init(" in llvm_ir_str {
         init_calls.append("  call void @__jac_glob_init()");
     }
+    import from jaclang.jac0core.codeinfo { native_safe_sym }
     _seen: set = set();
     for _src in transitive_sources {
         if _src is None or _src in _seen {
             continue;
         }
         _seen.add(_src);
-        _safe = re.sub(r'[^a-zA-Z0-9_]', '_', _src);
+        # Unique per-module suffix; centralized in codeinfo.native_safe_sym so
+        # the emit side, this AOT shared-init emitter, and the JIT runtime
+        # lookup (native_marshal.init_native_globals) all agree on the name.
+        _safe = native_safe_sym(_src);
         _nm = f"__jac_glob_init_{_safe}";
         if (f'@"{_nm}"' in llvm_ir_str) or (f"@{_nm}(" in llvm_ir_str) {
             init_calls.append(f"  call void @{_nm}()");
         }
     }
     parts: list[str] = ["\n; --- injected shared-library init + RC wrappers ---"];
-    _body = "\n".join(init_calls);
-    if _body {
-        _body = _body + "\n";
-    }
+    _body = ("\n".join(init_calls) + "\n") if init_calls else "";
     parts.append(
         "define void @__jac_shared_init() {\nentry:\n" + _body + "  ret void\n}"
     );
@@ -190,7 +188,9 @@ impl nacompile(
     # then link the COFF object with the pure-Jac PE linker. Mirrors is_wasm.
     # A bare alias ("windows"/"win64") maps to the msvc triple; a full triple
     # the user passed ("x86_64-pc-windows-gnu") is used verbatim.
-    is_windows = ("windows" in target) or (target in ["win", "win64", "mingw"]);
+    is_windows = (sys.platform == "win32")
+    or ("windows" in target)
+    or (target in ["win", "win64", "mingw"]);
     if is_windows {
         os.environ["JAC_NATIVE_TARGET"] = (
             target if "-" in target else "x86_64-pc-windows-msvc"
