@@ -659,8 +659,22 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
             if _prim is not None {
                 return _prim;
             }
-            # Annotation not resolved by checker or primitive table.
-            # Default to i64 (opaque pointer) instead of ICE — this
+            # The checker stamp can be absent on a cross-module annotation
+            # whose defining module was type-checked out of priming order
+            # (issue #6822): a leaf type used by a module compiled AS the
+            # entry module resolves to <Unknown>/None even though
+            # _register_imported_struct_types has already registered the
+            # struct by name. Fall back to the name-keyed struct table
+            # (mirrors _lower_class_type's user-struct case) so the return /
+            # parameter lowers to the correct pointer instead of the i64
+            # default -- which otherwise makes the value a scalar and every
+            # downstream field access E5090 ("attribute access not supported").
+            _sname = self._get_name(type_expr);
+            if _sname is not None and _sname in self.struct_types {
+                return self.struct_types[_sname].as_pointer();
+            }
+            # Annotation not resolved by checker, primitive table, or struct
+            # registry. Default to i64 (opaque pointer) instead of ICE — this
             # handles user-defined types the checker hasn't stamped.
             return ir.IntType(64);
         }
