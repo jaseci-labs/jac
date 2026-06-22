@@ -31,6 +31,8 @@ impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, any] {
         'streaming': {
             'read_timeout': 90.0,
             'connect_timeout': 30.0,
+            'write_timeout': 30.0,
+            'pool_timeout': 30.0,
             'num_retries': 2,
             'retry_backoff': 1.0
         },
@@ -155,6 +157,8 @@ impl JacByllmConfig.get_streaming_config(self: JacByllmConfig) -> dict[str, any]
     return {
         'read_timeout': float(s.get('read_timeout', 90.0)),
         'connect_timeout': float(s.get('connect_timeout', 30.0)),
+        'write_timeout': float(s.get('write_timeout', 30.0)),
+        'pool_timeout': float(s.get('pool_timeout', 30.0)),
         'num_retries': max(0, int(s.get('num_retries', 2))),
         'retry_backoff': float(s.get('retry_backoff', 1.0))
     };

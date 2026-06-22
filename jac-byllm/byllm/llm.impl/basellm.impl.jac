@@ -16,7 +16,7 @@ def _should_parallelize(mt_run: MTRuntime) -> bool {
 """True for transient transport errors worth retrying the same model: read-timeout
 stall, mid-stream connection drop, and brief 5xx. Auth/RateLimit/NotFound and all
 other errors are non-transient and propagate unchanged."""
-def _is_transient_stream_error(exc: object) -> bool {
+def _is_transient_error(exc: object) -> bool {
     return isinstance(
         exc,
         (
@@ -30,14 +30,14 @@ def _is_transient_stream_error(exc: object) -> bool {
 
 
 """Backoff before a transient-error retry (exponential, capped at 10s)."""
-def _retry_sleep(attempt: int) -> None {
+def _retry_sleep(attempt: int) {
     base = _streaming_config.get("retry_backoff", 1.0);
     time.sleep(min(base * (2 ** max(0, attempt - 1)), 10.0));
 }
 
 
 """Async _retry_sleep - never blocks the event loop."""
-async def _aretry_sleep(attempt: int) -> None {
+async def _aretry_sleep(attempt: int) {
     import asyncio;
     base = _streaming_config.get("retry_backoff", 1.0);
     await asyncio.sleep(min(base * (2 ** max(0, attempt - 1)), 10.0));
@@ -1149,8 +1149,8 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
         params["timeout"] = httpx.Timeout(
             connect=_streaming_config.get("connect_timeout", 30.0),
             read=_streaming_config.get("read_timeout", 90.0),
-            write=30.0,
-            pool=30.0
+            write=_streaming_config.get("write_timeout", 30.0),
+            pool=_streaming_config.get("pool_timeout", 30.0)
         );
     }
     return params;
@@ -1357,7 +1357,7 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
             break;
         } except Exception as e {
             # Retry the same model on a transient transport error; others propagate.
-            if _is_transient_stream_error(e)
+            if _is_transient_error(e)
             and attempt < self._resolve_stream_retries(mt_run) {
                 attempt += 1;
                 self.log_info(
@@ -1444,7 +1444,7 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
             # Transient mid-stream drop: retry the same model from scratch, drop the
             # failed attempt's usage, and bump the reset counter so consumers discard
             # tokens already shown.
-            if _is_transient_stream_error(e)
+            if _is_transient_error(e)
             and attempt < self._resolve_stream_retries(mt_run) {
                 attempt += 1;
                 self._usage_history = self._usage_history[:usage_base];
@@ -1515,7 +1515,7 @@ impl BaseLLM.dispatch_streaming_with_tools(
         } except Exception as e {
             # Transient mid-stream drop: discard the partial step and retry the same
             # model; the reset counter tells consumers to drop shown tokens.
-            if _is_transient_stream_error(e)
+            if _is_transient_error(e)
             and attempt < self._resolve_stream_retries(mt_run) {
                 attempt += 1;
                 mt_run._stream_reset_count += 1;
@@ -1598,7 +1598,7 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
             response = await self.model_call_no_stream_async(params);
             break;
         } except Exception as e {
-            if _is_transient_stream_error(e)
+            if _is_transient_error(e)
             and attempt < self._resolve_stream_retries(mt_run) {
                 attempt += 1;
                 self.log_info(
@@ -1667,7 +1667,7 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) {
             }
             break;
         } except Exception as e {
-            if _is_transient_stream_error(e)
+            if _is_transient_error(e)
             and attempt < self._resolve_stream_retries(mt_run) {
                 attempt += 1;
                 self._usage_history = self._usage_history[:usage_base];
