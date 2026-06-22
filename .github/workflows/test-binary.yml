@@ -1,0 +1,165 @@
+name: jac single-binary self-test
+
+# Builds the self-contained `jac` binary ONCE (one `zig build` via setup-jac:
+# fetch pbs, assemble the payload, pack it onto the launcher stub), smoke-tests
+# it hermetically, then fans the FULL repo suite out across two jobs that run the
+# binary's own runner (`jac test` -> bundled pytest + xdist) in parallel:
+# compiler vs everything-else. This is the jaclang test gate: it replaces the
+# editable `pip install -e jac` + pytest jobs (test-core-compiler /
+# test-core-runtime). The build job uploads the 49 MB binary as an artifact so
+# the two test jobs reuse it instead of each rebuilding (~25 min of duplicate
+# build work eliminated). Runs on 4-vCPU runners so `-n auto` spins up ~4 xdist
+# workers per job instead of ~2 on a free runner.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, "feat/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The type checker loads vendored typeshed stubs, which live in a git
+          # submodule (jac/jaclang/vendor/typeshed). Without them the checker is a
+          # no-op and ~700 compiler tests fail on missing `typing.pyi`.
+          submodules: true
+
+      - name: Set up jac (build the binary once, cached)
+        uses: ./.github/actions/setup-jac
+
+      - name: Hermeticity + smoke (no system Python)
+        working-directory: jac
+        run: |
+          set -euxo pipefail
+          BIN="$PWD/zig-out/bin/jac"
+          # glibc-only / no libpython at link time
+          ldd "$BIN" || true
+          ! ldd "$BIN" | grep -qi python
+          WORK="$(mktemp -d)"
+          printf 'obj P { has x:int=0; def sq->int { return self.x*self.x; } }\nwith entry { print(P(x=7).sq()); }\n' > "$WORK/obj.jac"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" --version
+          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/obj.jac")"
+          echo "$out" | grep -q 49
+
+      - name: Run real jac programs (end-to-end execution)
+        working-directory: jac
+        run: |
+          set -euxo pipefail
+          BIN="$PWD/zig-out/bin/jac"
+          WORK="$(mktemp -d)"; cd "$WORK"
+          # obj + methods + comprehension
+          cat > a.jac <<'JAC'
+          obj Point { has x: int; has y: int; def dist -> float { return (self.x*self.x + self.y*self.y) ** 0.5; } }
+          with entry {
+              p = Point(x=3, y=4);
+              print("dist", p.dist());
+              print([i*i for i in range(5)]);
+          }
+          JAC
+          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/a.jac")"
+          echo "$out" | grep -q "dist 5.0"
+          echo "$out" | grep -q "0, 1, 4, 9, 16"
+
+      - name: jac test runner (self-contained test file)
+        working-directory: jac
+        # Blocking smoke check: the binary's test runner (pytest collection +
+        # execution via the bundled pytest) works on a self-contained `.jac`
+        # test under a fully hermetic env (no system Python, minimal PATH).
+        run: |
+          set -euxo pipefail
+          BIN="$PWD/zig-out/bin/jac"
+          WORK="$(mktemp -d)"
+          cat > "$WORK/test_smoke.jac" <<'JAC'
+          test "arithmetic" { assert 6 * 7 == 42; }
+          test "comprehension" { assert [i for i in range(3)] == [0, 1, 2]; }
+          test "strings" { assert "ja" + "c" == "jac"; }
+          JAC
+          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_TEST_JOBS=0 "$BIN" test "$WORK/test_smoke.jac"
+
+      - name: Upload the jac binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: jac-binary
+          path: jac/zig-out/bin/jac
+          retention-days: 1
+          if-no-files-found: error
+
+  # Compiler half of the suite (was test-core-compiler). Runs in parallel with
+  # test-runtime against the same prebuilt binary.
+  test-compiler:
+    needs: build
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the jac binary
+        uses: actions/download-artifact@v4
+        with:
+          name: jac-binary
+          path: bin
+      - name: Put jac on PATH
+        # upload-artifact strips the executable bit; restore it and expose `jac`
+        # so subprocess tests that shell out to `["jac", ...]` resolve this binary.
+        run: |
+          chmod +x "$PWD/bin/jac"
+          echo "$PWD/bin" >> "$GITHUB_PATH"
+      - name: Compiler suite via the binary
+        working-directory: jac
+        run: |
+          set -uxo pipefail
+          WORK="$(mktemp -d)"
+          rc=0
+          HOME="$WORK" JAC_TEST_JOBS=auto jac test tests/compiler | tee /tmp/compiler.log || rc=$?
+          {
+            echo "## binary compiler-suite result"
+            echo '```'
+            grep -E '^(FAILED|ERROR)|passed|failed' /tmp/compiler.log | tail -60 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+  # Everything except the compiler tests (was test-core-runtime). Runs in parallel
+  # with test-compiler against the same prebuilt binary.
+  test-runtime:
+    needs: build
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the jac binary
+        uses: actions/download-artifact@v4
+        with:
+          name: jac-binary
+          path: bin
+      - name: Put jac on PATH
+        run: |
+          chmod +x "$PWD/bin/jac"
+          echo "$PWD/bin" >> "$GITHUB_PATH"
+      # Toolchains the runtime suite shells out to: JS backend tests need node/bun;
+      # native-link tests need a C compiler (gcc ships on the runner).
+      - name: Set up Node.js (JS backend tests)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Set up Bun (JS backend tests)
+        uses: oven-sh/setup-bun@v2
+      - name: Runtime suite via the binary (everything except compiler)
+        working-directory: jac
+        run: |
+          set -uxo pipefail
+          WORK="$(mktemp -d)"
+          rc=0
+          HOME="$WORK" JAC_TEST_JOBS=auto jac test tests/ --ignore tests/compiler | tee /tmp/runtime.log || rc=$?
+          {
+            echo "## binary runtime-suite result"
+            echo '```'
+            grep -E '^(FAILED|ERROR)|passed|failed' /tmp/runtime.log | tail -60 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"

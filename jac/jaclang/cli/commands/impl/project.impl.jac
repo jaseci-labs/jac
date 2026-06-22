@@ -1437,6 +1437,26 @@ def _precompile_all_pythons(config: JacConfig) -> int {
     }
 
     project_root_str = str(config.project_root);
+
+    # Under the single self-contained binary there is no system Python to build a
+    # venv around, and jaclang is not on PyPI to pip-install. The bundled
+    # interpreter already has jaclang, so run the precompile through it directly
+    # (`sys.executable` is pinned to this binary), producing .jir for the binary's
+    # own Python version.
+    if os.environ.get("JAC_STANDALONE") {
+        tag = f"cpython-3{sys.version_info.minor}";
+        console.print(
+            f"\n  Precompiling for {tag} (bundled interpreter)...", style="muted"
+        );
+        result = subprocess.run([sys.executable, "run", script_path, project_root_str]);
+        if result.returncode != 0 {
+            console.error(f"Precompilation failed for {tag}.");
+            return 1;
+        }
+        console.print(f"  ✔ {tag}", style="success");
+        return 0;
+    }
+
     pythons = _find_precompile_pythons();
 
     if not pythons {

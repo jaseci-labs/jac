@@ -25,10 +25,15 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip
 
 WORKDIR /build
-COPY jac /build/jac
+# jaclang ships as the self-contained `jac` binary (built on the host by the
+# setup-jac action), NOT a pip/editable package -- there is no jac/pyproject.toml
+# to `pip install -e`. Copy the prebuilt binary onto PATH; it bundles its own
+# CPython + jaclang. The runner (ubuntu-24.04, glibc 2.39) builds it and this
+# base (debian trixie, glibc 2.40) is newer, so the binary runs unchanged.
+COPY jac/zig-out/bin/jac /usr/local/bin/jac
 COPY jac-scale /build/jac-scale
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -e /build/jac \
+    jac --version \
     && jac install -e /build/jac-scale --extras deploy data tracing
 
 ARG PROJECT_PATH=jac-scale/jac_scale/tests/fixtures/k8s_e2e
@@ -39,19 +44,19 @@ RUN if [ -f jac.toml ]; then jac install || true; fi
 RUN jac --version
 
 # Log the fully-resolved dependency set into the build output. Deps are
-# unpinned (see jac.toml ranges) and re-resolved on every build because the
-# COPY layers above invalidate the install layer per-branch, so this is the
+# unpinned (see jac.toml ranges) and re-resolved on every build, so this is the
 # only record of what actually shipped in the image when a regression hits.
-RUN pip freeze
+# Use the binary's own interpreter (the deps live in its runtime, not system pip).
+RUN jac -m pip freeze || true
 
-# Fail fast if anything resolves to a PyPI install instead of /build/.
-# Use __path__[0] rather than os.path.dirname(__file__) so the check
-# works for namespace packages too.
-RUN python -c "import jaclang, jac_scale; \
-locs = {p.__name__: p.__path__[0] for p in (jaclang, jac_scale)}; \
-bad = [(n, l) for n, l in locs.items() if not l.startswith('/build/')]; \
-assert not bad, f'expected local-source install, got PyPI: {bad}'; \
-print('local-source install verified:', locs)"
+# Fail fast if jac_scale resolves to a PyPI install instead of the PR source.
+# jaclang is provided by the binary's bundled runtime (not /build/, not PyPI),
+# so only jac_scale is expected under /build/. __path__[0] handles namespace pkgs.
+RUN jac -c "import jaclang, jac_scale; \
+assert jac_scale.__path__[0].startswith('/build/'), \
+    f'expected local jac-scale source, got: {jac_scale.__path__[0]}'; \
+print('jac_scale local-source verified:', jac_scale.__path__[0]); \
+print('jaclang (binary-provided):', jaclang.__path__[0])"
 
 # Build identity (B-01): auto-build passes --build-arg JAC_BUILD_SHA
 # (12-char git commit SHA, +`-dirty` on uncommitted changes); kept LAST so

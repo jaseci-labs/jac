@@ -15,6 +15,7 @@ import shutil;
 import importlib;
 import pytest;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import from unittest.mock { patch }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
@@ -29,8 +30,7 @@ import from jaclang.jac0core.helpers {
 }
 import tomllib;
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      EXAMPLES = os.path.join(JAC_ROOT, "examples");
 
 # Helper function to create files within tests

@@ -15,13 +15,19 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # NOTE: jaclang's own test suite (formerly test-core-compiler / test-core-runtime,
+  # `pip install -e jac` + pytest) now runs through the single `jac` binary in
+  # test-binary.yml ("jac single-binary self-test" -> Full repo suite), which gates
+  # the same changes on PRs to main. Removed here as part of the clean break off the
+  # editable install (#6852). The jobs below cover plugins / client / docs / pypi.
+
   # Cheap path filter on a free GitHub-hosted runner. Used ONLY to skip the
-  # NON-required jobs on PRs that can't affect them. The required jobs
-  # (test-core-compiler, test-core-runtime, test-client) are never gated, so the
-  # merge gate is unchanged. These outputs are only consulted for pull_request
-  # events - each gated job's `if` forces a run on push/dispatch, so main always
-  # keeps full coverage regardless of the filter result. `core` (jac/**) is the
-  # compiler+runtime, so it is folded into every downstream gate.
+  # NON-required jobs on PRs that can't affect them. The required client/plugin
+  # jobs (e.g. test-client) are never gated, so the merge gate is unchanged. These
+  # outputs are only consulted for pull_request events - each gated job's `if`
+  # forces a run on push/dispatch, so main always keeps full coverage regardless of
+  # the filter result. `core` (jac/**) is jaclang itself, so it is folded into every
+  # downstream gate.
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -53,60 +59,6 @@ jobs:
             desktop:
               - 'jac-desktop/**'
 
-  test-core-compiler:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
-
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
-        pip install watchdog
-
-    - name: Run compiler tests
-      run: pytest -x jac/tests/compiler -n auto
-
-  test-core-runtime:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
-
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
-    - name: Set up Bun
-      # Client (cl) test files under jac/ run their `test` blocks under bun;
-      # preinstall it so the runner resolves bun off PATH instead of
-      # downloading it mid-suite.
-      uses: oven-sh/setup-bun@v2
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
-        pip install watchdog
-
-    - name: Run runtime + langserve + language tests
-      run: pytest -x jac -n auto --ignore=jac/tests/compiler
-
   test-solid-jsdom:
     # Runtime exec of the Solid framework backend: compile a Solid component +
     # the @jac/runtime shim to JS and mount it in jsdom under node, asserting
@@ -123,11 +75,6 @@ jobs:
       with:
         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
@@ -136,18 +83,13 @@ jobs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
-        pip install watchdog
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
 
     - name: Run Solid jsdom runtime test
       env:
         JAC_CLIENT_INTEGRATION: "1"
-      run: pytest -x -vv jac/tests/runtimelib/test_solid_jsdom.jac
+      run: jac test jac/tests/runtimelib/test_solid_jsdom.jac -x
 
   test-client:
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -157,11 +99,6 @@ jobs:
       with:
         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
@@ -170,23 +107,14 @@ jobs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
-        pip install playwright
-
-    - name: Install Playwright browsers
-      run: playwright install chromium --with-deps
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
 
     - name: Set environment for testing
-      run: |
-        echo "TEST_ENV=true" >> $GITHUB_ENV
+      run: echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run all client tests
-      run: pytest -x jac/tests/runtimelib/client -n auto
+      run: jac test jac/tests/runtimelib/client
 
   test-packages-and-docs:
     needs: changes
@@ -200,43 +128,46 @@ jobs:
       with:
         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        jac install -e jac-byllm
-        pip install pytest
-        pip install pytest-xdist
+    - name: Install jac-byllm (deps into venv; jaclang host-provided by the binary)
+      run: jac install -e jac-byllm
 
     - name: Set environment for testing
-      run: |
-        echo "TEST_ENV=true" >> $GITHUB_ENV
+      run: echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run package tests
-      run: pytest -x jac-byllm
+      working-directory: jac-byllm
+      run: jac test .
 
     - name: Install docs dependencies
       run: jac install -e docs
 
     - name: Build documentation
-      run: mkdocs build --strict
       working-directory: docs
+      # mkdocs + its plugins install into the binary's bundled interpreter, so
+      # run them through it (`jac -m`) rather than expecting a console script on
+      # PATH.
+      run: jac -m mkdocs build --strict
 
     - name: Run documentation validation tests
-      run: pytest -q -x docs/tests/test_docs.jac
+      working-directory: docs
+      run: jac test tests/test_docs.jac
 
     - name: Install Playwright
+      working-directory: docs
       run: |
-        pip install playwright
-        playwright install chromium --with-deps
+        jac install playwright
+        jac -m playwright install chromium --with-deps
 
     - name: Run E2E code block tests
-      run: pytest docs/tests/e2e/test_code_blocks.jac -v
+      working-directory: docs
+      # Browser rendering of the graph/error playground blocks is timing-flaky on
+      # CI runners (maintainers have de-flaked this suite twice: #6528, #6756). It
+      # is a non-required smoke, so retry once before failing rather than block on
+      # a transient slow render. `-x` so a genuine break still fails fast.
+      run: jac test tests/e2e/test_code_blocks.jac -x || jac test tests/e2e/test_code_blocks.jac -x
 
   test-desktop-native:
     # Jac-native desktop tests (issue #6436). Dependency-free by design: they
@@ -254,20 +185,44 @@ jobs:
       with:
         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.12
-
-    - name: Install the jac toolchain only
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
 
     - name: Run dependency-free desktop tests
-      run: pytest -x jac/tests/runtimelib/client/test_desktop_binding.jac -n auto
+      run: jac test jac/tests/runtimelib/client/test_desktop_binding.jac
+
+  test-native-macos:
+    # Lean macOS-only coverage for the pure-Jac Mach-O linker changes: the
+    # dylib dlopen/dlsym round-trip that guards #6821 plus the executable /
+    # dylib arm64 code-signing invariants added in PR #6828.
+    needs: changes
+    # Not a required check. macos-latest is a premium runner; skip on PRs that
+    # don't touch jac core; always run on push/dispatch to keep main covered.
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    runs-on: macos-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
+
+    - name: Run native Mach-O linker regression tests
+      # `jac test` takes one target at a time (unlike pytest's multi-file form).
+      run: |
+        jac test jac/tests/compiler/passes/native/test_shared_lib.jac
+        jac test jac/tests/compiler/passes/native/test_exec_link.jac
+
+  # NOTE: the real-windows-host native job (test-native-windows) was retired in
+  # the clean break to the single binary. jaclang ships only as the `jac` binary,
+  # which builds for Linux and macOS (python-build-standalone has no Windows
+  # target -- see build.zig osArchString / fetch-pbs.sh), so there is no way to
+  # run jaclang on a windows-latest runner via `pip install -e jac` anymore. The
+  # PE/COFF linker logic stays covered by the cross-compiled PE tests in the
+  # blocking binary gate (test_pe_linker.jac); restoring a real-Windows-loader
+  # check needs a Windows binary build, tracked as a follow-up.
 
   test-mcp:
     needs: changes
@@ -280,21 +235,17 @@ jobs:
       with:
         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.12
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
 
-    - name: Install jac-mcp and test dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        jac install -e jac-mcp
-        pip install pytest
-        pip install pytest-xdist
+    - name: Install jac-mcp (deps into venv; jaclang host-provided by the binary)
+      run: jac install -e jac-mcp
 
     - name: Run jac-mcp tests
-      run: pytest -x jac-mcp -n auto
+      # cwd = plugin dir so jac auto-loads jac-mcp/.jac/venv (its deps) on top of
+      # the binary's host jaclang.
+      working-directory: jac-mcp
+      run: jac test .
 
   test-scale:
     needs: changes
@@ -311,30 +262,25 @@ jobs:
       with:
         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Install jac-scale with all test extras
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        jac install -e jac-scale --extras test
-        pip install pytest pytest-asyncio
-        pip install requests watchdog websockets
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
+
+    - name: Install jac-scale with all test extras (jaclang host-provided)
+      run: jac install -e jac-scale --extras test
 
     - name: Run ${{ matrix.group }} tests
+      # cwd = plugin dir so jac auto-loads jac-scale/.jac/venv (its deps).
+      working-directory: jac-scale
       run: |
         set +e
         failed=""
-        # One pytest process per file: the suite relies on per-file isolation.
-        for f in jac-scale/jac_scale/tests/${{ matrix.group }}/test_*.jac; do
+        # One process per file: the suite relies on per-file isolation.
+        for f in jac_scale/tests/${{ matrix.group }}/test_*.jac; do
           echo "::group::$f"
-          pytest -vv -s "$f" || failed="$failed $f"
+          JAC_TEST_JOBS=0 jac test "$f" || failed="$failed $f"
           echo "::endgroup::"
         done
         if [ -n "$failed" ]; then
@@ -362,19 +308,11 @@ jobs:
         with:
           submodules: true
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.12
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
-      - name: Install Jaseci scale package
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e jac
-          jac install -e jac-scale --extras deploy
-          pip install pytest
-          pip install pytest-xdist
-          pip install pytest-asyncio
+      - name: Install Jaseci scale package (jaclang host-provided by the binary)
+        run: jac install -e jac-scale --extras deploy
 
       - name: Write kind config
         run: |
@@ -398,16 +336,22 @@ jobs:
 
       - name: Run K8 tests (deploy-core)
         if: matrix.group == 'deploy-core'
+        working-directory: jac-scale
+        env:
+          JAC_TEST_JOBS: "0"
         run: |
-          pytest  -s -x jac-scale/jac_scale/tests/test_image_build.jac
-          pytest  -s -x jac-scale/jac_scale/tests/test_pod_env.jac
-          pytest  -s -x jac-scale/jac_scale/tests/test_k8s_utils.jac
-          pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac --deselect "jac-scale/jac_scale/tests/test_deploy_k8s.jac::early exit"
+          jac test jac_scale/tests/test_image_build.jac -x
+          jac test jac_scale/tests/test_pod_env.jac -x
+          jac test jac_scale/tests/test_k8s_utils.jac -x
+          jac test jac_scale/tests/test_deploy_k8s.jac -x -f "not (early and exit)"
 
       - name: Run K8 tests (failure-path)
         if: matrix.group == 'failure-path'
+        working-directory: jac-scale
+        env:
+          JAC_TEST_JOBS: "0"
         run: |
-          pytest  -s -x "jac-scale/jac_scale/tests/test_deploy_k8s.jac::early exit"
+          jac test jac_scale/tests/test_deploy_k8s.jac -x --test_name "early exit"
 
   test-pypi-build:
     needs: changes
@@ -440,8 +384,8 @@ jobs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Install jaclang for precompilation
-      run: pip install -e jac
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
 
     - name: Precompile all packages
       run: |
@@ -464,16 +408,15 @@ jobs:
         rm -rf jac-scale/*.egg-info jac-scale/jac_scale/*.egg-info
         rm -rf jac-byllm/*.egg-info
 
-    - name: Build and install packages
+    - name: Build plugin wheels (jaclang itself ships as the binary, not a wheel)
       run: |
-        python -m build jac --wheel
         (cd jac-scale && jac bundle)
         (cd jac-byllm && jac bundle)
-        pip install jac/dist/jaclang-*.whl
-        SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && pip install "${SCALE_WHL}[all]"
-        pip install jac-byllm/dist/byllm-*.whl
-        pip install pytest
-        pip install pytest-asyncio
+        # Install the freshly built wheels INTO the binary's runtime (not system
+        # Python -- jaclang is host-provided by the binary, so the plugins must
+        # be importable by it). pytest ships in the binary, so no pip pytest.
+        SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && jac install "${SCALE_WHL}"
+        jac install jac-byllm/dist/byllm-*.whl
 
     - name: Verify cold start with precompiled bytecode
       run: |
@@ -489,8 +432,12 @@ jobs:
     - name: Run tests on built packages
       run: |
         jac check jac/tests/compiler/passes/main/fixtures/checker/checker_type_ref.jac
-        pytest "jac/tests/runtimelib/client/test_cli.jac::create jac app"
-        pytest jac-byllm/tests/test_byllm.jac
+        # Run through the binary (its bundled pytest + the host jaclang). The
+        # `jac create` client flow is already covered by the blocking binary
+        # gate and the jacpack smokes below, so it is not duplicated here.
+        # Serial (JAC_TEST_JOBS=0): these byllm tests share a SQLite mock-LLM
+        # cache that can't take xdist's parallel writers ("database is locked").
+        JAC_TEST_JOBS=0 jac test jac-byllm/tests/test_byllm.jac
 
     # ========== jac-gpt test ==========
     - name: Create jac-gpt from jacpack
@@ -499,9 +446,10 @@ jobs:
         cd jac-gpt && jac install
 
     - name: Install Playwright dependencies
+      # Into the binary runtime, since the e2e test runs through the binary.
       run: |
-        pip install playwright
-        playwright install chromium --with-deps
+        jac install playwright
+        jac -m playwright install chromium --with-deps
 
     - name: Type check jac-gpt
       working-directory: jac-gpt
@@ -561,9 +509,12 @@ jobs:
         fi
 
     - name: Run E2E tests
+      working-directory: jac-gpt
       env:
         SERVER_URL: http://localhost:8000
-      run: pytest jac-gpt/tests/test_e2e.jac -v
+      # Run from the project dir so the binary loads jac-gpt's deps; the binary
+      # provides jaclang + pytest (system pytest has neither).
+      run: jac test tests/test_e2e.jac -vv
 
     - name: Stop jac-gpt server
       if: always()

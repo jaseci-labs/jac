@@ -18,15 +18,14 @@ Scenario 2 (variant_no_head/):
 """
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.bccache { discover_variant_files }
 import from jaclang.jac0core.constant { CodeContext }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(
+glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      ),
      VARIANT_DIR = os.path.join(FIXTURES, "variant_module"),

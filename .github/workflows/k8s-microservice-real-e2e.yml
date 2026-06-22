@@ -33,17 +33,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          submodules: true
 
-      - name: Install jaclang + jac-scale[deploy]
-        run: |
-          pip install --upgrade pip
-          pip install -e jac
-          jac install -e jac-scale --extras deploy
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
+
+      - name: Install jac-scale[deploy] (jaclang is host-provided by the binary)
+        run: jac install -e jac-scale --extras deploy
 
       - name: Set up microk8s
         run: |
@@ -81,7 +78,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/buildkit-cache
-          key: buildkit-${{ runner.os }}-${{ hashFiles('jac/pyproject.toml', 'jac-scale/pyproject.toml', 'jac-scale/scripts/Dockerfile.microservice.exp') }}
+          key: buildkit-${{ runner.os }}-${{ hashFiles('jac/jac.toml', 'jac-scale/pyproject.toml', 'jac-scale/scripts/Dockerfile.microservice.exp') }}
 
       - name: Show cluster info
         run: |

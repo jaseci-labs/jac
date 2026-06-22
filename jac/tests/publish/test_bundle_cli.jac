@@ -12,6 +12,12 @@ import from jaclang.cli.commands.project { _PRECOMPILE_MINOR_RANGE }
 
 """Return the cpython-3XX tags for every python3.X present on PATH."""
 def _available_python_tags -> list[str] {
+    # Under the single binary, `jac bundle --precompile` uses the bundled
+    # interpreter directly (no venv / system-python hunt), so it precompiles for
+    # exactly the binary's own Python version.
+    if os.environ.get("JAC_STANDALONE") {
+        return [f"cpython-3{sys.version_info.minor}"];
+    }
     tags: list[str] = [];
     for minor in _PRECOMPILE_MINOR_RANGE {
         if shutil.which(f"python3.{minor}") {

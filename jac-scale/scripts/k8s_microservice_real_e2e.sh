@@ -136,7 +136,7 @@ kubectl label namespace "${NAMESPACE}" \
     --overwrite
 
 cd "${PROJECT_DIR}"
-python - <<PYEOF
+jac - <<PYEOF
 import logging, sys, jaclang  # noqa: F401
 from jac_scale.targets.kubernetes.microservice.target import KubernetesMicroserviceTarget
 from jac_scale.targets.kubernetes.kubernetes_config import KubernetesConfig
@@ -213,7 +213,7 @@ echo "  /health OK"
 echo "=== verify per-service routing ==="
 # 503 from the gateway means upstream service unreachable; 404/405 means
 # we reached a healthy service that just doesn't have that walker.
-ROUTES=$(python -c "
+ROUTES=$(jac -c "
 import tomllib
 with open('${PROJECT_DIR}/jac.toml', 'rb') as f:
     cfg = tomllib.load(f)
@@ -238,7 +238,7 @@ echo "=== M-14.a: verify observability stack (logs.enabled) ==="
 # DaemonSet rolls out, Loki responds to /ready, and a LogQL query for
 # the app namespace returns at least one stream (proves Alloy is
 # tailing /var/log/pods and pushing to Loki).
-LOGS_ENABLED=$(python - <<PYEOF
+LOGS_ENABLED=$(jac - <<PYEOF
 import tomllib
 with open("${PROJECT_DIR}/jac.toml", "rb") as f:
     cfg = tomllib.load(f)
@@ -300,11 +300,11 @@ else
         # Loki's instant-query endpoint returns {"status":"success","data":
         # {"resultType":"streams","result":[{stream:..., values:[...]}, ...]}}.
         # We just need >=1 entry in result[] to prove Alloy is shipping.
-        QUERY=$(python -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' \
+        QUERY=$(jac -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' \
             "{namespace=\"${NAMESPACE}\"}")
         LOG_STREAMS=$(curl -s --max-time 10 \
             "http://localhost:${LOKI_LOCAL_PORT}/loki/api/v1/query?query=${QUERY}&limit=5" \
-            | python -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("data",{}).get("result",[])))' \
+            | jac -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("data",{}).get("result",[])))' \
             2>/dev/null || echo "0")
         if [ "${LOG_STREAMS}" -gt 0 ] 2>/dev/null; then
             break
@@ -335,7 +335,7 @@ else
 fi
 
 echo "=== optional Ingress test ==="
-INGRESS_INFO=$(python - <<PYEOF
+INGRESS_INFO=$(jac - <<PYEOF
 import tomllib
 with open("${PROJECT_DIR}/jac.toml", "rb") as f:
     cfg = tomllib.load(f)
@@ -466,7 +466,7 @@ run_zero_downtime_assertion "gateway" \
 # Phase 2: service rollout via the first declared route. Allow 5%
 # tolerance for transient endpoint-propagation noise.
 FIRST_PREFIX=$(echo "${ROUTES}" | head -n1)
-FIRST_SVC=$(python -c "
+FIRST_SVC=$(jac -c "
 import tomllib
 with open('${PROJECT_DIR}/jac.toml', 'rb') as f:
     cfg = tomllib.load(f)

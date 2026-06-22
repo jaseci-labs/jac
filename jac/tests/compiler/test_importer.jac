@@ -8,7 +8,7 @@ import marshal;
 import shutil;
 import tempfile;
 import time;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang { JacRuntime as Jac }
 import from jaclang { JacRuntimeInterface }
@@ -24,8 +24,7 @@ import from jaclang.jac0core.jir {
     read_sections
 }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     TEST_DIR = os.path.join(JAC_ROOT, "tests", "compiler"),
+glob TEST_DIR = os.path.join(JAC_ROOT, "tests", "compiler"),
      FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "fixtures"),
      LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_importer_");

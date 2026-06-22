@@ -9,17 +9,11 @@ Checks: [project] name/version/description/requires-python, [project.urls]
 import from __future__ { annotations }
 import sys;
 import from pathlib { Path }
-import tomlkit;
+import tomllib;
 import from packaging.requirements { Requirement }
 import from packaging.utils { canonicalize_name }
 
-glob PLUGIN_DIRS: list[str] = [
-         "jac-byllm",
-         "jac-mcp",
-         "jac-scale",
-         "jaseci-package",
-
-     ];
+glob PLUGIN_DIRS: list[str] = ["jac-byllm", "jac-mcp", "jac-scale", ];
 
 """Canonicalize a PEP-508 dep string: pep503-name + sorted-extras + sorted-specs.
 
@@ -74,8 +68,8 @@ def check_package(repo_root: Path, pkg_dir: str) -> list[str] {
     if not jt_path.exists() or not py_path.exists() {
         return [];
     }
-    jt = tomlkit.loads(jt_path.read_text());
-    py = tomlkit.loads(py_path.read_text());
+    jt = tomllib.loads(jt_path.read_text());
+    py = tomllib.loads(py_path.read_text());
     jp = jt.get("project", {});
     pp = py.get("project", {});
 

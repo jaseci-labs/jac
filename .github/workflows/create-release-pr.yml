@@ -3,8 +3,12 @@ name: Create Release PR
 on:
   workflow_dispatch:
     inputs:
+      # jaclang is the release anchor. It is NOT published to PyPI (it ships as
+      # the native `jac` binary); bumping it here edits jac/jac.toml, and on
+      # merge the publish workflow creates the v<jaclang> GitHub Release, which
+      # fires release-jaclang.yml to build + attach the binaries.
       jaclang:
-        description: "jaclang bump"
+        description: "jaclang bump (the native binary / release anchor)"
         type: choice
         default: skip
         options: [skip, patch, minor, major]
@@ -20,11 +24,6 @@ on:
         options: [skip, patch, minor, major]
       jac-mcp:
         description: "jac-mcp bump"
-        type: choice
-        default: skip
-        options: [skip, patch, minor, major]
-      jaseci:
-        description: "jaseci meta-package bump"
         type: choice
         default: skip
         options: [skip, patch, minor, major]
@@ -48,16 +47,8 @@ jobs:
           persist-credentials: true
           submodules: true
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: pip install tomlkit==0.14.0
-
-      - name: Install jaclang
-        run: pip install -e ./jac
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
       - name: Validate versions against PyPI
         run: |
@@ -65,8 +56,7 @@ jobs:
             --jaclang "${{ inputs.jaclang }}" \
             --jac-byllm "${{ inputs.jac-byllm }}" \
             --jac-scale "${{ inputs.jac-scale }}" \
-            --jac-mcp "${{ inputs.jac-mcp }}" \
-            --jaseci "${{ inputs.jaseci }}"
+            --jac-mcp "${{ inputs.jac-mcp }}"
 
       - name: Bump versions
         id: release
@@ -75,8 +65,7 @@ jobs:
             --jaclang "${{ inputs.jaclang }}" \
             --jac-byllm "${{ inputs.jac-byllm }}" \
             --jac-scale "${{ inputs.jac-scale }}" \
-            --jac-mcp "${{ inputs.jac-mcp }}" \
-            --jaseci "${{ inputs.jaseci }}"
+            --jac-mcp "${{ inputs.jac-mcp }}"
 
       - name: Configure git
         run: |
