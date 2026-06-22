@@ -171,38 +171,14 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: ${{ matrix.extra_build_cmd }}
 
-      # Build the package.
-      # jaclang uses python -m build (it bootstraps the toolchain and has no jac.toml).
-      # All other packages use `jac bundle`, which reads jac.toml as source of truth.
-      - name: Install build tools (jaclang)
-        if: matrix.name == 'jaclang'
-        run: pip install build
-
-      # Precompile jaclang bytecode before python -m build packages it.
-      # Uses per-version venvs (same pattern as jac bundle --precompile) since jaclang
-      # bootstraps the toolchain and cannot use jac bundle itself.
-      - name: Precompile jaclang bytecode
-        if: matrix.name == 'jaclang' && matrix.precompile == true
-        run: |
-          for pyexe in python3.12 python3.13 python3.14; do
-            if command -v "$pyexe" > /dev/null 2>&1; then
-              "$pyexe" -m venv /tmp/jac-precompile-$pyexe
-              /tmp/jac-precompile-$pyexe/bin/pip install -e ./jac --quiet
-              /tmp/jac-precompile-$pyexe/bin/jac run jac/jaclang/utils/precompile_bytecode.jac ./jac
-            else
-              echo "Warning: $pyexe not found on PATH, skipping"
-            fi
-          done
-
-      - name: Build jaclang wheel
-        if: matrix.name == 'jaclang'
-        working-directory: ${{ matrix.dir }}
-        run: python -m build
-
+      # Build the package. Plugins publish via `jac bundle`, which reads jac.toml
+      # as the source of truth. jaclang is NOT published to PyPI -- it ships as
+      # the native `jac` binary (release-jaclang.yml) -- so there is no jaclang
+      # wheel build here.
+      #
       # Plugins precompile against jaclang from the local source tree, not PyPI:
-      # this build runs before the freshly-bumped jaclang version is published.
+      # this build runs before the freshly-bumped plugin version is published.
       - name: Build plugin wheel
-        if: matrix.name != 'jaclang'
         working-directory: ${{ matrix.dir }}
         env:
           JAC_PRECOMPILE_LOCAL_INSTALL: ${{ github.workspace }}/jac
@@ -653,27 +629,10 @@ jobs:
             dist/*
 
   # ============================================================================
-  # Build standalone binaries (triggered when jaseci is released)
-  # ============================================================================
-  build-standalone-binaries:
-    needs: [parse-release, wait-tier4, push-tags, create-github-release]
-    if: |
-      always() &&
-      needs.wait-tier4.result == 'success' &&
-      needs.push-tags.result == 'success' &&
-      needs.push-tags.outputs.jaseci_version != ''
-    uses: ./.github/workflows/build-standalone.yml
-    with:
-      jaseci_version: ${{ needs.push-tags.outputs.jaseci_version }}
-      release_tag: ${{ needs.push-tags.outputs.jaseci_release_tag }}
-    permissions:
-      contents: write
-
-  # ============================================================================
   # Summary
   # ============================================================================
   summary:
-    needs: [parse-release, build, publish-tier1, publish-tier2, publish-tier3, publish-tier4, wait-tier3, wait-tier4, push-tags, create-github-release, build-standalone-binaries]
+    needs: [parse-release, build, publish-tier1, publish-tier2, publish-tier3, publish-tier4, wait-tier3, wait-tier4, push-tags, create-github-release]
     if: always() && needs.parse-release.outputs.has_releases == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
@@ -687,7 +646,6 @@ jobs:
           TIER3: ${{ needs.publish-tier3.result }}
           TAGS: ${{ needs.push-tags.result }}
           RELEASE: ${{ needs.create-github-release.result }}
-          STANDALONE: ${{ needs.build-standalone-binaries.result }}
           JASECI_VERSION: ${{ needs.push-tags.outputs.jaseci_version }}
         run: |
           {
@@ -696,14 +654,12 @@ jobs:
             echo "| Step | Status |"
             echo "|------|--------|"
             echo "| Build | $BUILD |"
-            echo "| Publish Tier 1 (jaclang) | $TIER1 |"
             echo "| Publish Tier 2 (plugins) | $TIER2 |"
-            echo "| Publish Tier 3 (jaseci) | $TIER3 |"
+            echo "| Publish Tier 3 | $TIER3 |"
             echo "| Push Tags | $TAGS |"
             echo "| GitHub Release | $RELEASE |"
-            if [[ -n "$JASECI_VERSION" ]]; then
-              echo "| Standalone Binaries | $STANDALONE |"
-            fi
+            echo ""
+            echo "> The native \`jac\` binary (jaclang) is built and attached to the GitHub Release by the separate **Release jac native binary** workflow, which fires on release publish."
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "$TIER1" == "failure" || "$TIER2" == "failure" || "$TIER3" == "failure" ]]; then

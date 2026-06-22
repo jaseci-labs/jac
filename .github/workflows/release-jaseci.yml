@@ -88,11 +88,5 @@ jobs:
             echo "Created release v$VERSION"
           fi
 
-  build-standalone-binaries:
-    needs: [release-jaseci, create-github-release]
-    uses: ./.github/workflows/build-standalone.yml
-    with:
-      jaseci_version: ${{ needs.release-jaseci.outputs.version }}
-      release_tag: v${{ needs.release-jaseci.outputs.version }}
-    permissions:
-      contents: write
+    # The native `jac` binary (jaclang) is built and attached to this release by
+    # release-jaclang.yml, which fires on the release-publish event above.
