@@ -478,6 +478,12 @@ impl NativeCompilePass._compile_and_link_native_imports(
         queue_idx += 1;
         source_mod_path = binding.source_module;
         if source_mod_path is None {
+            # No source path => nothing to resolve, compile, or link. This early
+            # skip is also the invariant that keeps the AOT clib merge below
+            # implicit: meta.clib_paths is only ever populated AFTER this guard,
+            # so a clib-bearing dep always carries a source_module and always
+            # reaches meta.propagate_to (which appends to module.gen._clib_paths
+            # for AOT). There is no path that has clib_paths but no source_module.
             continue;
         }
 
