@@ -13,13 +13,7 @@ import tomllib;
 import from packaging.requirements { Requirement }
 import from packaging.utils { canonicalize_name }
 
-glob PLUGIN_DIRS: list[str] = [
-         "jac-byllm",
-         "jac-mcp",
-         "jac-scale",
-         "jaseci-package",
-
-     ];
+glob PLUGIN_DIRS: list[str] = ["jac-byllm", "jac-mcp", "jac-scale", ];
 
 """Canonicalize a PEP-508 dep string: pep503-name + sorted-extras + sorted-specs.
 
