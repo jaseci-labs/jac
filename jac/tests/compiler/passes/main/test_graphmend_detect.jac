@@ -153,6 +153,11 @@ test "detects an entry passed by keyword: torch.compile(model=Model())" {
     assert "dyn_ctrl_fl" in _if_kinds(mod);
 }
 
+test "resolves a reassigned compile target to its last assignment" {
+    mod = _compile("callsite_reassign.jac", True);
+    assert "dyn_ctrl_fl" in _if_kinds(mod);
+}
+
 test "whole-module scope tags model code with no local torch.compile entry" {
     # no local entry -> nothing is tagged
     plain = _compile("scoped_module.jac", True);
