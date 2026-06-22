@@ -2,7 +2,24 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.29 (Latest Release)
+## jac-scale 0.2.30 (Latest Release)
+
+### New Features
+
+- **Feature: `--no-image --experimental` for the microservice fleet**: with `--experimental`, the no-image bootstrap git-clones `[plugins.scale.kubernetes].jaseci_repo_url`@`jaseci_branch` into a venv on the shared app volume and editable-installs jac + jac-scale[all] + jac-client, instead of pinning releases from PyPI - so an unreleased jac (e.g. a feature branch) can run in-pod. The repo/branch/commit are passed to the init container as env data rather than spliced into the bootstrap shell (injection-safe), git is installed via whichever package manager the base image ships (Debian `apt` or Alpine `apk`, only when missing), and `jac-client` is installed only when the fork actually ships it.
+- **Feature: no-image serves the fullstack frontend**: `--no-image` now supports fullstack apps, not just backend + admin. `pack_source` ships a `[plugins.scale]`-stripped copy of jac.toml (so the pod gets the app's `[dependencies.npm]` / `[plugins.client]` build config without the deploy secrets, which a world-readable ConfigMap must not carry), and the gateway builds the client bundle in-pod (`jac build <client.entry>`) before serving, so the SPA is served at `/`. Non-fatal: the API + admin still come up if the client build fails.
+- **Feature: injectable microservices config (platform deploys)**: `KubernetesMicroserviceTarget` and `MicroserviceManifestBuilder` now accept a `microservices_config` (the app's `[plugins.scale.microservices]` table). When set, routes / client entry / triggers / tracing are read from it instead of `get_scale_config()` (the deploying process's own jac.toml), so a code-sync platform (jacBuilder/jachammer) can deploy a *different* app's fleet without mutating the global config singleton.
+
+### Bug Fixes
+
+- **Fix: `--no-image` pods get the scale plugin's runtime deps, a startup probe, and a real jac.toml**: the in-pod bootstrap installed bare `jac-scale` (so the `jac-scale:scale` plugin failed to load - gateway crashed, services 404'd on `/healthz/*`); it now installs `jac-scale[all]` + `requests` (a runtime dep jac-scale ships only in its `test` extra) + `jac-client` when present. No-image pods also get a startup probe (the multi-minute in-pod install/compile would be liveness-SIGKILLed otherwise) and a sanitized project jac.toml (the real one is excluded as a secret, but `jac start <svc>.jac` requires a project jac.toml to exist).
+- **Fix: gateway streams `/function/*` and `/walker/*` passthrough**: the gateway's builtin passthrough buffered the whole upstream body via `raw_forward`, so a server-sent-events response from a client-served generator arrived all at once instead of frame-by-frame; it now uses `stream_forward` (status known from the response head, so the 404/405 "try the next service" fan-out still works) and streams SSE through live.
+- **Fix: no-image pods default to build-sized memory**: the in-pod jac install + compile (and the gateway's client build) OOM-kills at the 128Mi/1Gi Burstable defaults, so no-image pods now default to 4Gi/1Gi (services) and 8Gi/2Gi (gateway). Override via `[plugins.scale.kubernetes]` or per-service config as before; built-image pods keep the small defaults.
+- **Fix: microservice deploy waits for the fleet to roll out**: `KubernetesMicroserviceTarget.deploy()` returned `success=True` right after applying manifests (unlike the monolith target, which waits via `_wait_for_deployment`), so a caller would surface a "live" link at a not-yet-ready or crash-looping fleet. It now blocks until every fleet Deployment has a ready replica, and raises on a crash-looping pod so a broken fleet fails fast instead of timing out.
+- **Fix: microservice deploy honors the deploy-wide `shared_ingress`**: the gateway Ingress was built only from `[plugins.scale.microservices.ingress]`, so a platform that routes a subdomain through jac-scale's `shared_ingress` (host=domain, e.g. an AWS ALB/ACM or a cert-manager nginx PaaS) got no Ingress at all and the public URL 404'd at the load balancer. The gateway Ingress now falls back to `config.shared_ingress` (host, class, caller annotations, plus a cert-manager `spec.tls` block when the issuer annotation is present), matching the monolith target.
+- **Fix: no-image gateway auto-builds the client for a fullstack app**: the in-pod client build only ran when `[plugins.scale.microservices.client].entry` was set, so a fullstack project deployed without that key served the API but 404'd at `/`. The gateway now defaults the client entry to `main.jac` whenever the project ships a `.cl.jac` client, so the SPA is built and served without extra config.
+
+## jac-scale 0.2.29
 
 ### New Features
 

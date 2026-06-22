@@ -1,5 +1,6 @@
-"""Variant module tests — verifies that .sv.jac, .cl.jac, .na.jac files are
-discovered, loaded, and merged into the head module as variant annexes.
+"""Variant module tests — verifies that .sv.jac, .cl.jac, .na.jac files (and the
+annexes that belong to them) are discovered and merged into the head module as a
+single unified tree, each statement keeping its own deployment context.
 
 Scenario 1 (variant_module/):
   mymod.jac                head with Circle {area}
@@ -21,7 +22,7 @@ import from pathlib { Path }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
-import from jaclang.jac0core.bccache { discover_variant_files, discover_annex_files }
+import from jaclang.jac0core.bccache { discover_variant_files }
 import from jaclang.jac0core.constant { CodeContext }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
@@ -30,6 +31,35 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      ),
      VARIANT_DIR = os.path.join(FIXTURES, "variant_module"),
      NO_HEAD_DIR = os.path.join(FIXTURES, "variant_no_head");
+
+"""Find a merged Archetype by name in the unified tree (or None)."""
+def _arch(state: uni.Module, name: str) -> (uni.Archetype | None) {
+    for a in state.get_all_sub_nodes(uni.Archetype) {
+        if a.name.value == name {
+            return a;
+        }
+    }
+    return None;
+}
+
+"""Find a merged ImplDef by its `impl.<...>` symbol name (or None)."""
+def _impl(state: uni.Module, sym_name: str) -> (uni.ImplDef | None) {
+    for i in state.get_all_sub_nodes(uni.ImplDef) {
+        if i.sym_name == sym_name {
+            return i;
+        }
+    }
+    return None;
+}
+
+"""Basenames of files whose statements were spliced into the head's body."""
+def _origins(state: uni.Module) -> set[str] {
+    return {
+        os.path.basename(st.loc.mod_path)
+        for st in state.body
+        if st.loc.mod_path
+    };
+}
 
 test "variant module complete scenario" {
     head_path = os.path.join(VARIANT_DIR, "mymod.jac");
@@ -51,92 +81,68 @@ test "variant module complete scenario" {
         e.pretty_print() for e in prog.errors_had
     ]}";
 
-    # --- 3. Two variants attached ---
-    assert len(state.variant_mod) == 2 , (
-        f"Expected 2 variant_mod, got {len(state.variant_mod)}"
+    # --- 3. Variants and annexes are merged into the head — one hub entry ---
+    assert list(prog.mod.hub.keys()) == [head_path] , (
+        f"Variants should be merged, not separate hub entries; got {list(
+            prog.mod.hub.keys()
+        )}"
     );
-    v_names = [m.name for m in state.variant_mod];
-    assert "mymod.sv" in v_names , f"Missing mymod.sv variant, got {v_names}";
-    assert "mymod.cl" in v_names , f"Missing mymod.cl variant, got {v_names}";
-
-    sv_variant = [
-        m
-        for m in state.variant_mod
-        if m.name == "mymod.sv"
-    ][0];
-    cl_variant = [
-        m
-        for m in state.variant_mod
-        if m.name == "mymod.cl"
-    ][0];
-
-    # --- 4. Server variant body has SERVER context ---
-    for elem in sv_variant.body {
-        if isinstance(elem, uni.ContextAwareNode) {
-            assert elem.code_context == CodeContext.SERVER , (
-                f"Server variant should be SERVER, got {elem.code_context}"
-            );
-        }
+    origins = _origins(state);
+    for f in (
+        "mymod.sv.jac",
+        "mymod.cl.jac",
+        "mymod.impl.jac",
+        "mymod.sv.impl.jac",
+        "mymod.test.jac"
+    ) {
+        assert f in origins , f"Expected {f} to be spliced into head, got {origins}";
     }
 
-    # --- 5. Client variant body has CLIENT context ---
-    for elem in cl_variant.body {
-        if isinstance(elem, uni.ContextAwareNode) {
-            assert elem.code_context == CodeContext.CLIENT , (
-                f"Client variant should be CLIENT, got {elem.code_context}"
-            );
-        }
-    }
+    # --- 4. Every variant's declarations live in the head's symbol table ---
+    assert state.sym_tab.lookup("Circle") is not None;
+    assert state.sym_tab.lookup("CircleService") is not None;
+    assert state.sym_tab.lookup("Display") is not None;
 
-    # --- 6. Server impl discovered from shared impl/ folder ---
-    assert len(sv_variant.impl_mod) >= 1 , (
-        f"Expected >=1 server variant impl, got {len(sv_variant.impl_mod)}"
+    # --- 5. Server variant declarations carry SERVER context ---
+    circle_service = _arch(state, "CircleService");
+    assert circle_service is not None;
+    assert circle_service.code_context == CodeContext.SERVER , (
+        f"Server variant should be SERVER, got {circle_service.code_context}"
     );
-    sv_impl = sv_variant.impl_mod[0];
-    assert sv_impl.name == "mymod.sv.impl" , f"Expected mymod.sv.impl, got {sv_impl.name}";
-    describe_sym = sv_impl.sym_tab.lookup("impl.CircleService.describe");
-    assert describe_sym is not None , (
+
+    # --- 6. Client variant declarations carry CLIENT context ---
+    display = _arch(state, "Display");
+    assert display is not None;
+    assert display.code_context == CodeContext.CLIENT , (
+        f"Client variant should be CLIENT, got {display.code_context}"
+    );
+
+    # --- 7. Head impl provides Circle.area (head decl) and is connected ---
+    area = _impl(state, "impl.Circle.area");
+    assert area is not None , "impl.Circle.area should be merged in";
+    assert area.loc.mod_path.endswith("mymod.impl.jac");
+    assert area.decl_link is not None , (
+        "Circle.area impl should be connected to its declaration in the head"
+    );
+
+    # --- 8. Head impl ALSO provides Display.render (cross-variant to cl) ---
+    render = _impl(state, "impl.Display.render");
+    assert render is not None , "impl.Display.render should be merged in";
+    assert render.loc.mod_path.endswith("mymod.impl.jac");
+    assert render.decl_link is not None , (
+        "Display.render impl should be connected to its declaration via "
+        "cross-variant matching"
+    );
+
+    # --- 9. Server variant impl from shared impl/ folder is connected ---
+    describe = _impl(state, "impl.CircleService.describe");
+    assert describe is not None , (
         "impl.CircleService.describe should be found from shared impl/ folder"
     );
-    describe_node = describe_sym.decl.name_of;
-    assert isinstance(describe_node, uni.ImplDef)
-    and describe_node.decl_link is not None , (
+    assert describe.loc.mod_path.endswith("mymod.sv.impl.jac");
+    assert describe.decl_link is not None , (
         "CircleService.describe impl should be connected to its declaration"
     );
-
-    # --- 7. Head impl file provides Circle.area (head decl) ---
-    impl_mod = [
-        m
-        for m in state.impl_mod
-        if m.name == "mymod.impl"
-    ][0];
-    area_sym = impl_mod.sym_tab.lookup("impl.Circle.area");
-    assert area_sym is not None , "impl.Circle.area should be in head impl";
-    area_node = area_sym.decl.name_of;
-    assert isinstance(area_node, uni.ImplDef) , "Should be an ImplDef";
-    assert area_node.decl_link is not None , (
-        "Circle.area impl should be connected to its declaration in the head module"
-    );
-
-    # --- 8. Head impl file ALSO provides Display.render (cross-variant to cl) ---
-    render_sym = impl_mod.sym_tab.lookup("impl.Display.render");
-    assert render_sym is not None , "impl.Display.render should be in head impl";
-    render_node = render_sym.decl.name_of;
-    assert isinstance(render_node, uni.ImplDef) , "Should be an ImplDef";
-    assert render_node.decl_link is not None , (
-        "Display.render impl should be connected to its declaration via cross-variant matching"
-    );
-
-    # --- 9. All sym tables populated correctly ---
-    assert state.sym_tab.lookup("Circle") is not None;
-    assert sv_variant.sym_tab.lookup("CircleService") is not None;
-    assert cl_variant.sym_tab.lookup("Display") is not None;
-
-    # --- 10. All modules in the hub ---
-    hub_paths = list(prog.mod.hub.keys());
-    assert any(p.endswith("mymod.jac") for p in hub_paths);
-    assert any(p.endswith("mymod.sv.jac") for p in hub_paths);
-    assert any(p.endswith("mymod.cl.jac") for p in hub_paths);
 }
 
 test "variant precedence fallback — sv.jac as head when no plain .jac" {
@@ -158,41 +164,31 @@ test "variant precedence fallback — sv.jac as head when no plain .jac" {
         e.pretty_print() for e in prog.errors_had
     ]}";
 
-    # --- 3. Head impl found from shared impl/ folder ---
-    impl_names = [m.name for m in state.impl_mod];
-    assert "svc.sv.impl" in impl_names , (
-        f"Expected svc.sv.impl from impl/ folder, got {impl_names}"
-    );
-
-    # --- 4. Client variant attached ---
-    assert len(state.variant_mod) == 1;
-    cl_variant = state.variant_mod[0];
-    assert cl_variant.name == "svc.cl";
-
-    # --- 5. Client variant has CLIENT context ---
-    for elem in cl_variant.body {
-        if isinstance(elem, uni.ContextAwareNode) {
-            assert elem.code_context == CodeContext.CLIENT;
-        }
+    # --- 3. Merged into a single hub entry ---
+    assert list(prog.mod.hub.keys()) == [sv_path];
+    origins = _origins(state);
+    for f in ("svc.cl.jac", "svc.sv.impl.jac", "svc.cl.impl.jac") {
+        assert f in origins , f"Expected {f} merged into head, got {origins}";
     }
 
-    # --- 6. Client impl from same dir ---
-    v_impl_names = [m.name for m in cl_variant.impl_mod];
-    assert "svc.cl.impl" in v_impl_names , (
-        f"Expected svc.cl.impl, got {v_impl_names}"
+    # --- 4. Head (sv) decls are SERVER, client variant decls are CLIENT ---
+    handler = _arch(state, "Handler");
+    assert handler is not None and handler.code_context == CodeContext.SERVER;
+    widget = _arch(state, "Widget");
+    assert widget is not None and widget.code_context == CodeContext.CLIENT;
+
+    # --- 5. Impl matching works across all locations ---
+    tag = _impl(state, "impl.Handler.tag");
+    assert tag is not None and tag.decl_link is not None , (
+        "impl.Handler.tag should match from shared impl/ folder"
     );
+    assert tag.loc.mod_path.endswith("svc.sv.impl.jac");
 
-    # --- 7. Head body has SERVER context ---
-    for elem in state.body {
-        if isinstance(elem, uni.ContextAwareNode) {
-            assert elem.code_context == CodeContext.SERVER;
-        }
-    }
-
-    # --- 8. Impl matching works across all locations ---
-    tag_sym = state.impl_mod[0].sym_tab.lookup("impl.Handler.tag");
-    assert tag_sym is not None , "impl.Handler.tag should match from impl/ folder";
-
-    render_sym = cl_variant.impl_mod[0].sym_tab.lookup("impl.Widget.render");
-    assert render_sym is not None , "impl.Widget.render should match from same dir";
+    render = _impl(state, "impl.Widget.render");
+    assert render is not None and render.decl_link is not None , (
+        "impl.Widget.render should match from same dir"
+    );
+    assert render.loc.mod_path.endswith("svc.cl.impl.jac");
+    # The client impl is coerced to CLIENT context.
+    assert render.code_context == CodeContext.CLIENT;
 }

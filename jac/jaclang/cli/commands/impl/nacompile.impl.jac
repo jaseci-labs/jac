@@ -153,8 +153,9 @@ impl nacompile(
     shared: bool = False,
     debug: bool = False
 ) -> int {
+    import from jaclang.jac0core.ext_registry { is_jac, is_native_module, base_stem }
     # Validate input
-    if not filename.endswith(".na.jac") and not filename.endswith(".jac") {
+    if not is_jac(filename) {
         console.error("Input must be a .jac or .na.jac file.");
         return 1;
     }
@@ -219,19 +220,14 @@ impl nacompile(
         }
     }
 
-    auto_promote = filename.endswith(".jac") and not filename.endswith(".na.jac");
+    auto_promote = is_jac(filename) and not is_native_module(filename);
 
     # Detect platform (host darwin, or an explicit macOS cross-target)
     is_macos = (sys.platform == "darwin") or is_macos_target;
 
     # Determine output path
     if not output {
-        output = os.path.basename(filename);
-        if output.endswith(".na.jac") {
-            output = output[:-7];
-        } elif output.endswith(".jac") {
-            output = output[:-4];
-        }
+        output = base_stem(filename);
         if shared {
             # Conventional shared-library name: lib<stem>.<ext> per platform.
             _so_ext = ".dll" if is_windows else (".dylib" if is_macos else ".so");
@@ -442,10 +438,12 @@ impl nacompile(
         # libm is part of libSystem on macOS.
         needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"];
     } else {
-        # libm.so.6 supplies math-module symbols (e.g. hypot) that are not all
-        # re-exported from libc; the loader only binds referenced symbols, so
-        # linking it unconditionally is harmless (issue #6404).
-        needed_libs: list[str] = ["libc.so.6", "libm.so.6"];
+        # User-specified libraries are appended below; libc/libm are added last
+        # so they appear AFTER user imports in NEEDED. This matters for libraries
+        # like libcef.so whose .init_array calls dlsym(RTLD_NEXT, "close") etc.:
+        # RTLD_NEXT searches the link map AFTER the calling library, so libc must
+        # be after libcef.so in the map for those lookups to resolve (issue #6572).
+        needed_libs: list[str] = [];
     }
 
     # Add C shared libraries discovered during compilation (e.g. libuv.so.1)
@@ -480,6 +478,18 @@ impl nacompile(
                 needed_libs.append(_needed);
             }
             _lib_norm[lib_path] = _needed;
+        }
+    }
+
+    # Append libc/libm after all user-specified libraries so the dynamic
+    # linker's link map puts libc AFTER any user library that needs RTLD_NEXT
+    # to resolve libc symbols from its .init_array (issue #6572).
+    if not is_macos and not is_windows {
+        if "libc.so.6" not in needed_libs {
+            needed_libs.append("libc.so.6");
+        }
+        if "libm.so.6" not in needed_libs {
+            needed_libs.append("libm.so.6");
         }
     }
 
@@ -519,7 +529,15 @@ impl nacompile(
             opt=2, reloc="pic", codemodel="small"
         );
     } else {
-        target_machine = target.create_target_machine(opt=2);
+        # codemodel="large" (not the default "jitdefault"): llvmlite appends
+        # "-elf" to the triple when os.name == "nt" and codemodel ==
+        # "jitdefault", making a Windows host emit an ELF object for a COFF
+        # target (the format guard below then trips). Pass an explicit code
+        # model so the requested triple stays intact. "large" is used (not
+        # "small") because "jitdefault" resolves to the large model on x86_64,
+        # which emits the absolute relocations the pure-Jac ELF linker handles;
+        # the small/medium models emit R_X86_64_32 absolutes it cannot resolve.
+        target_machine = target.create_target_machine(opt=2, codemodel="large");
     }
 
     # Read native build settings from jac.toml [build.native] (env vars as fallback)

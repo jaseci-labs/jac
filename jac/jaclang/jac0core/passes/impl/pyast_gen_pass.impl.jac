@@ -980,6 +980,7 @@ impl PyastGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
 }
 
 impl PyastGenPass.exit_test(nd: uni.Test) -> None {
+    import from jaclang.jac0core.ext_registry { is_test }
     test_name = nd.name.sym_name;
     # A natively-lowered test keeps native semantics: its body lives in the
     # LLVM module and the Python side is only a shim that invokes it.
@@ -1033,7 +1034,7 @@ impl PyastGenPass.exit_test(nd: uni.Test) -> None {
             )
         )
     );
-    if nd.loc.mod_path.endswith('.test.jac') {
+    if is_test(nd.loc.mod_path) {
         func.decorator_list.append(
             self.sync(
                 ast3.Call(

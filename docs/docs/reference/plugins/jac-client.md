@@ -8,8 +8,10 @@ You also get project scaffolding (`jac create --use client`), npm dependency man
 
 ## Installation
 
+jac-client ships with `jaclang` core -- there is nothing extra to install:
+
 ```bash
-pip install jac-client
+pip install jaclang        # or: pip install jaseci  (the full stack)
 ```
 
 ---
@@ -172,7 +174,7 @@ def:pub get_tasks -> list[Task] {
 
 def:pub create_task(title: str) -> Task {
     task = root ++> Task(title=title);
-    return task[0];
+    return task;
 }
 
 # Client: receives hydrated Task instances
@@ -1522,7 +1524,7 @@ This generates `.jac/client/configs/postcss.config.js` and `.jac/client/configs/
 
 ### shadcn/ui Configuration
 
-The `[jac-shadcn]` section configures the shadcn/ui component system, provided by the [`jac-super`](https://pypi.org/project/jac-super/) plugin. It controls the visual style, color theme, font, and border radius used by shadcn components in your project. Everything is resolved **offline** from data bundled with `jac-super`:
+The `[jac-shadcn]` section configures the shadcn/ui component system, provided as a built-in feature of jaclang core. It controls the visual style, color theme, font, and border radius used by shadcn components in your project. Everything is resolved **offline** from data bundled with `jaclang`:
 
 - `jac create --use jac-shadcn [--style … --theme … --font … --radius … --baseColor … --menuAccent …]` scaffolds a themed starter and writes these fields here.
 - `jac retheme [--theme … --font … --style …]` regenerates `global.css` from this section (and re-resolves installed components when `style` changes).
@@ -1628,10 +1630,10 @@ Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if nee
 | `jac start` | Start dev server |
 | `jac start --dev` | Dev server with HMR |
 | `jac start --client pwa` | Start PWA (builds then serves) |
-| `jac start --client desktop` | Start desktop app (requires [jac-desktop](jac-desktop.md)) |
+| `jac start --client desktop` | Start desktop app (see [jac-desktop](jac-desktop.md)) |
 | `jac start --client mobile` | Start mobile app on device/simulator |
 | `jac build` | Build for production (web) |
-| `jac build --client desktop` | Build desktop app (requires [jac-desktop](jac-desktop.md)) |
+| `jac build --client desktop` | Build desktop app (see [jac-desktop](jac-desktop.md)) |
 | `jac build --client mobile` | Build mobile app (Android/iOS) |
 | `jac build --client pwa` | Build PWA with offline support |
 | `jac build --client static` | Build client-only app as a portable, self-contained page (opens from `file://`) |
@@ -1805,7 +1807,7 @@ jac-client supports building for multiple deployment targets from a single codeb
 | Target | Command | Output | Setup Required |
 |--------|---------|--------|----------------|
 | **Web** (default) | `jac build` | `.jac/client/dist/` | No |
-| **Desktop** (native webview) | `jac build --client desktop` | Single binary under `.jac/client/desktop/` | No (`jac-desktop`) |
+| **Desktop** (native webview) | `jac build --client desktop` | Single binary under `.jac/client/desktop/` | No |
 | **Mobile** (Capacitor) | `jac build --client mobile --platform android` | Android APK / iOS build products | Yes |
 | **PWA** | `jac build --client pwa` | Installable web app | No |
 
@@ -1822,10 +1824,9 @@ jac start --dev              # Dev server with HMR
 
 ### Desktop Target (native webview)
 
-The desktop target is provided by the optional **[jac-desktop](jac-desktop.md)** plugin. It reuses jac-client's Vite frontend pipeline and compiles a native host (`jac nacompile`) that embeds the OS webview to render your `cl` UI - one self-contained binary, no Rust toolchain, no PyInstaller, no setup step.
+The desktop target ships with `jaclang` core (documented in the **[jac-desktop Reference](jac-desktop.md)**). It reuses jac-client's Vite frontend pipeline and compiles a native host (`jac nacompile`) that embeds the OS webview to render your `cl` UI - one self-contained binary, no Rust toolchain, no PyInstaller, no setup step.
 
 ```bash
-pip install jac-client jac-desktop
 jac build --client desktop
 jac start --client desktop
 ```

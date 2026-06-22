@@ -24,6 +24,7 @@ from types import ModuleType
 import jaclang.jac0 as _jac0_mod
 from jaclang.jac0 import compile_jac as _jac0_compile  # noqa: E402
 from jaclang.jac0 import discover_impl_files as _jac0_discover_impls  # noqa: E402
+from jaclang.jac0core import ext_registry  # noqa: E402
 from jaclang.jac0core.cache_paths import get_bootstrap_cache_dir  # noqa: E402
 
 _jac0_source_path = getattr(_jac0_mod, "__file__", "")
@@ -144,32 +145,18 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
         for search_path in paths_to_search:
             candidate_path = os.path.join(search_path, *module_path_parts)
-            # Check for directory package
+            # Check for directory package (canonical __init__ variants and
+            # precedence come from the shared extension registry).
             if os.path.isdir(candidate_path):
-                init_file = os.path.join(candidate_path, "__init__.jac")
-                if os.path.isfile(init_file):
-                    return importlib.util.spec_from_file_location(
-                        fullname,
-                        init_file,
-                        loader=self,
-                        submodule_search_locations=[candidate_path],
-                    )
-                init_sv_file = os.path.join(candidate_path, "__init__.sv.jac")
-                if os.path.isfile(init_sv_file):
-                    return importlib.util.spec_from_file_location(
-                        fullname,
-                        init_sv_file,
-                        loader=self,
-                        submodule_search_locations=[candidate_path],
-                    )
-                init_cl_file = os.path.join(candidate_path, "__init__.cl.jac")
-                if os.path.isfile(init_cl_file):
-                    return importlib.util.spec_from_file_location(
-                        fullname,
-                        init_cl_file,
-                        loader=self,
-                        submodule_search_locations=[candidate_path],
-                    )
+                for init_name in ext_registry.INIT_FILES:
+                    init_file = os.path.join(candidate_path, init_name)
+                    if os.path.isfile(init_file):
+                        return importlib.util.spec_from_file_location(
+                            fullname,
+                            init_file,
+                            loader=self,
+                            submodule_search_locations=[candidate_path],
+                        )
                 # No __init__.jac found — treat as Jac namespace package if
                 # the directory contains .jac files but no __init__.py
                 # (which would make it a regular Python package).  Without
@@ -178,36 +165,19 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                 # happens to be on sys.path at that moment.
                 if not os.path.isfile(
                     os.path.join(candidate_path, "__init__.py")
-                ) and any(f.endswith(".jac") for f in os.listdir(candidate_path)):
+                ) and any(ext_registry.is_jac(f) for f in os.listdir(candidate_path)):
                     spec = importlib.machinery.ModuleSpec(
                         fullname, loader=None, is_package=True
                     )
                     spec.submodule_search_locations = [candidate_path]
                     return spec
-            # Check for .jac file
-            jac_file = candidate_path + ".jac"
-            if os.path.isfile(jac_file):
-                return importlib.util.spec_from_file_location(
-                    fullname, jac_file, loader=self
-                )
-            # Check for .sv.jac file (server-side explicit)
-            sv_jac_file = candidate_path + ".sv.jac"
-            if os.path.isfile(sv_jac_file):
-                return importlib.util.spec_from_file_location(
-                    fullname, sv_jac_file, loader=self
-                )
-            # Check for .cl.jac file (client-side)
-            cl_jac_file = candidate_path + ".cl.jac"
-            if os.path.isfile(cl_jac_file):
-                return importlib.util.spec_from_file_location(
-                    fullname, cl_jac_file, loader=self
-                )
-            # Check for .na.jac file (native)
-            na_jac_file = candidate_path + ".na.jac"
-            if os.path.isfile(na_jac_file):
-                return importlib.util.spec_from_file_location(
-                    fullname, na_jac_file, loader=self
-                )
+            # Check for a module file in codespace precedence order.
+            for suffix in ext_registry.MODULE_SUFFIXES:
+                module_file = candidate_path + suffix
+                if os.path.isfile(module_file):
+                    return importlib.util.spec_from_file_location(
+                        fullname, module_file, loader=self
+                    )
 
         return None
 
@@ -278,7 +248,7 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         # resolved back to its stem at lookup time.
         fullname = module.__name__
         stem = os.path.splitext(os.path.basename(file_path))[0]
-        for suffix in (".impl", ".cl", ".sv"):
+        for suffix in ext_registry.STEM_REKEY_SUFFIXES:
             if stem.endswith(suffix):
                 stem = stem[: -len(suffix)]
                 break
@@ -345,32 +315,22 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
 
         for search_path in paths_to_search:
             candidate_path = os.path.join(search_path, *module_path_parts)
-            # Check for directory package
+            # Check for directory package (shared __init__ precedence).
             if os.path.isdir(candidate_path):
-                init_file = os.path.join(candidate_path, "__init__.jac")
-                if os.path.isfile(init_file):
+                for init_name in ext_registry.INIT_FILES:
+                    init_file = os.path.join(candidate_path, init_name)
+                    if os.path.isfile(init_file):
+                        return compiler.get_bytecode(
+                            full_target=init_file,
+                            target_program=program,
+                        )
+            # Check for a module file in codespace precedence order.
+            for suffix in ext_registry.MODULE_SUFFIXES:
+                module_file = candidate_path + suffix
+                if os.path.isfile(module_file):
                     return compiler.get_bytecode(
-                        full_target=init_file,
+                        full_target=module_file,
                         target_program=program,
                     )
-                init_cl_file = os.path.join(candidate_path, "__init__.cl.jac")
-                if os.path.isfile(init_cl_file):
-                    return compiler.get_bytecode(
-                        full_target=init_cl_file,
-                        target_program=program,
-                    )
-            # Check for .jac file
-            jac_file = candidate_path + ".jac"
-            if os.path.isfile(jac_file):
-                return compiler.get_bytecode(
-                    full_target=jac_file,
-                    target_program=program,
-                )
-            cl_jac_file = candidate_path + ".cl.jac"
-            if os.path.isfile(cl_jac_file):
-                return compiler.get_bytecode(
-                    full_target=cl_jac_file,
-                    target_program=program,
-                )
 
         return None

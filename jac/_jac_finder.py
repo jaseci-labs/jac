@@ -9,18 +9,38 @@ from __future__ import annotations
 
 import contextlib
 import importlib.machinery
+import importlib.util
 import os
 import sys
 from collections.abc import Sequence
 from types import ModuleType
 
+# The canonical extension registry lives in jaclang/jac0core/ext_registry.py.
+# Importing it via the ``jaclang`` package would trigger the heavy
+# ``jaclang/__init__`` bootstrap, defeating this lazy finder — so it is loaded
+# by file path on first use and cached. This keeps the suffix lists in one
+# place (issue #6858) without paying the bootstrap cost for non-Jac Python.
+_registry: ModuleType | None = None
+
+
+def _ext_registry() -> ModuleType:
+    """Lazily load and cache the plain-Python extension registry by path."""
+    global _registry
+    if _registry is None:
+        path = os.path.join(
+            os.path.dirname(__file__), "jaclang", "jac0core", "ext_registry.py"
+        )
+        spec = importlib.util.spec_from_file_location("_jac_ext_registry", path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot load extension registry from {path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _registry = module
+    return _registry
+
 
 class _JacLazyFinder:
     """Stub meta-path finder that triggers full jaclang init on first .jac import."""
-
-    # The file shapes a Jac module can take, kept in sync with JacMetaImporter.
-    _JAC_SUFFIXES = (".jac", ".sv.jac", ".cl.jac", ".na.jac")
-    _JAC_INIT_FILES = ("__init__.jac", "__init__.sv.jac", "__init__.cl.jac")
 
     def find_spec(
         self,
@@ -50,7 +70,7 @@ class _JacLazyFinder:
             candidate = os.path.join(base, *module_parts)
             if os.path.isdir(candidate) and self._is_jac_package(candidate):
                 return self._bootstrap_and_delegate(fullname, path, target)
-            for suffix in self._JAC_SUFFIXES:
+            for suffix in _ext_registry().MODULE_SUFFIXES:
                 if os.path.isfile(candidate + suffix):
                     return self._bootstrap_and_delegate(fullname, path, target)
 
@@ -59,7 +79,7 @@ class _JacLazyFinder:
     @classmethod
     def _is_jac_package(cls, directory: str) -> bool:
         """Return True if `directory` is a Jac package or Jac namespace package."""
-        for init_name in cls._JAC_INIT_FILES:
+        for init_name in _ext_registry().INIT_FILES:
             if os.path.isfile(os.path.join(directory, init_name)):
                 return True
         # A directory with .jac files and no __init__.py is a Jac namespace

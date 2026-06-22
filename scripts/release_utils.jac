@@ -44,15 +44,6 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
         submodules=True,
         precompile=True
     ),
-    "jac-client": PackageInfo(
-        dir="jac-client",
-        pypi="jac-client",
-        tier=2,
-        release_notes="docs/docs/community/release_notes/jac-client.md",
-        notes_display="jac-client",
-        submodules=True,
-        precompile=True
-    ),
     "jac-scale": PackageInfo(
         dir="jac-scale",
         pypi="jac-scale",
@@ -62,17 +53,7 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
         submodules=True,
         precompile=True,
         extra_build_cmd="jac run scripts/build_admin_ui.jac",
-        needs_nodejs=True,
-        extra_build_deps="jac-client"
-    ),
-    "jac-super": PackageInfo(
-        dir="jac-super",
-        pypi="jac-super",
-        tier=2,
-        release_notes="docs/docs/community/release_notes/jac-super.md",
-        notes_display="jac-super",
-        submodules=True,
-        precompile=True
+        needs_nodejs=True
     ),
     "jac-mcp": PackageInfo(
         dir="jac-mcp",
@@ -84,19 +65,7 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
         precompile=True,
         extra_build_cmd="jac run scripts/bundle_docs.jac"
     ),
-    # Tier 3: depends on a tier-2 plugin (jac-client), so it must publish AFTER
-    # tier 2 is on PyPI, not alongside it.
-    "jac-desktop": PackageInfo(
-        dir="jac-desktop",
-        pypi="jac-desktop",
-        tier=3,
-        release_notes="docs/docs/community/release_notes/jac-desktop.md",
-        notes_display="jac-desktop",
-        submodules=True,
-        precompile=True,
-        extra_build_deps="jac-client"
-    ),
-    # Tier 4: the meta-package depends on everything above (incl. jac-desktop).
+    # Tier 4: the meta-package depends on everything above.
     "jaseci": PackageInfo(
         dir="jaseci-package",
         pypi="jaseci",
@@ -108,19 +77,13 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
      INTERNAL_DEPS: dict[(str, list[str])] = {
     "jaclang": [],
     "byllm": ["jaclang"],
-    "jac-client": ["jaclang"],
     "jac-scale": ["jaclang"],
-    "jac-super": ["jaclang"],
     "jac-mcp": ["jaclang"],
-    "jac-desktop": ["jaclang", "jac-client"],
     "jaseci": [
         "jaclang",
         "byllm",
-        "jac-client",
         "jac-scale",
-        "jac-super",
-        "jac-mcp",
-        "jac-desktop"
+        "jac-mcp"
     ]
 },
      DEPENDENTS: dict[(str, list[str])] = {};

@@ -30,7 +30,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
     ??? question "What's the difference between Jac, Jaclang, and Jaseci?"
         - Jac: The language
         - Jaclang: The compiler/runtime
-        - Jaseci: The full framework and ecosystem including plugins (byllm, jac-client, jac-scale, etc.)
+        - Jaseci: The full framework and ecosystem including plugins (byllm, jac-scale, etc.)
 
     ??? question "Do I need to know graph theory to use Jaseci?"
         No. Learn OSP: [OSP Guide](https://docs.jaseci.org/tutorials/language/osp/)

@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import importlib
 import importlib.machinery
+import importlib.util
 import os
 import sys
 import tempfile
@@ -25,6 +26,26 @@ from pathlib import Path
 from unittest import FunctionTestCase
 
 import pytest
+
+# The canonical suffix knowledge lives in the plain-Python extension registry.
+# Load it by path so importing this pytest plugin never triggers the heavy
+# ``jaclang`` bootstrap when a project has no Jac tests (issue #6858).
+_registry: types.ModuleType | None = None
+
+
+def _ext_registry() -> types.ModuleType:
+    """Lazily load and cache the extension registry by file path."""
+    global _registry
+    if _registry is None:
+        path = os.path.join(os.path.dirname(__file__), "jac0core", "ext_registry.py")
+        spec = importlib.util.spec_from_file_location("_jac_ext_registry", path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot load extension registry from {path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _registry = module
+    return _registry
+
 
 # ---------------------------------------------------------------------------
 # Hook -- file collection
@@ -36,9 +57,10 @@ def pytest_collect_file(
 ) -> JacFile | ClJacFile | None:
     """Return a collector for ``.jac`` files that follow test naming rules."""
     name = file_path.name
+    reg = _ext_registry()
 
     # Never collect implementation annexes.
-    if name.endswith(".impl.jac"):
+    if reg.is_impl(name):
         return None
 
     # Skip .jac files inside fixtures/ directories -- those are test inputs,
@@ -48,15 +70,13 @@ def pytest_collect_file(
 
     # Client (cl) test files run their `test` blocks under bun, not Python.
     # test_*.cl.jac / *.test.cl.jac -> dedicated client collector.
-    if (name.startswith("test_") and name.endswith(".cl.jac")) or name.endswith(
-        ".test.cl.jac"
+    if (name.startswith("test_") and reg.is_client_module(name)) or reg.is_client_test(
+        name
     ):
         return ClJacFile.from_parent(parent, path=file_path)
 
     # Collect test_*.jac (pytest convention) and *.test.jac (Jac convention).
-    if (name.startswith("test_") and name.endswith(".jac")) or name.endswith(
-        ".test.jac"
-    ):
+    if (name.startswith("test_") and reg.is_jac(name)) or reg.is_test(name):
         return JacFile.from_parent(parent, path=file_path)
 
     return None

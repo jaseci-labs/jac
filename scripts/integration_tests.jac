@@ -5,8 +5,7 @@ It is designed to run in CI (test-pypi-build) after all packages are installed,
 or locally when you have all plugins installed.
 
 Requirements:
-    - jaclang (jac) installed
-    - jac-client installed
+    - jaclang (jac) installed (the client/desktop framework ships with it)
     - jac-scale installed
     - byllm installed
 
@@ -131,8 +130,8 @@ def run_plugin_tests(runner: IntegrationTestRunner) {
 
     runner.run(
         ["jac", "plugins", "list"],
-        check_contains=["jac-client", "jac-client:serve"],
-        description="jac-client plugins use qualified name format",
+        check_contains=["jaclang:JacClientPluginConfig", "jaclang:JacClientCmd"],
+        description="client framework is registered as a built-in jaclang plugin",
     );
 
     result = subprocess.run(["jac", "plugins", "list"], capture_output=True, text=True);

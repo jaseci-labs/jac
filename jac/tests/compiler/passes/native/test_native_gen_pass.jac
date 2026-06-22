@@ -1801,6 +1801,28 @@ test "cross module struct execution" {
     assert result2 == 7 , f"Expected 7, got {result2}";
 }
 
+test "unstamped imported struct return: entry module compiles without errors (issue #6822)" {
+    # An UNANNOTATED local bound to an imported factory (`p = make_point(...)`)
+    # gets its type from the imported `-> Point` return annotation alone. When
+    # this module is the entry, that annotation can be unstamped, so the field
+    # accesses `p.x`/`p.y` used to E5090 ("attribute access not supported")
+    # because the return lowered to the i64 fallback instead of `Point*`.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_unstamped_struct_ret.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir is not None;
+    assert ir.gen.native_engine is not None , "No native engine created";
+}
+
+test "unstamped imported struct return: field sum is correct (issue #6822)" {
+    # compute(5) = make_point(5, 6).x + make_point(5, 6).y = 5 + 6 = 11.
+    # Proves the receiver resolved to the real Point struct, not a scalar.
+    (eng, _) = compile_native("fix_unstamped_struct_ret.na.jac");
+    compute = get_func(eng, "compute", ctypes.c_int64, ctypes.c_int64);
+    assert compute(5) == 11 , f"Expected 11, got {compute(5)}";
+    assert compute(0) == 1 , f"Expected 1, got {compute(0)}";
+}
+
 # --- TestCrossModuleGlobalLinkage ---
 # Regression tests for: global-internal-linkage-breaks-cross-module
 # Before fix: module globals were emitted with LLVM `internal` linkage. The
@@ -2701,11 +2723,11 @@ test "native osp node constructed in a non-OSP module carries its dispatch tag (
 test "native osp construct living only in an impl annex materializes imported archetypes" {
     # A builder module IMPORTS OSP archetypes (`Hub`/`Area`) from another native
     # module and wires them (`++>`) from an IMPL ANNEX (`.na.impl.jac`), not its
-    # head file. DeclImplMatchPass attaches an annex body via `decl.body =
-    # <ImplDef from the annex module>`, never splicing it into the head decl's
-    # `kid`, so the OSP construct is reachable only through `mod.impl_mod`.
-    # The OSP construct scan (now `OspAnalysis._uses_construct`) swept just the
-    # head module's `iter_context_stmts` + kid tree, classified the builder as a
+    # head file. The annex body is spliced into the head module's tree by
+    # JacAnnexPass while keeping its own `loc.mod_path`, so the OSP construct
+    # lives off the head but originates in the annex file.
+    # The OSP construct scan (now `OspAnalysis._uses_construct`) historically
+    # swept just the head file's own statements, classified the builder as a
     # non-OSP user, and never gave the imported archetypes their stable type-tag
     # -- the annexed `++>` then failed with
     # E5090 ("not materialized") at nacompile (or mis-codegen SIGSEGV in a fuller

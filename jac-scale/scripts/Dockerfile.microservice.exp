@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.4
-# Experimental Dockerfile: installs jaclang + jac-scale + jac-client from
-# LOCAL source for testing PR code before PyPI ships. All three must be
-# local: jac-client carries a hookimpl into jaclang's app-identity API,
-# so a PyPI jac-client crashes against a PR that changes that API.
+# Experimental Dockerfile: installs jaclang + jac-scale from LOCAL source for
+# testing PR code before PyPI ships. Both must be local: the client framework
+# now ships inside jaclang (jac-client merged into core), so a PyPI jaclang
+# crashes against a PR that changes the client/app-identity API.
 # Build context = repo root (set by k8s_microservice_real_e2e.sh).
 
 # Base image pinned by digest. The floating `python:3.12-slim` tag let the
@@ -27,11 +27,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 WORKDIR /build
 COPY jac /build/jac
 COPY jac-scale /build/jac-scale
-COPY jac-client /build/jac-client
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -e /build/jac \
-    && jac install -e /build/jac-scale --extras deploy data tracing \
-    && jac install -e /build/jac-client
+    && jac install -e /build/jac-scale --extras deploy data tracing
 
 ARG PROJECT_PATH=jac-scale/jac_scale/tests/fixtures/k8s_e2e
 WORKDIR /app
@@ -48,10 +46,9 @@ RUN pip freeze
 
 # Fail fast if anything resolves to a PyPI install instead of /build/.
 # Use __path__[0] rather than os.path.dirname(__file__) so the check
-# works for namespace packages too (jac_client ships without an
-# __init__.py, so its __file__ is None).
-RUN python -c "import jaclang, jac_scale, jac_client; \
-locs = {p.__name__: p.__path__[0] for p in (jaclang, jac_scale, jac_client)}; \
+# works for namespace packages too.
+RUN python -c "import jaclang, jac_scale; \
+locs = {p.__name__: p.__path__[0] for p in (jaclang, jac_scale)}; \
 bad = [(n, l) for n, l in locs.items() if not l.startswith('/build/')]; \
 assert not bad, f'expected local-source install, got PyPI: {bad}'; \
 print('local-source install verified:', locs)"

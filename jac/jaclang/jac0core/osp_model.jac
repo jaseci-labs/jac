@@ -297,21 +297,15 @@ obj OspAnalysis {
     }
 
     """True when `module` USES an OSP construct -- an edge connect (`++>`), a
-    `spawn`, a `visit`, or an edge ref (`[-->]`) -- in its `context` statements,
-    INCLUDING bodies that live in impl annexes (`.na.impl.jac`) or variant files.
-    Those bodies hang off `impl_mod` / `variant_mod`, never the head module's
-    `kid` tree, so a head-only sweep would mis-classify a module whose only OSP
-    construct lives in an annex. Distinct from declaring OSP archetypes: usage is
-    what requires the kernel + adjacency at runtime."""
+    `spawn`, a `visit`, or an edge ref (`[-->]`) -- in its `context` statements.
+    Annex and variant bodies are merged into the module's own tree, so iterating
+    its context statements already covers impl/variant-defined usage. Distinct
+    from declaring OSP archetypes: usage is what requires the kernel + adjacency
+    at runtime."""
     static def _uses_construct(
         module: uni.Module, context: (CodeContext | None)
     ) -> bool {
         roots: list = list(ModuleCodegenPass.iter_context_stmts(module, context));
-        for annex in list(module.impl_mod) + list(module.variant_mod) {
-            if annex.body is not None {
-                roots.extend(annex.body);
-            }
-        }
         for stmt in roots {
             work: list = [stmt];
             while work {

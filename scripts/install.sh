@@ -228,7 +228,7 @@ install_via_uv() {
 
     local -a with_args=()
     if ! $CORE_ONLY; then
-        with_args+=(--with byllm --with jac-client --with jac-scale --with jac-super --with jac-mcp)
+        with_args+=(--with byllm --with jac-scale --with jac-mcp)
     fi
 
     # Check if already installed and upgrade vs fresh install

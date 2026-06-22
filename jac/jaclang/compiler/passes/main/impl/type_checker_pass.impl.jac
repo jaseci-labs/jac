@@ -649,8 +649,15 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
         }
     }
 
-    # ImplDef body is not in kid list, traverse it explicitly.
-    if isinstance(nd.body, uni.ImplDef) {
+    # An impl living in a *different* module (cross-module / legacy detached
+    # impl) is not reached by this module's natural traversal, so visit it
+    # explicitly. A same-module impl (inline or merged from an annex) is already
+    # a kid of this module and is visited once by natural traversal — visiting
+    # it again here would double every diagnostic in its body.
+    if (
+        isinstance(nd.body, uni.ImplDef)
+        and nd.body.find_parent_of_type(uni.Module) is not self.ir_in
+    ) {
         self.traverse(nd.body);
     }
     # Warn on bare generic return type annotations (e.g. def f -> list).
@@ -991,7 +998,10 @@ impl TypeCheckPass.exit_type_alias(self: TypeCheckPass, nd: uni.TypeAlias) -> No
 """Exit an archetype node - traverse ImplDef body if present."""
 impl TypeCheckPass.exit_archetype(self: TypeCheckPass, nd: uni.Archetype) -> None {
     self.evaluator.get_type_of_class(nd);
-    if isinstance(nd.body, uni.ImplDef) {
+    if (
+        isinstance(nd.body, uni.ImplDef)
+        and nd.body.find_parent_of_type(uni.Module) is not self.ir_in
+    ) {
         self.traverse(nd.body);
     }
 }
@@ -1007,7 +1017,10 @@ impl TypeCheckPass.exit_enum(self: TypeCheckPass, nd: uni.Enum) -> None {
             }
         }
     }
-    if isinstance(nd.body, uni.ImplDef) {
+    if (
+        isinstance(nd.body, uni.ImplDef)
+        and nd.body.find_parent_of_type(uni.Module) is not self.ir_in
+    ) {
         self.traverse(nd.body);
     }
 }
@@ -1054,9 +1067,10 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     # suppressed mode (diagnostics stashed, never replayed).
     emit_full = (not self.inference_only) or bool(self.ir_in?._type_check_requested);
     if not emit_full {
+        import from jaclang.jac0core.ext_registry { is_native_module }
         mod = self.ir_in;
         mp = mod.loc.mod_path if mod?.loc else '';
-        is_native_mod = bool(mp) and mp.endswith('.na.jac');
+        is_native_mod = bool(mp) and is_native_module(mp);
         if not is_native_mod and mod?.body {
             for _stmt in mod.body {
                 if isinstance(_stmt, uni.NativeBlock) {

@@ -1,13 +1,12 @@
 import from jaclang.cli.console { console }
+import from jaclang.jac0core.ext_registry { strip_suffix }
 
 """Create a new test."""
 impl JacTestCheck.add_test(
     filepath: str, func_name: str, test_func: Callable, display_name: str = ""
 ) -> None {
-    if (filepath and filepath.endswith('.test.jac')) {
-        filepath = filepath[:-9];
-    } elif (filepath and filepath.endswith('.jac')) {
-        filepath = filepath[:-4];
+    if filepath {
+        filepath = strip_suffix(filepath);
     }
     if (filepath not in JacTestCheck.test_suite_path) {
         JacTestCheck.test_suite_path[filepath] = [];
@@ -33,10 +32,8 @@ impl JacTestCheck.run_test(
 ) -> None {
     verb = 2 if verbose else 1;
     test_suite = JacTestCheck.test_suite;
-    if (filepath and filepath.endswith('.test.jac')) {
-        filepath = filepath[:-9];
-    } elif (filepath and filepath.endswith('.jac')) {
-        filepath = filepath[:-4];
+    if filepath {
+        filepath = strip_suffix(filepath);
     }
     if filepath {
         test_cases = JacTestCheck.test_suite_path.get(filepath);

@@ -11,7 +11,6 @@ import from jac_scale._optdeps.prometheus {
     Gauge,
     generate_latest,
     CONTENT_TYPE_LATEST,
-    REGISTRY,
     CollectorRegistry
 }
 import from fastapi.responses { Response }
@@ -61,8 +60,12 @@ obj PrometheusMetricsCollector(MetricsCollector) {
             return;
         }
 
-        # Use custom registry to avoid conflicts in tests
-        self._registry = REGISTRY;
+        # Own an isolated registry so multiple collectors (several apps in one
+        # process, or repeated test setup) never collide on metric names. Honour
+        # an explicitly injected registry; otherwise create a fresh one.
+        if self._registry is None {
+            self._registry = CollectorRegistry();
+        }
 
         buckets = self.config.get("histogram_buckets");
         if buckets {
