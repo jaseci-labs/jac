@@ -568,7 +568,12 @@ impl install(
         for (enabled, flag) in flag_defs
         if enabled
     ];
-    # ── Direct install into the project venv ──────────────────────────────────
+    # ── Direct install into activated environment ─────────────────────────────
+    # A bare `jac install <pkg>` installs into the binary's environment and works
+    # outside a project (no jac.toml needed) -- this is the global/tool install
+    # path. Per-project deps go through `jac add` / the no-arg `jac install`
+    # (which target the project venv); editable installs (-e, below) target each
+    # package's own .jac/venv.
     if packages {
         if editable {
             console.error(
@@ -583,35 +588,39 @@ impl install(
                 "Use 'jac add <pkg> --dev' to track packages in jac.toml."
             );
         }
-        # Install into the project's venv (the single-binary model's second
-        # environment), NOT the binary's embedded interpreter. Routes through
-        # DependencyInstaller so the venv is created/used exactly like the
-        # jac.toml-driven install path; `jac add` is the variant that also
-        # records the package in jac.toml.
-        config = get_config();
-        if config is None {
-            console.error(
-                "No jac.toml found",
-                hint="Run 'jac create' to start a project, or cd into one."
-            );
-            return 1;
-        }
-        installer = DependencyInstaller(
-            config=config,
-            verbose=verbose,
-            install_flags=install_flags,
-            use_uv=not no_uv
-        );
         console.print(
-            f"\n📦 Installing {len(packages)} package(s) into {config.project.name}",
+            f"\n📦 Installing {len(packages)} package(s) into activated environment",
             style="bold"
         );
-        console.print(f"  Virtual environment: {config.get_venv_dir()}", style="muted");
-        # install_package handles --dry-run (via install_flags), venv creation,
-        # and success/failure reporting.
-        if not installer.install_package(packages) {
+        cmd: list[str] = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--upgrade"
+        ] + install_flags + packages;
+        if verbose {
+            console.print(f"  Running: {' '.join(cmd)}", style="muted");
+        }
+        result = subprocess.run(cmd, capture_output=not verbose, text=True);
+        if result.returncode != 0 {
+            err_detail: str = result.stderr or result.stdout or "(see output above)";
+            console.error(f"Install failed:\n{err_detail}");
             return 1;
         }
+        if dry_run {
+            if result.stdout {
+                console.print(result.stdout, style="dim");
+            }
+            console.success("Dry run complete (nothing installed).");
+            return 0;
+        }
+        if not verbose {
+            for pkg in packages {
+                console.print(f"  ✔ {pkg}", style="success");
+            }
+        }
+        console.success("Package(s) installed");
         return 0;
     }
     # ── Editable install ──────────────────────────────────────────────────────
