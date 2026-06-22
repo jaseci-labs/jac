@@ -124,7 +124,11 @@ obj CheckConfig {
     has print_errs: bool = True,
         lint: LintConfig = LintConfig(),
         suppress: list[str] = [],
-        suppress_categories: list[str] = [];
+        suppress_categories: list[str] = [],
+        # When True, access-modifier violations (private/protected member access,
+        # cross-module/cross-project visibility) are reported as hard errors
+        # instead of the default warnings. See AccessCheckPass.
+        enforce_access: bool = False;
 }
 
 """Dot/graph visualization defaults from [dot] section."""

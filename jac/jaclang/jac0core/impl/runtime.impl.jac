@@ -1107,6 +1107,7 @@ impl JacBasics.run_test(
         run_cl_test_file,
         register_results_into_jactestcheck
     }
+    import from jaclang.jac0core.ext_registry { base_stem, is_annex }
     test_file = False;
     ret_count = 0;
     if filepath {
@@ -1121,15 +1122,10 @@ impl JacBasics.run_test(
         } elif filepath.endswith('.jac') {
             (base, mod_name) = os.path.split(filepath);
             base = base or './';
-            mod_name = mod_name[:-4];
-            if mod_name.endswith('.test') {
-                mod_name = mod_name[:-5];
-            } elif mod_name.endswith('.na') or mod_name.endswith('.sv') {
-                # Compound codespace suffix: foo.na.jac imports as module
-                # 'foo' (the importer resolves the stem back to the file);
-                # leaving the '.na' makes jac_import read it as a package path.
-                mod_name = mod_name[:-3];
-            }
+            # Collapse the codespace/annex suffix to the bare module stem; the
+            # importer resolves the stem back to the file. Leaving e.g. '.na'
+            # would make jac_import read it as a package path.
+            mod_name = base_stem(mod_name);
             JacTestCheck.reset();
             JacRuntimeInterface.jac_import(target=mod_name, base_path=base);
             JacTestCheck.run_test(
@@ -1165,7 +1161,7 @@ impl JacBasics.run_test(
             files = [
                 file
                 for file in files
-                if not file.endswith(('.test.jac', '.impl.jac'))
+                if not is_annex(file)
             ];
             for file in files {
                 if is_cl_test_file_for_discovery(file) {
@@ -1188,11 +1184,9 @@ impl JacBasics.run_test(
                         f"\n\n\t\t* Inside {root_dir}/{file} *"
                     );
                     JacTestCheck.reset();
-                    mod_target = file[:-4];
-                    if mod_target.endswith('.na') or mod_target.endswith('.sv') {
-                        # Compound codespace suffix (see single-file branch).
-                        mod_target = mod_target[:-3];
-                    }
+                    # Collapse the codespace/annex suffix to the bare module
+                    # stem (see single-file branch).
+                    mod_target = base_stem(file);
                     JacRuntimeInterface.jac_import(
                         target=mod_target, base_path=root_dir
                     );

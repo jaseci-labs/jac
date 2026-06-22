@@ -153,8 +153,9 @@ impl nacompile(
     shared: bool = False,
     debug: bool = False
 ) -> int {
+    import from jaclang.jac0core.ext_registry { is_jac, is_native_module, base_stem }
     # Validate input
-    if not filename.endswith(".na.jac") and not filename.endswith(".jac") {
+    if not is_jac(filename) {
         console.error("Input must be a .jac or .na.jac file.");
         return 1;
     }
@@ -219,19 +220,14 @@ impl nacompile(
         }
     }
 
-    auto_promote = filename.endswith(".jac") and not filename.endswith(".na.jac");
+    auto_promote = is_jac(filename) and not is_native_module(filename);
 
     # Detect platform (host darwin, or an explicit macOS cross-target)
     is_macos = (sys.platform == "darwin") or is_macos_target;
 
     # Determine output path
     if not output {
-        output = os.path.basename(filename);
-        if output.endswith(".na.jac") {
-            output = output[:-7];
-        } elif output.endswith(".jac") {
-            output = output[:-4];
-        }
+        output = base_stem(filename);
         if shared {
             # Conventional shared-library name: lib<stem>.<ext> per platform.
             _so_ext = ".dll" if is_windows else (".dylib" if is_macos else ".so");

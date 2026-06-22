@@ -241,6 +241,7 @@ body and originates in an annex file. Reported once per bare node (deduped via
 impl DeclImplMatchPass._report_bare_redecls(
     self: DeclImplMatchPass, sym_tab: UniScopeNode
 ) -> None {
+    import from jaclang.jac0core.ext_registry { is_annex }
     for sym in sym_tab.names_in_scope.values() {
         stub: (uni.UniNode | None) = None;
         bare: (uni.UniNode | None) = None;
@@ -254,10 +255,7 @@ impl DeclImplMatchPass._report_bare_redecls(
             }
             if defn_node.body is None {
                 stub = defn_node;
-            } elif (
-                defn_node.loc.mod_path.endswith('.impl.jac')
-                or defn_node.loc.mod_path.endswith('.test.jac')
-            ) {
+            } elif is_annex(defn_node.loc.mod_path) {
                 bare = defn_node;
             }
         }
