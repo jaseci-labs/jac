@@ -90,7 +90,7 @@ def link_pe(relobj: bytes) -> bytes {
     d = tempfile.mkdtemp();
     out = os.path.join(d, "a.exe");
     ok = PeLinker.link(obj_bytes=relobj, output_path=out);
-    assert ok , "PeLinker.link returned False";
+    assert ok , f"PeLinker.link returned False | relobj len={len(relobj)} head={relobj[:24].hex()}";
     return Path(out).read_bytes();
 }
 

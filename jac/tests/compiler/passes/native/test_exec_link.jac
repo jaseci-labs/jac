@@ -189,7 +189,9 @@ test "Mach-O executable has MH_EXECUTE filetype and an LC_MAIN entry" {
         needed_libs=["/usr/lib/libSystem.B.dylib"],
         shared=False
     );
-    assert ok , "MachOLinker.link(shared=False) returned False";
+    assert ok , f"MachOLinker.link(shared=False) returned False | relobj len={len(
+        relobj
+    )} head={relobj[:24].hex()}";
     raw = Path(out).read_bytes();
     assert struct.unpack_from("<I", raw, 0)[0] == 0xFEEDFACF , "not a Mach-O 64 image";
     filetype = struct.unpack_from("<I", raw, 12)[0];
@@ -226,7 +228,9 @@ test "Mach-O arm64 executable is ad-hoc signed with CS_EXECSEG_MAIN_BINARY" {
         needed_libs=["/usr/lib/libSystem.B.dylib"],
         shared=False
     );
-    assert ok , "MachOLinker.link(shared=False) returned False for arm64";
+    assert ok , f"MachOLinker.link(shared=False) returned False for arm64 | relobj len={len(
+        relobj
+    )} head={relobj[:24].hex()}";
     raw = Path(out).read_bytes();
     assert struct.unpack_from("<I", raw, 12)[0] == 2 , "expected MH_EXECUTE (2)";
     sig_off = _codesig_off(raw);
