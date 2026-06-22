@@ -11,7 +11,6 @@ import from jac_scale.targets.kubernetes.utils { kubernetes_utils as utils }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     check_pods_restarted,
     create_tarball,
-    ensure_k8s_service_account,
     ensure_pvc_exists,
     load_env_variables,
     parse_cpu_quantity,
@@ -21,6 +20,7 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     sync_code_to_pvc,
     validate_resource_limits
 }
+import from jac_scale.targets.kubernetes.kubernetes_target { KubernetesTarget }
 
 # --- parse_cpu_quantity valid ---
 def _test_parse_cpu_valid(pair: tuple) {
@@ -163,72 +163,42 @@ test "ensure pvc exists creates when missing" {
     assert body["spec"]["storageClassName"] == "fast";
 }
 
-# --- ensure_k8s_service_account (read-or-create) ---
-test "ensure service account skips when present" {
-    core_v1 = unittest.mock.MagicMock();
-    core_v1.read_namespaced_service_account.return_value = object();
-
-    ensure_k8s_service_account(core_v1, "test-ns", "test-sa");
-
-    core_v1.create_namespaced_service_account.assert_not_called();
-}
-
-test "ensure service account creates when missing" {
-    # Regression (#6883): the microservice deploy emits pod specs that
-    # reference the configured ServiceAccount but used to never create it,
-    # so on a fresh namespace every pod was rejected ("serviceaccount not
-    # found"), the fleet never became ready, and the deploy failed. The SA
-    # must be created when absent.
+# --- _create_service_account (read-or-create, shared by monolith + microservice) ---
+# Regression (#6883): the microservice deploy references the configured
+# ServiceAccount in every pod spec but used to never create it, so on a fresh
+# namespace the ReplicaSet rejected every pod ("serviceaccount not found"),
+# #6800's fleet-readiness wait timed out, and the deploy failed. The
+# microservice target now reuses this inherited monolith helper. Called unbound
+# with a minimal self (it only needs `.logger`) to avoid cluster construction.
+test "create service account creates a tokenless SA when missing" {
+    fake_self = SimpleNamespace(logger=None);
     core_v1 = unittest.mock.MagicMock();
     core_v1.read_namespaced_service_account.side_effect = ApiException(status=404);
 
-    ensure_k8s_service_account(core_v1, "test-ns", "test-sa");
+    KubernetesTarget._create_service_account(
+        fake_self, "test-app-sa", "test-app", "test-ns", core_v1
+    );
 
     call_args = core_v1.create_namespaced_service_account.call_args;
     assert call_args is not None , "ServiceAccount must be created when missing";
-    (args, kwargs) = call_args;
-    assert kwargs == {};
-    assert args[0] == "test-ns";
-    body = args[1];
+    body = call_args[1]["body"];
     assert body["kind"] == "ServiceAccount";
-    assert body["metadata"]["name"] == "test-sa";
-    assert body["metadata"]["labels"]["managed"] == "jac-scale";
-    # Secure default, matching the monolith path: no auto-mounted API token.
+    assert body["metadata"]["name"] == "test-app-sa";
+    assert body["metadata"]["namespace"] == "test-ns";
+    # Secure default: no auto-mounted cluster API token.
     assert body["automountServiceAccountToken"] == False;
 }
 
-test "ensure service account is a no-op for an empty name" {
+test "create service account skips an existing SA" {
+    fake_self = SimpleNamespace(logger=None);
     core_v1 = unittest.mock.MagicMock();
+    core_v1.read_namespaced_service_account.return_value = object();
 
-    ensure_k8s_service_account(core_v1, "test-ns", "");
+    KubernetesTarget._create_service_account(
+        fake_self, "test-app-sa", "test-app", "test-ns", core_v1
+    );
 
-    core_v1.read_namespaced_service_account.assert_not_called();
     core_v1.create_namespaced_service_account.assert_not_called();
-}
-
-test "ensure service account propagates a non-404 read error" {
-    core_v1 = unittest.mock.MagicMock();
-    core_v1.read_namespaced_service_account.side_effect = ApiException(status=500);
-
-    raised = False;
-    try {
-        ensure_k8s_service_account(core_v1, "test-ns", "test-sa");
-    } except ApiException {
-        raised = True;
-    }
-    assert raised , "a non-404 read error must propagate";
-    core_v1.create_namespaced_service_account.assert_not_called();
-}
-
-test "ensure service account tolerates a concurrent create (409)" {
-    core_v1 = unittest.mock.MagicMock();
-    core_v1.read_namespaced_service_account.side_effect = ApiException(status=404);
-    core_v1.create_namespaced_service_account.side_effect = ApiException(status=409);
-
-    # A 409 (another deploy created it first) must be swallowed - the SA
-    # exists, which is all the function guarantees.
-    ensure_k8s_service_account(core_v1, "test-ns", "test-sa");
-    assert core_v1.create_namespaced_service_account.called;
 }
 
 # --- cluster_type detection ---

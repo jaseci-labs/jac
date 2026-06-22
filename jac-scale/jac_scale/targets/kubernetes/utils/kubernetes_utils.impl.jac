@@ -449,49 +449,6 @@ impl ensure_pvc_exists(
     core_v1.create_namespaced_persistent_volume_claim(namespace, pvc_body);
 }
 
-"""Ensure a namespaced ServiceAccount exists (read-or-create).
-
-The microservice Deployment pod specs reference `sa_name`; this guarantees
-it exists before they are applied so the ReplicaSet controller does not
-reject pods with "serviceaccount not found". A no-op when `sa_name` is
-empty (pods use the namespace default SA) or the SA already exists - an
-existing SA is never modified, so caller-managed RBAC/IRSA is preserved.
-"""
-impl ensure_k8s_service_account(
-    core_v1: client.CoreV1Api, namespace: str, sa_name: str
-) -> None {
-    if not sa_name {
-        return;
-    }
-    try {
-        core_v1.read_namespaced_service_account(sa_name, namespace);
-        return;
-    } except ApiException as exc {
-        if (exc.status != 404) {
-            raise;
-        }
-    }
-    import from typing { Any }
-    sa_body: dict[(str, Any)] = {
-        'apiVersion': 'v1',
-        'kind': 'ServiceAccount',
-        'metadata': {'name': sa_name, 'labels': {'managed': 'jac-scale'}},
-        # Match the monolith path's secure default: don't auto-mount a cluster
-        # API token into every pod. Workloads that need one opt in explicitly
-        # at the pod-spec level (which overrides this).
-        'automountServiceAccountToken': False
-    };
-    try {
-        core_v1.create_namespaced_service_account(namespace, sa_body);
-    } except ApiException as exc {
-        # 409: a concurrent deploy created the SA between our read and create.
-        # It now exists, which is all this function guarantees.
-        if (exc.status != 409) {
-            raise;
-        }
-    }
-}
-
 """Detect if the current connected cluster is AWS or local.
 
 Returns:

@@ -16,7 +16,6 @@ import from jac_scale._optdeps.kubernetes {
 }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists,
-    ensure_k8s_service_account,
     create_k8s_secret,
     get_cluster_provider
 }
@@ -583,24 +582,19 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         ensure_namespace_exists(namespace);
 
         # The service Deployment pod specs reference the configured
-        # `service_account_name` (manifest_builder._service_account_name), but
-        # jac-scale only generates that reference - it does not create the SA.
-        # On a fresh namespace the ReplicaSet controller then rejects every pod
-        # with "serviceaccount not found", the fleet never becomes ready, and
-        # the readiness wait below fails the whole deploy. Read-or-create the SA
-        # here (any RBAC/IRSA is bound out-of-band by the caller), mirroring the
-        # monolith path which ensures its own ServiceAccounts.
+        # `service_account_name`, but jac-scale only generates that reference -
+        # it does not create the SA. On a fresh namespace the ReplicaSet
+        # controller then rejects every pod with "serviceaccount not found", the
+        # fleet never becomes ready, and the readiness wait below fails the
+        # deploy. Reuse the inherited monolith read-or-create so the SA (with no
+        # auto-mounted token) exists before the Deployments are applied.
         sa_name = str(
             getattr(self.k8s_config, "service_account_name", "") or ""
         ).strip();
         if sa_name {
-            ensure_k8s_service_account(core_v1, namespace, sa_name);
-            if self.logger {
-                self.logger.info(
-                    f"Ensured ServiceAccount '{sa_name}' referenced by deployment pod specs",
-                    {"name": sa_name}
-                );
-            }
+            self._create_service_account(
+                sa_name, self.k8s_config.app_name, namespace, core_v1
+            );
         }
 
         # Ops Console RBAC (opt-in). Applied right after the
