@@ -848,6 +848,74 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Use an `impl` block instead of a bare re-declaration.",
          help="In Jac, implementation files use `impl Name {{ ... }}` or `impl Name(...) {{ ... }}` blocks to provide bodies for declaration stubs. A bare re-declaration in a `.impl.jac` file is treated as a separate definition and will not be linked to the stub."
      ),
+     # ─────────────────────────────────────────────────────────────────────
+     # Access control (E/W 2034-2038)
+     #
+     # Member encapsulation (has/def declared inside an archetype):
+     #   pub -> anywhere, protect -> declaring class + subclasses,
+     #   priv -> declaring class only.
+     # Module/project visibility (top-level glob/obj/def/enum/walker):
+     #   pub -> any module incl. consuming projects,
+     #   protect -> any module in the same project (jac.toml root),
+     #   priv -> declaring module only.
+     # Warnings by default; promoted to errors via `[check] enforce_access`.
+     # ─────────────────────────────────────────────────────────────────────
+     E2034 = _err(
+         "E2034",
+         Category.SEMANTIC,
+         "'{name}' is a private member of '{owner}' and is only accessible "
+         "inside '{owner}'.",
+         help="Mark the member `:protect` to share it with subclasses, or `:pub` to expose it. Private (`:priv`) members are visible only in the methods of the class that declares them."
+     ),
+     W2034 = _warn(
+         "W2034",
+         Category.SEMANTIC,
+         "'{name}' is a private member of '{owner}' and is only accessible "
+         "inside '{owner}'.",
+         help="Mark the member `:protect` to share it with subclasses, or `:pub` to expose it. Private (`:priv`) members are visible only in the methods of the class that declares them."
+     ),
+     E2035 = _err(
+         "E2035",
+         Category.SEMANTIC,
+         "'{name}' is a protected member of '{owner}' and is only accessible "
+         "inside '{owner}' and its subclasses.",
+         help="Access protected (`:protect`) members from within the declaring class or a subclass, or mark the member `:pub` to expose it more broadly."
+     ),
+     W2035 = _warn(
+         "W2035",
+         Category.SEMANTIC,
+         "'{name}' is a protected member of '{owner}' and is only accessible "
+         "inside '{owner}' and its subclasses.",
+         help="Access protected (`:protect`) members from within the declaring class or a subclass, or mark the member `:pub` to expose it more broadly."
+     ),
+     E2037 = _err(
+         "E2037",
+         Category.SEMANTIC,
+         "'{name}' is private to module '{module}' and cannot be used from "
+         "another module.",
+         help="Private (`:priv`) names are visible only inside their own module. Mark '{name}' `:protect` to use it elsewhere in the project, or `:pub` to export it."
+     ),
+     W2037 = _warn(
+         "W2037",
+         Category.SEMANTIC,
+         "'{name}' is private to module '{module}' and cannot be used from "
+         "another module.",
+         help="Private (`:priv`) names are visible only inside their own module. Mark '{name}' `:protect` to use it elsewhere in the project, or `:pub` to export it."
+     ),
+     E2038 = _err(
+         "E2038",
+         Category.SEMANTIC,
+         "'{name}' is protected to project '{project}' and cannot be used from "
+         "another project.",
+         help="Protected (`:protect`) names are visible only within their own project (the directory tree rooted at its jac.toml). Mark '{name}' `:pub` to export it as a library endpoint."
+     ),
+     W2038 = _warn(
+         "W2038",
+         Category.SEMANTIC,
+         "'{name}' is protected to project '{project}' and cannot be used from "
+         "another project.",
+         help="Protected (`:protect`) names are visible only within their own project (the directory tree rooted at its jac.toml). Mark '{name}' `:pub` to export it as a library endpoint."
+     ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

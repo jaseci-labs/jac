@@ -368,7 +368,7 @@ def _build_code_signature(
     text_offset: int,
     text_size: int,
     ident: str = "jac-binary",
-    exec_seg_flags: int = CS_EXECSEG_MAIN_BINARY
+    exec_seg_flags: int = 0  # pass CS_EXECSEG_MAIN_BINARY for MH_EXECUTE binaries
 ) -> bytes {
     hash_size = 32;
     n_code_slots = (code_limit + CS_PAGE_SIZE - 1) // CS_PAGE_SIZE;
@@ -1535,7 +1535,13 @@ impl MachOLinker.build_executable -> bytes {
 
     # ── Build and write code signature (arm64) ───────────────────
     if is_arm64 {
-        sig = _build_code_signature(bytes(output), codesig_off, 0, text_seg_size);
+        sig = _build_code_signature(
+            bytes(output),
+            codesig_off,
+            0,
+            text_seg_size,
+            exec_seg_flags=CS_EXECSEG_MAIN_BINARY
+        );
         codesig_size = len(sig);
         actual_total = codesig_off + codesig_size;
 
@@ -1583,7 +1589,11 @@ impl MachOLinker.build_executable -> bytes {
         # Re-hash: the binary changed after writing the signature
         # (LC_CODE_SIGNATURE was patched), so rehash
         sig = _build_code_signature(
-            bytes(output[:codesig_off]), codesig_off, 0, text_seg_size
+            bytes(output[:codesig_off]),
+            codesig_off,
+            0,
+            text_seg_size,
+            exec_seg_flags=CS_EXECSEG_MAIN_BINARY
         );
         output[codesig_off:codesig_off + len(sig)] = sig;
     }
@@ -2027,6 +2037,12 @@ impl MachOLinker.build_shared_object -> bytes {
         va = _resolve_seg_vaddr(
             seg, off, text_sec_vaddr, const_sec_vaddr, data_sec_vaddr
         );
+        # Trie key is the Mach-O symbol (`_jadd`), NOT the bare Jac name. dyld's
+        # dlsym prepends a leading underscore before consulting the export trie,
+        # so a consumer's dlsym("jadd") resolves a `_jadd` entry; a bare `jadd`
+        # entry is unreachable by dlsym/ld and the dylib "loads but won't
+        # resolve" — exactly the symptom issue #6821 reported. The symbol table
+        # already carries `_mn`; the trie must match it.
         export_pairs.append((_mn, va));
     }
     if _unresolved_exports {

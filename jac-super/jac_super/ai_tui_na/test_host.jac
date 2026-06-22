@@ -45,25 +45,20 @@ def main -> int {
     lib = ctypes.CDLL(lib_path);
     sys.stdout.write(f"ok: CDLL loaded {lib_path}\n");
 
-    # Mach-O C symbols carry a leading '_' in the export trie (e.g.
-    # '_tui_render_buf'). dlsym() does exact-name lookup — it does NOT
-    # strip or prepend underscores at runtime — so on Darwin we must
-    # include the prefix. On Linux/Windows the trie/PE exports the bare
-    # C name, so no prefix is needed.
+    # Use bare C names on all platforms. Darwin dlsym prepends '_' internally,
+    # so lib["tui_apply_frame"] resolves _tui_apply_frame in the export trie.
     # lib[name] creates a new _FuncPtr each call; cache the objects so
     # that restype/argtypes set below survive to the actual call.
-    p = "_" if sys.platform == "darwin" else "";
-
-    fn_apply_frame = lib[p + "tui_apply_frame"];
+    fn_apply_frame = lib["tui_apply_frame"];
     fn_apply_frame.restype = ctypes.c_int64;
     fn_apply_frame.argtypes = [ctypes.c_char_p];
-    fn_render_buf = lib[p + "tui_render_buf"];
+    fn_render_buf = lib["tui_render_buf"];
     fn_render_buf.restype = ctypes.c_char_p;
     fn_render_buf.argtypes = [];
-    fn_next_command = lib[p + "tui_next_command"];
+    fn_next_command = lib["tui_next_command"];
     fn_next_command.restype = ctypes.c_char_p;
     fn_next_command.argtypes = [];
-    fn_quit_requested = lib[p + "tui_quit_requested"];
+    fn_quit_requested = lib["tui_quit_requested"];
     fn_quit_requested.restype = ctypes.c_int64;
     fn_quit_requested.argtypes = [];
 

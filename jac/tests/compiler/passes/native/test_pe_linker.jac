@@ -67,7 +67,15 @@ def emit_coff_object(fixture: str) -> bytes {
         llvm.initialize_all_asmprinters();
         mod = llvm.parse_assembly(src);
         mod.verify();
-        tm = llvm.Target.from_triple(WIN_TRIPLE).create_target_machine(opt=2);
+        # codemodel="large" (not the default "jitdefault"): on a Windows host
+        # llvmlite appends "-elf" to the triple under jitdefault, so emit_object
+        # would produce an ELF object for this COFF target and PeLinker would
+        # reject it. Pinning the model keeps the windows-msvc triple intact and
+        # mirrors nacompile's executable emit branch. See the dedicated guard
+        # test in test_exec_link.jac (#6819).
+        tm = llvm.Target.from_triple(WIN_TRIPLE).create_target_machine(
+            opt=2, codemodel="large"
+        );
         pto = llvm.create_pipeline_tuning_options(speed_level=2, size_level=0);
         pb = llvm.create_pass_builder(tm, pto);
         mpm = pb.getModulePassManager();

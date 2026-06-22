@@ -115,31 +115,29 @@ Returns (new_ir, extra_export_names).
 def _inject_shared_init(
     llvm_ir_str: str, transitive_sources: list[str]
 ) -> tuple[str, list[str]] {
-    import re;
     init_calls: list[str] = [];
     # This module's own glob-init (NaIRGenPass always emits it when present).
-    if ('@"__jac_glob_init"' in llvm_ir_str)
-    or ("@__jac_glob_init(" in llvm_ir_str)
-    or ("define void @__jac_glob_init(" in llvm_ir_str) {
+    if "@__jac_glob_init(" in llvm_ir_str {
         init_calls.append("  call void @__jac_glob_init()");
     }
+    import from jaclang.jac0core.codeinfo { native_safe_sym }
     _seen: set = set();
     for _src in transitive_sources {
         if _src is None or _src in _seen {
             continue;
         }
         _seen.add(_src);
-        _safe = re.sub(r'[^a-zA-Z0-9_]', '_', _src);
+        # Unique per-module suffix; centralized in codeinfo.native_safe_sym so
+        # the emit side, this AOT shared-init emitter, and the JIT runtime
+        # lookup (native_marshal.init_native_globals) all agree on the name.
+        _safe = native_safe_sym(_src);
         _nm = f"__jac_glob_init_{_safe}";
         if (f'@"{_nm}"' in llvm_ir_str) or (f"@{_nm}(" in llvm_ir_str) {
             init_calls.append(f"  call void @{_nm}()");
         }
     }
     parts: list[str] = ["\n; --- injected shared-library init + RC wrappers ---"];
-    _body = "\n".join(init_calls);
-    if _body {
-        _body = _body + "\n";
-    }
+    _body = ("\n".join(init_calls) + "\n") if init_calls else "";
     parts.append(
         "define void @__jac_shared_init() {\nentry:\n" + _body + "  ret void\n}"
     );
@@ -180,8 +178,9 @@ impl nacompile(
     shared: bool = False,
     debug: bool = False
 ) -> int {
+    import from jaclang.jac0core.ext_registry { is_jac, is_native_module, base_stem }
     # Validate input
-    if not filename.endswith(".na.jac") and not filename.endswith(".jac") {
+    if not is_jac(filename) {
         console.error("Input must be a .jac or .na.jac file.");
         return 1;
     }
@@ -216,9 +215,9 @@ impl nacompile(
     # then link the COFF object with the pure-Jac PE linker. Mirrors is_wasm.
     # A bare alias ("windows"/"win64") maps to the msvc triple; a full triple
     # the user passed ("x86_64-pc-windows-gnu") is used verbatim.
-    is_windows = ("windows" in target)
-    or (target in ["win", "win64", "mingw"])
-    or (not target and sys.platform == "win32");
+    is_windows = (sys.platform == "win32")
+    or ("windows" in target)
+    or (target in ["win", "win64", "mingw"]);
     if is_windows {
         # Pin the Windows triple explicitly on every host (native or cross) so
         # NaIRGenPass and the emit step both target the COFF/PE ABI deterministically.
@@ -254,19 +253,14 @@ impl nacompile(
         }
     }
 
-    auto_promote = filename.endswith(".jac") and not filename.endswith(".na.jac");
+    auto_promote = is_jac(filename) and not is_native_module(filename);
 
     # Detect platform (host darwin, or an explicit macOS cross-target)
     is_macos = (sys.platform == "darwin") or is_macos_target;
 
     # Determine output path
     if not output {
-        output = os.path.basename(filename);
-        if output.endswith(".na.jac") {
-            output = output[:-7];
-        } elif output.endswith(".jac") {
-            output = output[:-4];
-        }
+        output = base_stem(filename);
         if shared {
             # Conventional shared-library name: lib<stem>.<ext> per platform.
             _so_ext = ".dll" if is_windows else (".dylib" if is_macos else ".so");
@@ -568,7 +562,15 @@ impl nacompile(
             opt=2, reloc="pic", codemodel="small"
         );
     } else {
-        target_machine = target.create_target_machine(opt=2);
+        # codemodel="large" (not the default "jitdefault"): llvmlite appends
+        # "-elf" to the triple when os.name == "nt" and codemodel ==
+        # "jitdefault", making a Windows host emit an ELF object for a COFF
+        # target (the format guard below then trips). Pass an explicit code
+        # model so the requested triple stays intact. "large" is used (not
+        # "small") because "jitdefault" resolves to the large model on x86_64,
+        # which emits the absolute relocations the pure-Jac ELF linker handles;
+        # the small/medium models emit R_X86_64_32 absolutes it cannot resolve.
+        target_machine = target.create_target_machine(opt=2, codemodel="large");
     }
 
     # Read native build settings from jac.toml [build.native] (env vars as fallback)

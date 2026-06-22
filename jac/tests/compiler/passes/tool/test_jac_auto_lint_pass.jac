@@ -1101,16 +1101,16 @@ test "inline suppress by code" {
         set_config(None);
     }
 
-    error_msgs = [e.msg for e in prog.errors_had];
-    no_print_errors = [
-        m
-        for m in error_msgs
-        if "[no-print]" in m
+    # Line of every surviving no-print error, so we can prove *which* line was
+    # suppressed rather than just counting totals.
+    no_print_lines = [
+        e.loc.first_line
+        for e in prog.errors_had
+        if "[no-print]" in e.msg
     ];
-    # Line 4 suppressed by E3012, line 5 NOT suppressed => 1 error
-    assert len(no_print_errors) == 1 , f"Expected 1 no-print error, got {len(
-        no_print_errors
-    )}: {no_print_errors}";
+    # `# jac:ignore[E3012]` on line 4 suppresses it; line 5 has no comment.
+    assert 4 not in no_print_lines , f"E3012 code suppression on line 4 failed: {no_print_lines}";
+    assert 5 in no_print_lines , f"line 5 should still error: {no_print_lines}";
 }
 
 test "inline suppress by alias" {
@@ -1125,21 +1125,21 @@ test "inline suppress by alias" {
         set_config(None);
     }
 
-    error_msgs = [e.msg for e in prog.errors_had];
-    no_print_errors = [
-        m
-        for m in error_msgs
-        if "[no-print]" in m
+    # Line of every surviving no-print error, so we can prove the *alias* form
+    # of suppression worked independently of the numeric-code form.
+    no_print_lines = [
+        e.loc.first_line
+        for e in prog.errors_had
+        if "[no-print]" in e.msg
     ];
-    # Line 9 suppressed by alias "no-print", line 10 suppressed by multi-code
-    # Only line 5 should fire => 1 error total
-    assert len(no_print_errors) == 1 , f"Expected 1 no-print error, got {len(
-        no_print_errors
-    )}: {no_print_errors}";
+    # `# jac:ignore[no-print]` (kebab alias) on line 9 suppresses it; line 5
+    # has no comment and must still fire.
+    assert 9 not in no_print_lines , f"alias suppression on line 9 failed: {no_print_lines}";
+    assert 5 in no_print_lines , f"line 5 should still error: {no_print_lines}";
 }
 
 test "inline suppress wrong code does not suppress" {
-    input_path = auto_lint_fixture_path("no_print.jac");
+    input_path = auto_lint_fixture_path("inline_suppress_wrong_code.jac");
 
     config = JacConfig();
     config.check = CheckConfig(lint=LintConfig(select=["all"]));
@@ -1150,14 +1150,15 @@ test "inline suppress wrong code does not suppress" {
         set_config(None);
     }
 
-    # no_print.jac has no jac:ignore comments, so all 2 errors should fire
-    error_msgs = [e.msg for e in prog.errors_had];
+    # The fixture's single print() carries `# jac:ignore[W3001]`, an unrelated
+    # rule, so the no-print (E3012) error must still fire: suppression is
+    # per-code and a non-matching code is a no-op.
     no_print_errors = [
-        m
-        for m in error_msgs
-        if "[no-print]" in m
+        e.msg
+        for e in prog.errors_had
+        if "[no-print]" in e.msg
     ];
-    assert len(no_print_errors) == 2;
+    assert len(no_print_errors) == 1 , f"wrong ignore code wrongly suppressed no-print: {no_print_errors}";
 }
 
 test "inline suppress multiple codes" {

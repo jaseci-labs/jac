@@ -3,6 +3,7 @@ import importlib.util;
 import os;
 import site;
 import sys;
+import from jaclang.jac0core.ext_registry { MODULE_SUFFIXES, language_of }
 
 # Cache of resolved project roots, keyed by the directory we started the
 # upward walk from. A `None` value records "no jac.toml above here" so we
@@ -151,17 +152,11 @@ def _candidate_from(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
             return (os.path.join(candidate, '__init__.pyi'), 'pyi');
         }
     }
-    if os.path.isfile((candidate + '.jac')) {
-        return ((candidate + '.jac'), 'jac');
-    }
-    if os.path.isfile((candidate + '.sv.jac')) {
-        return ((candidate + '.sv.jac'), 'jac');
-    }
-    if os.path.isfile((candidate + '.na.jac')) {
-        return ((candidate + '.na.jac'), 'jac');
-    }
-    if os.path.isfile((candidate + '.cl.jac')) {
-        return ((candidate + '.cl.jac'), 'jac');
+    # Jac module files, in canonical codespace precedence (shared registry).
+    for jac_suffix in MODULE_SUFFIXES {
+        if os.path.isfile((candidate + jac_suffix)) {
+            return ((candidate + jac_suffix), 'jac');
+        }
     }
     if os.path.isfile((candidate + '.py')) {
         return ((candidate + '.py'), 'py');
@@ -355,17 +350,7 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
             return res;
         }
         if os.path.isfile(alias_resolved) {
-            ext = os.path.splitext(alias_resolved)[1].lower();
-            lang = {
-                '.jac': 'jac',
-                '.py': 'py',
-                '.js': 'js',
-                '.ts': 'js',
-                '.tsx': 'js'
-            }.get(
-                ext, 'other'
-            );
-            return (alias_resolved, lang);
+            return (alias_resolved, language_of(alias_resolved));
         }
     }
     if target.startswith('.') {
@@ -410,21 +395,9 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
         }
         if (spec and spec.origin and (spec.origin not in {'built-in', 'frozen'})) {
             origin = os.path.normpath(spec.origin);
-            ext = os.path.splitext(origin)[1].lower();
-            if (ext in {'.jac', '.pyi', '.py', '.js', '.ts', '.jsx', '.tsx'}) {
-                if (ext == '.jac') {
-                    return (origin, 'jac');
-                }
-                if (ext == '.pyi') {
-                    return (origin, 'pyi');
-                }
-                if (ext == '.py') {
-                    return (origin, 'py');
-                }
-                if (ext in {'.js', '.ts', '.jsx', '.tsx'}) {
-                    return (origin, 'js');
-                }
-                return (origin, 'other');
+            lang = language_of(origin);
+            if (lang != 'other') {
+                return (origin, lang);
             }
         }
     }
