@@ -39,7 +39,6 @@ repos:
         types: [binary]
         exclude: |
           (?x)(
-              ^jac-client/jac_client/examples/all-in-one/assets/burger.png$|
               ^docs/docs/assets/logo\.png$|
               ^docs/docs/assets/org1_logo\.png$|
               ^docs/docs/assets/org2_logo\.png$|
@@ -53,9 +52,6 @@ repos:
               ^jac-byllm/tests/fixtures/image\.jpg$|
               ^jac-byllm/tests/fixtures/math_question\.jpg$|
               ^jac-byllm/tests/fixtures/webp_image_of_person\.webp$|
-              ^jac-client/jac_client/examples/asset-serving/css-with-image/assets/burger\.png$|
-              ^jac-client/jac_client/examples/asset-serving/image-asset/assets/burger\.png$|
-              ^jac-client/jac_client/examples/asset-serving/import-alias/assets/burger\.png$|
               ^jac/examples/littleX/assets/littlex-logo\.png$
           )
 

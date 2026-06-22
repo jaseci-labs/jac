@@ -7,17 +7,13 @@ impl StaticAnalysisPass.postinit -> None {
 """Run all static analyses via bulk sub-node queries (no tree traversal)."""
 impl StaticAnalysisPass.transform(ir_in: uni.Module) -> uni.Module {
     self._checked_scopes: set[int] = set();
+    # Annex bodies are merged into ir_in's own tree, so these bulk sub-node
+    # queries cover head and annex content in one sweep.
     self._check_unused_symbols(self.ir_in);
     self._check_undefined_names(self.ir_in);
     self._check_unreachable_code(self.ir_in);
     self._check_semantic_patterns(self.ir_in);
     self._check_redundant_imports(self.ir_in);
-    for annex_mod in self.ir_in.impl_mod + self.ir_in.test_mod + self.ir_in.variant_mod {
-        self._check_undefined_names(annex_mod);
-        self._check_unreachable_code(annex_mod);
-        self._check_semantic_patterns(annex_mod);
-        self._check_redundant_imports(annex_mod);
-    }
     return ir_in;
 }
 

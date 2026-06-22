@@ -67,7 +67,7 @@ walker update_session {
     can visit_session with Root entry {
         visit [-->][?:session] else {
             session_node = here ++> session();
-            visit session_node[0];
+            visit session_node;
         }
     }
 

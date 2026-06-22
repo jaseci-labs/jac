@@ -145,6 +145,11 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     }
     self._post_apply(apply_report);
     self.changes.clear();
+    # Surface optimistic-concurrency conflicts after re-baselining (mirrors
+    # core TieredMemory.commit); the request boundary converges via replay.
+    if (conflict := apply_report.primary_conflict()) {
+        raise conflict;
+    }
 }
 
 """Batch get with full tiered read-through: L1 → L2 MGET → L3 $in."""

@@ -3109,6 +3109,7 @@ Native code reinterprets `int`, `str`, function refs and `obj` instances
 as 64-bit pointers, so a handful of cross-type assignments are sound there
 but not in regular Jac. Determined from the pass's current node."""
 impl TypeEvaluator._in_native_context -> bool {
+    import from jaclang.jac0core.ext_registry { is_native_module }
     if self._pass is None {
         return False;
     }
@@ -3126,7 +3127,7 @@ impl TypeEvaluator._in_native_context -> bool {
     if mod is None or mod.loc is None {
         return False;
     }
-    return mod.loc.mod_path.endswith(".na.jac");
+    return is_native_module(mod.loc.mod_path);
 }
 
 """Match a typing special form loaded from any stdlib typing stub.

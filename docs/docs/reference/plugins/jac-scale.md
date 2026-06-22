@@ -90,7 +90,7 @@ jac start
 # Custom port
 jac start --port 3000
 
-# Development with HMR (requires jac-client)
+# Development with HMR (client framework built into jaclang core)
 jac start --dev
 
 # API only -- skip client bundling
@@ -1314,7 +1314,7 @@ Walkers have two access levels when served as API endpoints (`:priv` is the expl
 | Access | Description |
 |--------|-------------|
 | Public (`:pub`) | Accessible without authentication. Anonymous callers run on the shared guest graph (`root.shared`); a caller presenting a valid token runs on their own root. |
-| Protected (default) and Private (`:priv`) | Require JWT authentication; per-user isolated (each user operates on their own graph). The unmarked default and `:priv` behave identically. |
+| Default, Protected (`:protect`), and Private (`:priv`) | Require JWT authentication; per-user isolated (each user operates on their own graph). For endpoint auth these behave identically -- **only `:pub` is exempt**. `:protect` is _not_ a middle auth tier; its three-way gradient applies to source-level [visibility](../language/access-modifiers.md), not to authentication. |
 
 ### Permission Functions Reference
 
@@ -2512,6 +2512,8 @@ This is on by default whenever a Redis URL resolves. Tune it under
 | `redis_l1_invalidation_enabled` | `true` | Broadcast and apply cross-pod L1 evictions over Redis pub/sub. |
 | `redis_l1_invalidation_channel` | `"jac:anchor:invalidate"` | Pub/sub channel used for invalidation messages. All pods sharing a cache must agree on this value. |
 
+L1 invalidation keeps re-reads fresh, but it is a _post-commit_ signal -- it cannot stop two pods that both read an empty `[-->(?:X)]` _before_ either writes from both creating a child (the check-then-create race). That race is closed separately by node-level optimistic concurrency, which converges the loser via replay; see [Persistence -> Concurrent writes: check-then-create](../persistence.md#concurrent-writes-check-then-create-and-convergence).
+
 ---
 
 ## Kubernetes Deployment
@@ -3502,7 +3504,7 @@ Outside Kubernetes, sv-to-sv calls find peer providers via auto-spawn (single-pr
 JAC_SV_<PEER_MODULE>_URL=http://<peer>-service.<namespace>.svc.cluster.local:<container_port>
 ```
 
-The env-var key uses the raw module name (the value to the right of `sv import from`) upper-cased and joined with `JAC_SV_…_URL`. The URL host uses the Kubernetes Service name with DNS-1123 normalization (so `jac_coder_sv` becomes `jac-coder-sv-service`). Self is skipped (no service points env at itself).
+The env-var key uses the raw module name (the value to the right of `sv import from`) upper-cased and joined with `JAC_SV_..._URL`. The URL host uses the Kubernetes Service name with DNS-1123 normalization (so `jac_coder_sv` becomes `jac-coder-sv-service`). Self is skipped (no service points env at itself).
 
 You do not write these env vars by hand in `--scale` K8s mode; K-track derives them from `[plugins.scale.microservices.routes]` and the configured namespace.
 

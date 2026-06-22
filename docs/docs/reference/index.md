@@ -123,9 +123,9 @@ The `jac` command is your primary interface to the Jac toolchain. For the full r
 | Plugin | Package | Description |
 |--------|---------|-------------|
 | byllm | `pip install byllm` | LLM integration |
-| jac-client | `pip install jac-client` | Full-stack web development |
 | jac-scale | `pip install jac-scale` | Production deployment |
-| jac-super | `pip install jac-super` | Enhanced console output |
+
+(Full-stack web and native-desktop app building -- formerly the `jac-client` / `jac-desktop` plugins -- now ship with `jaclang` core; no separate install.)
 
 ### Managing Plugins
 

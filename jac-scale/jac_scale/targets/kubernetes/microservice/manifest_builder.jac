@@ -30,7 +30,33 @@ obj MicroserviceManifestBuilder {
     has k8s_config: KubernetesConfig,
         secrets: dict[str, str] = {},
         deploy_context: DeployContext = DeployContext(),
-        logger: any = None;
+        logger: any = None,
+        # no-image mode: serve source from a ConfigMap + install jac at pod
+        # startup on a generic Python base image (no docker build/push).
+        no_image: bool = False,
+        # no-image + experimental: the bootstrap git-clones the jaseci
+        # repo/branch (k8s_config.jaseci_*) into a shared venv instead of
+        # installing pinned releases from PyPI - run unreleased jac in-pod.
+        experimental: bool = False,
+        project_dir: str = "",
+        # The app's [plugins.scale.microservices] config. When set (e.g. a
+        # platform deploying a different app's fleet), it's used instead of the
+        # deploying process's own jac.toml via get_scale_config().
+        microservices_config: dict[str, any] = {};
+
+    """The app's microservices config: injected when provided, else read from
+    the running process's jac.toml."""
+    def _ms_cfg -> dict[str, any] {
+        if self.microservices_config {
+            return self.microservices_config;
+        }
+        try {
+            import from jac_scale.config_loader { get_scale_config }
+            return get_scale_config().get_microservices_config();
+        } except Exception {
+            return {};
+        }
+    }
 
     """Lift pod-specs into full Deployment + Service + HPA + PDB
     bundle. Returns `{deployments, services, autoscalers, pdbs, pod_specs}`,
@@ -63,6 +89,18 @@ obj MicroserviceManifestBuilder {
             "pdbs": pdbs,
             "pod_specs": pod_specs
         };
+        # no-image mode: pack local source into a ConfigMap mounted by every
+        # pod's bootstrap initContainer (see _build_pod_spec).
+        if self.no_image {
+            import from jac_scale.targets.kubernetes.microservice.source_bundle {
+                build_source_configmap
+            }
+            bundle["source_configmap"] = build_source_configmap(
+                k8s_safe_name(self.k8s_config.app_name),
+                self.k8s_config.namespace,
+                self.project_dir or app_config.code_folder
+            );
+        }
         pvcs = self._build_shared_pvc_manifests();
         if pvcs {
             bundle["pvcs"] = pvcs;
@@ -72,8 +110,7 @@ obj MicroserviceManifestBuilder {
             bundle["user_secret"] = user_secret;
         }
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             ingress_cfg: dict[str, any] = ms_cfg.get("ingress", {});
         } except Exception {
             ingress_cfg = {};
@@ -113,8 +150,7 @@ obj MicroserviceManifestBuilder {
     ) -> dict[str, dict[str, any]] {
         app_name = app_config.app_name or self.k8s_config.app_name;
 
-        import from jac_scale.config_loader { get_scale_config }
-        ms_cfg = get_scale_config().get_microservices_config();
+        ms_cfg = self._ms_cfg();
         routes: dict[str, str] = ms_cfg.get("routes", {});
 
         if not routes {
@@ -149,8 +185,7 @@ obj MicroserviceManifestBuilder {
     """drain_timeout_seconds (default 10s); sizes terminationGracePeriodSeconds."""
     def _drain_timeout -> int {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return int(ms_cfg.get("drain_timeout_seconds", 10));
         } except Exception {
             return 10;
@@ -160,20 +195,52 @@ obj MicroserviceManifestBuilder {
     """Per-service config from [...services.NAME]; {} on read failure."""
     def _service_config(svc_name: str) -> dict[str, any] {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return dict(ms_cfg.get("services", {}).get(svc_name, {}));
         } except Exception {
             return {};
         }
     }
 
+    """[...microservices.client].entry, else 'main.jac' when the project ships
+    a client (fullstack), else '' (the gateway skips the client build)."""
+    def _client_entry -> str {
+        try {
+            ms_cfg = self._ms_cfg();
+            explicit = str(dict(ms_cfg.get("client", {})).get("entry", "")).strip();
+            if explicit {
+                return explicit;
+            }
+            if self._has_client_source() {
+                return "main.jac";
+            }
+            return "";
+        } except Exception {
+            return "";
+        }
+    }
+
+    """True when project_dir ships a `.cl.jac` client - a fullstack app whose
+    gateway must build + serve the SPA even if [...client].entry is unset."""
+    def _has_client_source -> bool {
+        root_dir = self.project_dir;
+        if not root_dir {
+            return False;
+        }
+        import os;
+        import glob;
+        if not os.path.isdir(root_dir) {
+            return False;
+        }
+        matches = glob.glob(os.path.join(root_dir, "**", "*.cl.jac"), recursive=True);
+        return len(matches) > 0;
+    }
+
     """[[shared_volumes]] entries. PVC mode for cloud K8s, hostPath mode
     for single-node dev. `services` may include `__gateway__`."""
     def _shared_volumes_config -> list[dict[str, any]] {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             raw = ms_cfg.get("shared_volumes", []);
             if not isinstance(raw, list) {
                 return [];
@@ -335,8 +402,7 @@ obj MicroserviceManifestBuilder {
     _build_env for `JAC_SV_<PEER>_URL` injection. Returns {} on read failure."""
     def _microservice_routes -> dict[str, str] {
         try {
-            import from jac_scale.config_loader { get_scale_config }
-            ms_cfg = get_scale_config().get_microservices_config();
+            ms_cfg = self._ms_cfg();
             return dict(ms_cfg.get("routes", {}));
         } except Exception {
             return {};
@@ -372,10 +438,7 @@ obj MicroserviceManifestBuilder {
 
         # When tracing is enabled, point pods at the in-cluster Alloy OTLP
         # receiver. Added before user env so a per-service override wins.
-        import from jac_scale.config_loader { get_scale_config }
-        ms_trace_cfg: dict = dict(
-            get_scale_config().get_microservices_config().get("tracing", {})
-        );
+        ms_trace_cfg: dict = dict(self._ms_cfg().get("tracing", {}));
         if ms_trace_cfg.get("enabled", False) {
             env.append(
                 {
@@ -386,6 +449,14 @@ obj MicroserviceManifestBuilder {
         }
 
         routes: dict[str, str] = self._microservice_routes();
+        # Propagate the full routes table to every pod as JSON so the gateway
+        # + get_sv_registry resolve prefixes/peers even when the in-cluster
+        # jac.toml has no [routes] table (zero-config `--scale` deploys). The
+        # config loader reads JAC_SV_ROUTES when its own routes are empty.
+        if routes {
+            import json;
+            env.append({"name": "JAC_SV_ROUTES", "value": json.dumps(dict(routes))});
+        }
         seen_peer_keys: set = set();
         for peer_name in routes {
             if peer_name == svc_name {
@@ -441,14 +512,22 @@ obj MicroserviceManifestBuilder {
             memory_request_val = cfg.memory_request;
         }
         if memory_request_val is None {
-            memory_request_val = "128Mi";
+            if self.no_image {
+                memory_request_val = "2Gi" if is_gateway else "1Gi";
+            } else {
+                memory_request_val = "128Mi";
+            }
         }
         memory_limit_val = svc_cfg.get("memory_limit");
         if memory_limit_val is None {
             memory_limit_val = cfg.memory_limit;
         }
         if memory_limit_val is None {
-            memory_limit_val = "2Gi" if is_gateway else "1Gi";
+            if self.no_image {
+                memory_limit_val = "8Gi" if is_gateway else "4Gi";
+            } else {
+                memory_limit_val = "2Gi" if is_gateway else "1Gi";
+            }
         }
         cpu_request_val = svc_cfg.get("cpu_request");
         if cpu_request_val is None {
@@ -526,6 +605,21 @@ obj MicroserviceManifestBuilder {
             "periodSeconds": cfg.liveness_period,
             "timeoutSeconds": 3,
             "failureThreshold": cfg.liveness_failure_threshold
+        };
+    }
+
+    """Startup probe for no-image pods: they install jac (and, in experimental
+    mode, git-clone + compile it) and run a first jaclang compile AT STARTUP,
+    which easily exceeds the liveness grace. The startup probe suppresses
+    liveness/readiness until the app first answers (~15min budget) so the slow
+    first boot isn't SIGKILLed; once it passes, liveness governs."""
+    def _build_startup_probe -> dict[str, any] {
+        cfg = self.k8s_config;
+        return {
+            "httpGet": {"path": "/healthz/live", "port": cfg.container_port},
+            "periodSeconds": 10,
+            "timeoutSeconds": 3,
+            "failureThreshold": 90
         };
     }
 
@@ -623,25 +717,45 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """Single Ingress -> gateway Service; HTTP only; controller-agnostic.
-    Returns None if `[...ingress].enabled` is unset. Backend always points
-    at gateway-service with path "/" Prefix - the gateway owns /api/{svc}/*
-    dispatch internally. `host` is optional (omitted = match any host)."""
+    """Single Ingress -> gateway Service; controller-agnostic. Built from
+    `[...ingress]`, or the deploy-wide `shared_ingress` (host=domain) when that
+    table is unset. Returns None if neither is configured. Backend always points
+    at gateway-service path "/" Prefix - the gateway owns /api/{svc}/* dispatch."""
     def _build_ingress_manifest(ingress_cfg: dict[str, any]) -> dict[str, any] | None {
-        if not ingress_cfg.get("enabled", False) {
-            return None;
-        }
+        cfg = self.k8s_config;
+        enabled: bool = bool(ingress_cfg.get("enabled", False));
         host: str = str(ingress_cfg.get("host", "")).strip();
         ingress_class: str = str(ingress_cfg.get("ingress_class_name", "")).strip();
         annotations: dict[str, str] = {};
         for (k, v) in ingress_cfg.get("annotations", {}).items() {
             annotations[str(k)] = str(v);
         }
+        # Fall back to the deploy-wide shared ingress when [...ingress] is unset,
+        # so a host-routed shared controller (an ALB/nginx PaaS subdomain) still
+        # reaches the gateway. Caller annotations carry the ALB cert/group/scheme.
+        use_shared: bool = (not enabled) and cfg.shared_ingress and bool(cfg.domain);
+        if use_shared {
+            enabled = True;
+            if not host {
+                host = cfg.domain;
+            }
+            if not ingress_class {
+                ingress_class = cfg.shared_ingress_class;
+            }
+            if not annotations {
+                for (k, v) in cfg.shared_ingress_annotations.items() {
+                    annotations[str(k)] = str(v);
+                }
+            }
+        }
+        if not enabled {
+            return None;
+        }
 
         backend: dict[str, any] = {
             "service": {
                 "name": "gateway-service",
-                "port": {"number": self.k8s_config.container_port}
+                "port": {"number": cfg.container_port}
             }
         };
         path_entry: dict[str, any] = {
@@ -657,7 +771,7 @@ obj MicroserviceManifestBuilder {
 
         metadata: dict[str, any] = {
             "name": "gateway-ingress",
-            "namespace": self.k8s_config.namespace,
+            "namespace": cfg.namespace,
             "labels": {
                 "app": "gateway",
                 "managed": "jac-scale",
@@ -671,6 +785,16 @@ obj MicroserviceManifestBuilder {
         spec: dict[str, any] = {"rules": [rule]};
         if ingress_class {
             spec["ingressClassName"] = ingress_class;
+        }
+        # cert-manager (nginx) needs a spec.tls block to mint a per-host cert; an
+        # ALB/ACM controller terminates TLS at the LB via its annotations and
+        # gets none. Mirrors the monolith IngressDeployer.
+        cert_manager_managed: bool = (
+            "cert-manager.io/cluster-issuer" in cfg.shared_ingress_annotations
+            or "cert-manager.io/issuer" in cfg.shared_ingress_annotations
+        );
+        if use_shared and cfg.shared_ingress_tls and host and cert_manager_managed {
+            spec["tls"] = [{"hosts": [host], "secretName": "gateway-tls"}];
         }
 
         return {
@@ -709,12 +833,26 @@ obj MicroserviceManifestBuilder {
     (gateway) or `jac start <name>.jac` (service). JAC_SV_SIBLING=1 is
     exported so the pre-hook skips local-mode orchestration."""
     def _pod_entrypoint -> dict[str, any] {
+        gw_prefix = "";
+        if self.no_image {
+            client_entry = self._client_entry();
+            if client_entry {
+                # Build the fullstack client in-pod so the gateway serves it at
+                # `/`. Non-fatal: the API + admin still come up if the FE build
+                # fails (the SPA route just 404s, as it did before).
+                gw_prefix = (
+                    f'jac build "{client_entry}" '
+                    f'|| echo "[jac-scale] client build failed; / will 404"; '
+                );
+            }
+        }
         return {
             "command": ["sh", "-c"],
             "args": [
                 "set -euo pipefail; "
                 "export JAC_SV_SIBLING=1; "
                 'if [ "$JAC_SV_NAME" = "__gateway__" ]; then '
+                f"  {gw_prefix}"
                 "  exec jac scale gateway; "
                 "else "
                 '  exec jac start "${JAC_SV_NAME}.jac"; '
@@ -729,7 +867,13 @@ obj MicroserviceManifestBuilder {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
-        resolved_image: str = self._resolve_image(image, svc_cfg);
+        # no-image mode runs on the generic Python base image; the per-service
+        # image_tag override is meaningless without a built image.
+        resolved_image: str = (
+            self.k8s_config.python_image
+                if self.no_image
+                else self._resolve_image(image, svc_cfg)
+        );
         # JAC_IMAGE_REF (B-01): the resolved ref incl. K-29's content-id
         # suffix, surfaced so an in-pod self-check can report "running build X"
         # with zero RBAC. Strip any user-set copy first so the rendered YAML
@@ -753,13 +897,56 @@ obj MicroserviceManifestBuilder {
             "livenessProbe": self._build_liveness_probe(),
             "lifecycle": {"preStop": self._build_prestop_hook()}
         };
+        # no-image pods install + compile jac at startup (minutes), which the
+        # liveness probe would SIGKILL; a startup probe holds it off until the
+        # app first answers. Built-image pods boot fast and don't need it.
+        if self.no_image {
+            container["startupProbe"] = self._build_startup_probe();
+        }
         resources = self._build_resources(svc_cfg, svc_name == GATEWAY_NAME);
         if resources {
             container["resources"] = resources;
         }
         (shared_vols, shared_mounts) = self._shared_volumes_for_service(svc_name);
-        if shared_mounts {
-            container["volumeMounts"] = shared_mounts;
+        # no-image mode: run from the extracted source on a shared emptyDir,
+        # resolving jac + deps the bootstrap initContainer installed under
+        # PYDEPS_DIR (added to PATH/PYTHONPATH). entry["args"]'s `jac` then
+        # resolves to the installed console script.
+        no_image_mounts: list[dict[str, any]] = [];
+        if self.no_image {
+            import from jac_scale.targets.kubernetes.microservice.source_bundle {
+                APP_VOLUME_NAME,
+                APP_MOUNT_PATH,
+                PYDEPS_DIR,
+                VENV_DIR
+            }
+            container["workingDir"] = APP_MOUNT_PATH;
+            if self.experimental {
+                # Run out of the shared venv the experimental bootstrap built
+                # (editable jac + plugins); no PYDEPS_DIR / PYTHONPATH override.
+                env_list.append({"name": "VIRTUAL_ENV", "value": VENV_DIR});
+                env_list.append(
+                    {
+                        "name": "PATH",
+                        "value": f"{VENV_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
+                    }
+                );
+            } else {
+                env_list.append({"name": "PYTHONPATH", "value": PYDEPS_DIR});
+                env_list.append(
+                    {
+                        "name": "PATH",
+                        "value": f"{PYDEPS_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
+                    }
+                );
+            }
+            no_image_mounts.append(
+                {"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH}
+            );
+        }
+        all_mounts = shared_mounts + no_image_mounts;
+        if all_mounts {
+            container["volumeMounts"] = all_mounts;
         }
         # envFrom for the user secret: created BEFORE Deployments in
         # apply_manifests so the secretRef resolves at pod startup.
@@ -774,11 +961,43 @@ obj MicroserviceManifestBuilder {
         if sa_name {
             spec["serviceAccountName"] = sa_name;
         }
-        if shared_vols {
-            spec["volumes"] = shared_vols;
+        all_volumes = list(shared_vols);
+        init_containers = list(self.deploy_context.init_containers);
+        if self.no_image {
+            import from jac_scale.targets.kubernetes.microservice.source_bundle {
+                APP_VOLUME_NAME,
+                SOURCE_VOLUME_NAME,
+                source_configmap_name,
+                build_bootstrap_init_container
+            }
+            all_volumes.append({"name": APP_VOLUME_NAME, "emptyDir": {}});
+            all_volumes.append(
+                {
+                    "name": SOURCE_VOLUME_NAME,
+                    "configMap": {
+                        "name": source_configmap_name(
+                            k8s_safe_name(self.k8s_config.app_name)
+                        )
+                    }
+                }
+            );
+            # Bootstrap runs first: extract source + install jac before the
+            # db-wait init containers (order is cosmetic; both must finish).
+            init_containers = [
+                build_bootstrap_init_container(
+                    self.k8s_config.python_image,
+                    experimental=self.experimental,
+                    repo_url=self.k8s_config.jaseci_repo_url,
+                    branch=self.k8s_config.jaseci_branch,
+                    commit=self.k8s_config.jaseci_commit or ""
+                )
+            ] + init_containers;
         }
-        if self.deploy_context.init_containers {
-            spec["initContainers"] = list(self.deploy_context.init_containers);
+        if all_volumes {
+            spec["volumes"] = all_volumes;
+        }
+        if init_containers {
+            spec["initContainers"] = init_containers;
         }
         return spec;
     }

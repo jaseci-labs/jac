@@ -52,7 +52,7 @@ node Todo {
 
 def:pub add_todo(title: str) -> dict {
     todo = root ++> Todo(title=title);
-    return {"id": jid(todo[0]), "title": todo[0].title};
+    return {"id": jid(todo), "title": todo.title};
 }
 
 cl {

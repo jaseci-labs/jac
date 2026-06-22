@@ -127,14 +127,13 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
             );
             return node_.name.type;
         } else {
-            mod_type = self.get_type_of_module(import_node.from_loc);
-            if not isinstance(mod_type, types.ModuleType) {
+            if not isinstance(from_mod_type, types.ModuleType) {
                 # Module resolution failed; W1100 was emitted by
                 # get_type_of_module on the from-clause node.
                 node_.name.type = types.UnknownType();
                 return node_.name.type;
             }
-            if mod_type.is_external {
+            if from_mod_type.is_external {
                 # Foreign-source module (JS/TS/asset/etc.). The Jac type
                 # system cannot see inside it; treat the imported name as
                 # gradual Any to avoid false-positive "name not found".
@@ -146,14 +145,14 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                 return node_.name.type;
             }
             if sym := type_utils.lookup_symtab(
-                mod_type.symbol_table, node_.name.value, self.builtins_module
+                from_mod_type.symbol_table, node_.name.value, self.builtins_module
             ) {
                 return self._set_module_item_symbol_and_type(node_, sym);
             }
             # Fallback: follow star imports for re-exported symbols.
-            if isinstance(mod_type.symbol_table, uni.Module) {
+            if isinstance(from_mod_type.symbol_table, uni.Module) {
                 if sym := self._resolve_star_import_symbol(
-                    mod_type.symbol_table, node_.name.value
+                    from_mod_type.symbol_table, node_.name.value
                 ) {
                     return self._set_module_item_symbol_and_type(node_, sym);
                 }
@@ -492,15 +491,9 @@ impl TypeEvaluator._try_read_jir_cache(resolved_path: str) -> (uni.Module | None
         data = cache_path.read_bytes();
         reader = JirReader(_source_path=resolved_path);
         mod = reader.read_module(data);
-
-        # Re-attach impl modules after JIR load.
-        # JIR doesn't serialize impl_mod, so symbols defined in impl files
-        # (e.g., self.x = value in __init__) would be lost. Re-discover and
-        # re-attach impl files, then re-run DeclImplMatchPass to restore them.
-        if mod is not None and resolved_path.endswith('.jac') {
-            self._reattach_impl_modules(mod, resolved_path);
-        }
-
+        # Annex content is merged into the head module's own tree by
+        # JacAnnexPass, so it serializes/deserializes with the rest of the JIR —
+        # no post-load re-attachment of impl modules is needed.
         return mod;
     } except Exception {
         # A cache miss or a stale/incompatible entry is an expected, recoverable
@@ -518,35 +511,6 @@ impl TypeEvaluator._try_read_jir_cache(resolved_path: str) -> (uni.Module | None
             ;
         }
         return None;
-    }
-}
-
-"""Re-attach impl modules after JIR load to restore impl-defined symbols."""
-impl TypeEvaluator._reattach_impl_modules(mod: uni.Module, source_path: str) -> None {
-    import from jaclang.jac0core.bccache { discover_annex_files }
-    import from jaclang.jac0core.passes { DeclImplMatchPass }
-
-    # Skip annex files (they don't have their own annexes)
-    if source_path.endswith('.impl.jac')
-    or source_path.endswith('.test.jac')
-    or mod.annexable_by is not None {
-        return;
-    }
-
-    # Compile impl files fresh (impl symbol defn nodes aren't serialized in JIR)
-    for impl_path in discover_annex_files(source_path, '.impl.jac') {
-        impl_mod = self.program.compile(
-            impl_path, no_cgen=True, type_check=False, symtab_ir_only=True
-        );
-        if impl_mod is not None and impl_mod not in mod.impl_mod {
-            mod.impl_mod.append(impl_mod);
-            impl_mod.parent_scope = mod;
-        }
-    }
-
-    # Re-run DeclImplMatchPass to restore instance variable symbols (e.g., self.x in __init__)
-    if mod.impl_mod {
-        DeclImplMatchPass(ir_in=mod, prog=self.program);
     }
 }
 

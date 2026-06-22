@@ -21,6 +21,7 @@ import from jaclang.runtimelib.changeset {
     derive_dirty_fields,
     snapshot_field_hashes
 }
+import from jaclang.runtimelib.exceptions { WriteConflict }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.query_plan { QueryPlan }
 import from jaclang.runtimelib.typecache { get_field_types }
@@ -31,7 +32,7 @@ glob logger = logging.getLogger(__name__),
      SQLITE_DB_FORMAT_VERSION: int = 1;
 
 # =============================================================================
-# Memory — default async mirrors
+# Memory -- default async mirrors
 # =============================================================================
 # Every backend inherits these. Default behavior: offload the blocking sync
 # op to the default thread pool so the calling event loop stays responsive.
@@ -57,7 +58,7 @@ impl Memory.acommit(anchor: (Anchor | None) = None) -> None {
 }
 
 # =============================================================================
-# Memory — default pushdown protocol
+# Memory -- default pushdown protocol
 # =============================================================================
 # Default: backend declares no native pushdown. The planner sees an empty
 # capability set, skips `execute_plan` entirely, and uses the universal floor
@@ -69,7 +70,7 @@ impl Memory.capabilities -> set[str] {
 
 impl Memory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
     # Default-implementation backends never get called here: the planner
-    # gates on `capabilities()` first. If we get called anyway, log it —
+    # gates on `capabilities()` first. If we get called anyway, log it --
     # most likely cause is a backend that declared capabilities but forgot
     # to override execute_plan, which would silently return zero results.
     if self.capabilities() {
@@ -87,7 +88,7 @@ impl Memory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
 predicates and delegate to `execute_plan`. Returns empty when the backend
 doesn't declare the needed capabilities. Backends without native pushdown
 should keep using `query()` with a Python-side filter for type-based scans
-— this method exists specifically to make the pushdown path ergonomic."""
+-- this method exists specifically to make the pushdown path ergonomic."""
 impl Memory.query_by_type(
     arch_type_name: str, field_filter: (dict | None) = None
 ) -> Generator[Anchor, None, None] {
@@ -314,7 +315,7 @@ def _quarantine(
                             )
                         );
                     }
-                    # Batched delete — one round-trip instead of N.
+                    # Batched delete -- one round-trip instead of N.
                     placeholders = ','.join('?' * len(orphan_edge_ids));
                     conn.execute(
                         f"DELETE FROM anchors WHERE id IN ({placeholders})",
@@ -500,7 +501,7 @@ def _migrate_legacy_pickle_db(conn: sqlite3.Connection) {
             TypeError
         ) as e {
             # We intentionally don't store the raw bytes in quarantine for
-            # the legacy path — pickle bytes aren't useful to inspect and
+            # the legacy path -- pickle bytes aren't useful to inspect and
             # bloat the DB. Record the fact and the error instead.
             _quarantine(
                 conn,
@@ -532,7 +533,7 @@ def _migrate_legacy_pickle_db(conn: sqlite3.Connection) {
     conn.execute("DROP TABLE anchors_legacy_pickle");
     conn.commit();
     logger.warning(
-        f"SqliteMemory: legacy migration complete — "
+        f"SqliteMemory: legacy migration complete -- "
         f"{migrated} anchors migrated, {quarantined} quarantined."
     );
 }
@@ -681,7 +682,7 @@ impl SqliteMemory.postinit -> None {
     # Serializes access to the sqlite3 connection. The connection is opened
     # with check_same_thread=False so it can be reached from worker threads
     # via asyncio.to_thread (Memory.aget/acommit/etc). Python's sqlite3
-    # module is not thread-safe for a shared connection — concurrent
+    # module is not thread-safe for a shared connection -- concurrent
     # sync() calls collide on BEGIN IMMEDIATE ("cannot start a transaction
     # within a transaction") and cursor state touched from multiple
     # threads can raise InterfaceError. RLock so that a caller already
@@ -711,7 +712,7 @@ impl SqliteMemory._ensure_connection -> None {
     self.__conn__.execute("PRAGMA synchronous=NORMAL");
     # Detect schema state: new, legacy pickle, or empty.
     if _is_new_schema(self.__conn__) {
-        # Already migrated — ensure quarantine + meta + aliases tables exist
+        # Already migrated -- ensure quarantine + meta + aliases tables exist
         # in case the DB was opened by an older client before this version
         # (CREATE TABLE IF NOT EXISTS is idempotent).
         _create_new_schema(self.__conn__);
@@ -734,7 +735,7 @@ impl SqliteMemory.is_available -> bool {
 
 On deserialization failure, the row is moved to anchors_quarantine
 (never deleted outright) so data can be inspected and recovered later.
-Fingerprint drift is logged but does not block deserialization — the
+Fingerprint drift is logged but does not block deserialization -- the
 Serializer tolerates added/removed fields by design.
 """
 impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
@@ -766,7 +767,7 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
         }
         (anchor_type, arch_module, arch_type, fingerprint, data_json, fmt_version) = row;
         self.l3_fetch_count += 1;
-        # Fingerprint drift check — informational only. The serializer already
+        # Fingerprint drift check -- informational only. The serializer already
         # tolerates added/removed fields; type changes will surface as
         # deserialize exceptions below.
         if arch_module and arch_type and fingerprint {
@@ -843,7 +844,7 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
 
 """Store an anchor: cache it in the working set and write the row through.
 A direct backend put is a seeding/administrative write that bypasses the
-unit-of-work; the runtime never calls l3.put() — its graph mutations flow
+unit-of-work; the runtime never calls l3.put() -- its graph mutations flow
 through commit() -> apply() exclusively (one merge-aware transaction per
 unit of work; issues #5446, #6587)."""
 impl SqliteMemory.put(anchor: Anchor) -> None {
@@ -881,13 +882,13 @@ impl SqliteMemory.put(anchor: Anchor) -> None {
 
 """Drop an anchor from this store's working set. The database row is only
 removed by apply() executing a delete intent, in dependency order with the
-edge-list repairs that must precede it — never inline (issue #6587)."""
+edge-list repairs that must precede it -- never inline (issue #6587)."""
 impl SqliteMemory.delete(id: UUID) -> None {
     self.__mem__.pop(id, None);
 }
 
 """Close database connection. Flushing is the runtime's job (commit ->
-apply); close must not write — a closed-but-uncommitted unit of work is
+apply); close must not write -- a closed-but-uncommitted unit of work is
 discarded, which is what abort semantics require."""
 impl SqliteMemory.close -> None {
     if self.__conn__ {
@@ -928,7 +929,7 @@ impl SqliteMemory.query(
     }
 }
 
-"""Get all root anchors — the in-process working set plus rows on disk.
+"""Get all root anchors -- the in-process working set plus rows on disk.
 
 Scanning only `__mem__` would make a freshly-opened SqliteMemory (e.g. the L3
 tier of a new server request) report only the roots it had itself loaded,
@@ -1024,7 +1025,7 @@ def _canonical_json(val: object) -> str {
 A transactional backend: the staged order from the changeset is a no-op
 for crash-safety here (the transaction is all-or-nothing), but executing
 it keeps one code path with non-transactional backends. Access decisions
-were made by the runtime's collect pass — this method only executes
+were made by the runtime's collect pass -- this method only executes
 intents. Per-intent serialization failures are skipped (with their
 dependents poisoned) exactly like the legacy sync did for transient
 classes; transaction-level failures roll the whole unit back.
@@ -1062,6 +1063,18 @@ impl SqliteMemory.apply(changeset: ChangeSet) -> ApplyReport {
                     try {
                         self._apply_one(conn, intent);
                         apply_report.applied.append(intent.anchor.id);
+                    } except WriteConflict as wc {
+                        # Optimistic-concurrency miss: poison like any failed
+                        # write (skips dependents), but carry the typed conflict
+                        # so commit() can raise it and the boundary can replay.
+                        # DEBUG, not ERROR: a losing racer is expected.
+                        poisoned.add(intent.anchor.id);
+                        apply_report.failed[intent.anchor.id] = wc.message();
+                        apply_report.conflicts.append(wc);
+                        logger.debug(
+                            f"SqliteMemory.apply: write conflict on "
+                            f"{intent.anchor.id}: {wc.message()}"
+                        );
                     } except (AttributeError, ModuleNotFoundError) as se {
                         # Anchors that can't be serialized (e.g. transient
                         # test classes) are skipped, not fatal.
@@ -1077,7 +1090,20 @@ impl SqliteMemory.apply(changeset: ChangeSet) -> ApplyReport {
                     }
                 }
             }
-            conn.commit();
+            if apply_report.conflicts {
+                # OCC: a read-gated CAS missed. The loser's child/edge were
+                # written earlier in THIS transaction (NODE_CREATE/EDGE_CREATE
+                # stage before the EDGE_LIST_DELTA that conflicted), so a plain
+                # commit would strand them as an orphan. Roll the whole unit
+                # back instead: the request boundary replays (retry) or fails
+                # (fail) -- either way the walker is one atomic transaction, and
+                # a lost race leaves the store exactly as it was. `applied` is
+                # cleared so _post_apply re-baselines nothing.
+                conn.rollback();
+                apply_report.applied = [];
+            } else {
+                conn.commit();
+            }
         } except Exception as te {
             conn.rollback();
             apply_report.applied = [];
@@ -1168,6 +1194,19 @@ impl SqliteMemory._merge_write(conn: sqlite3.Connection, intent: WriteIntent) ->
             if delta is not None {
                 edges_added = set(delta[0]);
                 edges_removed = set(delta[1]);
+                # Read-set OCC (parity with MongoBackend): conflict only if this
+                # request READ a traversal from this node (cas_version set) and
+                # its stored version moved since. A blind append (cas_version
+                # None) takes no dependency and merges lock-free (#5644).
+                if (edges_added or edges_removed)
+                and intent.cas_version is not None
+                and stored_anchor.version != intent.cas_version {
+                    raise WriteConflict(
+                        anchor_id=anchor.id,
+                        expected_version=intent.cas_version,
+                        actual_version=stored_anchor.version
+                    );
+                }
                 stored_set = set(e.id for e in stored_anchor.edges);
                 merged_ids = (stored_set | edges_added) - edges_removed;
                 edge_by_id = {e.id: e for e in stored_anchor.edges};
@@ -1177,6 +1216,14 @@ impl SqliteMemory._merge_write(conn: sqlite3.Connection, intent: WriteIntent) ->
                     for eid in merged_ids
                     if eid in edge_by_id
                 ];
+                if edges_added or edges_removed {
+                    # Advance from the STORED version (monotonic regardless of
+                    # who wrote, so a lock-free blind append still invalidates a
+                    # concurrent reader's CAS); re-baseline the in-memory anchor.
+                    new_version = stored_anchor.version + 1;
+                    stored_anchor.version = new_version;
+                    anchor.version = new_version;
+                }
             } else {
                 stored_anchor.edges = anchor.edges;
             }
@@ -1187,7 +1234,7 @@ impl SqliteMemory._merge_write(conn: sqlite3.Connection, intent: WriteIntent) ->
             changed = True;
         }
         # Topology index is a derived adjacency cache on root NodeAnchors,
-        # updated by edges anywhere in the subtree — not an archetype field,
+        # updated by edges anywhere in the subtree -- not an archetype field,
         # so the edge merge and field merge don't catch it.
         if (
             isinstance(stored_anchor, NodeAnchor)
@@ -1249,7 +1296,7 @@ impl SqliteMemory.get_mem -> dict[UUID, Anchor] {
     return self.__mem__;
 }
 
-"""Commit — a backend has no unit of work of its own; flushing happens via
+"""Commit -- a backend has no unit of work of its own; flushing happens via
 apply() driven by the runtime (TieredMemory.commit)."""
 impl SqliteMemory.commit(anchor: (Anchor | None) = None) -> None { }
 
@@ -1576,7 +1623,7 @@ impl SqliteMemory.quarantine_dangling(
 
 
 """True if `id` is quarantined under a recoverable reason. DANGLING_REF rows
-are excluded — they are the read-path healer's own forensic records, not
+are excluded -- they are the read-path healer's own forensic records, not
 recoverable state, so a genuine dangler keeps being pruned on each pass
 instead of being mistaken for a schema-drift quarantine."""
 impl SqliteMemory.is_recoverable_quarantine(id: UUID) -> bool {
@@ -1612,6 +1659,10 @@ impl SqliteMemory.fsck(repair: bool = False) -> dict {
         'dangling_edge_node': [],
         'orphan_edges': [],
         'orphan_nodes': [],
+        # Edges cited by exactly one of their two (existing) endpoints -- the
+        # optimistic-concurrency orphan signature (a loser's child + edge that
+        # the root's edge-list CAS refused). Each entry: (edge, citing, rejecting).
+        'half_linked_edges': [],
         'repaired': repair,
         'repaired_counts': {'pruned': 0, 'quarantined': 0, 'collected': 0}
     };
@@ -1620,14 +1671,14 @@ impl SqliteMemory.fsck(repair: bool = False) -> dict {
             self._ensure_connection();
         }
         if self.__conn__ is None {
-            return fsck_report;  # No DB on disk yet — nothing to check.
+            return fsck_report;  # No DB on disk yet -- nothing to check.
         }
         conn = self.__conn__;
         # --- 1. Read the graph's topology metadata cheaply. ---
         node_ids: set[str] = set();
         edge_ids: set[str] = set();
         node_edges: dict[str, list[str]] = {};
-        edge_endpoints: dict[str, tuple] = {};
+        edge_endpoints: dict[str, tuple[(str | None), (str | None)]] = {};
         node_is_root: dict[str, bool] = {};
         for (rid, rtype, ratype, rdata) in conn.execute(
             "SELECT id, type, arch_type, data FROM anchors"
@@ -1662,26 +1713,79 @@ impl SqliteMemory.fsck(repair: bool = False) -> dict {
             }
         }
         referenced_nodes: set[str] = set();
+        broken_edge_ids: set[str] = set();  # cite a missing node (typed mirror)
         for (eid, endpoints) in edge_endpoints.items() {
             for endp in endpoints {
                 if endp is not None {
                     referenced_nodes.add(endp);
                     if endp not in node_ids {
                         fsck_report['dangling_edge_node'].append((eid, endp));
+                        broken_edge_ids.add(eid);
                     }
                 }
             }
         }
+        orphan_edge_ids: set[str] = set();  # cited by nobody (typed mirror)
         for eid in edge_ids {
             if eid not in cited_edges {
                 fsck_report['orphan_edges'].append(eid);
+                orphan_edge_ids.add(eid);
+            }
+        }
+        # Half-linked edge (OCC orphan signature): both endpoints exist, but
+        # only one cites the edge. The non-citing endpoint authoritatively
+        # rejected the link -- e.g. an optimistic-concurrency loser whose root
+        # edge-list CAS was refused after its child + edge docs were already
+        # written. A symmetric, fully-cited edge is healthy; an edge cited by
+        # neither endpoint is already an orphan_edge above.
+        half_linked_ids: set[str] = set();
+        for (eid, ep) in edge_endpoints.items() {
+            if (
+                ep[0] is None
+                or ep[1] is None
+                or ep[0] not in node_ids
+                or ep[1] not in node_ids
+            ) {
+                continue;  # missing endpoint -> dangling_edge_node, handled
+            }
+            src = cast(str, ep[0]);
+            tgt = cast(str, ep[1]);
+            src_cites = src in node_edges and eid in node_edges[src];
+            tgt_cites = tgt in node_edges and eid in node_edges[tgt];
+            if src_cites != tgt_cites {
+                (citing, rejecting) = (src, tgt) if src_cites else (tgt, src);
+                fsck_report['half_linked_edges'].append((eid, citing, rejecting));
+                half_linked_ids.add(eid);
+            }
+        }
+        # Edges collected on repair (orphan + half-linked + endpoint-missing):
+        # a node left edgeless once these go, and unreferenced by any SURVIVING
+        # edge, is itself an orphan to collect. This is how an OCC loser's
+        # stranded child is reclaimed once its half-linked edge is removed.
+        collectible_edges: set[str] = (
+            orphan_edge_ids | half_linked_ids | broken_edge_ids
+        );
+        surviving_referenced: set[str] = set();
+        for (eid, ep) in edge_endpoints.items() {
+            if eid not in collectible_edges {
+                if ep[0] is not None {
+                    surviving_referenced.add(ep[0]);
+                }
+                if ep[1] is not None {
+                    surviving_referenced.add(ep[1]);
+                }
             }
         }
         for nid in node_ids {
+            remaining = [
+                e
+                for e in node_edges.get(nid, [])
+                if e not in collectible_edges
+            ];
             if (
                 not node_is_root.get(nid)
-                and not node_edges.get(nid)
-                and nid not in referenced_nodes
+                and not remaining
+                and nid not in surviving_referenced
             ) {
                 fsck_report['orphan_nodes'].append(nid);
             }
@@ -1706,9 +1810,11 @@ impl SqliteMemory.fsck(repair: bool = False) -> dict {
                 counts['quarantined'] += 1;
                 broken_edges.add(eid);
             }
-            # Broken (cites a missing node) + orphan edges are collected; first
-            # strip their ids from any node that still cites them.
-            collect_edges: set[str] = broken_edges | set(fsck_report['orphan_edges']);
+            # Broken (cites a missing node) + orphan + half-linked edges are
+            # collected; first strip their ids from any node that still cites
+            # them (for half-linked, that prunes the citing endpoint's stale
+            # reference, stranding its child for the orphan-node collection).
+            collect_edges: set[str] = broken_edges | orphan_edge_ids | half_linked_ids;
             for (nid, eids) in node_edges.items() {
                 also = set(eids) & collect_edges;
                 if also {
@@ -1816,7 +1922,7 @@ impl TieredMemory.postinit -> None {
     # Initialize L3 persistence if base_path provided
     if self.base_path {
         # Use project.db for projects, filename.db for standalone apps.
-        # `target_path` is the per-context app identity — without it,
+        # `target_path` is the per-context app identity -- without it,
         # `get_db_path` would fall back to `Jac.get_full_target_path()`
         # (the bootstrap seed), which can leak across in-process clients
         # (see context.impl.jac for the rationale).
@@ -1886,7 +1992,7 @@ impl TieredMemory.put(anchor: Anchor) -> None {
     }
 }
 
-"""Enumerate roots across every tier — the basis for the `allroots()` builtin.
+"""Enumerate roots across every tier -- the basis for the `allroots()` builtin.
 
 L1 (this request's working set) holds roots created or mutated in-flight; L3
 (the shared persistent store) holds every root ever committed by any
@@ -1894,7 +2000,7 @@ request/user. Without merging L3 in, `allroots()` would see only the caller's
 own root and every cross-user query would silently degrade to single-user.
 
 L2 is intentionally skipped: it is a partial cache whose entries are always
-also present in L1 or L3. Results are de-duplicated by archetype identity —
+also present in L1 or L3. Results are de-duplicated by archetype identity --
 when a root is resident in more than one tier every tier hands back the same
 anchor object, so the L1 copy (with any uncommitted mutations) wins.
 """
@@ -1918,7 +2024,7 @@ impl TieredMemory.get_roots -> Generator[Root, None, None] {
 
 """Delete becomes an intent, not an I/O call. The L3 row is removed at
 commit, in dependency order with the edge-list repairs that must precede
-it — never inline. An inline delete opens a crash window spanning the rest
+it -- never inline. An inline delete opens a crash window spanning the rest
 of the request in which the persisted graph holds references to documents
 that no longer exist (issue #6587), and it makes `del` the one mutation
 that abandoning a failed request cannot undo."""
@@ -1943,7 +2049,7 @@ impl TieredMemory.delete(id: UUID) -> None {
     }
 }
 
-"""Close all tiers. Pending work is committed first — this is the backstop
+"""Close all tiers. Pending work is committed first -- this is the backstop
 that persists CLI runs (`jac run` flows end at close, not at an explicit
 commit). A failed request must abort() before close to discard its work."""
 impl TieredMemory.close -> None {
@@ -2007,13 +2113,18 @@ impl TieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     apply_report = self.l3.apply(self.changes);
     self._post_apply(apply_report);
     self.changes.clear();
+    # Surface optimistic-concurrency conflicts after re-baselining applied
+    # intents. The request boundary converges on this (abort + replay).
+    if (conflict := apply_report.primary_conflict()) {
+        raise conflict;
+    }
 }
 
 """Collect the working set's dirtiness into the unit of work. This is the
 single home of the WHAT-changed decision logic (whole-anchor hash gate,
 edge deltas, per-field dirtiness) and of access control: creates and field
 writes need WRITE access, edge-list changes need CONNECT access. Backends
-never decide — they execute intents."""
+never decide -- they execute intents."""
 impl TieredMemory._collect_into(changes: ChangeSet) -> None {
     import from jaclang { JacRuntimeInterface as Jac }
     for (id, anchor) in list(self.__mem__.items()) {
@@ -2056,6 +2167,16 @@ impl TieredMemory._collect_into(changes: ChangeSet) -> None {
                 if (added or removed) and Jac.check_connect_access(anchor) {
                     changes.record_edge_delta(anchor, added, removed);
                     recorded = True;
+                    # Read-set OCC: if this request read an out-traversal from
+                    # this node, the backend CASes on the version it observed;
+                    # if it never read it (a blind append), cas_version stays
+                    # None and the edge merges lock-free (#5644).
+                    edge_intent = changes.intents.get(id);
+                    if edge_intent is not None {
+                        edge_intent.cas_version = Jac.get_context().read_versions.get(
+                            id
+                        );
+                    }
                 }
             }
         }
@@ -2072,7 +2193,7 @@ impl TieredMemory._collect_into(changes: ChangeSet) -> None {
             # derive_dirty_fields() is blind: "no dirty fields" cannot be
             # trusted (e.g. an anchor loaded through a tier that didn't
             # snapshot). Put every field on the intent so a mutation hiding
-            # behind the edge delta isn't silently dropped — record_update
+            # behind the edge delta isn't silently dropped -- record_update
             # keeps the merge-aware EDGE_LIST_DELTA write (a record_create
             # upgrade would move this anchor to stage 0, ahead of the edge
             # docs its new edge list cites).
@@ -2095,7 +2216,20 @@ impl TieredMemory._collect_into(changes: ChangeSet) -> None {
 the next commit sees these anchors as clean: whole-anchor hash, per-field
 hash snapshot, and the edge-list baseline that feeds edge_delta()."""
 impl TieredMemory._post_apply(apply_report: ApplyReport) -> None {
+    import from jaclang { JacRuntimeInterface as Jac }
     applied = set(apply_report.applied);
+    # Read-set OCC: an applied edge-list change advanced this node's version, so
+    # the request now *knows* it at that new version. Refresh the snapshot it
+    # would CAS on, so a SECOND committed edge change in the same request does
+    # not conflict with the request's OWN prior commit. Only nodes already in
+    # the read-set are refreshed -- a blind append stays untracked and keeps
+    # merging lock-free.
+    read_versions: dict = {};
+    try {
+        read_versions = Jac.get_context().read_versions;
+    } except Exception {
+        ;
+    }
     for intent in self.changes.intents.values() {
         if intent.is_delete() or intent.anchor.id not in applied {
             continue;
@@ -2108,6 +2242,9 @@ impl TieredMemory._post_apply(apply_report: ApplyReport) -> None {
                 anchor.__dict__['_initial_edge_ids'] = frozenset(
                     e.id for e in anchor.edges
                 );
+                if anchor.id in read_versions {
+                    read_versions[anchor.id] = anchor.version;
+                }
             }
         } except Exception as e {
             logger.debug(f"post-apply re-baseline failed for {anchor.id}: {e}");
@@ -2152,7 +2289,7 @@ DANGLING_REF for operator visibility, prune the stale citation in memory,
 AND stage the repair as a normal EDGE_LIST_DELTA intent so it flushes through
 the same commit -> apply() path as any edge mutation. The repair is integrity
 maintenance, not a user mutation, so it is staged directly rather than gated
-on the walker's connect access — otherwise a read-only request (the exact
+on the walker's connect access -- otherwise a read-only request (the exact
 #6587 dashboard load) could never self-heal. The forensic record is written
 immediately so the dangler is visible even if the request later aborts; the
 edge-list repair, being an intent, is discarded on abort and simply re-applied
@@ -2179,7 +2316,7 @@ impl TieredMemory.quarantine_ref(referrer: (Anchor | None), stub: Anchor) -> Non
         ];
         if len(nanchor.edges) != before {
             if nanchor.persistent {
-                # Stage the repair as a normal EDGE_LIST_DELTA intent — it then
+                # Stage the repair as a normal EDGE_LIST_DELTA intent -- it then
                 # flushes through commit -> apply() like any edge mutation.
                 try {
                     self.changes.record_edge_delta(
@@ -2214,7 +2351,7 @@ impl TieredMemory.is_recoverable_quarantine(id: UUID) -> bool {
     }
 }
 
-"""TieredMemory capabilities mirror L3 — that's where pushdown lives. L1/L2
+"""TieredMemory capabilities mirror L3 -- that's where pushdown lives. L1/L2
 exist for cache hits, not for query planning."""
 impl TieredMemory.capabilities -> set[str] {
     if self.l3 is not None {

@@ -1,10 +1,12 @@
 """Annex module loading pass for the Jac compiler.
 
-This pass handles the discovery, loading, and attachment of annex modules to
-their base modules.
+This pass handles the discovery, loading, and merging of annex and variant
+modules into their base (head) module.
+
 Annex modules are specialized extension files (.impl.jac, .test.jac) that
-provide
-implementations or tests for a base module.
+provide implementations or tests for a base module. Variant modules
+(.sv.jac, .cl.jac, .na.jac) provide deployment-specific declarations for the
+same logical module.
 
 Annex files are discovered from:
 - Same directory: foo.impl.jac for foo.jac
@@ -19,13 +21,30 @@ import from jaclang.jac0core.bccache { discover_annex_files, discover_variant_fi
 import from jaclang.jac0core.passes.transform { Transform }
 import type from jaclang.jac0core.program { JacProgram }
 
-"""Handles loading and attaching of annex files (.impl.jac, .test.jac)."""
+"""Handles merging of annex (.impl.jac, .test.jac) and variant
+(.sv.jac, .cl.jac, .na.jac) files into the head module."""
 class JacAnnexPass(Transform[uni.Module, uni.Module]) {
-    """Load and attach annex modules to the given module."""
+    """Load and merge annex modules into the given module."""
     def transform(self: JacAnnexPass, ir_in: uni.Module) -> uni.Module;
 
-    """Parse and attach annex modules to the node."""
+    """Discover and merge annex and variant files into the head module."""
     def _load_annexes(
         self: JacAnnexPass, jac_program: JacProgram, nd: uni.Module, mod_path: str
+    ) -> None;
+
+    """Discover and merge the .impl.jac/.test.jac annexes that belong to
+    `base_path`, coercing each to the deployment context of `ctx_path`."""
+    def _merge_annex_group(
+        self: JacAnnexPass,
+        nd: uni.Module,
+        base_path: str,
+        ctx_path: str,
+        seen: set[str]
+    ) -> None;
+
+    """Parse one annex/variant file and splice its body into the head module,
+    coercing it to the deployment context implied by `ctx_path`."""
+    def _merge_annex(
+        self: JacAnnexPass, nd: uni.Module, path: str, ctx_path: str, seen: set[str]
     ) -> None;
 }

@@ -2,6 +2,7 @@
 
 import os;
 import from jaclang.cli.console { console }
+import from jaclang.jac0core.ext_registry { base_stem, is_jac, is_python }
 
 
 """Create JacRuntime and return the base path, module name, and runtime state.
@@ -13,24 +14,15 @@ def proc_file(filename: str) -> tuple {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     (base, mod) = os.path.split(filename);
     base = base or './';
-    # Compound codespace suffixes (.na.jac / .sv.jac / .cl.jac) must collapse
-    # to the bare module stem; stripping only the trailing `.jac` would leave
-    # e.g. `main.sv`, which the meta-importer misreads as the package `main.sv`
-    # ("No module named 'main.sv'"). See issue #6696.
-    if (
-        filename.endswith('.na.jac')
-        or filename.endswith('.sv.jac')
-        or filename.endswith('.cl.jac')
-    ) {
-        mod = mod[:-7];
-    } elif filename.endswith('.jac') {
-        mod = mod[:-4];
-    } elif filename.endswith('.py') {
-        mod = mod[:-3];
-    } else {
+    if not (is_jac(filename) or is_python(filename)) {
         console.error('Not a valid file!\nOnly supports `.jac` and `.py`');
         `exit(1);
     }
+    # Collapse the compound codespace suffix (.na.jac / .sv.jac / .cl.jac) to
+    # the bare module stem via the shared longest-suffix matcher; stripping only
+    # the trailing `.jac` would leave e.g. `main.sv`, which the meta-importer
+    # misreads as the package `main.sv` ("No module named 'main.sv'"). #6696.
+    mod = base_stem(mod);
     # Only set base path if not already set (allows tests to override)
     if not Jac.get_base_path_dir() {
         Jac.set_base_path(base);

@@ -9,7 +9,50 @@ on:
       - main
   workflow_dispatch:
 
+# Cancel superseded PR runs; never cancel a run for a commit on main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Cheap path filter on a free GitHub-hosted runner. Used ONLY to skip the
+  # NON-required jobs on PRs that can't affect them. The required jobs
+  # (test-core-compiler, test-core-runtime, test-client) are never gated, so the
+  # merge gate is unchanged. These outputs are only consulted for pull_request
+  # events - each gated job's `if` forces a run on push/dispatch, so main always
+  # keeps full coverage regardless of the filter result. `core` (jac/**) is the
+  # compiler+runtime, so it is folded into every downstream gate.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      scale: ${{ steps.filter.outputs.scale }}
+      byllm: ${{ steps.filter.outputs.byllm }}
+      mcp: ${{ steps.filter.outputs.mcp }}
+      docs: ${{ steps.filter.outputs.docs }}
+      desktop: ${{ steps.filter.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            # Editing this workflow re-runs the full gated suite so CI changes
+            # are validated end-to-end (folded into `core`, the broadest gate).
+            core:
+              - 'jac/**'
+              - '.github/workflows/test-jaseci.yml'
+            scale:
+              - 'jac-scale/**'
+            byllm:
+              - 'jac-byllm/**'
+            mcp:
+              - 'jac-mcp/**'
+            docs:
+              - 'docs/**'
+            desktop:
+              - 'jac-desktop/**'
+
   test-core-compiler:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
@@ -64,6 +107,48 @@ jobs:
     - name: Run runtime + langserve + language tests
       run: pytest -x jac -n auto --ignore=jac/tests/compiler
 
+  test-solid-jsdom:
+    # Runtime exec of the Solid framework backend: compile a Solid component +
+    # the @jac/runtime shim to JS and mount it in jsdom under node, asserting
+    # render + reactivity. Needs a real `bun install` (jsdom + solid-js), so the
+    # test self-skips unless JAC_CLIENT_INTEGRATION is set -- we set it here and
+    # run just that file in its own lean job.
+    needs: changes
+    # Not a required check. Skip on PRs that don't touch jac core; always run on push/dispatch.
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-xdist
+        pip install watchdog
+
+    - name: Run Solid jsdom runtime test
+      env:
+        JAC_CLIENT_INTEGRATION: "1"
+      run: pytest -x -vv jac/tests/runtimelib/test_solid_jsdom.jac
+
   test-client:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
@@ -89,8 +174,6 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -e jac
-        jac install -e jac-client
-        jac install -e jac-desktop
         pip install pytest
         pip install pytest-xdist
         pip install playwright
@@ -102,18 +185,14 @@ jobs:
       run: |
         echo "TEST_ENV=true" >> $GITHUB_ENV
 
-    - name: Run all client tests (including E2E in parallel)
-      # The dependency-free binding test runs in its own lean job
-      # (test-desktop-native), so it is excluded here along with the native
-      # binding sources; the remaining jac-desktop tests are plain unit tests.
-      run: pytest -x jac-client jac-desktop --ignore=jac-desktop/jac_desktop/native --ignore=jac-desktop/jac_desktop/tests/test_binding.jac -n auto
-
-    - name: Re-run auth roundtrip e2e against jac-scale backend
-      run: |
-        jac install -e jac-scale
-        pytest -x -vv jac-client/jac_client/tests/test_e2e.jac -k "jacSignup"
+    - name: Run all client tests
+      run: pytest -x jac/tests/runtimelib/client -n auto
 
   test-packages-and-docs:
+    needs: changes
+    # Not a required check. Tests jac-byllm + builds/validates docs. Skip on PRs
+    # that touch none of jac core, jac-byllm, docs; always run on push/dispatch.
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.byllm == 'true' || needs.changes.outputs.docs == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -165,6 +244,9 @@ jobs:
     # linked artifacts (DT_NEEDED / $ORIGIN) and run handler logic through the sv
     # pathway - NO WebKitGTK, no libpython-dev, no display/Xvfb. The webview /
     # embedded-Python *runtime* behavior is covered by a separate, gated tier.
+    needs: changes
+    # Not a required check. Skip on PRs that touch neither jac core nor jac-desktop; always run on push/dispatch.
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.desktop == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -185,9 +267,12 @@ jobs:
         pip install pytest-xdist
 
     - name: Run dependency-free desktop tests
-      run: pytest -x jac-desktop/jac_desktop/tests/test_binding.jac -n auto
+      run: pytest -x jac/tests/runtimelib/client/test_desktop_binding.jac -n auto
 
   test-mcp:
+    needs: changes
+    # Not a required check. Skip on PRs that touch neither jac core nor jac-mcp; always run on push/dispatch.
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.mcp == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -212,7 +297,14 @@ jobs:
       run: pytest -x jac-mcp -n auto
 
   test-scale:
+    needs: changes
+    # Not a required check. Skip on PRs that touch neither jac core nor jac-scale; always run on push/dispatch.
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [server, data, microservices, deploy, misc]
     steps:
     - name: Check out code
       uses: actions/checkout@v5
@@ -227,96 +319,38 @@ jobs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Install base jac-scale and test deps
+    - name: Install jac-scale with all test extras
       run: |
         python -m pip install --upgrade pip
         pip install -e jac
-        jac install -e jac-scale
-        jac install -e jac-client
+        jac install -e jac-scale --extras test
         pip install pytest pytest-asyncio
         pip install requests watchdog websockets
 
-    - name: Run Backend tests
+    - name: Run ${{ matrix.group }} tests
       run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_serve.jac
-
-    - name: Run cl test-runner full-stack test (jac-scale server)
-      run: |
-        pytest -x -vv jac-scale/jac_scale/tests/test_cl_test_runner.jac
-
-    - name: Run middleware async root tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_middleware_async_root.jac
-
-    - name: Run SSO tests
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_sso.jac
-
-    - name: Run admin API tests
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_admin.jac
-
-    - name: Run RestSpec tests
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_restspec.jac
-
-    - name: Install jac-scale[aws] and moto
-      run: |
-        jac install -e jac-scale --extras aws
-        pip install "moto[s3]>=5.0.0"
-
-    - name: Run Storage tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_s3_storage.jac
-
-    - name: Run Microservice interop tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_microservice.jac
-
-    - name: Run jac-client examples
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_examples.jac
-
-    - name: Install jac-scale[data] extras
-      run: |
-        jac install -e jac-scale --extras data
-        pip install testcontainers
-
-    - name: Run Webhook tests (without and with MongoDB)
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_webhook.jac
-
-    - name: Run Memory Hierarchy tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.jac
-
-    - name: Run scalar-clobber cross-process regression tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_scalar_clobber_cross_process.jac
-
-    - name: Run MongoDB user manager tests
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_mongo_user_manager.jac
-
-    - name: Run MongoDB Layer 1+2+3 parity tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_mongo_layer123.jac
-
-    - name: Run Serializer tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac
-
-    - name: Install jac-scale[scheduler] extras
-      run: |
-        jac install -e jac-scale --extras scheduler
-
-    - name: Run Scheduling tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
+        set +e
+        failed=""
+        # One pytest process per file: the suite relies on per-file isolation.
+        for f in jac-scale/jac_scale/tests/${{ matrix.group }}/test_*.jac; do
+          echo "::group::$f"
+          pytest -vv -s "$f" || failed="$failed $f"
+          echo "::endgroup::"
+        done
+        if [ -n "$failed" ]; then
+          echo "::error::Failed ${{ matrix.group }} test files:$failed"
+          exit 1
+        fi
 
   test-scale-k8s:
-    # Runs by default; add the 'skip-k8s' label to a PR to skip it.
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
+    needs: changes
+    # Not a required check. Skips on PRs that touch neither jac core nor jac-scale,
+    # or that carry the 'skip-k8s' label; always runs on push/dispatch.
+    if: >-
+      (github.event_name != 'pull_request' ||
+       needs.changes.outputs.core == 'true' ||
+       needs.changes.outputs.scale == 'true') &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-k8s')
     runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
@@ -338,7 +372,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e jac
           jac install -e jac-scale --extras deploy
-          jac install -e jac-client
           pip install pytest
           pip install pytest-xdist
           pip install pytest-asyncio
@@ -377,6 +410,11 @@ jobs:
           pytest  -s -x "jac-scale/jac_scale/tests/test_deploy_k8s.jac::early exit"
 
   test-pypi-build:
+    needs: changes
+    # Not a required check, and the heaviest job (builds all wheels + jacpack
+    # smoke servers). Skip on PRs that touch none of jac core, jac-scale,
+    # jac-byllm; always run on push/dispatch so main stays packaging-clean.
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.scale == 'true' || needs.changes.outputs.byllm == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - name: Check out code
@@ -408,35 +446,30 @@ jobs:
     - name: Precompile all packages
       run: |
         jac run jac/jaclang/utils/precompile_bytecode.jac ./jac
-        jac run jac/jaclang/utils/precompile_bytecode.jac ./jac-client
         jac run jac/jaclang/utils/precompile_bytecode.jac ./jac-scale
         jac run jac/jaclang/utils/precompile_bytecode.jac ./jac-byllm
 
     - name: Pre-build admin dashboard UI
       run: |
-        jac install -e jac-client
         jac install -e jac-scale --extras all
         cd jac-scale && jac run scripts/build_admin_ui.jac
 
     - name: Uninstall editable packages
       run: |
-        pip uninstall -y jac-scale jac-client
+        pip uninstall -y jac-scale
 
     - name: Clean egg-info to simulate fresh build (like publish-release)
       run: |
         rm -rf jac/jaclang.egg-info
-        rm -rf jac-client/*.egg-info jac-client/jac_client/*.egg-info
         rm -rf jac-scale/*.egg-info jac-scale/jac_scale/*.egg-info
         rm -rf jac-byllm/*.egg-info
 
     - name: Build and install packages
       run: |
         python -m build jac --wheel
-        (cd jac-client && jac bundle)
         (cd jac-scale && jac bundle)
         (cd jac-byllm && jac bundle)
         pip install jac/dist/jaclang-*.whl
-        pip install jac-client/dist/jac_client-*.whl
         SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && pip install "${SCALE_WHL}[all]"
         pip install jac-byllm/dist/byllm-*.whl
         pip install pytest
@@ -456,7 +489,7 @@ jobs:
     - name: Run tests on built packages
       run: |
         jac check jac/tests/compiler/passes/main/fixtures/checker/checker_type_ref.jac
-        pytest "jac-client/jac_client/tests/test_cli.jac::create jac app"
+        pytest "jac/tests/runtimelib/client/test_cli.jac::create jac app"
         pytest jac-byllm/tests/test_byllm.jac
 
     # ========== jac-gpt test ==========

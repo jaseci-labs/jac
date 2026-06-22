@@ -649,8 +649,15 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
         }
     }
 
-    # ImplDef body is not in kid list, traverse it explicitly.
-    if isinstance(nd.body, uni.ImplDef) {
+    # An impl living in a *different* module (cross-module / legacy detached
+    # impl) is not reached by this module's natural traversal, so visit it
+    # explicitly. A same-module impl (inline or merged from an annex) is already
+    # a kid of this module and is visited once by natural traversal — visiting
+    # it again here would double every diagnostic in its body.
+    if (
+        isinstance(nd.body, uni.ImplDef)
+        and nd.body.find_parent_of_type(uni.Module) is not self.ir_in
+    ) {
         self.traverse(nd.body);
     }
     # Warn on bare generic return type annotations (e.g. def f -> list).
@@ -897,6 +904,33 @@ impl TypeCheckPass._check_bare_generic(
     }
 }
 
+"""Flag E1119 on lambda params left Unknown once the module is fully typed.
+
+Runs in after_pass, not exit_lambda_expr: a param is seeded by the enclosing
+call/assignment, whose handler runs after the lambda's own, so the settled
+type is only trustworthy once the whole module is typed."""
+impl TypeCheckPass._check_unresolved_lambda_params(self: TypeCheckPass) -> None {
+    import from jaclang.compiler.type_system { types }
+    if self.ir_in is None {
+        return;
+    }
+    for lam in self.ir_in.get_all_sub_nodes(uni.LambdaExpr) {
+        if lam.signature is None {
+            continue;
+        }
+        for param in lam.signature.get_parameters() {
+            if param.type_tag is not None {
+                continue;
+            }
+            # Context-seeding writes the inferred type onto the param's Name.
+            resolved = param.name.type;
+            if resolved is None or isinstance(resolved, types.UnknownType) {
+                self.emit(E1119, node_override=param.name, name=param.name.value);
+            }
+        }
+    }
+}
+
 """Emit W1037 for explicit `any` type annotations.
 
 `any` is the gradual-typing escape hatch: annotating something `any`
@@ -964,7 +998,10 @@ impl TypeCheckPass.exit_type_alias(self: TypeCheckPass, nd: uni.TypeAlias) -> No
 """Exit an archetype node - traverse ImplDef body if present."""
 impl TypeCheckPass.exit_archetype(self: TypeCheckPass, nd: uni.Archetype) -> None {
     self.evaluator.get_type_of_class(nd);
-    if isinstance(nd.body, uni.ImplDef) {
+    if (
+        isinstance(nd.body, uni.ImplDef)
+        and nd.body.find_parent_of_type(uni.Module) is not self.ir_in
+    ) {
         self.traverse(nd.body);
     }
 }
@@ -980,7 +1017,10 @@ impl TypeCheckPass.exit_enum(self: TypeCheckPass, nd: uni.Enum) -> None {
             }
         }
     }
-    if isinstance(nd.body, uni.ImplDef) {
+    if (
+        isinstance(nd.body, uni.ImplDef)
+        and nd.body.find_parent_of_type(uni.Module) is not self.ir_in
+    ) {
         self.traverse(nd.body);
     }
 }
@@ -1027,9 +1067,10 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     # suppressed mode (diagnostics stashed, never replayed).
     emit_full = (not self.inference_only) or bool(self.ir_in?._type_check_requested);
     if not emit_full {
+        import from jaclang.jac0core.ext_registry { is_native_module }
         mod = self.ir_in;
         mp = mod.loc.mod_path if mod?.loc else '';
-        is_native_mod = bool(mp) and mp.endswith('.na.jac');
+        is_native_mod = bool(mp) and is_native_module(mp);
         if not is_native_mod and mod?.body {
             for _stmt in mod.body {
                 if isinstance(_stmt, uni.NativeBlock) {
@@ -1082,12 +1123,12 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
 }
 
 impl TypeCheckPass.after_pass(self: TypeCheckPass) -> None {
-    # Full-diagnostic runs replay diagnostics deferred by earlier suppressed
-    # inference runs on this module: evaluator memoization (Expr.type cache)
-    # means this run could not re-derive them live. Live re-emissions during
-    # this run already evicted their stash entries in emit(), so whatever
-    # remains here is exactly the cache-swallowed remainder.
+    # Full-diagnostic-only. Lambda check first, so a live E1119 evicts any
+    # stashed copy before the replay loop reaches it.
     if getattr(self, '_emit_diagnostics', True) {
+        self._check_unresolved_lambda_params();
+        # Replay diagnostics deferred by earlier suppressed inference runs:
+        # Expr.type memoization means this run couldn't re-derive them live.
         stash = self.ir_in?._deferred_type_diags;
         if stash {
             for (diag, node_override, related, help_text, kwargs) in list(

@@ -1,3 +1,37 @@
+"""Implementation of ECMAScript AST generation pass."""
+
+import from jaclang.compiler.passes.ecmascript.reactive_intent {
+    StateField,
+    RefField,
+    StateUpdate,
+    Effect,
+    AsyncBoundary
+}
+
+"""Lazy-resolve the active backend from config to avoid circular imports
+during compiler self-bootstrap (registry.jac must not be imported while
+it itself is being compiled)."""
+impl EsastGenPass._ensure_backend -> None {
+    if self.backend is None {
+        import from jaclang.compiler.passes.ecmascript.backends.registry {
+            resolve_active_backend
+        }
+        try {
+            self.backend = resolve_active_backend();
+        } except ValueError {
+            import from jaclang.project.config { get_config }
+            import from jaclang.jac0core.diagnostics { E5081 }
+            import from jaclang.compiler.passes.ecmascript.backends.react {
+                ReactBackend
+            }
+            cfg = get_config();
+            fw = cfg.client.framework if (cfg and cfg.client) else "unknown";
+            self.emit(E5081, framework=fw);
+            self.backend = ReactBackend();
+        }
+    }
+}
+
 """Extract literal value from an expression."""
 impl EsastGenPass._literal_value(expr: (uni.UniNode | None)) -> (object | None) {
     if (expr is None) {
@@ -185,6 +219,19 @@ impl EsastGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
 
 """Process name/identifier."""
 impl EsastGenPass.exit_name(nd: uni.Name) -> None {
+    # Reactive value read (#6677): delegate to the backend so signals targets can
+    # wrap the read (`count()`). No-op (bare identifier) on hooks backends, so this
+    # is byte-identical for React/Preact. Most non-value sites (write targets,
+    # property keys, bindings) reconstruct from `sym_name` and never consume this
+    # `es_ast`, so gating on `reactive_vars` membership alone is safe — see
+    # _planning/reactivity-contract.md §4.1.
+    if nd.sym_name in self.reactive_vars {
+        self._ensure_backend();
+        nd.gen.es_ast = self.sync_loc(
+            self.backend.lower_state_read(nd.sym_name), jac_node=nd
+        );
+        return;
+    }
     name_map = {'None': 'null', 'True': 'true', 'False': 'false', 'self': 'this'};
     name = name_map.get(nd.sym_name, nd.sym_name);
     identifier = self.sync_loc(es.Identifier(name=name), jac_node=nd);
@@ -2167,19 +2214,16 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
         return;
     }
     value_expr = nd.value.gen.es_ast if (nd.value and nd.value.gen.es_ast) else None;
-    # Check for reactive variable assignment (transforms count = X to setCount(X))
+    # Check for reactive variable assignment (delegates to FrameworkBackend)
     if len(nd.target) == 1 and isinstance(nd.target[0], uni.Name) {
         target_name = nd.target[0].sym_name;
         if target_name in self.reactive_vars {
-            setter_name = self.reactive_vars[target_name];
-            # Get the value to pass to setter
             setter_arg: es.Expression;
+            aug_op: (str | None) = None;
             if nd.aug_op {
-                # For augmented assignment: count += 1 -> setCount(count + 1)
                 aug_tok = Tok(nd.aug_op.name)
                     if (nd.aug_op.name in Tok.__members__)
                     else None;
-                # Map augmented op to binary op
                 aug_to_binary: dict[Tok, str] = {
                     Tok.ADD_EQ: '+',
                     Tok.SUB_EQ: '-',
@@ -2188,27 +2232,20 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
                     Tok.MOD_EQ: '%'
                 };
                 binary_op = aug_to_binary.get(aug_tok, '+') if aug_tok else '+';
-                right_expr = cast(es.Expression, value_expr or es.Literal(value=0));
-                setter_arg = self.sync_loc(
-                    es.BinaryExpression(
-                        operator=binary_op,
-                        left=es.Identifier(name=target_name),
-                        right=right_expr
-                    ),
-                    jac_node=nd
-                );
+                aug_op = binary_op;
+                # Pass the bare RHS; lower_state_update builds `lhs op rhs`.
+                setter_arg = cast(es.Expression, value_expr or es.Literal(value=0));
             } else {
-                # Regular assignment: count = X -> setCount(X)
                 setter_arg = cast(
                     es.Expression, value_expr or es.Identifier(name='undefined')
                 );
             }
-            # Generate: setCount(value)
+            state_update = StateUpdate(
+                name=target_name, value=setter_arg, aug_op=aug_op
+            );
+            self._ensure_backend();
             setter_call = self.sync_loc(
-                es.CallExpression(
-                    callee=es.Identifier(name=setter_name), arguments=[setter_arg]
-                ),
-                jac_node=nd
+                self.backend.lower_state_update(state_update), jac_node=nd
             );
             expr_stmt = self.sync_loc(
                 es.ExpressionStatement(expression=setter_call), jac_node=nd
@@ -3025,7 +3062,7 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
             nd.gen.es_ast = self._build_spawn_runtime_call(nd, spawn_parts);
             # Endpoint effects for walker:<name> are precomputed (at the
             # walker's declaration, in its own module) by BoundaryAnalysisPass and
-            # propagated into this manifest via _populate_client_manifest.
+            # folded into this manifest via populate_client_manifest.
         }
         return;
     }
@@ -3347,99 +3384,6 @@ impl EsastGenPass.enter_except(nd: uni.Except) -> None {
     }
 }
 
-"""Assemble the `<JacAwaiting>`/`<JacClientErrorBoundary>` wrapper for a
-slot `try { ... } awaiting { ... } except { ... }` on the cl target.
-
-Emits (pushed into the enclosing slot's accumulator):
-
-  <JacClientErrorBoundary fallback={<>{...except IIFEs...}</>}>
-    <JacAwaiting fallback={<>{awaiting IIFE}</>}>
-      {try IIFE}
-    </JacAwaiting>
-  </JacClientErrorBoundary>
-
-The error boundary is omitted when there are no except arms. Each clause
-body is an inline accumulator IIFE built by the clause's exit handler."""
-impl EsastGenPass._build_awaiting_wrapper(nd: uni.TryStmt, try_acc: str) -> None {
-    try_iife = self._build_view_iife(nd.body, try_acc, nd);
-    # Awaiting body IIFE was built in exit_awaiting_clause.
-    awaiting_iife: es.Expression = (
-        cast(es.Expression, nd.awaiting_body.gen.es_ast)
-            if (nd.awaiting_body is not None and nd.awaiting_body.gen.es_ast)
-            else self._build_view_iife([], VIEW_ACC, nd)
-    );
-    self._inject_runtime_import('JacAwaiting', nd);
-    fallback_prop = self.sync_loc(
-        es.Property(
-            key=self.sync_loc(es.Literal(value='fallback'), jac_node=nd),
-            value=self._jsx_fragment([awaiting_iife], nd),
-            kind='init',
-            method=False,
-            shorthand=False,
-            computed=False
-        ),
-        jac_node=nd
-    );
-    wrapper: es.Expression = self.sync_loc(
-        es.CallExpression(
-            callee=self.sync_loc(es.Identifier(name='__jacJsx'), jac_node=nd),
-            arguments=[
-                self.sync_loc(es.Identifier(name='JacAwaiting'), jac_node=nd),
-                self.sync_loc(
-                    es.ObjectExpression(properties=[fallback_prop]), jac_node=nd
-                ),
-                self.sync_loc(es.ArrayExpression(elements=[try_iife]), jac_node=nd)
-            ]
-        ),
-        jac_node=nd
-    );
-    # except arms (if any) become the error-boundary fallback wrapping the
-    # awaiting node, so a throw in the resolved try body is caught.
-    if nd.excepts {
-        self._inject_runtime_import('JacClientErrorBoundary', nd);
-        except_iifes: list[es.Expression] = [
-            cast(es.Expression, ex.gen.es_ast)
-            for ex in nd.excepts
-            if ex.gen.es_ast is not None
-        ];
-        eb_fallback_prop = self.sync_loc(
-            es.Property(
-                key=self.sync_loc(es.Literal(value='fallback'), jac_node=nd),
-                value=self._jsx_fragment(except_iifes, nd),
-                kind='init',
-                method=False,
-                shorthand=False,
-                computed=False
-            ),
-            jac_node=nd
-        );
-        wrapper = self.sync_loc(
-            es.CallExpression(
-                callee=self.sync_loc(es.Identifier(name='__jacJsx'), jac_node=nd),
-                arguments=[
-                    self.sync_loc(
-                        es.Identifier(name='JacClientErrorBoundary'), jac_node=nd
-                    ),
-                    self.sync_loc(
-                        es.ObjectExpression(properties=[eb_fallback_prop]), jac_node=nd
-                    ),
-                    self.sync_loc(es.ArrayExpression(elements=[wrapper]), jac_node=nd)
-                ]
-            ),
-            jac_node=nd
-        );
-    }
-    # Push the wrapper into the enclosing slot accumulator (always present:
-    # `awaiting` is only valid inside a slot body).
-    outer = self._cur_view_acc();
-    if outer is not None {
-        nd.gen.es_ast = self._view_push_stmt(outer, wrapper, nd);
-    } else {
-        nd.gen.es_ast = self.sync_loc(
-            es.ExpressionStatement(expression=wrapper), jac_node=nd
-        );
-    }
-}
 
 """Process try statement with multi-handler instanceof dispatch.
 
@@ -3461,9 +3405,40 @@ impl EsastGenPass.exit_try_stmt(nd: uni.TryStmt) -> None {
     if id(nd) in self._view_awaiting_tries {
         self._view_awaiting_tries.discard(id(nd));
         try_acc = self._view_stack.pop() if self._view_stack else VIEW_ACC;
-        self._build_awaiting_wrapper(
-            nd, try_acc if isinstance(try_acc, str) else VIEW_ACC
+        try_iife = self._build_view_iife(
+            nd.body, try_acc if isinstance(try_acc, str) else VIEW_ACC, nd
         );
+        awaiting_iife: es.Expression = (
+            cast(es.Expression, nd.awaiting_body.gen.es_ast)
+                if (nd.awaiting_body is not None and nd.awaiting_body.gen.es_ast)
+                else self._build_view_iife([], VIEW_ACC, nd)
+        );
+        except_iifes: list[es.Expression] = [];
+        if nd.excepts {
+            except_iifes = [
+                cast(es.Expression, ex.gen.es_ast)
+                for ex in nd.excepts
+                if ex.gen.es_ast is not None
+            ];
+        }
+        async_boundary = AsyncBoundary(
+            try_expr=try_iife, awaiting_expr=awaiting_iife, except_exprs=except_iifes
+        );
+        self._ensure_backend();
+        for sym in self.backend.async_boundary_symbols(async_boundary) {
+            self._inject_runtime_import(sym, nd);
+        }
+        wrapper = self.sync_loc(
+            self.backend.lower_async_boundary(async_boundary), jac_node=nd
+        );
+        outer = self._cur_view_acc();
+        if outer is not None {
+            nd.gen.es_ast = self._view_push_stmt(outer, wrapper, nd);
+        } else {
+            nd.gen.es_ast = self.sync_loc(
+                es.ExpressionStatement(expression=wrapper), jac_node=nd
+            );
+        }
         return;
     }
     block = self._build_block_statement(nd, nd.body);
@@ -3901,13 +3876,16 @@ impl EsastGenPass._view_push_stmt(
     return self.sync_loc(es.ExpressionStatement(expression=call), jac_node=anchor);
 }
 
-"""Build `<>{children...}</>` — a fragment `__jacJsx(null, {}, [children])`."""
+"""Build `<>{children...}</>` — a fragment `<factory>(null, {}, [children])`."""
 impl EsastGenPass._jsx_fragment(
     children: list[es.Expression], anchor: uni.UniNode
 ) -> es.CallExpression {
+    import from jaclang.runtimelib.client_surface { backend_jsx_factory_name }
+    self._ensure_backend();
+    factory_name = backend_jsx_factory_name(self.backend);
     return self.sync_loc(
         es.CallExpression(
-            callee=self.sync_loc(es.Identifier(name='__jacJsx'), jac_node=anchor),
+            callee=self.sync_loc(es.Identifier(name=factory_name), jac_node=anchor),
             arguments=[
                 self.sync_loc(es.Literal(value=None), jac_node=anchor),
                 self.sync_loc(es.ObjectExpression(properties=[]), jac_node=anchor),
@@ -3971,10 +3949,15 @@ impl EsastGenPass.exit_jsx_comment(nd: uni.JsxComment) -> None {
     nd.gen.es_ast = None;
 }
 
-"""Process JSX normal attribute."""
-impl EsastGenPass.exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None {
-    self.jsx_processor.normal_attribute(nd);
-}
+"""Process JSX normal attribute — no-op.
+
+Attribute classification (`normal_attribute`) is now driven by the element
+producer (`EsJsxProcessor.element`), which is the sole caller so each attribute
+is classified exactly once. (Classifying here too would re-run the scoped-style
+class rewrite a second time and double-hash the tokens.) The attribute value
+expression is lowered independently by its own child traversal, so nothing here
+is needed."""
+impl EsastGenPass.exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None { }
 
 """Process JSX spread attribute."""
 impl EsastGenPass.exit_jsx_spread_attribute(nd: uni.JsxSpreadAttribute) -> None {
@@ -3989,11 +3972,11 @@ impl EsastGenPass.exit_jsx_element_name(nd: uni.JsxElementName) -> None {
 """Process JSX element."""
 impl EsastGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
     # The slot `try`/`awaiting`/`except` lowering builds its
-    # `<JacAwaiting>`/`<JacClientErrorBoundary>` wrappers as direct
-    # `__jacJsx` calls (see `_build_awaiting_wrapper`) and injects their
-    # imports there. This guard covers the case where author code names
-    # either runtime component literally in JSX: both live in
-    # `@jac/runtime`, so auto-inject the import so the name resolves.
+    # `<JacAwaiting>`/`<JacClientErrorBoundary>` wrappers via the active
+    # backend and injects their imports there. This guard covers the case
+    # where author code names either runtime component literally in JSX:
+    # both live in `@jac/runtime`, so auto-inject the import so the name
+    # resolves.
     if (
         nd.name is not None
         and nd.name.parts
@@ -4002,20 +3985,32 @@ impl EsastGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
     ) {
         self._inject_runtime_import(nd.name.parts[0].value, nd);
     }
+    # A `<@expr>` dynamic tag lowers to `<Dynamic component={expr}>` on backends
+    # that emit JSX syntax (Solid); the import source comes from the backend, so
+    # only those needing `Dynamic` (import_source → a non-`@jac/runtime` module)
+    # actually inject it.
+    if nd.dynamic_tag is not None {
+        self._ensure_backend();
+        if self.backend.import_source("Dynamic") != self.backend.runtime_module() {
+            self._inject_runtime_import("Dynamic", nd);
+        }
+    }
     nd.gen.es_ast = self.jsx_processor.element(nd);
+    # Lifted control-flow nodes lower to framework view components (`<For>`/
+    # `<Show>` on Solid); inject their imports from the neutral view the producer
+    # just memoized. Empty on the JS family (it renders the carried `js_fallback`).
+    self._ensure_backend();
+    view = self.jsx_processor._view_by_node.get(id(nd));
+    if view is not None {
+        for sym in self.backend.view_runtime_symbols(view) {
+            self._inject_runtime_import(sym, nd);
+        }
+    }
 }
 
 """Process has variable."""
 impl EsastGenPass.exit_has_var(nd: uni.HasVar) -> None {
     nd.gen.es_ast = None;
-}
-
-"""Generate setter name for reactive variable (count -> setCount)."""
-impl EsastGenPass._get_setter_name(var_name: str) -> str {
-    if not var_name {
-        return "";
-    }
-    return f"set{var_name[0].upper()}{var_name[1:]}";
 }
 
 """Check if a named import already exists (either by user or auto-injection)."""
@@ -4032,31 +4027,30 @@ impl EsastGenPass._has_import(name: str) -> bool {
     return False;
 }
 
-"""Register @jac/runtime in the client manifest so bundler can inline it."""
+"""Register the active backend's runtime module in the client manifest."""
 impl EsastGenPass._register_jac_runtime_import -> None {
     import from jaclang.jac0core.modresolver { resolve_jac_virtual_module_path }
-    # Only register once
-    if '@jac/runtime' not in self.client_manifest.imports {
-        runtime_path = resolve_jac_virtual_module_path('@jac/runtime');
+    self._ensure_backend();
+    module_id = self.backend.runtime_module();
+    if module_id not in self.client_manifest.imports {
+        runtime_path = resolve_jac_virtual_module_path(module_id);
         if runtime_path {
-            self.client_manifest.imports['@jac/runtime'] = runtime_path;
+            self.client_manifest.imports[module_id] = runtime_path;
         }
     }
 }
 
-"""Auto-inject a named import for a runtime symbol (e.g. useState, useEffect,
-__jacCallFunction, useRef).
+"""Auto-inject a named import for a runtime symbol.
 
-The `client_surface` contract decides where each symbol resolves: `@jac/runtime`
-for everything both runtimes back, or `react` for primitives taken straight from
-React (e.g. `useRef`, which needs no `@jac/runtime` shim). Only `@jac/runtime`
-symbols register the runtime for inlining — `react` is an ordinary dependency."""
+The active backend decides the import source for each symbol. Only
+`@jac/runtime` symbols register the runtime for inlining."""
 impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
     import from jaclang.runtimelib.client_surface { runtime_import_source }
+    self._ensure_backend();
     if name in self.injected_imports or self._has_import(name) {
         return;
     }
-    src = runtime_import_source(name);
+    src = runtime_import_source(name, self.backend);
     specifier = self.sync_loc(
         es.ImportSpecifier(
             imported=es.Identifier(name=name), local=es.Identifier(name=name)
@@ -4069,7 +4063,7 @@ impl EsastGenPass._inject_runtime_import(name: str, nd: uni.UniNode) -> None {
     );
     self.imports.append(import_decl);
     self.injected_imports.add(name);
-    if src == '@jac/runtime' {
+    if src.startswith('@jac/') {
         # Register in client manifest so bundler knows to inline the runtime.
         self._register_jac_runtime_import();
     }
@@ -4121,7 +4115,7 @@ impl EsastGenPass._ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None) {
     return None;
 }
 
-"""Transform an EventSignature ability (can with entry/exit) to useEffect call."""
+"""Transform an EventSignature ability (can with entry/exit) to backend Effect."""
 impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
     # Get the body statements
     inner = self.unwrap_body(nd);
@@ -4129,62 +4123,10 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
     # Determine if this is entry or exit
     is_entry = nd.signature.event.name == Tok.KW_ENTRY;
     is_async = nd.is_async;
-    effect_body: list[es.Statement] = [];
-    if is_entry {
-        if is_async {
-            # Wrap in IIFE: (async () => { ... })();
-            async_arrow = self.sync_loc(
-                es.ArrowFunctionExpression(
-                    params=[],
-                    body=es.BlockStatement(body=body_stmts),
-                    async_=True,
-                    expression=False
-                ),
-                jac_node=nd
-            );
-            iife_call = self.sync_loc(
-                es.CallExpression(callee=async_arrow, arguments=[]), jac_node=nd
-            );
-            effect_body.append(
-                self.sync_loc(es.ExpressionStatement(expression=iife_call), jac_node=nd)
-            );
-        } else {
-            effect_body = body_stmts;
-        }
-    } else {
-        # Exit: wrap body in cleanup return
-        # return () => { ... };
-        cleanup_arrow = self.sync_loc(
-            es.ArrowFunctionExpression(
-                params=[],
-                body=es.BlockStatement(body=body_stmts),
-                async_=False,
-                expression=False
-            ),
-            jac_node=nd
-        );
-        effect_body.append(
-            self.sync_loc(es.ReturnStatement(argument=cleanup_arrow), jac_node=nd)
-        );
-    }
-    # Create effect callback: () => { ... }
-    effect_callback = self.sync_loc(
-        es.ArrowFunctionExpression(
-            params=[],
-            body=es.BlockStatement(body=effect_body),
-            async_=False,
-            expression=False
-        ),
-        jac_node=nd
-    );
     # Build dependency array from arch_tag_info (if provided)
-    # can with entry { ... }           -> []
-    # can with [a, b] entry { ... }    -> [a, b]
-    # can with (a, b) entry { ... }    -> [a, b]
     deps_elements: list[es.Expression | es.SpreadElement | None] = [];
     arch_tag = nd.signature.arch_tag_info;
     if arch_tag {
-        # Check if it's a list or tuple
         if isinstance(arch_tag, (uni.ListVal, uni.TupleVal)) {
             for item in arch_tag.values {
                 if item.gen.es_ast {
@@ -4192,27 +4134,25 @@ impl EsastGenPass._transform_to_useeffect(nd: uni.Ability) -> None {
                 }
             }
         } else {
-            # Single expression as dependency
             if arch_tag.gen.es_ast {
                 deps_elements.append(cast(es.Expression, arch_tag.gen.es_ast));
             }
         }
     }
-    deps_array = self.sync_loc(es.ArrayExpression(elements=deps_elements), jac_node=nd);
-    # Create useEffect call: useEffect(() => { ... }, [deps]);
-    use_effect_call = self.sync_loc(
-        es.CallExpression(
-            callee=es.Identifier(name='useEffect'),
-            arguments=[effect_callback, deps_array]
-        ),
-        jac_node=nd
+    effect = Effect(
+        body=body_stmts, deps=deps_elements, is_entry=is_entry, is_async=is_async
     );
-    nd.gen.es_ast = self.sync_loc(
-        es.ExpressionStatement(expression=use_effect_call), jac_node=nd
-    );
+    self._ensure_backend();
+    for sym in self.backend.effect_symbols(effect) {
+        self._inject_runtime_import(sym, nd);
+    }
+    lowered = self.backend.lower_effect(effect);
+    if lowered {
+        nd.gen.es_ast = self.sync_loc(lowered[0], jac_node=nd);
+    }
 }
 
-"""Process class field declarations - generates useState for client-side reactive state."""
+"""Process class field declarations - delegates reactive lowering to FrameworkBackend."""
 impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
     # Reactive lowering is for COMPONENT state: `has` declared in a client
     # def (function component). Archetype fields are plain class fields -
@@ -4229,20 +4169,12 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
         return;
     }
     # Generate one declaration per has-var. A `Ref[T]` field lowers to a
-    # non-reactive `useRef(...)`; every other field is reactive `useState`.
-    # has count: int = 0;            -> const [count, setCount] = useState(0);
-    # has buttonRef: Ref[T];         -> const buttonRef = useRef(null);
+    # non-reactive ref; every other field is reactive state.
     statements: list[es.Statement] = [];
     for has_var in nd.vars {
         var_name = has_var.name.sym_name;
 
-        # --- Ref[T] field -> useRef (non-reactive: no setter, no reactive_vars)
-        # Detected structurally so client codegen needs no type-checker pass:
-        # a ref field is one constructed `= Ref()` / `= Ref(initial)`, or one
-        # annotated `: Ref[...]`. The construction is the canonical form; a
-        # bare annotation with no construction has no ref object to hold and is
-        # rejected (E2025), but still lowers to `useRef(null)` so the build
-        # stays usable.
+        # --- Ref[T] field -> non-reactive ref (no setter, no reactive_vars)
         ref_ctor = (
             isinstance(has_var.value, uni.FuncCall)
             and self._ref_head_name(has_var.value) == 'Ref'
@@ -4255,12 +4187,6 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
             if ref_typed and not ref_ctor {
                 self.emit(E2025, node_override=has_var);
             }
-            self._inject_runtime_import('useRef', nd);
-            # The field is constructed as `= Ref()` / `= Ref(initial)` — a
-            # Jac-only ambient with no JS counterpart. So we don't emit the
-            # `Ref(...)` call itself; we lift its sole argument (the seed for
-            # `.current`) into `useRef(seed)`, defaulting to `null` for the
-            # empty `Ref()` DOM-ref form.
             ref_init: es.Expression = self.sync_loc(
                 es.Literal(value=None, raw='null'), jac_node=has_var
             );
@@ -4271,37 +4197,19 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
                     ref_init = cast(es.Expression, seed_expr.gen.es_ast);
                 }
             }
-            use_ref_call = self.sync_loc(
-                es.CallExpression(
-                    callee=es.Identifier(name='useRef'), arguments=[ref_init]
-                ),
-                jac_node=has_var
-            );
-            ref_declarator = self.sync_loc(
-                es.VariableDeclarator(
-                    id=es.Identifier(name=var_name), `init=use_ref_call
-                ),
-                jac_node=has_var
-            );
-            statements.append(
-                self.sync_loc(
-                    es.VariableDeclaration(declarations=[ref_declarator], kind='const'),
-                    jac_node=has_var
-                )
-            );
+            ref_field = RefField(name=var_name, init_expr=ref_init);
+            self._ensure_backend();
+            for sym in self.backend.ref_field_symbols(ref_field) {
+                self._inject_runtime_import(sym, nd);
+            }
+            for stmt in self.backend.lower_ref_field(ref_field) {
+                statements.append(self.sync_loc(stmt, jac_node=has_var));
+            }
             self._register_declaration(var_name);
             continue;
         }
 
-        # --- reactive field -> useState
-        # Auto-inject useState import only when a reactive field is present.
-        self._inject_runtime_import('useState', nd);
-        setter_name = self._get_setter_name(var_name);
-
-        # Track this as a reactive variable for assignment transformation
-        self.reactive_vars[var_name] = setter_name;
-
-        # Get the initial value expression
+        # --- reactive field -> delegate to backend
         init_value: es.Expression;
         if has_var.value and has_var.value.gen.es_ast {
             init_value = cast(es.Expression, has_var.value.gen.es_ast);
@@ -4309,41 +4217,21 @@ impl EsastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
             init_value = es.Identifier(name='undefined');
         }
 
-        # Build: const [count, setCount] = useState(initialValue);
-        array_pattern = self.sync_loc(
-            es.ArrayPattern(
-                elements=[es.Identifier(name=var_name), es.Identifier(name=setter_name)]
-            ),
-            jac_node=has_var.name
-        );
+        state_field = StateField(name=var_name, init_expr=init_value);
+        self._ensure_backend();
+        for sym in self.backend.state_field_symbols(state_field) {
+            self._inject_runtime_import(sym, nd);
+        }
+        for stmt in self.backend.lower_state_field(state_field) {
+            statements.append(self.sync_loc(stmt, jac_node=has_var));
+        }
 
-        use_state_call = self.sync_loc(
-            es.CallExpression(
-                callee=es.Identifier(name='useState'), arguments=[init_value]
-            ),
-            jac_node=has_var
-        );
-
-        declarator = self.sync_loc(
-            es.VariableDeclarator(id=array_pattern, `init=use_state_call),
-            jac_node=has_var
-        );
-
-        decl_stmt = self.sync_loc(
-            es.VariableDeclaration(declarations=[declarator], kind='const'),
-            jac_node=has_var
-        );
-
-        statements.append(decl_stmt);
-
-        # Register both the variable and setter as declared
+        self.reactive_vars.add(var_name);
         self._register_declaration(var_name);
-        self._register_declaration(setter_name);
     }
     if len(statements) == 1 {
         nd.gen.es_ast = statements[0];
     } elif len(statements) > 1 {
-        # Return as a list for multiple declarations
         nd.gen.es_ast = statements;
     } else {
         nd.gen.es_ast = None;
@@ -4402,9 +4290,6 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
     }
     # CHECK: Is this an event-based ability (can with entry/exit) in client context?
     if (isinstance(nd.signature, uni.EventSignature) and nd.in_client_context()) {
-        # Auto-inject useEffect import if needed
-        self._inject_runtime_import('useEffect', nd);
-        # Transform to useEffect
         self._transform_to_useeffect(nd);
         return;
     }
@@ -5144,7 +5029,7 @@ impl EsastGenPass.enter_ability(nd: uni.Ability) -> None {
     # pushing its own acc above the barrier.
     self._view_stack.append(None);
     self.reactive_vars_stack.append(self.reactive_vars);
-    self.reactive_vars = dict(self.reactive_vars);
+    self.reactive_vars = set(self.reactive_vars);
 }
 
 """Process enum declaration as an object."""
@@ -5514,6 +5399,17 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
         or not isinstance(item.name, uni.Name) {
             continue;
         }
+        # An sv-imported type (node/obj/edge/enum) or walker is not an HTTP
+        # endpoint: a node/obj/edge lowers to a wire `class <name>` (and an
+        # enum to a frozen object) via `_emit_boundary_type_stubs`, while a
+        # walker is reached through `__jacSpawn`. Emitting an
+        # `async function <name>` RPC stub for any of them is dead code that,
+        # for a boundary type, collides with the wire declaration at bundle
+        # time (#6795 -- the cl->sv analog of the Python-path #6710 fix).
+        # Only `def:pub` abilities are HTTP-callable.
+        if self._sv_import_item_is_type(nd, item) {
+            continue;
+        }
         func_name = item.name.sym_name;
         local_name = item.alias.sym_name if item.alias else func_name;
         # Resolve the function signature from the source module so the
@@ -5620,6 +5516,37 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
     }
 }
 
+"""Report whether an sv-imported item names a type rather than a function.
+
+A node/obj/edge/enum/walker must not get an HTTP RPC function stub: the
+type already lowers to a wire `class <name>` (or frozen-object enum) via
+`_emit_boundary_type_stubs` and a walker is spawned, not called, so an
+`async function <name>` stub is dead code that collides with the wire
+declaration at bundle time (#6795). The import item's own resolved symbol
+classifies the kind directly, so this holds even when the provider module
+is absent from the program hub at codegen time; a name already collected as
+a boundary type is treated as a type too, as a belt-and-suspenders guard.
+"""
+impl EsastGenPass._sv_import_item_is_type(
+    nd: uni.Import, item: uni.ModuleItem
+) -> bool {
+    type_kinds = {
+        SymbolType.OBJECT_ARCH,
+        SymbolType.NODE_ARCH,
+        SymbolType.EDGE_ARCH,
+        SymbolType.WALKER_ARCH,
+        SymbolType.ENUM_ARCH
+    };
+    sym = item.name.sym;
+    if sym and (sym.sym_type in type_kinds) {
+        return True;
+    }
+    boundary_types = nd.gen.interop_manifest.boundary_types
+        if nd.gen.interop_manifest
+        else {};
+    return item.name.sym_name in boundary_types;
+}
+
 """Process SubTag node."""
 impl EsastGenPass.exit_sub_tag(nd: uni.SubTag[uni.T]) -> None {
     if nd.tag.gen.es_ast {
@@ -5627,29 +5554,16 @@ impl EsastGenPass.exit_sub_tag(nd: uni.SubTag[uni.T]) -> None {
     }
 }
 
-"""Recursively populate client manifest from module declarations."""
-impl EsastGenPass._populate_client_manifest(nd: uni.Module) -> None {
-    for item in nd.gen.client_manifest.exports {
-        self.client_manifest.exports.append(item);
-    }
-    for item in nd.gen.client_manifest.globals {
-        self.client_manifest.globals.append(item);
-    }
-    for (import_key, resolved_path) in nd.gen.client_manifest.imports.items() {
-        self.client_manifest.imports[import_key] = resolved_path;
-    }
-    for sub_mod in nd.gen.client_manifest.params {
-        self.client_manifest.params[sub_mod] = nd.gen.client_manifest.params[sub_mod];
-    }
+"""Fold module-level interop endpoint effects into the client manifest.
+
+    Exports/globals/imports are accumulated into self.client_manifest during
+    traversal of the (annex-merged) module. Endpoint effects, by contrast, are
+    computed by BoundaryAnalysisPass and live on the module's interop manifest,
+    so they are copied across here.
+"""
+impl EsastGenPass.populate_client_manifest(nd: uni.Module) -> None {
     for (ename, eeffect) in nd.gen.interop_manifest.endpoint_effects.items() {
         self.client_manifest.endpoint_effects[ename] = eeffect;
-    }
-}
-
-"""Populate client manifest from module declarations."""
-impl EsastGenPass.populate_client_manifest(nd: uni.Module) -> None {
-    for mod in nd.impl_mod {
-        self._populate_client_manifest(mod);
     }
 }
 
@@ -6352,37 +6266,6 @@ impl EsastGenPass.exit_module(nd: uni.Module) -> None {
     body.extend(self.sv_import_stubs);
     # Emit JS class stubs for types crossing the SV/CL boundary
     body.extend(self._emit_boundary_type_stubs(nd));
-    # Collect import source paths already present to avoid duplicates
-    # when impl modules re-inject the same import (e.g. __jacCallFunction).
-    seen_imports: set[str] = set();
-    for imp in self.imports {
-        if (isinstance(imp.source, es.Literal) and isinstance(imp.source.value, str)) {
-            seen_imports.add(imp.source.value);
-        }
-    }
-    for mod in nd.impl_mod {
-        if (mod.gen.es_ast and isinstance(mod.gen.es_ast, es.Program)) {
-            for import_decl in mod.gen.es_ast.body {
-                if isinstance(import_decl, es.ImportDeclaration) {
-                    src_val = (
-                        import_decl.source.value
-                            if (
-                                isinstance(import_decl.source, es.Literal)
-                                and isinstance(import_decl.source.value, str)
-                            )
-                            else None
-                    );
-                    if (src_val is not None and src_val in seen_imports) {
-                        continue;
-                    }
-                    if src_val is not None {
-                        seen_imports.add(src_val);
-                    }
-                    body.append(import_decl);
-                }
-            }
-        }
-    }
     scope = self.scope_map.get(nd);
     if (scope and scope.hoisted) {
         hoisted = list(scope.hoisted);

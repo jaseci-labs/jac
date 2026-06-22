@@ -56,7 +56,7 @@ def:pub publish(post_id: str) -> Post | None {
 [root -->][?:Post][?published]             # bool field - no `== True` (W2075)
 [root -->][?:Post][?author == "alice"]     # filter by any has-field (brackets, not parens - W0061)
 len([root -->][?:Post])                    # aggregate - no count() form
-todo = (root ++> Todo(title=t))[0];        # untyped edge; [0] unwraps the result list
+todo = root ++> Todo(title=t);             # untyped edge; returns the connected node
 user +>:Wrote(at="..."):+> existing_post;  # attach an existing node
 ```
 

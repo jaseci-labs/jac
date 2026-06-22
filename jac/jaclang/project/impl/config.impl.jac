@@ -209,7 +209,8 @@ impl JacConfig.apply_profile(profile_name: str, _visited: set | None = None) -> 
         "format": self.format,
         "dot": self.dot,
         "cache": self.cache,
-        "environment": self.environment
+        "environment": self.environment,
+        "client": self.client
     };
     for (section, obj) in section_map.items() {
         if section in profile {
@@ -318,7 +319,8 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
         "format": self.format,
         "dot": self.dot,
         "cache": self.cache,
-        "environment": self.environment
+        "environment": self.environment,
+        "client": self.client
     };
     for (section, obj) in section_map.items() {
         if section in data {
@@ -884,12 +886,28 @@ impl _parse_toml_data(
     }
     if "serve" in data {
         serve_data = data["serve"];
+        # Normalize + validate the OCC policy: only "retry"/"fail" are meaningful
+        # (anything else is treated as "retry" downstream). Catch a typo'd value
+        # here so a mis-set `on_conflict = "Fail"` does not silently disable
+        # fail-fast; warn once at load and fall back to the safe default.
+        on_conflict = str(serve_data.get("on_conflict", "retry")).strip().lower();
+        if on_conflict not in ("retry", "fail") {
+            import from jaclang.cli.console { console }
+            console.warning(
+                f"[serve] on_conflict='{serve_data.get('on_conflict')}' is not "
+                "'retry' or 'fail'; defaulting to 'retry'."
+            );
+            on_conflict = "retry";
+        }
         config.serve = ServeConfig(
             port=serve_data.get("port", 8000),
             session=serve_data.get("session", ""),
             main=serve_data.get("main", True),
             cl_route_prefix=serve_data.get("cl_route_prefix", "cl"),
-            base_route_app=serve_data.get("base_route_app", "")
+            base_route_app=serve_data.get("base_route_app", ""),
+            on_conflict=on_conflict,
+            conflict_max_attempts=serve_data.get("conflict_max_attempts", 5),
+            conflict_backoff_ms=serve_data.get("conflict_backoff_ms", 0)
         );
     }
     if "format" in data {
@@ -913,7 +931,8 @@ impl _parse_toml_data(
             print_errs=check_data.get("print_errs", True),
             lint=lint_config,
             suppress=check_data.get("suppress", []),
-            suppress_categories=check_data.get("suppress_categories", [])
+            suppress_categories=check_data.get("suppress_categories", []),
+            enforce_access=check_data.get("enforce_access", False)
         );
     }
     if "dot" in data {
@@ -948,6 +967,10 @@ impl _parse_toml_data(
         config.client_errors = ClientErrorsConfig(
             verbose=ce_data.get("verbose", False)
         );
+    }
+    if "client" in data {
+        client_data = data["client"];
+        config.client = ClientConfig(framework=client_data.get("framework", "react"));
     }
     if "plugins" in data {
         plugins_data = data["plugins"];

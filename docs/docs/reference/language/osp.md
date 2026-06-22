@@ -697,13 +697,12 @@ with entry {
 }
 ```
 
-!!! note "The `++>` operator returns a list"
-    The `++>` operator returns a **list** containing the created node(s). Access the node with `[0]` index:
+!!! note "The `++>` operator mirrors its right-hand side"
+    A `++>` connection returns whatever its right-hand side is: connecting to a **single** node returns that node, connecting to a **list** of nodes returns a list. No `[0]` indexing is needed for a single-node connect:
 
     <!-- jac-skip: fragment shown in context of a walker ability -->
     ```jac
-    new_node = here ++> Todo(title="Buy groceries");
-    created_todo = new_node[0];  # Access the actual node
+    created_todo = here ++> Todo(title="Buy groceries");  # the created node
     report created_todo;
     ```
 
@@ -813,9 +812,10 @@ walker:priv DeleteWithChildren {
 | `allroots()` | Get all root references |
 | `save(node)` | Persist node to storage |
 | `commit()` | Commit pending changes |
+| `on_commit(callback)` | Register a callback to run **after** the next successful commit (discarded on abort/replay) -- for deferred external side effects that must fire exactly once |
 | `printgraph(root)` | Print graph structure to stdout (output depends on graph size; may require logging configuration to see results) |
 
-> See [Persistence & Schema Migration](../persistence.md) for how persisted graph data tolerates schema changes across runs (added/removed fields, type changes, class renames) and how to inspect or rescue data with [`jac db`](../cli/index.md#database-operations).
+> See [Persistence & Schema Migration](../persistence.md) for how persisted graph data tolerates schema changes across runs (added/removed fields, type changes, class renames) and how to inspect or rescue data with [`jac db`](../cli/index.md#database-operations). For concurrent find-or-create safety (and why `on_commit` matters when a request replays), see [Concurrent writes: check-then-create](../persistence.md#concurrent-writes-check-then-create-and-convergence).
 
 ```jac
 node Person { has name: str; }
@@ -845,7 +845,7 @@ walker:pub publish {
     can run with Root entry {
         # Lands on the public graph whoever the caller is.
         fresh = root.shared +>: Posted() :+> Post(text=self.text);
-        grant(fresh[0], level=ReadPerm);   # author opens the post to readers
+        grant(fresh, level=ReadPerm);   # author opens the post to readers
     }
 }
 
@@ -1144,7 +1144,7 @@ walker:priv CreateItem {
     has name: str;
     can create with Root entry {
         new_item = here ++> Item(name=self.name);
-        report new_item[0];
+        report new_item;
     }
 }
 

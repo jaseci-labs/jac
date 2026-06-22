@@ -227,7 +227,7 @@ The runtime handles database schemas, user authentication (per-user graph isolat
 pip install jaseci
 ```
 
-This installs the complete Jac ecosystem: `jaclang` (compiler), `byllm` (AI integration), `jac-client` (frontend), `jac-scale` (deployment), and `jac-super` (enhanced console).
+This installs the complete Jac ecosystem: `jaclang` (compiler, plus the built-in full-stack frontend/desktop framework), `byllm` (AI integration), and `jac-scale` (deployment).
 
 Verify your installation:
 

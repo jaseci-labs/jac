@@ -36,6 +36,26 @@ test "feature funcs synced" {
     }
 }
 
+test "hookable layer wiring" {
+    import jaclang.jac0core.jaclib as jaclib;
+    import from jaclang.jac0core.runtime { plugin_manager }
+
+    # The 20 @hookable methods are the dispatchable hooks; firstresult comes
+    # from the marker (register_project_template aggregates, the rest win-first).
+    assert not plugin_manager.hook.register_project_template._firstresult;
+    assert plugin_manager.hook.call_llm._firstresult;
+
+    # A direct (non-@hookable) method has no hook caller at all.
+    assert not hasattr(plugin_manager.hook, 'get_object');
+
+    # jaclib captures its hook bindings at import; they must be the dispatching
+    # proxies installed on the interface, not the raw core defaults -- otherwise
+    # codegen-emitted call_llm/get_mtir/etc. would silently bypass plugins.
+    for n in ['call_llm', 'acall_llm', 'get_mtir', 'by_operator', 'create_j_context'] {
+        assert getattr(jaclib, n) is getattr(JacRuntimeInterface, n);
+    }
+}
+
 test "multiple plugins" {
     pm = pluggy.PluginManager("jac");
     hookimpl = pluggy.HookimplMarker("jac");

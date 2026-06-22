@@ -42,6 +42,23 @@ impl _compile_runtime_js -> str {
     return js;
 }
 
+impl _compile_runtime_core_js -> str {
+    import from jaclang.jac0core.modresolver { resolve_jac_virtual_module_path }
+    # The runtime shim re-exports `client_runtime_core.cl.jac`, a sibling of the
+    # `@jac/runtime` source. Compile that sibling so the harness can emit it next
+    # to `jac_runtime.js` -- the shim's compiled import resolves it by path.
+    runtime_src = resolve_jac_virtual_module_path("@jac/runtime");
+    if (not runtime_src) or (not Path(runtime_src).exists()) {
+        raise RuntimeError("could not resolve @jac/runtime to a client runtime source");
+    }
+    core_path = Path(runtime_src).parent / "client_runtime_core.cl.jac";
+    if not core_path.exists() {
+        raise RuntimeError("could not resolve client_runtime_core sibling source");
+    }
+    (js, _tests, _imports, _server_imports) = compile_cl_module(str(core_path));
+    return js;
+}
+
 impl _stub_npm_imports(js_sources: list[str]) -> tuple[list, str, bool] {
     named: set = set();
     state = {"needs_default": False, "changed": False};
@@ -332,24 +349,51 @@ impl _run_harness(
     work_dir = Path(tempfile.mkdtemp(prefix="jac_cl_test_"));
     try {
         if "@jac/runtime" in imports {
-            import from jaclang.runtimelib.client_surface { with_runtime_globals }
+            import from jaclang.runtimelib.client_surface {
+                prepend_active_runtime_globals
+            }
             runtime_js = _compile_runtime_js();
             # Add the runtime-global import the compiler relies on, the same way
             # every bundle path does -- so `root spawn` / JSX resolve here too.
-            module_js = with_runtime_globals(module_js);
+            module_js = prepend_active_runtime_globals(module_js);
             # Point the `@jac/runtime` specifier at the runtime we just compiled
             # alongside the harness (both quote styles the codegen may emit).
             module_js = module_js.replace('"@jac/runtime"', '"./jac_runtime.js"');
             module_js = module_js.replace("'@jac/runtime'", "'./jac_runtime.js'");
+            # The runtime shim re-exports a framework-agnostic core sibling, whose
+            # compiled import resolves the core by dotted module path. Compile the
+            # sibling, emit it flat next to jac_runtime.js, and rewrite the import
+            # to the flat specifier so bun resolves it (mirrors the Vite bundler's
+            # ViteCompiler.compile_runtime_utils).
+            core_specifier = "./jaclang/runtimelib/client_runtime_core.js";
+            core_js = None;
+            if core_specifier in runtime_js {
+                core_js = _compile_runtime_core_js();
+                runtime_js = runtime_js.replace(
+                    core_specifier, "./client_runtime_core.js"
+                );
+            }
             # Redirect React/etc. npm imports (unused by the fetch/auth path) to
             # a generated stub so bun resolves without a real install.
-            (rewritten, stub_js, changed) = _stub_npm_imports([module_js, runtime_js]);
+            sources = [module_js, runtime_js];
+            if core_js is not None {
+                sources.append(core_js);
+            }
+            (rewritten, stub_js, changed) = _stub_npm_imports(sources);
             module_js = rewritten[0];
             runtime_js = rewritten[1];
+            if core_js is not None {
+                core_js = rewritten[2];
+            }
             if changed {
                 (work_dir / _NPM_STUB_FILE).write_text(stub_js, encoding="utf-8");
             }
             (work_dir / "jac_runtime.js").write_text(runtime_js, encoding="utf-8");
+            if core_js is not None {
+                (work_dir / "client_runtime_core.js").write_text(
+                    core_js, encoding="utf-8"
+                );
+            }
         }
 
         harness = _build_harness(
@@ -404,16 +448,18 @@ impl _parse_results(stdout: str, tests: list) -> (list[ClTestResult] | None) {
 }
 
 impl is_cl_test_file(filepath: str) -> bool {
+    import from jaclang.jac0core.ext_registry { is_client_module }
     name = os.path.basename(str(filepath));
-    return name.endswith(".cl.jac");
+    return is_client_module(name);
 }
 
 impl is_cl_test_file_for_discovery(filepath: str) -> bool {
+    import from jaclang.jac0core.ext_registry { is_client_module, is_client_test }
     name = os.path.basename(str(filepath));
-    if not name.endswith(".cl.jac") {
+    if not is_client_module(name) {
         return False;
     }
-    return name.startswith("test_") or name.endswith(".test.cl.jac");
+    return name.startswith("test_") or is_client_test(name);
 }
 
 impl register_results_into_jactestcheck(filepath: str, results: list) -> None {

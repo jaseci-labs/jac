@@ -14,6 +14,7 @@ happen. The CLI `run` command consumes the plan and either prints it
 
 import os;
 import from jaclang.project.config { JacConfig }
+import from jaclang.jac0core.ext_registry { base_stem, codespace_of, MODULE_SUFFIXES }
 
 # The canonical project-kind table: the single source of truth shared by
 # `jac create` (which template/entry-point to scaffold, which plugin a kind
@@ -30,10 +31,10 @@ glob KIND_SPECS: dict[str, dict[str, str]] = {
          "microservices": {"entry": "main.sv.jac", "plugin": ""},
          "pypi-package": {"entry": "lib.jac", "plugin": ""},
          "npm-package": {"entry": "lib.jac", "plugin": ""},
-         "fullstack": {"entry": "main.jac", "plugin": "jac-client"},
-         "wasm": {"entry": "main.jac", "plugin": "jac-client"},
-         "desktop": {"entry": "main.jac", "plugin": "jac-desktop"},
-         "mobile": {"entry": "main.jac", "plugin": "jac-client"}
+         "fullstack": {"entry": "main.jac", "plugin": ""},
+         "client": {"entry": "main.jac", "plugin": ""},
+         "desktop": {"entry": "main.jac", "plugin": ""},
+         "mobile": {"entry": "main.jac", "plugin": ""}
      },
      # The canonical set of project kinds, derived from KIND_SPECS so the two never
      # drift. Mirrors the jac-project-kinds skill.
@@ -94,13 +95,7 @@ def is_valid_kind(kind: str) -> bool {
 
 """Strip the codespace suffix from an entry filename, leaving the bare stem."""
 def _entry_stem(path: str) -> str {
-    name = os.path.basename(path);
-    for suf in [".na.jac", ".sv.jac", ".cl.jac", ".jac", ".py"] {
-        if name.endswith(suf) {
-            return name[:-len(suf)];
-        }
-    }
-    return name;
+    return base_stem(path);
 }
 
 """True when the project opts into the client (cl) codespace via plugin/deps."""
@@ -145,7 +140,7 @@ def resolve_entry(config: JacConfig, project_root: str) -> str {
     # which is the intended behavior: an absolute entry-point is searched at its
     # own location, while a relative one stays anchored under the project root.
     base = os.path.join(project_root, os.path.dirname(ep), stem);
-    for suf in [".jac", ".na.jac", ".sv.jac", ".cl.jac", ".py"] {
+    for suf in list(MODULE_SUFFIXES) + [".py"] {
         cand = base + suf;
         if os.path.isfile(cand) {
             return os.path.abspath(cand);
@@ -165,13 +160,14 @@ def resolve_project_kind(config: JacConfig, entry_path: str) -> str {
     if explicit {
         return explicit;
     }
-    if entry_path.endswith(".na.jac") {
+    entry_codespace = codespace_of(entry_path);
+    if (entry_codespace == 'native') {
         return "native-app";
     }
-    if entry_path.endswith(".sv.jac") {
+    if (entry_codespace == 'server') {
         return "api-service";
     }
-    if entry_path.endswith(".cl.jac") {
+    if (entry_codespace == 'client') {
         return "fullstack";
     }
     if _has_client(config) {
@@ -268,14 +264,14 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
             requires_plugin=kind_required_plugin(kind)
         );
     }
-    if kind == "wasm" {
+    if kind == "client" {
         return RunPlan(
             kind=kind,
             action="serve",
             verb="start",
             entry_path=entry_path,
             flags=_serve_flags(config, {}),
-            summary="Serve wasm page (emits /static/main.wasm)",
+            summary="Serve client-only app as a static page (no backend)",
             requires_plugin=kind_required_plugin(kind)
         );
     }

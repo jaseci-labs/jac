@@ -18,6 +18,19 @@ impl HookspecMarker.__call__(
     return mark;
 }
 
+impl HookableMarker.__call__(
+    function: (_F | None) = None, *, firstresult: bool = True
+) -> (_F | Callable[([_F], _F)]) {
+    def mark(func: _F) -> _F {
+        setattr(func, _HOOKABLE_ATTR, {'firstresult': firstresult});
+        return func;
+    }
+    if function is not None {
+        return mark(function);
+    }
+    return mark;
+}
+
 impl HookImpl.__repr__ -> str {
     return f"<HookImpl plugin_name={self.plugin_name!r}>";
 }

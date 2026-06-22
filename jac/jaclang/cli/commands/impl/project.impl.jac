@@ -264,7 +264,7 @@ def _run_blurb(kind: str) -> str {
         "pypi-package": "Build a wheel into dist/",
         "npm-package": "Build an npm package into dist/",
         "fullstack": "Serve the app (dev mode)",
-        "wasm": "Serve the wasm page",
+        "client": "Serve the client-only app (static)",
         "desktop": "Run the desktop app",
         "mobile": "Build the mobile app"
     };
@@ -1544,17 +1544,22 @@ def _bundle_npm(config: any, output: str) -> int {
     return 0;
 }
 
-"""Build the @jaseci/runtime npm package (maintainer task); returns 0 on success."""
-def _bundle_npm_runtime(output: str) -> int {
-    import from jaclang.publish.runtime_npm { build_runtime_to, RUNTIME_PKG_NAME }
+"""Build the runtime npm package (maintainer task); returns 0 on success.
+
+The compiled runtime tracks the active framework backend: React/Preact builds
+publish `@jaseci/runtime`, a Solid build publishes `@jaseci/runtime-solid` (no
+React-ecosystem package). `framework=""` resolves the project's active backend."""
+def _bundle_npm_runtime(output: str, framework: str = "") -> int {
+    import from jaclang.publish.runtime_npm { build_runtime_to, runtime_pkg_name }
     import importlib.metadata;
 
     version = importlib.metadata.version("jaclang");
+    pkg_name = runtime_pkg_name(framework);
     out_dir = Path(output);
-    console.print(f"\n📦 Building {RUNTIME_PKG_NAME} v{version}", style="bold");
+    console.print(f"\n📦 Building {pkg_name} v{version}", style="bold");
     console.print("\n  Compiling runtime → npm tarball...", style="muted");
     try {
-        path = build_runtime_to(out_dir, version);
+        path = build_runtime_to(out_dir, version, framework=framework);
     } except Exception as e {
         console.error(f"runtime build failed: {e}");
         return 1;
