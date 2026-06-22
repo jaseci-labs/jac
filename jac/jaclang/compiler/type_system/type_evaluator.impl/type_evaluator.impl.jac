@@ -4530,6 +4530,21 @@ impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str
     and succ is pred.else_body.body[0] {
         return "false";
     }
+    # Synthetic in-body predecessor (e.g. a comprehension's InnerCompr wired
+    # as a flow predecessor of the if-stmt): `succ` lexically nests inside the
+    # if-stmt rather than being a post-if sibling. Classify by which branch
+    # subtree contains it so head narrowing inside the body uses the true edge.
+    cur: uni.UniNode | None = succ;
+    while cur is not None and cur is not pred {
+        if pred.else_body is not None and cur is pred.else_body {
+            return "false";
+        }
+        cur = cur.parent;
+    }
+    if cur is pred {
+        # Nested under pred but not under else_body -> true branch body.
+        return "true";
+    }
     # Fall-through to next sibling: which branch is the empty one?
     body_empty = not pred.body;
     else_empty = isinstance(pred.else_body, uni.ElseStmt) and not pred.else_body.body;
