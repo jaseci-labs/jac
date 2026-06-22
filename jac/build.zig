@@ -19,7 +19,19 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
+    // Build the launcher for a BASELINE CPU of the host arch, not the build
+    // machine's native CPU. The `jac` binary is distributed -- and in CI it is
+    // built once then run on other runners via the setup-jac output cache. A
+    // native-CPU build emits instructions (e.g. AVX-512) a different CPU may not
+    // have, crashing the launcher with SIGILL ("Illegal instruction at address
+    // ..."); that in turn hangs `jac test`, whose xdist workers re-exec this
+    // binary and die mid-run. The launcher is a thin shim, so baseline costs
+    // nothing. If an explicit `-Dtarget=` is passed we honor it as-is; otherwise
+    // we pin the host arch/os to a baseline CPU.
+    const target = if (b.user_input_options.contains("target"))
+        b.standardTargetOptions(.{})
+    else
+        b.resolveTargetQuery(.{ .cpu_model = .baseline });
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSmall });
 
     // --- launcher stub (links libc only; Python is dlopened at runtime) ----
