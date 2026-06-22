@@ -1,35 +1,36 @@
 #!/usr/bin/env bash
 # Jac Programming Language Installer
 #
+# Installs the self-contained `jac` binary -- a Zig launcher that bundles its own
+# private CPython, so it needs NO system Python, uv, or pip at install or runtime.
+# Plugins (byllm, jac-scale, jac-mcp) are installed on top of the binary with
+# `jac install`, which pulls them from PyPI into the binary's bundled interpreter.
+#
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 #
 # Options:
-#   --core        Install only jaclang (no plugins)
-#   --standalone  Download a pre-built standalone binary from GitHub Releases
-#   --version V   Install a specific version
-#   --uninstall   Remove Jac
+#   --core        Install just the `jac` binary (no plugins)
+#   --version V   Install the binary from a specific release tag (default: latest)
+#   --uninstall   Remove the `jac` binary
 #   --help        Print usage
 #
 # Examples:
-#   curl -fsSL ... | bash                          # Full ecosystem via uv
-#   curl -fsSL ... | bash -s -- --core             # Core language only
-#   curl -fsSL ... | bash -s -- --standalone       # Standalone binary (all plugins)
-#   curl -fsSL ... | bash -s -- --standalone --core  # Standalone binary (core only)
-#   curl -fsSL ... | bash -s -- --version 2.3.1    # Specific version
+#   curl -fsSL ... | bash                       # binary + plugins
+#   curl -fsSL ... | bash -s -- --core          # binary only
+#   curl -fsSL ... | bash -s -- --version jaclang-0.16.7
 
 set -euo pipefail
 
 REPO="jaseci-labs/jaseci"
 GITHUB_API="https://api.github.com/repos/${REPO}"
-UV_INSTALL_URL="https://astral.sh/uv/install.sh"
 INSTALL_DIR="${HOME}/.local/bin"
 
 # --- Defaults ---
 CORE_ONLY=false
-STANDALONE=false
 VERSION=""
 UNINSTALL=false
+PLUGINS=(byllm jac-scale jac-mcp)
 
 # --- Colors and output helpers ---
 
@@ -68,27 +69,20 @@ USAGE:
     curl -fsSL ... | bash -s -- [OPTIONS]
 
 OPTIONS:
-    --core        Install only jaclang (no plugins)
-    --standalone  Download a pre-built standalone binary from GitHub Releases
-    --version V   Install a specific version (e.g., 2.3.1)
-    --uninstall   Remove Jac installation
+    --core        Install just the 'jac' binary (no plugins)
+    --version V   Install the binary from a specific release tag (e.g., jaclang-0.16.7)
+    --uninstall   Remove the 'jac' binary
     --help        Print this help message
 
 EXAMPLES:
-    # Full ecosystem (all plugins) via uv
+    # The 'jac' binary plus all plugins
     curl -fsSL ... | bash
 
-    # Core language only via uv
+    # Just the 'jac' binary
     curl -fsSL ... | bash -s -- --core
 
-    # Standalone binary with all plugins
-    curl -fsSL ... | bash -s -- --standalone
-
-    # Standalone binary, core only
-    curl -fsSL ... | bash -s -- --standalone --core
-
-    # Specific version
-    curl -fsSL ... | bash -s -- --version 2.3.1
+    # A specific release
+    curl -fsSL ... | bash -s -- --version jaclang-0.16.7
 EOF
 }
 
@@ -103,8 +97,8 @@ detect_platform() {
         Linux*)  OS="linux" ;;
         Darwin*) OS="macos" ;;
         MINGW* | MSYS* | CYGWIN*)
-            err "Windows detected. Windows support via PowerShell is coming soon."
-            err "For now, please use WSL2 or install manually: pip install jaseci"
+            err "Windows detected. Windows binaries are not built yet."
+            err "Please use WSL2 for now."
             exit 1
             ;;
         *)
@@ -132,13 +126,9 @@ parse_args() {
                 CORE_ONLY=true
                 shift
                 ;;
-            --standalone)
-                STANDALONE=true
-                shift
-                ;;
             --version)
                 if [[ $# -lt 2 ]]; then
-                    err "--version requires a version argument (e.g., --version 2.3.1)"
+                    err "--version requires a release tag argument (e.g., --version jaclang-0.16.7)"
                     exit 1
                 fi
                 VERSION="$2"
@@ -198,145 +188,54 @@ ensure_on_path() {
     fi
 }
 
-# --- uv installation path ---
+# --- Binary installation ---
 
-install_via_uv() {
+# Fetch the release JSON for "latest" or "tags/<tag>".
+release_json() {
+    local ref="$1"
+    curl -fsSL "${GITHUB_API}/releases/${ref}" 2>/dev/null || {
+        err "Failed to query GitHub API for release: ${ref}"
+        err "Check your internet connection or specify a tag with --version."
+        exit 1
+    }
+}
+
+install_binary() {
     need_cmd "curl"
 
-    # Ensure uv is installed
-    if ! has_cmd uv; then
-        info "Installing uv (Python package manager)..."
-        curl -LsSf "$UV_INSTALL_URL" | sh
-        export PATH="${INSTALL_DIR}:${PATH}"
-
-        if ! has_cmd uv; then
-            err "Failed to install uv. Please install it manually:"
-            err "  curl -LsSf https://astral.sh/uv/install.sh | sh"
-            exit 1
-        fi
-        info "uv installed successfully."
-    else
-        info "uv is already installed."
-    fi
-
-    # Always install jaclang as the tool (it provides the 'jac' entry point).
-    # For full ecosystem, add all plugins via --with flags.
-    local spec="jaclang"
+    local ref json
     if [[ -n "$VERSION" ]]; then
-        spec="jaclang==${VERSION}"
-    fi
-
-    local -a with_args=()
-    if ! $CORE_ONLY; then
-        with_args+=(--with byllm --with jac-scale --with jac-mcp)
-    fi
-
-    # Check if already installed and upgrade vs fresh install
-    if uv tool list 2>/dev/null | grep -q "^jaclang "; then
-        info "Upgrading jaclang..."
-        if [[ -n "$VERSION" ]]; then
-            uv tool install "$spec" "${with_args[@]}" --python ">=3.12" --force
-        else
-            uv tool upgrade jaclang --python ">=3.12"
-        fi
+        ref="tags/${VERSION}"
+        info "Resolving release ${VERSION}..."
     else
-        info "Installing jaclang..."
-        uv tool install "$spec" "${with_args[@]}" --python ">=3.12"
+        ref="latest"
+        info "Fetching latest release..."
     fi
+    json="$(release_json "$ref")"
 
-    ensure_on_path
-
-    # Verify
-    if has_cmd jac; then
-        info ""
-        info "Jac installed successfully!"
-        jac --version 2>/dev/null || true
-        info ""
-        info "Get started:"
-        info "  jac --help"
-        info ""
-    else
-        warn "Installation completed but 'jac' is not on PATH."
-        warn "Try restarting your shell or adding ~/.local/bin to PATH."
-    fi
-}
-
-# --- Standalone binary installation path ---
-
-get_latest_version() {
-    local response
-    response=$(curl -fsSL "${GITHUB_API}/releases/latest" 2>/dev/null) || {
-        err "Failed to query GitHub API for latest release."
-        err "Check your internet connection or specify a version with --version."
-        exit 1
-    }
-
-    # Extract tag_name, strip leading 'v'
-    local tag
-    tag=$(echo "$response" | grep -o '"tag_name":[[:space:]]*"[^"]*"' | head -1 | grep -o '"v[^"]*"' | tr -d '"' | sed 's/^v//')
-
-    if [[ -z "$tag" ]]; then
-        err "Could not determine latest version from GitHub Releases."
-        err "Please specify a version with --version."
+    # The jac binary asset for this platform, e.g. jac-0.16.7-linux-x86_64
+    # (exclude the .sha256 sidecar).
+    local asset
+    asset="$(echo "$json" \
+        | grep -oE "\"name\":[[:space:]]*\"jac-[0-9]+\.[0-9]+\.[0-9]+-${OS}-${ARCH}\"" \
+        | head -1 \
+        | grep -oE "jac-[0-9]+\.[0-9]+\.[0-9]+-${OS}-${ARCH}")"
+    if [[ -z "$asset" ]]; then
+        err "No jac binary asset found for ${OS}-${ARCH} in the target release."
+        err "Standalone binaries may not be built yet for this platform/release."
         exit 1
     fi
+    info "Binary: ${asset}"
 
-    echo "$tag"
-}
+    local download_url checksum_url
+    download_url="$(echo "$json" \
+        | grep -oE "\"browser_download_url\":[[:space:]]*\"[^\"]*${asset}\"" \
+        | head -1 \
+        | grep -oE "https://[^\"]*${asset}")"
+    checksum_url="${download_url}.sha256"
 
-resolve_jaclang_version_from_release() {
-    local release_tag="$1"
-    local response
-    response=$(curl -fsSL "${GITHUB_API}/releases/tags/v${release_tag}" 2>/dev/null) || {
-        err "Failed to query GitHub API for release v${release_tag}."
-        exit 1
-    }
-
-    # Find jac-*-linux-x86_64 or jac-*-macos-* asset to extract the jaclang version
-    local jac_version
-    jac_version=$(echo "$response" | grep -o '"name":[[:space:]]*"jac-[^"]*"' | head -1 | grep -oE 'jac-[0-9]+\.[0-9]+\.[0-9]+' | sed 's/^jac-//')
-
-    if [[ -z "$jac_version" ]]; then
-        err "Could not determine jaclang version from release v${release_tag} assets."
-        err "The jaclang standalone binary may not have been built yet for this release."
-        exit 1
-    fi
-
-    echo "$jac_version"
-}
-
-install_standalone() {
-    need_cmd "curl"
-
-    # Resolve version (this is the jaseci/release version)
-    if [[ -z "$VERSION" ]]; then
-        info "Fetching latest version..."
-        VERSION=$(get_latest_version)
-        info "Latest release: ${VERSION}"
-    fi
-
-    # Determine asset name
-    # The jaclang (slim) binary uses the jaclang version in its filename,
-    # which differs from the jaseci release version.
-    local asset_prefix asset_version
-    if $CORE_ONLY; then
-        asset_prefix="jac"
-        info "Resolving jaclang version for release v${VERSION}..."
-        asset_version=$(resolve_jaclang_version_from_release "$VERSION")
-        info "jaclang version: ${asset_version}"
-    else
-        asset_prefix="jaseci"
-        asset_version="$VERSION"
-    fi
-
-    local asset="${asset_prefix}-${asset_version}-${OS}-${ARCH}"
-    local download_url="https://github.com/${REPO}/releases/download/v${VERSION}/${asset}"
-    local checksum_url="${download_url}.sha256"
-
-    # Create install directory
     mkdir -p "$INSTALL_DIR"
 
-    # Download to temp location
     local tmpdir
     tmpdir=$(mktemp -d)
     trap 'rm -rf "$tmpdir"' EXIT
@@ -344,13 +243,6 @@ install_standalone() {
     info "Downloading ${asset}..."
     if ! curl -fsSL -o "${tmpdir}/${asset}" "$download_url"; then
         err "Failed to download: ${download_url}"
-        err ""
-        err "This could mean:"
-        err "  - The version '${VERSION}' does not exist"
-        err "  - Standalone binaries are not available for ${OS}-${ARCH}"
-        err "  - Network issue"
-        err ""
-        err "Try installing via uv instead (remove --standalone flag)."
         exit 1
     fi
 
@@ -386,51 +278,40 @@ install_standalone() {
 
     ensure_on_path
 
-    # Verify
     if has_cmd jac; then
         info ""
-        info "Jac installed successfully! (standalone binary)"
+        info "Jac installed successfully!"
         jac --version 2>/dev/null || true
-        info ""
-        info "Get started:"
-        info "  jac --help"
-        info ""
     else
         warn "Binary installed to ${INSTALL_DIR}/jac but 'jac' is not on PATH."
         warn "Try restarting your shell or adding ~/.local/bin to PATH."
     fi
 }
 
+# --- Plugin installation (on top of the binary) ---
+
+install_plugins() {
+    if ! has_cmd jac; then
+        warn "'jac' is not on PATH yet; skipping plugin install."
+        warn "After fixing your PATH, run: jac install ${PLUGINS[*]}"
+        return
+    fi
+    info ""
+    info "Installing plugins: ${PLUGINS[*]}..."
+    if ! jac install "${PLUGINS[@]}"; then
+        warn "Plugin install failed. Install them later with: jac install ${PLUGINS[*]}"
+    fi
+}
+
 # --- Uninstall ---
 
 do_uninstall() {
-    local removed=false
-
-    # Remove uv-managed installations
-    if has_cmd uv; then
-        if uv tool list 2>/dev/null | grep -q "^jaseci "; then
-            info "Removing jaseci (uv tool)..."
-            uv tool uninstall jaseci
-            removed=true
-        fi
-        if uv tool list 2>/dev/null | grep -q "^jaclang "; then
-            info "Removing jaclang (uv tool)..."
-            uv tool uninstall jaclang
-            removed=true
-        fi
-    fi
-
-    # Remove standalone binary
     if [[ -f "${INSTALL_DIR}/jac" ]]; then
         info "Removing ${INSTALL_DIR}/jac..."
         rm -f "${INSTALL_DIR}/jac"
-        removed=true
-    fi
-
-    if $removed; then
         info "Jac has been uninstalled."
     else
-        warn "No Jac installation found."
+        warn "No 'jac' binary found at ${INSTALL_DIR}/jac."
     fi
 }
 
@@ -448,11 +329,15 @@ main() {
 
     info "Detected platform: ${OS}-${ARCH}"
 
-    if $STANDALONE; then
-        install_standalone
-    else
-        install_via_uv
+    install_binary
+    if ! $CORE_ONLY; then
+        install_plugins
     fi
+
+    info ""
+    info "Get started:"
+    info "  jac --help"
+    info ""
 }
 
 main "$@"
