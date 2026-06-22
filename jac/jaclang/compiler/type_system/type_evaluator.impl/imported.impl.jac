@@ -366,9 +366,15 @@ impl TypeEvaluator._import_module_from_path(
     } elif resolved_path in target_hub {
         mod = target_hub[resolved_path];
     } else {
-        # Try JIR cache first for .jac files
+        # Try JIR cache first for .jac files, but never for .na.jac.
+        # JIR does not serialize Expr.type, so a JIR-loaded native module
+        # arrives untyped and its cross-module symbol links are degraded.
+        # On incremental builds this causes E2018/E5090 for types that
+        # come from transitively-imported native modules (issue #6793).
+        # Always fresh-compile .na.jac deps so the type evaluator builds
+        # full cross-module links, matching fresh-build behaviour.
         jir_mod: (uni.Module | None) = None;
-        if resolved_path.endswith('.jac') {
+        if resolved_path.endswith('.jac') and not resolved_path.endswith('.na.jac') {
             jir_mod = self._try_read_jir_cache(resolved_path);
         }
         if jir_mod is not None {
@@ -391,7 +397,10 @@ impl TypeEvaluator._import_module_from_path(
             # Write JIR module cache for .jac files (best-effort).
             # Only write if no valid cache exists yet — symtab-only compiles
             # lack bytecode and must not overwrite a full cache that has it.
-            if resolved_path.endswith('.jac') {
+            # Skip .na.jac: a symtab-only native cache would be untyped and
+            # trigger E2018/E5090 on the next incremental build (issue #6793).
+            if resolved_path.endswith('.jac')
+            and not resolved_path.endswith('.na.jac') {
                 try {
                     import from jaclang.jac0core.jir {
                         get_module_cache_path,

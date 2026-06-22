@@ -37,10 +37,11 @@ jobs:
           ")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
+
       - name: Install build tools
-        run: |
-          pip install -e ../jac
-          pip install twine
+        run: pip install twine
 
       - name: Build package
         run: jac bundle
@@ -87,11 +88,5 @@ jobs:
             echo "Created release v$VERSION"
           fi
 
-  build-standalone-binaries:
-    needs: [release-jaseci, create-github-release]
-    uses: ./.github/workflows/build-standalone.yml
-    with:
-      jaseci_version: ${{ needs.release-jaseci.outputs.version }}
-      release_tag: v${{ needs.release-jaseci.outputs.version }}
-    permissions:
-      contents: write
+    # The native `jac` binary (jaclang) is built and attached to this release by
+    # release-jaclang.yml, which fires on the release-publish event above.

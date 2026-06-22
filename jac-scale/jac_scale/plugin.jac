@@ -1650,7 +1650,7 @@ def _hydrate_walker_envelope(
 
 # Pluggy's varnames() puts parameters with defaults into kwargnames, not argnames.
 # But _multicall only passes argnames to hook implementations.
-# JacRuntimeInterfaceImpl strips defaults via generate_plugin_helpers, so we must too.
+# JacRuntimeImpl strips defaults via build_plugin_hook_layer, so we must too.
 import inspect;
 glob func = JacScalePlugin.create_j_context,
      sig = inspect.signature(func),

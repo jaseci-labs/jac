@@ -6,6 +6,12 @@ given Jac source path. Used by JIR cache invalidation and formatter.
 """
 import os;
 import from pathlib { Path }
+import from jaclang.jac0core.ext_registry {
+    VARIANT_STEM_SUFFIXES,
+    VARIANT_SUFFIXES,
+    ANNEX_FOLDER,
+    MODULE_SUFFIXES
+}
 
 """Discover annex files (.impl.jac, .test.jac) for a source .jac or .cl.jac file.
 
@@ -19,7 +25,7 @@ def discover_annex_files(source_path: str, suffix: str = '.impl.jac') -> list[st
     base = src.stem;
     # Determine the source file's own variant context (if any).
     src_variant: (str | None) = None;
-    for vext in ('.sv', '.cl', '.na') {
+    for vext in VARIANT_STEM_SUFFIXES {
         if base.endswith(vext) {
             src_variant = vext;
             base = base[:-len(vext)];
@@ -52,7 +58,7 @@ def discover_annex_files(source_path: str, suffix: str = '.impl.jac') -> list[st
             # Determine the annex file's variant context.
             annex_stem = f.name[:-len(suffix)];  # e.g. "svc.sv" from "svc.sv.impl.jac"
             annex_variant: (str | None) = None;
-            for vext in ('.sv', '.cl', '.na') {
+            for vext in VARIANT_STEM_SUFFIXES {
                 if annex_stem.endswith(vext) {
                     annex_variant = vext;
                     break;
@@ -89,7 +95,7 @@ def discover_style_annex(source_path: str) -> (str | None) {
         return None;
     }
     base = src.stem;
-    for vext in ('.sv', '.cl', '.na') {
+    for vext in VARIANT_STEM_SUFFIXES {
         if base.endswith(vext) {
             base = base[:-len(vext)];
             break;
@@ -110,8 +116,6 @@ def discover_style_annex(source_path: str) -> (str | None) {
 
     Impl and test files are never considered heads or variants.
     """
-glob _VARIANT_SUFFIXES: list[str] = ['.sv.jac', '.cl.jac', '.na.jac'];
-
 def discover_variant_files(source_path: str) -> list[str] {
     src = Path(source_path).resolve();
     if not src.name.endswith('.jac') {
@@ -123,7 +127,7 @@ def discover_variant_files(source_path: str) -> list[str] {
     # Determine the base stem and which suffix the source has.
     stem = src.stem;  # e.g. "main" or "main.sv"
     head_suffix: (str | None) = None;
-    for vs in _VARIANT_SUFFIXES {
+    for vs in VARIANT_SUFFIXES {
         ext = vs[:-4];  # ".sv", ".cl", ".na"
         if stem.endswith(ext) {
             head_suffix = vs;
@@ -137,7 +141,7 @@ def discover_variant_files(source_path: str) -> list[str] {
         if (src.parent / f"{stem}.jac").is_file() {
             return [];
         }
-        for vs in _VARIANT_SUFFIXES {
+        for vs in VARIANT_SUFFIXES {
             if (vs == head_suffix) {
                 break;
             }
@@ -149,10 +153,10 @@ def discover_variant_files(source_path: str) -> list[str] {
     # Collect only the suffixes that come AFTER the head in precedence.
     if (head_suffix is None) {
         # Plain .jac — all variant suffixes are lower precedence.
-        search_suffixes = _VARIANT_SUFFIXES;
+        search_suffixes = list(VARIANT_SUFFIXES);
     } else {
-        idx = _VARIANT_SUFFIXES.index(head_suffix);
-        search_suffixes = _VARIANT_SUFFIXES[idx + 1:];
+        idx = list(VARIANT_SUFFIXES).index(head_suffix);
+        search_suffixes = list(VARIANT_SUFFIXES)[idx + 1:];
     }
     variants: list[str] = [];
     for variant_suffix in search_suffixes {
@@ -171,8 +175,7 @@ def discover_variant_files(source_path: str) -> list[str] {
     """
 def discover_base_file(annex_path: str) -> (str | None) {
     src = Path(annex_path).resolve();
-    annex_types = {'.impl.jac': '.impl', '.test.jac': '.test'};
-    for (suffix, folder_suffix) in annex_types.items() {
+    for (suffix, folder_suffix) in ANNEX_FOLDER.items() {
         if src.name.endswith(suffix) {
             base_name = src.name[:-len(suffix)].split('.')[0];
             parent = src.parent.name;
@@ -184,7 +187,7 @@ def discover_base_file(annex_path: str) -> (str | None) {
                 candidates.append((src.parent.parent, base_name));
             }
             for (directory, name) in candidates {
-                for ext in ('.jac', '.na.jac', '.cl.jac') {
+                for ext in MODULE_SUFFIXES {
                     path = directory / f"{name}{ext}";
                     if (path.is_file() and (path != src)) {
                         return str(path);

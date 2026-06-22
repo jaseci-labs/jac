@@ -16,13 +16,13 @@ This enables powerful use cases: extracting structured data from photos (receipt
 Images are supported in the default byLLM distribution:
 
 ```bash
-pip install byllm
+jac install byllm
 ```
 
 For video support, install with the `video` extra:
 
 ```bash
-pip install byllm[video]
+jac install 'byllm[video]'
 ```
 
 ---
@@ -326,7 +326,7 @@ with entry {
 | Video input | `Video(path="video.mp4", fps=1)` |
 | Structured output | Return objects/enums from images |
 | Multiple formats | URLs, files, PIL, bytes all supported |
-| Install video | `pip install byllm[video]` |
+| Install video | `jac install 'byllm[video]'` |
 
 ---
 

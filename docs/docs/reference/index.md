@@ -48,8 +48,8 @@ The language spec covers all core Jac constructs:
 ## Quick Start
 
 ```bash
-# 1. Install
-pip install jaseci
+# 1. Install the jac binary
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 
 # 2. Scaffold a new project
 jac create myapp --use client
@@ -122,8 +122,8 @@ The `jac` command is your primary interface to the Jac toolchain. For the full r
 
 | Plugin | Package | Description |
 |--------|---------|-------------|
-| byllm | `pip install byllm` | LLM integration |
-| jac-scale | `pip install jac-scale` | Production deployment |
+| byllm | `jac install byllm` | LLM integration |
+| jac-scale | `jac install jac-scale` | Production deployment |
 
 (Full-stack web and native-desktop app building -- formerly the `jac-client` / `jac-desktop` plugins -- now ship with `jaclang` core; no separate install.)
 

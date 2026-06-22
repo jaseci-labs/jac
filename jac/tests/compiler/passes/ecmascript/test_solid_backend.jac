@@ -9,6 +9,7 @@ SolidBackend and asserting on the emitted JS.
 
 import os;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import from jaclang.compiler.passes.ecmascript.backends.solid { SolidBackend }
@@ -37,8 +38,7 @@ import from jaclang.runtimelib.runtime_source {
     resolve_client_runtime_cl_path
 }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(
+glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
      );
 
@@ -234,9 +234,11 @@ test "JS family renders lifted control flow from the carried js_fallback (Branch
     assert " ? " in js , "the view ternary renders as a conditional expression";
 }
 
-test "solid async boundary lowers to Suspense and ErrorBoundary" {
+test "solid awaiting lowers to a native solid-js Suspense import" {
     js = compile_fixture_with_backend("view_awaiting.cl.jac", SolidBackend());
-    assert "Suspense" in js;
+    # Unlike the acceptance-matrix smoke check, assert the import *source*: the
+    # awaiting clause must lower to Solid's own Suspense, not the React shim.
+    assert 'import { Suspense } from "solid-js";' in js , f"expected a solid-js Suspense import, got: {js[:200]}";
     assert "JacAwaiting" not in js , "Solid must not emit the React Suspense shim";
 }
 

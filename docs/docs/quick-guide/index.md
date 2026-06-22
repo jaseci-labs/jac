@@ -85,7 +85,7 @@ This single file defines a persistent data model, an AI-powered categorizer, a R
     Install Jac, set your API key, and run:
 
     ```bash
-    pip install jaseci
+    curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
     export ANTHROPIC_API_KEY="your-key-here"
     jac start
     ```
@@ -224,10 +224,10 @@ The runtime handles database schemas, user authentication (per-user graph isolat
 ### Step 1: Install
 
 ```bash
-pip install jaseci
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-This installs the complete Jac ecosystem: `jaclang` (compiler, plus the built-in full-stack frontend/desktop framework), `byllm` (AI integration), and `jac-scale` (deployment).
+This installs the self-contained `jac` binary -- no Python, pip, or uv required. It includes the compiler and the built-in full-stack frontend/desktop framework. Add AI integration and deployment with `jac install byllm` and `jac install jac-scale`.
 
 Verify your installation:
 

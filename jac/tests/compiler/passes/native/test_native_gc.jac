@@ -20,11 +20,8 @@ import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import jaclang;
 
-glob FIXTURES = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
-     ),
+glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      # Programs whose RSS savings are too small / noisy to gate on (still verified to
      # run, but the strict GC < no-GC inequality is downgraded to a non-regression
      # check to avoid flakes on systems with high allocator slack).

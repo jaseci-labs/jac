@@ -1,13 +1,11 @@
 """Tests for jac0 bootstrapper impl emission."""
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.jac0 { compile_jac }
 
-glob FIXTURES = os.path.join(
-         str(Path(jaclang.__file__).parent.parent), "tests", "compiler", "fixtures"
-     );
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "fixtures");
 
 """Helper to compile a fixture with its impl file."""
 def compile_fixture(name: str) -> str {

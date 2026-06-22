@@ -9,7 +9,7 @@
 
 [Jac Website] | [Getting started] | [Learn] | [Documentation] | [Contributing]
 
-  [![PyPI version](https://img.shields.io/pypi/v/jaclang.svg)](https://pypi.org/project/jaclang/) [![Tests](https://github.com/Jaseci-Labs/jaclang/actions/workflows/run_pytest.yml/badge.svg)](https://github.com/Jaseci-Labs/jaclang/actions/workflows/run_pytest.yml) [![codecov](https://codecov.io/github/chandralegend/jaclang/graph/badge.svg?token=OAX26B0FE4)](https://codecov.io/github/chandralegend/jaclang)
+  [![Latest release](https://img.shields.io/github/v/release/jaseci-labs/jaseci.svg)](https://github.com/jaseci-labs/jaseci/releases/latest) [![Tests](https://github.com/Jaseci-Labs/jaclang/actions/workflows/run_pytest.yml/badge.svg)](https://github.com/Jaseci-Labs/jaclang/actions/workflows/run_pytest.yml) [![codecov](https://codecov.io/github/chandralegend/jaclang/graph/badge.svg?token=OAX26B0FE4)](https://codecov.io/github/chandralegend/jaclang)
 </div>
 
 This is the main source code repository for the [Jac] programming language. It contains the compiler, language server, and documentation.
@@ -33,10 +33,10 @@ This is the main source code repository for the [Jac] programming language. It c
 
 ## Quick Start
 
-To install Jac, run:
+Jac ships as a single self-contained native binary -- no Python, pip, or uv required. To install it, run:
 
 ```bash
-pip install jaclang
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
 Run `jac` in the terminal to see whether it is installed correctly.
@@ -46,16 +46,16 @@ Read ["Getting Started"] from [Docs] for more information.
 ["Getting Started"]: https://docs.jaseci.org/learn/tour/
 [Docs]: https://docs.jaseci.org/jac_book/
 
-## Installing from Source
+## Building from Source
 
-If you really want to install from source (though this is not recommended):
+The `jac` binary is built with [Zig](https://ziglang.org/) from this source tree (the build reads metadata from `jac.toml`; there is no `pyproject.toml` or pip install). For a full development environment, run the repository's bootstrap script:
 
 ```bash
-# with a local clone at `path/to/repo`:
-pip install path/to/repo/jac
-# or to have `pip` clone for you:
-pip install git+https://github.com/jaseci-labs/jaseci#subdirectory=jac
+# from the repository root
+./scripts/fresh_env.sh
 ```
+
+This builds the `jac` binary and puts it on your PATH. See [`launcher/README.md`](launcher/README.md) for the low-level `zig build` steps and the binary's internals.
 
 ## Getting Help
 
