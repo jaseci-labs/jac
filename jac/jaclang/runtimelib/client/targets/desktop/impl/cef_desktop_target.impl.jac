@@ -20,7 +20,9 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     _libpython_soname,
     _loopback_serve_py,
     _patch_host_rpath,
+    _plugin_bootstrap_py,
     _stage_oauth_broker,
+    _stage_plugins,
 }
 
 """Ensure the CEF binary distribution is staged (fetch it on first use)."""
@@ -98,9 +100,27 @@ Bootstrap JS (window.__JAC_DESKTOP__, window.__JAC_BROKER__) is injected in
 cef_dispatch.na.jac's on_context_created handler, not in this host.
 """
 def _generate_host_source(
-    libpy: str, title: str, width: int, height: int, app_name: str, cache_path: str,
+    libpy: str,
+    title: str,
+    width: int,
+    height: int,
+    app_name: str,
+    cache_path: str,
+    plugin_configs: dict = {},
 ) -> str {
-    serve_py = _loopback_serve_py(app_name);
+    # Splice the plugin host into the loopback server: it builds _host/_dispatch_fn,
+    # switches the host to the SSE push transport (setup_cef), routes POST
+    # /__jac/invoke into dispatch, and exposes the host on GET /__jac/events for
+    # emit()/eval_js(). JS reaches invoke via the fetch shim and on()/__emit__ via
+    # the EventSource in cef_dispatch.na.jac's BOOTSTRAP_JS (CEF's render process
+    # can't bind into the host in-process the way the single-process webview
+    # target does). Threaded server: the SSE stream blocks for its lifetime.
+    serve_py = _loopback_serve_py(
+        app_name,
+        _plugin_bootstrap_py(plugin_configs) + "_host.setup_cef()\n",
+        ", dispatch=_dispatch_fn, events=_host",
+        True
+    );
     return (
         '"""Generated CEF desktop host - do not edit (jac-desktop)."""\n'
         "import sys;\n"
@@ -210,8 +230,12 @@ impl CefDesktopTarget.build(
     dist_dir = web_bundle.parent;
 
     cfg = get_desktop_config(project_dir);
+    # Fail the build on a bad config instead of silently shipping it (mirrors
+    # the native target).
+    cfg.validate();
     ident = cfg.get_identity();
     win = cfg.get_window_config();
+    plugin_configs = cfg.get_plugin_configs();
     app_name = ident.name or "app";
 
     out_dir = project_dir / self.output_dir;
@@ -236,6 +260,8 @@ impl CefDesktopTarget.build(
     shutil.copy2(cef_dir / "cef.na.jac", out_dir / "cef.na.jac");
     _stage_cef_runtime(cef_dist, out_dir);
     _stage_oauth_broker(out_dir);
+    # Transpile plugin .jac -> .py for the embedded CPython (same as native).
+    _stage_plugins(out_dir);
 
     cache_path = str(project_dir / ".jac" / "desktop" / "cef-cache" / str(app_name));
     host_src = _generate_host_source(
@@ -245,6 +271,7 @@ impl CefDesktopTarget.build(
         win.height,
         str(app_name),
         cache_path,
+        plugin_configs,
     );
     (out_dir / "host.na.jac").write_text(host_src);
 

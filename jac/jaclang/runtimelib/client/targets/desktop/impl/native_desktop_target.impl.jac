@@ -14,7 +14,10 @@ import from jaclang.runtimelib.client.targets.desktop.plugin.webview_lib {
 import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     _find_webview_dir,
     _jac_bin,
+    _jac_sdk_js,
+    _plugin_bootstrap_py,
     _stage_oauth_broker,
+    _stage_plugins,
 }
 
 """Read lines from a file between start_marker and end_marker (exclusive).
@@ -120,95 +123,13 @@ def _generate_host_source(
         "print('JAC_DESKTOP_SERVING http://127.0.0.1:' + str(_port) + '/', flush=True)\n"
     );
     # --- Plugin IPC bootstrap (embedded CPython) ---
-    # Import plugin modules, register enabled plugins, expose dispatch.
-    # registry.jac (BUILTIN_PLUGINS + bootstrap_plugins) owns *which plugins to
-    # register and how*. This list owns the *module load order* for the embedded
-    # importlib bootstrap, which runs before registry is importable, so it can't
-    # be derived from BUILTIN_PLUGINS — it must be hand-kept in sync: every
-    # `built_in.*` plugin module here must match a BUILTIN_PLUGINS entry.
-    # Order is load order. `registry` imports every `built_in.*` plugin at
-    # module scope, so it MUST come last: in the embedded CPython `built_in`
-    # is a bare ModuleType (not a real package), so `from built_in.x import Y`
-    # only resolves once `built_in.x` is already in sys.modules. Loading
-    # registry before the built_in modules raises ModuleNotFoundError and
-    # crashes the whole plugin bootstrap (dispatch then never gets defined).
-    _plugin_mods = [
-        "manifest",
-        "desktop_plugin",
-        "webview_lib",
-        "plugin_host",
-        "built_in.path_plugin",
-        "built_in.window_plugin",
-        "built_in.fs_plugin",
-        "built_in.notification_plugin",
-        "built_in.clipboard_plugin",
-        "built_in.dialog_plugin",
-        "built_in.shell_plugin",
-        "registry"
-    ];
-    # Build plugin bootstrap as string concat (not Jac f-strings with nested
-    # quotes — those lower to broken Python like
-    # spec_from_file_location('mod, mod.py') with a null loader).
-    plugin_py = (
-        "import sys, importlib.util, types\n"
-        "if _root not in sys.path:\n"
-        "    sys.path.insert(0, _root)\n"
-        "if 'built_in' not in sys.modules:\n"
-        "    sys.modules['built_in'] = types.ModuleType('built_in')\n"
-    );
-    for _mod in _plugin_mods {
-        _py_rel = _mod.replace(".", "/") + ".py";
-        plugin_py += (
-            "_spec = importlib.util.spec_from_file_location(\n" + json.dumps(_mod) + ", os.path.join(_root, " + json.dumps(
-                _py_rel
-            ) + "))\n" "_m = importlib.util.module_from_spec(_spec)\n" "sys.modules[" + json.dumps(
-                _mod
-            ) + "] = _m\n" "_spec.loader.exec_module(_m)\n"
-        );
-        if _mod.startswith("built_in.") {
-            _child = _mod.split(".", 1)[1];
-            plugin_py += (
-                "setattr(sys.modules['built_in'], " + json.dumps(_child) + ", _m)\n"
-            );
-        }
-    }
-    # Build plugin host using registry bootstrap_plugins().
-    # This replaces seven hand-written registration blocks with a single call.
-    _pc = plugin_configs;  # baked at build time
-    plugin_py += f"_pc = {repr(_pc)}\n";
-    plugin_py += (
-        "_host = sys.modules['registry'].bootstrap_plugins(_pc, sys.modules)\n"
-        "_dispatch_fn = _host.dispatch\n"
-    );
-    serve_py = serve_py + "\n" + plugin_py;
+    # _plugin_bootstrap_py imports the plugin modules, bakes plugin_configs, and
+    # exposes _host/_dispatch_fn. Shared with the CEF target (desktop_build.jac).
+    serve_py = serve_py + "\n" + _plugin_bootstrap_py(plugin_configs);
     # --- JS SDK: window.__jac.invoke() + window.__jac.on() ---
-    # Replaces the existing bootstrap with a backward-compatible superset.
-    # Sets __JAC_DESKTOP__ and __JAC_BROKER__ for backward compat.
-    js_sdk = (
-        "(function(){"
-        "var _l={};"
-        "window.__jac={"
-        "invoke:function(p,c,a){"
-        "return window.__jac_invoke(p,c,a||{}).then(function(r){"
-        "if(typeof r==='string')r=JSON.parse(r);"
-        "if(r.ok)return r.data;"
-        "var e=new Error(r.error.message);"
-        "e.code=r.error.code;throw e;"
-        "});"
-        "},"
-        "on:function(ev,cb){"
-        "(_l[ev]=_l[ev]||[]).push(cb);"
-        "return function(){var a=_l[ev]||[];var i=a.indexOf(cb);"
-        "if(i!==-1)a.splice(i,1);};"
-        "},"
-        "__emit__:function(ev,p){"
-        "(_l[ev]||[]).forEach(function(h){try{h(p);}catch(_){}});"
-        "}"
-        "};"
-        "window.__JAC_DESKTOP__=true;"
-        "window.__JAC_BROKER__='/__jac';"
-        "})();"
-    );
+    # Backward-compatible superset; also sets __JAC_DESKTOP__/__JAC_BROKER__.
+    # Shared with the CEF target (desktop_build.jac).
+    js_sdk = _jac_sdk_js();
     # --- Generated host source ---
     # The plugin bridge is extracted from plugin_bridge.na.jac between
     # BRIDGE START / BRIDGE END markers — that file is the single source.
@@ -313,51 +234,9 @@ impl NativeDesktopTarget.build(
     # 5. Transpile oauth_broker.jac -> .py beside the binary.
     _stage_oauth_broker(out_dir);
 
-    # 6. Transpile all plugin .jac -> .py for the embedded CPython.
-    plugin_src_dir = webview_dir.parent.parent / "plugin";
-    if plugin_src_dir.exists() {
-        console.print("  Transpiling plugin IPC modules...", style="muted");
-        for jac_file in plugin_src_dir.rglob("*.jac") {
-            # rglob("*.jac") also matches directories named ".jac" (build cache).
-            if not jac_file.is_file() {
-                continue;
-            }
-            rel = jac_file.relative_to(plugin_src_dir);
-            py_name = str(rel.with_suffix(".py"));
-            console.print(f"    {rel} -> {py_name}", style="muted");
-            # Embedded CPython has no jaclang — prefer jac0 (stdlib-only output).
-            import jaclang.jac0 as jac0;
-            res_stdout = "";
-            try {
-                res_stdout = jac0.compile_jac(jac_file.read_text());
-                if not res_stdout or not res_stdout.strip() {
-                    raise RuntimeError("jac0 produced empty output");
-                }
-            } except Exception as jac0_err {
-                res = subprocess.run(
-                    [_jac_bin(), "jac2py", str(jac_file)],
-                    capture_output=True,
-                    text=True
-                );
-                if res.returncode != 0 or not res.stdout.strip() {
-                    raise RuntimeError(
-                        f"Plugin transpile failed: {rel} "
-                        f"(jac0 and jac2py failed)\n"
-                        f"jac0 error: {jac0_err}\n"
-                        f"jac2py stderr: {res.stderr or '(empty)'}"
-                    );
-                }
-                console.print(
-                    f"    ⚠ jac0 failed for {rel}, using jac2py fallback",
-                    style="yellow"
-                );
-                res_stdout = res.stdout;
-            }
-            target = out_dir / py_name;
-            target.parent.mkdir(parents=True, exist_ok=True);
-            target.write_text(res_stdout);
-        }
-    }
+    # 6. Transpile all plugin .jac -> .py for the embedded CPython (shared with
+    # the CEF target).
+    _stage_plugins(out_dir);
 
     # 7. The plugin bridge is inlined into the generated host source
     # (nacompile does not support string-literal imports between .na.jac files).

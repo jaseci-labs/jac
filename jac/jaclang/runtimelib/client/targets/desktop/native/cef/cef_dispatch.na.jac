@@ -42,6 +42,43 @@ import from "libc.so.6" {
 
 import from "libdl.so.2" { def dlsym(handle: int, symbol: str) -> int;  }
 
+import from "libX11.so.6" {
+    """Native window control for WindowPlugin (set_title / set_size). Title/size
+    are X11 operations on Linux -- CEF native windows have no set-title C API and
+    the WM owns the frame. These run on the broker (CPython) thread; we open a
+    fresh Display per call (Xlib is not thread-safe across one connection, and the
+    CEF UI thread keeps its own). All char* args are passed as int pointers."""
+    def XOpenDisplay(name: int) -> int;  def XCloseDisplay(dpy: int) -> i32;  def XDefaultRootWindow(
+        dpy: int
+    ) -> int;  def XQueryTree(
+        dpy: int, w: int, root_ret: int, parent_ret: int, children_ret: int, n_ret: int
+    ) -> i32;  def XInternAtom(dpy: int, name: str, only_if_exists: i32) -> int;  def XGetWindowProperty(
+        dpy: int,
+        w: int,
+        prop: int,
+        long_off: int,
+        long_len: int,
+        delete: i32,
+        req_type: int,
+        actual_type_ret: int,
+        actual_format_ret: int,
+        nitems_ret: int,
+        bytes_after_ret: int,
+        prop_ret: int
+    ) -> i32;  def XStoreName(dpy: int, w: int, name: int) -> i32;  def XChangeProperty(
+        dpy: int,
+        w: int,
+        prop: int,
+        type: int,
+        format: i32,
+        mode: i32,
+        data: int,
+        nelements: i32
+    ) -> i32;  def XResizeWindow(dpy: int, w: int, width: int, height: int) -> i32;  def XFlush(
+        dpy: int
+    ) -> i32;  def XFree(ptr: int) -> i32;
+}
+
 import from "libcef.so" {
     """cef_string_t - 24 bytes: ptr(8), len(8), dtor(8)"""
     obj cef_string_t {
@@ -262,7 +299,7 @@ import from "libcef.so" {
             _b3: int,  # has_one_ref   24
             _b4: int,  # has_at_least  32
             _b5: int,  # is_valid      40
-            _b6: int,  # get_host      48
+            get_host: Callable[[int], int],  # get_host      48
             _b7: int,  # can_go_back   56
             _b8: int,  # go_back       64
             _b9: int,  # can_fwd       72
@@ -282,6 +319,22 @@ import from "libcef.so" {
             _b23: int,  # get_count     184
             _b24: int,  # get_idents    192
             _b25: int;  # get_names     200
+    }  """cef_browser_host_t vtable - only get_window_handle (offset 72) is
+    called. Field order/offsets verified against CEF 119.4.7 capi
+    (cef_browser_capi.h): base(0-32), get_browser(40), close_browser(48),
+    try_close_browser(56), set_focus(64), get_window_handle(72). No defaults:
+    used as a local view via h: cef_browser_host_t = host_int."""
+    obj cef_browser_host_t {
+        has _bh0: int,  # base.size            0
+            _bh1: int,  # add_ref              8
+            _bh2: int,  # release             16
+            _bh3: int,  # has_one_ref         24
+            _bh4: int,  # has_at_least_one    32
+            _bh5: int,  # get_browser         40
+            _bh6: int,  # close_browser       48
+            _bh7: int,  # try_close_browser   56
+            _bh8: int,  # set_focus           64
+            get_window_handle: Callable[[int], int];  # get_window_handle  72
     }  """cef_command_line_t vtable - 200 bytes. No defaults: only used as a local view via c: cef_command_line_t = cmd_int"""
     obj cef_command_line_t {
         has _c0: int,  # base.size         0
@@ -318,6 +371,10 @@ glob g_pending_url: str = "",
      g_pending_w: int = 800,
      g_pending_h: int = 600,
      g_browser_pending: int = 0,
+     # Captured once on the CEF UI thread in _on_after_created; read (only) by the
+     # broker-thread window-control calls below. g_browser_xid is the X11 window id.
+     g_browser: int = 0,
+     g_browser_xid: int = 0,
      g_vtables_ready: int = 0,
      g_exe_dir_buf: int = 0,
      g_exe_path_buf: int = 0,
@@ -333,7 +390,16 @@ glob g_pending_url: str = "",
      g_settings: cef_settings_t = cef_settings_t(),
      g_wi: cef_window_info_t = cef_window_info_t();
 
-glob BOOTSTRAP_JS: str = "Object.defineProperty(window,'__JAC_DESKTOP__',{value:true,writable:false,configurable:false});Object.defineProperty(window,'__JAC_BROKER__',{value:'/__jac',writable:false,configurable:false});";
+# JS injected at document start in the render process. Three parts:
+#   1. the __jac_invoke fetch shim (CEF's render process can't bind into the host
+#      in-process, so it POSTs the wire array to the loopback /__jac/invoke route);
+#   2. the window.__jac SDK -- body MUST stay byte-identical to _jac_sdk_js() in
+#      desktop_build.jac (the native target injects that copy at build time; this
+#      precompiled .so carries its own literal);
+#   3. an EventSource on /__jac/events that drives host->JS pushes: {eval} runs
+#      JS (WindowPlugin), {event,payload} fans out to __jac.__emit__ (on()).
+# Uses only single quotes so it embeds cleanly in this double-quoted glob.
+glob BOOTSTRAP_JS: str = "window.__jac_invoke=function(p,c,a){return fetch('/__jac/invoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify([p,c,a||{}])}).then(function(r){return r.text();});};(function(){var _l={};window.__jac={invoke:function(p,c,a){return window.__jac_invoke(p,c,a||{}).then(function(r){if(typeof r==='string')r=JSON.parse(r);if(r.ok)return r.data;var e=new Error(r.error.message);e.code=r.error.code;throw e;});},on:function(ev,cb){(_l[ev]=_l[ev]||[]).push(cb);return function(){var a=_l[ev]||[];var i=a.indexOf(cb);if(i!==-1)a.splice(i,1);};},__emit__:function(ev,p){(_l[ev]||[]).forEach(function(h){try{h(p);}catch(_){}});}};window.__JAC_DESKTOP__=true;window.__JAC_BROKER__='/__jac';})();(function(){try{var es=new EventSource('/__jac/events');es.onmessage=function(m){try{var d=JSON.parse(m.data);if(d.eval){(0,eval)(d.eval);}else if(d.event){window.__jac.__emit__(d.event,d.payload);}}catch(_){}};}catch(_){}})();";
 
 def _log(msg: str) {
     prefix: str = "[cef] ";
@@ -403,6 +469,26 @@ def:pub cef_dispatch_log(msg: str) {
 def _on_before_close(self: int, browser: int) {
     _log("browser before-close");
     cef_quit_message_loop();
+}
+
+"""Capture the browser + its X11 window id for native window control.
+
+Runs on the CEF UI thread (only safe place to touch browser/host vtables). We
+read the immutable window id once here so the broker thread never has to call
+CEF off-thread -- it does pure X11 against this id (see the window-control
+section at the bottom of this file)."""
+def _on_after_created(self: int, browser: int) {
+    global g_browser,g_browser_xid;
+    g_browser = browser;
+    b: cef_browser_t = browser;
+    host: int = b.get_host(b);
+    if host == 0 {
+        _log("after-created: no browser host");
+        return;
+    }
+    h: cef_browser_host_t = host;
+    g_browser_xid = h.get_window_handle(h);
+    _log("after-created: captured X11 window handle");
 }
 
 def _get_life_span_handler(self: int) -> int {
@@ -479,6 +565,7 @@ def _init_vtables {
         release=cef_stub_release,
         has_one_ref=cef_stub_has_one_ref,
         has_at_least_one_ref=cef_stub_has_at_least_one_ref,
+        on_after_created=_on_after_created,
         on_before_close=_on_before_close,
     );
     g_bph = cef_browser_process_handler_t(
@@ -773,4 +860,155 @@ def:pub cef_dispatch_create_browser(
     );
     cef_string_utf16_clear(url_str);
     return result;
+}
+
+# --- Native window control (X11) -------------------------------------------
+# WindowPlugin.set_title / set_size call cef_dispatch_window_set_* below from the
+# broker (CPython) thread via ctypes. The browser's X11 window id was captured on
+# the UI thread in _on_after_created; here we only do pure X11 (stable ABI) on a
+# fresh per-call Display connection -- so no CEF UI-thread marshalling and no
+# shared-Xlib-connection races between concurrent broker request threads. Every
+# op is best-effort: a 0 window id or missing $DISPLAY (headless) is a silent
+# no-op that returns 0, and the Python side then falls back to a renderer-side
+# document.title / window.resizeTo via the SSE eval channel.
+"""Parent window id of w (0 on failure); frees the child list XQueryTree allocs."""
+def _x11_parent(dpy: int, w: int) -> int {
+    root_b: int = calloc(1, 8);
+    par_b: int = calloc(1, 8);
+    ch_b: int = calloc(1, 8);
+    n_b: int = calloc(1, 8);
+    rc: i32 = XQueryTree(dpy, w, root_b, par_b, ch_b, n_b);
+    parent: int = 0;
+    if rc != 0 {
+        pv: cef_ptr_wrap_t = par_b;
+        parent = pv.p0;
+        cv: cef_ptr_wrap_t = ch_b;
+        if cv.p0 != 0 {
+            XFree(cv.p0);
+        }
+    }
+    free(root_b);
+    free(par_b);
+    free(ch_b);
+    free(n_b);
+    return parent;
+}
+
+"""1 if window w carries property `prop` (used to find the WM_STATE top-level)."""
+def _x11_has_prop(dpy: int, w: int, prop: int) -> i32 {
+    if prop == 0 {
+        return 0;
+    }
+    at_b: int = calloc(1, 8);
+    af_b: int = calloc(1, 8);
+    ni_b: int = calloc(1, 8);
+    ba_b: int = calloc(1, 8);
+    pr_b: int = calloc(1, 8);
+    rc: i32 = XGetWindowProperty(
+        dpy, w, prop, 0, 0, 0, 0, at_b, af_b, ni_b, ba_b, pr_b
+    );
+    found: i32 = 0;
+    if rc == 0 {
+        av: cef_ptr_wrap_t = at_b;
+        if av.p0 != 0 {
+            found = 1;
+        }
+        pv: cef_ptr_wrap_t = pr_b;
+        if pv.p0 != 0 {
+            XFree(pv.p0);
+        }
+    }
+    free(at_b);
+    free(af_b);
+    free(ni_b);
+    free(ba_b);
+    free(pr_b);
+    return found;
+}
+
+"""Walk up from the captured (possibly nested) window to the WM-managed
+top-level -- the ancestor carrying WM_STATE. Falls back to the highest non-root
+ancestor when WM_STATE is absent (e.g. before the window is mapped)."""
+def _x11_toplevel(dpy: int, xid: int) -> int {
+    root: int = XDefaultRootWindow(dpy);
+    wm_state: int = XInternAtom(dpy, "WM_STATE", 1);
+    cur: int = xid;
+    i: int = 0;
+    while i < 24 {
+        if cur == 0 {
+            return xid;
+        }
+        if cur == root {
+            return xid;
+        }
+        if _x11_has_prop(dpy, cur, wm_state) != 0 {
+            return cur;
+        }
+        parent: int = _x11_parent(dpy, cur);
+        if parent == 0 {
+            return cur;
+        }
+        if parent == root {
+            return cur;
+        }
+        cur = parent;
+        i = i + 1;
+    }
+    return cur;
+}
+
+"""Set the OS window title. `title` is a UTF-8 char* passed as a pointer from the
+CPython broker via ctypes c_char_p -- NOT a Jac str (whose ABI differs). Returns
+1 if applied, 0 if there is no window / no X display."""
+def:pub cef_dispatch_window_set_title(title: int) -> i32 {
+    if g_browser_xid == 0 {
+        return 0;
+    }
+    dpy: int = XOpenDisplay(0);
+    if dpy == 0 {
+        return 0;
+    }
+    top: int = _x11_toplevel(dpy, g_browser_xid);
+    if top == 0 {
+        XCloseDisplay(dpy);
+        return 0;
+    }
+    # WM_NAME (legacy XA_STRING) for older WMs ...
+    XStoreName(dpy, top, title);
+    # ... and _NET_WM_NAME (UTF8_STRING) which modern WMs prefer.
+    netname: int = XInternAtom(dpy, "_NET_WM_NAME", 0);
+    utf8: int = XInternAtom(dpy, "UTF8_STRING", 0);
+    if netname != 0 && utf8 != 0 {
+        XChangeProperty(dpy, top, netname, utf8, 8, 0, title, strlen(title));
+    }
+    XFlush(dpy);
+    XCloseDisplay(dpy);
+    return 1;
+}
+
+"""Resize the OS top-level window. Returns 1 if applied, 0 if there is no
+window / no X display. The WM may clamp the request."""
+def:pub cef_dispatch_window_set_size(w: int, h: int) -> i32 {
+    if g_browser_xid == 0 {
+        return 0;
+    }
+    if w <= 0 {
+        return 0;
+    }
+    if h <= 0 {
+        return 0;
+    }
+    dpy: int = XOpenDisplay(0);
+    if dpy == 0 {
+        return 0;
+    }
+    top: int = _x11_toplevel(dpy, g_browser_xid);
+    if top == 0 {
+        XCloseDisplay(dpy);
+        return 0;
+    }
+    XResizeWindow(dpy, top, w, h);
+    XFlush(dpy);
+    XCloseDisplay(dpy);
+    return 1;
 }
