@@ -5,7 +5,7 @@ Jac compiles one language to three runtimes -- Python bytecode (server, `sv`), J
 Every example below was run against the current toolchain. Install once and follow along:
 
 ```bash
-pip install jaseci
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
 !!! tip "`jac run` is kind-aware"

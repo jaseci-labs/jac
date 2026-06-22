@@ -10,7 +10,7 @@ In this tutorial, you'll set up a full-stack project, understand the file struct
 >
 > - Completed: [Installation](../../quick-guide/install.md)
 > - Familiar with: HTML/CSS basics, React concepts helpful
-> - Install: `pip install jaseci`
+> - Install: see the [one-line installer](../../quick-guide/install.md)
 > - Time: ~15 minutes
 
 ---

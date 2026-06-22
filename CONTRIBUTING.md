@@ -21,24 +21,36 @@ git remote add upstream https://github.com/jaseci-labs/jaseci.git
 git remote -v
 ```
 
-**Setting Up Your Dev Envrionment**
+**Setting Up Your Dev Environment**
+
+jaclang ships as the single `jac` binary (Zig launcher + bundled CPython) -- there
+is no pip-installed jaclang. `scripts/fresh_env.sh` does the whole setup, or run
+the steps manually:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e jac
+# Build the jac binary (needs zig 0.16.0 + zstd; check out the typeshed submodule).
+git submodule update --init
+( cd jac && zig build )
+export PATH="$PWD/jac/zig-out/bin:$PATH"
+
+# Editable-install the plugins (deps go into each project's .jac/venv).
 jac install -e jac-byllm
 jac install -e jac-scale
 jac install -e jac-mcp
+
+# pre-commit is a Python dev tool; a small venv just for it is enough.
+python3 -m venv .venv
+source .venv/bin/activate
 pip install pre-commit
 pre-commit install
-pip install pytest pytest-xdist pytest-asyncio
 ```
 
 **Run Some Tests**
 
+The `jac` binary bundles the test runner (pytest + xdist):
+
 ```bash
-pytest jac -n auto
+jac test jac
 # See ci jobs in github actions for more stuff to run
 ```
 

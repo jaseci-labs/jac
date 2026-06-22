@@ -12,7 +12,7 @@ Install Jac with a single command -- no Python setup required:
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-This automatically installs [uv](https://docs.astral.sh/uv/) (if needed), a Python 3.12+ runtime, and the full Jac ecosystem including all plugins.
+This downloads the self-contained `jac` binary -- a launcher with its own bundled CPython, so **no system Python, uv, or pip is required** -- and installs the ecosystem plugins on top with `jac install`.
 
 ### Installer Options
 
@@ -24,16 +24,10 @@ Pass flags after `--` to customize the install:
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --core
 ```
 
-**Specific version:**
+**Specific release:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --version 2.3.1
-```
-
-**Standalone binary (self-contained, no Python/uv needed at runtime):**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --standalone
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash -s -- --version jaclang-0.16.7
 ```
 
 **Uninstall:**
@@ -44,76 +38,35 @@ curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/ins
 
 | Flag | Description |
 |------|-------------|
-| `--core` | Install only the Jac language compiler, no plugins |
-| `--standalone` | Download a pre-built binary from GitHub Releases |
-| `--version V` | Install a specific version |
-| `--uninstall` | Remove Jac |
+| `--core` | Install only the `jac` binary, no plugins |
+| `--version V` | Install the binary from a specific release tag |
+| `--uninstall` | Remove the `jac` binary |
 
 ### Upgrading
 
-Re-run the install command to upgrade to the latest version. The installer detects existing installations and upgrades in place.
+Re-run the install command to upgrade to the latest version. The installer replaces the existing binary in place.
 
 ---
 
-## Install via pip
+## Adding Plugins
 
-If you already have Python 3.12+ and prefer pip:
-
-```bash
-pip install jaseci
-```
-
-The `jaseci` package is a meta-package that bundles all Jac ecosystem packages together. This installs:
-
-- `jaclang` - The Jac language and compiler (includes the built-in full-stack web and native-desktop app framework)
-- `byllm` - AI/LLM integration
-- `jac-scale` - Production deployment
-
-Verify the installation:
-
-```bash
-jac --version
-```
-
-This also warms the cache, making subsequent commands faster.
-
----
-
-## Installation Options
-
-### Minimal Install (Language Only)
-
-If you only need the core language:
-
-```bash
-pip install jaclang
-```
-
-### Individual Plugins
-
-Install plugins as needed:
+The `jac` binary ships with the language and the built-in full-stack web and native-desktop app framework. Add ecosystem plugins at any time with `jac install`, which pulls them from PyPI into the binary's bundled runtime:
 
 ```bash
 # AI/LLM integration
-pip install byllm
+jac install byllm
 
 # Production deployment & scaling
-pip install jac-scale              # Core only (lightweight)
-pip install jac-scale[all]         # Full install with all features
+jac install jac-scale
+
+# Model Context Protocol server
+jac install jac-mcp
 ```
 
-### Virtual Environment (Recommended)
+The default install (without `--core`) already adds `byllm`, `jac-scale`, and `jac-mcp` for you. Verify the installation:
 
 ```bash
-# Create environment
-python -m venv jac-env
-
-# Activate it
-source jac-env/bin/activate   # Linux/Mac
-jac-env\Scripts\activate      # Windows
-
-# Install Jac
-pip install jaseci
+jac --version
 ```
 
 ---
@@ -252,22 +205,16 @@ jac create my-app --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/m
 
 ## Upgrading Jac
 
-If you installed via the one-line installer, re-run it to upgrade:
+Re-run the one-line installer to upgrade the `jac` binary:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-If you installed via pip:
+Upgrade plugins from PyPI with `jac install`:
 
 ```bash
-# Upgrade everything at once
-pip install --upgrade jaseci
-
-# Or upgrade individual packages
-pip install --upgrade jaclang
-pip install --upgrade byllm
-pip install --upgrade jac-scale
+jac install byllm jac-scale jac-mcp
 ```
 
 ---

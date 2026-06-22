@@ -11,7 +11,7 @@ You also get project scaffolding (`jac create --use client`), npm dependency man
 jac-client ships with `jaclang` core -- there is nothing extra to install:
 
 ```bash
-pip install jaclang        # or: pip install jaseci  (the full stack)
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
 ---
