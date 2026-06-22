@@ -25,8 +25,11 @@ module.exports = async ({ github, context, suites, aliases = {} }) => {
   if (!pr) return requested;
 
   // Attempt 1 = the automatic open/push run: request nothing. Only a /test
-  // re-run (attempt > 1) reads the request comments.
-  if (Number(context.runAttempt) <= 1) return requested;
+  // re-run (attempt > 1) reads the request comments. Fail closed: if the
+  // attempt can't be determined, treat it as the automatic run (request
+  // nothing) rather than honoring stale comments.
+  const attempt = Number(process.env.GITHUB_RUN_ATTEMPT || context.runAttempt);
+  if (!Number.isFinite(attempt) || attempt <= 1) return requested;
 
   const known = new Set(suites);
   const canon = (tok) => (known.has(tok) ? tok : aliases[tok]);
