@@ -35,9 +35,26 @@ const Py_FinalizeEx_t = *const fn () callconv(.c) c_int;
 // interpreter. Used for worker mode so the binary is a drop-in `sys.executable`.
 const Py_BytesMain_t = *const fn (argc: c_int, argv: [*c][*c]u8) callconv(.c) c_int;
 
-/// The validated boot dance: install the lazy `.jac` finder, then hand off to
-/// the jaclang CLI, which reads `sys.argv`.
+/// The validated boot dance: pin `sys.executable` to *this* binary, install the
+/// lazy `.jac` finder, then hand off to the jaclang CLI, which reads `sys.argv`.
+///
+/// Pinning `sys.executable` is load-bearing: under embedding (Py_Initialize),
+/// CPython's getpath cannot recover the launcher's own path and falls back to a
+/// PATH search for `python3`, so `sys.executable` ends up pointing at a *foreign*
+/// interpreter (e.g. /bin/python3). Anything that re-spawns `sys.executable`
+/// then runs that foreign Python while inheriting our PYTHONHOME/PYTHONPATH ->
+/// it loads our bundled 3.12 stdlib with the wrong libpython and dies importing
+/// builtin C-extensions (_decimal/_contextvars). That is exactly how pytest-xdist
+/// / execnet workers crash. Re-pointing it at this binary makes every re-spawn
+/// come back through worker mode (Py_BytesMain), which has the right interpreter.
+/// The path is passed in via the JAC_EXECUTABLE env var (set in `boot`) to avoid
+/// embedding a runtime path into this compile-time string.
 const BOOT_SRC =
+    "import sys, os\n" ++
+    "_exe = os.environ.get('JAC_EXECUTABLE')\n" ++
+    "if _exe:\n" ++
+    "    sys.executable = _exe\n" ++
+    "    sys._base_executable = _exe\n" ++
     "import _jac_finder; _jac_finder.install()\n" ++
     "from jaclang.jac0core.cli_boot import start_cli\n" ++
     "start_cli()\n";
@@ -76,19 +93,23 @@ pub fn main(init: std.process.Init) !void {
     ) catch die("runtime materialization failed");
 
     // 3. dlopen the bundled libpython and boot in-process.
-    std.process.exit(boot(rt, init));
+    std.process.exit(boot(rt, exe_path, init));
 }
 
-fn boot(rt: []const u8, init: std.process.Init) u8 {
+fn boot(rt: []const u8, exe_path: []const u8, init: std.process.Init) u8 {
     var b1: [std.Io.Dir.max_path_bytes]u8 = undefined;
     var b3: [std.Io.Dir.max_path_bytes]u8 = undefined;
     var ppbuf: [2 * std.Io.Dir.max_path_bytes]u8 = undefined;
     const home = std.fmt.bufPrintZ(&b1, "{s}/python", .{rt}) catch die("path too long");
     const libpath = std.fmt.bufPrintZ(&b3, "{s}/python/lib/{s}", .{ rt, lib_basename }) catch die("path too long");
-    // PYTHONPATH = site + lib-dynload. lib-dynload is added explicitly because in
-    // worker mode (Py_BytesMain) on Linux the C-extension dir is otherwise not on
-    // sys.path even with PYTHONHOME set, so xdist/multiprocessing workers fail to
-    // import _decimal/_contextvars etc. Harmless (redundant) for the main path.
+    // PYTHONPATH = site + lib-dynload. The lib-dynload entry guards pbs flavors
+    // that ship stdlib C-extensions as shared .so (e.g. linux-aarch64 noopt)
+    // rather than compiled into libpython: in worker mode (Py_BytesMain) that dir
+    // is otherwise not on sys.path even with PYTHONHOME set. (On the pinned
+    // linux-x86_64 pgo-full pbs nearly everything is *builtin* -- lib-dynload has
+    // only _crypt.so -- so it is mostly redundant there; the xdist worker crash
+    // that looked like a missing _decimal/_contextvars was actually a wrong
+    // sys.executable, fixed via JAC_EXECUTABLE below. See XDIST_LINUX_NOTES.md.)
     const pythonpath = std.fmt.bufPrintZ(&ppbuf, "{s}/site:{s}/python/lib/python3.12/lib-dynload", .{ rt, rt }) catch die("path too long");
 
     // We own a private, hermetic interpreter: point it at our tree, force UTF-8,
@@ -108,6 +129,13 @@ fn boot(rt: []const u8, init: std.process.Init) u8 {
     // install. Set before the worker-mode branch so re-invoked workers inherit
     // it too. Used e.g. to skip pip-`.pth`-shim-specific tests.
     _ = setenv("JAC_STANDALONE", "1", 1);
+    // Path to *this* binary, consumed by BOOT_SRC to pin `sys.executable` (see
+    // the BOOT_SRC doc comment). Passed via env so no runtime path is baked into
+    // the compile-time boot string. Children inherit it (harmless: worker mode
+    // doesn't run BOOT_SRC and already resolves sys.executable correctly).
+    var b_exe: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const exe_z = std.fmt.bufPrintZ(&b_exe, "{s}", .{exe_path}) catch die("path too long");
+    _ = setenv("JAC_EXECUTABLE", exe_z, 1);
 
     const h = std.c.dlopen(libpath.ptr, .{ .NOW = true, .GLOBAL = true }) orelse
         die("dlopen libpython failed (payload not materialized?)");
