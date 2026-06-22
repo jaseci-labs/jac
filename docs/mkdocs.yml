@@ -28,6 +28,7 @@ nav:
           - Foundation: "reference/language/foundation.md"
           - Primitives & Codespace Semantics: "reference/language/primitives.md"
           - Functions & Objects: "reference/language/functions-objects.md"
+          - Access Modifiers: "reference/language/access-modifiers.md"
           - Object-Spatial Programming: "reference/language/osp.md"
           - Concurrency: "reference/language/concurrency.md"
           - Comprehensions & Filters: "reference/language/advanced.md"
