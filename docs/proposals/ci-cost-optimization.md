@@ -218,7 +218,8 @@ side only - which is still the main thing we want to prove).
 > Note: the steps below describe the *free-runner migration* that was considered
 > first (move pure-pytest jobs to `ubuntu-latest` for ~80% savings via runner
 > tier). The **recommended** design is in Section G (path-driven test selection
-> + label/merge-gated `jac check`, heavy suite kept on Blacksmith for speed).
+>
+> - label/merge-gated `jac check`, heavy suite kept on Blacksmith for speed).
 > This table is retained as the documented alternative, not the chosen rollout.
 > See Section G's "Recommended rollout".
 
