@@ -1,6 +1,6 @@
 """Plugin configuration hooks for jac-byllm.
 
-This module implements JacPluginConfig hooks to integrate with core's
+This module implements JacConfig hooks to integrate with core's
 configuration system, registering:
 - Plugin metadata (name, version)
 - Config schema for [plugins.byllm] section

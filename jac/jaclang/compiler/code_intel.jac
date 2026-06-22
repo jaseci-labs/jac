@@ -37,6 +37,12 @@ import from jaclang.jac0core.jir {
     get_module_cache_path
 }
 import from jaclang.jac0core.bccache { discover_annex_files }
+import from jaclang.jac0core.ext_registry {
+    ANNEX_SUFFIXES,
+    ANNEX_FOLDER,
+    IMPL_SUFFIX,
+    is_annex
+}
 
 # Directories never worth compiling -- generated output, vendored deps, VCS.
 glob _SKIP_DIRS: set[str] = {
@@ -327,7 +333,7 @@ def _combined_source_hash(file: str) -> int {
         return -1;
     }
     annexes: list[str] = [];
-    for suffix in [".impl.jac", ".test.jac"] {
+    for suffix in ANNEX_SUFFIXES {
         try {
             annexes.extend(discover_annex_files(file, suffix));
         } except Exception as e {
@@ -654,16 +660,20 @@ obj CodeIntelligence {
         p = Path(real);
         head: (Path | None) = None;
         name = p.name;
-        if name.endswith(".impl.jac") {
-            head = p.with_name(name[:-len(".impl.jac")] + ".jac");
-        } elif name.endswith(".test.jac") {
-            head = p.with_name(name[:-len(".test.jac")] + ".jac");
+        # Strip the annex suffix only, preserving any codespace variant
+        # (e.g. foo.cl.impl.jac -> foo.cl.jac).
+        for asuf in ANNEX_SUFFIXES {
+            if name.endswith(asuf) {
+                head = p.with_name(name[:-len(asuf)] + ".jac");
+                break;
+            }
         }
         # An annex living inside a `<head>.impl/` directory belongs to the
         # `<head>.jac` beside that directory, not to a sibling.
         parent = p.parent;
-        if parent.name.endswith(".impl") {
-            head = parent.with_name(parent.name[:-len(".impl")] + ".jac");
+        impl_folder = ANNEX_FOLDER[IMPL_SUFFIX];
+        if parent.name.endswith(impl_folder) {
+            head = parent.with_name(parent.name[:-len(impl_folder)] + ".jac");
         }
         if head is not None {
             candidate = _real(str(head));
@@ -880,7 +890,7 @@ obj CodeIntelligence {
                 continue;
             }
             name = p.name;
-            if name.endswith(".impl.jac") or name.endswith(".test.jac") {
+            if is_annex(name) {
                 continue;
             }
             found.append(str(p));

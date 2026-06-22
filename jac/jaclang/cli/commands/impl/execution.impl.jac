@@ -9,6 +9,7 @@ import sys;
 import types;
 import from jaclang.cli.console { console }
 import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
+import from jaclang.jac0core.ext_registry { is_native_module }
 
 """Discover jac.toml from the file's directory when an absolute/relative path is given.
 
@@ -287,7 +288,7 @@ impl run(
     (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
     try {
-        if filename.endswith('.na.jac') {
+        if is_native_module(filename) {
             # Native files: compile directly and call jac_entry.
             # Skip jac_import to avoid resolving a .jac file with the same name.
             import ctypes;

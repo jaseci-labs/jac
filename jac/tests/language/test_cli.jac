@@ -776,29 +776,32 @@ test "param arg" {
 }
 
 test "caching issue" {
-    test_file = fixture_path("test_caching_issue.jac");
     test_cases = [(10, True), (11, False)];
-    for (x, is_passed) in test_cases {
-        with open(test_file, "w") as f {
-            f.write(f'test "mytest" {{\n    assert 10 == {x};\n}}\n');
-        }
-        process = subprocess.Popen(
-            ["jac", "test", test_file],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        );
-        (stdout, stderr) = process.communicate();
-        combined = stdout + stderr;
-        # jac test routes through pytest; the rebuilt file must re-run (not serve
-        # a stale cached result), so the pass/fail flips with the assertion.
-        if is_passed {
-            assert "1 passed" in combined;
-        } else {
-            assert "1 failed" in combined;
+    # Write the generated test into an isolated temp dir so it never pollutes
+    # the source tree and parallel runs (pytest -n auto) cannot collide.
+    with tempfile.TemporaryDirectory() as tmpdir {
+        test_file = os.path.join(tmpdir, "test_caching_issue.jac");
+        for (x, is_passed) in test_cases {
+            with open(test_file, "w") as f {
+                f.write(f'test "mytest" {{\n    assert 10 == {x};\n}}\n');
+            }
+            process = subprocess.Popen(
+                ["jac", "test", test_file],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            );
+            (stdout, stderr) = process.communicate();
+            combined = stdout + stderr;
+            # jac test routes through pytest; the rebuilt file must re-run (not
+            # serve a stale cached result), so pass/fail flips with the assertion.
+            if is_passed {
+                assert "1 passed" in combined;
+            } else {
+                assert "1 failed" in combined;
+            }
         }
     }
-    os.remove(test_file);
 }
 
 test "run jac name py" {
