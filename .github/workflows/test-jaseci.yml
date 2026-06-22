@@ -75,11 +75,6 @@ jobs:
       with:
         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
@@ -88,18 +83,13 @@ jobs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
-        pip install watchdog
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
 
     - name: Run Solid jsdom runtime test
       env:
         JAC_CLIENT_INTEGRATION: "1"
-      run: pytest -x -vv jac/tests/runtimelib/test_solid_jsdom.jac
+      run: jac test jac/tests/runtimelib/test_solid_jsdom.jac -x
 
   test-client:
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -109,11 +99,6 @@ jobs:
       with:
         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
@@ -122,23 +107,14 @@ jobs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
-        pip install playwright
-
-    - name: Install Playwright browsers
-      run: playwright install chromium --with-deps
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
 
     - name: Set environment for testing
-      run: |
-        echo "TEST_ENV=true" >> $GITHUB_ENV
+      run: echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run all client tests
-      run: pytest -x jac/tests/runtimelib/client -n auto
+      run: jac test jac/tests/runtimelib/client
 
   test-packages-and-docs:
     needs: changes
@@ -152,43 +128,42 @@ jobs:
       with:
         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        jac install -e jac-byllm
-        pip install pytest
-        pip install pytest-xdist
+    - name: Install jac-byllm (deps into venv; jaclang host-provided by the binary)
+      run: jac install -e jac-byllm
 
     - name: Set environment for testing
-      run: |
-        echo "TEST_ENV=true" >> $GITHUB_ENV
+      run: echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run package tests
-      run: pytest -x jac-byllm
+      working-directory: jac-byllm
+      run: jac test .
 
     - name: Install docs dependencies
-      run: jac install -e docs
+      run: |
+        jac install -e docs
+        # docs tooling (mkdocs + plugins) lives in the docs project venv
+        echo "$GITHUB_WORKSPACE/docs/.jac/venv/bin" >> "$GITHUB_PATH"
 
     - name: Build documentation
-      run: mkdocs build --strict
       working-directory: docs
+      run: mkdocs build --strict
 
     - name: Run documentation validation tests
-      run: pytest -q -x docs/tests/test_docs.jac
+      working-directory: docs
+      run: jac test tests/test_docs.jac
 
     - name: Install Playwright
+      working-directory: docs
       run: |
-        pip install playwright
+        jac install playwright
         playwright install chromium --with-deps
 
     - name: Run E2E code block tests
-      run: pytest docs/tests/e2e/test_code_blocks.jac -v
+      working-directory: docs
+      run: jac test tests/e2e/test_code_blocks.jac
 
   test-desktop-native:
     # Jac-native desktop tests (issue #6436). Dependency-free by design: they
@@ -206,20 +181,11 @@ jobs:
       with:
         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.12
-
-    - name: Install the jac toolchain only
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
 
     - name: Run dependency-free desktop tests
-      run: pytest -x jac/tests/runtimelib/client/test_desktop_binding.jac -n auto
+      run: jac test jac/tests/runtimelib/client/test_desktop_binding.jac
 
   test-mcp:
     needs: changes
@@ -232,21 +198,17 @@ jobs:
       with:
         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.12
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
 
-    - name: Install jac-mcp and test dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        jac install -e jac-mcp
-        pip install pytest
-        pip install pytest-xdist
+    - name: Install jac-mcp (deps into venv; jaclang host-provided by the binary)
+      run: jac install -e jac-mcp
 
     - name: Run jac-mcp tests
-      run: pytest -x jac-mcp -n auto
+      # cwd = plugin dir so jac auto-loads jac-mcp/.jac/venv (its deps) on top of
+      # the binary's host jaclang.
+      working-directory: jac-mcp
+      run: jac test .
 
   test-scale:
     needs: changes
@@ -263,30 +225,25 @@ jobs:
       with:
         submodules: true
 
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Install jac-scale with all test extras
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        jac install -e jac-scale --extras test
-        pip install pytest pytest-asyncio
-        pip install requests watchdog websockets
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
+
+    - name: Install jac-scale with all test extras (jaclang host-provided)
+      run: jac install -e jac-scale --extras test
 
     - name: Run ${{ matrix.group }} tests
+      # cwd = plugin dir so jac auto-loads jac-scale/.jac/venv (its deps).
+      working-directory: jac-scale
       run: |
         set +e
         failed=""
-        # One pytest process per file: the suite relies on per-file isolation.
-        for f in jac-scale/jac_scale/tests/${{ matrix.group }}/test_*.jac; do
+        # One process per file: the suite relies on per-file isolation.
+        for f in jac_scale/tests/${{ matrix.group }}/test_*.jac; do
           echo "::group::$f"
-          pytest -vv -s "$f" || failed="$failed $f"
+          JAC_TEST_JOBS=0 jac test "$f" || failed="$failed $f"
           echo "::endgroup::"
         done
         if [ -n "$failed" ]; then
@@ -314,19 +271,11 @@ jobs:
         with:
           submodules: true
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.12
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
-      - name: Install Jaseci scale package
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e jac
-          jac install -e jac-scale --extras deploy
-          pip install pytest
-          pip install pytest-xdist
-          pip install pytest-asyncio
+      - name: Install Jaseci scale package (jaclang host-provided by the binary)
+        run: jac install -e jac-scale --extras deploy
 
       - name: Write kind config
         run: |
@@ -350,16 +299,22 @@ jobs:
 
       - name: Run K8 tests (deploy-core)
         if: matrix.group == 'deploy-core'
+        working-directory: jac-scale
+        env:
+          JAC_TEST_JOBS: "0"
         run: |
-          pytest  -s -x jac-scale/jac_scale/tests/test_image_build.jac
-          pytest  -s -x jac-scale/jac_scale/tests/test_pod_env.jac
-          pytest  -s -x jac-scale/jac_scale/tests/test_k8s_utils.jac
-          pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac --deselect "jac-scale/jac_scale/tests/test_deploy_k8s.jac::early exit"
+          jac test jac_scale/tests/test_image_build.jac -x
+          jac test jac_scale/tests/test_pod_env.jac -x
+          jac test jac_scale/tests/test_k8s_utils.jac -x
+          jac test jac_scale/tests/test_deploy_k8s.jac -x -f "not early exit"
 
       - name: Run K8 tests (failure-path)
         if: matrix.group == 'failure-path'
+        working-directory: jac-scale
+        env:
+          JAC_TEST_JOBS: "0"
         run: |
-          pytest  -s -x "jac-scale/jac_scale/tests/test_deploy_k8s.jac::early exit"
+          jac test jac_scale/tests/test_deploy_k8s.jac -x --test_name "early exit"
 
   test-pypi-build:
     needs: changes
