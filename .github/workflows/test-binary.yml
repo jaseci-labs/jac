@@ -23,6 +23,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The type checker loads vendored typeshed stubs, which live in a git
+          # submodule (jac/jaclang/vendor/typeshed). Without them the checker is a
+          # no-op and ~700 compiler tests fail on missing `typing.pyi`.
+          submodules: true
 
       - name: Install host tools (zstd for payload de/compression)
         run: sudo apt-get update && sudo apt-get install -y zstd
