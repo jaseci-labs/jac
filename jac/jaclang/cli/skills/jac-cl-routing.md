@@ -20,7 +20,7 @@ myapp/
     │   ├── index.jac        # /users
     │   └── [id].jac         # /users/:id   (dynamic param)
     ├── posts/[slug].jac     # /posts/:slug
-    ├── (public)/            # route group - organizes, adds NO URL segment
+    ├── (public)/            # route group - adds NO URL segment; any name except 'auth' is non-protected
     │   └── login.jac        # /login
     ├── (auth)/              # protected group - AUTOMATIC auth guard, adds NO URL segment
     │   └── dashboard.jac    # /dashboard  (protected automatically)
@@ -36,38 +36,13 @@ myapp/
 | `pages/about.impl.jac` | **no** | jac impl-separation file |
 | `pages/about.test.jac` | **no** | test file |
 
-**Co-location pattern** - when a page has a heavy or complex UI, split it into a thin route file (`.jac`, exports `page`) and a co-located component file (`.cl.jac`, exports a named component). Both live in `pages/` but only the `.jac` becomes a route:
+**Co-location pattern** - split into a thin `.jac` route (exports `def:pub page`) and a `.cl.jac` component. Both live in `pages/`, only `.jac` becomes a route. Import the sibling inside `cl {}` using the stem without `.cl`: `budget_ui.cl.jac` → `import from .budget_ui { BudgetUI }`.
 
 ```
 pages/
-├── budget.jac               # /budget  - thin route, exports page()
+├── budget.jac               # /budget  - thin route, exports page
 └── budget_ui.cl.jac         # skipped  - complex UI component, exported as BudgetUI
 ```
-
-```jac
-# pages/budget_ui.cl.jac - complex component, NOT a route
-import from ..context.BudgetContext { useBudgetContext }
-
-def:pub BudgetUI -> JsxElement {
-    budget = useBudgetContext();
-    # ... all the complex UI logic
-    return <div>...</div>;
-}
-```
-
-```jac
-# pages/budget.jac - thin route wrapper, IS a route
-cl {
-    import from .budget_ui { BudgetUI }
-    import from ..context.BudgetContext { BudgetProvider }
-
-    def:pub page -> JsxElement {
-        return <BudgetProvider><BudgetUI/></BudgetProvider>;
-    }
-}
-```
-
-This keeps the route file minimal while the component can be developed, reused, and tested independently.
 
 Each page file exports a **`def:pub page`**; each layout file a **`def:pub layout`** containing `<Outlet />` where child routes render:
 
@@ -99,22 +74,41 @@ cl {
 }
 ```
 
-**Protected route group** - naming a group `(auth)/` is all that is needed; the build system automatically wraps every page inside with an `AuthGuard` in the generated entry script. No layout file or manual `AuthGuard` call required.
+A `layout.jac` inside a subdirectory scopes to that directory's URL prefix only:
 
 ```
 pages/
-├── (public)/
-│   └── login.jac        # /login  - accessible without auth
-└── (auth)/
-    └── dashboard.jac    # /dashboard - automatically protected
+├── layout.jac          # wraps ALL routes (layout key "/")
+└── users/
+    ├── layout.jac      # wraps /users and /users/:id only (layout key "/users")
+    ├── index.jac       # /users
+    └── [id].jac        # /users/:id
 ```
+
+**Protected route group** - naming a group `(auth)/` is all that is needed; the build system automatically wraps every page inside with an `AuthGuard` in the generated entry script. No layout file or manual `AuthGuard` call required.
 
 The default redirect for unauthenticated users is `/login`. To change it, set `auth_redirect` in `jac.toml`:
 
 ```toml
-[routing]
+[plugins.client.routing]
 auth_redirect = "/signin"
 ```
+
+**Global providers (`app` export)** - export `def:pub app` from `main.jac` to wrap the entire router with global providers (theme, query client, auth context, etc.). The router tree is passed as `children`:
+
+```jac
+# main.jac
+cl import from "@jac/runtime" { ... }
+cl import from .providers.ThemeProvider { ThemeProvider }
+
+cl {
+    def:pub app(children: any) -> JsxElement {
+        return <ThemeProvider>{children}</ThemeProvider>;
+    }
+}
+```
+
+Without this export the router mounts directly. With it, `AppWrapper` wraps `<App/>` (the router tree).
 
 > **Do not place a `layout.jac` inside `(auth)/`.** Route groups do not add a URL segment, so `pages/(auth)/layout.jac` maps to the same layout key (`"/"`) as `pages/layout.jac`. Having both causes a **layout collision error** at build time. If only `pages/(auth)/layout.jac` exists, it becomes the root layout and wraps all routes - including public ones like `/login` - behind `AuthGuard`, causing an infinite redirect loop.
 
@@ -137,16 +131,16 @@ page = int(searchParams.get("page") or "1");
 
 ## Manual routing (secondary)
 
-Explicit route table in one component (typically `AppShell.cl.jac` or `main.jac`). Nested routes render into the parent element's `<Outlet />`:
+Explicit route table in one `.cl.jac` component (e.g. `AppShell.cl.jac`). Components live OUTSIDE `pages/`. Nested routes render into the parent's `<Outlet />`:
 
 ```jac
-cl import from "@jac/runtime" { Router, Routes, Route, Navigate, Outlet }
-# Manual-routing components live OUTSIDE pages/ (e.g. a routes/ folder) - a
-# pages/ directory would trigger file-based routing and fight this Router.
-cl import from .routes.LoginPage { LoginPage }
-cl import from .routes.DashboardLayout { DashboardLayout }
-cl import from .routes.DashboardHome { DashboardHome }
-cl import from .routes.Settings { Settings }
+import from "@jac/runtime" { Router, Routes, Route, Navigate, Outlet }
+import from .routes.LoginPage { LoginPage }
+import from .routes.DashboardLayout { DashboardLayout }
+import from .routes.DashboardHome { DashboardHome }
+import from .routes.Settings { Settings }
+import from .routes.UserProfile { UserProfile }
+import from .routes.NotFound { NotFound }
 
 def:pub AppShell() -> JsxElement {
     return <Router>
@@ -163,8 +157,6 @@ def:pub AppShell() -> JsxElement {
     </Router>;
 }
 ```
-
-Don't mix the two systems: a `pages/` directory and a manual `<Router>` will fight over the URL.
 
 ## Pitfalls
 
