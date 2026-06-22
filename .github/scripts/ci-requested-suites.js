@@ -14,9 +14,13 @@
 // This means a new push starts clean (its auto run is attempt 1 again),
 // without relying on fragile commit-timestamp comparisons.
 //
+// Only the MOST RECENT collaborator `/test` comment is honored - a request
+// runs exactly what that one comment names, with nothing inherited from earlier
+// `/test` comments. Want several suites? List them in one comment
+// (`/test core mcp`). `all` expands to every suite in `suites`.
+//
 // `aliases` maps extra command keywords to a canonical suite (e.g. a single-job
-// workflow passes { check: 'check' } and asks for its own suite). `all`
-// expands to every suite in `suites`.
+// workflow passes { check: 'check' } and asks for its own suite).
 
 module.exports = async ({ github, context, suites, aliases = {} }) => {
   const { owner, repo } = context.repo;
@@ -52,7 +56,10 @@ module.exports = async ({ github, context, suites, aliases = {} }) => {
     })
   );
 
-  for (const c of comments) {
+  // Walk newest-first and use the FIRST collaborator `/test` comment found -
+  // i.e. the most recent valid request. Nothing accumulates across comments.
+  for (let i = comments.length - 1; i >= 0; i--) {
+    const c = comments[i];
     const body = (c.body || '').trim();
     if (!body.startsWith('/test')) continue;
     if (!(await isCollaborator(c.user.login))) continue;
@@ -60,12 +67,13 @@ module.exports = async ({ github, context, suites, aliases = {} }) => {
     const toks = body.split(/\s+/).slice(1).map((t) => t.toLowerCase());
     if (toks.includes('all')) {
       for (const s of suites) requested.add(s);
-      continue;
+      return requested;
     }
     for (const t of toks) {
       const s = canon(t);
       if (s) requested.add(s);
     }
+    return requested; // honor only this latest /test comment
   }
 
   return requested;
