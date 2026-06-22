@@ -140,10 +140,11 @@ impl ViteCompiler._create_pages_entry_content(
     }
     auth_redirect = "/login";
     try {
-        import from jaclang.runtimelib.client.config_loader { PluginConfig }
-        config = PluginConfig.load(self.project_dir);
-        if config and config?.routing and config.routing {
-            auth_redirect = config.routing.get('auth_redirect', '/login');
+        import from jaclang.runtimelib.client.config_loader { JacClientConfig }
+        config = JacClientConfig(project_dir=self.project_dir);
+        routing = config.get_section('routing');
+        if routing {
+            auth_redirect = routing.get('auth_redirect', '/login');
         }
     } except Exception as e {
         console.warning(
