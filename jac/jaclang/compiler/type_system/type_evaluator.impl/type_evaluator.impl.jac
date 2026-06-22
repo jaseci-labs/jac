@@ -4505,7 +4505,7 @@ impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str
     if cur is pred {
         # Nested under pred but not under else_body -> true branch body.
         return "true";
-        
+
     }
     # Fall-through to next sibling: which branch is the empty one?
     body_empty = not pred.body;
