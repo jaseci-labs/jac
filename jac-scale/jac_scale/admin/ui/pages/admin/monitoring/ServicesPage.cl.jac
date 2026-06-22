@@ -251,12 +251,7 @@ cl {
                 "sub": "starting / unstable",
                 "tone": attentionTone
             },
-            {
-                "label": "Broken",
-                "value": brokenN,
-                "sub": "failing",
-                "tone": brokenTone
-            },
+            {"label": "Broken", "value": brokenN, "sub": "failing", "tone": brokenTone},
             {
                 "label": "Traffic",
                 "value": str(rps) + " r/s",
@@ -375,7 +370,9 @@ cl {
                     No services visible.
                 </div>}
                 {len(services) > 0
-                and <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                and <div
+                    className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"
+                >
                     {[
                         <button
                             key={s["kind"] + "/" + s["name"]}
@@ -384,7 +381,9 @@ cl {
                         >
                             <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
-                                    <p className="text-sm font-semibold text-fg truncate">
+                                    <p
+                                        className="text-sm font-semibold text-fg truncate"
+                                    >
                                         {s["name"]}
                                     </p>
                                     <span
@@ -409,15 +408,21 @@ cl {
                             </div>
                             <div className="grid grid-cols-3 gap-2 mt-3">
                                 <div>
-                                    <p className="text-[11px] text-faint uppercase tracking-wider">
+                                    <p
+                                        className="text-[11px] text-faint uppercase tracking-wider"
+                                    >
                                         Pods
                                     </p>
                                     <p className="text-sm text-fg tabular-nums">
-                                        {s["replicas_ready"]}{" / "}{s["replicas_desired"]}
+                                        {s["replicas_ready"]}{" / "}{s[
+                                            "replicas_desired"
+                                        ]}
                                     </p>
                                 </div>
                                 <div>
-                                    <p className="text-[11px] text-faint uppercase tracking-wider">
+                                    <p
+                                        className="text-[11px] text-faint uppercase tracking-wider"
+                                    >
                                         CPU
                                     </p>
                                     <p className="text-sm text-fg tabular-nums">
@@ -425,7 +430,9 @@ cl {
                                     </p>
                                 </div>
                                 <div>
-                                    <p className="text-[11px] text-faint uppercase tracking-wider">
+                                    <p
+                                        className="text-[11px] text-faint uppercase tracking-wider"
+                                    >
                                         Memory
                                     </p>
                                     <p className="text-sm text-fg tabular-nums">

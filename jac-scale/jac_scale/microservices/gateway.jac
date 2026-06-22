@@ -57,7 +57,6 @@ gateway's existing FastAPI app, then calls the inherited
 `register_llm_telemetry_endpoints`.
 """
 obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerLLMTelemetry) {
-
     has registry: ServiceRegistry,
         app: FastAPI | None = None,
         port: int = DEFAULT_GATEWAY_PORT,
