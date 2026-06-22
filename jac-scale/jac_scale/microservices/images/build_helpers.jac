@@ -73,7 +73,9 @@ glob _EMBEDDED_DOCKERFILE: str = "FROM python:3.12-slim\n\n"
      "**/.vite\n"
      "**/.next\n"
      ".env\n"
-     ".env.*\n";
+     ".env.*\n"
+     "jac.local.toml\n"
+     "jac.*.toml\n";
 
 
 """Walk up looking for jac/ + jac-scale/ siblings (developer checkout

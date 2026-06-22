@@ -6,6 +6,7 @@ obj KubernetesConfig(BaseConfig) {
     has docker_image_name: str = '',
         docker_username: str = '',
         docker_password: str = '',
+        build_platform: str = 'linux/amd64',
         container_port: int = 8000,
         mongodb_enabled: bool = True,
         redis_enabled: bool = True,
@@ -46,7 +47,8 @@ obj KubernetesConfig(BaseConfig) {
         mongodb_storage_size: str = '1Gi',
         # Timing configuration
         resource_deletion_wait: int = 5,
-        aws_nlb_wait: int = 60,
+        nlb_poll_interval: int = 10,
+        nlb_timeout: int = 120,
         # Paths
         app_mount_path: str = '/app',
         code_mount_path: str = '/code',
@@ -139,6 +141,7 @@ obj KubernetesConfig(BaseConfig) {
                 'docker_image_name': self.docker_image_name,
                 'docker_username': self.docker_username,
                 'docker_password': self.docker_password,
+                'build_platform': self.build_platform,
                 'container_port': self.container_port,
                 'mongodb_enabled': self.mongodb_enabled,
                 'redis_enabled': self.redis_enabled,
@@ -170,7 +173,8 @@ obj KubernetesConfig(BaseConfig) {
                 'mongodb_storage_size': self.mongodb_storage_size,
                 # Timing configuration
                 'resource_deletion_wait': self.resource_deletion_wait,
-                'aws_nlb_wait': self.aws_nlb_wait,
+                'nlb_poll_interval': self.nlb_poll_interval,
+                'nlb_timeout': self.nlb_timeout,
                 # Paths
                 'app_mount_path': self.app_mount_path,
                 'code_mount_path': self.code_mount_path,
@@ -229,6 +233,7 @@ obj KubernetesConfig(BaseConfig) {
             docker_image_name=config.get('docker_image_name', ''),
             docker_username=config.get('docker_username', ''),
             docker_password=config.get('docker_password', ''),
+            build_platform=config.get('build_platform', 'linux/amd64'),
             container_port=config.get('container_port', 8000),
             mongodb_enabled=config.get('mongodb_enabled', True),
             redis_enabled=config.get('redis_enabled', True),
@@ -257,7 +262,8 @@ obj KubernetesConfig(BaseConfig) {
             pvc_size=config.get('pvc_size', '5Gi'),
             mongodb_storage_size=config.get('mongodb_storage_size', '1Gi'),
             resource_deletion_wait=config.get('resource_deletion_wait', 5),
-            aws_nlb_wait=config.get('aws_nlb_wait', 60),
+            nlb_poll_interval=config.get('nlb_poll_interval', 10),
+            nlb_timeout=config.get('nlb_timeout', 120),
             app_mount_path=config.get('app_mount_path', '/app'),
             code_mount_path=config.get('code_mount_path', '/code'),
             workspace_path=config.get('workspace_path', '/code/workspace'),

@@ -44,6 +44,8 @@ import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
 import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
 import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger, TriggerAuth }
 import time;
+import json;
+import base64;
 
 """Kubernetes deployment target implementation."""
 obj KubernetesTarget(DeploymentTarget) {
@@ -313,6 +315,66 @@ obj KubernetesTarget(DeploymentTarget) {
         full_command = ' && '.join(commands);
 
         return ['bash', '-c', full_command];
+    }
+
+    """Build the Deployment body dict for create/replace_namespaced_deployment."""
+    def _build_deployment_body(
+        app_name: str,
+        namespace: str,
+        app_sa_name: str,
+        container_config: dict,
+        init_containers: list,
+        volumes: list,
+        pull_secret_name: (str | None) = None
+    ) -> dict {
+        return {
+            'apiVersion': 'apps/v1',
+            'kind': 'Deployment',
+            'metadata': {
+                'name': app_name,
+                'namespace': namespace,
+                'labels': {'app': app_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'replicas': 1,
+                'selector': {'matchLabels': {'app': app_name}},
+                'template': {
+                    'metadata': {'labels': {'app': app_name}},
+                    'spec': {
+                        'automountServiceAccountToken': False,
+                        'serviceAccountName': app_sa_name,
+                        'securityContext': {
+                            'seccompProfile': {'type': 'RuntimeDefault'}
+                        },
+                        'imagePullSecrets': [{'name': pull_secret_name}]
+                            if pull_secret_name
+                            else [],
+                        'initContainers': init_containers,
+                        'containers': [container_config],
+                        'volumes': volumes
+                    }
+                }
+            }
+        };
+    }
+
+    """Build a kubernetes.io/dockerconfigjson Secret body for DockerHub pulls."""
+    def _build_registry_pull_secret(
+        namespace: str, username: str, password: str, secret_name: str
+    ) -> dict {
+        auth = base64.b64encode(f"{username}:{password}".encode()).decode();
+        docker_config = json.dumps(
+            {'auths': {'https://index.docker.io/v1/': {'auth': auth}}}
+        );
+        return {
+            'apiVersion': 'v1',
+            'kind': 'Secret',
+            'metadata': {'name': secret_name, 'namespace': namespace},
+            'type': 'kubernetes.io/dockerconfigjson',
+            'data': {
+                '.dockerconfigjson': base64.b64encode(docker_config.encode()).decode()
+            }
+        };
     }
 
     """Build container configuration."""
@@ -1263,8 +1325,15 @@ obj KubernetesTarget(DeploymentTarget) {
         }
 
         if provider.needs_nlb_wait() {
-            time.sleep(self.k8s_config.aws_nlb_wait);
+            # Poll until the NLB has an assigned hostname or the deadline is hit.
+            # AWS NLBs typically take 60-90s to provision; a single sleep risks
+            # reading before ingress is assigned, leaving nlb_url=None and silently
+            # skipping the health check.
             nlb_url = None;
+            poll_interval = self.k8s_config.nlb_poll_interval;
+            nlb_deadline = self.k8s_config.nlb_timeout;
+            elapsed = 0;
+            ingress_svc_name = f"{app_name}-ingress-nginx-service";
             try {
                 try {
                     k8s_cluster_config.load_kube_config();
@@ -1274,20 +1343,24 @@ obj KubernetesTarget(DeploymentTarget) {
                 core_v1 = client.CoreV1Api();
                 # The app service is ClusterIP; the NLB is on the NGINX ingress
                 # controller's LoadBalancer service — same source as get_service_url().
-                ingress_svc_name = f"{app_name}-ingress-nginx-service";
-                service_obj = core_v1.read_namespaced_service(
-                    ingress_svc_name, namespace
-                );
-                nlb_ingress = service_obj.status.load_balancer.ingress;
-                if (nlb_ingress and (len(nlb_ingress) > 0)) {
-                    endpoint = nlb_ingress[0].hostname or nlb_ingress[0].ip;
-                    nlb_url = f"http://{endpoint}";
-                } else {
+                while elapsed < nlb_deadline {
+                    service_obj = core_v1.read_namespaced_service(
+                        ingress_svc_name, namespace
+                    );
+                    nlb_ingress = service_obj.status.load_balancer.ingress;
+                    if (nlb_ingress and (len(nlb_ingress) > 0)) {
+                        endpoint = nlb_ingress[0].hostname or nlb_ingress[0].ip;
+                        nlb_url = f"http://{endpoint}";
+                        break;
+                    }
                     if self.logger {
                         self.logger.info(
-                            f"NLB is being provisioned. Run 'kubectl get svc {ingress_svc_name} -n {namespace}' to get the endpoint."
+                            f"NLB is being provisioned ({elapsed}s elapsed). "
+                            f"Retrying in {poll_interval}s..."
                         );
                     }
+                    time.sleep(poll_interval);
+                    elapsed += poll_interval;
                 }
             } except Exception as e {
                 if self.logger {
@@ -1306,6 +1379,12 @@ obj KubernetesTarget(DeploymentTarget) {
                 if not (deployment_status) {
                     raise Exception("Deployment failed: Application failed to deploy.");
                 }
+            } else {
+                raise Exception(
+                    f"AWS NLB '{ingress_svc_name}' did not receive a hostname within "
+                    f"{nlb_deadline}s. Run 'kubectl get svc {ingress_svc_name} "
+                    f"-n {namespace}' to check status."
+                );
             }
         } else {
             (deployment_status, deployment_details) = check_deployment_status(
@@ -1337,7 +1416,8 @@ obj KubernetesTarget(DeploymentTarget) {
                 'app_name': app_name,
                 'docker_username': self.k8s_config.docker_username,
                 'docker_password': self.k8s_config.docker_password,
-                'docker_image_name': image_name
+                'docker_image_name': image_name,
+                'build_platform': self.k8s_config.build_platform
             };
             image_registry = ImageRegistryFactory.create('dockerhub', registry_config);
             full_image = image_registry.build_and_push(
@@ -1416,6 +1496,43 @@ obj KubernetesTarget(DeploymentTarget) {
                 }
             }
 
+            # 3c. Create Docker registry pull secret for private DockerHub images
+            pull_secret_name: str | None = None;
+            if app_config.build
+            and self.k8s_config.docker_username
+            and self.k8s_config.docker_password {
+                pull_secret_name = f"{app_name}-registry-secret";
+                pull_secret_body = self._build_registry_pull_secret(
+                    namespace,
+                    self.k8s_config.docker_username,
+                    self.k8s_config.docker_password,
+                    pull_secret_name
+                );
+                try {
+                    core_v1.read_namespaced_secret(
+                        name=pull_secret_name, namespace=namespace
+                    );
+                    core_v1.replace_namespaced_secret(
+                        name=pull_secret_name,
+                        namespace=namespace,
+                        body=pull_secret_body
+                    );
+                } except ApiException as e {
+                    if e.status == 404 {
+                        core_v1.create_namespaced_secret(
+                            namespace=namespace, body=pull_secret_body
+                        );
+                    } else {
+                        raise;
+                    }
+                }
+                if self.logger {
+                    self.logger.info(
+                        f"Created DockerHub pull secret '{pull_secret_name}'"
+                    );
+                }
+            }
+
             # 4. Determine cluster provider (encapsulates all provider-specific behaviour)
             provider = get_cluster_provider();
             # 4b. Validate NodePort availability (no-op on AWS, checked on local).
@@ -1442,11 +1559,17 @@ obj KubernetesTarget(DeploymentTarget) {
             probe_configs = self._build_probe_config(health_check_path);
 
             # 9. Build container configuration
+            # When using --build, the image has no default CMD so we must set the startup command
+            build_command: (list[str] | None) = None;
+            if app_config.build {
+                build_command = ['jac', 'start', app_config.file_name];
+            }
             container_config = self._build_container_config(
                 app_name,
                 repository_name,
                 probe_configs,
                 resources_config,
+                command=build_command,
                 secret_ref_name=secret_ref_name
             );
 
@@ -1487,32 +1610,15 @@ obj KubernetesTarget(DeploymentTarget) {
 
             # 11b. Build service and deployment
             service = self._build_service_config(app_name, health_check_path);
-            deployment = {
-                'apiVersion': 'apps/v1',
-                'kind': 'Deployment',
-                'metadata': {
-                    'name': app_name,
-                    'namespace': namespace,
-                    'labels': {'app': app_name, 'managed': 'jac-scale'}
-                },
-                'spec': {
-                    'replicas': 1,
-                    'selector': {'matchLabels': {'app': app_name}},
-                    'template': {
-                        'metadata': {'labels': {'app': app_name}},
-                        'spec': {
-                            'automountServiceAccountToken': False,
-                            'serviceAccountName': app_sa_name,
-                            'securityContext': {
-                                'seccompProfile': {'type': 'RuntimeDefault'}
-                            },
-                            'initContainers': init_containers,
-                            'containers': [container_config],
-                            'volumes': volumes
-                        }
-                    }
-                }
-            };
+            deployment = self._build_deployment_body(
+                app_name,
+                namespace,
+                app_sa_name,
+                container_config,
+                init_containers,
+                volumes,
+                pull_secret_name
+            );
 
             # 12. Delete existing resources if they exist
             delete_if_exists(
@@ -1629,6 +1735,11 @@ obj KubernetesTarget(DeploymentTarget) {
             details["deploy_ingress"] = "Successful";
 
             # 16. Wait for deployment and get service URL
+            if self.logger {
+                self.logger.info(
+                    f"Waiting for deployment '{app_name}' to become healthy..."
+                );
+            }
             deployment_details = self._wait_for_deployment(
                 app_name, namespace, health_check_path, provider
             );
@@ -1907,6 +2018,7 @@ obj KubernetesTarget(DeploymentTarget) {
             'Service'
         );
         delete_k8s_secret(core_v1, namespace, f"{app_name}-secrets");
+        delete_k8s_secret(core_v1, namespace, f"{app_name}-registry-secret");
         code_server_name = f"{app_name}-code-server";
         delete_if_exists(
             apps_v1.delete_namespaced_deployment,

@@ -14,7 +14,16 @@ ENV PYTHONUNBUFFERED=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
-    git && \
+    git \
+    unzip && \
     rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir jaclang
+RUN pip install --no-cache-dir jaclang "jac-scale[deploy,data]" jac-client jac-super
+
+# Install Bun (required for jac install npm dependencies)
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:$PATH"
+
+COPY . .
+
+RUN if [ -f jac.toml ]; then jac install; fi

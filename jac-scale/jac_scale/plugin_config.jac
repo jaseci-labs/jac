@@ -117,6 +117,11 @@ class JacScalePluginConfig {
                             "default": "",
                             "description": "DockerHub password/token for pushing images"
                         },
+                        "build_platform": {
+                            "type": "string",
+                            "default": "linux/amd64",
+                            "description": "Target platform for Docker image builds (e.g. linux/amd64, linux/arm64)"
+                        },
                         "namespace": {
                             "type": "string",
                             "default": "default",
