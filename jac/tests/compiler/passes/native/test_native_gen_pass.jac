@@ -3595,6 +3595,17 @@ test "native_safe_sym disambiguates flat vs dotted path collision" {
     assert native_safe_sym(flat) == sym_flat , "native_safe_sym must be deterministic";
     # The full glob-init symbols built from these must also differ.
     assert f"__jac_glob_init_{sym_flat}" != f"__jac_glob_init_{sym_dotted}";
+    # The osp_kernel SENTINEL must bypass the hash and map to the bare slug: the
+    # portable OSP kernel is linked under a fixed, hash-free symbol by
+    # _link_osp_kernel / _emit_osp_setup and probed by name, so appending the
+    # disambiguating hash would leave the entry's __jac_glob_init_osp_kernel call
+    # dangling against the kernel's hash-free definition (undefined symbol at
+    # load, issue #6669). Pin it here so the bypass can't silently regress.
+    assert native_safe_sym("osp_kernel") == "osp_kernel" , (
+        f"osp_kernel sentinel must stay hash-free, got {native_safe_sym(
+            'osp_kernel'
+        )!r}"
+    );
 }
 
 test "del list item: length decrements after delete" {
