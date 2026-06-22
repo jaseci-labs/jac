@@ -475,9 +475,21 @@ impl ensure_k8s_service_account(
     sa_body: dict[(str, Any)] = {
         'apiVersion': 'v1',
         'kind': 'ServiceAccount',
-        'metadata': {'name': sa_name, 'labels': {'managed': 'jac-scale'}}
+        'metadata': {'name': sa_name, 'labels': {'managed': 'jac-scale'}},
+        # Match the monolith path's secure default: don't auto-mount a cluster
+        # API token into every pod. Workloads that need one opt in explicitly
+        # at the pod-spec level (which overrides this).
+        'automountServiceAccountToken': False
     };
-    core_v1.create_namespaced_service_account(namespace, sa_body);
+    try {
+        core_v1.create_namespaced_service_account(namespace, sa_body);
+    } except ApiException as exc {
+        # 409: a concurrent deploy created the SA between our read and create.
+        # It now exists, which is all this function guarantees.
+        if (exc.status != 409) {
+            raise;
+        }
+    }
 }
 
 """Detect if the current connected cluster is AWS or local.

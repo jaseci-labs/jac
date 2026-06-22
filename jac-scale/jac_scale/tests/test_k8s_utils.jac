@@ -193,6 +193,8 @@ test "ensure service account creates when missing" {
     assert body["kind"] == "ServiceAccount";
     assert body["metadata"]["name"] == "test-sa";
     assert body["metadata"]["labels"]["managed"] == "jac-scale";
+    # Secure default, matching the monolith path: no auto-mounted API token.
+    assert body["automountServiceAccountToken"] == False;
 }
 
 test "ensure service account is a no-op for an empty name" {
@@ -202,6 +204,31 @@ test "ensure service account is a no-op for an empty name" {
 
     core_v1.read_namespaced_service_account.assert_not_called();
     core_v1.create_namespaced_service_account.assert_not_called();
+}
+
+test "ensure service account propagates a non-404 read error" {
+    core_v1 = unittest.mock.MagicMock();
+    core_v1.read_namespaced_service_account.side_effect = ApiException(status=500);
+
+    raised = False;
+    try {
+        ensure_k8s_service_account(core_v1, "test-ns", "test-sa");
+    } except ApiException {
+        raised = True;
+    }
+    assert raised , "a non-404 read error must propagate";
+    core_v1.create_namespaced_service_account.assert_not_called();
+}
+
+test "ensure service account tolerates a concurrent create (409)" {
+    core_v1 = unittest.mock.MagicMock();
+    core_v1.read_namespaced_service_account.side_effect = ApiException(status=404);
+    core_v1.create_namespaced_service_account.side_effect = ApiException(status=409);
+
+    # A 409 (another deploy created it first) must be swallowed - the SA
+    # exists, which is all the function guarantees.
+    ensure_k8s_service_account(core_v1, "test-ns", "test-sa");
+    assert core_v1.create_namespaced_service_account.called;
 }
 
 # --- cluster_type detection ---
