@@ -37,100 +37,11 @@ jobs:
       startsWith(github.event.comment.body, '/test')
     runs-on: ubuntu-latest
     steps:
-      - name: React, authorize, and re-run affected workflows
-        uses: actions/github-script@v7
+      - uses: actions/checkout@v4
         with:
-          script: |
-            const { owner, repo } = context.repo;
-            const comment = context.payload.comment;
-            const issue = context.payload.issue;
-            const commenter = comment.user.login;
-
-            // Suite keyword -> the test workflow(s) whose pull_request run(s)
-            // run it. `core` spans test-binary.yml (compiler/runtime) and
-            // test-jaseci.yml (solid-jsdom), so it lists both.
-            const SUITES = {
-              core: ['test-binary.yml', 'test-jaseci.yml'],
-              client: ['test-jaseci.yml'],
-              scale: ['test-jaseci.yml'],
-              mcp: ['test-jaseci.yml'],
-              byllm: ['test-jaseci.yml'],
-              docs: ['test-jaseci.yml'],
-              desktop: ['test-jaseci.yml'],
-              macos: ['test-jaseci.yml'],
-              k8s: ['k8s-microservice-real-e2e.yml'],
-              check: ['jac-check.yml'],
-              contrib: ['contribution-checks.yml'],
-              installer: ['test-installer.yml'],
-            };
-            const ALL = Object.keys(SUITES);
-            const react = (content) =>
-              github.rest.reactions.createForIssueComment({
-                owner, repo, comment_id: comment.id, content,
-              }).catch((e) => core.warning(`reaction '${content}' failed: ${e.status} ${e.message}`));
-
-            const args = comment.body.trim().split(/\s+/).slice(1).map(a => a.toLowerCase());
-
-            // `/test help` (or bare `/test`): the only case we post text, and we
-            // edit a single pinned comment rather than spamming new ones.
-            if (args.length === 0 || args[0] === 'help') {
-              await react('eyes');
-              return;
-            }
-
-            // Authorize: repo collaborator, read access or above. (The plan jobs
-            // re-check this per comment; this is just for the reaction/UX.)
-            let level = 'none';
-            try {
-              const p = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: commenter });
-              level = p.data.permission;
-            } catch (e) { level = 'none'; }
-            if (!['admin', 'maintain', 'write', 'triage', 'read'].includes(level)) {
-              await react('-1');
-              return;
-            }
-
-            const requested = args.includes('all') ? [...ALL] : args.filter(a => ALL.includes(a));
-            if (requested.length === 0) { await react('confused'); return; }
-
-            await react('rocket');
-
-            const pr = await github.rest.pulls.get({ owner, repo, pull_number: issue.number });
-            const sha = pr.data.head.sha;
-            const workflows = [...new Set(requested.flatMap(s => SUITES[s]))];
-
-            // For each affected workflow, re-run its latest pull_request run for
-            // this commit so its `plan` job re-reads the /test comments. A run
-            // that's still in progress can't be re-run yet, so wait briefly for
-            // it to finish first. (The `plan` job is cheap, so the initial run
-            // settles fast.)
-            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-            let anyRerun = false;
-            for (const wf of workflows) {
-              let rerun = false;
-              for (let attempt = 0; attempt < 12 && !rerun; attempt++) {
-                const runs = await github.rest.actions.listWorkflowRuns({
-                  owner, repo, workflow_id: wf, head_sha: sha, event: 'pull_request', per_page: 1,
-                });
-                const run = runs.data.workflow_runs[0];
-                if (!run) { await sleep(5000); continue; } // run not created yet
-                if (run.status !== 'completed') { await sleep(5000); continue; } // wait for it to finish
-                try {
-                  await github.rest.actions.reRunWorkflow({ owner, repo, run_id: run.id });
-                  rerun = true; anyRerun = true;
-                } catch (e) {
-                  core.warning(`re-run of ${wf} (#${run.id}) failed: ${e.message}`);
-                  await sleep(5000);
-                }
-              }
-              if (!rerun) core.warning(`could not re-run ${wf} for ${sha.slice(0,7)} (no completed run yet)`);
-            }
-
-            // No run could be re-triggered (e.g. no pull_request run exists for
-            // this commit yet). Swap the rocket for a confused reaction so the
-            // user knows nothing started.
-            if (!anyRerun) {
-              await github.rest.reactions.createForIssueComment({
-                owner, repo, comment_id: comment.id, content: 'confused',
-              }).catch(() => {});
-            }
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+      - name: React, authorize, and re-run affected workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/ci-rerun-on-test.sh

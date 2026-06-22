@@ -45,16 +45,9 @@ jobs:
           sparse-checkout: .github/scripts
           sparse-checkout-cone-mode: false
       - id: s
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const SUITES = ['core','client','scale','byllm','mcp','docs','desktop','macos'];
-            const set = (req) => { for (const s of SUITES) core.setOutput(s, req.has(s) ? 'true' : 'false'); };
-            if (context.eventName === 'push') { set(new Set(SUITES)); return; }
-            const requested = await require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/ci-requested-suites.js`)({
-              github, context, suites: SUITES,
-            });
-            set(requested);
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/ci-requested-suites.sh core client scale byllm mcp docs desktop macos
 
   test-solid-jsdom:
     # Runtime exec of the Solid framework backend: compile a Solid component +
