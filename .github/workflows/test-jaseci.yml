@@ -163,7 +163,11 @@ jobs:
 
     - name: Run E2E code block tests
       working-directory: docs
-      run: jac test tests/e2e/test_code_blocks.jac
+      # Browser rendering of the graph/error playground blocks is timing-flaky on
+      # CI runners (maintainers have de-flaked this suite twice: #6528, #6756). It
+      # is a non-required smoke, so retry once before failing rather than block on
+      # a transient slow render. `-x` so a genuine break still fails fast.
+      run: jac test tests/e2e/test_code_blocks.jac -x || jac test tests/e2e/test_code_blocks.jac -x
 
   test-desktop-native:
     # Jac-native desktop tests (issue #6436). Dependency-free by design: they
@@ -431,7 +435,9 @@ jobs:
         # Run through the binary (its bundled pytest + the host jaclang). The
         # `jac create` client flow is already covered by the blocking binary
         # gate and the jacpack smokes below, so it is not duplicated here.
-        jac test jac-byllm/tests/test_byllm.jac
+        # Serial (JAC_TEST_JOBS=0): these byllm tests share a SQLite mock-LLM
+        # cache that can't take xdist's parallel writers ("database is locked").
+        JAC_TEST_JOBS=0 jac test jac-byllm/tests/test_byllm.jac
 
     # ========== jac-gpt test ==========
     - name: Create jac-gpt from jacpack
