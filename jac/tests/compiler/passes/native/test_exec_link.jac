@@ -57,16 +57,22 @@ def _compile_ir(fixture: str, triple: str) -> str {
 }
 
 
-"""Assemble `ir_txt` for `triple` into a relocatable object using the default
-(fixed-base) model — exactly what nacompile emits for an executable. Forcing
+"""Assemble `ir_txt` for `triple` into a relocatable object using the fixed-base
+`large` code model — exactly what nacompile emits for an executable. Forcing
 `pic` here would emit GOT-relative data refs that the fixed-base ET_EXEC layout
-mislinks into a segfaulting binary, so this mirrors the real CLI path."""
+mislinks into a segfaulting binary, so this mirrors the real CLI path. The
+explicit `codemodel="large"` also matters cross-host: under the default
+`jitdefault`, llvmlite appends `-elf` to the triple on a Windows host, so a
+windows-msvc/darwin triple would emit an ELF object the PE/Mach-O linkers
+reject (#6819)."""
 def _emit_object(ir_txt: str, triple: str) -> bytes {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
     mod = llvm.parse_assembly(ir_txt);
     mod.verify();
-    tm = llvm.Target.from_triple(triple).create_target_machine(opt=2);
+    tm = llvm.Target.from_triple(triple).create_target_machine(
+        opt=2, codemodel="large"
+    );
     return tm.emit_object(mod);
 }
 
@@ -189,9 +195,7 @@ test "Mach-O executable has MH_EXECUTE filetype and an LC_MAIN entry" {
         needed_libs=["/usr/lib/libSystem.B.dylib"],
         shared=False
     );
-    assert ok , f"MachOLinker.link(shared=False) returned False | relobj len={len(
-        relobj
-    )} head={relobj[:24].hex()}";
+    assert ok , "MachOLinker.link(shared=False) returned False";
     raw = Path(out).read_bytes();
     assert struct.unpack_from("<I", raw, 0)[0] == 0xFEEDFACF , "not a Mach-O 64 image";
     filetype = struct.unpack_from("<I", raw, 12)[0];
@@ -228,9 +232,7 @@ test "Mach-O arm64 executable is ad-hoc signed with CS_EXECSEG_MAIN_BINARY" {
         needed_libs=["/usr/lib/libSystem.B.dylib"],
         shared=False
     );
-    assert ok , f"MachOLinker.link(shared=False) returned False for arm64 | relobj len={len(
-        relobj
-    )} head={relobj[:24].hex()}";
+    assert ok , "MachOLinker.link(shared=False) returned False for arm64";
     raw = Path(out).read_bytes();
     assert struct.unpack_from("<I", raw, 12)[0] == 2 , "expected MH_EXECUTE (2)";
     sig_off = _codesig_off(raw);
