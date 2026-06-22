@@ -1,19 +1,14 @@
-"""Proof test: two new TCP connections opened per request (availability probes).
+"""Efficiency guards: authenticated requests must not do redundant MongoDB work.
 
-ScaleTieredMemory.postinit calls RedisBackend.is_available() and
-MongoBackend.is_available() on every request. Each creates a new client,
-pings the server, and closes it — independent of the connection pool used
-for actual data operations.
-
-This test measures MongoDB's totalCreated connections before and after
-N requests and proves the count increases by at least N (one probe connection
-per request on top of the pool connections for actual work).
-
-Expected on current main: FAILS (totalCreated grows by ~2N per N requests).
-Expected after fix: PASSES (availability checked once at startup, not per request).
+Two regression checks against a live MongoDB:
+  1. The per-request availability probe reuses the pooled client (no new
+     connection per request).
+  2. The system root is served from the process cache (never re-fetched from
+     MongoDB after warm-up).
 """
 
 import contextlib;
+import datetime;
 import gc;
 import os;
 import socket;
@@ -26,6 +21,7 @@ import from typing { cast }
 import requests;
 import from pymongo { MongoClient }
 import from testcontainers.mongodb { MongoDbContainer }
+import from jaclang.jac0core.constant { Constants as Con }
 
 glob FIXTURES_DIR = Path(__file__).parent.parent / "fixtures",
      JAC_FILE = FIXTURES_DIR / "race_app.jac";
@@ -108,30 +104,29 @@ def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Po
     raise RuntimeError(f"server failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
 }
 
+"""Read totalCreated connections from MongoDB serverStatus."""
 def mongo_total_created(client: MongoClient) -> int {
-    """Read totalCreated connections from MongoDB serverStatus.""";
     status = client.admin.command("serverStatus");
     return int(status["connections"]["totalCreated"]);
 }
 
-test "per-request availability probe creates extra MongoDB connections" {
-    """MongoBackend.is_available() opens a brand-new MongoClient, pings, then
-    closes it on every single request (memory_hierarchy.mongo.impl.jac:28-43).
-    This is called from ScaleTieredMemory.postinit inside request_context_middleware.
+"""Count profiled _anchors finds since `since`, optionally for one _id."""
+def count_profiled_anchor_finds(
+    client: MongoClient, since: any, id_filter: (str | None) = None
+) -> int {
+    query: dict = {"ts": {"$gte": since}, "ns": "jac_db._anchors", "op": "query"};
+    if id_filter is not None {
+        query["command.filter._id"] = id_filter;
+    }
+    return client["jac_db"]["system.profile"].count_documents(query);
+}
 
-    We measure totalCreated connections before and after N walker requests.
-    If the probe runs per-request, totalCreated grows by at least N on top of
-    whatever the actual work pool needs.
-
-    The minimum expected delta for a properly pooled server (no probe) is 1
-    (the pool creates connections lazily and reuses them). The actual delta
-    on current main is ~2*N (one probe connect per request for MongoDB, plus
-    one for Redis which is measured separately).
-    """;
+"""N requests open ~0 new MongoDB connections (shared client, cached probe)."""
+test "authenticated requests reuse the pooled MongoDB connection" {
     REQUEST_COUNT = 10;
-    # Each request fires one MongoBackend.is_available() probe = 1 extra connection.
-    # We allow a small margin for pool keep-alive reconnects.
-    MIN_EXTRA_CONNECTIONS_PER_REQUEST = 0.8;
+    # One pooled top-up / keep-alive reconnect is tolerated; a per-request probe
+    # would instead create one connection per request.
+    MAX_NEW_CONNECTIONS = 1;
 
     data_dir = FIXTURES_DIR / ".jac" / "data";
     if data_dir.exists() {
@@ -153,34 +148,26 @@ test "per-request availability probe creates extra MongoDB connections" {
     try {
         token = register_user(base_url, "probe_tester");
 
-        # Warm-up: one request to let the server establish its pool.
+        # Warm-up: let the server establish its pool and cache the probe result.
         call_walker(base_url, "ListItems", token);
         time.sleep(0.3);
 
-        # Baseline: connections created so far.
         baseline = mongo_total_created(admin_client);
 
-        # Fire REQUEST_COUNT requests.
         for _ in range(REQUEST_COUNT) {
             call_walker(base_url, "ListItems", token);
         }
         time.sleep(0.3);
 
-        after = mongo_total_created(admin_client);
-        delta = after - baseline;
+        delta = mongo_total_created(admin_client) - baseline;
 
-        # If no per-request probe: delta ≈ 0 (pool is warm, reuses connections).
-        # If per-request probe: delta ≈ REQUEST_COUNT (one new connect+close per request).
-        expected_min = int(REQUEST_COUNT * MIN_EXTRA_CONNECTIONS_PER_REQUEST);
-
-        assert delta >= expected_min , (
-            f"AVAILABILITY PROBE: {REQUEST_COUNT} requests created {delta} new MongoDB "
-            f"connections (expected >= {expected_min}). "
-            f"MongoBackend.is_available() at memory_hierarchy.mongo.impl.jac:28-43 "
-            f"instantiates a new MongoClient per call, which is invoked from "
-            f"ScaleTieredMemory.postinit on every single request via "
-            f"request_context_middleware. "
-            f"Fix: run availability check once at startup, cache the boolean."
+        assert delta <= MAX_NEW_CONNECTIONS , (
+            f"CONNECTION REUSE REGRESSION: {REQUEST_COUNT} requests opened {delta} "
+            f"new MongoDB connections (expected <= {MAX_NEW_CONNECTIONS}). "
+            f"MongoBackend shares one MongoClient via _process_cache and caches "
+            f"is_available(), so no per-request connection should be created. "
+            f"A growing count means a throwaway client or uncached probe was "
+            f"reintroduced on the request hot path."
         );
     } finally {
         with contextlib.suppress(Exception) {
@@ -203,16 +190,8 @@ test "per-request availability probe creates extra MongoDB connections" {
     }
 }
 
-test "system root fetched from MongoDB on every request (cold L1)" {
-    """JScaleExecutionContext.init constructs ScaleTieredMemory with an empty
-    __mem__ = {} on every request. The system root lookup (context.impl.jac:14)
-    therefore always misses L1 and falls through to a MongoDB find_one.
-
-    We measure MongoDB read opcounters before and after N read-only requests.
-    A server where system root is cached at startup should issue 0 extra reads
-    for subsequent requests to it. On current main, each request issues at least
-    1 extra find_one (system root) on top of the application reads.
-    """;
+"""After warm-up the system root never hits MongoDB (served from L1 cache)."""
+test "system root is served from process cache, never re-fetched from MongoDB" {
     REQUEST_COUNT = 10;
 
     data_dir = FIXTURES_DIR / ".jac" / "data";
@@ -231,45 +210,51 @@ test "system root fetched from MongoDB on every request (cold L1)" {
     port = get_free_port();
     base_url = f"http://localhost:{port}";
     server = start_server(FIXTURES_DIR, JAC_FILE, port);
+    profiling_on = False;
 
     try {
         token = register_user(base_url, "sysroot_tester");
 
-        # Warm-up.
+        # Warm-up seeds _process_cache['system_root'] in the server process.
         call_walker(base_url, "ListItems", token);
         time.sleep(0.3);
 
-        def read_queries -> int {
-            status = admin_client.admin.command("serverStatus");
-            return int(status["opcounters"]["query"]);
-        }
-
-        baseline_queries = read_queries();
+        admin_client["jac_db"].command("profile", 2);
+        profiling_on = True;
+        since = datetime.datetime.now(datetime.timezone.utc);
 
         for _ in range(REQUEST_COUNT) {
             call_walker(base_url, "ListItems", token);
         }
-        time.sleep(0.3);
+        time.sleep(0.4);
 
-        total_queries = read_queries() - baseline_queries;
+        total_anchor_finds = count_profiled_anchor_finds(admin_client, since);
+        super_root_finds = count_profiled_anchor_finds(
+            admin_client, since, Con.SUPER_ROOT_UUID
+        );
 
-        # A read-only walker that lists items from root needs at minimum 1 query per
-        # request (the item lookup). With system-root cold-load, we expect at least
-        # 2 queries per request (system root + user root + items).
-        # If system root were cached, we'd see fewer queries per request.
-        queries_per_request = total_queries / REQUEST_COUNT;
+        # Sanity: the profiler must be capturing finds (the user root is read
+        # every request), else a 0 system-root count would be vacuously true.
+        assert total_anchor_finds >= REQUEST_COUNT , (
+            f"PROFILER INACTIVE: only {total_anchor_finds} _anchors finds captured "
+            f"for {REQUEST_COUNT} requests; expected >= {REQUEST_COUNT}. "
+            f"The system-root assertion below would be meaningless without a live "
+            f"profiler."
+        );
 
-        # Threshold: if >=2 queries per read-only request, system root is not cached.
-        assert queries_per_request < 2.0 , (
-            f"COLD SYSTEM ROOT: {REQUEST_COUNT} read-only requests issued "
-            f"{total_queries} MongoDB queries total ({queries_per_request:.1f}/request). "
-            f"A cached system root would reduce this to <2 queries per request. "
-            f"JScaleExecutionContext.init at context.impl.jac:14 always calls "
-            f"self.mem.get(UUID(Con.SUPER_ROOT_UUID)) on a freshly empty __mem__, "
-            f"forcing a find_one for an immutable object on every request. "
-            f"Fix: cache system root as a process-level singleton after first load."
+        assert super_root_finds == 0 , (
+            f"SYSTEM ROOT RE-FETCH REGRESSION: {super_root_finds} MongoDB finds for "
+            f"_id={Con.SUPER_ROOT_UUID} across {REQUEST_COUNT} post-warm-up requests "
+            f"(expected 0). JScaleExecutionContext.init must seed "
+            f"_process_cache['system_root'] into L1 so the lookup hits L1 instead "
+            f"of issuing a find_one for an immutable object on every request."
         );
     } finally {
+        with contextlib.suppress(Exception) {
+            if profiling_on {
+                admin_client["jac_db"].command("profile", 0);
+            }
+        }
         with contextlib.suppress(Exception) {
             admin_client.close();
         }
