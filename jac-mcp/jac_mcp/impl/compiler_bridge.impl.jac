@@ -503,17 +503,41 @@ impl CompilerBridge.run_snippet(
     }
 
     # Run the worker in its own session/process group so a snippet that spawns
-    # children can be torn down as a group on timeout.
+    # children can be torn down as a group on timeout. POSIX uses a new session
+    # + killpg(SIGKILL); Windows uses CREATE_NEW_PROCESS_GROUP + taskkill /T /F
+    # to kill the child and its descendants (Windows has no POSIX process
+    # group, and proc.kill() only terminates the immediate child).
+    is_windows = os.name == "nt";
     cmd = [sys.executable, worker, jac_path, out_path, entrypoint];
     try {
-        proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
-        );
+        if is_windows {
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+            );
+        } else {
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
+            );
+        }
         try {
             (proc_out, proc_err) = proc.communicate(timeout=timeout);
         } except subprocess.TimeoutExpired {
             try {
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL);
+                if is_windows {
+                    subprocess.run(
+                        ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    );
+                } else {
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL);
+                }
             } except Exception { }
             proc.wait();
             return {

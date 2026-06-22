@@ -20,15 +20,27 @@ JSON written to ``out_path``; the worker's real stdout/stderr are reserved for
 crash diagnostics only.
 """
 
+import contextlib
 import io
 import json
 import os
 import sys
 
 
+def _close_mach(mach: object) -> None:
+    """Best-effort close. A failure here (e.g. a broken plugin context in the
+    host environment) must never discard the snippet's own result, so swallow
+    the exception -- the process is about to exit anyway and reclaim all state.
+    """
+    with contextlib.suppress(Exception):
+        mach.close()
+
+
 def main() -> None:
     jac_path = sys.argv[1]
     out_path = sys.argv[2]
+    # The parent always passes entrypoint (possibly "") as argv[3]; default it
+    # defensively in case the worker is invoked manually.
     entrypoint = sys.argv[3] if len(sys.argv) > 3 else ""
 
     from jaclang.jac0core.constructs import WalkerArchetype
@@ -46,6 +58,7 @@ def main() -> None:
     sys.argv = [jac_path]
 
     result: dict = {}
+    mach = None
     try:
         if not Jac.get_base_path_dir():
             Jac.set_base_path(base)
@@ -89,7 +102,9 @@ def main() -> None:
                     except Exception:
                         reports.append(repr(r))
 
-            mach.close()
+            # Build the result BEFORE closing the context. A failure in
+            # mach.close() (e.g. a broken plugin in the host env) must not
+            # discard the snippet's own output.
             result = {
                 "stdout": captured_out.getvalue(),
                 "stderr": captured_err.getvalue(),
@@ -98,7 +113,6 @@ def main() -> None:
             if reports:
                 result["reports"] = reports
         except SystemExit as se:
-            mach.close()
             exit_code = se.code if se.code is not None else 0
             result = {
                 "stdout": captured_out.getvalue(),
@@ -106,13 +120,15 @@ def main() -> None:
                 "exit_code": int(exit_code) if isinstance(exit_code, int) else 1,
             }
         except Exception as e:
-            mach.close()
             result = {
                 "stdout": captured_out.getvalue(),
                 "stderr": captured_err.getvalue(),
                 "exit_code": 1,
                 "error": str(e),
             }
+        # Close once, best-effort, after every result path is settled.
+        if mach is not None:
+            _close_mach(mach)
     finally:
         sys.stdout, sys.stderr, sys.argv = old_stdout, old_stderr, old_argv
 
