@@ -276,7 +276,8 @@ GitHub Actions workflows in `.github/workflows/`:
 
 | Workflow | What it checks |
 |----------|---------------|
-| `test-jaseci.yml` | Full test suite across Python versions |
+| `test-binary.yml` | Builds the `jac` binary and runs the full suite through it (the test gate) |
+| `test-jaseci.yml` | Plugin and runtime test jobs (run through the binary) |
 | `jac-check.yml` | Lint and format enforcement |
 | `docs-validation.yml` | Documentation builds without errors |
 | `test-installer.yml` | Clean install from scratch works |

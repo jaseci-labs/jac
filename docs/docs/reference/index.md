@@ -48,7 +48,7 @@ The language spec covers all core Jac constructs:
 ## Quick Start
 
 ```bash
-# 1. Install (downloads the jac binary + plugins)
+# 1. Install the jac binary
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 
 # 2. Scaffold a new project

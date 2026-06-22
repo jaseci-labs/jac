@@ -18,7 +18,7 @@ The `desktop` target registers automatically as part of `jaclang` core, so
 
 ## Installation
 
-The desktop target ships with `jaclang` core -- there is nothing extra to install:
+The desktop target ships with `jaclang` core -- there is nothing extra to install. Just install the `jac` binary:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash

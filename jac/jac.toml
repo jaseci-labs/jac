@@ -2,7 +2,7 @@
 # the build reads version/metadata here (not from a Python pyproject backend).
 [project]
 name = "jaclang"
-version = "0.16.7"
+version = "0.30.0"
 description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
 license = "MIT"
 readme = "README.md"

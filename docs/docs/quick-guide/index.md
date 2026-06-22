@@ -227,7 +227,7 @@ The runtime handles database schemas, user authentication (per-user graph isolat
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-This installs the complete Jac ecosystem: `jaclang` (compiler, plus the built-in full-stack frontend/desktop framework), `byllm` (AI integration), and `jac-scale` (deployment).
+This installs the self-contained `jac` binary -- no Python, pip, or uv required. It includes the compiler and the built-in full-stack frontend/desktop framework. Add AI integration and deployment with `jac install byllm` and `jac install jac-scale`.
 
 Verify your installation:
 

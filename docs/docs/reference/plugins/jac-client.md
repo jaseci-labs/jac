@@ -8,7 +8,7 @@ You also get project scaffolding (`jac create --use client`), npm dependency man
 
 ## Installation
 
-jac-client ships with `jaclang` core -- there is nothing extra to install:
+jac-client ships with `jaclang` core -- there is nothing extra to install. Just install the `jac` binary:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash

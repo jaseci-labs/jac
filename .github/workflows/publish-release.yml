@@ -167,9 +167,13 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: ${{ matrix.extra_build_cmd }}
 
-      # Build the package with `jac bundle`, which reads jac.toml as the source of
-      # truth. Plugins precompile against jaclang from the local source tree, not
-      # PyPI (jaclang ships as the binary and is never published to PyPI).
+      # Build the package. Plugins publish via `jac bundle`, which reads jac.toml
+      # as the source of truth. jaclang is NOT published to PyPI -- it ships as
+      # the native `jac` binary (release-jaclang.yml) -- so there is no jaclang
+      # wheel build here.
+      #
+      # Plugins precompile against jaclang from the local source tree, not PyPI:
+      # this build runs before the freshly-bumped plugin version is published.
       - name: Build plugin wheel
         working-directory: ${{ matrix.dir }}
         env:
@@ -489,6 +493,8 @@ jobs:
             echo "| Publish Tier 3 | $TIER3 |"
             echo "| Push Tags | $TAGS |"
             echo "| GitHub Release | $RELEASE |"
+            echo ""
+            echo "> The native \`jac\` binary (jaclang) is built and attached to the GitHub Release by the separate **Release jac native binary** workflow, which fires on release publish."
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "$TIER2" == "failure" || "$TIER3" == "failure" ]]; then

@@ -12,25 +12,25 @@ jac-scale is lightweight by default. Install only the extras you need:
 
 ```bash
 # Core only - FastAPI server, auth, CLI (no heavy dependencies)
-pip install jac-scale
+jac install jac-scale
 
 # Add MongoDB + Redis for persistent storage and distributed cache
-pip install jac-scale[data]
+jac install 'jac-scale[data]'
 
 # Add Prometheus metrics and observability
-pip install jac-scale[monitoring]
+jac install 'jac-scale[monitoring]'
 
 # Add APScheduler for cron and background task scheduling
-pip install jac-scale[scheduler]
+jac install 'jac-scale[scheduler]'
 
 # Add Kubernetes + Docker for deployment and image building
-pip install jac-scale[deploy]
+jac install 'jac-scale[deploy]'
 
 # Everything - recommended for production or if unsure
-pip install jac-scale[all]
+jac install 'jac-scale[all]'
 ```
 
-Groups are combinable: `pip install jac-scale[data,monitoring]`
+Groups are combinable: `jac install 'jac-scale[data,monitoring]'`
 
 After installing, enable the plugin:
 
@@ -40,7 +40,7 @@ jac plugins enable scale
 
 !!! note
     When a feature is used without its dependency installed, you get a clear error with the exact install command:
-    `ImportError: 'pymongo' is required for this feature. Install it with: pip install jac-scale[data]`
+    `ImportError: 'pymongo' is required for this feature. Install it with: jac install 'jac-scale[data]'`
 
 | Group | What it adds | When you need it |
 |-------|-------------|-----------------|
@@ -2241,7 +2241,7 @@ backoff_seconds = [1, 5, 30]
 dead_letter_suffix = ".dlq"
 ```
 
-To use Redis Streams you need the `[data]` extra: `pip install jac-scale[data]`. Without it, jac-scale silently uses `LocalEventStream` and logs a warning at startup.
+To use Redis Streams you need the `[data]` extra: `jac install 'jac-scale[data]'`. Without it, jac-scale silently uses `LocalEventStream` and logs a warning at startup.
 
 ### Publishing
 
@@ -3009,7 +3009,7 @@ Packages are installed at pod startup before the application starts. For frequen
 
 ### Jaseci Source Pinning (Experimental)
 
-When using `--experimental` mode, Jaseci packages are installed from the GitHub repository instead of PyPI. Pin a specific branch or commit for reproducible builds.
+When using `--experimental` mode, the Jaseci plugin packages (jac-scale and friends) are installed from the GitHub repository instead of PyPI. Pin a specific branch or commit for reproducible builds. (The jaclang runtime itself always comes from the pod's `jac` binary base image -- it is never installed from PyPI in either mode.)
 
 **Defaults:**
 
@@ -3031,7 +3031,11 @@ jaseci_commit = "a1b2c3d4"
 
 ### Package Version Pinning
 
-Pin specific PyPI versions for Jaseci packages installed inside the pod. Use `"none"` to skip a package entirely.
+Pin specific PyPI versions for the Jaseci plugin packages installed inside the pod. Use `"none"` to skip a package entirely.
+
+> The pod's base image provides the `jac` binary, which is the jaclang runtime -- so jaclang is host-provided and is never pinned or `pip install`ed here. Only the plugins below are installed into the pod.
+>
+> **Note:** `jaclang` is no longer on PyPI, so the pod image must install the `jac` binary (e.g. via the install script). The cluster deploy code is being migrated to this model; until then, deploys that expect a PyPI `jaclang` will not resolve.
 
 **Defaults:** all packages default to `"latest"` from PyPI.
 
@@ -3039,7 +3043,6 @@ Pin specific PyPI versions for Jaseci packages installed inside the pod. Use `"n
 
 ```toml
 [plugins.scale.kubernetes.plugin_versions]
-jaclang = "0.1.5"      # Pin to a specific version
 jac_scale = "latest"   # Latest from PyPI (default)
 jac_client = "0.1.0"   # Specific version
 jac_byllm = "none"     # Skip installation entirely
@@ -3048,7 +3051,6 @@ jac_mcp = "latest"     # Optional MCP server plugin
 
 | Package | Description |
 |---------|-------------|
-| `jaclang` | Core Jac language runtime |
 | `jac_scale` | This scaling plugin |
 | `jac_client` | Frontend/client support |
 | `jac_byllm` | LLM integration (set to `"none"` to exclude) |
@@ -4125,11 +4127,16 @@ Browser → Load Balancer → Wildcard Ingress (*.preview.example.com) → Proxy
 - `service.yaml` -- ClusterIP Service on port 8080
 - `ingress.yaml` -- Wildcard Ingress (replace `*.example.com` with your domain)
 
-The proxy itself is a Jac application at `jac-scale/providers/proxy/sandbox_proxy.jac`. Build it with the provided Dockerfile at `jac-scale/targets/kubernetes/templates/sandbox-proxy.Dockerfile`:
+The proxy itself is a Jac application. Build it with a Dockerfile that installs the self-contained `jac` binary (which provides the jaclang runtime), then layers in the plugins:
 
 ```dockerfile
 FROM python:3.12-slim
-RUN pip install --no-cache-dir aiohttp kubernetes_asyncio jaclang "jac-scale[all]"
+# Install the `jac` binary -- no PyPI jaclang; the binary provides the runtime.
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+ENV PATH="/root/.local/bin:${PATH}"
+RUN jac install aiohttp kubernetes_asyncio "jac-scale[all]"
 COPY sandbox_proxy.jac /app/sandbox_proxy.jac
 WORKDIR /app
 EXPOSE 8080
