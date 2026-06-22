@@ -128,8 +128,10 @@ fi
 cp -L "$srclib" "$stage/python/lib/$LIBPY"
 cp -R "$PBS/install/lib/python3.12" "$stage/python/lib/python3.12"
 # Prune heavy/build-only stdlib bits. KEEP lib-dynload (extension .so for the
-# shared interpreter) and KEEP encodings/etc.
-for d in test idlelib turtledemo tkinter ensurepip lib2to3; do
+# shared interpreter) and KEEP encodings/etc. KEEP ensurepip: `jac install`
+# bootstraps a project venv with `<binary> -m ensurepip --default-pip`, so
+# pruning it broke venv creation for every project that has dependencies.
+for d in test idlelib turtledemo tkinter lib2to3; do
   rm -rf "$stage/python/lib/python3.12/$d"
 done
 rm -rf "$stage"/python/lib/python3.12/config-3.12-* 2>/dev/null || true
