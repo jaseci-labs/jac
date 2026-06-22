@@ -159,7 +159,11 @@ def _macho_info(raw: bytes) -> dict {
 
 # ─── tests ───────────────────────────────────────────────────────────────────
 test "ELF shared object loads and runs through the C ABI" {
-    (relobj, exports) = emit_shared_object(FIXTURE, llvm.get_default_triple());
+    # Pin an explicit ELF triple so the emitted object is ELF on any host (the
+    # macOS native job runs this same file; its default triple is darwin, which
+    # would yield a Mach-O object that ElfLinker cannot link). Execution below
+    # stays gated to a Linux x86_64 host that can actually dlopen the result.
+    (relobj, exports) = emit_shared_object(FIXTURE, "x86_64-unknown-linux-gnu");
     d = tempfile.mkdtemp();
     out = os.path.join(d, "libshared_export.so");
     ok = ElfLinker.link(

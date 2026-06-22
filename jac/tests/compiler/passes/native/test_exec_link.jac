@@ -151,7 +151,11 @@ def _codesig_off(raw: bytes) -> int {
 
 # ─── tests ───────────────────────────────────────────────────────────────────
 test "ELF executable links, runs, and prints through the C ABI" {
-    triple = llvm.get_default_triple();
+    # Pin an explicit ELF triple so the emitted object is ELF on any host (the
+    # macOS native job runs this same file; its default triple is darwin, which
+    # would yield a Mach-O object that ElfLinker cannot link). Execution below
+    # stays gated to a Linux x86_64 host that can actually run the result.
+    triple = "x86_64-unknown-linux-gnu";
     relobj = _emit_object(_inject_elf(_compile_ir(FIXTURE, triple)), triple);
     d = tempfile.mkdtemp();
     out = os.path.join(d, "exec_smoke");
@@ -165,7 +169,7 @@ test "ELF executable links, runs, and prints through the C ABI" {
     assert e_type == 2 , f"expected ET_EXEC (2), got {e_type}";
 
     # Only a Linux x86_64 host can execute the produced ELF.
-    if sys.platform.startswith("linux") and ("x86_64" in triple) {
+    if sys.platform.startswith("linux") and ("x86_64" in llvm.get_default_triple()) {
         res = subprocess.run([out], capture_output=True, timeout=30);
         assert res.returncode == 0 , f"exec exited {res.returncode}, stderr={res.stderr}";
         assert b"JAC_EXEC_OK" in res.stdout , f"missing marker in stdout: {res.stdout}";
