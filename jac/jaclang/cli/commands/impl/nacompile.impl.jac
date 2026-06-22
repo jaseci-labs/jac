@@ -98,9 +98,7 @@ def _inject_shared_init(
 ) -> tuple[str, list[str]] {
     init_calls: list[str] = [];
     # This module's own glob-init (NaIRGenPass always emits it when present).
-    if ('@"__jac_glob_init"' in llvm_ir_str)
-    or ("@__jac_glob_init(" in llvm_ir_str)
-    or ("define void @__jac_glob_init(" in llvm_ir_str) {
+    if "@__jac_glob_init(" in llvm_ir_str {
         init_calls.append("  call void @__jac_glob_init()");
     }
     import from jaclang.jac0core.codeinfo { native_safe_sym }
@@ -120,10 +118,7 @@ def _inject_shared_init(
         }
     }
     parts: list[str] = ["\n; --- injected shared-library init + RC wrappers ---"];
-    _body = "\n".join(init_calls);
-    if _body {
-        _body = _body + "\n";
-    }
+    _body = ("\n".join(init_calls) + "\n") if init_calls else "";
     parts.append(
         "define void @__jac_shared_init() {\nentry:\n" + _body + "  ret void\n}"
     );
@@ -156,9 +151,8 @@ impl nacompile(
     shared: bool = False,
     debug: bool = False
 ) -> int {
-    import from jaclang.jac0core.ext_registry { is_jac, is_native_module, base_stem }
     # Validate input
-    if not is_jac(filename) {
+    if not filename.endswith(".na.jac") and not filename.endswith(".jac") {
         console.error("Input must be a .jac or .na.jac file.");
         return 1;
     }
@@ -193,7 +187,9 @@ impl nacompile(
     # then link the COFF object with the pure-Jac PE linker. Mirrors is_wasm.
     # A bare alias ("windows"/"win64") maps to the msvc triple; a full triple
     # the user passed ("x86_64-pc-windows-gnu") is used verbatim.
-    is_windows = ("windows" in target) or (target in ["win", "win64", "mingw"]);
+    is_windows = (sys.platform == "win32")
+    or ("windows" in target)
+    or (target in ["win", "win64", "mingw"]);
     if is_windows {
         os.environ["JAC_NATIVE_TARGET"] = (
             target if "-" in target else "x86_64-pc-windows-msvc"
@@ -223,14 +219,19 @@ impl nacompile(
         }
     }
 
-    auto_promote = is_jac(filename) and not is_native_module(filename);
+    auto_promote = filename.endswith(".jac") and not filename.endswith(".na.jac");
 
     # Detect platform (host darwin, or an explicit macOS cross-target)
     is_macos = (sys.platform == "darwin") or is_macos_target;
 
     # Determine output path
     if not output {
-        output = base_stem(filename);
+        output = os.path.basename(filename);
+        if output.endswith(".na.jac") {
+            output = output[:-7];
+        } elif output.endswith(".jac") {
+            output = output[:-4];
+        }
         if shared {
             # Conventional shared-library name: lib<stem>.<ext> per platform.
             _so_ext = ".dll" if is_windows else (".dylib" if is_macos else ".so");

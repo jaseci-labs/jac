@@ -8,6 +8,7 @@ be called via ctypes.
 import llvmlite.binding as llvm;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { Transform }
+import from jaclang.jac0core.codeinfo { CodeGenTarget }
 import from jaclang.jac0core.diagnostics {
     E5020,
     W5021,
@@ -49,7 +50,10 @@ obj DepClibMeta {
     # (`gen`), first-seen-wins. THE single propagation site -- a new field that
     # must reach the root module gets one block here. Does not JIT-load
     # clib_paths; that runtime concern stays with the caller.
-    def propagate_to(gen: object) -> None;
+    # Note: imported_symbols, owned_symbols, and transitive_deps intentionally
+    # do NOT propagate -- they are consumed locally by the collision checker and
+    # dep enqueuing and do not belong on the root's CodeGenTarget.
+    def propagate_to(gen: CodeGenTarget) -> None;
 }
 
 

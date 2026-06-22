@@ -3536,6 +3536,29 @@ test "transitive import: same result on repeated calls (no state corruption)" {
     assert run_fn() == 99 , f"Third call: expected 99, got {run_fn()}";
 }
 
+# ─── Mixed transitive duplicate linking ───────────────────────────────────────
+# When B imports A, B's IR carries A's symbols as definitions. If A is linked
+# before B, the old has_collision=True path skipped all of B — including B's
+# unique exports. The scan-then-decide fix demotes benign duplicates to
+# available_externally and still link_in()s B's unique symbols.
+test "mixed transitive dup: compiles without errors when A is linked before B" {
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_mixed_dup_entry.na.jac")));
+    assert ir is not None , "Expected successful compile";
+    assert not prog.errors_had , (
+        f"Expected no errors, got: {[str(e) for e in prog.errors_had]}"
+    );
+}
+
+test "mixed transitive dup: unique symbol from B resolves after A was linked" {
+    # get_foo()=10 from A, get_bar()=42 from B, call_foo()=10 via B's import.
+    (eng, _) = compile_native("fix_mixed_dup_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    run_fn = get_func(eng, "run_mixed_dup_test", ctypes.c_int64);
+    assert run_fn() == 62 , f"Expected 62 (10+42+10), got {run_fn()}";
+}
+
 # ─── native_safe_sym: per-module glob-init / entry symbol uniqueness ──────────
 # native_safe_sym is the single naming contract shared by the emit side
 # (na_compile_pass.impl.jac, func.impl.jac), the AOT shared-init emitter

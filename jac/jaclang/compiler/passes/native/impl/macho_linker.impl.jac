@@ -2023,7 +2023,9 @@ impl MachOLinker.build_shared_object -> bytes {
         va = _resolve_seg_vaddr(
             seg, off, text_sec_vaddr, const_sec_vaddr, data_sec_vaddr
         );
-        export_pairs.append((_mn, va));
+        export_pairs.append(
+            (nm, va)
+        );  # trie key is the bare Jac name; _mn is only for the address lookup above
     }
     export_trie = _build_export_trie(export_pairs);
 

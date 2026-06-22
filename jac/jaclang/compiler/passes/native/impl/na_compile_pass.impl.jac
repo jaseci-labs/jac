@@ -23,7 +23,7 @@ impl DepClibMeta.from_meta(meta: dict) -> DepClibMeta {
 }
 
 """Merge the propagated C-ABI surface up into the root module's IR-gen state."""
-impl DepClibMeta.propagate_to(gen: object) -> None {
+impl DepClibMeta.propagate_to(gen: CodeGenTarget) -> None {
     for _p in self.clib_paths {
         if _p not in gen._clib_paths {
             gen._clib_paths.append(_p);
@@ -460,6 +460,13 @@ impl NativeCompilePass._compile_and_link_native_imports(
     }
     # Work queue: (binding, base_dir). Seeded with direct imports; transitive
     # deps are appended after each successful compile.
+    # Lightweight binding for cache-hit transitive deps: only .source_module is
+    # accessed in the outer loop (unlike InteropBinding which also has .name).
+    class _DepBinding {
+        def init(self: _DepBinding, sm: str) {
+            self.source_module = sm;
+        }
+    }
     work_queue: list = [];
     base_dir = os.path.dirname(module.loc.mod_path) if module.loc else ".";
     for binding in imports {
@@ -560,12 +567,6 @@ impl NativeCompilePass._compile_and_link_native_imports(
             # clib paths / exports / symbol map; just enqueue transitive deps.
             dep_base = os.path.dirname(full_path);
             for dep_mod_path in meta.transitive_deps {
-                # Create a lightweight binding-like object with source_module attr
-                class _DepBinding {
-                    def init(self: _DepBinding, sm: str) {
-                        self.source_module = sm;
-                    }
-                }
                 work_queue.append((_DepBinding(dep_mod_path), dep_base));
             }
         } else {
@@ -651,17 +652,12 @@ impl NativeCompilePass._compile_and_link_native_imports(
             } except Exception { }
         }
 
-        # Merge this dep's propagated C-ABI surface into the root module in one
-        # place: clib paths (AOT link discovery), the symbol→DLL map (Win32 PE
-        # import-table attribution — kernel32/ucrt symbols must not bucket into
-        # msvcrt), and `:pub` exports (so a `--shared` build re-exports the full
-        # transitive surface). first-seen-wins. See DepClibMeta.propagate_to.
-        meta.propagate_to(module.gen);
         # Load each .so/.dylib so MCJIT can resolve its external symbols at JIT
         # time; without this a transitive `import from "lib.so"` in a dep
         # segfaults on an unresolved symbol at runtime (#6687). _jit_load_clib
         # strips the AOT-only `$ORIGIN`/`@loader_path` token a logical import
         # carries, which a bare os.path.exists/find_library could not resolve.
+        # This runs before parse_assembly so MCJIT can bind symbols immediately.
         for dep_lib_path in meta.clib_paths {
             try {
                 self._jit_load_clib(dep_lib_path);
@@ -709,6 +705,13 @@ impl NativeCompilePass._compile_and_link_native_imports(
             );
             imported_mod = llvm.parse_assembly(imported_llvm_str);
 
+            # Merge this dep's C-ABI surface into root only after a successful
+            # parse -- keeps clib_paths/symbol_lib/exported_symbols clean if
+            # the IR is malformed (E5025 path). JIT loads above run regardless
+            # since they are idempotent and must precede MCJIT symbol binding.
+            # first-seen-wins. See DepClibMeta.propagate_to.
+            meta.propagate_to(module.gen);
+
             # Collect exported function names BEFORE linking, because
             # link_in consumes the module and invalidates its references.
             # Also detect symbol collisions: if an externally-visible
@@ -731,7 +734,13 @@ impl NativeCompilePass._compile_and_link_native_imports(
             dep_imported_set: set[str] = set(meta.imported_symbols);
             dep_owned_set: set[str] = set(meta.owned_symbols);
             exported_funcs: list[str] = [];
-            has_collision = False;
+            # Two separate collision outcomes:
+            #   has_real_collision — E5026 was emitted; user must fix their code
+            #   _benign_dup_* — symbol transitively carried from a dep that was
+            #     already linked; safe to handle without aborting the whole module
+            has_real_collision = False;
+            _benign_dup_funcs: list = [];
+            _benign_dup_gvs: list = [];
             for func in imported_mod.functions {
                 if func.name.startswith("llvm.") or func.is_declaration {
                     continue;
@@ -743,9 +752,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
                     continue;
                 }
                 exported_funcs.append(func.name);
-                # Check collision against previously recorded definitions
                 if func.name in symbol_origins {
-                    has_collision = True;
                     _is_owned = (
                         func.name in dep_owned_set
                             if dep_owned_set
@@ -758,6 +765,9 @@ impl NativeCompilePass._compile_and_link_native_imports(
                             existing_module=symbol_origins[func.name],
                             new_module=full_path
                         );
+                        has_real_collision = True;
+                    } else {
+                        _benign_dup_funcs.append(func);
                     }
                 }
             }
@@ -772,7 +782,6 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 }
                 exported_globals.append(gv.name);
                 if gv.name in symbol_origins {
-                    has_collision = True;
                     _is_owned = (
                         gv.name in dep_owned_set
                             if dep_owned_set
@@ -785,33 +794,57 @@ impl NativeCompilePass._compile_and_link_native_imports(
                             existing_module=symbol_origins[gv.name],
                             new_module=full_path
                         );
+                        has_real_collision = True;
+                    } else {
+                        _benign_dup_gvs.append(gv);
                     }
                 }
             }
-            if has_collision {
-                # Either a real collision (E5026 emitted above) or a benign
-                # transitive duplicate — in both cases skip link_in so the
-                # symbol is not multiply defined in main_mod.
+            if has_real_collision {
                 continue;
             }
-
-            # Record symbol origins (and whether this module owns each symbol)
-            # for future collision diagnostics.
-            for fname in exported_funcs {
-                symbol_origins[fname] = full_path;
-                symbol_owned[fname] = (
-                    fname in dep_owned_set
-                        if dep_owned_set
-                        else fname not in dep_imported_set
+            if _benign_dup_funcs or _benign_dup_gvs {
+                # If B has no unique symbols it is a pure transitive carrier —
+                # skip link_in entirely. If B has unique symbols, demote the
+                # duplicate definitions to available_externally so LLVM resolves
+                # them against the already-present definitions and links the rest.
+                _has_unique = (
+                    any(f not in symbol_origins for f in exported_funcs)
+                    or any(g not in symbol_origins for g in exported_globals)
                 );
+                if not _has_unique {
+                    continue;
+                }
+                for _bf in _benign_dup_funcs {
+                    _bf.linkage = 'available_externally';
+                }
+                for _bg in _benign_dup_gvs {
+                    _bg.linkage = 'available_externally';
+                }
+            }
+
+            # Record symbol origins first-seen-wins; do not overwrite entries
+            # already set by a prior module (including available_externally aliases
+            # demoted above — the authoritative origin stays with the first linker).
+            for fname in exported_funcs {
+                if fname not in symbol_origins {
+                    symbol_origins[fname] = full_path;
+                    symbol_owned[fname] = (
+                        fname in dep_owned_set
+                            if dep_owned_set
+                            else fname not in dep_imported_set
+                    );
+                }
             }
             for gname in exported_globals {
-                symbol_origins[gname] = full_path;
-                symbol_owned[gname] = (
-                    gname in dep_owned_set
-                        if dep_owned_set
-                        else gname not in dep_imported_set
-                );
+                if gname not in symbol_origins {
+                    symbol_origins[gname] = full_path;
+                    symbol_owned[gname] = (
+                        gname in dep_owned_set
+                            if dep_owned_set
+                            else gname not in dep_imported_set
+                    );
+                }
             }
 
             # Link the imported module into the main module at IR level
