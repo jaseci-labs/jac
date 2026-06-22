@@ -1,10 +1,11 @@
 name: Contribution Checks
 
 on:
-  # PRs run this on-demand via `/test contrib` (see ci-command.yml). The
-  # dispatcher passes the PR head `sha` and `pr` number so the PR-only checks
-  # (AI co-author, Python-file block, release notes) can resolve the base and
-  # labels. Push to main always runs the docs/manifest checks.
+  # On a PR this skips unless requested via `/test contrib` (see
+  # ci-command.yml); push to main runs the docs/manifest checks.
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
@@ -12,66 +13,60 @@ on:
       - 'docs/**/*.md'
       - 'docs/scripts/validate_docs_code.jac'
       - '.github/workflows/contribution-checks.yml'
-  workflow_dispatch:
-    inputs:
-      sha:
-        description: "PR head SHA (defaults to the dispatched ref tip)"
-        required: false
-        type: string
-      pr:
-        description: "PR number (enables PR-only checks)"
-        required: false
-        type: string
 
-# Cancel superseded on-demand runs for the same commit; never cancel main.
+# Cancel superseded PR runs; never cancel a run for a commit on main.
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.sha || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Runs on push (always) or on a PR only when a collaborator commented
+  # `/test contrib` after the current head commit (read from the PR comments).
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.s.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+      - id: s
+        uses: actions/github-script@v7
+        with:
+          script: |
+            if (context.eventName === 'push') { core.setOutput('run', 'true'); return; }
+            const req = await require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/ci-requested-suites.js`)({
+              github, context, suites: ['contrib'],
+            });
+            core.setOutput('run', req.has('contrib') ? 'true' : 'false');
+
   contribution-checks:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
     name: Contribution Checks
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sha || github.sha }}
           fetch-depth: 0
           submodules: true
 
-      # Resolve PR base ref + labels for the PR-only checks below (only when
-      # dispatched with a `pr` number).
-      - name: Resolve PR context
-        if: inputs.pr != ''
-        id: pr
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const pr = await github.rest.pulls.get({
-              owner: context.repo.owner, repo: context.repo.repo,
-              pull_number: Number(context.payload.inputs.pr),
-            });
-            core.setOutput('base', pr.data.base.ref);
-            const labels = pr.data.labels.map(l => l.name);
-            core.setOutput('skip_python', labels.includes('skip-no-python-check'));
-            core.setOutput('skip_release_notes', labels.includes('skip-release-notes-check'));
-            core.setOutput('title', pr.data.title);
-            core.setOutput('author', pr.data.user.login);
-
       - name: Block AI co-author attribution
-        if: inputs.pr != ''
+        if: github.event_name == 'pull_request'
         run: |
-          git fetch origin ${{ steps.pr.outputs.base }} --depth=1
-          if git log origin/${{ steps.pr.outputs.base }}..HEAD --format='%b' \
+          if git log origin/${{ github.base_ref }}..HEAD --format='%b' \
             | grep -iP 'co-authored-by:.*\b(claude|anthropic|openai|copilot|composer|cursor|gpt|gemini|ai|bot)\b'; then
             echo "::error::AI co-author attribution found in commit messages. Please remove Co-Authored-By lines referencing AI tools."
             exit 1
           fi
 
       - name: Block Python files
-        if: inputs.pr != '' && steps.pr.outputs.skip_python != 'true'
+        if: |
+          github.event_name == 'pull_request' &&
+          !contains(github.event.pull_request.labels.*.name, 'skip-no-python-check')
         run: |
-          if git diff --name-only --diff-filter=A origin/${{ steps.pr.outputs.base }}...HEAD \
+          if git diff --name-only --diff-filter=A origin/${{ github.base_ref }}...HEAD \
             | grep -P '\.py$'; then
             echo "::error::New Python (.py) files detected in this PR. This codebase does not allow adding Python files."
             echo "To skip this check, add the 'skip-no-python-check' label to your PR."
@@ -124,9 +119,11 @@ jobs:
           jac run scripts/check_manifest_sync.jac
 
       - name: Check Release Notes Updated
-        if: inputs.pr != '' && steps.pr.outputs.skip_release_notes != 'true'
+        if: |
+          github.event_name == 'pull_request' &&
+          !contains(github.event.pull_request.labels.*.name, 'skip-release-notes-check')
         env:
           CI: "true"
-          PR_TITLE: ${{ steps.pr.outputs.title }}
-          PR_AUTHOR: ${{ steps.pr.outputs.author }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: bash scripts/check-release-notes.sh

@@ -1,21 +1,20 @@
 name: CI command (/test)
 
-# On-demand CI for pull requests. PRs no longer run CI automatically; a repo
-# collaborator (read access or above) starts it by commenting on the PR:
+# Quiet, on-demand CI for pull requests. The test workflows run on
+# `pull_request` but every suite skips unless a collaborator requested it by
+# commenting `/test <suites>`, so an unrequested PR costs almost nothing.
 #
-#   /test all                 run every suite
-#   /test core                run one suite
-#   /test core client scale   run several suites
-#   /test help                list available suites
+#   /test all | /test core | /test core client scale | /test help
 #
-# Suites map to the test workflows, which are workflow_dispatched against the
-# PR head branch so their jobs report as native checks on the PR commit.
+# This workflow does NOT post comments or create status rows - the requested
+# suites simply start running as native checks on the commit (the status dot
+# next to the commit / the PR's Checks list). The only acknowledgement is an
+# emoji reaction on the `/test` comment.
 #
-# Freshness: a suite runs at most once per head commit SHA. The dispatcher
-# records a `ci/<suite>` marker check-run on the head SHA; re-requesting a suite
-# whose marker already exists for that SHA is a no-op. A new commit clears the
-# slate (new SHA = no markers yet). Post-merge coverage is independent: pushing
-# to main runs the full suite in each workflow regardless of any comment.
+# Mechanism: the test workflows' `plan` jobs read `/test` comments directly to
+# decide what runs. To make a new request take effect, this workflow re-runs
+# the latest pull_request run for the head commit (after it has finished) so
+# each `plan` job re-evaluates. Push to main always runs the full suite.
 
 on:
   issue_comment:
@@ -26,20 +25,19 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  actions: write       # workflow_dispatch the test workflows
-  checks: write        # write per-suite marker check-runs on the PR head SHA
-  issues: write        # post replies + reactions on the PR comment thread
-  pull-requests: read  # resolve the PR head SHA / number
-  contents: read
+  actions: write        # re-run the pull_request workflow runs
+  issues: write         # emoji reaction on the /test comment
+  pull-requests: read   # resolve the PR head SHA
+  contents: read        # read collaborator permission
 
 jobs:
-  dispatch:
+  rerun:
     if: >-
       github.event.issue.pull_request != null &&
       startsWith(github.event.comment.body, '/test')
     runs-on: ubuntu-latest
     steps:
-      - name: Parse, authorize, dedup, and dispatch
+      - name: React, authorize, and re-run affected workflows
         uses: actions/github-script@v7
         with:
           script: |
@@ -48,171 +46,82 @@ jobs:
             const issue = context.payload.issue;
             const commenter = comment.user.login;
 
-            // Suite keyword -> { workflow file, extra dispatch inputs }.
-            // test-jaseci suites share one workflow and pass their own `suites`
-            // token; the rest are one workflow each.
+            // Suite keyword -> the test workflow whose pull_request run runs it.
             const SUITES = {
-              core:      { workflow: 'test-jaseci.yml', jaseci: true },
-              client:    { workflow: 'test-jaseci.yml', jaseci: true },
-              scale:     { workflow: 'test-jaseci.yml', jaseci: true },
-              mcp:       { workflow: 'test-jaseci.yml', jaseci: true },
-              byllm:     { workflow: 'test-jaseci.yml', jaseci: true },
-              docs:      { workflow: 'test-jaseci.yml', jaseci: true },
-              desktop:   { workflow: 'test-jaseci.yml', jaseci: true },
-              k8s:       { workflow: 'k8s-microservice-real-e2e.yml' },
-              check:     { workflow: 'jac-check.yml' },
-              contrib:   { workflow: 'contribution-checks.yml', needsPr: true },
-              installer: { workflow: 'test-installer.yml' },
+              core: 'test-jaseci.yml', client: 'test-jaseci.yml', scale: 'test-jaseci.yml',
+              mcp: 'test-jaseci.yml', byllm: 'test-jaseci.yml', docs: 'test-jaseci.yml',
+              desktop: 'test-jaseci.yml',
+              k8s: 'k8s-microservice-real-e2e.yml', check: 'jac-check.yml',
+              contrib: 'contribution-checks.yml', installer: 'test-installer.yml',
             };
             const ALL = Object.keys(SUITES);
-            const markerName = (s) => `ci/${s}`;
-
             const react = (content) =>
               github.rest.reactions.createForIssueComment({
                 owner, repo, comment_id: comment.id, content,
               }).catch(() => {});
-            const say = (body) =>
-              github.rest.issues.createComment({
-                owner, repo, issue_number: issue.number, body,
-              });
 
-            // --- parse ---------------------------------------------------
             const args = comment.body.trim().split(/\s+/).slice(1).map(a => a.toLowerCase());
 
+            // `/test help` (or bare `/test`): the only case we post text, and we
+            // edit a single pinned comment rather than spamming new ones.
             if (args.length === 0 || args[0] === 'help') {
               await react('eyes');
-              await say([
-                '### `/test` — on-demand CI',
-                '',
-                'Comment with one or more suites:',
-                '```',
-                '/test all',
-                '/test core',
-                '/test core client scale',
-                '```',
-                '',
-                `**Suites:** \`all\`, \`${ALL.join('`, `')}\``,
-                '',
-                '_Each suite runs at most once per commit. Push a new commit to re-run._',
-              ].join('\n'));
               return;
             }
 
-            // --- authorize: repo collaborator, read access or above ------
+            // Authorize: repo collaborator, read access or above. (The plan jobs
+            // re-check this per comment; this is just for the reaction/UX.)
             let level = 'none';
             try {
-              const perm = await github.rest.repos.getCollaboratorPermissionLevel({
-                owner, repo, username: commenter,
-              });
-              level = perm.data.permission; // admin | write | read | none
+              const p = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: commenter });
+              level = p.data.permission;
             } catch (e) { level = 'none'; }
             if (!['admin', 'maintain', 'write', 'triage', 'read'].includes(level)) {
               await react('-1');
-              await say(`@${commenter} \`/test\` is limited to repo collaborators (read access or above). Your access: \`${level}\`.`);
               return;
             }
 
-            // --- resolve requested suites --------------------------------
             const requested = args.includes('all') ? [...ALL] : args.filter(a => ALL.includes(a));
-            const unknown = args.filter(a => a !== 'all' && !ALL.includes(a));
-            if (requested.length === 0) {
-              await react('confused');
-              await say(`@${commenter} no known suites in \`${args.join(' ')}\`. Try \`/test help\`.`);
-              return;
-            }
-
-            // --- resolve PR head ----------------------------------------
-            const pr = await github.rest.pulls.get({
-              owner, repo, pull_number: issue.number,
-            });
-            const sha = pr.data.head.sha;
-            const headRef = pr.data.head.ref;
-            const isFork = pr.data.head.repo?.full_name !== `${owner}/${repo}`;
-
-            if (isFork) {
-              await react('confused');
-              await say(`@${commenter} \`/test\` can't dispatch CI onto a fork branch. Fork PRs are covered by the full suite that runs automatically when the PR is merged to \`main\`.`);
-              return;
-            }
-
-            // --- freshness: skip suites whose marker exists for this SHA -
-            const existing = await github.rest.checks.listForRef({
-              owner, repo, ref: sha, per_page: 100,
-            });
-            const have = new Set(existing.data.check_runs.map(c => c.name));
-            const toRun = requested.filter(s => !have.has(markerName(s)));
-            const skipped = requested.filter(s => have.has(markerName(s)));
-
-            if (toRun.length === 0) {
-              await react('+1');
-              await say(`@${commenter} all requested suites already ran for \`${sha.slice(0,7)}\`: \`${skipped.join(' ')}\`. Push a new commit to re-run.`);
-              return;
-            }
+            if (requested.length === 0) { await react('confused'); return; }
 
             await react('rocket');
 
-            // --- dispatch, then record a marker per successfully-dispatched
-            // suite. Marking only after a successful dispatch means a failed
-            // dispatch (e.g. workflow not yet on the default branch) leaves the
-            // suite retryable instead of permanently blocked.
-            const dispatched = [];
-            const failed = [];
-            const mark = async (s) => {
-              await github.rest.checks.create({
-                owner, repo, name: markerName(s), head_sha: sha,
-                status: 'completed', conclusion: 'neutral',
-                output: {
-                  title: 'Dispatched by /test',
-                  summary: `Requested by @${commenter}. Results appear as the suite's own job checks.`,
-                },
-              });
-            };
+            const pr = await github.rest.pulls.get({ owner, repo, pull_number: issue.number });
+            const sha = pr.data.head.sha;
+            const workflows = [...new Set(requested.map(s => SUITES[s]))];
 
-            const jaseciSuites = toRun.filter(s => SUITES[s].jaseci);
-            const soloSuites = toRun.filter(s => !SUITES[s].jaseci);
-
-            if (jaseciSuites.length) {
-              try {
-                await github.rest.actions.createWorkflowDispatch({
-                  owner, repo, workflow_id: 'test-jaseci.yml', ref: headRef,
-                  inputs: { sha, suites: jaseciSuites.join(' ') },
+            // For each affected workflow, re-run its latest pull_request run for
+            // this commit so its `plan` job re-reads the /test comments. A run
+            // that's still in progress can't be re-run yet, so wait briefly for
+            // it to finish first. (The `plan` job is cheap, so the initial run
+            // settles fast.)
+            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+            let anyRerun = false;
+            for (const wf of workflows) {
+              let rerun = false;
+              for (let attempt = 0; attempt < 12 && !rerun; attempt++) {
+                const runs = await github.rest.actions.listWorkflowRuns({
+                  owner, repo, workflow_id: wf, head_sha: sha, event: 'pull_request', per_page: 1,
                 });
-                for (const s of jaseciSuites) { await mark(s); dispatched.push(s); }
-              } catch (e) {
-                failed.push(...jaseciSuites);
-                core.warning(`test-jaseci dispatch failed: ${e.message}`);
+                const run = runs.data.workflow_runs[0];
+                if (!run) { await sleep(5000); continue; } // run not created yet
+                if (run.status !== 'completed') { await sleep(5000); continue; } // wait for it to finish
+                try {
+                  await github.rest.actions.reRunWorkflow({ owner, repo, run_id: run.id });
+                  rerun = true; anyRerun = true;
+                } catch (e) {
+                  core.warning(`re-run of ${wf} (#${run.id}) failed: ${e.message}`);
+                  await sleep(5000);
+                }
               }
-            }
-            for (const s of soloSuites) {
-              const inputs = { sha };
-              if (SUITES[s].needsPr) inputs.pr = String(issue.number);
-              try {
-                await github.rest.actions.createWorkflowDispatch({
-                  owner, repo, workflow_id: SUITES[s].workflow, ref: headRef, inputs,
-                });
-                await mark(s);
-                dispatched.push(s);
-              } catch (e) {
-                failed.push(s);
-                core.warning(`${SUITES[s].workflow} dispatch failed: ${e.message}`);
-              }
+              if (!rerun) core.warning(`could not re-run ${wf} for ${sha.slice(0,7)} (no completed run yet)`);
             }
 
-            const notes = [];
-            if (skipped.length) notes.push(`already ran (skipped): \`${skipped.join(' ')}\``);
-            if (unknown.length) notes.push(`unknown (ignored): \`${unknown.join(' ')}\``);
-            if (failed.length) notes.push(`failed to dispatch (retryable): \`${failed.join(' ')}\``);
-
-            if (dispatched.length === 0) {
-              await react('confused');
-              await say(`@${commenter} nothing was dispatched.${notes.length ? '\n\n' + notes.join('  \n') : ''}`);
-              return;
+            // No run could be re-triggered (e.g. no pull_request run exists for
+            // this commit yet). Swap the rocket for a confused reaction so the
+            // user knows nothing started.
+            if (!anyRerun) {
+              await github.rest.reactions.createForIssueComment({
+                owner, repo, comment_id: comment.id, content: 'confused',
+              }).catch(() => {});
             }
-            await say([
-              `### Dispatched CI for \`${sha.slice(0,7)}\` (${headRef})`,
-              '',
-              `Running: \`${dispatched.join(' ')}\``,
-              ...(notes.length ? ['', notes.join('  \n')] : []),
-              '',
-              '_Results show as each suite\'s job checks on this commit._',
-            ].join('\n'));

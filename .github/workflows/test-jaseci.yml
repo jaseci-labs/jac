@@ -1,43 +1,34 @@
 name: Run tests for jaseci
 
 on:
-  # PRs do NOT auto-run CI. A repo collaborator starts it on-demand by
-  # commenting `/test <suites>` on the PR (see ci-command.yml), which
-  # workflow_dispatches this workflow against the PR head branch so the jobs
-  # report as native checks on the PR commit. Pushing to main always runs the
-  # full suite regardless, so merged code keeps full coverage.
+  # PRs do NOT auto-run the test suites. On a PR, the `plan` job (below) runs
+  # cheaply and every test job skips unless its suite was requested by a repo
+  # collaborator commenting `/test <suites>` (read from the PR comments by
+  # `plan`; see ci-command.yml, which re-runs this workflow so `plan`
+  # re-evaluates). Requested suites run as NATIVE PR checks. Pushing to main
+  # always runs the full suite, so merged code keeps full coverage.
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
-  workflow_dispatch:
-    inputs:
-      sha:
-        description: "Commit SHA to test (PR head; defaults to the dispatched ref tip)"
-        required: false
-        type: string
-      suites:
-        description: "Space-separated suites to run: core client scale mcp byllm docs desktop (empty = all)"
-        required: false
-        type: string
 
-# Group per dispatched suite-set (or ref on push) so requesting a different
-# suite for the same commit does NOT cancel an in-flight sibling run. We do not
-# cancel in-progress runs: a marker is recorded per suite, so a cancelled run
-# would leave a suite permanently "ran" yet incomplete.
+# Cancel superseded PR runs; never cancel a run for a commit on main.
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.sha || github.ref }}-${{ inputs.suites }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Resolves which suites this run should execute. On push to main every suite
-  # runs (full post-merge coverage). On workflow_dispatch only the requested
-  # `suites` run (or all if the input is empty). `core` is folded into the
-  # downstream `solid`/`packages`/`desktop`/`mcp`/`scale` gates because those
-  # depend on the compiler+runtime.
+  # Decides which suites run. On push to main every suite runs (full post-merge
+  # coverage). On a PR, a suite runs only when a collaborator (read access or
+  # above) requested it by commenting `/test <suites>` AFTER the current head
+  # commit was pushed. Requests are read straight from the PR comments, so no
+  # extra status/check rows are added - only the real test checks show on the
+  # commit. Re-running this workflow after a new `/test` comment re-evaluates.
   plan:
     runs-on: ubuntu-latest
     outputs:
-      sha: ${{ steps.s.outputs.sha }}
       core: ${{ steps.s.outputs.core }}
       client: ${{ steps.s.outputs.client }}
       scale: ${{ steps.s.outputs.scale }}
@@ -46,18 +37,23 @@ jobs:
       docs: ${{ steps.s.outputs.docs }}
       desktop: ${{ steps.s.outputs.desktop }}
     steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
       - id: s
         uses: actions/github-script@v7
         with:
           script: |
-            const isPush = context.eventName === 'push';
-            const raw = (context.payload.inputs && context.payload.inputs.suites || '').trim();
-            const req = isPush || raw === '' ? null : new Set(raw.split(/\s+/));
-            const on = (name) => (req === null || req.has(name)) ? 'true' : 'false';
-            core.setOutput('sha', (context.payload.inputs && context.payload.inputs.sha) || context.sha);
-            for (const s of ['core','client','scale','byllm','mcp','docs','desktop']) {
-              core.setOutput(s, on(s));
-            }
+            const SUITES = ['core','client','scale','byllm','mcp','docs','desktop'];
+            const set = (req) => { for (const s of SUITES) core.setOutput(s, req.has(s) ? 'true' : 'false'); };
+
+            if (context.eventName === 'push') { set(new Set(SUITES)); return; }
+
+            const requested = await require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/ci-requested-suites.js`)({
+              github, context, suites: SUITES,
+            });
+            set(requested);
 
   test-core-compiler:
     needs: plan
@@ -67,7 +63,6 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v5
       with:
-        ref: ${{ needs.plan.outputs.sha }}
         submodules: true
 
     - name: Set up Python 3.12
@@ -94,7 +89,6 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v5
       with:
-        ref: ${{ needs.plan.outputs.sha }}
         submodules: true
 
     - name: Set up Python 3.12
@@ -133,7 +127,6 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v5
       with:
-        ref: ${{ needs.plan.outputs.sha }}
         submodules: true
 
     - name: Set up Python 3.12
@@ -170,7 +163,6 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v5
       with:
-        ref: ${{ needs.plan.outputs.sha }}
         submodules: true
 
     - name: Set up Python 3.12
@@ -214,7 +206,6 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v5
       with:
-        ref: ${{ needs.plan.outputs.sha }}
         submodules: true
 
     - name: Set up Python 3.12
@@ -269,7 +260,6 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v5
       with:
-        ref: ${{ needs.plan.outputs.sha }}
         submodules: true
 
     - name: Set up Python 3.12
@@ -296,7 +286,6 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v5
       with:
-        ref: ${{ needs.plan.outputs.sha }}
         submodules: true
 
     - name: Set up Python 3.12
@@ -328,7 +317,6 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v5
       with:
-        ref: ${{ needs.plan.outputs.sha }}
         submodules: true
 
     - name: Set up Python 3.12
@@ -375,7 +363,6 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v5
         with:
-          ref: ${{ needs.plan.outputs.sha }}
           submodules: true
 
       - name: Set up Python 3.12
@@ -435,7 +422,6 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v5
       with:
-        ref: ${{ needs.plan.outputs.sha }}
         submodules: true
 
     - name: Set up Python 3.12

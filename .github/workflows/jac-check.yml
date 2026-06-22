@@ -1,30 +1,49 @@
 name: Jac Type Check
 
 on:
-  # PRs run this on-demand via `/test check` (see ci-command.yml); push to main
-  # always runs it for full post-merge coverage.
+  # On a PR this skips unless requested via `/test check` (see ci-command.yml);
+  # push to main always runs it for full post-merge coverage.
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      sha:
-        description: "Commit SHA to check (PR head; defaults to the dispatched ref tip)"
-        required: false
-        type: string
 
-# Cancel superseded on-demand runs for the same commit; never cancel main.
+# Cancel superseded PR runs; never cancel a run for a commit on main.
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.sha || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Runs on push (always) or on a PR only when a collaborator commented
+  # `/test check` after the current head commit. Requests are read from the PR
+  # comments, so no extra check rows are added.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.s.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+      - id: s
+        uses: actions/github-script@v7
+        with:
+          script: |
+            if (context.eventName === 'push') { core.setOutput('run', 'true'); return; }
+            const req = await require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/ci-requested-suites.js`)({
+              github, context, suites: ['check'],
+            });
+            core.setOutput('run', req.has('check') ? 'true' : 'false');
+
   jac-check:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sha || github.sha }}
           submodules: true
 
       - name: Set up Python
