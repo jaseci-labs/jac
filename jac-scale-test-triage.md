@@ -102,6 +102,7 @@ Investigated each of the 14 remaining failures and applied fixes. Verdict: all a
 product bug the test correctly caught.
 
 Fixed:
+
 - **Test drift (8):** stale `register_user` helper in the 4 perf tests (now nested
   identities/credential + separate login); test_abstractions (`.value`); test_cluster_provider
   (scrape-port returns container port); test_factories (static `from_dict(cls, ...)`);
@@ -116,6 +117,7 @@ targeted from_dict and prometheus-namespace cases pass.
 
 The per-file run used `pytest -x` (stop at first failure), so each file reported only its
 FIRST failure. Fixing it surfaces the next. Already seen:
+
 - test_factories: `from_dict` fixed -> now `deployment target with logger` fails
   (`deployment_factory` has no attribute `KubernetesTarget` - genuine, not env; kubernetes 34.1.0
   is installed locally).
