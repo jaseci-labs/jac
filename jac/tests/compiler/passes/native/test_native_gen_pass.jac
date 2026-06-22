@@ -3536,6 +3536,44 @@ test "transitive import: same result on repeated calls (no state corruption)" {
     assert run_fn() == 99 , f"Third call: expected 99, got {run_fn()}";
 }
 
+# ─── native_safe_sym: per-module glob-init / entry symbol uniqueness ──────────
+# native_safe_sym is the single naming contract shared by the emit side
+# (na_compile_pass.impl.jac, func.impl.jac), the AOT shared-init emitter
+# (nacompile.impl.jac), and the JIT runtime lookup
+# (native_marshal.init_native_globals). The legacy `re.sub(r'[^a-zA-Z0-9_]',
+# '_', src)` collapsed 'math_utils.na' (flat) and 'math/utils.na' (dotted
+# math.utils) to the same 'math_utils_na', so two distinct transitive native
+# deps collided on __jac_glob_init_<safe> and LLVM's first-seen-wins silently
+# dropped the second module's initializer. The hash suffix must keep them
+# distinct, and the result must stay LLVM-identifier-safe.
+test "native_safe_sym disambiguates flat vs dotted path collision" {
+    import re;
+    import from jaclang.jac0core.codeinfo { native_safe_sym }
+    flat = "math_utils.na";
+    dotted = "math/utils.na";
+    # Document the pre-existing collision under the legacy transform: both
+    # collapse to 'math_utils_na', which is exactly why the hash is required.
+    legacy_flat = re.sub(r'[^a-zA-Z0-9_]', '_', flat);
+    legacy_dotted = re.sub(r'[^a-zA-Z0-9_]', '_', dotted);
+    assert legacy_flat == legacy_dotted , (
+        f"Sanity: legacy transform must collide for this pair, got "
+        f"{legacy_flat!r} vs {legacy_dotted!r}"
+    );
+    sym_flat = native_safe_sym(flat);
+    sym_dotted = native_safe_sym(dotted);
+    assert sym_flat != sym_dotted , (
+        f"native_safe_sym must disambiguate: {sym_flat!r} == {sym_dotted!r}"
+    );
+    # LLVM identifier safety: only [a-zA-Z0-9_].
+    valid = re.compile(r'^[a-zA-Z0-9_]+$');
+    assert valid.match(sym_flat) , f"unsafe symbol: {sym_flat!r}";
+    assert valid.match(sym_dotted) , f"unsafe symbol: {sym_dotted!r}";
+    # Deterministic: same input → same output (emit and lookup sides agree).
+    assert native_safe_sym(flat) == sym_flat , "native_safe_sym must be deterministic";
+    # The full glob-init symbols built from these must also differ.
+    assert f"__jac_glob_init_{sym_flat}" != f"__jac_glob_init_{sym_dotted}";
+}
+
 test "del list item: length decrements after delete" {
     # Container starts with [10, 20, 30]; after del items[2] length must be 2.
     (eng, _) = compile_native("fix_del_list.na.jac");

@@ -373,7 +373,11 @@ impl NativeCompilePass._compile_and_link_native_imports(
     import os;
     import hashlib;
     import json;
-    import from jaclang.jac0core.codeinfo { NativeModuleInfo, NativeFunctionInfo }
+    import from jaclang.jac0core.codeinfo {
+        NativeModuleInfo,
+        NativeFunctionInfo,
+        native_safe_sym
+    }
 
     # ── Compiler fingerprint for cache invalidation ─────────────────────
     # Hash all .jac implementation files so that any compiler change
@@ -671,8 +675,14 @@ impl NativeCompilePass._compile_and_link_native_imports(
             # LLVM IR may quote names as @"jac_entry" or use bare @jac_entry.
             # imported_llvm_str_raw is set by both cache-hit and cache-miss.
             imported_llvm_str = imported_llvm_str_raw;
-            import re;
-            safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', source_mod_path);
+            # Unique per-module suffix (human-readable slug + sha1 of the
+            # original source_module_str) so 'math_utils.na' and
+            # 'math/utils.na' can't collide on __jac_entry_ / __jac_glob_init_.
+            # Centralized in codeinfo.native_safe_sym so the emit side here,
+            # the IR-gen side (func.impl.jac), the AOT shared-init emitter
+            # (nacompile.impl.jac), and the JIT runtime lookup
+            # (native_marshal.init_native_globals) all agree on the name.
+            safe_name = native_safe_sym(source_mod_path);
             entry_rename = f"__jac_entry_{safe_name}";
             imported_llvm_str = imported_llvm_str.replace(
                 '@"jac_entry"', f'@"{entry_rename}"'

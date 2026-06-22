@@ -96,7 +96,6 @@ Returns (new_ir, extra_export_names).
 def _inject_shared_init(
     llvm_ir_str: str, transitive_sources: list[str]
 ) -> tuple[str, list[str]] {
-    import re;
     init_calls: list[str] = [];
     # This module's own glob-init (NaIRGenPass always emits it when present).
     if ('@"__jac_glob_init"' in llvm_ir_str)
@@ -104,13 +103,17 @@ def _inject_shared_init(
     or ("define void @__jac_glob_init(" in llvm_ir_str) {
         init_calls.append("  call void @__jac_glob_init()");
     }
+    import from jaclang.jac0core.codeinfo { native_safe_sym }
     _seen: set = set();
     for _src in transitive_sources {
         if _src is None or _src in _seen {
             continue;
         }
         _seen.add(_src);
-        _safe = re.sub(r'[^a-zA-Z0-9_]', '_', _src);
+        # Unique per-module suffix; centralized in codeinfo.native_safe_sym so
+        # the emit side, this AOT shared-init emitter, and the JIT runtime
+        # lookup (native_marshal.init_native_globals) all agree on the name.
+        _safe = native_safe_sym(_src);
         _nm = f"__jac_glob_init_{_safe}";
         if (f'@"{_nm}"' in llvm_ir_str) or (f"@{_nm}(" in llvm_ir_str) {
             init_calls.append(f"  call void @{_nm}()");
