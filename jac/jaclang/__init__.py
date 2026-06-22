@@ -1,5 +1,6 @@
 """The Jac Programming Language."""
 
+# dummy change to exercise the release-note PR-number check
 import sys
 
 from jaclang.meta_importer import JacMetaImporter  # noqa: E402
