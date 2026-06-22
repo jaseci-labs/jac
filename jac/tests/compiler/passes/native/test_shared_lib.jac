@@ -328,10 +328,12 @@ test "Mach-O dylib dlopen/dlsym round-trip resolves :pub exports (macOS host onl
 
 test "Mach-O dylib export trie uses bare (non-underscored) :pub names (macOS host only)" {
     # The issue flagged the leading-underscore convention as an open question.
-    # On macOS a C symbol `jadd` is conventionally exported as `_jadd` in the
-    # trie, but the Jac linker emits the bare name to match the ELF/PE paths.
-    # Pin that invariant so a regression in the export-trie builder flips this
-    # test rather than silently breaking dlsym for consumers. No-op on non-macOS.
+    # On macOS a C symbol `jadd` is exported as `_jadd` in the trie; dyld's dlsym
+    # prepends the underscore, so a consumer resolves it with the BARE spelling
+    # (`dlsym("jadd")`) while the underscored spelling (`dlsym("_jadd")` -> seeks
+    # `__jadd`) does NOT resolve. Pin that consumer-facing contract so a
+    # regression in the export-trie builder flips this test rather than silently
+    # breaking dlsym for consumers (issue #6821). No-op on non-macOS.
     triple = llvm.get_default_triple();
     if not (sys.platform == "darwin" and "apple" in triple) {
         return;

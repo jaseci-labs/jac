@@ -143,8 +143,19 @@ Single naming contract shared by NaIRGenPass (defines the renamed
 imported IR), nacompile (emits `__jac_shared_init` calls), and
 native_marshal.init_native_globals (looks the address up by name). All four
 must agree or the JIT lookup silently no-ops.
+
+`osp_kernel` is a singleton SENTINEL (not a real per-module source path): the
+portable OSP kernel is linked under a fixed, hash-free symbol by
+`_link_osp_kernel` / `_emit_osp_setup` and probed by name in
+`_references_undefined_osp_kernel`, so it must map to the bare `osp_kernel`
+slug. Appending the disambiguating hash here would leave the entry's
+`__jac_glob_init_osp_kernel_<hash>` call dangling against the kernel's
+hash-free definition (undefined symbol at load — issue #6669).
 """
 def native_safe_sym(src: str) -> str {
+    if src == "osp_kernel" {
+        return "osp_kernel";
+    }
     safe = re.sub(r'[^a-zA-Z0-9_]', '_', src);
     return f"{safe}_{hashlib.sha1(src.encode()).hexdigest()[:8]}";
 }

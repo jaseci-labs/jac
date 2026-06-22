@@ -2023,9 +2023,13 @@ impl MachOLinker.build_shared_object -> bytes {
         va = _resolve_seg_vaddr(
             seg, off, text_sec_vaddr, const_sec_vaddr, data_sec_vaddr
         );
-        export_pairs.append(
-            (nm, va)
-        );  # trie key is the bare Jac name; _mn is only for the address lookup above
+        # Trie key is the Mach-O symbol (`_jadd`), NOT the bare Jac name. dyld's
+        # dlsym prepends a leading underscore before consulting the export trie,
+        # so a consumer's dlsym("jadd") resolves a `_jadd` entry; a bare `jadd`
+        # entry is unreachable by dlsym/ld and the dylib "loads but won't
+        # resolve" — exactly the symptom issue #6821 reported. The symbol table
+        # already carries `_mn`; the trie must match it.
+        export_pairs.append((_mn, va));
     }
     export_trie = _build_export_trie(export_pairs);
 
