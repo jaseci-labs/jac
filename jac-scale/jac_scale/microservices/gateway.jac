@@ -142,6 +142,13 @@ obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerLogs, JacAPIServerTraces,
     """Serve a static file from the client dist directory. Returns None if not found."""
     def serve_static(file_path: str) -> Response | None;
 
+    """Serve a `/static/assets/*` asset from the project `assets/` dir when it
+    isn't in the client build dir, so `/static/assets/foo.svg` resolves the
+    same whether served by `jac serve` or the gateway. Maps
+    `/static/assets/<P>` -> `<root>/assets/<P>` (nested paths included),
+    jailed to the `assets/` dir. Returns None if not found."""
+    def serve_project_static(file_path: str) -> Response | None;
+
     """Serve a static file from a configured `static_mounts` entry's local
     directory. Path-jails to that directory (rejects ../ escapes). Returns
     None if not found."""

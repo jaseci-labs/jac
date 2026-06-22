@@ -936,6 +936,102 @@ test "gateway returns 404 for missing static and no spa" {
     shutil.rmtree(tmp);
 }
 
+test "gateway serves /static/assets from project assets dir when absent from dist" {
+    tmp = tempfile.mkdtemp();
+    # Asset absent from the build dir but present in the project assets/ dir.
+    dist = Path(tmp) / "dist";
+    dist.mkdir();
+    assets = Path(tmp) / "assets";
+    assets.mkdir();
+    (assets / "logo.svg").write_text("<svg>LOGO</svg>");
+
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(
+        registry=reg, client_dist_dir=str(dist), base_path=tmp
+    );
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    resp = client.get("/static/assets/logo.svg");
+    assert resp.status_code == 200;
+    assert "LOGO" in resp.text;
+    assert "svg" in resp.headers.get("content-type", "");
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
+test "gateway /static project fallback 404s for a missing asset" {
+    tmp = tempfile.mkdtemp();
+    dist = Path(tmp) / "dist";
+    dist.mkdir();
+    (Path(tmp) / "assets").mkdir();  # empty - nothing to serve
+
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(
+        registry=reg, client_dist_dir=str(dist), base_path=tmp
+    );
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    resp = client.get("/static/assets/missing.svg");
+    assert resp.status_code == 404;
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
+test "gateway serves nested /static/assets sub-path from project assets dir" {
+    tmp = tempfile.mkdtemp();
+    dist = Path(tmp) / "dist";
+    dist.mkdir();
+    # Nested sub-path under assets/ (e.g. monaco-workers/editor.worker.js).
+    worker_dir = Path(tmp) / "assets" / "monaco-workers";
+    worker_dir.mkdir(parents=True);
+    (worker_dir / "editor.worker.js").write_text("self.onmessage = () => {};");
+
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(
+        registry=reg, client_dist_dir=str(dist), base_path=tmp
+    );
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    resp = client.get("/static/assets/monaco-workers/editor.worker.js");
+    assert resp.status_code == 200;
+    assert "onmessage" in resp.text;
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
+test "gateway /static project fallback rejects path traversal outside assets" {
+    tmp = tempfile.mkdtemp();
+    dist = Path(tmp) / "dist";
+    dist.mkdir();
+    (Path(tmp) / "assets").mkdir();
+    # A file outside assets/ that a ../ escape would otherwise reach.
+    (Path(tmp) / "jac.toml").write_text("[project]\nname = \"secret\"");
+
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(
+        registry=reg, client_dist_dir=str(dist), base_path=tmp
+    );
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    # The jail must keep the project tree (jac.toml, source) unreachable.
+    resp = client.get("/static/assets/../jac.toml");
+    assert resp.status_code != 200;
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
 
 test "Gateway serves index.html for GET / regardless of Accept" {
     # The previous behavior 404'd `GET /` for any client that didn't

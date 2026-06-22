@@ -157,6 +157,48 @@ impl MicroserviceGateway.serve_extra_static(
 }
 
 
+"""Serve `/static/assets/*` from the project `assets/` dir when the asset
+isn't in the client build dir, so assets referenced by literal URL resolve
+the same under the gateway as under the monolith server. Maps
+`/static/assets/<P>` -> `<root>/assets/<P>` (nested paths included), jailed
+to the `assets/` dir. Returns None if not found."""
+impl MicroserviceGateway.serve_project_static(file_path: str) -> Response | None {
+    prefix = "static/assets/";
+    if not file_path.startswith(prefix) {
+        return None;
+    }
+    rel = file_path[len(prefix):];
+    if not rel {
+        return None;
+    }
+    assets_root = Path(self.base_path) / 'assets';
+    target = assets_root / rel;
+    try {
+        resolved = target.resolve();
+        root_resolved = assets_root.resolve();
+    } except OSError {
+        return None;
+    }
+    # Path-containment jail: reject ../ escapes out of the assets dir.
+    if not resolved.is_relative_to(root_resolved) {
+        return None;
+    }
+    if not target.is_file() {
+        return None;
+    }
+    (content_type, _) = mimetypes.guess_type(str(target));
+    if content_type is None {
+        content_type = "application/octet-stream";
+    }
+    if content_type.startswith("text/")
+    or content_type in ("application/javascript", "application/json") {
+        return Response(
+            content=target.read_text(encoding="utf-8"), media_type=content_type
+        );
+    }
+    return Response(content=target.read_bytes(), media_type=content_type);
+}
+
 """Serve index.html for SPA fallback. Returns None if no index.html exists."""
 impl MicroserviceGateway.serve_spa_fallback -> Response | None {
     index = Path(self.client_dist_dir) / "index.html";
@@ -579,6 +621,12 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
             static_resp = self.serve_static(file_path);
             if static_resp {
                 return static_resp;
+            }
+            # Fall back to the project assets/ dir (mirrors the monolith
+            # server); only matches /static/assets/ paths.
+            project_resp = self.serve_project_static(file_path);
+            if project_resp {
+                return project_resp;
             }
         }
     } else {
