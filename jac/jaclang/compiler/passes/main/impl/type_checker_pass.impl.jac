@@ -1067,9 +1067,10 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     # suppressed mode (diagnostics stashed, never replayed).
     emit_full = (not self.inference_only) or bool(self.ir_in?._type_check_requested);
     if not emit_full {
+        import from jaclang.jac0core.ext_registry { is_native_module }
         mod = self.ir_in;
         mp = mod.loc.mod_path if mod?.loc else '';
-        is_native_mod = bool(mp) and mp.endswith('.na.jac');
+        is_native_mod = bool(mp) and is_native_module(mp);
         if not is_native_mod and mod?.body {
             for _stmt in mod.body {
                 if isinstance(_stmt, uni.NativeBlock) {

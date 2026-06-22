@@ -705,7 +705,27 @@ test "bug_comprehension_narrowing" {
     assert len(program.errors_had) == 0 , (
         "`T | None` narrowing established by an enclosing guard must "
         "propagate into list/dict/set/gen comprehension iterators, out "
-        "expressions, and conditional clauses. "
+        "expressions, and conditional clauses -- both for early-return "
+        "guards and for in-body `if x is not None { ... }` blocks. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #COMPR-NARROW (true-positive guard): the in-body edge classification
+# must not over-narrow comprehension edges to the true branch. Inside
+# `if r is None { ... }` (and the else of `if r is not None`) the narrowed
+# type of `r` really is `None`, so `r.parts` inside a comprehension there
+# must still raise. Guards against a regression where the parent-walk
+# returns "true" for every nested comprehension, silently dropping errors.
+# =========================================================================
+test "bug_comprehension_narrowing_negative" {
+    program = compile_and_check("checker_bug_compr_narrowing_negative.jac");
+
+    assert len(program.errors_had) == 2 , (
+        "Comprehensions inside a branch where `r` is narrowed to `None` "
+        "must still raise on `r.parts` -- the in-body edge fix must not "
+        "over-classify nested comprehension edges as the true branch. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

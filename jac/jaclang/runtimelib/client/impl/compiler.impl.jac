@@ -78,6 +78,7 @@ impl ViteCompiler.compile_and_bundle(
 `/static/<stem>.wasm`. No-op when the module has no native code."""
 impl ViteCompiler._emit_na_wasm(self: ViteCompiler, module_path: Path) -> None {
     import re;
+    import from jaclang.jac0core.ext_registry { is_native_module }
     try {
         src = module_path.read_text(encoding='utf-8');
     } except (FileNotFoundError, OSError) {
@@ -89,7 +90,7 @@ impl ViteCompiler._emit_na_wasm(self: ViteCompiler, module_path: Path) -> None {
         or re.search(
             r'(^|[\s;])na\s+(def|can|impl|obj|node|walker|glob|class|enum)\b', src
         )
-        or module_path.name.endswith('.na.jac')
+        or is_native_module(module_path.name)
     );
     if not has_na {
         return;

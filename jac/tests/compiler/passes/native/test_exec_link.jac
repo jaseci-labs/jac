@@ -71,6 +71,21 @@ def _emit_object(ir_txt: str, triple: str) -> bytes {
 }
 
 
+"""Emit a minimal relocatable object for `triple` through an explicit target
+machine `tm` and return its leading bytes. Lets a test assert the on-disk
+object format (COFF vs ELF) a given code model produces, since LLVM picks the
+format from the triple — so a Linux runner emits a real COFF object for a
+windows-msvc triple and a real ELF object for a '...-elf' one."""
+def _emit_for_tm(tm: any, triple: str) -> bytes {
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    mod = llvm.parse_assembly(f'target triple = "{triple}"\n');
+    mod.triple = triple;
+    mod.data_layout = str(tm.target_data);
+    return tm.emit_object(mod);
+}
+
+
 """Inject `main` + `_start` for ELF — mirrors nacompile's _inject_entry_elf."""
 def _inject_elf(ir_txt: str) -> str {
     globals_ir = ""
@@ -150,4 +165,39 @@ test "Mach-O executable has MH_EXECUTE filetype and an LC_MAIN entry" {
         off += cmdsize;
     }
     assert has_main , "missing LC_MAIN entry command";
+}
+
+
+# ─── #6819: Windows AOT must emit COFF, not ELF ───────────────────────────────
+# llvmlite appends "-elf" to the triple only when os.name == "nt" and
+# codemodel == "jitdefault" (its MCJIT-on-Windows workaround). nacompile's AOT
+# executable branch and NaIRGenPass.postinit therefore pin an explicit code
+# model so a Windows host emits a COFF object for a COFF target rather than a
+# bogus ELF one. We simulate a Windows host on any runner (patch os.name) and
+# assert on the *emitted object*, not just the triple string: LLVM selects the
+# object format from the triple, so this catches the regression at the real
+# emit seam without a Windows runner. patch.object auto-restores os.name even
+# if an assertion below raises.
+test "AOT executable code model emits COFF, not ELF, on a Windows triple" {
+    import llvmlite.binding.targets as _tgt;
+    import from unittest.mock { patch }
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    win_triple = "x86_64-pc-windows-msvc";
+    target = llvm.Target.from_triple(win_triple);
+    with patch.object(_tgt.os, "name", "nt") {
+        # The default jitdefault model demonstrates the quirk this guards
+        # against: the triple gains "-elf" and LLVM emits an ELF object.
+        bad_tm = target.create_target_machine();
+        assert bad_tm.triple.endswith("-elf") , f"expected llvmlite to append -elf under jitdefault, got {bad_tm.triple}";
+        assert _emit_for_tm(bad_tm, bad_tm.triple).startswith(b"\x7fELF") , "jitdefault on a Windows host should emit an ELF object (the #6819 bug)";
+        # nacompile pins codemodel="large" for the executable branch (postinit
+        # does the same for the module triple): the triple stays COFF and LLVM
+        # emits a real COFF object (x86_64 machine 0x8664 -> little-endian 64 86).
+        good_tm = target.create_target_machine(opt=2, codemodel="large");
+        assert not good_tm.triple.endswith("-elf") , f"pinned code model still produced an ELF triple: {good_tm.triple}";
+        good_obj = _emit_for_tm(good_tm, good_tm.triple);
+        assert not good_obj.startswith(b"\x7fELF") , "pinned code model still emitted an ELF object";
+        assert good_obj[:2] == b"\x64\x86" , f"expected a COFF x86_64 object (machine 0x8664), got header {good_obj[:4]!r}";
+    }
 }

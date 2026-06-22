@@ -352,6 +352,7 @@ impl MTIRGenPass._extract_method_info(
 
 """Get a unique scope string for a given scope node."""
 impl MTIRGenPass._get_scope_str(nd: uni.UniScopeNode) -> str {
+    import from jaclang.jac0core.ext_registry { STEM_REKEY_SUFFIXES }
     # For Module nodes, use the file stem as the scope key.
     # For the entry point module, this will be just the filename without extension.
     # At runtime, we can get the same value from sys.modules['__main__'].__file__
@@ -361,11 +362,14 @@ impl MTIRGenPass._get_scope_str(nd: uni.UniScopeNode) -> str {
             path = Path(mod_path);
             # Use just the file stem (filename without extension)
             stem = path.stem;
-            # Handle multi-extension files like .impl.jac
-            if stem.endswith(".impl") {
-                stem = stem[:-5];
-            } elif stem.endswith(".cl") or stem.endswith(".sv") {
-                stem = stem[:-3];
+            # Handle multi-extension files like .impl.jac. Native (".na") is
+            # intentionally not stripped here, matching the importer's MTIR
+            # re-key (shared STEM_REKEY_SUFFIXES).
+            for suf in STEM_REKEY_SUFFIXES {
+                if stem.endswith(suf) {
+                    stem = stem[:-len(suf)];
+                    break;
+                }
             }
             return stem;
         }

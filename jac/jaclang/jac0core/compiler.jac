@@ -179,6 +179,7 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.static_analysis_pass {
             StaticAnalysisPass
         }
+        import from jaclang.compiler.passes.main.access_check_pass { AccessCheckPass }
         import from jaclang.compiler.passes.main.capability_check_pass {
             PortabilityWarnPass,
             NativeCapabilityCheckPass
@@ -186,6 +187,7 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
         return [
             StaticAnalysisPass,
+            AccessCheckPass,
             PortabilityWarnPass,
             NativeCapabilityCheckPass,
             JacLintCheckPass
