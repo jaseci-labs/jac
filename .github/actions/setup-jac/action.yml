@@ -1,0 +1,30 @@
+name: Set up jac binary
+description: >
+  Build the self-contained `jac` binary (Zig launcher + bundled CPython) and put
+  it on PATH. Replaces `pip install -e ./jac`: jaclang ships as the binary, not a
+  PyPI/editable package, so no system Python is needed to get the `jac` command.
+runs:
+  using: composite
+  steps:
+    - name: Install zstd (payload de/compression)
+      shell: bash
+      run: |
+        if [ "$RUNNER_OS" = "Linux" ]; then sudo apt-get update && sudo apt-get install -y zstd
+        elif [ "$RUNNER_OS" = "macOS" ]; then brew list zstd >/dev/null 2>&1 || brew install zstd; fi
+    - name: Set up Zig 0.16.0
+      uses: mlugg/setup-zig@v2
+      with:
+        version: 0.16.0
+        # build.zig's payload step doesn't reliably invalidate on jaclang changes,
+        # so don't restore a possibly-stale cache across runs.
+        use-cache: false
+    - name: Build the jac binary
+      shell: bash
+      working-directory: jac
+      run: zig build --summary all
+    - name: Put jac on PATH
+      shell: bash
+      run: |
+        mkdir -p "$HOME/.jacbin"
+        ln -sf "$GITHUB_WORKSPACE/jac/zig-out/bin/jac" "$HOME/.jacbin/jac"
+        echo "$HOME/.jacbin" >> "$GITHUB_PATH"
