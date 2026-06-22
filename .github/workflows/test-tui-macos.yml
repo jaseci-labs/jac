@@ -89,21 +89,12 @@ jobs:
             || { echo "FAIL: jac-na-tui is not Mach-O 64-bit"; exit 1; }
           echo "ok: jac-na-tui is Mach-O 64-bit"
 
-  # ── macOS native job ────────────────────────────────────────────────────────
-  # Native arm64 macOS build, codesign, export-trie completeness assert, and the
-  # one runtime gate that works:
-  #   1. test_tty_darwin.jac — PTY termios harness (validates the Darwin flag
+  # ── macOS native job ────────────────────────────────────────────────────────────
+  # Native arm64 macOS build, codesign, and three headless gates:
+  #   1. test_host.jac   — CDLL load + apply_frame/render (no TTY)
+  #   2. test_pickers    — picker logic (no TTY)
+  #   3. test_tty_darwin.jac — PTY termios harness (validates the Darwin flag
   #                            table and raw-mode masks against live xnu)
-  #
-  # TEMPORARY (two upstream defects, both gated out here):
-  #   * jaseci-labs/jaseci#6821 — libtui.dylib loads, codesigns, and its export
-  #     trie verifiably contains all 11 symbols (asserted below), but ctypes
-  #     dlsym fails with "_tui_apply_frame: symbol not found"; the test_host CDLL
-  #     round-trip gate is dropped.
-  #   * jaseci-labs/jaseci#6822 — `nacompile test_pickers.na.jac` fails as an
-  #     entry module (<Unknown> type cascade + E5090) though the same symbols
-  #     compile inside host.na.jac; the picker logic gate is dropped.
-  # Restore both gates once each issue is fixed.
   test-macos-native:
     runs-on: macos-latest
 
@@ -191,16 +182,16 @@ jobs:
           print("ok: all required exports in trie")
           PYEOF
 
-      # TEMPORARY: the test_host CDLL round-trip gate is dropped — ctypes dlsym
-      # cannot resolve the dylib's exported symbols on a native host even though
-      # the export trie is complete (asserted above). See jaseci-labs/jaseci#6821.
-      # Restore once native-host shared-library symbol resolution works.
+      - name: Headless host gate (ctypes CDLL load + frame parse)
+        working-directory: jac-super/jac_super/ai_tui_na
+        run: python -m jaclang run test_host.jac
 
-      # TEMPORARY: the native picker logic gate is dropped — `nacompile
-      # test_pickers.na.jac` fails as an entry module with an <Unknown> type
-      # cascade in ipc.na.jac + E5090 on tty_write, though the same symbols
-      # compile inside host.na.jac. See jaseci-labs/jaseci#6822. Restore once the
-      # NA resolver primes the full module set for the entry module.
+      - name: Picker logic tests
+        working-directory: jac-super/jac_super/ai_tui_na
+        run: |
+          python -m jaclang nacompile test_pickers.na.jac -o bin/test_pickers
+          codesign --sign - bin/test_pickers
+          ./bin/test_pickers
 
       - name: PTY termios harness (Darwin flag-table + raw-mode gate)
         working-directory: jac-super/jac_super/ai_tui_na

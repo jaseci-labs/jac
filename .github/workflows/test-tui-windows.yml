@@ -9,11 +9,9 @@ name: Run tests for TUI Windows
 #                            this module's FFI shape (calloc'd INPUT_RECORD
 #                            buffers, kernel32 imports) before a Windows runner
 #                            is involved.
-#   windows-native         — windows-latest runner, native tui.dll build + headless
-#                            gates: CDLL load + frame round-trip (test_host),
+#   windows-native         — windows-latest runner, native build + full test suite:
+#                            picker logic, CDLL load + frame round-trip (test_host),
 #                            Win32 console constant probe + VT gate (test_console_win32).
-#                            TEMPORARY: reduced to DLL-only — native exe targets are
-#                            broken on a Windows host (jaseci-labs/jaseci#6818).
 #
 # CI green is necessary but NOT sufficient to merge — Phase 5 (human sign-off
 # on Windows Terminal / PowerShell / VT-enabled cmd) gates the final merge.
@@ -91,21 +89,12 @@ jobs:
             || { echo "FAIL: jac-na-tui.exe is not a PE/COFF file"; exit 1; }
           echo "ok: jac-na-tui.exe is PE32+"
 
-  # ── Windows native job ──────────────────────────────────────────────────────
-  # Native x64 Windows build of tui.dll, plus the headless gate that works:
-  #   1. test_console_win32.jac — Win32 constant probe + VT output gate
+  # ── Windows native job ───────────────────────────────────────────────────────
+  # Native x64 Windows build and three headless gates:
+  #   1. test_pickers      — picker logic (no TTY, no ctypes, pure NA)
+  #   2. test_host.jac      — CDLL (tui.dll) load + apply_frame/render (no TTY)
+  #   3. test_console_win32.jac — Win32 constant probe + VT output gate
   #                               (VT live section auto-skips on headless runners)
-  #
-  # TEMPORARY (two upstream defects, both gated out here):
-  #   * jaseci-labs/jaseci#6818 — a native Windows host emits ELF for executable
-  #     nacompile targets (jac-na-tui.exe, test_pickers.exe), so this job is
-  #     reduced to DLL-only and the picker logic step is dropped. PE executable
-  #     coverage is asserted by the Linux cross job above (PE32+ format check).
-  #   * jaseci-labs/jaseci#6821 — tui.dll loads via the OS loader but ctypes.CDLL
-  #     fails with WinError 127 (an import in the DLL's import table cannot be
-  #     resolved), so the test_host CDLL round-trip gate is dropped. The build
-  #     still proves tui.dll compiles + links as COFF.
-  # Restore the dropped steps once each issue is fixed.
   test-windows-native:
     runs-on: windows-latest
 
@@ -133,25 +122,29 @@ jobs:
           pip install -e ./jac
           jac install -e ./jac-super
 
-      # TEMPORARY: -DllOnly builds only tui.dll (COFF); -Quick skips build.ps1's
-      # internal gates (run as explicit steps below). Native exe targets are
-      # broken on a Windows host — see jaseci-labs/jaseci#6818. Restore the full
-      # build (drop -DllOnly) once the native-host exe emit is fixed.
-      - name: Build NA TUI DLL (native Windows)
+      - name: Build NA TUI (native Windows, quick)
         working-directory: jac-super/jac_super/ai_tui_na
         shell: pwsh
-        run: ./build.ps1 -DllOnly -Quick
+        run: ./build.ps1 -Quick
 
-      # TEMPORARY: the native picker logic step (build + run test_pickers.exe) is
-      # dropped because test_pickers.exe is an executable target that fails the
-      # native COFF guard (jaseci-labs/jaseci#6818). The picker logic is
-      # platform-independent NA code and is still exercised by the macOS native
-      # job's test_pickers run; restore this step once #6818 is fixed.
+      - name: Picker logic tests
+        working-directory: jac-super/jac_super/ai_tui_na
+        shell: pwsh
+        run: |
+          Copy-Item "tty\console.win32.na.jac" "libc_tty.na.jac"
+          try {
+            python -m jaclang nacompile test_pickers.na.jac --target windows -o bin\test_pickers.exe
+            if ($LASTEXITCODE -ne 0) { throw "test_pickers.exe compile failed" }
+            .\bin\test_pickers.exe
+            if ($LASTEXITCODE -ne 0) { throw "test_pickers.exe failed" }
+          } finally {
+            Remove-Item "libc_tty.na.jac" -ErrorAction SilentlyContinue
+          }
 
-      # TEMPORARY: the test_host CDLL round-trip gate is dropped — tui.dll fails
-      # to load via ctypes with WinError 127 (unresolvable import in the DLL's
-      # import table). See jaseci-labs/jaseci#6821. Restore once native-host
-      # shared-library symbol resolution works.
+      - name: Headless host gate (ctypes CDLL load + frame parse)
+        working-directory: jac-super/jac_super/ai_tui_na
+        shell: pwsh
+        run: python -m jaclang run test_host.jac
 
       - name: Win32 console constant + VT gate
         working-directory: jac-super/jac_super/ai_tui_na
