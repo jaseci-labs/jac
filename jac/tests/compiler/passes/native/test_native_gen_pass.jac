@@ -10,15 +10,15 @@ import os;
 import subprocess;
 import sys;
 import tempfile;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT, TESTS_DIR }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.runtime { JacRuntime }
 import jaclang.jac0core.unitree as uni;
 import from llvmlite.binding { ExecutionEngine }
 
-glob FIXTURES = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
+glob FIXTURES = os.path.join(
+         TESTS_DIR, "compiler", "passes", "native", "fixtures"
      );
 
 """Compile a .na.jac fixture and return the JIT engine."""
@@ -1801,6 +1801,28 @@ test "cross module struct execution" {
     assert result2 == 7 , f"Expected 7, got {result2}";
 }
 
+test "unstamped imported struct return: entry module compiles without errors (issue #6822)" {
+    # An UNANNOTATED local bound to an imported factory (`p = make_point(...)`)
+    # gets its type from the imported `-> Point` return annotation alone. When
+    # this module is the entry, that annotation can be unstamped, so the field
+    # accesses `p.x`/`p.y` used to E5090 ("attribute access not supported")
+    # because the return lowered to the i64 fallback instead of `Point*`.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_unstamped_struct_ret.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir is not None;
+    assert ir.gen.native_engine is not None , "No native engine created";
+}
+
+test "unstamped imported struct return: field sum is correct (issue #6822)" {
+    # compute(5) = make_point(5, 6).x + make_point(5, 6).y = 5 + 6 = 11.
+    # Proves the receiver resolved to the real Point struct, not a scalar.
+    (eng, _) = compile_native("fix_unstamped_struct_ret.na.jac");
+    compute = get_func(eng, "compute", ctypes.c_int64, ctypes.c_int64);
+    assert compute(5) == 11 , f"Expected 11, got {compute(5)}";
+    assert compute(0) == 1 , f"Expected 1, got {compute(0)}";
+}
+
 # --- TestCrossModuleGlobalLinkage ---
 # Regression tests for: global-internal-linkage-breaks-cross-module
 # Before fix: module globals were emitted with LLVM `internal` linkage. The
@@ -1937,6 +1959,28 @@ test "clib import produces extern declares" {
     # Library path should be stored for the compile pass
     assert ir.gen._clib_paths is not None;
     assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
+}
+
+test "single-file clib: _clib_symbol_lib attributes each symbol to its source lib" {
+    # The PE linker attributes each extern import to a DLL via symbol_lib_map
+    # (defaulting every unmapped symbol to needed_libs[0] = msvcrt.dll →
+    # WinError 127). For a single-file program the symbol→DLL map is built
+    # directly on the entry module during IR gen (NaIRGenPass sets
+    # _cur_lib = _clib_paths[-1] and writes _clib_symbol_lib[fn] = _cur_lib),
+    # so it needs no cross-module propagation. This test pins that path so a
+    # future regression in single-file clib attribution can't hide behind the
+    # multi-module propagation tests (PR #6828 review).
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_import.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    sym_lib = ir.gen._clib_symbol_lib;
+    assert sym_lib , "_clib_symbol_lib not set on single-file module IR";
+    assert "sqrt" in sym_lib , f"'sqrt' missing from _clib_symbol_lib: {sym_lib}";
+    assert "pow" in sym_lib , f"'pow' missing from _clib_symbol_lib: {sym_lib}";
+    assert "libm" in sym_lib["sqrt"] , f"sqrt attributed to wrong lib: {sym_lib[
+        'sqrt'
+    ]}";
+    assert "libm" in sym_lib["pow"] , f"pow attributed to wrong lib: {sym_lib['pow']}";
 }
 
 test "clib decl with no return arrow lowers to void, not i64" {
@@ -2429,9 +2473,7 @@ test "default params omitted trailing defaults" {
 }
 
 # --- Auto-Promotion Tests ---
-glob CHESS_JAC = str(
-         Path(jaclang.__file__).parent.parent / "examples" / "chess" / "chess.jac"
-     );
+glob CHESS_JAC = os.path.join(JAC_ROOT, "examples", "chess", "chess.jac");
 
 """Compile a regular .jac file with auto-promotion and return the engine."""
 def compile_auto_native(file_path: str) -> tuple[uni.Module, JacProgram] {
@@ -3514,6 +3556,78 @@ test "transitive import: same result on repeated calls (no state corruption)" {
     assert run_fn() == 99 , f"Third call: expected 99, got {run_fn()}";
 }
 
+# ─── Mixed transitive duplicate linking ───────────────────────────────────────
+# When B imports A, B's IR carries A's symbols as definitions. If A is linked
+# before B, the old has_collision=True path skipped all of B — including B's
+# unique exports. The scan-then-decide fix demotes benign duplicates to
+# available_externally and still link_in()s B's unique symbols.
+test "mixed transitive dup: compiles without errors when A is linked before B" {
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_mixed_dup_entry.na.jac")));
+    assert ir is not None , "Expected successful compile";
+    assert not prog.errors_had , (
+        f"Expected no errors, got: {[str(e) for e in prog.errors_had]}"
+    );
+}
+
+test "mixed transitive dup: unique symbol from B resolves after A was linked" {
+    # get_foo()=10 from A, get_bar()=42 from B, call_foo()=10 via B's import.
+    (eng, _) = compile_native("fix_mixed_dup_entry.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    run_fn = get_func(eng, "run_mixed_dup_test", ctypes.c_int64);
+    assert run_fn() == 62 , f"Expected 62 (10+42+10), got {run_fn()}";
+}
+
+# ─── native_safe_sym: per-module glob-init / entry symbol uniqueness ──────────
+# native_safe_sym is the single naming contract shared by the emit side
+# (na_compile_pass.impl.jac, func.impl.jac), the AOT shared-init emitter
+# (nacompile.impl.jac), and the JIT runtime lookup
+# (native_marshal.init_native_globals). The legacy `re.sub(r'[^a-zA-Z0-9_]',
+# '_', src)` collapsed 'math_utils.na' (flat) and 'math/utils.na' (dotted
+# math.utils) to the same 'math_utils_na', so two distinct transitive native
+# deps collided on __jac_glob_init_<safe> and LLVM's first-seen-wins silently
+# dropped the second module's initializer. The hash suffix must keep them
+# distinct, and the result must stay LLVM-identifier-safe.
+test "native_safe_sym disambiguates flat vs dotted path collision" {
+    import re;
+    import from jaclang.jac0core.codeinfo { native_safe_sym }
+    flat = "math_utils.na";
+    dotted = "math/utils.na";
+    # Document the pre-existing collision under the legacy transform: both
+    # collapse to 'math_utils_na', which is exactly why the hash is required.
+    legacy_flat = re.sub(r'[^a-zA-Z0-9_]', '_', flat);
+    legacy_dotted = re.sub(r'[^a-zA-Z0-9_]', '_', dotted);
+    assert legacy_flat == legacy_dotted , (
+        f"Sanity: legacy transform must collide for this pair, got "
+        f"{legacy_flat!r} vs {legacy_dotted!r}"
+    );
+    sym_flat = native_safe_sym(flat);
+    sym_dotted = native_safe_sym(dotted);
+    assert sym_flat != sym_dotted , (
+        f"native_safe_sym must disambiguate: {sym_flat!r} == {sym_dotted!r}"
+    );
+    # LLVM identifier safety: only [a-zA-Z0-9_].
+    valid = re.compile(r'^[a-zA-Z0-9_]+$');
+    assert valid.match(sym_flat) , f"unsafe symbol: {sym_flat!r}";
+    assert valid.match(sym_dotted) , f"unsafe symbol: {sym_dotted!r}";
+    # Deterministic: same input → same output (emit and lookup sides agree).
+    assert native_safe_sym(flat) == sym_flat , "native_safe_sym must be deterministic";
+    # The full glob-init symbols built from these must also differ.
+    assert f"__jac_glob_init_{sym_flat}" != f"__jac_glob_init_{sym_dotted}";
+    # The osp_kernel SENTINEL must bypass the hash and map to the bare slug: the
+    # portable OSP kernel is linked under a fixed, hash-free symbol by
+    # _link_osp_kernel / _emit_osp_setup and probed by name, so appending the
+    # disambiguating hash would leave the entry's __jac_glob_init_osp_kernel call
+    # dangling against the kernel's hash-free definition (undefined symbol at
+    # load, issue #6669). Pin it here so the bypass can't silently regress.
+    assert native_safe_sym("osp_kernel") == "osp_kernel" , (
+        f"osp_kernel sentinel must stay hash-free, got {native_safe_sym(
+            'osp_kernel'
+        )!r}"
+    );
+}
+
 test "del list item: length decrements after delete" {
     # Container starts with [10, 20, 30]; after del items[2] length must be 2.
     (eng, _) = compile_native("fix_del_list.na.jac");
@@ -3703,6 +3817,25 @@ test "transitive clib: _clib_paths of dep module propagated to entry module" {
     clib_paths = ir.gen._clib_paths;
     assert clib_paths , "_clib_paths not set on entry module IR";
     assert any("/libm" in p or "libm" in p for p in clib_paths) , f"libm not found in transitive _clib_paths: {clib_paths}";
+}
+
+test "transitive clib: _clib_symbol_lib of dep module propagated to entry module" {
+    # The symbol→library map that the PE linker uses to attribute each import
+    # to the right DLL must propagate transitively, just like _clib_paths.
+    # Before the fix only _clib_paths crossed the module boundary while
+    # _clib_symbol_lib was dropped, so on Windows every Win32 symbol imported
+    # from a sub-module fell back to msvcrt.dll → WinError 127 at runtime.
+    # The dep declares `sqrt` from libm; assert the entry module inherits that
+    # symbol→lib mapping (regression guard for PR #6828).
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "fix_clib_transitive_entry.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    sym_lib = ir.gen._clib_symbol_lib;
+    assert sym_lib , "_clib_symbol_lib not propagated to entry module IR";
+    assert "sqrt" in sym_lib , f"transitive symbol 'sqrt' missing from _clib_symbol_lib: {sym_lib}";
+    assert "libm" in sym_lib["sqrt"] , f"sqrt attributed to wrong library: {sym_lib[
+        'sqrt'
+    ]}";
 }
 
 test "transitive clib: JIT call through dep-module extern returns correct value" {
@@ -4442,11 +4575,17 @@ test "a failing native test must not abort the host process" {
 
 test "jac test runs .na.jac test blocks end to end" {
     fixture = os.path.join(FIXTURES, "test_blocks.na.jac");
+    # Pure .na.jac (native) test blocks are run by the native runner; the pytest
+    # collector handles .jac (incl. inline na) but not standalone .na.jac yet, so
+    # force the native runner here. 3 tests, exactly 1 deliberate failure.
+    env = dict(os.environ);
+    env["JAC_TEST_NATIVE"] = "1";
     result = subprocess.run(
         [sys.executable, "-m", "jaclang", "test", fixture],
         capture_output=True,
         text=True,
-        timeout=300
+        timeout=300,
+        env=env
     );
     output = result.stdout + result.stderr;
     assert "Ran 3 tests" in output , (
@@ -4471,13 +4610,11 @@ test "jac test runs test blocks inside inline na blocks (no false green)" {
         timeout=300
     );
     output = result.stdout + result.stderr;
-    assert "NO TESTS RAN" not in output , "inline na-block tests were silently dropped";
-    assert "Ran 2 tests" in output , (
-        f"expected 2 tests to run.\nstdout: {result.stdout[-800:]}\n"
+    assert "no tests ran" not in output , "inline na-block tests were silently dropped";
+    # jac test routes through pytest: 2 tests, exactly 1 deliberate failure.
+    assert "1 passed" in output and "1 failed" in output , (
+        f"expected 2 tests to run with 1 failure.\nstdout: {result.stdout[-800:]}\n"
         f"stderr: {result.stderr[-800:]}"
-    );
-    assert "FAILED (failures=1)" in output , (
-        f"expected exactly the deliberate failure.\noutput tail: {output[-800:]}"
     );
     assert result.returncode != 0 , "jac test must exit non-zero on failure";
 }

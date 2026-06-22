@@ -37,10 +37,11 @@ jobs:
           ")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
+
       - name: Install build tools
-        run: |
-          pip install -e ../jac
-          pip install twine
+        run: pip install twine
 
       - name: Build package
         run: jac bundle

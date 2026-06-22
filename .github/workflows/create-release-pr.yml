@@ -3,11 +3,9 @@ name: Create Release PR
 on:
   workflow_dispatch:
     inputs:
-      jaclang:
-        description: "jaclang bump"
-        type: choice
-        default: skip
-        options: [skip, patch, minor, major]
+      # jaclang is no longer a PyPI package: it ships as the native `jac` binary
+      # (see release-jaclang.yml). Its version lives in jac/jac.toml and is
+      # bumped with the binary release, not through this PyPI release-PR flow.
       jac-byllm:
         description: "jac-byllm bump"
         type: choice
@@ -48,21 +46,12 @@ jobs:
           persist-credentials: true
           submodules: true
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: pip install tomlkit==0.14.0
-
-      - name: Install jaclang
-        run: pip install -e ./jac
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
       - name: Validate versions against PyPI
         run: |
           jac run scripts/validate_release.jac \
-            --jaclang "${{ inputs.jaclang }}" \
             --jac-byllm "${{ inputs.jac-byllm }}" \
             --jac-scale "${{ inputs.jac-scale }}" \
             --jac-mcp "${{ inputs.jac-mcp }}" \
@@ -72,7 +61,6 @@ jobs:
         id: release
         run: |
           jac run scripts/release.jac \
-            --jaclang "${{ inputs.jaclang }}" \
             --jac-byllm "${{ inputs.jac-byllm }}" \
             --jac-scale "${{ inputs.jac-scale }}" \
             --jac-mcp "${{ inputs.jac-mcp }}" \

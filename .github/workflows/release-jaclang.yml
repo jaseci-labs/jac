@@ -1,60 +1,101 @@
-name: Release jaclang to PYPI
+name: Release jac native binary
+
+# jaclang ships as a single self-contained `jac` binary (Zig launcher that
+# dlopens a bundled CPython; no system Python, uv, or pip). This workflow builds
+# that binary per platform and attaches it to the GitHub Release. jaclang is no
+# longer published to PyPI -- the binary is the distribution.
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to upload assets to (e.g. jaclang-0.16.7). Empty = artifact only."
+        required: false
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
-  precompile:
+  build:
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ['3.12', '3.13', '3.14']
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+          - os: macos-14
+            platform: macos-aarch64
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v4
+
+      - name: Install host tools (zstd)
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update && sudo apt-get install -y zstd
+          else
+            brew install zstd
+          fi
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v2
         with:
-          submodules: true
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install jaclang
-        run: pip install -e ./jac
-      - name: Precompile bytecode
-        run: jac run jac/jaclang/utils/precompile_bytecode.jac ./jac
-      - name: Upload precompiled artifacts
+          version: 0.16.0
+          # Fresh cache each run: build.zig's payload step doesn't reliably
+          # invalidate on jaclang/ changes, so a cached payload could ship stale
+          # bits in a release. Force a rebuild.
+          use-cache: false
+
+      - name: Read version (from jac.toml)
+        id: ver
+        working-directory: jac
+        run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      - name: Build the jac binary (one command)
+        working-directory: jac
+        run: zig build --summary all
+
+      - name: Smoke test (no system Python)
+        working-directory: jac
+        run: |
+          set -euxo pipefail
+          BIN="$PWD/zig-out/bin/jac"
+          WORK="$(mktemp -d)"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" --version
+          printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
+
+      - name: Package asset (+ checksum, ad-hoc codesign on macOS)
+        id: pkg
+        working-directory: jac
+        run: |
+          set -euxo pipefail
+          ASSET="jac-${{ steps.ver.outputs.version }}-${{ matrix.platform }}"
+          mkdir -p dist
+          cp zig-out/bin/jac "dist/$ASSET"
+          if [ "$RUNNER_OS" = "macOS" ]; then codesign --force --sign - "dist/$ASSET" || true; fi
+          ( cd dist && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release' || inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          [ -n "$TAG" ] || TAG="${{ github.event.release.tag_name }}"
+          gh release upload "$TAG" \
+            "dist/${{ steps.pkg.outputs.asset }}" \
+            "dist/${{ steps.pkg.outputs.asset }}.sha256" \
+            --clobber
+
+      - name: Upload as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: precompiled-jaclang-${{ matrix.python-version }}
-          path: jac/jaclang/_precompiled/
-
-  release-jaclang:
-    needs: precompile
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    defaults:
-      run:
-        working-directory: jac
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-        with:
-          submodules: true
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Download precompiled artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: jac/jaclang/_precompiled/
-          pattern: precompiled-jaclang-*
-          merge-multiple: true
-      - name: Install build tools
-        run: |
-          pip install build twine
-      - name: Build and publish package
-        run: |
-          python -m build
-          twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}
+          name: ${{ steps.pkg.outputs.asset }}
+          path: jac/dist/*

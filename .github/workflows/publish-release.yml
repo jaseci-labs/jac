@@ -11,10 +11,8 @@ on:
   # "already on PyPI" skip still apply, so re-running is safe.
   workflow_dispatch:
     inputs:
-      jaclang:
-        description: "Publish jaclang"
-        type: boolean
-        default: false
+      # jaclang is no longer published to PyPI -- it ships as the native `jac`
+      # binary (see release-jaclang.yml). Plugins below still publish to PyPI.
       jac-byllm:
         description: "Publish jac-byllm (byllm)"
         type: boolean
@@ -60,13 +58,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install jaclang
-        run: pip install -e ./jac
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
       - name: Parse release info
         id: parse
@@ -74,14 +67,13 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           # Collect the checked packages (empty string when unchecked).
-          IN_JACLANG: ${{ inputs.jaclang && 'jaclang' || '' }}
           IN_BYLLM: ${{ inputs['jac-byllm'] && 'jac-byllm' || '' }}
           IN_SCALE: ${{ inputs['jac-scale'] && 'jac-scale' || '' }}
           IN_MCP: ${{ inputs['jac-mcp'] && 'jac-mcp' || '' }}
           IN_JASECI: ${{ inputs.jaseci && 'jaseci' || '' }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            PACKAGES="$IN_JACLANG $IN_BYLLM $IN_SCALE $IN_MCP $IN_JASECI"
+            PACKAGES="$IN_BYLLM $IN_SCALE $IN_MCP $IN_JASECI"
             echo "Manual dispatch - selected packages: $PACKAGES"
             jac run scripts/parse_release.jac --packages "$PACKAGES"
           else
@@ -143,11 +135,13 @@ jobs:
         with:
           python-version: "3.14"
 
-      # Install jaclang for plugin builds (jac bundle) and for any extra build commands.
-      # jaclang itself uses python -m build, so it doesn't need this step.
-      - name: Install jaclang
+      # Build the jac binary for plugin builds (jac bundle) + extra build commands.
+      # jaclang itself ships as the binary (released via release-jaclang.yml), not a
+      # PyPI wheel, so the parse step should not emit a 'jaclang' matrix entry; the
+      # jaclang-only steps below are legacy and no-op without one.
+      - name: Set up jac (build the binary)
         if: matrix.name != 'jaclang'
-        run: pip install -e ./jac
+        uses: ./.github/actions/setup-jac
 
       # Install the package itself for extra build commands.
       # Plugins have no pyproject.toml (jac.toml is the source of truth), so use `jac install`.
@@ -270,9 +264,9 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Install jaclang
+      - name: Set up jac (build the binary)
         if: steps.npm.outputs.any == 'true'
-        run: pip install -e ./jac
+        uses: ./.github/actions/setup-jac
 
       # Publish @jaseci/runtime (versioned to the jaclang release).
       - name: Build and publish @jaseci/runtime
@@ -346,8 +340,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install jaclang
-        run: pip install -e ./jac
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
       - name: Wait for tier 1 on PyPI
         env:
@@ -407,8 +401,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install jaclang
-        run: pip install -e ./jac
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
       - name: Wait for tier 2 on PyPI
         env:
@@ -468,8 +462,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install jaclang
-        run: pip install -e ./jac
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
       - name: Wait for tier 3 on PyPI
         env:
@@ -529,8 +523,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install jaclang
-        run: pip install -e ./jac
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
       - name: Wait for tier 4 on PyPI
         env:

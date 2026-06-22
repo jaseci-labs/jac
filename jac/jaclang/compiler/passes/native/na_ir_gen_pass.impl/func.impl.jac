@@ -1,5 +1,7 @@
 """Function/ability declaration and codegen for native compilation."""
 
+import from jaclang.compiler.targets.abi { classify_foreign_fn }
+
 """Non-Optional accessor for the active IRBuilder."""
 impl NaIRGenPass.builder.getter -> ir.IRBuilder {
     if self._builder is None {
@@ -94,7 +96,6 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     _decl_params = sig.get_parameters();
     plan: (dict | None) = None;
     if _abi_supported {
-        import from jaclang.compiler.targets.abi { classify_foreign_fn }
         # The declared signature names come from the foreign declaration
         # model (collect_foreign_fns) - the central owner of WHAT was
         # declared at the C boundary - not from re-walking the annotation
@@ -610,7 +611,7 @@ impl NaIRGenPass._emit_glob_init_func -> None {
 """Generate jac_entry() function for with entry { ... } blocks."""
 impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     i64 = ir.IntType(64);
-    import re;
+    import from jaclang.jac0core.codeinfo { native_safe_sym }
     # Create jac_entry function: void jac_entry()
     fnty = ir.FunctionType(ir.VoidType(), []);
     func = ir.Function(self.llvm_module, fnty, name="jac_entry");
@@ -669,7 +670,9 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
             continue;
         }
         _seen_init_mods.add(_source_mod);
-        safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', _source_mod);
+        # Unique per-module suffix; centralized in codeinfo.native_safe_sym so
+        # the emit side, AOT shared-init emitter, and JIT runtime lookup agree.
+        safe_name = native_safe_sym(_source_mod);
         init_name = f"__jac_glob_init_{safe_name}";
         # Declare (or reuse) the external init function
         imp_init_fn = self.func_symtab.get(init_name);

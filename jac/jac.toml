@@ -1,0 +1,19 @@
+# jaclang project manifest. The single binary is built from this source tree;
+# the build reads version/metadata here (not from a Python pyproject backend).
+[project]
+name = "jaclang"
+version = "0.16.7"
+description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
+license = "MIT"
+readme = "README.md"
+requires_python = ">=3.12"
+dependencies = ["llvmlite>=0.43.0"]
+
+[project.urls]
+Repository = "https://github.com/jaseci-labs/jaseci"
+Homepage = "https://jaseci.org"
+Documentation = "https://docs.jaseci.org"
+
+# `jac test` discovers the suite here (mirrors pytest's testpaths).
+[test]
+directory = "tests"
