@@ -1,0 +1,47 @@
+name: CI command (/test)
+
+# Quiet, on-demand CI for pull requests. The test workflows run on
+# `pull_request` but every suite skips unless a collaborator requested it by
+# commenting `/test <suites>`, so an unrequested PR costs almost nothing.
+#
+#   /test all | /test core | /test core client scale | /test help
+#
+# This workflow does NOT post comments or create status rows - the requested
+# suites simply start running as native checks on the commit (the status dot
+# next to the commit / the PR's Checks list). The only acknowledgement is an
+# emoji reaction on the `/test` comment.
+#
+# Mechanism: the test workflows share one `plan` job (ci-plan.yml) that reads
+# `/test` comments at run time. To make a new request take effect, this workflow
+# re-runs the latest pull_request run for the head commit (after it finishes) so
+# each `plan` re-evaluates. Push to main always runs the full suite.
+
+on:
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: ci-command-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  actions: write          # re-run the pull_request workflow runs
+  issues: write           # reaction on an issue comment
+  pull-requests: write    # reaction on a PR review comment thread
+  contents: read          # read collaborator permission
+
+jobs:
+  rerun:
+    if: >-
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/test')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+      - name: React, authorize, and re-run affected workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/ci-rerun-on-test.sh

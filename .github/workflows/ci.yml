@@ -1,0 +1,96 @@
+name: Tests
+
+# The on-demand CI orchestrator. PRs no longer auto-run the heavy suites; a
+# collaborator requests them by commenting `/test <suites>` (see ci-command.yml).
+# This is the ONE workflow that triggers on pull_request: a single `plan` job
+# reads the request, then each suite is invoked as a reusable workflow gated on
+# the result. So the PR shows exactly one gate row (`plan`) plus the real suite
+# checks -- not one gate per workflow.
+#
+# Push to main runs every suite (full post-merge coverage).
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, "feat/**"]
+
+# The `plan` job reads PR comments + collaborator permission to decide which
+# suites run; that needs these read scopes. Called workflows inherit this cap.
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+# Cancel superseded PR runs; never cancel a run for a commit on main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # The single on-demand gate. Returns `requested`: a space-separated list of
+  # suites to run. On push it returns everything; on a PR it returns only what
+  # the latest `/test` comment asked for (empty on the first attempt, so a fresh
+  # commit starts clean -- see ci-requested-suites.sh).
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      requested: ${{ steps.s.outputs.requested }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+      - id: s
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/ci-requested-suites.sh
+
+  # core suite: binary build + compiler + runtime.
+  core:
+    needs: plan
+    if: contains(format(' {0} ', needs.plan.outputs.requested), ' core ')
+    uses: ./.github/workflows/test-binary.yml
+    secrets: inherit
+
+  # Plugin / client / docs / pypi / k8s suites all live in one file; it gates
+  # each job internally on the suites it owns. Invoked whenever any of them was
+  # requested (and on push, when `requested` is the full list).
+  jaseci:
+    needs: plan
+    if: >-
+      contains(format(' {0} ', needs.plan.outputs.requested), ' client ') ||
+      contains(format(' {0} ', needs.plan.outputs.requested), ' scale ') ||
+      contains(format(' {0} ', needs.plan.outputs.requested), ' mcp ') ||
+      contains(format(' {0} ', needs.plan.outputs.requested), ' byllm ') ||
+      contains(format(' {0} ', needs.plan.outputs.requested), ' docs ') ||
+      contains(format(' {0} ', needs.plan.outputs.requested), ' desktop ') ||
+      contains(format(' {0} ', needs.plan.outputs.requested), ' macos ') ||
+      contains(format(' {0} ', needs.plan.outputs.requested), ' pypi ') ||
+      contains(format(' {0} ', needs.plan.outputs.requested), ' core ') ||
+      contains(format(' {0} ', needs.plan.outputs.requested), ' k8s ')
+    uses: ./.github/workflows/test-jaseci.yml
+    with:
+      requested: ${{ needs.plan.outputs.requested }}
+    secrets: inherit
+
+  # check suite: jac format + type check.
+  check:
+    needs: plan
+    if: contains(format(' {0} ', needs.plan.outputs.requested), ' check ')
+    uses: ./.github/workflows/jac-check.yml
+    secrets: inherit
+
+  # installer suite: install.sh shellcheck + download/run smoke.
+  installer:
+    needs: plan
+    if: contains(format(' {0} ', needs.plan.outputs.requested), ' installer ')
+    uses: ./.github/workflows/test-installer.yml
+    secrets: inherit
+
+  # k8s suite: heavy microk8s real-app e2e.
+  k8s:
+    needs: plan
+    if: contains(format(' {0} ', needs.plan.outputs.requested), ' k8s ')
+    uses: ./.github/workflows/k8s-microservice-real-e2e.yml
+    secrets: inherit

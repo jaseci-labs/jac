@@ -1,17 +1,12 @@
 name: Jac Type Check
 
+# Called by the ci.yml orchestrator, which owns the on-demand gate and only
+# invokes this workflow when the `check` suite was requested (or on push to main).
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened, labeled]
-  workflow_dispatch:
+  workflow_call:
 
-# Cancel superseded PR runs; never cancel a run for a commit on main.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions:
+  contents: read
 
 jobs:
   jac-check:

@@ -82,6 +82,37 @@ python docs/scripts/mkdocs_serve.py
    - Fill in the PR description with details about your changes
    - Submit the pull request to the `main` branch of `jaseci-labs/jaseci`
 
+**Running CI on your PR (`/test`)**
+
+To keep CI cost under control, the test suites **do not run automatically** on a
+pull request. Instead, a repo collaborator (read access or above) starts them on
+demand by commenting on the PR:
+
+```
+/test all                  # run every suite
+/test core                 # run a single suite
+/test core client scale    # run several suites in one comment
+/test help                 # react with eyes (acknowledges the command)
+```
+
+- Only the **most recent** `/test` comment is honored: list everything you want
+  in one comment (`/test core mcp`), since a later `/test mcp` replaces an
+  earlier `/test core` rather than adding to it.
+- A **new commit starts clean**: pushing resets the request, so re-comment
+  `/test ...` to run again on the new commit.
+- Requested suites appear as **native checks on the commit** (the status dot next
+  to the commit and in the PR's *Checks* list); there are no extra bot comments
+  or status rows. The bot only adds a rocket reaction to your comment.
+- If you comment while a run is still in progress for that commit, the bot reacts
+  rocket then confused and does nothing; wait for the current run to finish, then
+  re-comment.
+- Merging to `main` always runs the **full** suite, so merged code keeps full
+  coverage regardless of what was run on the PR.
+
+Available suites: `core`, `client`, `scale`, `mcp`, `byllm`, `docs`, `desktop`,
+`macos`, `pypi`, `k8s`, `check` (jac type check), `contrib` (contribution
+checks), `installer`.
+
 > **Tip: PR Best Practices**
 >
 > - Make sure all pre-commit checks pass before pushing

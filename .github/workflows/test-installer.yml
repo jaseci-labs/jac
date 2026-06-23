@@ -4,17 +4,15 @@ name: Test Installer
 # self-contained native `jac` binary from the latest GitHub Release and runs it.
 # jaclang is no longer on PyPI -- there is no uv/pip install path to test.
 
+# Called by the ci.yml orchestrator, which owns the on-demand gate and only
+# invokes this workflow when the `installer` suite was requested (or on push to
+# main). Exercises the user-facing install path: scripts/install.sh downloads the
+# self-contained native `jac` binary from the latest GitHub Release and runs it.
 on:
-  pull_request:
-    paths:
-      - "scripts/install.sh"
-      - ".github/workflows/test-installer.yml"
-  workflow_dispatch:
+  workflow_call:
 
-# Cancel superseded PR runs; never cancel a run for a commit on main.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions:
+  contents: read
 
 jobs:
   shellcheck:

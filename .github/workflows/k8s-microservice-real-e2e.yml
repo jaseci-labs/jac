@@ -4,17 +4,14 @@ name: K8s Microservice Real E2E
 # K8s pipeline against microk8s, verifies pods + gateway routing,
 # rolling-restart + hammer-for-non-2xx.
 
+# Heavy microk8s e2e (~25 min). Called by the ci.yml orchestrator, which owns the
+# on-demand gate and only invokes this workflow when the `k8s` suite was
+# requested (or on push to main).
 on:
-  workflow_dispatch:
-  pull_request:
-    # Heavy microk8s e2e (~25 min). Only the jac runtime + the scale deploy
-    # pipeline can affect it, so skip PRs that touch neither (docs, byllm, mcp,
-    # etc.). This job is NOT a required status check, so a path-skip is safe -
-    # it won't leave a PR waiting on a check that never reports.
-    paths:
-      - 'jac/**'
-      - 'jac-scale/**'
-      - '.github/workflows/k8s-microservice-real-e2e.yml'
+  workflow_call:
+
+permissions:
+  contents: read
 
 # Cancel superseded PR runs; never cancel a run for a commit on main.
 concurrency:
@@ -24,8 +21,7 @@ concurrency:
 jobs:
   real-e2e:
     name: microk8s real-app smoke
-    # Escape hatch: add the 'skip-k8s' label to a PR to skip this job too
-    # (matches the test-scale-k8s gate in test-jaseci.yml).
+    # The 'skip-k8s' label still force-skips this even when k8s was requested.
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 25

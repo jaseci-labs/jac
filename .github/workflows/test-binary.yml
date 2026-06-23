@@ -11,12 +11,11 @@ name: jac single-binary self-test
 # build work eliminated). Runs on 4-vCPU runners so `-n auto` spins up ~4 xdist
 # workers per job instead of ~2 on a free runner.
 
+# Called by the ci.yml orchestrator, which owns the on-demand gate and only
+# invokes this workflow when the `core` suite was requested (or on push to main).
+# Provides the `core` suite: the binary build + compiler + runtime.
 on:
-  workflow_dispatch:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main, "feat/**"]
+  workflow_call:
 
 permissions:
   contents: read
