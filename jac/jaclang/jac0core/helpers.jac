@@ -352,9 +352,17 @@ class MalformedJacTomlError(tomllib.TOMLDecodeError) {
     def init(
         self: MalformedJacTomlError, file_path: str, original: tomllib.TOMLDecodeError
     ) {
-        tomllib.TOMLDecodeError.__init__(
-            self, f"jac.toml is malformed at {file_path}: {original}"
-        );
+        msg = f"jac.toml is malformed at {file_path}: {original}";
+        if hasattr(original, "doc") and hasattr(original, "pos") {
+            # Python 3.14+: TOMLDecodeError requires (msg, doc, pos); free-form
+            # args are deprecated (and fatal under -W error). The wrapped
+            # original carries the source doc + byte offset.
+            tomllib.TOMLDecodeError.__init__(
+                self, msg, getattr(original, "doc"), getattr(original, "pos")
+            );
+        } else {
+            tomllib.TOMLDecodeError.__init__(self, msg);
+        }
         self.file_path = file_path;
         self.original = original;
     }

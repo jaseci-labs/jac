@@ -643,7 +643,8 @@ impl `test(
     xit: bool = False,
     maxfail: int = None,
     directory: str = "",
-    verbose: bool = False
+    verbose: bool = False,
+    ignore: str = ""
 ) -> int {
     import os;
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
@@ -687,6 +688,62 @@ impl `test(
             f"Usage: jac test /full/path/to/{filepath}"
         );
         return 1;
+    }
+    # Route `jac test` through the bundled pytest (+ xdist for `-n auto`) when it
+    # is available -- the single-binary build ships it, so the suite runs with
+    # pytest collection and parallelism and no system Python. Falls back to the
+    # native runner when pytest is absent or `JAC_TEST_NATIVE=1` is set.
+    #   JAC_TEST_JOBS=auto (default) -> -n auto;  JAC_TEST_JOBS=0 -> serial
+    run_pytest = not os.environ.get('JAC_TEST_NATIVE', '');
+    if run_pytest {
+        try {
+            import pytest;
+        } except ImportError {
+            run_pytest = False;
+        }
+        if run_pytest {
+            pargs: list[str] = [];
+            target = filepath or directory;
+            if target {
+                pargs.append(target);
+            }
+            # Skip a subtree during collection (pytest `--ignore`). Lets the suite
+            # be split across jobs, e.g. `jac test tests/ --ignore tests/compiler`
+            # runs everything the dedicated compiler job does not.
+            if ignore {
+                pargs.append('--ignore=' + ignore);
+            }
+            jobs = os.environ.get('JAC_TEST_JOBS', 'auto');
+            # No worker pool for a single named test (overhead > benefit).
+            if jobs and jobs != '0' and not test_name {
+                pargs.append('-n');
+                pargs.append(jobs);
+            }
+            if xit {
+                pargs.append('-x');
+            }
+            if maxfail {
+                pargs.append('--maxfail');
+                pargs.append(str(maxfail));
+            }
+            if test_name {
+                # pytest `-k` is a boolean expression over name substrings, and
+                # each bare word must be a single identifier. A Jac test's
+                # display name can contain spaces (e.g. "early exit"), which `-k`
+                # rejects as two adjacent identifiers. AND the whitespace-split
+                # words so `--test_name "early exit"` selects that one test.
+                pargs.append('-k');
+                pargs.append(' and '.join(test_name.split()) or test_name);
+            } elif filter {
+                # `filter` is passed through verbatim as a pytest `-k` expression.
+                pargs.append('-k');
+                pargs.append(filter);
+            }
+            if verbose {
+                pargs.append('-vv');
+            }
+            return int(pytest.main(pargs));
+        }
     }
     normalized_name = test_name.strip().replace(' ', '_') if test_name else '';
     failcount = Jac.run_test(

@@ -6,14 +6,14 @@ composition, break/empty edge cases, and first-class iter()/next() values.
 
 import ctypes;
 import os;
-import from pathlib { Path }
+import from tests.support { TESTS_DIR }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import jaclang.jac0core.unitree as uni;
 import from llvmlite.binding { ExecutionEngine }
 
-glob FIXTURES = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
+glob FIXTURES = os.path.join(
+         TESTS_DIR, "compiler", "passes", "native", "fixtures"
      );
 
 """Compile a .na.jac fixture and return the JIT engine."""

@@ -85,7 +85,14 @@ def _bootstrap_compile(
     code = compile(py_source, file_path, "exec")
     try:
         cache_file.parent.mkdir(parents=True, exist_ok=True)
-        cache_file.write_bytes(marshal.dumps(code))
+        # Process-unique temp + atomic replace so concurrent bootstraps (e.g.
+        # parallel xdist workers) can't read a half-written cache file.
+        tmp_file = cache_file.with_suffix(cache_file.suffix + f".{os.getpid()}.tmp")
+        try:
+            tmp_file.write_bytes(marshal.dumps(code))
+            os.replace(tmp_file, cache_file)
+        finally:
+            tmp_file.unlink(missing_ok=True)
     except OSError:
         pass
 

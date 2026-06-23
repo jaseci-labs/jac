@@ -60,12 +60,6 @@ obj Response {
    jac start friendzone_lite.jac
    ```
 
-2. Run the frontend:
-
-   ```bash
-   jac streamlit frontend.jac
-   ```
-
 ## Frontend Features
 
 ### ️ Web Interface
@@ -152,10 +146,10 @@ friendzone-lite/
 
 ## Getting Started
 
-1. **Install Dependencies**:
+1. **Install the `jac` binary** (see the [Jac install guide](https://docs.jaseci.org/)):
 
    ```bash
-   pip install jaclang jac-streamlit
+   curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
    ```
 
 2. **Set OpenAI API Key**:
@@ -167,9 +161,7 @@ friendzone-lite/
 3. **Run the Application**:
 
    ```bash
-
    jac start friendzone_lite.jac
-   jac streamlit frontend.jac
    ```
 
 ## Technical Details

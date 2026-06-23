@@ -16,7 +16,7 @@ _planning/diagnostics_implementation_progress.md.
 """
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import pytest;
 import jaclang;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
@@ -25,8 +25,7 @@ import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.parser.parser { parse }
 import from jaclang.runtimelib.test { parametrize }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(
+glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      ),
      CHECKER_FIXTURES = os.path.join(

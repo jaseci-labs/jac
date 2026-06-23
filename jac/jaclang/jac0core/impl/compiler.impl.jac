@@ -63,7 +63,11 @@ impl JacCompiler.internal_program.getter -> JacProgram {
 """Get the jaclang package root path."""
 impl JacCompiler._get_jaclang_root(cls: any) -> str {
     if (cls._jaclang_root is None) {
-        cls._jaclang_root = os.path.dirname(os.path.dirname(__file__));
+        # realpath so the root matches realpath-resolved module paths even when
+        # jaclang is materialized under a symlinked dir (the single binary cache).
+        cls._jaclang_root = os.path.realpath(
+            os.path.dirname(os.path.dirname(__file__))
+        );
     }
     return cls._jaclang_root;
 }
@@ -72,7 +76,12 @@ impl JacCompiler._get_jaclang_root(cls: any) -> str {
 impl JacCompiler._resolve_program(
     file_path: str, target_program: JacProgram
 ) -> JacProgram {
-    normalized_path = os.path.normpath(file_path);
+    # realpath (not normpath) so symlinked roots resolve consistently: the
+    # single-binary cache lives under a symlinked temp dir (e.g. macOS
+    # /var -> /private/var), and stub paths arrive already `.resolve()`d, so a
+    # plain prefix check against an unresolved jaclang root would miss and leak
+    # jaclang-internal stubs into the user program's hub.
+    normalized_path = os.path.realpath(file_path);
     jaclang_root = self._get_jaclang_root();
     if normalized_path.startswith((jaclang_root + os.sep)) {
         return self.internal_program;
@@ -180,9 +189,18 @@ impl JacCompiler.get_bytecode(
                     precompiled_bc, compute_module_key(full_target), FLAG_PRECOMPILED
                 );
                 cache_path.parent.mkdir(parents=True, exist_ok=True);
-                tmp_path = cache_path.with_suffix('.tmp');
-                tmp_path.write_bytes(jir_bytes);
-                tmp_path.rename(cache_path);
+                # Process-unique temp + atomic rename. A shared `.tmp` lets
+                # concurrent compiles of the same module (parallel xdist workers,
+                # CLI + LSP) clobber each other mid-write and publish a JIR whose
+                # header validates but whose body is truncated (issue #6793 race).
+                import os as _os;
+                tmp_path = cache_path.with_suffix(f'.{_os.getpid()}.tmp');
+                try {
+                    tmp_path.write_bytes(jir_bytes);
+                    tmp_path.rename(cache_path);
+                } finally {
+                    tmp_path.unlink(missing_ok=True);
+                }
             } except Exception {
                 ;
             }
@@ -265,9 +283,17 @@ impl JacCompiler.get_bytecode(
             writer = JirWriter();
             jir_bytes = writer.write_module(result, sections=sections);
             cache_path.parent.mkdir(parents=True, exist_ok=True);
-            tmp_path = cache_path.with_suffix('.tmp');
-            tmp_path.write_bytes(jir_bytes);
-            tmp_path.rename(cache_path);
+            # Process-unique temp + atomic rename: a shared `.tmp` lets concurrent
+            # compiles of the same module clobber each other mid-write and publish
+            # a truncated JIR whose header still validates (issue #6793 race).
+            import os as _os;
+            tmp_path = cache_path.with_suffix(f'.{_os.getpid()}.tmp');
+            try {
+                tmp_path.write_bytes(jir_bytes);
+                tmp_path.rename(cache_path);
+            } finally {
+                tmp_path.unlink(missing_ok=True);
+            }
         } except Exception {
             ;
         }

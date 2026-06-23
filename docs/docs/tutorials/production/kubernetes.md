@@ -12,7 +12,7 @@ This tutorial covers deploying to a local Kubernetes cluster (minikube or Docker
 > - jac-scale installed and enabled:
 >
 >   ```bash
->   pip install jac-scale
+>   jac install jac-scale
 >   ```
 >
 > - Time: ~10 minutes
