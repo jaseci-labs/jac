@@ -5,6 +5,23 @@ impl KEDAAutoscaler._trigger_auth_name{
     return f"{app_name[:20].rstrip('-')}-{short_hash}-ta";
 }
 
+"""Raise ValueError if any two named triggers in spec share the same name."""
+impl KEDAAutoscaler._validate_triggers{
+    seen: dict[str, bool] = {};
+    for trigger in spec.triggers {
+        if trigger.name is not None {
+            if trigger.name in seen {
+                raise ValueError(
+                    f"Duplicate trigger name '{trigger.name}' in autoscaler spec for '{app_name}'. "
+                    "Each named trigger must have a unique name — duplicate names produce "
+                    "colliding TriggerAuthentication resource names."
+                );
+            }
+            seen[trigger.name] = True;
+        }
+    }
+}
+
 """Derive cache key from active cluster host; falls back to 'default' if config is unavailable."""
 impl KEDAAutoscaler._get_cluster_key{
     try {
@@ -206,6 +223,8 @@ impl KEDAAutoscaler._apply_trigger_auth{
 
 """Run preflight, write TriggerAuthentications, then create or patch the ScaledObject."""
 impl KEDAAutoscaler.apply{
+    app_name = spec.app_name or spec.scale_target_name;
+    self._validate_triggers(spec, app_name);
     warnings = self.preflight();
     if warnings {
         if self.logger {
@@ -221,8 +240,7 @@ impl KEDAAutoscaler.apply{
         (
             self._v2_api or AutoscalingV2Api()
         ).delete_namespaced_horizontal_pod_autoscaler(
-            name=f"{spec.app_name or spec.scale_target_name}-hpa",
-            namespace=spec.namespace
+            name=f"{app_name}-hpa", namespace=spec.namespace
         );
     } except ApiException as e {
         if e.status not in [404, 422] {
@@ -230,7 +248,6 @@ impl KEDAAutoscaler.apply{
         }
     }
     # TriggerAuthentication must exist before ScaledObject; KEDA validates authenticationRef at admission time
-    app_name = spec.app_name or spec.scale_target_name;
     for (i, trigger) in enumerate(spec.triggers) {
         self._apply_trigger_auth(api, trigger, spec.namespace, app_name, i);
     }

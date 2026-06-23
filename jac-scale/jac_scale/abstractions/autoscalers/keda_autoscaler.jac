@@ -23,6 +23,9 @@ obj KEDAAutoscaler(Autoscaler) {
     """Derive a short, unique TriggerAuthentication resource name scoped to the service."""
     def _trigger_auth_name(app_name: str, trigger: Trigger, trigger_index: int) -> str;
 
+    """Raise ValueError if any two named triggers in spec share the same name."""
+    def _validate_triggers(spec: AutoscalerSpec, app_name: str) -> None;
+
     """Build a single KEDA trigger dict from a Trigger object."""
     def _build_trigger(
         trigger: Trigger, app_name: str, trigger_index: int

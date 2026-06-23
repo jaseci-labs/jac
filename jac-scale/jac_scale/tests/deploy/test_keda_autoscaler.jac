@@ -136,6 +136,47 @@ test "two unnamed triggers of the same type in one spec get independent TriggerA
 }
 
 
+test "two named triggers with the same name in one spec raise ValueError before any cluster write" {
+    # Two triggers named 'cache' produce the same TriggerAuthentication resource name
+    # because trigger_index is only used when trigger.name is absent.  The second
+    # _apply_trigger_auth call would silently overwrite the first trigger's credentials
+    # with the second trigger's secret, breaking the first trigger with no visible error.
+    keda = KEDAAutoscaler();
+    spec = AutoscalerSpec(
+        scale_target_name="svc-deployment",
+        app_name="order-service",
+        namespace="default",
+        triggers=[
+            Trigger(
+                type="redis",
+                metadata={},
+                name="cache",
+                auth=TriggerAuth(
+                    secret_refs={"password": {"name": "redis-secret", "key": "pw"}}
+                )
+            ),
+            Trigger(
+                type="rabbitmq",
+                metadata={},
+                name="cache",
+                auth=TriggerAuth(
+                    secret_refs={"password": {"name": "rmq-secret", "key": "pw"}}
+                )
+            )
+        ]
+    );
+    raised = False;
+    try {
+        keda.apply(spec);
+    } except ValueError as e {
+        raised = True;
+        assert "cache" in str(e);
+        assert "order-service" in str(e);
+    }
+    assert raised;
+}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # _build_manifests
 # ─────────────────────────────────────────────────────────────────────────────
