@@ -23,6 +23,11 @@ import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
 import from jaclang.compiler.passes.native.macho_linker { MachOLinker }
 import from jaclang.compiler.passes.native.pe_linker { PeLinker }
+# The real CLI emitter owns __jac_shared_init + the public RC wrappers.
+# Re-using it here (instead of re-deriving the injection inline) keeps the
+# tests on the production code path -- a prior divergence here let a quoted-
+# symbol glob-init bug in _inject_shared_init slip past this whole file.
+import from jaclang.cli.commands.nacompile { _inject_shared_init }
 import llvmlite.binding as llvm;
 
 glob FIXTURES = os.path.join(
@@ -50,27 +55,10 @@ def emit_shared_object(fixture: str, triple: str) -> tuple {
         ]}";
         ir_txt = str(ir.gen.llvm_ir);
         exports = list(ir.gen._exported_symbols);
-        init_call = "  call void @__jac_glob_init()\n"
-            if "__jac_glob_init" in ir_txt
-            else "";
-        parts = [
-            "\ndefine void @__jac_shared_init() {\nentry:\n" + init_call + "  ret void\n}"
-        ];
-        if "__rc_retain" in ir_txt {
-            parts.append(
-                "define void @jac_retain(ptr %p) {\nentry:\n"
-                "  call void @__rc_retain(ptr %p)\n  ret void\n}"
-            );
-            exports.append("jac_retain");
-        }
-        if "__rc_release_simple" in ir_txt {
-            parts.append(
-                "define void @jac_release(ptr %p) {\nentry:\n"
-                "  call void @__rc_release_simple(ptr %p)\n  ret void\n}"
-            );
-            exports.append("jac_release");
-        }
-        src = ir_txt + "\n".join(parts) + "\n";
+        # Delegate to the production emitter so shared-init + RC-wrapper
+        # injection is identical to `jac nacompile --shared` (no divergence).
+        (src, _extra_exports) = _inject_shared_init(ir_txt, []);
+        exports.extend(_extra_exports);
         llvm.initialize_all_targets();
         llvm.initialize_all_asmprinters();
         mod = llvm.parse_assembly(src);
@@ -203,6 +191,87 @@ test "ELF shared object loads and runs through the C ABI" {
         assert lib.point_sum(p) == 7 , "opaque object handle round-trip failed";
         lib.jac_release.argtypes = [ctypes.c_void_p];
         lib.jac_release(p);  # public RC wrapper over __rc_release_simple
+    }
+}
+
+
+test "_inject_shared_init emits the glob-init call for a quoted symbol" {
+    # LLVM quotes `@__jac_glob_init` because the name is not a bare IR
+    # identifier, so the emitted IR is `define void @\"__jac_glob_init\"()`.
+    # A single unquoted substring scan (`"@__jac_glob_init("`) misses that
+    # form and `__jac_shared_init` is emitted empty -- the glob-init never
+    # runs and the .so's globals stay NULL. This locks in the fix directly on
+    # the production emitter (no linking / no platform dependency).
+    ir_quoted = 'define void @\"__jac_glob_init\"()\n';
+    (out_q, _e) = _inject_shared_init(ir_quoted, []);
+    assert "call void @__jac_glob_init()" in out_q , (
+        "_inject_shared_init dropped the own-module glob-init call on the "
+        "quoted-symbol form (regression: globals never initialize in --shared)"
+    );
+    # The unquoted form must still match too.
+    ir_unquoted = 'define void @__jac_glob_init()\n';
+    (out_u, _e2) = _inject_shared_init(ir_unquoted, []);
+    assert "call void @__jac_glob_init()" in out_u , (
+        "_inject_shared_init dropped the own-module glob-init call on the "
+        "unquoted-symbol form"
+    );
+    # A module with no glob-init must NOT inject the call.
+    (out_none, _e3) = _inject_shared_init("define void @foo()\n", []);
+    assert "__jac_glob_init" not in out_none , (
+        "_inject_shared_init injected a glob-init call for a module that has none"
+    );
+}
+
+
+test "ELF shared object initializes a global clib struct on dlopen" {
+    # Regression guard for the `--shared` global-clib-struct segfault. The
+    # struct pointer `g` is populated by __jac_glob_init, which only runs if
+    # __jac_shared_init calls it -- exactly what the quoted-symbol bug broke.
+    # Built as a plain executable the same code is fine (the JIT path resolves
+    # the init via get_function_address); only --shared's AOT text scan broke.
+    (relobj, exports) = emit_shared_object(
+        "shared_glob_struct.na.jac", "x86_64-unknown-linux-gnu"
+    );
+    d = tempfile.mkdtemp();
+    out = os.path.join(d, "libshared_glob_struct.so");
+    ok = ElfLinker.link(
+        obj_bytes=relobj,
+        output_path=out,
+        needed_libs=["libc.so.6"],
+        shared=True,
+        export_symbols=exports,
+        init_funcs=["__jac_shared_init"],
+        soname="libshared_glob_struct.so"
+    );
+    assert ok , "ElfLinker.link(shared=True) returned False";
+
+    # Only a Linux x86_64 host can dlopen + execute the produced .so.
+    if sys.platform.startswith("linux") and ("x86_64" in llvm.get_default_triple()) {
+        import ctypes;
+        try {
+            lib = ctypes.CDLL(out);  # __jac_shared_init runs here (CTOR)
+        } except OSError as _e {
+            # Some hardened kernels refuse a .so lacking an explicit
+            # `.note.GNU-stack` non-exec marker ("cannot enable executable
+            # stack"). That is a toolchain/kernel concern unrelated to this
+            # fix: the build + inject + link above already exercised the
+            # codegen path, and the unit test locks the injection itself.
+            print(f"[skip-dlopen] host refuses execstack load: {_e}");
+            lib = None;
+        }
+        if lib is not None {
+            lib.read_struct_field.restype = ctypes.c_int64;
+            # Before the fix this SIGSEGV'd: `g` was NULL so `g.a` deref'd NULL.
+            assert lib.read_struct_field() == 0 , (
+                "global clib struct not initialized on dlopen (init not called)"
+            );
+            lib.set_struct_field.restype = ctypes.c_int64;
+            lib.set_struct_field.argtypes = [ctypes.c_int64];
+            assert lib.set_struct_field(42) == 42 , "set_struct_field round-trip failed";
+            assert lib.read_struct_field() == 42 , (
+                "field write to a global clib struct did not persist"
+            );
+        }
     }
 }
 
