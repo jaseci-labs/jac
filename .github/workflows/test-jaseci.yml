@@ -175,51 +175,6 @@ jobs:
         JAC_TEST_JOBS: 0
       run: jac test tests/e2e/test_code_blocks.jac -x || jac test tests/e2e/test_code_blocks.jac -x
 
-  # ==========================================================================
-  # TEMPORARY stress job -- REVERT before merge (along with the x10 duplication
-  # in test_code_blocks.jac). Runs the duplicated e2e suite two ways to compare
-  # full parallelism vs a reduced worker count:
-  #   JAC_TEST_JOBS=auto -> ~6 workers -> expect timeouts/flakes
-  #   JAC_TEST_JOBS=3    -> 3 workers  -> does it withstand the stress?
-  # The serial baseline (JAC_TEST_JOBS=0) is measured by the real
-  # test-packages-and-docs job. No `-x`/retry here so we see full pass/fail
-  # counts and the per-iteration timings.
-  # ==========================================================================
-  stress-e2e-codeblocks:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    strategy:
-      fail-fast: false
-      matrix:
-        jobs: ["auto", "3"]
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
-
-    - name: Set up jac (build the binary)
-      uses: ./.github/actions/setup-jac
-
-    - name: Install docs dependencies
-      run: jac install -e docs
-
-    - name: Build documentation
-      working-directory: docs
-      run: jac -m mkdocs build --strict
-
-    - name: Install Playwright
-      working-directory: docs
-      run: |
-        jac install playwright
-        jac -m playwright install chromium --with-deps
-
-    - name: Run E2E stress (JAC_TEST_JOBS=${{ matrix.jobs }})
-      working-directory: docs
-      env:
-        JAC_TEST_JOBS: ${{ matrix.jobs }}
-      # -v so every one of the 90 iterations prints its own PASS/FAIL line.
-      run: jac test tests/e2e/test_code_blocks.jac -v
-
   test-desktop-native:
     # Jac-native desktop tests (issue #6436). Dependency-free by design: they
     # only need the jac toolchain to compile the example hosts and inspect the
