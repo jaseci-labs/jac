@@ -46,11 +46,37 @@ test "resolve_dockerfile priority: user override > shipped > embedded fallback" 
         assert df.name == "Dockerfile.gen";
         contents = df.read_text();
         assert "FROM python:3.12-slim" in contents;
-        assert "jac-scale[deploy,data]" in contents;
-        assert "jac install" in contents;
+        # --global so plugins land in the binary's own site (the install runs
+        # before WORKDIR/COPY, so there's no project venv to target). Extras ride
+        # as PEP 508 brackets since `--extras` is dropped for named packages.
+        assert 'jac install "jac-scale[deploy,data]" --global' in contents;
         # Build identity (B-01) is stamped into the image.
         assert "ARG JAC_BUILD_SHA" in contents;
         assert "ENV JAC_BUILD_SHA" in contents;
+    }
+}
+
+
+test "embedded Dockerfile fetches the jac binary, never pip-installs jaclang" {
+    with tempfile.TemporaryDirectory() as tmp {
+        project = Path(tmp) / "app";
+        project.mkdir();
+        with mock.patch.object(
+            helpers_mod, "find_shipped_dockerfile", return_value=None
+        ) {
+            (df, _, _) = resolve_dockerfile(project);
+        }
+        contents = df.read_text();
+        # jaclang is the self-contained binary (not on PyPI): the official
+        # installer fetches it; plugins install through the binary's resolver.
+        assert "scripts/install.sh" in contents;
+        # Extras ride in the spec as PEP 508 brackets (`jac install`'s --extras
+        # flag is dropped for named packages), installed --global.
+        assert 'jac install "jac-scale[deploy,data]" --global' in contents;
+        # Regression guard: the old pip path pulled a frozen, broken jaclang
+        # and a jac-client that no longer exists outside core.
+        assert "pip install" not in contents;
+        assert "jac-client" not in contents;
     }
 }
 
