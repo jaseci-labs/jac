@@ -17,8 +17,7 @@ import tempfile;
 
 """Run a subprocess under a temp dir containing a malformed jac.toml.
 Returns CompletedProcess. PYTHONPATH is scrubbed so the test result is
-the same on developer machines (where `jac/` may be on sys.path and
-hit sitecustomize.py) and CI."""
+the same on developer machines (where `jac/` may be on sys.path) and CI."""
 def _run_with_broken_toml(argv: list) -> "subprocess.CompletedProcess" {
     with tempfile.TemporaryDirectory() as tmpdir {
         with open(os.path.join(tmpdir, "jac.toml"), "w") as f {
