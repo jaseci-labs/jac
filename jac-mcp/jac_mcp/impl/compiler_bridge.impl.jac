@@ -527,12 +527,59 @@ impl CompilerBridge.run_snippet(
                 start_new_session=True,
             );
         }
-        # `with` guarantees the child's stdout/stderr pipes are closed on every
-        # exit path -- including the early timeout return below -- so a snippet
-        # that hangs does not leak two file descriptors per call.
+        def _cap_read(stream: object, holder: list, cap: int) {
+            chunks: list = [];
+            total: int = 0;
+            while True {
+                want: int = min(4096, cap - total);
+                if want <= 0 {
+                    break;
+                }
+                chunk: bytes = stream.read(want);
+                if not chunk {
+                    break;
+                }
+                chunks.append(chunk);
+                total += len(chunk);
+            }
+            data: bytes = b"".join(chunks);
+            if total >= cap {
+                # Read one extra byte: confirms truncation without false-positives
+                # when output is exactly MAX_OUTPUT_SIZE bytes.
+                if stream.read(1) {
+                    # Genuinely truncated. Keep draining the pipe (discarding the
+                    # excess) so the child isn't blocked on a full OS pipe buffer
+                    # and can terminate normally -- otherwise a snippet that emits
+                    # more than the cap would hang until the wall-clock timeout.
+                    while stream.read(65536) { }
+                    holder[0] = data + b"\n[... output truncated ...]";
+                } else {
+                    holder[0] = data;
+                }
+            } else {
+                holder[0] = data;
+            }
+        }
+
+        out_buf: list = [b""];
+        err_buf: list = [b""];
         with proc {
+            t_out = threading.Thread(
+                target=_cap_read,
+                args=(proc.stdout, out_buf, MAX_OUTPUT_SIZE),
+                daemon=True
+            );
+            t_err = threading.Thread(
+                target=_cap_read,
+                args=(proc.stderr, err_buf, MAX_OUTPUT_SIZE),
+                daemon=True
+            );
+            t_out.start();
+            t_err.start();
             try {
-                (proc_out, proc_err) = proc.communicate(timeout=timeout);
+                proc.wait(timeout=timeout);
+                t_out.join();
+                t_err.join();
             } except subprocess.TimeoutExpired {
                 try {
                     if is_windows {
@@ -546,6 +593,8 @@ impl CompilerBridge.run_snippet(
                     }
                 } except Exception { }
                 proc.wait();
+                t_out.join();
+                t_err.join();
                 return {
                     "stdout": "",
                     "stderr": "Operation timed out",
@@ -553,8 +602,8 @@ impl CompilerBridge.run_snippet(
                     "error": "Operation timed out"
                 };
             }
-            out_text = proc_out.decode() if proc_out else "";
-            err_text = proc_err.decode() if proc_err else "";
+            out_text = out_buf[0].decode(errors="replace") if out_buf[0] else "";
+            err_text = err_buf[0].decode(errors="replace") if err_buf[0] else "";
             exit_code = proc.returncode if proc.returncode is not None else 1;
             result: dict[str, any] = {
                 "stdout": out_text,

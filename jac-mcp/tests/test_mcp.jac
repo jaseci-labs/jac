@@ -844,6 +844,20 @@ test "run snippet runaway loop is killed by timeout" {
     assert elapsed < 10;
 }
 
+test "run snippet large output is truncated" {
+    # A snippet that would produce ~5 MB of output if uncapped (200 000 lines
+    # × 26 chars). The returned stdout must be bounded by MAX_OUTPUT_SIZE and
+    # carry the truncation marker.
+    import from jac_mcp.compiler_bridge { MAX_OUTPUT_SIZE }
+    result = CompilerBridge.run_snippet(
+        "with entry { for i in range(200000) { print(\"0123456789012345678901234\"); } }"
+    );
+    assert "stdout" in result;
+    # Allow a small overshoot for the truncation marker (~30 chars).
+    assert len(result["stdout"]) <= MAX_OUTPUT_SIZE + 50;
+    assert "truncated" in result["stdout"];
+}
+
 test "graph viz snippet dot format" {
     result = CompilerBridge.graph_viz_snippet(_GRAPH_JAC);
     assert "graph" in result;
