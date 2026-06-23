@@ -861,6 +861,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 );
                                 if isinstance(value.type, ir.IdentifiedStructType) {
                                     self.builder.store(value, elem_ptr);
+                                    _idx_stored = True;
                                 } elif (
                                     isinstance(value.type, ir.PointerType)
                                     and value.type.pointee == _struct_t
@@ -869,7 +870,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                         self.builder.load(value, name="arr.val.struct"),
                                         elem_ptr
                                     );
-                                } else {
+                                    _idx_stored = True;
+                                } elif isinstance(value.type, ir.IntType) {
                                     # value is i64 (pointer-as-int, e.g. from _clib_alloc_box)
                                     c_ptr = self.builder.inttoptr(
                                         value, _struct_ptr_t, name="arr.val.ptr"
@@ -878,8 +880,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                         self.builder.load(c_ptr, name="arr.val.struct"),
                                         elem_ptr
                                     );
+                                    _idx_stored = True;
                                 }
-                                _idx_stored = True;
                             }
                         }
                     }
@@ -916,6 +918,16 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     bare_redecl = _redecl_tag.value;
                 } elif uni?.BuiltinType and isinstance(_redecl_tag, uni.BuiltinType) {
                     bare_redecl = _redecl_tag.value;
+                }
+                # Keep the clib struct tracking map in sync on typed re-declaration
+                # (#6707, #6708): a new clib struct annotation overrides the stale
+                # mapping; a non-struct annotation clears it so subsequent field
+                # accesses don't use the wrong struct layout / GEP indices.
+                if isinstance(_redecl_tag, uni.Name)
+                and _redecl_tag.value in self.struct_types {
+                    self.clib_local_struct_names[var_name] = _redecl_tag.value;
+                } elif var_name in self.clib_local_struct_names {
+                    del self.clib_local_struct_names[var_name];
                 }
                 _skip_redecl = bare_redecl in {"list", "dict", "set", "frozenset"};
                 if not _skip_redecl {
