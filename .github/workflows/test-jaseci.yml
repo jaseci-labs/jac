@@ -131,8 +131,8 @@ jobs:
     - name: Set up jac (build the binary)
       uses: ./.github/actions/setup-jac
 
-    - name: Install jac-byllm (deps into venv; jaclang host-provided by the binary)
-      run: jac install -e jac-byllm
+    - name: Install jac-byllm (global so its tests, run from jac-byllm/, can import it)
+      run: jac install -e jac-byllm --global
 
     - name: Set environment for testing
       run: echo "TEST_ENV=true" >> $GITHUB_ENV
@@ -142,7 +142,7 @@ jobs:
       run: jac test .
 
     - name: Install docs dependencies
-      run: jac install -e docs
+      run: jac install -e docs --global
 
     - name: Build documentation
       working-directory: docs
@@ -238,12 +238,12 @@ jobs:
     - name: Set up jac (build the binary)
       uses: ./.github/actions/setup-jac
 
-    - name: Install jac-mcp (deps into venv; jaclang host-provided by the binary)
-      run: jac install -e jac-mcp
+    - name: Install jac-mcp (global so its tests, run from jac-mcp/, can import it)
+      run: jac install -e jac-mcp --global
 
     - name: Run jac-mcp tests
-      # cwd = plugin dir so jac auto-loads jac-mcp/.jac/venv (its deps) on top of
-      # the binary's host jaclang.
+      # cwd = plugin dir; the plugin + deps live in the binary's global site
+      # (installed above), on sys.path alongside the host jaclang.
       working-directory: jac-mcp
       run: jac test .
 
@@ -268,8 +268,8 @@ jobs:
     - name: Set up jac (build the binary)
       uses: ./.github/actions/setup-jac
 
-    - name: Install jac-scale with all test extras (jaclang host-provided)
-      run: jac install -e jac-scale --extras test
+    - name: Install jac-scale with all test extras (global, importable from jac-scale/)
+      run: jac install -e jac-scale --extras test --global
 
     - name: Run ${{ matrix.group }} tests
       # cwd = plugin dir so jac auto-loads jac-scale/.jac/venv (its deps).
@@ -311,8 +311,8 @@ jobs:
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac
 
-      - name: Install Jaseci scale package (jaclang host-provided by the binary)
-        run: jac install -e jac-scale --extras deploy
+      - name: Install Jaseci scale package (global, importable from jac-scale/)
+        run: jac install -e jac-scale --extras deploy --global
 
       - name: Write kind config
         run: |
@@ -395,12 +395,12 @@ jobs:
 
     - name: Pre-build admin dashboard UI
       run: |
-        jac install -e jac-scale --extras all
+        jac install -e jac-scale --extras all --global
         cd jac-scale && jac run scripts/build_admin_ui.jac
 
     - name: Uninstall editable packages
       run: |
-        pip uninstall -y jac-scale
+        jac -m pip uninstall -y jac-scale
 
     - name: Clean egg-info to simulate fresh build (like publish-release)
       run: |
@@ -415,8 +415,8 @@ jobs:
         # Install the freshly built wheels INTO the binary's runtime (not system
         # Python -- jaclang is host-provided by the binary, so the plugins must
         # be importable by it). pytest ships in the binary, so no pip pytest.
-        SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && jac install "${SCALE_WHL}"
-        jac install jac-byllm/dist/byllm-*.whl
+        SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && jac install "${SCALE_WHL}" --global
+        jac install jac-byllm/dist/byllm-*.whl --global
 
     - name: Verify cold start with precompiled bytecode
       run: |
@@ -446,9 +446,10 @@ jobs:
         cd jac-gpt && jac install
 
     - name: Install Playwright dependencies
-      # Into the binary runtime, since the e2e test runs through the binary.
+      # --global puts it in the binary's own site so the e2e (run from jac-gpt/)
+      # can import it; a plain install would land in the repo-root project venv.
       run: |
-        jac install playwright
+        jac install playwright --global
         jac -m playwright install chromium --with-deps
 
     - name: Type check jac-gpt

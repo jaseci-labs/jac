@@ -7,7 +7,6 @@ import from jaclang.cli.console { console }
 # ===============================================================================
 impl DependencyInstaller.postinit -> None {
     import from jaclang.project.config { get_config }
-    import os;
     if self.config is None {
         self.config = get_config();
     }
@@ -19,11 +18,6 @@ impl DependencyInstaller.postinit -> None {
     self.venv_dir = self.config.get_venv_dir();
     if self.install_flags is None {
         self.install_flags = [];
-    }
-    # JAC_NO_UV=1 provides a system-wide opt-out covering all commands
-    # (add, remove, update, watchdog) not just `jac install --no-uv`.
-    if os.environ.get("JAC_NO_UV") {
-        self.use_uv = False;
     }
 }
 

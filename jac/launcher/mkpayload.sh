@@ -8,7 +8,7 @@
 #   mkpayload.sh <pbs-python-dir> <jaclang-source-dir> <out.tar.zst>
 #
 #   <pbs-python-dir>      extracted python-build-standalone `python/` dir
-#                         (must contain install/lib/libpython3.12.{dylib,so})
+#                         (must contain install/lib/libpython3.14.{dylib,so})
 #   <jaclang-source-dir>  the in-repo `jac/` source (clean-break: NOT PyPI)
 #
 # Env:
@@ -18,11 +18,14 @@ set -euo pipefail
 PBS="${1:?pbs python dir}"; JACSRC="${2:?jaclang source dir}"; OUT="${3:?output .tar.zst}"
 PRECOMPILE="${PRECOMPILE:-1}"
 
+# Bundled CPython minor version -- keep in lockstep with fetch-pbs.sh (PBS_PY)
+# and launcher.zig (py_ver).
+PYVER=3.14
 case "$(uname -s)" in
-  Darwin) LIBPY=libpython3.12.dylib ;;
-  *)      LIBPY=libpython3.12.so ;;
+  Darwin) LIBPY="libpython${PYVER}.dylib" ;;
+  *)      LIBPY="libpython${PYVER}.so" ;;
 esac
-PY="$PBS/install/bin/python3.12"
+PY="$PBS/install/bin/python${PYVER}"
 [ -x "$PY" ] || PY="$PBS/install/bin/python3"
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
@@ -32,6 +35,11 @@ echo "==> assembling jaclang site from source (no pyproject build)"
 "$PY" -m ensurepip --upgrade >/dev/null 2>&1 || true
 "$PY" -m pip install --quiet --upgrade pip >/dev/null 2>&1 || true
 mkdir -p "$site"
+# typeshed stdlib stubs are gitignored (fetched at the pinned commit, not
+# committed). Materialize them before the copy so they ride into the payload.
+if [ ! -f "$JACSRC/jaclang/vendor/typeshed/stdlib/VERSIONS" ]; then
+  bash "$JACSRC/launcher/fetch-typeshed.sh"
+fi
 # jaclang is pure source + data (no compiled extension of its own), so copy it
 # straight from the tree instead of building a wheel -- no pyproject backend.
 cp -R "$JACSRC/jaclang" "$site/jaclang"
@@ -45,6 +53,10 @@ cp "$JACSRC/sitecustomize.py" "$site/"
 find "$site/jaclang" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
 find "$site/jaclang" -name '*.pyc' -delete 2>/dev/null || true
 rm -rf "$site/jaclang/_precompiled" 2>/dev/null || true
+# Ship typeshed stdlib stubs only -- third-party stubs are installed per-project
+# into .jac/venv by `jac add` (PEP 561 types-*). The vendored tree is already
+# stdlib-only; this defensive prune covers a stray full typeshed checkout.
+rm -rf "$site/jaclang/vendor/typeshed/stubs" 2>/dev/null || true
 [ -f "$site/_jac_finder.py" ] || { echo "error: _jac_finder.py missing from site"; exit 1; }
 
 # Minimal dist-info so importlib.metadata sees jaclang -- the version drives JIR
@@ -123,7 +135,7 @@ rm -rf "$site"/__pycache__ 2>/dev/null || true
 echo "==> staging runtime tree (shared libpython + stdlib + site)"
 mkdir -p "$stage/python/lib"
 # Stage the shared libpython under its bare name. Linux pbs may ship it only as
-# libpython3.12.so.1.0 (with a .so symlink); the launcher dlopens the bare name,
+# libpython3.14.so.1.0 (with a .so symlink); the launcher dlopens the bare name,
 # so dereference (-L) the real library into "$LIBPY".
 srclib="$PBS/install/lib/$LIBPY"
 if [ ! -e "$srclib" ]; then
@@ -131,15 +143,15 @@ if [ ! -e "$srclib" ]; then
 fi
 [ -n "${srclib:-}" ] && [ -e "$srclib" ] || { echo "error: shared libpython not found under $PBS/install/lib" >&2; exit 1; }
 cp -L "$srclib" "$stage/python/lib/$LIBPY"
-cp -R "$PBS/install/lib/python3.12" "$stage/python/lib/python3.12"
+cp -R "$PBS/install/lib/python${PYVER}" "$stage/python/lib/python${PYVER}"
 # Prune heavy/build-only stdlib bits. KEEP lib-dynload (extension .so for the
 # shared interpreter) and KEEP encodings/etc. KEEP ensurepip: `jac install`
 # bootstraps a project venv with `<binary> -m ensurepip --default-pip`, so
 # pruning it broke venv creation for every project that has dependencies.
 for d in test idlelib turtledemo tkinter lib2to3; do
-  rm -rf "$stage/python/lib/python3.12/$d"
+  rm -rf "$stage/python/lib/python${PYVER}/$d"
 done
-rm -rf "$stage"/python/lib/python3.12/config-3.12-* 2>/dev/null || true
+rm -rf "$stage"/python/lib/python${PYVER}/config-${PYVER}-* 2>/dev/null || true
 cp -R "$site" "$stage/site"
 
 # macOS hygiene: AppleDouble (._*) sidecars are not valid source and break
