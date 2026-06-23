@@ -114,13 +114,18 @@ obj Anchor {
 obj NodeAnchor(Anchor) {
     has archetype: NodeArchetype,
         edges: list[EdgeAnchor],
-        topology_index_data: (bytes | None) = None;
+        topology_index_data: (bytes | None) = None,
+        # Optimistic-concurrency version. The backend CASes on this when
+        # flushing edge-list changes: a concurrent committer that bumped it
+        # makes this request's commit conflict, triggering walker replay.
+        version: int = 0;
 
     def __getstate__ -> dict[(str, object)];
     def is_populated -> bool;
     def get_topology_index -> any;
     def set_topology_index(index: any) -> None;
     def edge_delta -> (tuple[(set[UUID], set[UUID])] | None);
+    def remove_edge(`edge: EdgeAnchor) -> None;
 }
 
 """Edge Anchor."""
@@ -132,6 +137,7 @@ obj EdgeAnchor(Anchor) {
 
     def is_populated -> bool;
     def __getstate__ -> dict[(str, object)];
+    def detach -> None;
 }
 
 """Walker Anchor."""

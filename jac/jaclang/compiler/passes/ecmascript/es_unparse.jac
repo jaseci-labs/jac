@@ -84,6 +84,18 @@ obj JSCodeGenerator {
     def gen_export_specifier(nd: es.ExportSpecifier) -> str;
     def gen_export_default_declaration(nd: es.ExportDefaultDeclaration) -> str;
     def gen_export_all_declaration(nd: es.ExportAllDeclaration) -> str;
+    # JSX emission (ESTree-JSX) — prints the View IR's Solid lowering as JSX text.
+    def gen_jsx_element(nd: es.JsxElement) -> str;
+    def gen_jsx_fragment(nd: es.JsxFragment) -> str;
+    def gen_jsx_opening_element(nd: es.JsxOpeningElement) -> str;
+    def gen_jsx_closing_element(nd: es.JsxClosingElement) -> str;
+    def gen_jsx_attribute(nd: es.JsxAttribute) -> str;
+    def gen_jsx_spread_attribute(nd: es.JsxSpreadAttribute) -> str;
+    def gen_jsx_expression_container(nd: es.JsxExpressionContainer) -> str;
+    def gen_jsx_empty_expression(nd: es.JsxEmptyExpression) -> str;
+    def gen_jsx_text(nd: es.JsxText) -> str;
+    def gen_jsx_identifier(nd: es.JsxIdentifier) -> str;
+    def gen_jsx_member_expression(nd: es.JsxMemberExpression) -> str;
 }
 
 def es_to_js(nd: (es.Node | None), indent: str = '  ') -> str;

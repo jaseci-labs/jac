@@ -142,33 +142,33 @@ test "kind npm-package -> build npm via bundle" {
     assert p.flags.get("target") == "npm";
 }
 
-test "kind fullstack -> serve dev, needs jac-client" {
+test "kind fullstack -> serve dev (client framework is core)" {
     p = _plan("kind = \"fullstack\"\nentry-point = \"app.cl.jac\"\n", "app.cl.jac");
     assert p.action == "serve";
     assert p.verb == "start";
     assert p.flags.get("dev") == True;
-    assert p.requires_plugin == "jac-client";
+    assert p.requires_plugin == "";
 }
 
-test "kind wasm -> serve, needs jac-client" {
-    p = _plan("kind = \"wasm\"\nentry-point = \"page.cl.jac\"\n", "page.cl.jac");
+test "kind client -> serve (client framework is core)" {
+    p = _plan("kind = \"client\"\nentry-point = \"page.cl.jac\"\n", "page.cl.jac");
     assert p.action == "serve";
     assert p.verb == "start";
-    assert p.requires_plugin == "jac-client";
+    assert p.requires_plugin == "";
 }
 
-test "kind desktop -> serve via jac-desktop plugin" {
+test "kind desktop -> serve (desktop target is core)" {
     p = _plan("kind = \"desktop\"\nentry-point = \"app.cl.jac\"\n", "app.cl.jac");
     assert p.action == "serve";
     assert p.flags.get("client") == "desktop";
-    assert p.requires_plugin == "jac-desktop";
+    assert p.requires_plugin == "";
 }
 
-test "kind mobile -> build via jac-client plugin" {
+test "kind mobile -> build (client framework is core)" {
     p = _plan("kind = \"mobile\"\nentry-point = \"app.cl.jac\"\n", "app.cl.jac");
     assert p.action == "build";
     assert p.verb == "build";
-    assert p.requires_plugin == "jac-client";
+    assert p.requires_plugin == "";
 }
 
 # ---------------------------------------------------------------------------

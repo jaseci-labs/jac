@@ -12,7 +12,7 @@ This tutorial covers deploying to a local Kubernetes cluster (minikube or Docker
 > - jac-scale installed and enabled:
 >
 >   ```bash
->   pip install jac-scale
+>   jac install jac-scale
 >   ```
 >
 > - Time: ~10 minutes
@@ -62,7 +62,7 @@ walker:pub add_todo {
 
     can create with Root entry {
         todo = here ++> Todo(title=self.title);
-        report {"title": todo[0].title, "done": todo[0].done};
+        report {"title": todo.title, "done": todo.done};
     }
 }
 

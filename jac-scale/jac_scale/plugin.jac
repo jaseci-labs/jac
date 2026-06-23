@@ -20,6 +20,24 @@ import from .user_manager { JacScaleUserManager }
 import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.storage { Storage }
 
+"""Print the zero-config auto-detect info line on local microservice startup."""
+def _print_autodetect_banner(routes: dict[str, str]) {
+    names = sorted(routes.keys());
+    plural = "s" if len(names) != 1 else "";
+    console.print(
+        f"Microservice mode (auto-detected): {len(names)} service{plural} "
+        f"[{', '.join(names)}], running locally as subprocesses with no "
+        f"Docker images.",
+        style="cyan"
+    );
+    pairs = ", ".join([f"{n} -> {routes[n]}" for n in names]);
+    console.print(f"  Default routes: {pairs}", style="muted");
+    console.print(
+        "  Run `jac setup microservice` to customize routes/ports/scaling/deploy.",
+        style="muted"
+    );
+}
+
 """Pre-hook for jac start command to handle microservice mode and --scale flag."""
 def _scale_pre_hook(context: HookContext) -> None {
     # Microservice mode: services are spawned on-demand by core's BFS
@@ -29,10 +47,35 @@ def _scale_pre_hook(context: HookContext) -> None {
     scale_config = get_scale_config();
     ms_config = scale_config.get_microservices_config();
     is_sv_sibling = os.environ.get("JAC_SV_SIBLING") == "1";
+    scale_flag = context.get_arg("scale", False);
 
-    if ms_config.get("enabled", False) and not is_sv_sibling {
-        scale_flag = context.get_arg("scale", False);
-        if not scale_flag {
+    # LOCAL microservice mode gate. `enabled` is tri-state:
+    #   True  -> explicit opt-in (config wins; routes auto-filled if absent)
+    #   False -> explicit opt-out (always stay a monolith)
+    #   None  -> unset: auto-detect from `sv import` / `to sv:` source markers
+    # Children (JAC_SV_SIBLING=1) never enter (re-orchestration would fork
+    # infinitely); --scale is the remote deploy path handled below.
+    enabled = ms_config.get("enabled", None);
+    if (not is_sv_sibling) and (not scale_flag) and (enabled is not False) {
+        filename = context.get_arg("filename");
+        # Discover when unset (to decide whether to enter) or when enabled
+        # but no routes were declared (to fill defaults). Explicit routes win.
+        discovered: dict[str, str] = {};
+        if filename and ((enabled is None) or (not ms_config.get("routes", {}))) {
+            import from jac_scale.microservices.discovery { discover_sv_services }
+            discovered = discover_sv_services(filename);
+        }
+        import from jac_scale.microservices.discovery { should_enter_local_ms }
+        if should_enter_local_ms(
+            enabled, is_sv_sibling, scale_flag, bool(discovered)
+        ) {
+            auto_detected: bool = enabled is None;
+            if not ms_config.get("routes", {}) {
+                ms_config["routes"] = discovered;
+            }
+            if auto_detected {
+                _print_autodetect_banner(ms_config.get("routes", {}));
+            }
             import from jac_scale.microservices.orchestrator.orchestrator {
                 start_microservice_mode
             }
@@ -41,18 +84,50 @@ def _scale_pre_hook(context: HookContext) -> None {
             context.set_data("cancel_return_code", 0);
             return;
         }
-        # If --scale is set with microservices enabled, fall through to K8s deploy
     }
 
-    scale = context.get_arg("scale", False);
-    if scale {
+    # Reuse scale_flag read at the top of the hook (same arg).
+    if scale_flag {
         filename = context.get_arg("filename");
         target = context.get_arg("target", "kubernetes");
-        # When microservice mode is enabled + target is the default,
-        # swap to kubernetes-microservice. Explicit --target=kubernetes
-        # still does monolith deploy.
-        if (target == "kubernetes" and ms_config.get("enabled", False)) {
-            target = "kubernetes-microservice";
+        # Zero-config for --scale, mirroring the local gate. Pick the
+        # microservice target when the user opted in (enabled = true) OR left
+        # `enabled` unset and we auto-detect sv-import services next to the
+        # entry file. enabled = false stays a monolith deploy; an explicit
+        # --target=kubernetes also keeps the monolith path.
+        # Discovered routes are injected into the loaded config so the manifest
+        # builder sees them, and propagated to pods via JAC_SV_ROUTES env (the
+        # in-cluster jac.toml has no [routes] table in zero-config mode).
+        if target == "kubernetes" and enabled is not False {
+            scale_discovered: dict[str, str] = {};
+            # Discover when enabled is unset (auto-detect) OR when explicitly
+            # enabled but no routes were declared (fill defaults). Without the
+            # latter, `enabled = true` + no [routes] would deploy a gateway
+            # with an empty route table that silently drops every peer call.
+            needs_discovery = (enabled is None)
+            or (enabled is True and not ms_config.get("routes", {}));
+            if needs_discovery and filename and os.path.exists(filename) {
+                import from jac_scale.microservices.discovery { discover_sv_services }
+                scale_discovered = discover_sv_services(filename);
+            }
+            if (enabled is True) or scale_discovered {
+                target = "kubernetes-microservice";
+                if scale_discovered and not ms_config.get("routes", {}) {
+                    raw_cfg = get_scale_config().load();
+                    raw_ms = raw_cfg.setdefault("microservices", {});
+                    if not raw_ms.get("routes") {
+                        raw_ms["routes"] = scale_discovered;
+                    }
+                    names = ", ".join(sorted(scale_discovered.keys()));
+                    label = "auto-detected" if enabled is None else "default routes";
+                    console.print(
+                        f"Microservice mode ({label}): {len(scale_discovered)} "
+                        f"services [{names}], routes /api/<name>. Deploying to "
+                        f"kubernetes; run `jac setup microservice` to customize.",
+                        style="cyan"
+                    );
+                }
+            }
         }
         if not os.path.exists(filename) {
             raise FileNotFoundError(f"File not found: '{filename}'");
@@ -111,13 +186,93 @@ def _scale_pre_hook(context: HookContext) -> None {
             image_registry = ImageRegistryFactory.create(registry, target_config);
             deployment_target.image_registry = image_registry;
         }
+        # no-image deploy: copy local source into the cluster + install jac at
+        # pod startup instead of building/pushing an image (microservice
+        # target only). Zero-config default: when no image/registry is
+        # configured and the user didn't pass --build, fall back to no-image
+        # automatically so `jac start --scale` works with no Docker setup.
+        # Explicit --no-image forces it; an explicit image/registry (or
+        # --build) keeps the normal image pipeline.
+        no_image = context.get_arg("no_image", False);
+        if no_image and target != "kubernetes-microservice" {
+            console.warning(
+                "--no-image only applies to microservice mode "
+                "(kubernetes-microservice target); ignoring it."
+            );
+            no_image = False;
+        }
+        auto_no_image = False;
+        if (target == "kubernetes-microservice") and (not no_image) {
+            import from jac_scale.targets.kubernetes.microservice.source_bundle {
+                auto_no_image_fallback,
+                decide_zeroconfig_image_strategy,
+                docker_usable,
+                cluster_is_local,
+                IMAGE_STRATEGY_NO_IMAGE
+            }
+            raw_k8s = scale_config.load().get("kubernetes", {});
+            default_image = f"{target_config.get('app_name', 'jaseci')}:latest";
+            if auto_no_image_fallback(
+                build,
+                str(target_config.get("docker_image_name", "") or ""),
+                default_image,
+                str(raw_k8s.get("image_registry", "") or "")
+            ) {
+                # Zero-config: no image path configured. A no-image source
+                # ConfigMap is a LAST RESORT, not the default - whenever a real
+                # image can be produced for free (local cluster + docker), the
+                # local pipeline builds + loads it with no external registry.
+                # Only when docker is unavailable, or the cluster is remote with
+                # no registry, do we copy source instead. When mode == image we
+                # leave no_image False so the auto_build path below runs.
+                strategy = decide_zeroconfig_image_strategy(
+                    docker_usable(), cluster_is_local()
+                );
+                console.print(f"Zero-config deploy: {strategy.reason}", style="cyan");
+                if strategy.mode == IMAGE_STRATEGY_NO_IMAGE {
+                    no_image = True;
+                    auto_no_image = True;
+                }
+            }
+        }
         # Create app config
         app_config = AppConfig(
             code_folder=code_folder,
             file_name=base_file_path,
             build=build,
-            experimental=experimental
+            experimental=experimental,
+            no_image=no_image
         );
+        if no_image {
+            deployment_target.no_image = True;
+            if auto_no_image {
+                console.warning(
+                    "No image or registry configured - falling back to "
+                    "no-image deploy: copying local source into the cluster "
+                    "and installing jac at pod startup. This is for "
+                    "development / preview only; set "
+                    "[plugins.scale.kubernetes].docker_image_name or "
+                    "image_registry (or pass --build) to deploy a real image "
+                    "for production-ready apps."
+                );
+            } else {
+                console.warning(
+                    "no-image mode: copying local source into the cluster and "
+                    "installing jac at pod startup. Development / preview only "
+                    "- build and push a real image for production-ready apps."
+                );
+            }
+            console.warning(
+                "Run `jac setup microservice` to configure resources, "
+                "scaling, ingress, and secrets before going to production."
+            );
+            console.warning(
+                "Source is uploaded to a Kubernetes ConfigMap. Secret files "
+                "(.env, *.key/*.pem/*.crt, jac.toml) are NOT included; keep "
+                "secrets in [plugins.scale.secrets] (synced as a K8s Secret) "
+                "or in .env, never inline in committed source."
+            );
+        }
         if experimental {
             console.print(
                 "Installing Jaseci packages from repository (experimental mode)..."
@@ -175,7 +330,10 @@ def _scale_pre_hook(context: HookContext) -> None {
         # on the production `jac start --scale` path. Tests using
         # build=False for manifest-shape assertions construct the
         # target without these flags and fall through to parent behavior.
-        if target == "kubernetes-microservice" {
+        # no-image mode skips the image pipeline entirely (it serves the
+        # source from a ConfigMap + installs jac at pod startup), so the
+        # build/guard flags stay off.
+        if target == "kubernetes-microservice" and not no_image {
             deployment_target.auto_build = True;
             deployment_target.guard_fallback_image = True;
         }
@@ -351,6 +509,13 @@ class JacCmd {
                     typ=bool,
                     default=False,
                     help="With --dry-run: also dump the raw multi-doc YAML stream (for `kubectl diff` or similar). Off by default; the card view above is the friendly summary",
+                    short=""
+                ),
+                Arg.create(
+                    "no-image",
+                    typ=bool,
+                    default=False,
+                    help="Force no-image microservice deploy (copy local source + install jac at pod startup). Auto-enabled when no image/registry is configured; pass this to force it even when they are (dev/preview only; use a real image for production)",
                     short=""
                 ),
 
@@ -660,19 +825,35 @@ class JacCmd {
             scale_config = get_scale_config();
             ms_config = scale_config.get_microservices_config();
 
-            if not ms_config.get("enabled", False) {
+            # Mirror _scale_pre_hook's tri-state semantics so these management
+            # commands work in zero-config auto-detect mode too. Only an
+            # explicit `enabled = false` is an opt-out; unset (None) and true
+            # both proceed.
+            if ms_config.get("enabled", None) is False {
                 console.print(
-                    "Microservice mode is not enabled in jac.toml", style="error"
+                    "Microservice mode is disabled (enabled = false in jac.toml).",
+                    style="error"
                 );
                 return 1;
             }
 
+            # Fill routes from auto-discovery (scanning the working directory)
+            # when none are declared, matching what `jac start` does on launch.
             if not ms_config.get("routes", {}) {
-                console.print(
-                    "No routes configured in [plugins.scale.microservices.routes]",
-                    style="error"
-                );
-                return 1;
+                import from jac_scale.microservices.discovery { discover_sv_services }
+                discovered = discover_sv_services(".");
+                if discovered {
+                    ms_config["routes"] = discovered;
+                } else {
+                    console.print(
+                        "No microservices found: no routes in "
+                        "[plugins.scale.microservices.routes] and no "
+                        "`sv import` / `to sv:` services detected in the "
+                        "current directory.",
+                        style="error"
+                    );
+                    return 1;
+                }
             }
 
             registry = build_registry(ms_config);
@@ -1469,7 +1650,7 @@ def _hydrate_walker_envelope(
 
 # Pluggy's varnames() puts parameters with defaults into kwargnames, not argnames.
 # But _multicall only passes argnames to hook implementations.
-# JacRuntimeInterfaceImpl strips defaults via generate_plugin_helpers, so we must too.
+# JacRuntimeImpl strips defaults via build_plugin_hook_layer, so we must too.
 import inspect;
 glob func = JacScalePlugin.create_j_context,
      sig = inspect.signature(func),

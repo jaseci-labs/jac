@@ -6,18 +6,14 @@ Note: test_py_raise_map and test_py_raised_mods are skipped (TODO: Fix when we h
 import os;
 import io;
 import sys;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.bccache { discover_annex_files, discover_base_file }
 import from jaclang.cli.commands { execution }
 
 glob FIXTURES = os.path.join(
-         str(Path(jaclang.__file__).parent.parent),
-         "tests",
-         "compiler",
-         "passes",
-         "main",
-         "fixtures"
+         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      );
 
 test "pygen jac cli" {
@@ -28,62 +24,80 @@ test "pygen jac cli" {
     assert "56" in str(mod.to_dict());
 }
 
+"""Basenames of the annex files whose statements were spliced into a module."""
+def _merged_annex_files(mod: object) -> set[str] {
+    return {
+        os.path.basename(st.loc.mod_path)
+        for st in mod.body
+        if st.loc.mod_path and st.loc.mod_path.endswith(".impl.jac")
+    };
+}
+
 test "import auto impl" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "autoimpl.jac"));
-    num_modules = len(list(prog.mod.hub.values())[0].impl_mod);
-    mod_names = [i.name for i in list(prog.mod.hub.values())[0].impl_mod];
-    assert num_modules == 5;
-    assert "getme.impl" in mod_names;
-    assert "autoimpl.impl" in mod_names;
-    assert "autoimpl.something.else.impl" in mod_names;
-    assert "autoimpl.shared.impl" in mod_names;
+    assert not prog.errors_had;
+    # All five .impl.jac annexes (same dir, foo.impl/ folder, shared impl/ folder)
+    # are discovered and attributed to autoimpl.jac.
+    annexes = discover_annex_files(os.path.join(FIXTURES, "autoimpl.jac"), ".impl.jac");
+    assert len(annexes) == 5;
+    for a in annexes {
+        assert discover_base_file(a) == os.path.join(FIXTURES, "autoimpl.jac");
+    }
+    # Annexes are now spliced into the head's own tree (no separate impl module);
+    # the four non-empty ones contribute statements tagged by loc.mod_path.
+    merged = _merged_annex_files(list(prog.mod.hub.values())[0]);
+    assert "getme.impl.jac" in merged;
+    assert "autoimpl.impl.jac" in merged;
+    assert "autoimpl.something.else.impl.jac" in merged;
+    assert "autoimpl.shared.impl.jac" in merged;
 }
 
 test "import include auto impl" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "incautoimpl.jac"));
-    num_modules = len(list(prog.mod.hub.values())[1].impl_mod) + 1;
-    mod_names = [i.name for i in list(prog.mod.hub.values())[1].impl_mod];
-    assert num_modules == 6;
-    assert list(prog.mod.hub.values())[0].name == "incautoimpl";
-    assert list(prog.mod.hub.values())[1].name == "autoimpl";
-    assert "getme.impl" in mod_names;
-    assert "autoimpl.impl" in mod_names;
-    assert "autoimpl.something.else.impl" in mod_names;
-    assert "autoimpl.shared.impl" in mod_names;
+    assert not prog.errors_had;
+    hub_mods = list(prog.mod.hub.values());
+    assert hub_mods[0].name == "incautoimpl";
+    assert hub_mods[1].name == "autoimpl";
+    # autoimpl's annexes are merged into the included autoimpl module.
+    merged = _merged_annex_files(hub_mods[1]);
+    assert "getme.impl.jac" in merged;
+    assert "autoimpl.impl.jac" in merged;
+    assert "autoimpl.something.else.impl.jac" in merged;
+    assert "autoimpl.shared.impl.jac" in merged;
 }
 
 test "annexable by discovery" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "incautoimpl.jac"));
-    count = 0;
-    all_mods = prog.mod.hub.values();
-    assert len(all_mods) == 7;
-    for main_mod in all_mods {
-        for i in main_mod.impl_mod {
-            if i.name not in ["autoimpl", "incautoimpl"] {
-                count += 1;
-                assert i.annexable_by == os.path.join(FIXTURES, "autoimpl.jac");
-            }
-        }
+    assert not prog.errors_had;
+    # Annexes are merged, not stored as modules, so the hub holds only the two
+    # real modules.
+    hub_names = [m.name for m in prog.mod.hub.values()];
+    assert "incautoimpl" in hub_names and "autoimpl" in hub_names;
+    # Every annex autoimpl owns is attributed back to autoimpl.jac (this is what
+    # Module.annexable_by resolves to via discover_base_file).
+    annexes = discover_annex_files(os.path.join(FIXTURES, "autoimpl.jac"), ".impl.jac");
+    assert len(annexes) == 5;
+    for a in annexes {
+        assert discover_base_file(a) == os.path.join(FIXTURES, "autoimpl.jac");
     }
-    assert count == 5;
 }
 
 test "annexable by shared folder" {
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "autoimpl.jac"));
-    main_mod = list(prog.mod.hub.values())[0];
-    shared_impl = None;
-    for m in main_mod.impl_mod {
-        if m.name == "autoimpl.shared.impl" {
-            shared_impl = m;
-            break;
-        }
-    }
-    assert shared_impl is not None , "Expected shared folder impl to be loaded";
-    assert shared_impl.annexable_by == os.path.join(FIXTURES, "autoimpl.jac");
+    assert not prog.errors_had;
+    shared = os.path.join(FIXTURES, "impl", "autoimpl.shared.impl.jac");
+    # The shared-folder annex is discovered, attributed to autoimpl.jac...
+    annexes = discover_annex_files(os.path.join(FIXTURES, "autoimpl.jac"), ".impl.jac");
+    assert shared in annexes , "Expected shared folder impl to be discovered";
+    assert discover_base_file(shared) == os.path.join(FIXTURES, "autoimpl.jac");
+    # ...and its statements are spliced into the head.
+    assert "autoimpl.shared.impl.jac" in _merged_annex_files(
+        list(prog.mod.hub.values())[0]
+    ) , "Expected shared folder impl to be merged into head";
 }
 
 test "double empty anx" {

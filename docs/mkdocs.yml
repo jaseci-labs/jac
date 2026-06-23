@@ -28,6 +28,7 @@ nav:
           - Foundation: "reference/language/foundation.md"
           - Primitives & Codespace Semantics: "reference/language/primitives.md"
           - Functions & Objects: "reference/language/functions-objects.md"
+          - Access Modifiers: "reference/language/access-modifiers.md"
           - Object-Spatial Programming: "reference/language/osp.md"
           - Concurrency: "reference/language/concurrency.md"
           - Comprehensions & Filters: "reference/language/advanced.md"
@@ -95,7 +96,6 @@ nav:
           - byLLM: "community/release_notes/byllm.md"
           - jac-client: "community/release_notes/jac-client.md"
           - jac-scale: "community/release_notes/jac-scale.md"
-          - jac-super: "community/release_notes/jac-super.md"
           - jac-mcp: "community/release_notes/jac-mcp.md"
 
   - Internals:

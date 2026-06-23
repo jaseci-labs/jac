@@ -451,7 +451,7 @@ test "non-final node predicate in multi-hop chain applies at runtime" {
         # only follow the v>=5 chains, yielding TypeB vals [50, 100].
         for v in [1, 5, 10] {
             mid = r +>:EdgeX:+> TypeA(val=v);
-            mid[0] +>:EdgeY:+> TypeB(val=v * 10);
+            mid +>:EdgeY:+> TypeB(val=v * 10);
         }
 
         leaves = sorted(

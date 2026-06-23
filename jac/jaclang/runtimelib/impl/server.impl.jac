@@ -2,6 +2,7 @@ import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.client_bundle { _ensure_js_generated }
+import from jaclang.runtimelib.exceptions { WriteConflict }
 import from jaclang.runtimelib.auth_models {
     IdentityType,
     LoginRequest,
@@ -127,7 +128,7 @@ impl UserManager.get_root_id(username: str) -> (str | None) {
     return row[0] if row else None;
 }
 
-"""Async mirror of get_root_id — offloads the SQLite read to a thread."""
+"""Async mirror of get_root_id -- offloads the SQLite read to a thread."""
 impl UserManager.aget_root_id(username: str) -> (str | None) {
     return await asyncio.to_thread(self.get_root_id, username);
 }
@@ -233,7 +234,7 @@ impl UserManager.close -> None {
 
 """Collect reports from a completed function/spawn invocation.
 
-The walker (sync or async) has already joined by the time we get here —
+The walker (sync or async) has already joined by the time we get here --
 `_finalize_call_response` calls us after awaiting the spawn. So the
 `queue.Queue` is fully populated and no concurrent producer is active.
 Drain synchronously via `get_nowait`; this keeps the report path off
@@ -303,14 +304,44 @@ def _deserialize_wire_args(args: dict[(str, Any)]) {
     }
 }
 
+"""On-conflict (OCC) policy from [serve] in jac.toml, with safe defaults.
+
+Returns (mode, max_attempts, backoff_ms): mode is "retry" (abort + replay so
+the loser converges) or "fail" (no replay, immediate 409). `get_config()` is
+cached, so this is cheap per request; any failure falls back to retry/5/0
+(the prior hardcoded behavior)."""
+def _occ_policy -> tuple {
+    mode = "retry";
+    max_attempts = 5;
+    backoff_ms = 0;
+    try {
+        import from jaclang.project.config { get_config }
+        cfg = get_config();
+        if cfg is not None {
+            # Normalize defensively: file-based config is already validated at
+            # parse, but a programmatically-set value may carry case/whitespace.
+            # Only "fail" disables replay; any other value is the safe "retry".
+            mode = str(cfg.serve.on_conflict).strip().lower();
+            if mode not in ("retry", "fail") {
+                mode = "retry";
+            }
+            max_attempts = cfg.serve.conflict_max_attempts;
+            backoff_ms = cfg.serve.conflict_backoff_ms;
+        }
+    } except Exception {
+        ;
+    }
+    return (mode, max_attempts, backoff_ms);
+}
+
 """Drain the reports queue and package the wire response for a completed call.
 
 Commit goes through the async Memory surface (`Jac.acommit`) so L3 writes
-do not block the event loop — this is what keeps post-walker persistence
+do not block the event loop -- this is what keeps post-walker persistence
 from serializing async walkers that would otherwise all pay the commit
 round-trip on the loop in series.
 
-Two streaming paths are honored — both are propagated to the caller as
+Two streaming paths are honored -- both are propagated to the caller as
 a raw (Async)Generator so jac-scale's serve.endpoints can wrap them in a
 StreamingResponse instead of materializing the events:
 
@@ -321,7 +352,7 @@ StreamingResponse instead of materializing the events:
      the older live-reports pattern; report_collector itself returns
      the generator straight from the queue (see line 250).
 
-If both paths fire on the same call, the explicit return wins — that's
+If both paths fire on the same call, the explicit return wins -- that's
 the authoritative result for the caller; reports are auxiliary. Anything
 else falls into the normal serialize-and-envelope path.
 """
@@ -380,27 +411,65 @@ impl ExecutionManager.execute_function_sync(
         return {'error': 'User not found'};
     }
     (ctx, req_token) = await _begin_request_context(root_id);
-    call_token = ctx.call_state.set(CallState());
-    call_state = ctx.call_state.get();
+    # OCC replay (parity with spawn_walker_*): a function that loses a
+    # check-then-create race converges via abort + reload + replay instead of
+    # surfacing the WriteConflict as a 500. Arg deserialization + policy read
+    # stay inside the try so the finally always resets the request context.
     try {
         _deserialize_wire_args(args);
-        result = await asyncio.to_thread(func, **args);
-        # Preserve legacy behavior: a plain-sync wrapper may return a
-        # coroutine (e.g. `def wrap(): return some_async()`). Unwrap it
-        # back on the event loop so callers see the awaited value, not
-        # the coroutine object.
-        if iscoroutine(result) {
-            result = await result;
+        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
+        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
+        attempt = 0;
+        while attempt < max_attempts {
+            attempt += 1;
+            call_token = ctx.call_state.set(CallState());
+            call_state = ctx.call_state.get();
+            try {
+                result = await asyncio.to_thread(func, **args);
+                # Preserve legacy behavior: a plain-sync wrapper may return a
+                # coroutine (e.g. `def wrap(): return some_async()`). Unwrap it
+                # back on the event loop so callers see the awaited value, not
+                # the coroutine object.
+                if iscoroutine(result) {
+                    result = await result;
+                }
+                return await self._finalize_call_response(call_state, result);
+            } except WriteConflict as wc {
+                ctx.mem.abort();
+                ctx.pending_effects.clear();
+                ctx.read_versions.clear();
+                # Drop diagnostics accrued by the aborted attempt (e.g. a
+                # PermissionDenied raised during the walker body or the collect
+                # pass) so a converged replay's 200 response doesn't surface
+                # stale warnings from a unit of work that never committed.
+                ctx.diagnostics.clear();
+                if attempt >= max_attempts {
+                    return {
+                        'error': wc.message(),
+                        'error_code': 'write_conflict',
+                        'http_status': 409
+                    };
+                }
+                if occ_backoff_ms > 0 {
+                    await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
+                }
+                await ctx.aset_user_root(root_id);
+            } except Exception as e {
+                # Abort-on-error: a failed call must not half-mutate the graph.
+                # Discard its uncommitted unit of work instead of leaving it in
+                # the shared working set for the next commit to flush (#6619).
+                ctx.mem.abort();
+                return {'error': str(e)};
+            } finally {
+                ctx.call_state.reset(call_token);
+            }
         }
-        return await self._finalize_call_response(call_state, result);
-    } except Exception as e {
-        # Abort-on-error: a failed call must not half-mutate the graph.
-        # Discard its uncommitted unit of work instead of leaving it in
-        # the shared working set for the next commit to flush (#6619).
-        ctx.mem.abort();
-        return {'error': str(e)};
+        return {
+            'error': 'write_conflict: retries exhausted',
+            'error_code': 'write_conflict',
+            'http_status': 409
+        };
     } finally {
-        ctx.call_state.reset(call_token);
         Jac.reset_request_context(req_token);
     }
 }
@@ -417,20 +486,57 @@ impl ExecutionManager.execute_function_async(
         return {'error': 'User not found'};
     }
     (ctx, req_token) = await _begin_request_context(root_id);
-    call_token = ctx.call_state.set(CallState());
-    call_state = ctx.call_state.get();
+    # OCC replay (parity with spawn_walker_*): converge a lost check-then-create
+    # race instead of surfacing the WriteConflict as a 500. Arg deserialization
+    # + policy read stay inside the try so the finally always resets the context.
     try {
         _deserialize_wire_args(args);
-        result = await func(**args);
-        return await self._finalize_call_response(call_state, result);
-    } except Exception as e {
-        # Abort-on-error: a failed call must not half-mutate the graph.
-        # Discard its uncommitted unit of work instead of leaving it in
-        # the shared working set for the next commit to flush (#6619).
-        ctx.mem.abort();
-        return {'error': str(e)};
+        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
+        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
+        attempt = 0;
+        while attempt < max_attempts {
+            attempt += 1;
+            call_token = ctx.call_state.set(CallState());
+            call_state = ctx.call_state.get();
+            try {
+                result = await func(**args);
+                return await self._finalize_call_response(call_state, result);
+            } except WriteConflict as wc {
+                ctx.mem.abort();
+                ctx.pending_effects.clear();
+                ctx.read_versions.clear();
+                # Drop diagnostics accrued by the aborted attempt (e.g. a
+                # PermissionDenied raised during the walker body or the collect
+                # pass) so a converged replay's 200 response doesn't surface
+                # stale warnings from a unit of work that never committed.
+                ctx.diagnostics.clear();
+                if attempt >= max_attempts {
+                    return {
+                        'error': wc.message(),
+                        'error_code': 'write_conflict',
+                        'http_status': 409
+                    };
+                }
+                if occ_backoff_ms > 0 {
+                    await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
+                }
+                await ctx.aset_user_root(root_id);
+            } except Exception as e {
+                # Abort-on-error: a failed call must not half-mutate the graph.
+                # Discard its uncommitted unit of work instead of leaving it in
+                # the shared working set for the next commit to flush (#6619).
+                ctx.mem.abort();
+                return {'error': str(e)};
+            } finally {
+                ctx.call_state.reset(call_token);
+            }
+        }
+        return {
+            'error': 'write_conflict: retries exhausted',
+            'error_code': 'write_conflict',
+            'http_status': 409
+        };
     } finally {
-        ctx.call_state.reset(call_token);
         Jac.reset_request_context(req_token);
     }
 }
@@ -467,35 +573,77 @@ impl ExecutionManager.spawn_walker_sync(
     target_node_id = fields.pop('_jac_spawn_node', None);
     _deserialize_wire_args(fields);
     (ctx, req_token) = await _begin_request_context(root_id);
-    call_token = ctx.call_state.set(CallState());
-    call_state = ctx.call_state.get();
+    # Optimistic-concurrency replay: a walker that loses a check-then-create
+    # race raises WriteConflict at commit. We discard the attempt's mutations
+    # + deferred effects, reload the root so the replay sees the committed
+    # winner, and re-run -- so find-or-create converges instead of duplicating.
     try {
-        `walker = walker_cls(**fields);
-        if target_node_id {
-            target_node = await Jac.aget_object(target_node_id);
-            if not isinstance(target_node, NodeArchetype) {
-                return {'error': f"Invalid target node: {target_node_id}"};
+        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
+        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
+        attempt = 0;
+        while attempt < max_attempts {
+            attempt += 1;
+            call_token = ctx.call_state.set(CallState());
+            call_state = ctx.call_state.get();
+            try {
+                `walker = walker_cls(**fields);
+                if target_node_id {
+                    target_node = await Jac.aget_object(target_node_id);
+                    if not isinstance(target_node, NodeArchetype) {
+                        return {'error': f"Invalid target node: {target_node_id}"};
+                    }
+                } else {
+                    target_node = ctx.get_root();
+                }
+                result = await asyncio.to_thread(Jac.spawn, `walker, target_node);
+                # Defensive: if a caller reaches this path with a walker whose
+                # spawn path returned a coroutine, await it on the loop rather
+                # than returning an unawaited coroutine object.
+                if iscoroutine(result) {
+                    result = await result;
+                }
+                return await self._finalize_call_response(call_state, result);
+            } except WriteConflict as wc {
+                # Lost the race: drop this attempt's graph mutations and any
+                # deferred on_commit effects (they never committed), reload the
+                # root from L3 so the replay re-reads the winner, then retry.
+                ctx.mem.abort();
+                ctx.pending_effects.clear();
+                ctx.read_versions.clear();
+                # Drop diagnostics accrued by the aborted attempt (e.g. a
+                # PermissionDenied raised during the walker body or the collect
+                # pass) so a converged replay's 200 response doesn't surface
+                # stale warnings from a unit of work that never committed.
+                ctx.diagnostics.clear();
+                if attempt >= max_attempts {
+                    return {
+                        'error': wc.message(),
+                        'error_code': 'write_conflict',
+                        'http_status': 409
+                    };
+                }
+                if occ_backoff_ms > 0 {
+                    await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
+                }
+                await ctx.aset_user_root(root_id);
+            } except Exception as e {
+                import traceback;
+                # Abort-on-error: a failed walker must not half-mutate the graph.
+                # Discard its uncommitted unit of work instead of leaving it in
+                # the shared working set for the next commit to flush (#6619).
+                ctx.mem.abort();
+                return {'error': str(e), 'traceback': traceback.format_exc()};
+            } finally {
+                ctx.call_state.reset(call_token);
             }
-        } else {
-            target_node = ctx.get_root();
         }
-        result = await asyncio.to_thread(Jac.spawn, `walker, target_node);
-        # Defensive: if a caller reaches this path with a walker whose
-        # spawn path returned a coroutine, await it on the loop rather
-        # than returning an unawaited coroutine object.
-        if iscoroutine(result) {
-            result = await result;
-        }
-        return await self._finalize_call_response(call_state, result);
-    } except Exception as e {
-        import traceback;
-        # Abort-on-error: a failed walker must not half-mutate the graph.
-        # Discard its uncommitted unit of work instead of leaving it in
-        # the shared working set for the next commit to flush (#6619).
-        ctx.mem.abort();
-        return {'error': str(e), 'traceback': traceback.format_exc()};
+        # Loop only exits via return; this satisfies control-flow analysis.
+        return {
+            'error': 'write_conflict: retries exhausted',
+            'error_code': 'write_conflict',
+            'http_status': 409
+        };
     } finally {
-        ctx.call_state.reset(call_token);
         Jac.reset_request_context(req_token);
     }
 }
@@ -515,34 +663,71 @@ impl ExecutionManager.spawn_walker_async(
     target_node_id = fields.pop('_jac_spawn_node', None);
     _deserialize_wire_args(fields);
     (ctx, req_token) = await _begin_request_context(root_id);
-    call_token = ctx.call_state.set(CallState());
-    call_state = ctx.call_state.get();
+    # Optimistic-concurrency replay: see spawn_walker_sync. A WriteConflict at
+    # commit means we lost a check-then-create race; discard + reload + replay
+    # so find-or-create converges on the winner instead of duplicating.
     try {
-        `walker = walker_cls(**fields);
-        if target_node_id {
-            target_node = await Jac.aget_object(target_node_id);
-            if not isinstance(target_node, NodeArchetype) {
-                return {'error': f"Invalid target node: {target_node_id}"};
+        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
+        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
+        attempt = 0;
+        while attempt < max_attempts {
+            attempt += 1;
+            call_token = ctx.call_state.set(CallState());
+            call_state = ctx.call_state.get();
+            try {
+                `walker = walker_cls(**fields);
+                if target_node_id {
+                    target_node = await Jac.aget_object(target_node_id);
+                    if not isinstance(target_node, NodeArchetype) {
+                        return {'error': f"Invalid target node: {target_node_id}"};
+                    }
+                } else {
+                    target_node = ctx.get_root();
+                }
+                spawn_result = Jac.spawn(`walker, target_node);
+                if iscoroutine(spawn_result) {
+                    result = await spawn_result;
+                } else {
+                    result = spawn_result;
+                }
+                return await self._finalize_call_response(call_state, result);
+            } except WriteConflict as wc {
+                ctx.mem.abort();
+                ctx.pending_effects.clear();
+                ctx.read_versions.clear();
+                # Drop diagnostics accrued by the aborted attempt (e.g. a
+                # PermissionDenied raised during the walker body or the collect
+                # pass) so a converged replay's 200 response doesn't surface
+                # stale warnings from a unit of work that never committed.
+                ctx.diagnostics.clear();
+                if attempt >= max_attempts {
+                    return {
+                        'error': wc.message(),
+                        'error_code': 'write_conflict',
+                        'http_status': 409
+                    };
+                }
+                if occ_backoff_ms > 0 {
+                    await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
+                }
+                await ctx.aset_user_root(root_id);
+            } except Exception as e {
+                import traceback;
+                # Abort-on-error: a failed walker must not half-mutate the graph.
+                # Discard its uncommitted unit of work instead of leaving it in
+                # the shared working set for the next commit to flush (#6619).
+                ctx.mem.abort();
+                return {'error': str(e), 'traceback': traceback.format_exc()};
+            } finally {
+                ctx.call_state.reset(call_token);
             }
-        } else {
-            target_node = ctx.get_root();
         }
-        spawn_result = Jac.spawn(`walker, target_node);
-        if iscoroutine(spawn_result) {
-            result = await spawn_result;
-        } else {
-            result = spawn_result;
-        }
-        return await self._finalize_call_response(call_state, result);
-    } except Exception as e {
-        import traceback;
-        # Abort-on-error: a failed walker must not half-mutate the graph.
-        # Discard its uncommitted unit of work instead of leaving it in
-        # the shared working set for the next commit to flush (#6619).
-        ctx.mem.abort();
-        return {'error': str(e), 'traceback': traceback.format_exc()};
+        return {
+            'error': 'write_conflict: retries exhausted',
+            'error_code': 'write_conflict',
+            'http_status': 409
+        };
     } finally {
-        ctx.call_state.reset(call_token);
         Jac.reset_request_context(req_token);
     }
 }
@@ -632,8 +817,8 @@ impl ModuleIntrospector._load_manifest -> None {
 
 Access (auth-required, secure-by-default: True for anything not `pub`) is
 computed once at compile time by BoundaryAnalysisPass and stored on each
-module's `interop_manifest`. We union those maps across the program hub —
-an endpoint may be defined in any imported module — instead of re-walking
+module's `interop_manifest`. We union those maps across the program hub --
+an endpoint may be defined in any imported module -- instead of re-walking
 ASTs at request time. The main module is processed first so its definitions
 win on a name collision, matching the prior direct-defs-before-imports order.
 """
@@ -947,6 +1132,13 @@ impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., Any)]] {
     export_names = set(self._client_manifest.get('exports', []));
     for (name, `obj) in inspect.getmembers(self._module) {
         if (inspect.isfunction(`obj) and not name.startswith('_')) {
+            # Skip framework builtins (connect/refs/visit/spawn/... from jaclib)
+            # that the compiler imports into every Jac module's namespace. They
+            # are not user endpoints, and their runtime signatures (e.g. refs'
+            # `slice` pagination param) are not request-body serializable.
+            if getattr(`obj, '__module__', '').startswith('jaclang.') {
+                continue;
+            }
             functions[name] = `obj;
             if (name in export_names) {
                 self._client_functions[name] = `obj;
@@ -1834,7 +2026,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 return;
             }
             if (path == '/__build_status') {
-                # Dev-mode build health for external tooling — HTTP 200 alone
+                # Dev-mode build health for external tooling -- HTTP 200 alone
                 # can't tell a clean build from a broken one (compile errors
                 # still serve the error-overlay page).
                 import from jaclang.runtimelib.hmr { get_build_status }

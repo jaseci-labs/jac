@@ -13,6 +13,7 @@ import sys;
 import from pathlib { Path }
 import from threading { Event }
 import from concurrent.futures { Future }
+import from jaclang.jac0core.ext_registry { NATIVE_SUFFIX }
 
 glob _logger = logging.getLogger(__name__),
      _acceleration_complete: Event = Event(),
@@ -26,7 +27,7 @@ def discover_bootstrap_na_modules -> dict[str, str] {
         # Derive module name from file path relative to jaclang/
         rel = na_file.relative_to(jac0core_dir.parent);
         # Strip .na.jac suffix (two suffixes)
-        stem = str(rel).replace(os.sep, ".").removesuffix(".na.jac");
+        stem = str(rel).replace(os.sep, ".").removesuffix(NATIVE_SUFFIX);
         mod_name = "jaclang." + stem;
         if mod_name in sys.modules {
             result[mod_name] = str(na_file);

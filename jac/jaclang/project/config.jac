@@ -83,7 +83,15 @@ obj ServeConfig {
         session: str = "",
         main: bool = True,
         cl_route_prefix: str = "cl",
-        base_route_app: str = "";
+        base_route_app: str = "",
+        # Optimistic-concurrency policy for check-then-create races (#6266).
+        # "retry": the request boundary aborts + replays so the loser converges
+        # on the winner; "fail": no replay, return a typed 409 immediately.
+        on_conflict: str = "retry",
+        # Max walker/function attempts under "retry" (1 = effectively fail-fast).
+        conflict_max_attempts: int = 5,
+        # Linear backoff between replay attempts (0 = none).
+        conflict_backoff_ms: int = 0;
 }
 
 """Format command defaults from [format] section."""
@@ -116,7 +124,11 @@ obj CheckConfig {
     has print_errs: bool = True,
         lint: LintConfig = LintConfig(),
         suppress: list[str] = [],
-        suppress_categories: list[str] = [];
+        suppress_categories: list[str] = [],
+        # When True, access-modifier violations (private/protected member access,
+        # cross-module/cross-project visibility) are reported as hard errors
+        # instead of the default warnings. See AccessCheckPass.
+        enforce_access: bool = False;
 }
 
 """Dot/graph visualization defaults from [dot] section."""
@@ -177,6 +189,11 @@ obj ClientErrorsConfig {
     has verbose: bool = False;
 }
 
+"""Client-side compilation settings from [client] section."""
+obj ClientConfig {
+    has framework: str = "react";
+}
+
 # Interpolate environment variables in a string value.
 # Supports ${VAR_NAME}, ${VAR_NAME:-default}, ${VAR_NAME:?error message}
 def interpolate_env_vars(value: str) -> str;
@@ -217,6 +234,7 @@ obj JacConfig {
         plugins_config: PluginsConfig = PluginsConfig(),
         environment: EnvironmentConfig = EnvironmentConfig(),
         client_errors: ClientErrorsConfig = ClientErrorsConfig(),
+        client: ClientConfig = ClientConfig(),
         # Dependencies
         dependencies: dict[str, str] = {},
         dev_dependencies: dict[str, str] = {},

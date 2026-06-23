@@ -22,6 +22,7 @@ class JacByllmConfig(PluginConfigBase) {
     def get_fallback_config(self: JacByllmConfig) -> dict[str, any];
     def get_prompt_caching_config(self: JacByllmConfig) -> dict[str, any];
     def get_parallel_config(self: JacByllmConfig) -> dict[str, any];
+    def get_streaming_config(self: JacByllmConfig) -> dict[str, any];
     def get_system_prompt(self: JacByllmConfig) -> str;
     def get_compaction_config(self: JacByllmConfig) -> dict[str, any];
     def get_local_config(self: JacByllmConfig) -> dict[str, any];

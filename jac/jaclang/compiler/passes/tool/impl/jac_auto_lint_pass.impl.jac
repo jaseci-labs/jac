@@ -564,9 +564,6 @@ impl JacAutoLintPass.enter_module(nd: uni.Module) -> None {
     module = nd;
     if self.main_module is None {
         self.main_module = module;
-        for impl_mod in module.impl_mod {
-            self.traverse(impl_mod);
-        }
     }
     new_body: list[uni.UniNode] = [];
     for stmt in module.body {
@@ -1514,6 +1511,18 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> Non
                 }
             }
         }
+        if arch_node is None {
+            # The decl is not in the file being formatted. When that file is an
+            # annex (.impl.jac), its declarations live in the base module, which
+            # is no longer merged in during tool-mode formatting — load it on
+            # demand so cross-file signature mismatches still get fixed.
+            for stmt in self._base_decl_archetypes(impl_node.loc.mod_path) {
+                if stmt.name_spec and stmt.name_spec.sym_name == root_arch_name {
+                    arch_node = stmt;
+                    break;
+                }
+            }
+        }
         if arch_node is None or not arch_node.body {
             return;
         }
@@ -1602,6 +1611,36 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> Non
     }
     impl_node.kid = new_kids;
     impl_node._invalidate_sub_node_tab();
+}
+
+"""Top-level archetype declarations of an annex file's base module."""
+impl JacAutoLintPass._base_decl_archetypes(annex_path: str) -> list[uni.Archetype] {
+    if self._base_decls_loaded {
+        return self._base_decl_cache;
+    }
+    self._base_decls_loaded = True;
+    import from jaclang.jac0core.bccache { discover_base_file }
+    import from jaclang.jac0core.parser { parse as rd_parse }
+    import from jaclang.jac0core.helpers { read_file_with_encoding }
+    import from jaclang.jac0core.program { JacProgram }
+    base_path = discover_base_file(annex_path);
+    if base_path is None {
+        return self._base_decl_cache;
+    }
+    try {
+        source_str = read_file_with_encoding(base_path);
+        # Parse-only, on a throwaway program: we just need the base's decls for
+        # signature lookup, and its diagnostics must not leak into the format run.
+        (base_mod, _had_error) = rd_parse(source_str, base_path, prog=JacProgram());
+    } except Exception {
+        return self._base_decl_cache;
+    }
+    self._base_decl_cache = [
+        stmt
+        for stmt in base_mod.body
+        if isinstance(stmt, uni.Archetype)
+    ];
+    return self._base_decl_cache;
 }
 
 """Check if two FuncSignatures match structurally without calling unparse().

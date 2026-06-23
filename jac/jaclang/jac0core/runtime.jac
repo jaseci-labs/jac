@@ -25,9 +25,7 @@ import from typing {
     ParamSpec,
     Protocol,
     TypeAlias,
-    TypeVar,
-    cast,
-    get_type_hints
+    TypeVar
 }
 import from uuid { UUID }
 import from jaclang.jac0core.archetype {
@@ -73,6 +71,7 @@ import type from jaclang.runtimelib.server { ModuleIntrospector, UserManager }
 glob plugin_manager = plugin.PluginManager('jac'),
      hookspec = plugin.HookspecMarker('jac'),
      hookimpl = plugin.HookimplMarker('jac'),
+     hookable = plugin.HookableMarker(),
      logger = getLogger(__name__),
      T = TypeVar('T'),
      P = ParamSpec('P'),
@@ -99,64 +98,6 @@ glob plugin_manager = plugin.PluginManager('jac'),
      # falls back to the current context's root — in those single-user
      # contexts the caller IS the shared graph's owner.
      _shared_root_resolver: list = [None, None];
-
-"""Jac Access Validation Specs."""
-class JacAccessValidation {
-    """Resolve the live anchor for an archetype from runtime memory."""
-    static def _resolve_anchor(
-        archetype: Archetype
-    ) -> tuple[Anchor, ExecutionContext];
-
-    """Check if current root has at least min_level access to target anchor."""
-    static def _check_access(
-        `to: Anchor, min_level: AccessLevel, operation: str
-    ) -> bool;
-
-    """Allow all access from target root graph to current Archetype."""
-    static def allow_root(
-        archetype: Archetype,
-        root_id: UUID,
-        level: (AccessLevel | int | str | None) = None
-    ) -> None;
-
-    """Disallow all access from target root graph to current Archetype."""
-    static def disallow_root(
-        archetype: Archetype,
-        root_id: UUID,
-        level: (AccessLevel | int | str | None) = None
-    ) -> None;
-
-    """Allow everyone to access current Archetype."""
-    static def perm_grant(
-        archetype: Archetype, level: (AccessLevel | int | str | None) = None
-    ) -> None;
-
-    """Disallow others to access current Archetype."""
-    static def perm_revoke(archetype: Archetype) -> None;
-
-    """Read Access Validation."""
-    static def check_read_access(`to: Anchor) -> bool;
-
-    """Connect Access Validation.
-
-    `op_hint` is the user-facing operation label that flows into a
-    PermissionDenied diagnostic on failure (e.g. "edge_write" for
-    cross-user edge creation, "edge_delete" for disconnect). Defaults to
-    the generic "connect" — overrides should be specific.
-    """
-    static def check_connect_access(`to: Anchor, op_hint: str = "connect") -> bool;
-
-    """Write Access Validation.
-
-    `op_hint` is the user-facing operation label (e.g. "delete" for
-    `del node`, "field_write" for the persist-time drop of a foreign
-    field mutation). Defaults to the generic "write".
-    """
-    static def check_write_access(`to: Anchor, op_hint: str = "write") -> bool;
-
-    """Access validation."""
-    static def check_access_level(`to: Anchor, no_custom: bool = False) -> AccessLevel;
-}
 
 """Batch-prefetch edge stubs and their source/target nodes into L1 cache.
 Reduces N+1 database fetches to 2 batch queries for all edges of all origin nodes.
@@ -252,8 +193,220 @@ def resolve_ref(
     return None;
 }
 
-"""Jac Node Operations."""
-class JacNode {
+"""Default Classes References - direct class attributes (no lazy loading)."""
+class JacClassReferences {
+    with entry {
+        TYPE_CHECKING: bool = TYPE_CHECKING;
+        DSFunc = ObjectSpatialFunction;
+        OPath = ObjectSpatialPath;
+        Root = Root;
+        GenericEdge = GenericEdge;
+        Obj = Archetype;
+        Node = NodeArchetype;
+        Edge = EdgeArchetype;
+        Walker = WalkerArchetype;
+        JsxElement = JsxElement;
+    }
+}
+
+"""Protocol defining the minimal contract for LLM model objects.
+
+    Both the core stub (returned when no plugin is loaded) and plugin
+    implementations (e.g. byllm's BaseLLM/Model) satisfy this protocol.
+    """
+obj LLMModel(Protocol) {
+    has call_params: dict[(str, object)];
+
+    def __call__(**kwargs: object) -> LLMModel;
+}
+
+"""Execution-context, program/compiler, and thread services."""
+class JacContext {
+    """Get current execution context (request-scoped if available, else global)."""
+    static def get_context -> ExecutionContext;
+
+    """Purge current or target graph."""
+    static def reset_graph(root_node: (Root | None) = None) -> int;
+
+    """Create a new execution context.
+
+        Args:
+            user_root: User root ID for permission boundary. Required parameter.
+                       Pass None for CLI/system contexts (uses system_root).
+                       Pass user's root ID for authenticated server requests.
+            base_path_dir: Per-context override for the L3 storage root.
+                       When None, the new context snapshots the bootstrap
+                       seed (`Jac.get_base_path_dir()`) at construction time.
+            full_target_path: Per-context override for the app target file.
+                       Drives the L3 SQLite filename via `get_db_path` /
+                       `get_name`. When None, the new context snapshots
+                       `Jac.get_full_target_path()` at construction time.
+
+        Storage backend is configured via plugins/environment, not per-context.
+        For file backend: derives the path from the context's own
+        `base_path_dir` / `full_target_path` (either passed explicitly here
+        or snapshotted from JacRuntime). Subsequent mutations to the global
+        statics never poison an already-constructed ctx.
+        For database backends (jac-scale): configured via environment variables.
+        """
+    @hookable
+    static def create_j_context(
+        user_root: (str | None),
+        base_path_dir: (str | None) = None,
+        full_target_path: (str | None) = None
+    ) -> ExecutionContext;
+
+    """Attach a JacProgram to the machine."""
+    static def attach_program(jac_program: JacProgram) -> None;
+
+    """Attach a JacCompiler to the machine."""
+    static def attach_compiler(jac_compiler: JacCompiler) -> None;
+
+    """Run a function in a thread."""
+    static def thread_run(func: Callable, *args: object) -> Future;
+
+    """Wait for a thread to finish."""
+    static def thread_wait(future: any) -> None;
+}
+
+"""Persistence: commit/save/destroy, object resolution, storage + user backends."""
+class JacPersistence {
+    """Commit all data from memory to datasource."""
+    static def commit(anchor: Anchor | Archetype | None = None) -> None;
+
+    """Async mirror of commit — persists through the async Memory surface
+    so the caller's event loop is not blocked on L3 writes."""
+    static async def acommit(anchor: Anchor | Archetype | None = None) -> None;
+
+    """Register a callback to run after the next successful commit. Backs
+    the `on_commit(...)` ambient builtin for deferred external effects:
+    the callback fires only if the unit of work flushes, and never if the
+    request aborts."""
+    static def on_commit(callback: Callable) -> None;
+
+    """Get object given id."""
+    static def get_object(id: str) -> (Archetype | None);
+
+    """Async mirror of get_object — resolves through the async Memory
+    surface so L3 reads do not block the caller's event loop."""
+    static async def aget_object(id: str) -> (Archetype | None);
+
+    """Get object reference id."""
+    static def object_ref(`obj: Archetype) -> str;
+
+    """Destroy object."""
+    static def save(`obj: (Archetype | Anchor)) -> None;
+
+    """Destroy multiple objects passed in a tuple or list."""
+    static def destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) -> None;
+
+    """Get UserManager instance (hookable for plugins).
+
+        Plugins can override this to provide custom UserManager implementations.
+        Default returns core UserManager.
+
+        Args:
+            base_path: Base path for user data storage
+
+        Returns:
+            UserManager instance
+        """
+    @hookable
+    static def get_user_manager(base_path: str) -> UserManager;
+
+    """Get storage backend instance (hookable for plugins).
+
+        Default returns LocalStorage. Plugins (like jac-scale) can override
+        to provide cloud storage backends with full config support.
+
+        Args:
+            base_path: Base directory for file storage.
+            create_dirs: Whether to auto-create directories.
+
+        Returns:
+            Storage instance (LocalStorage by default)
+        """
+    @hookable
+    static def store(base_path: str = './storage', create_dirs: bool = True) -> any;
+
+    """Get the L3 persistent backend (hookable for plugins).
+
+        A DB-backend plugin (Postgres, etc.) supplies its own PersistentMemory
+        here instead of cloning the whole execution-context joint. Because
+        every hook is firstresult, the core default returns None so
+        TieredMemory falls back to SqliteMemory; a plugin that returns a
+        backend wins, composing with both core bare-serve and jac-scale.
+
+        Args:
+            config: resolved backing config (db_path, base_path, target_path)
+                so the backend can select its own keys.
+
+        Returns:
+            A PersistentMemory instance, or None to use the default.
+        """
+    static def get_persistent_memory(config: dict) -> any;
+}
+
+"""Graph access-permission checks and grants."""
+class JacAccessValidation {
+    """Resolve the live anchor for an archetype from runtime memory."""
+    static def _resolve_anchor(
+        archetype: Archetype
+    ) -> tuple[Anchor, ExecutionContext];
+
+    """Check if current root has at least min_level access to target anchor."""
+    static def _check_access(
+        `to: Anchor, min_level: AccessLevel, operation: str
+    ) -> bool;
+
+    """Allow all access from target root graph to current Archetype."""
+    static def allow_root(
+        archetype: Archetype,
+        root_id: UUID,
+        level: (AccessLevel | int | str | None) = None
+    ) -> None;
+
+    """Disallow all access from target root graph to current Archetype."""
+    static def disallow_root(
+        archetype: Archetype,
+        root_id: UUID,
+        level: (AccessLevel | int | str | None) = None
+    ) -> None;
+
+    """Allow everyone to access current Archetype."""
+    static def perm_grant(
+        archetype: Archetype, level: (AccessLevel | int | str | None) = None
+    ) -> None;
+
+    """Disallow others to access current Archetype."""
+    static def perm_revoke(archetype: Archetype) -> None;
+
+    """Read Access Validation."""
+    static def check_read_access(`to: Anchor) -> bool;
+
+    """Connect Access Validation.
+
+    `op_hint` is the user-facing operation label that flows into a
+    PermissionDenied diagnostic on failure (e.g. "edge_write" for
+    cross-user edge creation, "edge_delete" for disconnect). Defaults to
+    the generic "connect" — overrides should be specific.
+    """
+    static def check_connect_access(`to: Anchor, op_hint: str = "connect") -> bool;
+
+    """Write Access Validation.
+
+    `op_hint` is the user-facing operation label (e.g. "delete" for
+    `del node`, "field_write" for the persist-time drop of a foreign
+    field mutation). Defaults to the generic "write".
+    """
+    static def check_write_access(`to: Anchor, op_hint: str = "write") -> bool;
+
+    """Access validation."""
+    static def check_access_level(`to: Anchor, no_custom: bool = False) -> AccessLevel;
+}
+
+"""Graph mutation and object-spatial traversal (nodes + edges)."""
+class JacGraph {
     """Get edges connected to this node."""
     static def get_edges(
         origin: list[NodeArchetype], destination: ObjectSpatialDestination
@@ -271,17 +424,69 @@ class JacNode {
         origin: list[NodeArchetype], destination: ObjectSpatialDestination
     ) -> list[NodeArchetype];
 
-    """Remove reference without checking sync status."""
-    static def remove_edge(nd: NodeAnchor, `edge: EdgeAnchor) -> None;
+    """Jac's apply_dir stmt feature.
+
+    `slc`, when given, requests storage-layer pagination: for single-hop
+    type-filtered traversals the topology planner returns just the bounded
+    UUID set so the persistence backend only loads that subset. The slice is
+    always applied (falls back to a Python slice over the materialized result
+    when pushdown is not eligible) so semantics match a trailing `[a:b]`."""
+    static def refs(
+        path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype],
+        post_filter: (Callable[([Archetype], bool)] | None) = None,
+        slc: (slice | None) = None
+    ) -> list[NodeArchetype] | list[EdgeArchetype] | list[
+        (NodeArchetype | EdgeArchetype)
+    ];
+
+    """Jac's apply_dir stmt feature."""
+    static async def arefs(
+        path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype]
+    ) -> None;
+
+    """Jac's filter archetype list."""
+    static def filter_on(
+        items: list[Archetype], func: Callable[([Archetype], bool)]
+    ) -> list[Archetype];
+
+    """Jac's connect operator feature."""
+    static def connect(
+        left: (NodeArchetype | list[NodeArchetype]),
+        right: (NodeArchetype | list[NodeArchetype]),
+        `edge: type[EdgeArchetype] | EdgeArchetype | None = None,
+        undir: bool = False,
+        conn_assign: (tuple[(tuple, tuple)] | None) = None,
+        edges_only: bool = False
+    ) -> (NodeArchetype | list[NodeArchetype] | list[EdgeArchetype]);
+
+    """Jac's disconnect operator feature."""
+    static def disconnect(
+        left: (NodeArchetype | list[NodeArchetype]),
+        right: (NodeArchetype | list[NodeArchetype]),
+        dir: EdgeDir = EdgeDir.OUT,
+        filter: (Callable[([EdgeArchetype], bool)] | None) = None
+    ) -> bool;
+
+    """Jac's assign comprehension feature."""
+    static def assign_all(
+        target: list[T], attr_val: tuple[(tuple[str], tuple[any])]
+    ) -> list[T];
+
+    """Jac's root getter."""
+    static def root -> Root;
+
+    """Get all the roots."""
+    static def get_all_root -> list[Root];
+
+    """Jac's root getter."""
+    static def build_edge(
+        is_undirected: bool,
+        conn_type: type[EdgeArchetype] | EdgeArchetype | None,
+        conn_assign: (tuple[(tuple, tuple)] | None)
+    ) -> Callable[([NodeAnchor, NodeAnchor], EdgeArchetype)];
 }
 
-"""Jac Edge Operations."""
-class JacEdge {
-    """Detach edge from nodes."""
-    static def detach(`edge: EdgeAnchor) -> None;
-}
-
-"""Jac Edge Operations."""
+"""Walker spawn / visit / disengage semantics."""
 class JacWalker {
     """Jac's visit stmt feature."""
     static def `visit(
@@ -322,81 +527,37 @@ class JacWalker {
     static def `disengage(`walker: WalkerArchetype) -> bool;
 }
 
-"""Default Classes References - direct class attributes (no lazy loading)."""
-class JacClassReferences {
-    with entry {
-        TYPE_CHECKING: bool = TYPE_CHECKING;
-        DSFunc = ObjectSpatialFunction;
-        OPath = ObjectSpatialPath;
-        Root = Root;
-        GenericEdge = GenericEdge;
-        Obj = Archetype;
-        Node = NodeArchetype;
-        Edge = EdgeArchetype;
-        Walker = WalkerArchetype;
-        JsxElement = JsxElement;
-    }
-}
-
-"""Jac Builtins."""
-class JacBuiltin {
-    """Generate graph for visualizing nodes and edges."""
-    static def printgraph(
-        nd: NodeArchetype,
-        depth: int,
-        traverse: bool,
-        edge_type: (list[str] | None),
-        bfs: bool,
-        edge_limit: int,
-        node_limit: int,
-        file: (str | None),
-        format: str
-    ) -> str;
-}
-
-"""Jac CLI command."""
-class JacCmd {
-    """Create Jac CLI cmds."""
-    static def create_cmd -> None;
-
-    """Run the `jac ai` interactive coding agent.
-
-        A hook so the agent engine is pluggable: the core ships a built-in
-        byLLM agent as the default implementation, and a plugin can register
-        its own implementation to replace it. `req` is an `AgentRequest`
-        carrying the resolved flags plus a `CodeIntelligence` handle.
-        """
-    static def run_ai_agent(req: object) -> int;
-}
-
-"""Jac Feature."""
-class JacBasics {
-    """Get current execution context (request-scoped if available, else global)."""
-    static def get_context -> ExecutionContext;
-
-    """Commit all data from memory to datasource."""
-    static def commit(anchor: Anchor | Archetype | None = None) -> None;
-
-    """Async mirror of commit — persists through the async Memory surface
-    so the caller's event loop is not blocked on L3 writes."""
-    static async def acommit(anchor: Anchor | Archetype | None = None) -> None;
-
-    """Purge current or target graph."""
-    static def reset_graph(root_node: (Root | None) = None) -> int;
-
-    """Get object given id."""
-    static def get_object(id: str) -> (Archetype | None);
-
-    """Async mirror of get_object — resolves through the async Memory
-    surface so L3 reads do not block the caller's event loop."""
-    static async def aget_object(id: str) -> (Archetype | None);
-
-    """Get object reference id."""
-    static def object_ref(`obj: Archetype) -> str;
-
+"""Archetype construction, fields, and ability triggers."""
+class JacArchetype {
     """Create a obj archetype."""
     static def make_archetype(cls: type[Archetype]) -> type[Archetype];
 
+    """Jac's field handler."""
+    static def field(
+        factory: (Callable[([], T)] | None) = None, `init: bool = True
+    ) -> T;
+
+    """Mark a method as jac entry with this decorator."""
+    static def on_entry(func: Callable) -> Callable;
+
+    """Mark a method as jac exit with this decorator."""
+    static def on_exit(func: Callable) -> Callable;
+
+    """Stamp an ability with its compiler-known trigger type.
+
+    Emitted by codegen for every `with <T> entry/exit` ability so the trigger
+    is carried as data rather than recovered at runtime via `inspect`. The
+    argument is a no-arg thunk (`lambda: <T>`) that resolves the trigger lazily
+    at first dispatch — deferring evaluation so forward-referenced types (e.g.
+    a node ability triggered by a walker defined later) resolve correctly. Read
+    by `make_archetype` into `ObjectSpatialFunction.trigger_override`."""
+    static def set_trigger(
+        trigger_thunk: Callable
+    ) -> Callable[([Callable], Callable)];
+}
+
+"""Module import, loading, and dynamic source compilation."""
+class JacModule {
     """Update impl file location."""
     static def impl_patch_filename(
         file_loc: str
@@ -442,135 +603,120 @@ system,
         lng: (str | None) = None
     ) -> tuple[(types.ModuleType, ...)];
 
-    """Create a test."""
-    static def jac_test(description: str = "") -> Callable;
-
-    """JSX interface for creating elements.
-
-        Args:
-            tag: Element tag (string for HTML elements, callable for components)
-            attributes: Element attributes/props
-            children: Child elements
-
-        Returns:
-            JSX element representation.
-        """
-    static def jsx(
-        tag: object,
-        attributes: (Mapping[(str, object)] | None) = None,
-        children: (Sequence[object] | None) = None
-    ) -> JsxElement;
-
-    """Run the test suite in the specified .jac file."""
-    static def run_test(
-        filepath: str,
-        func_name: (str | None) = None,
-        filter: (str | None) = None,
-        xit: bool = False,
-        maxfail: (int | None) = None,
-        directory: (str | None) = None,
-        verbose: bool = False
-    ) -> int;
-
-    """Jac's field handler."""
-    static def field(
-        factory: (Callable[([], T)] | None) = None, `init: bool = True
-    ) -> T;
-
-    """Jac's report stmt feature."""
-    static def log_report(expr: any, custom: bool = False) -> None;
-
-    """Jac's apply_dir stmt feature.
-
-    `slc`, when given, requests storage-layer pagination: for single-hop
-    type-filtered traversals the topology planner returns just the bounded
-    UUID set so the persistence backend only loads that subset. The slice is
-    always applied (falls back to a Python slice over the materialized result
-    when pushdown is not eligible) so semantics match a trailing `[a:b]`."""
-    static def refs(
-        path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype],
-        post_filter: (Callable[([Archetype], bool)] | None) = None,
-        slc: (slice | None) = None
-    ) -> list[NodeArchetype] | list[EdgeArchetype] | list[
-        (NodeArchetype | EdgeArchetype)
-    ];
-
-    """Jac's apply_dir stmt feature."""
-    static async def arefs(
-        path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype]
+    """Load a module into the machine."""
+    static def load_module(
+        module_name: str, module: types.ModuleType, force: bool = False
     ) -> None;
 
-    """Jac's filter archetype list."""
-    static def filter_on(
-        items: list[Archetype], func: Callable[([Archetype], bool)]
-    ) -> list[Archetype];
+    """Dynamically creates archetypes (nodes, walkers, etc.) from Jac source
+code.
 
-    """Jac's connect operator feature."""
-    static def connect(
-        left: (NodeArchetype | list[NodeArchetype]),
-        right: (NodeArchetype | list[NodeArchetype]),
-        `edge: type[EdgeArchetype] | EdgeArchetype | None = None,
-        undir: bool = False,
-        conn_assign: (tuple[(tuple, tuple)] | None) = None,
-        edges_only: bool = False
-    ) -> (list[NodeArchetype] | list[EdgeArchetype]);
+        This leverages Python's standard import machinery via jac_import(),
+        which will automatically invoke JacMetaImporter.
+        """
+    static def create_archetype_from_source(
+        source_code: str,
+        module_name: (str | None) = None,
+        base_path: (str | None) = None,
+        cachable: bool = False,
+        keep_temporary_files: bool = False
+    ) -> (types.ModuleType | None);
 
-    """Jac's disconnect operator feature."""
-    static def disconnect(
-        left: (NodeArchetype | list[NodeArchetype]),
-        right: (NodeArchetype | list[NodeArchetype]),
-        dir: EdgeDir = EdgeDir.OUT,
-        filter: (Callable[([EdgeArchetype], bool)] | None) = None
-    ) -> bool;
-
-    """Jac's assign comprehension feature."""
-    static def assign_all(
-        target: list[T], attr_val: tuple[(tuple[str], tuple[any])]
-    ) -> list[T];
-
-    """Jac's safe subscript feature."""
-    static def safe_subscript(`obj: any, key: any) -> any;
-
-    """Jac's root getter."""
-    static def root -> Root;
-
-    """Get all the roots."""
-    static def get_all_root -> list[Root];
-
-    """Jac's root getter."""
-    static def build_edge(
-        is_undirected: bool,
-        conn_type: type[EdgeArchetype] | EdgeArchetype | None,
-        conn_assign: (tuple[(tuple, tuple)] | None)
-    ) -> Callable[([NodeAnchor, NodeAnchor], EdgeArchetype)];
-
-    """Destroy object."""
-    static def save(`obj: (Archetype | Anchor)) -> None;
-
-    """Destroy multiple objects passed in a tuple or list."""
-    static def destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) -> None;
-
-    """Mark a method as jac entry with this decorator."""
-    static def on_entry(func: Callable) -> Callable;
-
-    """Mark a method as jac exit with this decorator."""
-    static def on_exit(func: Callable) -> Callable;
-
-    """Stamp an ability with its compiler-known trigger type.
-
-    Emitted by codegen for every `with <T> entry/exit` ability so the trigger
-    is carried as data rather than recovered at runtime via `inspect`. The
-    argument is a no-arg thunk (`lambda: <T>`) that resolves the trigger lazily
-    at first dispatch — deferring evaluation so forward-referenced types (e.g.
-    a node ability triggered by a walker defined later) resolve correctly. Read
-    by `make_archetype` into `ObjectSpatialFunction.trigger_override`."""
-    static def set_trigger(
-        trigger_thunk: Callable
-    ) -> Callable[([Callable], Callable)];
+    """Reimport the module using Python's reload mechanism."""
+    static def update_walker(
+        module_name: str, items: (dict[(str, str | str | None)] | None)
+    ) -> tuple[(types.ModuleType, ...)];
 }
 
-"""Jac Client Bundle Operations - Generic interface for client bundling."""
-class JacClientBundle {
+"""Module/archetype introspection and dynamic spawning."""
+class JacIntrospection {
+    """List all loaded modules."""
+    static def list_modules -> list[str];
+
+    """List all walkers in a specific module."""
+    static def list_walkers(module_name: str) -> list[str];
+
+    """List all nodes in a specific module."""
+    static def list_nodes(module_name: str) -> list[str];
+
+    """List all edges in a specific module."""
+    static def list_edges(module_name: str) -> list[str];
+
+    """Spawn a node instance of the given node_name with attributes."""
+    static def spawn_node(
+        node_name: str, attributes: (dict | None) = None, module_name: str = '__main__'
+    ) -> NodeArchetype;
+
+    """Spawn a walker instance of the given walker_name."""
+    static def spawn_walker(
+        walker_name: str,
+        attributes: (dict | None) = None,
+        module_name: str = '__main__'
+    ) -> WalkerArchetype;
+
+    """Retrieve an archetype class from a module."""
+    static def get_archetype(
+        module_name: str, archetype_name: str
+    ) -> (Archetype | None);
+}
+
+"""byLLM bridge: model invocation, MTIR, by-operator, semstrings."""
+class JacLLM {
+    """Get byLLM library."""
+    @hookable
+    static def get_mtir(
+        caller: Callable,
+        args: dict[((int | str), object)],
+        call_params: dict[(str, object)]
+    ) -> MTRuntime;
+
+    """Attach the semstring to the given object."""
+    static def `sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable;
+
+    """Call the LLM model."""
+    @hookable
+    static def call_llm(model: LLMModel, mt_run: MTRuntime) -> any;
+
+    """Async variant of call_llm; offloads the LLM call so the event loop stays free."""
+    @hookable
+    static async def acall_llm(model: LLMModel, mt_run: MTRuntime) -> any;
+
+    """Python library mode decorator for Jac's by llm() syntax."""
+    @hookable
+    static def `by(model: LLMModel) -> Callable;
+
+    static def filter_visitable_by(
+        connected_nodes: list[NodeArchetype], model: LLMModel, descriptions: str = ''
+    ) -> list[NodeArchetype];
+
+    """by operator feature for expression composition.
+
+        Currently not implemented - raises NotImplementedError.
+        Plugins like byllm can override this via the plugin hook system.
+        """
+    @hookable
+    static def by_operator(lhs: any, rhs: any) -> any;
+
+    """Return the default LLM model for use with 'by llm()' syntax.
+
+        The builtin 'llm' name resolves to this method via the plugin hook
+        system. Base implementation returns a minimal stub with call_params={}
+        and __call__ returning self, which works with the random-value fallback
+        in call_llm. Plugins (e.g. byllm) override this to return a configured
+        Model instance based on jac.toml settings.
+        """
+    @hookable
+    static def default_llm -> LLMModel;
+
+    """Add MTIR to the node's MTIR map."""
+    static def add_mtir_to_map(scope: str, mtir: Info) -> None;
+
+    """Get MTIR from the node's MTIR map."""
+    static def get_mtir_from_map(scope: str) -> (Info | None);
+}
+
+"""HTTP serving, sv-service dispatch, response building, and client bundles."""
+class JacServe {
     """Get the client bundle builder instance."""
     static def get_client_bundle_builder -> ClientBundleBuilder;
 
@@ -587,27 +733,13 @@ class JacClientBundle {
     static def format_build_error(
         error_output: str, project_dir: Path, config: object = None
     ) -> str;
-}
 
-"""Jac Console Operations - Generic interface for console output."""
-class JacConsole {
-    """Get the console instance to use for CLI output.
-
-        Plugins can override this hook to provide their own console
-implementation.
-        The returned instance should be compatible with the JacConsole
-interface.
-        """
-    static def get_console -> ConsoleImpl;
-}
-
-"""Jac API Server Operations - Generic interface for API server."""
-class JacAPIServer {
     """Get the JacAPIServer class to use for serve command.
 
         Plugins can override this hook to provide their own server class.
         The returned class should be compatible with the JacAPIServer interface.
         """
+    @hookable
     static def get_api_server_class -> type;
 
     """Lazily ensure an sv-imported microservice is started and registered.
@@ -619,6 +751,7 @@ class JacAPIServer {
         JacAPIServer in a background thread, waits for the server to be
         responsive, and registers the URL via sv_client.register().
         """
+    @hookable
     static def ensure_sv_service(module_name: str, base_path: str) -> None;
 
     """Execute an sv-to-sv RPC call.
@@ -636,6 +769,7 @@ class JacAPIServer {
         Returns the unwrapped result from the TransportResponse envelope.
         Raises RuntimeError on transport or application-level failure.
         """
+    @hookable
     static def sv_service_call(module_name: str, func_name: str, args: dict) -> any;
 
     """Execute an sv-to-sv walker spawn over HTTP.
@@ -652,6 +786,7 @@ class JacAPIServer {
         retries, circuit breaking, and tracing - mirroring the same
         contract as sv_service_call.
         """
+    @hookable
     static def sv_walker_call(
         module_name: str, walker_name: str, args: dict, stub_cls: any
     ) -> any;
@@ -668,6 +803,7 @@ class JacAPIServer {
         The returned dict is a snapshot; callers must not mutate it and
         should call again for fresh data.
         """
+    @hookable
     static def get_sv_registry -> dict[str, str];
 
     """Create the API server instance.
@@ -675,6 +811,7 @@ class JacAPIServer {
     If the specified port is in use, tries subsequent ports up to max_retries times.
     Updates jac_server.port with the actual bound port if different from requested.
     """
+    @hookable
     static def create_server(
         jac_server: JacServer, host: str, port: int, max_retries: int = 10
     ) -> HTTPServer;
@@ -693,10 +830,7 @@ class JacAPIServer {
         (e.g., serving Vite-built PWA bundles).
     """
     static def get_client_js(introspector: ModuleIntrospector) -> str;
-}
 
-"""Jac Response Builder."""
-class JacResponseBuilder {
     """Send JSON response."""
     static def send_json(
         handler: BaseHTTPRequestHandler,
@@ -723,167 +857,88 @@ class JacResponseBuilder {
     ) -> None;
 }
 
-"""Protocol defining the minimal contract for LLM model objects.
+"""Jac test registration and execution."""
+class JacTest {
+    """Create a test."""
+    static def jac_test(description: str = "") -> Callable;
 
-    Both the core stub (returned when no plugin is loaded) and plugin
-    implementations (e.g. byllm's BaseLLM/Model) satisfy this protocol.
-    """
-obj LLMModel(Protocol) {
-    has call_params: dict[(str, object)];
-
-    def __call__(**kwargs: object) -> LLMModel;
+    """Run the test suite in the specified .jac file."""
+    static def run_test(
+        filepath: str,
+        func_name: (str | None) = None,
+        filter: (str | None) = None,
+        xit: bool = False,
+        maxfail: (int | None) = None,
+        directory: (str | None) = None,
+        verbose: bool = False
+    ) -> int;
 }
 
-"""Jac byLLM integration."""
-class JacByLLM {
-    """Get byLLM library."""
-    static def get_mtir(
-        caller: Callable,
-        args: dict[((int | str), object)],
-        call_params: dict[(str, object)]
-    ) -> MTRuntime;
+"""Misc language builtins: printgraph, jsx, report, safe-subscript, console."""
+class JacBuiltin {
+    """Generate graph for visualizing nodes and edges."""
+    static def printgraph(
+        nd: NodeArchetype,
+        depth: int,
+        traverse: bool,
+        edge_type: (list[str] | None),
+        bfs: bool,
+        edge_limit: int,
+        node_limit: int,
+        file: (str | None),
+        format: str
+    ) -> str;
 
-    """Attach the semstring to the given object."""
-    static def `sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable;
-
-    """Call the LLM model."""
-    static def call_llm(model: LLMModel, mt_run: MTRuntime) -> any;
-
-    """Async variant of call_llm; offloads the LLM call so the event loop stays free."""
-    static async def acall_llm(model: LLMModel, mt_run: MTRuntime) -> any;
-
-    """Python library mode decorator for Jac's by llm() syntax."""
-    static def `by(model: LLMModel) -> Callable;
-
-    static def filter_visitable_by(
-        connected_nodes: list[NodeArchetype], model: LLMModel, descriptions: str = ''
-    ) -> list[NodeArchetype];
-
-    """by operator feature for expression composition.
-
-        Currently not implemented - raises NotImplementedError.
-        Plugins like byllm can override this via the plugin hook system.
-        """
-    static def by_operator(lhs: any, rhs: any) -> any;
-
-    """Return the default LLM model for use with 'by llm()' syntax.
-
-        The builtin 'llm' name resolves to this method via the plugin hook
-        system. Base implementation returns a minimal stub with call_params={}
-        and __call__ returning self, which works with the random-value fallback
-        in call_llm. Plugins (e.g. byllm) override this to return a configured
-        Model instance based on jac.toml settings.
-        """
-    static def default_llm -> LLMModel;
-
-    """Add MTIR to the node's MTIR map."""
-    static def add_mtir_to_map(scope: str, mtir: Info) -> None;
-
-    """Get MTIR from the node's MTIR map."""
-    static def get_mtir_from_map(scope: str) -> (Info | None);
-}
-
-"""Jac Machine Utilities."""
-class JacUtils {
-    """Create a new execution context.
+    """JSX interface for creating elements.
 
         Args:
-            user_root: User root ID for permission boundary. Required parameter.
-                       Pass None for CLI/system contexts (uses system_root).
-                       Pass user's root ID for authenticated server requests.
-            base_path_dir: Per-context override for the L3 storage root.
-                       When None, the new context snapshots the bootstrap
-                       seed (`Jac.get_base_path_dir()`) at construction time.
-            full_target_path: Per-context override for the app target file.
-                       Drives the L3 SQLite filename via `get_db_path` /
-                       `get_name`. When None, the new context snapshots
-                       `Jac.get_full_target_path()` at construction time.
+            tag: Element tag (string for HTML elements, callable for components)
+            attributes: Element attributes/props
+            children: Child elements
 
-        Storage backend is configured via plugins/environment, not per-context.
-        For file backend: derives the path from the context's own
-        `base_path_dir` / `full_target_path` (either passed explicitly here
-        or snapshotted from JacRuntime). Subsequent mutations to the global
-        statics never poison an already-constructed ctx.
-        For database backends (jac-scale): configured via environment variables.
+        Returns:
+            JSX element representation.
         """
-    static def create_j_context(
-        user_root: (str | None),
-        base_path_dir: (str | None) = None,
-        full_target_path: (str | None) = None
-    ) -> ExecutionContext;
+    static def jsx(
+        tag: object,
+        attributes: (Mapping[(str, object)] | None) = None,
+        children: (Sequence[object] | None) = None
+    ) -> JsxElement;
 
-    """Attach a JacProgram to the machine."""
-    static def attach_program(jac_program: JacProgram) -> None;
+    """Jac's report stmt feature."""
+    static def log_report(expr: any, custom: bool = False) -> None;
 
-    """Attach a JacCompiler to the machine."""
-    static def attach_compiler(jac_compiler: JacCompiler) -> None;
+    """Jac's safe subscript feature."""
+    static def safe_subscript(`obj: any, key: any) -> any;
 
-    """Load a module into the machine."""
-    static def load_module(
-        module_name: str, module: types.ModuleType, force: bool = False
-    ) -> None;
+    """Get the console instance to use for CLI output.
 
-    """List all loaded modules."""
-    static def list_modules -> list[str];
-
-    """List all walkers in a specific module."""
-    static def list_walkers(module_name: str) -> list[str];
-
-    """List all nodes in a specific module."""
-    static def list_nodes(module_name: str) -> list[str];
-
-    """List all edges in a specific module."""
-    static def list_edges(module_name: str) -> list[str];
-
-    """Dynamically creates archetypes (nodes, walkers, etc.) from Jac source
-code.
-
-        This leverages Python's standard import machinery via jac_import(),
-        which will automatically invoke JacMetaImporter.
+        Plugins can override this hook to provide their own console
+implementation.
+        The returned instance should be compatible with the JacConsole
+interface.
         """
-    static def create_archetype_from_source(
-        source_code: str,
-        module_name: (str | None) = None,
-        base_path: (str | None) = None,
-        cachable: bool = False,
-        keep_temporary_files: bool = False
-    ) -> (types.ModuleType | None);
-
-    """Reimport the module using Python's reload mechanism."""
-    static def update_walker(
-        module_name: str, items: (dict[(str, str | str | None)] | None)
-    ) -> tuple[(types.ModuleType, ...)];
-
-    """Spawn a node instance of the given node_name with attributes."""
-    static def spawn_node(
-        node_name: str, attributes: (dict | None) = None, module_name: str = '__main__'
-    ) -> NodeArchetype;
-
-    """Spawn a walker instance of the given walker_name."""
-    static def spawn_walker(
-        walker_name: str,
-        attributes: (dict | None) = None,
-        module_name: str = '__main__'
-    ) -> WalkerArchetype;
-
-    """Retrieve an archetype class from a module."""
-    static def get_archetype(
-        module_name: str, archetype_name: str
-    ) -> (Archetype | None);
-
-    """Run a function in a thread."""
-    static def thread_run(func: Callable, *args: object) -> Future;
-
-    """Wait for a thread to finish."""
-    static def thread_wait(future: any) -> None;
+    static def get_console -> ConsoleImpl;
 }
 
-"""Plugin configuration hooks for jac.toml integration.
+"""CLI command surface."""
+class JacCmd {
+    """Create Jac CLI cmds."""
+    @hookable
+    static def create_cmd -> None;
 
-    Plugins can implement these hooks to register their configuration schemas
-    and receive configuration values from jac.toml.
-    """
-class JacPluginConfig {
+    """Run the `jac ai` interactive coding agent.
+
+        A hook so the agent engine is pluggable: the core ships a built-in
+        byLLM agent as the default implementation, and a plugin can register
+        its own implementation to replace it. `req` is an `AgentRequest`
+        carrying the resolved flags plus a `CodeIntelligence` handle.
+        """
+    static def run_ai_agent(req: object) -> int;
+}
+
+"""Plugin metadata, config schema, and project/dependency registration."""
+class JacConfig {
     """Return plugin metadata.
 
         Returns:
@@ -892,6 +947,7 @@ class JacPluginConfig {
                 - version: Plugin version
                 - description: Brief description
         """
+    @hookable
     static def get_plugin_metadata -> (dict[(str, Any)] | None);
 
     """Return the plugin's configuration schema.
@@ -912,6 +968,7 @@ class JacPluginConfig {
                         }
                     }
         """
+    @hookable
     static def get_config_schema -> (dict[(str, Any)] | None);
 
     """Called when plugin configuration is loaded from jac.toml.
@@ -945,6 +1002,7 @@ class JacPluginConfig {
                 - install_handler: Callable to install packages
                 - remove_handler: Callable to remove packages
         """
+    @hookable
     static def register_dependency_type -> (dict[(str, Any)] | None);
 
     """Register a project template for jac create.
@@ -960,84 +1018,54 @@ class JacPluginConfig {
                 - files: dict[path, content] with {{name}} placeholders
                 - directories: list of directories to create
                 - post_create: optional callable(project_path, project_name)
+
+        Aggregating hook (firstresult=False): every implementing plugin
+        contributes a template; the call returns the list of all returns so
+        several plugins' project kinds coexist.
         """
+    @hookable(firstresult=False)
     static def register_project_template -> (dict[(str, Any)] | None);
 }
 
 """Jac Feature."""
-class JacRuntimeInterface(JacClassReferences, JacAccessValidation, JacNode, JacEdge, JacWalker, JacBuiltin, JacCmd, JacBasics, JacClientBundle, JacConsole, JacAPIServer, JacByLLM, JacResponseBuilder, JacUtils, JacPluginConfig) {
-    """Get UserManager instance (hookable for plugins).
+class JacRuntimeInterface(JacClassReferences, JacContext, JacPersistence, JacAccessValidation, JacGraph, JacWalker, JacArchetype, JacModule, JacIntrospection, JacLLM, JacServe, JacTest, JacBuiltin, JacCmd, JacConfig) {}
 
-        Plugins can override this to provide custom UserManager implementations.
-        Default returns core UserManager.
+"""Wire up the plugin-hook dispatch layer from a runtime interface class.
 
-        Args:
-            base_path: Base path for user data storage
+    The interface (and `JacRuntime`, which subclasses it) already inherits every
+    method from the domain mixins -- the 83 non-hook methods are just plain
+    inherited methods and need no wiring. This function handles ONLY the methods
+    a plugin may override, identified by the `@hookable` marker at their
+    declaration. For each such method it:
 
-        Returns:
-            UserManager instance
-        """
-    static def get_user_manager(base_path: str) -> UserManager;
+    - builds a `@hookspec` placeholder on the Spec class (used for
+      `plugin_manager.add_hookspecs`, with the marker's `firstresult` flag);
+    - builds the core default `@hookimpl` on the Impl class (`JacRuntimeImpl`,
+      registered as the default plugin) from the method's real body;
+    - replaces the inherited default on `iface` with a proxy that dispatches
+      through `plugin_manager.hook.<name>`, so `Jac.<hook>(...)` routes to
+      plugins (and falls through to the core default).
 
-    """Get storage backend instance (hookable for plugins).
-
-        Default returns LocalStorage. Plugins (like jac-scale) can override
-        to provide cloud storage backends with full config support.
-
-        Args:
-            base_path: Base directory for file storage.
-            create_dirs: Whether to auto-create directories.
-
-        Returns:
-            Storage instance (LocalStorage by default)
-        """
-    static def store(base_path: str = './storage', create_dirs: bool = True) -> any;
-
-    """Get the L3 persistent backend (hookable for plugins).
-
-        A DB-backend plugin (Postgres, etc.) supplies its own PersistentMemory
-        here instead of cloning the whole execution-context joint. Because
-        every hook is firstresult, the core default returns None so
-        TieredMemory falls back to SqliteMemory; a plugin that returns a
-        backend wins, composing with both core bare-serve and jac-scale.
-
-        Args:
-            config: resolved backing config (db_path, base_path, target_path)
-                so the backend can select its own keys.
-
-        Returns:
-            A PersistentMemory instance, or None to use the default.
-        """
-    static def get_persistent_memory(config: dict) -> any;
-}
-
-# Hooks that AGGREGATE across plugins instead of first-result-wins. Every
-# implementing plugin contributes; the call returns the list of their returns.
-# (Most hooks are firstresult: the core default returns None so a plugin can
-# override.) `register_project_template` aggregates so several plugins can each
-# contribute project-kind templates -- without this, only one plugin's
-# templates would ever be seen.
-glob _AGGREGATING_HOOKS: set[str] = {"register_project_template"};
-
-"""Generate three helper classes based on a plugin class.
-
-    - Spec class: contains @hookspec placeholder methods.
-    - Impl class: contains original plugin methods decorated with @hookimpl.
-    - Proxy class: contains methods that call plugin_manager.hook.<method>.
+    `@hookable` lands on the `static def` wrapper, so it is read via
+    getattr_static (plain getattr unwraps to the function and misses it).
 
     Returns:
-        Tuple of (SpecClass, ImplClass, ProxyClass).
+        Tuple of (SpecClass, ImplClass). The proxies are installed on `iface`
+        in place; `iface` itself is NOT reassigned.
     """
-def generate_plugin_helpers(
-    plugin_class: type[any]
-) -> tuple[(type[any], type[any], type[any])] {
+def build_plugin_hook_layer(iface: type[any]) -> tuple[(type[any], type[any])] {
     spec_methods = {};
     impl_methods = {};
     proxy_methods = {};
-    for (name, method) in inspect.getmembers(
-        plugin_class, predicate=inspect.isfunction
-    ) {
+    for (name, method) in inspect.getmembers(iface, predicate=inspect.isfunction) {
         if name.startswith('_') {
+            continue;
+        }
+        raw = inspect.getattr_static(iface, name, None);
+        hook_opts = raw?._jac_hookable;
+        if hook_opts is None {
+            # Not a hook: the facade already inherits the real core method, so
+            # `Jac.<name>(...)` calls it directly -- nothing to wire here.
             continue;
         }
         sig = inspect.signature(method);
@@ -1061,31 +1089,13 @@ def generate_plugin_helpers(
             placeholder.__signature__ = sig_nodef;
             return placeholder;
         }
-        spec_methods[name] = hookspec(firstresult=name not in _AGGREGATING_HOOKS)(
+        spec_methods[name] = hookspec(firstresult=hook_opts.get('firstresult', True))(
             make_spec(name, sig_nodef, doc, method)
         );
         wrapped_impl = wraps(method)(method);
         wrapped_impl.__signature__ = sig_nodef;
         impl_methods[name] = hookimpl(wrapped_impl);
-        class_vars: dict[(str, Any)] = {};
-        annotations: dict[(str, Any)] = {};
-        for base in reversed(plugin_class.__mro__) {
-            if (base is object) {
-                continue;
-            }
-            base_ann = getattr(base, '__annotations__', {});
-            annotations.update(base_ann);
-            for (key, value) in base.__dict__.items() {
-                if key.startswith('__') {
-                    continue;
-                }
-                if (callable(value) and not isinstance(value, `type)) {
-                    continue;
-                }
-                class_vars[key] = value;
-            }
-        }
-        """Create a proxy method for the proxy class.""";
+        """Create a proxy method that dispatches through plugin_manager.""";
         def make_proxy(name: str, sig: inspect.Signature, is_coro: bool) -> Callable {
             if is_coro {
                 async def async_proxy(*args: object, **kwargs: object) -> object {
@@ -1116,25 +1126,23 @@ def generate_plugin_helpers(
             name, sig, inspect.iscoroutinefunction(method)
         );
     }
-    spec_cls = `type(f"{plugin_class.__name__}Spec", (object, ), spec_methods);
-    impl_cls = `type(f"{plugin_class.__name__}Impl", (object, ), impl_methods);
-    proxy_namespace = {};
-    proxy_namespace.update(class_vars);
-    if annotations {
-        proxy_namespace['__annotations__'] = annotations;
+    spec_cls = `type(f"{iface.__name__}Spec", (object, ), spec_methods);
+    impl_cls = `type(f"{iface.__name__}Impl", (object, ), impl_methods);
+    # Override the inherited default on the facade with the dispatching proxy.
+    # Static so `Jac.<hook>(...)` / `JacRuntime.<hook>(...)` (class access) and
+    # instance access both reach the proxy, matching the inherited static defs.
+    for (hname, proxy_fn) in proxy_methods.items() {
+        setattr(iface, hname, staticmethod(proxy_fn));
     }
-    proxy_namespace.update(proxy_methods);
-    original_metaclass: type = cast(`type, `type(plugin_class));
-    proxy_cls = original_metaclass(
-        f"{plugin_class.__name__}", (object, ), proxy_namespace
-    );
-    return (spec_cls, impl_cls, proxy_cls);
+    return (spec_cls, impl_cls);
 }
 
+# JacRuntimeInterface is NOT reassigned -- it stays the stable facade that
+# inherits the domain mixins. The hook layer installs dispatching proxies
+# onto it for the @hookable methods only. Injection happens here, at module
+# import time, so downstream import-time bindings (jaclib) capture proxies.
 with entry {
-    (JacRuntimeSpec, JacRuntimeImpl, JacRuntimeInterface) = generate_plugin_helpers(
-        JacRuntimeInterface
-    );
+    (JacRuntimeSpec, JacRuntimeImpl) = build_plugin_hook_layer(JacRuntimeInterface);
     plugin_manager.add_hookspecs(JacRuntimeSpec);
 }
 

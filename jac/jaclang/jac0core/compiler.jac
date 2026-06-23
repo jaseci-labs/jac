@@ -179,6 +179,7 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.static_analysis_pass {
             StaticAnalysisPass
         }
+        import from jaclang.compiler.passes.main.access_check_pass { AccessCheckPass }
         import from jaclang.compiler.passes.main.capability_check_pass {
             PortabilityWarnPass,
             NativeCapabilityCheckPass
@@ -186,6 +187,7 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
         return [
             StaticAnalysisPass,
+            AccessCheckPass,
             PortabilityWarnPass,
             NativeCapabilityCheckPass,
             JacLintCheckPass
@@ -522,10 +524,7 @@ obj JacCompiler {
     ) -> int;
 
     static def _prepare_tool_program(
-        source_str: str,
-        file_path: str,
-        load_impl_annexes: bool = False,
-        load_test_annexes: bool = False
+        source_str: str, file_path: str
     ) -> tuple[JacProgram, (uni.Module | None)];
 
     static def jac_file_formatter(

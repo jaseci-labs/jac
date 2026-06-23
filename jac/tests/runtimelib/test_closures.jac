@@ -5,15 +5,10 @@ generated JS directly rather than building a full bundle.
 """
 
 import os;
-import jaclang;
+import from tests.support { JAC_ROOT }
 import from jaclang.jac0core.program { JacProgram }
 
-glob FIXTURES = os.path.join(
-         str(os.path.dirname(os.path.dirname(jaclang.__file__))),
-         "tests",
-         "runtimelib",
-         "fixtures"
-     );
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "runtimelib", "fixtures");
 
 test "nested function closures compile to JS" {
     fixture = os.path.join(FIXTURES, "test_closures.jac");

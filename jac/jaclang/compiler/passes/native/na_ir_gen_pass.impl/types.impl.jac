@@ -192,6 +192,75 @@ impl NaIRGenPass._list_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
     return None;
 }
 
+"""Parse a Callable[[p1, p2, ...], ret] annotation string into an LLVM
+function-pointer type ir.FunctionType(ret, [p1, ...]).as_pointer(), or None
+if the string is not a recognizable Callable subscript. Spaces are stripped
+so both compact ("Callable[[int],int]") and spaced ("Callable [ [ int ] , int ]")
+forms are accepted. Only primitive type names (int, i32, i8, str, None, etc.)
+are supported as parameter and return types."""
+impl NaIRGenPass._parse_callable_type_string(s: str) -> (ir.Type | None) {
+    # Normalize: remove all spaces
+    s = s.replace(' ', '');
+    if not s.startswith('Callable[') {
+        return None;
+    }
+    # Strip "Callable[" (9 chars) and the trailing "]"
+    inner = s[9:];
+    if not inner.endswith(']') {
+        return None;
+    }
+    inner = inner[:-1];
+    # inner is now "[p1,p2,...],ret"
+    if not inner.startswith('[') {
+        return None;
+    }
+    # Find the matching ']' for the params list
+    depth = 0;
+    end_idx = -1;
+    for i in range(len(inner)) {
+        c = inner[i];
+        if c == '[' {
+            depth += 1;
+        } elif c == ']' {
+            depth -= 1;
+            if depth == 0 {
+                end_idx = i;
+                break;
+            }
+        }
+    }
+    if end_idx < 0 {
+        return None;
+    }
+    params_str = inner[1:end_idx];
+    rest = inner[end_idx + 1:];
+    if not rest.startswith(',') {
+        return None;
+    }
+    ret_str = rest[1:];
+    _tm: dict = {
+        'int': ir.IntType(64),
+        'i64': ir.IntType(64),
+        'i32': ir.IntType(32),
+        'i16': ir.IntType(16),
+        'i8': ir.IntType(8),
+        'bool': ir.IntType(1),
+        'f64': ir.DoubleType(),
+        'f32': ir.FloatType(),
+        'str': ir.IntType(8).as_pointer(),
+        'None': ir.VoidType(),
+        'void': ir.VoidType()
+    };
+    ret_type = _tm.get(ret_str, ir.VoidType());
+    param_types: list = [];
+    if params_str {
+        for p in params_str.split(',') {
+            param_types.append(_tm.get(p, ir.IntType(64)));
+        }
+    }
+    return ir.FunctionType(ret_type, param_types).as_pointer();
+}
+
 """Return the native struct name for an expression whose checked type is a
 known struct instance, or None otherwise. Unions like `T | None` resolve to
 the struct member. `self` resolves to the archetype currently being
@@ -206,6 +275,34 @@ impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
         return self._self_arch;
     }
     if not isinstance(expr, uni.Expr) or expr.type is None {
+        # Fallback for clib struct locals/globals whose type annotation was
+        # not stamped by the checker (checker skips clib import blocks).
+        # Derive the struct name from the LLVM alloca/global type instead.
+        if isinstance(expr, uni.Name) {
+            var_name = expr.value;
+            alloca = self.local_vars.get(var_name);
+            if alloca is not None {
+                slot_ty = alloca.type?.pointee;
+                if isinstance(slot_ty, ir.PointerType) and slot_ty?.pointee {
+                    for sname in self.struct_types {
+                        if slot_ty.pointee == self.struct_types.get(sname) {
+                            return sname;
+                        }
+                    }
+                }
+            }
+            gvar = self.global_vars.get(var_name);
+            if gvar is not None {
+                gslot_ty = gvar.type?.pointee;
+                if isinstance(gslot_ty, ir.PointerType) and gslot_ty?.pointee {
+                    for sname in self.struct_types {
+                        if gslot_ty.pointee == self.struct_types.get(sname) {
+                            return sname;
+                        }
+                    }
+                }
+            }
+        }
         return None;
     }
     tk = expr.type.mangle();
@@ -451,12 +548,96 @@ runtime `File` (modeled by na_builtins.pyi) -- including annotations in
 imported .na.jac modules (type-checked on load). The former name-based
 fallback (struct_types / type_map lookups) is gone.
 
-An annotation that reaches codegen without a `.type` is an E9002 ICE. Unlowerable
-types are reported via `_emit_unlowerable_type` instead of defaulting to i64.
+A present-but-unlowerable type is reported via `_emit_unlowerable_type`
+(E2018 for UnknownType, E5090 otherwise) rather than silently defaulting to
+i64; it still returns a defensive i64 so codegen can continue.
+
+The exception is clib-import annotations (parameter types on `import from
+\"lib\" { def ...; }`). The type checker skips these nodes entirely, so their
+`.type` is always None. Rather than forcing the checker to process C-FFI
+declarations, the codegen falls back to `_resolve_primitive_name`, which maps
+raw primitive type names (int, i32, f64, str, …) directly to LLVM IR types,
+defaulting to i64 only when even that fails.
 """
+# Primitive type name → LLVM IR type.  Used as a fallback when the type
+# checker did not stamp `.type` on an annotation (e.g. clib import params).
+impl NaIRGenPass._resolve_primitive_name(
+    expr: (uni.UniNode | None)
+) -> (ir.Type | None) {
+    if expr is None {
+        return None;
+    }
+    # Null literal (the `None` keyword) → void type
+    try {
+        if isinstance(expr, uni.Null) {
+            return ir.VoidType();
+        }
+    } except NameError {
+        pass;
+    }
+    # Direct Name check (e.g. `f64`, `int`, `None`)
+    if isinstance(expr, uni.Name) {
+        name = expr.value;
+        if name {
+            _m: dict = {
+                'int': ir.IntType(64),
+                'i64': ir.IntType(64),
+                'i32': ir.IntType(32),
+                'i16': ir.IntType(16),
+                'i8': ir.IntType(8),
+                'bool': ir.IntType(1),
+                'f64': ir.DoubleType(),
+                'f32': ir.FloatType(),
+                'void': ir.VoidType(),
+                'None': ir.VoidType(),
+                'str': ir.IntType(8).as_pointer(),
+                'Callable': ir.IntType(64),
+
+            };
+            if name in _m {
+                return _m[name];
+            }
+            # Check clib struct names — return pointer type for globals/fields
+            if name in self.clib_struct_names {
+                _st = self.struct_types.get(name);
+                if _st is not None {
+                    return _st.as_pointer();
+                }
+            }
+            # Unknown primitive name — return None to let caller decide
+        }
+    }
+    _unparsed = expr.unparse() if expr?.unparse else '';
+    if _unparsed.startswith('Callable') {
+        _fn_ty = self._parse_callable_type_string(_unparsed);
+        if _fn_ty is not None {
+            return _fn_ty;
+        }
+        return ir.IntType(64);
+    }
+    # Fall back: walk sub-nodes for a nested Name (e.g. subscript base,
+    # binary union operand). This handles `Callable[[int, int], None]`
+    # where the outer node is a Subscript or BinaryExpr, not a Name.
+    _kids = expr?.kid;
+    if _kids {
+        for _kid in _kids {
+            _r = self._resolve_primitive_name(_kid);
+            if _r is not None {
+                return _r;
+            }
+        }
+    }
+    return None;
+}
+
 impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
         return ir.IntType(64);
+    }
+    # SubTag[Expr] wraps an Expr (HasVar.type_tag); delegate to the inner tag so
+    # _resolve_primitive_name can extract the type name (e.g. "int", "Callable[...]").
+    if isinstance(type_expr, uni.SubTag) and type_expr?.tag is not None {
+        return self._resolve_jac_type(type_expr.tag);
     }
     # Unified path: TypeBase -> ir.Type via the central type checker.
     _ptb = type_expr?.type;
@@ -469,14 +650,32 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     }
     if isinstance(type_expr, uni.Expr) {
         if type_expr.type is None {
-            self.emit(
-                E9002,
-                node_override=type_expr,
-                details=(
-                    "native codegen found no inferred type on annotation "
-                    f"'{type_expr.unparse()}'"
-                )
-            );
+            # Clib import annotations are not type-checked (the checker
+            # skips import-from nodes with clib_decls).  Fall back to
+            # resolving the raw Name against the primitive type table so
+            # that `def sqrt(x: f64) -> f64;` still produces the correct
+            # IR types without requiring a type-checker stamp.
+            _prim = self._resolve_primitive_name(type_expr);
+            if _prim is not None {
+                return _prim;
+            }
+            # The checker stamp can be absent on a cross-module annotation
+            # whose defining module was type-checked out of priming order
+            # (issue #6822): a leaf type used by a module compiled AS the
+            # entry module resolves to <Unknown>/None even though
+            # _register_imported_struct_types has already registered the
+            # struct by name. Fall back to the name-keyed struct table
+            # (mirrors _lower_class_type's user-struct case) so the return /
+            # parameter lowers to the correct pointer instead of the i64
+            # default -- which otherwise makes the value a scalar and every
+            # downstream field access E5090 ("attribute access not supported").
+            _sname = self._get_name(type_expr);
+            if _sname is not None and _sname in self.struct_types {
+                return self.struct_types[_sname].as_pointer();
+            }
+            # Annotation not resolved by checker, primitive table, or struct
+            # registry. Default to i64 (opaque pointer) instead of ICE — this
+            # handles user-defined types the checker hasn't stamped.
             return ir.IntType(64);
         }
         lowered = self._lower_type(type_expr.type);
@@ -2006,6 +2205,16 @@ impl NaIRGenPass._emit_comparison(
             Tok.GTE: ">="
         };
         if op in icmp_map {
+            # Harmonize integer widths: sign-extend the narrower operand so
+            # icmp_signed gets matching types (e.g. i32 == i64(-1) → sext i32).
+            if isinstance(left.type, ir.IntType)
+            and isinstance(right.type, ir.IntType) {
+                if left.type.width < right.type.width {
+                    left = self.builder.sext(left, right.type, name="sext.l");
+                } elif right.type.width < left.type.width {
+                    right = self.builder.sext(right, left.type, name="sext.r");
+                }
+            }
             return self.builder.icmp_signed(icmp_map[op], left, right, name="icmp");
         }
     }

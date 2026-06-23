@@ -20,7 +20,7 @@ isn't on PyPI yet. Editable install from the repo:
 git clone https://github.com/Jaseci-Labs/jaseci.git
 cd jaseci
 git checkout feat/k8s-microservice-mode
-pip install -e ./jac
+./scripts/fresh_env.sh
 jac install -e ./jac-scale --extras deploy
 jac --version
 ```

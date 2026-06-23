@@ -36,6 +36,7 @@ import from jaclang.jac0core.diagnostics {
     E1113,
     E1116,
     E1117,
+    E1119,
     W1036,
     W1037,
     W1052,
@@ -57,6 +58,9 @@ class TypeCheckPass(UniPass) {
     # When True (TypeInferencePass), non-ICE diagnostics are gated; direct
     # TypeCheckPass invocations always emit in full. See before_pass/emit.
     static has inference_only: bool = False;
+    # Depth of expression-bodied lambdas being traversed; gates the O(1)
+    # defer in the expr exit handlers. See enter_lambda_expr.
+    has _lambda_depth: int = 0;
 
     def before_pass(self: TypeCheckPass) -> None;
     def after_pass(self: TypeCheckPass) -> None;
@@ -76,6 +80,8 @@ class TypeCheckPass(UniPass) {
     def _insert_builtin_symbols(self: TypeCheckPass) -> None;
     def enter_ability(self: TypeCheckPass, nd: uni.Ability) -> None;
     def exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None;
+    def enter_lambda_expr(self: TypeCheckPass, nd: uni.LambdaExpr) -> None;
+    def exit_lambda_expr(self: TypeCheckPass, nd: uni.LambdaExpr) -> None;
     def exit_type_alias(self: TypeCheckPass, nd: uni.TypeAlias) -> None;
     def exit_archetype(self: TypeCheckPass, nd: uni.Archetype) -> None;
     def exit_enum(self: TypeCheckPass, nd: uni.Enum) -> None;
@@ -124,6 +130,7 @@ class TypeCheckPass(UniPass) {
     ) -> object;
 
     def _check_event_trigger_archetype(self: TypeCheckPass, nd: uni.Ability) -> None;
+    def _check_unresolved_lambda_params(self: TypeCheckPass) -> None;
 }
 
 """Typed-tree contract inference entry: identical analysis to TypeCheckPass

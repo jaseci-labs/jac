@@ -236,6 +236,28 @@ test "client_errors verbose loads from jac.toml" {
     }
 }
 
+test "client framework defaults to react" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        temp_project = make_temp_project(Path(tmpdir));
+        cfg = JacConfig.load(temp_project / "jac.toml");
+        assert cfg.client.framework == "react";
+    }
+}
+
+test "client framework loads from jac.toml" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        temp_project = Path(tmpdir) / "fw_project";
+        temp_project.mkdir();
+        (temp_project / "jac.toml").write_text(
+            "[project]\nname = \"fw\"\n\n[client]\nframework = \"preact\"\n"
+        );
+        cfg = JacConfig.load(temp_project / "jac.toml");
+        assert cfg.client.framework == "preact";
+    }
+}
+
 test "load scripts" {
     config_mod._config = None;
     with TemporaryDirectory() as tmpdir {
@@ -310,6 +332,29 @@ test "parse minimal config" {
     cfg = JacConfig.from_toml_str(toml_str);
     assert cfg.project.name == "minimal";
     assert cfg.project.version == "0.1.0";
+}
+
+test "serve on_conflict default and normalization" {
+    config_mod._config = None;
+    # Absent -> safe default.
+    base = JacConfig.from_toml_str("\n[serve]\nport = 8000\n");
+    assert base.serve.on_conflict == "retry";
+
+    # Explicit lowercase passes through.
+    config_mod._config = None;
+    fail = JacConfig.from_toml_str("\n[serve]\non_conflict = \"fail\"\n");
+    assert fail.serve.on_conflict == "fail";
+
+    # Case/whitespace is normalized so a mis-cased value still means fail-fast.
+    config_mod._config = None;
+    cased = JacConfig.from_toml_str("\n[serve]\non_conflict = \" Fail \"\n");
+    assert cased.serve.on_conflict == "fail";
+
+    # A genuine typo falls back to the safe default instead of silently
+    # disabling replay under an unrecognized value.
+    config_mod._config = None;
+    typo = JacConfig.from_toml_str("\n[serve]\non_conflict = \"retri\"\n");
+    assert typo.serve.on_conflict == "retry";
 }
 
 test "parse full config" {

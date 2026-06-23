@@ -186,7 +186,8 @@ obj MongoBackend(PersistentMemory) {
         anchor: NodeAnchor,
         edges_added: list[str],
         edges_removed: list[str],
-        fields: set[str]
+        fields: set[str],
+        cas_version: (int | None) = None
     ) -> None;
 
     def _write_to_db(anchor: Anchor) -> None;

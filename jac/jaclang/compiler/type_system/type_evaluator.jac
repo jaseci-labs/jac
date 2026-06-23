@@ -298,6 +298,9 @@ obj TypeEvaluator {
     def _prefetch_types;
     def get_none_type -> TypeBase;
     def emit_diag(diag: DiagnosticInfo, nd: uni.UniNode, **kwargs: object) -> None;
+    # Clear cached `.type` on an expr subtree so it re-resolves (used after
+    # seeding lambda params).
+    def _invalidate_expr_type_cache(node_: uni.UniNode) -> None;
     def get_index_of_symbol_resolution(symbol: uni.Symbol) -> int | None;
     def push_symbol_resolution(symbol: uni.Symbol) -> bool;
     def pop_symbol_resolution(symbol: uni.Symbol) -> bool;
@@ -331,7 +334,6 @@ obj TypeEvaluator {
     file changes."""
     def forget_module(resolved_path: str) -> None;
 
-    def _reattach_impl_modules(mod: uni.Module, source_path: str) -> None;
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
     def _is_fstring_all_literal(fstring: uni.FString) -> bool;
     def _try_resolve_forward_ref(expr: uni.String) -> TypeBase | None;
@@ -557,6 +559,7 @@ obj TypeEvaluator {
 
     def _is_unbound_method_call(expr: uni.FuncCall) -> bool;
     def validate_call_args(expr: uni.FuncCall) -> TypeBase;
+    def _unannotated_lambda_arg_name(expr: uni.FuncCall) -> str | None;
     # --- async / await modeling ---
     # Wrap a return type as `Coroutine[Any, Any, inner]` (the value an
     # `async def` call evaluates to). Returns `inner` unchanged if Coroutine

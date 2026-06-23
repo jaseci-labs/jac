@@ -24,6 +24,81 @@ impl JSCodeGenerator.gen_export_all_declaration(nd: es.ExportAllDeclaration) -> 
     return f"{self.indent()}export * from {source};";
 }
 
+"""Generate JSX identifier (`div`, `className`, `Foo`)."""
+impl JSCodeGenerator.gen_jsx_identifier(nd: es.JsxIdentifier) -> str {
+    return nd.name;
+}
+
+"""Generate JSX member expression (`Foo.Bar`)."""
+impl JSCodeGenerator.gen_jsx_member_expression(nd: es.JsxMemberExpression) -> str {
+    return f"{self.generate(nd.object)}.{self.generate(nd.property)}";
+}
+
+"""Generate JSX empty expression — emits nothing (e.g. a bare `{}`)."""
+impl JSCodeGenerator.gen_jsx_empty_expression(nd: es.JsxEmptyExpression) -> str {
+    return '';
+}
+
+"""Generate JSX expression container — `{expr}`."""
+impl JSCodeGenerator.gen_jsx_expression_container(
+    nd: es.JsxExpressionContainer
+) -> str {
+    return f"{{{self.generate(nd.expression)}}}";
+}
+
+"""Generate JSX spread attribute — `{...obj}`."""
+impl JSCodeGenerator.gen_jsx_spread_attribute(nd: es.JsxSpreadAttribute) -> str {
+    return f"{{...{self.generate(nd.argument)}}}";
+}
+
+"""Generate JSX attribute — `name`, `name="x"`, or `name={expr}`. A `None`
+value is a value-less (boolean) attribute."""
+impl JSCodeGenerator.gen_jsx_attribute(nd: es.JsxAttribute) -> str {
+    name = self.generate(nd.name);
+    if (nd.value is None) {
+        return name;
+    }
+    return f"{name}={self.generate(nd.value)}";
+}
+
+"""Generate JSX opening element — `<tag …>` or `<tag … />` (self-closing).
+Each attribute is space-prefixed so an attribute-less tag has no trailing space."""
+impl JSCodeGenerator.gen_jsx_opening_element(nd: es.JsxOpeningElement) -> str {
+    name = self.generate(nd.name);
+    attrs = ''.join(f" {self.generate(a)}" for a in nd.attributes);
+    if nd.selfClosing {
+        return f"<{name}{attrs} />";
+    }
+    return f"<{name}{attrs}>";
+}
+
+"""Generate JSX closing element — `</tag>`."""
+impl JSCodeGenerator.gen_jsx_closing_element(nd: es.JsxClosingElement) -> str {
+    return f"</{self.generate(nd.name)}>";
+}
+
+"""Generate JSX text — verbatim character data (`raw` if set, else `value`)."""
+impl JSCodeGenerator.gen_jsx_text(nd: es.JsxText) -> str {
+    return nd.raw if (nd.raw is not None) else nd.value;
+}
+
+"""Generate JSX element. Self-closing elements emit only the opening tag."""
+impl JSCodeGenerator.gen_jsx_element(nd: es.JsxElement) -> str {
+    opening = self.generate(nd.openingElement);
+    if (nd.openingElement and nd.openingElement.selfClosing) {
+        return opening;
+    }
+    children = ''.join(self.generate(c) for c in nd.children);
+    closing = self.generate(nd.closingElement);
+    return f"{opening}{children}{closing}";
+}
+
+"""Generate JSX fragment — `<>…</>`."""
+impl JSCodeGenerator.gen_jsx_fragment(nd: es.JsxFragment) -> str {
+    children = ''.join(self.generate(c) for c in nd.children);
+    return f"<>{children}</>";
+}
+
 """Generate export default declaration."""
 impl JSCodeGenerator.gen_export_default_declaration(
     nd: es.ExportDefaultDeclaration

@@ -67,3 +67,9 @@ out.txt
 *.dat
 *.dir
 *.log
+
+# Zig build
+.zig-cache/
+zig-out/
+dist/
+.pbs-build/

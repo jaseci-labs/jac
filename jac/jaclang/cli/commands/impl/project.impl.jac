@@ -264,7 +264,7 @@ def _run_blurb(kind: str) -> str {
         "pypi-package": "Build a wheel into dist/",
         "npm-package": "Build an npm package into dist/",
         "fullstack": "Serve the app (dev mode)",
-        "wasm": "Serve the wasm page",
+        "client": "Serve the client-only app (static)",
         "desktop": "Run the desktop app",
         "mobile": "Build the mobile app"
     };
@@ -532,7 +532,7 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) {
     console.print(f"  ✔ .gitignore", style="success");
 }
 
-"""Install all dependencies from jac.toml, or packages into the activated environment."""
+"""Install all dependencies from jac.toml, or packages into the project venv."""
 impl install(
     packages: list = [],
     editable: list = [],
@@ -569,6 +569,12 @@ impl install(
         if enabled
     ];
     # ── Direct install into activated environment ─────────────────────────────
+    # A bare `jac install <pkg>` installs into the binary's environment and works
+    # outside a project (no jac.toml needed) -- this is the global/tool install
+    # path. Per-project deps go through `jac add` / the no-arg `jac install`
+    # (which target the project venv); editable installs (-e, below) likewise go
+    # into the activated environment so the linked source is importable from any
+    # project (e.g. installing a plugin like jac-scale for the whole toolchain).
     if packages {
         if editable {
             console.error(
@@ -628,6 +634,10 @@ impl install(
         import site;
         import from jaclang.publish.builder { WheelBuilder }
 
+        # Editable targets are linked into the activated (binary) environment so
+        # the source is importable from any project -- the global/tool install
+        # model shared with bare `jac install <pkg>`. jaclang itself is provided
+        # by the binary, so it is never installed here.
         # Phase 1 — collect all dep specs for a single unified pip call.
         editable_targets: list = [];
         all_dep_specs: list[str] = [];
@@ -705,7 +715,7 @@ impl install(
             return 0;
         }
 
-        # Phase 3 — link each package as editable
+        # Phase 3 — link each package as editable into the activated site-packages
         site_pkgs = Path(site.getsitepackages()[0]);
         for (config, src_dir) in editable_targets {
             WheelBuilder(config=config).install_editable(src_dir, site_pkgs);
@@ -1439,6 +1449,26 @@ def _precompile_all_pythons(config: JacConfig) -> int {
     }
 
     project_root_str = str(config.project_root);
+
+    # Under the single self-contained binary there is no system Python to build a
+    # venv around, and jaclang is not on PyPI to pip-install. The bundled
+    # interpreter already has jaclang, so run the precompile through it directly
+    # (`sys.executable` is pinned to this binary), producing .jir for the binary's
+    # own Python version.
+    if os.environ.get("JAC_STANDALONE") {
+        tag = f"cpython-3{sys.version_info.minor}";
+        console.print(
+            f"\n  Precompiling for {tag} (bundled interpreter)...", style="muted"
+        );
+        result = subprocess.run([sys.executable, "run", script_path, project_root_str]);
+        if result.returncode != 0 {
+            console.error(f"Precompilation failed for {tag}.");
+            return 1;
+        }
+        console.print(f"  ✔ {tag}", style="success");
+        return 0;
+    }
+
     pythons = _find_precompile_pythons();
 
     if not pythons {
@@ -1546,17 +1576,22 @@ def _bundle_npm(config: any, output: str) -> int {
     return 0;
 }
 
-"""Build the @jaseci/runtime npm package (maintainer task); returns 0 on success."""
-def _bundle_npm_runtime(output: str) -> int {
-    import from jaclang.publish.runtime_npm { build_runtime_to, RUNTIME_PKG_NAME }
+"""Build the runtime npm package (maintainer task); returns 0 on success.
+
+The compiled runtime tracks the active framework backend: React/Preact builds
+publish `@jaseci/runtime`, a Solid build publishes `@jaseci/runtime-solid` (no
+React-ecosystem package). `framework=""` resolves the project's active backend."""
+def _bundle_npm_runtime(output: str, framework: str = "") -> int {
+    import from jaclang.publish.runtime_npm { build_runtime_to, runtime_pkg_name }
     import importlib.metadata;
 
     version = importlib.metadata.version("jaclang");
+    pkg_name = runtime_pkg_name(framework);
     out_dir = Path(output);
-    console.print(f"\n📦 Building {RUNTIME_PKG_NAME} v{version}", style="bold");
+    console.print(f"\n📦 Building {pkg_name} v{version}", style="bold");
     console.print("\n  Compiling runtime → npm tarball...", style="muted");
     try {
-        path = build_runtime_to(out_dir, version);
+        path = build_runtime_to(out_dir, version, framework=framework);
     } except Exception as e {
         console.error(f"runtime build failed: {e}");
         return 1;

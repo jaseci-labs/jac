@@ -4,12 +4,12 @@ The `jac-mcp` plugin provides a [Model Context Protocol](https://modelcontextpro
 
 ## Installation
 
-If you installed Jaseci via PyPI or the install script, `jac-mcp` is likely already included. Run `jac --version` to check -- it prints all installed plugins. If `jac-mcp` appears in the list, you're good to go.
+`jac-mcp` is a plugin -- it is **not** bundled in the core `jac` binary, so you install it with `jac install jac-mcp`. To check whether it is already present, run `jac --version` or `jac plugins`, which list the installed plugins. If `jac-mcp` appears, you're good to go.
 
-Otherwise, install it separately:
+Otherwise, install it:
 
 ```bash
-pip install jac-mcp
+jac install jac-mcp
 ```
 
 ## Quick Start
@@ -216,7 +216,7 @@ Then configure your client to connect to:
 </details>
 
 !!! tip
-If your `jac` binary is installed in a virtualenv, use the full path in the `command` field (e.g., `/path/to/venv/bin/jac`). You can find it with `which jac`.
+`jac` is a standalone binary. If it is not on your client's PATH, use its full path in the `command` field (e.g., `/path/to/jac`). You can find it with `which jac`.
 
 ## CLI Reference
 
@@ -1107,16 +1107,16 @@ Convert Python code to idiomatic Jac.
 
 ### "command not found: jac"
 
-The `jac` binary is not on your PATH. If installed in a virtualenv, use the full path:
+The `jac` binary is not on your PATH. `jac` is a standalone binary -- make sure its install location is on your PATH, or point your client at its full path:
 
 ```json
 {
-  "command": "/path/to/venv/bin/jac",
+  "command": "/path/to/jac",
   "args": ["mcp"]
 }
 ```
 
-Find the path with `which jac` or `python -m site --user-base`.
+Find the path with `which jac`.
 
 ### Server connects but shows no tools
 
@@ -1128,8 +1128,8 @@ The compiler bridge enforces a 10-second timeout per operation. If your code is 
 
 ### Resources show "Error: File not found"
 
-Resource paths are resolved relative to the jaclang package installation. In a **development install** (`pip install -e`), resources are read directly from the repository's `docs/` directory. In a **PyPI install**, bundled copies are used. If you see missing resources after a PyPI install, update to the latest version:
+jaclang's documentation resources are always bundled inside the `jac` binary, so resources resolve from that bundled copy. If you see missing or stale resources, upgrade the plugin:
 
 ```bash
-pip install --upgrade jac-mcp
+jac install jac-mcp
 ```

@@ -216,6 +216,7 @@ impl UniNode.parent_of_type(typ: type[T]) -> T {
         Uses single traversal for efficiency since this is called frequently.
         """
 impl UniNode.in_client_context -> bool {
+    import from jaclang.jac0core.ext_registry { is_client_module }
     nd: (UniNode | None) = self.parent;
     while (nd is not None) {
         if isinstance(nd, ServerBlock) {
@@ -231,7 +232,7 @@ impl UniNode.in_client_context -> bool {
             }
         }
         if isinstance(nd, Module) {
-            return (nd.loc is not None and nd.loc.mod_path.endswith(".cl.jac"));
+            return (nd.loc is not None and is_client_module(nd.loc.mod_path));
         }
         nd = nd.parent;
     }
@@ -1036,13 +1037,45 @@ impl Module.format -> str {
 impl Module.unparse(requires_format: bool = True) -> str {
     import from jaclang.compiler.passes.tool.normalize_pass { NormalizePass }
     import from jaclang.jac0core.program { JacProgram }
-    NormalizePass(ir_in=self, prog=JacProgram());
-    if requires_format {
-        return self.format();
+    # Annex (.impl/.test) and variant statements were spliced into this tree by
+    # JacAnnexPass but belong to their own files. Unparsing the head must emit
+    # only its own statements: inlining the spliced ones would write another
+    # file's content into the head and duplicate what the annex pass re-merges
+    # on the next compile (round-trip tooling relies on each node's loc.mod_path
+    # to write changes back to the right file). Restrict the tree to head-origin
+    # nodes for the unparse, then restore. A module with nothing spliced in is
+    # left untouched.
+    own = self.loc.mod_path;
+    saved_body = self.body;
+    saved_kid = self.kid;
+    head_kid = [
+        k
+        for k in saved_kid
+        if (not k.loc.mod_path) or (k.loc.mod_path == own)
+    ];
+    filtered = len(head_kid) != len(saved_kid);
+    if filtered {
+        self.body = [
+            st
+            for st in saved_body
+            if (not st.loc.mod_path) or (st.loc.mod_path == own)
+        ];
+        self.set_kids(nodes=head_kid or [EmptyToken()]);
     }
-    import from jaclang.compiler.passes.tool.unparse_pass { UnparsePass }
-    UnparsePass(ir_in=self, prog=JacProgram());
-    return self.gen.jac;
+    try {
+        NormalizePass(ir_in=self, prog=JacProgram());
+        if requires_format {
+            return self.format();
+        }
+        import from jaclang.compiler.passes.tool.unparse_pass { UnparsePass }
+        UnparsePass(ir_in=self, prog=JacProgram());
+        return self.gen.jac;
+    } finally {
+        if filtered {
+            self.body = saved_body;
+            self.set_kids(nodes=saved_kid);
+        }
+    }
 }
 
 """Initialize whole program node."""
@@ -1185,27 +1218,23 @@ impl Import.is_jac.getter -> bool {
 
 """Check if import is jac."""
 impl Import.__jac_detected.getter -> bool {
+    import from jaclang.jac0core.ext_registry { is_jac, INIT_FILES }
     if self.from_loc {
-        if self.from_loc.resolve_relative_path().endswith(('.jac', '.cl.jac')) {
+        if is_jac(self.from_loc.resolve_relative_path()) {
             return True;
         }
         if os.path.isdir(self.from_loc.resolve_relative_path()) {
-            if os.path.exists(
-                os.path.join(self.from_loc.resolve_relative_path(), '__init__.jac')
-            ) {
-                return True;
-            }
-            if os.path.exists(
-                os.path.join(self.from_loc.resolve_relative_path(), '__init__.cl.jac')
-            ) {
-                return True;
+            for init_name in INIT_FILES {
+                if os.path.exists(
+                    os.path.join(self.from_loc.resolve_relative_path(), init_name)
+                ) {
+                    return True;
+                }
             }
             for i in self.items {
                 if (
                     isinstance(i, ModuleItem)
-                    and self.from_loc.resolve_relative_path(i.name.value).endswith(
-                        ('.jac', '.cl.jac')
-                    )
+                    and is_jac(self.from_loc.resolve_relative_path(i.name.value))
                 ) {
                     return True;
                 }
@@ -1213,10 +1242,8 @@ impl Import.__jac_detected.getter -> bool {
         }
     }
     return `any(
-        (
-            isinstance(i, ModulePath)
-            and i.resolve_relative_path().endswith(('.jac', '.cl.jac'))
-        ) for i in self.items
+        (isinstance(i, ModulePath) and is_jac(i.resolve_relative_path()))
+        for i in self.items
     );
 }
 
