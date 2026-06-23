@@ -1259,28 +1259,29 @@ For private packages from custom registries (e.g., GitHub Packages), configure s
 
 **No-argument mode** - sync the project environment to `jac.toml`. Installs all Python (pip), git, and plugin-provided (npm, etc.) dependencies in one command. Creates or validates the project virtual environment at `.jac/venv/`. Requires a `jac.toml` in the current (or a parent) directory.
 
-**Package mode** - `jac install <pkg> [pkg ...]` installs one or more packages into the project's virtual environment at `.jac/venv/`, without reading or modifying `jac.toml`. It is the Jac-native equivalent of `pip install <pkg>`, run through the `jac` binary's bundled pip against the project venv. Like every install, it requires a `jac.toml` in the current (or a parent) directory -- third-party packages live only in the project's `.jac/venv`, never in a binary-global or host environment.
+**Package mode** - `jac install <pkg> [pkg ...]` installs one or more packages into the project's virtual environment at `.jac/venv/`, without reading or modifying `jac.toml`. It is the Jac-native equivalent of `pip install <pkg>`, run through the `jac` binary's bundled pip. By default it requires a `jac.toml` in the current (or a parent) directory and installs into that project's `.jac/venv`. Pass `--global` to install into the binary's own jac-owned site instead -- a location that is on `sys.path` from **any** project, for a plugin or tool you install once and use everywhere. Either target is fully self-contained: the bundled pip and the binary's own site, never the host Python or its `site-packages`.
 
 > **`jac install <pkg>` vs `jac add <pkg>`**
 >
-> | | `jac install <pkg>` | `jac add <pkg>` |
-> |---|---|---|
-> | Target | Project `.jac/venv/` | Project `.jac/venv/` |
-> | Updates `jac.toml` | No | Yes |
-> | Requires a project | Yes | Yes |
+> | | `jac install <pkg>` | `jac install <pkg> --global` | `jac add <pkg>` |
+> |---|---|---|---|
+> | Target | Project `.jac/venv/` | Binary's global site | Project `.jac/venv/` |
+> | Updates `jac.toml` | No | No | Yes |
+> | Requires a project | Yes | No | Yes |
+> | Importable from other projects | No | Yes | No |
 >
-> Both install into the same project venv; use `jac add` when you also want the dependency recorded in `jac.toml` for reproducible installs, and `jac install <pkg>` for an ad-hoc package you do not need tracked.
+> Use `jac add` when you want the dependency recorded in `jac.toml` for reproducible installs, plain `jac install <pkg>` for an ad-hoc package scoped to this project, and `jac install <pkg> --global` for a plugin/tool you want available everywhere.
 
 ```bash
 jac install [-h] [packages ...] [-e PATH] [-d] [-x group [group ...]] [-v]
             [--force-reinstall] [--no-cache-dir] [--pre] [--dry-run]
-            [--no-deps] [--quiet] [--prefer-binary]
+            [--no-deps] [--quiet] [--prefer-binary] [--global]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `packages` | Package(s) to install into the project's `.jac/venv`. When provided, skips `jac.toml` (but still requires a project). | `[]` |
-| `-e, --editable PATH` | Install the Jac package at `PATH` in editable mode (analogous to `pip install -e`). The target package's own `jac.toml` (read from `PATH`) supplies its dependencies; the package and those deps are linked/installed into the **current** project's `.jac/venv`, so a `jac.toml` in the current (or a parent) directory is required. Cannot be combined with `packages`. Repeatable. | `None` |
+| `packages` | Package(s) to install into the project's `.jac/venv` (or the global site with `--global`). When provided, skips `jac.toml`. | `[]` |
+| `-e, --editable PATH` | Install the Jac package at `PATH` in editable mode (analogous to `pip install -e`). The target package's own `jac.toml` (read from `PATH`) supplies its dependencies; the package and those deps are linked/installed into the **current** project's `.jac/venv` (or the global site with `--global`). Cannot be combined with `packages`. Repeatable. | `None` |
 | `-d, --dev` | Include dev dependencies (no-arg mode only) | `False` |
 | `-x, --extras` | Install one or more `[optional-dependencies]` groups (no-arg mode only) | `[]` |
 | `-v, --verbose` | Show detailed output | `False` |
@@ -1291,6 +1292,7 @@ jac install [-h] [packages ...] [-e PATH] [-d] [-x group [group ...]] [-v]
 | `--no-deps` | Don't install package dependencies | `False` |
 | `--quiet` | Suppress pip output | `False` |
 | `--prefer-binary` | Prefer pre-built wheels over source distributions | `False` |
+| `--global` | Install into the binary's own jac-owned site (importable from any project), not the project's `.jac/venv`. Works outside a project. | `False` |
 
 **Examples:**
 
@@ -1321,6 +1323,9 @@ jac install -e /path/to/lib
 
 # Editable install with all optional dependency groups
 jac install -e . --extras all
+
+# Install a plugin/tool into the global site, importable from any project
+jac install -e ./jac-byllm --global
 
 # Install with verbose output
 jac install -v

@@ -545,7 +545,8 @@ impl install(
     dry_run: bool = False,
     no_deps: bool = False,
     quiet: bool = False,
-    prefer_binary: bool = False
+    prefer_binary: bool = False,
+    install_global: bool = False
 ) -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
@@ -570,11 +571,13 @@ impl install(
         for (enabled, flag) in flag_defs
         if enabled
     ];
-    # ── Install package(s) into the project venv ──────────────────────────────
-    # `jac install <pkg>` installs into the current project's .jac/venv -- the one
-    # place third-party packages live. It requires a project (there is no
-    # binary-global or host install target). Unlike `jac add`, it does not record
-    # the package in jac.toml; use `jac add <pkg>` to track it.
+    # ── Install package(s) ─────────────────────────────────────────────────────
+    # `jac install <pkg>` installs into the current project's .jac/venv by default
+    # (the one place third-party packages live), requiring a project. With
+    # --global it installs into the binary's own site instead -- a jac-owned
+    # location (never the host) that is importable from any project, for plugins
+    # and tools you install once and use everywhere. Unlike `jac add`, neither
+    # records the package in jac.toml; use `jac add <pkg>` to track it.
     if packages {
         if editable {
             console.error(
@@ -589,11 +592,47 @@ impl install(
                 "Use 'jac add <pkg> --dev' to track packages in jac.toml."
             );
         }
+        if install_global {
+            # Global tier: install into the binary's own site (jac-owned, on
+            # sys.path everywhere), via the bundled pip -- never the host Python.
+            console.print(
+                f"\n📦 Installing {len(packages)} package(s) into the global site",
+                style="bold"
+            );
+            cmd: list[str] = [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--upgrade"
+            ] + install_flags + packages;
+            if verbose {
+                console.print(f"  Running: {' '.join(cmd)}", style="muted");
+            }
+            result = subprocess.run(cmd, capture_output=not verbose, text=True);
+            if result.returncode != 0 {
+                console.error(
+                    f"Install failed:\n{result.stderr
+                    or result.stdout
+                    or '(see output above)'}"
+                );
+                return 1;
+            }
+            if dry_run {
+                if result.stdout {
+                    console.print(result.stdout, style="dim");
+                }
+                console.success("Dry run complete (nothing installed).");
+                return 0;
+            }
+            console.success("Package(s) installed into the global site");
+            return 0;
+        }
         config = get_config();
         if config is None {
             console.error(
                 "No jac.toml found",
-                hint="Run 'jac create' first; packages install into the project's .jac/venv."
+                hint="Run 'jac create' first; packages install into the project's .jac/venv (or pass --global)."
             );
             return 1;
         }
@@ -613,23 +652,14 @@ impl install(
     if editable {
         import from jaclang.publish.builder { WheelBuilder }
 
-        # Editable targets and their deps are installed into the CURRENT project's
-        # .jac/venv -- the consuming project owns every third-party package. jaclang
-        # itself is provided by the binary, so it is never installed here.
-        host_config = get_config();
-        if host_config is None {
-            console.error(
-                "No jac.toml found",
-                hint="Run 'jac create' first; `jac install -e` links into the current project's .jac/venv."
-            );
-            return 1;
-        }
-        host_installer = DependencyInstaller(
-            config=host_config, verbose=verbose, install_flags=install_flags
-        );
+        # Default: editable targets + their deps go into the CURRENT project's
+        # .jac/venv (the consuming project owns every third-party package). With
+        # --global they go into the binary's own site instead -- jac-owned, never
+        # the host, importable from any project. jaclang itself is provided by the
+        # binary, so it is never installed here.
 
-        # Phase 1 — collect all dep specs (from each target's jac.toml) for a
-        # single unified install into the host project's venv.
+        # Phase 1 — validate targets and collect all dep specs (from each
+        # target's jac.toml) for a single unified install.
         editable_targets: list = [];
         all_dep_specs: list[str] = [];
         for editable_path in editable {
@@ -674,26 +704,78 @@ impl install(
             );
         }
 
-        # Phase 2 — install all combined deps into the host project's venv.
-        if all_dep_specs {
-            console.print(
-                f"\n  Installing {len(all_dep_specs)} dependencies...", style="muted"
-            );
-            if not host_installer.install_package(all_dep_specs) {
+        # Phase 2/3 — install the deps and link the editable source, either into
+        # the binary's own site (--global) or the current project's .jac/venv.
+        if install_global {
+            if all_dep_specs {
+                console.print(
+                    f"\n  Installing {len(
+                        all_dep_specs
+                    )} dependencies into the global site...",
+                    style="muted"
+                );
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "install",
+                        "--upgrade"
+                    ] + install_flags + all_dep_specs,
+                    capture_output=not verbose,
+                    text=True,
+                );
+                if result.returncode != 0 {
+                    console.error(
+                        f"Dependency install failed:\n{result.stderr or result.stdout}"
+                    );
+                    return 1;
+                }
+            }
+            if dry_run {
+                console.print(
+                    "  ✔ Dry run complete (nothing installed).", style="success"
+                );
+                return 0;
+            }
+            import site;
+            site_pkgs = Path(site.getsitepackages()[0]);
+        } else {
+            # force_discover so the cwd's project is found fresh: Phase 1 above
+            # set the global config cache to the LAST -e target's own jac.toml,
+            # which must not be mistaken for the consuming (cwd) project.
+            host_config = get_config(force_discover=True);
+            if host_config is None {
+                console.error(
+                    "No jac.toml found",
+                    hint="Run 'jac create' first; `jac install -e` links into the current project's .jac/venv (or pass --global)."
+                );
                 return 1;
             }
+            host_installer = DependencyInstaller(
+                config=host_config, verbose=verbose, install_flags=install_flags
+            );
+            if all_dep_specs {
+                console.print(
+                    f"\n  Installing {len(all_dep_specs)} dependencies into {host_config.get_venv_dir()}...",
+                    style="muted"
+                );
+                if not host_installer.install_package(all_dep_specs) {
+                    return 1;
+                }
+            }
+            if dry_run {
+                console.print(
+                    "  ✔ Dry run complete (nothing installed).", style="success"
+                );
+                return 0;
+            }
+            # ensure_venv covers the no-deps case (install_package skipped) so the
+            # venv exists for linking.
+            host_installer.ensure_venv();
+            site_pkgs = get_venv_site_packages(host_config.get_venv_dir());
         }
 
-        if dry_run {
-            console.print("  ✔ Dry run complete (nothing installed).", style="success");
-            return 0;
-        }
-
-        # Phase 3 — link each package as editable into the host project's venv.
-        # ensure_venv here covers the no-deps case (Phase 2 skipped) without
-        # creating a venv during a dry run (which returns above).
-        host_installer.ensure_venv();
-        site_pkgs = get_venv_site_packages(host_config.get_venv_dir());
         for (config, src_dir) in editable_targets {
             WheelBuilder(config=config).install_editable(src_dir, site_pkgs);
             console.print(f"  ✔ Linked {src_dir}", style="success");

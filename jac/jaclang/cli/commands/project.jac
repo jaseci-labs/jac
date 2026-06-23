@@ -149,6 +149,14 @@ def create(
             help="Prefer wheel files over source distributions",
             short=""
         ),
+        Arg.create(
+            "global",
+            typ=bool,
+            default=False,
+            help="Install into the jac-owned global site (importable from any project), not the project venv",
+            short="",
+            dest="install_global"
+        ),
 
     ],
     examples=[
@@ -173,6 +181,10 @@ def create(
         ("jac install --dry-run", "Preview what would be installed without doing it"),
         ("jac install --no-deps", "Install packages without their dependencies"),
         ("jac install --prefer-binary", "Prefer pre-built wheels over source builds"),
+        (
+            "jac install -e ./jac-byllm --global",
+            "Install a plugin into the global site so it's importable from any project"
+        ),
 
     ],
     group="project"
@@ -189,7 +201,8 @@ def install(
     dry_run: bool = False,
     no_deps: bool = False,
     quiet: bool = False,
-    prefer_binary: bool = False
+    prefer_binary: bool = False,
+    install_global: bool = False
 ) -> int;
 
 """Add dependencies to the project."""
