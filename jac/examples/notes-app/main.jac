@@ -1,4 +1,4 @@
-"""CEF desktop-cef smoke test UI.
+"""Notes app UI for the CEF desktop-cef target.
 
 Exercises jac-desktop infrastructure:
   - window.__JAC_DESKTOP__ / window.__JAC_BROKER__ bootstrap injection
@@ -35,7 +35,7 @@ cl {
             if tick == 0 {
                 desktopFlag = window.__JAC_DESKTOP__;
                 origin = window.location.origin;
-                lsNote = localStorage.getItem("cef_smoke_note") or "";
+                lsNote = localStorage.getItem("notes_app_note") or "";
                 refreshBroker();
             }
         }
@@ -48,7 +48,7 @@ cl {
                     maxWidth: "760px"
                 }}
             >
-                <h1>CEF desktop-cef smoke test</h1>
+                <h1>Notes app</h1>
                 <p style={{color: "#555"}}>
                     Built with{" "}
                     <code>jac build --client desktop-cef</code>
@@ -106,7 +106,7 @@ cl {
                     />
                     <button
                         onClick={lambda e: any { localStorage.setItem(
-                            "cef_smoke_note", lsNote
+                            "notes_app_note", lsNote
                         ); }}
                     >
                         Save note

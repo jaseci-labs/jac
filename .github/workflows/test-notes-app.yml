@@ -22,24 +22,24 @@ jobs:
           libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
           libasound2
 
-    - name: Build cef-smoke example
+    - name: Build notes-app example
       run: |
-        cd jac/examples/cef-smoke
+        cd jac/examples/notes-app
         jac build --client desktop-cef
 
     - name: Bundle existence audit
-      working-directory: jac/examples/cef-smoke
+      working-directory: jac/examples/notes-app
       run: |
-        BUNDLE=.jac/client/desktop-cef/cef-smoke
+        BUNDLE=.jac/client/desktop-cef/notes-app
         test -f $BUNDLE/libcef.so
         test -f $BUNDLE/cef-subprocess
         test -f $BUNDLE/minimal-fonts.conf
         test -f $BUNDLE/icudtl.dat
         test -d $BUNDLE/locales
-        ldd $BUNDLE/cef-smoke | grep 'not found' && exit 1 || true
+        ldd $BUNDLE/notes-app | grep 'not found' && exit 1 || true
 
     - name: Headless smoke with timeout (X11)
-      working-directory: jac/examples/cef-smoke/.jac/client/desktop-cef/cef-smoke
+      working-directory: jac/examples/notes-app/.jac/client/desktop-cef/notes-app
       run: |
         Xvfb :99 -screen 0 1280x720x24 &
         XVFB_PID=$!
@@ -47,17 +47,17 @@ jobs:
         FONTCONFIG_FILE=$PWD/minimal-fonts.conf \
         JAC_CEF_DISABLE_GPU=1 \
         OZONE_PLATFORM=x11 \
-        timeout 30s ./cef-smoke 2>&1 | tee /tmp/cef-smoke.log &
+        timeout 30s ./notes-app 2>&1 | tee /tmp/notes-app.log &
         SMOKE_PID=$!
         sleep 10
         # Assert cef_initialize succeeded
-        grep -q "startup: cef_initialize ok" /tmp/cef-smoke.log \
-          || (cat /tmp/cef-smoke.log && exit 1)
+        grep -q "startup: cef_initialize ok" /tmp/notes-app.log \
+          || (cat /tmp/notes-app.log && exit 1)
         kill $SMOKE_PID $XVFB_PID 2>/dev/null || true
 
     - name: Upload logs on failure
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: cef-smoke-logs
-        path: /tmp/cef-smoke.log
+        name: notes-app-logs
+        path: /tmp/notes-app.log

@@ -1,7 +1,7 @@
-# CEF smoke test (`desktop-cef`)
+# Notes app (`desktop-cef`)
 
-Minimal Jac client app for validating the **CEF desktop target** before shipping
-PR #6572.
+Minimal Jac client app that exercises the **CEF desktop target** end-to-end. It
+doubles as the smoke test for the CEF target before shipping PR #6572.
 
 ## What it checks
 
@@ -16,8 +16,8 @@ From this directory (the desktop targets ship in core `jaclang`):
 
 ```bash
 jac build --client desktop-cef
-cd .jac/client/desktop-cef/cef-smoke
-./cef-smoke
+cd .jac/client/desktop-cef/notes-app
+./notes-app
 ```
 
 Or build + launch in one step:
@@ -49,7 +49,7 @@ or upgrade/fix your system `fontconfig` package. The build also stages
 `minimal-fonts.conf`; use it when launching manually:
 
 ```bash
-FONTCONFIG_FILE=$PWD/minimal-fonts.conf ./cef-smoke
+FONTCONFIG_FILE=$PWD/minimal-fonts.conf ./notes-app
 ```
 
 **`cannot open shared object file: libpython3.x.so.1.0`**
@@ -76,7 +76,7 @@ or manually with GPU fallback:
 
 ```bash
 cd .jac/client/desktop-cef
-JAC_CEF_DISABLE_GPU=1 OZONE_PLATFORM=x11 ./cef-smoke
+JAC_CEF_DISABLE_GPU=1 OZONE_PLATFORM=x11 ./notes-app
 ```
 
 Watch stderr for `[cef]` lines - you should eventually see

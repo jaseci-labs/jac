@@ -5,7 +5,7 @@ mess. This guide maps **categories** of failure, **automates the predictable
 ones**, and defines a **small test matrix** so most failures surface in CI
 before users hit them.
 
-See also: `jac/examples/cef-smoke/README.md` for smoke-test
+See also: `jac/examples/notes-app/README.md` for smoke-test
 troubleshooting (fontconfig, GPU, libpython).
 
 ---
@@ -41,7 +41,7 @@ Compile-only validation is not enough. Push toward runtime smoke with timeouts.
 ```bash
 # Staged bundle audit (run from staged app dir)
 test -f libcef.so && test -f cef-subprocess && test -f minimal-fonts.conf
-ldd ./cef-smoke | grep 'not found' && exit 1
+ldd ./notes-app | grep 'not found' && exit 1
 ```
 
 ### Runtime smoke (headless, with timeout)
@@ -50,7 +50,7 @@ ldd ./cef-smoke | grep 'not found' && exit 1
 FONTCONFIG_FILE=$PWD/minimal-fonts.conf \
 JAC_CEF_DISABLE_GPU=1 \
 OZONE_PLATFORM=x11 \
-timeout 30s ./cef-smoke
+timeout 30s ./notes-app
 # Assert stderr contains "cef_initialize ok" within N seconds
 ```
 
@@ -71,7 +71,7 @@ Run in CI, not only locally:
 
 - `test_cef_init.c`
 - `test_cef_args.c`
-- `jac/examples/cef-smoke/`
+- `jac/examples/notes-app/`
 
 ---
 
@@ -112,7 +112,7 @@ Apply the same bootstrap in:
 Use **CEF's `cefsimple`** (same pinned CEF version) on the same machine:
 
 ```text
-cefsimple works, cef-smoke fails  → our integration (init order, subprocess, env)
+cefsimple works, notes-app fails  → our integration (init order, subprocess, env)
 both fail                           → environment / GPU / font issue
 ```
 

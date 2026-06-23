@@ -1,7 +1,7 @@
 [project]
-name = "cef-smoke"
+name = "notes-app"
 version = "0.1.0"
-description = "CEF desktop-cef target smoke test for jac-desktop PR validation"
+description = "Notes app example exercising the CEF desktop-cef target"
 entry-point = "main.jac"
 
 [plugins.client]
@@ -10,7 +10,7 @@ entry-point = "main.jac"
 engine = "cef"
 
 [plugins.desktop.window]
-title = "CEF Smoke Test"
+title = "Notes App"
 width = 960
 height = 720
 
