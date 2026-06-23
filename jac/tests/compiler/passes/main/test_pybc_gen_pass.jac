@@ -2,17 +2,12 @@
 
 import os;
 import marshal;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
-         str(Path(jaclang.__file__).parent.parent),
-         "tests",
-         "compiler",
-         "passes",
-         "main",
-         "fixtures"
+         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      );
 
 test "simple bcgen" {

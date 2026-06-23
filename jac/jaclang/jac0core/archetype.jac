@@ -125,6 +125,7 @@ obj NodeAnchor(Anchor) {
     def get_topology_index -> any;
     def set_topology_index(index: any) -> None;
     def edge_delta -> (tuple[(set[UUID], set[UUID])] | None);
+    def remove_edge(`edge: EdgeAnchor) -> None;
 }
 
 """Edge Anchor."""
@@ -136,6 +137,7 @@ obj EdgeAnchor(Anchor) {
 
     def is_populated -> bool;
     def __getstate__ -> dict[(str, object)];
+    def detach -> None;
 }
 
 """Walker Anchor."""

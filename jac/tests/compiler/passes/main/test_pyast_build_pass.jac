@@ -8,7 +8,7 @@ are handled properly.
 import ast as py_ast;
 import inspect;
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.helpers { pascal_to_snake }
@@ -16,15 +16,14 @@ import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.unitree { PythonModuleAst, Source }
 
 glob FIXTURES = os.path.join(
-         str(Path(jaclang.__file__).parent.parent),
-         "tests",
-         "compiler",
-         "passes",
-         "main",
-         "fixtures"
+         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      );
 
 test "synced to latest py ast" {
+    # Python 3.14 moved the unparser to `_ast_unparse` and binds
+    # `ast._Unparser` lazily on the first `unparse()` call; trigger that so the
+    # introspection works on 3.13 and 3.14+ alike.
+    py_ast.unparse(py_ast.parse(""));
     unparser_cls = py_ast._Unparser;
     visit_methods = (
         [
@@ -44,7 +43,14 @@ test "synced to latest py ast" {
             pass_func_names.append(name.replace("proc_", ""));
         }
     }
+    # Handlers for ast nodes introduced in a newer Python than the one running
+    # this test are forward-compatible, not stale -- exempt them from the
+    # "extra handler" direction. (e.g. interactive + PEP 750 t-strings are 3.14.)
+    forward_compat = {"interactive", "template_str", "interpolation"};
     for name in pass_func_names {
+        if name in forward_compat {
+            continue;
+        }
         assert name in node_names , f"Pass func {name} not in py_ast nodes";
     }
     for name in node_names {

@@ -10,7 +10,7 @@ In this tutorial, you'll set up a full-stack project, understand the file struct
 >
 > - Completed: [Installation](../../quick-guide/install.md)
 > - Familiar with: HTML/CSS basics, React concepts helpful
-> - Install: `pip install jaseci`
+> - Install: `curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash` (installs the self-contained `jac` binary -- no Python, pip, or uv required)
 > - Time: ~15 minutes
 
 ---

@@ -18,16 +18,13 @@ import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
 import from jaclang.compiler.passes.native.macho_linker { MachOLinker }
 import llvmlite.binding as llvm;
 
-glob FIXTURES = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
-     ),
+glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      FIXTURE = "exec_smoke.na.jac";
 
 
@@ -57,16 +54,37 @@ def _compile_ir(fixture: str, triple: str) -> str {
 }
 
 
-"""Assemble `ir_txt` for `triple` into a relocatable object using the default
-(fixed-base) model — exactly what nacompile emits for an executable. Forcing
+"""Assemble `ir_txt` for `triple` into a relocatable object using the fixed-base
+`large` code model — exactly what nacompile emits for an executable. Forcing
 `pic` here would emit GOT-relative data refs that the fixed-base ET_EXEC layout
-mislinks into a segfaulting binary, so this mirrors the real CLI path."""
+mislinks into a segfaulting binary, so this mirrors the real CLI path. The
+explicit `codemodel="large"` also matters cross-host: under the default
+`jitdefault`, llvmlite appends `-elf` to the triple on a Windows host, so a
+windows-msvc/darwin triple would emit an ELF object the PE/Mach-O linkers
+reject (#6819)."""
 def _emit_object(ir_txt: str, triple: str) -> bytes {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
     mod = llvm.parse_assembly(ir_txt);
     mod.verify();
-    tm = llvm.Target.from_triple(triple).create_target_machine(opt=2);
+    tm = llvm.Target.from_triple(triple).create_target_machine(
+        opt=2, codemodel="large"
+    );
+    return tm.emit_object(mod);
+}
+
+
+"""Emit a minimal relocatable object for `triple` through an explicit target
+machine `tm` and return its leading bytes. Lets a test assert the on-disk
+object format (COFF vs ELF) a given code model produces, since LLVM picks the
+format from the triple — so a Linux runner emits a real COFF object for a
+windows-msvc triple and a real ELF object for a '...-elf' one."""
+def _emit_for_tm(tm: any, triple: str) -> bytes {
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    mod = llvm.parse_assembly(f'target triple = "{triple}"\n');
+    mod.triple = triple;
+    mod.data_layout = str(tm.target_data);
     return tm.emit_object(mod);
 }
 
@@ -96,9 +114,51 @@ def _inject_macho(ir_txt: str) -> str {
 }
 
 
+"""Parse execSegFlags out of an embedded ad-hoc code signature.
+
+`sig_off` is the LC_CODE_SIGNATURE dataoff. Walks the SuperBlob to its
+CodeDirectory and returns the 8-byte execSegFlags field (CD offset 80). Returns
+None if the magics don't match (unsigned x86_64 binary)."""
+def _exec_seg_flags(raw: bytes, sig_off: int) -> (int | None) {
+    if struct.unpack_from(">I", raw, sig_off)[0] != 0xFADE0CC0 {  # SuperBlob
+        return None;
+    }
+    count = struct.unpack_from(">I", raw, sig_off + 8)[0];
+    idx = sig_off + 12;
+    for _ in range(count) {
+        boff = struct.unpack_from(">II", raw, idx)[1];  # (blobType, offset)
+        cd = sig_off + boff;
+        if struct.unpack_from(">I", raw, cd)[0] == 0xFADE0C02 {  # CodeDirectory
+            return struct.unpack_from(">Q", raw, cd + 80)[0];  # execSegFlags
+        }
+        idx += 8;
+    }
+    return None;
+}
+
+
+"""Return the LC_CODE_SIGNATURE dataoff (0 if the binary is unsigned)."""
+def _codesig_off(raw: bytes) -> int {
+    ncmds = struct.unpack_from("<I", raw, 16)[0];
+    off = 32;
+    for _ in range(ncmds) {
+        (cmd, cmdsize) = struct.unpack_from("<II", raw, off);
+        if cmd == 0x1D {  # LC_CODE_SIGNATURE
+            return struct.unpack_from("<I", raw, off + 8)[0];
+        }
+        off += cmdsize;
+    }
+    return 0;
+}
+
+
 # ─── tests ───────────────────────────────────────────────────────────────────
 test "ELF executable links, runs, and prints through the C ABI" {
-    triple = llvm.get_default_triple();
+    # Pin an explicit ELF triple so the emitted object is ELF on any host (the
+    # macOS native job runs this same file; its default triple is darwin, which
+    # would yield a Mach-O object that ElfLinker cannot link). Execution below
+    # stays gated to a Linux x86_64 host that can actually run the result.
+    triple = "x86_64-unknown-linux-gnu";
     relobj = _emit_object(_inject_elf(_compile_ir(FIXTURE, triple)), triple);
     d = tempfile.mkdtemp();
     out = os.path.join(d, "exec_smoke");
@@ -112,7 +172,7 @@ test "ELF executable links, runs, and prints through the C ABI" {
     assert e_type == 2 , f"expected ET_EXEC (2), got {e_type}";
 
     # Only a Linux x86_64 host can execute the produced ELF.
-    if sys.platform.startswith("linux") and ("x86_64" in triple) {
+    if sys.platform.startswith("linux") and ("x86_64" in llvm.get_default_triple()) {
         res = subprocess.run([out], capture_output=True, timeout=30);
         assert res.returncode == 0 , f"exec exited {res.returncode}, stderr={res.stderr}";
         assert b"JAC_EXEC_OK" in res.stdout , f"missing marker in stdout: {res.stdout}";
@@ -243,4 +303,65 @@ test "Mach-O executable has MH_EXECUTE filetype and an LC_MAIN entry" {
         off += cmdsize;
     }
     assert has_main , "missing LC_MAIN entry command";
+}
+
+
+test "Mach-O arm64 executable is ad-hoc signed with CS_EXECSEG_MAIN_BINARY" {
+    # The arm64 path emits an embedded code signature. The main executable's
+    # __TEXT segment must set CS_EXECSEG_MAIN_BINARY (0x1) in execSegFlags —
+    # the counterpart to the dylib's execSegFlags == 0 (PR #6828). This pins
+    # the executable intent at the linker level so the inverted-default
+    # refactor can't silently drop the flag for executables.
+    triple = "arm64-apple-darwin";
+    relobj = _emit_object(_inject_macho(_compile_ir(FIXTURE, triple)), triple);
+    d = tempfile.mkdtemp();
+    out = os.path.join(d, "exec_smoke_arm64");
+    ok = MachOLinker.link(
+        obj_bytes=relobj,
+        output_path=out,
+        needed_libs=["/usr/lib/libSystem.B.dylib"],
+        shared=False
+    );
+    assert ok , "MachOLinker.link(shared=False) returned False for arm64";
+    raw = Path(out).read_bytes();
+    assert struct.unpack_from("<I", raw, 12)[0] == 2 , "expected MH_EXECUTE (2)";
+    sig_off = _codesig_off(raw);
+    assert sig_off != 0 , "arm64 executable is not code-signed";
+    flags = _exec_seg_flags(raw, sig_off);
+    assert flags == 0x1 , f"executable execSegFlags must be CS_EXECSEG_MAIN_BINARY (0x1), got {flags}";
+}
+
+
+# ─── #6819: Windows AOT must emit COFF, not ELF ───────────────────────────────
+# llvmlite appends "-elf" to the triple only when os.name == "nt" and
+# codemodel == "jitdefault" (its MCJIT-on-Windows workaround). nacompile's AOT
+# executable branch and NaIRGenPass.postinit therefore pin an explicit code
+# model so a Windows host emits a COFF object for a COFF target rather than a
+# bogus ELF one. We simulate a Windows host on any runner (patch os.name) and
+# assert on the *emitted object*, not just the triple string: LLVM selects the
+# object format from the triple, so this catches the regression at the real
+# emit seam without a Windows runner. patch.object auto-restores os.name even
+# if an assertion below raises.
+test "AOT executable code model emits COFF, not ELF, on a Windows triple" {
+    import llvmlite.binding.targets as _tgt;
+    import from unittest.mock { patch }
+    llvm.initialize_all_targets();
+    llvm.initialize_all_asmprinters();
+    win_triple = "x86_64-pc-windows-msvc";
+    target = llvm.Target.from_triple(win_triple);
+    with patch.object(_tgt.os, "name", "nt") {
+        # The default jitdefault model demonstrates the quirk this guards
+        # against: the triple gains "-elf" and LLVM emits an ELF object.
+        bad_tm = target.create_target_machine();
+        assert bad_tm.triple.endswith("-elf") , f"expected llvmlite to append -elf under jitdefault, got {bad_tm.triple}";
+        assert _emit_for_tm(bad_tm, bad_tm.triple).startswith(b"\x7fELF") , "jitdefault on a Windows host should emit an ELF object (the #6819 bug)";
+        # nacompile pins codemodel="large" for the executable branch (postinit
+        # does the same for the module triple): the triple stays COFF and LLVM
+        # emits a real COFF object (x86_64 machine 0x8664 -> little-endian 64 86).
+        good_tm = target.create_target_machine(opt=2, codemodel="large");
+        assert not good_tm.triple.endswith("-elf") , f"pinned code model still produced an ELF triple: {good_tm.triple}";
+        good_obj = _emit_for_tm(good_tm, good_tm.triple);
+        assert not good_obj.startswith(b"\x7fELF") , "pinned code model still emitted an ELF object";
+        assert good_obj[:2] == b"\x64\x86" , f"expected a COFF x86_64 object (machine 0x8664), got header {good_obj[:4]!r}";
+    }
 }

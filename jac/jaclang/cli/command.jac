@@ -52,7 +52,8 @@ obj Arg {
         short: str | None = None,
         choices: list[any] | None = None,
         required: bool = False,
-        metavar: str | None = None
+        metavar: str | None = None,
+        dest: str | None = None
     ) -> Arg;
 }
 

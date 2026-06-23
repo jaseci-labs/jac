@@ -448,16 +448,18 @@ impl _parse_results(stdout: str, tests: list) -> (list[ClTestResult] | None) {
 }
 
 impl is_cl_test_file(filepath: str) -> bool {
+    import from jaclang.jac0core.ext_registry { is_client_module }
     name = os.path.basename(str(filepath));
-    return name.endswith(".cl.jac");
+    return is_client_module(name);
 }
 
 impl is_cl_test_file_for_discovery(filepath: str) -> bool {
+    import from jaclang.jac0core.ext_registry { is_client_module, is_client_test }
     name = os.path.basename(str(filepath));
-    if not name.endswith(".cl.jac") {
+    if not is_client_module(name) {
         return False;
     }
-    return name.startswith("test_") or name.endswith(".test.cl.jac");
+    return name.startswith("test_") or is_client_test(name);
 }
 
 impl register_results_into_jactestcheck(filepath: str, results: list) -> None {

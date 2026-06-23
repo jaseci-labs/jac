@@ -126,13 +126,14 @@ class JacCmd {
 [project]
 name = "jac-hello"
 version = "0.1.0"
-dependencies = ["jaclang"]
 
 [project.entry-points."jac"]
 hello = "jac_hello.plugin:JacCmd"
 ```
 
-After `pip install -e .`, `jac --help` will list `hello` in the *general* group and `jac hello Alice --shout` will print `HELLO, ALICE!`.
+> Note: plugins do **not** depend on PyPI `jaclang` - `jaclang` is the host runtime provided by the `jac` binary that loads your plugin, so it never belongs in `dependencies`.
+
+After `jac install -e .`, `jac --help` will list `hello` in the *general* group and `jac hello Alice --shout` will print `HELLO, ALICE!`.
 
 A few things worth noticing:
 
@@ -764,14 +765,15 @@ name = "jac-myplugin"
 version = "0.1.0"
 description = "What this plugin does"
 requires-python = ">=3.12"
-dependencies = ["jaclang>=0.13"]
 
 [project.entry-points."jac"]
 myplugin = "jac_myplugin.plugin:JacCmd"
 myplugin_plugin_config = "jac_myplugin.plugin_config:JacMypluginPluginConfig"
 ```
 
-Build a wheel with `python -m build` and publish with `twine upload`. The plugin becomes active in any environment that has both your wheel and `jaclang` installed -- no other registration step is required.
+> Note: do **not** list PyPI `jaclang` in `dependencies` - `jaclang` is the host runtime supplied by the `jac` binary that loads your plugin, not a PyPI package.
+
+Build a wheel with `jac bundle` (the Jac-native build path; `python -m build` also works) and publish with `twine upload` -- plugins **are** distributed on PyPI. The plugin becomes active in any project using the `jac` binary once it is installed there (`jac install <plugin>`) -- no other registration step is required.
 
 ### `jac plugins` command
 

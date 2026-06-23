@@ -1,8 +1,8 @@
 """Module resolver utilities."""
 import importlib.util;
 import os;
-import site;
 import sys;
+import from jaclang.jac0core.ext_registry { MODULE_SUFFIXES, language_of }
 
 # Cache of resolved project roots, keyed by the directory we started the
 # upward walk from. A `None` value records "no jac.toml above here" so we
@@ -97,18 +97,12 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
             if p.strip()
         );
     }
+    # sys.path already carries the bundled runtime and -- promoted to its front by
+    # _jac_finder.add_project_venv_to_path -- the project's .jac/venv. The host's
+    # system/user site-packages are deliberately NOT consulted: third-party code
+    # lives only in the project venv, so resolution stays hermetic regardless of
+    # any Python installed on the host.
     paths.extend(sys.path);
-    site_pkgs = site.getsitepackages();
-    if site_pkgs {
-        paths.extend(site_pkgs);
-    }
-    user_site = site?.getusersitepackages;
-    if user_site {
-        user_dir = user_site();
-        if user_dir {
-            paths.append(user_dir);
-        }
-    }
     return `list(
         `dict.fromkeys(
             [
@@ -151,17 +145,11 @@ def _candidate_from(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
             return (os.path.join(candidate, '__init__.pyi'), 'pyi');
         }
     }
-    if os.path.isfile((candidate + '.jac')) {
-        return ((candidate + '.jac'), 'jac');
-    }
-    if os.path.isfile((candidate + '.sv.jac')) {
-        return ((candidate + '.sv.jac'), 'jac');
-    }
-    if os.path.isfile((candidate + '.na.jac')) {
-        return ((candidate + '.na.jac'), 'jac');
-    }
-    if os.path.isfile((candidate + '.cl.jac')) {
-        return ((candidate + '.cl.jac'), 'jac');
+    # Jac module files, in canonical codespace precedence (shared registry).
+    for jac_suffix in MODULE_SUFFIXES {
+        if os.path.isfile((candidate + jac_suffix)) {
+            return ((candidate + jac_suffix), 'jac');
+        }
     }
     if os.path.isfile((candidate + '.py')) {
         return ((candidate + '.py'), 'py');
@@ -355,17 +343,7 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
             return res;
         }
         if os.path.isfile(alias_resolved) {
-            ext = os.path.splitext(alias_resolved)[1].lower();
-            lang = {
-                '.jac': 'jac',
-                '.py': 'py',
-                '.js': 'js',
-                '.ts': 'js',
-                '.tsx': 'js'
-            }.get(
-                ext, 'other'
-            );
-            return (alias_resolved, lang);
+            return (alias_resolved, language_of(alias_resolved));
         }
     }
     if target.startswith('.') {
@@ -400,6 +378,17 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
                 return res;
             }
         }
+        # PEP 561 stub packages: an installed `<pkg>-stubs` distribution (e.g.
+        # `types-requests` -> `requests-stubs/`) supplies type stubs for an
+        # otherwise-untyped runtime package. Prefer it over the runtime `.py`
+        # resolved by importlib below, matching mypy/pyright precedence. These
+        # live in the project venv's site-packages, already on the search path.
+        for sp in get_jac_search_paths(base_path) {
+            res = _candidate_from_stub_package(sp, actual_parts);
+            if res {
+                return res;
+            }
+        }
     }
     # Fallback to Python's importlib for modules not in typeshed
     if not target.startswith('.') {
@@ -410,21 +399,9 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
         }
         if (spec and spec.origin and (spec.origin not in {'built-in', 'frozen'})) {
             origin = os.path.normpath(spec.origin);
-            ext = os.path.splitext(origin)[1].lower();
-            if (ext in {'.jac', '.pyi', '.py', '.js', '.ts', '.jsx', '.tsx'}) {
-                if (ext == '.jac') {
-                    return (origin, 'jac');
-                }
-                if (ext == '.pyi') {
-                    return (origin, 'pyi');
-                }
-                if (ext == '.py') {
-                    return (origin, 'py');
-                }
-                if (ext in {'.js', '.ts', '.jsx', '.tsx'}) {
-                    return (origin, 'js');
-                }
-                return (origin, 'other');
+            lang = language_of(origin);
+            if (lang != 'other') {
+                return (origin, lang);
             }
         }
     }
@@ -575,16 +552,19 @@ def convert_to_js_import_path(path: str) -> str {
     return path;
 }
 
-"""Return the typeshed stubs and stdlib directories if available."""
+"""Return the vendored typeshed *stdlib* stub directory if available.
+
+Only the stdlib stubs are bundled. Third-party type stubs are NOT shipped:
+they are installed per-project into `.jac/venv` by `jac add` (as PEP 561
+`types-*` packages) and resolved from there via `_candidate_from_stub_package`.
+This keeps the binary lean and makes third-party types track the *installed*
+version instead of a stale vendored snapshot.
+"""
 def get_typeshed_paths -> list[str] {
     base = os.path.join(os.path.dirname(__file__), '..', 'vendor', 'typeshed');
     base = os.path.abspath(base);
-    stubs = os.path.join(base, 'stubs');
     stdlib = os.path.join(base, 'stdlib');
     paths = [];
-    if os.path.isdir(stubs) {
-        paths.append(stubs);
-    }
     if os.path.isdir(stdlib) {
         paths.append(stdlib);
     }
@@ -615,6 +595,46 @@ def _candidate_from_typeshed(
             if os.path.isfile(inner_pkg_init_pyi) {
                 return (inner_pkg_init_pyi, 'pyi');
             }
+        }
+    }
+    return None;
+}
+
+"""Find a PEP 561 `<pkg>-stubs` package under `base` for the import `parts`.
+
+A stub-only distribution (e.g. `types-requests`) installs a top-level
+`requests-stubs/` directory of `.pyi` files. Only the *first* import component
+gets the `-stubs` suffix; submodules resolve inside it verbatim. So
+`requests.sessions` -> `<base>/requests-stubs/sessions.pyi` (or that dir's
+`__init__.pyi`), and bare `requests` -> `<base>/requests-stubs/__init__.pyi`.
+"""
+def _candidate_from_stub_package(
+    base: str, parts: list[str]
+) -> (tuple[(str, str)] | None) {
+    if not parts {
+        return None;
+    }
+    stub_root = os.path.join(base, parts[0] + '-stubs');
+    if not os.path.isdir(stub_root) {
+        return None;
+    }
+    rest = parts[1:];
+    if not rest {
+        init_pyi = os.path.join(stub_root, '__init__.pyi');
+        if os.path.isfile(init_pyi) {
+            return (init_pyi, 'pyi');
+        }
+        return None;
+    }
+    candidate_prefix = os.path.join(stub_root, *rest);
+    module_file_pyi = candidate_prefix + '.pyi';
+    if os.path.isfile(module_file_pyi) {
+        return (module_file_pyi, 'pyi');
+    }
+    if os.path.isdir(candidate_prefix) {
+        init_pyi = os.path.join(candidate_prefix, '__init__.pyi');
+        if os.path.isfile(init_pyi) {
+            return (init_pyi, 'pyi');
         }
     }
     return None;

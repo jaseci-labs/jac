@@ -9,9 +9,6 @@ boundary are not standalone-publishable and raise NpmBoundaryError.
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
 
-# Source suffixes that are NOT client modules and must be skipped.
-glob NON_CLIENT_SUFFIXES: list[str] = [".sv.jac", ".na.jac"];
-
 """Raised when a module destined for an npm package crosses a server boundary."""
 class NpmBoundaryError(RuntimeError) {}
 

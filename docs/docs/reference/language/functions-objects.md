@@ -444,16 +444,20 @@ def another_function {
 
 ### 10 Access Modifiers
 
+For a **top-level** `def`, the access tag controls cross-module visibility (a *project* is the directory tree rooted at its `jac.toml`):
+
 ```jac
-# Public (default, accessible everywhere)
+# Public -- visible to any module, including a consuming project (exported)
 def:pub public_func { }
 
-# Private (accessible only within the module)
-def:priv _private_func { }
+# Protected -- visible within the same project (shared jac.toml root)
+def:protect _project_func { }
 
-# Protected (accessible within module and subclasses)
-def:protect _protected_func { }
+# Private -- visible only within the declaring module
+def:priv _private_func { }
 ```
+
+The same tags mean *member encapsulation* on a `has`/`def` declared inside an archetype (`:protect` then means the declaring class **and its subclasses**), and a separate auth-only meaning on served endpoints. See the [Access Modifiers reference](access-modifiers.md) for the full three-context model.
 
 ??? example "Try it: Functions complete example"
     ```jac

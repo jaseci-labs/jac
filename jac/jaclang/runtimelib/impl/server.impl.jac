@@ -392,7 +392,10 @@ Internal callers should prefer `execute_function_sync` / `execute_function_async
 impl ExecutionManager.execute_function(
     func: Callable[(..., Any)], args: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
-    if asyncio.iscoroutinefunction(func) {
+    import inspect;
+    # Python 3.14 deprecates asyncio.iscoroutinefunction (removal 3.16);
+    # inspect.iscoroutinefunction is the drop-in replacement.
+    if inspect.iscoroutinefunction(func) {
         return await self.execute_function_async(func, args, username);
     }
     return await self.execute_function_sync(func, args, username);
@@ -1132,6 +1135,13 @@ impl ModuleIntrospector._collect_functions -> dict[str, Callable[(..., Any)]] {
     export_names = set(self._client_manifest.get('exports', []));
     for (name, `obj) in inspect.getmembers(self._module) {
         if (inspect.isfunction(`obj) and not name.startswith('_')) {
+            # Skip framework builtins (connect/refs/visit/spawn/... from jaclib)
+            # that the compiler imports into every Jac module's namespace. They
+            # are not user endpoints, and their runtime signatures (e.g. refs'
+            # `slice` pagination param) are not request-body serializable.
+            if getattr(`obj, '__module__', '').startswith('jaclang.') {
+                continue;
+            }
             functions[name] = `obj;
             if (name in export_names) {
                 self._client_functions[name] = `obj;

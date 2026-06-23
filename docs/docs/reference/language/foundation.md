@@ -84,17 +84,16 @@ obj Person {
 ### 1 Installation
 
 ```bash
-# Full installation with all plugins
-pip install jaseci
-
-# Minimal installation
-pip install jaclang
+# Install the Jac toolchain
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 
 # Individual plugins
-pip install byllm        # LLM integration
-pip install jac-scale    # Production deployment
-# (full-stack web + native-desktop app building ships with jaclang core)
+jac install byllm        # LLM integration
+jac install jac-scale    # Production deployment
+# (full-stack web + native-desktop app building ships with the jac binary)
 ```
+
+This installs the self-contained `jac` binary -- no Python, pip, or uv required.
 
 ### 2 Your First Program
 

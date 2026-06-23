@@ -1,5 +1,7 @@
 """Code location info for AST nodes."""
 import ast as ast3;
+import hashlib;
+import re;
 import from collections.abc { Sequence }
 import from dataclasses { field }
 import from typing { Any }
@@ -119,6 +121,43 @@ identifier.
 """
 def native_test_symbol(name: str, line: int) -> str {
     return f"__jac_test_{name}_{line}";
+}
+
+"""Unique LLVM-safe suffix for a native module's per-module symbols.
+
+`source_module_str` is the value stored in `InteropBinding.source_module`
+and `InteropManifest.native_transitive_sources` (e.g. `math_utils.na` for a
+flat import or `math/utils.na` for a dotted `math.utils` import — see
+`resolve_native_module`). The legacy transform `re.sub(r'[^a-zA-Z0-9_]',
+'_', src)` collapses both spellings to `math_utils_na`, so two distinct
+transitive native deps can collide on `__jac_glob_init_<safe>` /
+`__jac_entry_<safe>`, and LLVM's first-seen-wins silently drops the second
+module's initializer/entry. We keep the human-readable slug (so `nm`/crash
+traces stay legible) and append a short sha1 of the *original* string —
+which differs between `math_utils.na` and `math/utils.na` — to guarantee
+uniqueness without dragging absolute paths (which the runtime/JIT call
+sites in nacompile.impl/native_marshal.jac do not have) into the contract.
+
+Single naming contract shared by NaIRGenPass (defines the renamed
+`__jac_glob_init_<safe>` / `__jac_entry_<safe>`), NativeCompilePass (renames
+imported IR), nacompile (emits `__jac_shared_init` calls), and
+native_marshal.init_native_globals (looks the address up by name). All four
+must agree or the JIT lookup silently no-ops.
+
+`osp_kernel` is a singleton SENTINEL (not a real per-module source path): the
+portable OSP kernel is linked under a fixed, hash-free symbol by
+`_link_osp_kernel` / `_emit_osp_setup` and probed by name in
+`_references_undefined_osp_kernel`, so it must map to the bare `osp_kernel`
+slug. Appending the disambiguating hash here would leave the entry's
+`__jac_glob_init_osp_kernel_<hash>` call dangling against the kernel's
+hash-free definition (undefined symbol at load — issue #6669).
+"""
+def native_safe_sym(src: str) -> str {
+    if src == "osp_kernel" {
+        return "osp_kernel";
+    }
+    safe = re.sub(r'[^a-zA-Z0-9_]', '_', src);
+    return f"{safe}_{hashlib.sha1(src.encode()).hexdigest()[:8]}";
 }
 
 """Resolve a module name to a .na.jac file path.

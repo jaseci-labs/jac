@@ -118,8 +118,9 @@ impl HotReloader._dispatch_change(file_path: str) -> None {
         return;
     }
     # Resolve annex files (.impl.jac) to their base file
+    import from jaclang.jac0core.ext_registry { is_impl }
     target_path = file_path;
-    if file_path.endswith('.impl.jac') {
+    if is_impl(file_path) {
         base = discover_base_file(file_path);
         if base {
             target_path = base;
@@ -311,18 +312,11 @@ impl HotReloader._recompile_client_code(
 
 """Convert a .jac file path to a .js filename."""
 impl HotReloader._get_js_filename(file_path: str) -> str {
+    import from jaclang.jac0core.ext_registry { base_stem }
     path = Path(file_path);
-    name = path.name;
-    # Handle different Jac file extensions
-    if name.endswith(".cl.jac") {
-        return name[:-7] + ".js";
-    } elif name.endswith(".impl.jac") {
-        return name[:-9] + ".js";
-    } elif name.endswith(".jac") {
-        return name[:-4] + ".js";
-    } else {
-        return name + ".js";
-    }
+    # Collapse any Jac suffix to the bare stem via the shared matcher; a
+    # non-Jac name is returned unchanged, matching the previous fallthrough.
+    return base_stem(path.name) + ".js";
 }
 
 """Get client and server declarations from a file.
@@ -377,6 +371,7 @@ impl HotReloader._classify_declarations(file_path: str) -> tuple[bool, bool] {
 
 """Convert file path to module name."""
 impl HotReloader._path_to_module(file_path: str) -> str {
+    import from jaclang.jac0core.ext_registry { base_stem }
     # Get relative path from base_path
     path = Path(file_path);
     base = Path(self.base_path).resolve();
@@ -386,20 +381,11 @@ impl HotReloader._path_to_module(file_path: str) -> str {
         # File not under base_path, use filename
         rel_path = path;
     }
-    # Remove .jac extension and convert path separators to dots
+    # Strip any Jac suffix from each path component and join with dots; the
+    # shared matcher leaves non-Jac directory parts untouched.
     module_parts = [];
     for part in rel_path.parts {
-        if part.endswith(".impl.jac") {
-            module_parts.append(part[:-9]);
-        } elif part.endswith(".cl.jac") {
-            module_parts.append(part[:-7]);
-        } elif part.endswith(".sv.jac") {
-            module_parts.append(part[:-7]);
-        } elif part.endswith(".jac") {
-            module_parts.append(part[:-4]);
-        } else {
-            module_parts.append(part);
-        }
+        module_parts.append(base_stem(part));
     }
     return ".".join(module_parts);
 }

@@ -1,5 +1,7 @@
 ci:
-  skip: [jac-format]
+  # These hooks shell out to the `jac` binary, which the hosted pre-commit.ci
+  # runner does not have; they run locally and in the Contribution Checks CI.
+  skip: [jac-format, validate-fragments]
 
 exclude: |
     (?x)(
@@ -57,8 +59,8 @@ repos:
 
       - id: validate-fragments
         name: Validate release note fragment filenames
-        entry: env PYTHONPATH=jac python3 -m jaclang run scripts/validate_fragments.jac
-        language: python
+        entry: jac run scripts/validate_fragments.jac
+        language: system
         files: ^docs/docs/community/release_notes/unreleased/.*\.md$
         exclude: README\.md
         require_serial: true
@@ -93,11 +95,10 @@ repos:
       - id: jac-format
         name: jac-format
         description: Format and lint-fix Jac files
-        entry: env PYTHONPATH=jac python3 -m jaclang format
-        language: python
+        entry: jac format
+        language: system
         types: [file]
         args: [--lintfix]
         files: \.jac$
         require_serial: true
         exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|^scripts/)
-        additional_dependencies: [llvmlite>=0.43.0]

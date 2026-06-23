@@ -24,7 +24,8 @@ packages = ["jac_mcp*"]
 jac_mcp = ["content/*.md", "content/docs/*.md", "content/docs/*.spec", "content/docs/*.jac"]
 
 [dependencies]
-jaclang = ">=0.16.4"
+# jaclang is provided by the jac binary at runtime (host dependency), not
+# pulled from PyPI -- it is no longer published there.
 mcp = ">=1.0.0"
 
 [dev-dependencies]

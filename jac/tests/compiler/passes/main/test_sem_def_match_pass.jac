@@ -1,18 +1,13 @@
 """Semantic definition match pass tests – migrated from test_sem_def_match_pass.py."""
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
-         str(Path(jaclang.__file__).parent.parent),
-         "tests",
-         "compiler",
-         "passes",
-         "main",
-         "fixtures"
+         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      );
 
 test "sem def match" {

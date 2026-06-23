@@ -63,7 +63,11 @@ impl JacCompiler.internal_program.getter -> JacProgram {
 """Get the jaclang package root path."""
 impl JacCompiler._get_jaclang_root(cls: any) -> str {
     if (cls._jaclang_root is None) {
-        cls._jaclang_root = os.path.dirname(os.path.dirname(__file__));
+        # realpath so the root matches realpath-resolved module paths even when
+        # jaclang is materialized under a symlinked dir (the single binary cache).
+        cls._jaclang_root = os.path.realpath(
+            os.path.dirname(os.path.dirname(__file__))
+        );
     }
     return cls._jaclang_root;
 }
@@ -72,7 +76,12 @@ impl JacCompiler._get_jaclang_root(cls: any) -> str {
 impl JacCompiler._resolve_program(
     file_path: str, target_program: JacProgram
 ) -> JacProgram {
-    normalized_path = os.path.normpath(file_path);
+    # realpath (not normpath) so symlinked roots resolve consistently: the
+    # single-binary cache lives under a symlinked temp dir (e.g. macOS
+    # /var -> /private/var), and stub paths arrive already `.resolve()`d, so a
+    # plain prefix check against an unresolved jaclang root would miss and leak
+    # jaclang-internal stubs into the user program's hub.
+    normalized_path = os.path.realpath(file_path);
     jaclang_root = self._get_jaclang_root();
     if normalized_path.startswith((jaclang_root + os.sep)) {
         return self.internal_program;
@@ -180,9 +189,18 @@ impl JacCompiler.get_bytecode(
                     precompiled_bc, compute_module_key(full_target), FLAG_PRECOMPILED
                 );
                 cache_path.parent.mkdir(parents=True, exist_ok=True);
-                tmp_path = cache_path.with_suffix('.tmp');
-                tmp_path.write_bytes(jir_bytes);
-                tmp_path.rename(cache_path);
+                # Process-unique temp + atomic rename. A shared `.tmp` lets
+                # concurrent compiles of the same module (parallel xdist workers,
+                # CLI + LSP) clobber each other mid-write and publish a JIR whose
+                # header validates but whose body is truncated (issue #6793 race).
+                import os as _os;
+                tmp_path = cache_path.with_suffix(f'.{_os.getpid()}.tmp');
+                try {
+                    tmp_path.write_bytes(jir_bytes);
+                    tmp_path.rename(cache_path);
+                } finally {
+                    tmp_path.unlink(missing_ok=True);
+                }
             } except Exception {
                 ;
             }
@@ -265,9 +283,17 @@ impl JacCompiler.get_bytecode(
             writer = JirWriter();
             jir_bytes = writer.write_module(result, sections=sections);
             cache_path.parent.mkdir(parents=True, exist_ok=True);
-            tmp_path = cache_path.with_suffix('.tmp');
-            tmp_path.write_bytes(jir_bytes);
-            tmp_path.rename(cache_path);
+            # Process-unique temp + atomic rename: a shared `.tmp` lets concurrent
+            # compiles of the same module clobber each other mid-write and publish
+            # a truncated JIR whose header still validates (issue #6793 race).
+            import os as _os;
+            tmp_path = cache_path.with_suffix(f'.{_os.getpid()}.tmp');
+            try {
+                tmp_path.write_bytes(jir_bytes);
+                tmp_path.rename(cache_path);
+            } finally {
+                tmp_path.unlink(missing_ok=True);
+            }
         } except Exception {
             ;
         }
@@ -576,12 +602,14 @@ impl JacCompiler.parse_str(
         mod = py_ast_ret.ir_out;
     } else {
         import from jaclang.jac0core.parser { parse as rd_parse }
+        import from jaclang.jac0core.ext_registry { codespace_of }
         (mod, had_error) = rd_parse(source_str, file_path, prog=target_program);
-        if file_path.endswith('.cl.jac') {
+        codespace = codespace_of(file_path);
+        if (codespace == 'client') {
             _coerce_client_module(mod);
-        } elif file_path.endswith('.sv.jac') {
+        } elif (codespace == 'server') {
             _coerce_server_module(mod);
-        } elif file_path.endswith('.na.jac') {
+        } elif (codespace == 'native') {
             _coerce_native_module(mod);
         }
     }
@@ -622,11 +650,8 @@ impl JacCompiler.compile(
     # the impl, and DeclImplMatchPass connects them with full scope context.
     # Only applies when resolve_annex_parent is set to avoid affecting
     # AST-only compilation (e.g., micro suite tests).
-    if (
-        use_str is None
-        and options.resolve_annex_parent
-        and (file_path.endswith('.impl.jac') or file_path.endswith('.test.jac'))
-    ) {
+    import from jaclang.jac0core.ext_registry { is_annex }
+    if (use_str is None and options.resolve_annex_parent and is_annex(file_path)) {
         import from jaclang.jac0core.bccache { discover_base_file }
         base_path = discover_base_file(file_path);
         if (base_path and base_path not in target_program.mod.hub) {
@@ -691,14 +716,15 @@ impl JacCompiler.compile(
     # native-context per #6049, suppressed otherwise per #6262).
     run_inference = options.type_check;
     if not run_inference {
+        import from jaclang.jac0core.ext_registry { is_native_module, is_client_module }
         mp = mod_targ.loc.mod_path if (mod_targ?.loc and mod_targ.loc) else file_path;
-        is_native_mod = (bool(mp) and mp.endswith('.na.jac'))
+        is_native_mod = (bool(mp) and is_native_module(mp))
         or (
             actual_program._auto_promote_native
             and mod_targ?.gen
             and mod_targ.gen.native_compat
         );
-        is_client_mod = bool(mp) and mp.endswith('.cl.jac');
+        is_client_mod = bool(mp) and is_client_module(mp);
         # A `na { }` / `cl { }` block puts native / client code in an otherwise
         # plain .jac module; one body scan covers both extensions' inline form.
         if (not is_native_mod or not is_client_mod) and mod_targ?.body {
@@ -769,12 +795,13 @@ impl JacCompiler.compile(
         # breaks the cycle where inferring a dep makes the evaluator
         # compile a sibling, whose own dep sweep would re-infer modules
         # already mid-inference.
+        import from jaclang.jac0core.ext_registry { is_native_module as _is_na }
         for dep_mod in list(actual_program.mod.hub.values()) {
             if (dep_mod is mod_targ) or dep_mod?._inference_started {
                 continue;
             }
             dep_path = dep_mod.loc.mod_path if dep_mod?.loc else '';
-            if dep_path.endswith('.na.jac') {
+            if _is_na(dep_path) {
                 dep_mod._inference_started = True;
                 # Quiet run: populate types only. A JIR-loaded tree's
                 # cross-module link state is degraded versus a fresh
@@ -891,7 +918,8 @@ impl JacCompiler.compile(
                 } except Exception {
                     continue;
                 }
-                if not (isinstance(cb_src, str) and cb_src.endswith('.cl.jac')) {
+                import from jaclang.jac0core.ext_registry { is_client_module }
+                if not (isinstance(cb_src, str) and is_client_module(cb_src)) {
                     continue;
                 }
                 cb_src = _cb_os.path.abspath(cb_src);

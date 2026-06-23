@@ -147,6 +147,7 @@ def _compile_module(program: any, path: Path) -> any {
 impl collect_npm_sources(
     config: JacConfig, project_root: Path | None = None,
 ) -> list[NpmSourceFile] {
+    import from jaclang.jac0core.ext_registry { codespace_of }
     proj_root = project_root or config.project_root;
     if proj_root is None {
         raise ValueError(
@@ -172,7 +173,9 @@ impl collect_npm_sources(
             if not src.is_file() or _in_excluded_dir(src, pkg_dir) {
                 continue;
             }
-            if any(src.name.endswith(suf) for suf in NON_CLIENT_SUFFIXES) {
+            # Skip server (.sv.jac) and native (.na.jac) modules; client
+            # (.cl.jac) and plain .jac are collected.
+            if codespace_of(src.name) in ('server', 'native') {
                 continue;
             }
             rel = str(src.relative_to(proj_root)).replace("\\", "/");

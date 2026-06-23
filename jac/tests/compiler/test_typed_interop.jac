@@ -14,13 +14,12 @@ the boundary type manifest and hydration codegen are implemented.
 import os;
 import unittest;
 import tempfile;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import from tempfile { NamedTemporaryFile, TemporaryDirectory }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURE_DIR = os.path.join(
+glob FIXTURE_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
      ),
      _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_typed_interop_");

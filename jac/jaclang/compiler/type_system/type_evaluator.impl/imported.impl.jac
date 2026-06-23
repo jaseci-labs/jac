@@ -199,19 +199,16 @@ impl TypeEvaluator._resolve_star_import_symbol(
         }
         # Resolve the submodule path (e.g., .queues -> asyncio/queues.pyi).
         resolved = star_mod_path.resolve_relative_path_list();
-        if not resolved or len(resolved) < 2 {
-            continue;
-        }
-        submod_base = resolved[-1];  # e.g., ".../asyncio/queues"
-        # Try common extensions to find the actual file.
         submod: uni.Module | None = None;
-        for ext in (".pyi", ".py", ".jac") {
-            candidate = submod_base + ext;
-            if Path(candidate).exists() {
+        if resolved {
+            # resolve_relative_path_list() already returns the target as a full
+            # file path with its extension (single- and multi-segment alike), so
+            # use it directly.
+            candidate = resolved[-1];
+            if candidate and Path(candidate).exists() {
                 submod = self._import_module_from_path(
                     candidate, importer_path=self._resolve_importer_path(mod)
                 );
-                break;
             }
         }
         if submod is None {
@@ -366,9 +363,15 @@ impl TypeEvaluator._import_module_from_path(
     } elif resolved_path in target_hub {
         mod = target_hub[resolved_path];
     } else {
-        # Try JIR cache first for .jac files
+        # Try JIR cache first for .jac files, but never for .na.jac.
+        # JIR does not serialize Expr.type, so a JIR-loaded native module
+        # arrives untyped and its cross-module symbol links are degraded.
+        # On incremental builds this causes E2018/E5090 for types that
+        # come from transitively-imported native modules (issue #6793).
+        # Always fresh-compile .na.jac deps so the type evaluator builds
+        # full cross-module links, matching fresh-build behaviour.
         jir_mod: (uni.Module | None) = None;
-        if resolved_path.endswith('.jac') {
+        if resolved_path.endswith('.jac') and not resolved_path.endswith('.na.jac') {
             jir_mod = self._try_read_jir_cache(resolved_path);
         }
         if jir_mod is not None {
@@ -391,7 +394,10 @@ impl TypeEvaluator._import_module_from_path(
             # Write JIR module cache for .jac files (best-effort).
             # Only write if no valid cache exists yet — symtab-only compiles
             # lack bytecode and must not overwrite a full cache that has it.
-            if resolved_path.endswith('.jac') {
+            # Skip .na.jac: a symtab-only native cache would be untyped and
+            # trigger E2018/E5090 on the next incremental build (issue #6793).
+            if resolved_path.endswith('.jac')
+            and not resolved_path.endswith('.na.jac') {
                 try {
                     import from jaclang.jac0core.jir {
                         get_module_cache_path,
