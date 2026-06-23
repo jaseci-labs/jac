@@ -24,7 +24,7 @@ test "cpu trigger is translated to KEDA Utilization format" {
     # KEDA accepts but never acts on.
     keda = KEDAAutoscaler();
     result = keda._build_trigger(
-        Trigger(type="cpu", metadata={"averageUtilization": "70"})
+        Trigger(type="cpu", metadata={"averageUtilization": "70"}), "myapp", 0
     );
     assert result["type"] == "cpu";
     assert result["metricType"] == "Utilization";
@@ -38,7 +38,7 @@ test "memory trigger uses its own default 80 when metadata is empty" {
     # (50 for cpu, 80 for memory).  Passing empty metadata exercises the default
     # branch; checking "80" confirms we hit the memory branch, not the cpu one.
     keda = KEDAAutoscaler();
-    result = keda._build_trigger(Trigger(type="memory", metadata={}));
+    result = keda._build_trigger(Trigger(type="memory", metadata={}), "myapp", 0);
     assert result["type"] == "memory";
     assert result["metricType"] == "Utilization";
     assert result["metadata"]["value"] == "80";
@@ -53,7 +53,9 @@ test "non-resource trigger metadata integer values are coerced to strings" {
         Trigger(
             type="prometheus",
             metadata={"serverAddress": "http://prom:9090", "threshold": 100}
-        )
+        ),
+        "myapp",
+        0
     );
     assert result["type"] == "prometheus";
     assert result["metadata"]["threshold"] == "100";
@@ -67,7 +69,7 @@ test "trigger name is propagated to KEDA trigger dict" {
     # dropping it breaks authenticationRef resolution.
     keda = KEDAAutoscaler();
     result = keda._build_trigger(
-        Trigger(type="redis", metadata={}, name="redis-queue")
+        Trigger(type="redis", metadata={}, name="redis-queue"), "myapp", 0
     );
     assert result["name"] == "redis-queue";
 }
@@ -85,9 +87,131 @@ test "trigger with auth adds authenticationRef whose name matches the created Tr
             auth=TriggerAuth(
                 secret_refs={"password": {"name": "redis-secret", "key": "pw"}}
             )
-        )
+        ),
+        app_name="myapp",
+        trigger_index=0
     );
-    assert result["authenticationRef"] == {"name": "redis-queue-trigger-auth"};
+    assert result["authenticationRef"] == {"name": "myapp-c3a558ec-ta"};
+}
+
+test "two services with the same trigger name get independent TriggerAuthentication names" {
+    # If both services produce the same auth name, the second deploy silently patches
+    # the first service's TriggerAuthentication with the wrong credentials — KEDA
+    # then authenticates the first service's trigger using the second service's secret
+    # and it stops scaling correctly without any visible error.
+    keda = KEDAAutoscaler();
+    trigger = Trigger(
+        type="redis",
+        metadata={},
+        name="cache",
+        auth=TriggerAuth(secret_refs={"password": {"name": "secret", "key": "pw"}})
+    );
+    order_result = keda._build_trigger(trigger, "order-service", 0);
+    payment_result = keda._build_trigger(trigger, "payment-service", 0);
+    assert order_result["authenticationRef"]["name"] == "order-service-daa02e20-ta";
+    assert payment_result["authenticationRef"]["name"] == "payment-service-53abb760-ta";
+    assert order_result["authenticationRef"]["name"] != payment_result[
+        "authenticationRef"
+    ]["name"];
+}
+
+test "two unnamed triggers of the same type in one spec get independent TriggerAuthentication names" {
+    # Without a trigger index in the name, both unnamed redis triggers produce the
+    # same auth resource name.  The second _apply_trigger_auth call then patches
+    # the first trigger's TriggerAuthentication with the second trigger's credentials,
+    # silently breaking the first trigger while leaving no error on the cluster.
+    keda = KEDAAutoscaler();
+    trigger = Trigger(
+        type="redis",
+        metadata={},
+        auth=TriggerAuth(secret_refs={"password": {"name": "secret", "key": "pw"}})
+    );
+    first_result = keda._build_trigger(trigger, "order-service", 0);
+    second_result = keda._build_trigger(trigger, "order-service", 1);
+    assert first_result["authenticationRef"]["name"] == "order-service-425f6d48-ta";
+    assert second_result["authenticationRef"]["name"] == "order-service-c3a94c81-ta";
+    assert first_result["authenticationRef"]["name"] != second_result[
+        "authenticationRef"
+    ]["name"];
+}
+
+
+test "named trigger whose name matches auto-generated name of unnamed trigger raises ValueError" {
+    # A trigger named 'redis-0' and an unnamed redis trigger at index 0 both produce
+    # the same hash key, causing the second _apply_trigger_auth call to silently
+    # overwrite the first trigger's TriggerAuthentication credentials.
+    keda = KEDAAutoscaler();
+    spec = AutoscalerSpec(
+        scale_target_name="svc-deployment",
+        app_name="order-service",
+        namespace="default",
+        triggers=[
+            Trigger(
+                type="redis",
+                metadata={},
+                auth=TriggerAuth(
+                    secret_refs={"password": {"name": "redis-secret", "key": "pw"}}
+                )
+            ),
+            Trigger(
+                type="redis",
+                metadata={},
+                name="redis-0",
+                auth=TriggerAuth(
+                    secret_refs={"password": {"name": "redis-secret-2", "key": "pw"}}
+                )
+            )
+        ]
+    );
+    raised = False;
+    try {
+        keda.apply(spec);
+    } except ValueError as e {
+        raised = True;
+        assert "redis-0" in str(e);
+        assert "order-service" in str(e);
+    }
+    assert raised;
+}
+
+test "two named triggers with the same name in one spec raise ValueError before any cluster write" {
+    # Two triggers named 'cache' produce the same TriggerAuthentication resource name
+    # because trigger_index is only used when trigger.name is absent.  The second
+    # _apply_trigger_auth call would silently overwrite the first trigger's credentials
+    # with the second trigger's secret, breaking the first trigger with no visible error.
+    keda = KEDAAutoscaler();
+    spec = AutoscalerSpec(
+        scale_target_name="svc-deployment",
+        app_name="order-service",
+        namespace="default",
+        triggers=[
+            Trigger(
+                type="redis",
+                metadata={},
+                name="cache",
+                auth=TriggerAuth(
+                    secret_refs={"password": {"name": "redis-secret", "key": "pw"}}
+                )
+            ),
+            Trigger(
+                type="rabbitmq",
+                metadata={},
+                name="cache",
+                auth=TriggerAuth(
+                    secret_refs={"password": {"name": "rmq-secret", "key": "pw"}}
+                )
+            )
+        ]
+    );
+    raised = False;
+    try {
+        keda.apply(spec);
+    } except ValueError as e {
+        raised = True;
+        assert "cache" in str(e);
+        assert "order-service" in str(e);
+    }
+    assert raised;
 }
 
 
@@ -330,6 +454,45 @@ test "apply logs the install docs link when KEDA CRDs are not installed" {
     assert "keda.sh/docs" in warn_msg;
 }
 
+test "TriggerAuthentication name written to cluster matches authenticationRef name in ScaledObject" {
+    # _build_trigger sets authenticationRef.name inside the ScaledObject body;
+    # _apply_trigger_auth names the TriggerAuthentication resource on the cluster.
+    # A mismatch means KEDA cannot resolve the secret reference at admission time
+    # and rejects the ScaledObject — or silently leaves the trigger inactive if
+    # the ScaledObject was already accepted before the auth resource was renamed.
+    KEDAAutoscaler._preflight_cache.clear();
+    mock_api = unittest.mock.MagicMock();
+    mock_api.list_cluster_custom_object.return_value = {};
+    mock_api.get_namespaced_custom_object.side_effect = [
+        ApiException(status=404),  # TriggerAuthentication does not exist yet
+        ApiException(status=404)  # ScaledObject does not exist yet
+    ];
+    keda = KEDAAutoscaler(_custom_api=mock_api, _v2_api=unittest.mock.MagicMock());
+    spec = AutoscalerSpec(
+        scale_target_name="order-service-deployment",
+        app_name="order-service",
+        namespace="default",
+        triggers=[
+            Trigger(
+                type="redis",
+                metadata={"address": "redis:6379"},
+                name="cache",
+                auth=TriggerAuth(
+                    secret_refs={"password": {"name": "redis-secret", "key": "pw"}}
+                )
+            )
+        ]
+    );
+    keda.apply(spec);
+    create_calls = mock_api.create_namespaced_custom_object.call_args_list;
+    assert len(create_calls) == 2;
+    ta_name = create_calls[0][1]["body"]["metadata"]["name"];
+    ref_name = create_calls[1][1]["body"]["spec"]["triggers"][0]["authenticationRef"][
+        "name"
+    ];
+    assert ta_name == ref_name;
+}
+
 test "apply creates TriggerAuthentication before ScaledObject" {
     # KEDA validates the ScaledObject at admission time and rejects it if the
     # referenced TriggerAuthentication does not already exist.  Reversing the
@@ -484,6 +647,7 @@ test "destroy calls delete with the correct plural and resource name" {
     # Using the wrong plural (e.g. scaledobject vs scaledobjects) returns 404 and
     # leaves the ScaledObject running.  The test pins the exact API call shape.
     mock_api = unittest.mock.MagicMock();
+    mock_api.get_namespaced_custom_object.return_value = {"spec": {"triggers": []}};
     keda = KEDAAutoscaler(_custom_api=mock_api);
     keda.destroy("my-svc-scaledobject", "staging");
     mock_api.delete_namespaced_custom_object.assert_called_once_with(
@@ -499,10 +663,89 @@ test "destroy is a no-op when the ScaledObject is already gone" {
     # jac start --scale --destroy after a partially failed deploy should not
     # crash.  The ScaledObject may never have been created.
     mock_api = unittest.mock.MagicMock();
-    mock_api.delete_namespaced_custom_object.side_effect = ApiException(status=404);
+    mock_api.get_namespaced_custom_object.side_effect = ApiException(status=404);
     keda = KEDAAutoscaler(_custom_api=mock_api);
     keda.destroy("my-svc-scaledobject", "staging");
-    # reaching here without an exception is the assertion
+    mock_api.delete_namespaced_custom_object.assert_not_called();
+}
+
+test "destroy deletes TriggerAuthentications referenced by ScaledObject before deleting ScaledObject" {
+    # The ScaledObject records the exact TriggerAuthentication names in
+    # spec.triggers[*].authenticationRef.name.  destroy() must read them and
+    # delete the TriggerAuthentications first so no orphaned auth resources remain.
+    mock_api = unittest.mock.MagicMock();
+    mock_api.get_namespaced_custom_object.return_value = {
+        "spec": {
+            "triggers": [
+                {
+                    "type": "redis",
+                    "authenticationRef": {"name": "order-service-abc12345-ta"}
+                },
+                {
+                    "type": "rabbitmq",
+                    "authenticationRef": {"name": "order-service-def67890-ta"}
+                }
+            ]
+        }
+    };
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda.destroy("order-service-scaledobject", "default");
+    delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
+    assert len(delete_calls) == 3;
+    plurals = [c[1]["plural"] for c in delete_calls];
+    assert plurals[0] == "triggerauthentications";
+    assert plurals[1] == "triggerauthentications";
+    assert plurals[2] == "scaledobjects";
+    ta_names = [c[1]["name"] for c in delete_calls[:2]];
+    assert "order-service-abc12345-ta" in ta_names;
+    assert "order-service-def67890-ta" in ta_names;
+}
+
+test "destroy skips TA cleanup for triggers without authenticationRef" {
+    # CPU and plain Prometheus triggers carry no credentials and produce no
+    # TriggerAuthentication resource.  destroy() must not attempt a TA delete
+    # for triggers that have no authenticationRef.
+    mock_api = unittest.mock.MagicMock();
+    mock_api.get_namespaced_custom_object.return_value = {
+        "spec": {
+            "triggers": [
+                {
+                    "type": "cpu",
+                    "metricType": "Utilization",
+                    "metadata": {"value": "50"}
+                }
+            ]
+        }
+    };
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda.destroy("svc-scaledobject", "default");
+    delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
+    assert len(delete_calls) == 1;
+    assert delete_calls[0][1]["plural"] == "scaledobjects";
+}
+
+test "destroy handles already-deleted TriggerAuthentication gracefully" {
+    # A TriggerAuthentication may have been manually deleted between the time
+    # the ScaledObject was read and the delete attempt.  The 404 must be
+    # swallowed and the ScaledObject must still be deleted.
+    mock_api = unittest.mock.MagicMock();
+    mock_api.get_namespaced_custom_object.return_value = {
+        "spec": {
+            "triggers": [
+                {"type": "redis", "authenticationRef": {"name": "svc-abc12345-ta"}}
+            ]
+        }
+    };
+    mock_api.delete_namespaced_custom_object.side_effect = [
+        ApiException(status=404),  # TA already gone
+        None  # ScaledObject delete succeeds
+    ];
+    keda = KEDAAutoscaler(_custom_api=mock_api);
+    keda.destroy("svc-scaledobject", "default");
+    delete_calls = mock_api.delete_namespaced_custom_object.call_args_list;
+    assert len(delete_calls) == 2;
+    assert delete_calls[0][1]["plural"] == "triggerauthentications";
+    assert delete_calls[1][1]["plural"] == "scaledobjects";
 }
 
 

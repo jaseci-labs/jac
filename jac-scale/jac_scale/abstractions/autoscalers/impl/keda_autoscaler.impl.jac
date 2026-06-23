@@ -1,3 +1,44 @@
+"""Derive a short, unique TriggerAuthentication resource name scoped to the service."""
+impl KEDAAutoscaler._trigger_auth_name{
+    key = f"{app_name}/{trigger.name or f'{trigger.type}-{trigger_index}'}";
+    short_hash = hashlib.sha256(key.encode()).hexdigest()[:8];
+    return f"{app_name[:20].rstrip('-')}-{short_hash}-ta";
+}
+
+"""Raise ValueError if any two named triggers in spec share the same name, or if a named trigger collides with the auto-generated name of an unnamed trigger."""
+impl KEDAAutoscaler._validate_triggers{
+    seen: dict[str, bool] = {};
+    for trigger in spec.triggers {
+        if trigger.name is not None {
+            if trigger.name in seen {
+                raise ValueError(
+                    f"Duplicate trigger name '{trigger.name}' in autoscaler spec for '{app_name}'. "
+                    "Each named trigger must have a unique name — duplicate names produce "
+                    "colliding TriggerAuthentication resource names."
+                );
+            }
+            seen[trigger.name] = True;
+        }
+    }
+    synthesized: dict[str, int] = {};
+    for (i, trigger) in enumerate(spec.triggers) {
+        if trigger.name is None {
+            synthesized[f"{trigger.type}-{i}"] = i;
+        }
+    }
+    for trigger in spec.triggers {
+        if trigger.name is not None and trigger.name in synthesized {
+            raise ValueError(
+                f"Trigger name '{trigger.name}' in autoscaler spec for '{app_name}' collides with "
+                f"the auto-generated name of an unnamed trigger at index {synthesized[
+                    trigger.name
+                ]}. "
+                "Rename this trigger or assign an explicit name to the unnamed trigger."
+            );
+        }
+    }
+}
+
 """Derive cache key from active cluster host; falls back to 'default' if config is unavailable."""
 impl KEDAAutoscaler._get_cluster_key{
     try {
@@ -70,7 +111,7 @@ impl KEDAAutoscaler._build_trigger{
         keda_trigger["name"] = trigger.name;
     }
     if trigger.auth and trigger.auth.secret_refs {
-        auth_name = f"{trigger.name or trigger.type}-trigger-auth";
+        auth_name = self._trigger_auth_name(app_name, trigger, trigger_index);
         keda_trigger["authenticationRef"] = {"name": auth_name};
     }
     return keda_trigger;
@@ -80,8 +121,9 @@ impl KEDAAutoscaler._build_trigger{
 impl KEDAAutoscaler._build_manifests{
     scaled_obj_name = spec.autoscaler_name or f"{spec.scale_target_name}-scaledobject";
     keda_triggers: list[dict[str, any]] = [];
-    for trigger in spec.triggers {
-        keda_triggers.append(self._build_trigger(trigger));
+    app_name = spec.app_name or spec.scale_target_name;
+    for (i, trigger) in enumerate(spec.triggers) {
+        keda_triggers.append(self._build_trigger(trigger, app_name, i));
     }
     # KEDA rejects a ScaledObject with an empty triggers array
     if not keda_triggers {
@@ -134,18 +176,13 @@ impl KEDAAutoscaler._build_manifests{
 
 """Create or patch the TriggerAuthentication for a trigger that carries secret references."""
 impl KEDAAutoscaler._apply_trigger_auth{
-    # TODO(#6535): Three known naming gaps deferred to follow-up:
-    # 1. Per-service isolation: two services sharing the same trigger name share one TriggerAuthentication.
-    # 2. Within-spec collision: two unnamed triggers of the same type in one spec overwrite each other's auth.
-    # 3. destroy() gap: single-resource teardown has no trigger list so cannot clean up TriggerAuthentications.
-    # All three are tracked in https://github.com/jaseci-labs/jaseci/issues/6535.
     if not trigger.auth {
         return;
     }
     if not trigger.auth.secret_refs {
         return;
     }
-    auth_name = f"{trigger.name or trigger.type}-trigger-auth";
+    auth_name = self._trigger_auth_name(app_name, trigger, trigger_index);
     secret_target_refs: list[dict[str, any]] = [];
     for (param, ref) in trigger.auth.secret_refs.items() {
         if not isinstance(ref, dict) {
@@ -202,6 +239,8 @@ impl KEDAAutoscaler._apply_trigger_auth{
 
 """Run preflight, write TriggerAuthentications, then create or patch the ScaledObject."""
 impl KEDAAutoscaler.apply{
+    app_name = spec.app_name or spec.scale_target_name;
+    self._validate_triggers(spec, app_name);
     warnings = self.preflight();
     if warnings {
         if self.logger {
@@ -217,8 +256,7 @@ impl KEDAAutoscaler.apply{
         (
             self._v2_api or AutoscalingV2Api()
         ).delete_namespaced_horizontal_pod_autoscaler(
-            name=f"{spec.app_name or spec.scale_target_name}-hpa",
-            namespace=spec.namespace
+            name=f"{app_name}-hpa", namespace=spec.namespace
         );
     } except ApiException as e {
         if e.status not in [404, 422] {
@@ -226,8 +264,8 @@ impl KEDAAutoscaler.apply{
         }
     }
     # TriggerAuthentication must exist before ScaledObject; KEDA validates authenticationRef at admission time
-    for trigger in spec.triggers {
-        self._apply_trigger_auth(api, trigger, spec.namespace);
+    for (i, trigger) in enumerate(spec.triggers) {
+        self._apply_trigger_auth(api, trigger, spec.namespace, app_name, i);
     }
     manifests = self._build_manifests(spec);
     name = manifests["name"];
@@ -264,9 +302,45 @@ impl KEDAAutoscaler.apply{
     return True;
 }
 
-"""Delete a single ScaledObject by name; no-op if already absent."""
+"""Delete TriggerAuthentications owned by the ScaledObject then delete the ScaledObject itself; no-op if already absent."""
 impl KEDAAutoscaler.destroy{
+    # TODO(#6909): partial-apply gap — if apply() created TAs but crashed before writing
+    # the ScaledObject, those TAs cannot be discovered here and must be removed manually
+    # with kubectl delete triggerauthentication.
     api = self._custom_api or client.CustomObjectsApi();
+    try {
+        scaled_obj = api.get_namespaced_custom_object(
+            group="keda.sh",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="scaledobjects",
+            name=autoscaler_name
+        );
+        for trigger in scaled_obj.get("spec", {}).get("triggers", []) {
+            auth_ref = trigger.get("authenticationRef");
+            ta_name = auth_ref.get("name") if auth_ref else None;
+            if ta_name {
+                try {
+                    api.delete_namespaced_custom_object(
+                        group="keda.sh",
+                        version="v1alpha1",
+                        namespace=namespace,
+                        plural="triggerauthentications",
+                        name=ta_name
+                    );
+                } except ApiException as e {
+                    if e.status not in [404, 422] {
+                        raise;
+                    }
+                }
+            }
+        }
+    } except ApiException as e {
+        if e.status not in [404, 422] {
+            raise;
+        }
+        return;
+    }
     try {
         api.delete_namespaced_custom_object(
             group="keda.sh",
