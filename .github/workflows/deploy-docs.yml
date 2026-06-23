@@ -59,11 +59,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install documentation dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ../jac
-          jac install -e .
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
+
+      - name: Install documentation dependencies (jaclang host-provided by the binary)
+        run: jac install -e .
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4.2.0
@@ -135,7 +135,9 @@ jobs:
           COPY CONTRIBUTING.md ./CONTRIBUTING.md
           COPY .pre-commit-config.yaml ./.pre-commit-config.yaml
 
-          RUN pip install -e ./jac
+          # jaclang is the prebuilt single binary (copied in via jac/zig-out from
+          # the setup-jac build step), not a pip install.
+          ENV PATH="/app/jac/zig-out/bin:${PATH}"
           RUN jac install -e ./docs
 
           EXPOSE 8000

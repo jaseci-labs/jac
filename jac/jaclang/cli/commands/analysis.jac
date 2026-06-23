@@ -183,6 +183,11 @@ def format(
             "verbose", typ=bool, default=False, help="Verbose output", short="v"
         ),
         Arg.create(
+            "ignore",
+            default="",
+            help="Path to skip during collection (pytest --ignore)"
+        ),
+        Arg.create(
             "profile",
             default="",
             short="",
@@ -206,7 +211,8 @@ def `test(
     xit: bool = False,
     maxfail: int = None,
     directory: str = "",
-    verbose: bool = False
+    verbose: bool = False,
+    ignore: str = ""
 ) -> int;
 
 """Generate static parser."""

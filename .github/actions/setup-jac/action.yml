@@ -1,0 +1,56 @@
+name: Set up jac binary
+description: >
+  Make the self-contained `jac` binary (Zig launcher + bundled CPython) available
+  on PATH. Replaces `pip install -e ./jac`: jaclang ships as the binary, not a
+  PyPI/editable package, so no system Python is needed to get the `jac` command.
+
+  The binary is an OUTPUT cache keyed on the content that goes into it (jaclang
+  source, the launcher, build.zig, and the payload scripts -- which pin the pbs
+  tag / python version / bundled pip deps). The first job in any workflow on a
+  branch to build it populates the cache; every other job and workflow restores
+  the prebuilt 49 MB file in seconds instead of rebuilding. Exact-key match only
+  (no restore-keys), so a stale binary can never be served -- which is why this
+  is safe even though zig's own incremental cache stays disabled (it doesn't
+  reliably invalidate on a jaclang/payload change).
+runs:
+  using: composite
+  steps:
+    - name: Ensure typeshed submodule (the type checker bundles its stubs)
+      shell: bash
+      run: git submodule update --init jac/jaclang/vendor/typeshed
+
+    - name: Restore cached jac binary
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: jac/zig-out/bin/jac
+        key: jac-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac/build.zig', 'jac/launcher/**') }}
+
+    - name: Install zstd (payload de/compression)
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        if [ "$RUNNER_OS" = "Linux" ]; then sudo apt-get update && sudo apt-get install -y zstd
+        elif [ "$RUNNER_OS" = "macOS" ]; then brew list zstd >/dev/null 2>&1 || brew install zstd; fi
+
+    - name: Set up Zig 0.16.0
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: mlugg/setup-zig@v2
+      with:
+        version: 0.16.0
+        # We key our own output cache above; zig's incremental cache is unreliable
+        # for the payload step, so leave it off and rebuild from scratch on a miss.
+        use-cache: false
+
+    - name: Build the jac binary
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: jac
+      run: zig build --summary all
+
+    - name: Put jac on PATH
+      shell: bash
+      run: |
+        mkdir -p "$HOME/.jacbin"
+        ln -sf "$GITHUB_WORKSPACE/jac/zig-out/bin/jac" "$HOME/.jacbin/jac"
+        echo "$HOME/.jacbin" >> "$GITHUB_PATH"

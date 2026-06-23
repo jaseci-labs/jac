@@ -14,14 +14,13 @@ import ast as ast3;
 import os;
 import from difflib { unified_diff }
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.helpers { add_line_numbers }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.runtimelib.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
-
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent);
 
 def parent_scrub(`node: uni.UniNode) -> bool {
     for i in `node.kid {

@@ -145,7 +145,7 @@ The current frame rate is shown top-left. The loop runs **uncapped** (no
 
 ## Requirements
 
-- The `jac` CLI (`pip install jaclang`, or the repo's `.venv`) - for the Jac build
+- The `jac` binary (built via `./scripts/fresh_env.sh`, or installed via the install script) - for the Jac build
   (i.e. the default benchmark and `--jac`).
 - A `zig` toolchain - for the Zig build (the default benchmark and `--zig`).
   `demo.sh` downloads one into `.build/` automatically if you don't already have

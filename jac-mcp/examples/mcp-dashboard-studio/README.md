@@ -24,10 +24,16 @@ An interactive developer dashboard for working with [Jac](https://www.jac-lang.o
 
 ## Requirements
 
-1. Python 3.12+
-2. [uv](https://docs.astral.sh/uv/) for package management
-3. Node.js 18+ (for the client build)
-4. A modern browser: Chrome, Firefox, Edge, or Safari 16.4+ (the app uses the Clipboard API)
+1. The `jac` binary (provides `jaclang` and the built-in client framework) -- install it separately:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+   ```
+
+2. Python 3.12+
+3. [uv](https://docs.astral.sh/uv/) for package management
+4. Node.js 18+ (for the client build)
+5. A modern browser: Chrome, Firefox, Edge, or Safari 16.4+ (the app uses the Clipboard API)
 
 ---
 
@@ -40,14 +46,16 @@ git clone https://github.com/Developer-Linus/mcp-dashboard-studio.git
 cd mcp-dashboard-studio
 ```
 
-**2. Create a virtual environment and install all dependencies**
+**2. Create a virtual environment and install the app's dependencies**
 
 ```bash
 uv venv
 uv sync
 ```
 
-This installs everything listed in `pyproject.toml`, including `jaclang`, `jac-client`, and `jac-mcp`.
+This installs the app's PyPI dependencies listed in `pyproject.toml`, including `jac-mcp`.
+`jaclang` itself is provided by the `jac` binary you installed above (the client
+framework ships inside `jaclang` core, so there is no separate `jac-client` package).
 
 **3. Start everything**
 

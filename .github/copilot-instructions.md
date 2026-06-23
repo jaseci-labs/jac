@@ -11,22 +11,18 @@ This monorepo contains:
 
 ## Common Workflows
 
-Run tests for a specific package:
+`jaclang` ships as the single `jac` binary (Zig launcher + bundled CPython) -- there is no pip-installed jaclang. Build it and put it on PATH with `./scripts/fresh_env.sh` (see CONTRIBUTING.md).
+
+Run tests through the binary's bundled runner (`JAC_TEST_JOBS=auto` runs them in parallel):
 
 ```bash
-pytest -n auto <package-name>
+cd jac && JAC_TEST_JOBS=auto jac test tests
 ```
 
 Run pre-commit checks (formatting, linting):
 
 ```bash
-./scripts/check.sh
-```
-
-Full test suite across all packages:
-
-```bash
-./scripts/tests.sh
+pre-commit run --all-files
 ```
 
 ## Package-Specific Notes
