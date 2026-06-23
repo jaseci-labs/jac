@@ -91,6 +91,37 @@ test "OCC: a read-gated stale write conflicts" {
 }
 
 
+test "OCC: a read-gated first write to a never-persisted anchor inserts, not conflicts" {
+    (client, uri) = _get_mongo();
+    client.drop_database(_DB);
+    backend: any = MongoBackend(mongo_url=uri, db_name=_DB);
+    coll: any = client[_DB]["_anchors"];
+
+    # A brand-new anchor that has NEVER been persisted: no document exists yet.
+    root_arch: any = Root();
+    ranch: any = root_arch.__jac__;
+    ranch.persistent = True;
+    ranch.root = ranch.id;
+    rid: str = str(ranch.id);
+    assert coll.find_one({"_id": rid}) is None;
+
+    # The request READ a traversal from this node -> cas_version=0. "Expected v0"
+    # must include "does not exist yet": the write inserts the doc rather than
+    # raising a phantom WriteConflict(expected v0, found v-1).
+    conflicted = False;
+    try {
+        backend._put_node_atomic(ranch, [str(uuid4())], [], set(), 0);
+    } except WriteConflict {
+        conflicted = True;
+    }
+    assert not conflicted , "first read-gated write to an absent doc must insert, not conflict";
+    stored: any = coll.find_one({"_id": rid});
+    assert stored is not None;
+    assert stored["data"]["version"] == 1;
+    assert len(stored["data"]["edges"]) == 1;
+}
+
+
 test "OCC: a read-gated write on a legacy doc (no data.version) does not conflict" {
     (client, uri) = _get_mongo();
     client.drop_database(_DB);
