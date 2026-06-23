@@ -1,6 +1,7 @@
 """A reassigned compile target resolves to its last assignment: the entry is
 `Model` (not the earlier `Other`), so Model's data-dependent branch is tagged.
-The reassignment lives in `sym.uses`, not `sym.defn`, so both must be scanned."""
+Both assignments register on `sym.defn`, so `_defining_assignment` takes the
+last one (`sym.defn[-1]` -> `m = Model()`)."""
 import torch;
 
 obj Other {
