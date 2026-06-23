@@ -12,6 +12,7 @@ Run:
 
 import os;
 import socket;
+import tempfile;
 import time;
 
 import from subprocess { Popen, DEVNULL, run }
@@ -24,8 +25,6 @@ glob HEADLESS: bool = not os.environ.get("HEADED", ""),
          os.path.join(os.path.dirname(__file__), "..", "..")
      ),
      SITE_DIR: str = os.path.join(DOCS_DIR, "site"),
-     TEST_PAGE_PATH: str = os.path.join(SITE_DIR, "_test.html"),
-     PAGE: str = "/_test.html",
      TEST_HTML: str = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -117,9 +116,15 @@ def _start_server -> tuple {
     if not os.path.isdir(SITE_DIR) {
         run(["mkdocs", "build"], cwd=DOCS_DIR, check=True);
     }
-    with open(TEST_PAGE_PATH, "w") as f {
+    # mkstemp gives an atomic, unique file within SITE_DIR so concurrent xdist
+    # workers never collide on the same path (fixes the shared _test.html race).
+    (fd, abs_path) = tempfile.mkstemp(
+        dir=SITE_DIR, suffix=".html", prefix="_jac_test_"
+    );
+    with os.fdopen(fd, "w") as f {
         f.write(TEST_HTML);
     }
+    page_path = "/" + os.path.basename(abs_path);
     port = _get_free_port();
     server = Popen(
         ["python", "-c", SERVER_SCRIPT, SITE_DIR, str(port)],
@@ -127,18 +132,20 @@ def _start_server -> tuple {
         stderr=DEVNULL
     );
     _wait_for_port(port);
-    return (server, f"http://127.0.0.1:{port}");
+    return (server, f"http://127.0.0.1:{port}", page_path, abs_path);
 }
 
-def _stop_server(server: any) {
+def _stop_server(server: any, abs_path: str) {
     server.terminate();
     try {
         server.wait(timeout=5);
     } except Exception {
         server.kill();
     }
-    if os.path.exists(TEST_PAGE_PATH) {
-        os.remove(TEST_PAGE_PATH);
+    try {
+        os.remove(abs_path);
+    } except OSError {
+        pass;
     }
 }
 
@@ -153,20 +160,20 @@ waits on the specific element/condition it depends on (Monaco, Pyodide output,
 Viz SVG, response headers), so none relies on the network going idle.
 """
 def _with_page(callback: any, wait_until: str = "domcontentloaded") {
-    (server, base_url) = _start_server();
+    (server, base_url, page_path, abs_path) = _start_server();
     try {
         with sync_playwright() as p {
             browser = p.chromium.launch(headless=HEADLESS);
             page = browser.new_page();
             try {
-                resp = page.goto(f"{base_url}{PAGE}", wait_until=wait_until);
+                resp = page.goto(f"{base_url}{page_path}", wait_until=wait_until);
                 callback(page, resp);
             } finally {
                 browser.close();
             }
         }
     } finally {
-        _stop_server(server);
+        _stop_server(server, abs_path);
     }
 }
 
