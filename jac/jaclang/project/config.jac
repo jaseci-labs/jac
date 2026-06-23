@@ -28,6 +28,10 @@ are used by jac bundle. All publishing fields are optional.
 obj ProjectConfig {
     has name: str = "",
         version: str = "0.1.0",
+        # Client UI target scope: "web" (default) or "universal" (web + React
+        # Native). Universal projects forbid raw HTML intrinsic tags in JSX
+        # (E1105). Distinct from the run-dispatch `kind` field above.
+        client_kind: str = "web",
         description: str = "",
         authors: list[PersonConfig] = [],
         maintainers: list[PersonConfig] = [],

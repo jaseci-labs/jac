@@ -811,6 +811,7 @@ impl _parse_toml_data(
         config.project = ProjectConfig(
             name=proj.get("name", ""),
             version=proj.get("version", "0.1.0"),
+            client_kind=proj.get("client_kind", "web"),
             description=proj.get("description", ""),
             authors=_parse_persons(proj.get("authors", [])),
             maintainers=_parse_persons(proj.get("maintainers", [])),

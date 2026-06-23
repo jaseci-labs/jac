@@ -5343,3 +5343,191 @@ test "edge_endpoint_clause_rejected_on_non_edge" {
         e.pretty_print() for e in program.errors_had
     );
 }
+
+test "universal_project_forbids_html_intrinsic_tags" {
+    # D17: in a universal (React Native) project, raw HTML host tags are
+    # forbidden — JsxIntrinsicGuardPass emits E1105 for each lowercase tag,
+    # with a fix-it pointing at the @jac/ui / RN component. Uppercase user
+    # components (<Card>) are allowed. The pass runs in get_ir_gen_sched, so
+    # it fires even with type_check=False (the .cl.jac / build path).
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_universal_html_forbidden.jac");
+    program = JacProgram();
+    program.compile(
+        path, options=CompileOptions(type_check=False, project_kind="universal")
+    );
+
+    e1105 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1105"
+    ];
+    # Host tags: <span>, <div>, <button>, <img> => 4. <Card> is exempt.
+    assert len(e1105) == 4 , f"Expected 4 E1105 (div/span/button/img), got {len(
+        e1105
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1105);
+
+    # Assert against the diagnostic messages (not pretty_print, whose source
+    # context would include nearby lines like the <Card .../> line).
+    msgs = "\n".join(e.msg for e in e1105);
+    # No component tag is ever flagged.
+    assert "<Card>" not in msgs , f"<Card> must not be flagged:\n{msgs}";
+    # The fix-it suggestions are present (div -> View, span -> Text, etc.).
+    assert "View" in msgs , f"Expected a 'View' suggestion:\n{msgs}";
+    assert "Text" in msgs , f"Expected a 'Text' suggestion:\n{msgs}";
+}
+
+test "web_project_allows_html_intrinsic_tags" {
+    # The same fixture compiled as a plain web project (default kind) emits no
+    # E1105 — host tags are allowed there.
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_universal_html_forbidden.jac");
+    program = JacProgram();
+    program.compile(path, options=NO_TC);
+
+    e1105 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1105"
+    ];
+    assert len(e1105) == 0 , f"Expected no E1105 in a web project, got {len(
+        e1105
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1105);
+}
+
+test "universal_project_allows_lowercase_component_in_scope" {
+    # An in-scope lowercase component must NOT trigger E1105 — the guard
+    # resolves it via scope lookup and recognises it as a user component.
+    # The 4 HTML host tags in the same fixture still emit E1105 as expected.
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_universal_html_forbidden.jac");
+    program = JacProgram();
+    program.compile(
+        path, options=CompileOptions(type_check=False, project_kind="universal")
+    );
+    e1105 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1105"
+    ];
+    msgs = "\n".join(e.msg for e in e1105);
+    assert "<myCard>" not in msgs , f"<myCard> is in scope and must not be flagged:\n{msgs}";
+    assert len(e1105) == 4 , f"Expected 4 E1105 (div/span/button/img), got {len(
+        e1105
+    )}:\n{msgs}";
+}
+
+test "universal_project_lowercase_component_no_w1050" {
+    # Gap 3: in a universal project, an in-scope lowercase component must not
+    # produce W1050 ('Unknown intrinsic JSX element'). The type evaluator
+    # routes it via scope resolution, not the _JsxIntrinsicElements registry.
+    path = os.path.join(
+        CHECKER_FIXTURES, "checker_jsx_lowercase_imported_component.jac"
+    );
+    program = JacProgram();
+    program.compile(
+        path, options=CompileOptions(type_check=True, project_kind="universal")
+    );
+    w1050 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1050"
+    ];
+    assert len(w1050) == 0 , f"Expected no W1050 for in-scope lowercase component, got:\n" + "\n".join(
+        w.pretty_print() for w in w1050
+    );
+}
+
+test "universal_kind_does_not_leak_outside_project_root" {
+    # Regression: a consumer's project_kind="universal" must not reach files
+    # outside the project root. The real failure was client_runtime.cl.jac
+    # (from jac-client) being compiled into the user's JacProgram during
+    # `jac build` and receiving E1105 for its HTML tags ("kind-leak").
+    # We simulate it by passing an explicit project_root that does NOT contain
+    # the fixture, mimicking a framework file outside the user's project.
+    import tempfile;
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_cl_html_allowed.cl.jac");
+    with tempfile.TemporaryDirectory() as tmp_root {
+        program = JacProgram();
+        program.compile(
+            path,
+            options=CompileOptions(
+                type_check=False, project_kind="universal", project_root=tmp_root
+            )
+        );
+        e1105 = [
+            e
+            for e in program.errors_had
+            if e.code and e.code.code == "E1105"
+        ];
+        assert len(e1105) == 0 , (
+            f"E1105 must not fire on files outside project_root (kind-leak regression), "
+            f"got {len(e1105)}:\n" + "\n---\n".join(e.pretty_print() for e in e1105)
+        );
+    }
+}
+
+test "cl_jac_files_inside_project_root_also_exempt" {
+    # Even when a .cl.jac file lives inside the project root (user's own
+    # web-client boundary file), E1105 must not fire — .cl.jac always targets
+    # the browser and raw HTML is valid there.
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_cl_html_allowed.cl.jac");
+    fixtures_dir = os.path.dirname(path);
+    program = JacProgram();
+    program.compile(
+        path,
+        options=CompileOptions(
+            type_check=False, project_kind="universal", project_root=fixtures_dir
+        )
+    );
+    e1105 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1105"
+    ];
+    assert len(e1105) == 0 , (
+        f"E1105 must not fire on .cl.jac files even inside project_root, "
+        f"got {len(e1105)}:\n" + "\n---\n".join(e.pretty_print() for e in e1105)
+    );
+}
+
+test "jac_toml_kind_universal_round_trip" {
+    # Verify the jac.toml → get_config() → compile() code path for
+    # `[project] client_kind = "universal"`. All other universal-project tests set
+    # project_kind via CompileOptions directly; this one exercises the TOML
+    # read and the compiler's fallback to get_config() when no explicit kind
+    # is provided.
+    import tempfile;
+    import from jaclang.project.config { JacConfig, get_config, set_config }
+
+    toml_content = '[project]\nname = "test-proj"\nclient_kind = "universal"\n';
+
+    with tempfile.TemporaryDirectory() as tmp_dir {
+        toml_path = Path(tmp_dir) / "jac.toml";
+        toml_path.write_text(toml_content);
+        # Part 1: round-trip — JacConfig.load() must parse client_kind correctly.
+        cfg = JacConfig.load(toml_path);
+        assert cfg.project.client_kind == "universal" , f"Expected client_kind='universal' from jac.toml, got '{cfg.project.client_kind}'";
+        # Part 2: compiler fallback — inject the loaded config as the singleton
+        # and compile with a plain CompileOptions() (no explicit project_kind).
+        # The compiler's `resolved_kind == "web"` branch must consult get_config()
+        # and pick up "universal", causing JsxIntrinsicGuardPass to emit E1105.
+        prev_cfg = get_config();
+        set_config(cfg);
+        try {
+            fixture = os.path.join(
+                CHECKER_FIXTURES, "checker_jsx_universal_html_forbidden.jac"
+            );
+            program = JacProgram();
+            program.compile(fixture, options=CompileOptions(type_check=False));
+            e1105 = [
+                e
+                for e in program.errors_had
+                if e.code and e.code.code == "E1105"
+            ];
+            assert len(e1105) == 4 , f"Expected 4 E1105 from jac.toml client_kind=universal, got {len(
+                e1105
+            )}:\n" + "\n---\n".join(e.pretty_print() for e in e1105);
+        } finally {
+            # Restore whatever singleton was active before the test.
+            set_config(prev_cfg);
+        }
+    }
+}

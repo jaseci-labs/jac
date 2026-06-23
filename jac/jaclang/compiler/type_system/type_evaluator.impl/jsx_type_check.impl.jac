@@ -25,8 +25,13 @@ impl TypeEvaluator._resolve_jsx_component_type(
     } elif isinstance(first_part, uni.Token) {
         component_name = first_part.value or "";
     }
-    # Only resolve uppercase names (user components); lowercase = intrinsic HTML.
-    if not component_name or not component_name[0].isupper() {
+    if not component_name {
+        return None;
+    }
+    # Web projects: only uppercase names are treated as user components (unchanged
+    # behaviour). Universal projects: scope resolution already ran for all names,
+    # so any name with a symbol can be a component regardless of case.
+    if (self.program.project_kind != "universal" and not component_name[0].isupper()) {
         return None;
     }
     # The JsxElement expression handler drives get_type_of_expression()
@@ -108,12 +113,23 @@ impl TypeEvaluator._validate_jsx_props(
     tag_name = first_part.value
         if isinstance(first_part, (uni.Name, uni.Token))
         else "";
-    is_component = tag_name and tag_name[0].isupper();
-
-    if is_component {
-        self._validate_component_jsx_props(expr, tag_name);
+    if self.program.project_kind == "universal" {
+        # Scope-resolved routing: a name with a FunctionType sym is a user
+        # component regardless of case. Unresolved names are caught by
+        # JsxIntrinsicGuardPass (E1105), so we don't fall back to intrinsic
+        # validation here.
+        func_type = self._resolve_jsx_component_type(expr.name);
+        if func_type is not None {
+            self._validate_component_jsx_props(expr, tag_name);
+        }
     } else {
-        self._validate_intrinsic_jsx_props(expr, tag_name);
+        # Web project: original case-based routing (unchanged behaviour).
+        is_component = tag_name and tag_name[0].isupper();
+        if is_component {
+            self._validate_component_jsx_props(expr, tag_name);
+        } else {
+            self._validate_intrinsic_jsx_props(expr, tag_name);
+        }
     }
 }
 

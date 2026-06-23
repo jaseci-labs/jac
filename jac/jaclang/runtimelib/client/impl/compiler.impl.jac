@@ -611,6 +611,14 @@ impl ViteCompiler.init(
     }
     self.runtime_path = runtime_path;
     self.compiled_dir = self._get_client_dir() / 'compiled';
+    self.jac_client_compiler = JacClientCompiler(
+        project_dir=self.project_dir,
+        runtime_path=runtime_path,
+        compile_to_js_func=compile_to_js_func,
+        extract_exports_func=extract_exports_func,
+        extract_globals_func=extract_globals_func,
+        compiled_dir=self.compiled_dir
+    );
     self.jac_compiler = JacToJSCompiler(
         compile_to_js_func, extract_exports_func, extract_globals_func
     );

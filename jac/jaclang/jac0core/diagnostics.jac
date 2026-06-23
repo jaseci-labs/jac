@@ -544,6 +544,20 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot spread type {actual} into '{component}' (expected dict)"
      ),
+     E1105 = _err(
+         "E1105",
+         Category.TYPE,
+         "JSX tag '<{tag}>' is not in scope in a universal project;"
+         " use {suggestion} instead",
+         "Universal projects target React Native as well as the web, where raw"
+         " HTML host elements do not exist. If '<{tag}>' is meant to be a"
+         " component, make sure it is imported and in scope. Otherwise, replace"
+         " it with a @jac/ui primitive (View, Text, Pressable, TextInput,"
+         " Image, ScrollView, ...). Lowercase tags that resolve to imported"
+         " components are"
+         " allowed; only unresolved names are rejected.",
+         blocks_codegen=True
+     ),
      # Comparison operator errors
      E1110 = _err(
          "E1110",

@@ -8,6 +8,7 @@ This file implements plugin-specific methods including a custom load()
 that combines plugin config with npm dependencies.
 """
 import shutil;
+import os;
 import from jaclang.cli.console { console }
 import from pathlib { Path }
 import from jaclang.project.plugin_config { deep_merge }
@@ -132,6 +133,53 @@ def _clear_node_modules(project_dir: Path | None) {
     }
 }
 
+"""Resolve active client target used for target-scoped npm subtables.
+
+Order of precedence:
+1) ``[plugins.client].target`` in jac.toml
+2) ``JAC_CLIENT_TARGET`` environment variable
+3) ``web`` default
+"""
+def _resolve_client_target(client_config: dict) -> str {
+    raw = str(client_config.get("target", "") or "").strip();
+    if raw == "" {
+        raw = str(os.environ.get("JAC_CLIENT_TARGET", "") or "").strip();
+    }
+    if raw == "" {
+        return "web";
+    }
+    normalized = raw.lower().replace("-", "_");
+    if normalized == "rn" {
+        return "react_native";
+    }
+    if normalized == "reactnative" {
+        return "react_native";
+    }
+    return normalized;
+}
+
+"""Read target-scoped npm deps from ``[dependencies.npm.<target>]``."""
+def _get_target_scoped_npm_deps(jac_config: any, target_name: str) -> dict[str, str] {
+    npm_plugin_deps: dict = dict(jac_config.plugin_dependencies.get("npm", {}));
+    deps: dict[str, str] = {};
+    key1 = str(target_name or "").strip();
+    key2 = key1.replace("_", "-");
+    for key in [key1, key2] {
+        if key == "" {
+            continue;
+        }
+        section = npm_plugin_deps.get(key, {});
+        if isinstance(section, dict) {
+            for (name, version) in section.items() {
+                if isinstance(version, str) {
+                    deps[name] = version;
+                }
+            }
+        }
+    }
+    return deps;
+}
+
 """Get the plugin section name for client."""
 impl JacClientConfig.get_plugin_name(self: JacClientConfig) -> str {
     return "client";
@@ -178,8 +226,10 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
     jac_config = self.get_jac_config();
     # Get client plugin config from [plugins.client]
     client_config = jac_config.get_plugin_config('client');
+    target_name = _resolve_client_target(client_config);
     # Get npm dependencies from [dependencies.npm]
     npm_deps = jac_config.get_plugin_deps('npm');
+    target_scoped_npm_deps = _get_target_scoped_npm_deps(jac_config, target_name);
     # Get npm dev dependencies from [dev-dependencies.npm]
     # These are stored in plugin_dependencies["npm"]["dev"] after parsing
     npm_plugin_deps: dict = dict(jac_config.plugin_dependencies.get('npm', {}));
@@ -224,6 +274,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
             _clear_node_modules(self.project_dir);
         }
     }
+    merged_npm_deps = {** npm_deps, ** target_scoped_npm_deps};
 
     # Build user config in the expected internal format
     user_config: dict[str, any] = {
@@ -240,7 +291,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
             'name': jac_config.project.name,
             'version': jac_config.project.version,
             'description': jac_config.project.description,
-            'dependencies': npm_deps,
+            'dependencies': merged_npm_deps,
             'devDependencies': npm_dev_deps
         }
     };
@@ -372,6 +423,20 @@ impl JacClientConfig.check_runtime_version(
     }
 
     return (True, user_react, required_react);
+}
+
+"""Load ``[plugins.client.mobile]`` from jac.toml."""
+impl JacClientConfig.get_mobile_config(self: JacClientConfig) -> dict[str, any] {
+    client_config = self.get_jac_config().get_plugin_config("client");
+    section = client_config.get("mobile", {});
+    return section if isinstance(section, dict) else {};
+}
+
+"""Load ``[plugins.client.react_native]`` from jac.toml."""
+impl JacClientConfig.get_react_native_config(self: JacClientConfig) -> dict[str, any] {
+    client_config = self.get_jac_config().get_plugin_config("client");
+    section = client_config.get("react_native", {});
+    return section if isinstance(section, dict) else {};
 }
 
 """Sync core runtime dependency versions in jac.toml."""

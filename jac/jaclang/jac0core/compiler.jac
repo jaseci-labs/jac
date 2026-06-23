@@ -34,6 +34,7 @@ import from jaclang.jac0core.passes {
     BoundaryAnalysisPass,
     DeclImplMatchPass,
     JacAnnexPass,
+    JsxIntrinsicGuardPass,
     PyastGenPass,
     PyBytecodeGenPass,
     SemanticAnalysisPass,
@@ -105,7 +106,8 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
             SemDefMatchPass,
             CFGBuildPass,
             MTIRGenPass,
-            CapabilityCheckPass
+            CapabilityCheckPass,
+            JsxIntrinsicGuardPass
         ];
     } except ImportError {
         return [

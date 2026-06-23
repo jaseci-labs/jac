@@ -624,13 +624,19 @@ impl TypeEvaluator._get_type_of_expression_core(
                     for part in expr.name.parts {
                         if isinstance(part, uni.Name) {
                             tag_val = part.value or "";
-                            if tag_val and tag_val[0].isupper() {
-                                # Uppercase = user component — resolve via normal scope.
+                            is_universal = self.program.project_kind == "universal";
+                            if tag_val and (tag_val[0].isupper() or is_universal) {
+                                # Uppercase: always resolve via normal scope.
+                                # Universal projects: also try scope first for
+                                # lowercase names so imported lowercase components
+                                # (<myWidget>) are handled correctly.
                                 self.get_type_of_expression(part);
-                            } else {
-                                # Lowercase = intrinsic HTML element — resolve via
-                                # _JsxIntrinsicElements registry (JSX-context only,
-                                # not global scope).
+                                # In universal projects, unresolved lowercase names
+                                # are caught by JsxIntrinsicGuardPass (E1105), so
+                                # we don't fall back to intrinsic registry here.
+                            } elif tag_val {
+                                # Web project, lowercase: intrinsic HTML element —
+                                # resolve via _JsxIntrinsicElements registry.
                                 self._resolve_intrinsic_jsx_tag(part, tag_val);
                             }
                         }

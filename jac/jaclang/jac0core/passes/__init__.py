@@ -16,6 +16,7 @@ from jaclang.jac0core.passes.annex_pass import JacAnnexPass
 from jaclang.jac0core.passes.ast_validation_pass import ASTValidationPass
 from jaclang.jac0core.passes.boundary_analysis_pass import BoundaryAnalysisPass
 from jaclang.jac0core.passes.decl_impl_match_pass import DeclImplMatchPass
+from jaclang.jac0core.passes.jsx_intrinsic_guard_pass import JsxIntrinsicGuardPass
 from jaclang.jac0core.passes.module_codegen_pass import ModuleCodegenPass
 from jaclang.jac0core.passes.pyast_gen_pass import PyastGenPass
 from jaclang.jac0core.passes.pybc_gen_pass import PyBytecodeGenPass
@@ -35,6 +36,7 @@ __all__ = [
     "PyBytecodeGenPass",
     "JacAnnexPass",
     "DeclImplMatchPass",
+    "JsxIntrinsicGuardPass",
     "SemanticAnalysisPass",
     "BoundaryAnalysisPass",
     "ModuleCodegenPass",

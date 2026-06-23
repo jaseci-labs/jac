@@ -11,6 +11,15 @@ impl JacProgram.init(
     self.type_evaluator: (TypeEvaluator | None) = None;
     self._compiler: (JacCompiler | None) = None;
     self._compile_options: CompileOptions = CompileOptions();
+    # Resolved project kind ("web" | "universal") and the consumer project's
+    # root directory. Both are set once by JacCompiler.compile on the first
+    # compile for this program (first-write wins) and never overwritten by
+    # recursive sub-module or framework-file compiles. Kind-sensitive passes
+    # (JsxIntrinsicGuardPass / E1105) read both fields: they only guard files
+    # that live inside project_root, so framework files compiled into the
+    # same shared program are not affected by the consumer's project kind.
+    self.project_kind: str = "web";
+    self.project_root: (str | None) = None;
     self._native_cache: dict = {};
     # See `hub_cache_stamp` / `is_hub_entry_fresh`.
     self._hub_cache_times: dict[str, float] = {};
