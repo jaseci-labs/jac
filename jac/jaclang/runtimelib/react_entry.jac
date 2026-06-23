@@ -96,13 +96,11 @@ def build_pages_react_entry_script(
             ''
         ]
     );
-    # AuthGuard is a runtime function compiled with plain parameters (not React
-    # props destructuring), so wrap it in a component that passes the redirect
-    # string directly.
+    # AuthGuard uses the props-destructure
+    # Must use React.createElement with a props object to pass the redirect prop
     lines.extend(
         [
-            f'function _AuthGuardRoute() {{ return AuthGuard("{auth_redirect}"); }}',
-            'const authGuardElement = React.createElement(_AuthGuardRoute, null);',
+            f'const authGuardElement = React.createElement(AuthGuard, {{ redirect: "{auth_redirect}" }});',
             '',
             'function App() {',
             '\tconst routeChildren = [',

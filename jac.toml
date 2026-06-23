@@ -1,6 +1,16 @@
 [project]
 name = "jaclang"
 
+# Editable dev loop: reroute `import jaclang` to the in-repo source under jac/
+# so the `jac` binary runs your latest edits with no rebuild. Enabled here so
+# building from this repo always runs the in-tree compiler source; this skips
+# the binary's precompiled JIR bundle (the per-module cache is content-keyed, so
+# edits still self-invalidate). A one-time `zig build` is needed first, since
+# sitecustomize.py -- which reads this key -- ships inside the binary payload.
+# Comment this stanza out to fall back to the binary's bundled jaclang.
+[dev]
+jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to this file
+
 [check.lint]
 select = ["all"]
 exclude = [

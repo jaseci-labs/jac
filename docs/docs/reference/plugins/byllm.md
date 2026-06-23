@@ -60,7 +60,7 @@ This means your Jac type system functions as the LLM's output schema. Declaring 
 ## Installation
 
 ```bash
-pip install byllm
+jac install byllm
 ```
 
 For local inference without an API key, byLLM supports two paths -- pick the one that fits your environment (see [Built-in Local Models](#built-in-local-models) for the full discussion):
@@ -78,18 +78,18 @@ For local inference without an API key, byLLM supports two paths -- pick the one
 
 === "In-process `local:*` (opt-in extra)"
     ```bash
-    pip install 'byllm[local]'
+    jac install 'byllm[local]'
     ```
     ```toml
     [plugins.byllm.model]
     default_model = "local:gemma-4-e4b"
     ```
-    No daemon, single `pip install`, fully in-process. Adds `llama-cpp-python` and `huggingface_hub` as dependencies. See [Built-in Local Models](#built-in-local-models) for bundled aliases, GPU build flags, and the `jac model` cache CLI.
+    No daemon, single `jac install`, fully in-process. Adds `llama-cpp-python` and `huggingface_hub` as dependencies. See [Built-in Local Models](#built-in-local-models) for bundled aliases, GPU build flags, and the `jac model` cache CLI.
 
 For video support, install with the `video` extra:
 
 ```bash
-pip install byllm[video]
+jac install 'byllm[video]'
 ```
 
 ---
@@ -254,16 +254,16 @@ You can also override per-file with `glob llm = Model(...)` (see [Per-module ove
 ## Built-in Local Models
 
 !!! tip "Most users want Ollama, not this."
-    Ollama is the recommended local-first path: native installer, automatic GPU detection across CUDA/Metal/Vulkan, curated registry of quantized models, and full byLLM compatibility through litellm (`default_model = "ollama/<model>"`). It works without anything from this section. The `local:*` route below is for users who specifically don't want a separate daemon -- everything stays inside the Python process and a single `pip install`.
+    Ollama is the recommended local-first path: native installer, automatic GPU detection across CUDA/Metal/Vulkan, curated registry of quantized models, and full byLLM compatibility through litellm (`default_model = "ollama/<model>"`). It works without anything from this section. The `local:*` route below is for users who specifically don't want a separate daemon -- everything stays inside the Python process and a single `jac install`.
 
 Any model name prefixed with `local:` runs in-process via `llama.cpp`, with weights pulled from HuggingFace on first use and cached under `~/.cache/jac/models/<alias>/`. No API key, no separate daemon, and no proxy server -- the GGUF is loaded directly into the Jac process. Activate by installing the `[local]` extra:
 
 ```bash
-pip install 'byllm[local]' \
+jac install 'byllm[local]' \
   --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 ```
 
-The `--extra-index-url` flag points pip at `llama-cpp-python`'s prebuilt wheel index. Without it, pip falls back to the PyPI source tarball and runs a 30-60 second C++ build (`llama-cpp-python` does not publish wheels on PyPI). Use `/cu124`, `/metal`, `/vulkan` etc. for the matching GPU build (see [GPU Acceleration](#gpu-acceleration) below).
+The `--extra-index-url` flag points the installer at `llama-cpp-python`'s prebuilt wheel index. Without it, it falls back to the PyPI source tarball and runs a 30-60 second C++ build (`llama-cpp-python` does not publish wheels on PyPI). Use `/cu124`, `/metal`, `/vulkan` etc. for the matching GPU build (see [GPU Acceleration](#gpu-acceleration) below).
 
 The `local:*` route bypasses LiteLLM and replicates what cloud providers do server-side: it flattens multimodal content blocks for `llama.cpp`'s chat templates, rewrites OpenAI-style `json_schema` response formats into the GBNF grammar shape `llama.cpp` understands, and injects schema descriptions (e.g. `1=WORK, 2=PERSONAL, ...`) into the prompt so small open-weight models see the same constraints frontier models receive natively.
 
@@ -279,7 +279,7 @@ def categorize(title: str) -> Category by llm();
 default_model = "local:gemma-4-e4b"
 ```
 
-After `pip install 'byllm[local]'` (see [Installation](#installation)), the first `by llm()` call downloads the GGUF (interactive TTY prompts; non-TTY contexts require `BYLLM_AUTO_DOWNLOAD=1` or a prior `jac model pull`).
+After `jac install 'byllm[local]'` (see [Installation](#installation)), the first `by llm()` call downloads the GGUF (interactive TTY prompts; non-TTY contexts require `BYLLM_AUTO_DOWNLOAD=1` or a prior `jac model pull`).
 
 ### Bundled Aliases
 
@@ -365,7 +365,7 @@ When no model is explicitly set, byLLM picks one in this order:
 1. `BYLLM_DEFAULT_MODEL` environment variable
 2. `[plugins.byllm.model].default_model` in `jac.toml`
 3. **Auto-detect** -- if any provider API key is present (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `TOGETHER_API_KEY`, `DEEPSEEK_API_KEY`), falls through to `gpt-4o-mini`
-4. Otherwise, falls back to `local:<default_alias>` if the `[local]` extra is installed -- the bundled in-process runtime takes over so `by llm()` works offline out of the box. If `[local]` isn't installed and no key is set, byLLM raises a `ConfigurationError` listing the three concrete fixes (set an API key, configure `default_model` explicitly with an Ollama or other model, or `pip install 'byllm[local]'`).
+4. Otherwise, falls back to `local:<default_alias>` if the `[local]` extra is installed -- the bundled in-process runtime takes over so `by llm()` works offline out of the box. If `[local]` isn't installed and no key is set, byLLM raises a `ConfigurationError` listing the three concrete fixes (set an API key, configure `default_model` explicitly with an Ollama or other model, or `jac install 'byllm[local]'`).
 
 ### Managing the Cache
 
@@ -1522,7 +1522,7 @@ with entry {
 ```
 
 !!! note "Video requires extra dependency"
-    Video support requires `pip install byllm[video]`.
+    Video support requires `jac install 'byllm[video]'`.
 
 #### Video Parameters
 

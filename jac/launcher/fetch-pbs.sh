@@ -10,11 +10,16 @@ set -euo pipefail
 OSARCH="${1:?os-arch (e.g. macos-aarch64)}"
 DEST="${2:?dest dir}"
 
-# Pinned pbs release. Must stay a non-LTO ('pgo', not 'pgo+lto') *full* archive:
-# the launcher dlopens the shared libpython, so a full archive (with the .dylib/
-# .so + lib-dynload) is required; non-LTO avoids LLVM-bitcode link issues.
-PBS_TAG="20241206"
-PBS_PY="3.12.8"
+# Pinned pbs release. We want a *full* archive (the shared .dylib/.so +
+# lib-dynload, since the launcher dlopens the shared libpython) in the
+# 'pgo+lto-full' flavor -- the most optimized build pbs publishes. The launcher
+# only links libc and loads the finished shared libpython at runtime, so the
+# LTO-bitcode concern (a static-link issue, the reason older pins avoided LTO)
+# does not apply to it. As of the 3.14 line pbs ships pgo+lto-full for all four
+# targets (incl. aarch64-linux), so the old per-platform flavor fallback is gone.
+PBS_TAG="20260610"
+PBS_PY="3.14.6"
+FLAVOR="pgo+lto-full"
 case "$OSARCH" in
   macos-aarch64) PLAT="aarch64-apple-darwin" ;;
   macos-x86_64)  PLAT="x86_64-apple-darwin" ;;
@@ -22,7 +27,7 @@ case "$OSARCH" in
   linux-aarch64) PLAT="aarch64-unknown-linux-gnu" ;;
   *) echo "fetch-pbs: unsupported platform '$OSARCH'" >&2; exit 1 ;;
 esac
-ASSET="cpython-${PBS_PY}+${PBS_TAG}-${PLAT}-pgo-full.tar.zst"
+ASSET="cpython-${PBS_PY}+${PBS_TAG}-${PLAT}-${FLAVOR}.tar.zst"
 
 if [ -f "$DEST/python/PYTHON.json" ]; then
   exit 0

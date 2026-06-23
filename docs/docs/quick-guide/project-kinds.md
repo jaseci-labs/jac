@@ -5,8 +5,10 @@ Jac compiles one language to three runtimes -- Python bytecode (server, `sv`), J
 Every example below was run against the current toolchain. Install once and follow along:
 
 ```bash
-pip install jaseci
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
+
+This installs the self-contained `jac` binary -- no Python, pip, or uv required.
 
 !!! tip "`jac run` is kind-aware"
     Set `kind` under `[project]` in `jac.toml` (or let it be inferred from the entry-point's codespace), and a bare `jac run` does the right thing for that kind: **execute** runnable kinds (`cli`, `native-app`), **serve** server kinds (`api-service`, `fullstack`, ...), or **build** artifact kinds (`native-binary`, `shared-library`, `pypi-package`, `npm-package`). `jac run --show` prints the resolved plan and the equivalent primitive command without running it. The explicit verbs shown in each recipe below are those primitives.
@@ -229,7 +231,7 @@ jac bundle
 # → dist/greetlib-0.1.0-py3-none-any.whl
 ```
 
-Upload it with `twine`, then `pip install greetlib` anywhere. The wheel ships your compiled modules and lists `jaclang` as a runtime dependency.
+Upload it with `twine`, then `pip install greetlib` anywhere. The wheel ships your compiled modules and runs under the `jac` binary -- it does not list `jaclang` as a runtime dependency.
 
 :octicons-arrow-right-24: Reference: [Publishing](../reference/publishing.md)
 

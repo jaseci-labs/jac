@@ -36,6 +36,7 @@ share/python-wheels/
 *.egg
 MANIFEST
 .venv/
+.venv-precommit/
 
 # Others #
 .coverage

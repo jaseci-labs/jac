@@ -48,12 +48,6 @@ A lightweight AI-powered task management system that intelligently routes user r
    jac start task_manager.jac
    ```
 
-2. Run the frontend:
-
-   ```bash
-   jac streamlit frontend.jac
-   ```
-
 ## Example Requests
 
 ### Task Management
@@ -120,10 +114,10 @@ task-manager-lite/
 
 ## Getting Started
 
-1. **Install Dependencies**:
+1. **Install the `jac` binary** (see the [Jac install guide](https://docs.jaseci.org/)):
 
    ```bash
-   pip install jaclang jac-streamlit
+   curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
    ```
 
 2. **Set OpenAI API Key**:
@@ -136,7 +130,6 @@ task-manager-lite/
 
    ```bash
    jac start task_manager.jac
-   jac streamlit frontend.jac
    ```
 
 ## Technical Details
