@@ -121,18 +121,30 @@ def _start_server -> tuple {
     (fd, abs_path) = tempfile.mkstemp(
         dir=SITE_DIR, suffix=".html", prefix="_jac_test_"
     );
-    with os.fdopen(fd, "w") as f {
-        f.write(TEST_HTML);
+    # If anything after mkstemp raises (_get_free_port/Popen/_wait_for_port),
+    # the tuple unpack in _with_page never completes so its finally won't run —
+    # remove the temp file here before re-raising so it isn't leaked in SITE_DIR.
+    try {
+        with os.fdopen(fd, "w") as f {
+            f.write(TEST_HTML);
+        }
+        page_path = "/" + os.path.basename(abs_path);
+        port = _get_free_port();
+        server = Popen(
+            ["python", "-c", SERVER_SCRIPT, SITE_DIR, str(port)],
+            stdout=DEVNULL,
+            stderr=DEVNULL
+        );
+        _wait_for_port(port);
+        return (server, f"http://127.0.0.1:{port}", page_path, abs_path);
+    } except Exception {
+        try {
+            os.remove(abs_path);
+        } except OSError {
+            pass;
+        }
+        raise;
     }
-    page_path = "/" + os.path.basename(abs_path);
-    port = _get_free_port();
-    server = Popen(
-        ["python", "-c", SERVER_SCRIPT, SITE_DIR, str(port)],
-        stdout=DEVNULL,
-        stderr=DEVNULL
-    );
-    _wait_for_port(port);
-    return (server, f"http://127.0.0.1:{port}", page_path, abs_path);
 }
 
 def _stop_server(server: any, abs_path: str) {
