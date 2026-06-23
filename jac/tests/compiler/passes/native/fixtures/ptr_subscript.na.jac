@@ -2,9 +2,13 @@
 
 buf[i] on a named struct pointer must GEP + load (read) or GEP + store (write).
 The single-index GEP advances by one whole struct, giving true array semantics.
+
+Uses a logical `import from m { ... }` (not a pinned absolute path) so compile
+and JIT paths work across Linux/macOS/Windows triples. No libm functions are
+called; the import only declares struct layouts for the subscript tests.
 """
 
-import from "/usr/lib/libm.so.6" {
+import from m {
     obj Color { has r: u8, g: u8, b: u8, a: u8; }
     obj Vec2  { has x: f64, y: f64; }
 }
