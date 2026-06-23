@@ -201,21 +201,14 @@ impl TypeEvaluator._resolve_star_import_symbol(
         resolved = star_mod_path.resolve_relative_path_list();
         submod: uni.Module | None = None;
         if resolved {
-            # Multi-segment sources resolve to an extensionless base, so probe
-            # common extensions (e.g. ".../asyncio/queues" -> ".pyi"); a
-            # single-segment source already resolves to a full file path.
-            candidates = (
-                [resolved[-1] + ext for ext in (".pyi", ".py", ".jac")]
-                if len(resolved) >= 2
-                else [resolved[-1]]
-            );
-            for candidate in candidates {
-                if candidate and Path(candidate).exists() {
-                    submod = self._import_module_from_path(
-                        candidate, importer_path=self._resolve_importer_path(mod)
-                    );
-                    break;
-                }
+            # resolve_relative_path_list() already returns the target as a full
+            # file path with its extension (single- and multi-segment alike), so
+            # use it directly.
+            candidate = resolved[-1];
+            if candidate and Path(candidate).exists() {
+                submod = self._import_module_from_path(
+                    candidate, importer_path=self._resolve_importer_path(mod)
+                );
             }
         }
         if submod is None {
