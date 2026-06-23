@@ -9,8 +9,8 @@
 //! No system Python, uv, or pip is required at install or runtime.
 //!
 //! Payload layout (materialized to `<cache>/rt/<hash16>/`):
-//!     python/lib/libpython3.12.{dylib,so}   <- dlopened
-//!     python/lib/python3.12/                 <- stdlib (.pyc)
+//!     python/lib/libpython3.14.{dylib,so}   <- dlopened
+//!     python/lib/python3.14/                 <- stdlib (.pyc)
 //!     site/                                  <- jaclang + _jac_finder + llvmlite
 //!
 //! The pure-Zig materialization half (trailer parse, cache resolution,
@@ -48,7 +48,7 @@ const Py_BytesMain_t = *const fn (argc: c_int, argv: [*c][*c]u8) callconv(.c) c_
 /// PATH search for `python3`, so `sys.executable` ends up pointing at a *foreign*
 /// interpreter (e.g. /bin/python3). Anything that re-spawns `sys.executable`
 /// then runs that foreign Python while inheriting our PYTHONHOME/PYTHONPATH ->
-/// it loads our bundled 3.12 stdlib with the wrong libpython and dies importing
+/// it loads our bundled 3.14 stdlib with the wrong libpython and dies importing
 /// builtin C-extensions (_decimal/_contextvars). That is exactly how pytest-xdist
 /// / execnet workers crash. Re-pointing it at this binary makes every re-spawn
 /// come back through worker mode (Py_BytesMain), which has the right interpreter.
@@ -64,9 +64,14 @@ const BOOT_SRC =
     "from jaclang.jac0core.cli_boot import start_cli\n" ++
     "start_cli()\n";
 
+/// Bundled CPython minor version. Must stay in lockstep with fetch-pbs.sh
+/// (PBS_PY) and mkpayload.sh staging; it names the dlopened libpython and the
+/// lib-dynload path below. A single bump point for the embedded interpreter.
+const py_ver = "3.14";
+
 const lib_basename = switch (builtin.os.tag) {
-    .macos => "libpython3.12.dylib",
-    else => "libpython3.12.so",
+    .macos => "libpython" ++ py_ver ++ ".dylib",
+    else => "libpython" ++ py_ver ++ ".so",
 };
 
 fn die(comptime msg: []const u8) noreturn {
@@ -111,11 +116,12 @@ fn boot(rt: []const u8, exe_path: []const u8, init: std.process.Init) u8 {
     // that ship stdlib C-extensions as shared .so (e.g. linux-aarch64 noopt)
     // rather than compiled into libpython: in worker mode (Py_BytesMain) that dir
     // is otherwise not on sys.path even with PYTHONHOME set. (On the pinned
-    // linux-x86_64 pgo-full pbs nearly everything is *builtin* -- lib-dynload has
-    // only _crypt.so -- so it is mostly redundant there; the xdist worker crash
-    // that looked like a missing _decimal/_contextvars was actually a wrong
-    // sys.executable, fixed via JAC_EXECUTABLE below. See XDIST_LINUX_NOTES.md.)
-    const pythonpath = std.fmt.bufPrintZ(&ppbuf, "{s}/site:{s}/python/lib/python3.12/lib-dynload", .{ rt, rt }) catch die("path too long");
+    // linux-x86_64 pgo+lto-full pbs nearly everything is *builtin* -- lib-dynload
+    // carries only a few stdlib C-extensions -- so it is mostly redundant there;
+    // the xdist worker crash that looked like a missing _decimal/_contextvars was
+    // actually a wrong sys.executable, fixed via JAC_EXECUTABLE below. See
+    // XDIST_LINUX_NOTES.md.)
+    const pythonpath = std.fmt.bufPrintZ(&ppbuf, "{s}/site:{s}/python/lib/python" ++ py_ver ++ "/lib-dynload", .{ rt, rt }) catch die("path too long");
 
     // We own a private, hermetic interpreter: point it at our tree, force UTF-8,
     // never write bytecode (shipped stdlib is .pyc), ignore user site.

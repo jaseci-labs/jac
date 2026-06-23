@@ -12,8 +12,8 @@
 //!   zig build -Dpayload=PATH       # pack a prebuilt payload (skip fetch+mkpayload)
 //!   zig build -Dtarget=aarch64-macos
 //!
-//! Build-time host tools required for the full binary: bash, curl, zstd, tar,
-//! and a Python 3.12 with pip (the pbs interpreter provides its own; only used
+//! Build-time host tools required for the full binary: bash, curl, git, zstd,
+//! tar, and a Python 3.x with pip (the pbs interpreter provides its own; used
 //! to assemble the payload). The shipped binary needs none of these.
 
 const std = @import("std");
@@ -61,8 +61,15 @@ pub fn build(b: *std.Build) void {
         const pbs_python = b.fmt("{s}/python", .{pbs_dir});
 
         const fetch = b.addSystemCommand(&.{ "bash", "launcher/fetch-pbs.sh", osarch, pbs_dir });
+        // typeshed stdlib stubs are NOT vendored in git; fetch them at the pinned
+        // commit (jaclang/vendor/typeshed/PIN) so the payload can bundle them.
+        // Idempotent (no-ops when already materialized); has_side_effects keeps it
+        // from being cached away, so a clean checkout always materializes them.
+        const fetch_ts = b.addSystemCommand(&.{ "bash", "launcher/fetch-typeshed.sh" });
+        fetch_ts.has_side_effects = true;
         const mk = b.addSystemCommand(&.{ "bash", "launcher/mkpayload.sh", pbs_python, b.pathFromRoot(".") });
         mk.step.dependOn(&fetch.step);
+        mk.step.dependOn(&fetch_ts.step);
         const out = mk.addOutputFileArg("payload.tar.zst");
         // Track the payload's real inputs so it repacks when any source changes.
         // NOTE: addDirectoryArg hashes only the directory PATH (Zig 0.16
@@ -75,6 +82,10 @@ pub fn build(b: *std.Build) void {
         mk.addFileInput(b.path("jac.toml"));
         mk.addFileInput(b.path("launcher/mkpayload.sh"));
         mk.addFileInput(b.path("launcher/fetch-pbs.sh"));
+        mk.addFileInput(b.path("launcher/fetch-typeshed.sh"));
+        // PIN drives the fetched typeshed version; it lives under jaclang/ (so
+        // addTreeInputs covers it) but list it explicitly as the cache-bust key.
+        mk.addFileInput(b.path("jaclang/vendor/typeshed/PIN"));
         break :payload out;
     };
 

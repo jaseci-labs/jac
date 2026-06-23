@@ -25,12 +25,9 @@ jobs:
   build:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
+      # typeshed stdlib stubs are now vendored as plain files (no submodule);
+      # third-party stubs are installed per-project by `jac add`.
       - uses: actions/checkout@v4
-        with:
-          # The type checker loads vendored typeshed stubs, which live in a git
-          # submodule (jac/jaclang/vendor/typeshed). Without them the checker is a
-          # no-op and ~700 compiler tests fail on missing `typing.pyi`.
-          submodules: true
 
       - name: Set up jac (build the binary once, cached)
         uses: ./.github/actions/setup-jac
@@ -99,14 +96,15 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
-        with:
-          # The compiler suite runs `jac test` from jac/, where `python -m
-          # jaclang` (how the nacompile tests shell out) resolves the in-tree
-          # jaclang via -m's cwd-prepend. Native type resolution then loads the
-          # vendored typeshed stubs (jac/jaclang/vendor/typeshed) -- without the
-          # submodule the checker is blind and na-compilation fails. Same reason
-          # the build job checks out submodules.
-          submodules: true
+      - name: Fetch typeshed stdlib stubs into the checkout
+        # The nacompile subprocess tests shell out to `<jac> -m jaclang`, which
+        # (via -m's cwd-prepend, working-directory: jac) resolves the IN-TREE
+        # jaclang and loads jac/jaclang/vendor/typeshed/stdlib for native type
+        # resolution. Those stubs are gitignored now (fetched at the pinned
+        # commit, not committed), so materialize them in the checkout -- without
+        # them the checker is blind and na-compilation fails.
+        working-directory: jac
+        run: bash launcher/fetch-typeshed.sh
       - name: Download the jac binary
         uses: actions/download-artifact@v4
         with:
