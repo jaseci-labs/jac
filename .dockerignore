@@ -38,6 +38,13 @@ jac-scale/build
 *.tar.gz
 *.whl
 
+# Zig launcher build caches. The prebuilt binary at jac/zig-out/bin/jac IS
+# needed in the context (the microservice image copies it), but the launcher's
+# intermediate cache and the fetched python-build-standalone tree are heavy
+# build-only artifacts that must not bloat the context.
+jac/.zig-cache
+jac/.pbs-build
+
 # Jac runtime artifacts. Specific subdirs - blanket `**/.jac` would
 # silently drop the FE bundle at `.jac/client/dist`.
 **/.jac/cache

@@ -29,7 +29,8 @@ jac_scale = [
 
 [dependencies]
 rich = ">=13.0.0"
-jaclang = ">=0.16.7"
+# jaclang is provided by the jac binary at runtime (host dependency), not
+# pulled from PyPI -- it is no longer published there.
 python-dotenv = ">=1.2.1,<2.0.0"
 fastapi = ">=0.121.3,<0.122.0"
 "uvicorn[standard]" = ">=0.38.0,<0.39.0"

@@ -120,13 +120,13 @@ test "faux flag prints endpoint docs" {
         assert "client_page" in output;
         # Verify summary is present
         assert "TOTAL:" in output;
-        # 12 functions / 40 endpoints: the doc lists jaclang framework helpers
-        # imported into every module (connect, spawn, on_entry, set_trigger, …)
-        # alongside user functions — a pre-existing _collect_functions leak that
-        # the compiler-emitted `set_trigger` decorator extends by one.
-        assert "12 functions" in output;
+        # 2 functions / 20 endpoints: only the two user functions (add_numbers,
+        # greet) are exposed. _collect_functions skips jaclang framework helpers
+        # (connect, spawn, on_entry, set_trigger, …) that the compiler imports
+        # into every module's namespace, so they no longer leak as endpoints.
+        assert "2 functions" in output;
         assert "5 walkers" in output;
-        assert "40 endpoints" in output;
+        assert "20 endpoints" in output;
         # Verify parameter details are included
         assert "required" in output;
         assert "optional" in output;

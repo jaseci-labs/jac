@@ -10,7 +10,8 @@ if spec is None:
     # Package not installed at all
     sys.stderr.write(
         "ImportError: jaclang is required for byLLM to function. "
-        "Please install it via 'pip install jaclang', or reinstall byLLM.\n"
+        "jaclang is provided by the jac binary -- run byLLM under `jac`, "
+        "or install it with `jac install -e <byllm-path>`.\n"
     )
     sys.exit(1)
 

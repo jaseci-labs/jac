@@ -171,7 +171,12 @@ def _with_page(callback: any, wait_until: str = "domcontentloaded") {
 }
 
 def _scroll_to(page: any, block_id: str) {
-    page.evaluate(f"document.querySelector('{block_id}').scrollIntoView()");
+    # Wait for the block to attach before scrolling. Otherwise, when the page is
+    # still settling, `querySelector` returns null and `.scrollIntoView()` throws
+    # "Cannot read properties of null", flaking the test instead of giving a
+    # clear timeout. The `?.` is a belt-and-suspenders no-op if it races away.
+    page.wait_for_selector(block_id, state="attached", timeout=MONACO_TIMEOUT);
+    page.evaluate(f"document.querySelector('{block_id}')?.scrollIntoView()");
 }
 
 def _click_run(page: any, block_id: str) {

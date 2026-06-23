@@ -3109,6 +3109,7 @@ Native code reinterprets `int`, `str`, function refs and `obj` instances
 as 64-bit pointers, so a handful of cross-type assignments are sound there
 but not in regular Jac. Determined from the pass's current node."""
 impl TypeEvaluator._in_native_context -> bool {
+    import from jaclang.jac0core.ext_registry { is_native_module }
     if self._pass is None {
         return False;
     }
@@ -3126,7 +3127,7 @@ impl TypeEvaluator._in_native_context -> bool {
     if mod is None or mod.loc is None {
         return False;
     }
-    return mod.loc.mod_path.endswith(".na.jac");
+    return is_native_module(mod.loc.mod_path);
 }
 
 """Match a typing special form loaded from any stdlib typing stub.
@@ -4528,6 +4529,21 @@ impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str
     and pred.else_body.body
     and succ is pred.else_body.body[0] {
         return "false";
+    }
+    # Synthetic in-body predecessor (e.g. a comprehension's InnerCompr wired
+    # as a flow predecessor of the if-stmt): `succ` lexically nests inside the
+    # if-stmt rather than being a post-if sibling. Classify by which branch
+    # subtree contains it so head narrowing inside the body uses the true edge.
+    cur: uni.UniNode | None = succ;
+    while cur is not None and cur is not pred {
+        if pred.else_body is not None and cur is pred.else_body {
+            return "false";
+        }
+        cur = cur.parent;
+    }
+    if cur is pred {
+        # Nested under pred but not under else_body -> true branch body.
+        return "true";
     }
     # Fall-through to next sibling: which branch is the empty one?
     body_empty = not pred.body;

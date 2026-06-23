@@ -1437,6 +1437,26 @@ def _precompile_all_pythons(config: JacConfig) -> int {
     }
 
     project_root_str = str(config.project_root);
+
+    # Under the single self-contained binary there is no system Python to build a
+    # venv around, and jaclang is not on PyPI to pip-install. The bundled
+    # interpreter already has jaclang, so run the precompile through it directly
+    # (`sys.executable` is pinned to this binary), producing .jir for the binary's
+    # own Python version.
+    if os.environ.get("JAC_STANDALONE") {
+        tag = f"cpython-3{sys.version_info.minor}";
+        console.print(
+            f"\n  Precompiling for {tag} (bundled interpreter)...", style="muted"
+        );
+        result = subprocess.run([sys.executable, "run", script_path, project_root_str]);
+        if result.returncode != 0 {
+            console.error(f"Precompilation failed for {tag}.");
+            return 1;
+        }
+        console.print(f"  ✔ {tag}", style="success");
+        return 0;
+    }
+
     pythons = _find_precompile_pythons();
 
     if not pythons {
@@ -1544,17 +1564,22 @@ def _bundle_npm(config: any, output: str) -> int {
     return 0;
 }
 
-"""Build the @jaseci/runtime npm package (maintainer task); returns 0 on success."""
-def _bundle_npm_runtime(output: str) -> int {
-    import from jaclang.publish.runtime_npm { build_runtime_to, RUNTIME_PKG_NAME }
+"""Build the runtime npm package (maintainer task); returns 0 on success.
+
+The compiled runtime tracks the active framework backend: React/Preact builds
+publish `@jaseci/runtime`, a Solid build publishes `@jaseci/runtime-solid` (no
+React-ecosystem package). `framework=""` resolves the project's active backend."""
+def _bundle_npm_runtime(output: str, framework: str = "") -> int {
+    import from jaclang.publish.runtime_npm { build_runtime_to, runtime_pkg_name }
     import importlib.metadata;
 
     version = importlib.metadata.version("jaclang");
+    pkg_name = runtime_pkg_name(framework);
     out_dir = Path(output);
-    console.print(f"\n📦 Building {RUNTIME_PKG_NAME} v{version}", style="bold");
+    console.print(f"\n📦 Building {pkg_name} v{version}", style="bold");
     console.print("\n  Compiling runtime → npm tarball...", style="muted");
     try {
-        path = build_runtime_to(out_dir, version);
+        path = build_runtime_to(out_dir, version, framework=framework);
     } except Exception as e {
         console.error(f"runtime build failed: {e}");
         return 1;

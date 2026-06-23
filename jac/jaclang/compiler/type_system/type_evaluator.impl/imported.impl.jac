@@ -127,14 +127,13 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
             );
             return node_.name.type;
         } else {
-            mod_type = self.get_type_of_module(import_node.from_loc);
-            if not isinstance(mod_type, types.ModuleType) {
+            if not isinstance(from_mod_type, types.ModuleType) {
                 # Module resolution failed; W1100 was emitted by
                 # get_type_of_module on the from-clause node.
                 node_.name.type = types.UnknownType();
                 return node_.name.type;
             }
-            if mod_type.is_external {
+            if from_mod_type.is_external {
                 # Foreign-source module (JS/TS/asset/etc.). The Jac type
                 # system cannot see inside it; treat the imported name as
                 # gradual Any to avoid false-positive "name not found".
@@ -146,14 +145,14 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                 return node_.name.type;
             }
             if sym := type_utils.lookup_symtab(
-                mod_type.symbol_table, node_.name.value, self.builtins_module
+                from_mod_type.symbol_table, node_.name.value, self.builtins_module
             ) {
                 return self._set_module_item_symbol_and_type(node_, sym);
             }
             # Fallback: follow star imports for re-exported symbols.
-            if isinstance(mod_type.symbol_table, uni.Module) {
+            if isinstance(from_mod_type.symbol_table, uni.Module) {
                 if sym := self._resolve_star_import_symbol(
-                    mod_type.symbol_table, node_.name.value
+                    from_mod_type.symbol_table, node_.name.value
                 ) {
                     return self._set_module_item_symbol_and_type(node_, sym);
                 }
@@ -367,9 +366,15 @@ impl TypeEvaluator._import_module_from_path(
     } elif resolved_path in target_hub {
         mod = target_hub[resolved_path];
     } else {
-        # Try JIR cache first for .jac files
+        # Try JIR cache first for .jac files, but never for .na.jac.
+        # JIR does not serialize Expr.type, so a JIR-loaded native module
+        # arrives untyped and its cross-module symbol links are degraded.
+        # On incremental builds this causes E2018/E5090 for types that
+        # come from transitively-imported native modules (issue #6793).
+        # Always fresh-compile .na.jac deps so the type evaluator builds
+        # full cross-module links, matching fresh-build behaviour.
         jir_mod: (uni.Module | None) = None;
-        if resolved_path.endswith('.jac') {
+        if resolved_path.endswith('.jac') and not resolved_path.endswith('.na.jac') {
             jir_mod = self._try_read_jir_cache(resolved_path);
         }
         if jir_mod is not None {
@@ -392,7 +397,10 @@ impl TypeEvaluator._import_module_from_path(
             # Write JIR module cache for .jac files (best-effort).
             # Only write if no valid cache exists yet — symtab-only compiles
             # lack bytecode and must not overwrite a full cache that has it.
-            if resolved_path.endswith('.jac') {
+            # Skip .na.jac: a symtab-only native cache would be untyped and
+            # trigger E2018/E5090 on the next incremental build (issue #6793).
+            if resolved_path.endswith('.jac')
+            and not resolved_path.endswith('.na.jac') {
                 try {
                     import from jaclang.jac0core.jir {
                         get_module_cache_path,

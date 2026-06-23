@@ -124,7 +124,11 @@ obj CheckConfig {
     has print_errs: bool = True,
         lint: LintConfig = LintConfig(),
         suppress: list[str] = [],
-        suppress_categories: list[str] = [];
+        suppress_categories: list[str] = [],
+        # When True, access-modifier violations (private/protected member access,
+        # cross-module/cross-project visibility) are reported as hard errors
+        # instead of the default warnings. See AccessCheckPass.
+        enforce_access: bool = False;
 }
 
 """Dot/graph visualization defaults from [dot] section."""
@@ -185,6 +189,11 @@ obj ClientErrorsConfig {
     has verbose: bool = False;
 }
 
+"""Client-side compilation settings from [client] section."""
+obj ClientConfig {
+    has framework: str = "react";
+}
+
 # Interpolate environment variables in a string value.
 # Supports ${VAR_NAME}, ${VAR_NAME:-default}, ${VAR_NAME:?error message}
 def interpolate_env_vars(value: str) -> str;
@@ -225,6 +234,7 @@ obj JacConfig {
         plugins_config: PluginsConfig = PluginsConfig(),
         environment: EnvironmentConfig = EnvironmentConfig(),
         client_errors: ClientErrorsConfig = ClientErrorsConfig(),
+        client: ClientConfig = ClientConfig(),
         # Dependencies
         dependencies: dict[str, str] = {},
         dev_dependencies: dict[str, str] = {},

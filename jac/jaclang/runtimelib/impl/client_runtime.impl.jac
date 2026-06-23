@@ -1,3 +1,45 @@
+# --- Public API forwarders to the framework-agnostic core -------------------
+# Thin pass-throughs so `@jac/runtime` exposes the core auth/nav/spawn surface
+# as typed functions (the bodies live in `client_runtime_core`). See the typed
+# re-export note in `client_runtime.cl.jac`.
+impl navigate(path: str) -> None {
+    _navigate(path);
+}
+
+impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
+    return _jacSpawn(left, right, fields);
+}
+
+impl jacSignup(
+    identities_or_username: (str | list),
+    credential_or_password: (str | dict),
+    profile: (dict | None) = None
+) -> dict {
+    return await _jacSignup(identities_or_username, credential_or_password, profile);
+}
+
+impl jacLogin(
+    identity_or_username: (str | dict), credential_or_password: (str | dict)
+) -> bool {
+    return await _jacLogin(identity_or_username, credential_or_password);
+}
+
+impl jacLogout -> None {
+    _jacLogout();
+}
+
+impl jacIsLoggedIn -> bool {
+    return _jacIsLoggedIn();
+}
+
+impl jacSsoLogin(platform: str, api_base: str = "", operation: str = "login") -> bool {
+    return await _jacSsoLogin(platform, api_base, operation);
+}
+
+impl jacSetToken(token: str) -> None {
+    _jacSetToken(token);
+}
+
 impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
     if tag == None {
         tag = React.Fragment;
@@ -58,537 +100,6 @@ impl useRouter -> dict {
         "search": location.search,
         "hash": location.hash
     };
-}
-
-impl navigate(path: str) -> None {
-    window.history.pushState({}, "", path);
-    window.dispatchEvent(Reflect.construct(PopStateEvent, ["popstate"]));
-}
-
-impl __createJacSchema(zodLib: any) -> any {
-    handler = {
-        "apply": lambda target: any , thisArg: any , argumentsList: any -> any {
-        # When called as JacSchema({...}), call z.object({...})
-        return zodLib.object.apply(zodLib, argumentsList); },
-        "get": lambda target: any , prop: any , receiver: any -> any {
-        # When accessing properties like JacSchema.string(), forward to z
-        return zodLib[prop]; }
-    };
-    # Create a dummy function as the proxy target
-    dummyFunc = lambda schema: any -> any { return zodLib.object(schema); };
-    return Reflect.construct(Proxy, [dummyFunc, handler]);
-}
-
-impl __getApiBaseUrl -> str {
-    # globalThis.__JAC_API_BASE_URL__ is replaced by Vite's define at build time.
-    # Falls back to empty string (same-origin) when not configured.
-    return globalThis.__JAC_API_BASE_URL__ || "";
-}
-
-# ============================================================================
-# AUTO-CACHE INFRASTRUCTURE
-# ============================================================================
-
-# Read compiler-provided endpoint effects from __jac_init__ JSON
-impl __getEndpointEffects -> dict {
-    if not globalThis.__jacEndpointEffects__ {
-        initEl = None;
-        # Bare `document` throws ReferenceError outside the browser (Node test
-        # harness), and `except Exception` does not catch JS errors - probe via
-        # globalThis instead.
-        if globalThis.document {
-            try {
-                initEl = document.getElementById("__jac_init__");
-            } except Exception as e {
-                console.warn("[jac-client] Failed to find __jac_init__ element:", e);
-            }
-        }
-        if initEl {
-            try {
-                data = JSON.parse(initEl.textContent);
-                globalThis.__jacEndpointEffects__ = data["endpointEffects"] or {};
-            } except Exception as e {
-                console.warn(
-                    "[jac-client] Failed to parse __jac_init__ data, using empty effects:",
-                    e
-                );
-                globalThis.__jacEndpointEffects__ = {};
-            }
-        } else {
-            globalThis.__jacEndpointEffects__ = {};
-        }
-    }
-    return globalThis.__jacEndpointEffects__;
-}
-
-# Get or initialize cache state on globalThis
-impl __getCacheState -> dict {
-    if not globalThis.__jacCacheState__ {
-        globalThis.__jacCacheState__ = {
-            "cache": {},
-            "order": [],
-            "pending": {},
-            "config": {"maxEntries": 500, "defaultTtlMs": 60000}
-        };
-    }
-    return globalThis.__jacCacheState__;
-}
-
-# Check if a cache entry is still fresh
-impl __isFresh(`entry: dict) -> bool {
-    if not `entry {
-        return False;
-    }
-    age = Date.now() - `entry["timestamp"];
-    return age < `entry["ttl"];
-}
-
-# Get a cache entry and promote it in LRU order
-impl __cacheGet(key: str) -> dict {
-    state = __getCacheState();
-    entry = state["cache"][key];
-    if not entry {
-        return None;
-    }
-    # Move to end (most recently used)
-    idx = state["order"].indexOf(key);
-    if idx > -1 {
-        state["order"].splice(idx, 1);
-    }
-    state["order"].push(key);
-    return entry;
-}
-
-# Store an entry in the cache with LRU eviction
-impl __cacheSet(key: str, data: any, ttl: int) -> None {
-    state = __getCacheState();
-    # Remove existing entry if present
-    if state["cache"][key] {
-        idx = state["order"].indexOf(key);
-        if idx > -1 {
-            state["order"].splice(idx, 1);
-        }
-    }
-    # Evict oldest if at capacity
-    while len(state["order"]) >= state["config"]["maxEntries"] {
-        __evictOldest();
-    }
-    state["cache"][key] = {"data": data, "timestamp": Date.now(), "ttl": ttl};
-    state["order"].push(key);
-}
-
-# Evict the oldest cache entry
-impl __evictOldest -> None {
-    state = __getCacheState();
-    if len(state["order"]) > 0 {
-        oldest = state["order"].shift();
-        if oldest and state["cache"][oldest] {
-            Reflect.deleteProperty(state["cache"], oldest);
-        }
-    }
-}
-
-# Check if two lists share any element
-impl __overlaps(list1: list, list2: list) -> bool {
-    for item in list1 {
-        if list2.includes(item) {
-            return True;
-        }
-    }
-    return False;
-}
-
-# Invalidate all cache entries for a given endpoint key prefix
-impl __invalidateEndpoint(endpoint_key: str) -> None {
-    state = __getCacheState();
-    keys_to_delete = [];
-    for key in Object.keys(state["cache"]) {
-        if key.startsWith(endpoint_key) {
-            keys_to_delete.push(key);
-        }
-    }
-    for key in keys_to_delete {
-        Reflect.deleteProperty(state["cache"], key);
-        idx = state["order"].indexOf(key);
-        if idx > -1 {
-            state["order"].splice(idx, 1);
-        }
-    }
-}
-
-# ============================================================================
-# RAW FETCH HELPERS (no caching, just HTTP)
-# ============================================================================
-
-# Direct walker fetch (POST /walker/<name>[/<nodeId>])
-impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
-    token = __getLocalStorage("jac_token");
-    base_url = __getApiBaseUrl();
-    url = f"{base_url}/walker/{`walker}";
-    if nodeId != "" {
-        url = f"{base_url}/walker/{`walker}/{nodeId}";
-    }
-    headers = {"Content-Type": "application/json", "Accept": "application/json"};
-    if token {
-        headers["Authorization"] = f"Bearer {token}";
-    }
-    response = await fetch(
-        url, {"method": "POST", "headers": headers, "body": JSON.stringify(fields)}
-    );
-    if not response.ok {
-        if response.status == 401 {
-            __removeLocalStorage("jac_token");
-            window.location.reload();
-            return {};
-        }
-        error_text = await response.text();
-        walker_name = f"{`walker}/{nodeId}" if nodeId else `walker;
-        raise Exception(f"Walker {walker_name} failed: {error_text}");
-    }
-    payload = await response.json();
-    return payload["data"] if payload["data"] else {};
-}
-
-# Direct function fetch (POST /function/<name>)
-impl __doFuncFetch(function_name: str, args: dict) -> any {
-    token = __getLocalStorage("jac_token");
-    base_url = __getApiBaseUrl();
-    headers = {"Content-Type": "application/json"};
-    if token {
-        headers["Authorization"] = f"Bearer {token}";
-    }
-    response = await fetch(
-        f"{base_url}/function/{function_name}",
-        {"method": "POST", "headers": headers, "body": JSON.stringify(args)}
-    );
-    if not response.ok {
-        error_text = await response.text();
-        raise Exception(f"Function {function_name} failed: {error_text}");
-    }
-    payload = await response.json();
-    if not payload["ok"] {
-        error_msg = payload["error"] if payload["error"] else "Unknown error";
-        raise Exception(f"Function {function_name} failed: {error_msg}");
-    }
-    result = None;
-    try {
-        if payload["data"] and payload["data"]["result"] {
-            result = payload["data"]["result"];
-        }
-    } except Exception as e {
-        console.warn(f"Failed to extract result for {function_name}:", e);
-    }
-    return result;
-}
-
-# ============================================================================
-# AUTO-CACHE DISPATCH - shared by __jacSpawn and __jacCallFunction
-# ============================================================================
-impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> any {
-    effects = __getEndpointEffects();
-    info = effects[endpoint_key];
-    state = __getCacheState();
-    # If endpoint is a known READER, check cache first
-    if info and not info["is_writer"] {
-        cached = __cacheGet(args_key);
-        if cached and __isFresh(cached) {
-            return cached["data"];
-        }
-        # Dedup concurrent identical requests
-        if state["pending"][args_key] {
-            return await state["pending"][args_key];
-        }
-        fetch_promise = fetch_fn();
-        state["pending"][args_key] = fetch_promise;
-        try {
-            data = await fetch_promise;
-            __cacheSet(args_key, data, state["config"]["defaultTtlMs"]);
-            return data;
-        } finally {
-            Reflect.deleteProperty(state["pending"], args_key);
-        }
-    }
-    # If endpoint is a known WRITER, fetch then auto-invalidate readers
-    if info and info["is_writer"] {
-        data = await fetch_fn();
-        writer_touches = info["touches"];
-        for endpoint_name in Object.keys(effects) {
-            reader_info = effects[endpoint_name];
-            if reader_info and not reader_info["is_writer"] {
-                if writer_touches.includes("*")
-                or __overlaps(reader_info["touches"], writer_touches) {
-                    __invalidateEndpoint(endpoint_name);
-                }
-            }
-        }
-        return data;
-    }
-    # Unknown endpoint (no metadata) - direct fetch, no caching
-    return await fetch_fn();
-}
-
-# ============================================================================
-# PUBLIC API - __jacSpawn and __jacCallFunction with auto-caching
-# ============================================================================
-impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
-    # Auth walkers always skip cache
-    if left == "login"
-    or left == "signup"
-    or left == "logout"
-    or left == "refresh_token" {
-        return await __doWalkerFetch(left, right, fields);
-    }
-    endpoint_key = f"walker:{left}";
-    args_key = f"{endpoint_key}:{right}:{JSON.stringify(fields)}";
-    return await __cachedEndpointCall(
-        endpoint_key,
-        args_key,
-        lambda -> any { return __doWalkerFetch(left, right, fields); }
-    );
-}
-
-impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
-    return __jacSpawn(left, right, fields);
-}
-
-impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
-    endpoint_key = f"func:{function_name}";
-    args_key = f"{endpoint_key}:{JSON.stringify(args)}";
-    return await __cachedEndpointCall(
-        endpoint_key,
-        args_key,
-        lambda -> any { return __doFuncFetch(function_name, args); }
-    );
-}
-
-impl __normalizeIdentity(x: any) -> dict {
-    if x != None and Object.prototype.toString.call(x) == "[object Object]" {
-        return x;
-    }
-    return {"type": "username", "value": x};
-}
-
-impl __normalizeCredential(x: any) -> dict {
-    if x != None and Object.prototype.toString.call(x) == "[object Object]" {
-        return x;
-    }
-    return {"type": "password", "password": x};
-}
-
-impl jacSignup(
-    identities_or_username: (str | list),
-    credential_or_password: (str | dict),
-    profile: (dict | None) = None
-) -> dict {
-    base_url = __getApiBaseUrl();
-    credential = __normalizeCredential(credential_or_password);
-    identities = (
-        identities_or_username
-            if Array.isArray(identities_or_username)
-            else [__normalizeIdentity(identities_or_username)]
-    );
-    body = {"identities": identities, "credential": credential};
-    if profile != None {
-        body["profile"] = profile;
-    }
-    response = await fetch(
-        f"{base_url}/user/register",
-        {
-            "method": "POST",
-            "headers": {"Content-Type": "application/json"},
-            "body": JSON.stringify(body)
-        }
-    );
-    if response.ok {
-        body_text = await response.text();
-        user_id = None;
-        try {
-            data = JSON.parse(body_text);
-            if data["data"] and data["data"]["user_id"] {
-                user_id = data["data"]["user_id"];
-            }
-        } except Exception as e {
-            return {
-                "success": False,
-                "error": f"Signup response was not valid JSON: {e}"
-            };
-        }
-        return {"success": True, "user_id": user_id};
-    } else {
-        error_text = await response.text();
-        try {
-            error_data = JSON.parse(error_text);
-            return {
-                "success": False,
-                "error": error_data["error"]
-                    if error_data["error"] != None
-                    else "Signup failed"
-            };
-        } except Exception {
-            return {"success": False, "error": error_text};
-        }
-    }
-}
-
-impl jacLogin(
-    identity_or_username: (str | dict), credential_or_password: (str | dict)
-) -> bool {
-    base_url = __getApiBaseUrl();
-    identity = __normalizeIdentity(identity_or_username);
-    credential = __normalizeCredential(credential_or_password);
-    response = await fetch(
-        f"{base_url}/user/login",
-        {
-            "method": "POST",
-            "headers": {"Content-Type": "application/json"},
-            "body": JSON.stringify({"identity": identity, "credential": credential})
-        }
-    );
-    if response.ok {
-        data = JSON.parse(await response.text());
-        token = None;
-        try {
-            if data["data"] and data["data"]["token"] {
-                token = data["data"]["token"];
-            }
-        } except Exception as e {
-            console.warn("Failed to extract login token:", e);
-        }
-        if token {
-            jacSetToken(token);
-            return True;
-        }
-    }
-    return False;
-}
-
-impl jacLogout -> None {
-    __jacClearCache();
-    __removeLocalStorage("jac_token");
-    broker = __jacDesktopBroker();
-    if broker {
-        # Desktop: also drop the broker's *persisted* (on-disk) session so a
-        # later login can't poll up this user's token. Best-effort and
-        # non-blocking -- logout must not hang on the loopback server, and the
-        # next login's `oauth/start` clears it again regardless.
-        try {
-            fetch(f"{broker}/session", {"method": "DELETE"}).catch(
-                lambda e: any { console.warn(
-                    "[jac-client] broker session clear failed:", e
-                ); }
-            );
-        } except e {
-            console.warn("[jac-client] broker session clear failed:", e);
-        }
-    }
-}
-
-impl jacIsLoggedIn -> bool {
-    token = __getLocalStorage("jac_token");
-    return token != None and token != "";
-}
-
-impl __jacClearCache -> None {
-    # Drop every cached walker/function response; an auth change makes them
-    # belong to a different principal.
-    state = __getCacheState();
-    for key in Object.keys(state["cache"]) {
-        Reflect.deleteProperty(state["cache"], key);
-    }
-    state["order"].splice(0, state["order"].length);
-}
-
-impl jacSetToken(token: str) -> None {
-    __jacClearCache();
-    __setLocalStorage("jac_token", token);
-}
-
-impl __jacDesktopBroker -> str {
-    # Set by the desktop host's document-start bootstrap (see
-    # native_desktop_target). Absent in a normal web build, so this is "".
-    if window.__JAC_DESKTOP__ and window.__JAC_BROKER__ {
-        return window.__JAC_BROKER__;
-    }
-    return "";
-}
-
-impl __jacSleep(ms: int) -> None {
-    await Reflect.construct(
-        Promise, [lambda resolve: any { setTimeout(resolve, ms); }]
-    );
-}
-
-impl __jacPollBrokerSession(broker: str, timeout_ms: int, interval_ms: int) -> str {
-    deadline = Date.now() + timeout_ms;
-    while Date.now() < deadline {
-        try {
-            resp = await fetch(f"{broker}/session");
-            if resp.ok {
-                data = await resp.json();
-                token = data["token"] or "";
-                if token {
-                    return token;
-                }
-            }
-        } except e {
-            # Catch-all (incl. a native fetch TypeError): the browser may still be
-            # open or the server momentarily busy -- keep polling, don't abort.
-            console.warn("[jac-client] session poll failed:", e);
-        }
-        await __jacSleep(interval_ms);
-    }
-    return "";
-}
-
-impl jacSsoLogin(platform: str, api_base: str = "", operation: str = "login") -> bool {
-    base = api_base or __getApiBaseUrl();
-    broker = __jacDesktopBroker();
-    if broker {
-        # Desktop: the broker opens the *system* browser (OAuth providers refuse
-        # embedded webviews) and the server redirects the token back to the
-        # broker's loopback callback; we poll the broker session store for it.
-        start_url = (
-            f"{broker}/oauth/start?platform={encodeURIComponent(platform)}" + f"&operation={encodeURIComponent(
-                operation
-            )}" + f"&api_base={encodeURIComponent(base)}"
-        );
-        started = await fetch(start_url);
-        if not started.ok {
-            console.warn("[jac-client] oauth/start failed:", started.status);
-            return False;
-        }
-        token = await __jacPollBrokerSession(broker, 300000, 1000);
-        if token {
-            jacSetToken(token);
-            return True;
-        }
-        return False;
-    }
-    # Web: hand off to the server's SSO endpoint; it redirects back to the SPA's
-    # configured callback route with `?token=...` (handled by the callback page).
-    window.location.href = f"{base}/sso/{encodeURIComponent(platform)}/{encodeURIComponent(
-        operation
-    )}";
-    return True;
-}
-
-impl __getLocalStorage(key: str) -> str {
-    storage = globalThis.localStorage;
-    return storage.getItem(key) if storage else "";
-}
-
-impl __setLocalStorage(key: str, value: str) -> None {
-    storage = globalThis.localStorage;
-    if storage {
-        storage.setItem(key, value);
-    }
-}
-
-impl __removeLocalStorage(key: str) -> None {
-    storage = globalThis.localStorage;
-    if storage {
-        storage.removeItem(key);
-    }
 }
 
 """Auth guard component for file-based routing. Renders child routes if
@@ -765,31 +276,50 @@ impl errorOverlay(filePath: str, errors: str) -> JsxElement {
     );
 }
 
-impl useJacForm(form_mode: str, schema: any) -> any {
-    return useForm(mode=form_mode, resolver=zodResolver(schema));
+impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
+    actualSchema = schema;
+    try {
+        if not schema.shape {
+            if schema._def and schema._def.schema {
+                actualSchema = schema._def.schema;
+            } elif schema.def and schema.def.schema {
+                actualSchema = schema.def.schema;
+            }
+        }
+    } except Exception as e {
+        console.warn("Failed to unwrap schema:", e);
+    }
+    schemaShape = actualSchema.shape || {};
+    defaults = {};
+    for key in Object.keys(schemaShape) {
+        defaults[key] = "";
+    }
+    validators = {};
+    if form_mode == "onChange" {
+        validators["onChange"] = schema;
+    } elif form_mode == "onSubmit" {
+        validators["onSubmit"] = schema;
+    } elif form_mode == "onBlur" {
+        validators["onBlur"] = schema;
+    } elif form_mode == "onTouched" {
+        # onChange-only (same as Solid): errors are always fresh when values change.
+        # isTouched gate in renderError ensures errors show only after first blur.
+        # Wiring both onChange+onBlur leaves stale onBlur entries in other fields'
+        # errorMap after cross-field interaction (TanStack #1784), keeping
+        # isValid=false even after those fields have been corrected.
+        validators["onChange"] = schema;
+    } else {
+        console.warn(f"Unknown validateMode '{form_mode}'; falling back to onBlur");
+        validators["onBlur"] = schema;
+    }
+    opts = {"defaultValues": defaults, "validators": validators};
+    if onSubmit {
+        opts["onSubmit"] = lambda args: any { return onSubmit(args.value); };
+    }
+    return useForm(opts);
 }
 
-"""Auto-generated JacForm component that can render forms based on Zod schemas with built-in validation and styling.
-        Props:
-        - schema: Zod schema defining the form fields and validation
-        - onSubmit: function to call with form data on submit
-        - layout: "vertical" (default), "horizontal", "inline", or "grid"
-        - field_config: dict mapping field names to {type, label, placeholder, options, rows, showPasswordToggle, className, inputClassName, labelClassName}
-            - type: REQUIRED - field type ("text", "email", "password", "number", "date", "datetime-local", "checkbox", "select", "radio", "textarea", etc.)
-            - label: field label (defaults to field name)
-            - placeholder: placeholder text
-            - options: array of options for radio buttons (e.g., ["option1", "option2"])
-            - rows: number of rows for textarea (default 4)
-            - showPasswordToggle: boolean - show "Show password" checkbox for password fields (default false)
-            - className, inputClassName, labelClassName: CSS classes for styling
-        - submitLabel: custom label for the submit button (default "Submit")
-        - submitClassName: custom className for submit button
-        - gridColumns: number of columns for grid layout (default 2)
-        - validateMode: validation mode for react-hook-form (default "onTouched")
-        - className: additional CSS class for the form element
-"""
 impl JacForm(props: dict) -> JsxElement {
-    # Destructure props (JSX passes all props as a single object)
     schema = props.schema;
     onSubmit = props.onSubmit;
     layout = props.layout || "vertical";
@@ -799,91 +329,94 @@ impl JacForm(props: dict) -> JsxElement {
     gridColumns = props.gridColumns || 2;
     validateMode = props.validateMode || "onTouched";
     className = props.className || "";
-    # Extract field names from schema
-    # Handle ZodEffects (schemas with .refine()) by unwrapping
     actualSchema = schema;
     try {
-        if schema._def and schema._def.schema {
-            # This is a ZodEffects, unwrap to get the base schema
-            actualSchema = schema._def.schema;
+        if not schema.shape {
+            if schema._def and schema._def.schema {
+                actualSchema = schema._def.schema;
+            } elif schema.def and schema.def.schema {
+                actualSchema = schema.def.schema;
+            }
         }
     } except Exception as e {
         console.warn("Failed to unwrap schema:", e);
     }
     schemaShape = actualSchema.shape || {};
     fieldNames = Object.keys(schemaShape);
-    # Initialize form with the original schema (not the unwrapped one)
-    form = useJacForm(validateMode, schema);
-    errors = form.formState.errors;
-    isSubmitting = form.formState.isSubmitting;
-    isDirty = form.formState.isDirty;
-    # # State for password visibility (separate state for each field)
+    form = useJacForm(validateMode, schema, onSubmit);
     [passwordVisible, setPasswordVisible] = useState({});
-    # Helper function to recursively unwrap Zod wrapper types
     def unwrapZodSchema(schema: any, depth: int = 0) -> any {
-        maxDepth = 10;  # Prevent infinite recursion
-        if not schema._def or depth >= maxDepth {
+        maxDepth = 10;
+        if depth >= maxDepth {
             return schema;
         }
-
+        # Prefer public Zod methods (optional/nullable expose .unwrap())
+        try {
+            if schema.unwrap {
+                return unwrapZodSchema(schema.unwrap(), depth + 1);
+            }
+        } except Exception { }
+        if not schema._def {
+            return schema;
+        }
         typeValue = schema._def.type;
-
-        # Unwrap ZodOptional (.optional())
         if typeValue == "optional" and schema._def.innerType {
             return unwrapZodSchema(schema._def.innerType, depth + 1);
         }
-
-        # Unwrap ZodDefault (.default())
         if typeValue == "default" and schema._def.innerType {
             return unwrapZodSchema(schema._def.innerType, depth + 1);
         }
-
-        # Unwrap ZodEffects (.refine(), .transform(), etc.)
         if schema._def.checks and schema._def.schema {
             return unwrapZodSchema(schema._def.schema, depth + 1);
         }
-
-        # Base case: not a wrapper type
         return schema;
     }
-    # Helper: Render error message
-    def renderError(error: any) -> JsxElement | None {
-        if not error {
+    def renderError(errors: list, isTouched: bool) -> JsxElement | None {
+        if validateMode == "onTouched" and not isTouched {
+            return None;
+        }
+        if not errors or not errors.length {
             return None;
         }
         return (
             <p style={{color: "#ef4444", fontSize: "0.85rem", marginTop: "0.25rem"}}>
-                ⚠️{error.message}
+                ⚠️{errors[0].message}
             </p>
         );
     }
-    # Helper: Extract enum options from schema
     def getEnumOptions(fieldSchema: any) -> list {
         unwrapped = unwrapZodSchema(fieldSchema);
+        # Public Zod v3/v4 API: z.enum() exposes .options array
+        if unwrapped.options and Array.isArray(unwrapped.options) {
+            return unwrapped.options;
+        }
+        # Public Zod v3 API: z.nativeEnum() exposes .enum object
+        if unwrapped.enum {
+            return Object.keys(unwrapped.enum);
+        }
+        # Fallback: Zod v4 internal _def.entries / def.entries
         if unwrapped._def and unwrapped._def.entries {
             return Object.keys(unwrapped._def.entries);
-        } elif unwrapped.def and unwrapped.def.entries {
+        }
+        if unwrapped.def and unwrapped.def.entries {
             return Object.keys(unwrapped.def.entries);
         }
         return [];
     }
-    # Helper: Render the actual input element based on type
     def renderInput(
-        fieldType: str,
-        field: any,
-        error: any,
-        config: dict,
-        fieldSchema: any,
-        fieldName: str
+        fieldType: str, field: any, config: dict, fieldSchema: any, fieldName: str
     ) -> JsxElement {
         inputClassName = config.inputClassName or "";
         labelClassName = config.labelClassName or "";
         placeholder = config.placeholder or "";
         label = config.label or fieldName;
+        hasError = (
+            field.state.meta.errors
+            and field.state.meta.errors.length
+            and (validateMode != "onTouched" or field.state.meta.isTouched)
+        );
 
-        # Checkbox
         if fieldType == "checkbox" {
-            watchValue = form.watch(fieldName);
             return (
                 <label
                     style={{
@@ -895,11 +428,12 @@ impl JacForm(props: dict) -> JsxElement {
                 >
                     <input
                         type="checkbox"
-                        name={field.name}
-                        ref={field.ref}
-                        onChange={field.onChange}
-                        onBlur={field.onBlur}
-                        checked={watchValue || False}
+                        name={fieldName}
+                        checked={field.state.value || False}
+                        onChange={lambda e: any { field.handleChange(
+                            e.target.checked
+                        ); }}
+                        onBlur={field.handleBlur}
                         className={inputClassName}
                         style={{cursor: "pointer"}}
                     />
@@ -908,17 +442,14 @@ impl JacForm(props: dict) -> JsxElement {
             );
         }
 
-        # Select dropdown
         if fieldType == "select" {
             options = getEnumOptions(fieldSchema);
-            watchValue = form.watch(fieldName);
             return (
                 <select
-                    name={field.name}
-                    ref={field.ref}
-                    onChange={field.onChange}
-                    onBlur={field.onBlur}
-                    value={watchValue || ""}
+                    name={fieldName}
+                    value={field.state.value || ""}
+                    onChange={lambda e: any { field.handleChange(e.target.value); }}
+                    onBlur={field.handleBlur}
                     className={inputClassName}
                     style={{width: "100%", boxSizing: "border-box"}}
                 >
@@ -928,10 +459,8 @@ impl JacForm(props: dict) -> JsxElement {
             );
         }
 
-        # Radio buttons
         if fieldType == "radio" {
             options = getEnumOptions(fieldSchema);
-            watchValue = form.watch(fieldName);
             return (
                 <div style={{display: "flex", flexDirection: "column", gap: "0.5rem"}}>
                     {[
@@ -946,12 +475,13 @@ impl JacForm(props: dict) -> JsxElement {
                         >
                             <input
                                 type="radio"
-                                name={field.name}
+                                name={fieldName}
                                 value={opt}
-                                ref={field.ref}
-                                onChange={field.onChange}
-                                onBlur={field.onBlur}
-                                checked={watchValue == opt}
+                                checked={field.state.value == opt}
+                                onChange={lambda e: any { field.handleChange(
+                                    e.target.value
+                                ); }}
+                                onBlur={field.handleBlur}
                                 className={inputClassName}
                                 style={{cursor: "pointer"}}
                             />
@@ -962,19 +492,23 @@ impl JacForm(props: dict) -> JsxElement {
             );
         }
 
-        # Textarea
         if fieldType == "textarea" {
             rows = config.rows or 4;
             return (
                 <textarea
+                    name={fieldName}
                     placeholder={placeholder}
                     rows={rows}
-                    {**field}
+                    value={field.state.value}
+                    onChange={lambda e: any { field.handleChange(e.target.value); }}
+                    onBlur={field.handleBlur}
                     className={inputClassName}
                     style={{
                         width: "100%",
                         boxSizing: "border-box",
-                        border: ("2px solid #ef4444" if error else "2px solid #e5e7eb"),
+                        border: (
+                            "2px solid #ef4444" if hasError else "2px solid #e5e7eb"
+                        ),
                         padding: "0.5rem",
                         fontFamily: "inherit",
                         fontSize: "inherit",
@@ -984,8 +518,6 @@ impl JacForm(props: dict) -> JsxElement {
             );
         }
 
-        # Regular input (text, email, password, number, date, datetime-local, tel, url, etc.)
-        # Special handling for password fields with visibility toggle
         if fieldType == "password" and config.showPasswordToggle {
             isVisible = passwordVisible[fieldName] || False;
             return (
@@ -993,15 +525,20 @@ impl JacForm(props: dict) -> JsxElement {
                     <div style={{position: "relative"}}>
                         <input
                             type={"text" if isVisible else "password"}
+                            name={fieldName}
                             placeholder={placeholder}
-                            {**field}
+                            value={field.state.value}
+                            onChange={lambda e: any { field.handleChange(
+                                e.target.value
+                            ); }}
+                            onBlur={field.handleBlur}
                             className={inputClassName}
                             style={{
                                 width: "100%",
                                 boxSizing: "border-box",
                                 border: (
                                     "2px solid #ef4444"
-                                        if error
+                                        if hasError
                                         else "2px solid #e5e7eb"
                                 ),
                                 paddingRight: "2.5rem"
@@ -1037,58 +574,54 @@ impl JacForm(props: dict) -> JsxElement {
             );
         }
 
-        # Regular input without toggle
         return (
             <input
                 type={fieldType}
+                name={fieldName}
                 placeholder={placeholder}
-                {**field}
+                value={field.state.value}
+                onChange={lambda e: any { field.handleChange(
+                    parseFloat(e.target.value)
+                        if fieldType == "number"
+                        else e.target.value
+                ); }}
+                onBlur={field.handleBlur}
                 className={inputClassName}
                 style={{
                     width: "100%",
                     boxSizing: "border-box",
-                    border: ("2px solid #ef4444" if error else "2px solid #e5e7eb")
+                    border: ("2px solid #ef4444" if hasError else "2px solid #e5e7eb")
                 }}
             />
         );
     }
-    # Main field renderer
     def renderField(fieldName: str) -> JsxElement {
         fieldSchema = schemaShape[fieldName];
         config = field_config[fieldName] if field_config[fieldName] else {};
-
-        # field_config entries carry the input kind under a "type" key
-        # (e.g. {type: "email"}); read it straight through.
         fieldType = config.type or "text";
         label = config.label or fieldName;
         fieldClassName = config.className or "";
         labelClassName = config.labelClassName or "";
 
-        # Register field and get error state
-        # valueAsNumber: true is required for number fields because <input type="number">
-        registerOptions = {"valueAsNumber": True} if fieldType == "number" else {};
-        field = form.register(fieldName, registerOptions);
-        error = errors[fieldName];
-
-        # Render: wrapper > input > error
         return (
-            <div
-                className={fieldClassName}
-                style={{marginBottom: "1rem"}}
-                key={fieldName}
-            >
-                <label
-                    className={labelClassName}
-                    style={{display: "block", marginBottom: "0.5rem"}}
-                >
-                    {label}
-                </label>
-                {renderInput(fieldType, field, error, config, fieldSchema, fieldName)}
-                {renderError(error)}
-            </div>
+            <form.Field name={fieldName} key={fieldName}>
+                {lambda field: JsxElement { return (
+                    <div className={fieldClassName} style={{marginBottom: "1rem"}}>
+                        <label
+                            className={labelClassName}
+                            style={{display: "block", marginBottom: "0.5rem"}}
+                        >
+                            {label}
+                        </label>
+                        {renderInput(fieldType, field, config, fieldSchema, fieldName)}
+                        {renderError(
+                            field.state.meta.errors, field.state.meta.isTouched
+                        )}
+                    </div>
+                ); }}
+            </form.Field>
         );
     }
-    # Generate layout styles based on layout prop
     def getLayoutStyle -> dict {
         if layout == "grid" {
             return {
@@ -1106,11 +639,9 @@ impl JacForm(props: dict) -> JsxElement {
         } elif layout == "inline" {
             return {display: "flex", gap: "0.5rem", alignItems: "flex-end"};
         } else {
-            # vertical (default)
             return {};
         }
     }
-    # Render all fields
     fields = [];
     for fieldName in fieldNames {
         fields.append(renderField(fieldName));
@@ -1119,68 +650,58 @@ impl JacForm(props: dict) -> JsxElement {
     formClassName = className or "";
     buttonClassName = submitClassName or "";
     return (
-        <form onSubmit={form.handleSubmit(onSubmit)} className={formClassName}>
+        <form
+            onSubmit={lambda e: any {
+                e.preventDefault();
+                e.stopPropagation();
+                form.handleSubmit();
+            }}
+            className={formClassName}
+        >
             <div style={layoutStyle}>{fields}</div>
-            <button
-                type="submit"
-                disabled={isSubmitting or not isDirty}
-                className={buttonClassName}
-                style={{
-                    width: "100%",
-                    cursor: (
-                        "not-allowed" if (isSubmitting or not isDirty) else "pointer"
-                    )
-                }}
+            <form.Subscribe
+                selector={lambda s: any { return {
+                    isDirty: s.isDirty,
+                    isValid: s.isValid,
+                    isTouched: s.isTouched,
+                    isSubmitting: s.isSubmitting
+                }; }}
             >
-                {isSubmitting and "Submitting..."}{not isSubmitting and submitLabel}
-            </button>
+                {lambda fs: JsxElement {
+                    # onTouched: treat form as valid before any field is touched so the
+                    # eager onChange validator does not disable the button prematurely.
+                    btnEffectiveIsValid = (
+                        True
+                            if (validateMode == "onTouched" and not fs.isTouched)
+                            else fs.isValid
+                    );
+                    btnDisabled = (
+                        fs.isSubmitting or not fs.isDirty or not btnEffectiveIsValid
+                    );
+                    return (
+                        <button
+                            type="submit"
+                            disabled={btnDisabled}
+                            className={buttonClassName}
+                            style={{
+                                width: "100%",
+                                cursor: ("not-allowed" if btnDisabled else "pointer")
+                            }}
+                        >
+                            {fs.isSubmitting and "Submitting..."}{not fs.isSubmitting
+                            and submitLabel}
+                        </button>
+                    );
+                }}
+            </form.Subscribe>
         </form>
     );
 }
 
+
 # ============================================================================
 # Client Error Reporting
 # ============================================================================
-"""Report a client-side error to the server via POST /cl/__error__.
-Fires asynchronously and silently ignores failures (to avoid error loops).
-"""
-impl __jacReportError(
-    message: str,
-    stack: str = "",
-    url: str = "",
-    source: str = "",
-    componentStack: str = ""
-) -> None {
-    try {
-        baseUrl = __getApiBaseUrl();
-        fetch(
-            f"{baseUrl}/cl/__error__",
-            {
-                "method": "POST",
-                "headers": {"Content-Type": "application/json"},
-                "body": JSON.stringify(
-                    {
-                        "message": message,
-                        "stack": stack,
-                        "url": url or window.location.href,
-                        "source": source,
-                        "componentStack": componentStack,
-                        "timestamp": Reflect.construct(Date, []).toISOString()
-                    }
-                )
-            }
-        );
-    } except Exception {
-    # Intentionally silent - error reporting must never throw, as that
-    # could cause infinite loops or mask the original error.
-    }
-}
-
-"""onError prop for JacClientErrorBoundary. The FallbackComponent React passes
-to ErrorBoundary only receives `{error, resetErrorBoundary}` - `info` (and
-therefore `info.componentStack`, the only thing that names user components when
-the JS stack lives inside react-dom) is exclusively delivered to onError.
-Wiring this here is the one place we can capture it."""
 impl __jacReactErrorHandler(error: any, info: any) -> None {
     try {
         message = error.message if error else "Unknown error";
@@ -1190,40 +711,4 @@ impl __jacReactErrorHandler(error: any, info: any) -> None {
     } except Exception {
     # Silent: error reporting from a React lifecycle must never throw.
     }
-}
-
-"""Install global error handlers to catch unhandled JS errors and rejections.
-Called once during app initialization.
-"""
-impl __jacInstallErrorHandlers -> None {
-    if window.__jacErrorHandlersInstalled {
-        return;
-    }
-    window.__jacErrorHandlersInstalled = True;
-    # Catch synchronous errors (e.g., TypeError, ReferenceError)
-    window.addEventListener(
-        "error",
-        lambda event: any { __jacReportError(
-            event.message or "Unknown error",
-            event.error.stack if event.error else "",
-            event.filename or "",
-            "window.onerror"
-        ); }
-    );
-    # Catch unhandled promise rejections (e.g., failed fetch, async errors)
-    window.addEventListener(
-        "unhandledrejection",
-        lambda event: any {
-            reason = event.reason;
-            message = "";
-            stack = "";
-            if reason {
-                message = reason.message or str(reason);
-                stack = reason.stack or "";
-            } else {
-                message = "Unhandled promise rejection";
-            }
-            __jacReportError(message, stack, "", "unhandledrejection");
-        }
-    );
 }

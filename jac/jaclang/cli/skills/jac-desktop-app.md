@@ -5,11 +5,11 @@ description: Packaging a full-stack Jac app as a native desktop app - `jac build
 
 The desktop target turns a full-stack Jac app into **one `jac nacompile`d binary plus the OS's own web engine** - no Rust toolchain, no Electron, no PyInstaller, no separate backend process. It builds the same Vite `cl` bundle the web target produces, then compiles a native host that embeds CPython to serve that bundle on a loopback port and renders it in the OS-native webview: WebKitGTK (Linux), WKWebView (macOS), WebView2 (Windows). Same `cl`/`sv` source as the web target - only the target flag changes.
 
-## Install and run
+## Build and run
+
+The desktop target ships with `jaclang` core -- nothing extra to install.
 
 ```bash
-pip install jac-client jac-desktop     # jac-desktop registers the target via jac-client's plugin hooks
-
 jac build --client desktop      # -> .jac/client/desktop/<app>  (single binary + dist/)
 jac start --client desktop      # build (if needed), then launch the native window
 ```
@@ -22,7 +22,7 @@ Build machine needs the OS web engine + a C toolchain (a small `libwebview.so` w
 sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
 ```
 
-(The package ships a helper: `jac_desktop/native/webview/install_webkit_deps.sh`.)
+(`jaclang` ships a helper: `jaclang/runtimelib/client/targets/desktop/native/webview/install_webkit_deps.sh`.)
 
 ## Configuration - `[plugins.desktop]` in `jac.toml`
 

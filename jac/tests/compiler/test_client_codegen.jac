@@ -3,12 +3,12 @@
 import os;
 import tempfile;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import from tempfile { NamedTemporaryFile, TemporaryDirectory }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURE_DIR = os.path.join(
+glob FIXTURE_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "ecmascript", "fixtures"
      ),
      _test_tmp_dir: str = tempfile.mkdtemp(prefix="jac_test_codegen_");
@@ -155,9 +155,10 @@ test "endpoint effects follow helper calls" {
 }
 
 test "jac call function sends params directly" {
-    # The canonical @jac/runtime now lives in core runtimelib.
+    # The framework-agnostic surface (incl. __jacCallFunction) now lives in the
+    # shared core runtime; the per-framework shim re-exports it.
     runtime_path = (
-        Path(jaclang.__file__).resolve().parent / "runtimelib" / "impl" / "client_runtime.impl.jac"
+        Path(jaclang.__file__).resolve().parent / "runtimelib" / "impl" / "client_runtime_core.impl.jac"
     );
 
     if not runtime_path.exists() {

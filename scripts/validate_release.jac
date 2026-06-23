@@ -22,7 +22,7 @@ def main -> int {
     }
     args = parser.parse_args();
     repo_root = Path(__file__).resolve().parent.parent;
-    releases: list[dict[(str, str)]] = [];
+    releases: list[dict] = [];
     errors: list[str] = [];
     for (pkg_name, pkg_info) in PACKAGES.items() {
         bump_type = getattr(args, pkg_name.replace("-", "_"));
@@ -31,19 +31,27 @@ def main -> int {
         }
         current = get_current_version(repo_root, pkg_info.dir);
         new_version = bump_version(current, bump_type);
+        entry = {
+            "name": pkg_name,
+            "pypi": pkg_info.pypi,
+            "current": current,
+            "new": new_version,
+            "bump": bump_type
+        };
+        # The anchor (jaclang) is not published to PyPI, so there is no PyPI
+        # version to conflict with -- it ships as the native binary.
+        if not pkg_info.publish_pypi {
+            print(
+                f"Anchor {pkg_info.pypi} {new_version} (native binary, no PyPI check)"
+            );
+            releases.append(entry);
+            continue;
+        }
         print(f"Checking {pkg_info.pypi} {new_version}...");
         if check_pypi(pkg_info.pypi, new_version) {
             errors.append(f"{pkg_info.pypi} {new_version} already exists on PyPI");
         } else {
-            releases.append(
-                {
-                    "name": pkg_name,
-                    "pypi": pkg_info.pypi,
-                    "current": current,
-                    "new": new_version,
-                    "bump": bump_type
-                }
-            );
+            releases.append(entry);
         }
     }
     if errors {

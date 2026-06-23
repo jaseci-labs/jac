@@ -409,13 +409,16 @@ obj Account {
 # Access Modifiers
 # ============================================================
 
-# Access modifiers work on obj, class, node, edge, walker,
-# def, has -- controlling visibility and API exposure
+# Access modifiers work on obj, class, node, edge, walker, def, has.
+# Same tags, three contexts (see reference/language/access-modifiers):
+#   members  -> :pub anywhere / :protect class+subclasses / :priv class
+#   top-level-> :pub exported / :protect same project / :priv this module
+#   endpoints-> only :pub skips auth; everything else requires a token
 
 obj:pub Profile {
-    has:pub name: str;          # Public (default)
-    has:priv ssn: str;          # Private
-    has:protect age: int;       # Protected
+    has:pub name: str;          # member: public
+    has:protect age: int;       # member: this class + subclasses
+    has:priv ssn: str;          # member: this class only
 }
 
 # Public walker becomes REST endpoint with `jac start`

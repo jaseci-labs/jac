@@ -6,14 +6,11 @@ import shutil;
 import json;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
+import from jaclang.jac0core.ext_registry { base_stem, is_client_module, is_annex }
 
-# File-suffix and skip-dir constants shared by the collection/compile pass.
-glob _SV_SUFFIX: str = ".sv.jac",
-     _CL_SUFFIX: str = ".cl.jac",
-     _IMPL_SUFFIX: str = ".impl.jac",
-     _TEST_SUFFIX: str = ".test.jac",
-     # Directories never traversed when collecting source files.
-     _SKIP_DIRS: set = {
+# Skip-dir constants shared by the collection/compile pass. Suffix knowledge
+# (codespace variants, annexes) comes from the shared extension registry.
+glob _SKIP_DIRS: set = {
          ".jac",
          ".git",
          ".venv",
@@ -147,6 +144,11 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
 
     # Lazily import the compiler and AST surface — expensive at CLI startup.
     import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.runtimelib.client_surface { prepend_active_runtime_globals }
+
+    # Imports needed to classify walkers/defs as public vs private from the
+    # AST. These modules are expensive to pull in at CLI-startup time, so
+    # we defer them to the eject path.
     import jaclang.jac0core.unitree as uni;
     import from jaclang.jac0core.constant { SymbolType }
 
@@ -187,7 +189,9 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
             js_rel = _to_js_rel_path(rel);
             js_out = frontend_src_dir / js_rel;
             js_out.parent.mkdir(parents=True, exist_ok=True);
-            js_out.write_text(_inject_runtime_imports(js_code), encoding="utf-8");
+            js_out.write_text(
+                prepend_active_runtime_globals(js_code), encoding="utf-8"
+            );
             js_count += 1;
             # Is this the entry module, and does it export a client `app`?
             stem = str(_strip_jac_suffix(rel.name));
@@ -209,7 +213,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         } else {
             bmod = ".".join(parent_parts + [stem]);
         }
-        is_client = rel.name.endswith(_CL_SUFFIX);
+        is_client = is_client_module(rel.name);
         server = _is_meaningful_python(py_code) and (not is_client);
 
         # `:pub` walkers/functions become open endpoints; the rest are
@@ -333,7 +337,7 @@ def _collect_jac_files(src: Path) -> list[Path] {
             continue;
         }
         name = path.name;
-        if name.endswith(_IMPL_SUFFIX) or name.endswith(_TEST_SUFFIX) {
+        if is_annex(name) {
             continue;
         }
         results.append(path);
@@ -356,18 +360,9 @@ def _dir_excluded(rel: Path) -> bool {
 }
 
 
-"""Strip the .sv.jac / .cl.jac / .jac suffix from a filename, returning the stem."""
+"""Strip the codespace/.jac suffix from a filename, returning the bare stem."""
 def _strip_jac_suffix(name: str) -> str {
-    if name.endswith(_SV_SUFFIX) {
-        return name[:-len(_SV_SUFFIX)];
-    }
-    if name.endswith(_CL_SUFFIX) {
-        return name[:-len(_CL_SUFFIX)];
-    }
-    if name.endswith(".jac") {
-        return name[:-4];
-    }
-    return name;
+    return base_stem(name);
 }
 
 
@@ -406,15 +401,13 @@ def _js_exports_app(js_code: str) -> bool {
 }
 
 
-def _inject_runtime_imports(js_code: str) -> str {
-    import from jaclang.runtimelib.client_surface { with_runtime_globals }
-    return with_runtime_globals(js_code);
-}
+"""Decide whether a unparsed Python module has any real content worth writing.
 
-
-"""Decide whether an unparsed Python module has real content worth writing.
-A `.cl.jac` compiles to a Python module of only a docstring + imports (no
-backend behavior); skip those so the backend holds only modules that do work."""
+Files like `frontend.cl.jac` produce a Python module that contains only a
+docstring and a couple of `from __future__` / runtime imports — there is no
+behavior to ship to the backend. We skip those so the ejected backend
+directory only contains modules that actually do something.
+"""
 def _is_meaningful_python(py_code: str) -> bool {
     if not py_code.strip() {
         return False;
@@ -670,9 +663,12 @@ def _emit_index_html(frontend_dir: Path, project_name: str) {
 (which main.js exports but never renders), wraps it in the runtime
 ErrorBoundary, and createRoot()s it onto <div id="root">. Without it: blank page."""
 def _emit_entry_js(frontend_src_dir: Path, entry_module: str) {
-    import from jaclang.runtimelib.react_entry { build_simple_react_entry_script }
+    import from jaclang.compiler.passes.ecmascript.backends.registry {
+        resolve_active_backend
+    }
+    backend = resolve_active_backend();
     (frontend_src_dir / "__jac_entry.js").write_text(
-        build_simple_react_entry_script(entry_module), encoding="utf-8"
+        backend.build_entry_script(entry_module), encoding="utf-8"
     );
 }
 

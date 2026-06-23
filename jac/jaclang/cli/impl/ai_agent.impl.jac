@@ -3191,19 +3191,10 @@ impl ui_apply_settings(
 Spawns `jac start` on the bundled `ai_ui` Jac app as a child process -- passing
 the user's project directory and model flags through `JAC_AI_UI_*` env vars --
 polls its log for the ready URL, opens the browser there, and waits. Ctrl-C
-shuts the child down. Returns 0 on a clean exit, 1 if the client plugin is
-missing or the server never came up.
+shuts the child down. Returns 0 on a clean exit, 1 if the server never came up.
 """
 impl _run_ui_server(r: any) -> int {
     import jaclang;
-    import from importlib.util { find_spec }
-    if find_spec("jac_client") is None {
-        console.error(
-            "`jac ai --ui` needs the jac-client plugin, which is not installed.",
-            hint="Install it with:  pip install jac-client"
-        );
-        return 1;
-    }
     pkg_file = jaclang.__file__;
     if pkg_file is None {
         console.error("jaclang package location is unavailable");
