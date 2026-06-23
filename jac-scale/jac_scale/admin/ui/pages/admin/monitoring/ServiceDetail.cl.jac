@@ -4,9 +4,9 @@ Rendered by ServicesPage when a service card is clicked. Receives the already
 filtered data (the service's workload row, its pods, and its CPU/memory series)
 as props so it stays presentational and does no fetching of its own.
 
-Resource charts reuse the dependency-free SVG approach from GraphsPage (path
-strings built by str-returning helpers, since cl mode drops args to
-JSX-returning helpers). Per-service traffic (req/s, error %, latency) is not
+Resource charts use a dependency-free SVG approach (path strings built by
+str-returning helpers, since cl mode drops args to JSX-returning helpers).
+Per-service traffic (req/s, error %, latency) is not
 yet available from Prometheus, so the Traffic card renders placeholders until
 that lands.
 """
