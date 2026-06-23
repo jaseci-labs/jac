@@ -468,22 +468,21 @@ impl CompilerBridge.jac_to_js(code: str) -> dict[str, any] {
 
 """Execute Jac code and return output.
 
-Runs the snippet in a dedicated child process (`_run_worker.py`) rather than
-in this long-lived server. The child owns all the global Jac runtime state the
-run creates -- program `mod.hub`, `loaded_modules`, native caches, `sys.modules`
-pollution -- so it is reclaimed by process exit instead of accumulating here.
-The child also gives a *real* timeout: a hung snippet is killed via its process
-group (CPython cannot interrupt an in-process thread, so the old thread-based
-timeout left runaway work alive forever).
+Delegates to the `jac` binary itself -- `jac run` for a plain module execution,
+`jac enter` to spawn a named walker -- in a fresh child process. The child owns
+all the global Jac runtime state the run creates (program `mod.hub`,
+`loaded_modules`, native caches, `sys.modules` pollution), so it is reclaimed by
+process exit instead of accumulating in this long-lived server. The child also
+gives a *real* timeout: a hung snippet is killed via its process group (CPython
+cannot interrupt an in-process thread, so an in-process timeout could never
+actually stop the work).
 """
 impl CompilerBridge.run_snippet(
     code: str, entrypoint: str = "", timeout: int = 10
 ) -> dict[str, any] {
     import subprocess;
-    import json;
     import signal;
     import shutil;
-    import jac_mcp;
 
     if len(code) > MAX_INPUT_SIZE {
         return {
@@ -494,21 +493,24 @@ impl CompilerBridge.run_snippet(
         };
     }
 
-    worker = os.path.join(os.path.dirname(jac_mcp.__file__), "_run_worker.py");
     tmp_dir = tempfile.mkdtemp();
     jac_path = os.path.join(tmp_dir, "snippet.jac");
-    out_path = os.path.join(tmp_dir, "result.json");
     with open(jac_path, "w") as f {
         f.write(code);
     }
 
-    # Run the worker in its own session/process group so a snippet that spawns
-    # children can be torn down as a group on timeout. POSIX uses a new session
-    # + killpg(SIGKILL); Windows uses CREATE_NEW_PROCESS_GROUP + taskkill /T /F
+    if entrypoint {
+        cmd = ["jac", "enter", jac_path, entrypoint];
+    } else {
+        cmd = ["jac", "run", jac_path];
+    }
+
+    # Run in its own session/process group so a snippet that spawns children
+    # can be torn down as a group on timeout. POSIX uses a new session +
+    # killpg(SIGKILL); Windows uses CREATE_NEW_PROCESS_GROUP + taskkill /T /F
     # to kill the child and its descendants (Windows has no POSIX process
     # group, and proc.kill() only terminates the immediate child).
     is_windows = os.name == "nt";
-    cmd = [sys.executable, worker, jac_path, out_path, entrypoint];
     try {
         if is_windows {
             proc = subprocess.Popen(
@@ -551,25 +553,19 @@ impl CompilerBridge.run_snippet(
                     "error": "Operation timed out"
                 };
             }
-            if os.path.exists(out_path) {
-                # The result file can exist yet be truncated or malformed if the
-                # worker was killed mid-write; treat an unreadable result as no
-                # result (fall through below) rather than crashing the server.
-                try {
-                    with open(out_path) as f {
-                        return json.load(f);
-                    }
-                } except (ValueError, OSError) { }
-            }
-            # Worker died before writing a result (e.g. crash on import). Surface
-            # whatever it emitted on its real stderr for diagnostics.
+            out_text = proc_out.decode() if proc_out else "";
             err_text = proc_err.decode() if proc_err else "";
-            return {
-                "stdout": proc_out.decode() if proc_out else "",
-                "stderr": err_text or "Worker exited without producing a result",
-                "exit_code": proc.returncode or 1,
-                "error": "Worker produced no result"
+            exit_code = proc.returncode if proc.returncode is not None else 1;
+            result: dict[str, any] = {
+                "stdout": out_text,
+                "stderr": err_text,
+                "exit_code": exit_code,
+
             };
+            if exit_code != 0 {
+                result["error"] = err_text or f"Process exited with code {exit_code}";
+            }
+            return result;
         }
     } finally {
         try {
