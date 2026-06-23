@@ -193,17 +193,17 @@ test "multiple `with entry` blocks emit a single jac_entry (issue #6660)" {
 
 test "concatenated `with entry` blocks run in source order (issue #6660)" {
     triple = llvm.get_default_triple();
-    relobj = _emit_object(
-        _inject_elf(_compile_ir("multi_entry.na.jac", triple)), triple
-    );
-    d = tempfile.mkdtemp();
-    out = os.path.join(d, "multi_entry");
-    ok = ElfLinker.link(
-        obj_bytes=relobj, output_path=out, needed_libs=["libc.so.6"], shared=False
-    );
-    assert ok , "ElfLinker.link(shared=False) returned False";
-    # Only a Linux x86_64 host can execute the produced ELF.
+    # ElfLinker produces Linux ELF; skip link+exec on non-Linux hosts.
     if sys.platform.startswith("linux") and ("x86_64" in triple) {
+        relobj = _emit_object(
+            _inject_elf(_compile_ir("multi_entry.na.jac", triple)), triple
+        );
+        d = tempfile.mkdtemp();
+        out = os.path.join(d, "multi_entry");
+        ok = ElfLinker.link(
+            obj_bytes=relobj, output_path=out, needed_libs=["libc.so.6"], shared=False
+        );
+        assert ok , "ElfLinker.link(shared=False) returned False";
         res = subprocess.run([out], capture_output=True, timeout=30);
         assert res.returncode == 0 , f"exec exited {res.returncode}, stderr={res.stderr}";
         i = res.stdout.find(b"FIRST");
@@ -224,14 +224,15 @@ test "a terminating `with entry` block stops later blocks (issue #6660)" {
     # Still concatenated into a single jac_entry (the break happens *inside* it).
     n = ir_txt.count('define void @"jac_entry"');
     assert n == 1 , f"expected exactly one jac_entry definition, got {n}";
-    relobj = _emit_object(_inject_elf(ir_txt), triple);
-    d = tempfile.mkdtemp();
-    out = os.path.join(d, "multi_entry_terminator");
-    ok = ElfLinker.link(
-        obj_bytes=relobj, output_path=out, needed_libs=["libc.so.6"], shared=False
-    );
-    assert ok , "ElfLinker.link(shared=False) returned False";
+    # ElfLinker produces Linux ELF; skip link+exec on non-Linux hosts.
     if sys.platform.startswith("linux") and ("x86_64" in triple) {
+        relobj = _emit_object(_inject_elf(ir_txt), triple);
+        d = tempfile.mkdtemp();
+        out = os.path.join(d, "multi_entry_terminator");
+        ok = ElfLinker.link(
+            obj_bytes=relobj, output_path=out, needed_libs=["libc.so.6"], shared=False
+        );
+        assert ok , "ElfLinker.link(shared=False) returned False";
         res = subprocess.run([out], capture_output=True, timeout=30);
         # Uncaught raise -> abort(): non-zero exit. The key invariant is that the
         # second block never ran, so its marker must be absent from stdout.
@@ -253,14 +254,15 @@ test "glob-init runs before every `with entry` block (issue #6660)" {
     # One jac_entry, and the glob-init preamble is present inside it.
     assert ir_txt.count('define void @"jac_entry"') == 1 , "expected exactly one jac_entry";
     assert "__jac_glob_init" in ir_txt , "expected a __jac_glob_init call in jac_entry";
-    relobj = _emit_object(_inject_elf(ir_txt), triple);
-    d = tempfile.mkdtemp();
-    out = os.path.join(d, "multi_entry_glob");
-    ok = ElfLinker.link(
-        obj_bytes=relobj, output_path=out, needed_libs=["libc.so.6"], shared=False
-    );
-    assert ok , "ElfLinker.link(shared=False) returned False";
+    # ElfLinker produces Linux ELF; skip link+exec on non-Linux hosts.
     if sys.platform.startswith("linux") and ("x86_64" in triple) {
+        relobj = _emit_object(_inject_elf(ir_txt), triple);
+        d = tempfile.mkdtemp();
+        out = os.path.join(d, "multi_entry_glob");
+        ok = ElfLinker.link(
+            obj_bytes=relobj, output_path=out, needed_libs=["libc.so.6"], shared=False
+        );
+        assert ok , "ElfLinker.link(shared=False) returned False";
         res = subprocess.run([out], capture_output=True, timeout=30);
         # rc==0 proves the first block's append to the below-declared glob did
         # not crash, i.e. __jac_glob_init ran before it. Marker order proves the
