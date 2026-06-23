@@ -14,11 +14,15 @@ import from "libc.so.6" {
         path: str, flags: i32
     ) -> i32;  def read(fd: i32, buf: int, count: int) -> int;  def close(
         fd: i32
-    ) -> i32;  def strlen(s: str) -> int;
+    ) -> i32;  def strlen(s: str) -> int;  def write(
+        fd: i32, buf: int, count: int
+    ) -> int;  def abort -> None;
 }
 
 import from "libcef.so" {
-    def cef_execute_process(args: int, app: int, sandbox: int) -> i32;  obj cef_ptr_wrap_t {
+    def cef_execute_process(args: int, app: int, sandbox: int) -> i32;  def cef_version_info(
+        which: i32
+    ) -> i32;  obj cef_ptr_wrap_t {
         has p0: int = 0,
             p1: int = 0;
     }  """cef_app_t - 80 bytes (CEF capi cef_app_t).
@@ -80,8 +84,9 @@ glob g_app: cef_app_t = cef_app_t(
      );
 
 def _subprocess_main {
-    _subprocess_bootstrap;
-    args: int = cef_main_args_create;
+    _assert_cef_abi();
+    _subprocess_bootstrap();
+    args: int = cef_main_args_create();
     code: i32 = cef_execute_process(args, g_app, 0);
     if code >= 0 {
         sys.exit(code);
@@ -89,5 +94,5 @@ def _subprocess_main {
 }
 
 with entry {
-    _subprocess_main;
+    _subprocess_main();
 }

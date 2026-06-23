@@ -17,14 +17,29 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
 
 # --- Pin ---------------------------------------------------------------
-# CEF major version to fetch. Finds the latest stable build matching this
-# prefix. Update when moving to a new Chromium major version.
+# Exact CEF version to fetch. The struct/vtable offsets in cef_dispatch.na.jac
+# are verified against this exact build, so the runtime ABI must match it byte
+# for byte -- "latest 119.x" is not good enough (a point release can shift a
+# struct). The single source of truth is cef_sums.lock (the `# version:`
+# directive); CEF_VERSION may override it for a deliberate, manual bump.
 #
 # Pinned to 119.x — CEF 133+ uses the Universal C API with version checks
 # that fail on Spotify CDN builds (cef_api_version returns -1, causing all
 # CToCpp wrappers to crash with "invalid version -1"). CEF 119 uses the
 # legacy C API which works correctly with client-side vtable structs.
-CEF_MAJOR="${CEF_MAJOR:-119}"
+SUMS_LOCK="$HERE/cef_sums.lock"
+if [ ! -f "$SUMS_LOCK" ]; then
+    echo "ERROR: missing trust anchor $SUMS_LOCK" >&2
+    exit 1
+fi
+LOCKED_VERSION="$(sed -n 's/^# version:[[:space:]]*//p' "$SUMS_LOCK" | head -1)"
+CEF_VERSION="${CEF_VERSION:-$LOCKED_VERSION}"
+if [ -z "$CEF_VERSION" ]; then
+    echo "ERROR: no '# version:' directive in $SUMS_LOCK" >&2
+    exit 1
+fi
+# Major-version prefix, kept for staging stamps and user-facing messages.
+CEF_MAJOR="${CEF_VERSION%%.*}"
 
 HEADERS_ONLY=0
 for arg in "$@"; do
@@ -63,46 +78,63 @@ case "$ARCH" in
     *)       echo "ERROR: unsupported architecture $ARCH" >&2; exit 1 ;;
 esac
 
-# --- Fetch index and resolve download URL ------------------------------
-echo ">> resolving CEF ${CEF_MAJOR}.x stable download URL for ${PLAT_TAG}"
+# --- Resolve the exact pinned archive ----------------------------------
+# The filename is fully determined by the pinned version + platform, so it is
+# derived directly rather than discovered from the index. The in-tree
+# cef_sums.lock is the authoritative trust anchor; the live index is consulted
+# only as a secondary cross-check that surfaces a tampered release host.
+ARCHIVE="cef_binary_${CEF_VERSION}_${PLAT_TAG}.tar.bz2"
+RESOLVED="https://cef-builds.spotifycdn.com/$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$ARCHIVE")"
 
-API_URL="https://cef-builds.spotifycdn.com/index.json"
-TMP_JSON="$HERE/.cef_index.json"
-curl -fsSL --retry 3 -o "$TMP_JSON" "$API_URL" || {
-    echo "ERROR: failed to fetch CEF index from $API_URL" >&2
-    exit 1
-}
+# Authoritative expected digest: the in-tree pin (fail closed if absent).
+EXPECTED_SHA1="$(python3 -c "
+import sys
+want = sys.argv[1]
+for line in open('$SUMS_LOCK'):
+    line = line.strip()
+    if not line or line.startswith('#'):
+        continue
+    parts = line.split()
+    if len(parts) == 2 and parts[1] == want:
+        print(parts[0]); break
+" "$ARCHIVE")"
 
-# Extract the URL and SHA-1 for the pinned major version using python.
-RESOLVED="$(python3 -c "
-import json, urllib.parse, sys
-with open('$TMP_JSON') as f:
-    idx = json.load(f)
-versions = idx.get('$PLAT_TAG', {}).get('versions', [])
-for v in versions:
-    if v.get('cef_version', '').startswith('${CEF_MAJOR}.') and v.get('channel') == 'stable':
-        for f in v.get('files', []):
-            name = f['name']
-            if '${PLAT_TAG}.tar.bz2' in name and not any(s in name for s in ['client', 'minimal', 'tools']):
-                url = 'https://cef-builds.spotifycdn.com/' + urllib.parse.quote(name)
-                sha1 = f.get('sha1', '')
-                print(url + ' ' + sha1)
-                sys.exit(0)
-print('', end='')
-" 2>/dev/null || true)"
-
-EXPECTED_SHA1="${RESOLVED#* }"
-RESOLVED="${RESOLVED%% *}"
-
-rm -f "$TMP_JSON"
-
-if [ -z "$RESOLVED" ]; then
-    echo "ERROR: could not resolve CEF ${CEF_MAJOR}.x tarball URL" >&2
-    echo "Visit https://cef-builds.spotifycdn.com/ to find a matching build." >&2
+if [ -z "$EXPECTED_SHA1" ]; then
+    echo "ERROR: no pinned SHA-1 for $ARCHIVE in cef_sums.lock." >&2
+    echo "  Refusing to download an unverified CEF archive. Add the digest" >&2
+    echo "  (verified out-of-band) to cef_sums.lock for this version/platform." >&2
     exit 1
 fi
 
+echo ">> resolving CEF ${CEF_VERSION} for ${PLAT_TAG}"
 echo ">> resolved: $RESOLVED"
+
+# Secondary cross-check: the digest the live index advertises for this exact
+# archive must agree with the in-tree pin. A mismatch means the release host
+# (or our pin) is stale/tampered -- stop before downloading 700MB+.
+API_URL="https://cef-builds.spotifycdn.com/index.json"
+TMP_JSON="$HERE/.cef_index.json"
+if curl -fsSL --retry 3 -o "$TMP_JSON" "$API_URL" 2>/dev/null; then
+    INDEX_SHA1="$(python3 -c "
+import json, sys
+want = sys.argv[1]
+idx = json.load(open('$TMP_JSON'))
+for v in idx.get('$PLAT_TAG', {}).get('versions', []):
+    for f in v.get('files', []):
+        if f.get('name') == want:
+            print(f.get('sha1', '')); sys.exit(0)
+" "$ARCHIVE" 2>/dev/null || true)"
+    rm -f "$TMP_JSON"
+    if [ -n "$INDEX_SHA1" ] && [ "$INDEX_SHA1" != "$EXPECTED_SHA1" ]; then
+        echo "ERROR: index SHA-1 for $ARCHIVE disagrees with cef_sums.lock" >&2
+        echo "  pinned: $EXPECTED_SHA1" >&2
+        echo "  index:  $INDEX_SHA1" >&2
+        echo "  The release host or the in-tree pin is out of date/tampered." >&2
+        exit 1
+    fi
+else
+    echo ">> note: could not fetch index for cross-check; relying on in-tree pin" >&2
+fi
 
 if [ ! -f "$CACHED_TARBALL" ]; then
     echo ">> downloading CEF binary distribution..."
@@ -111,21 +143,17 @@ else
     echo ">> using cached tarball ($CACHED_TARBALL)"
 fi
 
-# --- Verify SHA-1 checksum ---------------------------------------------
-if [ -n "$EXPECTED_SHA1" ]; then
-    ACTUAL_SHA1="$(sha1sum "$CACHED_TARBALL" | cut -d' ' -f1)"
-    if [ "$ACTUAL_SHA1" != "$EXPECTED_SHA1" ]; then
-        echo "ERROR: SHA-1 mismatch for cached/downloaded tarball" >&2
-        echo "  expected: $EXPECTED_SHA1" >&2
-        echo "  actual:   $ACTUAL_SHA1" >&2
-        echo "  Deleting corrupted tarball." >&2
-        rm -f "$CACHED_TARBALL"
-        exit 1
-    fi
-    echo ">> SHA-1 verified: $ACTUAL_SHA1"
-else
-    echo "WARNING: no SHA-1 available in index; skipping integrity check" >&2
+# --- Verify SHA-1 checksum against the in-tree pin (fail closed) -------
+ACTUAL_SHA1="$(sha1sum "$CACHED_TARBALL" | cut -d' ' -f1)"
+if [ "$ACTUAL_SHA1" != "$EXPECTED_SHA1" ]; then
+    echo "ERROR: SHA-1 mismatch for cached/downloaded tarball" >&2
+    echo "  expected: $EXPECTED_SHA1" >&2
+    echo "  actual:   $ACTUAL_SHA1" >&2
+    echo "  Deleting corrupted tarball." >&2
+    rm -f "$CACHED_TARBALL"
+    exit 1
 fi
+echo ">> SHA-1 verified: $ACTUAL_SHA1"
 
 # --- Headers-only: extract headers then exit (no runtime download) ----
 if [ "$HEADERS_ONLY" = "1" ]; then

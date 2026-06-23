@@ -9,6 +9,7 @@ codegen regressions. The webview binding has a sibling suite in
 `test_desktop_binding.jac`.
 """
 import os;
+import re;
 import shutil;
 import subprocess;
 import sysconfig;
@@ -119,4 +120,69 @@ test "cef binding host compiles and links libcef_dispatch.so" {
     assert data[:4] == b"\x7fELF" , "output is not an ELF executable";
     assert b"libcef_dispatch.so" in data , "binary must link libcef_dispatch.so";
     assert b"$ORIGIN" in data , "binary must carry an $ORIGIN runpath";
+}
+
+"""Regression: a bare `f;` name statement compiles but is a NO-OP in nacompile;
+a zero-arg function must be invoked as `f()`. The cef-subprocess helper and the
+host's `_init_exe_dir` previously used the bare form, so they silently ran
+nothing. This pins the runtime semantic the fix relies on: an entry-invoked
+function actually executes."""
+test "nacompile invokes a zero-arg function called from entry with parentheses" {
+    jac = shutil.which("jac") or "jac";
+    tmp = tempfile.mkdtemp();
+    try {
+        with open(os.path.join(tmp, "m.na.jac"), "w") as f {
+            f.write("import sys;\ndef _go { sys.exit(7); }\nwith entry { _go(); }\n");
+        }
+        comp = subprocess.run(
+            [jac, "nacompile", "m.na.jac", "-o", "out"],
+            cwd=tmp,
+            capture_output=True,
+            text=True,
+            timeout=300
+        );
+        out = os.path.join(tmp, "out");
+        assert comp.returncode == 0 and os.path.exists(out) , f"compile failed:\n{comp.stderr}";
+        run = subprocess.run([out], capture_output=True, timeout=60);
+        assert run.returncode == 7 , (
+            f"entry did not invoke _go() (exit {run.returncode}); "
+            "bare-name calls are no-ops in nacompile -- use f()"
+        );
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+"""Regression: the CEF subprocess + dispatch lifecycle functions must be invoked
+with `()`. Guards against re-introducing the bare-name no-op that left the
+cef-subprocess entry and `g_exe_dir_buf` initialization dead."""
+test "cef native lifecycle functions are invoked with parentheses" {
+    cef = _cef_dir();
+    sub = (cef / "cef_subprocess.na.jac").read_text();
+    disp = (cef / "cef_dispatch.na.jac").read_text();
+    # Required paren-form invocations.
+    for needle in [
+        "_subprocess_main()",
+        "_subprocess_bootstrap()",
+        "cef_main_args_create()"
+    ] {
+        assert needle in sub , f"cef_subprocess.na.jac must invoke {needle}";
+    }
+    assert "_init_exe_dir()" in disp , "cef_dispatch.na.jac must invoke _init_exe_dir()";
+    # No bare no-op invocation (name followed directly by `;`, not `(`).
+    checks = [
+        (
+            "cef_subprocess.na.jac",
+            sub,
+            ["_subprocess_main", "_subprocess_bootstrap", "cef_main_args_create"]
+        ),
+        ("cef_dispatch.na.jac", disp, ["_init_exe_dir"]),
+
+    ];
+    for (fname, body, fns) in checks {
+        for fn in fns {
+            bare = re.search(r"(?:^|[=({;,\s])" + fn + r"\s*;", body, re.M);
+            assert bare is None , f"{fn} is invoked without parentheses (no-op) in {fname}";
+        }
+    }
 }

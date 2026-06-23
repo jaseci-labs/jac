@@ -17,7 +17,7 @@ import from "libcef.so" {
         src: str, src_len: int, output: int
     ) -> i32;  def cef_string_utf16_clear(s: int) -> None;  def cef_browser_host_create_browser(
         wi: int, client: int, url: int, settings: int, extra_info: int, req_ctx: int
-    ) -> i32;
+    ) -> i32;  def cef_version_info(which: i32) -> i32;
 }
 
 import from "libc.so.6" {
@@ -413,7 +413,7 @@ def _log(msg: str) {
 }
 
 def:pub cef_dispatch_get_exe_dir -> str {
-    _init_exe_dir;
+    _init_exe_dir();
     return g_exe_dir_buf;
 }
 
@@ -440,7 +440,7 @@ def _init_exe_dir {
 }
 
 def:pub cef_platform_bootstrap {
-    _init_exe_dir;
+    _init_exe_dir();
     # Disable AT-SPI2 D-Bus accessibility probe (causes cef_initialize hang on Arch/Wayland)
     setenv("NO_AT_BRIDGE", "1", 0);
     # Point fontconfig at the bundled minimal config to avoid Arch 48-guessfamily.conf stall
@@ -622,7 +622,7 @@ def:pub cef_dispatch_main_args_create -> int {
         _log("args: using cmdline");
         return args;
     }
-    _init_exe_dir;
+    _init_exe_dir();
     if g_exe_path_buf != 0 {
         _log("args: using exe_path fallback");
     } else {
@@ -638,7 +638,7 @@ def:pub cef_dispatch_main_args_create -> int {
 }
 
 def:pub cef_dispatch_settings_create(no_sandbox: i32, cache_path: str) -> int {
-    _init_exe_dir;
+    _init_exe_dir();
     g_settings.size = 440;
     g_settings.no_sandbox = no_sandbox;
     g_settings.multi_threaded = 0;
@@ -759,6 +759,7 @@ def:pub cef_dispatch_open_browser(url: str, title: str, width: int, height: int)
 
 def:pub cef_dispatch_execute_process -> i32 {
     global g_cached_args;
+    _assert_cef_abi();
     cef_platform_bootstrap();
     _init_vtables();
     _log("execute_process");
@@ -776,6 +777,7 @@ def:pub cef_dispatch_execute_process -> i32 {
 }
 
 def:pub cef_dispatch_startup(cache_path: str, no_sandbox: int) -> i32 {
+    _assert_cef_abi();
     cef_platform_bootstrap();
     _init_vtables();
     _log("startup: initializing CEF");
