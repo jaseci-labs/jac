@@ -177,18 +177,20 @@ jobs:
 
   # ==========================================================================
   # TEMPORARY stress job -- REVERT before merge (along with the x10 duplication
-  # in test_code_blocks.jac). Runs the duplicated e2e suite both ways to show
-  # the contention flakiness vs the serial fix:
-  #   JAC_TEST_JOBS=auto -> parallel -> expect timeouts/flakes
-  #   JAC_TEST_JOBS=0    -> serial   -> expect all pass
-  # No `-x`/retry here so we see the full pass/fail counts.
+  # in test_code_blocks.jac). Runs the duplicated e2e suite two ways to compare
+  # full parallelism vs a reduced worker count:
+  #   JAC_TEST_JOBS=auto -> ~6 workers -> expect timeouts/flakes
+  #   JAC_TEST_JOBS=3    -> 3 workers  -> does it withstand the stress?
+  # The serial baseline (JAC_TEST_JOBS=0) is measured by the real
+  # test-packages-and-docs job. No `-x`/retry here so we see full pass/fail
+  # counts and the per-iteration timings.
   # ==========================================================================
   stress-e2e-codeblocks:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
       matrix:
-        jobs: ["auto", "0"]
+        jobs: ["auto", "3"]
     steps:
     - name: Check out code
       uses: actions/checkout@v5
