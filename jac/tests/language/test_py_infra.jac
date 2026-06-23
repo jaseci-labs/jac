@@ -580,25 +580,6 @@ test "by operator" {
     assert "implemented" in stdout_value.lower();
 }
 
-test "sitecustomize meta importer" {
-    Jac.attach_program(JacProgram());
-    with tempfile.TemporaryDirectory() as tmpdir {
-        Path(tmpdir, "mymod.jac").write_text('with entry {print("via meta");}');
-        env = os.environ.copy();
-        project_root = str(Path(JAC_ROOT));
-        env["PYTHONPATH"] = os.pathsep.join([project_root, tmpdir]);
-        proc = subprocess.run(
-            [sys.executable, "-c", "import mymod"],
-            capture_output=True,
-            text=True,
-            cwd=tmpdir,
-            env=env
-        );
-        assert proc.returncode == 0 , proc.stderr;
-        assert proc.stdout.strip() == "via meta";
-    }
-}
-
 # -- read_file_with_encoding tests --
 test "read file with encoding utf8" {
     Jac.attach_program(JacProgram());

@@ -99,6 +99,14 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The compiler suite runs `jac test` from jac/, where `python -m
+          # jaclang` (how the nacompile tests shell out) resolves the in-tree
+          # jaclang via -m's cwd-prepend. Native type resolution then loads the
+          # vendored typeshed stubs (jac/jaclang/vendor/typeshed) -- without the
+          # submodule the checker is blind and na-compilation fails. Same reason
+          # the build job checks out submodules.
+          submodules: true
       - name: Download the jac binary
         uses: actions/download-artifact@v4
         with:
