@@ -159,7 +159,6 @@ impl KEDAAutoscaler._build_manifests{
 
 """Create or patch the TriggerAuthentication for a trigger that carries secret references."""
 impl KEDAAutoscaler._apply_trigger_auth{
-    # TODO(#6535): destroy() gap: single-resource teardown has no trigger list so cannot clean up TriggerAuthentications.
     if not trigger.auth {
         return;
     }
@@ -286,9 +285,41 @@ impl KEDAAutoscaler.apply{
     return True;
 }
 
-"""Delete a single ScaledObject by name; no-op if already absent."""
+"""Delete TriggerAuthentications owned by the ScaledObject then delete the ScaledObject itself; no-op if already absent."""
 impl KEDAAutoscaler.destroy{
     api = self._custom_api or client.CustomObjectsApi();
+    try {
+        scaled_obj = api.get_namespaced_custom_object(
+            group="keda.sh",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="scaledobjects",
+            name=autoscaler_name
+        );
+        for trigger in scaled_obj.get("spec", {}).get("triggers", []) {
+            auth_ref = trigger.get("authenticationRef");
+            if auth_ref {
+                try {
+                    api.delete_namespaced_custom_object(
+                        group="keda.sh",
+                        version="v1alpha1",
+                        namespace=namespace,
+                        plural="triggerauthentications",
+                        name=auth_ref["name"]
+                    );
+                } except ApiException as e {
+                    if e.status not in [404, 422] {
+                        raise;
+                    }
+                }
+            }
+        }
+    } except ApiException as e {
+        if e.status not in [404, 422] {
+            raise;
+        }
+        return;
+    }
     try {
         api.delete_namespaced_custom_object(
             group="keda.sh",
