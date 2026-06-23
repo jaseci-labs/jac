@@ -31,8 +31,8 @@ trailer = "JACBIN01" | payload_len(u64 LE) | sha256_hex(64)   (80 bytes, at EOF)
 Payload, materialized to `<cache>/rt/<hash16>/` on first run:
 
 ```
-python/lib/libpython3.12.{dylib,so}   <- dlopened (RTLD_NOW|RTLD_GLOBAL)
-python/lib/python3.12/                 <- stdlib (incl. lib-dynload: extension .so)
+python/lib/libpython3.14.{dylib,so}   <- dlopened (RTLD_NOW|RTLD_GLOBAL)
+python/lib/python3.14/                 <- stdlib (incl. lib-dynload: extension .so)
 site/                                  <- jaclang + _jac_finder + llvmlite
 ```
 
@@ -49,7 +49,7 @@ zig build test                       # launcher unit tests (no libpython needed)
 zig build stub                       # just the launcher (links only libc)
 
 # Full binary: assemble a payload, then pack it onto the stub.
-#   <pbs-python-dir> = extracted python-build-standalone `python/` dir (3.12, full or install_only)
+#   <pbs-python-dir> = extracted python-build-standalone `python/` dir (3.14, full or install_only)
 ./launcher/mkpayload.sh <pbs-python-dir> . /tmp/payload.tar.zst
 zig build -Dpayload=/tmp/payload.tar.zst -Doptimize=ReleaseSmall
 ./zig-out/bin/jac --version
@@ -73,5 +73,5 @@ archive is only a payload input; it is never linked.
     laundering, not compilation. Sealing the runtime (shipping JIR-only, no
     `.jac`/live compile of the bootstrap layer) is the further win -- issue
     #6852 Phase 4.
-- **Linux**: ensure the staged shared lib is named `libpython3.12.so` (pbs may
-  ship `libpython3.12.so.1.0` -- symlink/copy to the bare name in staging).
+- **Linux**: ensure the staged shared lib is named `libpython3.14.so` (pbs may
+  ship `libpython3.14.so.1.0` -- symlink/copy to the bare name in staging).

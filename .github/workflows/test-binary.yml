@@ -25,12 +25,9 @@ jobs:
   build:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
+      # typeshed stdlib stubs are now vendored as plain files (no submodule);
+      # third-party stubs are installed per-project by `jac add`.
       - uses: actions/checkout@v4
-        with:
-          # The type checker loads vendored typeshed stubs, which live in a git
-          # submodule (jac/jaclang/vendor/typeshed). Without them the checker is a
-          # no-op and ~700 compiler tests fail on missing `typing.pyi`.
-          submodules: true
 
       - name: Set up jac (build the binary once, cached)
         uses: ./.github/actions/setup-jac

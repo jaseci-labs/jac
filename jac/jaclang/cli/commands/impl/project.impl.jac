@@ -11,6 +11,7 @@ import importlib.metadata;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.project.config { JacConfig }
+import from jaclang.project.dependencies { DependencyInstaller }
 
 """Initialize a new Jac project."""
 impl create(
@@ -893,6 +894,7 @@ impl add(
             }
             config.add_dependency(name, version_str, dev=dev, dep_type="python");
             console.print(f"  ✔ {name} ({version_str})", style="success");
+            _maybe_add_type_stub(installer, config, name, verbose);
         } else {
             console.error(f"Failed to install {name}");
             return 1;
@@ -960,6 +962,65 @@ def _major_minor(version: str) -> str {
         return f"{parts[0]}.{parts[1]}";
     }
     return version;
+}
+
+"""Install the typeshed `types-*` stub for a just-added package into the venv.
+
+Third-party type stubs are no longer bundled in the binary; the type checker
+resolves them from the project venv (PEP 561 `<pkg>-stubs`). If `name` has a
+typeshed stub and the installed package isn't already self-typed (`py.typed`),
+fetch the matching `types-*` and record it as a dev-dependency. Best-effort: a
+failure (e.g. offline) warns rather than aborting the add.
+"""
+def _maybe_add_type_stub(
+    installer: DependencyInstaller, config: JacConfig, name: str, verbose: bool
+) -> None {
+    import from jaclang.project.stub_index { lookup_stub }
+    import from jaclang.project.dependencies { get_venv_site_packages }
+    entry = lookup_stub(name);
+    if entry is None {
+        return;
+    }
+    # Inline types (py.typed) are authoritative -- skip the stub if the runtime
+    # package already ships them, even if typeshed still carries a stub.
+    vdir = installer.venv_dir;
+    if vdir is not None {
+        site_packages = get_venv_site_packages(vdir);
+        imports_val: any = entry.get('imports');
+        if isinstance(imports_val, list) {
+            for imp in imports_val {
+                marker = os.path.join(str(site_packages), str(imp), 'py.typed');
+                if os.path.isfile(marker) {
+                    if verbose {
+                        console.print(
+                            f"  {name} ships inline types; skipping type stubs",
+                            style="muted"
+                        );
+                    }
+                    return;
+                }
+            }
+        }
+    }
+    stub_dist = entry.get('stub_dist');
+    if not isinstance(stub_dist, str) or not stub_dist {
+        return;
+    }
+    stub_ok = installer.install_package([stub_dist]);
+    if stub_ok {
+        stub_ver = installer.get_installed_version(stub_dist);
+        stub_spec = ">=0.0.0";
+        if stub_ver {
+            stub_spec = f"~={_major_minor(stub_ver)}";
+        }
+        # Stubs are dev-time type info only -- always a dev-dependency.
+        config.add_dependency(stub_dist, stub_spec, dev=True, dep_type="python");
+        console.print(f"  ✔ {stub_dist} (type stubs)", style="success");
+    } else {
+        console.warning(
+            f"Could not install type stubs '{stub_dist}' for {name} " + "(offline?); the checker will treat it as untyped until added."
+        );
+    }
 }
 
 """Update project dependencies to latest compatible versions."""

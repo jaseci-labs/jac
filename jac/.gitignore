@@ -73,3 +73,9 @@ out.txt
 zig-out/
 dist/
 .pbs-build/
+
+# Vendored typeshed stdlib stubs + the third-party stub index are built at the
+# pinned commit by launcher/fetch-typeshed.sh, not committed -- only the PIN /
+# LICENSE / PROVENANCE.md beside the stubs are tracked.
+jaclang/vendor/typeshed/stdlib/
+jaclang/project/stub_index.json
