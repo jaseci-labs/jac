@@ -174,6 +174,9 @@ impl AstTool.ir(args: list[str]) -> str {
 """List python ast nodes."""
 impl AstTool.py_uni_nodes -> str {
     import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
+    # Python 3.14 moved the unparser to `_ast_unparse`, binding `ast._Unparser`
+    # lazily on the first `unparse()` call; trigger that so `dir()` works on both.
+    py_ast.unparse(py_ast.parse(""));
     visit_methods = [
         method
         for method in dir(py_ast._Unparser)

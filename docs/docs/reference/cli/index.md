@@ -29,7 +29,7 @@ The CLI is extensible through plugins. When you install a plugin like `jac-scale
 | `jac destroy` | Remove Kubernetes deployment (jac-scale) |
 | `jac status` | Show deployment status of Kubernetes resources (jac-scale) |
 | `jac add` | Add packages to project |
-| `jac install` | Install project dependencies from `jac.toml`, or `jac install <pkg>` to install packages directly into the activated environment |
+| `jac install` | Install project dependencies from `jac.toml`, or `jac install <pkg>` to install packages into the project's `.jac/venv` |
 | `jac remove` | Remove packages from project |
 | `jac update` | Update dependencies to latest compatible versions |
 | `jac bundle` | Build a distributable `.whl` from `jac.toml` |
@@ -1259,28 +1259,29 @@ For private packages from custom registries (e.g., GitHub Packages), configure s
 
 **No-argument mode** - sync the project environment to `jac.toml`. Installs all Python (pip), git, and plugin-provided (npm, etc.) dependencies in one command. Creates or validates the project virtual environment at `.jac/venv/`. Requires a `jac.toml` in the current (or a parent) directory.
 
-**Package mode** - `jac install <pkg> [pkg ...]` installs one or more packages directly into the **active project environment** (managed by the `jac` binary, which provides the jaclang runtime), without reading or modifying `jac.toml`. It is the Jac-native equivalent of `pip install <pkg>`: under the hood it wraps pip (or `uv pip`), but the target is the project's `jac`-managed environment rather than a user-managed system Python. Useful for quick one-off installs or scripts where you do not need a full jac project.
+**Package mode** - `jac install <pkg> [pkg ...]` installs one or more packages into the project's virtual environment at `.jac/venv/`, without reading or modifying `jac.toml`. It is the Jac-native equivalent of `pip install <pkg>`, run through the `jac` binary's bundled pip. By default it requires a `jac.toml` in the current (or a parent) directory and installs into that project's `.jac/venv`. Pass `--global` to install into the binary's own jac-owned site instead -- a location that is on `sys.path` from **any** project, for a plugin or tool you install once and use everywhere. Either target is fully self-contained: the bundled pip and the binary's own site, never the host Python or its `site-packages`.
 
 > **`jac install <pkg>` vs `jac add <pkg>`**
 >
-> | | `jac install <pkg>` | `jac add <pkg>` |
-> |---|---|---|
-> | Target | Active `jac`-managed environment | Project `.jac/venv/` |
-> | Updates `jac.toml` | No | Yes |
-> | Works outside a project | Yes | No |
+> | | `jac install <pkg>` | `jac install <pkg> --global` | `jac add <pkg>` |
+> |---|---|---|---|
+> | Target | Project `.jac/venv/` | Binary's global site | Project `.jac/venv/` |
+> | Updates `jac.toml` | No | No | Yes |
+> | Requires a project | Yes | No | Yes |
+> | Importable from other projects | No | Yes | No |
 >
-> Use `jac add` when you want the dependency tracked for reproducible installs. Use `jac install <pkg>` for ad-hoc or environment-level installs.
+> Use `jac add` when you want the dependency recorded in `jac.toml` for reproducible installs, plain `jac install <pkg>` for an ad-hoc package scoped to this project, and `jac install <pkg> --global` for a plugin/tool you want available everywhere.
 
 ```bash
 jac install [-h] [packages ...] [-e PATH] [-d] [-x group [group ...]] [-v]
             [--force-reinstall] [--no-cache-dir] [--pre] [--dry-run]
-            [--no-deps] [--quiet] [--prefer-binary] [--no-uv]
+            [--no-deps] [--quiet] [--prefer-binary] [--global]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `packages` | Package(s) to install into the activated environment. When provided, skips `jac.toml` entirely. | `[]` |
-| `-e, --editable PATH` | Install the Jac package at `PATH` in editable mode (analogous to `pip install -e`). `jac.toml` is read from `PATH`, not the current directory. Cannot be combined with `packages`. Repeatable. | `None` |
+| `packages` | Package(s) to install into the project's `.jac/venv` (or the global site with `--global`). When provided, skips `jac.toml`. | `[]` |
+| `-e, --editable PATH` | Install the Jac package at `PATH` in editable mode (analogous to `pip install -e`). The target package's own `jac.toml` (read from `PATH`) supplies its dependencies; the package and those deps are linked/installed into the **current** project's `.jac/venv` (or the global site with `--global`). Cannot be combined with `packages`. Repeatable. | `None` |
 | `-d, --dev` | Include dev dependencies (no-arg mode only) | `False` |
 | `-x, --extras` | Install one or more `[optional-dependencies]` groups (no-arg mode only) | `[]` |
 | `-v, --verbose` | Show detailed output | `False` |
@@ -1291,12 +1292,12 @@ jac install [-h] [packages ...] [-e PATH] [-d] [-x group [group ...]] [-v]
 | `--no-deps` | Don't install package dependencies | `False` |
 | `--quiet` | Suppress pip output | `False` |
 | `--prefer-binary` | Prefer pre-built wheels over source distributions | `False` |
-| `--no-uv` | Use pip directly, even if `uv` is available on `PATH` | `False` |
+| `--global` | Install into the binary's own jac-owned site (importable from any project), not the project's `.jac/venv`. Works outside a project. | `False` |
 
 **Examples:**
 
 ```bash
-# Install a single package into the activated environment
+# Install a single package into the project's .jac/venv
 jac install numpy
 
 # Install multiple packages at once
@@ -1317,11 +1318,14 @@ jac install --extras data monitoring
 # Editable install of the current package (no-arg mode)
 jac install -e .
 
-# Editable install from anywhere (no need to cd into the package)
+# Editable install of a package living elsewhere into the current project's venv
 jac install -e /path/to/lib
 
 # Editable install with all optional dependency groups
 jac install -e . --extras all
+
+# Install a plugin/tool into the global site, importable from any project
+jac install -e ./jac-byllm --global
 
 # Install with verbose output
 jac install -v
@@ -1334,22 +1338,13 @@ jac install --dry-run
 
 # Install without using pip's download cache
 jac install --no-cache-dir
-
-# Force pip (skip uv) for this install
-jac install --no-uv
 ```
 
 Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See the [Configuration Reference](../config/index.md#optional-dependencies).
 
-> **uv backend:** When [`uv`](https://github.com/astral-sh/uv) is installed and on `PATH`, `jac install` (and `jac add`, `jac remove`, `jac update`) automatically route pip operations through `uv pip` for significantly faster dependency resolution and downloads. No configuration needed - it activates on detection.
+> **Self-contained installs:** `jac install` (and `jac add`, `jac remove`, `jac update`) run through the `jac` binary's own bundled pip against the project's `.jac/venv`. No system Python, `pip`, or external package manager (such as `uv`) is required or consulted -- behaviour is identical regardless of what is installed on the host.
 >
-> To opt out for a single `jac install` run: `jac install --no-uv`
->
-> To opt out system-wide (all commands, all sessions): `export JAC_NO_UV=1`
->
-> The `--prefer-binary` flag has no `uv` equivalent and is silently dropped when uv is active. Pass `--no-uv` to preserve it.
->
-> **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, `--pre`, `--no-deps`, `--quiet`, `--prefer-binary`) are forwarded directly to pip in both modes. Use `jac update` to upgrade packages to their latest versions.
+> **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, `--pre`, `--no-deps`, `--quiet`, `--prefer-binary`) are forwarded directly to pip. Use `jac update` to upgrade packages to their latest versions.
 
 ---
 

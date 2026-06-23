@@ -54,6 +54,7 @@ glob _byllm_config = get_byllm_config(),
      _model_config = _byllm_config.get_model_config(),
      _call_params_config = _byllm_config.get_call_params_config(),
      _parallel_config = _byllm_config.get_parallel_config(),
+     _streaming_config = _byllm_config.get_streaming_config(),
      _CACHE_CONTROL_EPHEMERAL: dict = {"type": "ephemeral"};
 
 # Configure LiteLLM based on jac.toml settings
@@ -89,6 +90,7 @@ obj BaseLLM {
     def invoke(mt_run: MTRuntime) -> object;
     async def ainvoke(mt_run: MTRuntime) -> object;
     def _resolve_output_attempts(mt_run: MTRuntime) -> int;
+    def _resolve_stream_retries(mt_run: MTRuntime) -> int;
     def _invoke_typed_retry(mt_run: MTRuntime) -> object;
     async def _ainvoke_typed_retry(mt_run: MTRuntime) -> object;
     def _typed_retry_reset(

@@ -2863,6 +2863,16 @@ impl PyastBuildPass.proc_function_def(
     return ret;
 }
 
+"""Python 3.14 PEP 750 template strings (t-strings) have no Jac equivalent."""
+impl PyastBuildPass.proc_template_str(nd: py_ast.AST) -> uni.UniNode {
+    raise self.ice("Python 3.14 t-strings (PEP 750) are not supported in Jac");
+}
+
+"""A t-string interpolation field; unreachable unless a t-string is processed."""
+impl PyastBuildPass.proc_interpolation(nd: py_ast.AST) -> uni.UniNode {
+    raise self.ice("Python 3.14 t-string interpolations are not supported in Jac");
+}
+
 """
 Process python node.
 
