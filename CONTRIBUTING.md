@@ -57,7 +57,7 @@ export PATH="$PWD/jac/zig-out/bin:$PATH"
 
 **3. The editable dev loop (skip rebuilds for jaclang edits)**
 
-Without help, a change to `jac/jaclang` would only take effect after another `zig build`, because the binary runs its own bundled copy of jaclang. This repo's root [`jac.toml`](jac.toml) points `jac` at the in-repo source so you don't have to rebuild per edit:
+Without help, a change to `jac/jaclang` would only take effect after another `zig build`, because the binary runs its own bundled copy of jaclang. This repo's root `jac.toml` points `jac` at the in-repo source so you don't have to rebuild per edit:
 
 ```toml
 [dev]
