@@ -31,6 +31,7 @@ Bug index:
   #HOGEN-1 - TypeVars not bound through function-typed args; blocks generic decorator-application
   #WITHAS-1 - `with cm() as x` bound x to the manager not __enter__'s result; async with used sync protocol
   #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
+  #STARGUARD-1 - version-guarded names re-exported via `from M import *` (e.g. Buffer) fail to resolve
   #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
   #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
 """
@@ -914,6 +915,51 @@ test "bug_withas_1_async_with_as_binds_and_checks" {
         "Bug #WITHAS-1: `async with cm() as x` must verify the async protocol "
         "and bind x to the awaited __aenter__ result. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_starguard_1_guarded_star_reexport_resolves" {
+    program = compile_and_check("checker_star_reexport_guard.jac");
+    e1055 = sum(
+        1
+        for e in program.errors_had
+        if e.code and e.code.code == "E1055"
+    );
+    assert e1055 == 1 , (
+        "Bug #STARGUARD-1: `bytes + str` must error because str is not a "
+        "Buffer. The guarded ReadableBuffer/Buffer re-export must resolve so "
+        f"bytes.__add__ rejects str. Expected 1 E1055, got {e1055}."
+    );
+}
+
+test "bug_starguard_1_single_segment_reexport_resolves" {
+    program = compile_and_check(os.path.join("star_reexport_guard", "consumer.jac"));
+    e1032 = sum(
+        1
+        for e in program.errors_had
+        if e.code and e.code.code == "E1032"
+    );
+    assert len(program.errors_had) == 0 , (
+        "Bug #STARGUARD-1: a guarded name re-exported via a single-segment "
+        "`from M import *` must resolve. Marker was Unknown "
+        f"({e1032} E1032). Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_starguard_1_multi_segment_reexport_resolves" {
+    program = compile_and_check(
+        os.path.join("star_reexport_guard_multiseg", "consumer.jac")
+    );
+    e1032 = sum(
+        1
+        for e in program.errors_had
+        if e.code and e.code.code == "E1032"
+    );
+    assert len(program.errors_had) == 0 , (
+        "Bug #STARGUARD-1: a guarded name re-exported via a MULTI-SEGMENT "
+        "`from pkg.submod import *` must resolve. The buggy extension-probing "
+        "appended an extension to an already-extensioned path, so Marker was "
+        f"Unknown ({e1032} E1032). Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
 
