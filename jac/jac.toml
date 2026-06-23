@@ -6,8 +6,8 @@ version = "0.30.0"
 description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
 license = "MIT"
 readme = "README.md"
-requires_python = ">=3.12"
-dependencies = ["llvmlite>=0.43.0"]
+requires_python = ">=3.14"
+dependencies = ["llvmlite>=0.47.0"]  # cp314 wheels for the bundled Python 3.14
 
 [project.urls]
 Repository = "https://github.com/jaseci-labs/jaseci"

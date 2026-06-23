@@ -12,8 +12,8 @@
 //!   zig build -Dpayload=PATH       # pack a prebuilt payload (skip fetch+mkpayload)
 //!   zig build -Dtarget=aarch64-macos
 //!
-//! Build-time host tools required for the full binary: bash, curl, zstd, tar,
-//! and a Python 3.12 with pip (the pbs interpreter provides its own; only used
+//! Build-time host tools required for the full binary: bash, curl, git, zstd,
+//! tar, and a Python 3.x with pip (the pbs interpreter provides its own; used
 //! to assemble the payload). The shipped binary needs none of these.
 
 const std = @import("std");
@@ -61,15 +61,31 @@ pub fn build(b: *std.Build) void {
         const pbs_python = b.fmt("{s}/python", .{pbs_dir});
 
         const fetch = b.addSystemCommand(&.{ "bash", "launcher/fetch-pbs.sh", osarch, pbs_dir });
+        // typeshed stdlib stubs are NOT vendored in git; fetch them at the pinned
+        // commit (jaclang/vendor/typeshed/PIN) so the payload can bundle them.
+        // Idempotent (no-ops when already materialized); has_side_effects keeps it
+        // from being cached away, so a clean checkout always materializes them.
+        const fetch_ts = b.addSystemCommand(&.{ "bash", "launcher/fetch-typeshed.sh" });
+        fetch_ts.has_side_effects = true;
         const mk = b.addSystemCommand(&.{ "bash", "launcher/mkpayload.sh", pbs_python, b.pathFromRoot(".") });
         mk.step.dependOn(&fetch.step);
+        mk.step.dependOn(&fetch_ts.step);
         const out = mk.addOutputFileArg("payload.tar.zst");
-        // Track the payload's real inputs so it rebuilds when any change; these
-        // trailing args are ignored by mkpayload.sh (it reads $1/$2/$3).
-        mk.addDirectoryArg(b.path("jaclang"));
-        mk.addFileArg(b.path("jac.toml"));
-        mk.addFileArg(b.path("launcher/mkpayload.sh"));
-        mk.addFileArg(b.path("launcher/fetch-pbs.sh"));
+        // Track the payload's real inputs so it repacks when any source changes.
+        // NOTE: addDirectoryArg hashes only the directory PATH (Zig 0.16
+        // Run.zig), not its contents -- a bare dir arg silently never
+        // invalidates. addFileInput content-hashes each file, so enumerate the
+        // tree (this is what mkpayload.sh bundles via `cp -R jaclang`).
+        addTreeInputs(b, mk, "jaclang");
+        mk.addFileInput(b.path("_jac_finder.py"));
+        mk.addFileInput(b.path("sitecustomize.py"));
+        mk.addFileInput(b.path("jac.toml"));
+        mk.addFileInput(b.path("launcher/mkpayload.sh"));
+        mk.addFileInput(b.path("launcher/fetch-pbs.sh"));
+        mk.addFileInput(b.path("launcher/fetch-typeshed.sh"));
+        // PIN drives the fetched typeshed version; it lives under jaclang/ (so
+        // addTreeInputs covers it) but list it explicitly as the cache-bust key.
+        mk.addFileInput(b.path("jaclang/vendor/typeshed/PIN"));
         break :payload out;
     };
 
@@ -86,6 +102,28 @@ pub fn build(b: *std.Build) void {
     run_pack.addFileArg(payload);
     const jac = run_pack.addOutputFileArg("jac");
     b.getInstallStep().dependOn(&b.addInstallBinFile(jac, "jac").step);
+}
+
+/// Register every bundled source file under `sub_path` as a content-hashed input
+/// of `run`, so the step re-runs when any of them changes. `addDirectoryArg` only
+/// hashes the directory path string, so it cannot stand in for this. Skips
+/// `__pycache__`/`*.pyc` (stripped by mkpayload) and `node_modules` (regenerated
+/// from the lockfile, which is itself tracked), keeping the input set to real
+/// source + vendored data.
+fn addTreeInputs(b: *std.Build, run: *std.Build.Step.Run, sub_path: []const u8) void {
+    const io = b.graph.io;
+    var dir = b.build_root.handle.openDir(io, sub_path, .{ .iterate = true }) catch |err|
+        std.debug.panic("mkpayload inputs: cannot open {s}: {s}", .{ sub_path, @errorName(err) });
+    defer dir.close(io);
+    var walker = dir.walk(b.allocator) catch @panic("OOM");
+    defer walker.deinit();
+    while (walker.next(io) catch @panic("mkpayload inputs: walk failed")) |entry| {
+        if (entry.kind != .file) continue;
+        if (std.mem.indexOf(u8, entry.path, "__pycache__") != null) continue;
+        if (std.mem.indexOf(u8, entry.path, "node_modules") != null) continue;
+        if (std.mem.endsWith(u8, entry.path, ".pyc")) continue;
+        run.addFileInput(b.path(b.fmt("{s}/{s}", .{ sub_path, entry.path })));
+    }
 }
 
 fn addTests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {

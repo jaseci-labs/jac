@@ -136,15 +136,20 @@ jobs:
           COPY .pre-commit-config.yaml ./.pre-commit-config.yaml
 
           # jaclang is the prebuilt single binary (copied in via jac/zig-out from
-          # the setup-jac build step), not a pip install.
+          # the setup-jac build step), not a pip install. Install the docs deps
+          # (mkdocs etc.) into the binary's own global site with --global so they
+          # sit beside the bundled jaclang; the container is then served via
+          # `jac run` (see CMD). The binary's embedded Python is the only
+          # interpreter where `import jaclang` resolves, which the mkdocs build
+          # hook (handle_jac_compile_data.py) requires.
           ENV PATH="/app/jac/zig-out/bin:${PATH}"
-          RUN jac install -e ./docs
+          RUN jac install -e ./docs --global
 
           EXPOSE 8000
 
           HEALTHCHECK --interval=30s --timeout=3s CMD curl -f http://localhost:8000/health || exit 1
 
-          CMD ["python", "docs/scripts/mkdocs_serve.py"]
+          CMD ["jac", "run", "docs/scripts/mkdocs_serve.py"]
           EOF
 
           docker buildx build --load \
