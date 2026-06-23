@@ -1407,4 +1407,3 @@ test "execution: graph dot format [stress 10]" {
     }
     _with_page(check);
 }
-
