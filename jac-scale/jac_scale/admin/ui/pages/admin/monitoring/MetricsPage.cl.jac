@@ -17,6 +17,7 @@ import from react { useEffect }
 import from ....components.common.Button { Button }
 import from ....context.AuthContext { useAuth }
 import from ....services.metricsService { getMetrics }
+import from ....utils.format { formatBytes }
 
 def:pub MetricsPage -> JsxElement {
     has isLoading: bool = True,
@@ -91,22 +92,6 @@ def:pub MetricsPage -> JsxElement {
             }
         }
         return 0.0;
-    }
-
-    def formatBytes(bytesVal: float) -> str {
-        if bytesVal >= 1073741824 {
-            val = int(bytesVal / 10737418.24) / 100;
-            return str(val) + " GB";
-        }
-        if bytesVal >= 1048576 {
-            val = int(bytesVal / 10485.76) / 100;
-            return str(val) + " MB";
-        }
-        if bytesVal >= 1024 {
-            val = int(bytesVal / 10.24) / 100;
-            return str(val) + " KB";
-        }
-        return str(int(bytesVal)) + " B";
     }
 
     def formatUptime(startTimeVal: float) -> str {

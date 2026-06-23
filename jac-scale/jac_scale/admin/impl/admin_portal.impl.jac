@@ -1015,7 +1015,6 @@ impl JacAPIServerAdmin.admin_graph_data(
 impl JacAPIServerAdmin.admin_get_metrics(
     Authorization: str | None = None
 ) -> TransportResponse {
-    import re;
     error = self.require_admin(Authorization);
     if error {
         return error;

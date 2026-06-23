@@ -14,53 +14,11 @@ that lands.
 cl import from "lucide-react" { ChevronLeft, Boxes, Activity, Gauge }
 
 cl {
+    import from ....utils.format { formatBytes, formatCores, formatAge }
+
     def:pub ServiceDetail(
         service: dict, pods: list, cpu: list, memory: list, onBack: any
     ) -> JsxElement {
-        def formatBytes(b: float) -> str {
-            if b >= 1073741824 {
-                return str(int(b / 10737418.24) / 100) + " GB";
-            }
-            if b >= 1048576 {
-                return str(int(b / 10485.76) / 100) + " MB";
-            }
-            if b >= 1024 {
-                return str(int(b / 10.24) / 100) + " KB";
-            }
-            return str(int(b)) + " B";
-        }
-
-        def formatCores(c: float) -> str {
-            if c < 1 {
-                return str(int(c * 1000)) + "m";
-            }
-            return str(int(c * 100) / 100) + " cores";
-        }
-
-        def formatAge(createdSecs: float) -> str {
-            if createdSecs <= 0 {
-                return "-";
-            }
-            ageSecs = (Date.now() / 1000) - createdSecs;
-            if ageSecs < 0 {
-                return "-";
-            }
-            if ageSecs < 60 {
-                return str(int(ageSecs)) + "s";
-            }
-            if ageSecs < 3600 {
-                return str(int(ageSecs / 60)) + "m";
-            }
-            if ageSecs < 86400 {
-                hrs = int(ageSecs / 3600);
-                mins = int((ageSecs % 3600) / 60);
-                return str(hrs) + "h " + str(mins) + "m";
-            }
-            days = int(ageSecs / 86400);
-            hrs = int((ageSecs % 86400) / 3600);
-            return str(days) + "d " + str(hrs) + "h";
-        }
-
         def maxOf(points: list) -> float {
             mv = 0.0;
             for p in points {

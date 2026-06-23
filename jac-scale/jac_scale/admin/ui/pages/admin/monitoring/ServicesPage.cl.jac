@@ -23,6 +23,7 @@ cl {
         getWorkloadsPods,
         getWorkloadsTimeseries
     }
+    import from ....utils.format { formatBytes, formatCores }
     import from .ServiceDetail { ServiceDetail }
 
     def:pub ServicesPage -> JsxElement {
@@ -80,26 +81,6 @@ cl {
             },
             [autoRefresh]
         );
-
-        def formatBytes(b: float) -> str {
-            if b >= 1073741824 {
-                return str(int(b / 10737418.24) / 100) + " GB";
-            }
-            if b >= 1048576 {
-                return str(int(b / 10485.76) / 100) + " MB";
-            }
-            if b >= 1024 {
-                return str(int(b / 10.24) / 100) + " KB";
-            }
-            return str(int(b)) + " B";
-        }
-
-        def formatCores(c: float) -> str {
-            if c < 1 {
-                return str(int(c * 1000)) + "m";
-            }
-            return str(int(c * 100) / 100) + " cores";
-        }
 
         # Closure factory so each card's click captures its own service name
         # (an inline lambda inside the comprehension would capture by reference).
