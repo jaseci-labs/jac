@@ -483,6 +483,7 @@ impl CompilerBridge.run_snippet(
     import subprocess;
     import signal;
     import shutil;
+    import logging;
 
     if len(code) > MAX_INPUT_SIZE {
         return {
@@ -561,6 +562,20 @@ impl CompilerBridge.run_snippet(
             }
         }
 
+        # Join a reader thread with a deadline so a descendant that inherited
+        # the pipe write-end (and survived killpg / taskkill /T) cannot block
+        # this handler indefinitely past the timeout budget. The threads are
+        # daemon-marked so they never block process exit; this bounds the request.
+        def _join_reader(t: threading.Thread, name: str, deadline: float = 5.0) {
+            t.join(timeout=deadline);
+            if t.is_alive() {
+                logging.getLogger("jac_mcp").warning(
+                    f"{name} reader thread still alive {deadline}s after "
+                    "process teardown; pipe may be held open by a descendant"
+                );
+            }
+        }
+
         out_buf: list = [b""];
         err_buf: list = [b""];
         with proc {
@@ -578,8 +593,8 @@ impl CompilerBridge.run_snippet(
             t_err.start();
             try {
                 proc.wait(timeout=timeout);
-                t_out.join();
-                t_err.join();
+                _join_reader(t_out, "stdout");
+                _join_reader(t_err, "stderr");
             } except subprocess.TimeoutExpired {
                 try {
                     if is_windows {
@@ -593,8 +608,8 @@ impl CompilerBridge.run_snippet(
                     }
                 } except Exception { }
                 proc.wait();
-                t_out.join();
-                t_err.join();
+                _join_reader(t_out, "stdout");
+                _join_reader(t_err, "stderr");
                 return {
                     "stdout": "",
                     "stderr": "Operation timed out",

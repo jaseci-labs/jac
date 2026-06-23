@@ -853,8 +853,9 @@ test "run snippet large output is truncated" {
         "with entry { for i in range(200000) { print(\"0123456789012345678901234\"); } }"
     );
     assert "stdout" in result;
-    # Allow a small overshoot for the truncation marker (~30 chars).
-    assert len(result["stdout"]) <= MAX_OUTPUT_SIZE + 50;
+    # _cap_read never reads past MAX_OUTPUT_SIZE, so the only overshoot is the
+    # truncation marker ("\n[... output truncated ...]" = 27 chars) -- the tight bound.
+    assert len(result["stdout"]) <= MAX_OUTPUT_SIZE + 27;
     assert "truncated" in result["stdout"];
 }
 
