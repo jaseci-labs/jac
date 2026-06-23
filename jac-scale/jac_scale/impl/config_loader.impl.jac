@@ -313,6 +313,43 @@ impl sanitize_prometheus_namespace(name: str) -> str {
     return sanitized or 'jac_scale';
 }
 
+impl normalize_redis_eviction_policy(policy: str) -> str {
+    valid_policies = [
+        'allkeys-lru',
+        'volatile-lru',
+        'allkeys-lfu',
+        'volatile-lfu',
+        'allkeys-random',
+        'volatile-random',
+        'volatile-ttl',
+        'noeviction'
+    ];
+    if policy in valid_policies {
+        return policy;
+    }
+    logger.warning(
+        f"Invalid Redis eviction policy '{policy}'. Using default 'allkeys-lru'. "
+        f"Valid options: {', '.join(valid_policies)}"
+    );
+    return 'allkeys-lru';
+}
+
+impl normalize_redis_eviction_samples(samples: int | str) -> int {
+    try {
+        value = int(samples);
+    } except (ValueError, TypeError) {
+        logger.warning("Invalid Redis eviction samples value. Using default 5.");
+        return 5;
+    }
+    if value < 1 or value > 10 {
+        logger.warning(
+            f"Redis eviction samples {value} out of range [1-10]. Using default 5."
+        );
+        return 5;
+    }
+    return value;
+}
+
 """Get monitoring configuration from jac.toml.
 
 Combines HTTP metrics endpoint settings and Kubernetes monitoring stack settings.
