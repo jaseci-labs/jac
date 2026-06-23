@@ -163,10 +163,16 @@ jobs:
 
     - name: Run E2E code block tests
       working-directory: docs
-      # Browser rendering of the graph/error playground blocks is timing-flaky on
-      # CI runners (maintainers have de-flaked this suite twice: #6528, #6756). It
-      # is a non-required smoke, so retry once before failing rather than block on
-      # a transient slow render. `-x` so a genuine break still fails fast.
+      # Run serially. `jac test` defaults to `-n auto` (xdist); on a 4-vCPU
+      # runner that spreads these 9 tests across ~6 workers, so ~6 Chromium
+      # instances each download/compile ~10 MB of Pyodide WASM (plus viz.js) from
+      # the CDN at once. That contention starves the browser and times out even
+      # static-element waits -- the long-standing flakiness here (de-flaked twice:
+      # #6528, #6756). JAC_TEST_JOBS=0 disables xdist so one Chromium + one
+      # Pyodide download run at a time. See docs/tests/e2e/FLAKINESS.md.
+      # `-x` fails fast on a genuine break; `|| ...` retries once for a CDN hiccup.
+      env:
+        JAC_TEST_JOBS: 0
       run: jac test tests/e2e/test_code_blocks.jac -x || jac test tests/e2e/test_code_blocks.jac -x
 
   test-desktop-native:
