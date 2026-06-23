@@ -195,7 +195,10 @@ def _click_graph(page: any, block_id: str) {
 
 # -- Rendering tests (fast, no Pyodide) ----------------------------------------
 """Plain block should show run button only, no graph button."""
-test "rendering: plain block buttons" {
+
+# === STRESS: each test duplicated x10 (revert before merge) ===
+
+test "rendering: plain block buttons [stress 1]" {
     def check(page: any, resp: any) {
         _scroll_to(page, "#block-plain");
         page.wait_for_selector(
@@ -206,8 +209,106 @@ test "rendering: plain block buttons" {
     _with_page(check);
 }
 
-"""Run-dot block should show both run and graph buttons."""
-test "rendering: run-dot block buttons" {
+test "rendering: plain block buttons [stress 2]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-btn--graph").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: plain block buttons [stress 3]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-btn--graph").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: plain block buttons [stress 4]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-btn--graph").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: plain block buttons [stress 5]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-btn--graph").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: plain block buttons [stress 6]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-btn--graph").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: plain block buttons [stress 7]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-btn--graph").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: plain block buttons [stress 8]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-btn--graph").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: plain block buttons [stress 9]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-btn--graph").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: plain block buttons [stress 10]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-btn--graph").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: run-dot block buttons [stress 1]" {
     def check(page: any, resp: any) {
         _scroll_to(page, "#block-run-dot");
         page.wait_for_selector(
@@ -218,8 +319,106 @@ test "rendering: run-dot block buttons" {
     _with_page(check);
 }
 
-"""Monaco editor should load and contain the source code."""
-test "rendering: monaco editor with code" {
+test "rendering: run-dot block buttons [stress 2]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-run-dot .jcb-btn--graph").is_visible();
+    }
+    _with_page(check);
+}
+
+test "rendering: run-dot block buttons [stress 3]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-run-dot .jcb-btn--graph").is_visible();
+    }
+    _with_page(check);
+}
+
+test "rendering: run-dot block buttons [stress 4]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-run-dot .jcb-btn--graph").is_visible();
+    }
+    _with_page(check);
+}
+
+test "rendering: run-dot block buttons [stress 5]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-run-dot .jcb-btn--graph").is_visible();
+    }
+    _with_page(check);
+}
+
+test "rendering: run-dot block buttons [stress 6]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-run-dot .jcb-btn--graph").is_visible();
+    }
+    _with_page(check);
+}
+
+test "rendering: run-dot block buttons [stress 7]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-run-dot .jcb-btn--graph").is_visible();
+    }
+    _with_page(check);
+}
+
+test "rendering: run-dot block buttons [stress 8]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-run-dot .jcb-btn--graph").is_visible();
+    }
+    _with_page(check);
+}
+
+test "rendering: run-dot block buttons [stress 9]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-run-dot .jcb-btn--graph").is_visible();
+    }
+    _with_page(check);
+}
+
+test "rendering: run-dot block buttons [stress 10]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-run-dot .jcb-btn--graph").is_visible();
+    }
+    _with_page(check);
+}
+
+test "rendering: monaco editor with code [stress 1]" {
     def check(page: any, resp: any) {
         _scroll_to(page, "#block-plain");
         page.wait_for_selector(
@@ -235,9 +434,151 @@ test "rendering: monaco editor with code" {
     _with_page(check);
 }
 
-# -- Header tests (SharedArrayBuffer) -----------------------------------------
-"""Server must send COOP/COEP headers for SharedArrayBuffer support."""
-test "headers: cross-origin isolation" {
+test "rendering: monaco editor with code [stress 2]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .monaco-editor", state="visible", timeout=MONACO_TIMEOUT
+        );
+        page.wait_for_function(
+            "typeof monaco !== 'undefined' && "
+            "monaco.editor.getModels().some(m => m.getValue().includes('Good Enough'))",
+            timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-output-wrap").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: monaco editor with code [stress 3]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .monaco-editor", state="visible", timeout=MONACO_TIMEOUT
+        );
+        page.wait_for_function(
+            "typeof monaco !== 'undefined' && "
+            "monaco.editor.getModels().some(m => m.getValue().includes('Good Enough'))",
+            timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-output-wrap").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: monaco editor with code [stress 4]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .monaco-editor", state="visible", timeout=MONACO_TIMEOUT
+        );
+        page.wait_for_function(
+            "typeof monaco !== 'undefined' && "
+            "monaco.editor.getModels().some(m => m.getValue().includes('Good Enough'))",
+            timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-output-wrap").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: monaco editor with code [stress 5]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .monaco-editor", state="visible", timeout=MONACO_TIMEOUT
+        );
+        page.wait_for_function(
+            "typeof monaco !== 'undefined' && "
+            "monaco.editor.getModels().some(m => m.getValue().includes('Good Enough'))",
+            timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-output-wrap").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: monaco editor with code [stress 6]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .monaco-editor", state="visible", timeout=MONACO_TIMEOUT
+        );
+        page.wait_for_function(
+            "typeof monaco !== 'undefined' && "
+            "monaco.editor.getModels().some(m => m.getValue().includes('Good Enough'))",
+            timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-output-wrap").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: monaco editor with code [stress 7]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .monaco-editor", state="visible", timeout=MONACO_TIMEOUT
+        );
+        page.wait_for_function(
+            "typeof monaco !== 'undefined' && "
+            "monaco.editor.getModels().some(m => m.getValue().includes('Good Enough'))",
+            timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-output-wrap").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: monaco editor with code [stress 8]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .monaco-editor", state="visible", timeout=MONACO_TIMEOUT
+        );
+        page.wait_for_function(
+            "typeof monaco !== 'undefined' && "
+            "monaco.editor.getModels().some(m => m.getValue().includes('Good Enough'))",
+            timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-output-wrap").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: monaco editor with code [stress 9]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .monaco-editor", state="visible", timeout=MONACO_TIMEOUT
+        );
+        page.wait_for_function(
+            "typeof monaco !== 'undefined' && "
+            "monaco.editor.getModels().some(m => m.getValue().includes('Good Enough'))",
+            timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-output-wrap").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "rendering: monaco editor with code [stress 10]" {
+    def check(page: any, resp: any) {
+        _scroll_to(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .monaco-editor", state="visible", timeout=MONACO_TIMEOUT
+        );
+        page.wait_for_function(
+            "typeof monaco !== 'undefined' && "
+            "monaco.editor.getModels().some(m => m.getValue().includes('Good Enough'))",
+            timeout=MONACO_TIMEOUT
+        );
+        assert page.locator("#block-plain .jcb-output-wrap").is_hidden();
+    }
+    _with_page(check);
+}
+
+test "headers: cross-origin isolation [stress 1]" {
     def check(page: any, resp: any) {
         assert resp.headers.get("cross-origin-opener-policy") == "same-origin";
         assert resp.headers.get("cross-origin-embedder-policy") == "require-corp";
@@ -246,9 +587,88 @@ test "headers: cross-origin isolation" {
     _with_page(check);
 }
 
-# -- Execution tests (slow, needs Pyodide CDN) --------------------------------
-"""Clicking run should execute code and show correct output."""
-test "execution: run produces output" {
+test "headers: cross-origin isolation [stress 2]" {
+    def check(page: any, resp: any) {
+        assert resp.headers.get("cross-origin-opener-policy") == "same-origin";
+        assert resp.headers.get("cross-origin-embedder-policy") == "require-corp";
+        assert page.evaluate("typeof SharedArrayBuffer !== 'undefined'");
+    }
+    _with_page(check);
+}
+
+test "headers: cross-origin isolation [stress 3]" {
+    def check(page: any, resp: any) {
+        assert resp.headers.get("cross-origin-opener-policy") == "same-origin";
+        assert resp.headers.get("cross-origin-embedder-policy") == "require-corp";
+        assert page.evaluate("typeof SharedArrayBuffer !== 'undefined'");
+    }
+    _with_page(check);
+}
+
+test "headers: cross-origin isolation [stress 4]" {
+    def check(page: any, resp: any) {
+        assert resp.headers.get("cross-origin-opener-policy") == "same-origin";
+        assert resp.headers.get("cross-origin-embedder-policy") == "require-corp";
+        assert page.evaluate("typeof SharedArrayBuffer !== 'undefined'");
+    }
+    _with_page(check);
+}
+
+test "headers: cross-origin isolation [stress 5]" {
+    def check(page: any, resp: any) {
+        assert resp.headers.get("cross-origin-opener-policy") == "same-origin";
+        assert resp.headers.get("cross-origin-embedder-policy") == "require-corp";
+        assert page.evaluate("typeof SharedArrayBuffer !== 'undefined'");
+    }
+    _with_page(check);
+}
+
+test "headers: cross-origin isolation [stress 6]" {
+    def check(page: any, resp: any) {
+        assert resp.headers.get("cross-origin-opener-policy") == "same-origin";
+        assert resp.headers.get("cross-origin-embedder-policy") == "require-corp";
+        assert page.evaluate("typeof SharedArrayBuffer !== 'undefined'");
+    }
+    _with_page(check);
+}
+
+test "headers: cross-origin isolation [stress 7]" {
+    def check(page: any, resp: any) {
+        assert resp.headers.get("cross-origin-opener-policy") == "same-origin";
+        assert resp.headers.get("cross-origin-embedder-policy") == "require-corp";
+        assert page.evaluate("typeof SharedArrayBuffer !== 'undefined'");
+    }
+    _with_page(check);
+}
+
+test "headers: cross-origin isolation [stress 8]" {
+    def check(page: any, resp: any) {
+        assert resp.headers.get("cross-origin-opener-policy") == "same-origin";
+        assert resp.headers.get("cross-origin-embedder-policy") == "require-corp";
+        assert page.evaluate("typeof SharedArrayBuffer !== 'undefined'");
+    }
+    _with_page(check);
+}
+
+test "headers: cross-origin isolation [stress 9]" {
+    def check(page: any, resp: any) {
+        assert resp.headers.get("cross-origin-opener-policy") == "same-origin";
+        assert resp.headers.get("cross-origin-embedder-policy") == "require-corp";
+        assert page.evaluate("typeof SharedArrayBuffer !== 'undefined'");
+    }
+    _with_page(check);
+}
+
+test "headers: cross-origin isolation [stress 10]" {
+    def check(page: any, resp: any) {
+        assert resp.headers.get("cross-origin-opener-policy") == "same-origin";
+        assert resp.headers.get("cross-origin-embedder-policy") == "require-corp";
+        assert page.evaluate("typeof SharedArrayBuffer !== 'undefined'");
+    }
+    _with_page(check);
+}
+
+test "execution: run produces output [stress 1]" {
     def check(page: any, resp: any) {
         _click_run(page, "#block-plain");
         page.wait_for_selector(
@@ -265,8 +685,160 @@ test "execution: run produces output" {
     _with_page(check);
 }
 
-"""Run button should be disabled while code is executing."""
-test "execution: button disabled during run" {
+test "execution: run produces output [stress 2]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-output-wrap", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        # jcb-running clears when run-code.js finishes; non-empty output races the warm-up banner.
+        page.wait_for_function(
+            "!document.querySelector('#block-plain').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-plain .code-output");
+        assert "Good Enough" in output , f"Expected 'Good Enough' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: run produces output [stress 3]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-output-wrap", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        # jcb-running clears when run-code.js finishes; non-empty output races the warm-up banner.
+        page.wait_for_function(
+            "!document.querySelector('#block-plain').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-plain .code-output");
+        assert "Good Enough" in output , f"Expected 'Good Enough' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: run produces output [stress 4]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-output-wrap", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        # jcb-running clears when run-code.js finishes; non-empty output races the warm-up banner.
+        page.wait_for_function(
+            "!document.querySelector('#block-plain').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-plain .code-output");
+        assert "Good Enough" in output , f"Expected 'Good Enough' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: run produces output [stress 5]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-output-wrap", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        # jcb-running clears when run-code.js finishes; non-empty output races the warm-up banner.
+        page.wait_for_function(
+            "!document.querySelector('#block-plain').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-plain .code-output");
+        assert "Good Enough" in output , f"Expected 'Good Enough' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: run produces output [stress 6]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-output-wrap", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        # jcb-running clears when run-code.js finishes; non-empty output races the warm-up banner.
+        page.wait_for_function(
+            "!document.querySelector('#block-plain').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-plain .code-output");
+        assert "Good Enough" in output , f"Expected 'Good Enough' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: run produces output [stress 7]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-output-wrap", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        # jcb-running clears when run-code.js finishes; non-empty output races the warm-up banner.
+        page.wait_for_function(
+            "!document.querySelector('#block-plain').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-plain .code-output");
+        assert "Good Enough" in output , f"Expected 'Good Enough' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: run produces output [stress 8]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-output-wrap", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        # jcb-running clears when run-code.js finishes; non-empty output races the warm-up banner.
+        page.wait_for_function(
+            "!document.querySelector('#block-plain').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-plain .code-output");
+        assert "Good Enough" in output , f"Expected 'Good Enough' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: run produces output [stress 9]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-output-wrap", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        # jcb-running clears when run-code.js finishes; non-empty output races the warm-up banner.
+        page.wait_for_function(
+            "!document.querySelector('#block-plain').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-plain .code-output");
+        assert "Good Enough" in output , f"Expected 'Good Enough' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: run produces output [stress 10]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_selector(
+            "#block-plain .jcb-output-wrap", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        # jcb-running clears when run-code.js finishes; non-empty output races the warm-up banner.
+        page.wait_for_function(
+            "!document.querySelector('#block-plain').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-plain .code-output");
+        assert "Good Enough" in output , f"Expected 'Good Enough' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: button disabled during run [stress 1]" {
     def check(page: any, resp: any) {
         _click_run(page, "#block-plain");
         page.wait_for_function(
@@ -277,8 +849,106 @@ test "execution: button disabled during run" {
     _with_page(check);
 }
 
-"""Invalid code should produce an error message in output."""
-test "execution: syntax error shows error" {
+test "execution: button disabled during run [stress 2]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_function(
+            "document.querySelector('#block-plain .jcb-btn--run')?.disabled === true",
+            timeout=5_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: button disabled during run [stress 3]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_function(
+            "document.querySelector('#block-plain .jcb-btn--run')?.disabled === true",
+            timeout=5_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: button disabled during run [stress 4]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_function(
+            "document.querySelector('#block-plain .jcb-btn--run')?.disabled === true",
+            timeout=5_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: button disabled during run [stress 5]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_function(
+            "document.querySelector('#block-plain .jcb-btn--run')?.disabled === true",
+            timeout=5_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: button disabled during run [stress 6]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_function(
+            "document.querySelector('#block-plain .jcb-btn--run')?.disabled === true",
+            timeout=5_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: button disabled during run [stress 7]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_function(
+            "document.querySelector('#block-plain .jcb-btn--run')?.disabled === true",
+            timeout=5_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: button disabled during run [stress 8]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_function(
+            "document.querySelector('#block-plain .jcb-btn--run')?.disabled === true",
+            timeout=5_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: button disabled during run [stress 9]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_function(
+            "document.querySelector('#block-plain .jcb-btn--run')?.disabled === true",
+            timeout=5_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: button disabled during run [stress 10]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-plain");
+        page.wait_for_function(
+            "document.querySelector('#block-plain .jcb-btn--run')?.disabled === true",
+            timeout=5_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: syntax error shows error [stress 1]" {
     def check(page: any, resp: any) {
         _click_run(page, "#block-error");
         page.wait_for_function(
@@ -291,8 +961,124 @@ test "execution: syntax error shows error" {
     _with_page(check);
 }
 
-"""Graph button should render an SVG visualization."""
-test "execution: graph renders svg" {
+test "execution: syntax error shows error [stress 2]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-error");
+        page.wait_for_function(
+            "!document.querySelector('#block-error').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-error .code-output");
+        assert "error" in output.lower() , f"Expected 'error' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: syntax error shows error [stress 3]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-error");
+        page.wait_for_function(
+            "!document.querySelector('#block-error').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-error .code-output");
+        assert "error" in output.lower() , f"Expected 'error' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: syntax error shows error [stress 4]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-error");
+        page.wait_for_function(
+            "!document.querySelector('#block-error').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-error .code-output");
+        assert "error" in output.lower() , f"Expected 'error' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: syntax error shows error [stress 5]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-error");
+        page.wait_for_function(
+            "!document.querySelector('#block-error').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-error .code-output");
+        assert "error" in output.lower() , f"Expected 'error' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: syntax error shows error [stress 6]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-error");
+        page.wait_for_function(
+            "!document.querySelector('#block-error').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-error .code-output");
+        assert "error" in output.lower() , f"Expected 'error' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: syntax error shows error [stress 7]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-error");
+        page.wait_for_function(
+            "!document.querySelector('#block-error').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-error .code-output");
+        assert "error" in output.lower() , f"Expected 'error' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: syntax error shows error [stress 8]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-error");
+        page.wait_for_function(
+            "!document.querySelector('#block-error').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-error .code-output");
+        assert "error" in output.lower() , f"Expected 'error' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: syntax error shows error [stress 9]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-error");
+        page.wait_for_function(
+            "!document.querySelector('#block-error').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-error .code-output");
+        assert "error" in output.lower() , f"Expected 'error' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: syntax error shows error [stress 10]" {
+    def check(page: any, resp: any) {
+        _click_run(page, "#block-error");
+        page.wait_for_function(
+            "!document.querySelector('#block-error').classList.contains('jcb-running')",
+            timeout=PYODIDE_TIMEOUT
+        );
+        output = page.text_content("#block-error .code-output");
+        assert "error" in output.lower() , f"Expected 'error' in output, got: {output}";
+    }
+    _with_page(check);
+}
+
+test "execution: graph renders svg [stress 1]" {
     def check(page: any, resp: any) {
         _click_graph(page, "#block-run-dot");
         page.wait_for_selector(
@@ -307,8 +1093,142 @@ test "execution: graph renders svg" {
     _with_page(check);
 }
 
-"""Graph output should contain valid DOT with expected node data."""
-test "execution: graph dot format" {
+test "execution: graph renders svg [stress 2]" {
+    def check(page: any, resp: any) {
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .graph-container", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        page.wait_for_selector(
+            "#block-run-dot .graph-container .viz-viewport svg",
+            state="visible",
+            timeout=10_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: graph renders svg [stress 3]" {
+    def check(page: any, resp: any) {
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .graph-container", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        page.wait_for_selector(
+            "#block-run-dot .graph-container .viz-viewport svg",
+            state="visible",
+            timeout=10_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: graph renders svg [stress 4]" {
+    def check(page: any, resp: any) {
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .graph-container", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        page.wait_for_selector(
+            "#block-run-dot .graph-container .viz-viewport svg",
+            state="visible",
+            timeout=10_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: graph renders svg [stress 5]" {
+    def check(page: any, resp: any) {
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .graph-container", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        page.wait_for_selector(
+            "#block-run-dot .graph-container .viz-viewport svg",
+            state="visible",
+            timeout=10_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: graph renders svg [stress 6]" {
+    def check(page: any, resp: any) {
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .graph-container", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        page.wait_for_selector(
+            "#block-run-dot .graph-container .viz-viewport svg",
+            state="visible",
+            timeout=10_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: graph renders svg [stress 7]" {
+    def check(page: any, resp: any) {
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .graph-container", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        page.wait_for_selector(
+            "#block-run-dot .graph-container .viz-viewport svg",
+            state="visible",
+            timeout=10_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: graph renders svg [stress 8]" {
+    def check(page: any, resp: any) {
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .graph-container", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        page.wait_for_selector(
+            "#block-run-dot .graph-container .viz-viewport svg",
+            state="visible",
+            timeout=10_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: graph renders svg [stress 9]" {
+    def check(page: any, resp: any) {
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .graph-container", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        page.wait_for_selector(
+            "#block-run-dot .graph-container .viz-viewport svg",
+            state="visible",
+            timeout=10_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: graph renders svg [stress 10]" {
+    def check(page: any, resp: any) {
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_selector(
+            "#block-run-dot .graph-container", state="visible", timeout=PYODIDE_TIMEOUT
+        );
+        page.wait_for_selector(
+            "#block-run-dot .graph-container .viz-viewport svg",
+            state="visible",
+            timeout=10_000
+        );
+    }
+    _with_page(check);
+}
+
+test "execution: graph dot format [stress 1]" {
     def check(page: any, resp: any) {
         page.evaluate(
             "document.addEventListener('jacDotOutput', e => "
@@ -325,3 +1245,166 @@ test "execution: graph dot format" {
     }
     _with_page(check);
 }
+
+test "execution: graph dot format [stress 2]" {
+    def check(page: any, resp: any) {
+        page.evaluate(
+            "document.addEventListener('jacDotOutput', e => "
+            "{ window.__capturedDot = e.detail.dot; })"
+        );
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_function(
+            "window.__capturedDot !== undefined", timeout=PYODIDE_TIMEOUT
+        );
+        dot = page.evaluate("window.__capturedDot");
+        assert "digraph" in dot , "DOT output must be a directed graph";
+        assert "->" in dot , "DOT output must contain edges";
+        assert "Colombo" in dot , "DOT output must contain City node data";
+    }
+    _with_page(check);
+}
+
+test "execution: graph dot format [stress 3]" {
+    def check(page: any, resp: any) {
+        page.evaluate(
+            "document.addEventListener('jacDotOutput', e => "
+            "{ window.__capturedDot = e.detail.dot; })"
+        );
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_function(
+            "window.__capturedDot !== undefined", timeout=PYODIDE_TIMEOUT
+        );
+        dot = page.evaluate("window.__capturedDot");
+        assert "digraph" in dot , "DOT output must be a directed graph";
+        assert "->" in dot , "DOT output must contain edges";
+        assert "Colombo" in dot , "DOT output must contain City node data";
+    }
+    _with_page(check);
+}
+
+test "execution: graph dot format [stress 4]" {
+    def check(page: any, resp: any) {
+        page.evaluate(
+            "document.addEventListener('jacDotOutput', e => "
+            "{ window.__capturedDot = e.detail.dot; })"
+        );
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_function(
+            "window.__capturedDot !== undefined", timeout=PYODIDE_TIMEOUT
+        );
+        dot = page.evaluate("window.__capturedDot");
+        assert "digraph" in dot , "DOT output must be a directed graph";
+        assert "->" in dot , "DOT output must contain edges";
+        assert "Colombo" in dot , "DOT output must contain City node data";
+    }
+    _with_page(check);
+}
+
+test "execution: graph dot format [stress 5]" {
+    def check(page: any, resp: any) {
+        page.evaluate(
+            "document.addEventListener('jacDotOutput', e => "
+            "{ window.__capturedDot = e.detail.dot; })"
+        );
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_function(
+            "window.__capturedDot !== undefined", timeout=PYODIDE_TIMEOUT
+        );
+        dot = page.evaluate("window.__capturedDot");
+        assert "digraph" in dot , "DOT output must be a directed graph";
+        assert "->" in dot , "DOT output must contain edges";
+        assert "Colombo" in dot , "DOT output must contain City node data";
+    }
+    _with_page(check);
+}
+
+test "execution: graph dot format [stress 6]" {
+    def check(page: any, resp: any) {
+        page.evaluate(
+            "document.addEventListener('jacDotOutput', e => "
+            "{ window.__capturedDot = e.detail.dot; })"
+        );
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_function(
+            "window.__capturedDot !== undefined", timeout=PYODIDE_TIMEOUT
+        );
+        dot = page.evaluate("window.__capturedDot");
+        assert "digraph" in dot , "DOT output must be a directed graph";
+        assert "->" in dot , "DOT output must contain edges";
+        assert "Colombo" in dot , "DOT output must contain City node data";
+    }
+    _with_page(check);
+}
+
+test "execution: graph dot format [stress 7]" {
+    def check(page: any, resp: any) {
+        page.evaluate(
+            "document.addEventListener('jacDotOutput', e => "
+            "{ window.__capturedDot = e.detail.dot; })"
+        );
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_function(
+            "window.__capturedDot !== undefined", timeout=PYODIDE_TIMEOUT
+        );
+        dot = page.evaluate("window.__capturedDot");
+        assert "digraph" in dot , "DOT output must be a directed graph";
+        assert "->" in dot , "DOT output must contain edges";
+        assert "Colombo" in dot , "DOT output must contain City node data";
+    }
+    _with_page(check);
+}
+
+test "execution: graph dot format [stress 8]" {
+    def check(page: any, resp: any) {
+        page.evaluate(
+            "document.addEventListener('jacDotOutput', e => "
+            "{ window.__capturedDot = e.detail.dot; })"
+        );
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_function(
+            "window.__capturedDot !== undefined", timeout=PYODIDE_TIMEOUT
+        );
+        dot = page.evaluate("window.__capturedDot");
+        assert "digraph" in dot , "DOT output must be a directed graph";
+        assert "->" in dot , "DOT output must contain edges";
+        assert "Colombo" in dot , "DOT output must contain City node data";
+    }
+    _with_page(check);
+}
+
+test "execution: graph dot format [stress 9]" {
+    def check(page: any, resp: any) {
+        page.evaluate(
+            "document.addEventListener('jacDotOutput', e => "
+            "{ window.__capturedDot = e.detail.dot; })"
+        );
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_function(
+            "window.__capturedDot !== undefined", timeout=PYODIDE_TIMEOUT
+        );
+        dot = page.evaluate("window.__capturedDot");
+        assert "digraph" in dot , "DOT output must be a directed graph";
+        assert "->" in dot , "DOT output must contain edges";
+        assert "Colombo" in dot , "DOT output must contain City node data";
+    }
+    _with_page(check);
+}
+
+test "execution: graph dot format [stress 10]" {
+    def check(page: any, resp: any) {
+        page.evaluate(
+            "document.addEventListener('jacDotOutput', e => "
+            "{ window.__capturedDot = e.detail.dot; })"
+        );
+        _click_graph(page, "#block-run-dot");
+        page.wait_for_function(
+            "window.__capturedDot !== undefined", timeout=PYODIDE_TIMEOUT
+        );
+        dot = page.evaluate("window.__capturedDot");
+        assert "digraph" in dot , "DOT output must be a directed graph";
+        assert "->" in dot , "DOT output must contain edges";
+        assert "Colombo" in dot , "DOT output must contain City node data";
+    }
+    _with_page(check);
+}
+
