@@ -1,7 +1,6 @@
 """Module resolver utilities."""
 import importlib.util;
 import os;
-import site;
 import sys;
 import from jaclang.jac0core.ext_registry { MODULE_SUFFIXES, language_of }
 
@@ -98,18 +97,12 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
             if p.strip()
         );
     }
+    # sys.path already carries the bundled runtime and -- promoted to its front by
+    # _jac_finder.add_project_venv_to_path -- the project's .jac/venv. The host's
+    # system/user site-packages are deliberately NOT consulted: third-party code
+    # lives only in the project venv, so resolution stays hermetic regardless of
+    # any Python installed on the host.
     paths.extend(sys.path);
-    site_pkgs = site.getsitepackages();
-    if site_pkgs {
-        paths.extend(site_pkgs);
-    }
-    user_site = site?.getusersitepackages;
-    if user_site {
-        user_dir = user_site();
-        if user_dir {
-            paths.append(user_dir);
-        }
-    }
     return `list(
         `dict.fromkeys(
             [
