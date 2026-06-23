@@ -121,11 +121,20 @@ def _start_server -> tuple {
     (fd, abs_path) = tempfile.mkstemp(
         dir=SITE_DIR, suffix=".html", prefix="_jac_test_"
     );
-    # If anything after mkstemp raises (_get_free_port/Popen/_wait_for_port),
-    # the tuple unpack in _with_page never completes so its finally won't run —
-    # remove the temp file here before re-raising so it isn't leaked in SITE_DIR.
+    # os.fdopen only adopts the raw mkstemp fd on success; if it itself raises
+    # (rare), we must close fd ourselves or the OS descriptor leaks until the
+    # worker process exits. Keep fd adoption separate from the `with` so a
+    # failure here can't leave fd half-open. On any later failure (port/Popen/
+    # _wait_for_port) _with_page's finally never runs, so clean up abs_path in
+    # the except below before re-raising so it isn't leaked in SITE_DIR.
     try {
-        with os.fdopen(fd, "w") as f {
+        fh = os.fdopen(fd, "w");
+    } except Exception {
+        os.close(fd);
+        raise;
+    }
+    try {
+        with fh as f {
             f.write(TEST_HTML);
         }
         page_path = "/" + os.path.basename(abs_path);
