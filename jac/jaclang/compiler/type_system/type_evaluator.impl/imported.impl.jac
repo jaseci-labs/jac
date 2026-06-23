@@ -200,24 +200,22 @@ impl TypeEvaluator._resolve_star_import_symbol(
         # Resolve the submodule path (e.g., .queues -> asyncio/queues.pyi).
         resolved = star_mod_path.resolve_relative_path_list();
         submod: uni.Module | None = None;
-        if resolved and len(resolved) >= 2 {
-            submod_base = resolved[-1];  # e.g., ".../asyncio/queues"
-            # Try common extensions to find the actual file.
-            for ext in (".pyi", ".py", ".jac") {
-                candidate = submod_base + ext;
-                if Path(candidate).exists() {
+        if resolved {
+            # Multi-segment sources resolve to an extensionless base, so probe
+            # common extensions (e.g. ".../asyncio/queues" -> ".pyi"); a
+            # single-segment source already resolves to a full file path.
+            candidates = (
+                [resolved[-1] + ext for ext in (".pyi", ".py", ".jac")]
+                if len(resolved) >= 2
+                else [resolved[-1]]
+            );
+            for candidate in candidates {
+                if candidate and Path(candidate).exists() {
                     submod = self._import_module_from_path(
                         candidate, importer_path=self._resolve_importer_path(mod)
                     );
                     break;
                 }
-            }
-        } elif resolved and len(resolved) == 1 {
-            submod_path = resolved[0];
-            if submod_path and Path(submod_path).exists() {
-                submod = self._import_module_from_path(
-                    submod_path, importer_path=self._resolve_importer_path(mod)
-                );
             }
         }
         if submod is None {
