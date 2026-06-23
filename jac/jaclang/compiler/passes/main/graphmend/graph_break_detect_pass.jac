@@ -1,11 +1,11 @@
 """GraphMend: detect PyTorch 2 graph-break locations and tag them.
 
 Walks torch.compile entry points and tags AST nodes with a `_gm_break_kind`
-marker consumed by the transformation passes:
+marker (a `BreakKind`, see break_kind.jac) consumed by the transformation passes:
 
-  - "dyn_ctrl_fl" : data-dependent if/else      -> PredicateCtrlFlowPass
-  - "val_guard"   : data-dependent guard `raise` -> TrapLoweringPass
-  - "side_effect" : print / logger call          -> DeferSideEffectPass
+  - BreakKind.DYN_CTRL_FL : data-dependent if/else       -> PredicateCtrlFlowPass
+  - BreakKind.VAL_GUARD   : data-dependent guard `raise`  -> TrapLoweringPass
+  - BreakKind.SIDE_EFFECT : print / logger call           -> DeferSideEffectPass
 
 A condition is data-dependent if it uses a dynamic torch attribute (see
 torch_attr_table) directly, or a use-def trace over the symbol table shows it
@@ -17,6 +17,7 @@ import from jaclang.compiler.passes.main.graphmend.torch_attr_table {
     is_dynamic_torch_attr,
     is_side_effect_name
 }
+import from jaclang.compiler.passes.main.graphmend.break_kind { BreakKind }
 
 """Tag graph-break locations under torch.compile entry points."""
 obj GraphBreakDetectPass(UniPass) {

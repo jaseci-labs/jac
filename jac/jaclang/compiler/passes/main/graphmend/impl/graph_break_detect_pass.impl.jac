@@ -38,9 +38,9 @@ impl GraphBreakDetectPass.enter_if_stmt(nd: uni.IfStmt) -> None {
     while cur is not None {
         if self._condition_is_data_dependent(cur.condition) {
             if self._is_validation_guard(cur) {
-                cur._gm_break_kind = 'val_guard';
+                cur._gm_break_kind = BreakKind.VAL_GUARD;
             } elif not self._body_ends_in_raise(cur) {
-                cur._gm_break_kind = 'dyn_ctrl_fl';
+                cur._gm_break_kind = BreakKind.DYN_CTRL_FL;
             }
             # A raise-terminated branch that is not a standalone guard (an
             # `elif`, or one paired with an `else`) cannot be lowered by either
@@ -76,7 +76,7 @@ impl GraphBreakDetectPass.enter_func_call(nd: uni.FuncCall) -> None {
     if isinstance(nd.target, uni.Name) and self._is_user_defined(nd, name) {
         return;
     }
-    nd._gm_break_kind = 'side_effect';
+    nd._gm_break_kind = BreakKind.SIDE_EFFECT;
 }
 
 """Collect torch.compile entry points: functions/classes decorated with
