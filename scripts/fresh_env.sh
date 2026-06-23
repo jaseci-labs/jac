@@ -3,9 +3,12 @@
 #
 # jaclang ships as the one self-contained `jac` binary (Zig launcher + a private
 # bundled CPython). There is NO pip-installed jaclang and no editable `.venv` for
-# the language itself: to test a change to jac/jaclang you rebuild the binary
-# (`cd jac && zig build`) and run `jac test`. The binary bundles the test runner
-# (pytest + xdist), so `jac test` needs no system Python.
+# the language itself. For an editable dev loop, set `[dev] jaclang_source = "jac"`
+# in the root jac.toml so the binary runs the in-repo jac/jaclang source live --
+# no rebuild per edit (see CONTRIBUTING.md). You only rebuild the binary
+# (`cd jac && zig build`) for changes that live inside it (launcher .zig,
+# sitecustomize.py / _jac_finder.py, bundled CPython). The binary bundles the
+# test runner (pytest + xdist), so `jac test` needs no system Python.
 #
 # Plugins (byllm/scale/mcp) are still ordinary Python packages. We install them
 # with `--global` so their source + deps land in the binary's own jac-owned site
@@ -17,9 +20,9 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-# Build the binary (needs zig 0.16.0 + zstd; the typeshed submodule must be
-# checked out first).
-git submodule update --init jac/jaclang/vendor/typeshed
+# Build the binary (needs zig 0.16.0 + zstd). zig build fetches the pinned
+# typeshed stdlib stubs itself (launcher/fetch-typeshed.sh), so there is no
+# submodule to check out.
 ( cd jac && zig build )
 
 JAC_BIN="$PWD/jac/zig-out/bin/jac"
