@@ -301,14 +301,15 @@ impl KEDAAutoscaler.destroy{
         );
         for trigger in scaled_obj.get("spec", {}).get("triggers", []) {
             auth_ref = trigger.get("authenticationRef");
-            if auth_ref {
+            ta_name = auth_ref.get("name") if auth_ref else None;
+            if ta_name {
                 try {
                     api.delete_namespaced_custom_object(
                         group="keda.sh",
                         version="v1alpha1",
                         namespace=namespace,
                         plural="triggerauthentications",
-                        name=auth_ref["name"]
+                        name=ta_name
                     );
                 } except ApiException as e {
                     if e.status not in [404, 422] {
