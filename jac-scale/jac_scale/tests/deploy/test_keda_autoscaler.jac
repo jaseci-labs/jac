@@ -136,6 +136,44 @@ test "two unnamed triggers of the same type in one spec get independent TriggerA
 }
 
 
+test "named trigger whose name matches auto-generated name of unnamed trigger raises ValueError" {
+    # A trigger named 'redis-0' and an unnamed redis trigger at index 0 both produce
+    # the same hash key, causing the second _apply_trigger_auth call to silently
+    # overwrite the first trigger's TriggerAuthentication credentials.
+    keda = KEDAAutoscaler();
+    spec = AutoscalerSpec(
+        scale_target_name="svc-deployment",
+        app_name="order-service",
+        namespace="default",
+        triggers=[
+            Trigger(
+                type="redis",
+                metadata={},
+                auth=TriggerAuth(
+                    secret_refs={"password": {"name": "redis-secret", "key": "pw"}}
+                )
+            ),
+            Trigger(
+                type="redis",
+                metadata={},
+                name="redis-0",
+                auth=TriggerAuth(
+                    secret_refs={"password": {"name": "redis-secret-2", "key": "pw"}}
+                )
+            )
+        ]
+    );
+    raised = False;
+    try {
+        keda.apply(spec);
+    } except ValueError as e {
+        raised = True;
+        assert "redis-0" in str(e);
+        assert "order-service" in str(e);
+    }
+    assert raised;
+}
+
 test "two named triggers with the same name in one spec raise ValueError before any cluster write" {
     # Two triggers named 'cache' produce the same TriggerAuthentication resource name
     # because trigger_index is only used when trigger.name is absent.  The second

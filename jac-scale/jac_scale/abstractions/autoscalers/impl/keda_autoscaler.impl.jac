@@ -5,7 +5,7 @@ impl KEDAAutoscaler._trigger_auth_name{
     return f"{app_name[:20].rstrip('-')}-{short_hash}-ta";
 }
 
-"""Raise ValueError if any two named triggers in spec share the same name."""
+"""Raise ValueError if any two named triggers in spec share the same name, or if a named trigger collides with the auto-generated name of an unnamed trigger."""
 impl KEDAAutoscaler._validate_triggers{
     seen: dict[str, bool] = {};
     for trigger in spec.triggers {
@@ -18,6 +18,23 @@ impl KEDAAutoscaler._validate_triggers{
                 );
             }
             seen[trigger.name] = True;
+        }
+    }
+    synthesized: dict[str, int] = {};
+    for (i, trigger) in enumerate(spec.triggers) {
+        if trigger.name is None {
+            synthesized[f"{trigger.type}-{i}"] = i;
+        }
+    }
+    for trigger in spec.triggers {
+        if trigger.name is not None and trigger.name in synthesized {
+            raise ValueError(
+                f"Trigger name '{trigger.name}' in autoscaler spec for '{app_name}' collides with "
+                f"the auto-generated name of an unnamed trigger at index {synthesized[
+                    trigger.name
+                ]}. "
+                "Rename this trigger or assign an explicit name to the unnamed trigger."
+            );
         }
     }
 }
