@@ -11,6 +11,7 @@ import sys;
 import tempfile;
 import traceback;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.cli.commands {
     analysis,
@@ -26,8 +27,7 @@ import from jaclang.jac0core.diagnostic_utils { resolve_diagnostic_tokens }
 import from jaclang.project.config { set_config }
 import from jaclang.runtimelib.builtin { printgraph }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      _template_state = {"initialized": False},
      _CONFIG_TOML = (
          '[project]\nname = "test-project"\nversion = "1.0.0"\n'
@@ -436,8 +436,9 @@ test "jac test err" {
     sys.stdout = sys.__stdout__;
     sys.stderr = sys.__stderr__;
     stdout_value = captured_output.getvalue();
-    path_to_file = fixture_path("baddy.test.jac");
-    assert f'"{path_to_file}", line 2,' in stdout_value;
+    # pytest points the failure at <file>:<line> -- the deliberate error is on
+    # line 2 of the base module's test annex.
+    assert "baddy.test.jac:2" in stdout_value;
 }
 
 test "jac ast tool pass template" {
@@ -510,38 +511,41 @@ test "del clean" {
 }
 
 test "run test" {
-    captured_stderr = io.StringIO();
-    old_stderr = sys.stderr;
-    sys.stderr = captured_stderr;
-
     captured = io.StringIO();
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
         analysis.test(fixture_path("run_test.jac"), maxfail=2);
-        stderr = captured_stderr.getvalue();
+        out = captured.getvalue();
     } finally {
         sys.stdout = old_stdout;
-        sys.stderr = old_stderr;
     }
 
-    assert "Ran 3 tests" in stderr;
-    assert "FAILED (failures=2)" in stderr;
-    assert "F.F" in stderr;
+    # jac test routes through pytest, reporting on stdout; --maxfail 2 stops the
+    # run after the 2nd failure.
+    assert "2 failed" in out;
+    assert "run_test.jac" in out;
 }
 
 test "run test with directory filter" {
+    # Directory discovery + glob filter over fixture files is native-runner
+    # behavior (the pytest collector skips fixtures/ and non-test_ names).
     fixtures_dir = fixture_path("");
+    env = dict(os.environ);
+    env["JAC_TEST_NATIVE"] = "1";
     process = subprocess.Popen(
         ["jac", "test", "-d", fixtures_dir, "-f", "circle*", "-x"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True
+        text=True,
+        encoding="utf-8",
+        env=env
     );
     (stdout, stderr) = process.communicate();
-    assert "circle" in stdout;
-    assert "circle_purfe.test" not in stdout;
-    assert "circle_pure.impl" not in stdout;
+    combined = stdout + stderr;
+    assert "circle" in combined;
+    assert "circle_purfe.test" not in combined;
+    assert "circle_pure.impl" not in combined;
 }
 
 test "discovery prunes hidden and pycache dirs" {
@@ -561,11 +565,17 @@ test "discovery prunes hidden and pycache dirs" {
         Path(os.path.join(tmp_dir, "__pycache__", "skip_test.jac")).write_text(
             'test "pruned_pyc" {\n    assert False;\n}\n'
         );
+        # Directory discovery + pruning of hidden/cache dirs is native-runner
+        # behavior (the pytest collector only takes test_ names, not good_test.jac).
+        env = dict(os.environ);
+        env["JAC_TEST_NATIVE"] = "1";
         process = subprocess.Popen(
             ["jac", "test", "-d", tmp_dir],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            encoding="utf-8",
+            env=env
         );
         (stdout, stderr) = process.communicate();
         combined = stdout + stderr;
@@ -582,19 +592,30 @@ test "discovery prunes hidden and pycache dirs" {
 }
 
 test "run test with filter maxfail" {
+    # Glob filter over a discovered directory is native-runner behavior.
+    env = dict(os.environ);
+    env["JAC_TEST_NATIVE"] = "1";
     process = subprocess.Popen(
         ["jac", "test", "-f", "*run_test.jac", "-m", "3"],
         cwd=fixture_path(""),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True
+        text=True,
+        encoding="utf-8",
+        env=env
     );
     (stdout, stderr) = process.communicate();
-    assert "...F" in stderr;
-    assert "F.F" in stderr;
+    combined = stdout + stderr;
+    assert "...F" in combined;
+    assert "F.F" in combined;
 }
 
 test "run specific test only" {
+    # Asserting on a passing test's own printed output needs the native runner
+    # (pytest captures/suppresses stdout of passing tests).
+    old_native = os.environ.get("JAC_TEST_NATIVE");
+    os.environ["JAC_TEST_NATIVE"] = "1";
+
     captured_stderr = io.StringIO();
     old_stderr = sys.stderr;
     sys.stderr = captured_stderr;
@@ -609,6 +630,11 @@ test "run specific test only" {
     } finally {
         sys.stdout = old_stdout;
         sys.stderr = old_stderr;
+        if old_native is None {
+            del os.environ["JAC_TEST_NATIVE"];
+        } else {
+            os.environ["JAC_TEST_NATIVE"] = old_native;
+        }
     }
 
     assert "Ran 1 test" in stderr;
@@ -766,12 +792,13 @@ test "caching issue" {
                 text=True
             );
             (stdout, stderr) = process.communicate();
+            combined = stdout + stderr;
+            # jac test routes through pytest; the rebuilt file must re-run (not
+            # serve a stale cached result), so pass/fail flips with the assertion.
             if is_passed {
-                assert "Passed successfully." in stdout;
-                assert "." in stderr;
+                assert "1 passed" in combined;
             } else {
-                assert "Passed successfully." not in stdout;
-                assert "F" in stderr;
+                assert "1 failed" in combined;
             }
         }
     }

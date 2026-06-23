@@ -77,13 +77,13 @@ def create(
 """Install all dependencies from jac.toml, or install a package in editable mode."""
 @registry.command(
     name="install",
-    help="Install project dependencies, or 'jac install <pkg>' to install into the activated environment",
+    help="Install project dependencies, or 'jac install <pkg>' to add a package to the project venv",
     args=[
         Arg.create(
             "packages",
             kind=ArgKind.MULTI,
             default=[],
-            help="Package(s) to install into the currently activated environment"
+            help="Package(s) to install into the project's venv (.jac/venv)"
         ),
         Arg.create(
             "editable",
@@ -162,10 +162,10 @@ def create(
     ],
     examples=[
         ("jac install", "Install all dependencies from jac.toml"),
-        ("jac install numpy", "Install numpy into the activated environment"),
+        ("jac install numpy", "Install numpy into the project venv"),
         (
             "jac install numpy pandas scipy",
-            "Install multiple packages into the activated environment"
+            "Install multiple packages into the project venv"
         ),
         ("jac install -e .", "Install current package in editable mode"),
         ("jac install -e /path/to/lib", "Install a cloned library in editable mode"),

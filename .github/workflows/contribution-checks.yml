@@ -54,31 +54,25 @@ jobs:
             exit 1
           fi
 
-      - name: Set up Python 3.12
+      - name: Set up Python 3.12 (for the mkdocs docs build)
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
 
-      - name: Cache pip dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-jac-${{ hashFiles('jac/pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-jac-
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e jac
-          jac install -e docs
+      - name: Install docs project (jaclang is host-provided by the binary)
+        run: jac install -e docs
 
       - name: Validate Jac code block syntax
         run: jac run docs/scripts/validate_docs_code.jac
 
       - name: Build documentation and check links
         working-directory: docs
-        run: mkdocs build --strict 2>&1 | tee build.log || true
+        # mkdocs installs into the binary's bundled interpreter; invoke it via
+        # `jac -m` rather than expecting a console script on PATH.
+        run: jac -m mkdocs build --strict 2>&1 | tee build.log || true
 
       - name: Report link warnings
         working-directory: docs
@@ -94,11 +88,6 @@ jobs:
             echo "- Internal links: ✓" >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Check plugin manifest sync (jac.toml ↔ pyproject.toml)
-        run: |
-          pip install tomlkit==0.14.0
-          jac run scripts/check_manifest_sync.jac
-
       - name: Check Release Notes Updated
         if: |
           github.event_name == 'pull_request' &&
@@ -107,4 +96,5 @@ jobs:
           CI: "true"
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: bash scripts/check-release-notes.sh

@@ -52,6 +52,26 @@ def _ext_registry() -> types.ModuleType:
 # ---------------------------------------------------------------------------
 
 
+def _explicit_targets(config: pytest.Config) -> set[str]:
+    """Resolved paths of ``.jac`` files named directly on the command line.
+
+    ``jac test foo.jac`` means "run foo.jac's test blocks" regardless of the
+    file's name or location -- matching the native runner. Cached on the config
+    since the collect hook fires once per file.
+    """
+    cache = getattr(config, "_jac_explicit_targets", None)
+    if cache is None:
+        cache = set()
+        for arg in config.invocation_params.args:
+            arg = arg.split("::", 1)[0]
+            if arg.endswith(".jac"):
+                path = Path(arg)
+                if path.exists():
+                    cache.add(str(path.resolve()))
+        config._jac_explicit_targets = cache  # type: ignore[attr-defined]
+    return cache
+
+
 def pytest_collect_file(
     parent: pytest.Collector, file_path: Path
 ) -> JacFile | ClJacFile | None:
@@ -63,20 +83,24 @@ def pytest_collect_file(
     if reg.is_impl(name):
         return None
 
-    # Skip .jac files inside fixtures/ directories -- those are test inputs,
-    # not test suites.
-    if any(p.name == "fixtures" for p in file_path.parents):
+    # A file named directly on the command line is always collected -- even a
+    # fixtures/ input or a non-`test_` name -- so `jac test <file>` runs it.
+    explicit = str(file_path.resolve()) in _explicit_targets(parent.config)
+
+    # Otherwise skip .jac files inside fixtures/ directories: during directory
+    # recursion those are test inputs, not test suites.
+    if not explicit and any(p.name == "fixtures" for p in file_path.parents):
         return None
 
     # Client (cl) test files run their `test` blocks under bun, not Python.
     # test_*.cl.jac / *.test.cl.jac -> dedicated client collector.
-    if (name.startswith("test_") and reg.is_client_module(name)) or reg.is_client_test(
-        name
-    ):
-        return ClJacFile.from_parent(parent, path=file_path)
+    if reg.is_client_module(name):
+        if explicit or name.startswith("test_") or reg.is_client_test(name):
+            return ClJacFile.from_parent(parent, path=file_path)
+        return None
 
     # Collect test_*.jac (pytest convention) and *.test.jac (Jac convention).
-    if (name.startswith("test_") and reg.is_jac(name)) or reg.is_test(name):
+    if explicit or (name.startswith("test_") and reg.is_jac(name)) or reg.is_test(name):
         return JacFile.from_parent(parent, path=file_path)
 
     return None

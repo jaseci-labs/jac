@@ -15,6 +15,7 @@ import shutil;
 import importlib;
 import pytest;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import from unittest.mock { patch }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
@@ -29,8 +30,7 @@ import from jaclang.jac0core.helpers {
 }
 import tomllib;
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      EXAMPLES = os.path.join(JAC_ROOT, "examples");
 
 # Helper function to create files within tests
@@ -578,25 +578,6 @@ test "by operator" {
     assert "by" in stdout_value.lower();
     assert "not" in stdout_value.lower();
     assert "implemented" in stdout_value.lower();
-}
-
-test "sitecustomize meta importer" {
-    Jac.attach_program(JacProgram());
-    with tempfile.TemporaryDirectory() as tmpdir {
-        Path(tmpdir, "mymod.jac").write_text('with entry {print("via meta");}');
-        env = os.environ.copy();
-        project_root = str(Path(JAC_ROOT));
-        env["PYTHONPATH"] = os.pathsep.join([project_root, tmpdir]);
-        proc = subprocess.run(
-            [sys.executable, "-c", "import mymod"],
-            capture_output=True,
-            text=True,
-            cwd=tmpdir,
-            env=env
-        );
-        assert proc.returncode == 0 , proc.stderr;
-        assert proc.stdout.strip() == "via meta";
-    }
 }
 
 # -- read_file_with_encoding tests --

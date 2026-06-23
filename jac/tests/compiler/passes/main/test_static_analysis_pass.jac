@@ -1,19 +1,13 @@
 """Static analysis pass tests."""
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
-         str(Path(jaclang.__file__).parent.parent),
-         "tests",
-         "compiler",
-         "passes",
-         "main",
-         "fixtures",
-         "static_analysis"
+         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "static_analysis"
      );
 
 test "unused variable produces warning" {
