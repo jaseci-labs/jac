@@ -18,6 +18,79 @@ from collections.abc import Sequence
 from types import ModuleType
 
 
+def _find_project_toml() -> str | None:
+    """Walk up from the cwd to the nearest ``jac.toml``; return its path or None.
+
+    Shared by ``add_project_venv_to_path`` and ``apply_dev_source_override`` so
+    both anchor on the same project root. Plain Python, never fatal.
+    """
+    directory = os.getcwd()
+    while True:
+        candidate = os.path.join(directory, "jac.toml")
+        if os.path.isfile(candidate):
+            return candidate
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            return None
+        directory = parent
+
+
+def apply_dev_source_override() -> None:
+    """Reroute ``import jaclang`` to an in-repo source tree -- an editable dev loop.
+
+    When the nearest ``jac.toml`` declares::
+
+        [dev]
+        jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to jac.toml
+
+    this prepends that directory to the FRONT of ``sys.path`` so ``import
+    jaclang`` resolves to the live source instead of the single binary's bundled
+    copy -- edits take effect with no rebuild. It runs in ``sitecustomize``
+    during site init, BEFORE the launcher's BOOT_SRC does ``import jaclang``, so
+    the override wins over the bundled ``site/`` on ``PYTHONPATH``.
+
+    Caches: sets ``JAC_NO_PRECOMPILE=1`` so the shipped, version-keyed
+    ``_precompiled`` JIR bundle is skipped. The per-module ``.jir`` cache is
+    content-keyed (``compute_module_key`` folds the source sha256), so source
+    edits self-invalidate on their own -- no forced full rebuild needed. Exports
+    ``JAC_DEV_SOURCE`` as a marker for tooling.
+
+    Plain Python, dev-only, never fatal. A cheap substring guard avoids importing
+    ``tomllib`` unless the key is literally present, so non-dev startup pays only
+    a small file read.
+    """
+    try:
+        toml = _find_project_toml()
+        if toml is None:
+            return
+        with open(toml, "rb") as handle:
+            raw = handle.read()
+        # Fast path: skip the tomllib import/parse entirely unless the key exists.
+        if b"jaclang_source" not in raw:
+            return
+        import tomllib
+
+        section = tomllib.loads(raw.decode("utf-8")).get("dev")
+        if not isinstance(section, dict):
+            return
+        src = section.get("jaclang_source")
+        if not isinstance(src, str) or not src:
+            return
+        src_dir = os.path.abspath(os.path.join(os.path.dirname(toml), src))
+        # Must contain a `jaclang/` package, else this would shadow nothing
+        # useful and risk hiding the real bundled copy.
+        if not os.path.isdir(os.path.join(src_dir, "jaclang")):
+            return
+        if src_dir in sys.path:
+            sys.path.remove(src_dir)
+        sys.path.insert(0, src_dir)
+        os.environ["JAC_DEV_SOURCE"] = src_dir
+        os.environ.setdefault("JAC_NO_PRECOMPILE", "1")
+    except Exception:
+        # Dev convenience only; fall back to the bundled jaclang.
+        pass
+
+
 def add_project_venv_to_path() -> None:
     """Put the current project's ``.jac/venv`` site-packages on ``sys.path``.
 
@@ -34,17 +107,7 @@ def add_project_venv_to_path() -> None:
     path. Plain Python, no jaclang import, idempotent, never fatal.
     """
     try:
-        directory = os.getcwd()
-        toml = None
-        while True:
-            candidate = os.path.join(directory, "jac.toml")
-            if os.path.isfile(candidate):
-                toml = candidate
-                break
-            parent = os.path.dirname(directory)
-            if parent == directory:
-                break
-            directory = parent
+        toml = _find_project_toml()
         if toml is None:
             return
         venv = os.path.join(os.path.dirname(toml), ".jac", "venv")

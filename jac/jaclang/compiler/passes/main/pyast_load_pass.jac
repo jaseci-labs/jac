@@ -85,6 +85,14 @@ obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     def proc_expr(nd: py_ast.Expr) -> uni.ExprStmt;
     def proc_formatted_value(nd: py_ast.FormattedValue) -> uni.FormattedValue;
     def proc_function_type(nd: py_ast.FunctionType) { }
+    # Python 3.14 ast nodes. `interactive` (REPL mode) never reaches the
+    # module-parsing pathway, so it is a no-op like `function_type`. The PEP 750
+    # t-string nodes have no Jac equivalent; reject them with a clear error
+    # rather than silently dropping. (TemplateStr/Interpolation are not in the
+    # pinned typeshed yet, so the params are typed as the base py_ast.AST.)
+    def proc_interactive(nd: py_ast.Interactive) { }
+    def proc_template_str(nd: py_ast.AST) -> uni.UniNode;
+    def proc_interpolation(nd: py_ast.AST) -> uni.UniNode;
     def proc_generator_exp(nd: py_ast.GeneratorExp) -> uni.GenCompr;
     def proc_global(nd: py_ast.Global) -> uni.GlobalStmt;
     def proc_if_exp(nd: py_ast.IfExp) -> uni.IfElseExpr;

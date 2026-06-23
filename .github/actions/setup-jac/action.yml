@@ -15,10 +15,8 @@ description: >
 runs:
   using: composite
   steps:
-    - name: Ensure typeshed submodule (the type checker bundles its stubs)
-      shell: bash
-      run: git submodule update --init jac/jaclang/vendor/typeshed
-
+    # typeshed stdlib stubs are vendored as plain files now (no submodule);
+    # third-party stubs are installed per-project by `jac add` (PEP 561 types-*).
     - name: Restore cached jac binary
       id: cache
       uses: actions/cache@v4

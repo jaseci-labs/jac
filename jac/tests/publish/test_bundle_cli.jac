@@ -4,28 +4,8 @@ import os;
 import sys;
 import tempfile;
 import shutil;
-import jaclang;
 import from pathlib { Path }
 import from subprocess { run }
-import from jaclang.cli.commands.project { _PRECOMPILE_MINOR_RANGE }
-
-
-"""Return the cpython-3XX tags for every python3.X present on PATH."""
-def _available_python_tags -> list[str] {
-    # Under the single binary, `jac bundle --precompile` uses the bundled
-    # interpreter directly (no venv / system-python hunt), so it precompiles for
-    # exactly the binary's own Python version.
-    if os.environ.get("JAC_STANDALONE") {
-        return [f"cpython-3{sys.version_info.minor}"];
-    }
-    tags: list[str] = [];
-    for minor in _PRECOMPILE_MINOR_RANGE {
-        if shutil.which(f"python3.{minor}") {
-            tags.append(f"cpython-3{minor}");
-        }
-    }
-    return tags;
-}
 
 
 """Write a minimal jac.toml and package skeleton into tmp_path."""
@@ -89,19 +69,7 @@ test "bundle writes wheel to a custom output directory" {
 }
 
 
-test "bundle --precompile generates .jir files per version and produces wheel" {
-    tags = _available_python_tags();
-    if not tags {
-        return;
-    }
-
-    # Point precompile at the local jaclang source so the test passes on release
-    # PRs where the bumped version isn't yet on PyPI. The jac/ source root is the
-    # parent of the jaclang/ package directory and contains pyproject.toml.
-    jac_source_root = str(Path(jaclang.__path__[0]).parent);
-    prev_local_install = os.environ.get("JAC_PRECOMPILE_LOCAL_INSTALL");
-    os.environ["JAC_PRECOMPILE_LOCAL_INSTALL"] = jac_source_root;
-
+test "bundle --precompile generates .jir for the bundled version and produces wheel" {
     tmp_path = tempfile.mkdtemp();
     original_cwd = os.getcwd();
     try {
@@ -118,22 +86,19 @@ test "bundle --precompile generates .jir files per version and produces wheel" {
             f"stdout: {result.stdout}\nstderr: {result.stderr}"
         );
 
+        # The self-contained binary precompiles for its own bundled interpreter
+        # only; a consumer on a different Python recompiles on first import.
         assert precompiled_dir.is_dir() , f"_precompiled/ not created under {precompiled_dir.parent}";
-        for tag in tags {
-            tag_dir = precompiled_dir / tag;
-            assert tag_dir.is_dir() , f"Missing version directory: {tag_dir}";
-            assert len(list(tag_dir.rglob("*.jir"))) > 0 , f"No .jir files under {tag_dir}";
-        }
+        tag = f"cpython-3{sys.version_info.minor}";
+        tag_dir = precompiled_dir / tag;
+        assert tag_dir.is_dir() , f"Missing version directory: {tag_dir}";
+        assert len(list(tag_dir.rglob("*.jir"))) > 0 , f"No .jir files under {tag_dir}";
+
         whl_files = list((Path(tmp_path) / "dist").glob("*.whl"));
         assert len(whl_files) == 1 , f"Expected 1 wheel in dist/, found: {whl_files}";
     } finally {
         os.chdir(original_cwd);
         shutil.rmtree(tmp_path, ignore_errors=True);
-        if prev_local_install is None {
-            os.environ.pop("JAC_PRECOMPILE_LOCAL_INSTALL", None);
-        } else {
-            os.environ["JAC_PRECOMPILE_LOCAL_INSTALL"] = prev_local_install;
-        }
     }
 }
 
