@@ -4,6 +4,7 @@ import tempfile;
 import os;
 import sys;
 import threading;
+import logging;
 """Extract line, col, and message from an Alert object."""
 def _extract_error_info(alert: object) -> dict[str, any] {
     return {
@@ -34,6 +35,60 @@ impl run_with_timeout(func: object, timeout: int = 10) -> tuple {
         return (False, str(error_holder[0]));
     }
     return (True, result_holder[0]);
+}
+
+"""Read from a binary stream into holder[0], capping at cap bytes.
+
+Reads in 4 KiB chunks. When the cap is reached a single extra byte is read:
+if it exists the stream was genuinely truncated, so the pipe is drained
+(discarding the excess) to let the child exit normally, and
+OUTPUT_TRUNCATION_MARKER is appended. Decoded by the caller with
+errors='replace' since truncation can split a multibyte sequence.
+"""
+def _cap_read(stream: object, holder: list, cap: int) {
+    chunks: list = [];
+    total: int = 0;
+    while True {
+        want: int = min(4096, cap - total);
+        if want <= 0 {
+            break;
+        }
+        chunk: bytes = stream.read(want);
+        if not chunk {
+            break;
+        }
+        chunks.append(chunk);
+        total += len(chunk);
+    }
+    data: bytes = b"".join(chunks);
+    if total >= cap {
+        # One extra byte distinguishes exact-cap (no truncation) from overflow.
+        if stream.read(1) {
+            # Drain so the child isn't blocked on a full OS pipe buffer.
+            while stream.read(65536) { }
+            holder[0] = data + OUTPUT_TRUNCATION_MARKER.encode();
+        } else {
+            holder[0] = data;
+        }
+    } else {
+        holder[0] = data;
+    }
+}
+
+"""Join a pipe-reader thread with a deadline.
+
+A descendant that inherited the pipe write-end and survived killpg/taskkill /T
+could otherwise block this handler indefinitely. Threads are daemon-marked so
+they never block process exit; this merely bounds the per-request wait.
+"""
+def _join_reader(t: threading.Thread, name: str, deadline: float = 5.0) {
+    t.join(timeout=deadline);
+    if t.is_alive() {
+        logging.getLogger("jac_mcp").warning(
+            f"{name} reader thread still alive {deadline}s after "
+            "process teardown; pipe may be held open by a descendant"
+        );
+    }
 }
 
 """Parse Jac code and return structured errors."""
@@ -483,7 +538,6 @@ impl CompilerBridge.run_snippet(
     import subprocess;
     import signal;
     import shutil;
-    import logging;
 
     if len(code) > MAX_INPUT_SIZE {
         return {
@@ -528,56 +582,8 @@ impl CompilerBridge.run_snippet(
                 start_new_session=True,
             );
         }
-        def _cap_read(stream: object, holder: list, cap: int) {
-            chunks: list = [];
-            total: int = 0;
-            while True {
-                want: int = min(4096, cap - total);
-                if want <= 0 {
-                    break;
-                }
-                chunk: bytes = stream.read(want);
-                if not chunk {
-                    break;
-                }
-                chunks.append(chunk);
-                total += len(chunk);
-            }
-            data: bytes = b"".join(chunks);
-            if total >= cap {
-                # Read one extra byte: confirms truncation without false-positives
-                # when output is exactly MAX_OUTPUT_SIZE bytes.
-                if stream.read(1) {
-                    # Genuinely truncated. Keep draining the pipe (discarding the
-                    # excess) so the child isn't blocked on a full OS pipe buffer
-                    # and can terminate normally -- otherwise a snippet that emits
-                    # more than the cap would hang until the wall-clock timeout.
-                    while stream.read(65536) { }
-                    holder[0] = data + b"\n[... output truncated ...]";
-                } else {
-                    holder[0] = data;
-                }
-            } else {
-                holder[0] = data;
-            }
-        }
-
-        # Join a reader thread with a deadline so a descendant that inherited
-        # the pipe write-end (and survived killpg / taskkill /T) cannot block
-        # this handler indefinitely past the timeout budget. The threads are
-        # daemon-marked so they never block process exit; this bounds the request.
-        def _join_reader(t: threading.Thread, name: str, deadline: float = 5.0) {
-            t.join(timeout=deadline);
-            if t.is_alive() {
-                logging.getLogger("jac_mcp").warning(
-                    f"{name} reader thread still alive {deadline}s after "
-                    "process teardown; pipe may be held open by a descendant"
-                );
-            }
-        }
-
-        out_buf: list = [b""];
-        err_buf: list = [b""];
+        out_buf: list = [None];
+        err_buf: list = [None];
         with proc {
             t_out = threading.Thread(
                 target=_cap_read,
@@ -617,8 +623,12 @@ impl CompilerBridge.run_snippet(
                     "error": "Operation timed out"
                 };
             }
-            out_text = out_buf[0].decode(errors="replace") if out_buf[0] else "";
-            err_text = err_buf[0].decode(errors="replace") if err_buf[0] else "";
+            out_text = out_buf[0].decode(errors="replace")
+                if out_buf[0] is not None
+                else "";
+            err_text = err_buf[0].decode(errors="replace")
+                if err_buf[0] is not None
+                else "";
             exit_code = proc.returncode if proc.returncode is not None else 1;
             result: dict[str, any] = {
                 "stdout": out_text,

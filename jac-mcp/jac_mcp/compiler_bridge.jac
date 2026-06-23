@@ -6,6 +6,7 @@ providing parse, typecheck, format, and py2jac operations.
 
 glob MAX_INPUT_SIZE: int = 102400,
      MAX_OUTPUT_SIZE: int = 102400,
+     OUTPUT_TRUNCATION_MARKER: str = "\n[... output truncated ...]",
      DEFAULT_TIMEOUT: int = 10;
 
 """Run a function with timeout protection."""

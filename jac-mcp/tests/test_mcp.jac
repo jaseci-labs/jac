@@ -848,15 +848,47 @@ test "run snippet large output is truncated" {
     # A snippet that would produce ~5 MB of output if uncapped (200 000 lines
     # × 26 chars). The returned stdout must be bounded by MAX_OUTPUT_SIZE and
     # carry the truncation marker.
-    import from jac_mcp.compiler_bridge { MAX_OUTPUT_SIZE }
+    import from jac_mcp.compiler_bridge { MAX_OUTPUT_SIZE, OUTPUT_TRUNCATION_MARKER }
     result = CompilerBridge.run_snippet(
         "with entry { for i in range(200000) { print(\"0123456789012345678901234\"); } }"
     );
     assert "stdout" in result;
-    # _cap_read never reads past MAX_OUTPUT_SIZE, so the only overshoot is the
-    # truncation marker ("\n[... output truncated ...]" = 27 chars) -- the tight bound.
-    assert len(result["stdout"]) <= MAX_OUTPUT_SIZE + 27;
+    assert len(result["stdout"]) <= MAX_OUTPUT_SIZE + len(OUTPUT_TRUNCATION_MARKER);
     assert "truncated" in result["stdout"];
+}
+
+test "run snippet output exactly at cap has no truncation marker" {
+    # Output that is exactly MAX_OUTPUT_SIZE bytes must not be falsely marked as
+    # truncated -- _cap_read reads one extra byte to confirm overflow.
+    import from jac_mcp.compiler_bridge { MAX_OUTPUT_SIZE, OUTPUT_TRUNCATION_MARKER }
+    # Produce exactly MAX_OUTPUT_SIZE bytes: 102400 = 25 * 4096 lines of 24 chars
+    # each ("0" * 23 + newline). Adjust: print adds a newline, so each call
+    # produces 25 bytes. 102400 / 25 = 4096 iterations.
+    snippet = "with entry { for i in range(4096) { print(\"000000000000000000000000\"); } }";
+    result = CompilerBridge.run_snippet(snippet);
+    assert "stdout" in result;
+    assert "truncated" not in result["stdout"];
+}
+
+test "run snippet output one byte over cap is truncated" {
+    # One byte beyond the cap must trigger the marker.
+    import from jac_mcp.compiler_bridge { MAX_OUTPUT_SIZE, OUTPUT_TRUNCATION_MARKER }
+    # 4097 iterations × 25 bytes = 102425 bytes > 102400.
+    snippet = "with entry { for i in range(4097) { print(\"000000000000000000000000\"); } }";
+    result = CompilerBridge.run_snippet(snippet);
+    assert "stdout" in result;
+    assert "truncated" in result["stdout"];
+    assert len(result["stdout"]) <= MAX_OUTPUT_SIZE + len(OUTPUT_TRUNCATION_MARKER);
+}
+
+test "run snippet large stderr is truncated" {
+    import from jac_mcp.compiler_bridge { MAX_OUTPUT_SIZE, OUTPUT_TRUNCATION_MARKER }
+    # Write to stderr via sys.stderr.write.
+    snippet = "import sys; with entry { for i in range(200000) { sys.stderr.write(\"0123456789012345678901234\\n\"); } }";
+    result = CompilerBridge.run_snippet(snippet);
+    assert "stderr" in result;
+    assert len(result["stderr"]) <= MAX_OUTPUT_SIZE + len(OUTPUT_TRUNCATION_MARKER);
+    assert "truncated" in result["stderr"];
 }
 
 test "graph viz snippet dot format" {
