@@ -27,6 +27,11 @@ extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int
 // wchar_t* so we never need Python.h / CPython struct layouts.
 const Py_Initialize_t = *const fn () callconv(.c) void;
 const Py_DecodeLocale_t = *const fn (arg: [*:0]const u8, size: ?*usize) callconv(.c) ?*anyopaque;
+// Sets the program full path getpath uses to derive sys.prefix/sys.executable.
+// Pinned to *this* binary so getpath does not fall back to a PATH search for
+// `python3` (see hermeticity note at the call site). Legacy but stable on 3.x,
+// and consistent with the other pre-PyConfig init calls used here.
+const Py_SetProgramName_t = *const fn (name: ?*anyopaque) callconv(.c) void;
 const PySys_SetArgvEx_t = *const fn (argc: c_int, argv: ?[*]?*anyopaque, updatepath: c_int) callconv(.c) void;
 const PyMem_RawFree_t = *const fn (p: ?*anyopaque) callconv(.c) void;
 const PyRun_SimpleString_t = *const fn (cmd: [*:0]const u8) callconv(.c) c_int;
@@ -168,10 +173,22 @@ fn boot(rt: []const u8, exe_path: []const u8, init: std.process.Init) u8 {
 
     const Py_Initialize: Py_Initialize_t = sym(h, Py_Initialize_t, "Py_Initialize");
     const Py_DecodeLocale: Py_DecodeLocale_t = sym(h, Py_DecodeLocale_t, "Py_DecodeLocale");
+    const Py_SetProgramName: Py_SetProgramName_t = sym(h, Py_SetProgramName_t, "Py_SetProgramName");
     const PySys_SetArgvEx: PySys_SetArgvEx_t = sym(h, PySys_SetArgvEx_t, "PySys_SetArgvEx");
     const PyMem_RawFree: PyMem_RawFree_t = sym(h, PyMem_RawFree_t, "PyMem_RawFree");
     const PyRun_SimpleString: PyRun_SimpleString_t = sym(h, PyRun_SimpleString_t, "PyRun_SimpleString");
     const Py_FinalizeEx: Py_FinalizeEx_t = sym(h, Py_FinalizeEx_t, "Py_FinalizeEx");
+
+    // Hermeticity: pin the program name to this binary BEFORE init. Otherwise
+    // getpath, unable to recover the launcher's own path under embedding, searches
+    // PATH for `python3` -- and if an activated venv's bin is on PATH it adopts
+    // that venv's pyvenv.cfg, shifting sys.prefix (and thus site-packages) to a
+    // foreign environment. PYTHONHOME already pins base_prefix/stdlib, but only an
+    // explicit program name stops the venv-prefix takeover. Our binary has no
+    // adjacent pyvenv.cfg, so prefix stays the bundled runtime regardless of host.
+    // The decoded string is intentionally not freed -- CPython retains it.
+    const wexe = Py_DecodeLocale(exe_z.ptr, null) orelse die("failed to decode executable path");
+    Py_SetProgramName(wexe);
 
     Py_Initialize();
 

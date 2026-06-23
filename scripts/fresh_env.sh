@@ -7,9 +7,12 @@
 # (`cd jac && zig build`) and run `jac test`. The binary bundles the test runner
 # (pytest + xdist), so `jac test` needs no system Python.
 #
-# Plugins (byllm/scale/mcp) are still ordinary Python packages: `jac install -e`
-# drops their deps into each plugin's own project venv (.jac/venv) and links the
-# source there; jaclang is provided by the binary, never installed into a venv.
+# Plugins (byllm/scale/mcp) are still ordinary Python packages. We install them
+# with `--global` so their source + deps land in the binary's own jac-owned site
+# (never the host) and are importable from any directory -- including each
+# plugin's own dir when you `cd jac-mcp && jac test .`. Without --global an
+# editable install would target the current project's .jac/venv only, invisible
+# from the plugin dirs. jaclang itself is provided by the binary, never installed.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -24,10 +27,10 @@ echo "Built: $JAC_BIN"
 echo "Add it to PATH, e.g.:  export PATH=\"$PWD/jac/zig-out/bin:\$PATH\""
 export PATH="$PWD/jac/zig-out/bin:$PATH"
 
-# Plugins (editable): deps go into each plugin's own .jac/venv.
-jac install -e jac-byllm
-jac install -e jac-scale
-jac install -e jac-mcp
+# Plugins (editable, global): importable from anywhere, including each plugin dir.
+jac install -e jac-byllm --global
+jac install -e jac-scale --global
+jac install -e jac-mcp --global
 
 # pre-commit is a standalone contributor tool (not part of the jac toolchain).
 # Its jac hooks shell out to the `jac` binary on PATH, so all it needs is the

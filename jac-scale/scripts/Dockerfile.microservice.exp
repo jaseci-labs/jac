@@ -34,7 +34,7 @@ COPY jac/zig-out/bin/jac /usr/local/bin/jac
 COPY jac-scale /build/jac-scale
 RUN --mount=type=cache,target=/root/.cache/pip \
     jac --version \
-    && jac install -e /build/jac-scale --extras deploy data tracing
+    && jac install -e /build/jac-scale --extras deploy data tracing --global
 
 ARG PROJECT_PATH=jac-scale/jac_scale/tests/fixtures/k8s_e2e
 WORKDIR /app
