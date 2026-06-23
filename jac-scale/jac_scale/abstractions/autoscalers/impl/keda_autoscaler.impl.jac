@@ -287,6 +287,9 @@ impl KEDAAutoscaler.apply{
 
 """Delete TriggerAuthentications owned by the ScaledObject then delete the ScaledObject itself; no-op if already absent."""
 impl KEDAAutoscaler.destroy{
+    # TODO(#6909): partial-apply gap — if apply() created TAs but crashed before writing
+    # the ScaledObject, those TAs cannot be discovered here and must be removed manually
+    # with kubectl delete triggerauthentication.
     api = self._custom_api or client.CustomObjectsApi();
     try {
         scaled_obj = api.get_namespaced_custom_object(
