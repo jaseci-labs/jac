@@ -237,7 +237,7 @@ jobs:
   # blocking binary gate (test_pe_linker.jac); restoring a real-Windows-loader
   # check needs a Windows binary build, tracked as a follow-up.
 
-  test-desktop-cef-build:
+  test-cef-build:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - uses: actions/checkout@v5

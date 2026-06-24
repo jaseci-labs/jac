@@ -66,7 +66,7 @@ def _compile_cef_host(host_src: str) -> tuple {
     }
 }
 
-"""The embedded-CPython CEF host (desktop-cef runtime model) links both libs."""
+"""The embedded-CPython CEF host (cef runtime model) links both libs."""
 test "cef embedded-python host compiles and links libcef_dispatch and libpython" {
     soname = sysconfig.get_config_var("INSTSONAME") or "libpython3.12.so.1.0";
     stem = soname.split(".so")[0].encode();

@@ -1,4 +1,4 @@
-# Notes app (`desktop-cef`)
+# Notes app (`cef`)
 
 Minimal Jac client app that exercises the **CEF desktop target** end-to-end. It
 doubles as the smoke test for the CEF target before shipping PR #6572.
@@ -25,15 +25,15 @@ drawer in the footer.
 From this directory (the desktop targets ship in core `jaclang`):
 
 ```bash
-jac build --client desktop-cef
-cd .jac/client/desktop-cef/notes-app
+jac build --client cef
+cd .jac/client/cef
 ./notes-app
 ```
 
 Or build + launch in one step:
 
 ```bash
-jac start --client desktop-cef
+jac start --client cef
 ```
 
 On success you should see in the terminal:
@@ -70,7 +70,7 @@ The host binary links the Python version used at **build** time. Rebuild on your
 machine:
 
 ```bash
-jac build --client desktop-cef
+jac build --client cef
 ```
 
 If it still fails, confirm libpython is installed (Arch: `python` package) and
@@ -81,13 +81,13 @@ run with `LD_LIBRARY_PATH` pointing at your Python `LIBDIR` (often `/usr/lib`).
 CEF is stuck in `cef_initialize()` before the browser is created. Try:
 
 ```bash
-jac start --client desktop-cef
+jac start --client cef
 ```
 
 or manually with GPU fallback:
 
 ```bash
-cd .jac/client/desktop-cef
+cd .jac/client/cef
 JAC_CEF_DISABLE_GPU=1 OZONE_PLATFORM=x11 ./notes-app
 ```
 

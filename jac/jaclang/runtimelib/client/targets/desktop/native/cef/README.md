@@ -2,11 +2,11 @@
 
 The CEF (Chromium Embedded Framework) binding for `jac-desktop` provides a
 consistent Chromium rendering engine across all platforms. Use the
-`desktop-cef` client target (`jac build --client desktop-cef`).
+`cef` client target (`jac build --client cef`).
 
 ## Architecture
 
-The `desktop-cef` host is a single `jac nacompile` binary. There is **no C
+The `cef` host is a single `jac nacompile` binary. There is **no C
 shim**: the CEF vtables and glue are written in Jac-native (`*.na.jac`) and
 compiled directly. libpython is **not** used to talk to Chromium; it only
 embeds a minimal CPython runtime for the loopback HTTP server.
@@ -76,7 +76,7 @@ Both targets share the same loopback-server Python (`SERVE_PY`) and
 `oauth_broker.py`, and both compile a generated `host.na.jac` via `jac
 nacompile`. They differ only in the renderer:
 
-| | Native (`desktop`) | CEF (`desktop-cef`) |
+| | Native (`desktop`) | CEF (`cef`) |
 |--|-------------------|---------------------|
 | Renderer FFI | Jac `na` → `libwebview.so` | Jac `na` → `libcef.so` + `libcef_dispatch.so` |
 | Bootstrap globals | `webview_init(BOOTSTRAP_JS)` on each load | `on_context_created` in `cef_dispatch.na.jac` (V8 globals) |
@@ -98,7 +98,7 @@ nacompile`. They differ only in the renderer:
 
 ## Prerequisites
 
-On first `desktop-cef` build the pipeline runs `fetch_libcef.sh`,
+On first `cef` build the pipeline runs `fetch_libcef.sh`,
 `build_cef_dispatch.sh`, and `build_cef_subprocess.sh` automatically. You need:
 
 - `curl` for downloading the CEF distribution

@@ -26,7 +26,7 @@ def register_targets {
     registry.register(StaticTarget());
     registry.register(MobileTarget());
     registry.register(NativeDesktopTarget());
-    # CEF renderer variant of the desktop target (selected via --client desktop-cef).
+    # CEF renderer variant of the desktop target (selected via --client cef).
     registry.register(CefDesktopTarget());
 }
 

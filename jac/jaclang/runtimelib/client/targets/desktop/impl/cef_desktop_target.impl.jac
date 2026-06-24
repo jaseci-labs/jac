@@ -317,7 +317,7 @@ impl CefDesktopTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
     console.print(
-        "  desktop-cef --dev: building and launching (HMR not yet wired)", style="muted"
+        "  cef --dev: building and launching (HMR not yet wired)", style="muted"
     );
     self.start(entry_file, project_dir, api_port);
 }

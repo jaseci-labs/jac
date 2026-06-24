@@ -25,12 +25,12 @@ jobs:
     - name: Build notes-app example
       run: |
         cd jac/examples/notes-app
-        jac build --client desktop-cef
+        jac build --client cef
 
     - name: Bundle existence audit
       working-directory: jac/examples/notes-app
       run: |
-        BUNDLE=.jac/client/desktop-cef/notes-app
+        BUNDLE=.jac/client/cef
         test -f $BUNDLE/libcef.so
         test -f $BUNDLE/cef-subprocess
         test -f $BUNDLE/minimal-fonts.conf
@@ -39,7 +39,7 @@ jobs:
         ldd $BUNDLE/notes-app | grep 'not found' && exit 1 || true
 
     - name: Headless smoke with timeout (X11)
-      working-directory: jac/examples/notes-app/.jac/client/desktop-cef/notes-app
+      working-directory: jac/examples/notes-app/.jac/client/cef
       run: |
         Xvfb :99 -screen 0 1280x720x24 &
         XVFB_PID=$!

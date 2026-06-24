@@ -22,9 +22,9 @@ test "register_targets registers the desktop targets" {
     # The native target needs no scaffolding (unlike the old PyTauri target).
     assert target.requires_setup == False , "native desktop needs no setup step";
     # The CEF renderer target registers alongside the native one.
-    cef = registry.get("desktop-cef");
+    cef = registry.get("cef");
     assert cef is not None , "CEF desktop target should be registered";
-    assert cef.name == "desktop-cef" , "CEF target name should be 'desktop-cef'";
+    assert cef.name == "cef" , "CEF target name should be 'cef'";
 }
 
 """Window geometry is read from [plugins.desktop.window]."""

@@ -1,4 +1,4 @@
-"""Notes app UI for the CEF desktop-cef target.
+"""Notes app UI for the CEF cef target.
 
 A small but real notes app that doubles as the CEF desktop smoke test. It
 exercises jac-desktop infrastructure end-to-end:

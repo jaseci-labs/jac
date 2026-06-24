@@ -134,7 +134,7 @@ Slow init (>10s) is a bug even when it does not hang.
 | X11 | `OZONE_PLATFORM=x11` |
 | No GPU / VM | `JAC_CEF_DISABLE_GPU=1`, software GL env |
 | Wrong cwd | run from parent dir, not bundle dir |
-| Fresh build | delete `.jac/client/desktop-cef/<app>`, rebuild |
+| Fresh build | delete `.jac/client/cef/<app>`, rebuild |
 | Python mismatch | build vs run on different `libpython` versions |
 
 ---

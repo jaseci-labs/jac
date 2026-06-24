@@ -10,7 +10,7 @@ import from pathlib { Path }
 enum TargetType {
     WEB = "web",
     DESKTOP = "desktop",
-    DESKTOP_CEF = "desktop-cef",
+    DESKTOP_CEF = "cef",
     PWA = "pwa",
     STATIC = "static",
     MOBILE = "mobile"
@@ -25,7 +25,7 @@ def get_target_type(name: str) -> TargetType {
     if name_lower == "desktop" {
         return TargetType.DESKTOP;
     }
-    if name_lower == "desktop-cef" {
+    if name_lower == "cef" {
         return TargetType.DESKTOP_CEF;
     }
     if name_lower == "pwa" {

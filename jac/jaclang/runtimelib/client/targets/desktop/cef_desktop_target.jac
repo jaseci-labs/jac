@@ -2,8 +2,7 @@
 
 An alternative to `NativeDesktopTarget` that uses Chromium Embedded Framework
 (CEF) instead of the OS-native webview (WebKitGTK/WKWebView/WebView2). Selected
-explicitly with `--client desktop-cef` (the OS-native variant is `--client
-desktop`).
+explicitly with `--client cef` (the OS-native variant is `--client desktop`).
 
 Provides a consistent Chromium rendering engine across all platforms, at the
 cost of bundling the CEF runtime (~200 MB) alongside the app. The build
@@ -25,7 +24,7 @@ obj CefDesktopTarget(WebTarget) {
         default: bool = False,
         requires_setup: bool = False,
         config_section: str = "plugins.desktop",
-        output_dir: Path = Path(".jac/client/desktop-cef");
+        output_dir: Path = Path(".jac/client/cef");
 
     """No scaffolding needed — the native host is generated at build time."""
     override def setup(project_dir: Path) -> None;
