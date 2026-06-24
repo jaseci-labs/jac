@@ -198,13 +198,11 @@ jobs:
     - name: Set up jac (build the binary)
       uses: ./.github/actions/setup-jac
 
-    # First `jac install` bootstraps the env so the docs deps land where
-    # `jac -m mkdocs` can find them (mirrors the real test-packages-and-docs job).
-    - name: Bootstrap install env
-      run: jac install -e jac-byllm
-
     - name: Install docs dependencies
-      run: jac install -e docs
+      # --global installs mkdocs into the binary's interpreter (where `jac -m`
+      # looks). Without it mkdocs goes to a project venv and `jac -m mkdocs`
+      # can't find it. Matches the real test-packages-and-docs job.
+      run: jac install -e docs --global
 
     - name: Build documentation
       working-directory: docs
