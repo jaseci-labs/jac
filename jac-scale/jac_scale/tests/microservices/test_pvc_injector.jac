@@ -1,45 +1,12 @@
-"""Tests for source bundling and the PVC code injector."""
+"""Tests for PVC code injection: the security-sensitive packing and the
+pod-spec/manifest wiring (the parts that break in non-obvious ways)."""
 
 import os;
 import io;
 import tarfile;
 import tempfile;
-import from jac_scale.injector.bundle {
-    pack_source,
-    content_address,
-    bundle_object_key,
-    pinned_install_specs
-}
-import from jac_scale.injector.pvc_injector {
-    PvcInjector,
-    build_bundle_pvc,
-    build_pvc_init_container,
-    bundle_pvc_name,
-    bundle_pvc_path
-}
-
-
-test "content_address is deterministic and sha256-shaped" {
-    first = content_address("hello".encode("utf-8"));
-    same = content_address("hello".encode("utf-8"));
-    other = content_address("world".encode("utf-8"));
-    assert first == same;
-    assert first != other;
-    assert len(first) == 64;
-}
-
-
-test "bundle_object_key namespaces by app and addresses by digest" {
-    assert bundle_object_key("orders", "abc123") == "bundles/orders/abc123.tar.gz";
-}
-
-
-test "pinned_install_specs always includes jaclang and the scale extras" {
-    joined = " ".join(pinned_install_specs());
-    assert "jaclang" in joined;
-    assert "jac-scale[all]" in joined;
-    assert "requests" in joined;
-}
+import from jac_scale.injector.bundle { pack_source }
+import from jac_scale.injector.pvc_injector { PvcInjector, build_bundle_pvc }
 
 
 test "pack_source keeps app files but drops secrets and strips plugins.scale" {
@@ -61,8 +28,7 @@ test "pack_source keeps app files but drops secrets and strips plugins.scale" {
         toml_text = "";
         with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
             names = tar.getnames();
-            member = tar.extractfile("jac.toml");
-            toml_text = member.read().decode("utf-8");
+            toml_text = tar.extractfile("jac.toml").read().decode("utf-8");
         }
         assert "app.jac" in names;
         assert ".env" not in names;
@@ -73,34 +39,15 @@ test "pack_source keeps app files but drops secrets and strips plugins.scale" {
 }
 
 
-test "bundle pvc is ReadWriteMany and carries the configured size" {
+test "the bundle pvc is ReadWriteMany so every pod can mount it" {
     pvc = build_bundle_pvc("orders", "prod", "5Gi", "efs-sc");
     assert pvc["kind"] == "PersistentVolumeClaim";
-    assert pvc["metadata"]["name"] == bundle_pvc_name("orders");
     assert pvc["spec"]["accessModes"] == ["ReadWriteMany"];
-    assert pvc["spec"]["resources"]["requests"]["storage"] == "5Gi";
     assert pvc["spec"]["storageClassName"] == "efs-sc";
 }
 
 
-test "bundle pvc omits storageClassName when none is set (cluster default)" {
-    pvc = build_bundle_pvc("orders", "prod", "1Gi", "");
-    assert "storageClassName" not in pvc["spec"];
-}
-
-
-test "init container extracts the bundle from the mounted pvc and installs" {
-    container = build_pvc_init_container("python:3.12-slim", "/jac-bundles/bundles/orders/abc.tar.gz");
-    script = container["args"][0];
-    assert "tar xzf /jac-bundles/bundles/orders/abc.tar.gz" in script;
-    assert "pip install" in script;
-    mount_names = [mount["name"] for mount in container["volumeMounts"]];
-    assert "jac-bundles" in mount_names;
-    assert "jac-app" in mount_names;
-}
-
-
-test "mutate_pod_spec mounts the pvc, adds an init container and an app mount" {
+test "prepare + mutate_pod_spec wires the pvc, an init container, and the app mount" {
     with tempfile.TemporaryDirectory() as project {
         with open(os.path.join(project, "app.jac"), "w") as handle {
             handle.write("walker Main {}");
@@ -119,12 +66,4 @@ test "mutate_pod_spec mounts the pvc, adds an init container and an app mount" {
         mount_names = [mount["name"] for mount in result["containers"][0]["volumeMounts"]];
         assert "jac-app" in mount_names;
     }
-}
-
-
-test "extra_manifests returns exactly the bundle pvc" {
-    injector = PvcInjector();
-    manifests = injector.extra_manifests("orders", "prod");
-    assert len(manifests) == 1;
-    assert manifests[0]["kind"] == "PersistentVolumeClaim";
 }

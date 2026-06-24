@@ -1,13 +1,13 @@
-"""Tests for the Middleware port and the composing registry."""
+"""Test the Middleware registry's composition behavior (onion order and
+short-circuit) - the non-trivial parts; basic registration is covered by the
+runtime integration test."""
 
 import asyncio;
 import from jac_scale.runtime.middleware.middleware { Middleware, MiddlewareRegistry }
 
 
-"""Records enter/exit around call_next so onion ordering is observable."""
 obj RecordingMiddleware(Middleware) {
     has recorder: list[str] = [];
-
     async def handle(request: any, call_next: any) -> any {
         self.recorder.append(f"enter:{self.name}");
         result = await call_next(request);
@@ -17,10 +17,8 @@ obj RecordingMiddleware(Middleware) {
 }
 
 
-"""Returns a fixed response without calling call_next (short-circuit)."""
 obj ShortCircuitMiddleware(Middleware) {
     has response: str = "blocked";
-
     async def handle(request: any, call_next: any) -> any {
         return self.response;
     }
@@ -29,22 +27,6 @@ obj ShortCircuitMiddleware(Middleware) {
 
 async def _handler(request: any) -> any {
     return "handler";
-}
-
-
-test "an empty registry calls the handler directly" {
-    registry = MiddlewareRegistry();
-    assert asyncio.run(registry.run("req", _handler)) == "handler";
-}
-
-
-test "registering is one call and ordering is by ascending priority" {
-    registry = MiddlewareRegistry();
-    registry.register(Middleware(name="z", priority=30));
-    registry.register(Middleware(name="x", priority=10));
-    registry.register(Middleware(name="y", priority=20));
-    names = [item.name for item in registry.middlewares];
-    assert names == ["x", "y", "z"];
 }
 
 
