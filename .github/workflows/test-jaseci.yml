@@ -218,7 +218,7 @@ jobs:
   # NOTE: the real-windows-host native job (test-native-windows) was retired in
   # the clean break to the single binary. jaclang ships only as the `jac` binary,
   # which builds for Linux and macOS (python-build-standalone has no Windows
-  # target -- see build.zig osArchString / fetch-pbs.sh), so there is no way to
+  # target -- see build.zig osArchString / payload.zig), so there is no way to
   # run jaclang on a windows-latest runner via `pip install -e jac` anymore. The
   # PE/COFF linker logic stays covered by the cross-compiled PE tests in the
   # blocking binary gate (test_pe_linker.jac); restoring a real-Windows-loader

@@ -89,6 +89,17 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      # setup-jac's `zig build` already materialized the gitignored typeshed
+      # stdlib stubs into the checkout; publish them so the test jobs get them
+      # without a zig toolchain (they only download the prebuilt binary).
+      - name: Upload typeshed stdlib stubs
+        uses: actions/upload-artifact@v4
+        with:
+          name: typeshed-stdlib
+          path: jac/jaclang/vendor/typeshed/stdlib
+          retention-days: 1
+          if-no-files-found: error
+
   # Compiler half of the suite (was test-core-compiler). Runs in parallel with
   # test-runtime against the same prebuilt binary.
   test-compiler:
@@ -96,15 +107,17 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch typeshed stdlib stubs into the checkout
+      - name: Restore typeshed stdlib stubs into the checkout
         # The nacompile subprocess tests shell out to `<jac> -m jaclang`, which
         # (via -m's cwd-prepend, working-directory: jac) resolves the IN-TREE
         # jaclang and loads jac/jaclang/vendor/typeshed/stdlib for native type
         # resolution. Those stubs are gitignored now (fetched at the pinned
-        # commit, not committed), so materialize them in the checkout -- without
-        # them the checker is blind and na-compilation fails.
-        working-directory: jac
-        run: bash launcher/fetch-typeshed.sh
+        # commit, not committed); the build job published them as an artifact so
+        # this job needs no zig toolchain. Without them na-compilation fails.
+        uses: actions/download-artifact@v4
+        with:
+          name: typeshed-stdlib
+          path: jac/jaclang/vendor/typeshed/stdlib
       - name: Download the jac binary
         uses: actions/download-artifact@v4
         with:

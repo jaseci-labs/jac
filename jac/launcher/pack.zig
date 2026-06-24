@@ -1,8 +1,8 @@
-//! Build-time tool: concatenate `[ stub ][ payload.tar.zst ][ trailer ]` into
+//! Build-time tool: concatenate `[ stub ][ payload.tar.gz ][ trailer ]` into
 //! the final `jac` binary. The trailer (magic | payload_len u64 LE | sha256 hex)
 //! matches what `runtime.zig` parses at startup.
 //!
-//!   pack <stub> <payload.tar.zst> <out>
+//!   pack <stub> <payload.tar.gz> <out>
 
 const std = @import("std");
 const Io = std.Io;
@@ -19,7 +19,7 @@ pub fn main(init: std.process.Init) !void {
         if (n < args.len) args[n] = a;
     }
     if (n < 4) {
-        std.debug.print("usage: pack <stub> <payload.tar.zst> <out>\n", .{});
+        std.debug.print("usage: pack <stub> <payload.tar.gz> <out>\n", .{});
         return error.Usage;
     }
 
