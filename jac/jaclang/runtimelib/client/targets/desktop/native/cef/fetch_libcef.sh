@@ -63,10 +63,10 @@ fi
 # --- Skip if runtime + headers already staged -------------------------
 if [ "$HEADERS_ONLY" = "0" ] \
     && [ -f "$VERSION_STAMP" ] \
-    && [ "$(cat "$VERSION_STAMP")" = "${CEF_MAJOR}.x" ] \
+    && [ "$(cat "$VERSION_STAMP")" = "${CEF_VERSION}" ] \
     && [ -f "$DIST_DIR/libcef.so" ] \
     && [ -f "$HEADERS_MARKER" ]; then
-    echo ">> CEF ${CEF_MAJOR}.x already staged in $DIST_DIR"
+    echo ">> CEF ${CEF_VERSION} already staged in $DIST_DIR"
     exit 0
 fi
 
@@ -236,10 +236,10 @@ else
 fi
 
 # --- Stamp version -----------------------------------------------------
-echo "${CEF_MAJOR}.x" > "$VERSION_STAMP"
+echo "${CEF_VERSION}" > "$VERSION_STAMP"
 
 # --- Report ------------------------------------------------------------
-echo ">> staged CEF ${CEF_MAJOR}.x in $DIST_DIR"
+echo ">> staged CEF ${CEF_VERSION} in $DIST_DIR"
 echo ">> key files:"
 ls -lh "$DIST_DIR/libcef.so" 2>/dev/null | awk '{print "   " $NF ": " $5}' || true
 echo ">> companion libraries:"

@@ -68,12 +68,7 @@ def _ensure_libcef_dispatch(cef_dir: Path) -> Path {
     lib = cef_dir / "libcef_dispatch.so";
     src = cef_dir / "cef_dispatch.na.jac";
     stale = _is_stale(
-        lib,
-        [
-            src,
-            cef_dir / "cef_platform.na.jac",
-            cef_dir / "build_cef_dispatch.sh"
-        ]
+        lib, [src, cef_dir / "cef_platform.na.jac", cef_dir / "build_cef_dispatch.sh"]
     );
     if not stale {
         return lib;
@@ -99,11 +94,7 @@ def _ensure_cef_subprocess(cef_dir: Path) -> Path {
     src = cef_dir / "cef_subprocess.na.jac";
     stale = _is_stale(
         helper,
-        [
-            src,
-            cef_dir / "cef_platform.na.jac",
-            cef_dir / "build_cef_subprocess.sh"
-        ]
+        [src, cef_dir / "cef_platform.na.jac", cef_dir / "build_cef_subprocess.sh"]
     );
     if not stale {
         return helper;
@@ -181,10 +172,17 @@ def _generate_host_source(
         "        sys.exit(1);\n"
         "    }\n"
         "    Py_Initialize();\n"
-        "    PyRun_SimpleString(SERVE_PY);\n"
+        "    rc_py: i32 = PyRun_SimpleString(SERVE_PY);\n"
+        "    if rc_py != 0 {\n"
+        "        sys.exit(1);\n"
+        "    }\n"
         '    main_mod = PyImport_AddModule("__main__");\n'
         "    d = PyModule_GetDict(main_mod);\n"
-        '    port = PyLong_AsLong(PyRun_String("_port", PY_EVAL, d, d));\n'
+        '    port_obj: int = PyRun_String("_port", PY_EVAL, d, d);\n'
+        "    if port_obj == 0 {\n"
+        "        sys.exit(1);\n"
+        "    }\n"
+        "    port = PyLong_AsLong(port_obj);\n"
         "    url = f\"http://127.0.0.1:{port}/\";\n"
         "    cef_open_browser(\n"
         "        url,\n"
