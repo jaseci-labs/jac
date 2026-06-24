@@ -311,6 +311,10 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     field_index_map: dict[(str, int)] = {};
     field_type_map: dict[(str, ir.Type)] = {};
     field_default_map: dict[(str, object)] = {};
+    # Foreign-typed fields lowered to nullable opaque `i8*` slots (issue #6930,
+    # A3). Tracked so construction nulls them (no default eval), the destructor
+    # skips RC on them, and any native dereference still surfaces E5090.
+    opaque_fields: set = set();
     # Field 0 is the vtable slot. OSP archetypes always reserve it (null when
     # the type has no vtable) so the i64 `__type_tag` lands at a uniform field
     # index 1 across every OSP archetype -- letting the kernel's `tag_of` read
@@ -349,6 +353,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
         ancestor_indices = self.struct_field_indices[ancestor_name];
         ancestor_types = self.struct_field_types.get(ancestor_name, {});
         ancestor_defaults = self.struct_field_defaults.get(ancestor_name, {});
+        ancestor_opaque = self.struct_field_opaque.get(ancestor_name, set());
         # Record start index for this ancestor's region
         if arch_name not in self.parent_field_start {
             self.parent_field_start[arch_name] = {};
@@ -371,7 +376,11 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
             field_types.append(ftype);
             field_index_map[fname] = new_idx;
             field_type_map[fname] = ftype;
-            if fname in ancestor_defaults {
+            # An inherited opaque slot stays opaque (and default-free) in the
+            # subclass layout.
+            if fname in ancestor_opaque {
+                opaque_fields.add(fname);
+            } elif fname in ancestor_defaults {
                 field_default_map[fname] = ancestor_defaults[fname];
             }
         }
@@ -387,6 +396,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                     }
                     seen_fields.add(fname);
                     ftype = ir.IntType(64);
+                    _is_opaque = False;
                     if var.type_tag is not None {
                         # HasVar.type is checker-stamped for regular Jac archetypes.
                         # For clib imports the checker leaves .type unstamped, so we
@@ -395,7 +405,16 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                         if arch_name in self.clib_struct_names {
                             ftype = self._resolve_jac_type(var.type_tag);
                         } else {
-                            ftype = self._resolve_jac_type(var);
+                            # A foreign type the checker stamped but native cannot
+                            # model lowers to a nullable opaque `i8*` slot instead
+                            # of E5090 (issue #6930, A3): the declaration rides
+                            # Tier-1 untouched and only an actual native dereference
+                            # of the slot is rejected, downstream. A genuinely
+                            # unknown type name still raises E2018 via the resolver.
+                            (ftype, _is_opaque) = self._try_resolve_field_type(var);
+                            if _is_opaque {
+                                opaque_fields.add(fname);
+                            }
                         }
                         # Track enum-typed fields
                         ftag_name = self._get_name(var.type_tag.tag);
@@ -410,7 +429,10 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                     field_types.append(ftype);
                     field_index_map[fname] = new_idx;
                     field_type_map[fname] = ftype;
-                    if var.value is not None {
+                    # An opaque slot is null-only: its (foreign) default is never
+                    # native-constructed, so it is left out of the default map and
+                    # zero-inits to null.
+                    if var.value is not None and not _is_opaque {
                         field_default_map[fname] = var.value;
                     }
                 }
@@ -423,6 +445,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     self.struct_field_indices[arch_name] = field_index_map;
     self.struct_field_types[arch_name] = field_type_map;
     self.struct_field_defaults[arch_name] = field_default_map;
+    self.struct_field_opaque[arch_name] = opaque_fields;
 }
 
 """Forward-declare a method with self pointer as first parameter."""
@@ -956,6 +979,7 @@ impl NaIRGenPass._codegen_instantiation(
     field_indices = self.struct_field_indices.get(type_name, {});
     field_types = self.struct_field_types.get(type_name, {});
     field_defaults = self.struct_field_defaults.get(type_name, {});
+    opaque_fields = self.struct_field_opaque.get(type_name, set());
     # Track which fields were explicitly set
     set_fields: set[str] = set();
     params = (nd.params or []) if _is_call else [];
@@ -963,6 +987,14 @@ impl NaIRGenPass._codegen_instantiation(
         if isinstance(param, uni.KWPair) {
             key_name = param.key.sym_name if param.key else None;
             if key_name is None or key_name not in field_indices {
+                continue;
+            }
+            # Opaque foreign slots are null-only and outside the RC discipline
+            # (issue #6930, A3): never retain/store an explicitly-passed value
+            # here -- the zero-init pass nulls the slot, consistent with the
+            # defaults loop and the destructor. (Native code can only pass
+            # `None` for a foreign-typed field anyway.)
+            if key_name in opaque_fields {
                 continue;
             }
             val = self._codegen_expr(param.value);
@@ -1043,6 +1075,11 @@ impl NaIRGenPass._codegen_instantiation(
     }
     # Initialize unset fields with defaults
     for (fname, default_expr) in field_defaults.items() {
+        # Opaque foreign slots are null-only -- their default is a foreign value
+        # the native path never constructs; the zero-init pass below nulls them.
+        if fname in opaque_fields {
+            continue;
+        }
         if fname not in set_fields {
             # An empty collection literal default types itself: the checker
             # stamps it with the declared field type (bidirectional

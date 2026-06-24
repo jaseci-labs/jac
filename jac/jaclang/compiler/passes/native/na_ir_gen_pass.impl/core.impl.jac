@@ -162,6 +162,11 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     # lowering inside abilities can reference the runtime (issue #6146).
     self._register_archetypes(self.ir_in);
     # Phase 1: Codegen native abilities and entry blocks
+    # Collect every module-level `with entry { ... }` block (in source order)
+    # so they can be concatenated into a single jac_entry function below,
+    # mirroring the Python target (issue #6660). Emitting one jac_entry per
+    # ModuleCode would re-register the function name and crash llvmlite.
+    _entry_nodes: list = [];
     for stmt in ModuleCodegenPass.iter_context_stmts(self.ir_in, CodeContext.NATIVE) {
         if (
             isinstance(stmt, uni.Ability)
@@ -170,11 +175,12 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
         ) {
             self._codegen_ability(stmt);
         } elif isinstance(stmt, uni.ModuleCode) {
-            self._codegen_entry(stmt);
+            _entry_nodes.append(stmt);
         } elif isinstance(stmt, uni.Test) {
             self._codegen_test(stmt);
         }
     }
+    self._codegen_entry(_entry_nodes);
     # Store LLVM module on AST
     if self.has_native_code {
         # Ensure __jac_glob_init is always defined, even for modules that have

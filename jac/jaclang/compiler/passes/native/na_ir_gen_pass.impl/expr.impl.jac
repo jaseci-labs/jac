@@ -1119,6 +1119,13 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
     if nd.is_attr {
         target_name = self._get_name(nd.target);
         right_name = self._get_name(nd.right);
+        # `self.__class__.__name__` / `type(self).__name__` -> the class name
+        # (issue #6930 A2). Must run before generic field access, which has no
+        # field for the synthetic `__class__` / `__name__` attributes.
+        _cls_name = self._codegen_class_name(nd);
+        if _cls_name is not None {
+            return _cls_name;
+        }
         # Check .value / .name on a direct enum member: Priority.HIGH.value.
         # The member access nests as AtomTrailer(AtomTrailer(Enum, MEMBER), attr),
         # and _get_name(nd.target) is None for the inner trailer, so this must run

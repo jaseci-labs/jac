@@ -98,7 +98,12 @@ def _inject_shared_init(
 ) -> tuple[str, list[str]] {
     init_calls: list[str] = [];
     # This module's own glob-init (NaIRGenPass always emits it when present).
-    if "@__jac_glob_init(" in llvm_ir_str {
+    # LLVM quotes the symbol ("define void @\"__jac_glob_init\"()") because the
+    # name is not a bare IR identifier, so check both the quoted and unquoted
+    # forms -- matching the transitive-source branch below. Checking only the
+    # unquoted form let `__jac_shared_init` be emitted empty, leaving global
+    # clib structs uninitialized (NULL) and segfaulting on first field access.
+    if ('@"__jac_glob_init"' in llvm_ir_str) or ("@__jac_glob_init(" in llvm_ir_str) {
         init_calls.append("  call void @__jac_glob_init()");
     }
     import from jaclang.jac0core.codeinfo { native_safe_sym }
