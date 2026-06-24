@@ -45,9 +45,11 @@ fn llvmCacheDir(b: *std.Build, target: std.Build.ResolvedTarget) ?[]const u8 {
     return b.fmt("{s}/{s}", .{ LLVM_CACHE_BASE, dirname });
 }
 
-// The built LLVMPY_* shim: `lib` is bundled into the payload (--shim); `place`
-// writes it into the source tree for the editable dev loop.
-const Shim = struct { lib: *std.Build.Step.Compile, place: *std.Build.Step };
+// The built LLVMPY_* shim: `bin` is bundled into the payload (--shim); `place`
+// writes it into the source tree for the editable dev loop. `bin` is a LazyPath
+// (not a *Compile) so the Linux `addLibrary` path and the macOS system-`c++`
+// link path can both feed it through the same mkpayload/place plumbing.
+const Shim = struct { bin: std.Build.LazyPath, place: *std.Build.Step };
 
 pub fn build(b: *std.Build) void {
     // Build the launcher for a BASELINE CPU of the host arch, not the build
@@ -164,7 +166,7 @@ pub fn build(b: *std.Build) void {
         // llvmlite wheel; --skip-precompile drops the JIR precompile (fast
         // wheel-free link validation; first run compiles modules on demand).
         if (jacllvm) |shim| {
-            mk.addPrefixedFileArg("--shim=", shim.lib.getEmittedBin());
+            mk.addPrefixedFileArg("--shim=", shim.bin);
             // A plain `zig build` also drops the shim into the source tree so the
             // editable dev loop works without any manual step.
             b.getInstallStep().dependOn(shim.place);
@@ -246,52 +248,50 @@ fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     var dir = b.build_root.handle.openDir(io, libdir, .{ .iterate = true }) catch return null;
     defer dir.close(io);
 
-    const mod = b.createModule(.{
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-        .link_libcpp = true,
-    });
     // The shim wraps LLVM's C++ API; CMake builds it C++17, no-RTTI/exceptions.
-    mod.addCSourceFiles(.{
-        .root = b.path("native"),
-        .files = &.{
-            "assembly.cpp",       "bitcode.cpp",        "config.cpp",
-            "core.cpp",           "custom_passes.cpp",  "dylib.cpp",
-            "executionengine.cpp", "initfini.cpp",      "linker.cpp",
-            "memorymanager.cpp",  "module.cpp",         "newpassmanagers.cpp",
-            "object_file.cpp",    "orcjit.cpp",         "targets.cpp",
-            "type.cpp",           "value.cpp",
-        },
-        .flags = &.{ "-std=c++17", "-fno-rtti", "-fno-exceptions", "-DNDEBUG" },
-    });
-    mod.addIncludePath(.{ .cwd_relative = b.fmt("{s}/include", .{llvm_dir}) });
+    // (jac/native/CMakeLists.txt: add_library(llvmlite SHARED ...)).
+    const shim_srcs = [_][]const u8{
+        "assembly.cpp",        "bitcode.cpp",       "config.cpp",
+        "core.cpp",            "custom_passes.cpp", "dylib.cpp",
+        "executionengine.cpp", "initfini.cpp",      "linker.cpp",
+        "memorymanager.cpp",   "module.cpp",        "newpassmanagers.cpp",
+        "object_file.cpp",     "orcjit.cpp",        "targets.cpp",
+        "type.cpp",            "value.cpp",
+    };
+    const shim_flags = [_][]const u8{ "-std=c++17", "-fno-rtti", "-fno-exceptions", "-DNDEBUG" };
 
-    const lib = b.addLibrary(.{ .name = "jacllvm", .linkage = .dynamic, .root_module = mod });
+    const bin: std.Build.LazyPath = if (target.result.os.tag == .macos)
+        macosShim(b, target, optimize, &dir, llvm_dir, libdir, &shim_srcs, &shim_flags)
+    else blk: {
+        const mod = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .link_libcpp = true,
+        });
+        mod.addCSourceFiles(.{ .root = b.path("native"), .files = &shim_srcs, .flags = &shim_flags });
+        mod.addIncludePath(.{ .cwd_relative = b.fmt("{s}/include", .{llvm_dir}) });
 
-    // macOS: Zig's self-hosted Mach-O linker rejects some object members in
-    // LLVM's release archives ("unknown cpu architecture: 0"). LLD's Mach-O
-    // backend (bundled with Zig) links LLVM's own archives cleanly, so force it
-    // there. Linux keeps its default linker -- the path that already builds and
-    // is exercised in CI.
-    if (target.result.os.tag == .macos) lib.use_lld = true;
+        const lib = b.addLibrary(.{ .name = "jacllvm", .linkage = .dynamic, .root_module = mod });
 
-    // Link every LLVM static archive; the linker drops what the shim never
-    // references (host-only pruning of the archive set is a size follow-up).
-    var it = dir.iterate();
-    while (it.next(io) catch @panic("jacllvm: lib iterate failed")) |entry| {
-        if (entry.kind != .file) continue;
-        if (std.mem.startsWith(u8, entry.name, "libLLVM") and std.mem.endsWith(u8, entry.name, ".a")) {
-            mod.addObjectFile(.{ .cwd_relative = b.fmt("{s}/{s}", .{ libdir, entry.name }) });
+        // Link every LLVM static archive; the linker drops what the shim never
+        // references (host-only pruning of the archive set is a size follow-up).
+        var it = dir.iterate();
+        while (it.next(io) catch @panic("jacllvm: lib iterate failed")) |entry| {
+            if (entry.kind != .file) continue;
+            if (std.mem.startsWith(u8, entry.name, "libLLVM") and std.mem.endsWith(u8, entry.name, ".a")) {
+                mod.addObjectFile(.{ .cwd_relative = b.fmt("{s}/{s}", .{ libdir, entry.name }) });
+            }
         }
-    }
-    // LLVM's system deps. zstd must resolve to the shared lib: the system static
-    // libzstd.a is non-PIC and cannot link into a shared object. linkSystemLibrary
-    // (preferred dynamic) lets the linker find it portably via its search path,
-    // instead of a hardcoded Debian/Ubuntu multiarch .so path.
-    mod.linkSystemLibrary("z", .{});
-    mod.linkSystemLibrary("xml2", .{});
-    mod.linkSystemLibrary("zstd", .{ .preferred_link_mode = .dynamic });
+        // LLVM's system deps. zstd must resolve to the shared lib: the system static
+        // libzstd.a is non-PIC and cannot link into a shared object. linkSystemLibrary
+        // (preferred dynamic) lets the linker find it portably via its search path,
+        // instead of a hardcoded Debian/Ubuntu multiarch .so path.
+        mod.linkSystemLibrary("z", .{});
+        mod.linkSystemLibrary("xml2", .{});
+        mod.linkSystemLibrary("zstd", .{ .preferred_link_mode = .dynamic });
+        break :blk lib.getEmittedBin();
+    };
 
     // Also write the built shim back into the source tree (gitignored) so the
     // editable dev loop -- which runs jaclang from source, not from the binary's
@@ -304,12 +304,92 @@ fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
         else => "libjacllvm.so",
     };
     const place = b.addUpdateSourceFiles();
-    place.addCopyFileToSource(lib.getEmittedBin(), b.fmt("jaclang/compiler/passes/native/llvm/{s}", .{shim_file}));
+    place.addCopyFileToSource(bin, b.fmt("jaclang/compiler/passes/native/llvm/{s}", .{shim_file}));
 
     const jacllvm_step = b.step("jacllvm", "Build the LLVMPY_* shim (jac/native), static-link LLVM, place it in-tree");
-    jacllvm_step.dependOn(&b.addInstallArtifact(lib, .{}).step);
+    jacllvm_step.dependOn(&b.addInstallLibFile(bin, shim_file).step);
     jacllvm_step.dependOn(&place.step);
-    return .{ .lib = lib, .place = &place.step };
+    return .{ .bin = bin, .place = &place.step };
+}
+
+/// macOS link path for the LLVMPY_* shim. Zig 0.16 cannot link LLVM's official
+/// macOS-ARM64 release archives: its self-hosted Mach-O linker rejects edge-case
+/// object members ("unknown cpu architecture: 0") and it has no LLD Mach-O
+/// backend ("using LLD to link macho files is unsupported"). So link with Apple
+/// `clang++` / `ld64` -- the toolchain those archives were built with, exactly as
+/// llvmlite does (jac/native/CMakeLists.txt). Compile + link in one `c++` system
+/// command: the shim .cpp are passed directly (so ld64 keeps their LLVMPY_*
+/// symbols rather than pruning them as it would from an archive), then
+/// `-exported_symbol,_LLVMPY_*` restricts the dylib's export list to the shim API
+/// (matching the CMake APPLE branch). Returns the emitted dylib as a LazyPath.
+fn macosShim(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    dir: *std.Io.Dir,
+    llvm_dir: []const u8,
+    libdir: []const u8,
+    shim_srcs: []const []const u8,
+    shim_flags: []const []const u8,
+) std.Build.LazyPath {
+    const io = b.graph.io;
+    const cc = b.addSystemCommand(&.{"c++"});
+    cc.addArg("-dynamiclib");
+    // Target the resolved arch explicitly rather than the host c++'s default, so a
+    // Rosetta/emulated shell can't produce an x86_64 dylib against arm64 archives.
+    cc.addArgs(&.{ "-arch", switch (target.result.cpu.arch) {
+        .aarch64 => "arm64",
+        .x86_64 => "x86_64",
+        else => @panic("jacllvm: unsupported macOS arch for the c++ shim link"),
+    } });
+    // Respect -Doptimize the way the Linux (Zig addLibrary) path does.
+    cc.addArg(switch (optimize) {
+        .Debug => "-O0",
+        .ReleaseSafe => "-O2",
+        .ReleaseFast => "-O3",
+        .ReleaseSmall => "-Oz",
+    });
+    // Match the CMake visibility preset: hide everything, the LLVMPY_* API is
+    // annotated default-visibility (native/core.h API_EXPORT) so it stays exported.
+    cc.addArgs(&.{ "-fvisibility=hidden", "-fvisibility-inlines-hidden" });
+    cc.addArgs(shim_flags);
+    cc.addArg(b.fmt("-I{s}/include", .{llvm_dir}));
+    // Shim sources passed directly (not as a .a) so ld64 keeps every LLVMPY_*.
+    for (shim_srcs) |f| cc.addFileArg(b.path(b.fmt("native/{s}", .{f})));
+    // Link every LLVM static archive; ld64 drops what the shim never references.
+    var it = dir.iterate();
+    while (it.next(io) catch @panic("jacllvm: lib iterate failed")) |entry| {
+        if (entry.kind != .file) continue;
+        if (std.mem.startsWith(u8, entry.name, "libLLVM") and std.mem.endsWith(u8, entry.name, ".a")) {
+            cc.addFileArg(.{ .cwd_relative = b.fmt("{s}/{s}", .{ libdir, entry.name }) });
+        }
+    }
+    // The LLVM release archives are ThinLTO bitcode, so ld64 must lower them to
+    // native code at link time via libLTO. Apple's bundled libLTO tracks Xcode and
+    // is too old on the CI runners ("Invalid summary version 12, should be in
+    // [1-10]" -> segfault), so point ld64 at the release's OWN libLTO.dylib (kept
+    // by payload.zig extractLlvmSubset) -- it matches the bitcode it produced.
+    // This is link-time only; the output dylib gains no libLTO runtime dep.
+    //
+    // The path MUST be absolute: ld64 silently falls back to its default libLTO
+    // when -lto_library can't be resolved, and a relative path is not reliably
+    // resolved from ld's cwd. Set LIBLTO_PATH too -- the env override ld honors
+    // most reliably across ld64 / ld-prime.
+    const lto_dylib = b.fmt("{s}/lib/libLTO.dylib", .{llvm_dir});
+    const lto_abs = if (std.fs.path.isAbsolute(lto_dylib)) lto_dylib else b.pathFromRoot(lto_dylib);
+    cc.setEnvironmentVariable("LIBLTO_PATH", lto_abs);
+    cc.addPrefixedFileArg("-Wl,-lto_library,", .{ .cwd_relative = lto_abs });
+    // LLVM's system deps. zstd comes from Homebrew (not on the default search
+    // path); z/xml2 are in the macOS SDK, and clang++ links libc++ itself.
+    cc.addArgs(&.{ "-lz", "-lxml2" });
+    // Homebrew's prefix is /opt/homebrew on Apple Silicon, /usr/local on Intel;
+    // HOMEBREW_PREFIX overrides both for a custom install.
+    const brew = b.graph.environ_map.get("HOMEBREW_PREFIX") orelse
+        (if (target.result.cpu.arch == .aarch64) "/opt/homebrew" else "/usr/local");
+    cc.addArgs(&.{ b.fmt("-I{s}/opt/zstd/include", .{brew}), b.fmt("-L{s}/opt/zstd/lib", .{brew}), "-lzstd" });
+    cc.addArgs(&.{ "-Wl,-exported_symbol,_LLVMPY_*", "-Wl,-install_name,@rpath/libjacllvm.dylib" });
+    cc.addArg("-o");
+    return cc.addOutputFileArg("libjacllvm.dylib");
 }
 
 fn addTests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {

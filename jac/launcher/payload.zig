@@ -215,7 +215,13 @@ fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map
     const rel = llvmRelease() orelse
         die("fetch-llvm: no pinned LLVM release for this host ({s}-{s}); add a row to llvmRelease().", .{ @tagName(builtin.cpu.arch), @tagName(builtin.os.tag) });
     const asset = try std.fmt.allocPrint(a, "{s}.tar.xz", .{rel.dirname});
-    const marker = try std.fmt.allocPrint(a, "{s}/{s}/lib/libLLVMCore.a", .{ dest, rel.dirname });
+    // Presence marker / success check. On macOS the shim link needs the release's
+    // own libLTO.dylib (the LLVM release archives are ThinLTO bitcode; ld64 lowers
+    // them to native code via this version-matched libLTO -- see build.zig
+    // macosShim and #6938), so require it there. This also self-heals an older
+    // cache that predates keeping libLTO.dylib: a missing marker re-fetches.
+    const marker_lib = if (builtin.os.tag == .macos) "libLTO.dylib" else "libLLVMCore.a";
+    const marker = try std.fmt.allocPrint(a, "{s}/{s}/lib/{s}", .{ dest, rel.dirname, marker_lib });
     if (fileExists(io, marker)) {
         log("fetch-llvm: already present at {s}/{s}", .{ dest, rel.dirname });
         return;
@@ -260,14 +266,16 @@ fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map
         log("fetch-llvm: tolerated benign post-extract error: {s}", .{@errorName(err)});
     };
 
-    if (!fileExists(io, marker)) die("fetch-llvm: extract produced no libLLVMCore.a", .{});
+    if (!fileExists(io, marker)) die("fetch-llvm: extract produced no {s}", .{marker_lib});
     log("fetch-llvm: ready at {s}/{s}", .{ dest, rel.dirname });
 }
 
 /// Stream a decompressed LLVM release tar and write only the entries the shim
-/// needs -- `*/include/**` headers and `*/lib/libLLVM*.a` static archives --
-/// skipping everything else (bin/ clang+tools, clang/LTO libs). Unkept entries
-/// are discarded by the iterator, so we never materialize the ~10 GB we drop.
+/// needs -- `*/include/**` headers, `*/lib/libLLVM*.a` static archives, and
+/// `*/lib/libLTO.dylib` (the macOS shim link lowers the release's ThinLTO bitcode
+/// archives to native code through this libLTO; see build.zig macosShim, #6938) --
+/// skipping everything else (bin/ clang+tools, clang/LTO .a). Unkept entries are
+/// discarded by the iterator, so we never materialize the ~10 GB we drop.
 fn extractLlvmSubset(io: Io, dir: Dir, reader: *Io.Reader) !void {
     var name_buf: [Dir.max_path_bytes]u8 = undefined;
     var link_buf: [Dir.max_path_bytes]u8 = undefined;
@@ -278,7 +286,8 @@ fn extractLlvmSubset(io: Io, dir: Dir, reader: *Io.Reader) !void {
     while (try it.next()) |file| {
         const keep = file.kind == .file and
             (std.mem.indexOf(u8, file.name, "/include/") != null or
-                (std.mem.indexOf(u8, file.name, "/lib/libLLVM") != null and std.mem.endsWith(u8, file.name, ".a")));
+                (std.mem.indexOf(u8, file.name, "/lib/libLLVM") != null and std.mem.endsWith(u8, file.name, ".a")) or
+                std.mem.endsWith(u8, file.name, "/lib/libLTO.dylib"));
         if (!keep) {
             // Read+discard ANY unwanted content (file, hard link, ...) via a
             // discarding writer. The iterator's own skip path calls
@@ -287,11 +296,14 @@ fn extractLlvmSubset(io: Io, dir: Dir, reader: *Io.Reader) !void {
             if (file.size > 0) try it.streamRemaining(file, &discarding.writer);
             continue;
         }
-        const fs_file = dir.createFile(io, file.name, .{ .exclusive = true }) catch |err| blk: {
+        // Overwrite rather than fail on an existing file, so re-extracting over a
+        // stale tree (e.g. an older cache that predates keeping libLTO.dylib) is
+        // idempotent instead of dying with PathAlreadyExists.
+        const fs_file = dir.createFile(io, file.name, .{}) catch |err| blk: {
             if (err != error.FileNotFound) return err;
             const parent = std.fs.path.dirname(file.name) orelse return err;
             try dir.createDirPath(io, parent);
-            break :blk try dir.createFile(io, file.name, .{ .exclusive = true });
+            break :blk try dir.createFile(io, file.name, .{});
         };
         defer fs_file.close(io);
         var fw = fs_file.writer(io, &content_buf);
