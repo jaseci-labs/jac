@@ -103,8 +103,12 @@ if [ "$PRECOMPILE" = "1" ]; then
     # DONTWRITEBYTECODE so importing _jac_finder/jaclang here doesn't litter
     # `site/__pycache__` -- its presence makes the later `pip install --target`
     # refuse the directory. JIR generation is independent of .pyc writing.
+    # tee (not >) so per-file progress streams live to the terminal under
+    # `zig build -Dpayload-progress` while still capturing the full log for the
+    # JIR-count check and the failure-tail below. pipefail would surface the
+    # precompiler's by-design non-zero exit, so guard the whole pipeline.
     PYTHONHOME="$PBS/install" PYTHONPATH="$site" PYTHONUTF8=1 PYTHONDONTWRITEBYTECODE=1 HOME="$WORK" PATH=/usr/bin:/bin \
-      "$PY" -S "$boot" >"$WORK/precompile.log" 2>&1 || true
+      "$PY" -S "$boot" 2>&1 | tee "$WORK/precompile.log" || true
     jir=$( { find "$site/jaclang/_precompiled" -name '*.jir' 2>/dev/null || true; } | wc -l | tr -d ' ')
     skipped=$(grep -cE 'Error: FAIL:' "$WORK/precompile.log" 2>/dev/null || echo 0)
     if [ "${jir:-0}" -ge 300 ]; then

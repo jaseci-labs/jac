@@ -190,6 +190,14 @@ def main {
         jir_rel = rel.with_suffix(".jir");
         jir_path = out_dir / jir_rel;
 
+        # Live, single-line progress (overwrites in place on a tty; harmless
+        # plain lines through a pipe). Use stderr + explicit flush -- stderr is
+        # line-buffered, so a \r without \n would otherwise never appear.
+        done = compiled + failed;
+        label = str(rel)[:60].ljust(60);
+        sys.stderr.write(f"\r  [{done + 1}/{len(jac_files)}] {label}");
+        sys.stderr.flush();
+
         try {
             bytecode = compile_and_extract(jac_path);
             if bytecode is None {
@@ -216,6 +224,10 @@ def main {
             failed += 1;
         }
     }
+
+    # Close off the in-place progress line before the summary.
+    sys.stderr.write("\n");
+    sys.stderr.flush();
 
     console.print(
         f"\nDone! Compiled {compiled}/{len(jac_files)} modules ({failed} failed)"

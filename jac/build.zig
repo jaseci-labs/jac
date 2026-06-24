@@ -68,6 +68,14 @@ pub fn build(b: *std.Build) void {
         const fetch_ts = b.addSystemCommand(&.{ "bash", "launcher/fetch-typeshed.sh" });
         fetch_ts.has_side_effects = true;
         const mk = b.addSystemCommand(&.{ "bash", "launcher/mkpayload.sh", pbs_python, b.pathFromRoot(".") });
+        // By default this step is cacheable (output-file arg), so Zig CAPTURES its
+        // stdio and only prints it on failure -- the "==>" logs and zstd --progress
+        // bar stay hidden. `-Dpayload-progress` flips stdio to .inherit so the
+        // payload build streams live; the tradeoff is .inherit marks the step as
+        // having side-effects, so it ALWAYS repacks (no caching) while the flag is on.
+        if (b.option(bool, "payload-progress", "Stream the payload build (mkpayload.sh) live; disables its caching") orelse false) {
+            mk.stdio = .inherit;
+        }
         mk.step.dependOn(&fetch.step);
         mk.step.dependOn(&fetch_ts.step);
         const out = mk.addOutputFileArg("payload.tar.zst");

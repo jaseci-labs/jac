@@ -23,7 +23,7 @@ cd "$(git rev-parse --show-toplevel)"
 # Build the binary (needs zig 0.16.0 + zstd). zig build fetches the pinned
 # typeshed stdlib stubs itself (launcher/fetch-typeshed.sh), so there is no
 # submodule to check out.
-( cd jac && zig build )
+( cd jac && zig build -Dpayload-progress )
 
 JAC_BIN="$PWD/jac/zig-out/bin/jac"
 echo "Built: $JAC_BIN"
