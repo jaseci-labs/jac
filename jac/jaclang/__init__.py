@@ -28,6 +28,16 @@ sys.modules.setdefault("jaclang.runtimelib.runtime", _runtime_mod)
 
 plugin_manager.register(JacRuntimeImpl)
 
+# Put the current project's .jac/venv on sys.path BEFORE enumerating plugins, so
+# per-project plugins (jac install [-e] <pkg>) are discovered. In the single
+# binary this already ran via sitecustomize during interpreter startup; this call
+# is the library-use fallback (plain `import jaclang` with no sitecustomize). The
+# helper is idempotent and uses addsitedir, so editable .pth links are processed.
+with __import__("contextlib").suppress(Exception):
+    import _jac_finder as _jf
+
+    _jf.add_project_venv_to_path()
+
 # Load external plugins with disabling support
 # Disabling can be configured via JAC_DISABLED_PLUGINS env var or jac.toml [plugins].disabled
 # Use "*" to disable all external plugins, "package:*" for all from a package,

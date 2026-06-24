@@ -20,6 +20,10 @@ glob FIXTURES = os.path.join(
      );
 
 test "synced to latest py ast" {
+    # Python 3.14 moved the unparser to `_ast_unparse` and binds
+    # `ast._Unparser` lazily on the first `unparse()` call; trigger that so the
+    # introspection works on 3.13 and 3.14+ alike.
+    py_ast.unparse(py_ast.parse(""));
     unparser_cls = py_ast._Unparser;
     visit_methods = (
         [
@@ -39,7 +43,14 @@ test "synced to latest py ast" {
             pass_func_names.append(name.replace("proc_", ""));
         }
     }
+    # Handlers for ast nodes introduced in a newer Python than the one running
+    # this test are forward-compatible, not stale -- exempt them from the
+    # "extra handler" direction. (e.g. interactive + PEP 750 t-strings are 3.14.)
+    forward_compat = {"interactive", "template_str", "interpolation"};
     for name in pass_func_names {
+        if name in forward_compat {
+            continue;
+        }
         assert name in node_names , f"Pass func {name} not in py_ast nodes";
     }
     for name in node_names {
@@ -111,6 +122,41 @@ test "py2jac escape sequences" {
     assert "{{literal braces}}" in code;
     assert "# not a comment" in code;
     assert "\\x00" in code;
+}
+
+"""Implicit string concat across a backslash line-continuation must emit valid Jac (#6928)."""
+test "py2jac line continuation string concat" {
+    with open(os.path.join(FIXTURES, "py2jac_line_continuation.py")) as f {
+        file_source = f.read();
+    }
+    code = PyastBuildPass(
+        ir_in=PythonModuleAst(
+            py_ast.parse(file_source),
+            orig_src=Source(file_source, "py2jac_line_continuation.py")
+        ),
+        prog=JacProgram()
+    ).ir_out.unparse(
+        requires_format=False
+    );
+
+    # The source `\` line-continuation must not leak into the emitted Jac: a
+    # backslash immediately followed by a newline is only valid *inside* a string
+    # literal, and this fixture deliberately has none of those.
+    assert "\\\n" not in code , f"Stray line-continuation leaked into:\n{code}";
+
+    # The emitted Jac must round-trip: re-parsing it produces no errors. This is
+    # the layer where the leaked `\` surfaced as "Unexpected character: '\'".
+    prog = JacProgram.jac_str_formatter(
+        source_str=code, file_path="py2jac_line_continuation.py", auto_lint=False
+    );
+    assert len(prog.errors_had) == 0 , (
+        f"Re-parse errors: {[str(e) for e in prog.errors_had]}\ncode:\n{code}"
+    );
+
+    # The folded literals survive as adjacent Jac strings with escapes intact.
+    formatted = prog.mod.main.gen.jac;
+    assert '"abc" "def"' in formatted , f"Expected folded concat in:\n{formatted}";
+    assert "line two\\n" in formatted , f"Expected preserved \\n escape in:\n{formatted}";
 }
 
 """Test BinOp chain flattening and mixed-precedence grouping."""

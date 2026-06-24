@@ -357,6 +357,79 @@ test "guardrail: import sys is not rejected" {
     )}";
 }
 
+# A3 (issue #6930): a field whose type the native backend cannot model lowers
+# to a nullable opaque slot (null at native construction) instead of rejecting
+# the declaration. A type-only foreign import that merely NAMES that type
+# (`import ast as ast3;` used only in the annotation `ast3.AST | None`) is
+# tolerated -- it is never lowered to a runtime value. Neither the field nor the
+# import may trigger E5090.
+test "guardrail: foreign-typed field lowers to an opaque slot, not E5090" {
+    prog = compile_na_inline(
+        "opaque_foreign_field",
+        "import ast as ast3;\n"
+        "obj Carrier {\n"
+        "    has name: str,\n"
+        "        py_ctx: ast3.AST | None = None;\n"
+        "    def label -> str { return self.name; }\n"
+        "}\n"
+        "with entry { print(Carrier(name=\"x\").label()); }\n"
+    );
+    assert not has_error_code(prog, "E5090") , f"Foreign-typed field / type-only import triggered E5090: {fmt_errors(
+        prog
+    )}";
+    # Same must hold at check time (codegen OFF), so `jac check` and
+    # `jac nacompile` agree.
+    check_prog = check_na_inline(
+        "opaque_foreign_field",
+        "import ast as ast3;\n"
+        "obj Carrier {\n"
+        "    has name: str,\n"
+        "        py_ctx: ast3.AST | None = None;\n"
+        "    def label -> str { return self.name; }\n"
+        "}\n"
+        "with entry { print(Carrier(name=\"x\").label()); }\n"
+    );
+    assert not has_error_code(check_prog, "E5090") , f"Foreign-typed field / type-only import triggered E5090 at check time: {fmt_errors(
+        check_prog
+    )}";
+}
+
+# The opaque slot is null and never dereferenced on the native path. If native
+# code DOES dereference it (reads an attribute off the foreign value), that must
+# still raise E5090 -- the "error only when the opaque value is actually used"
+# half of A3. A type-only import stays type-only here: `ast3` appears solely in
+# the annotation, never as a runtime value.
+test "guardrail: dereferencing an opaque foreign field is rejected" {
+    prog = compile_na_inline(
+        "opaque_foreign_deref",
+        "import ast as ast3;\n"
+        "obj Carrier {\n"
+        "    has node: ast3.AST | None = None;\n"
+        "    def line -> int { return self.node.lineno; }\n"
+        "}\n"
+        "with entry { print(Carrier().line()); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for dereference of an opaque foreign field, got: {fmt_errors(
+        prog
+    )}";
+}
+
+# A foreign import used as a RUNTIME VALUE (not merely as a type) stays rejected:
+# the type-only tolerance must not become a blanket import allowance (issue
+# #6357). `ast3.parse(...)` calls into the dropped module and would lower to
+# garbage.
+test "guardrail: foreign import used as a runtime value is still rejected" {
+    prog = compile_na_inline(
+        "foreign_runtime_use",
+        "import ast as ast3;\n"
+        "def f -> int { x = ast3.parse(\"1\"); return 0; }\n"
+        "with entry { print(f()); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for runtime use of a foreign import, got: {fmt_errors(
+        prog
+    )}";
+}
+
 # Edge disconnect has no native lowering (connect and traversal do - they
 # ride the OSP kernel adjacency). The capability sweep rejects it
 # pre-codegen.

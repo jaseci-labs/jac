@@ -462,9 +462,11 @@ verbatim into the Python AST (server backend only).
 
 ### Python importing Jac
 
-A meta-path finder makes `.jac` modules first-class to CPython. The `jac`
-binary's boot sequence runs `import _jac_finder; _jac_finder.install()` at
-interpreter startup, installing `JacMetaImporter`
+A lazily-installed meta-path finder makes `.jac` modules first-class to
+CPython. The `jac` binary's launcher runs `import _jac_finder;
+_jac_finder.install()` at interpreter startup (see `launcher/launcher.zig`
+`BOOT_SRC`); on the first `.jac` import the lazy finder bootstraps jaclang and
+installs `JacMetaImporter`
 ([`meta_importer.py`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/meta_importer.py)).
 Its `find_spec` probes for `__init__.jac` / `<name>.jac` / `<name>.sv.jac`,
 and `exec_module` runs `exec(codeobj, module.__dict__)` -- so a compiled Jac
@@ -644,7 +646,7 @@ RPC to the backend). It is the matrix in miniature.
 | `na ↔ C` | `compiler/targets/{foreign,abi}.jac`; `passes/native/na_ir_gen_pass.impl/{clib_abi,clib_vtable}.impl.jac` |
 | `na → C host` | `cli/commands/impl/nacompile.impl.jac` (`_inject_shared_init`); `passes/native/impl/{elf,macho,pe}_linker.impl.jac` |
 | `na ↔ cl` (wasm) | `passes/native/{wasm_build,wasm_linker}.jac`; `runtimelib/client/impl/compiler.impl.jac` |
-| Python interop | [`meta_importer.py`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/meta_importer.py); `_jac_finder.py`; `passes/impl/pyast_gen_pass.impl.jac` (`exit_import`, `exit_py_inline_code`) |
+| Python interop | [`meta_importer.py`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/meta_importer.py); `_jac_finder.py` (launcher `BOOT_SRC`); `passes/impl/pyast_gen_pass.impl.jac` (`exit_import`, `exit_py_inline_code`) |
 | Marshalling | `runtimelib/impl/{serializer,server,transport}.impl.jac` |
 | Capability boundary | `compiler/passes/main/capability_check_pass.jac`; [`diagnostics.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/diagnostics.jac) (`E5090`) |
 | Desktop | `runtimelib/client/targets/desktop/native_desktop_target.jac` (+ impl); `runtimelib/client/targets/desktop/native/webview/webview.na.jac`; `runtimelib/client/targets/registry.jac` |

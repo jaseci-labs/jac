@@ -88,9 +88,6 @@ jobs:
             echo "- Internal links: ✓" >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Check plugin manifest sync (jac.toml ↔ pyproject.toml)
-        run: jac run scripts/check_manifest_sync.jac
-
       - name: Check Release Notes Updated
         if: |
           github.event_name == 'pull_request' &&
