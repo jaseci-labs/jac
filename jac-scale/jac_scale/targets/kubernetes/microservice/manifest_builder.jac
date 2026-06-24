@@ -36,11 +36,8 @@ obj MicroserviceManifestBuilder {
         # image (no docker build/push). Retained as a field for callers/tests;
         # always treated as true.
         no_image: bool = True,
-        # no-image + experimental: the bootstrap git-clones the jaseci
-        # repo/branch (k8s_config.jaseci_*) into a shared venv instead of
-        # installing pinned releases from PyPI - run unreleased jac in-pod.
-        experimental: bool = False,
         project_dir: str = "",
+        _bundle_object_key: str = "",
         # The app's [plugins.scale.microservices] config. When set (e.g. a
         # platform deploying a different app's fleet), it's used instead of the
         # deploying process's own jac.toml via get_scale_config().
@@ -58,6 +55,11 @@ obj MicroserviceManifestBuilder {
         } except Exception {
             return {};
         }
+    }
+
+    """Return the bundle object key recorded by prepare(); empty before first call."""
+    def _injector_object_key -> str {
+        return self._bundle_object_key;
     }
 
     """Lift pod-specs into full Deployment + Service + HPA + PDB
@@ -91,16 +93,27 @@ obj MicroserviceManifestBuilder {
             "pdbs": pdbs,
             "pod_specs": pod_specs
         };
-        # Pack local source into a ConfigMap mounted by every pod's bootstrap
-        # initContainer (see _build_pod_spec).
-        import from jac_scale.targets.kubernetes.microservice.source_bundle {
-            build_source_configmap
-        }
-        bundle["source_configmap"] = build_source_configmap(
+        # Publish source to the bundle PVC via the injector and record its
+        # manifests (the PVC itself) so the deploy path can apply them.
+        import from jac_scale.injector.pvc_injector { PvcInjector }
+        injector = PvcInjector();
+        injector.prepare(
             k8s_safe_name(self.k8s_config.app_name),
             self.k8s_config.namespace,
             self.project_dir or app_config.code_folder
         );
+        self._bundle_object_key = injector._object_key;
+        bundle["injector"] = injector;
+        for manifest in injector.extra_manifests(
+            k8s_safe_name(self.k8s_config.app_name),
+            self.k8s_config.namespace
+        ) {
+            if manifest.get("kind") == "PersistentVolumeClaim" {
+                pvcs_from_injector = bundle.get("pvcs", {});
+                pvcs_from_injector[manifest["metadata"]["name"]] = manifest;
+                bundle["pvcs"] = pvcs_from_injector;
+            }
+        }
         pvcs = self._build_shared_pvc_manifests();
         if pvcs {
             bundle["pvcs"] = pvcs;
@@ -878,39 +891,20 @@ obj MicroserviceManifestBuilder {
         # deps the bootstrap initContainer installed under PYDEPS_DIR (added to
         # PATH/PYTHONPATH). entry["args"]'s `jac` then resolves to the
         # installed console script.
-        no_image_mounts: list[dict[str, any]] = [];
-        import from jac_scale.targets.kubernetes.microservice.source_bundle {
-            APP_VOLUME_NAME,
+        import from jac_scale.injector.bundle {
             APP_MOUNT_PATH,
-            PYDEPS_DIR,
-            VENV_DIR
+            PYDEPS_DIR
         }
         container["workingDir"] = APP_MOUNT_PATH;
-        if self.experimental {
-            # Run out of the shared venv the experimental bootstrap built
-            # (editable jac + plugins); no PYDEPS_DIR / PYTHONPATH override.
-            env_list.append({"name": "VIRTUAL_ENV", "value": VENV_DIR});
-            env_list.append(
-                {
-                    "name": "PATH",
-                    "value": f"{VENV_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
-                }
-            );
-        } else {
-            env_list.append({"name": "PYTHONPATH", "value": PYDEPS_DIR});
-            env_list.append(
-                {
-                    "name": "PATH",
-                    "value": f"{PYDEPS_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
-                }
-            );
-        }
-        no_image_mounts.append(
-            {"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH}
+        env_list.append({"name": "PYTHONPATH", "value": PYDEPS_DIR});
+        env_list.append(
+            {
+                "name": "PATH",
+                "value": f"{PYDEPS_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
+            }
         );
-        all_mounts = shared_mounts + no_image_mounts;
-        if all_mounts {
-            container["volumeMounts"] = all_mounts;
+        if shared_mounts {
+            container["volumeMounts"] = shared_mounts;
         }
         # envFrom for the user secret: created BEFORE Deployments in
         # apply_manifests so the secretRef resolves at pod startup.
@@ -925,42 +919,19 @@ obj MicroserviceManifestBuilder {
         if sa_name {
             spec["serviceAccountName"] = sa_name;
         }
-        all_volumes = list(shared_vols);
-        init_containers = list(self.deploy_context.init_containers);
-        import from jac_scale.targets.kubernetes.microservice.source_bundle {
-            APP_VOLUME_NAME,
-            SOURCE_VOLUME_NAME,
-            source_configmap_name,
-            build_bootstrap_init_container
-        }
-        all_volumes.append({"name": APP_VOLUME_NAME, "emptyDir": {}});
-        all_volumes.append(
-            {
-                "name": SOURCE_VOLUME_NAME,
-                "configMap": {
-                    "name": source_configmap_name(
-                        k8s_safe_name(self.k8s_config.app_name)
-                    )
-                }
-            }
-        );
-        # Bootstrap runs first: extract source + install jac before the
-        # db-wait init containers (order is cosmetic; both must finish).
-        init_containers = [
-            build_bootstrap_init_container(
-                self.k8s_config.python_image,
-                experimental=self.experimental,
-                repo_url=self.k8s_config.jaseci_repo_url,
-                branch=self.k8s_config.jaseci_branch,
-                commit=self.k8s_config.jaseci_commit or ""
-            )
-        ] + init_containers;
-        if all_volumes {
-            spec["volumes"] = all_volumes;
-        }
-        if init_containers {
-            spec["initContainers"] = init_containers;
-        }
+        spec["volumes"] = list(shared_vols);
+        spec["initContainers"] = list(self.deploy_context.init_containers);
+        # Delegate volume + init-container wiring to the injector so the pod
+        # gets the source mounted and jac installed before the app starts.
+        import from jac_scale.injector.pvc_injector { PvcInjector }
+        injector = PvcInjector();
+        injector._object_key = self._injector_object_key();
+        spec["_jac_meta"] = {
+            "app_name": k8s_safe_name(self.k8s_config.app_name),
+            "namespace": self.k8s_config.namespace
+        };
+        spec = injector.mutate_pod_spec(spec, self.k8s_config.python_image);
+        spec.pop("_jac_meta", None);
         return spec;
     }
 

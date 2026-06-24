@@ -399,17 +399,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     _deploy_context first; direct callers (tests) get an empty context
     which produces pod specs without DB env / init containers."""
     def generate_manifests(app_config: AppConfig) -> dict[str, any] {
-        # no-image is the only path: pods run the generic python base +
-        # install jac at startup against ConfigMap-mounted source. Pass the
-        # base image straight through (the builder ignores it and uses
-        # python_image) and wire the source dir into the builder.
         builder = MicroserviceManifestBuilder(
             k8s_config=self.k8s_config,
             secrets=self.secrets,
             deploy_context=self._deploy_context,
             logger=self.logger,
             no_image=True,
-            experimental=app_config.experimental,
             project_dir=app_config.code_folder,
             microservices_config=self.microservices_config
         );
@@ -493,19 +488,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 self.logger.info(
                     f"Applied PVC for shared volume '{pvc_name}'",
                     {"name": pvc_manifest["metadata"]["name"]}
-                );
-            }
-        }
-
-        # no-image source ConfigMap must exist before the Deployments so the
-        # bootstrap initContainer can mount + extract it at pod startup.
-        source_cm = bundle.get("source_configmap");
-        if source_cm {
-            self._apply_or_replace_configmap(core_v1, namespace, source_cm);
-            if self.logger {
-                self.logger.info(
-                    f"Applied source ConfigMap (no-image mode)",
-                    {"name": source_cm["metadata"]["name"]}
                 );
             }
         }

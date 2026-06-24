@@ -172,45 +172,32 @@ def _scale_pre_hook(context: HookContext) -> None {
             return;
         }
 
-        experimental = context.get_arg("experimental", False);
         code_folder = os.path.relpath(code_folder);
         code_folder = pathlib.Path(code_folder).as_posix();
         base_file_path = os.path.basename(filename);
         # Resolve secrets from [plugins.scale.secrets] config
         deployment_target.secrets = scale_config.get_secrets_config();
-        # no-image is the only code-shipping path: copy local source into the
-        # cluster + install jac at pod startup on a generic Python base image
-        # (no docker build/push). Always enabled for the microservice target.
+        # PVC injection is the only code-shipping path; always enabled.
         no_image = target == "kubernetes-microservice";
         # Create app config
         app_config = AppConfig(
             code_folder=code_folder,
             file_name=base_file_path,
-            experimental=experimental,
             no_image=no_image
         );
         if no_image {
             deployment_target.no_image = True;
             console.warning(
-                "Copying local source into the cluster and installing jac at "
-                "pod startup. Development / preview only."
+                "Copying local source into the cluster via PVC and installing "
+                "jac at pod startup. Keep secrets in [plugins.scale.secrets] "
+                "(synced as a K8s Secret) or in .env, never inline in source."
             );
             console.warning(
                 "Set [plugins.scale.microservices] in jac.toml to configure "
                 "resources, scaling, ingress, and secrets before going to production."
             );
-            console.warning(
-                "Source is uploaded to a Kubernetes ConfigMap. Secret files "
-                "(.env, *.key/*.pem/*.crt, jac.toml) are NOT included; keep "
-                "secrets in [plugins.scale.secrets] (synced as a K8s Secret) "
-                "or in .env, never inline in committed source."
-            );
         }
-        if experimental {
-            console.print(
-                "Installing Jaseci packages from repository (experimental mode)..."
-            );
-        } elif target == "kubernetes-microservice" {
+        if target == "kubernetes-microservice" {
             console.print("Preparing microservice deployment...");
         } else {
             console.print("Installing Jaseci packages from PyPI...");
@@ -372,13 +359,6 @@ class JacCmd {
                     short=""  # Disable auto-generated -s (conflicts with --session)
                 ),
                 Arg.create(
-                    "experimental",
-                    typ=bool,
-                    default=False,
-                    help="Use experimental mode (install from repo instead of PyPI)",
-                    short="e"
-                ),
-                Arg.create(
                     "target",
                     typ=str,
                     default="kubernetes",
@@ -405,14 +385,6 @@ class JacCmd {
                     help="With --dry-run: also dump the raw multi-doc YAML stream (for `kubectl diff` or similar). Off by default; the card view above is the friendly summary",
                     short=""
                 ),
-                Arg.create(
-                    "no-image",
-                    typ=bool,
-                    default=False,
-                    help="Deprecated no-op: microservice deploys always copy local source into the cluster + install jac at pod startup (dev/preview only)",
-                    short=""
-                ),
-
             ],
             pre_hook=_scale_pre_hook,
             source="jac-scale"
