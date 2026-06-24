@@ -23,9 +23,27 @@
 
 const std = @import("std");
 
-// Where `zig build fetch-llvm` extracts the pinned LLVM (see payload.zig
-// LLVM_DIRNAME); the default -Dllvm-dir for the jacllvm shim.
-const LLVM_CACHE_DIR = ".llvm-build/LLVM-20.1.8-Linux-X64";
+// Where `zig build fetch-llvm` extracts the pinned LLVM -- one dir per host
+// platform (see payload.zig llvmRelease; keep the dirnames in sync). Used as the
+// default -Dllvm-dir for the jacllvm shim. Returns null for hosts we don't pin a
+// release for, so addLlvmShim degrades gracefully (the build then fails at
+// mkpayload with a "run `zig build fetch-llvm`" message).
+const LLVM_CACHE_BASE = ".llvm-build";
+fn llvmCacheDir(b: *std.Build, target: std.Build.ResolvedTarget) ?[]const u8 {
+    const dirname = switch (target.result.os.tag) {
+        .linux => switch (target.result.cpu.arch) {
+            .x86_64 => "LLVM-20.1.8-Linux-X64",
+            .aarch64 => "LLVM-20.1.8-Linux-ARM64",
+            else => return null,
+        },
+        .macos => switch (target.result.cpu.arch) {
+            .aarch64 => "LLVM-20.1.8-macOS-ARM64",
+            else => return null,
+        },
+        else => return null,
+    };
+    return b.fmt("{s}/{s}", .{ LLVM_CACHE_BASE, dirname });
+}
 
 // The built LLVMPY_* shim: `lib` is bundled into the payload (--shim); `place`
 // writes it into the source tree for the editable dev loop.
@@ -94,8 +112,8 @@ pub fn build(b: *std.Build) void {
     }
 
     // Standalone: download + extract the pinned LLVM for the jacllvm shim into
-    // .llvm-build/ (one-time, ~1.9 GB). After this, a plain `zig build` picks it
-    // up via LLVM_CACHE_DIR and ships the wheel-free binary.
+    // .llvm-build/ (one-time, ~1.5-2 GB per host). After this, a plain `zig build`
+    // picks it up via llvmCacheDir and ships the wheel-free binary.
     {
         const fetch_llvm = b.addRunArtifact(tool);
         fetch_llvm.addArgs(&.{ "fetch-llvm", b.pathFromRoot(".llvm-build") });
@@ -221,7 +239,8 @@ fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     // "run `zig build fetch-llvm`" message (so fetch-llvm itself still configures
     // before LLVM exists). The shim is required -- there is no wheel fallback.
     const llvm_dir = b.option([]const u8, "llvm-dir",
-        "Extracted LLVM 20.1.x dir (default: the fetch-llvm cache .llvm-build/...)") orelse LLVM_CACHE_DIR;
+        "Extracted LLVM 20.1.x dir (default: the fetch-llvm cache .llvm-build/...)") orelse
+        (llvmCacheDir(b, target) orelse return null);
     const io = b.graph.io;
     const libdir = b.fmt("{s}/lib", .{llvm_dir});
     var dir = b.build_root.handle.openDir(io, libdir, .{ .iterate = true }) catch return null;

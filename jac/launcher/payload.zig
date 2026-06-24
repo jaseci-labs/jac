@@ -63,10 +63,27 @@ const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", mkpayload, @"
 // LLVM release whose static archives the LLVMPY_* shim (jac/native) links
 // against. Must match the version the shim source (llvmlite 0.47.0) targets.
 const LLVM_TAG = "llvmorg-20.1.8";
-const LLVM_DIRNAME = "LLVM-20.1.8-Linux-X64";
-const LLVM_ASSET = LLVM_DIRNAME ++ ".tar.xz";
 const LLVM_BASE = "https://github.com/llvm/llvm-project/releases/download";
-const LLVM_SHA256 = "1ead36b3dfcb774b57be530df42bec70ab2d239fbce9889447c7a29a4ddc1ae6";
+
+// The release is selected per host: `dirname` is the tarball's top-level dir
+// (also the -Dllvm-dir basename in build.zig llvmCacheDir -- keep the two in
+// sync), and `sha256` is the .tar.xz digest from the GitHub release, verified
+// after download. Add a row to support another host platform.
+const LlvmRelease = struct { dirname: []const u8, sha256: []const u8 };
+fn llvmRelease() ?LlvmRelease {
+    return switch (builtin.os.tag) {
+        .linux => switch (builtin.cpu.arch) {
+            .x86_64 => .{ .dirname = "LLVM-20.1.8-Linux-X64", .sha256 = "1ead36b3dfcb774b57be530df42bec70ab2d239fbce9889447c7a29a4ddc1ae6" },
+            .aarch64 => .{ .dirname = "LLVM-20.1.8-Linux-ARM64", .sha256 = "b855cc17d935fdd83da82206b7a7cfc680095efd1e9e8182c4a05e761958bef8" },
+            else => null,
+        },
+        .macos => switch (builtin.cpu.arch) {
+            .aarch64 => .{ .dirname = "LLVM-20.1.8-macOS-ARM64", .sha256 = "a9a22f450d35f1f73cd61ab6a17c6f27d8f6051d56197395c1eb397f0c9bbec4" },
+            else => null,
+        },
+        else => null,
+    };
+}
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
@@ -193,25 +210,24 @@ fn fetchPbs(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []co
 /// into the LLVMPY_* shim. Idempotent (skips if already extracted). Mirrors
 /// fetch-pbs, but the LLVM asset is .tar.xz rather than .tar.zst.
 fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map, dest: []const u8) !void {
-    // The pinned asset (LLVM_DIRNAME/ASSET/SHA256) is Linux-x86_64-only. Fail
-    // loudly rather than silently fetching a mismatched 1.9 GB tarball on other
-    // hosts -- add a platform map (asset + sha per target) to support more.
-    if (builtin.cpu.arch != .x86_64 or builtin.os.tag != .linux) {
-        die("fetch-llvm: the pinned LLVM asset is {s} (x86_64-linux only); this host is {s}-{s}.", .{ LLVM_ASSET, @tagName(builtin.cpu.arch), @tagName(builtin.os.tag) });
-    }
-    const marker = try std.fmt.allocPrint(a, "{s}/{s}/lib/libLLVMCore.a", .{ dest, LLVM_DIRNAME });
+    // Select the release for this host (see llvmRelease). Fail loudly on an
+    // unsupported host rather than fetching a mismatched multi-GB tarball.
+    const rel = llvmRelease() orelse
+        die("fetch-llvm: no pinned LLVM release for this host ({s}-{s}); add a row to llvmRelease().", .{ @tagName(builtin.cpu.arch), @tagName(builtin.os.tag) });
+    const asset = try std.fmt.allocPrint(a, "{s}.tar.xz", .{rel.dirname});
+    const marker = try std.fmt.allocPrint(a, "{s}/{s}/lib/libLLVMCore.a", .{ dest, rel.dirname });
     if (fileExists(io, marker)) {
-        log("fetch-llvm: already present at {s}/{s}", .{ dest, LLVM_DIRNAME });
+        log("fetch-llvm: already present at {s}/{s}", .{ dest, rel.dirname });
         return;
     }
 
-    const url = try std.fmt.allocPrint(a, "{s}/{s}/{s}", .{ LLVM_BASE, LLVM_TAG, LLVM_ASSET });
+    const url = try std.fmt.allocPrint(a, "{s}/{s}/{s}", .{ LLVM_BASE, LLVM_TAG, asset });
     // JAC_LLVM_TARBALL points at a pre-downloaded release (offline/CI/air-gapped).
     const tarxz = if (env.get("JAC_LLVM_TARBALL")) |path| blk: {
         log("fetch-llvm: using local tarball {s}", .{path});
         break :blk try Dir.cwd().readFileAlloc(io, path, gpa, .unlimited);
     } else blk: {
-        log("fetch-llvm: downloading {s} (~1.9 GB, one-time)", .{LLVM_ASSET});
+        log("fetch-llvm: downloading {s} (~1.5-2 GB, one-time)", .{asset});
         break :blk try httpGetAlloc(io, gpa, url);
     };
     defer gpa.free(tarxz);
@@ -219,8 +235,8 @@ fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map
     // The static archives become host LLVM linked into the shipped shim, so a
     // swapped/MITM'd asset must not slip through.
     const actual = sha256Hex(tarxz);
-    if (!std.mem.eql(u8, &actual, LLVM_SHA256)) {
-        die("fetch-llvm: checksum mismatch for {s}\n  expected {s}\n  actual   {s}", .{ LLVM_ASSET, LLVM_SHA256, &actual });
+    if (!std.mem.eql(u8, &actual, rel.sha256)) {
+        die("fetch-llvm: checksum mismatch for {s}\n  expected {s}\n  actual   {s}", .{ asset, rel.sha256, &actual });
     }
 
     try Dir.cwd().createDirPath(io, dest);
@@ -245,7 +261,7 @@ fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map
     };
 
     if (!fileExists(io, marker)) die("fetch-llvm: extract produced no libLLVMCore.a", .{});
-    log("fetch-llvm: ready at {s}/{s}", .{ dest, LLVM_DIRNAME });
+    log("fetch-llvm: ready at {s}/{s}", .{ dest, rel.dirname });
 }
 
 /// Stream a decompressed LLVM release tar and write only the entries the shim
@@ -611,7 +627,18 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
         try copyTree(io, gpa, a, site_src, try std.fmt.allocPrint(a, "{s}/site", .{stage}), skipStageSite);
     }
     // The LLVMPY_* shim statically links LLVM (~130 MiB); strip it (best-effort).
-    stripBestEffort(io, try std.fmt.allocPrint(a, "{s}/site/jaclang/compiler/passes/native/llvm/libjacllvm.so", .{stage}));
+    stripBestEffort(io, try std.fmt.allocPrint(a, "{s}/site/jaclang/compiler/passes/native/llvm/{s}", .{ stage, shimFileName() }));
+}
+
+/// The host's LLVMPY_* shim filename, matching build.zig's emitted name and
+/// ffi.jac's _shim_name() (the payload tool runs on -- and builds for -- the
+/// host, so builtin.os.tag is the target OS).
+fn shimFileName() []const u8 {
+    return switch (builtin.os.tag) {
+        .windows => "jacllvm.dll",
+        .macos => "libjacllvm.dylib",
+        else => "libjacllvm.so",
+    };
 }
 
 /// Strip a shared library in place to shed debug info / local symbols / dead LTO
@@ -622,7 +649,7 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
 /// shared object, so no flag tuning is needed.
 fn stripBestEffort(io: Io, path: []const u8) void {
     const before = fileSizeOrZero(io, path);
-    if (before == 0) return; // not present (e.g. macOS .dylib name, or no llvmlite)
+    if (before == 0) return; // shim not present at this path; nothing to strip
     var child = std.process.spawn(io, .{
         .argv = &.{ "strip", path },
         .stdin = .ignore,
