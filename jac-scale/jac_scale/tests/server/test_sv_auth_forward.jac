@@ -305,11 +305,11 @@ test "sv_service_call omits X-Trace-Id when no trace context is set" {
 # =============================================================================
 # Circuit breaker
 # =============================================================================
-import from jac_scale.plugin {
+import from jac_scale.runtime.rpc.breaker {
     _breaker_reset,
-    _breaker_record_success,
-    _breaker_record_failure,
-    _breaker_should_skip,
+    breaker_record_success,
+    breaker_record_failure,
+    breaker_should_skip,
     _BREAKER_TRIP_THRESHOLD
 }
 
@@ -320,13 +320,13 @@ test "breaker trips OPEN after N consecutive transport failures and fails fast" 
     _breaker_reset(mod);
 
     for _ in range(_BREAKER_TRIP_THRESHOLD) {
-        _breaker_record_failure(mod);
+        breaker_record_failure(mod);
     }
 
     # Breaker should now short-circuit any sv_service_call for this mod.
     # Confirm by checking the skip helper directly - no httpx mock needed
     # because the call path raises before any network I/O.
-    assert _breaker_should_skip(mod);
+    assert breaker_should_skip(mod);
 
     # And a real sv_service_call should fail fast with the breaker msg.
     # We don't even register the URL: if the breaker opens correctly,
@@ -348,18 +348,18 @@ test "breaker success recorder resets failure count" {
 
     # Fail threshold-1 times (one short of tripping)
     for _ in range(_BREAKER_TRIP_THRESHOLD - 1) {
-        _breaker_record_failure(mod);
+        breaker_record_failure(mod);
     }
-    assert not _breaker_should_skip(mod);
+    assert not breaker_should_skip(mod);
 
     # A success resets the counter
-    _breaker_record_success(mod);
+    breaker_record_success(mod);
 
     # Now threshold-1 more failures should NOT trip (counter was reset)
     for _ in range(_BREAKER_TRIP_THRESHOLD - 1) {
-        _breaker_record_failure(mod);
+        breaker_record_failure(mod);
     }
-    assert not _breaker_should_skip(mod);
+    assert not breaker_should_skip(mod);
 
     _breaker_reset(mod);
 }
@@ -367,24 +367,24 @@ test "breaker success recorder resets failure count" {
 test "HALF_OPEN probe success closes the breaker" {
     # Simulate: breaker OPEN, cooldown elapses, probe succeeds.
     # Without waiting 30s we use _breaker_force_cooldown_elapsed.
-    import from jac_scale.plugin { _breaker_peek, _breaker_force_cooldown_elapsed }
+    import from jac_scale.runtime.rpc.breaker { _breaker_peek, _breaker_force_cooldown_elapsed }
 
     mod = "breaker_half_open_test";
     _breaker_reset(mod);
 
     for _ in range(_BREAKER_TRIP_THRESHOLD) {
-        _breaker_record_failure(mod);
+        breaker_record_failure(mod);
     }
-    assert _breaker_should_skip(mod);
+    assert breaker_should_skip(mod);
 
     # Force cooldown elapsed, next skip-check transitions OPEN -> HALF_OPEN
     _breaker_force_cooldown_elapsed(mod);
-    assert not _breaker_should_skip(mod);
+    assert not breaker_should_skip(mod);
     st = _breaker_peek(mod);
     assert st is not None and st["state"] == "HALF_OPEN";
 
     # Probe success closes the breaker fully
-    _breaker_record_success(mod);
+    breaker_record_success(mod);
     st = _breaker_peek(mod);
     assert st is not None and st["state"] == "CLOSED";
     assert st["fails"] == 0;
@@ -419,7 +419,7 @@ test "application error envelope does NOT trip the breaker" {
             }
         }
         # Breaker should still be CLOSED - app errors don't count
-        assert not _breaker_should_skip(mod);
+        assert not breaker_should_skip(mod);
     } finally {
         httpx.Client = original_client;
         sv_client.unregister(mod);
@@ -490,7 +490,7 @@ test "sv_service_call uses the default 10s timeout when no per-service override"
 
 
 test "sv_service_call honors per-service rpc_timeout from config" {
-    import jac_scale.plugin as plugin_mod;
+    import jac_scale.runtime.rpc.rpc as plugin_mod;
     captured: dict = {};
 
     def handler(request: httpx.Request) -> httpx.Response {
@@ -526,7 +526,7 @@ test "sv_service_call honors per-service rpc_timeout from config" {
 
 
 test "_sv_rpc_timeout returns default when config lookup fails" {
-    import from jac_scale.plugin { _sv_rpc_timeout }
+    import from jac_scale.runtime.rpc.rpc { _sv_rpc_timeout }
     t: float = _sv_rpc_timeout("module_that_has_no_override");
     assert t == 10.0;
 }
