@@ -2553,11 +2553,163 @@ impl ElfLinker.build_shared_object -> bytes {
 }
 
 
+# ── Merge a CRT object file's sections/symbols/relocs into self ──
+"""Parse a CRT object and merge its sections, symbols, and relocations
+into the linker's existing parsed state.
+
+When a CRT section has the same name as an existing section (e.g. .text),
+the CRT data is appended to the existing section. Symbol values and
+relocation offsets are adjusted by the merge offset.
+"""
+def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes) -> bool {
+    crt = ElfLinker(
+        obj_data=crt_bytes, sections=[], symbols=[], relocations=[], needed_libs=[]
+    );
+    if not crt.parse_object() {
+        return False;
+    }
+
+    # Build index of existing sections by name
+    existing_sec_by_name: dict[str, int] = {};
+    for (i, sec) in enumerate(linker.sections) {
+        if sec.name {
+            existing_sec_by_name[sec.name] = i;
+        }
+    }
+
+    # Map CRT section indices -> merged section indices.
+    # Track the data offset where CRT data was appended (for adjusting symbols/relocs).
+    sec_idx_map: dict[int, int] = {};
+    sec_data_offset: dict[int, int] = {};  # crt_sec_idx -> byte offset within merged section
+    for (crt_idx, crt_sec) in enumerate(crt.sections) {
+        if crt_sec.name and crt_sec.name in existing_sec_by_name {
+            # Merge into existing section
+            merged_idx = existing_sec_by_name[crt_sec.name];
+            merged_sec = linker.sections[merged_idx];
+            # Align the append offset
+            align = max(crt_sec.align, 1);
+            cur_len = len(merged_sec.data);
+            aligned_off = _align(cur_len, align);
+            padding = b"\x00" * (aligned_off - cur_len);
+            # Append CRT section data to existing section
+            new_data = merged_sec.data + padding + crt_sec.data;
+            new_mem_size = max(merged_sec.mem_size, len(new_data));
+            linker.sections[merged_idx] = ElfSection(
+                name=merged_sec.name,
+                typ=merged_sec.typ,
+                flags=merged_sec.flags | crt_sec.flags,
+                addr=merged_sec.addr,
+                data=new_data,
+                mem_size=new_mem_size,
+                align=max(merged_sec.align, crt_sec.align),
+                link=merged_sec.link,
+                info=merged_sec.info,
+                entsize=merged_sec.entsize
+            );
+            sec_idx_map[crt_idx] = merged_idx;
+            sec_data_offset[crt_idx] = aligned_off;
+        } else {
+            # New section — append
+            sec_idx_map[crt_idx] = len(linker.sections);
+            sec_data_offset[crt_idx] = 0;
+            linker.sections.append(crt_sec);
+            if crt_sec.name {
+                existing_sec_by_name[crt_sec.name] = sec_idx_map[crt_idx];
+            }
+        }
+    }
+
+    # Map CRT symbol indices -> merged symbol indices.
+    sym_idx_map: dict[int, int] = {};
+    existing_syms: dict[str, int] = {};
+    for (i, sym) in enumerate(linker.symbols) {
+        if sym.name {
+            existing_syms[sym.name] = i;
+        }
+    }
+    for (crt_sym_idx, crt_sym) in enumerate(crt.symbols) {
+        # Adjust symbol value by the section merge offset
+        adjusted_value = crt_sym.value;
+        if crt_sym.shndx != SHN_UNDEF and crt_sym.shndx < len(crt.sections) {
+            adjusted_value += sec_data_offset.get(crt_sym.shndx, 0);
+        }
+
+        if crt_sym.name and crt_sym.name in existing_syms {
+            existing_idx = existing_syms[crt_sym.name];
+            existing_sym = linker.symbols[existing_idx];
+            # If existing is undefined and CRT defines it, replace
+            if existing_sym.shndx == SHN_UNDEF and crt_sym.shndx != SHN_UNDEF {
+                new_shndx = sec_idx_map.get(crt_sym.shndx, crt_sym.shndx);
+                linker.symbols[existing_idx] = ElfSymbol(
+                    name=crt_sym.name,
+                    value=adjusted_value,
+                    size=crt_sym.size,
+                    bind=crt_sym.bind,
+                    typ=crt_sym.typ,
+                    shndx=new_shndx
+                );
+            }
+            sym_idx_map[crt_sym_idx] = existing_idx;
+        } else {
+            new_idx = len(linker.symbols);
+            new_shndx = sec_idx_map.get(crt_sym.shndx, crt_sym.shndx);
+            linker.symbols.append(
+                ElfSymbol(
+                    name=crt_sym.name,
+                    value=adjusted_value,
+                    size=crt_sym.size,
+                    bind=crt_sym.bind,
+                    typ=crt_sym.typ,
+                    shndx=new_shndx
+                )
+            );
+            sym_idx_map[crt_sym_idx] = new_idx;
+            if crt_sym.name {
+                existing_syms[crt_sym.name] = new_idx;
+            }
+        }
+    }
+
+    # Merge relocations with remapped indices and adjusted offsets
+    for rel in crt.relocations {
+        new_sym_idx = sym_idx_map.get(rel.sym_idx, rel.sym_idx);
+        new_sym_name = linker.symbols[new_sym_idx].name
+            if new_sym_idx < len(linker.symbols)
+            else rel.sym_name;
+        # Find the CRT section index for this relocation's target section
+        crt_target_idx: int | None = None;
+        for (ci, cs) in enumerate(crt.sections) {
+            if cs.name == rel.target_sec {
+                crt_target_idx = ci;
+                break;
+            }
+        }
+        # Adjust relocation offset by the section merge offset
+        adjusted_offset = rel.offset;
+        if crt_target_idx is not None {
+            adjusted_offset += sec_data_offset.get(crt_target_idx, 0);
+        }
+        linker.relocations.append(
+            ElfRela(
+                offset=adjusted_offset,
+                sym_idx=new_sym_idx,
+                rtype=rel.rtype,
+                addend=rel.addend,
+                sym_name=new_sym_name,
+                target_sec=rel.target_sec
+            )
+        );
+    }
+    return True;
+}
+
+
 # ── Static link method ───────────────────────────────────────────
 impl ElfLinker.link(
     obj_bytes: bytes,
     output_path: str,
     needed_libs: list[str] = ["libc.so.6"],
+    crt_objects: list[bytes] = [],
     shared: bool = False,
     export_symbols: list[str] = [],
     init_funcs: list[str] = [],
@@ -2576,6 +2728,13 @@ impl ElfLinker.link(
     );
     if not linker.parse_object() {
         return False;
+    }
+
+    # Merge CRT objects (e.g. crt1.o) into the main object
+    for crt_bytes in crt_objects {
+        if not _merge_crt_object(linker, crt_bytes) {
+            return False;
+        }
     }
 
     exe_bytes = linker.build_shared_object() if shared else linker.build_executable();

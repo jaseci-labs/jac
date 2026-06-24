@@ -115,6 +115,7 @@ obj ElfLinker {
         obj_bytes: bytes,
         output_path: str,
         needed_libs: list[str] = ["libc.so.6"],
+        crt_objects: list[bytes] = [],
         shared: bool = False,
         export_symbols: list[str] = [],
         init_funcs: list[str] = [],
