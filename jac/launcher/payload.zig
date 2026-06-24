@@ -150,7 +150,10 @@ fn fetchPbs(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []co
     defer gpa.free(window);
     var src = Io.Reader.fixed(tarzst);
     var dz = zstd.Decompress.init(&src, window, .{ .window_len = PBS_WINDOW, .verify_checksum = true });
-    std.tar.extract(io, ddir, &dz.reader, .{ .mode_mode = .ignore, .strip_components = 0 }) catch |err|
+    // executable_bit_only (not .ignore!) so the bundled `python3.14` keeps its
+    // exec bit -- mkpayload spawns it for pip + precompile. With .ignore it
+    // extracts 0o644 and the spawn fails EACCES (AccessDenied).
+    std.tar.extract(io, ddir, &dz.reader, .{ .mode_mode = .executable_bit_only, .strip_components = 0 }) catch |err|
         die("fetch-pbs: extract failed: {s}", .{@errorName(err)});
 
     if (!fileExists(io, marker)) die("fetch-pbs: extract produced no PYTHON.json", .{});
