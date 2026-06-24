@@ -15,7 +15,7 @@ import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.runtime { JacRuntime }
 import jaclang.jac0core.unitree as uni;
-import from llvmlite.binding { ExecutionEngine }
+import from jaclang.compiler.passes.native.llvm.binding { ExecutionEngine }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
@@ -3019,7 +3019,7 @@ test "elf linker rejects unhandled relocation (issue #6366 guard)" {
     # relocation targeting an emitted section has no handler, rather than
     # silently leaving the reference pointing at NULL (the #6366 failure mode).
     # Pure link-time check -- no execution, so it runs without qemu.
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
@@ -3066,7 +3066,7 @@ test "elf linker emits DT_RUNPATH=$ORIGIN (issue #6353 gap 4)" {
     # launch directory. The linker emits DT_RUNPATH=$ORIGIN so the loader
     # resolves needed libraries relative to the executable. Pure link-time
     # check -- no execution, so it runs without qemu.
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     import struct;
     import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
     llvm.initialize_all_targets();
@@ -3337,7 +3337,7 @@ test "jir bitcode cache round-trip" {
     assert len(sec_data) > 2 , "SEC_NATIVE_OBJ too short";
     (triple_len, ) = struct.unpack_from('<H', sec_data, 0);
     cached_triple = sec_data[2:2 + triple_len].decode('utf-8');
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     assert cached_triple == llvm.get_default_triple() , (
         f"Triple mismatch: {cached_triple} != {llvm.get_default_triple()}"
     );

@@ -20,7 +20,7 @@ authority for how a by-value C struct crosses the call boundary:
 Directly unit-tested (tests/compiler/test_abi_lib.jac) against
 hand-computed System V AMD64 and AArch64 AAPCS expectations.
 """
-import from llvmlite { ir }
+import from jaclang.compiler.passes.native.llvm { ir }
 
 """Size/align/scalar-class of a primitive LLVM type for ABI layout."""
 def scalar_layout(llt: (ir.Type | None)) -> tuple {

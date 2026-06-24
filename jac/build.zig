@@ -23,6 +23,32 @@
 
 const std = @import("std");
 
+// Where `zig build fetch-llvm` extracts the pinned LLVM -- one dir per host
+// platform (see payload.zig llvmRelease; keep the dirnames in sync). Used as the
+// default -Dllvm-dir for the jacllvm shim. Returns null for hosts we don't pin a
+// release for, so addLlvmShim degrades gracefully (the build then fails at
+// mkpayload with a "run `zig build fetch-llvm`" message).
+const LLVM_CACHE_BASE = ".llvm-build";
+fn llvmCacheDir(b: *std.Build, target: std.Build.ResolvedTarget) ?[]const u8 {
+    const dirname = switch (target.result.os.tag) {
+        .linux => switch (target.result.cpu.arch) {
+            .x86_64 => "LLVM-20.1.8-Linux-X64",
+            .aarch64 => "LLVM-20.1.8-Linux-ARM64",
+            else => return null,
+        },
+        .macos => switch (target.result.cpu.arch) {
+            .aarch64 => "LLVM-20.1.8-macOS-ARM64",
+            else => return null,
+        },
+        else => return null,
+    };
+    return b.fmt("{s}/{s}", .{ LLVM_CACHE_BASE, dirname });
+}
+
+// The built LLVMPY_* shim: `lib` is bundled into the payload (--shim); `place`
+// writes it into the source tree for the editable dev loop.
+const Shim = struct { lib: *std.Build.Step.Compile, place: *std.Build.Step };
+
 pub fn build(b: *std.Build) void {
     // Build the launcher for a BASELINE CPU of the host arch, not the build
     // machine's native CPU. The `jac` binary is distributed -- and in CI it is
@@ -38,6 +64,13 @@ pub fn build(b: *std.Build) void {
     else
         b.resolveTargetQuery(.{ .cpu_model = .baseline });
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSmall });
+
+    // --- LLVMPY_* shim: compile jac/native/*.cpp + statically link host LLVM ---
+    // Replaces the bundled libllvmlite.so (llvmlite wheel). Gated on -Dllvm-dir
+    // (an extracted LLVM 20.1.x prebuilt); without it the step is unavailable so
+    // the normal binary build is unaffected. See jac/native/README.md, #6925.
+    // When set, the shim replaces the llvmlite wheel in the payload below.
+    const jacllvm = addLlvmShim(b, target, optimize);
 
     // --- launcher stub (links libc only; Python is dlopened at runtime) ----
     const launcher_mod = b.createModule(.{
@@ -78,6 +111,17 @@ pub fn build(b: *std.Build) void {
             .dependOn(&fetch_ts_only.step);
     }
 
+    // Standalone: download + extract the pinned LLVM for the jacllvm shim into
+    // .llvm-build/ (one-time, ~1.5-2 GB per host). After this, a plain `zig build`
+    // picks it up via llvmCacheDir and ships the wheel-free binary.
+    {
+        const fetch_llvm = b.addRunArtifact(tool);
+        fetch_llvm.addArgs(&.{ "fetch-llvm", b.pathFromRoot(".llvm-build") });
+        fetch_llvm.has_side_effects = true;
+        b.step("fetch-llvm", "Download + extract the pinned LLVM for the wheel-free jacllvm shim")
+            .dependOn(&fetch_llvm.step);
+    }
+
     const osarch = osArchString(target.result) orelse {
         // Unsupported target for a full binary; stub + test steps still work.
         return;
@@ -115,6 +159,19 @@ pub fn build(b: *std.Build) void {
         mk.step.dependOn(&fetch.step);
         mk.step.dependOn(&fetch_ts.step);
         const out = mk.addOutputFileArg("payload.tar.gz");
+        // Optional trailing flags (parsed after the positional pbs/root/out):
+        // --shim ships the Zig-built LLVMPY_* shim instead of pip-installing the
+        // llvmlite wheel; --skip-precompile drops the JIR precompile (fast
+        // wheel-free link validation; first run compiles modules on demand).
+        if (jacllvm) |shim| {
+            mk.addPrefixedFileArg("--shim=", shim.lib.getEmittedBin());
+            // A plain `zig build` also drops the shim into the source tree so the
+            // editable dev loop works without any manual step.
+            b.getInstallStep().dependOn(shim.place);
+        }
+        if (b.option(bool, "skip-precompile", "mkpayload: skip the JIR precompile (faster link validation)") orelse false) {
+            mk.addArg("--skip-precompile");
+        }
         // Track the payload's real inputs so it repacks when any source changes.
         // NOTE: addDirectoryArg hashes only the directory PATH (Zig 0.16
         // Run.zig), not its contents -- a bare dir arg silently never
@@ -168,6 +225,91 @@ fn addTreeInputs(b: *std.Build, run: *std.Build.Step.Run, sub_path: []const u8) 
         if (std.mem.endsWith(u8, entry.path, ".pyc")) continue;
         run.addFileInput(b.path(b.fmt("{s}/{s}", .{ sub_path, entry.path })));
     }
+}
+
+/// `zig build jacllvm -Dllvm-dir=PATH` -> compile the llvmlite LLVMPY_* C++ shim
+/// (jac/native/*.cpp) and statically link the LLVM in PATH into libjacllvm.so,
+/// the in-tree replacement for the 167 MB libllvmlite.so from the llvmlite wheel.
+/// PATH is an extracted LLVM 20.1.x release (`lib/libLLVM*.a` + `include/`); a
+/// future `fetch-llvm` step downloads it at a pinned version (mirrors fetch-pbs).
+/// The Jac binding loads the result via ctypes (JAC_LLVM_SHIM / payload path).
+fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) ?Shim {
+    // -Dllvm-dir wins; otherwise use the fetch-llvm cache (.llvm-build). If
+    // neither has LLVM, return null and the build fails at mkpayload with a
+    // "run `zig build fetch-llvm`" message (so fetch-llvm itself still configures
+    // before LLVM exists). The shim is required -- there is no wheel fallback.
+    const llvm_dir = b.option([]const u8, "llvm-dir",
+        "Extracted LLVM 20.1.x dir (default: the fetch-llvm cache .llvm-build/...)") orelse
+        (llvmCacheDir(b, target) orelse return null);
+    const io = b.graph.io;
+    const libdir = b.fmt("{s}/lib", .{llvm_dir});
+    var dir = b.build_root.handle.openDir(io, libdir, .{ .iterate = true }) catch return null;
+    defer dir.close(io);
+
+    const mod = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .link_libcpp = true,
+    });
+    // The shim wraps LLVM's C++ API; CMake builds it C++17, no-RTTI/exceptions.
+    mod.addCSourceFiles(.{
+        .root = b.path("native"),
+        .files = &.{
+            "assembly.cpp",       "bitcode.cpp",        "config.cpp",
+            "core.cpp",           "custom_passes.cpp",  "dylib.cpp",
+            "executionengine.cpp", "initfini.cpp",      "linker.cpp",
+            "memorymanager.cpp",  "module.cpp",         "newpassmanagers.cpp",
+            "object_file.cpp",    "orcjit.cpp",         "targets.cpp",
+            "type.cpp",           "value.cpp",
+        },
+        .flags = &.{ "-std=c++17", "-fno-rtti", "-fno-exceptions", "-DNDEBUG" },
+    });
+    mod.addIncludePath(.{ .cwd_relative = b.fmt("{s}/include", .{llvm_dir}) });
+
+    const lib = b.addLibrary(.{ .name = "jacllvm", .linkage = .dynamic, .root_module = mod });
+
+    // macOS: Zig's self-hosted Mach-O linker rejects some object members in
+    // LLVM's release archives ("unknown cpu architecture: 0"). LLD's Mach-O
+    // backend (bundled with Zig) links LLVM's own archives cleanly, so force it
+    // there. Linux keeps its default linker -- the path that already builds and
+    // is exercised in CI.
+    if (target.result.os.tag == .macos) lib.use_lld = true;
+
+    // Link every LLVM static archive; the linker drops what the shim never
+    // references (host-only pruning of the archive set is a size follow-up).
+    var it = dir.iterate();
+    while (it.next(io) catch @panic("jacllvm: lib iterate failed")) |entry| {
+        if (entry.kind != .file) continue;
+        if (std.mem.startsWith(u8, entry.name, "libLLVM") and std.mem.endsWith(u8, entry.name, ".a")) {
+            mod.addObjectFile(.{ .cwd_relative = b.fmt("{s}/{s}", .{ libdir, entry.name }) });
+        }
+    }
+    // LLVM's system deps. zstd must resolve to the shared lib: the system static
+    // libzstd.a is non-PIC and cannot link into a shared object. linkSystemLibrary
+    // (preferred dynamic) lets the linker find it portably via its search path,
+    // instead of a hardcoded Debian/Ubuntu multiarch .so path.
+    mod.linkSystemLibrary("z", .{});
+    mod.linkSystemLibrary("xml2", .{});
+    mod.linkSystemLibrary("zstd", .{ .preferred_link_mode = .dynamic });
+
+    // Also write the built shim back into the source tree (gitignored) so the
+    // editable dev loop -- which runs jaclang from source, not from the binary's
+    // payload -- finds it via ffi.jac's __file__-relative lookup. Mirrors how
+    // fetch-typeshed materializes gitignored stubs into the tree. mkpayload's
+    // jaclang copy skips this file (it ships the shim via --shim instead).
+    const shim_file = switch (target.result.os.tag) {
+        .windows => "jacllvm.dll",
+        .macos => "libjacllvm.dylib",
+        else => "libjacllvm.so",
+    };
+    const place = b.addUpdateSourceFiles();
+    place.addCopyFileToSource(lib.getEmittedBin(), b.fmt("jaclang/compiler/passes/native/llvm/{s}", .{shim_file}));
+
+    const jacllvm_step = b.step("jacllvm", "Build the LLVMPY_* shim (jac/native), static-link LLVM, place it in-tree");
+    jacllvm_step.dependOn(&b.addInstallArtifact(lib, .{}).step);
+    jacllvm_step.dependOn(&place.step);
+    return .{ .lib = lib, .place = &place.step };
 }
 
 fn addTests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {

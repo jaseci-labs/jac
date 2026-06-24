@@ -9,7 +9,7 @@ to the existing inline codegen in the pass impl files. As inline codegen is
 extracted into emitter methods, they will return ir.Value results instead.
 """
 
-import from llvmlite { ir }
+import from jaclang.compiler.passes.native.llvm { ir }
 import from jaclang.compiler.primitives {
     IntEmitter,
     FloatEmitter,

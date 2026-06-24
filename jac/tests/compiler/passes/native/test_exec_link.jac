@@ -22,7 +22,7 @@ import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
 import from jaclang.compiler.passes.native.macho_linker { MachOLinker }
-import llvmlite.binding as llvm;
+import jaclang.compiler.passes.native.llvm.binding as llvm;
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures"),
      FIXTURE = "exec_smoke.na.jac";
@@ -345,7 +345,7 @@ test "Mach-O arm64 executable is ad-hoc signed with CS_EXECSEG_MAIN_BINARY" {
 # emit seam without a Windows runner. patch.object auto-restores os.name even
 # if an assertion below raises.
 test "AOT executable code model emits COFF, not ELF, on a Windows triple" {
-    import llvmlite.binding.targets as _tgt;
+    import jaclang.compiler.passes.native.llvm.binding.targets as _tgt;
     import from unittest.mock { patch }
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();

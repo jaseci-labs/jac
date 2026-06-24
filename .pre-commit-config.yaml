@@ -6,6 +6,7 @@ ci:
 exclude: |
     (?x)(
         ^jac/jaclang/vendor/|
+        ^jac/jaclang/compiler/passes/native/llvm/|
         ^$
     )
 

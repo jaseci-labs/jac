@@ -8,7 +8,7 @@ uses manual tree-walking rather than the visitor pattern — instructions
 must be emitted into specific basic blocks in order for control flow.
 """
 
-import from llvmlite { ir }
+import from jaclang.compiler.passes.native.llvm { ir }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }

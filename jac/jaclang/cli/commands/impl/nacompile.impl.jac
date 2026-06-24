@@ -3,7 +3,7 @@
 Compiles a .na.jac file to a standalone native binary:
 1. Compile .na.jac through Jac pipeline to get LLVM IR
 2. Inject main() (+ _start on Linux, _jac_win_start on Windows) as pure LLVM IR
-3. Emit object code via llvmlite
+3. Emit object code via the LLVMPY_* shim
 4. Link into executable via pure Python linker (ELF on Linux, Mach-O on macOS,
    PE/COFF .exe on Windows)
 """
@@ -382,7 +382,7 @@ impl nacompile(
     console.print("  LLVM IR generated successfully.");
 
     # Step 3: Initialize llvmlite
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
 
