@@ -493,6 +493,93 @@ impl TopologyIndex.get_cross_root_ids(node_ids: set[UUID]) -> dict[UUID, set[UUI
     return result;
 }
 
+"""Resolve a chain across root boundaries hop by hop (iterative).
+
+Returns None when any foreign root fails to load — the partial result
+would silently omit nodes, so the caller must fall back to the
+complete (but slower) edge-walk path."""
+impl TopologyIndex.resolve_chain_cross_root(
+    mem: any, origin_ids: set[UUID], chain: list[tuple[(str | None), (str | None), int]]
+) -> (set[UUID] | None) {
+    if not chain {
+        return origin_ids;
+    }
+    import logging;
+    import from jaclang.jac0core.archetype { NodeAnchor }
+    _logger = logging.getLogger(__name__);
+    # Group current frontier by (topology_index, node_ids).
+    # Start with all origins on `self`.
+    frontier: list[tuple[TopologyIndex, set[UUID]]] = [(self, origin_ids)];
+    for (hop_idx, hop) in enumerate(chain) {
+        is_last = hop_idx == len(chain) - 1;
+        next_frontier: list[tuple[TopologyIndex, set[UUID]]] = [];
+        result_ids: set[UUID] = set();
+        # Accumulate foreign node IDs per root across all frontier entries
+        # so each foreign index is queried once with the full union of IDs.
+        pending_foreign: dict[UUID, set[UUID]] = {};
+        for (idx, ids) in frontier {
+            hop_result = idx.resolve_chain(ids, [hop]);
+            if not hop_result {
+                continue;
+            }
+            if is_last {
+                result_ids |= hop_result;
+            } else {
+                # Split into local vs foreign for next hop.
+                cross_root_map = idx.get_cross_root_ids(hop_result);
+                local_ids = hop_result - {
+                    uid for ids in cross_root_map.values() for uid in ids
+                };
+                if local_ids {
+                    next_frontier.append((idx, local_ids));
+                }
+                for (foreign_root_id, foreign_node_ids) in cross_root_map.items() {
+                    pending_foreign.setdefault(foreign_root_id, set()).update(
+                        foreign_node_ids
+                    );
+                }
+            }
+        }
+        # Resolve each foreign root once with the merged node set.
+        if not is_last {
+            for (foreign_root_id, foreign_node_ids) in pending_foreign.items() {
+                try {
+                    root_anchor = mem.get(foreign_root_id);
+                    if not isinstance(root_anchor, NodeAnchor) {
+                        _logger.warning(
+                            "cross-root resolve: root %s is not a NodeAnchor, "
+                            "falling back to edge walk",
+                            foreign_root_id
+                        );
+                        return None;
+                    }
+                    foreign_idx = root_anchor.get_topology_index();
+                    if foreign_idx is not None and len(foreign_idx) > 0 {
+                        next_frontier.append((foreign_idx, foreign_node_ids));
+                    }
+                } except Exception as exc {
+                    _logger.warning(
+                        "cross-root resolve: failed to load root %s (%s), "
+                        "falling back to edge walk",
+                        foreign_root_id,
+                        exc
+                    );
+                    return None;
+                }
+            }
+        }
+        if is_last {
+            return result_ids;
+        }
+        frontier = next_frontier;
+        if not frontier {
+            return set();
+        }
+    }
+    return set();
+}
+
+
 """Serialize to compact binary format (version 2)."""
 impl TopologyIndex.encode -> bytes {
     num_types = len(self.type_table);

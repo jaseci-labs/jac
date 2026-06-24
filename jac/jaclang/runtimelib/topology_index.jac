@@ -79,6 +79,22 @@ obj TopologyIndex {
     ) -> list[UUID];
 
     def get_cross_root_ids(node_ids: set[UUID]) -> dict[UUID, set[UUID]];
+    """Resolve a chain across root boundaries.
+
+    Walks the chain hop by hop. After each intermediate hop, foreign nodes
+    (owned by other roots) are grouped by owner root. For each foreign root,
+    its topology index is loaded via `mem` and the remaining hops are resolved
+    there. Results from all roots are unioned.
+
+    `mem` must support `.get(uuid)` returning a NodeAnchor with
+    `.get_topology_index()`.
+    """
+    def resolve_chain_cross_root(
+        mem: any,
+        origin_ids: set[UUID],
+        chain: list[tuple[(str | None), (str | None), int]]
+    ) -> (set[UUID] | None);
+
     def encode -> bytes;
     static def decode(data: bytes) -> TopologyIndex;
     def __len__ -> int;

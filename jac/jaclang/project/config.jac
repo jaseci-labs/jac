@@ -52,6 +52,7 @@ obj RunConfig {
         cache: bool = True,
         autonative: bool = False,
         topology_index: bool = True,
+        cross_root_resolve: bool = False,
         diagnostics: str = "error";  # "error" | "all" | "none"
 }
 

@@ -864,6 +864,7 @@ impl _parse_toml_data(
             cache=run_data.get("cache", True),
             autonative=run_data.get("autonative", False),
             topology_index=run_data.get("topology_index", True),
+            cross_root_resolve=run_data.get("cross_root_resolve", False),
             diagnostics=run_data.get("diagnostics", "error")
         );
     }
