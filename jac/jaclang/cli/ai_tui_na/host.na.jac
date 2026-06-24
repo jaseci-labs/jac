@@ -52,7 +52,13 @@ import from .state { TuiState }
 # See tui.na.jac priming comment: phase-7 state.na.jac changes require explicit
 # select_list priming so SelectItem resolves in overlay.na.jac during DFS.
 import from .select_list { SelectList, SelectItem }
-import from .ipc { ipc_read_frame_v2, ipc_send_cmd, ipc_parse_frame, ipc_next_command }
+import from .ipc {
+    ipc_read_frame_v2,
+    ipc_send_cmd,
+    ipc_parse_frame,
+    ipc_next_command,
+    ipc_clear_cmd_queue
+}
 import from .screen { screen_render }
 import from .diff { DiffEngine, diff_take_buf }
 import from .input { handle_key }
@@ -75,6 +81,9 @@ glob host_state: TuiState = TuiState(),
 # in-process state. `tty_dev` is /dev/pts/N or "" for the _tty_device_path()
 # default (JAC_AI_TUI_TTY / /dev/tty).
 def:pub tui_init(project: str, files_env: str, presets_env: str, tty_dev: str) -> int {
+    # Idempotent re-init: drop any undrained commands a prior session left in the
+    # module-glob pull queue (cmd_queue survives across tui_shutdown).
+    ipc_clear_cmd_queue();
     host_state.reset_events();
     host_state.files = [];
     host_state.model_presets = [];

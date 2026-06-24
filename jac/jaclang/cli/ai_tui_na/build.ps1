@@ -14,10 +14,12 @@ try {
 
 # ── resolve the jac toolchain ─────────────────────────────────────────────────
 # jaclang ships as the self-contained `jac` binary; `pip install -e jac` is gone.
-# This dir is now a top-level package, so the repo root is one level up.
+# This dir lives at jac/jaclang/cli/ai_tui_na, so the repo root is four levels up.
 # Resolution order: $JAC_BIN override -> repo-built binary -> .venv editable
-# (legacy local dev) -> jac on PATH. $JacExe + $JacPre form the invocation
+# (legacy local dev). $JacExe + $JacPre form the invocation
 # (`& $JacExe @JacPre <args>`); $JacPre is `-m jaclang` only for the editable case.
+# PATH is intentionally not consulted — a stale global `jac` is a common dev-tree
+# footgun. Set JAC_BIN, build zig-out, or use the repo .venv.
 # NOTE: python-build-standalone has no Windows target, so there is no native
 # Windows `jac` binary yet -- native Windows builds are deferred (see the
 # test-tui-windows workflow). build.sh cross-compiles the Windows artifacts on Linux.
@@ -30,10 +32,13 @@ if ($env:JAC_BIN) {
     $JacExe = $RepoJac; $JacPre = @()
 } elseif (Test-Path $RepoVenvPy) {
     $JacExe = (Resolve-Path $RepoVenvPy).Path; $JacPre = @("-m", "jaclang")
-} elseif (Get-Command jac -ErrorAction SilentlyContinue) {
-    $JacExe = "jac"; $JacPre = @()
 } else {
-    throw "No jac toolchain found. Build the binary: (cd jac; zig build)"
+    throw @"
+No jac build toolchain found.
+  Set JAC_BIN to your jac binary, or:
+    (cd jac; zig build)   # -> jac\zig-out\bin\jac.exe
+    python -m venv .venv; .venv\Scripts\pip install -e jac
+"@
 }
 Write-Host "==> Using jac toolchain: $JacExe $JacPre"
 

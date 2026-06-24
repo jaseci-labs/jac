@@ -8,25 +8,7 @@ Port of pi packages/tui/src/fuzzy.ts (matchQuery) and autocomplete.ts logic.
 """
 
 import from .state { TuiState, AcItem, EditorState }
-
-# ── Slash commands available for inline completion ────────────────────────────
-# Values are the full text inserted into the editor (with leading /).
-glob _SC_VALUES: list[str] = [
-         "/model",
-         "/files",
-         "/stop",
-         "/clear",
-         "/reset",
-         "/quit"
-     ],
-     _SC_DESCS: list[str] = [
-         "Switch the active model",
-         "Insert a project file reference",
-         "Stop the current turn",
-         "Clear transcript and reset session",
-         "Clear transcript and reset session",
-         "Exit jac ai TUI"
-     ];
+import from .commands { slash_ac_catalog }
 
 # ── Fuzzy scoring (port of pi's fuzzy.ts matchQuery) ─────────────────────────
 def fuzzy_score(query: str, text: str) -> int {
@@ -198,17 +180,19 @@ def _extract_trigger(ed: EditorState) -> list[str] {
 }
 
 # ── Item builders ─────────────────────────────────────────────────────────────
-def _slash_items(query: str) -> list[AcItem] {
+def _slash_items(query: str, state: TuiState) -> list[AcItem] {
+    catalog = slash_ac_catalog(state);
     vals: list[str] = [];
     labs: list[str] = [];
     descs_: list[str] = [];
     scores: list[int] = [];
 
     i: int = 0;
-    n = len(_SC_VALUES);
+    n = len(catalog);
     while i < n {
-        cmd = _SC_VALUES[i];
-        desc = _SC_DESCS[i];
+        item = catalog[i];
+        cmd = item.value;
+        desc = item.description;
         name = cmd[1:];
         s: int = 0;
         matched: bool = True;
@@ -316,7 +300,7 @@ def ac_update(state: TuiState) {
 
     items: list[AcItem] = [];
     if kind == "slash" {
-        items = _slash_items(query);
+        items = _slash_items(query, state);
     } else {
         items = _file_items(state, query);
     }

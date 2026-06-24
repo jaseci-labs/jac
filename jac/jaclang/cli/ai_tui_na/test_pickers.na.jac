@@ -17,7 +17,7 @@ import sys;
 import from .libc_tty { tty_write }
 import from .state { TuiState }
 import from .select_list { SelectList, SelectItem }
-import from .commands { palette_commands, model_items, file_items }
+import from .commands { palette_commands, model_items, file_items, resolve_slash_line }
 import from .autocomplete { fuzzy_score, ac_update, ac_apply }
 
 def emit(line: str) {
@@ -74,6 +74,15 @@ def run_tests -> int {
     state.status = "running";
     fails += check(
         "palette shows /stop when running", _has_value(palette_commands(state), "/stop")
+    );
+
+    fails += check("resolve /exit -> /quit", resolve_slash_line("/exit") == "/quit");
+    fails += check("resolve /q -> /quit", resolve_slash_line("/q") == "/quit");
+    fails += check(
+        "resolve /clear -> /clear", resolve_slash_line("/clear") == "/clear"
+    );
+    fails += check(
+        "resolve /models -> open_model", resolve_slash_line("/models") == "open_model"
     );
 
     # model items mirror the presets and flag the current model

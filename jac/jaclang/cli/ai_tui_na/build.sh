@@ -17,13 +17,14 @@ cd "$SCRIPT_DIR"
 # ── resolve the jac toolchain to build with ─────────────────────────────────
 # jaclang ships as the self-contained `jac` binary (Zig launcher + bundled
 # CPython); `pip install -e jac` is gone. Resolution order:
-#   1. $JAC_BIN            — explicit override
+#   1. $JAC_BIN            — explicit override (also set by auto-build in tui_shared)
 #   2. jac/zig-out/bin/jac — the repo's freshly built binary (CI builds this via
 #                            the setup-jac action; locally via `cd jac && zig build`)
 #   3. .venv editable      — legacy local-dev fallback: an editable jaclang whose
 #                            source still resolves into the working tree (no zig
 #                            needed), so the dev loop survives without a zig install
-#   4. jac on PATH         — last resort (may be a stale global install)
+# PATH is intentionally not consulted — a stale global `jac` is a common dev-tree
+# footgun. Set JAC_BIN, build zig-out, or use the repo .venv.
 # This dir lives at jac/jaclang/cli/ai_tui_na, so the repo root is four levels up.
 # Canonicalize it (no trailing `..`) so the editable venv's sys.prefix matches
 # and python doesn't emit a "Unexpected value in sys.prefix" RuntimeWarning.
@@ -39,11 +40,11 @@ elif [ -x "$REPO_JAC" ]; then
 elif [ -x "$REPO_VENV/bin/python" ]; then
     JAC=("$REPO_VENV/bin/python" -m jaclang)
     echo "==> Using repo editable jaclang: $REPO_VENV/bin/python -m jaclang"
-elif command -v jac >/dev/null 2>&1; then
-    JAC=(jac)
-    echo "==> Using jac on PATH"
 else
-    echo "==> No jac toolchain found. Build the binary: (cd jac && zig build)" >&2
+    echo "==> No jac build toolchain found." >&2
+    echo "    Set JAC_BIN to your jac binary, or:" >&2
+    echo "      (cd jac && zig build)   # -> jac/zig-out/bin/jac" >&2
+    echo "      python -m venv .venv && .venv/bin/pip install -e jac" >&2
     exit 1
 fi
 

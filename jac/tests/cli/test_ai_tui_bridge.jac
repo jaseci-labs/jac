@@ -157,6 +157,110 @@ test "_list_project_files enumerates files under a project dir" {
 }
 
 
+test "_configure_ui_env restore unwinds every mutated JAC_AI_UI_* key" {
+    shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
+    configure = getattr(shared_mod, "_configure_ui_env");
+    prior = {
+        "JAC_AI_UI_PROJECT": "/old/project",
+        "JAC_AI_UI_MODEL": "old-model",
+        "JAC_AI_UI_NCTX": "8192",
+        "JAC_AI_UI_FILES": "old.txt",
+        "JAC_AI_UI_MODEL_PRESETS": "preset-a",
+        "JAC_AI_UI_RESUME": "sess-1",
+        "JAC_AI_UI_CONTINUE": "1",
+        "JAC_AI_UI_SESSION": "named",
+        "JAC_AI_UI_ACTIVE": "0",
+
+    };
+    for (key, value) in prior.items() {
+        os.environ[key] = value;
+    }
+    env = configure(
+        AgentRequest(
+            tui=True,
+            cwd=os.getcwd(),
+            model="new-model",
+            n_ctx=4096,
+            resume="sess-2",
+            continue_last=True,
+            session_name="fresh",
+        )
+    );
+    assert os.environ.get("JAC_AI_UI_ACTIVE") == "1";
+    assert os.environ.get("JAC_AI_UI_MODEL") == "new-model";
+    assert os.environ.get("JAC_AI_UI_RESUME") == "sess-2";
+    env["restore"]();
+    for (key, value) in prior.items() {
+        assert os.environ.get(key) == value , (
+            f"{key}: expected {value!r}, got {os.environ.get(key)!r}"
+        );
+    }
+}
+
+
+test "_configure_ui_env restore removes keys that were unset before configure" {
+    shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
+    configure = getattr(shared_mod, "_configure_ui_env");
+    keys = [
+        "JAC_AI_UI_PROJECT",
+        "JAC_AI_UI_MODEL",
+        "JAC_AI_UI_NCTX",
+        "JAC_AI_UI_FILES",
+        "JAC_AI_UI_MODEL_PRESETS",
+        "JAC_AI_UI_RESUME",
+        "JAC_AI_UI_CONTINUE",
+        "JAC_AI_UI_SESSION",
+        "JAC_AI_UI_ACTIVE",
+
+    ];
+    for key in keys {
+        os.environ.pop(key, None);
+    }
+    env = configure(AgentRequest(tui=True, cwd=os.getcwd()));
+    for key in keys {
+        assert key in os.environ , f"expected {key} to be set during configure";
+    }
+    env["restore"]();
+    for key in keys {
+        assert key not in os.environ , f"expected {key} to be removed after restore";
+    }
+}
+
+
+test "_resolve_jac_build_bin prefers JAC_BIN then repo zig-out binary" {
+    import tempfile;
+    shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
+    resolver = getattr(shared_mod, "_resolve_jac_build_bin");
+    pkg_root = Path(shared_mod.__file__).resolve().parent.parent;
+    repo_root = pkg_root.parent.parent.parent;
+    repo_jac = repo_root / "jac" / "zig-out" / "bin" / "jac";
+
+    with tempfile.NamedTemporaryFile(delete=False) as tmp {
+        tmp.write(b"");
+        explicit = tmp.name;
+    }
+    os.chmod(explicit, 0o755);
+    prior_jac_bin = os.environ.get("JAC_BIN");
+    try {
+        os.environ["JAC_BIN"] = explicit;
+        assert resolver(pkg_root) == explicit;
+        os.environ.pop("JAC_BIN", None);
+        if repo_jac.is_file() {
+            assert resolver(pkg_root) == str(repo_jac);
+        } else {
+            assert resolver(pkg_root) is None;
+        }
+    } finally {
+        os.unlink(explicit);
+        if prior_jac_bin is None {
+            os.environ.pop("JAC_BIN", None);
+        } else {
+            os.environ["JAC_BIN"] = prior_jac_bin;
+        }
+    }
+}
+
+
 test "_probe_tty on win32 returns available=True with empty device and skips ttyname" {
     import os;
     import sys;

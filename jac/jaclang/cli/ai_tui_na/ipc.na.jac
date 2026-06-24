@@ -216,6 +216,11 @@ obj CmdQueue {
         self.cursor = self.cursor + 1;
         return cmd;
     }
+
+    def clear {
+        self.items = [];
+        self.cursor = 0;
+    }
 }
 
 # Pure object construction is safe in glob init (no libc).
@@ -236,4 +241,10 @@ def ipc_send_cmd(fd: int, cmd: str) {
 # _dispatch_cmd -- the exact SEND:/STOP/RESET/QUIT/APPLY: grammar as the pipe.
 def ipc_next_command -> str {
     return cmd_queue.pop_next();
+}
+
+# Drop any queued commands. Called from tui_init so idempotent re-init in the
+# same process does not inherit undrained lines from a prior session.
+def ipc_clear_cmd_queue {
+    cmd_queue.clear();
 }

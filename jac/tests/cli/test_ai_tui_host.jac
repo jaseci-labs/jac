@@ -189,6 +189,85 @@ test "TuiHost drives a real pty: typing hi+Enter yields SEND:hi" {
 }
 
 
+test "TuiHost re-init clears an undrained pull queue (idempotent tui_init)" {
+    # Regression: cmd_queue is a module glob; if a session exits without draining
+    # queued commands, the next tui_init in the same process must not inherit them.
+    env = _host_env();
+    if not env["ok"] {
+        return;  # libtui.so unavailable.
+    }
+
+    try {
+        (controller_fd, follower_fd) = os.openpty();
+    } except Exception {
+        return;  # no pty available in this environment; skip.
+    }
+
+    started = False;
+    host = env["TuiHost"]();
+    try {
+        try {
+            import struct;
+            import fcntl;
+            import termios;
+            winsz = struct.pack("HHHH", 24, 80, 0, 0);
+            fcntl.ioctl(follower_fd, termios.TIOCSWINSZ, winsz);
+        } except Exception { }
+
+        try {
+            os.set_blocking(controller_fd, False);
+        } except Exception { }
+
+        tty_dev = os.ttyname(follower_fd);
+        host.load(env["lib_path"]);
+        rc = host.start(os.getcwd(), "", "", tty_dev);
+        assert rc == 0 , f"host.start should return 0 on the pty, got {rc}";
+        started = True;
+
+        os.write(controller_fd, b"hi\r");
+
+        # Enqueue SEND:hi but deliberately do not drain next_command.
+        i = 0;
+        enqueued = False;
+        while i < 40 {
+            n = host.wait_key(50);
+            if n > 0 {
+                host.handle_key();
+                enqueued = True;
+                break;
+            }
+            host.render();
+            try {
+                os.read(controller_fd, 65536);
+            } except Exception { }
+            i += 1;
+        }
+        assert enqueued , "typing hi+Enter must enqueue a command before re-init";
+
+        host.shutdown();
+        started = False;
+
+        rc = host.start(os.getcwd(), "", "", tty_dev);
+        assert rc == 0 , f"host.start re-init should return 0, got {rc}";
+        started = True;
+
+        assert host.next_command() == "" , "tui_init must clear undrained commands from a prior session";
+    } finally {
+        if started {
+            try {
+                host.shutdown();
+            } except Exception { }
+        }
+        try {
+            os.close(controller_fd);
+        } except Exception { }
+        try {
+            os.close(follower_fd);
+        } except Exception { }
+    }
+}
+
+
 test "TuiHost gated render repaints on a status-only frame (dirty invariant)" {
     # Regression for the repaint invariant: a frame that changes only header/
     # footer status fields (no transcript event) must still repaint through the

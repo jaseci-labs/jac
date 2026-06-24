@@ -49,8 +49,8 @@ impl run_tui_in_process(req: AgentRequest) -> int {
 
     # JAC_AI_UI_* env contract + ACTIVE capture gate, set through tui_shared so
     # the subprocess and in-process backends share one copy of the contract. The
-    # restore closure unwinds JAC_AI_UI_ACTIVE on every exit path; project/files/
-    # presets come back typed (the helper computed them) for host.start below.
+    # restore closure unwinds every mutated JAC_AI_UI_* key on every exit path;
+    # project/files/presets come back typed (the helper computed them) for host.start below.
     env = _configure_ui_env(r);
     restore_ui = env["restore"];
     project = env["project"] as str;

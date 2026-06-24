@@ -7,8 +7,8 @@ protocol in `PROTOCOL.md`, over one of two transports.
 
 ## Transport selection (`JAC_AI_TUI_BACKEND`)
 
-`jaclang/cli/ai_tui/impl/plugin.impl.jac` routes `req.tui` to a backend based on
-the `JAC_AI_TUI_BACKEND` env var:
+`jaclang/jac0core/impl/runtime.impl.jac` (`JacCmd.run_ai_agent`) selects a
+backend when `req.tui` is set, based on the `JAC_AI_TUI_BACKEND` env var:
 
 | Value | Backend | Driver |
 | ----- | ------- | ------ |
@@ -17,9 +17,8 @@ the `JAC_AI_TUI_BACKEND` env var:
 
 The default is the in-process shared library; `JAC_AI_TUI_BACKEND=subprocess`
 opts into the crash-isolated sidecar fallback. Both share `_frame_blob` /
-`_dispatch_cmd` / `_list_project_files` /
-`_sidecar_tty_device` from `jaclang/cli/ai_tui/tui_shared.jac`, so they can never
-drift on the protocol.
+`_dispatch_cmd` / `_list_project_files` / `_require_tty` from
+`jaclang/cli/ai_tui/tui_shared.jac`, so they can never drift on the protocol.
 
 ## Backend: subprocess sidecar (fallback)
 

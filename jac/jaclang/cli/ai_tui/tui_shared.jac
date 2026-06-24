@@ -17,13 +17,16 @@ backend can still `terminate()` on QUIT while the in-process backend passes
 (PROJECT/MODEL/NCTX/FILES/MODEL_PRESETS plus the JAC_AI_UI_ACTIVE=1 capture
 gate). Both backends set this exact block before `ui_configure()`; the helper
 returns the computed project/files/presets (the in-process backend hands them to
-`host.start`) and a zero-arg `restore` closure that unwinds JAC_AI_UI_ACTIVE,
-so the two backends cannot drift on the env contract.
+`host.start`) and a zero-arg `restore` closure that unwinds every mutated
+JAC_AI_UI_* key to its prior value, so the two backends cannot drift on the env
+contract and in-process runs do not leak global process state.
 
 `_ensure_na_artifact` is the one copy of the NA build-artifact ensure logic
 (compile `bin/jac-na-tui` / `bin/libtui.so` from `*.na.jac` on first launch);
 both backends' `_ensure_tui_binary` / `_ensure_tui_lib` delegate to it so the
-build contract cannot drift between them.
+build contract cannot drift between them. Auto-build passes an explicit `JAC_BIN`
+when `$JAC_BIN` or the repo zig-out binary is available; otherwise `build.sh` /
+`build.ps1` may use the repo `.venv` editable — never a stale global on PATH.
 
 `_probe_tty` is the single TTY probe: it calls `_first_tty_stream` once and
 returns `{"available": bool, "device": str}` — `device` is the /dev path on
@@ -209,13 +212,24 @@ def _require_tty -> str | None {
 }
 
 
+def _restore_ui_env_var(key: str, prev: str | None) {
+    import os;
+
+    if prev is None {
+        os.environ.pop(key, None);
+    } else {
+        os.environ[key] = prev;
+    }
+}
+
+
 def _configure_ui_env(r: any) -> dict {
     # Set the JAC_AI_UI_* env contract shared by both `jac ai --tui` backends and
     # gate agent bus capture with JAC_AI_UI_ACTIVE=1. The agent reads these on
     # ui_configure(); the native sidecar/host reads PROJECT/MODEL/NCTX/FILES/
     # MODEL_PRESETS at startup. Returns the computed project/files_env/presets_env
     # (the in-process backend hands them to host.start) plus a zero-arg `restore`
-    # closure that unwinds JAC_AI_UI_ACTIVE to its prior value, so each backend
+    # closure that unwinds every mutated key to its prior value, so each backend
     # restores the env on every exit path without duplicating the save/restore
     # dance. One copy here = the two backends cannot drift on the env contract.
     import os;
@@ -224,6 +238,16 @@ def _configure_ui_env(r: any) -> dict {
     project = os.path.normpath(str(r?.cwd or os.getcwd()));
     files_env = _list_project_files(project);
     presets_env = "\n".join(_MODEL_PRESETS);
+
+    old_project = os.environ.get("JAC_AI_UI_PROJECT", None);
+    old_model = os.environ.get("JAC_AI_UI_MODEL", None);
+    old_nctx = os.environ.get("JAC_AI_UI_NCTX", None);
+    old_files = os.environ.get("JAC_AI_UI_FILES", None);
+    old_presets = os.environ.get("JAC_AI_UI_MODEL_PRESETS", None);
+    old_resume = os.environ.get("JAC_AI_UI_RESUME", None);
+    old_continue = os.environ.get("JAC_AI_UI_CONTINUE", None);
+    old_session = os.environ.get("JAC_AI_UI_SESSION", None);
+    old_active = os.environ.get("JAC_AI_UI_ACTIVE", None);
 
     os.environ["JAC_AI_UI_PROJECT"] = project;
     os.environ["JAC_AI_UI_MODEL"] = str(r?.model or "");
@@ -235,23 +259,22 @@ def _configure_ui_env(r: any) -> dict {
     os.environ["JAC_AI_UI_RESUME"] = str(r?.resume or "");
     os.environ["JAC_AI_UI_CONTINUE"] = "1" if bool(r?.continue_last) else "";
     os.environ["JAC_AI_UI_SESSION"] = str(r?.session_name or "");
-
-    old_active = os.environ.get("JAC_AI_UI_ACTIVE");
     os.environ["JAC_AI_UI_ACTIVE"] = "1";
 
-    def _restore_active {
-        if old_active is None {
-            os.environ.pop("JAC_AI_UI_ACTIVE", None);
-        } else {
-            os.environ["JAC_AI_UI_ACTIVE"] = old_active;
-        }
-        os.environ.pop("JAC_AI_UI_RESUME", None);
-        os.environ.pop("JAC_AI_UI_CONTINUE", None);
-        os.environ.pop("JAC_AI_UI_SESSION", None);
+    def _restore_ui_env {
+        _restore_ui_env_var("JAC_AI_UI_PROJECT", old_project);
+        _restore_ui_env_var("JAC_AI_UI_MODEL", old_model);
+        _restore_ui_env_var("JAC_AI_UI_NCTX", old_nctx);
+        _restore_ui_env_var("JAC_AI_UI_FILES", old_files);
+        _restore_ui_env_var("JAC_AI_UI_MODEL_PRESETS", old_presets);
+        _restore_ui_env_var("JAC_AI_UI_RESUME", old_resume);
+        _restore_ui_env_var("JAC_AI_UI_CONTINUE", old_continue);
+        _restore_ui_env_var("JAC_AI_UI_SESSION", old_session);
+        _restore_ui_env_var("JAC_AI_UI_ACTIVE", old_active);
     }
 
     return {
-        "restore": _restore_active,
+        "restore": _restore_ui_env,
         "project": project,
         "files_env": files_env,
         "presets_env": presets_env,
@@ -332,6 +355,28 @@ def _dispatch_cmd(line: str, stop_evt: any, proc: any) {
 }
 
 
+def _resolve_jac_build_bin(pkg_root: any) -> str | None {
+    # Resolve an explicit jac binary for NA auto-build subprocesses. Only $JAC_BIN
+    # or the repo zig-out binary qualify here; repo .venv editable is left to
+    # build.sh / build.ps1. Never fall back to PATH — stale globals are a common
+    # footgun in dev trees.
+    import os;
+    import sys;
+
+    explicit = os.environ.get("JAC_BIN", "").strip();
+    if explicit and os.path.isfile(explicit) and os.access(explicit, os.X_OK) {
+        return explicit;
+    }
+    repo_root = os.path.normpath(os.path.join(str(pkg_root), "..", "..", ".."));
+    jac_name = "jac.exe" if sys.platform == "win32" else "jac";
+    repo_jac = os.path.join(repo_root, "jac", "zig-out", "bin", jac_name);
+    if os.path.isfile(repo_jac) and os.access(repo_jac, os.X_OK) {
+        return repo_jac;
+    }
+    return None;
+}
+
+
 def _ensure_na_artifact(
     pkg_root: any, artifact_path: str, source_file: str, label: str
 ) -> dict {
@@ -402,9 +447,19 @@ def _ensure_na_artifact(
     } else {
         console.print(f"[tui] {label} missing; compiling (first run) ...", style="dim");
     }
+    build_env = dict(os.environ);
+    jac_bin = _resolve_jac_build_bin(pkg_root);
+    if jac_bin {
+        build_env["JAC_BIN"] = jac_bin;
+    }
     try {
         res = subprocess.run(
-            build_cmd, cwd=na_dir, capture_output=True, text=True, timeout=300,
+            build_cmd,
+            cwd=na_dir,
+            env=build_env,
+            capture_output=True,
+            text=True,
+            timeout=300,
         );
         if res.returncode != 0 {
             detail = (res.stderr or res.stdout or "").strip();

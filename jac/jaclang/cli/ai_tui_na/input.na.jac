@@ -44,6 +44,7 @@ import from .overlay {
     overlay_open_model,
     overlay_open_file
 }
+import from .commands { slash_submit }
 import from .editor {
     editor_insert,
     editor_backspace,
@@ -127,30 +128,19 @@ def _handle_submit(state: TuiState, ipc_fd: int) -> bool {
         return False;
     }
 
-    if text == "/model" or text == "/models" {
+    result = slash_submit(text, state, ipc_fd);
+    if result == "quit" {
+        return True;
+    }
+    if result == "open_model" {
         overlay_open_model(state);
         return False;
     }
-    if text == "/file" or text == "/files" {
+    if result == "open_file" {
         overlay_open_file(state);
         return False;
     }
-    if text == "/quit" or text == "/exit" or text == "/q" {
-        ipc_send_cmd(ipc_fd, "QUIT");
-        return True;
-    }
-    if text == "/stop" {
-        ipc_send_cmd(ipc_fd, "STOP");
-        return False;
-    }
-    if text == "/reset" or text == "/clear" {
-        ipc_send_cmd(ipc_fd, "RESET");
-        state.reset_events();
-        return False;
-    }
-    if text.startswith("/settings ") {
-        args = text[10:].strip();
-        ipc_send_cmd(ipc_fd, f"APPLY:{args}");
+    if result == "handled" {
         return False;
     }
 

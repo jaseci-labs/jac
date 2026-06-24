@@ -79,8 +79,8 @@ impl run_tui_session(req: AgentRequest) -> int {
 
     # JAC_AI_UI_* env contract + ACTIVE capture gate, set through tui_shared so
     # the subprocess and in-process backends share one copy of the contract. The
-    # returned closure unwinds JAC_AI_UI_ACTIVE on every exit path; JAC_AI_TUI_TTY
-    # (below) is subprocess-only and restored separately.
+    # returned closure unwinds every mutated JAC_AI_UI_* key on every exit path;
+    # JAC_AI_TUI_TTY (below) is subprocess-only and restored separately.
     restore_ui = _configure_ui_env(r)["restore"];
 
     ui_configure();

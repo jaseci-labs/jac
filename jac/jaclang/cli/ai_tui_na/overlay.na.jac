@@ -10,7 +10,7 @@ import from .commands {
     palette_commands,
     model_items,
     file_items,
-    run_command,
+    command_dispatch,
     apply_model
 }
 import from .editor { editor_insert_text }
@@ -110,17 +110,17 @@ def overlay_handle_key(key: str, state: TuiState, ipc_fd: int) -> bool {
             return False;
         }
 
-        # palette: transition entries open a nested picker in place; everything
-        # else runs immediately and closes the overlay.
-        if item.value == "open_model" {
+        # palette: run registry command; overlay kinds reopen nested pickers in place.
+        result = command_dispatch(item.value, state, ipc_fd);
+        if result == "open_model" {
             overlay_open_model(state);
             return False;
         }
-        if item.value == "open_file" {
+        if result == "open_file" {
             overlay_open_file(state);
             return False;
         }
-        should_quit = run_command(item.value, state, ipc_fd);
+        should_quit = result == "quit";
         overlay_close(state);
         return should_quit;
     }
