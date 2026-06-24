@@ -12,14 +12,25 @@ app for the live gateway.
 """
 
 
-"""One cross-cutting concern. Override `handle`; the default is a pass-through."""
+"""One cross-cutting concern. Override `handle`; the default is a pass-through.
+
+To adopt an existing `async (request, call_next)` middleware callable without
+rewriting it, pass it as `fn`: the default `handle` delegates straight to it.
+This lets the live gateway register its already-built drain / rate-limit
+callables through the registry without changing their logic."""
 obj Middleware {
     has name: str = "middleware",
-        priority: int = 100;
+        priority: int = 100,
+        fn: any = None;
 
     """Process `request`, calling `call_next(request)` to continue the chain.
-    Return a response directly to short-circuit without calling the rest."""
+    Return a response directly to short-circuit without calling the rest.
+    When wrapping an existing callable (`fn` set), delegate to it; the callable
+    already has the `(request, call_next)` signature."""
     async def handle(request: any, call_next: any) -> any {
+        if self.fn is not None {
+            return await self.fn(request, call_next);
+        }
         return await call_next(request);
     }
 }

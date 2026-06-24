@@ -840,27 +840,56 @@ impl MicroserviceGateway.setup -> FastAPI {
 
     _install_ws_catchall(self);
 
-    # Drain registered LAST so Starlette's insert(0, ...) puts it as
-    # the outermost HTTP middleware - 503s short-circuit before the
-    # dispatcher stamps metrics or trace-ids.
+    # Cross-cutting middleware composes through the MiddlewareRegistry port
+    # instead of being wired into FastAPI directly. The registry's install()
+    # adds the wrapped callables in reverse-priority order, so the lowest
+    # priority lands outermost. We keep the EXACT prior execution order
+    # (outermost -> innermost: CORS -> rate_limit -> drain -> dispatcher):
+    #   - dispatcher: already added directly above (innermost; left as-is).
+    #   - drain: priority 20  (inner of the two registry middlewares)
+    #   - rate_limit: priority 10  (outer of the two registry middlewares)
+    #   - CORS: still add_middleware below, AFTER install(), so it stays
+    #     outermost just as before.
+    import from jac_scale.runtime.middleware.middleware {
+        Middleware,
+        MiddlewareRegistry
+    }
+    registry = MiddlewareRegistry();
+
+    # Drain wraps the existing build_drain_middleware callable unchanged -
+    # 503s short-circuit before the dispatcher stamps metrics or trace-ids.
     import from jac_scale.runtime.lifecycle.drain {
         build_drain_middleware
     }
-    self.app.middleware("http")(build_drain_middleware("__gateway__"));
+    registry.register(
+        Middleware(
+            name="drain", priority=20, fn=build_drain_middleware("__gateway__")
+        )
+    );
 
     import from jac_scale.config_loader { get_scale_config }
     ms_cfg = get_scale_config().get_microservices_config();
 
     # rate limit between drain and CORS. Preflights bypass the
     # limiter (CORS outer handles OPTIONS short-circuit) and drain
-    # inner can still 503 once the limiter allows through.
+    # inner can still 503 once the limiter allows through. Only registered
+    # when cfg enables it (build returns None otherwise) - same condition
+    # as before.
     import from jac_scale.runtime.middleware.rate_limit {
         build_rate_limit_middleware
     }
     rl_mw = build_rate_limit_middleware(ms_cfg.get("rate_limit", {}));
     if rl_mw is not None {
-        self.app.middleware("http")(rl_mw);
+        registry.register(
+            Middleware(name="rate_limit", priority=10, fn=rl_mw)
+        );
     }
+
+    # Wire the wrapped middlewares onto the app. install() adds in reverse
+    # priority order: drain (20) first, then rate_limit (10) last -> Starlette
+    # insert(0,...) makes rate_limit outermost and drain inner, identical to
+    # the prior `app.middleware("http")(drain)` then `(rate_limit)` order.
+    registry.install(self.app);
 
     # CORS registered AFTER drain so preflights answer correctly
     # even during shutdown (clients need CORS headers to read 503s).
