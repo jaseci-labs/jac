@@ -8,7 +8,7 @@ import subprocess;
 import logging;
 import from pathlib { Path }
 import from jac_scale.abstractions.service_deployer { ServiceDeployer }
-import from jac_scale.microservices.service_registry {
+import from jac_scale.runtime.gateway.service_registry {
     ServiceRegistry,
     ServiceEntry,
     ServiceStatus

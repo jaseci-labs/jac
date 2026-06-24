@@ -3,12 +3,12 @@
 import os;
 import tempfile;
 import from pathlib { Path }
-import from jac_scale.microservices.service_registry {
+import from jac_scale.runtime.gateway.service_registry {
     ServiceRegistry,
     ServiceEntry,
     ServiceStatus
 }
-import from jac_scale.microservices.gateway { MicroserviceGateway }
+import from jac_scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
 
 # =============================================================================
 # resolve_target_url
@@ -222,7 +222,7 @@ test "health endpoint returns service summary" {
 
 test "/healthz/live returns 200 always (liveness, no drain check)" {
     # Liveness gates restart; drain affects readiness only.
-    import from jac_scale.microservices.gateway_internals.drain {
+    import from jac_scale.runtime.lifecycle.drain {
         reset_drain,
         start_drain
     }
@@ -248,7 +248,7 @@ test "/healthz/live returns 200 always (liveness, no drain check)" {
 
 test "/healthz/ready returns 200 normally, 503 during drain (readiness)" {
     # Readiness 503s during drain so kube-proxy removes pod from Endpoints.
-    import from jac_scale.microservices.gateway_internals.drain {
+    import from jac_scale.runtime.lifecycle.drain {
         reset_drain,
         start_drain
     }
@@ -321,7 +321,7 @@ test "unmatched path returns 404" {
 # Prometheus metrics
 # =============================================================================
 test "build_gateway_metrics returns a fresh registry with both collectors" {
-    import from jac_scale.microservices.gateway_internals.middleware.metrics {
+    import from jac_scale.runtime.middleware.metrics {
         build_gateway_metrics
     }
     (registry, requests, duration) = build_gateway_metrics();
@@ -331,7 +331,7 @@ test "build_gateway_metrics returns a fresh registry with both collectors" {
 }
 
 test "classify_outcome maps status codes to label values" {
-    import from jac_scale.microservices.gateway_internals.middleware.metrics {
+    import from jac_scale.runtime.middleware.metrics {
         classify_outcome
     }
     assert classify_outcome(200) == "2xx";
@@ -460,7 +460,7 @@ test "error envelope carries the request's trace id for correlation" {
 # Unified /docs Swagger aggregation
 # =============================================================================
 test "_prefixed_paths prepends the service prefix to every key" {
-    import from jac_scale.microservices.gateway_internals.openapi_agg {
+    import from jac_scale.runtime.gateway.openapi_agg {
         _prefixed_paths
     }
     raw = {
@@ -475,7 +475,7 @@ test "_prefixed_paths prepends the service prefix to every key" {
 }
 
 test "_prefixed_paths handles prefix with trailing slash" {
-    import from jac_scale.microservices.gateway_internals.openapi_agg {
+    import from jac_scale.runtime.gateway.openapi_agg {
         _prefixed_paths
     }
     out = _prefixed_paths(
@@ -1144,7 +1144,7 @@ test "health endpoint does not require auth" {
 }
 
 test "gateway drain 503s new requests with Retry-After + envelope" {
-    import from jac_scale.microservices.gateway_internals.drain {
+    import from jac_scale.runtime.lifecycle.drain {
         reset_drain,
         start_drain,
         is_draining
@@ -1182,7 +1182,7 @@ test "gateway drain 503s new requests with Retry-After + envelope" {
 # Drain runs before the dispatcher (outermost middleware), so 503d
 # responses should not carry the X-Trace-Id header the dispatcher stamps.
 test "gateway drain does not burn metrics labels on 503d requests" {
-    import from jac_scale.microservices.gateway_internals.drain {
+    import from jac_scale.runtime.lifecycle.drain {
         reset_drain,
         start_drain
     }
@@ -1329,7 +1329,7 @@ test "CORS simple request echoes Allow-Origin on the response" {
 
 
 test "CORS preflight still responds during drain (headers reachable on 503)" {
-    import from jac_scale.microservices.gateway_internals.drain {
+    import from jac_scale.runtime.lifecycle.drain {
         reset_drain,
         start_drain
     }

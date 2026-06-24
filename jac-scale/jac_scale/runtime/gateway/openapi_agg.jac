@@ -23,7 +23,7 @@ document covering the healthy services - partial is better than none.
 """
 
 import logging;
-import from jac_scale.microservices.service_registry { ServiceRegistry, ServiceStatus }
+import from jac_scale.runtime.gateway.service_registry { ServiceRegistry, ServiceStatus }
 
 glob _agg_logger = logging.getLogger(__name__);
 

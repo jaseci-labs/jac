@@ -130,7 +130,7 @@ impl JacAPIServerEndpoints.create_walker_callback(
             self.get_walkers()[walker_name], kwargs, (username or Con.GUEST.value)
         );
         if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
-            import from jac_scale.microservices.gateway_internals.middleware.sse {
+            import from jac_scale.runtime.middleware.sse {
                 sse_frame_stream
             }
             return StreamingResponse(
@@ -266,7 +266,7 @@ impl JacAPIServerEndpoints.create_function_callback(
         # framed `data: {json}\n\n` chunk (raw StreamingResponse would
         # emit dict reprs, which is invalid SSE).
         if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
-            import from jac_scale.microservices.gateway_internals.middleware.sse {
+            import from jac_scale.runtime.middleware.sse {
                 sse_frame_stream
             }
             return StreamingResponse(

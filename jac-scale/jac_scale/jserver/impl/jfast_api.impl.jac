@@ -139,7 +139,7 @@ impl JFastApiServer.run_server(
     };
     # P13: wrap handle_exit so SIGTERM flips the drain flag before
     # uvicorn begins its own graceful shutdown.
-    import from jac_scale.microservices.gateway_internals.drain { install_signal_drain }
+    import from jac_scale.runtime.lifecycle.drain { install_signal_drain }
     ms_cfg = get_scale_config().get_microservices_config();
     drain_timeout: float = float(ms_cfg.get("drain_timeout_seconds", 10));
 
@@ -1286,7 +1286,7 @@ impl JFastApiServer.init(
 
     # P13: drain registered last -> outermost, so a 503 short-circuits
     # before JWT/context setup runs during graceful shutdown.
-    import from jac_scale.microservices.gateway_internals.drain {
+    import from jac_scale.runtime.lifecycle.drain {
         build_drain_middleware
     }
     self.app.middleware('http')(build_drain_middleware("service"));

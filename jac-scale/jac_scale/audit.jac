@@ -11,7 +11,7 @@ headers. Identity values should be the normalized form (lowercase, trimmed).
 import logging;
 import from datetime { UTC, datetime }
 import from typing { Any }
-import from jac_scale.microservices.gateway_internals.middleware.rate_limit {
+import from jac_scale.runtime.middleware.rate_limit {
     _resolve_client_ip as client_ip
 }
 

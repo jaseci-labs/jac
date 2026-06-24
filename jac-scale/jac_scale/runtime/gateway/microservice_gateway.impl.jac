@@ -13,11 +13,11 @@ import from fastapi { WebSocket }
 registry (matching prefix -> upstream URL). Close codes: 1012 drain,
 1008 no route, 1013 unhealthy."""
 def _install_ws_catchall(gw: object) {
-    import from jac_scale.microservices.gateway_internals.middleware.ws_forward {
+    import from jac_scale.runtime.middleware.ws_forward {
         websocket_forward
     }
-    import from jac_scale.microservices.gateway_internals.drain { is_draining }
-    import from jac_scale.microservices.service_registry { ServiceStatus }
+    import from jac_scale.runtime.lifecycle.drain { is_draining }
+    import from jac_scale.runtime.gateway.service_registry { ServiceStatus }
 
     @gw.app.websocket("/{ws_path:path}")
     async def ws_proxy(websocket: WebSocket, ws_path: str) -> None {
@@ -368,7 +368,7 @@ preStop sleep (bridges the kube-proxy-propagation gap) and
 terminationGracePeriodSeconds (gives drain time to flush).
 """
 impl MicroserviceGateway.handle_health_ready -> Response {
-    import from jac_scale.microservices.gateway_internals.drain { is_draining }
+    import from jac_scale.runtime.lifecycle.drain { is_draining }
     if is_draining() {
         return JSONResponse(
             status_code=503, content={"status": "draining", "ready": False}
@@ -404,7 +404,7 @@ impl MicroserviceGateway.handle_builtin_passthrough(
             logger.info(f"Passthrough: {request.method} {path} -> {target_url}");
 
             import from jac_scale.runtime.context.util { http_forward_timeout }
-            import from jac_scale.microservices.impl.http_forward { stream_forward }
+            import from jac_scale.runtime.transport.http_forward { stream_forward }
             timeout = http_forward_timeout(svc_name);
             # stream_forward (not raw_forward) so a streaming response - SSE
             # from a /function/* generator served to the client - passes
@@ -465,7 +465,7 @@ impl MicroserviceGateway.handle_proxy(request: Request, path: str) -> Response |
         service_unavailable,
         gateway_timeout
     }
-    import from jac_scale.microservices.impl.http_forward { stream_forward }
+    import from jac_scale.runtime.transport.http_forward { stream_forward }
 
     if svc.status not in (ServiceStatus.HEALTHY, ServiceStatus.STARTING) {
         return service_unavailable(svc.name, svc.status.value);
@@ -497,7 +497,7 @@ Fetches each service's /openapi.json, prefixes its paths with the
 service's gateway route, and merges. See `_openapi_agg.aggregate_openapi`.
 """
 impl MicroserviceGateway.handle_openapi -> Response {
-    import from jac_scale.microservices.gateway_internals.openapi_agg {
+    import from jac_scale.runtime.gateway.openapi_agg {
         aggregate_openapi
     }
     doc = await aggregate_openapi(self.registry);
@@ -520,7 +520,7 @@ extra wasn't pulled in). Path routing lands here when
 through to passthrough as before.
 """
 impl MicroserviceGateway.handle_metrics -> Response {
-    import from jac_scale.microservices.gateway_internals.middleware.metrics {
+    import from jac_scale.runtime.middleware.metrics {
         render_metrics
     }
     import from jac_scale.runtime.context.errors { error_response }
@@ -648,7 +648,7 @@ impl MicroserviceGateway.setup -> FastAPI {
     # installed). Only initialized once per gateway instance; spawning
     # a fresh gateway in tests gets a fresh registry to avoid
     # "Duplicated timeseries" errors.
-    import from jac_scale.microservices.gateway_internals.middleware.metrics {
+    import from jac_scale.runtime.middleware.metrics {
         build_gateway_metrics
     }
     import from jac_scale.config_loader { get_scale_config }
@@ -783,7 +783,7 @@ impl MicroserviceGateway.setup -> FastAPI {
             }
             # Prometheus metrics (no-op when prometheus_client absent).
             if gw._metrics_requests is not None {
-                import from jac_scale.microservices.gateway_internals.middleware.metrics {
+                import from jac_scale.runtime.middleware.metrics {
                     classify_outcome
                 }
                 outcome = classify_outcome(resp.status_code);
@@ -810,7 +810,7 @@ impl MicroserviceGateway.setup -> FastAPI {
     # Drain registered LAST so Starlette's insert(0, ...) puts it as
     # the outermost HTTP middleware - 503s short-circuit before the
     # dispatcher stamps metrics or trace-ids.
-    import from jac_scale.microservices.gateway_internals.drain {
+    import from jac_scale.runtime.lifecycle.drain {
         build_drain_middleware
     }
     self.app.middleware("http")(build_drain_middleware("__gateway__"));
@@ -821,7 +821,7 @@ impl MicroserviceGateway.setup -> FastAPI {
     # rate limit between drain and CORS. Preflights bypass the
     # limiter (CORS outer handles OPTIONS short-circuit) and drain
     # inner can still 503 once the limiter allows through.
-    import from jac_scale.microservices.gateway_internals.middleware.rate_limit {
+    import from jac_scale.runtime.middleware.rate_limit {
         build_rate_limit_middleware
     }
     rl_mw = build_rate_limit_middleware(ms_cfg.get("rate_limit", {}));
@@ -852,7 +852,7 @@ impl MicroserviceGateway.setup -> FastAPI {
 """Start the gateway (blocking). Uses Config+Server so install_signal_drain
 can wrap `handle_exit` before the event loop starts."""
 impl MicroserviceGateway.start -> None {
-    import from jac_scale.microservices.gateway_internals.drain { install_signal_drain }
+    import from jac_scale.runtime.lifecycle.drain { install_signal_drain }
     import from jac_scale.config_loader { get_scale_config }
 
     if self.app is None {

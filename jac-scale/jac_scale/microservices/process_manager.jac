@@ -6,7 +6,7 @@ import threading;
 import from typing { Any }
 import from urllib.request { urlopen, Request as URLRequest }
 import from urllib.error { URLError }
-import from jac_scale.microservices.service_registry {
+import from jac_scale.runtime.gateway.service_registry {
     ServiceRegistry,
     ServiceEntry,
     ServiceStatus

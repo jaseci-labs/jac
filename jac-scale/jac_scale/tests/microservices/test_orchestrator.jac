@@ -6,7 +6,7 @@ import from jac_scale.microservices.orchestrator.orchestrator {
     _mark_all_healthy_k8s,
     _populate_k8s_urls
 }
-import from jac_scale.microservices.service_registry { ServiceStatus }
+import from jac_scale.runtime.gateway.service_registry { ServiceStatus }
 
 test "build_registry creates entries from routes map" {
     ms_config = {"routes": {"orders_app": "/api/orders", "cart_app": "/api/cart"}};

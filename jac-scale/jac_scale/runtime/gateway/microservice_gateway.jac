@@ -6,12 +6,12 @@ import uvicorn;
 import from pathlib { Path }
 import from fastapi { FastAPI, Request }
 import from fastapi.responses { HTMLResponse, JSONResponse, Response }
-import from jac_scale.microservices.service_registry {
+import from jac_scale.runtime.gateway.service_registry {
     ServiceRegistry,
     ServiceEntry,
     ServiceStatus
 }
-import from jac_scale.microservices.impl.http_forward { raw_forward }
+import from jac_scale.runtime.transport.http_forward { raw_forward }
 import from jac_scale.runtime.context.util {
     DEFAULT_GATEWAY_PORT,
     DEFAULT_GATEWAY_HOST,

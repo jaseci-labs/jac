@@ -1,6 +1,6 @@
 """Tests for microservices ServiceRegistry."""
 
-import from jac_scale.microservices.service_registry {
+import from jac_scale.runtime.gateway.service_registry {
     ServiceRegistry,
     ServiceEntry,
     ServiceStatus

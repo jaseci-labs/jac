@@ -6,7 +6,7 @@ KubernetesMicroserviceTarget, runtime by K8s itself."""
 
 import logging;
 import from jac_scale.abstractions.service_deployer { ServiceDeployer }
-import from jac_scale.microservices.service_registry { ServiceRegistry, ServiceEntry }
+import from jac_scale.runtime.gateway.service_registry { ServiceRegistry, ServiceEntry }
 import from jac_scale.targets.kubernetes.microservice.manifest_builder { k8s_safe_name }
 import from jac_scale.runtime.context.util {
     k8s_service_dns_url,

@@ -1,11 +1,11 @@
 """Tests for the streaming + WebSocket proxy modules (ROADMAP P15)."""
 
 import asyncio;
-import from jac_scale.microservices.gateway_internals.middleware.ws_forward {
+import from jac_scale.runtime.middleware.ws_forward {
     _to_ws_scheme,
     _select_handshake_headers
 }
-import from jac_scale.microservices.impl.http_forward {
+import from jac_scale.runtime.transport.http_forward {
     ForwardResult,
     stream_forward,
     raw_forward
@@ -242,8 +242,8 @@ test "raw_forward still buffers for the passthrough path" {
 
 
 test "ws route closes with 1008 when no registry prefix matches" {
-    import from jac_scale.microservices.service_registry { ServiceRegistry }
-    import from jac_scale.microservices.gateway { MicroserviceGateway }
+    import from jac_scale.runtime.gateway.service_registry { ServiceRegistry }
+    import from jac_scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
     import from fastapi.testclient { TestClient }
     import from starlette.websockets { WebSocketDisconnect }
 
@@ -269,13 +269,13 @@ test "ws route closes with 1008 when no registry prefix matches" {
 
 
 test "ws route rejects with 1012 during drain" {
-    import from jac_scale.microservices.service_registry {
+    import from jac_scale.runtime.gateway.service_registry {
         ServiceRegistry,
         ServiceEntry,
         ServiceStatus
     }
-    import from jac_scale.microservices.gateway { MicroserviceGateway }
-    import from jac_scale.microservices.gateway_internals.drain {
+    import from jac_scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
+    import from jac_scale.runtime.lifecycle.drain {
         reset_drain,
         start_drain
     }

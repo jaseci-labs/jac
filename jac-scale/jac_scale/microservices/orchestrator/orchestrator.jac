@@ -7,14 +7,14 @@ import time;
 import atexit;
 import logging;
 import from jaclang.cli.console { console }
-import from jac_scale.microservices.service_registry {
+import from jac_scale.runtime.gateway.service_registry {
     ServiceRegistry,
     ServiceEntry,
     ServiceStatus
 }
 import from jac_scale.microservices.process_manager { ServiceProcessManager }
 import from jac_scale.microservices.local_deployer { LocalDeployer }
-import from jac_scale.microservices.gateway { MicroserviceGateway }
+import from jac_scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
 import from jac_scale.runtime.context.util {
     DEFAULT_GATEWAY_PORT,
     DEFAULT_GATEWAY_HOST,
