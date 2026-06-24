@@ -27,6 +27,10 @@ const std = @import("std");
 // LLVM_DIRNAME); the default -Dllvm-dir for the jacllvm shim.
 const LLVM_CACHE_DIR = ".llvm-build/LLVM-20.1.8-Linux-X64";
 
+// The built LLVMPY_* shim: `lib` is bundled into the payload (--shim); `place`
+// writes it into the source tree for the editable dev loop.
+const Shim = struct { lib: *std.Build.Step.Compile, place: *std.Build.Step };
+
 pub fn build(b: *std.Build) void {
     // Build the launcher for a BASELINE CPU of the host arch, not the build
     // machine's native CPU. The `jac` binary is distributed -- and in CI it is
@@ -48,7 +52,7 @@ pub fn build(b: *std.Build) void {
     // (an extracted LLVM 20.1.x prebuilt); without it the step is unavailable so
     // the normal binary build is unaffected. See jac/native/README.md, #6925.
     // When set, the shim replaces the llvmlite wheel in the payload below.
-    const jacllvm_lib = addLlvmShim(b, target, optimize);
+    const jacllvm = addLlvmShim(b, target, optimize);
 
     // --- launcher stub (links libc only; Python is dlopened at runtime) ----
     const launcher_mod = b.createModule(.{
@@ -141,8 +145,11 @@ pub fn build(b: *std.Build) void {
         // --shim ships the Zig-built LLVMPY_* shim instead of pip-installing the
         // llvmlite wheel; --skip-precompile drops the JIR precompile (fast
         // wheel-free link validation; first run compiles modules on demand).
-        if (jacllvm_lib) |lib| {
-            mk.addPrefixedFileArg("--shim=", lib.getEmittedBin());
+        if (jacllvm) |shim| {
+            mk.addPrefixedFileArg("--shim=", shim.lib.getEmittedBin());
+            // A plain `zig build` also drops the shim into the source tree so the
+            // editable dev loop works without any manual step.
+            b.getInstallStep().dependOn(shim.place);
         }
         if (b.option(bool, "skip-precompile", "mkpayload: skip the JIR precompile (faster link validation)") orelse false) {
             mk.addArg("--skip-precompile");
@@ -208,7 +215,7 @@ fn addTreeInputs(b: *std.Build, run: *std.Build.Step.Run, sub_path: []const u8) 
 /// PATH is an extracted LLVM 20.1.x release (`lib/libLLVM*.a` + `include/`); a
 /// future `fetch-llvm` step downloads it at a pinned version (mirrors fetch-pbs).
 /// The Jac binding loads the result via ctypes (JAC_LLVM_SHIM / payload path).
-fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) ?*std.Build.Step.Compile {
+fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) ?Shim {
     // -Dllvm-dir wins; otherwise use the fetch-llvm cache (.llvm-build). If
     // neither has LLVM, return null and the build fails at mkpayload with a
     // "run `zig build fetch-llvm`" message (so fetch-llvm itself still configures
@@ -258,9 +265,23 @@ fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     mod.linkSystemLibrary("xml2", .{});
     mod.addObjectFile(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu/libzstd.so" });
 
-    b.step("jacllvm", "Build the LLVMPY_* shim (jac/native) statically linked against -Dllvm-dir's LLVM")
-        .dependOn(&b.addInstallArtifact(lib, .{}).step);
-    return lib;
+    // Also write the built shim back into the source tree (gitignored) so the
+    // editable dev loop -- which runs jaclang from source, not from the binary's
+    // payload -- finds it via ffi.jac's __file__-relative lookup. Mirrors how
+    // fetch-typeshed materializes gitignored stubs into the tree. mkpayload's
+    // jaclang copy skips this file (it ships the shim via --shim instead).
+    const shim_file = switch (target.result.os.tag) {
+        .windows => "jacllvm.dll",
+        .macos => "libjacllvm.dylib",
+        else => "libjacllvm.so",
+    };
+    const place = b.addUpdateSourceFiles();
+    place.addCopyFileToSource(lib.getEmittedBin(), b.fmt("jaclang/compiler/passes/native/llvm/{s}", .{shim_file}));
+
+    const jacllvm_step = b.step("jacllvm", "Build the LLVMPY_* shim (jac/native), static-link LLVM, place it in-tree");
+    jacllvm_step.dependOn(&b.addInstallArtifact(lib, .{}).step);
+    jacllvm_step.dependOn(&place.step);
+    return .{ .lib = lib, .place = &place.step };
 }
 
 fn addTests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {

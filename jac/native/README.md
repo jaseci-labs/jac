@@ -15,24 +15,22 @@ wheel.
 - These `.cpp` files are kept verbatim (numba/llvmlite v0.47.0) so they track
   upstream llvmlite for a given LLVM version (currently **LLVM 20.1.x**).
 
-## Building (wheel-free binary)
+## Building
 
 ```bash
 cd jac
 zig build fetch-llvm   # one-time: download + verify + extract pinned LLVM 20.1.x
                        # into .llvm-build/ (pure Zig, ~1.9 GB)
-zig build              # auto-detects .llvm-build, compiles the shim, statically
-                       # links LLVM, and packs libjacllvm.so into the jac binary
-                       # (no llvmlite wheel). Without fetch-llvm, falls back to
-                       # bundling the wheel -- a non-breaking default.
+zig build              # compiles the shim, statically links LLVM, packs it into
+                       # the jac binary, AND drops it in-tree (gitignored) for the
+                       # editable dev loop. No manual step, no JAC_LLVM_SHIM.
 ```
 
-Just the shim, against an explicit LLVM dir:
-
-```bash
-zig build jacllvm -Dllvm-dir=/path/to/LLVM-20.1.8-Linux-X64
-#  -> jac/zig-out/lib/libjacllvm.so  (312 LLVMPY_* symbols)
-```
+`zig build jacllvm` builds just the shim (`jac/zig-out/lib/libjacllvm.so`, 312
+`LLVMPY_*` symbols) and places it at
+`jaclang/compiler/passes/native/llvm/libjacllvm.so` (gitignored) so the editable
+dev loop -- which runs jaclang from source, not the binary's payload -- finds
+it. `JAC_LLVM_SHIM=/path/to/libjacllvm.so` overrides the lookup if needed.
 
 The shim rides in the payload trailer exactly like the bundled libpython:
 packed into the single `jac` binary, extracted at first run, and ctypes-loaded

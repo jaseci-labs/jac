@@ -710,6 +710,9 @@ fn skipJaclang(p: []const u8) bool {
         std.mem.indexOf(u8, p, "node_modules") != null or
         std.mem.indexOf(u8, p, "_precompiled") != null or
         std.mem.indexOf(u8, p, "vendor/typeshed/stubs") != null or
+        // The LLVMPY_* shim is placed fresh via --shim, not copied from the
+        // (gitignored, build-placed) source-tree artifact -- skip it here.
+        std.mem.indexOf(u8, p, "libjacllvm.") != null or
         std.mem.endsWith(u8, p, ".pyc");
 }
 
