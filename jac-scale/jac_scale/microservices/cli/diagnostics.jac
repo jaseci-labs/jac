@@ -342,9 +342,8 @@ obj PlanValidator {
                 severity="error",
                 service=svc_name,
                 message=(
-                    "no image resolved for this service; apply will fail. "
-                    f"Set [plugins.scale.kubernetes].docker_image_name or "
-                    f"services.{svc_name}.image_tag"
+                    "no base image resolved for this service; apply will fail. "
+                    "Check [plugins.scale.kubernetes].python_image"
                 )
             )
         );

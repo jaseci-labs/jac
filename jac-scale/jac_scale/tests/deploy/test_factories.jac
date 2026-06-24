@@ -5,7 +5,6 @@ import from kubernetes.client.exceptions { ApiException }
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
 import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
-import from jac_scale.factories.registry_factory { ImageRegistryFactory }
 import from jac_scale.factories.utility_factory { UtilityFactory }
 import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger }
 import from jac_scale.abstractions.autoscalers.hpa_autoscaler { HPAAutoscaler }
@@ -51,33 +50,14 @@ test "deployment target factory raises for not implemented target" {
     assert raised , "Expected NotImplementedError for aws target";
 }
 
-test "image registry factory creates dockerhub" {
-    config = {
-        "app_name": "test-app",
-        "docker_username": "testuser",
-        "docker_password": "testpass"
-    };
+test "deployment target factory creates kubernetes-microservice target" {
+    config = {"app_name": "test-app", "namespace": "default", "container_port": 8000};
 
-    registry = ImageRegistryFactory.create("dockerhub", config);
+    target = DeploymentTargetFactory.create("kubernetes-microservice", config);
 
-    assert registry is not None;
-    assert hasattr(registry, "build_image");
-    assert hasattr(registry, "push_image");
-    assert hasattr(registry, "get_image_url");
-    assert registry.docker_username == "testuser";
-}
-
-test "image registry factory raises for unsupported registry" {
-    config = {"app_name": "test-app"};
-
-    raised = False;
-    try {
-        ImageRegistryFactory.create("unsupported", config);
-    } except ValueError as e {
-        raised = True;
-        assert "Unsupported image registry" in str(e);
-    }
-    assert raised , "Expected ValueError for unsupported registry";
+    assert target is not None;
+    assert hasattr(target, "deploy");
+    assert hasattr(target, "destroy");
 }
 
 test "utility factory creates standard logger" {
@@ -402,19 +382,3 @@ test "hpa destroy collection also sweeps competing KEDA resources" {
     }
 }
 
-test "image registry factory register and create custom registry" {
-    mock_registry = unittest.mock.MagicMock();
-
-    def custom_factory(config: dict) -> object {
-        mock_registry.config = config;
-        return mock_registry;
-    }
-
-    ImageRegistryFactory.register("custom-registry", custom_factory);
-    config = {"username": "test", "password": "test"};
-    result = ImageRegistryFactory.create("custom-registry", config);
-    assert result is mock_registry;
-    assert result.config == config;
-    # Clean up registry
-    del ImageRegistryFactory._registry["custom-registry"];
-}

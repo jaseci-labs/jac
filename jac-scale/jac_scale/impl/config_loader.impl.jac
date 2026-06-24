@@ -34,9 +34,6 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
         },
         'kubernetes': {
             'app_name': 'jaseci',
-            'docker_image_name': '',
-            'docker_username': '',
-            'docker_password': '',
             'namespace': 'default',
             'container_port': 8000,
             'mongodb_enabled': True,
@@ -228,11 +225,6 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] 
 impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     k8s_config = config.get('kubernetes', {});
-    # Handle docker_image_name default (needs app_name)
-    if not k8s_config.get('docker_image_name') {
-        app_name = k8s_config.get('app_name', 'jaseci');
-        k8s_config['docker_image_name'] = f"{app_name}:latest";
-    }
     # Merge monitoring config into kubernetes config
     monitoring = self.get_monitoring_config();
     k8s_config['monitoring_enabled'] = monitoring['enabled'];

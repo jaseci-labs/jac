@@ -9,7 +9,6 @@ import yaml;
 import from typing { Any }
 import from jaclang.cli.console { console }
 import from jac_scale.abstractions.config.app_config { AppConfig }
-import from jac_scale.microservices.images.cluster_detect { detect_cluster_type }
 import from jac_scale.targets.kubernetes.microservice.manifest_builder { GATEWAY_NAME }
 import from jac_scale.microservices.cli.diagnostics {
     Diagnostic,
@@ -410,7 +409,7 @@ obj Plan {
             bundle=bundle,
             ms_cfg=ms_cfg,
             svc_configs=svc_configs,
-            cluster_type=detect_cluster_type(),
+            cluster_type="(active kubectl context)",
             namespace=str(target.k8s_config.namespace),
             services=services,
             ingress=IngressView.from_manifest(bundle.get("ingress"), routes)

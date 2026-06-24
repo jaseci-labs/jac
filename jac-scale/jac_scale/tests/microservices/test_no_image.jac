@@ -18,10 +18,6 @@ import from jac_scale.targets.kubernetes.microservice.source_bundle {
     source_configmap_name,
     build_bootstrap_init_container,
     pinned_install_specs,
-    auto_no_image_fallback,
-    decide_zeroconfig_image_strategy,
-    IMAGE_STRATEGY_IMAGE,
-    IMAGE_STRATEGY_NO_IMAGE,
     SOURCE_ARCHIVE_KEY,
     APP_MOUNT_PATH,
     PYDEPS_DIR
@@ -108,58 +104,6 @@ test "pack_source ships a [plugins.scale]-stripped jac.toml; excludes other secr
     shutil.rmtree(tmp);
 }
 
-# =============================================================================
-# auto_no_image_fallback: zero-config default
-# =============================================================================
-test "auto_no_image_fallback: no image/registry/build -> True (fallback)" {
-    assert auto_no_image_fallback(
-        False, "jac-shop:latest", "jac-shop:latest", ""
-    ) == True;
-    # bare default image still counts as 'no explicit image'
-    assert auto_no_image_fallback(False, "", "jac-shop:latest", "") == True;
-}
-
-test "auto_no_image_fallback: explicit image or registry or --build -> False" {
-    # explicit (non-default) image
-    assert auto_no_image_fallback(
-        False, "myrepo/app:v1", "jac-shop:latest", ""
-    ) == False;
-    # registry configured
-    assert auto_no_image_fallback(
-        False, "jac-shop:latest", "jac-shop:latest", "ghcr.io/me"
-    ) == False;
-    # --build forces the image pipeline
-    assert auto_no_image_fallback(
-        True, "jac-shop:latest", "jac-shop:latest", ""
-    ) == False;
-}
-
-# =============================================================================
-# decide_zeroconfig_image_strategy: prefer a real image; no-image is last resort
-# =============================================================================
-test "strategy: docker + local cluster -> build a real image (no registry)" {
-    # The win: a zero-config app on kind/k3d/minikube gets a REAL image built
-    # and loaded with no registry, instead of the source-ConfigMap workaround.
-    s = decide_zeroconfig_image_strategy(docker_usable=True, cluster_is_local=True);
-    assert s.mode == IMAGE_STRATEGY_IMAGE;
-    assert "real image" in s.reason;
-}
-
-test "strategy: no docker -> no-image is the only option" {
-    s = decide_zeroconfig_image_strategy(docker_usable=False, cluster_is_local=True);
-    assert s.mode == IMAGE_STRATEGY_NO_IMAGE;
-    assert "docker" in s.reason;
-    # docker absence dominates even if the cluster would otherwise be local
-    s2 = decide_zeroconfig_image_strategy(docker_usable=False, cluster_is_local=False);
-    assert s2.mode == IMAGE_STRATEGY_NO_IMAGE;
-}
-
-test "strategy: docker but remote cluster, no registry -> no-image fallback" {
-    s = decide_zeroconfig_image_strategy(docker_usable=True, cluster_is_local=False);
-    assert s.mode == IMAGE_STRATEGY_NO_IMAGE;
-    assert "registry" in s.reason;
-}
-
 test "build_source_configmap holds the base64 archive in binaryData" {
     tmp = tempfile.mkdtemp();
     (Path(tmp) / "main.jac").write_text("to cl:\n");
@@ -220,18 +164,12 @@ test "bootstrap init container extracts source and installs to pydeps" {
     assert "jac-source" in mount_names;
 }
 
-test "no-image pods get a startup probe; built-image pods do not" {
+test "no-image pods get a startup probe" {
     cfg = KubernetesConfig(app_name="jac-shop", namespace="jac-shop-dev");
     ni = MicroserviceManifestBuilder(k8s_config=cfg, no_image=True);
     nc = ni._build_service_pod_spec("orders_app", "ignored:image")["containers"][0];
     assert "startupProbe" in nc;
     assert nc["startupProbe"]["failureThreshold"] == 90;
-
-    plain = MicroserviceManifestBuilder(k8s_config=cfg);
-    pc = plain._build_service_pod_spec("orders_app", "jac-shop:dev-abc")["containers"][
-        0
-    ];
-    assert "startupProbe" not in pc;
 }
 
 test "no-image gateway entrypoint builds the client when a client entry is set" {
@@ -247,11 +185,7 @@ test "no-image gateway entrypoint builds the client when a client entry is set" 
     assert "exec jac scale gateway" in gw;
     assert "|| echo" in gw;
 
-    # Built-image mode never builds in-pod (the image already has the bundle).
-    plain = MicroserviceManifestBuilder(k8s_config=cfg);
-    assert "jac build" not in plain._pod_entrypoint()["args"][0];
-
-    # No-image but no client entry (backend-only app) -> no client build.
+    # No client entry (backend-only app) -> no client build.
     nc = MicroserviceManifestBuilder(k8s_config=cfg, no_image=True);
     p2 = mock.patch.object(nc, "_client_entry", return_value="");
     p2.start();
@@ -260,7 +194,7 @@ test "no-image gateway entrypoint builds the client when a client entry is set" 
     assert "jac build" not in no_build;
 }
 
-test "no-image pods default to higher memory (in-pod build); built-image stays small" {
+test "no-image pods default to higher memory (in-pod build)" {
     cfg = KubernetesConfig(app_name="jac-shop", namespace="jac-shop-dev");
     ni = MicroserviceManifestBuilder(k8s_config=cfg, no_image=True);
     # service default: 4Gi limit / 1Gi request (jac install + compile in-pod).
@@ -273,13 +207,6 @@ test "no-image pods default to higher memory (in-pod build); built-image stays s
     assert gw["requests"]["memory"] == "2Gi";
     # explicit config still wins over the default.
     assert ni._build_resources({"memory_limit": "512Mi"})["limits"]["memory"] == "512Mi";
-
-    # built-image keeps the small Burstable defaults (no in-pod build).
-    plain = MicroserviceManifestBuilder(k8s_config=cfg);
-    pr = plain._build_resources({});
-    assert pr["limits"]["memory"] == "1Gi";
-    assert pr["requests"]["memory"] == "128Mi";
-    assert plain._build_resources({}, is_gateway=True)["limits"]["memory"] == "2Gi";
 }
 
 test "injected microservices_config overrides the process jac.toml (platform deploys)" {
@@ -470,7 +397,7 @@ test "no-image pod spec runs the python base image with source volumes" {
     assert "jac-bootstrap" in init_names;
 }
 
-test "generate_manifests (no-image) emits a source ConfigMap + python-base pods" {
+test "generate_manifests emits a source ConfigMap + python-base pods" {
     tmp = tempfile.mkdtemp();
     (Path(tmp) / "main.jac").write_text("to cl:\n");
     (Path(tmp) / "orders_app.jac").write_text("to sv:\n");
@@ -509,18 +436,4 @@ test "generate_manifests (no-image) emits a source ConfigMap + python-base pods"
     assert "jac-bootstrap" in {c["name"] for c in pod["initContainers"]};
 
     shutil.rmtree(tmp);
-}
-
-
-test "image-mode pod spec is unchanged (no source volumes / bootstrap)" {
-    cfg = KubernetesConfig(app_name="jac-shop", namespace="jac-shop-dev");
-    builder = MicroserviceManifestBuilder(k8s_config=cfg, no_image=False);
-
-    spec = builder._build_service_pod_spec("orders_app", "jac-shop:dev-abc123");
-    container = spec["containers"][0];
-
-    assert container["image"] == "jac-shop:dev-abc123";
-    assert "workingDir" not in container;
-    assert "volumes" not in spec;
-    assert "initContainers" not in spec;
 }

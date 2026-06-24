@@ -31,9 +31,11 @@ obj MicroserviceManifestBuilder {
         secrets: dict[str, str] = {},
         deploy_context: DeployContext = DeployContext(),
         logger: any = None,
-        # no-image mode: serve source from a ConfigMap + install jac at pod
-        # startup on a generic Python base image (no docker build/push).
-        no_image: bool = False,
+        # no-image is the only code-shipping path: serve source from a
+        # ConfigMap + install jac at pod startup on a generic Python base
+        # image (no docker build/push). Retained as a field for callers/tests;
+        # always treated as true.
+        no_image: bool = True,
         # no-image + experimental: the bootstrap git-clones the jaseci
         # repo/branch (k8s_config.jaseci_*) into a shared venv instead of
         # installing pinned releases from PyPI - run unreleased jac in-pod.
@@ -89,18 +91,16 @@ obj MicroserviceManifestBuilder {
             "pdbs": pdbs,
             "pod_specs": pod_specs
         };
-        # no-image mode: pack local source into a ConfigMap mounted by every
-        # pod's bootstrap initContainer (see _build_pod_spec).
-        if self.no_image {
-            import from jac_scale.targets.kubernetes.microservice.source_bundle {
-                build_source_configmap
-            }
-            bundle["source_configmap"] = build_source_configmap(
-                k8s_safe_name(self.k8s_config.app_name),
-                self.k8s_config.namespace,
-                self.project_dir or app_config.code_folder
-            );
+        # Pack local source into a ConfigMap mounted by every pod's bootstrap
+        # initContainer (see _build_pod_spec).
+        import from jac_scale.targets.kubernetes.microservice.source_bundle {
+            build_source_configmap
         }
+        bundle["source_configmap"] = build_source_configmap(
+            k8s_safe_name(self.k8s_config.app_name),
+            self.k8s_config.namespace,
+            self.project_dir or app_config.code_folder
+        );
         pvcs = self._build_shared_pvc_manifests();
         if pvcs {
             bundle["pvcs"] = pvcs;
@@ -512,22 +512,14 @@ obj MicroserviceManifestBuilder {
             memory_request_val = cfg.memory_request;
         }
         if memory_request_val is None {
-            if self.no_image {
-                memory_request_val = "2Gi" if is_gateway else "1Gi";
-            } else {
-                memory_request_val = "128Mi";
-            }
+            memory_request_val = "2Gi" if is_gateway else "1Gi";
         }
         memory_limit_val = svc_cfg.get("memory_limit");
         if memory_limit_val is None {
             memory_limit_val = cfg.memory_limit;
         }
         if memory_limit_val is None {
-            if self.no_image {
-                memory_limit_val = "8Gi" if is_gateway else "4Gi";
-            } else {
-                memory_limit_val = "2Gi" if is_gateway else "1Gi";
-            }
+            memory_limit_val = "8Gi" if is_gateway else "4Gi";
         }
         cpu_request_val = svc_cfg.get("cpu_request");
         if cpu_request_val is None {
@@ -563,24 +555,6 @@ obj MicroserviceManifestBuilder {
             out["limits"] = limits;
         }
         return out;
-    }
-
-    """Apply per-service image_tag override (handles registry-port colons)."""
-    def _resolve_image(image: str, svc_cfg: dict[str, any]) -> str {
-        tag = svc_cfg.get("image_tag");
-        if not tag {
-            return image;
-        }
-        if ":" not in image {
-            return f"{image}:{tag}";
-        }
-        idx: int = image.rindex(":");
-        after: str = image[idx + 1:];
-        if "/" in after {
-            # The colon was a registry port, not a tag separator.
-            return f"{image}:{tag}";
-        }
-        return f"{image[:idx]}:{tag}";
     }
 
     """/healthz/ready; gates Endpoints. Tight cadence so pod drops out
@@ -834,17 +808,15 @@ obj MicroserviceManifestBuilder {
     exported so the pre-hook skips local-mode orchestration."""
     def _pod_entrypoint -> dict[str, any] {
         gw_prefix = "";
-        if self.no_image {
-            client_entry = self._client_entry();
-            if client_entry {
-                # Build the fullstack client in-pod so the gateway serves it at
-                # `/`. Non-fatal: the API + admin still come up if the FE build
-                # fails (the SPA route just 404s, as it did before).
-                gw_prefix = (
-                    f'jac build "{client_entry}" '
-                    f'|| echo "[jac-scale] client build failed; / will 404"; '
-                );
-            }
+        client_entry = self._client_entry();
+        if client_entry {
+            # Build the fullstack client in-pod so the gateway serves it at
+            # `/`. Non-fatal: the API + admin still come up if the FE build
+            # fails (the SPA route just 404s, as it did before).
+            gw_prefix = (
+                f'jac build "{client_entry}" '
+                f'|| echo "[jac-scale] client build failed; / will 404"; '
+            );
         }
         return {
             "command": ["sh", "-c"],
@@ -867,13 +839,9 @@ obj MicroserviceManifestBuilder {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
-        # no-image mode runs on the generic Python base image; the per-service
+        # no-image runs on the generic Python base image; the per-service
         # image_tag override is meaningless without a built image.
-        resolved_image: str = (
-            self.k8s_config.python_image
-                if self.no_image
-                else self._resolve_image(image, svc_cfg)
-        );
+        resolved_image: str = self.k8s_config.python_image;
         # JAC_IMAGE_REF (B-01): the resolved ref incl. K-29's content-id
         # suffix, surfaced so an in-pod self-check can report "running build X"
         # with zero RBAC. Strip any user-set copy first so the rendered YAML
@@ -899,51 +867,47 @@ obj MicroserviceManifestBuilder {
         };
         # no-image pods install + compile jac at startup (minutes), which the
         # liveness probe would SIGKILL; a startup probe holds it off until the
-        # app first answers. Built-image pods boot fast and don't need it.
-        if self.no_image {
-            container["startupProbe"] = self._build_startup_probe();
-        }
+        # app first answers.
+        container["startupProbe"] = self._build_startup_probe();
         resources = self._build_resources(svc_cfg, svc_name == GATEWAY_NAME);
         if resources {
             container["resources"] = resources;
         }
         (shared_vols, shared_mounts) = self._shared_volumes_for_service(svc_name);
-        # no-image mode: run from the extracted source on a shared emptyDir,
-        # resolving jac + deps the bootstrap initContainer installed under
-        # PYDEPS_DIR (added to PATH/PYTHONPATH). entry["args"]'s `jac` then
-        # resolves to the installed console script.
+        # Run from the extracted source on a shared emptyDir, resolving jac +
+        # deps the bootstrap initContainer installed under PYDEPS_DIR (added to
+        # PATH/PYTHONPATH). entry["args"]'s `jac` then resolves to the
+        # installed console script.
         no_image_mounts: list[dict[str, any]] = [];
-        if self.no_image {
-            import from jac_scale.targets.kubernetes.microservice.source_bundle {
-                APP_VOLUME_NAME,
-                APP_MOUNT_PATH,
-                PYDEPS_DIR,
-                VENV_DIR
-            }
-            container["workingDir"] = APP_MOUNT_PATH;
-            if self.experimental {
-                # Run out of the shared venv the experimental bootstrap built
-                # (editable jac + plugins); no PYDEPS_DIR / PYTHONPATH override.
-                env_list.append({"name": "VIRTUAL_ENV", "value": VENV_DIR});
-                env_list.append(
-                    {
-                        "name": "PATH",
-                        "value": f"{VENV_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
-                    }
-                );
-            } else {
-                env_list.append({"name": "PYTHONPATH", "value": PYDEPS_DIR});
-                env_list.append(
-                    {
-                        "name": "PATH",
-                        "value": f"{PYDEPS_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
-                    }
-                );
-            }
-            no_image_mounts.append(
-                {"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH}
+        import from jac_scale.targets.kubernetes.microservice.source_bundle {
+            APP_VOLUME_NAME,
+            APP_MOUNT_PATH,
+            PYDEPS_DIR,
+            VENV_DIR
+        }
+        container["workingDir"] = APP_MOUNT_PATH;
+        if self.experimental {
+            # Run out of the shared venv the experimental bootstrap built
+            # (editable jac + plugins); no PYDEPS_DIR / PYTHONPATH override.
+            env_list.append({"name": "VIRTUAL_ENV", "value": VENV_DIR});
+            env_list.append(
+                {
+                    "name": "PATH",
+                    "value": f"{VENV_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
+                }
+            );
+        } else {
+            env_list.append({"name": "PYTHONPATH", "value": PYDEPS_DIR});
+            env_list.append(
+                {
+                    "name": "PATH",
+                    "value": f"{PYDEPS_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
+                }
             );
         }
+        no_image_mounts.append(
+            {"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH}
+        );
         all_mounts = shared_mounts + no_image_mounts;
         if all_mounts {
             container["volumeMounts"] = all_mounts;
@@ -963,36 +927,34 @@ obj MicroserviceManifestBuilder {
         }
         all_volumes = list(shared_vols);
         init_containers = list(self.deploy_context.init_containers);
-        if self.no_image {
-            import from jac_scale.targets.kubernetes.microservice.source_bundle {
-                APP_VOLUME_NAME,
-                SOURCE_VOLUME_NAME,
-                source_configmap_name,
-                build_bootstrap_init_container
-            }
-            all_volumes.append({"name": APP_VOLUME_NAME, "emptyDir": {}});
-            all_volumes.append(
-                {
-                    "name": SOURCE_VOLUME_NAME,
-                    "configMap": {
-                        "name": source_configmap_name(
-                            k8s_safe_name(self.k8s_config.app_name)
-                        )
-                    }
-                }
-            );
-            # Bootstrap runs first: extract source + install jac before the
-            # db-wait init containers (order is cosmetic; both must finish).
-            init_containers = [
-                build_bootstrap_init_container(
-                    self.k8s_config.python_image,
-                    experimental=self.experimental,
-                    repo_url=self.k8s_config.jaseci_repo_url,
-                    branch=self.k8s_config.jaseci_branch,
-                    commit=self.k8s_config.jaseci_commit or ""
-                )
-            ] + init_containers;
+        import from jac_scale.targets.kubernetes.microservice.source_bundle {
+            APP_VOLUME_NAME,
+            SOURCE_VOLUME_NAME,
+            source_configmap_name,
+            build_bootstrap_init_container
         }
+        all_volumes.append({"name": APP_VOLUME_NAME, "emptyDir": {}});
+        all_volumes.append(
+            {
+                "name": SOURCE_VOLUME_NAME,
+                "configMap": {
+                    "name": source_configmap_name(
+                        k8s_safe_name(self.k8s_config.app_name)
+                    )
+                }
+            }
+        );
+        # Bootstrap runs first: extract source + install jac before the
+        # db-wait init containers (order is cosmetic; both must finish).
+        init_containers = [
+            build_bootstrap_init_container(
+                self.k8s_config.python_image,
+                experimental=self.experimental,
+                repo_url=self.k8s_config.jaseci_repo_url,
+                branch=self.k8s_config.jaseci_branch,
+                commit=self.k8s_config.jaseci_commit or ""
+            )
+        ] + init_containers;
         if all_volumes {
             spec["volumes"] = all_volumes;
         }

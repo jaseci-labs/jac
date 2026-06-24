@@ -15,7 +15,6 @@ import from jac_scale._optdeps.redis { HAS_REDIS, Redis }
 import from jac_scale._optdeps.prometheus { HAS_PROMETHEUS, Counter }
 import from jac_scale._optdeps.apscheduler { HAS_APSCHEDULER, BackgroundScheduler }
 import from jac_scale._optdeps.kubernetes { HAS_KUBERNETES, client as k8s_client }
-import from jac_scale._optdeps.docker { HAS_DOCKER, docker_module }
 
 # =============================================================================
 # require_optional — happy path (installed packages)
@@ -77,7 +76,6 @@ test "HAS flags are booleans" {
     assert isinstance(HAS_PROMETHEUS, bool);
     assert isinstance(HAS_APSCHEDULER, bool);
     assert isinstance(HAS_KUBERNETES, bool);
-    assert isinstance(HAS_DOCKER, bool);
 }
 
 test "HAS flags match is_optional_available" {
@@ -86,7 +84,6 @@ test "HAS flags match is_optional_available" {
     assert HAS_PROMETHEUS == is_optional_available("prometheus_client");
     assert HAS_APSCHEDULER == is_optional_available("apscheduler");
     assert HAS_KUBERNETES == is_optional_available("kubernetes");
-    assert HAS_DOCKER == is_optional_available("docker");
 }
 
 # =============================================================================
@@ -135,13 +132,6 @@ test "kubernetes exports are real when installed" {
     }
 }
 
-test "docker exports are real when installed" {
-    if HAS_DOCKER {
-        assert docker_module is not None;
-    } else {
-        assert docker_module is None;
-    }
-}
 
 # =============================================================================
 # Factory fallback behavior
@@ -267,13 +257,11 @@ test "compat modules are always importable" {
     import jac_scale._optdeps.prometheus;
     import jac_scale._optdeps.apscheduler;
     import jac_scale._optdeps.kubernetes;
-    import jac_scale._optdeps.docker;
     assert hasattr(jac_scale._optdeps.pymongo, "HAS_PYMONGO");
     assert hasattr(jac_scale._optdeps.redis, "HAS_REDIS");
     assert hasattr(jac_scale._optdeps.prometheus, "HAS_PROMETHEUS");
     assert hasattr(jac_scale._optdeps.apscheduler, "HAS_APSCHEDULER");
     assert hasattr(jac_scale._optdeps.kubernetes, "HAS_KUBERNETES");
-    assert hasattr(jac_scale._optdeps.docker, "HAS_DOCKER");
 }
 
 test "multiple require_optional calls do not conflict" {

@@ -92,14 +92,12 @@ def _run_plan(
     diagnostics: list = [];
     cfg_pair = ms_cfg_pair if ms_cfg_pair is not None else ({}, {});
     with redirect_stdout(buf) {
-        with mock.patch.object(plan_mod, "detect_cluster_type", return_value="kind") {
-            with mock.patch.object(
-                plan_mod.Plan, "_load_ms_cfg", return_value=cfg_pair
-            ) {
-                (_, diagnostics) = print_plan(
-                    target, _make_app_config(), show_yaml=show_yaml
-                );
-            }
+        with mock.patch.object(
+            plan_mod.Plan, "_load_ms_cfg", return_value=cfg_pair
+        ) {
+            (_, diagnostics) = print_plan(
+                target, _make_app_config(), show_yaml=show_yaml
+            );
         }
     }
     return (buf.getvalue(), diagnostics);
@@ -141,12 +139,10 @@ test "dry-run contract: print_plan must NOT call deploy / apply_manifests" {
         side_effect=AssertionError("apply_manifests must NOT be called")
     );
     with redirect_stdout(io.StringIO()) {
-        with mock.patch.object(plan_mod, "detect_cluster_type", return_value="kind") {
-            with mock.patch.object(
-                plan_mod.Plan, "_load_ms_cfg", return_value=({}, {})
-            ) {
-                print_plan(target, _make_app_config());
-            }
+        with mock.patch.object(
+            plan_mod.Plan, "_load_ms_cfg", return_value=({}, {})
+        ) {
+            print_plan(target, _make_app_config());
         }
     }
     target.deploy.assert_not_called();
@@ -356,7 +352,7 @@ test "validate: deployment with no container image -> error" {
         {"a": {"cpu_request": "100m", "cpu_limit": "500m"}}
     );
     assert any(
-        d.severity == "error" and "no image resolved" in d.message for d in diags
+        d.severity == "error" and "no base image resolved" in d.message for d in diags
     );
 }
 
@@ -370,7 +366,7 @@ test "validate: route declared with no generated Deployment -> error + skips dow
     );
     # Downstream checks (HPA cpu baseline, image) MUST NOT chain on None
     assert not any("cpu_request is unset" in d.message for d in diags);
-    assert not any("no image resolved" in d.message for d in diags);
+    assert not any("no base image resolved" in d.message for d in diags);
 }
 
 

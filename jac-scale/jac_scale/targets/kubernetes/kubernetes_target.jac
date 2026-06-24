@@ -28,7 +28,6 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     resize_pvc_if_needed
 }
 import from jac_scale.targets.kubernetes.cluster_provider { ClusterProvider }
-import from jac_scale.providers.registry.dockerhub { DockerHubRegistry }
 import from jac_scale.providers.database.kubernetes_mongo { KubernetesMongoProvider }
 import from jac_scale.providers.database.kubernetes_redis { KubernetesRedisProvider }
 import from jac_scale._optdeps.optional_deps { require_optional }
@@ -38,7 +37,6 @@ import from jac_scale._optdeps.kubernetes {
     ApiException
 }
 import from jac_scale.factories.database_factory { DatabaseProviderFactory }
-import from jac_scale.factories.registry_factory { ImageRegistryFactory }
 import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
 import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
@@ -1321,35 +1319,6 @@ obj KubernetesTarget(DeploymentTarget) {
         return deployment_details;
     }
 
-    """Handle image registry if build is requested."""
-    def _handle_image_registry(app_name: str, app_config: AppConfig) -> str {
-        image_name = self.k8s_config.docker_image_name or f"{app_name}:latest";
-        repository_name: str;
-        if app_config.build and self.image_registry {
-            # Build and push image
-            full_image = self.image_registry.build_and_push(
-                app_config.code_folder, image_name
-            );
-            repository_name = full_image;
-        } elif app_config.build {
-            # Create registry if not set
-            registry_config = {
-                'app_name': app_name,
-                'docker_username': self.k8s_config.docker_username,
-                'docker_password': self.k8s_config.docker_password,
-                'docker_image_name': image_name
-            };
-            image_registry = ImageRegistryFactory.create('dockerhub', registry_config);
-            full_image = image_registry.build_and_push(
-                app_config.code_folder, image_name
-            );
-            repository_name = full_image;
-        } else {
-            repository_name = self.k8s_config.python_image;
-        }
-        return repository_name;
-    }
-
     def deploy(app_config: AppConfig) -> DeploymentResult {
         # 1. Initialize and validate
         app_name = app_config.app_name or self.k8s_config.app_name;
@@ -1427,8 +1396,9 @@ obj KubernetesTarget(DeploymentTarget) {
                 );
             }
 
-            # 5. Handle image registry if build is requested
-            repository_name = self._handle_image_registry(app_name, app_config);
+            # 5. No image build: run on the python base image and sync local
+            #    source into the cluster via the code-server/no-image path.
+            repository_name = self.k8s_config.python_image;
 
             # 6. Get health check path
             health_check_path = self.k8s_config.health_check_path;

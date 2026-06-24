@@ -7,15 +7,13 @@ import from jac_scale.abstractions.config.base_config { BaseConfig }
 import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
 import from jac_scale.abstractions.models.resource_status { ResourceStatusInfo }
 import from jac_scale.abstractions.database_provider { DatabaseProvider }
-import from jac_scale.abstractions.image_registry { ImageRegistry }
 import from jac_scale.abstractions.logger { Logger }
 
 """Base class for all deployment target implementations."""
 class DeploymentTarget {
     has config: BaseConfig,
         logger: (Logger | None) = None,
-        database_providers: list[DatabaseProvider] = [],
-        image_registry: (ImageRegistry | None) = None;
+        database_providers: list[DatabaseProvider] = [];
 
     """Deploy an application.
 

@@ -3,10 +3,7 @@ import from jac_scale.abstractions.config.base_config { BaseConfig }
 
 """Configuration for Kubernetes deployments."""
 obj KubernetesConfig(BaseConfig) {
-    has docker_image_name: str = '',
-        docker_username: str = '',
-        docker_password: str = '',
-        container_port: int = 8000,
+    has container_port: int = 8000,
         mongodb_enabled: bool = True,
         redis_enabled: bool = True,
         cpu_request: (str | None) = None,
@@ -136,9 +133,6 @@ obj KubernetesConfig(BaseConfig) {
         base = super.to_dict();
         base.update(
             {
-                'docker_image_name': self.docker_image_name,
-                'docker_username': self.docker_username,
-                'docker_password': self.docker_password,
                 'container_port': self.container_port,
                 'mongodb_enabled': self.mongodb_enabled,
                 'redis_enabled': self.redis_enabled,
@@ -226,9 +220,6 @@ obj KubernetesConfig(BaseConfig) {
         return cls(
             app_name=config.get('app_name', 'jaseci'),
             namespace=config.get('namespace', 'default'),
-            docker_image_name=config.get('docker_image_name', ''),
-            docker_username=config.get('docker_username', ''),
-            docker_password=config.get('docker_password', ''),
             container_port=config.get('container_port', 8000),
             mongodb_enabled=config.get('mongodb_enabled', True),
             redis_enabled=config.get('redis_enabled', True),

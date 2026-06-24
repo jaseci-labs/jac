@@ -1,7 +1,8 @@
 """K8s deployment target for microservice mode. Thin orchestrator over
-MicroserviceManifestBuilder + MicroserviceDatabaseProvisioner + the
-auto_build_and_distribute image pipeline. Registered as
-`kubernetes-microservice` in DeploymentTargetFactory."""
+MicroserviceManifestBuilder + MicroserviceDatabaseProvisioner. Ships the
+project's local source into the cluster (no-image path) and runs it on a
+generic Python base image. Registered as `kubernetes-microservice` in
+DeploymentTargetFactory."""
 
 import logging;
 import from jac_scale.targets.kubernetes.kubernetes_target { KubernetesTarget }
@@ -50,15 +51,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     # into MicroserviceManifestBuilder. Default empty so direct
     # generate_manifests() callers (tests) work without prior provision.
     has _deploy_context: DeployContext = DeployContext(),
-        # _scale_pre_hook flips these on the production `jac start --scale`
-        # path. Test path keeps them False -> parent KubernetesTarget
-        # behavior (build_via_registry / python_image fallback).
-        auto_build: bool = False,
-        guard_fallback_image: bool = False,
-        # no-image mode: copy local source into the cluster + install jac at
-        # pod startup instead of building/pushing an image. Set by
-        # _scale_pre_hook for `jac start --scale --no-image`.
-        no_image: bool = False,
+        # no-image mode is the only code-shipping path: copy local source into
+        # the cluster + install jac at pod startup on a generic Python base
+        # image (no docker build/push). Retained as a field so direct callers
+        # (tests) can construct the target; always treated as no-image.
+        no_image: bool = True,
         # The app's [plugins.scale.microservices] config. When set (a platform
         # deploying a different app's fleet), it's used and threaded into the
         # manifest builder instead of the running process's own jac.toml.
@@ -78,70 +75,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Auto-build path when `auto_build=True`: prefer user's pre-built
-    docker_image_name, else auto_build_and_distribute. Else parent behavior."""
-    def _handle_image_registry(app_name: str, app_config: AppConfig) -> str {
-        if self.auto_build {
-            user_image = self.k8s_config.docker_image_name;
-            if user_image and user_image != f"{app_name}:latest" {
-                # User explicitly set a non-default image -> trust it
-                if self.logger {
-                    self.logger.info(
-                        f"Using pre-built image: {user_image}",
-                        {"source": "jac.toml docker_image_name"}
-                    );
-                }
-                return user_image;
-            }
-            # Auto-build path
-            return self._auto_build_image(app_name, app_config);
-        }
-        # Default: parent behavior (existing build_via_registry / fallback)
-        return KubernetesTarget._handle_image_registry(self, app_name, app_config);
-    }
-
-    """Reads image_registry from raw config (KubernetesConfig.from_dict
-    drops unknown keys so we can't go via the typed view) and hands off
-    to the cluster-aware auto-build pipeline."""
-    def _auto_build_image(app_name: str, app_config: AppConfig) -> str {
-        import from pathlib { Path }
-        import from jac_scale.microservices.images.auto_build {
-            auto_build_and_distribute
-        }
-
-        # Read image_registry directly from raw [plugins.scale.kubernetes]
-        # config; KubernetesConfig.from_dict drops unknown keys, so going
-        # via the typed view would lose this. Empty/missing -> None,
-        # which is fine for local clusters and signals "needs registry"
-        # for remote.
-        registry_url: str | None = None;
-        try {
-            import from jac_scale.config_loader { get_scale_config }
-            raw = get_scale_config().load();
-            k8s_raw = raw.get("kubernetes", {});
-            reg = str(k8s_raw.get("image_registry", "")).strip();
-            registry_url = reg;
-        } except Exception {
-            registry_url = None;
-        }
-
-        project_dir = Path(app_config.code_folder).resolve();
-        if self.logger {
-            self.logger.info(
-                f"Auto-building image for microservice deploy",
-                {"project_dir": str(project_dir), "app_name": app_name}
-            );
-        }
-        image_tag = auto_build_and_distribute(
-            app_name=app_name, project_dir=project_dir, registry_url=registry_url
-        );
-        if self.logger {
-            self.logger.info(f"Auto-built image: {image_tag}", {"app_name": app_name});
-        }
-        return image_tag;
-    }
-
-    """Build image -> generate manifests -> apply via kubernetes Python
+    """Ship source -> generate manifests -> apply via kubernetes Python
     client. Kubeconfig from outside, in-cluster SA from inside.
     `DeploymentResult.details` keeps the manifest bundle."""
     def deploy(app_config: AppConfig) -> DeploymentResult {
@@ -162,7 +96,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             self._deploy_context = MicroserviceDatabaseProvisioner(
                 k8s_target=self,
                 logger=self.logger,
-                enabled=self.auto_build or self.no_image
+                enabled=self.no_image
             ).provision(
                 app_name
             );
@@ -465,58 +399,21 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     _deploy_context first; direct callers (tests) get an empty context
     which produces pod specs without DB env / init containers."""
     def generate_manifests(app_config: AppConfig) -> dict[str, any] {
-        app_name = app_config.app_name or self.k8s_config.app_name;
-
-        # no-image mode skips the whole image pipeline: pods run the generic
-        # python base + install jac at startup against ConfigMap-mounted
-        # source. Pass the base image straight through (the builder ignores it
-        # and uses python_image) and wire the source dir into the builder.
-        if self.no_image or app_config.no_image {
-            builder = MicroserviceManifestBuilder(
-                k8s_config=self.k8s_config,
-                secrets=self.secrets,
-                deploy_context=self._deploy_context,
-                logger=self.logger,
-                no_image=True,
-                experimental=app_config.experimental,
-                project_dir=app_config.code_folder,
-                microservices_config=self.microservices_config
-            );
-            return builder.generate_manifests(app_config, self.k8s_config.python_image);
-        }
-
-        image = self._handle_image_registry(app_name, app_config);
-
-        # Fail loud on python_image fallback so users don't get a silent
-        # CrashLoopBackOff (the image has no jac/jac-scale installed).
-        # Opt-in via the constructor flag to preserve manifest-shape tests.
-        if self.guard_fallback_image {
-            fallback_image = self.k8s_config.python_image;
-            if image == fallback_image or image.startswith("python:") {
-                raise RuntimeError(
-                    f"Microservice mode deploy fell back to '{image}', which "
-                    f"doesn't have jac/jac-scale installed - all pods would "
-                    f"CrashLoopBackOff with 'jac: command not found'.\n\n"
-                    f"Likely causes:\n"
-                    f"  - No Dockerfile in your project root and no "
-                    f"auto-build path configured.\n"
-                    f"  - You're running `jac start --scale` from a fixture "
-                    f"dir meant for the e2e script, not direct deploy.\n\n"
-                    f"Fix: drop a `Dockerfile.microservice` in your project root, "
-                    f"or pre-set [plugins.scale.kubernetes].docker_image_name "
-                    f"in jac.toml if the image is already built."
-                );
-            }
-        }
-
+        # no-image is the only path: pods run the generic python base +
+        # install jac at startup against ConfigMap-mounted source. Pass the
+        # base image straight through (the builder ignores it and uses
+        # python_image) and wire the source dir into the builder.
         builder = MicroserviceManifestBuilder(
             k8s_config=self.k8s_config,
             secrets=self.secrets,
             deploy_context=self._deploy_context,
             logger=self.logger,
+            no_image=True,
+            experimental=app_config.experimental,
+            project_dir=app_config.code_folder,
             microservices_config=self.microservices_config
         );
-        return builder.generate_manifests(app_config, image);
+        return builder.generate_manifests(app_config, self.k8s_config.python_image);
     }
 
     """Load kubeconfig, fall back to in-cluster, re-raise with actionable

@@ -102,21 +102,6 @@ class JacScalePluginConfig {
                             "default": "jaseci",
                             "description": "Application name for Kubernetes resources"
                         },
-                        "docker_image_name": {
-                            "type": "string",
-                            "default": "",
-                            "description": "Docker image name (defaults to {app_name}:latest)"
-                        },
-                        "docker_username": {
-                            "type": "string",
-                            "default": "",
-                            "description": "DockerHub username for pushing images"
-                        },
-                        "docker_password": {
-                            "type": "string",
-                            "default": "",
-                            "description": "DockerHub password/token for pushing images"
-                        },
                         "namespace": {
                             "type": "string",
                             "default": "default",

@@ -81,138 +81,6 @@ def source_configmap_name(app_name: str) -> str {
 }
 
 
-"""Whether `jac start --scale` is a zero-config deploy (no image path set).
-
-Pure so it is unit-testable. True when the user has NOT configured any way to
-get a real image - no explicit `docker_image_name` (i.e. it's still the
-`<app>:latest` default), no `image_registry`, and no `--build`. In that case the
-plugin does NOT immediately copy source; it asks `decide_zeroconfig_image_strategy`
-whether a real image can still be built locally (preferred) and only falls back
-to the no-image source bundle when it cannot. An explicit image/registry or
-`--build` returns False (use the normal image pipeline); `--no-image` is handled
-separately as a forced override.
-
-(The name is retained for back-compat; read it as "no image path configured".)
-"""
-def auto_no_image_fallback(
-    build: bool, docker_image_name: str, default_image: str, image_registry: str
-) -> bool {
-    if build {
-        return False;
-    }
-    user_image = str(docker_image_name or "").strip();
-    if user_image and user_image != default_image {
-        return False;
-    }
-    if str(image_registry or "").strip() {
-        return False;
-    }
-    return True;
-}
-
-
-# Image-strategy modes returned by decide_zeroconfig_image_strategy.
-glob IMAGE_STRATEGY_IMAGE: str = "image",
-     IMAGE_STRATEGY_NO_IMAGE: str = "no_image";
-
-
-"""The deploy image strategy chosen for a zero-config microservice `--scale`.
-
-`mode` is `IMAGE_STRATEGY_IMAGE` (build a real image) or
-`IMAGE_STRATEGY_NO_IMAGE` (copy source into a ConfigMap + install jac at pod
-startup). `reason` is a human-readable explanation surfaced to the user so the
-chosen path - and how to change it - is never a surprise.
-"""
-obj ImageStrategy {
-    has mode: str,
-        reason: str;
-}
-
-
-"""Decide how a zero-config `jac start --scale` should get its image. Pure.
-
-Only consulted when no image path is configured (auto_no_image_fallback True).
-The key correctness point: copying source into a ConfigMap is a last resort, not
-the default. Whenever a real image can be produced for free it wins, because the
-local-cluster pipeline already builds and loads images with NO external registry
-(`kind load` / `k3d image import` / `minikube docker-env`).
-
-  - docker usable AND a local dev cluster (kind/k3d/minikube)
-        -> build a real image and load it into the cluster (no registry needed).
-  - docker not usable (no daemon)
-        -> no-image: source ConfigMap + install at startup is the only option.
-  - docker usable but a remote/unknown cluster with no registry configured
-        -> no-image: there is nowhere to push a real image; fall back (and tell
-           the user to set image_registry for a production deploy).
-"""
-def decide_zeroconfig_image_strategy(
-    docker_usable: bool, cluster_is_local: bool
-) -> ImageStrategy {
-    if docker_usable and cluster_is_local {
-        return ImageStrategy(
-            mode=IMAGE_STRATEGY_IMAGE,
-            reason="local cluster + docker available: building a real image and "
-            "loading it into the cluster (no registry required)."
-        );
-    }
-    if not docker_usable {
-        return ImageStrategy(
-            mode=IMAGE_STRATEGY_NO_IMAGE,
-            reason="docker is not available: falling back to no-image (source "
-            "ConfigMap + install jac at pod startup). Install Docker, or "
-            "configure [plugins.scale.kubernetes].image_registry, for a "
-            "production image deploy."
-        );
-    }
-    return ImageStrategy(
-        mode=IMAGE_STRATEGY_NO_IMAGE,
-        reason="remote/unknown cluster with no image registry configured: "
-        "falling back to no-image. Set "
-        "[plugins.scale.kubernetes].image_registry (or use a local "
-        "kind/k3d/minikube cluster) for a production image deploy."
-    );
-}
-
-
-"""True when a local docker daemon is reachable (a zero-config image build is
-possible). Probes `docker info` with a short timeout; a missing CLI or any
-non-zero/raised result -> False, so the caller cleanly falls back to no-image.
-Side-effecting (subprocess), kept thin so the decision logic above stays pure.
-"""
-def docker_usable -> bool {
-    import shutil;
-    import subprocess;
-    if shutil.which("docker") is None {
-        return False;
-    }
-    try {
-        result = subprocess.run(["docker", "info"], capture_output=True, timeout=8);
-        return result.returncode == 0;
-    } except Exception {
-        return False;
-    }
-}
-
-
-"""True when the active kubectl context targets a local dev cluster
-(minikube/k3d/kind) that can load images without an external registry. Any
-detection failure -> False (treated as remote), so we never wrongly assume a
-registry-free path. Thin I/O wrapper over detect_cluster_type."""
-def cluster_is_local -> bool {
-    try {
-        import from jac_scale.microservices.images.cluster_detect {
-            detect_cluster_type,
-            CLUSTER_MINIKUBE,
-            CLUSTER_K3D,
-            CLUSTER_KIND
-        }
-        return detect_cluster_type() in (CLUSTER_MINIKUBE, CLUSTER_K3D, CLUSTER_KIND);
-    } except Exception {
-        return False;
-    }
-}
-
-
 """True if `rel` (a project-relative Path) is a build artifact or secret file
 that must not be packed into the ConfigMap."""
 def _is_excluded(rel: any) -> bool {
@@ -306,10 +174,9 @@ def build_source_configmap(
     encoded = base64.b64encode(raw).decode("ascii");
     if len(encoded) > _CONFIGMAP_MAX_BYTES {
         raise ValueError(
-            f"Project source is too large for --no-image mode "
+            f"Project source is too large to ship into the cluster "
             f"({len(encoded)} bytes encoded > {_CONFIGMAP_MAX_BYTES} ConfigMap "
-            f"limit). Trim large files from the project, or drop --no-image and "
-            f"build a real image (jac start --scale)."
+            f"limit). Trim large files from the project before deploying."
         );
     }
     return {
