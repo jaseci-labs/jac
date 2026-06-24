@@ -310,9 +310,9 @@ jobs:
       # Each file in its own process to avoid importlib double-load pollution.
       # test_firestore_e2e is omitted: needs FIRESTORE_EMULATOR_HOST.
       run: |
-        pytest -x -vv jac-scale/jac_scale/tests/test_gcs_storage.jac
-        pytest -x -vv jac-scale/jac_scale/tests/test_firestore_db.jac
-        pytest -x -vv jac-scale/jac_scale/tests/test_firebase_auth_sso.jac
+        jac test jac-scale/jac_scale/tests/test_gcs_storage.jac -x
+        jac test jac-scale/jac_scale/tests/test_firestore_db.jac -x
+        jac test jac-scale/jac_scale/tests/test_firebase_auth_sso.jac -x
 
   test-scale-k8s:
     needs: changes
