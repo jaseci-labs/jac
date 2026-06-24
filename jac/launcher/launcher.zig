@@ -64,8 +64,8 @@ const BOOT_SRC =
     "from jaclang.jac0core.cli_boot import start_cli\n" ++
     "start_cli()\n";
 
-/// Bundled CPython minor version. Must stay in lockstep with fetch-pbs.sh
-/// (PBS_PY) and mkpayload.sh staging; it names the dlopened libpython and the
+/// Bundled CPython minor version. Must stay in lockstep with payload.zig
+/// (PBS_PY / py_ver) staging; it names the dlopened libpython and the
 /// lib-dynload path below. A single bump point for the embedded interpreter.
 const py_ver = "3.14";
 

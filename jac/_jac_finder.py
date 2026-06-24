@@ -49,6 +49,18 @@ def apply_dev_source_override() -> None:
     during site init, BEFORE the launcher's BOOT_SRC does ``import jaclang``, so
     the override wins over the bundled ``site/`` on ``PYTHONPATH``.
 
+    The stanza is read from the NEAREST ``jac.toml`` -- the same project root
+    every other config setting resolves against (see ``_find_project_toml``), so
+    a directory that wants the loop must carry its own ``[dev]`` stanza rather
+    than inherit one from an enclosing project. This repo ships it in both the
+    root ``jac.toml`` and ``jac/jac.toml`` (both pointing at the same source),
+    so the loop holds from the repo root AND from ``cd jac`` (where the suite
+    runs); other subprojects opt in by adding their own stanza.
+
+    Set ``JAC_NO_DEV_SOURCE=1`` to force the loop OFF even when a stanza is in
+    scope -- used by CI jobs that must exercise the shipped binary's bundled +
+    precompiled jaclang rather than the checked-out source tree.
+
     Caches: sets ``JAC_NO_PRECOMPILE=1`` so the shipped, version-keyed
     ``_precompiled`` JIR bundle is skipped. The per-module ``.jir`` cache is
     content-keyed (``compute_module_key`` folds the source sha256), so source
@@ -60,6 +72,8 @@ def apply_dev_source_override() -> None:
     a small file read.
     """
     try:
+        if os.environ.get("JAC_NO_DEV_SOURCE"):
+            return
         toml = _find_project_toml()
         if toml is None:
             return

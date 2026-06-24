@@ -972,6 +972,15 @@ impl _parse_toml_data(
         client_data = data["client"];
         config.client = ClientConfig(framework=client_data.get("framework", "react"));
     }
+    if "dev" in data {
+        dev_data = data["dev"];
+        # test_jobs accepts a bare int in TOML (e.g. test_jobs = 4 or 0); coerce
+        # to str so it can flow straight into pytest's `-n <jobs>` / serial check.
+        config.dev = DevConfig(
+            jaclang_source=str(dev_data.get("jaclang_source", "")),
+            test_jobs=str(dev_data.get("test_jobs", "auto"))
+        );
+    }
     if "plugins" in data {
         plugins_data = data["plugins"];
         config.plugins_config = PluginsConfig(

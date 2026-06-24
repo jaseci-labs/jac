@@ -21,6 +21,12 @@ permissions:
 env:
   ECR_REGISTRY: 776241927220.dkr.ecr.us-east-2.amazonaws.com
   ECR_REPOSITORY: jac-lang-website
+  # Build/serve docs through the SHIPPED binary, not the editable dev loop: a
+  # freshly built binary would otherwise pick up the checkout's `[dev]
+  # jaclang_source` stanza and reroute `import jaclang` to the source tree while
+  # skipping the precompiled JIR bundle, slowing every `jac` invocation here.
+  # (Mirrors the guard in test-binary.yml / test-jaseci.yml.)
+  JAC_NO_DEV_SOURCE: "1"
 
 jobs:
   deploy-jac-lang-website:

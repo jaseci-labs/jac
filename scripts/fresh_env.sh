@@ -20,10 +20,10 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-# Build the binary (needs zig 0.16.0 + zstd). zig build fetches the pinned
-# typeshed stdlib stubs itself (launcher/fetch-typeshed.sh), so there is no
-# submodule to check out.
-( cd jac && zig build )
+# Build the binary (needs zig 0.16.0 + network; no zstd/curl/git -- payload.zig
+# does it all in std). zig build fetches the pinned typeshed stdlib stubs itself
+# (the fetch-typeshed step), so there is no submodule to check out.
+( cd jac && zig build -Dpayload-progress )
 
 JAC_BIN="$PWD/jac/zig-out/bin/jac"
 echo "Built: $JAC_BIN"
