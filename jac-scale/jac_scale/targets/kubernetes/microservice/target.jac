@@ -581,6 +581,22 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
         ensure_namespace_exists(namespace);
 
+        # The service Deployment pod specs reference the configured
+        # `service_account_name`, but jac-scale only generates that reference -
+        # it does not create the SA. On a fresh namespace the ReplicaSet
+        # controller then rejects every pod with "serviceaccount not found", the
+        # fleet never becomes ready, and the readiness wait below fails the
+        # deploy. Reuse the inherited monolith read-or-create so the SA (with no
+        # auto-mounted token) exists before the Deployments are applied.
+        sa_name = str(
+            getattr(self.k8s_config, "service_account_name", "") or ""
+        ).strip();
+        if sa_name {
+            self._create_service_account(
+                sa_name, self.k8s_config.app_name, namespace, core_v1
+            );
+        }
+
         # Ops Console RBAC (opt-in). Applied right after the
         # namespace so the read-only Role + RoleBinding exist before the
         # gateway pod (which uses them) rolls. Best-effort: an RBAC failure

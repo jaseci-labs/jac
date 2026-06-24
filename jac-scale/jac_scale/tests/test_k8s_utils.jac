@@ -20,6 +20,7 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     sync_code_to_pvc,
     validate_resource_limits
 }
+import from jac_scale.targets.kubernetes.kubernetes_target { KubernetesTarget }
 
 # --- parse_cpu_quantity valid ---
 def _test_parse_cpu_valid(pair: tuple) {
@@ -160,6 +161,44 @@ test "ensure pvc exists creates when missing" {
     assert body["spec"]["accessModes"] == ["ReadWriteOnce"];
     assert body["spec"]["resources"]["requests"]["storage"] == "10Gi";
     assert body["spec"]["storageClassName"] == "fast";
+}
+
+# --- _create_service_account (read-or-create, shared by monolith + microservice) ---
+# Regression (#6883): the microservice deploy references the configured
+# ServiceAccount in every pod spec but used to never create it, so on a fresh
+# namespace the ReplicaSet rejected every pod ("serviceaccount not found"),
+# #6800's fleet-readiness wait timed out, and the deploy failed. The
+# microservice target now reuses this inherited monolith helper. Called unbound
+# with a minimal self (it only needs `.logger`) to avoid cluster construction.
+test "create service account creates a tokenless SA when missing" {
+    fake_self = SimpleNamespace(logger=None);
+    core_v1 = unittest.mock.MagicMock();
+    core_v1.read_namespaced_service_account.side_effect = ApiException(status=404);
+
+    KubernetesTarget._create_service_account(
+        fake_self, "test-app-sa", "test-app", "test-ns", core_v1
+    );
+
+    call_args = core_v1.create_namespaced_service_account.call_args;
+    assert call_args is not None , "ServiceAccount must be created when missing";
+    body = call_args[1]["body"];
+    assert body["kind"] == "ServiceAccount";
+    assert body["metadata"]["name"] == "test-app-sa";
+    assert body["metadata"]["namespace"] == "test-ns";
+    # Secure default: no auto-mounted cluster API token.
+    assert body["automountServiceAccountToken"] == False;
+}
+
+test "create service account skips an existing SA" {
+    fake_self = SimpleNamespace(logger=None);
+    core_v1 = unittest.mock.MagicMock();
+    core_v1.read_namespaced_service_account.return_value = object();
+
+    KubernetesTarget._create_service_account(
+        fake_self, "test-app-sa", "test-app", "test-ns", core_v1
+    );
+
+    core_v1.create_namespaced_service_account.assert_not_called();
 }
 
 # --- cluster_type detection ---
