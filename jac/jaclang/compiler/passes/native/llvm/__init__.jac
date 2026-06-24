@@ -8,5 +8,10 @@ here. The verbatim C++ LLVMPY_* shim it binds to lives at jac/native/ (compiled
 """
 import os;
 
+# JAC_LLVM_TYPED_POINTERS is the first-party name; the old llvmlite env var
+# LLVMLITE_ENABLE_IR_LAYER_TYPED_POINTERS is still honored as a fallback.
 glob ir_layer_typed_pointers_enabled: bool =
-    os.environ.get('LLVMLITE_ENABLE_IR_LAYER_TYPED_POINTERS', '1') == '1';
+    os.environ.get(
+        'JAC_LLVM_TYPED_POINTERS',
+        os.environ.get('LLVMLITE_ENABLE_IR_LAYER_TYPED_POINTERS', '1')
+    ) == '1';

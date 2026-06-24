@@ -33,6 +33,7 @@
 //!       write into jaclang/vendor/typeshed/TARBALL_SHA256 when bumping the PIN.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const flate = std.compress.flate;
@@ -192,6 +193,12 @@ fn fetchPbs(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []co
 /// into the LLVMPY_* shim. Idempotent (skips if already extracted). Mirrors
 /// fetch-pbs, but the LLVM asset is .tar.xz rather than .tar.zst.
 fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map, dest: []const u8) !void {
+    // The pinned asset (LLVM_DIRNAME/ASSET/SHA256) is Linux-x86_64-only. Fail
+    // loudly rather than silently fetching a mismatched 1.9 GB tarball on other
+    // hosts -- add a platform map (asset + sha per target) to support more.
+    if (builtin.cpu.arch != .x86_64 or builtin.os.tag != .linux) {
+        die("fetch-llvm: the pinned LLVM asset is {s} (x86_64-linux only); this host is {s}-{s}.", .{ LLVM_ASSET, @tagName(builtin.cpu.arch), @tagName(builtin.os.tag) });
+    }
     const marker = try std.fmt.allocPrint(a, "{s}/{s}/lib/libLLVMCore.a", .{ dest, LLVM_DIRNAME });
     if (fileExists(io, marker)) {
         log("fetch-llvm: already present at {s}/{s}", .{ dest, LLVM_DIRNAME });
@@ -455,8 +462,11 @@ fn mkPayload(
     );
     const dst_dir = try std.fmt.allocPrint(a, "{s}/jaclang/compiler/passes/native/llvm", .{site});
     try Dir.cwd().createDirPath(io, dst_dir);
+    // Keep the platform-correct basename (libjacllvm.so / .dylib / jacllvm.dll)
+    // so ffi.jac's _shim_name() finds it; build.zig emits the right name per OS.
+    const shim_base = std.fs.path.basename(so);
     log("==> bundling Zig-built LLVMPY_* shim ({s})", .{so});
-    try Dir.cwd().copyFile(so, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/libjacllvm.so", .{dst_dir}), io, .{});
+    try Dir.cwd().copyFile(so, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst_dir, shim_base }), io, .{});
 
     if (skip_precompile) {
         log("==> skipping JIR precompile (--skip-precompile); modules compile on first run", .{});

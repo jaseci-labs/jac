@@ -259,11 +259,13 @@ fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
             mod.addObjectFile(.{ .cwd_relative = b.fmt("{s}/{s}", .{ libdir, entry.name }) });
         }
     }
-    // LLVM's system deps. zstd must be the shared lib: the system static
-    // libzstd.a is non-PIC and cannot link into a shared object.
+    // LLVM's system deps. zstd must resolve to the shared lib: the system static
+    // libzstd.a is non-PIC and cannot link into a shared object. linkSystemLibrary
+    // (preferred dynamic) lets the linker find it portably via its search path,
+    // instead of a hardcoded Debian/Ubuntu multiarch .so path.
     mod.linkSystemLibrary("z", .{});
     mod.linkSystemLibrary("xml2", .{});
-    mod.addObjectFile(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu/libzstd.so" });
+    mod.linkSystemLibrary("zstd", .{ .preferred_link_mode = .dynamic });
 
     // Also write the built shim back into the source tree (gitignored) so the
     // editable dev loop -- which runs jaclang from source, not from the binary's

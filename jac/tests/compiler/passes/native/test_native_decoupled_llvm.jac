@@ -28,7 +28,7 @@ glob _IMPORT_LLVMLITE: str = r"^\s*import\b.*\bllvmlite\b";
 def _scan_llvmlite_imports(tree: Path) -> list[str] {
     hits: list[str] = [];
     pat = re.compile(_IMPORT_LLVMLITE);
-    for src in sorted(tree.rglob("*.jac")) {
+    for src in sorted(list(tree.rglob("*.jac")) + list(tree.rglob("*.py"))) {
         if not src.is_file() {
             continue;
         }
