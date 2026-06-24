@@ -222,9 +222,11 @@ fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map
 
     var src = Io.Reader.fixed(tarxz);
     const buf = try gpa.alloc(u8, 1 << 20);
-    defer gpa.free(buf);
     var dx = xz.Decompress.init(&src, gpa, buf) catch |err|
         die("fetch-llvm: xz init failed: {s}", .{@errorName(err)});
+    // xz.Decompress took ownership of `buf` (and may resize it); free it via
+    // deinit, NOT gpa.free(buf) -- that double-frees the possibly-moved buffer.
+    defer dx.deinit();
     // Surgical extract: keep only include/ + lib/libLLVM*.a (the headers + static
     // archives the shim links). Skips bin/ (clang + tools, ~8 GB) and the
     // clang/LTO .a (~1 GB), cutting the extracted tree from ~11 GB to ~0.5 GB.
