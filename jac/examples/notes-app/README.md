@@ -3,12 +3,22 @@
 Minimal Jac client app that exercises the **CEF desktop target** end-to-end. It
 doubles as the smoke test for the CEF target before shipping PR #6572.
 
+## What it is
+
+A small but real notes app: sidebar list with search, an editor pane with
+title + body, create/delete, word + char counts, and auto-persist to
+`localStorage`. It doubles as the CEF desktop smoke test - the bootstrap flags,
+broker JSON, and localStorage probe live behind a collapsible "Diagnostics"
+drawer in the footer.
+
 ## What it checks
 
 - CEF window opens and loads the Vite bundle from the loopback server
 - `window.__JAC_DESKTOP__` and `window.__JAC_BROKER__` are set before page scripts
 - `GET /__jac/health` and `GET /__jac/session` respond
-- `localStorage` persists on the stable loopback origin across restarts
+- `localStorage` persists on the stable loopback origin across restarts (notes
+  survive restarts; the legacy single-note key was `notes_app_note`, notes now
+  live under `notes_app_notes_v2`)
 
 ## Build and run
 
@@ -32,7 +42,9 @@ On success you should see in the terminal:
 JAC_DESKTOP_SERVING http://127.0.0.1:<port>/
 ```
 
-The UI shows bootstrap flags, broker JSON, and a localStorage note field.
+The UI is a two-pane notes app (sidebar list + editor) with a collapsible
+"Diagnostics" drawer in the footer that shows the bootstrap flags, broker JSON,
+and localStorage probe results.
 
 ## First-time CEF fetch
 
