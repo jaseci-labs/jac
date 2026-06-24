@@ -8,15 +8,23 @@ Two optional buckets per request:
 Both buckets must have a token for the request to proceed. 429 with
 `Retry-After` + standard error envelope otherwise.
 
-In-process dict backend only. A Redis-backed `RateLimiterBackend` can
-slot in behind the same interface for K8s horizontal scaling.
+Buckets are stored through the `StateBackend` port: the in-process backend keeps
+behavior identical to a single process, while the Redis backend makes the same
+token bucket correct across replicas under `--scale`.
 """
 
 import logging;
 import threading;
 import time;
 import hashlib;
+import itertools;
 import from threading { Lock as _RLLock }
+import from jac_scale.state.state_backend { StateBackend }
+import from jac_scale.state.factory { get_state_backend }
+
+# Monotonic counter giving each built middleware its own bucket namespace so
+# distinct gateways sharing the process-wide backend never collide.
+glob _mw_seq = itertools.count();
 
 glob logger = logging.getLogger(__name__),
      _rl_lock = _RLLock();
@@ -73,6 +81,78 @@ impl InProcessRateLimiter.consume(key: str) -> tuple[bool, float] {
 }
 
 
+"""Token-bucket rate limiter persisted through a StateBackend.
+
+The per-key bucket state is stored as a single "tokens:last_refill" string under
+`rl:{key}`. Each consume takes the backend lock `rl:lock:{key}` for the
+read-modify-write so concurrent refills do not race; with InProcessStateBackend
+this is single-process-correct (identical to InProcessRateLimiter) and with
+RedisStateBackend it is correct across replicas.
+"""
+obj StateBackendRateLimiter {
+    has backend: StateBackend,
+        rate_per_sec: float,
+        capacity: float,
+        # How long a bucket's serialized state survives without traffic. A few
+        # minutes is ample: an idle bucket simply re-initializes to full.
+        state_ttl_seconds: int = 300,
+        # Lock hold budget for the read-modify-write critical section.
+        lock_ttl_seconds: int = 5;
+
+    """Try to consume one token for `key`. Returns (allowed, retry_after_s)."""
+    def consume(key: str) -> tuple[bool, float];
+}
+
+
+impl StateBackendRateLimiter.consume(key: str) -> tuple[bool, float] {
+    now: float = time.time();
+    state_key: str = f"rl:{key}";
+    lock_key: str = f"rl:lock:{key}";
+    # Best-effort spin for the bucket lock; the critical section is microscopic.
+    acquired: bool = False;
+    for _ in range(50) {
+        if self.backend.acquire_lock(lock_key, self.lock_ttl_seconds) {
+            acquired = True;
+            break;
+        }
+        time.sleep(0.001);
+    }
+    try {
+        raw = self.backend.get(state_key);
+        if raw is None {
+            tokens: float = self.capacity;
+            last_refill: float = now;
+        } else {
+            parts = raw.split(":");
+            tokens = float(parts[0]);
+            last_refill = float(parts[1]);
+        }
+        elapsed: float = now - last_refill;
+        if elapsed > 0 {
+            tokens = min(self.capacity, tokens + elapsed * self.rate_per_sec);
+            last_refill = now;
+        }
+        if tokens >= 1.0 {
+            tokens -= 1.0;
+            allowed: bool = True;
+            retry: float = 0.0;
+        } else {
+            allowed = False;
+            # Seconds until a full token is available again.
+            retry = (1.0 - tokens) / self.rate_per_sec;
+        }
+        self.backend.set(
+            state_key, f"{tokens}:{last_refill}", ttl_seconds=self.state_ttl_seconds
+        );
+        return (allowed, retry);
+    } finally {
+        if acquired {
+            self.backend.release_lock(lock_key);
+        }
+    }
+}
+
+
 def _resolve_client_ip(request: any) -> str {
     xff = request.headers.get("X-Forwarded-For");
     if xff {
@@ -103,15 +183,25 @@ def build_rate_limit_middleware(cfg: dict[str, any]) -> any {
     burst: float = float(cfg.get("burst_multiplier", 2.0));
     exempt: set[str] = set(cfg.get("exempt_paths", []));
 
-    ip_limiter: InProcessRateLimiter | None = None;
+    # Shared-state backend: in-process locally, Redis under --scale so buckets
+    # span replicas. When cfg carries no scale signal, default to in-process.
+    backend: StateBackend = get_state_backend(bool(cfg.get("scale_enabled", False)));
+    # Per-build namespace: isolates this middleware's buckets within the shared
+    # backend, matching the old "fresh limiter per build" semantics.
+    ns: str = f"mw{next(_mw_seq)}";
+
+    ip_limiter: StateBackendRateLimiter | None = None;
     if per_ip_rpm > 0 {
-        ip_limiter = InProcessRateLimiter(
-            rate_per_sec=per_ip_rpm / 60.0, capacity=max(1.0, per_ip_rpm * burst / 60.0)
+        ip_limiter = StateBackendRateLimiter(
+            backend=backend,
+            rate_per_sec=per_ip_rpm / 60.0,
+            capacity=max(1.0, per_ip_rpm * burst / 60.0)
         );
     }
-    user_limiter: InProcessRateLimiter | None = None;
+    user_limiter: StateBackendRateLimiter | None = None;
     if per_user_rpm > 0 {
-        user_limiter = InProcessRateLimiter(
+        user_limiter = StateBackendRateLimiter(
+            backend=backend,
             rate_per_sec=per_user_rpm / 60.0,
             capacity=max(1.0, per_user_rpm * burst / 60.0)
         );
@@ -126,7 +216,7 @@ def build_rate_limit_middleware(cfg: dict[str, any]) -> any {
         }
         retry_after: float = 0.0;
         if ip_limiter is not None {
-            key = f"ip:{_resolve_client_ip(request)}";
+            key = f"{ns}:ip:{_resolve_client_ip(request)}";
             (ok, ra) = ip_limiter.consume(key);
             if not ok {
                 retry_after = max(retry_after, ra);
@@ -141,7 +231,7 @@ def build_rate_limit_middleware(cfg: dict[str, any]) -> any {
         if user_limiter is not None {
             user_key = _resolve_user_key(request);
             if user_key is not None {
-                (ok, ra) = user_limiter.consume(f"user:{user_key}");
+                (ok, ra) = user_limiter.consume(f"{ns}:user:{user_key}");
                 if not ok {
                     return error_response(
                         code="RATE_LIMITED",
