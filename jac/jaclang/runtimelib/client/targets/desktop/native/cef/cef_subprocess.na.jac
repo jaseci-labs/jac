@@ -1,24 +1,13 @@
 # cef_subprocess — imports + entry; cef_platform.na.jac is inserted at # PLATFORM by build_cef_subprocess.sh
 import sys;
 
-import from "libc.so.6" {
-    def setenv(name: str, value: str, overwrite: i32) -> i32;  def readlink(
-        path: str, buf: int, bufsiz: int
-    ) -> int;  def access(path: str, mode: i32) -> i32;  def strcpy(
-        dst: int, src: str
-    ) -> int;  def strcat(dst: int, src: str) -> int;  def strrchr(
-        s: int, c: i32
-    ) -> int;  def calloc(n: int, size: int) -> int;  def free(ptr: int) -> None;  def memset(
-        s: int, c: i32, n: int
-    ) -> int;  def memcpy(dst: int, src: int, n: int) -> int;  def open(
-        path: str, flags: i32
-    ) -> i32;  def read(fd: i32, buf: int, count: int) -> int;  def close(
-        fd: i32
-    ) -> i32;  def strlen(s: str) -> int;  def write(
-        fd: i32, buf: int, count: int
-    ) -> int;  def abort -> None;
-}
-
+# Import order is load-order sensitive: libcef.so MUST be NEEDED before
+# libc.so.6. libcef.so's internal `close` wrapper resolves the real libc
+# close via dlsym(RTLD_NEXT, "close"), which only finds libc's close when
+# libc loads AFTER libcef. If libc is NEEDED first, RTLD_NEXT from libcef
+# walks past it and finds nothing -> "close symbol missing" -> ImmediateCrash
+# in every child process (zygote/renderer/utility/gpu). This matches the
+# working libcef_dispatch.so NEEDED order (libcef.so before libc.so.6).
 import from "libcef.so" {
     def cef_execute_process(args: int, app: int, sandbox: int) -> i32;  def cef_version_info(
         which: i32
@@ -44,6 +33,24 @@ import from "libcef.so" {
             get_browser_process_handler: int = 0,
             get_render_process_handler: int = 0;
     }
+}
+
+import from "libc.so.6" {
+    def setenv(name: str, value: str, overwrite: i32) -> i32;  def readlink(
+        path: str, buf: int, bufsiz: int
+    ) -> int;  def access(path: str, mode: i32) -> i32;  def strcpy(
+        dst: int, src: str
+    ) -> int;  def strcat(dst: int, src: str) -> int;  def strrchr(
+        s: int, c: i32
+    ) -> int;  def calloc(n: int, size: int) -> int;  def free(ptr: int) -> None;  def memset(
+        s: int, c: i32, n: int
+    ) -> int;  def memcpy(dst: int, src: int, n: int) -> int;  def open(
+        path: str, flags: i32
+    ) -> i32;  def read(fd: i32, buf: int, count: int) -> int;  def close(
+        fd: i32
+    ) -> i32;  def strlen(s: str) -> int;  def write(
+        fd: i32, buf: int, count: int
+    ) -> int;  def abort -> None;
 }
 
 # PLATFORM

@@ -539,6 +539,13 @@ def _on_before_cmdline(self: int, process_type: int, command_line: int) {
         cef_dispatch_cmdline_append_switch(command_line, "headless");
         cef_dispatch_cmdline_append_switch(command_line, "disable-gpu");
     }
+    # JAC_CEF_DISABLE_GPU: documented GPU fallback (QA.md §3/§5, notes-app
+    # README). Without this branch the env var was a silent no-op and the GPU
+    # process still spawned, crashing on hosts with no usable GL.
+    if cef_dispatch_getenv_set("JAC_CEF_DISABLE_GPU") != 0 {
+        cef_dispatch_cmdline_append_switch(command_line, "disable-gpu");
+        cef_dispatch_cmdline_append_switch(command_line, "disable-gpu-compositing");
+    }
     if cef_dispatch_getenv_set("JAC_CEF_IN_PROCESS_GPU") != 0 {
         cef_dispatch_cmdline_append_switch(command_line, "in-process-gpu");
     }

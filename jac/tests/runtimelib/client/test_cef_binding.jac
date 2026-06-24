@@ -186,3 +186,23 @@ test "cef native lifecycle functions are invoked with parentheses" {
         }
     }
 }
+
+"""Regression: JAC_CEF_DISABLE_GPU is the documented GPU fallback (QA.md §3/§5,
+notes-app/README.md). It must append `disable-gpu` in `_on_before_cmdline`.
+Previously the env var was a silent no-op -- the GPU process still spawned and
+crashed on hosts with no usable GL. Pins the wiring so it cannot regress."""
+test "JAC_CEF_DISABLE_GPU wires through to --disable-gpu in cef_dispatch" {
+    cef = _cef_dir();
+    disp = (cef / "cef_dispatch.na.jac").read_text();
+    # The env var must be read inside the cmdline handler ...
+    assert 'cef_dispatch_getenv_set("JAC_CEF_DISABLE_GPU")' in disp , (
+        "cef_dispatch.na.jac must read JAC_CEF_DISABLE_GPU in _on_before_cmdline"
+    );
+    # ... and it must append the disable-gpu switch (not just rely on HEADLESS).
+    block = re.search(
+        r'cef_dispatch_getenv_set\("JAC_CEF_DISABLE_GPU"\).*?disable-gpu', disp, re.S
+    );
+    assert block is not None , (
+        "JAC_CEF_DISABLE_GPU branch must append the \"disable-gpu\" switch"
+    );
+}
