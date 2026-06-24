@@ -1043,6 +1043,49 @@ test "chess play random moves stress" {
     );
 }
 
+# --- TestNativeIsinstanceUserArchetype (issue #6930, workstream A1) ---
+test "isinstance user compiles" {
+    (eng, ir) = compile_native("isinstance_user.na.jac");
+    assert ir.gen.llvm_ir is not None;
+}
+
+test "isinstance user exact and subclass match" {
+    # 0=Shape, 1=Circle, 2=Square, 3=ColoredSquare(<:Square).
+    (eng, _) = compile_native("isinstance_user.na.jac");
+    f = get_func(eng, "test_kind", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == 0;  # Shape: neither Circle nor Square
+    assert f(1) == 1;  # Circle
+    assert f(2) == 2;  # Square
+    assert f(3) == 2;  # ColoredSquare matches Square via inheritance
+}
+
+test "isinstance user narrowed field access" {
+    # After `isinstance(s, Square)`, `s.side` must resolve to a field offset.
+    (eng, _) = compile_native("isinstance_user.na.jac");
+    f = get_func(eng, "test_side", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == -1;  # Shape: not a Square
+    assert f(1) == -1;  # Circle: not a Square
+    assert f(2) == 3;  # Square(side=3)
+    assert f(3) == 4;  # ColoredSquare(side=4): inherited `side` offset holds
+}
+
+test "isinstance user tuple of classes" {
+    (eng, _) = compile_native("isinstance_user.na.jac");
+    f = get_func(eng, "test_round_or_square", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == 0;  # Shape
+    assert f(1) == 1;  # Circle
+    assert f(2) == 1;  # Square
+    assert f(3) == 1;  # ColoredSquare (<: Square)
+}
+
+test "isinstance user no-vtable operand is clean false" {
+    # A standalone struct (no vtable) checked against a vtable class must be a
+    # principled False, never a garbage read of its first user field.
+    (eng, _) = compile_native("isinstance_user.na.jac");
+    f = get_func(eng, "test_loose_not_square", ctypes.c_int64);
+    assert f() == 0;
+}
+
 # --- TestNativeDicts ---
 test "dicts dict new empty" {
     (eng, _) = compile_native("dicts_sets.na.jac");

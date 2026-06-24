@@ -6,27 +6,30 @@
 //! `zig test` (see the tests at the bottom of this file). The CPython embed
 //! lives in `launcher.zig`, which calls `materialize` and then boots.
 //!
-//! Binary shape (written by tools/binary/build.jac, unchanged from the C
-//! launcher so the two are payload-compatible):
+//! Binary shape (written by launcher/pack.zig):
 //!
-//!     [ exe stub ][ runtime.tar.zst payload ][ trailer ]
+//!     [ exe stub ][ runtime.tar.gz payload ][ trailer ]
 //!
 //!     trailer = magic("JACBIN01", 8) | payload_len(u64 LE, 8) | sha256_hex(64)
 //!               = 80 bytes, fixed, at EOF.
 //!
-//! On first run the payload is zstd-decompressed and untarred into
+//! On first run the payload is gzip-decompressed and untarred into
 //! `<cache>/rt/<hash16>/` (atomic temp-dir + rename), where `<hash16>` is the
 //! first 16 hex chars of the trailer digest. A `.ok` marker guards against
 //! partial extracts; subsequent runs short-circuit on it.
 //!
-//! Versus the C launcher this drops the hand-rolled ustar reader (-> std.tar),
-//! the libzstd dependency (-> std.compress.zstd), and the `system("rm -rf")` /
-//! `system("find")` shellouts (-> std.Io.Dir.deleteTree + dir iteration).
+//! The payload is gzip (deflate), not zstd, so BOTH ends of the pipe are pure
+//! std: launcher/payload.zig compresses with `std.compress.flate.Compress` at
+//! build time and this module decompresses with `std.compress.flate.Decompress`
+//! -- no libzstd and no `zstd` host tool anywhere. Versus the C launcher this
+//! also drops the hand-rolled ustar reader (-> std.tar) and the
+//! `system("rm -rf")` / `system("find")` shellouts (-> std.Io.Dir.deleteTree +
+//! dir iteration).
 
 const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
-const zstd = std.compress.zstd;
+const flate = std.compress.flate;
 
 /// Trailer layout (must match `concat_binary` in tools/binary/impl/build.impl.jac).
 pub const MAGIC = "JACBIN01";
@@ -34,10 +37,10 @@ pub const MAGIC_LEN = 8;
 pub const HASH_LEN = 64; // sha256 hex
 pub const TRAILER_LEN = MAGIC_LEN + 8 + HASH_LEN; // 80
 
-/// zstd sliding-window buffer: the decompressor asserts capacity for the full
-/// window plus one max block. `default_window_len` (8 MiB) matches the window
-/// of `zstd -19` used by the builder; bump both together if the level changes.
-const ZSTD_BUF_LEN = zstd.default_window_len + zstd.block_size_max;
+/// deflate sliding-window buffer. Unlike zstd's tunable window, deflate's window
+/// is fixed at 32 KiB (`flate.max_window_len`), so this is constant regardless of
+/// the compression level payload.zig packs with.
+const GZIP_BUF_LEN = flate.max_window_len;
 
 const MAX_PATH = Io.Dir.max_path_bytes;
 
@@ -219,11 +222,11 @@ fn extractPayload(
         var dest = try Io.Dir.cwd().openDir(io, tmp, .{});
         defer dest.close(io);
 
-        const window = try gpa.alloc(u8, ZSTD_BUF_LEN);
+        const window = try gpa.alloc(u8, GZIP_BUF_LEN);
         defer gpa.free(window);
 
         var src = Io.Reader.fixed(zbuf);
-        var dz = zstd.Decompress.init(&src, window, .{});
+        var dz = flate.Decompress.init(&src, .gzip, window);
         try std.tar.extract(io, dest, &dz.reader, .{
             .mode_mode = .ignore,
             .strip_components = 0,
@@ -310,8 +313,8 @@ test "cacheRoot prefers XDG_CACHE_HOME and falls back when unwritable" {
     try testing.expect(std.mem.indexOf(u8, fb, "jac-cache-4242") != null);
 }
 
-// End-to-end exercise of the new-Io zstd+tar plumbing: assemble a real
-// [stub][payload.tar.zst][trailer] binary from the committed fixture, run
+// End-to-end exercise of the gzip+tar plumbing: assemble a real
+// [stub][payload.tar.gz][trailer] binary from the committed fixture, run
 // materialize, and assert the tree extracted with correct contents -- then
 // re-run to prove the `.ok` warm-path short-circuits.
 test "materialize extracts the fixture payload and is idempotent" {
