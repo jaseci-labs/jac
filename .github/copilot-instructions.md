@@ -4,30 +4,25 @@
 
 This monorepo contains:
 
-- `jac/`: Jac language compiler, runtime, and language server
+- `jac/`: Jac language compiler, runtime, language server, and the client/desktop runtimes (`jac/jaclang/runtimelib/client/`)
 - `jac-byllm/`: LLM integration and model-driven features
-- `jac-client/`: Client libraries and SDKs
 - `docs/`: Documentation site and reference materials
 - `scripts/`: Build, test, and maintenance scripts
 
 ## Common Workflows
 
-Run tests for a specific package:
+`jaclang` ships as the single `jac` binary (Zig launcher + bundled CPython) -- there is no pip-installed jaclang. Build it and put it on PATH with `./scripts/fresh_env.sh` (see CONTRIBUTING.md).
+
+Run tests through the binary's bundled runner (`JAC_TEST_JOBS=auto` runs them in parallel):
 
 ```bash
-pytest -n auto <package-name>
+cd jac && JAC_TEST_JOBS=auto jac test tests
 ```
 
 Run pre-commit checks (formatting, linting):
 
 ```bash
-./scripts/check.sh
-```
-
-Full test suite across all packages:
-
-```bash
-./scripts/tests.sh
+pre-commit run --all-files
 ```
 
 ## Package-Specific Notes
@@ -48,9 +43,9 @@ Full test suite across all packages:
 - Schema definitions: `schema.py`
 - Examples: `examples/agentic_ai/`, `examples/tool_calling/`
 
-### jac-client/ (Client SDKs)
+### Client & Desktop Runtimes
 
-- Plugin: `jac_client/plugin/`
+- Now part of `jaclang` core: `jac/jaclang/runtimelib/client/`
 
 ## Jac Language Conventions
 

@@ -137,12 +137,12 @@ as interface contracts:
 - `metrics.jac` -- metrics interface
 - `models/` -- `deployment_result.jac`, `resource_status.jac`
 
-### jac-client (`jac-client/jac_client/`)
+### Client framework (`jac/jaclang/runtimelib/client/`, formerly the `jac-client` plugin)
 
 No `lib.jac`. Client-side code is written in `.cl.jac` files that are
-compiled to TypeScript/JavaScript by the client toolchain; the package
-exposes its capabilities through the plugin system rather than a curated
-re-export module.
+compiled to TypeScript/JavaScript by the client toolchain; the framework
+exposes its capabilities through core's built-in provider system rather than a
+curated re-export module.
 
 ### jac-mcp (`jac-mcp/jac_mcp/`)
 

@@ -7,27 +7,40 @@ name: K8s Microservice Real E2E
 on:
   workflow_dispatch:
   pull_request:
+    # Heavy microk8s e2e (~25 min). Only the jac runtime + the scale deploy
+    # pipeline can affect it, so skip PRs that touch neither (docs, byllm, mcp,
+    # etc.). This job is NOT a required status check, so a path-skip is safe -
+    # it won't leave a PR waiting on a check that never reports.
+    paths:
+      - 'jac/**'
+      - 'jac-scale/**'
+      - '.github/workflows/k8s-microservice-real-e2e.yml'
+
+# Cancel superseded PR runs; never cancel a run for a commit on main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   real-e2e:
     name: microk8s real-app smoke
+    # Escape hatch: add the 'skip-k8s' label to a PR to skip this job too
+    # (matches the test-scale-k8s gate in test-jaseci.yml).
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-k8s') }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 25
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          submodules: true
 
-      - name: Install jaclang + jac-scale[deploy]
-        run: |
-          pip install --upgrade pip
-          pip install -e jac
-          jac install -e jac-scale --extras deploy
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
+
+      - name: Install jac-scale[deploy] (global so the e2e app can import it)
+        run: jac install -e jac-scale --extras deploy --global
 
       - name: Set up microk8s
         run: |
@@ -65,7 +78,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/buildkit-cache
-          key: buildkit-${{ runner.os }}-${{ hashFiles('jac/pyproject.toml', 'jac-scale/pyproject.toml', 'jac-client/pyproject.toml', 'jac-scale/scripts/Dockerfile.microservice.exp') }}
+          key: buildkit-${{ runner.os }}-${{ hashFiles('jac/jac.toml', 'jac-scale/jac.toml', 'jac-scale/scripts/Dockerfile.microservice.exp') }}
 
       - name: Show cluster info
         run: |

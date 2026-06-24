@@ -10,7 +10,7 @@ In this tutorial, you'll set up a full-stack project, understand the file struct
 >
 > - Completed: [Installation](../../quick-guide/install.md)
 > - Familiar with: HTML/CSS basics, React concepts helpful
-> - Install: `pip install jaseci`
+> - Install: `curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash` (installs the self-contained `jac` binary -- no Python, pip, or uv required)
 > - Time: ~15 minutes
 
 ---
@@ -325,5 +325,5 @@ Click the button - the count should increase!
 - [Components](components.md) - Build reusable UI components
 - [State Management](state.md) - Reactive state with hooks
 - [Backend Integration](backend.md) - Connect to walkers
-- [Building a Desktop App](desktop.md) - Package the same app as a single `jac nacompile`d binary that embeds the OS webview - no Rust toolchain (`pip install jac-desktop`; see [jac-desktop Reference](../../reference/plugins/jac-desktop.md))
+- [Building a Desktop App](desktop.md) - Package the same app as a single `jac nacompile`d binary that embeds the OS webview - no Rust toolchain (ships with `jaclang` core; see [jac-desktop Reference](../../reference/plugins/jac-desktop.md))
 - [Build an AI Day Planner](../first-app/build-ai-day-planner.md) - Complete full-stack example with AI

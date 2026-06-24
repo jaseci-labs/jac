@@ -1,3 +1,46 @@
+"""Serialize to the .ir_meta cache dict."""
+impl DepClibMeta.to_meta -> dict {
+    return {
+        "clib_paths": self.clib_paths,
+        "clib_symbol_lib": self.clib_symbol_lib,
+        "exported_symbols": self.exported_symbols,
+        "imported_symbols": self.imported_symbols,
+        "owned_symbols": self.owned_symbols,
+        "transitive_deps": self.transitive_deps
+    };
+}
+
+"""Build from a .ir_meta cache dict (missing keys default to empty)."""
+impl DepClibMeta.from_meta(meta: dict) -> DepClibMeta {
+    return DepClibMeta(
+        clib_paths=meta.get("clib_paths", []),
+        clib_symbol_lib=meta.get("clib_symbol_lib", {}),
+        exported_symbols=meta.get("exported_symbols", []),
+        imported_symbols=meta.get("imported_symbols", []),
+        owned_symbols=meta.get("owned_symbols", []),
+        transitive_deps=meta.get("transitive_deps", [])
+    );
+}
+
+"""Merge the propagated C-ABI surface up into the root module's IR-gen state."""
+impl DepClibMeta.propagate_to(gen: CodeGenTarget) -> None {
+    for _p in self.clib_paths {
+        if _p not in gen._clib_paths {
+            gen._clib_paths.append(_p);
+        }
+    }
+    for (_sym, _dll) in self.clib_symbol_lib.items() {
+        if _sym not in gen._clib_symbol_lib {
+            gen._clib_symbol_lib[_sym] = _dll;
+        }
+    }
+    for _e in self.exported_symbols {
+        if _e not in gen._exported_symbols {
+            gen._exported_symbols.append(_e);
+        }
+    }
+}
+
 """Initialize the native compile pass."""
 impl NativeCompilePass.postinit -> None {
     llvm.initialize_native_target();
@@ -330,7 +373,11 @@ impl NativeCompilePass._compile_and_link_native_imports(
     import os;
     import hashlib;
     import json;
-    import from jaclang.jac0core.codeinfo { NativeModuleInfo, NativeFunctionInfo }
+    import from jaclang.jac0core.codeinfo {
+        NativeModuleInfo,
+        NativeFunctionInfo,
+        native_safe_sym
+    }
 
     # ── Compiler fingerprint for cache invalidation ─────────────────────
     # Hash all .jac implementation files so that any compiler change
@@ -413,6 +460,13 @@ impl NativeCompilePass._compile_and_link_native_imports(
     }
     # Work queue: (binding, base_dir). Seeded with direct imports; transitive
     # deps are appended after each successful compile.
+    # Lightweight binding for cache-hit transitive deps: only .source_module is
+    # accessed in the outer loop (unlike InteropBinding which also has .name).
+    class _DepBinding {
+        def init(self: _DepBinding, sm: str) {
+            self.source_module = sm;
+        }
+    }
     work_queue: list = [];
     base_dir = os.path.dirname(module.loc.mod_path) if module.loc else ".";
     for binding in imports {
@@ -424,6 +478,12 @@ impl NativeCompilePass._compile_and_link_native_imports(
         queue_idx += 1;
         source_mod_path = binding.source_module;
         if source_mod_path is None {
+            # No source path => nothing to resolve, compile, or link. This early
+            # skip is also the invariant that keeps the AOT clib merge below
+            # implicit: meta.clib_paths is only ever populated AFTER this guard,
+            # so a clib-bearing dep always carries a source_module and always
+            # reaches meta.propagate_to (which appends to module.gen._clib_paths
+            # for AOT). There is no path that has clib_paths but no source_module.
             continue;
         }
 
@@ -481,22 +541,9 @@ impl NativeCompilePass._compile_and_link_native_imports(
         _cache_meta_path = "";
         _cache_hit = False;
         imported_llvm_str_raw = "";
-        dep_clib_paths_cached: list = [];
-        dep_transitive_cached: list = [];
-        # Symbols this module imports from other native modules. Set by both
-        # the cache-hit and cache-miss paths; consumed by the collision check
-        # to distinguish owned definitions from transitively-carried ones.
-        dep_imported_symbols: list[str] = [];
-        # Symbols declared directly in this module's source. This is broader
-        # than dep_imported_symbols because a transitive dependency can carry
-        # globals referenced by imported functions (e.g. _TABLE) even though
-        # the importing module never names those globals in its import list.
-        dep_owned_symbols: list[str] = [];
-        # `:pub` symbols this dependency exports across the C ABI. Propagated to
-        # the top-level module so a `jac nacompile --shared` build re-exports the
-        # whole transitive public surface, not just the root module's exports.
-        dep_exported_symbols: list[str] = [];
-        dep_exported_cached: list = [];
+        # All per-dep native C-ABI metadata in one carrier: cache round-trip via
+        # to_meta/from_meta, root-module merge via propagate_to. See DepClibMeta.
+        meta = DepClibMeta();
 
         try {
             with open(real_path, "rb") as _sf {
@@ -516,30 +563,16 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 with open(_cache_meta_path, "r") as _mf {
                     _meta = json.loads(_mf.read());
                 }
-                dep_clib_paths_cached = _meta.get("clib_paths", []);
-                dep_transitive_cached = _meta.get("transitive_deps", []);
-                dep_imported_symbols = _meta.get("imported_symbols", []);
-                dep_owned_symbols = _meta.get("owned_symbols", []);
-                dep_exported_cached = _meta.get("exported_symbols", []);
+                meta = DepClibMeta.from_meta(_meta);
                 _cache_hit = True;
             }
         } except Exception { }
 
         if _cache_hit {
-            # Use cached IR — skip full compilation
-            # Still need to handle clib paths and transitive deps
-            dep_clib_paths = dep_clib_paths_cached;
-            dep_exported_symbols = dep_exported_cached;
-
-            # Enqueue transitive deps from cached metadata
+            # Use cached IR — skip full compilation. meta already carries the
+            # clib paths / exports / symbol map; just enqueue transitive deps.
             dep_base = os.path.dirname(full_path);
-            for dep_mod_path in dep_transitive_cached {
-                # Create a lightweight binding-like object with source_module attr
-                class _DepBinding {
-                    def init(self: _DepBinding, sm: str) {
-                        self.source_module = sm;
-                    }
-                }
+            for dep_mod_path in meta.transitive_deps {
                 work_queue.append((_DepBinding(dep_mod_path), dep_base));
             }
         } else {
@@ -562,7 +595,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 ) {
                     _owned_seen.add(_glob_m.group(1));
                 }
-                dep_owned_symbols = list(_owned_seen);
+                meta.owned_symbols = list(_owned_seen);
             } except Exception { }
             try {
                 imported_ir = self.prog.compile(
@@ -577,22 +610,22 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 continue;
             }
             imported_llvm_str_raw = str(imported_ir.gen.llvm_ir);
-            dep_clib_paths = imported_ir.gen._clib_paths or [];
-            dep_exported_symbols = imported_ir.gen._exported_symbols or [];
+            meta.clib_paths = imported_ir.gen._clib_paths or [];
+            meta.clib_symbol_lib = imported_ir.gen._clib_symbol_lib or {};
+            meta.exported_symbols = imported_ir.gen._exported_symbols or [];
             # Collect transitive dep paths for cache metadata
-            dep_transitive_paths: list = [];
             dep_manifest = imported_ir.gen.interop_manifest;
             if dep_manifest is not None {
                 dep_base = os.path.dirname(full_path);
                 for dep_binding in dep_manifest.native_cross_module_imports {
                     if dep_binding.source_module is not None {
-                        dep_transitive_paths.append(dep_binding.source_module);
+                        meta.transitive_deps.append(dep_binding.source_module);
                         work_queue.append((dep_binding, dep_base));
                     }
                     # The imported symbol's name — a definition carrying this
                     # name in the dep's IR is transitively linked, not owned.
                     if dep_binding.name {
-                        dep_imported_symbols.append(dep_binding.name);
+                        meta.imported_symbols.append(dep_binding.name);
                     }
                 }
             }
@@ -618,51 +651,23 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 with open(_cache_ir_path, "w") as _wf {
                     _wf.write(imported_llvm_str_raw);
                 }
-                _meta_obj = {
-                    "clib_paths": dep_clib_paths,
-                    "transitive_deps": dep_transitive_paths,
-                    "imported_symbols": dep_imported_symbols,
-                    "owned_symbols": dep_owned_symbols,
-                    "exported_symbols": dep_exported_symbols
-                };
+                _meta_obj = meta.to_meta();
                 with open(_cache_meta_path, "w") as _wmf {
                     _wmf.write(json.dumps(_meta_obj));
                 }
             } except Exception { }
         }
 
-        # Load any .so libraries required by this imported module so that
-        # MCJIT can resolve their external symbols at JIT compilation time.
-        # Without this, transitive `import from "lib.so" { ... }` in a dep
-        # module causes an unresolved-symbol segfault at runtime (issue #6687).
-        # dep_clib_paths is set by both cache-hit and cache-miss paths above.
-        if dep_clib_paths {
-            # Propagate dep C-lib paths back to the main module so that
-            # nacompile (AOT) can discover all needed shared libraries.
-            for dep_lib_path in dep_clib_paths {
-                if dep_lib_path not in module.gen._clib_paths {
-                    module.gen._clib_paths.append(dep_lib_path);
-                }
-                # Use the same robust loader as the top-level module's clibs:
-                # it strips the AOT-only `$ORIGIN`/`@loader_path` token a
-                # logical import carries, which a bare `os.path.exists` /
-                # `find_library` check could not resolve -- leaving the library
-                # unloaded and its FFI symbols NULL under `jac run` (#6687).
-                try {
-                    self._jit_load_clib(dep_lib_path);
-                } except Exception { }
-            }
-        }
-
-        # Propagate this dependency's `:pub` exports up to the top-level module
-        # so a `jac nacompile --shared` build re-exports the whole transitive
-        # public C-ABI surface, not just the root module's own `:pub` symbols.
-        if dep_exported_symbols {
-            for _exp_sym in dep_exported_symbols {
-                if _exp_sym not in module.gen._exported_symbols {
-                    module.gen._exported_symbols.append(_exp_sym);
-                }
-            }
+        # Load each .so/.dylib so MCJIT can resolve its external symbols at JIT
+        # time; without this a transitive `import from "lib.so"` in a dep
+        # segfaults on an unresolved symbol at runtime (#6687). _jit_load_clib
+        # strips the AOT-only `$ORIGIN`/`@loader_path` token a logical import
+        # carries, which a bare os.path.exists/find_library could not resolve.
+        # This runs before parse_assembly so MCJIT can bind symbols immediately.
+        for dep_lib_path in meta.clib_paths {
+            try {
+                self._jit_load_clib(dep_lib_path);
+            } except Exception { }
         }
 
         # Transitive deps already enqueued above (both cache-hit and cache-miss).
@@ -672,8 +677,14 @@ impl NativeCompilePass._compile_and_link_native_imports(
             # LLVM IR may quote names as @"jac_entry" or use bare @jac_entry.
             # imported_llvm_str_raw is set by both cache-hit and cache-miss.
             imported_llvm_str = imported_llvm_str_raw;
-            import re;
-            safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', source_mod_path);
+            # Unique per-module suffix (human-readable slug + sha1 of the
+            # original source_module_str) so 'math_utils.na' and
+            # 'math/utils.na' can't collide on __jac_entry_ / __jac_glob_init_.
+            # Centralized in codeinfo.native_safe_sym so the emit side here,
+            # the IR-gen side (func.impl.jac), the AOT shared-init emitter
+            # (nacompile.impl.jac), and the JIT runtime lookup
+            # (native_marshal.init_native_globals) all agree on the name.
+            safe_name = native_safe_sym(source_mod_path);
             entry_rename = f"__jac_entry_{safe_name}";
             imported_llvm_str = imported_llvm_str.replace(
                 '@"jac_entry"', f'@"{entry_rename}"'
@@ -700,6 +711,13 @@ impl NativeCompilePass._compile_and_link_native_imports(
             );
             imported_mod = llvm.parse_assembly(imported_llvm_str);
 
+            # Merge this dep's C-ABI surface into root only after a successful
+            # parse -- keeps clib_paths/symbol_lib/exported_symbols clean if
+            # the IR is malformed (E5025 path). JIT loads above run regardless
+            # since they are idempotent and must precede MCJIT symbol binding.
+            # first-seen-wins. See DepClibMeta.propagate_to.
+            meta.propagate_to(module.gen);
+
             # Collect exported function names BEFORE linking, because
             # link_in consumes the module and invalidates its references.
             # Also detect symbol collisions: if an externally-visible
@@ -719,10 +737,16 @@ impl NativeCompilePass._compile_and_link_native_imports(
             # the *same* symbol, so it is benign: skip the redundant link
             # without raising E5026 (the real owner already provides it).
             #   linkage 0 = external, 8 = internal, 9 = private
-            dep_imported_set: set[str] = set(dep_imported_symbols);
-            dep_owned_set: set[str] = set(dep_owned_symbols);
+            dep_imported_set: set[str] = set(meta.imported_symbols);
+            dep_owned_set: set[str] = set(meta.owned_symbols);
             exported_funcs: list[str] = [];
-            has_collision = False;
+            # Two separate collision outcomes:
+            #   has_real_collision — E5026 was emitted; user must fix their code
+            #   _benign_dup_* — symbol transitively carried from a dep that was
+            #     already linked; safe to handle without aborting the whole module
+            has_real_collision = False;
+            _benign_dup_funcs: list = [];
+            _benign_dup_gvs: list = [];
             for func in imported_mod.functions {
                 if func.name.startswith("llvm.") or func.is_declaration {
                     continue;
@@ -734,9 +758,7 @@ impl NativeCompilePass._compile_and_link_native_imports(
                     continue;
                 }
                 exported_funcs.append(func.name);
-                # Check collision against previously recorded definitions
                 if func.name in symbol_origins {
-                    has_collision = True;
                     _is_owned = (
                         func.name in dep_owned_set
                             if dep_owned_set
@@ -749,6 +771,9 @@ impl NativeCompilePass._compile_and_link_native_imports(
                             existing_module=symbol_origins[func.name],
                             new_module=full_path
                         );
+                        has_real_collision = True;
+                    } else {
+                        _benign_dup_funcs.append(func);
                     }
                 }
             }
@@ -763,7 +788,6 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 }
                 exported_globals.append(gv.name);
                 if gv.name in symbol_origins {
-                    has_collision = True;
                     _is_owned = (
                         gv.name in dep_owned_set
                             if dep_owned_set
@@ -776,33 +800,57 @@ impl NativeCompilePass._compile_and_link_native_imports(
                             existing_module=symbol_origins[gv.name],
                             new_module=full_path
                         );
+                        has_real_collision = True;
+                    } else {
+                        _benign_dup_gvs.append(gv);
                     }
                 }
             }
-            if has_collision {
-                # Either a real collision (E5026 emitted above) or a benign
-                # transitive duplicate — in both cases skip link_in so the
-                # symbol is not multiply defined in main_mod.
+            if has_real_collision {
                 continue;
             }
-
-            # Record symbol origins (and whether this module owns each symbol)
-            # for future collision diagnostics.
-            for fname in exported_funcs {
-                symbol_origins[fname] = full_path;
-                symbol_owned[fname] = (
-                    fname in dep_owned_set
-                        if dep_owned_set
-                        else fname not in dep_imported_set
+            if _benign_dup_funcs or _benign_dup_gvs {
+                # If B has no unique symbols it is a pure transitive carrier —
+                # skip link_in entirely. If B has unique symbols, demote the
+                # duplicate definitions to available_externally so LLVM resolves
+                # them against the already-present definitions and links the rest.
+                _has_unique = (
+                    any(f not in symbol_origins for f in exported_funcs)
+                    or any(g not in symbol_origins for g in exported_globals)
                 );
+                if not _has_unique {
+                    continue;
+                }
+                for _bf in _benign_dup_funcs {
+                    _bf.linkage = 'available_externally';
+                }
+                for _bg in _benign_dup_gvs {
+                    _bg.linkage = 'available_externally';
+                }
+            }
+
+            # Record symbol origins first-seen-wins; do not overwrite entries
+            # already set by a prior module (including available_externally aliases
+            # demoted above — the authoritative origin stays with the first linker).
+            for fname in exported_funcs {
+                if fname not in symbol_origins {
+                    symbol_origins[fname] = full_path;
+                    symbol_owned[fname] = (
+                        fname in dep_owned_set
+                            if dep_owned_set
+                            else fname not in dep_imported_set
+                    );
+                }
             }
             for gname in exported_globals {
-                symbol_origins[gname] = full_path;
-                symbol_owned[gname] = (
-                    gname in dep_owned_set
-                        if dep_owned_set
-                        else gname not in dep_imported_set
-                );
+                if gname not in symbol_origins {
+                    symbol_origins[gname] = full_path;
+                    symbol_owned[gname] = (
+                        gname in dep_owned_set
+                            if dep_owned_set
+                            else gname not in dep_imported_set
+                    );
+                }
             }
 
             # Link the imported module into the main module at IR level

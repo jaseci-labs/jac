@@ -80,11 +80,13 @@ impl JacAnnexPass._merge_annex(
     # and codegen's context filter routes them correctly. `ctx_path` is the head
     # path for the head's own annexes and the variant path for a variant and its
     # annexes.
-    if ctx_path.endswith('.cl.jac') {
+    import from jaclang.jac0core.ext_registry { codespace_of }
+    ctx_codespace = codespace_of(ctx_path);
+    if (ctx_codespace == 'client') {
         _coerce_client_module(annex_mod);
-    } elif ctx_path.endswith('.sv.jac') {
+    } elif (ctx_codespace == 'server') {
         _coerce_server_module(annex_mod);
-    } elif ctx_path.endswith('.na.jac') {
+    } elif (ctx_codespace == 'native') {
         _coerce_native_module(annex_mod);
     }
     stmts = list(annex_mod.body);

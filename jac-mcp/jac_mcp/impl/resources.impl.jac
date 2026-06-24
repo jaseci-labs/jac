@@ -10,25 +10,23 @@ glob GITHUB_API_BASE: str = "https://api.github.com/repos/jaseci-labs/jaseci",
 
 """Find the repo root by walking up from jaclang package location."""
 impl find_repo_root -> str | None {
-    try {
-        import jaclang;
-        pkg_dir = Path(jaclang.__file__).parent;
-        # Check if jac.spec is in the package dir (editable install)
-        check = pkg_dir / "jac.spec";
-        if check.exists() {
-            # pkg_dir is jac/jaclang, repo root is 2 levels up
-            return str(pkg_dir.parent.parent);
-        }
-        # Walk up looking for the spec
-        for parent in pkg_dir.parents {
-            spec = parent / "jac" / "jaclang" / "jac.spec";
-            if spec.exists() {
+    # Locate the jaseci monorepo root by its docs tree, used to validate/serve
+    # the live docs. We must NOT key off `jaclang.__file__`: under the sealed
+    # single-binary, jaclang (and its `jac.spec`) live in an extracted runtime
+    # payload, not the checkout -- trusting that copy yields a bogus temp dir.
+    # Instead walk up from the cwd (and the jac_mcp package) looking for the
+    # monorepo markers `docs/docs` + `jac/jaclang`. In a standalone (PyPI)
+    # install neither marker exists, so this returns None and callers fall back
+    # to the bundled docs content.
+    starts: list[Path] = [Path.cwd(), Path(__file__).parent];
+    for start in starts {
+        chain = [start] + list(start.parents);
+        for parent in chain {
+            if (parent / "docs" / "docs").is_dir()
+            and (parent / "jac" / "jaclang").is_dir() {
                 return str(parent);
             }
         }
-    } except Exception {
-        # Silently ignore if jaclang not available
-        return None;
     }
     return None;
 }

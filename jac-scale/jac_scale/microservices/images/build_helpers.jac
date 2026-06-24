@@ -31,9 +31,14 @@ glob _EMBEDDED_DOCKERFILE: str = "FROM python:3.12-slim\n\n"
      "    && apt-get install -y --no-install-recommends git curl \\\n"
      "    && rm -rf /var/lib/apt/lists/*\n\n"
      "RUN git config --system --add safe.directory '*'\n\n"
-     "RUN pip install --no-cache-dir --upgrade pip\n\n"
-     "RUN pip install --no-cache-dir \"jac-scale[deploy,data]>=0.2.15\" "
-     "jac-client\n\n"
+     # jaclang ships as the self-contained `jac` binary (bundled CPython; not
+     # on PyPI). Fetch it from GitHub Releases via the official installer, then
+     # add plugins with the binary's own resolver. The client framework now
+     # lives in jaclang core, so there is no separate jac-client to install.
+     "RUN curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci"
+     "/main/scripts/install.sh | bash \\\n"
+     "    && cp \"$HOME/.local/bin/jac\" /usr/local/bin/jac\n\n"
+     "RUN jac install \"jac-scale[deploy,data]\" --global\n\n"
      "WORKDIR /app\n"
      "COPY . /app\n\n"
      "RUN if [ -f jac.toml ]; then jac install || true; fi\n\n"
@@ -464,12 +469,12 @@ def run_docker_push(image_tag: str) {
 }
 
 
-"""True if jac-client is importable. `jac build` lives in jac-client and
-silently no-ops if it's missing - we'd rather error early."""
+"""True if the built-in client framework is importable. `jac build` ships with
+jaclang core now; we still verify it loads so we can error early."""
 def _jac_client_installed -> bool {
     try {
         import importlib;
-        importlib.import_module("jac_client");
+        importlib.import_module("jaclang.runtimelib.client");
         return True;
     } except ImportError {
         return False;
@@ -492,8 +497,8 @@ def build_client_bundle(project_dir: Path, client_entry: str) -> None {
     }
     if not _jac_client_installed() {
         raise RuntimeError(
-            f"jac-client not installed but client.entry='{client_entry}' is set.\n"
-            "  Fix:    pip install jac-client\n"
+            f"The jaclang client framework is unavailable but client.entry='{client_entry}' is set.\n"
+            "  Fix:    reinstall jaclang\n"
             "  Or:     remove [plugins.scale.microservices.client] from jac.toml"
         );
     }

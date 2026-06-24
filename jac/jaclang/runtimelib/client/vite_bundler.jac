@@ -57,8 +57,27 @@ class ViteBundler {
         self: ViteBundler, api_base_url: str, custom_defines: dict
     ) -> str;
 
-    def _ensure_root_package_json(self: ViteBundler) -> None;
-    def _cleanup_root_package_files(self: ViteBundler) -> None;
+    """Single bun-install primitive shared by build, the dev server, and the --npm handlers."""
+    def install_packages(
+        self: ViteBundler,
+        install_dir: Optional[Path] = None,
+        force: bool = False,
+        capture_output: bool = False,
+        clean_stale: bool = False
+    ) -> None;
+
+    """Add specific packages (npm-preferred, bun fallback) into a target dir.
+
+    Distinct from install_packages: used by the mobile/Capacitor target, which installs
+    specific packages into a project-root package.json rather than the .jac/client bundle.
+    """
+    def add_packages(
+        self: ViteBundler,
+        packages: list[str],
+        install_dir: Optional[Path] = None,
+        dev: bool = False
+    ) -> None;
+
     def _generate_vite_config_content(
         self: ViteBundler,
         is_dev: bool,

@@ -7,7 +7,6 @@ and watchdog to watch file changes and rebuild MkDocs site.
 
 import asyncio
 import os
-import subprocess
 import threading
 from collections.abc import Awaitable, Callable
 
@@ -38,6 +37,27 @@ evtSource.onmessage = function(event) {
 };
 </script>
 """
+
+
+def build_site(root_dir: str) -> None:
+    """Build the MkDocs site in-process, from ``root_dir`` as the working dir.
+
+    The build is run in-process (rather than via a ``mkdocs`` subprocess) so it
+    uses the current interpreter -- the jac binary's embedded Python. That is the
+    only interpreter where ``import jaclang`` resolves, which the build hook
+    (``scripts/handle_jac_compile_data.py``) requires; jaclang ships inside the
+    single binary and is not pip-installable. The hook also uses paths relative
+    to the docs root, so we chdir there for the duration of the build.
+    """
+    from mkdocs.commands.build import build as mkdocs_build
+    from mkdocs.config import load_config
+
+    prev_cwd = os.getcwd()
+    os.chdir(root_dir)
+    try:
+        mkdocs_build(load_config())
+    finally:
+        os.chdir(prev_cwd)
 
 
 class RebuildCheckMiddleware(BaseHTTPMiddleware):
@@ -213,15 +233,12 @@ class DebouncedRebuildHandler(FileSystemEventHandler):
         try:
             rebuild_in_progress = True
             print("\nRebuilding MkDocs site...")
-            subprocess.run(["mkdocs", "build"], check=True, cwd=self.root_dir)
+            build_site(self.root_dir)
             print("Rebuild complete.")
             reload_queue.put_nowait("reload")
-        except subprocess.CalledProcessError as e:
+        except Exception as e:
+            # Keep the watcher alive across a failed rebuild; surface the cause.
             print(f"Rebuild failed: {e}")
-        except FileNotFoundError:
-            print(
-                "Error: mkdocs not found. Please install it via `pip install mkdocs`."
-            )
         finally:
             rebuild_in_progress = False
             self._rebuild_lock.release()
@@ -249,7 +266,7 @@ def serve_with_watch(port: int = 8000) -> None:
     ]
 
     print("Initial build of MkDocs site...")
-    subprocess.run(["mkdocs", "build"], check=True, cwd=root_dir)
+    build_site(root_dir)
     reload_queue.put_nowait("reload")
 
     # Set up file watcher

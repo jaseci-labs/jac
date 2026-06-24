@@ -17,6 +17,7 @@ import sys;
 import shutil;
 import tempfile;
 import from pathlib { Path }
+import from tests.support { TESTS_DIR }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
@@ -31,8 +32,8 @@ import from jaclang.compiler.passes.native.wasm_linker {
 }
 import llvmlite.binding as llvm;
 
-glob FIXTURES = str(
-         Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
+glob FIXTURES = os.path.join(
+         TESTS_DIR, "compiler", "passes", "native", "fixtures"
      ),
      WASM_TRIPLE = "wasm32-unknown-unknown",
      FIXTURE = "wasm_objects.na.jac";

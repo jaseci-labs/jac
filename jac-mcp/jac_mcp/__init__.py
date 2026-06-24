@@ -10,7 +10,8 @@ if spec is None:
     # Package not installed at all
     sys.stderr.write(
         "ImportError: jaclang is required for jac-mcp to function. "
-        "Please install it via 'pip install jaclang', or reinstall jac-mcp.\n"
+        "jaclang is provided by the jac binary -- run jac-mcp under `jac`, "
+        "or install it with `jac install -e <jac-mcp-path>`.\n"
     )
     sys.exit(1)
 

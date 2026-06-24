@@ -463,27 +463,29 @@ You'll learn more about `can` in the [OSP tutorial](osp.md).
 
 ## Access Modifiers
 
-When you deploy a Jac application as a server (with `jac start`), access modifiers control which functions and walkers become HTTP endpoints and how authentication is handled. This is one of Jac's most distinctive features: instead of manually defining API routes with decorators (like Flask's `@app.route`), you simply annotate your functions with `:pub` or `:priv` and the framework automatically generates REST endpoints with the right authentication behavior.
+Jac's three access modifiers -- `:pub`, `:protect`, `:priv` -- control *source-level visibility*, and they mean different things depending on where a symbol is declared. For **top-level** functions and walkers, they govern which modules may reference the symbol:
 
 ```jac
-# Public endpoint -- auto-generates an HTTP API
+# Exported -- visible to any module, including consuming projects
 def:pub add_task(title: str) -> dict { ...; }
 
-# Private -- requires authentication, per-user data isolation
-def:priv get_tasks -> list { ...; }
+# Project-internal -- visible within this project (same jac.toml root)
+def:protect retry(title: str) -> dict { ...; }
 
-# Protected -- accessible within the module
-def:protect helper -> None { ...; }
+# Module-internal -- visible only in this module
+def:priv get_tasks -> list { ...; }
 ```
 
-| Modifier | Visibility | Use Case |
-|----------|-----------|----------|
-| `def:pub` | Public HTTP endpoint | APIs anyone can call |
-| `def:priv` | Authenticated endpoint | Per-user data isolation |
-| `def:protect` | Module-internal | Helper functions |
-| `def` | Default (module-level) | Regular functions |
+| Modifier | Top-level visibility | Use Case |
+|----------|---------------------|----------|
+| `def:pub` | Any module, including a consuming project | Exported library API |
+| `def:protect` | Same project (shared `jac.toml`) | Project-internal helper |
+| `def:priv` | Declaring module only | Module-internal helper |
+| `def` | Declaring module only (default) | Regular functions |
 
-These modifiers also apply to walkers (`walker:pub`, `walker:priv`).
+The *same* tags mean something different on a `has`/`def` declared **inside a class** (member encapsulation: `:protect` = subclasses too), and a *separate*, auth-only meaning when a function or walker is served as an HTTP endpoint -- there, **only `:pub` skips authentication** and everything else requires a token. See the [Access Modifiers reference](../../reference/language/access-modifiers.md) for the full three-context model.
+
+These modifiers also apply to walkers (`walker:pub`, `walker:protect`, `walker:priv`).
 
 ---
 

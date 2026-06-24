@@ -65,7 +65,7 @@ claude mcp add jac -- jac mcp
 Other clients (Claude Desktop, Cursor, Windsurf, VS Code) use a JSON configuration block. The **[MCP Server reference](../reference/mcp.md)** has copy-paste configuration for every supported client, the full tool and resource catalog, transport options, and troubleshooting.
 
 !!! tip
-    Already installed Jaseci via PyPI or the install script? `jac-mcp` is likely bundled -- run `jac --version` to check. If it is missing, install it with `pip install jac-mcp`.
+    Already installed Jac via the install script? `jac-mcp` is likely bundled -- run `jac --version` to check. If it is missing, install it with `jac install jac-mcp`.
 
 ## Which to use
 

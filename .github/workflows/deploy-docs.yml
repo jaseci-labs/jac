@@ -21,6 +21,12 @@ permissions:
 env:
   ECR_REGISTRY: 776241927220.dkr.ecr.us-east-2.amazonaws.com
   ECR_REPOSITORY: jac-lang-website
+  # Build/serve docs through the SHIPPED binary, not the editable dev loop: a
+  # freshly built binary would otherwise pick up the checkout's `[dev]
+  # jaclang_source` stanza and reroute `import jaclang` to the source tree while
+  # skipping the precompiled JIR bundle, slowing every `jac` invocation here.
+  # (Mirrors the guard in test-binary.yml / test-jaseci.yml.)
+  JAC_NO_DEV_SOURCE: "1"
 
 jobs:
   deploy-jac-lang-website:
@@ -59,11 +65,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install documentation dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ../jac
-          jac install -e .
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
+
+      - name: Install documentation dependencies (jaclang host-provided by the binary)
+        run: jac install -e .
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4.2.0
@@ -131,19 +137,25 @@ jobs:
 
           COPY docs/ ./docs/
           COPY jac/ ./jac/
-          COPY jac-client/ ./jac-client/
           COPY scripts/ ./scripts/
           COPY CONTRIBUTING.md ./CONTRIBUTING.md
           COPY .pre-commit-config.yaml ./.pre-commit-config.yaml
 
-          RUN pip install -e ./jac
-          RUN jac install -e ./docs
+          # jaclang is the prebuilt single binary (copied in via jac/zig-out from
+          # the setup-jac build step), not a pip install. Install the docs deps
+          # (mkdocs etc.) into the binary's own global site with --global so they
+          # sit beside the bundled jaclang; the container is then served via
+          # `jac run` (see CMD). The binary's embedded Python is the only
+          # interpreter where `import jaclang` resolves, which the mkdocs build
+          # hook (handle_jac_compile_data.py) requires.
+          ENV PATH="/app/jac/zig-out/bin:${PATH}"
+          RUN jac install -e ./docs --global
 
           EXPOSE 8000
 
           HEALTHCHECK --interval=30s --timeout=3s CMD curl -f http://localhost:8000/health || exit 1
 
-          CMD ["python", "docs/scripts/mkdocs_serve.py"]
+          CMD ["jac", "run", "docs/scripts/mkdocs_serve.py"]
           EOF
 
           docker buildx build --load \

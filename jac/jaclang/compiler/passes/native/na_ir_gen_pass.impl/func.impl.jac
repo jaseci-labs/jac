@@ -1,5 +1,7 @@
 """Function/ability declaration and codegen for native compilation."""
 
+import from jaclang.compiler.targets.abi { classify_foreign_fn }
+
 """Non-Optional accessor for the active IRBuilder."""
 impl NaIRGenPass.builder.getter -> ir.IRBuilder {
     if self._builder is None {
@@ -94,7 +96,6 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     _decl_params = sig.get_parameters();
     plan: (dict | None) = None;
     if _abi_supported {
-        import from jaclang.compiler.targets.abi { classify_foreign_fn }
         # The declared signature names come from the foreign declaration
         # model (collect_foreign_fns) - the central owner of WHAT was
         # declared at the C boundary - not from re-walking the annotation
@@ -533,6 +534,32 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
 }
 
 # ─── Body / Statement Codegen ─────────────────────────────────
+"""Define a module-level LLVM function, guarding against accidental re-emission.
+
+Fixed-name runtime singletons (jac_entry, __jac_glob_init, the __rc_*/__jac_exc_*/
+__osp_* helpers) are each meant to be emitted exactly once per module. If an
+emitter is reached twice — e.g. a per-node codegen loop that wrongly assumes one
+matching node, as two `with entry` blocks did in issue #6660 — llvmlite raises an
+opaque `DuplicatedNameError` deep in ir._utils. Routing those definitions through
+this helper turns that whole class of mistake into a clear, actionable internal
+error naming the symbol, instead of a cryptic crash. Lazily-emitted helpers that
+legitimately re-enter (iterator/bytes next-fns) keep their own memoized
+get-or-emit guard and must NOT use this path."""
+impl NaIRGenPass._define_function(name: str, fnty: ir.FunctionType) -> ir.Function {
+    try {
+        self.llvm_module.get_global(name);
+    } except KeyError {
+        # Not yet defined — the expected path.
+        return ir.Function(self.llvm_module, fnty, name=name);
+    }
+    raise RuntimeError(
+        f"native codegen internal error: duplicate definition of '{name}'. "
+        f"This fixed-name runtime symbol must be emitted exactly once per module, "
+        f"but its emitter was reached a second time. Collect the source nodes and "
+        f"emit once, or add a memoized get-or-emit guard (see issue #6660)."
+    );
+}
+
 """Emit __jac_glob_init() — a standalone void function containing all
 non-const glob initializers (list = [] / dict = {} defaults).
 
@@ -548,7 +575,7 @@ impl NaIRGenPass._emit_glob_init_func -> None {
     saved_di_sp = self._di_current_sp;
     # Emit void __jac_glob_init()
     fnty = ir.FunctionType(ir.VoidType(), []);
-    func = ir.Function(self.llvm_module, fnty, name="__jac_glob_init");
+    func = self._define_function("__jac_glob_init", fnty);
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
@@ -608,19 +635,36 @@ impl NaIRGenPass._emit_glob_init_func -> None {
 }
 
 """Generate jac_entry() function for with entry { ... } blocks."""
-impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
+impl NaIRGenPass._codegen_entry(nodes: list[uni.ModuleCode]) -> None {
+    # No `with entry { ... }` blocks: nothing to emit. The caller's
+    # has_native_code fallback still guarantees __jac_glob_init is defined.
+    if not nodes {
+        return;
+    }
     i64 = ir.IntType(64);
     import re;
+    # Create the single jac_entry function: void jac_entry(). Every `with entry`
+    # block's body is appended into this one function in source order
+    # the startup preamble (glob-init, JAC_NO_GC, imported-module init) is
+    # emitted exactly once here, before any entry body runs.
+    import from jaclang.jac0core.codeinfo { native_safe_sym }
     # Create jac_entry function: void jac_entry()
     fnty = ir.FunctionType(ir.VoidType(), []);
-    func = ir.Function(self.llvm_module, fnty, name="jac_entry");
+    func = self._define_function("jac_entry", fnty);
     self.func_symtab["jac_entry"] = func;
     # Create entry block
     block = func.append_basic_block(name="entry");
     self._builder = ir.IRBuilder(block);
     self.local_vars = {};
-    # DWARF debug info (JAC_NATIVE_DEBUG=1)
-    entry_line = nd.loc.first_line if nd.loc else 0;
+    # DWARF debug info (JAC_NATIVE_DEBUG=1) — anchor the single jac_entry
+    # subprogram at the FIRST entry block's line. Known limitation: when several
+    # `with entry` blocks are concatenated, debug line attribution is coarse —
+    # one subprogram spans them all, so a debugger sees a single source range
+    # rather than per-block ranges. The scope-cleanup epilogue (below) is
+    # likewise tagged with the LAST block's last line. Acceptable for now; a
+    # finer mapping would need per-block lexical scopes.
+    _first = nodes[0];
+    entry_line = _first.loc.first_line if _first.loc else 0;
     self._attach_di_subprogram(func, "jac_entry", entry_line);
     # Emit __jac_glob_init() (current module) and call it first.
     # This initialises all list/dict globs declared in THIS module before any
@@ -669,7 +713,9 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
             continue;
         }
         _seen_init_mods.add(_source_mod);
-        safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', _source_mod);
+        # Unique per-module suffix; centralized in codeinfo.native_safe_sym so
+        # the emit side, AOT shared-init emitter, and JIT runtime lookup agree.
+        safe_name = native_safe_sym(_source_mod);
         init_name = f"__jac_glob_init_{safe_name}";
         # Declare (or reuse) the external init function
         imp_init_fn = self.func_symtab.get(init_name);
@@ -765,9 +811,23 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
             self.builder.position_at_end(_gk_done);
         }
     }
-    # Generate body statements
-    if (nd).body {
-        self._codegen_body((nd).body);
+    # Generate body statements: concatenate every `with entry { ... }` body in
+    # source order into this single jac_entry function (#6660). Stop if a body
+    # leaves the current LLVM block terminated so we never append into a closed
+    # block. A top-level `raise` lowers to __jac_exc_raise + `unreachable`, so a
+    # block that unconditionally raises terminates here and the remaining blocks
+    # are intentionally skipped — this matches the Python target, where a
+    # module-level raise propagates and textually-later top-level code never
+    # runs. (The fflush/scope-cleanup epilogue below is `is_terminated`-guarded
+    # for the same reason; that guard predates this change and already applied
+    # to the single-entry case, so concatenation introduces no new behavior.)
+    for _ent in nodes {
+        if self.builder.block.is_terminated {
+            break;
+        }
+        if (_ent).body {
+            self._codegen_body((_ent).body);
+        }
     }
     # Flush all stdio buffers before returning to caller
     if not self.builder.block.is_terminated {
@@ -777,10 +837,11 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
         null_ptr = ir.Constant(i8p, None);
         self.builder.call(fflush_fn, [null_ptr]);
         # release all pointer-typed locals at end of entry block.
+        _last = nodes[-1];
         self._emit_scope_cleanup(
             skip_var=None,
-            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
-                if nd.loc
+            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{_last.loc.last_line
+                if _last.loc
                 else 0}"
         );
         # Emit live-objects dump (only if debug was enabled at runtime).

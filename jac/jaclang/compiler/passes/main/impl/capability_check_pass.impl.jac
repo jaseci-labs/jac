@@ -101,11 +101,74 @@ impl classify_native_import(item: uni.UniNode) -> tuple {
     return (mod_name, mod_name is not None and mod_name in NATIVE_SUPPORTED_STDLIB);
 }
 
+impl import_bound_name(item: uni.UniNode) -> (str | None) {
+    if not isinstance(item, uni.ModulePath) {
+        return None;
+    }
+    if item.alias is not None and isinstance(item.alias, uni.Name) {
+        return item.alias.value;
+    }
+    if item.path {
+        first = item.path[0];
+        return first.value if isinstance(first, uni.Name) else None;
+    }
+    return None;
+}
+
+impl name_in_type_position(name_nd: uni.UniNode) -> bool {
+    if name_nd.find_parent_of_type(uni.SubTag) is not None {
+        return True;
+    }
+    sig = name_nd.find_parent_of_type(uni.FuncSignature);
+    if sig is not None and sig.return_type is not None {
+        cur = name_nd;
+        while cur is not None {
+            if cur is sig.return_type {
+                return True;
+            }
+            cur = cur.parent;
+        }
+    }
+    return False;
+}
+
 impl native_capability_violations(mod: uni.Module) -> list {
     import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
     import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
+    import ast as ast3;
     out: list = [];
     _stdlib_help: (str | None) = None;
+    # Partition native-context Load references of each name into TYPE-annotation
+    # positions vs RUNTIME-value positions. A foreign Python import is tolerated
+    # iff its bound name is referenced ONLY in type positions (issue #6930, A3):
+    # it merely names a foreign type (whose field lowers to an opaque slot), is
+    # never lowered to a runtime value, and so cannot lower to garbage. A name
+    # with any runtime use stays rejected (the #6357 hazard), and an entirely
+    # UNused import stays rejected too (its bound name is in neither set), which
+    # preserves the existing rejection of, e.g., an unused `import os.path`.
+    _native_stmts: list = list(
+        ModuleCodegenPass.iter_context_stmts(mod, CodeContext.NATIVE)
+    );
+    _runtime_used: set = set();
+    _type_used: set = set();
+    for _stmt in _native_stmts {
+        if isinstance(_stmt, uni.Import) {
+            continue;
+        }
+        for _nm in _stmt.get_all_sub_nodes(typ=uni.Name) {
+            if _nm._py_ctx_func != ast3.Load {
+                continue;
+            }
+            if _nm.find_parent_of_type(uni.Import) is not None {
+                continue;
+            }
+            if name_in_type_position(_nm) {
+                _type_used.add(_nm.value);
+            } else {
+                _runtime_used.add(_nm.value);
+            }
+        }
+    }
     # One NATIVE-context iteration covers both violation families. NOTE:
     # NATIVE_DISQUALIFIER_NODES is deliberately NOT swept here - it is the
     # AUTO-PROMOTION eligibility table, conservatively broader than what
@@ -114,7 +177,7 @@ impl native_capability_violations(mod: uni.Module) -> list {
     # Genuinely-unsupported node kinds remain the emitter fallbacks' job
     # until a dedicated explicit-native rejection table is derived from
     # them.
-    for stmt in ModuleCodegenPass.iter_context_stmts(mod, CodeContext.NATIVE) {
+    for stmt in _native_stmts {
         # Non-allowlisted Python imports in native context (issue #6357):
         # the import would be dropped and member access would lower to
         # garbage, so reject it loudly. Clib imports
@@ -127,6 +190,19 @@ impl native_capability_violations(mod: uni.Module) -> list {
             for item in stmt.items {
                 (mod_name, _ok) = classify_native_import(item);
                 if mod_name is not None and not _ok {
+                    # Type-only foreign import: the bound name only names a
+                    # foreign type in annotations and is never lowered to a
+                    # runtime value, so the import is harmless. It lets a field
+                    # of that foreign type ride Tier-1 untouched (the field
+                    # lowers to an opaque slot in the backend) (issue #6930, A3).
+                    _bound = import_bound_name(item);
+                    if (
+                        _bound is not None
+                        and _bound in _type_used
+                        and _bound not in _runtime_used
+                    ) {
+                        continue;
+                    }
                     if _stdlib_help is None {
                         _supported_list = ", ".join(
                             f"`import {m}`" for m in sorted(NATIVE_SUPPORTED_STDLIB)
