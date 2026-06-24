@@ -66,6 +66,8 @@ jaclang_source = "jac"   # dir containing jaclang/, relative to this jac.toml
 
 With this enabled, `import jaclang` resolves to `jac/jaclang` (it's prepended to `sys.path` at startup), so edits to jaclang's `.py` and `.jac` source -- the compiler, passes, CLI, runtime -- run live. The per-module compile cache is content-keyed, so edits self-invalidate; the dev loop also skips the binary's shipped precompiled bundle automatically (no manual cache clearing needed). Comment the stanza out to fall back to the binary's bundled jaclang.
 
+The stanza is **inherited from the nearest ancestor `jac.toml`**, so the loop stays active from any subdirectory of the repo -- including `cd jac` to run the test suite (whose own `jac/jac.toml` carries no `[dev]` stanza) and the plugin dirs (`jac-scale/`, `jac-byllm/`, ...). To force the loop *off* for a single command -- e.g. to test the shipped binary's bundled + precompiled jaclang instead of your edits -- set `JAC_NO_DEV_SOURCE=1` (CI's binary self-test does this).
+
 You still need to `zig build` again when you change the parts that live *inside* the binary rather than in jaclang source: the launcher (`jac/launcher/*.zig`, `jac/build.zig`), the payload bootstrap (`jac/sitecustomize.py`, `jac/_jac_finder.py`), or the bundled CPython version.
 
 **Run Some Tests**
@@ -76,6 +78,13 @@ Tests run through the binary's bundled test runner (pytest + xdist ship inside i
 cd jac
 JAC_TEST_JOBS=auto jac test tests
 # See ci jobs in github actions for more stuff to run
+```
+
+The worker count can also be set persistently in `jac.toml` so you don't have to prefix every run -- the `JAC_TEST_JOBS` env var still overrides it when set:
+
+```toml
+[dev]
+test_jobs = "auto"   # "auto" = one worker per core; "0" = serial; or a fixed count like "4"
 ```
 
 **Build something awesome, or fix something that's broken**

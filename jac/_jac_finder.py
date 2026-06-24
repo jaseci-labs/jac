@@ -35,10 +35,38 @@ def _find_project_toml() -> str | None:
         directory = parent
 
 
+def _find_dev_source_toml() -> str | None:
+    """Nearest ancestor ``jac.toml`` that declares ``[dev] jaclang_source``.
+
+    Unlike ``_find_project_toml`` (which stops at the FIRST ``jac.toml`` -- the
+    project root used for venv resolution), this climbs PAST jac.tomls that do
+    not opt into the editable dev loop. That lets a monorepo declare the dev
+    source once at its root and have it apply from any subdirectory -- e.g.
+    ``cd jac`` to run the test suite, whose own ``jac/jac.toml`` carries no
+    ``[dev]`` stanza, still inherits the root's ``jaclang_source``. The cheap
+    ``jaclang_source`` substring check per file means non-dev startup never
+    imports ``tomllib`` and reads only jac.tomls actually present on the way up.
+    """
+    directory = os.getcwd()
+    while True:
+        candidate = os.path.join(directory, "jac.toml")
+        if os.path.isfile(candidate):
+            try:
+                with open(candidate, "rb") as handle:
+                    if b"jaclang_source" in handle.read():
+                        return candidate
+            except OSError:
+                pass
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            return None
+        directory = parent
+
+
 def apply_dev_source_override() -> None:
     """Reroute ``import jaclang`` to an in-repo source tree -- an editable dev loop.
 
-    When the nearest ``jac.toml`` declares::
+    When the nearest ancestor ``jac.toml`` declares::
 
         [dev]
         jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to jac.toml
@@ -47,7 +75,13 @@ def apply_dev_source_override() -> None:
     jaclang`` resolves to the live source instead of the single binary's bundled
     copy -- edits take effect with no rebuild. It runs in ``sitecustomize``
     during site init, BEFORE the launcher's BOOT_SRC does ``import jaclang``, so
-    the override wins over the bundled ``site/`` on ``PYTHONPATH``.
+    the override wins over the bundled ``site/`` on ``PYTHONPATH``. The stanza is
+    resolved by climbing ancestors (see ``_find_dev_source_toml``), so it stays
+    active from monorepo subdirectories such as ``jac/``.
+
+    Set ``JAC_NO_DEV_SOURCE=1`` to force the loop OFF even when a stanza is in
+    scope -- used by CI jobs that must exercise the shipped binary's bundled +
+    precompiled jaclang rather than the checked-out source tree.
 
     Caches: sets ``JAC_NO_PRECOMPILE=1`` so the shipped, version-keyed
     ``_precompiled`` JIR bundle is skipped. The per-module ``.jir`` cache is
@@ -55,22 +89,18 @@ def apply_dev_source_override() -> None:
     edits self-invalidate on their own -- no forced full rebuild needed. Exports
     ``JAC_DEV_SOURCE`` as a marker for tooling.
 
-    Plain Python, dev-only, never fatal. A cheap substring guard avoids importing
-    ``tomllib`` unless the key is literally present, so non-dev startup pays only
-    a small file read.
+    Plain Python, dev-only, never fatal.
     """
     try:
-        toml = _find_project_toml()
-        if toml is None:
+        if os.environ.get("JAC_NO_DEV_SOURCE"):
             return
-        with open(toml, "rb") as handle:
-            raw = handle.read()
-        # Fast path: skip the tomllib import/parse entirely unless the key exists.
-        if b"jaclang_source" not in raw:
+        toml = _find_dev_source_toml()
+        if toml is None:
             return
         import tomllib
 
-        section = tomllib.loads(raw.decode("utf-8")).get("dev")
+        with open(toml, "rb") as handle:
+            section = tomllib.loads(handle.read().decode("utf-8")).get("dev")
         if not isinstance(section, dict):
             return
         src = section.get("jaclang_source")

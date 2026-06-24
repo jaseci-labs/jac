@@ -21,6 +21,16 @@ on:
 permissions:
   contents: read
 
+# This workflow tests the SHIPPED binary's bundled + precompiled jaclang. The
+# checkout's root jac.toml carries a `[dev] jaclang_source` stanza for the local
+# editable dev loop, which `_jac_finder` would otherwise inherit from any subdir
+# (e.g. working-directory: jac) and reroute `import jaclang` to the source tree
+# (skipping the precompiled JIR bundle). Force the dev loop OFF so the binary
+# under test is the real artifact. (The hermetic `env -i` smoke steps below clear
+# the environment, so they set this inline instead of inheriting it from here.)
+env:
+  JAC_NO_DEV_SOURCE: "1"
+
 jobs:
   build:
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -42,8 +52,8 @@ jobs:
           ! ldd "$BIN" | grep -qi python
           WORK="$(mktemp -d)"
           printf 'obj P { has x:int=0; def sq->int { return self.x*self.x; } }\nwith entry { print(P(x=7).sq()); }\n' > "$WORK/obj.jac"
-          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" --version
-          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/obj.jac")"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" --version
+          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" run "$WORK/obj.jac")"
           echo "$out" | grep -q 49
 
       - name: Run real jac programs (end-to-end execution)
@@ -61,7 +71,7 @@ jobs:
               print([i*i for i in range(5)]);
           }
           JAC
-          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/a.jac")"
+          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" run "$WORK/a.jac")"
           echo "$out" | grep -q "dist 5.0"
           echo "$out" | grep -q "0, 1, 4, 9, 16"
 
@@ -79,7 +89,7 @@ jobs:
           test "comprehension" { assert [i for i in range(3)] == [0, 1, 2]; }
           test "strings" { assert "ja" + "c" == "jac"; }
           JAC
-          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_TEST_JOBS=0 "$BIN" test "$WORK/test_smoke.jac"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_TEST_JOBS=0 JAC_NO_DEV_SOURCE=1 "$BIN" test "$WORK/test_smoke.jac"
 
       - name: Upload the jac binary
         uses: actions/upload-artifact@v4
