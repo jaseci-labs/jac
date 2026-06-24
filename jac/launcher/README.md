@@ -57,9 +57,11 @@ zig build -Dpayload-progress         # same, but stream the payload build live
 zig build -Dpayload=/tmp/p.tar.gz    # pack a prebuilt payload (skip fetch+assemble)
 ```
 
-Build-time host deps: just `zig` + network. `payload.zig` does HTTP, integrity,
-(de)compression and tar in std; it shells out only to the freshly-fetched pbs
-python (pip + JIR precompile, which need a real CPython). The launcher
+Build-time host deps: just `zig` + network (plus an optional, best-effort
+`strip` to shrink the unstripped pbs libpython ~245 MiB -> ~20 MiB; the build
+still works without it). `payload.zig` does HTTP, integrity, (de)compression and
+tar in std; it shells out only to the freshly-fetched pbs python (pip + JIR
+precompile, which need a real CPython). The launcher
 cross-compiles to any target with `zig build -Dtarget=...`
 (`x86_64-linux-gnu.2.17`, `aarch64-macos`, ...) -- `dlopen` is uniform across
 Linux (`.so`) and macOS (`.dylib`), no per-OS framework enumeration. The pbs

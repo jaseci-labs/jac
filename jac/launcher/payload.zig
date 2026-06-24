@@ -6,9 +6,11 @@
 //! `std.crypto.sha2`, the pbs archive is decoded with `std.compress.zstd`, the
 //! typeshed tarball with `std.compress.flate`, the final payload is written with
 //! `std.tar.Writer` + `std.compress.flate` (gzip), and all file shuffling is
-//! `std.Io.Dir`. The ONLY remaining shellouts are to the freshly-fetched pbs
+//! `std.Io.Dir`. The remaining shellouts are to the freshly-fetched pbs
 //! `python` -- pip installs and the JIR precompile -- because those genuinely
-//! require executing CPython (see launcher/README.md "Bucket B").
+//! require executing CPython (see launcher/README.md "Bucket B"), plus a
+//! best-effort `strip` to shed the unstripped pbs libpython's debug/bitcode
+//! bloat (optional; the build still works if `strip` is absent).
 //!
 //! Subcommands (build.zig invokes the tool once per step, mirroring the old
 //! script split so each keeps its caching semantics):
@@ -421,13 +423,20 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
     // real library lands at the bare name the launcher dlopens.
     const pbs_lib = try std.fmt.allocPrint(a, "{s}/install/lib", .{pbs_py_dir});
     const found = try findLibpython(io, a, pbs_lib);
+    const staged_lib = try std.fmt.allocPrint(a, "{s}/{s}", .{ lib_dst, found.bare });
     try Dir.cwd().copyFile(
         try std.fmt.allocPrint(a, "{s}/{s}", .{ pbs_lib, found.src }),
         Dir.cwd(),
-        try std.fmt.allocPrint(a, "{s}/{s}", .{ lib_dst, found.bare }),
+        staged_lib,
         io,
         .{},
     );
+    // pbs ships the pgo+lto-full libpython UNSTRIPPED (debug info + .llvmbc LTO
+    // bitcode) at ~245 MiB. Strip it to ~20 MiB -- the single biggest payload
+    // win. The exported dynamic symbols the launcher dlsym's (Py_Initialize,
+    // Py_BytesMain, ...) live in .dynsym and are kept; only debug / local
+    // symbols / dead bitcode go, so the PGO+LTO-optimized code is untouched.
+    stripBestEffort(io, staged_lib);
 
     // Copy the stdlib as-is (keeps shipped .pyc), then prune heavy/build-only
     // bits. KEEP lib-dynload, encodings, ensurepip.
@@ -457,6 +466,39 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
         defer site_src.close(io);
         try copyTree(io, gpa, a, site_src, try std.fmt.allocPrint(a, "{s}/site", .{stage}), skipStageSite);
     }
+    // llvmlite bundles libLLVM (~160 MiB); strip its shared lib too (best-effort).
+    stripBestEffort(io, try std.fmt.allocPrint(a, "{s}/site/llvmlite/binding/libllvmlite.so", .{stage}));
+}
+
+/// Strip a shared library in place to shed debug info / local symbols / dead LTO
+/// bitcode, keeping the exported .dynsym the launcher resolves. Best-effort: the
+/// host `strip` (binutils, near-universal on Linux/macOS build hosts and CI) is
+/// the one optional tool -- if it is absent the build still succeeds, shipping
+/// the lib unstripped. Plain `strip` (no flags) preserves dynamic symbols for a
+/// shared object, so no flag tuning is needed.
+fn stripBestEffort(io: Io, path: []const u8) void {
+    const before = fileSizeOrZero(io, path);
+    if (before == 0) return; // not present (e.g. macOS .dylib name, or no llvmlite)
+    var child = std.process.spawn(io, .{
+        .argv = &.{ "strip", path },
+        .stdin = .ignore,
+        .stdout = .ignore,
+        .stderr = .ignore,
+    }) catch {
+        log("   strip unavailable; shipping {s} unstripped", .{path});
+        return;
+    };
+    _ = child.wait(io) catch return;
+    const after = fileSizeOrZero(io, path);
+    if (after != 0 and after < before) {
+        log("   stripped {s}: {d} -> {d} MiB", .{ path, before >> 20, after >> 20 });
+    }
+}
+
+fn fileSizeOrZero(io: Io, path: []const u8) u64 {
+    const f = Dir.cwd().openFile(io, path, .{}) catch return 0;
+    defer f.close(io);
+    return f.length(io) catch 0;
 }
 
 const FoundLib = struct { src: []const u8, bare: []const u8 };

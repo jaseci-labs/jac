@@ -17,7 +17,9 @@
 //! curl / git / zstd / tar dependencies are gone -- payload.zig does HTTP,
 //! integrity, (de)compression and tar in std. It shells out only to the
 //! freshly-fetched pbs python (pip + JIR precompile), which provides its own
-//! pip. The shipped binary needs none of these.
+//! pip, and -- best-effort, optional -- to `strip` to shrink the unstripped
+//! pbs libpython (~245 MiB -> ~20 MiB); without `strip` the build still works,
+//! the binary is just larger. The shipped binary needs none of these.
 
 const std = @import("std");
 
