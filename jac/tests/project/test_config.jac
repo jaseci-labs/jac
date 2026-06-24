@@ -357,6 +357,27 @@ test "serve on_conflict default and normalization" {
     assert typo.serve.on_conflict == "retry";
 }
 
+test "dev section parsing" {
+    config_mod._config = None;
+    # Absent -> defaults (test_jobs 'auto', jaclang_source empty).
+    base = JacConfig.from_toml_str("\n[project]\nname = \"x\"\n");
+    assert base.dev.test_jobs == "auto";
+    assert base.dev.jaclang_source == "";
+
+    # Explicit string values pass through.
+    config_mod._config = None;
+    cfg = JacConfig.from_toml_str(
+        "\n[dev]\njaclang_source = \"jac\"\ntest_jobs = \"4\"\n"
+    );
+    assert cfg.dev.jaclang_source == "jac";
+    assert cfg.dev.test_jobs == "4";
+
+    # A bare integer test_jobs is coerced to str so it flows into pytest's `-n`.
+    config_mod._config = None;
+    as_int = JacConfig.from_toml_str("\n[dev]\ntest_jobs = 0\n");
+    assert as_int.dev.test_jobs == "0";
+}
+
 test "parse full config" {
     config_mod._config = None;
     toml_str = "\n[project]\nname = \"full-project\"\nversion = \"1.2.3\"\ndescription = \"A full project\"\nauthors = [\"Jane Doe <jane@example.com>\"]\nlicense = \"MIT\"\nentry-point = \"app.jac\"\n\n[dependencies]\nnumpy = \">=1.24.0\"\npandas = \">=2.0.0\"\n\n[run]\nsession = \"my_session\"\nmain = false\ncache = false\n\n[build]\ntypecheck = true\n\n[test]\ndirectory = \"tests\"\nverbose = true\nfail_fast = true\nmax_failures = 5\n\n[serve]\nport = 9000\n\n[cache]\nenabled = false\ndir = \".cache\"\n\n[scripts]\nstart = \"jac run app.jac\"\nlint = \"jac lint . --fix\"\n\n[plugins.byllm]\ndefault_model = \"gpt-4\"\ntemperature = 0.7\n\n[environments.development]\n[environments.development.serve]\nport = 3000\n\n[environments.production]\n[environments.production.serve]\nport = 8000\n";

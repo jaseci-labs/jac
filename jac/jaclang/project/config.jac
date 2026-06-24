@@ -194,6 +194,20 @@ obj ClientConfig {
     has framework: str = "react";
 }
 
+"""Editable dev-loop settings from [dev] section.
+
+`jaclang_source` (the in-repo source dir the editable dev loop reroutes
+`import jaclang` to) is read independently by the binary's standalone
+`_jac_finder` at startup -- before jaclang loads -- so it is mirrored here only
+so a parsed config round-trips faithfully. `test_jobs` is the default xdist
+worker count for `jac test` when the JAC_TEST_JOBS env var is unset
+("auto" = one worker per core, "0" = serial); the env var overrides it.
+"""
+obj DevConfig {
+    has jaclang_source: str = "",
+        test_jobs: str = "auto";
+}
+
 # Interpolate environment variables in a string value.
 # Supports ${VAR_NAME}, ${VAR_NAME:-default}, ${VAR_NAME:?error message}
 def interpolate_env_vars(value: str) -> str;
@@ -235,6 +249,7 @@ obj JacConfig {
         environment: EnvironmentConfig = EnvironmentConfig(),
         client_errors: ClientErrorsConfig = ClientErrorsConfig(),
         client: ClientConfig = ClientConfig(),
+        dev: DevConfig = DevConfig(),
         # Dependencies
         dependencies: dict[str, str] = {},
         dev_dependencies: dict[str, str] = {},

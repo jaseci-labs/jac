@@ -14,6 +14,14 @@ Repository = "https://github.com/jaseci-labs/jaseci"
 Homepage = "https://jaseci.org"
 Documentation = "https://docs.jaseci.org"
 
+# Editable dev loop: reroute `import jaclang` to this in-repo source so the `jac`
+# binary runs your latest edits with no rebuild. Config resolves to the nearest
+# jac.toml, so this mirrors the root jac.toml's stanza to keep the loop active
+# when running from this dir (e.g. `cd jac && jac test tests`). `"."` is this
+# dir, which contains `jaclang/`. Set JAC_NO_DEV_SOURCE=1 to force it off.
+[dev]
+jaclang_source = "."
+
 # `jac test` discovers the suite here (mirrors pytest's testpaths).
 [test]
 directory = "tests"

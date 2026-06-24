@@ -31,9 +31,14 @@ glob _EMBEDDED_DOCKERFILE: str = "FROM python:3.12-slim\n\n"
      "    && apt-get install -y --no-install-recommends git curl \\\n"
      "    && rm -rf /var/lib/apt/lists/*\n\n"
      "RUN git config --system --add safe.directory '*'\n\n"
-     "RUN pip install --no-cache-dir --upgrade pip\n\n"
-     "RUN pip install --no-cache-dir \"jac-scale[deploy,data]>=0.2.15\" "
-     "jac-client\n\n"
+     # jaclang ships as the self-contained `jac` binary (bundled CPython; not
+     # on PyPI). Fetch it from GitHub Releases via the official installer, then
+     # add plugins with the binary's own resolver. The client framework now
+     # lives in jaclang core, so there is no separate jac-client to install.
+     "RUN curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci"
+     "/main/scripts/install.sh | bash \\\n"
+     "    && cp \"$HOME/.local/bin/jac\" /usr/local/bin/jac\n\n"
+     "RUN jac install \"jac-scale[deploy,data]\" --global\n\n"
      "WORKDIR /app\n"
      "COPY . /app\n\n"
      "RUN if [ -f jac.toml ]; then jac install || true; fi\n\n"
