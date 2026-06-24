@@ -150,6 +150,13 @@ def create(
             short=""
         ),
         Arg.create(
+            "no-uv",
+            typ=bool,
+            default=False,
+            help="Use pip instead of uv even if uv is available",
+            short=""
+        ),
+        Arg.create(
             "global",
             typ=bool,
             default=False,
@@ -202,6 +209,7 @@ def install(
     no_deps: bool = False,
     quiet: bool = False,
     prefer_binary: bool = False,
+    no_uv: bool = False,
     install_global: bool = False
 ) -> int;
 
