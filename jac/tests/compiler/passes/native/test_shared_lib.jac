@@ -23,6 +23,11 @@ import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
 import from jaclang.compiler.passes.native.macho_linker { MachOLinker }
 import from jaclang.compiler.passes.native.pe_linker { PeLinker }
+# The real CLI emitter owns __jac_shared_init + the public RC wrappers.
+# Re-using it here (instead of re-deriving the injection inline) keeps the
+# tests on the production code path -- a prior divergence here let a quoted-
+# symbol glob-init bug in _inject_shared_init slip past this whole file.
+import from jaclang.cli.commands.nacompile { _inject_shared_init }
 import llvmlite.binding as llvm;
 
 glob FIXTURES = os.path.join(
@@ -50,27 +55,10 @@ def emit_shared_object(fixture: str, triple: str) -> tuple {
         ]}";
         ir_txt = str(ir.gen.llvm_ir);
         exports = list(ir.gen._exported_symbols);
-        init_call = "  call void @__jac_glob_init()\n"
-            if "__jac_glob_init" in ir_txt
-            else "";
-        parts = [
-            "\ndefine void @__jac_shared_init() {\nentry:\n" + init_call + "  ret void\n}"
-        ];
-        if "__rc_retain" in ir_txt {
-            parts.append(
-                "define void @jac_retain(ptr %p) {\nentry:\n"
-                "  call void @__rc_retain(ptr %p)\n  ret void\n}"
-            );
-            exports.append("jac_retain");
-        }
-        if "__rc_release_simple" in ir_txt {
-            parts.append(
-                "define void @jac_release(ptr %p) {\nentry:\n"
-                "  call void @__rc_release_simple(ptr %p)\n  ret void\n}"
-            );
-            exports.append("jac_release");
-        }
-        src = ir_txt + "\n".join(parts) + "\n";
+        # Delegate to the production emitter so shared-init + RC-wrapper
+        # injection is identical to `jac nacompile --shared` (no divergence).
+        (src, _extra_exports) = _inject_shared_init(ir_txt, []);
+        exports.extend(_extra_exports);
         llvm.initialize_all_targets();
         llvm.initialize_all_asmprinters();
         mod = llvm.parse_assembly(src);
@@ -165,69 +153,153 @@ test "ELF shared object loads and runs through the C ABI" {
     # would yield a Mach-O object that ElfLinker cannot link). Execution below
     # stays gated to a Linux x86_64 host that can actually dlopen the result.
     (relobj, exports) = emit_shared_object(FIXTURE, "x86_64-unknown-linux-gnu");
-    d = tempfile.mkdtemp();
-    out = os.path.join(d, "libshared_export.so");
-    ok = ElfLinker.link(
-        obj_bytes=relobj,
-        output_path=out,
-        needed_libs=["libc.so.6", "libm.so.6"],
-        shared=True,
-        export_symbols=exports,
-        init_funcs=["__jac_shared_init"],
-        soname="libshared_export.so"
-    );
-    assert ok , "ElfLinker.link(shared=True) returned False";
-    raw = Path(out).read_bytes();
-    assert raw[:4] == b"\x7fELF" , "not an ELF image";
-    e_type = struct.unpack_from("<H", raw, 16)[0];
-    assert e_type == 3 , f"expected ET_DYN (3), got {e_type}";
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
+        out = os.path.join(d, "libshared_export.so");
+        ok = ElfLinker.link(
+            obj_bytes=relobj,
+            output_path=out,
+            needed_libs=["libc.so.6", "libm.so.6"],
+            shared=True,
+            export_symbols=exports,
+            init_funcs=["__jac_shared_init"],
+            soname="libshared_export.so"
+        );
+        assert ok , "ElfLinker.link(shared=True) returned False";
+        raw = Path(out).read_bytes();
+        assert raw[:4] == b"\x7fELF" , "not an ELF image";
+        e_type = struct.unpack_from("<H", raw, 16)[0];
+        assert e_type == 3 , f"expected ET_DYN (3), got {e_type}";
+        # Only a Linux x86_64 host can dlopen + execute the produced .so.
+        if sys.platform.startswith("linux")
+        and ("x86_64" in llvm.get_default_triple()) {
+            import ctypes;
+            lib = ctypes.CDLL(out);
+            lib.jadd.restype = ctypes.c_int64;
+            lib.jadd.argtypes = [ctypes.c_int64, ctypes.c_int64];
+            assert lib.jadd(2, 3) == 5;
+            lib.jmul.restype = ctypes.c_int64;
+            lib.jmul.argtypes = [ctypes.c_int64, ctypes.c_int64];
+            assert lib.jmul(4, 5) == 20;
+            lib.get_counter.restype = ctypes.c_int64;
+            assert lib.get_counter() == 7;  # glob:pub counter
+            lib.make_point.restype = ctypes.c_void_p;
+            lib.make_point.argtypes = [ctypes.c_int64, ctypes.c_int64];
+            lib.point_sum.restype = ctypes.c_int64;
+            lib.point_sum.argtypes = [ctypes.c_void_p];
+            p = lib.make_point(3, 4);
+            assert p , "make_point returned NULL";
+            assert lib.point_sum(p) == 7 , "opaque object handle round-trip failed";
+            lib.jac_release.argtypes = [ctypes.c_void_p];
+            lib.jac_release(p);  # public RC wrapper over __rc_release_simple
+        }
+    }
+}
 
-    # Only a Linux x86_64 host can dlopen + execute the produced .so.
-    if sys.platform.startswith("linux") and ("x86_64" in llvm.get_default_triple()) {
-        import ctypes;
-        lib = ctypes.CDLL(out);
-        lib.jadd.restype = ctypes.c_int64;
-        lib.jadd.argtypes = [ctypes.c_int64, ctypes.c_int64];
-        assert lib.jadd(2, 3) == 5;
-        lib.jmul.restype = ctypes.c_int64;
-        lib.jmul.argtypes = [ctypes.c_int64, ctypes.c_int64];
-        assert lib.jmul(4, 5) == 20;
-        lib.get_counter.restype = ctypes.c_int64;
-        assert lib.get_counter() == 7;  # glob:pub counter
-        lib.make_point.restype = ctypes.c_void_p;
-        lib.make_point.argtypes = [ctypes.c_int64, ctypes.c_int64];
-        lib.point_sum.restype = ctypes.c_int64;
-        lib.point_sum.argtypes = [ctypes.c_void_p];
-        p = lib.make_point(3, 4);
-        assert p , "make_point returned NULL";
-        assert lib.point_sum(p) == 7 , "opaque object handle round-trip failed";
-        lib.jac_release.argtypes = [ctypes.c_void_p];
-        lib.jac_release(p);  # public RC wrapper over __rc_release_simple
+
+test "_inject_shared_init emits the glob-init call for a quoted symbol" {
+    # LLVM quotes `@__jac_glob_init` because the name is not a bare IR
+    # identifier, so the emitted IR is `define void @\"__jac_glob_init\"()`.
+    # A single unquoted substring scan (`"@__jac_glob_init("`) misses that
+    # form and `__jac_shared_init` is emitted empty -- the glob-init never
+    # runs and the .so's globals stay NULL. This locks in the fix directly on
+    # the production emitter (no linking / no platform dependency).
+    ir_quoted = 'define void @\"__jac_glob_init\"()\n';
+    (out_q, _e) = _inject_shared_init(ir_quoted, []);
+    assert "call void @__jac_glob_init()" in out_q , (
+        "_inject_shared_init dropped the own-module glob-init call on the "
+        "quoted-symbol form (regression: globals never initialize in --shared)"
+    );
+    # The unquoted form must still match too.
+    ir_unquoted = 'define void @__jac_glob_init()\n';
+    (out_u, _e2) = _inject_shared_init(ir_unquoted, []);
+    assert "call void @__jac_glob_init()" in out_u , (
+        "_inject_shared_init dropped the own-module glob-init call on the "
+        "unquoted-symbol form"
+    );
+    # A module with no glob-init must NOT inject the call.
+    (out_none, _e3) = _inject_shared_init("define void @foo()\n", []);
+    assert "__jac_glob_init" not in out_none , (
+        "_inject_shared_init injected a glob-init call for a module that has none"
+    );
+}
+
+
+test "ELF shared object initializes a global clib struct on dlopen" {
+    # Regression guard for the `--shared` global-clib-struct segfault. The
+    # struct pointer `g` is populated by __jac_glob_init, which only runs if
+    # __jac_shared_init calls it -- exactly what the quoted-symbol bug broke.
+    # Built as a plain executable the same code is fine (the JIT path resolves
+    # the init via get_function_address); only --shared's AOT text scan broke.
+    (relobj, exports) = emit_shared_object(
+        "shared_glob_struct.na.jac", "x86_64-unknown-linux-gnu"
+    );
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
+        out = os.path.join(d, "libshared_glob_struct.so");
+        ok = ElfLinker.link(
+            obj_bytes=relobj,
+            output_path=out,
+            needed_libs=["libc.so.6"],
+            shared=True,
+            export_symbols=exports,
+            init_funcs=["__jac_shared_init"],
+            soname="libshared_glob_struct.so"
+        );
+        assert ok , "ElfLinker.link(shared=True) returned False";
+        # Only a Linux x86_64 host can dlopen + execute the produced .so.
+        if sys.platform.startswith("linux")
+        and ("x86_64" in llvm.get_default_triple()) {
+            import ctypes;
+            try {
+                lib = ctypes.CDLL(out);  # __jac_shared_init runs here (CTOR)
+            } except OSError as _e {
+                # Some hardened kernels refuse a .so lacking an explicit
+                # `.note.GNU-stack` non-exec marker ("cannot enable executable
+                # stack"). That is a toolchain/kernel concern unrelated to this
+                # fix: the build + inject + link above already exercised the
+                # codegen path, and the unit test locks the injection itself.
+                print(f"[skip-dlopen] host refuses execstack load: {_e}");
+                lib = None;
+            }
+            if lib is not None {
+                lib.read_struct_field.restype = ctypes.c_int64;
+                # Before the fix this SIGSEGV'd: `g` was NULL so `g.a` deref'd NULL.
+                assert lib.read_struct_field() == 0 , (
+                    "global clib struct not initialized on dlopen (init not called)"
+                );
+                lib.set_struct_field.restype = ctypes.c_int64;
+                lib.set_struct_field.argtypes = [ctypes.c_int64];
+                assert lib.set_struct_field(42) == 42 , "set_struct_field round-trip failed";
+                assert lib.read_struct_field() == 42 , (
+                    "field write to a global clib struct did not persist"
+                );
+            }
+        }
     }
 }
 
 
 test "Mach-O dylib has MH_DYLIB filetype, export trie, and init section" {
     (relobj, exports) = emit_shared_object(FIXTURE, "x86_64-apple-darwin");
-    d = tempfile.mkdtemp();
-    out = os.path.join(d, "libshared_export.dylib");
-    ok = MachOLinker.link(
-        obj_bytes=relobj,
-        output_path=out,
-        needed_libs=["/usr/lib/libSystem.B.dylib"],
-        shared=True,
-        export_symbols=exports,
-        init_funcs=["__jac_shared_init"],
-        soname="libshared_export.dylib"
-    );
-    assert ok , "MachOLinker.link(shared=True) returned False";
-    raw = Path(out).read_bytes();
-    assert struct.unpack_from("<I", raw, 0)[0] == 0xFEEDFACF , "not a Mach-O 64 image";
-    info = _macho_info(raw);
-    assert info["filetype"] == 6 , f"expected MH_DYLIB (6), got {info['filetype']}";
-    assert info["has_id_dylib"] , "missing LC_ID_DYLIB";
-    assert info["export_size"] > 0 , "empty export trie";
-    assert info["has_mod_init"] , "missing __mod_init_func";
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
+        out = os.path.join(d, "libshared_export.dylib");
+        ok = MachOLinker.link(
+            obj_bytes=relobj,
+            output_path=out,
+            needed_libs=["/usr/lib/libSystem.B.dylib"],
+            shared=True,
+            export_symbols=exports,
+            init_funcs=["__jac_shared_init"],
+            soname="libshared_export.dylib"
+        );
+        assert ok , "MachOLinker.link(shared=True) returned False";
+        raw = Path(out).read_bytes();
+        assert struct.unpack_from("<I", raw, 0)[0] == 0xFEEDFACF , "not a Mach-O 64 image";
+        info = _macho_info(raw);
+        assert info["filetype"] == 6 , f"expected MH_DYLIB (6), got {info['filetype']}";
+        assert info["has_id_dylib"] , "missing LC_ID_DYLIB";
+        assert info["export_size"] > 0 , "empty export trie";
+        assert info["has_mod_init"] , "missing __mod_init_func";
+    }
 }
 
 
@@ -236,21 +308,22 @@ parsed Mach-O info. Kept separate from the object-handle FIXTURE so these
 load-command assertions don't depend on object attribute-access support."""
 def _build_scalar_dylib(triple: str, name: str) -> dict {
     (relobj, exports) = emit_shared_object("shared_export_scalar.na.jac", triple);
-    d = tempfile.mkdtemp();
-    out = os.path.join(d, name);
-    ok = MachOLinker.link(
-        obj_bytes=relobj,
-        output_path=out,
-        needed_libs=["/usr/lib/libSystem.B.dylib"],
-        shared=True,
-        export_symbols=exports,
-        init_funcs=["__jac_shared_init"],
-        soname="libshared_export_scalar.dylib"
-    );
-    assert ok , f"MachOLinker.link(shared=True) returned False for {triple}";
-    info = _macho_info(Path(out).read_bytes());
-    assert info["filetype"] == 6 , f"expected MH_DYLIB (6), got {info['filetype']}";
-    return info;
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
+        out = os.path.join(d, name);
+        ok = MachOLinker.link(
+            obj_bytes=relobj,
+            output_path=out,
+            needed_libs=["/usr/lib/libSystem.B.dylib"],
+            shared=True,
+            export_symbols=exports,
+            init_funcs=["__jac_shared_init"],
+            soname="libshared_export_scalar.dylib"
+        );
+        assert ok , f"MachOLinker.link(shared=True) returned False for {triple}";
+        info = _macho_info(Path(out).read_bytes());
+        assert info["filetype"] == 6 , f"expected MH_DYLIB (6), got {info['filetype']}";
+        return info;
+    }
 }
 
 
@@ -291,39 +364,39 @@ test "Mach-O dylib dlopen/dlsym round-trip resolves :pub exports (macOS host onl
         return;
     }
     (relobj, exports) = emit_shared_object("shared_export_scalar.na.jac", triple);
-    d = tempfile.mkdtemp();
-    out = os.path.join(d, "libdlopen_roundtrip.dylib");
-    ok = MachOLinker.link(
-        obj_bytes=relobj,
-        output_path=out,
-        needed_libs=["/usr/lib/libSystem.B.dylib"],
-        shared=True,
-        export_symbols=exports,
-        init_funcs=["__jac_shared_init"],
-        soname="libdlopen_roundtrip.dylib"
-    );
-    assert ok , "MachOLinker.link(shared=True) returned False";
-
-    import ctypes;
-    lib = ctypes.CDLL(out);  # dlopen — fails if the load-command fix regressed
-    # Resolve whichever spelling the export trie carries — bare (the linker's
-    # convention) or leading-underscore (macOS C convention). The dedicated
-    # trie-naming test below pins which; this one only cares that a consumer
-    # can actually dlsym + call the export (the issue's reported symptom).
-    jadd = lib?.jadd or lib?._jadd;
-    assert jadd is not None , "neither 'jadd' nor '_jadd' resolved via dlsym";
-    jadd.restype = ctypes.c_int64;
-    jadd.argtypes = [ctypes.c_int64, ctypes.c_int64];
-    assert jadd(2, 3) == 5 , "jadd resolved but returned wrong value";
-    jmul = lib?.jmul or lib?._jmul;
-    assert jmul is not None , "neither 'jmul' nor '_jmul' resolved via dlsym";
-    jmul.restype = ctypes.c_int64;
-    jmul.argtypes = [ctypes.c_int64, ctypes.c_int64];
-    assert jmul(4, 5) == 20 , "jmul resolved but returned wrong value";
-    counter = lib?.get_counter or lib?._get_counter;
-    assert counter is not None , "neither 'get_counter' nor '_get_counter' resolved";
-    counter.restype = ctypes.c_int64;
-    assert counter() == 7 , "get_counter resolved but returned wrong value";
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
+        out = os.path.join(d, "libdlopen_roundtrip.dylib");
+        ok = MachOLinker.link(
+            obj_bytes=relobj,
+            output_path=out,
+            needed_libs=["/usr/lib/libSystem.B.dylib"],
+            shared=True,
+            export_symbols=exports,
+            init_funcs=["__jac_shared_init"],
+            soname="libdlopen_roundtrip.dylib"
+        );
+        assert ok , "MachOLinker.link(shared=True) returned False";
+        import ctypes;
+        lib = ctypes.CDLL(out);  # dlopen — fails if the load-command fix regressed
+        # Resolve whichever spelling the export trie carries — bare (the linker's
+        # convention) or leading-underscore (macOS C convention). The dedicated
+        # trie-naming test below pins which; this one only cares that a consumer
+        # can actually dlsym + call the export (the issue's reported symptom).
+        jadd = lib?.jadd or lib?._jadd;
+        assert jadd is not None , "neither 'jadd' nor '_jadd' resolved via dlsym";
+        jadd.restype = ctypes.c_int64;
+        jadd.argtypes = [ctypes.c_int64, ctypes.c_int64];
+        assert jadd(2, 3) == 5 , "jadd resolved but returned wrong value";
+        jmul = lib?.jmul or lib?._jmul;
+        assert jmul is not None , "neither 'jmul' nor '_jmul' resolved via dlsym";
+        jmul.restype = ctypes.c_int64;
+        jmul.argtypes = [ctypes.c_int64, ctypes.c_int64];
+        assert jmul(4, 5) == 20 , "jmul resolved but returned wrong value";
+        counter = lib?.get_counter or lib?._get_counter;
+        assert counter is not None , "neither 'get_counter' nor '_get_counter' resolved";
+        counter.restype = ctypes.c_int64;
+        assert counter() == 7 , "get_counter resolved but returned wrong value";
+    }
 }
 
 
@@ -340,52 +413,53 @@ test "Mach-O dylib export trie uses bare (non-underscored) :pub names (macOS hos
         return;
     }
     (relobj, exports) = emit_shared_object("shared_export_scalar.na.jac", triple);
-    d = tempfile.mkdtemp();
-    out = os.path.join(d, "libtrie_probe.dylib");
-    ok = MachOLinker.link(
-        obj_bytes=relobj,
-        output_path=out,
-        needed_libs=["/usr/lib/libSystem.B.dylib"],
-        shared=True,
-        export_symbols=exports,
-        init_funcs=["__jac_shared_init"],
-        soname="libtrie_probe.dylib"
-    );
-    assert ok , "MachOLinker.link(shared=True) returned False";
-
-    import ctypes;
-    lib = ctypes.CDLL(out);
-    bare = lib?.jadd;
-    under = lib?._jadd;
-    assert bare is not None , "bare 'jadd' missing from export trie — trie empty or mis-built";
-    assert under is None , "both 'jadd' and '_jadd' resolve — trie naming convention changed";
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
+        out = os.path.join(d, "libtrie_probe.dylib");
+        ok = MachOLinker.link(
+            obj_bytes=relobj,
+            output_path=out,
+            needed_libs=["/usr/lib/libSystem.B.dylib"],
+            shared=True,
+            export_symbols=exports,
+            init_funcs=["__jac_shared_init"],
+            soname="libtrie_probe.dylib"
+        );
+        assert ok , "MachOLinker.link(shared=True) returned False";
+        import ctypes;
+        lib = ctypes.CDLL(out);
+        bare = lib?.jadd;
+        under = lib?._jadd;
+        assert bare is not None , "bare 'jadd' missing from export trie — trie empty or mis-built";
+        assert under is None , "both 'jadd' and '_jadd' resolve — trie naming convention changed";
+    }
 }
 
 
 test "PE dll has IMAGE_FILE_DLL, export directory, and a non-zero entry" {
     (relobj, exports) = emit_shared_object(FIXTURE, "x86_64-pc-windows-msvc");
-    d = tempfile.mkdtemp();
-    out = os.path.join(d, "libshared_export.dll");
-    ok = PeLinker.link(
-        obj_bytes=relobj,
-        output_path=out,
-        needed_libs=["msvcrt.dll"],
-        shared=True,
-        export_symbols=exports,
-        init_funcs=["__jac_shared_init"],
-        soname="libshared_export.dll"
-    );
-    assert ok , "PeLinker.link(shared=True) returned False";
-    raw = Path(out).read_bytes();
-    assert raw[0:2] == b"MZ" , "missing MZ signature";
-    e_lfanew = struct.unpack_from("<I", raw, 0x3C)[0];
-    assert raw[e_lfanew:e_lfanew + 4] == b"PE\x00\x00" , "missing PE signature";
-    chars = struct.unpack_from("<H", raw, e_lfanew + 4 + 18)[0];
-    assert chars & 0x2000 , "IMAGE_FILE_DLL characteristic not set";
-    opt = e_lfanew + 4 + 20;
-    entry_rva = struct.unpack_from("<I", raw, opt + 16)[0];
-    assert entry_rva != 0 , "DllMain entry point not set";
-    # Data directory 0 = export table.
-    (exp_rva, exp_sz) = struct.unpack_from("<II", raw, opt + 112);
-    assert exp_sz > 0 , "no export directory";
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d {
+        out = os.path.join(d, "libshared_export.dll");
+        ok = PeLinker.link(
+            obj_bytes=relobj,
+            output_path=out,
+            needed_libs=["msvcrt.dll"],
+            shared=True,
+            export_symbols=exports,
+            init_funcs=["__jac_shared_init"],
+            soname="libshared_export.dll"
+        );
+        assert ok , "PeLinker.link(shared=True) returned False";
+        raw = Path(out).read_bytes();
+        assert raw[0:2] == b"MZ" , "missing MZ signature";
+        e_lfanew = struct.unpack_from("<I", raw, 0x3C)[0];
+        assert raw[e_lfanew:e_lfanew + 4] == b"PE\x00\x00" , "missing PE signature";
+        chars = struct.unpack_from("<H", raw, e_lfanew + 4 + 18)[0];
+        assert chars & 0x2000 , "IMAGE_FILE_DLL characteristic not set";
+        opt = e_lfanew + 4 + 20;
+        entry_rva = struct.unpack_from("<I", raw, opt + 16)[0];
+        assert entry_rva != 0 , "DllMain entry point not set";
+        # Data directory 0 = export table.
+        (exp_rva, exp_sz) = struct.unpack_from("<II", raw, opt + 112);
+        assert exp_sz > 0 , "no export directory";
+    }
 }

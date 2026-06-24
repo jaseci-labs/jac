@@ -16,6 +16,12 @@ import from jaclang.jac0core.diagnostics { E2018, E5026, E5060, E5090, E5091, E9
 import from jaclang.jac0core.osp_model { OspAnalysis, OspModel, stable_osp_tag }
 
 
+# Reserved leading slots in every inheritance vtable (issue #6930 A2). Physical
+# slot 0 holds the class's `__name__` string pointer, so method slots start at
+# this offset. Method *indices* (vtable_method_indices) stay method-only; only
+# the physical emit/GEP sites add this header.
+glob VTABLE_HEADER_SLOTS: int = 1;
+
 # time-module function names lowered by _emit_time_call. Gated explicitly (not
 # via a None return) because time.sleep legitimately produces a void result.
 glob NATIVE_TIME_FUNCS: set[str] = {
@@ -151,6 +157,13 @@ obj NaIRGenPass(ModuleCodegenPass) {
         struct_field_indices: dict[str, dict] = {},
         struct_field_types: dict[str, dict] = {},
         struct_field_defaults: dict[str, object] = {},
+        # Fields whose declared type the native backend cannot model
+        # (foreign Python types: `ast3.AST | None`, `type[Transform]`, ...).
+        # They lower to a nullable opaque `i8*` slot, null at native
+        # construction and never dereferenced natively (issue #6930, A3).
+        # arch_name -> set of opaque field names. Used to skip default
+        # evaluation, RC management, and to keep the slot null-only.
+        struct_field_opaque: dict[str, set] = {},
         method_funcs: dict[str, ir.Function] = {},
         # Interop-marshalling return facts for free functions, recorded at
         # declaration time (while the Ability node is in hand) and consumed
@@ -184,6 +197,22 @@ obj NaIRGenPass(ModuleCodegenPass) {
         vtable_method_indices: dict[str, dict] = {},
         vtable_globals: dict[str, ir.GlobalVariable] = {},
         _non_overridden_methods: dict[str, set[str]] = {},
+        # Partial-native classes / per-method opt-out (workstream A4, #6930):
+        # full-names (`Arch.method`) of methods whose body the native backend
+        # could not lower. They are demoted to Python-only — dropped from
+        # method_funcs / the native layout, their body reduced to an abort stub
+        # — so an un-lowerable method does not poison its class's native layout,
+        # constructor, or lowerable siblings. Read by _codegen_method_call to
+        # turn a native call to a demoted method into an E5090 (rather than a
+        # silently-dropped null call). Construction-critical methods
+        # (init/postinit) and vtable slots are never demoted: a gap there is a
+        # genuine hard error.
+        _native_skipped_methods: set[str] = set(),
+        # Per-class name string constants (issue #6930 A2), cached by archetype
+        # name. A class WITH a vtable also publishes its name in vtable slot 0 so
+        # `self.__class__.__name__` recovers the *runtime* (subclass) name; the
+        # cache here backs the constant-load fast path for vtable-less classes.
+        _class_name_consts: dict[str, ir.Value] = {},
         # Object-Spatial kernel lowering (Phase 4 / issue #6146).
         # The OSP "program facts" (archetype kinds, stable type tags, is_a
         # relation, dispatch slots, construct usage) are NOT stored here: they are
@@ -400,6 +429,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _try_resolve_field_type(var: uni.UniNode) -> tuple;
+    def _type_base_is_unknown(tb: any) -> bool;
     def _parse_callable_type_string(s: str) -> (ir.Type | None);
     def _resolve_primitive_name(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type;
@@ -545,6 +576,16 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _forward_declare_method(arch_name: str, method: uni.Ability) -> None;
     def _visit_nonprimary_ancestor_methods(arch: uni.Archetype, declare: bool) -> None;
     def _codegen_method(arch_name: str, method: uni.Ability) -> None;
+    # Per-method native-capability boundary (workstream A4, #6930): if the
+    # method body emitted diagnostics it could not lower, demote the method to
+    # Python-only (drop it from the native symbol/export tables and reduce its
+    # body to an abort stub) and discard those diagnostics, instead of failing
+    # the whole module. Returns True if the method was demoted. The marks are
+    # the prog/local diagnostic-list lengths captured before the body emitted.
+    def _demote_method_if_unlowerable(
+        full_name: str, func: ir.Function, err_mark: int, local_mark: int
+    ) -> bool;
+
     def _codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None;
     def _forward_declare_event_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_event_method(arch_name: str, method: uni.Ability) -> None;
@@ -665,6 +706,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Phase 5: Inheritance, Vtables, and C3 MRO
     def _build_vtable(arch_name: str) -> None;
     def _emit_vtable_global(arch_name: str) -> None;
+    # A2 (issue #6930): the per-class name string used by `__class__.__name__`.
+    def _emit_class_name_const(arch_name: str) -> ir.Value;
+    def _codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None);
     # Central class-model queries (LayoutRegistry is the owner; no copies).
     def _mro_of(arch_name: str) -> list[str];
     def _arch_has_vtable(arch_name: str) -> bool;
@@ -738,7 +782,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _make_bytes_iter(bytes_val: ir.Value) -> ir.Value;
     def _bytes_iter_next_fn -> ir.Function;
     # Phase 8: Entry Block
-    def _codegen_entry(nd: uni.ModuleCode) -> None;
+    def _define_function(name: str, fnty: ir.FunctionType) -> ir.Function;
+    def _codegen_entry(nodes: list[uni.ModuleCode]) -> None;
     # Phase 9: Tuples
     def _codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None);
     def _codegen_tuple_unpack(

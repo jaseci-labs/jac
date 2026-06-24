@@ -128,7 +128,13 @@ obj CheckConfig {
         # When True, access-modifier violations (private/protected member access,
         # cross-module/cross-project visibility) are reported as hard errors
         # instead of the default warnings. See AccessCheckPass.
-        enforce_access: bool = False;
+        enforce_access: bool = False,
+        # When True (default), the native backend prints a terminal warning each
+        # time it demotes an un-lowerable method to its Python implementation
+        # (workstream A4, #6930), so a silent native fallback is visible during a
+        # build. Set False for quiet builds. JAC_NATIVE_DEBUG forces it on
+        # regardless. See NaIRGenPass._demote_method_if_unlowerable.
+        warn_native_seams: bool = True;
 }
 
 """Dot/graph visualization defaults from [dot] section."""

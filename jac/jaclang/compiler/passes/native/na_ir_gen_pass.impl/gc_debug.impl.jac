@@ -57,7 +57,7 @@ impl NaIRGenPass._emit_rc_debug_globals -> None {
 
     # __rc_debug_enable() -> void
     en_fnty = ir.FunctionType(ir.VoidType(), []);
-    en_fn = ir.Function(self.llvm_module, en_fnty, name="__rc_debug_enable");
+    en_fn = self._define_function("__rc_debug_enable", en_fnty);
     en_fn.linkage = "weak_odr";  # one definition kept after link_in()
     en_bb = en_fn.append_basic_block("entry");
     _b_en = ir.IRBuilder(en_bb);
@@ -70,7 +70,7 @@ impl NaIRGenPass._emit_rc_debug_globals -> None {
     _b_en.ret_void();
 
     # __rc_debug_disable() -> void
-    dis_fn = ir.Function(self.llvm_module, en_fnty, name="__rc_debug_disable");
+    dis_fn = self._define_function("__rc_debug_disable", en_fnty);
     dis_fn.linkage = "weak_odr";  # one definition kept after link_in()
     dis_bb = dis_fn.append_basic_block("entry");
     _b_dis = ir.IRBuilder(dis_bb);
