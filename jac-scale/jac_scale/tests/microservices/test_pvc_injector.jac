@@ -1,4 +1,4 @@
-"""Tests for the ObjectStore code injector and its source bundling."""
+"""Tests for source bundling and the PVC code injector."""
 
 import os;
 import io;
@@ -10,14 +10,12 @@ import from jac_scale.injector.bundle {
     bundle_object_key,
     pinned_install_specs
 }
-import from jac_scale.injector.object_store_injector {
-    ObjectStoreInjector,
-    build_minio_manifests,
-    build_object_init_container,
-    bundle_fetch_url,
-    minio_service_dns,
-    minio_deployment_name,
-    minio_secret_name
+import from jac_scale.injector.pvc_injector {
+    PvcInjector,
+    build_bundle_pvc,
+    build_pvc_init_container,
+    bundle_pvc_name,
+    bundle_pvc_path
 }
 
 
@@ -75,42 +73,39 @@ test "pack_source keeps app files but drops secrets and strips plugins.scale" {
 }
 
 
-test "fetch url is in-cluster and content addressed" {
-    assert minio_service_dns("orders", "prod") == "orders-minio.prod.svc.cluster.local:9000";
-    url = bundle_fetch_url("orders", "prod", "jac-bundles", "bundles/orders/abc.tar.gz");
-    assert url == "http://orders-minio.prod.svc.cluster.local:9000/jac-bundles/bundles/orders/abc.tar.gz";
+test "bundle pvc is ReadWriteMany and carries the configured size" {
+    pvc = build_bundle_pvc("orders", "prod", "5Gi", "efs-sc");
+    assert pvc["kind"] == "PersistentVolumeClaim";
+    assert pvc["metadata"]["name"] == bundle_pvc_name("orders");
+    assert pvc["spec"]["accessModes"] == ["ReadWriteMany"];
+    assert pvc["spec"]["resources"]["requests"]["storage"] == "5Gi";
+    assert pvc["spec"]["storageClassName"] == "efs-sc";
 }
 
 
-test "build_minio_manifests yields a secret, deployment, and service" {
-    manifests = build_minio_manifests("orders", "prod", "jac-bundles", "user", "pass");
-    kinds = [manifest["kind"] for manifest in manifests];
-    assert kinds == ["Secret", "Deployment", "Service"];
-    assert manifests[0]["stringData"]["MINIO_ROOT_USER"] == "user";
-    assert manifests[0]["metadata"]["name"] == minio_secret_name("orders");
-    assert manifests[1]["metadata"]["name"] == minio_deployment_name("orders");
+test "bundle pvc omits storageClassName when none is set (cluster default)" {
+    pvc = build_bundle_pvc("orders", "prod", "1Gi", "");
+    assert "storageClassName" not in pvc["spec"];
 }
 
 
-test "init container downloads, extracts, and installs" {
-    container = build_object_init_container("python:3.12-slim", "http://store/bundle.tar.gz");
-    assert container["image"] == "python:3.12-slim";
+test "init container extracts the bundle from the mounted pvc and installs" {
+    container = build_pvc_init_container("python:3.12-slim", "/jac-bundles/bundles/orders/abc.tar.gz");
     script = container["args"][0];
-    assert "urlretrieve" in script;
-    assert "tar xzf" in script;
+    assert "tar xzf /jac-bundles/bundles/orders/abc.tar.gz" in script;
     assert "pip install" in script;
-    env_names = [entry["name"] for entry in container["env"]];
-    assert "BUNDLE_URL" in env_names;
-    assert "BUNDLE_DEST" in env_names;
+    mount_names = [mount["name"] for mount in container["volumeMounts"]];
+    assert "jac-bundles" in mount_names;
+    assert "jac-app" in mount_names;
 }
 
 
-test "mutate_pod_spec adds shared volumes, an init container, and a mount" {
+test "mutate_pod_spec mounts the pvc, adds an init container and an app mount" {
     with tempfile.TemporaryDirectory() as project {
         with open(os.path.join(project, "app.jac"), "w") as handle {
             handle.write("walker Main {}");
         }
-        injector = ObjectStoreInjector();
+        injector = PvcInjector();
         injector.prepare("orders", "prod", project);
         pod_spec: dict[str, any] = {
             "_jac_meta": {"app_name": "orders", "namespace": "prod"},
@@ -119,7 +114,7 @@ test "mutate_pod_spec adds shared volumes, an init container, and a mount" {
         result = injector.mutate_pod_spec(pod_spec, "python:3.12-slim");
         volume_names = [volume["name"] for volume in result["volumes"]];
         assert "jac-app" in volume_names;
-        assert "jac-source" in volume_names;
+        assert "jac-bundles" in volume_names;
         assert len(result["initContainers"]) == 1;
         mount_names = [mount["name"] for mount in result["containers"][0]["volumeMounts"]];
         assert "jac-app" in mount_names;
@@ -127,7 +122,9 @@ test "mutate_pod_spec adds shared volumes, an init container, and a mount" {
 }
 
 
-test "extra_manifests returns the object store infrastructure" {
-    injector = ObjectStoreInjector();
-    assert len(injector.extra_manifests("orders", "prod")) == 3;
+test "extra_manifests returns exactly the bundle pvc" {
+    injector = PvcInjector();
+    manifests = injector.extra_manifests("orders", "prod");
+    assert len(manifests) == 1;
+    assert manifests[0]["kind"] == "PersistentVolumeClaim";
 }

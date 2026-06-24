@@ -1,11 +1,11 @@
 """Reusable source bundling: pack a project into a tar.gz, content-address it,
 and resolve the in-pod install specs.
 
-Transport-independent: the ObjectStoreInjector uploads the bundle to MinIO, but
-the packing rules (exclude build artifacts and secrets, sanitize jac.toml) are
-the same regardless of how the bytes travel. Content-addressing the archive by
-sha256 gives immutable, cacheable bundle keys so a pod restart can never pull a
-mutated bundle.
+Transport-independent: the PvcInjector places the bundle on a shared PVC, but the
+packing rules (exclude build artifacts and secrets, sanitize jac.toml) are the
+same regardless of how the bytes travel. Content-addressing the archive by sha256
+gives immutable, cacheable bundle keys so a pod restart can never read a mutated
+bundle.
 """
 
 import io;

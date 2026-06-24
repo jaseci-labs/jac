@@ -5,9 +5,9 @@ Three responsibilities, mirrored by every adapter:
   mutate_pod_spec() add the volumes / init container / mounts the strategy needs
   extra_manifests() cluster-scoped manifests the strategy requires
 
-The default ObjectStoreInjector publishes to an in-cluster MinIO bucket; a
-deferred ImageInjector will publish a built image. Selection happens once, in the
-realizer, so the rest of the deploy path is adapter-agnostic.
+The default PvcInjector publishes to a shared ReadWriteMany PVC; a deferred
+ImageInjector will publish a built image. Selection happens once, in the realizer,
+so the rest of the deploy path is adapter-agnostic.
 """
 
 obj Injector {
