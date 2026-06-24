@@ -22,12 +22,13 @@ permissions:
   contents: read
 
 # This workflow tests the SHIPPED binary's bundled + precompiled jaclang. The
-# checkout's root jac.toml carries a `[dev] jaclang_source` stanza for the local
-# editable dev loop, which `_jac_finder` would otherwise inherit from any subdir
-# (e.g. working-directory: jac) and reroute `import jaclang` to the source tree
-# (skipping the precompiled JIR bundle). Force the dev loop OFF so the binary
-# under test is the real artifact. (The hermetic `env -i` smoke steps below clear
-# the environment, so they set this inline instead of inheriting it from here.)
+# checkout's jac.toml files (root and jac/) carry a `[dev] jaclang_source` stanza
+# for the local editable dev loop, which `_jac_finder` would otherwise pick up
+# (working-directory: jac -> nearest is jac/jac.toml) and use to reroute `import
+# jaclang` to the source tree (skipping the precompiled JIR bundle). Force the
+# dev loop OFF so the binary under test is the real artifact. (The hermetic
+# `env -i` smoke steps below clear the environment, so they set this inline
+# instead of inheriting it from here.)
 env:
   JAC_NO_DEV_SOURCE: "1"
 
