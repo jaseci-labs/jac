@@ -16,6 +16,12 @@ import from jaclang.jac0core.diagnostics { E2018, E5026, E5060, E5090, E5091, E9
 import from jaclang.jac0core.osp_model { OspAnalysis, OspModel, stable_osp_tag }
 
 
+# Reserved leading slots in every inheritance vtable (issue #6930 A2). Physical
+# slot 0 holds the class's `__name__` string pointer, so method slots start at
+# this offset. Method *indices* (vtable_method_indices) stay method-only; only
+# the physical emit/GEP sites add this header.
+glob VTABLE_HEADER_SLOTS: int = 1;
+
 # time-module function names lowered by _emit_time_call. Gated explicitly (not
 # via a None return) because time.sleep legitimately produces a void result.
 glob NATIVE_TIME_FUNCS: set[str] = {
@@ -151,6 +157,13 @@ obj NaIRGenPass(ModuleCodegenPass) {
         struct_field_indices: dict[str, dict] = {},
         struct_field_types: dict[str, dict] = {},
         struct_field_defaults: dict[str, object] = {},
+        # Fields whose declared type the native backend cannot model
+        # (foreign Python types: `ast3.AST | None`, `type[Transform]`, ...).
+        # They lower to a nullable opaque `i8*` slot, null at native
+        # construction and never dereferenced natively (issue #6930, A3).
+        # arch_name -> set of opaque field names. Used to skip default
+        # evaluation, RC management, and to keep the slot null-only.
+        struct_field_opaque: dict[str, set] = {},
         method_funcs: dict[str, ir.Function] = {},
         # Interop-marshalling return facts for free functions, recorded at
         # declaration time (while the Ability node is in hand) and consumed
@@ -195,6 +208,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # (init/postinit) and vtable slots are never demoted: a gap there is a
         # genuine hard error.
         _native_skipped_methods: set[str] = set(),
+        # Per-class name string constants (issue #6930 A2), cached by archetype
+        # name. A class WITH a vtable also publishes its name in vtable slot 0 so
+        # `self.__class__.__name__` recovers the *runtime* (subclass) name; the
+        # cache here backs the constant-load fast path for vtable-less classes.
+        _class_name_consts: dict[str, ir.Value] = {},
         # Object-Spatial kernel lowering (Phase 4 / issue #6146).
         # The OSP "program facts" (archetype kinds, stable type tags, is_a
         # relation, dispatch slots, construct usage) are NOT stored here: they are
@@ -402,11 +420,17 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_printf -> ir.Function;
     def _emit_print(nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None);
+    def _emit_isinstance_user(
+        nd: uni.FuncCall, operand: ir.Value, names: list[str]
+    ) -> (ir.Value | None);
+
     def _jacval_tags_for_type(name: str) -> list[int];
     def _get_fmt_string(fmt: str) -> ir.GlobalVariable;
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _try_resolve_field_type(var: uni.UniNode) -> tuple;
+    def _type_base_is_unknown(tb: any) -> bool;
     def _parse_callable_type_string(s: str) -> (ir.Type | None);
     def _resolve_primitive_name(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type;
@@ -682,6 +706,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # Phase 5: Inheritance, Vtables, and C3 MRO
     def _build_vtable(arch_name: str) -> None;
     def _emit_vtable_global(arch_name: str) -> None;
+    # A2 (issue #6930): the per-class name string used by `__class__.__name__`.
+    def _emit_class_name_const(arch_name: str) -> ir.Value;
+    def _codegen_class_name(nd: uni.AtomTrailer) -> (ir.Value | None);
     # Central class-model queries (LayoutRegistry is the owner; no copies).
     def _mro_of(arch_name: str) -> list[str];
     def _arch_has_vtable(arch_name: str) -> bool;
@@ -755,7 +782,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _make_bytes_iter(bytes_val: ir.Value) -> ir.Value;
     def _bytes_iter_next_fn -> ir.Function;
     # Phase 8: Entry Block
-    def _codegen_entry(nd: uni.ModuleCode) -> None;
+    def _define_function(name: str, fnty: ir.FunctionType) -> ir.Function;
+    def _codegen_entry(nodes: list[uni.ModuleCode]) -> None;
     # Phase 9: Tuples
     def _codegen_tuple_val(nd: uni.TupleVal) -> (ir.Value | None);
     def _codegen_tuple_unpack(

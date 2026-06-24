@@ -619,6 +619,25 @@ test "objects empty dict in struct ctor" {
     assert f() == 30;
 }
 
+# --- TestNativeOpaqueForeignField (issue #6930, Workstream A3) ---
+# A field whose type the native backend cannot model (here `ast3.AST | None`,
+# resolved by the checker to `<Unknown> | NoneType`) must lower to a nullable
+# opaque slot, null at native construction, rather than rejecting the whole
+# declaration with E5090. The native path touches only native fields, so the
+# carrier still constructs and its native methods run. This is what keeps
+# unitree's ~150 foreign-typed node declarations untouched (Tier-1-only).
+test "opaque foreign field: carrier compiles with a native-unmodeled field type" {
+    (eng, _) = compile_native("opaque_field.na.jac");
+    f = get_func(eng, "make_name_len", ctypes.c_int64);
+    assert f() == 5;  # len("store"), proving native construction + method work
+}
+
+test "opaque foreign field: native method reads only native fields" {
+    (eng, _) = compile_native("opaque_field.na.jac");
+    f = get_func(eng, "make_label", ctypes.c_char_p);
+    assert f() == b"store";  # py_ctx stays null; label() returns the native field
+}
+
 # --- TestNativeSliceObjectField (issue #6473) ---
 test "slice object field roundtrip matches local" {
     # b.items[:pos] + b.items[pos:] on an object field used to abort (SIGABRT)
@@ -1119,6 +1138,91 @@ test "chess play random moves stress" {
         "Expected 'Game ended.' in output.\n"
         f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
     );
+}
+
+# --- TestNativeClassName (issue #6930 workstream A2) ---
+test "class name: __class__.__name__ is polymorphic over subclasses" {
+    # `kind` is defined only on the base `Widget`, so a subclass instance must
+    # recover its own runtime class name through the vtable, not freeze to the
+    # declaring class. Before A2 these reads E5090'd ("attribute access
+    # '__name__'"); now they lower to the per-class name.
+    (eng, _) = compile_native("class_name.na.jac");
+    bk = get_func(eng, "button_kind", ctypes.c_char_p);
+    sk = get_func(eng, "slider_kind", ctypes.c_char_p);
+    wk = get_func(eng, "widget_kind", ctypes.c_char_p);
+    assert bk() == b"Button";
+    assert sk() == b"Slider";
+    assert wk() == b"Widget";
+}
+
+test "class name: type(self).__name__ matches __class__.__name__" {
+    (eng, _) = compile_native("class_name.na.jac");
+    f = get_func(eng, "button_kind_via_type", ctypes.c_char_p);
+    assert f() == b"Button";
+}
+
+test "class name: vtable-less class lowers to a constant name" {
+    # `Lone` has no parents and no subclasses, so it carries no vtable; the
+    # access lowers to a constant load rather than a vtable read.
+    (eng, _) = compile_native("class_name.na.jac");
+    f = get_func(eng, "lone_kind", ctypes.c_char_p);
+    assert f() == b"Lone";
+}
+
+test "class name: method-less vtable hierarchy still reads its own name" {
+    # `Tag`/`SubA`/`SubB` declare no methods, so their vtable method layout is
+    # empty -- but `Tag` is still vtable-flagged (it has subclasses). The vtable
+    # must be emitted anyway so the per-class name slot exists; otherwise reading
+    # `t.__class__.__name__` off a base-typed receiver dereferences an
+    # uninitialized field-0 slot (segfault, PR #6933 review).
+    (eng, _) = compile_native("class_name.na.jac");
+    a = get_func(eng, "suba_name", ctypes.c_char_p);
+    b = get_func(eng, "subb_name", ctypes.c_char_p);
+    assert a() == b"SubA";
+    assert b() == b"SubB";
+}
+
+# --- TestNativeIsinstanceUserArchetype (issue #6930, workstream A1) ---
+test "isinstance user compiles" {
+    (eng, ir) = compile_native("isinstance_user.na.jac");
+    assert ir.gen.llvm_ir is not None;
+}
+
+test "isinstance user exact and subclass match" {
+    # 0=Shape, 1=Circle, 2=Square, 3=ColoredSquare(<:Square).
+    (eng, _) = compile_native("isinstance_user.na.jac");
+    f = get_func(eng, "test_kind", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == 0;  # Shape: neither Circle nor Square
+    assert f(1) == 1;  # Circle
+    assert f(2) == 2;  # Square
+    assert f(3) == 2;  # ColoredSquare matches Square via inheritance
+}
+
+test "isinstance user narrowed field access" {
+    # After `isinstance(s, Square)`, `s.side` must resolve to a field offset.
+    (eng, _) = compile_native("isinstance_user.na.jac");
+    f = get_func(eng, "test_side", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == -1;  # Shape: not a Square
+    assert f(1) == -1;  # Circle: not a Square
+    assert f(2) == 3;  # Square(side=3)
+    assert f(3) == 4;  # ColoredSquare(side=4): inherited `side` offset holds
+}
+
+test "isinstance user tuple of classes" {
+    (eng, _) = compile_native("isinstance_user.na.jac");
+    f = get_func(eng, "test_round_or_square", ctypes.c_int64, ctypes.c_int64);
+    assert f(0) == 0;  # Shape
+    assert f(1) == 1;  # Circle
+    assert f(2) == 1;  # Square
+    assert f(3) == 1;  # ColoredSquare (<: Square)
+}
+
+test "isinstance user no-vtable operand is clean false" {
+    # A standalone struct (no vtable) checked against a vtable class must be a
+    # principled False, never a garbage read of its first user field.
+    (eng, _) = compile_native("isinstance_user.na.jac");
+    f = get_func(eng, "test_loose_not_square", ctypes.c_int64);
+    assert f() == 0;
 }
 
 # --- TestNativeDicts ---
