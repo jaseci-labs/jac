@@ -176,9 +176,10 @@ jobs:
       run: jac test tests/e2e/test_code_blocks.jac -x || jac test tests/e2e/test_code_blocks.jac -x
 
   # ==========================================================================
-  # TEMPORARY stress matrix -- REVERT before merge. Measures the e2e flake RATE
-  # across many INDEPENDENT CI runs (not by duplicating test cases). Runs the
-  # real 9-test suite 10x in parallel for each worker setting:
+  # TEMPORARY stress matrix -- REVERT before merge. A faithful clone of the real
+  # test-packages-and-docs job (same steps + runner load), run 10x in parallel
+  # for each e2e worker setting to measure the flake RATE under realistic
+  # conditions (the e2e-only variant ran too clean to flake):
   #   JAC_TEST_JOBS = auto (~6) | 3 | 0 (serial)   x   10 runs = 30 parallel jobs
   # fail-fast: false so all 30 run; compare how many of each 10 go red.
   # ==========================================================================
@@ -198,15 +199,26 @@ jobs:
     - name: Set up jac (build the binary)
       uses: ./.github/actions/setup-jac
 
+    - name: Install jac-byllm
+      run: jac install -e jac-byllm --global
+
+    - name: Set environment for testing
+      run: echo "TEST_ENV=true" >> $GITHUB_ENV
+
+    - name: Run package tests
+      working-directory: jac-byllm
+      run: jac test .
+
     - name: Install docs dependencies
-      # --global installs mkdocs into the binary's interpreter (where `jac -m`
-      # looks). Without it mkdocs goes to a project venv and `jac -m mkdocs`
-      # can't find it. Matches the real test-packages-and-docs job.
       run: jac install -e docs --global
 
     - name: Build documentation
       working-directory: docs
       run: jac -m mkdocs build --strict
+
+    - name: Run documentation validation tests
+      working-directory: docs
+      run: jac test tests/test_docs.jac
 
     - name: Install Playwright
       working-directory: docs
