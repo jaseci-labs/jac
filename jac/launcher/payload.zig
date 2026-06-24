@@ -91,7 +91,7 @@ pub fn main(init: std.process.Init) !void {
         },
         .@"fetch-llvm" => {
             if (n < 3) die("usage: payload fetch-llvm <dest-dir>", .{});
-            try fetchLlvm(io, gpa, a, argv[2]);
+            try fetchLlvm(io, gpa, a, init.environ_map, argv[2]);
         },
         .@"fetch-typeshed" => {
             if (n < 3) die("usage: payload fetch-typeshed <repo-root>", .{});
@@ -191,7 +191,7 @@ fn fetchPbs(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []co
 /// build.zig points -Dllvm-dir at that tree; jacllvm links its static archives
 /// into the LLVMPY_* shim. Idempotent (skips if already extracted). Mirrors
 /// fetch-pbs, but the LLVM asset is .tar.xz rather than .tar.zst.
-fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, dest: []const u8) !void {
+fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map, dest: []const u8) !void {
     const marker = try std.fmt.allocPrint(a, "{s}/{s}/lib/libLLVMCore.a", .{ dest, LLVM_DIRNAME });
     if (fileExists(io, marker)) {
         log("fetch-llvm: already present at {s}/{s}", .{ dest, LLVM_DIRNAME });
@@ -199,8 +199,14 @@ fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, dest: []const u8) !void {
     }
 
     const url = try std.fmt.allocPrint(a, "{s}/{s}/{s}", .{ LLVM_BASE, LLVM_TAG, LLVM_ASSET });
-    log("fetch-llvm: downloading {s} (~1.9 GB, one-time)", .{LLVM_ASSET});
-    const tarxz = try httpGetAlloc(io, gpa, url);
+    // JAC_LLVM_TARBALL points at a pre-downloaded release (offline/CI/air-gapped).
+    const tarxz = if (env.get("JAC_LLVM_TARBALL")) |path| blk: {
+        log("fetch-llvm: using local tarball {s}", .{path});
+        break :blk try Dir.cwd().readFileAlloc(io, path, gpa, .unlimited);
+    } else blk: {
+        log("fetch-llvm: downloading {s} (~1.9 GB, one-time)", .{LLVM_ASSET});
+        break :blk try httpGetAlloc(io, gpa, url);
+    };
     defer gpa.free(tarxz);
 
     // The static archives become host LLVM linked into the shipped shim, so a
@@ -219,16 +225,54 @@ fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, dest: []const u8) !void {
     defer gpa.free(buf);
     var dx = xz.Decompress.init(&src, gpa, buf) catch |err|
         die("fetch-llvm: xz init failed: {s}", .{@errorName(err)});
+    // Surgical extract: keep only include/ + lib/libLLVM*.a (the headers + static
+    // archives the shim links). Skips bin/ (clang + tools, ~8 GB) and the
+    // clang/LTO .a (~1 GB), cutting the extracted tree from ~11 GB to ~0.5 GB.
     // The xz/tar stream can report a benign tail error (trailing padding/index)
-    // after every real entry is already written, so judge success by the marker
-    // -- mirrors how the precompiler/fetch-pbs validate by output, not exit code.
-    std.tar.extract(io, ddir, &dx.reader, .{ .mode_mode = .executable_bit_only, .strip_components = 0 }) catch |err| {
+    // after every kept entry is written, so judge success by the marker.
+    extractLlvmSubset(io, ddir, &dx.reader) catch |err| {
         if (!fileExists(io, marker)) die("fetch-llvm: extract failed: {s}", .{@errorName(err)});
         log("fetch-llvm: tolerated benign post-extract error: {s}", .{@errorName(err)});
     };
 
     if (!fileExists(io, marker)) die("fetch-llvm: extract produced no libLLVMCore.a", .{});
     log("fetch-llvm: ready at {s}/{s}", .{ dest, LLVM_DIRNAME });
+}
+
+/// Stream a decompressed LLVM release tar and write only the entries the shim
+/// needs -- `*/include/**` headers and `*/lib/libLLVM*.a` static archives --
+/// skipping everything else (bin/ clang+tools, clang/LTO libs). Unkept entries
+/// are discarded by the iterator, so we never materialize the ~10 GB we drop.
+fn extractLlvmSubset(io: Io, dir: Dir, reader: *Io.Reader) !void {
+    var name_buf: [Dir.max_path_bytes]u8 = undefined;
+    var link_buf: [Dir.max_path_bytes]u8 = undefined;
+    var content_buf: [64 * 1024]u8 = undefined;
+    var discard_buf: [64 * 1024]u8 = undefined;
+    var discarding: Io.Writer.Discarding = .init(&discard_buf);
+    var it = std.tar.Iterator.init(reader, .{ .file_name_buffer = &name_buf, .link_name_buffer = &link_buf });
+    while (try it.next()) |file| {
+        const keep = file.kind == .file and
+            (std.mem.indexOf(u8, file.name, "/include/") != null or
+                (std.mem.indexOf(u8, file.name, "/lib/libLLVM") != null and std.mem.endsWith(u8, file.name, ".a")));
+        if (!keep) {
+            // Read+discard ANY unwanted content (file, hard link, ...) via a
+            // discarding writer. The iterator's own skip path calls
+            // reader.discard, which the xz decompressor doesn't implement
+            // (@panic("TODO")) in this Zig; streaming uses the read path instead.
+            if (file.size > 0) try it.streamRemaining(file, &discarding.writer);
+            continue;
+        }
+        const fs_file = dir.createFile(io, file.name, .{ .exclusive = true }) catch |err| blk: {
+            if (err != error.FileNotFound) return err;
+            const parent = std.fs.path.dirname(file.name) orelse return err;
+            try dir.createDirPath(io, parent);
+            break :blk try dir.createFile(io, file.name, .{ .exclusive = true });
+        };
+        defer fs_file.close(io);
+        var fw = fs_file.writer(io, &content_buf);
+        try it.streamRemaining(file, &fw.interface);
+        try fw.interface.flush();
+    }
 }
 
 fn pbsPlatform(osarch: []const u8) ?[]const u8 {
