@@ -34,7 +34,7 @@ import from jac_scale.admin.traces { _tempo_base_url }
 import from jac_scale.admin.logs { _loki_base_url, _app_namespace }
 import from jac_scale._optdeps.prometheus { HAS_PROMETHEUS }
 import from jac_scale._optdeps.opentelemetry { HAS_OTEL }
-import from jac_scale.microservices.runtime.tracing { tracing_active }
+import from jac_scale.runtime.context.tracing { tracing_active }
 
 glob logger = logging.getLogger(__name__),
      # Short, uniform probe budget: a dead backend must render a red row fast,

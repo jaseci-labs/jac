@@ -806,7 +806,7 @@ class JacScalePlugin {
         import subprocess;
         import from jaclang.runtimelib { sv_client }
         import from pathlib { Path }
-        import from jac_scale.microservices.runtime.util {
+        import from jac_scale.runtime.context.util {
             pick_free_port,
             resolve_jac_binary,
             wait_for_health
@@ -830,7 +830,7 @@ class JacScalePlugin {
                 import from jac_scale.targets.kubernetes.microservice.manifest_builder {
                     k8s_safe_name
                 }
-                import from jac_scale.microservices.runtime.util {
+                import from jac_scale.runtime.context.util {
                     k8s_service_dns_url,
                     in_cluster_namespace
                 }
@@ -980,8 +980,8 @@ class JacScalePlugin {
         import time;
         import from jaclang.runtimelib { sv_client }
         import from jaclang.runtimelib.sv_sse { consume_sse_stream }
-        import from jac_scale.microservices.runtime.auth_ctx { get_current_auth }
-        import from jac_scale.microservices.runtime.trace_ctx { get_current_trace }
+        import from jac_scale.runtime.context.auth_ctx { get_current_auth }
+        import from jac_scale.runtime.context.trace_ctx { get_current_trace }
 
         func_label = f"{module_name}.{func_name}";
 
@@ -1047,7 +1047,7 @@ class JacScalePlugin {
             headers["X-Trace-Id"] = trace;
         }
         # O-02: forward traceparent so the downstream span links as our child.
-        import from jac_scale.microservices.runtime.tracing { current_traceparent }
+        import from jac_scale.runtime.context.tracing { current_traceparent }
         tp = current_traceparent(trace);
         if tp {
             headers["traceparent"] = tp;
@@ -1133,8 +1133,8 @@ class JacScalePlugin {
     ) -> any {
         import time;
         import from jaclang.runtimelib { sv_client }
-        import from jac_scale.microservices.runtime.auth_ctx { get_current_auth }
-        import from jac_scale.microservices.runtime.trace_ctx { get_current_trace }
+        import from jac_scale.runtime.context.auth_ctx { get_current_auth }
+        import from jac_scale.runtime.context.trace_ctx { get_current_trace }
 
         label = f"{module_name}.{walker_name}";
 
@@ -1173,7 +1173,7 @@ class JacScalePlugin {
             headers["X-Trace-Id"] = trace;
         }
         # O-02: forward traceparent so the downstream span links as our child.
-        import from jac_scale.microservices.runtime.tracing { current_traceparent }
+        import from jac_scale.runtime.context.tracing { current_traceparent }
         tp = current_traceparent(trace);
         if tp {
             headers["traceparent"] = tp;

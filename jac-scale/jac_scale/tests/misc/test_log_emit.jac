@@ -12,12 +12,12 @@ Three contract guarantees:
 import io;
 import json;
 import logging;
-import from jac_scale.microservices.runtime.log_emit {
+import from jac_scale.runtime.context.log_emit {
     emit_log_record,
     install_structured_logging,
     _JacJsonFormatter
 }
-import from jac_scale.microservices.runtime.trace_ctx {
+import from jac_scale.runtime.context.trace_ctx {
     set_current_trace,
     reset_current_trace,
     install_trace_log_filter
@@ -130,7 +130,7 @@ test "trace_id populates on records emitted from child loggers" {
     buf: io.StringIO = io.StringIO();
     capture: logging.StreamHandler = logging.StreamHandler(buf);
     capture.setFormatter(_JacJsonFormatter());
-    import from jac_scale.microservices.runtime.trace_ctx { TraceIdLogFilter }
+    import from jac_scale.runtime.context.trace_ctx { TraceIdLogFilter }
     capture.addFilter(TraceIdLogFilter());
     logging.getLogger().addHandler(capture);
 

@@ -168,7 +168,7 @@ def install_structured_logging {
         _log_root.setLevel(int(logging.INFO));
 
         # Make sure record.trace_id is populated before the formatter sees it.
-        import from jac_scale.microservices.runtime.trace_ctx {
+        import from jac_scale.runtime.context.trace_ctx {
             install_trace_log_filter
         }
         install_trace_log_filter();

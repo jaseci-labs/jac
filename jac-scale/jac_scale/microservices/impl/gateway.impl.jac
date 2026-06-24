@@ -308,7 +308,7 @@ the inbound one or a freshly-minted UUID). Downstream services pick
 it up and thread it through their own logs + sv-import RPC calls.
 """
 impl MicroserviceGateway.build_forward_headers(request: Request) -> dict[str, str] {
-    import from jac_scale.microservices.runtime.trace_ctx {
+    import from jac_scale.runtime.context.trace_ctx {
         get_current_trace,
         ensure_trace_id
     }
@@ -328,7 +328,7 @@ impl MicroserviceGateway.build_forward_headers(request: Request) -> dict[str, st
     # X-Trace-Id above). Overwrites any inbound traceparent that was
     # copied in the loop. No-op when tracing is off and no id is
     # available (current_traceparent returns None).
-    import from jac_scale.microservices.runtime.tracing { current_traceparent }
+    import from jac_scale.runtime.context.tracing { current_traceparent }
     tp = current_traceparent(trace);
     if tp {
         fwd["traceparent"] = tp;
@@ -403,7 +403,7 @@ impl MicroserviceGateway.handle_builtin_passthrough(
             }
             logger.info(f"Passthrough: {request.method} {path} -> {target_url}");
 
-            import from jac_scale.microservices.runtime.util { http_forward_timeout }
+            import from jac_scale.runtime.context.util { http_forward_timeout }
             import from jac_scale.microservices.impl.http_forward { stream_forward }
             timeout = http_forward_timeout(svc_name);
             # stream_forward (not raw_forward) so a streaming response - SSE
@@ -420,7 +420,7 @@ impl MicroserviceGateway.handle_builtin_passthrough(
                 # to a service we know is healthy. Surfacing this as a
                 # 503 keeps the caller from receiving a misleading 405
                 # from a sibling service that doesn't own the route.
-                import from jac_scale.microservices.runtime.errors {
+                import from jac_scale.runtime.context.errors {
                     service_unavailable
                 }
                 return service_unavailable(svc_name, "transport_error");
@@ -435,7 +435,7 @@ impl MicroserviceGateway.handle_builtin_passthrough(
             return fr.to_response();
         }
     }
-    import from jac_scale.microservices.runtime.errors { not_found }
+    import from jac_scale.runtime.context.errors { not_found }
     return not_found(path, message="Not found on any service");
 }
 
@@ -461,7 +461,7 @@ impl MicroserviceGateway.handle_proxy(request: Request, path: str) -> Response |
         return None;
     }
 
-    import from jac_scale.microservices.runtime.errors {
+    import from jac_scale.runtime.context.errors {
         service_unavailable,
         gateway_timeout
     }
@@ -480,7 +480,7 @@ impl MicroserviceGateway.handle_proxy(request: Request, path: str) -> Response |
 
     body: bytes = await request.body();
 
-    import from jac_scale.microservices.runtime.util { http_forward_timeout }
+    import from jac_scale.runtime.context.util { http_forward_timeout }
     timeout = http_forward_timeout(svc.name);
     fr = await stream_forward(
         request.method, target_url, fwd_headers, body, timeout=int(timeout)
@@ -523,7 +523,7 @@ impl MicroserviceGateway.handle_metrics -> Response {
     import from jac_scale.microservices.gateway_internals.middleware.metrics {
         render_metrics
     }
-    import from jac_scale.microservices.runtime.errors { error_response }
+    import from jac_scale.runtime.context.errors { error_response }
     (body, ctype) = render_metrics(self._metrics_registry);
     if not body {
         return error_response(
@@ -636,12 +636,12 @@ impl MicroserviceGateway.setup -> FastAPI {
     # `install_structured_logging` is idempotent and also calls
     # `install_trace_log_filter` internally; we still import the trace
     # helpers below because the dispatcher middleware uses them directly.
-    import from jac_scale.microservices.runtime.trace_ctx {
+    import from jac_scale.runtime.context.trace_ctx {
         set_current_trace,
         reset_current_trace,
         ensure_trace_id
     }
-    import from jac_scale.microservices.runtime.log_emit { install_structured_logging }
+    import from jac_scale.runtime.context.log_emit { install_structured_logging }
     install_structured_logging();
 
     # Build Prometheus metrics (no-ops when prometheus_client is not
@@ -662,7 +662,7 @@ impl MicroserviceGateway.setup -> FastAPI {
 
     # O-02: configure tracing once per process (no-op when disabled /
     # jac-scale[tracing] absent); the dispatcher opens a span per request.
-    import from jac_scale.microservices.runtime.tracing {
+    import from jac_scale.runtime.context.tracing {
         install_tracing,
         start_server_span,
         end_span
@@ -742,7 +742,7 @@ impl MicroserviceGateway.setup -> FastAPI {
                     admin_resp = gw.handle_admin(path);
                 }
                 if admin_resp is None {
-                    import from jac_scale.microservices.runtime.errors { not_found }
+                    import from jac_scale.runtime.context.errors { not_found }
                     admin_resp = not_found(path);
                 }
                 resp = admin_resp;
@@ -769,7 +769,7 @@ impl MicroserviceGateway.setup -> FastAPI {
                     }
                 }
                 if resp is None {
-                    import from jac_scale.microservices.runtime.errors { not_found }
+                    import from jac_scale.runtime.context.errors { not_found }
                     resp = not_found(path);
                 }
             }

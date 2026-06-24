@@ -11,7 +11,7 @@ Also asserts the no-op contract: with tracing inactive, span creation
 returns None and the gateway/services run unchanged.
 """
 
-import from jac_scale.microservices.runtime.tracing {
+import from jac_scale.runtime.context.tracing {
     uuid_to_trace_id,
     trace_id_hex,
     new_span_id,

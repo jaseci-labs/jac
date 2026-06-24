@@ -1380,7 +1380,7 @@ test "CORS preflight still responds during drain (headers reachable on 503)" {
 # http_forward_timeout resolver (gateway-to-service forward; configurable)
 # =============================================================================
 test "http_forward_timeout falls back to 30s default when config read fails" {
-    import from jac_scale.microservices.runtime.util { http_forward_timeout }
+    import from jac_scale.runtime.context.util { http_forward_timeout }
     # No working config -> the except branch in the resolver fires and
     # returns _DEFAULT_HTTP_FORWARD_TIMEOUT (30.0).
     t: float = http_forward_timeout("module_with_no_override");
@@ -1399,7 +1399,7 @@ obj _TimeoutStubCfg {
 }
 
 test "http_forward_timeout precedence: per-service > global > default" {
-    import from jac_scale.microservices.runtime.util { http_forward_timeout }
+    import from jac_scale.runtime.context.util { http_forward_timeout }
     import jac_scale.config_loader as cfg_mod;
 
     original = getattr(cfg_mod, "get_scale_config");

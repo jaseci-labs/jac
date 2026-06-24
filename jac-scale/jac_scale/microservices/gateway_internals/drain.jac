@@ -161,7 +161,7 @@ def reset_drain {
 
 
 def build_drain_middleware(service_label: str = "service") -> any {
-    import from jac_scale.microservices.runtime.errors { service_unavailable }
+    import from jac_scale.runtime.context.errors { service_unavailable }
 
     async def drain_middleware(request: any, call_next: any) -> any {
         # `getattr` (vs attr access) keeps the unit-test bare-`object()`

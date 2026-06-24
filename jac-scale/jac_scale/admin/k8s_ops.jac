@@ -21,7 +21,7 @@ import from jac_scale._optdeps.kubernetes {
     ApiException,
     HAS_KUBERNETES
 }
-import from jac_scale.microservices.runtime.util { in_cluster_namespace }
+import from jac_scale.runtime.context.util { in_cluster_namespace }
 
 glob logger = logging.getLogger(__name__);
 

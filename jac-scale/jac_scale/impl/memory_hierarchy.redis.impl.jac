@@ -1,6 +1,6 @@
 """Redis CacheBackend Implementation."""
 
-import from jac_scale.microservices.runtime.tracing {
+import from jac_scale.runtime.context.tracing {
     start_memory_span,
     end_memory_span
 }

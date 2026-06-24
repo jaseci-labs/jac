@@ -1174,7 +1174,7 @@ impl JFastApiServer.init(
         # Capture Authorization header for sv-to-sv auth propagation.
         # The sv_service_call hookimpl in plugin.jac reads this ContextVar
         # and forwards the header to the downstream service.
-        import from jac_scale.microservices.runtime.auth_ctx {
+        import from jac_scale.runtime.context.auth_ctx {
             set_current_auth,
             reset_current_auth
         }
@@ -1187,19 +1187,19 @@ impl JFastApiServer.init(
         # request - emits structured JSON to stdout so Alloy + Loki get
         # queryable `service`/`level`/`trace_id` fields. The function is
         # idempotent and also installs the trace-id filter internally.
-        import from jac_scale.microservices.runtime.trace_ctx {
+        import from jac_scale.runtime.context.trace_ctx {
             set_current_trace,
             reset_current_trace,
             ensure_trace_id
         }
-        import from jac_scale.microservices.runtime.log_emit {
+        import from jac_scale.runtime.context.log_emit {
             install_structured_logging
         }
         install_structured_logging();
 
         # O-02: configure tracing once (gated by tracing_installed), then
         # open a SERVER span parented by the inbound traceparent.
-        import from jac_scale.microservices.runtime.tracing {
+        import from jac_scale.runtime.context.tracing {
             install_tracing,
             tracing_installed,
             start_server_span,

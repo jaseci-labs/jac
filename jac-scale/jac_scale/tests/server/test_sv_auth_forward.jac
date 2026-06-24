@@ -9,7 +9,7 @@ Covers:
 
 import httpx;
 import from jaclang.runtimelib { sv_client }
-import from jac_scale.microservices.runtime.auth_ctx {
+import from jac_scale.runtime.context.auth_ctx {
     set_current_auth,
     reset_current_auth,
     get_current_auth
@@ -216,7 +216,7 @@ test "sv_service_call gives up after max_attempts on persistent transport error"
 # =============================================================================
 # X-Trace-Id propagation
 # =============================================================================
-import from jac_scale.microservices.runtime.trace_ctx {
+import from jac_scale.runtime.context.trace_ctx {
     set_current_trace,
     reset_current_trace,
     get_current_trace,

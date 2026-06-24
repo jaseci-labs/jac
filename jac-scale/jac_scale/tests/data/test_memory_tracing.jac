@@ -12,7 +12,7 @@ When OpenTelemetry isn't installed everything is a no-op, which the tests
 assert instead of skipping.
 """
 
-import from jac_scale.microservices.runtime.tracing {
+import from jac_scale.runtime.context.tracing {
     install_tracing,
     start_server_span,
     end_span,
