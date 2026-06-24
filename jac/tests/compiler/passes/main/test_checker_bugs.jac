@@ -33,6 +33,7 @@ Bug index:
   #UNPACK-1 - Assignment unpacking of a non-tuple iterable (bytes/str/range) typed targets as Unknown
   #STARGUARD-1 - version-guarded names re-exported via `from M import *` (e.g. Buffer) fail to resolve
   #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
+  #BYTEARRAY-SLICE - `bytearray[i:j] = bytes` fired false E1001 (slice write uses __setitem__ contract)
   #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
 """
 
@@ -968,6 +969,18 @@ test "bug_byte_literal_typed_as_bytes" {
     assert program.errors_had == [] , (
         "Bug : a byte-string literal (b\"...\") must be typed as bytes, "
         "so it assigns to bytes and concatenates with other bytes. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #BYTEARRAY-SLICE: assigning `bytes` to a `bytearray` slice (e.g. buf[0:4] = b"...")
+# fired a false E1001 because the checker used the rvalue type of the slice (bytearray)
+# instead of the __setitem__ write contract, which accepts bytes.
+test "bug_bytearray_slice_assign_accepts_bytes" {
+    program = compile_and_check("checker_bug_bytearray_slice_assign.jac");
+    assert program.errors_had == [] , (
+        "Bug #BYTEARRAY-SLICE: `bytearray[i:j] = bytes` is valid Python but produced "
+        "a false E1001 (Cannot assign bytes to bytearray). "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

@@ -331,60 +331,103 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                 }
             }
             return;
-        } else {
+        } elif nd.type_tag and nd.type_tag.tag {
             # Handle typed assignment: target: Type = value
             # Propagate type annotation to the target node
-            if nd.type_tag and nd.type_tag.tag {
-                declared_type = self.evaluator.get_type_of_expression(nd.type_tag.tag);
-                # Warn on bare generic / explicit-any type annotations
-                self._check_bare_generic(nd.type_tag.tag, declared_type);
-                self._check_explicit_any(nd.type_tag.tag);
-                # Convert class type to instance for assignment checking.
-                # Type annotations like `x: int` resolve to the class `int`
-                # (instantiable), but the LHS of an assignment represents an
-                # instance. Without this, `self.x: int = 5` falsely reports
-                # "Cannot assign int to int" (instance vs class mismatch).
-                declared_inst = self.evaluator._convert_to_instance(declared_type);
-                target.type = declared_inst;
-                # For AtomTrailer (e.g., self.attr), also set type on the attribute Name
-                if isinstance(target, uni.AtomTrailer) {
-                    chain = target.as_attr_list;
-                    if len(chain) >= 2 {
-                        chain[-1].type = declared_inst;
+            declared_type = self.evaluator.get_type_of_expression(nd.type_tag.tag);
+            # Warn on bare generic / explicit-any type annotations
+            self._check_bare_generic(nd.type_tag.tag, declared_type);
+            self._check_explicit_any(nd.type_tag.tag);
+            # Convert class type to instance for assignment checking.
+            # Type annotations like `x: int` resolve to the class `int`
+            # (instantiable), but the LHS of an assignment represents an
+            # instance. Without this, `self.x: int = 5` falsely reports
+            # "Cannot assign int to int" (instance vs class mismatch).
+            declared_inst = self.evaluator._convert_to_instance(declared_type);
+            target.type = declared_inst;
+            # For AtomTrailer (e.g., self.attr), also set type on the attribute Name
+            if isinstance(target, uni.AtomTrailer) {
+                chain = target.as_attr_list;
+                if len(chain) >= 2 {
+                    chain[-1].type = declared_inst;
+                }
+            }
+            left_type = declared_inst;
+        } else {
+            left_type = self.evaluator.get_type_of_expression(target);
+            # For field assignments (e.g., obj.field = value), the target
+            # expression type may be narrowed (e.g., NoneType inside an
+            # `if obj.field is None` block). Use the declared field type
+            # for the assignment check instead of the narrowed type.
+            if isinstance(target, uni.AtomTrailer) and target.is_attr {
+                if isinstance(target.right, uni.Name) and target.right.sym {
+                    import from jaclang.compiler.type_system.type_utils {
+                        PropertyWriteKind
+                    }
+                    target_sym = target.right.sym;
+                    prop_result = self.evaluator.get_property_write_type(target_sym);
+                    if prop_result.kind == PropertyWriteKind.WRITABLE {
+                        left_type = prop_result.write_type;
+                    } elif prop_result.kind == PropertyWriteKind.READ_ONLY {
+                        self.emit(E1005, node_override=target, name=target.right.value);
+                        return;
+                    } else {
+                        # NOT_PROPERTY — use the declared symbol type.
+                        declared = self.evaluator.get_type_of_symbol(target_sym);
+                        if declared {
+                            left_type = declared;
+                        }
                     }
                 }
-                left_type = declared_inst;
-            } else {
-                left_type = self.evaluator.get_type_of_expression(target);
-                # For field assignments (e.g., obj.field = value), the target
-                # expression type may be narrowed (e.g., NoneType inside an
-                # `if obj.field is None` block). Use the declared field type
-                # for the assignment check instead of the narrowed type.
-                if isinstance(target, uni.AtomTrailer) and target.is_attr {
-                    if isinstance(target.right, uni.Name) and target.right.sym {
-                        import from jaclang.compiler.type_system.type_utils {
-                            PropertyWriteKind
-                        }
-                        target_sym = target.right.sym;
-                        prop_result = self.evaluator.get_property_write_type(
-                            target_sym
-                        );
-                        if prop_result.kind == PropertyWriteKind.WRITABLE {
-                            left_type = prop_result.write_type;
-                        } elif prop_result.kind == PropertyWriteKind.READ_ONLY {
-                            self.emit(
-                                E1005, node_override=target, name=target.right.value
-                            );
-                            return;
-                        } else {
-                            # NOT_PROPERTY — use the declared symbol type.
-                            declared = self.evaluator.get_type_of_symbol(target_sym);
-                            if declared {
-                                left_type = declared;
+            }
+            # Slice assignment (container[a:b] = value) uses __setitem__(slice, T)
+            # as the write contract — not the read type of container[a:b].
+            # Find the slice overload of __setitem__ and validate rhs against it.
+            if (
+                isinstance(target, uni.AtomTrailer)
+                and not target.is_attr
+                and isinstance(target.right, uni.IndexSlice)
+                and target.right.is_range
+            ) {
+                base_type = self.evaluator.get_type_of_expression(target.target);
+                rhs_type = self.evaluator.get_type_of_expression(nd.value);
+                if isinstance(base_type, types.ClassType) {
+                    setitem = self.evaluator._lookup_class_member(
+                        base_type, "__setitem__"
+                    );
+                    if setitem {
+                        for sym in ([setitem.symbol] + setitem.overloads) {
+                            fn_ty = self.evaluator.get_type_of_symbol(sym);
+                            if not isinstance(fn_ty, types.FunctionType) {
+                                continue;
+                            }
+                            fn = fn_ty.specialize(base_type);
+                            non_self = [
+                                param
+                                for param in fn.parameters
+                                if not param.is_self
+                            ];
+                            if (
+                                len(non_self) >= 2
+                                and non_self[0].param_type is not None
+                                and isinstance(non_self[0].param_type, types.ClassType)
+                                and non_self[0].param_type.is_builtin("slice")
+                            ) {
+                                if not self.evaluator.assign_type(
+                                    rhs_type, non_self[1].param_type
+                                ) {
+                                    self.emit(
+                                        E1001,
+                                        actual=str(rhs_type),
+                                        expected=str(non_self[1].param_type)
+                                    );
+                                }
+                                return;
                             }
                         }
                     }
                 }
+                return;
             }
         }
         # Pass declared LHS type as expected_type for bidirectional inference
