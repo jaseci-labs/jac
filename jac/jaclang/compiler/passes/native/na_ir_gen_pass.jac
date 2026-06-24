@@ -151,6 +151,13 @@ obj NaIRGenPass(ModuleCodegenPass) {
         struct_field_indices: dict[str, dict] = {},
         struct_field_types: dict[str, dict] = {},
         struct_field_defaults: dict[str, object] = {},
+        # Fields whose declared type the native backend cannot model
+        # (foreign Python types: `ast3.AST | None`, `type[Transform]`, ...).
+        # They lower to a nullable opaque `i8*` slot, null at native
+        # construction and never dereferenced natively (issue #6930, A3).
+        # arch_name -> set of opaque field names. Used to skip default
+        # evaluation, RC management, and to keep the slot null-only.
+        struct_field_opaque: dict[str, set] = {},
         method_funcs: dict[str, ir.Function] = {},
         # Interop-marshalling return facts for free functions, recorded at
         # declaration time (while the Ability node is in hand) and consumed
@@ -396,6 +403,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _try_resolve_field_type(var: uni.UniNode) -> tuple;
+    def _type_base_is_unknown(tb: any) -> bool;
     def _parse_callable_type_string(s: str) -> (ir.Type | None);
     def _resolve_primitive_name(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type;

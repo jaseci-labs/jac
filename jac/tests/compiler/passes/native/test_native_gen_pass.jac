@@ -541,6 +541,25 @@ test "objects empty dict in struct ctor" {
     assert f() == 30;
 }
 
+# --- TestNativeOpaqueForeignField (issue #6930, Workstream A3) ---
+# A field whose type the native backend cannot model (here `ast3.AST | None`,
+# resolved by the checker to `<Unknown> | NoneType`) must lower to a nullable
+# opaque slot, null at native construction, rather than rejecting the whole
+# declaration with E5090. The native path touches only native fields, so the
+# carrier still constructs and its native methods run. This is what keeps
+# unitree's ~150 foreign-typed node declarations untouched (Tier-1-only).
+test "opaque foreign field: carrier compiles with a native-unmodeled field type" {
+    (eng, _) = compile_native("opaque_field.na.jac");
+    f = get_func(eng, "make_name_len", ctypes.c_int64);
+    assert f() == 5;  # len("store"), proving native construction + method work
+}
+
+test "opaque foreign field: native method reads only native fields" {
+    (eng, _) = compile_native("opaque_field.na.jac");
+    f = get_func(eng, "make_label", ctypes.c_char_p);
+    assert f() == b"store";  # py_ctx stays null; label() returns the native field
+}
+
 # --- TestNativeSliceObjectField (issue #6473) ---
 test "slice object field roundtrip matches local" {
     # b.items[:pos] + b.items[pos:] on an object field used to abort (SIGABRT)

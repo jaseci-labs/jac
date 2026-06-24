@@ -739,6 +739,7 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
     }
     field_types = self.struct_field_types.get(arch_name, {});
     field_indices = self.struct_field_indices.get(arch_name, {});
+    opaque_fields = self.struct_field_opaque.get(arch_name, set());
     struct_ptr_type = struct_type.as_pointer();
     i8_ptr = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
@@ -755,6 +756,11 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
     (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, struct_ptr_type);
     # Release all pointer-typed fields
     for (fname, ftype) in field_types.items() {
+        # Opaque foreign slots hold an unmanaged `i8*` (always null on the native
+        # path); they are outside the RC discipline (issue #6930, A3).
+        if fname in opaque_fields {
+            continue;
+        }
         if isinstance(ftype, ir.PointerType) {
             idx = field_indices.get(fname, -1);
             if idx >= 0 {
