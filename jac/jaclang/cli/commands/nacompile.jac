@@ -1,6 +1,6 @@
 """Native compile command: compile .na.jac files to standalone binaries.
 
-Produces a runnable native executable from a .na.jac file using llvmlite's
+Produces a runnable native executable from a .na.jac file using the in-tree
 code generator and a pure Python linker. No external compiler or linker
 required. Supports ELF (Linux) and Mach-O (macOS) with automatic platform
 detection. Includes ad-hoc code signing for arm64 macOS.
