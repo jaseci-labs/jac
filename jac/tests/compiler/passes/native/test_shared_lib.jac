@@ -474,25 +474,24 @@ test "PE dll has IMAGE_FILE_DLL, export directory, and a non-zero entry" {
 # silently dropped and every runtime-initialized global in a --shared library
 # stayed NULL. This test drives the actual CLI so a regression in the probe
 # surfaces as a segfault, not a silent no-op.
-
 """Fixture source: a --shared lib with a global clib struct that needs runtime
 init (not a compile-time constant). The export reads the struct field; if
 __jac_shared_init never called __jac_glob_init, the global pointer is NULL and
 the field read segfaults."""
-_CLI_SHARED_FIXTURE = (
-    "import from \"libc.so.6\" {\n"
-    "    obj my_struct {\n"
-    "        has a: int = 0,\n"
-    "            b: int = 0;\n"
-    "    }\n"
-    "    def write(fd: i32, buf: int, count: i32) -> i32;\n"
-    "}\n"
-    "glob g: my_struct = my_struct();\n"
-    "def:pub set_g -> int {\n"
-    "    g.a = 42;\n"
-    "    return g.a;\n"
-    "}\n"
-);
+glob _CLI_SHARED_FIXTURE = (
+         "import from \"libc.so.6\" {\n"
+         "    obj my_struct {\n"
+         "        has a: int = 0,\n"
+         "            b: int = 0;\n"
+         "    }\n"
+         "    def write(fd: i32, buf: int, count: i32) -> i32;\n"
+         "}\n"
+         "glob g: my_struct = my_struct();\n"
+         "def:pub set_g -> int {\n"
+         "    g.a = 42;\n"
+         "    return g.a;\n"
+         "}\n"
+     );
 
 test "jac nacompile --shared initialises runtime globals via __jac_shared_init" {
     # The CLI probe + DT_INIT_ARRAY path is ELF-specific; skip on non-Linux.
@@ -512,7 +511,9 @@ test "jac nacompile --shared initialises runtime globals via __jac_shared_init" 
         lib_out = os.path.join(d, "lib.so");
         res = subprocess.run(
             [jac, "nacompile", "--shared", lib_src, "-o", lib_out],
-            capture_output=True, text=True, timeout=300
+            capture_output=True,
+            text=True,
+            timeout=300
         );
         assert res.returncode == 0 , f"nacompile --shared failed:\n{res.stderr}";
         assert os.path.exists(lib_out) , "shared library not produced";
