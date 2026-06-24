@@ -507,6 +507,14 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
             self.param_vars.add(param_name);
         }
     }
+    # Per-method native-capability boundary (workstream A4, #6930). A
+    # construction-critical method (init/postinit) is exempt: a gap there means
+    # the class genuinely cannot be natively constructed, so it stays a hard
+    # error. Every other method may fall back to its Python implementation, so
+    # mark the diagnostic lists and demote the method if its body cannot lower.
+    _isolate = method_name not in ("init", "__init__", "postinit", "__post_init__");
+    _err_mark = len(self.prog.errors_had) if _isolate else 0;
+    _local_mark = len(self.errors_had) if _isolate else 0;
     # Generate body (handle ImplDef wrapper from DeclImplMatchPass)
     body = ModuleCodegenPass.unwrap_body(method);
     if body is not None {
@@ -537,6 +545,55 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.param_vars = saved_param_vars;
     self.var_list_elem_struct = saved_list_elem_struct;
     self._self_arch = saved_self_arch;
+    # If the body raised diagnostics it could not lower, demote the method to
+    # Python-only rather than poisoning the module (workstream A4, #6930).
+    if _isolate {
+        self._demote_method_if_unlowerable(full_name, func, _err_mark, _local_mark);
+    }
+}
+
+"""Demote an un-lowerable method to Python-only (workstream A4, #6930).
+
+If the method body emitted any diagnostics, the native backend cannot lower
+it: discard those diagnostics (the Python implementation stays in force),
+reduce the partially-emitted body to an abort stub so the module IR stays
+valid and any unexpected native dispatch fails loudly, and drop the method
+from the native symbol + export tables (method_funcs / func_symtab, hence
+NativeModuleLayout.methods and install_native_wrappers) so it is neither
+call-resolvable from native code nor advertised as native. The ir.Function
+object is preserved (only its body is replaced) so any vtable slot already
+referencing it stays well-formed. Returns True if the method was demoted."""
+impl NaIRGenPass._demote_method_if_unlowerable(
+    full_name: str, func: ir.Function, err_mark: int, local_mark: int
+) -> bool {
+    if len(self.prog.errors_had) <= err_mark {
+        return False;
+    }
+    # Native acceleration is best-effort: the demotion is invisible to a clean
+    # build, which makes a wrongly-rejected method hard to spot. Surface the
+    # discarded diagnostics under JAC_NATIVE_DEBUG so the fallback is visible
+    # while developing the backend (mirrors native_accel.accelerate_module).
+    import os;
+    if os.environ.get("JAC_NATIVE_DEBUG", "") {
+        import sys;
+        _why = "; ".join(str(e) for e in self.prog.errors_had[err_mark:]);
+        sys.stderr.write(
+            f"Native acceleration: demoting {full_name} to Python-only "
+            f"(un-lowerable): {_why}\n"
+        );
+    }
+    del self.prog.errors_had[err_mark:];
+    del self.errors_had[local_mark:];
+    func.blocks.clear();
+    blk = func.append_basic_block(name="entry");
+    b = ir.IRBuilder(blk);
+    self._get_or_declare_extern("abort", ir.VoidType(), []);
+    b.call(self.extern_funcs["abort"], []);
+    b.unreachable();
+    self.method_funcs.pop(full_name, None);
+    self.func_symtab.pop(full_name, None);
+    self._native_skipped_methods.add(full_name);
+    return True;
 }
 
 """Generate method body for methods without FuncSignature (e.g., postinit)."""

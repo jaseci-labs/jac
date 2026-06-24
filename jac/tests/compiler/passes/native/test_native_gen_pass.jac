@@ -108,6 +108,23 @@ test "native osp: skip in an impl-annex walker event ability (issue #6794)" {
     assert collect(5, 5, 5) == 15;
 }
 
+# --- Partial-native classes / per-method opt-out (workstream A4, #6930) ---
+test "native partial class: un-lowerable method skipped, sibling stays native" {
+    # `Literal.evaluate` uses `eval` (no native lowering). Before A4 its E5090
+    # poisoned the whole module, so the class lost its native layout and every
+    # sibling method. Now the un-lowerable method is demoted to Python-only and
+    # the rest of the class compiles: native construction + the native-eligible
+    # `length` work, the module reports no errors.
+    (eng, ir) = compile_native("partial_native.na.jac");
+    measure = get_func(eng, "measure", ctypes.c_int64, ctypes.c_char_p);
+    assert measure(b"hello") == 5;
+    assert measure(b"") == 0;
+    layout = ir.gen.native_layout;
+    # The native-eligible method is exported; the eval-using one is skipped.
+    assert "Literal.length" in layout.methods;
+    assert "Literal.evaluate" not in layout.methods;
+}
+
 test "arithmetic negate" {
     (eng, _) = compile_native("arithmetic.na.jac");
     neg = get_func(eng, "negate", ctypes.c_int64, ctypes.c_int64);

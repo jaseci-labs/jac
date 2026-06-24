@@ -184,6 +184,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
         vtable_method_indices: dict[str, dict] = {},
         vtable_globals: dict[str, ir.GlobalVariable] = {},
         _non_overridden_methods: dict[str, set[str]] = {},
+        # Partial-native classes / per-method opt-out (workstream A4, #6930):
+        # full-names (`Arch.method`) of methods whose body the native backend
+        # could not lower. They are demoted to Python-only — dropped from
+        # method_funcs / the native layout, their body reduced to an abort stub
+        # — so an un-lowerable method does not poison its class's native layout,
+        # constructor, or lowerable siblings. Construction-critical methods
+        # (init/postinit) are never demoted: a gap there is a genuine hard error.
+        _native_skipped_methods: set[str] = set(),
         # Object-Spatial kernel lowering (Phase 4 / issue #6146).
         # The OSP "program facts" (archetype kinds, stable type tags, is_a
         # relation, dispatch slots, construct usage) are NOT stored here: they are
@@ -541,6 +549,16 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _forward_declare_method(arch_name: str, method: uni.Ability) -> None;
     def _visit_nonprimary_ancestor_methods(arch: uni.Archetype, declare: bool) -> None;
     def _codegen_method(arch_name: str, method: uni.Ability) -> None;
+    # Per-method native-capability boundary (workstream A4, #6930): if the
+    # method body emitted diagnostics it could not lower, demote the method to
+    # Python-only (drop it from the native symbol/export tables and reduce its
+    # body to an abort stub) and discard those diagnostics, instead of failing
+    # the whole module. Returns True if the method was demoted. The marks are
+    # the prog/local diagnostic-list lengths captured before the body emitted.
+    def _demote_method_if_unlowerable(
+        full_name: str, func: ir.Function, err_mark: int, local_mark: int
+    ) -> bool;
+
     def _codegen_no_sig_method(arch_name: str, method: uni.Ability) -> None;
     def _forward_declare_event_method(arch_name: str, method: uni.Ability) -> None;
     def _codegen_event_method(arch_name: str, method: uni.Ability) -> None;
