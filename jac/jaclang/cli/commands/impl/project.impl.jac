@@ -594,31 +594,33 @@ impl install(
                 "Use 'jac add <pkg> --dev' to track packages in jac.toml."
             );
         }
-        console.print(
-            f"\n📦 Installing {len(packages)} package(s) into activated environment",
-            style="bold"
-        );
-        def _warn(msg: str) {
-            console.print(msg, style="muted");
-        }
-        cmd: list[str] = pip_command(
-            sys.executable,
-            ["install", "--upgrade"] + install_flags + packages,
-            use_uv=not no_uv and not bool(os.environ.get("JAC_NO_UV")),
-            warn_fn=_warn
-        );
-        if verbose {
-            console.print(f"  Running: {' '.join(cmd)}", style="muted");
-        }
-        result = subprocess.run(cmd, capture_output=not verbose, text=True);
-        if result.returncode != 0 {
-            err_detail: str = result.stderr or result.stdout or "(see output above)";
-            console.error(f"Install failed:\n{err_detail}");
-            return 1;
-        }
-        if dry_run {
-            if result.stdout {
-                console.print(result.stdout, style="dim");
+        use_uv: bool = not no_uv and not bool(os.environ.get("JAC_NO_UV"));
+        if install_global {
+            # Global tier: install into the binary's own site (jac-owned, on
+            # sys.path everywhere) -- never the host Python -- preferring uv.
+            console.print(
+                f"\n📦 Installing {len(packages)} package(s) into the global site",
+                style="bold"
+            );
+            def _warn(msg: str) {
+                console.print(msg, style="muted");
+            }
+            cmd: list[str] = pip_command(
+                sys.executable,
+                ["install", "--upgrade"] + install_flags + packages,
+                use_uv=use_uv,
+                warn_fn=_warn
+            );
+            if verbose {
+                console.print(f"  Running: {' '.join(cmd)}", style="muted");
+            }
+            result = subprocess.run(cmd, capture_output=not verbose, text=True);
+            if result.returncode != 0 {
+                err_detail: str = result.stderr
+                or result.stdout
+                or "(see output above)";
+                console.error(f"Install failed:\n{err_detail}");
+                return 1;
             }
             if dry_run {
                 if result.stdout {
@@ -639,10 +641,7 @@ impl install(
             return 1;
         }
         installer = DependencyInstaller(
-            config=config,
-            verbose=verbose,
-            install_flags=install_flags,
-            use_uv=not no_uv and not bool(os.environ.get("JAC_NO_UV"))
+            config=config, verbose=verbose, install_flags=install_flags, use_uv=use_uv
         );
         console.print(
             f"\n📦 Installing {len(packages)} package(s) into {config.get_venv_dir()}",

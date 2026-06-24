@@ -1802,8 +1802,30 @@ test "update always uses upgrade flag" {
 }
 
 # ===== TestInstallPackageIntoActivatedEnv =====
-test "install package failure returns error code" {
-    # Error path: pip failure propagates as exit 1.
+test "jac install <pkg> outside a project errors" {
+    # Direct-package installs default to the project venv tier, so they require
+    # a project. Outside one (and without --global) it errors without ever
+    # invoking pip/uv.
+    reset_config();
+    import from jaclang.cli.commands { project as proj_cmds }
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    original_cwd = os.getcwd();
+    try {
+        os.chdir(tmp);
+        with patch("subprocess.run") as mock_run {
+            result = proj_cmds.install(packages=["pip"]);
+        }
+        assert result == 1;
+        mock_run.assert_not_called();
+    } finally {
+        os.chdir(original_cwd);
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "install --global package failure returns error code" {
+    # Error path: pip failure on the global tier propagates as exit 1.
     reset_config();
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
@@ -1815,7 +1837,7 @@ test "install package failure returns error code" {
         mock_result.stderr = "ERROR: Could not find a version that satisfies the requirement badpkg";
         mock_result.stdout = "";
         with patch("subprocess.run", return_value=mock_result) {
-            result = proj_cmds.install(packages=["badpkg"]);
+            result = proj_cmds.install(packages=["badpkg"], install_global=True);
         }
         assert result == 1;
     } finally {
@@ -1825,7 +1847,7 @@ test "install package failure returns error code" {
     }
 }
 
-test "jac install pkg uses uv when uv on PATH" {
+test "jac install --global pkg uses uv when uv on PATH" {
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     original_cwd = os.getcwd();
@@ -1843,7 +1865,7 @@ test "jac install pkg uses uv when uv on PATH" {
         with patch("subprocess.run", return_value=mock_result) as mock_run, patch(
             "shutil.which", return_value="/usr/bin/uv"
         ), patch.dict(os.environ, clean_env, clear=True) {
-            result = proj_cmds.install(packages=["numpy"]);
+            result = proj_cmds.install(packages=["numpy"], install_global=True);
         }
         assert result == 0;
         cmd = mock_run.call_args[0][0];
@@ -1855,9 +1877,9 @@ test "jac install pkg uses uv when uv on PATH" {
     }
 }
 
-test "jac install pkg respects JAC_NO_UV in direct path" {
+test "jac install --global pkg respects JAC_NO_UV" {
     import from jaclang.cli.commands { project as proj_cmds }
-    (tmp, project_dir) = make_temp_project();
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
     original_cwd = os.getcwd();
     try {
         os.chdir(tmp);
@@ -1869,7 +1891,7 @@ test "jac install pkg respects JAC_NO_UV in direct path" {
         with patch("subprocess.run", return_value=mock_result) as mock_run, patch(
             "shutil.which", return_value="/usr/bin/uv"
         ), patch.dict(os.environ, env_with_no_uv, clear=True) {
-            result = proj_cmds.install(packages=["numpy"]);
+            result = proj_cmds.install(packages=["numpy"], install_global=True);
         }
         assert result == 0;
         cmd = mock_run.call_args[0][0];
