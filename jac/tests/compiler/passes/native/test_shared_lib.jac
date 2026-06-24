@@ -28,7 +28,7 @@ import from jaclang.compiler.passes.native.pe_linker { PeLinker }
 # tests on the production code path -- a prior divergence here let a quoted-
 # symbol glob-init bug in _inject_shared_init slip past this whole file.
 import from jaclang.cli.commands.nacompile { _inject_shared_init }
-import llvmlite.binding as llvm;
+import jaclang.compiler.passes.native.llvm.binding as llvm;
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"

@@ -61,16 +61,10 @@ applies the final node filter post-narrowing, and returns the result as
 NodeAnchors in canonical edge-walk order (single-hop) or arbitrary order
 (multi-hop set narrowing).
 
-Returns None to signal "no fast path applies" — the caller should fall back
-to the legacy edge-walk via `edges_to_nodes`. This happens when:
-  * the path has predicate filters the index can't express
-  * the origin isn't persistent (no root → no topology_index)
-  * the chain has no useful filter (full walk anyway)
-  * topology_index is disabled and no backend pushdown applies
-"""
-def execute_path(
-    mem: any, path: any, slc: (slice | None) = None
-) -> (list[any] | None);
+Always returns a list. The per-hop resolver locally falls back to anchor
+walk for hops the index can't cover (predicate filters, foreign roots,
+no index), so there is no whole-query bail."""
+def execute_path(mem: any, path: any, slc: (slice | None) = None) -> list[any];
 
 
 """Resolve a chain on a given root's topology_index to a `set[UUID]`.
