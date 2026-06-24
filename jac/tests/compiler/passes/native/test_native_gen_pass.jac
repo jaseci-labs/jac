@@ -15,7 +15,7 @@ import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.runtime { JacRuntime }
 import jaclang.jac0core.unitree as uni;
-import from llvmlite.binding { ExecutionEngine }
+import from jaclang.compiler.passes.native.llvm.binding { ExecutionEngine }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
@@ -106,6 +106,84 @@ test "native osp: skip in an impl-annex walker event ability (issue #6794)" {
     assert collect(10, 0, 32) == 42;  # the val==0 node is skipped
     assert collect(0, 0, 0) == 0;  # every node skipped
     assert collect(5, 5, 5) == 15;
+}
+
+# --- Partial-native classes / per-method opt-out (workstream A4, #6930) ---
+test "native partial class: un-lowerable method skipped, sibling stays native" {
+    # `Literal.evaluate` uses `eval` (no native lowering). Before A4 its E5090
+    # poisoned the whole module, so the class lost its native layout and every
+    # sibling method. Now the un-lowerable method is demoted to Python-only and
+    # the rest of the class compiles: native construction + the native-eligible
+    # `length` work, the module reports no errors.
+    (eng, ir) = compile_native("partial_native.na.jac");
+    measure = get_func(eng, "measure", ctypes.c_int64, ctypes.c_char_p);
+    assert measure(b"hello") == 5;
+    assert measure(b"") == 0;
+    layout = ir.gen.native_layout;
+    # The native-eligible method is exported; the eval-using one is skipped.
+    assert "Literal.length" in layout.methods;
+    assert "Literal.evaluate" not in layout.methods;
+}
+
+test "native partial class: demotion warns on the terminal by default (#6934)" {
+    # warn_native_seams defaults True, so demoting an un-lowerable method prints
+    # a terminal warning naming the method — a silent native fallback is visible
+    # during a build. The compile still succeeds (A4 demotes, no errors).
+    _saved = sys.stderr;
+    _cap = io.StringIO();
+    sys.stderr = _cap;
+    try {
+        prog = JacProgram();
+        prog.compile(file_path=str(os.path.join(FIXTURES, "partial_native.na.jac")));
+    } finally {
+        sys.stderr = _saved;
+    }
+    assert not prog.errors_had;
+    _out = _cap.getvalue();
+    assert "native seam" in _out;
+    assert "Literal.evaluate" in _out;
+    assert "Python-only" in _out;
+}
+
+test "native partial class: native caller of a demoted method errors, not silent" {
+    # A method demoted to Python-only is not callable from native code: the
+    # native pathway cannot fall back to Python mid-stream. A native call site
+    # must surface E5090 (loud) instead of silently dropping to a null result.
+    prog = JacProgram();
+    prog.compile(
+        file_path=str(os.path.join(FIXTURES, "partial_native_native_caller.na.jac"))
+    );
+    codes = [
+        e.code.code
+        for e in (prog.errors_had or [])
+        if e.code
+    ];
+    assert "E5090" in codes , (
+        f"expected E5090 for native call to a demoted method, got {codes}"
+    );
+    # The diagnostic names the call site (the method), not the discarded
+    # eval body that was demoted away.
+    msgs = " ".join(str(e) for e in (prog.errors_had or []));
+    assert "Box.evaluate" in msgs , f"E5090 should name Box.evaluate, got: {msgs}";
+}
+
+test "native partial class: un-lowerable virtual method stays a hard error" {
+    # `render` is virtual (Base + Derived override -> vtable slot). A virtual
+    # method the backend cannot lower must NOT be demoted: native polymorphic
+    # dispatch cannot fall back to Python, and demoting it would leave a
+    # dangling vtable index / abort-stub slot. So the eval gap stays E5090.
+    prog = JacProgram();
+    prog.compile(
+        file_path=str(os.path.join(FIXTURES, "partial_native_virtual.na.jac"))
+    );
+    codes = [
+        e.code.code
+        for e in (prog.errors_had or [])
+        if e.code
+    ];
+    assert "E5090" in codes , (
+        f"expected E5090 for un-lowerable virtual method, got {codes}"
+    );
 }
 
 test "arithmetic negate" {
@@ -539,6 +617,25 @@ test "objects empty dict in struct ctor" {
     (eng, _) = compile_native("objects.na.jac");
     f = get_func(eng, "test_empty_dict_ctor_field", ctypes.c_int64);
     assert f() == 30;
+}
+
+# --- TestNativeOpaqueForeignField (issue #6930, Workstream A3) ---
+# A field whose type the native backend cannot model (here `ast3.AST | None`,
+# resolved by the checker to `<Unknown> | NoneType`) must lower to a nullable
+# opaque slot, null at native construction, rather than rejecting the whole
+# declaration with E5090. The native path touches only native fields, so the
+# carrier still constructs and its native methods run. This is what keeps
+# unitree's ~150 foreign-typed node declarations untouched (Tier-1-only).
+test "opaque foreign field: carrier compiles with a native-unmodeled field type" {
+    (eng, _) = compile_native("opaque_field.na.jac");
+    f = get_func(eng, "make_name_len", ctypes.c_int64);
+    assert f() == 5;  # len("store"), proving native construction + method work
+}
+
+test "opaque foreign field: native method reads only native fields" {
+    (eng, _) = compile_native("opaque_field.na.jac");
+    f = get_func(eng, "make_label", ctypes.c_char_p);
+    assert f() == b"store";  # py_ctx stays null; label() returns the native field
 }
 
 # --- TestNativeSliceObjectField (issue #6473) ---
@@ -1041,6 +1138,48 @@ test "chess play random moves stress" {
         "Expected 'Game ended.' in output.\n"
         f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
     );
+}
+
+# --- TestNativeClassName (issue #6930 workstream A2) ---
+test "class name: __class__.__name__ is polymorphic over subclasses" {
+    # `kind` is defined only on the base `Widget`, so a subclass instance must
+    # recover its own runtime class name through the vtable, not freeze to the
+    # declaring class. Before A2 these reads E5090'd ("attribute access
+    # '__name__'"); now they lower to the per-class name.
+    (eng, _) = compile_native("class_name.na.jac");
+    bk = get_func(eng, "button_kind", ctypes.c_char_p);
+    sk = get_func(eng, "slider_kind", ctypes.c_char_p);
+    wk = get_func(eng, "widget_kind", ctypes.c_char_p);
+    assert bk() == b"Button";
+    assert sk() == b"Slider";
+    assert wk() == b"Widget";
+}
+
+test "class name: type(self).__name__ matches __class__.__name__" {
+    (eng, _) = compile_native("class_name.na.jac");
+    f = get_func(eng, "button_kind_via_type", ctypes.c_char_p);
+    assert f() == b"Button";
+}
+
+test "class name: vtable-less class lowers to a constant name" {
+    # `Lone` has no parents and no subclasses, so it carries no vtable; the
+    # access lowers to a constant load rather than a vtable read.
+    (eng, _) = compile_native("class_name.na.jac");
+    f = get_func(eng, "lone_kind", ctypes.c_char_p);
+    assert f() == b"Lone";
+}
+
+test "class name: method-less vtable hierarchy still reads its own name" {
+    # `Tag`/`SubA`/`SubB` declare no methods, so their vtable method layout is
+    # empty -- but `Tag` is still vtable-flagged (it has subclasses). The vtable
+    # must be emitted anyway so the per-class name slot exists; otherwise reading
+    # `t.__class__.__name__` off a base-typed receiver dereferences an
+    # uninitialized field-0 slot (segfault, PR #6933 review).
+    (eng, _) = compile_native("class_name.na.jac");
+    a = get_func(eng, "suba_name", ctypes.c_char_p);
+    b = get_func(eng, "subb_name", ctypes.c_char_p);
+    assert a() == b"SubA";
+    assert b() == b"SubB";
 }
 
 # --- TestNativeIsinstanceUserArchetype (issue #6930, workstream A1) ---
@@ -2880,7 +3019,7 @@ test "elf linker rejects unhandled relocation (issue #6366 guard)" {
     # relocation targeting an emitted section has no handler, rather than
     # silently leaving the reference pointing at NULL (the #6366 failure mode).
     # Pure link-time check -- no execution, so it runs without qemu.
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
@@ -2927,7 +3066,7 @@ test "elf linker emits DT_RUNPATH=$ORIGIN (issue #6353 gap 4)" {
     # launch directory. The linker emits DT_RUNPATH=$ORIGIN so the loader
     # resolves needed libraries relative to the executable. Pure link-time
     # check -- no execution, so it runs without qemu.
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     import struct;
     import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
     llvm.initialize_all_targets();
@@ -3198,7 +3337,7 @@ test "jir bitcode cache round-trip" {
     assert len(sec_data) > 2 , "SEC_NATIVE_OBJ too short";
     (triple_len, ) = struct.unpack_from('<H', sec_data, 0);
     cached_triple = sec_data[2:2 + triple_len].decode('utf-8');
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     assert cached_triple == llvm.get_default_triple() , (
         f"Triple mismatch: {cached_triple} != {llvm.get_default_triple()}"
     );

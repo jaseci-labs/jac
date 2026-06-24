@@ -33,10 +33,12 @@
 //!       write into jaclang/vendor/typeshed/TARBALL_SHA256 when bumping the PIN.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const flate = std.compress.flate;
 const zstd = std.compress.zstd;
+const xz = std.compress.xz;
 const Dir = Io.Dir;
 const runtime = @import("runtime.zig");
 
@@ -56,7 +58,32 @@ const TYPESHED_VENDOR = "jaclang/vendor/typeshed";
 
 const MAX_PATH = Dir.max_path_bytes;
 
-const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", mkpayload, @"typeshed-sha" };
+const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", mkpayload, @"typeshed-sha" };
+
+// LLVM release whose static archives the LLVMPY_* shim (jac/native) links
+// against. Must match the version the shim source (llvmlite 0.47.0) targets.
+const LLVM_TAG = "llvmorg-20.1.8";
+const LLVM_BASE = "https://github.com/llvm/llvm-project/releases/download";
+
+// The release is selected per host: `dirname` is the tarball's top-level dir
+// (also the -Dllvm-dir basename in build.zig llvmCacheDir -- keep the two in
+// sync), and `sha256` is the .tar.xz digest from the GitHub release, verified
+// after download. Add a row to support another host platform.
+const LlvmRelease = struct { dirname: []const u8, sha256: []const u8 };
+fn llvmRelease() ?LlvmRelease {
+    return switch (builtin.os.tag) {
+        .linux => switch (builtin.cpu.arch) {
+            .x86_64 => .{ .dirname = "LLVM-20.1.8-Linux-X64", .sha256 = "1ead36b3dfcb774b57be530df42bec70ab2d239fbce9889447c7a29a4ddc1ae6" },
+            .aarch64 => .{ .dirname = "LLVM-20.1.8-Linux-ARM64", .sha256 = "b855cc17d935fdd83da82206b7a7cfc680095efd1e9e8182c4a05e761958bef8" },
+            else => null,
+        },
+        .macos => switch (builtin.cpu.arch) {
+            .aarch64 => .{ .dirname = "LLVM-20.1.8-macOS-ARM64", .sha256 = "a9a22f450d35f1f73cd61ab6a17c6f27d8f6051d56197395c1eb397f0c9bbec4" },
+            else => null,
+        },
+        else => null,
+    };
+}
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
@@ -80,13 +107,29 @@ pub fn main(init: std.process.Init) !void {
             if (n < 4) die("usage: payload fetch-pbs <os-arch> <dest-dir>", .{});
             try fetchPbs(io, gpa, a, argv[2], argv[3]);
         },
+        .@"fetch-llvm" => {
+            if (n < 3) die("usage: payload fetch-llvm <dest-dir>", .{});
+            try fetchLlvm(io, gpa, a, init.environ_map, argv[2]);
+        },
         .@"fetch-typeshed" => {
             if (n < 3) die("usage: payload fetch-typeshed <repo-root>", .{});
             try fetchTypeshed(io, gpa, a, argv[2]);
         },
         .mkpayload => {
-            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz>", .{});
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4]);
+            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile]", .{});
+            // Trailing flags (after the positional pbs/root/out, see build.zig):
+            var shim_so: ?[]const u8 = null;
+            var skip_precompile = false;
+            var i: usize = 5;
+            while (i < n) : (i += 1) {
+                const arg = argv[i];
+                if (std.mem.startsWith(u8, arg, "--shim=")) {
+                    shim_so = arg["--shim=".len..];
+                } else if (std.mem.eql(u8, arg, "--skip-precompile")) {
+                    skip_precompile = true;
+                }
+            }
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, skip_precompile);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -158,6 +201,103 @@ fn fetchPbs(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []co
 
     if (!fileExists(io, marker)) die("fetch-pbs: extract produced no PYTHON.json", .{});
     log("fetch-pbs: ready at {s}/python", .{dest});
+}
+
+// =============================================================== fetch-llvm ===
+
+/// Download + verify + extract the pinned LLVM release into <dest>/LLVM-...-X64.
+/// build.zig points -Dllvm-dir at that tree; jacllvm links its static archives
+/// into the LLVMPY_* shim. Idempotent (skips if already extracted). Mirrors
+/// fetch-pbs, but the LLVM asset is .tar.xz rather than .tar.zst.
+fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map, dest: []const u8) !void {
+    // Select the release for this host (see llvmRelease). Fail loudly on an
+    // unsupported host rather than fetching a mismatched multi-GB tarball.
+    const rel = llvmRelease() orelse
+        die("fetch-llvm: no pinned LLVM release for this host ({s}-{s}); add a row to llvmRelease().", .{ @tagName(builtin.cpu.arch), @tagName(builtin.os.tag) });
+    const asset = try std.fmt.allocPrint(a, "{s}.tar.xz", .{rel.dirname});
+    const marker = try std.fmt.allocPrint(a, "{s}/{s}/lib/libLLVMCore.a", .{ dest, rel.dirname });
+    if (fileExists(io, marker)) {
+        log("fetch-llvm: already present at {s}/{s}", .{ dest, rel.dirname });
+        return;
+    }
+
+    const url = try std.fmt.allocPrint(a, "{s}/{s}/{s}", .{ LLVM_BASE, LLVM_TAG, asset });
+    // JAC_LLVM_TARBALL points at a pre-downloaded release (offline/CI/air-gapped).
+    const tarxz = if (env.get("JAC_LLVM_TARBALL")) |path| blk: {
+        log("fetch-llvm: using local tarball {s}", .{path});
+        break :blk try Dir.cwd().readFileAlloc(io, path, gpa, .unlimited);
+    } else blk: {
+        log("fetch-llvm: downloading {s} (~1.5-2 GB, one-time)", .{asset});
+        break :blk try httpGetAlloc(io, gpa, url);
+    };
+    defer gpa.free(tarxz);
+
+    // The static archives become host LLVM linked into the shipped shim, so a
+    // swapped/MITM'd asset must not slip through.
+    const actual = sha256Hex(tarxz);
+    if (!std.mem.eql(u8, &actual, rel.sha256)) {
+        die("fetch-llvm: checksum mismatch for {s}\n  expected {s}\n  actual   {s}", .{ asset, rel.sha256, &actual });
+    }
+
+    try Dir.cwd().createDirPath(io, dest);
+    var ddir = try Dir.cwd().openDir(io, dest, .{});
+    defer ddir.close(io);
+
+    var src = Io.Reader.fixed(tarxz);
+    const buf = try gpa.alloc(u8, 1 << 20);
+    var dx = xz.Decompress.init(&src, gpa, buf) catch |err|
+        die("fetch-llvm: xz init failed: {s}", .{@errorName(err)});
+    // xz.Decompress took ownership of `buf` (and may resize it); free it via
+    // deinit, NOT gpa.free(buf) -- that double-frees the possibly-moved buffer.
+    defer dx.deinit();
+    // Surgical extract: keep only include/ + lib/libLLVM*.a (the headers + static
+    // archives the shim links). Skips bin/ (clang + tools, ~8 GB) and the
+    // clang/LTO .a (~1 GB), cutting the extracted tree from ~11 GB to ~0.5 GB.
+    // The xz/tar stream can report a benign tail error (trailing padding/index)
+    // after every kept entry is written, so judge success by the marker.
+    extractLlvmSubset(io, ddir, &dx.reader) catch |err| {
+        if (!fileExists(io, marker)) die("fetch-llvm: extract failed: {s}", .{@errorName(err)});
+        log("fetch-llvm: tolerated benign post-extract error: {s}", .{@errorName(err)});
+    };
+
+    if (!fileExists(io, marker)) die("fetch-llvm: extract produced no libLLVMCore.a", .{});
+    log("fetch-llvm: ready at {s}/{s}", .{ dest, rel.dirname });
+}
+
+/// Stream a decompressed LLVM release tar and write only the entries the shim
+/// needs -- `*/include/**` headers and `*/lib/libLLVM*.a` static archives --
+/// skipping everything else (bin/ clang+tools, clang/LTO libs). Unkept entries
+/// are discarded by the iterator, so we never materialize the ~10 GB we drop.
+fn extractLlvmSubset(io: Io, dir: Dir, reader: *Io.Reader) !void {
+    var name_buf: [Dir.max_path_bytes]u8 = undefined;
+    var link_buf: [Dir.max_path_bytes]u8 = undefined;
+    var content_buf: [64 * 1024]u8 = undefined;
+    var discard_buf: [64 * 1024]u8 = undefined;
+    var discarding: Io.Writer.Discarding = .init(&discard_buf);
+    var it = std.tar.Iterator.init(reader, .{ .file_name_buffer = &name_buf, .link_name_buffer = &link_buf });
+    while (try it.next()) |file| {
+        const keep = file.kind == .file and
+            (std.mem.indexOf(u8, file.name, "/include/") != null or
+                (std.mem.indexOf(u8, file.name, "/lib/libLLVM") != null and std.mem.endsWith(u8, file.name, ".a")));
+        if (!keep) {
+            // Read+discard ANY unwanted content (file, hard link, ...) via a
+            // discarding writer. The iterator's own skip path calls
+            // reader.discard, which the xz decompressor doesn't implement
+            // (@panic("TODO")) in this Zig; streaming uses the read path instead.
+            if (file.size > 0) try it.streamRemaining(file, &discarding.writer);
+            continue;
+        }
+        const fs_file = dir.createFile(io, file.name, .{ .exclusive = true }) catch |err| blk: {
+            if (err != error.FileNotFound) return err;
+            const parent = std.fs.path.dirname(file.name) orelse return err;
+            try dir.createDirPath(io, parent);
+            break :blk try dir.createFile(io, file.name, .{ .exclusive = true });
+        };
+        defer fs_file.close(io);
+        var fw = fs_file.writer(io, &content_buf);
+        try it.streamRemaining(file, &fw.interface);
+        try fw.interface.flush();
+    }
 }
 
 fn pbsPlatform(osarch: []const u8) ?[]const u8 {
@@ -267,6 +407,8 @@ fn mkPayload(
     pbs_py_dir: []const u8,
     repo_root: []const u8,
     out: []const u8,
+    shim_so: ?[]const u8,
+    skip_precompile: bool,
 ) !void {
     const py = try resolvePython(io, a, pbs_py_dir);
     const work = try std.fmt.allocPrint(a, "{s}.work", .{out});
@@ -325,13 +467,28 @@ fn mkPayload(
         ,
     });
 
-    // The sole runtime dependency (a binary wheel from PyPI). Pin to jac.toml's
-    // declared constraint so a breaking llvmlite release can't get baked in.
-    const llvmlite = tomlDepSpec(toml, "llvmlite") orelse "llvmlite>=0.43.0";
-    log("==> fetching runtime dep: {s}", .{llvmlite});
-    _ = runChild(io, &.{ py, "-m", "pip", "install", "--quiet", llvmlite, "--target", site }, null, false);
+    // Native LLVM: bundle the Zig-built LLVMPY_* shim (jac/native, statically
+    // linked against host LLVM) next to its Jac binding. The Jac binding
+    // ctypes-loads it (jaclang/compiler/passes/native/llvm/binding/ffi.jac).
+    // The shim is required -- there is no llvmlite wheel fallback (#6925).
+    const so = shim_so orelse die(
+        "mkpayload: no LLVM shim (--shim). Run `zig build fetch-llvm` once so the" ++
+            " build can compile + statically link the LLVMPY_* shim.",
+        .{},
+    );
+    const dst_dir = try std.fmt.allocPrint(a, "{s}/jaclang/compiler/passes/native/llvm", .{site});
+    try Dir.cwd().createDirPath(io, dst_dir);
+    // Keep the platform-correct basename (libjacllvm.so / .dylib / jacllvm.dll)
+    // so ffi.jac's _shim_name() finds it; build.zig emits the right name per OS.
+    const shim_base = std.fs.path.basename(so);
+    log("==> bundling Zig-built LLVMPY_* shim ({s})", .{so});
+    try Dir.cwd().copyFile(so, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst_dir, shim_base }), io, .{});
 
-    try precompile(io, gpa, a, parent_env, py, pbs_py_dir, site);
+    if (skip_precompile) {
+        log("==> skipping JIR precompile (--skip-precompile); modules compile on first run", .{});
+    } else {
+        try precompile(io, gpa, a, parent_env, py, pbs_py_dir, site);
+    }
 
     // Bundle runtime helpers (pytest/-xdist -> `jac test`, watchdog -> `jac start
     // --dev`, tomlkit -> project tooling). Installed AFTER precompile so the
@@ -469,8 +626,19 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
         defer site_src.close(io);
         try copyTree(io, gpa, a, site_src, try std.fmt.allocPrint(a, "{s}/site", .{stage}), skipStageSite);
     }
-    // llvmlite bundles libLLVM (~160 MiB); strip its shared lib too (best-effort).
-    stripBestEffort(io, try std.fmt.allocPrint(a, "{s}/site/llvmlite/binding/libllvmlite.so", .{stage}));
+    // The LLVMPY_* shim statically links LLVM (~130 MiB); strip it (best-effort).
+    stripBestEffort(io, try std.fmt.allocPrint(a, "{s}/site/jaclang/compiler/passes/native/llvm/{s}", .{ stage, shimFileName() }));
+}
+
+/// The host's LLVMPY_* shim filename, matching build.zig's emitted name and
+/// ffi.jac's _shim_name() (the payload tool runs on -- and builds for -- the
+/// host, so builtin.os.tag is the target OS).
+fn shimFileName() []const u8 {
+    return switch (builtin.os.tag) {
+        .windows => "jacllvm.dll",
+        .macos => "libjacllvm.dylib",
+        else => "libjacllvm.so",
+    };
 }
 
 /// Strip a shared library in place to shed debug info / local symbols / dead LTO
@@ -481,7 +649,7 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
 /// shared object, so no flag tuning is needed.
 fn stripBestEffort(io: Io, path: []const u8) void {
     const before = fileSizeOrZero(io, path);
-    if (before == 0) return; // not present (e.g. macOS .dylib name, or no llvmlite)
+    if (before == 0) return; // shim not present at this path; nothing to strip
     var child = std.process.spawn(io, .{
         .argv = &.{ "strip", path },
         .stdin = .ignore,
@@ -625,6 +793,9 @@ fn skipJaclang(p: []const u8) bool {
         std.mem.indexOf(u8, p, "node_modules") != null or
         std.mem.indexOf(u8, p, "_precompiled") != null or
         std.mem.indexOf(u8, p, "vendor/typeshed/stubs") != null or
+        // The LLVMPY_* shim is placed fresh via --shim, not copied from the
+        // (gitignored, build-placed) source-tree artifact -- skip it here.
+        std.mem.indexOf(u8, p, "libjacllvm.") != null or
         std.mem.endsWith(u8, p, ".pyc");
 }
 
@@ -649,15 +820,6 @@ fn tomlString(toml: []const u8, key: []const u8) ?[]const u8 {
         return after[0..q2];
     }
     return null;
-}
-
-/// Extract a PEP 508 dep spec (e.g. `llvmlite>=0.47.0`) for `pkg` from a
-/// `dependencies = ["..."]` line, terminated at the closing quote.
-fn tomlDepSpec(toml: []const u8, pkg: []const u8) ?[]const u8 {
-    const start = std.mem.indexOf(u8, toml, pkg) orelse return null;
-    const tail = toml[start..];
-    const end = std.mem.indexOfScalar(u8, tail, '"') orelse return null;
-    return tail[0..end];
 }
 
 fn cloneEnv(gpa: Allocator, parent: *std.process.Environ.Map) !std.process.Environ.Map {

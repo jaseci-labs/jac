@@ -687,6 +687,51 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     return ir.IntType(64);
 }
 
+"""Resolve a `has` field's declared type, deciding whether it becomes an opaque
+slot. Returns `(llvm_type, is_opaque)`.
+
+A FOREIGN type -- one the checker modeled but the native backend cannot lower
+(a union with a foreign member like `ast3.AST | None`, `type[Transform]`,
+`TypeBase | None`, ...) -- lowers to a nullable opaque slot (issue #6930, A3)
+instead of raising E5090, so the declaration rides Tier-1 untouched.
+
+A GENUINELY-UNKNOWN type name (a bare `UnknownType`: a typo or undefined type,
+e.g. `uint32_t`) is a real author error, NOT a foreign type: it flows through
+`_resolve_jac_type`, which keeps the established E2018 diagnostic (naming the
+written type) rather than silently becoming an opaque slot. A field whose
+annotation the checker never stamped likewise keeps its i64/struct fallbacks.
+Only a present, non-`UnknownType`, unlowerable `TypeBase` is opaque."""
+impl NaIRGenPass._try_resolve_field_type(var: uni.UniNode) -> tuple {
+    _ptb = var?.type;
+    if _ptb is not None {
+        lowered = self._lower_type(_ptb);
+        if lowered is not None {
+            return (lowered, False);
+        }
+        # Unlowerable. Foreign (checker-modeled) -> opaque; genuinely unknown
+        # (typo / undefined) -> fall through to the E2018-emitting resolver.
+        if not self._type_base_is_unknown(_ptb) {
+            return (ir.IntType(8).as_pointer(), True);
+        }
+    }
+    return (self._resolve_jac_type(var), False);
+}
+
+"""Whether a checker `TypeBase` is the sentinel `UnknownType` (an unresolved /
+typo'd type name). Distinguishes a real author error from a foreign type the
+backend simply cannot model (issue #6930, A3). If the type-system module can't
+be imported (a degraded environment that should never occur once the checker
+has stamped types), conservatively answer True so the type stays LOUD -- routed
+to the E2018/E5090 resolver -- rather than silently becoming an opaque slot."""
+impl NaIRGenPass._type_base_is_unknown(tb: any) -> bool {
+    try {
+        import from jaclang.compiler.type_system.types { UnknownType as _UnknownType }
+        return isinstance(tb, _UnknownType);
+    } except ImportError {
+        return True;
+    }
+}
+
 """Emit E2018 for UnknownType, E5090 for other unlowerable types; return defensive i64."""
 impl NaIRGenPass._emit_unlowerable_type(type_expr: uni.UniNode, tb: any) -> ir.Type {
     is_unknown = False;

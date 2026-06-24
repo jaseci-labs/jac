@@ -6,7 +6,7 @@ JAC_DEBUG_IR=1        — save IR to <stem>.ll in the module's native cache dir
 JAC_VERIFY_IR=1       — run llvmlite parse_assembly to verify the IR
 """
 import from jaclang.cli.console { console }
-import from llvmlite { binding as llvm }
+import from jaclang.compiler.passes.native.llvm { binding as llvm }
 import os;
 import sys;
 
