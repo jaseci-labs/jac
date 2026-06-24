@@ -8,7 +8,7 @@ Requires a controlling terminal (/dev/tty). Uses:
 Type rule: Jac `int` for locals; `i32`/`i64` only in libc FFI decl slots.
 """
 
-import from "/usr/lib/libc.so.6" {
+import from "libc.so.6" {
     obj Termios {
         has c_iflag: u32,
             c_oflag: u32,

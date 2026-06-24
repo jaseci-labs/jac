@@ -16,7 +16,7 @@ Type rule: Jac `int` for locals; `i32`/`i64` only in libc FFI decl slots.
 
 import os;
 
-import from "/usr/lib/libc.so.6" {
+import from "libc.so.6" {
     def open(path: str, flags: i32, mode: i32) -> i32;  def close(fd: i32) -> i32;  def read(
         fd: i32, buf: str, count: i32
     ) -> i32;  def write(fd: i32, buf: str, count: i32) -> i32;  def dup2(
