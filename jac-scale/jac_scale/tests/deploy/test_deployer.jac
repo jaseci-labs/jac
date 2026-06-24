@@ -7,7 +7,7 @@ import from jac_scale.runtime.gateway.service_registry {
     ServiceEntry,
     ServiceStatus
 }
-import from jac_scale.microservices.local_deployer { LocalDeployer }
+import from jac_scale.runtime.orchestrator.local_deployer { LocalDeployer }
 
 # =============================================================================
 # LocalDeployer basics

@@ -39,7 +39,7 @@ curl http://localhost:8000/api/products/function/list_products -X POST -d '{}'
 ```
 
 Services auto-bind in the `18000-18999` range; URLs come from
-`LocalDeployer.url_for`. See [`../../../jac_scale/microservices/docs.md`](../../../jac_scale/microservices/docs.md)
+`LocalDeployer.url_for`. See [`../../../jac_scale/runtime/docs.md`](../../../jac_scale/runtime/docs.md)
 for the full config reference.
 
 ## Real K8s e2e (incl. M-14.a observability stack)

@@ -61,10 +61,10 @@ def _scale_pre_hook(context: HookContext) -> None {
         # but no routes were declared (to fill defaults). Explicit routes win.
         discovered: dict[str, str] = {};
         if filename and ((enabled is None) or (not ms_config.get("routes", {}))) {
-            import from jac_scale.microservices.discovery { discover_sv_services }
+            import from jac_scale.runtime.discovery.discovery { discover_sv_services }
             discovered = discover_sv_services(filename);
         }
-        import from jac_scale.microservices.discovery { should_enter_local_ms }
+        import from jac_scale.runtime.discovery.discovery { should_enter_local_ms }
         if should_enter_local_ms(
             enabled, is_sv_sibling, scale_flag, bool(discovered)
         ) {
@@ -75,7 +75,7 @@ def _scale_pre_hook(context: HookContext) -> None {
             if auto_detected {
                 _print_autodetect_banner(ms_config.get("routes", {}));
             }
-            import from jac_scale.microservices.orchestrator.orchestrator {
+            import from jac_scale.runtime.orchestrator.orchestrator {
                 start_microservice_mode
             }
             start_microservice_mode(ms_config);
@@ -106,7 +106,7 @@ def _scale_pre_hook(context: HookContext) -> None {
             needs_discovery = (enabled is None)
             or (enabled is True and not ms_config.get("routes", {}));
             if needs_discovery and filename and os.path.exists(filename) {
-                import from jac_scale.microservices.discovery { discover_sv_services }
+                import from jac_scale.runtime.discovery.discovery { discover_sv_services }
                 scale_discovered = discover_sv_services(filename);
             }
             if (enabled is True) or scale_discovered {
@@ -215,8 +215,8 @@ def _scale_pre_hook(context: HookContext) -> None {
             }
             show_yaml: bool = bool(context.get_arg("show_yaml", False));
             try {
-                import from jac_scale.microservices.cli.plan { print_plan }
-                import from jac_scale.microservices.cli.diagnostics { has_errors }
+                import from jac_scale.runtime.cli.plan { print_plan }
+                import from jac_scale.runtime.cli.diagnostics { has_errors }
                 (bundle, diagnostics) = print_plan(
                     deployment_target, app_config, show_yaml=show_yaml
                 );
@@ -613,10 +613,10 @@ class JacCmd {
             source="jac-scale"
         )
         def scale_cmd(action: str, service_name: str = "", lines: int = 50) -> int {
-            import from jac_scale.microservices.orchestrator.orchestrator {
+            import from jac_scale.runtime.orchestrator.orchestrator {
                 build_registry
             }
-            import from jac_scale.microservices.local_deployer { LocalDeployer }
+            import from jac_scale.runtime.orchestrator.local_deployer { LocalDeployer }
 
             scale_config = get_scale_config();
             ms_config = scale_config.get_microservices_config();
@@ -636,7 +636,7 @@ class JacCmd {
             # Fill routes from auto-discovery (scanning the working directory)
             # when none are declared, matching what `jac start` does on launch.
             if not ms_config.get("routes", {}) {
-                import from jac_scale.microservices.discovery { discover_sv_services }
+                import from jac_scale.runtime.discovery.discovery { discover_sv_services }
                 discovered = discover_sv_services(".");
                 if discovered {
                     ms_config["routes"] = discovered;
@@ -719,7 +719,7 @@ class JacCmd {
             } elif action == "gateway" {
                 # K8s gateway-only mode: no local service spawning, peer
                 # resolution via DNS through get_sv_registry.
-                import from jac_scale.microservices.orchestrator.orchestrator {
+                import from jac_scale.runtime.orchestrator.orchestrator {
                     start_gateway_only
                 }
                 start_gateway_only(ms_config);

@@ -10,12 +10,12 @@ import from typing { Any }
 import from jaclang.cli.console { console }
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.targets.kubernetes.microservice.manifest_builder { GATEWAY_NAME }
-import from jac_scale.microservices.cli.diagnostics {
+import from jac_scale.runtime.cli.diagnostics {
     Diagnostic,
     PlanValidator,
     has_errors
 }
-import from jac_scale.microservices.cli._narrow { dget, iget, lget, pod_spec, sget }
+import from jac_scale.runtime.cli._narrow { dget, iget, lget, pod_spec, sget }
 
 
 def _diags_for(diagnostics: list[Diagnostic], service: str | None) -> list[Diagnostic] {

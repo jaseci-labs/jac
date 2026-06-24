@@ -7,7 +7,7 @@ manifest builder masks them with defaults."""
 
 import from typing { Any }
 import from jac_scale.targets.kubernetes.microservice.manifest_builder { GATEWAY_NAME }
-import from jac_scale.microservices.cli._narrow {
+import from jac_scale.runtime.cli._narrow {
     bget,
     dget,
     effective_resources,

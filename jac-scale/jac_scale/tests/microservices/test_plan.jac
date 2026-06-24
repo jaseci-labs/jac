@@ -16,15 +16,15 @@ import io;
 import unittest.mock as mock;
 import from contextlib { redirect_stdout }
 import from typing { Any }
-import from jac_scale.microservices.cli.plan { print_plan }
-import from jac_scale.microservices.cli.diagnostics {
+import from jac_scale.runtime.cli.plan { print_plan }
+import from jac_scale.runtime.cli.diagnostics {
     Diagnostic,
     PlanValidator,
     has_errors,
     _cpu_to_millicores,
     _mem_to_bytes
 }
-import jac_scale.microservices.cli.plan as plan_mod;
+import jac_scale.runtime.cli.plan as plan_mod;
 
 
 # ---------------------------------------------------------------------------

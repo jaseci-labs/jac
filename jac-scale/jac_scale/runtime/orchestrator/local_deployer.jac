@@ -13,7 +13,7 @@ import from jac_scale.runtime.gateway.service_registry {
     ServiceEntry,
     ServiceStatus
 }
-import from jac_scale.microservices.process_manager { ServiceProcessManager }
+import from jac_scale.runtime.orchestrator.process_manager { ServiceProcessManager }
 
 glob logger = logging.getLogger(__name__);
 

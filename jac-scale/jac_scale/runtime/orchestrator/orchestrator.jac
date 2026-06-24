@@ -12,8 +12,8 @@ import from jac_scale.runtime.gateway.service_registry {
     ServiceEntry,
     ServiceStatus
 }
-import from jac_scale.microservices.process_manager { ServiceProcessManager }
-import from jac_scale.microservices.local_deployer { LocalDeployer }
+import from jac_scale.runtime.orchestrator.process_manager { ServiceProcessManager }
+import from jac_scale.runtime.orchestrator.local_deployer { LocalDeployer }
 import from jac_scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
 import from jac_scale.runtime.context.util {
     DEFAULT_GATEWAY_PORT,

@@ -4,7 +4,7 @@ import tempfile;
 import shutil;
 import tomllib;
 import from pathlib { Path }
-import from jac_scale.microservices.discovery {
+import from jac_scale.runtime.discovery.discovery {
     discover_sv_services,
     should_enter_local_ms,
     scan_markers
