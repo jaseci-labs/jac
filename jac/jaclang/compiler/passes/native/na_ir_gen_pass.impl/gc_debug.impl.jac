@@ -26,7 +26,7 @@ Methods:
   _emit_rc_live_dump()            — walk live-list at exit, print leaks
 """
 
-import from llvmlite { ir }
+import from jaclang.compiler.passes.native.llvm { ir }
 import os;
 
 """Emit all debug-only globals and their companion functions into the current module.

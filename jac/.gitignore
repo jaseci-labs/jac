@@ -78,3 +78,8 @@ dist/
 # fetch-typeshed step of launcher/payload.zig, not committed -- only the PIN /
 # TARBALL_SHA256 / LICENSE / PROVENANCE.md beside the stubs are tracked.
 jaclang/vendor/typeshed/stdlib/
+.llvm-build/
+# Zig-built LLVMPY_* shim, placed in-tree per host platform (see build.zig).
+libjacllvm.so
+libjacllvm.dylib
+jacllvm.dll
