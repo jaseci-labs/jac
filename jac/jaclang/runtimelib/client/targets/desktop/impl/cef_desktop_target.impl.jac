@@ -49,12 +49,31 @@ def _ensure_cef_dist(cef_dir: Path) -> Path {
     return dist;
 }
 
+"""Return true when an output is missing or older than any source input."""
+def _is_stale(output: Path, inputs: list[Path]) -> bool {
+    if not output.exists() {
+        return True;
+    }
+    out_mtime = output.stat().st_mtime;
+    for src in inputs {
+        if src.exists() and src.stat().st_mtime > out_mtime {
+            return True;
+        }
+    }
+    return False;
+}
+
 """Ensure libcef_dispatch.so exists beside the binding (build it on first use)."""
 def _ensure_libcef_dispatch(cef_dir: Path) -> Path {
     lib = cef_dir / "libcef_dispatch.so";
     src = cef_dir / "cef_dispatch.na.jac";
-    stale = (
-        not lib.exists() or (src.exists() and src.stat().st_mtime > lib.stat().st_mtime)
+    stale = _is_stale(
+        lib,
+        [
+            src,
+            cef_dir / "cef_platform.na.jac",
+            cef_dir / "build_cef_dispatch.sh"
+        ]
     );
     if not stale {
         return lib;
@@ -62,11 +81,13 @@ def _ensure_libcef_dispatch(cef_dir: Path) -> Path {
     console.print(
         "  Building libcef_dispatch.so (jac nacompile --shared)...", style="muted"
     );
-    res = subprocess.run([str(cef_dir / "build_cef_dispatch.sh")]);
+    env = dict(os.environ);
+    env["JAC_BIN"] = _jac_bin();
+    res = subprocess.run([str(cef_dir / "build_cef_dispatch.sh")], env=env);
     if res.returncode != 0 or not lib.exists() {
         raise RuntimeError(
             "Failed to build libcef_dispatch.so. "
-            "Ensure jac is on PATH and patchelf is installed."
+            "Ensure the active jac binary and patchelf are available."
         );
     }
     return lib;
@@ -76,19 +97,25 @@ def _ensure_libcef_dispatch(cef_dir: Path) -> Path {
 def _ensure_cef_subprocess(cef_dir: Path) -> Path {
     helper = cef_dir / "cef-subprocess";
     src = cef_dir / "cef_subprocess.na.jac";
-    stale = (
-        not helper.exists()
-        or (src.exists() and src.stat().st_mtime > helper.stat().st_mtime)
+    stale = _is_stale(
+        helper,
+        [
+            src,
+            cef_dir / "cef_platform.na.jac",
+            cef_dir / "build_cef_subprocess.sh"
+        ]
     );
     if not stale {
         return helper;
     }
     console.print("  Building cef-subprocess (jac nacompile)...", style="muted");
-    res = subprocess.run([str(cef_dir / "build_cef_subprocess.sh")]);
+    env = dict(os.environ);
+    env["JAC_BIN"] = _jac_bin();
+    res = subprocess.run([str(cef_dir / "build_cef_subprocess.sh")], env=env);
     if res.returncode != 0 or not helper.exists() {
         raise RuntimeError(
             "Failed to build cef-subprocess. "
-            "Ensure jac is on PATH and patchelf is installed."
+            "Ensure the active jac binary and patchelf are available."
         );
     }
     return helper;

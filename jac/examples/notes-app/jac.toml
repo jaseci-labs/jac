@@ -1,7 +1,7 @@
 [project]
 name = "notes-app"
 version = "0.1.0"
-description = "Notes app example exercising the CEF cef target"
+description = "Notes app example exercising the CEF desktop target"
 entry-point = "main.jac"
 
 [plugins.client]

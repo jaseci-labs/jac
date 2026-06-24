@@ -9,8 +9,9 @@ BUILD_DIR="$HERE/.build"
 mkdir -p "$BUILD_DIR"
 BUILD_SRC="$BUILD_DIR/cef_subprocess_build.na.jac"
 BIN="$HERE/cef-subprocess"
+JAC_BIN="${JAC_BIN:-jac}"
 
-command -v jac >/dev/null 2>&1 || { echo "ERROR: jac not found on PATH." >&2; exit 1; }
+command -v "$JAC_BIN" >/dev/null 2>&1 || { echo "ERROR: jac not found: $JAC_BIN" >&2; exit 1; }
 
 awk -v plat="$HERE/cef_platform.na.jac" '
   /^# PLATFORM$/ { while ((getline line < plat) > 0) print line; next }
@@ -19,7 +20,7 @@ awk -v plat="$HERE/cef_platform.na.jac" '
 ' "$HERE/cef_subprocess.na.jac" > "$BUILD_SRC"
 
 echo ">> compiling cef-subprocess (jac nacompile)"
-jac nacompile "$BUILD_SRC" -o "$BIN"
+"$JAC_BIN" nacompile "$BUILD_SRC" -o "$BIN"
 
 if command -v patchelf >/dev/null 2>&1; then
     patchelf --set-rpath '$ORIGIN' "$BIN" 2>/dev/null || \
