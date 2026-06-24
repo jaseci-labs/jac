@@ -713,7 +713,15 @@ impl `test(
             if ignore {
                 pargs.append('--ignore=' + ignore);
             }
-            jobs = os.environ.get('JAC_TEST_JOBS', 'auto');
+            # Worker count precedence: the JAC_TEST_JOBS env var wins, else the
+            # `[dev] test_jobs` setting in jac.toml, else 'auto'. '0' (from either)
+            # forces serial -- handled by the guard below.
+            jobs = os.environ.get('JAC_TEST_JOBS', '');
+            if not jobs {
+                import from jaclang.project.config { get_config }
+                jobs_cfg = get_config();
+                jobs = jobs_cfg.dev.test_jobs if jobs_cfg else 'auto';
+            }
             # No worker pool for a single named test (overhead > benefit).
             if jobs and jobs != '0' and not test_name {
                 pargs.append('-n');

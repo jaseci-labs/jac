@@ -941,11 +941,21 @@ impl NaIRGenPass._emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
-    if unresolved or not tags {
-        # Any name with no native tag (e.g. a user archetype) makes the result
-        # unsound -- including inside a tuple where a sibling name resolves
-        # (`isinstance(x, (int, MyNode))`), which must NOT silently drop the
-        # unsupported arm. Emit a structured error instead of a wrong answer.
+    if unresolved {
+        if not tags {
+            # Every target name lacks a builtin JacVal tag: lower as a user
+            # archetype check via vtable-pointer identity. The helper surfaces
+            # E5090 itself if a name resolves to no native vtable.
+            return self._emit_isinstance_user(nd, operand, unresolved);
+        }
+        # Mixed builtin + user names (`isinstance(x, (int, MyNode))`) cannot be
+        # lowered soundly: the operand is either a boxed scalar or a struct
+        # pointer, never both. Surface a structured error rather than silently
+        # dropping the unsupported arm.
+        self._emit_unsupported_builtin_call(nd, "isinstance");
+        return None;
+    }
+    if not tags {
         self._emit_unsupported_builtin_call(nd, "isinstance");
         return None;
     }
@@ -965,6 +975,110 @@ impl NaIRGenPass._emit_isinstance(nd: uni.FuncCall) -> (ir.Value | None) {
     if isinstance(operand.type, ir.PointerType) and self._is_owned(operand) {
         self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
     }
+    return result;
+}
+
+"""Lower `isinstance(operand, T)` where `T` (or every member of a tuple of
+types) is a user archetype, via vtable-pointer identity.
+
+Every archetype that participates in inheritance carries its class's `__vtable`
+pointer at field 0 (set at allocation), so the runtime vtable pointer uniquely
+identifies the concrete class. The check compares the operand's field-0 pointer
+against the vtables of `T` and *all its subclasses* -- the subtype set is
+resolved statically from the C3 MRO, making this inheritance- and
+multiple-inheritance-safe with no new runtime metadata. `isinstance(None, T)` is
+False (guarded, never a deref). Returns an `i1`; `None` with a structured error
+when `operand` carries no static struct or no target resolves to a native
+vtable.
+"""
+impl NaIRGenPass._emit_isinstance_user(
+    nd: uni.FuncCall, operand: ir.Value, names: list[str]
+) -> (ir.Value | None) {
+    i1 = ir.IntType(1);
+    i8 = ir.IntType(8);
+    i32 = ir.IntType(32);
+    # The operand must be a struct pointer carrying a vtable at field 0; an
+    # `any`-typed (boxed) operand has no static struct to read.
+    if not isinstance(operand.type, ir.PointerType) {
+        self._emit_unsupported_builtin_call(nd, "isinstance");
+        return None;
+    }
+    # Concrete target set: every native archetype with an emitted vtable whose
+    # MRO contains a requested name (i.e. the name itself or a subclass of it).
+    # Iterating a dict already yields unique keys and the inner `break` stops at
+    # the first matching name, so no extra dedup is needed.
+    target_vtables: list[ir.GlobalVariable] = [];
+    for cand in self.vtable_globals {
+        cand_mro = self._mro_of(cand);
+        for name in names {
+            if name in cand_mro {
+                target_vtables.append(self.vtable_globals[cand]);
+                break;
+            }
+        }
+    }
+    if not target_vtables {
+        # No native subclass with a vtable matches (e.g. a foreign or
+        # non-polymorphic type name) -- cannot lower soundly.
+        self._emit_unsupported_builtin_call(nd, "isinstance");
+        return None;
+    }
+    # Field 0 is the vtable slot only when the operand's static struct has a
+    # vtable; for a plain struct it is the first user-declared field and must
+    # NOT be read as a vtable pointer. Resolve the operand's static struct to
+    # decide how (and whether) to read field 0.
+    struct_name = self._struct_name_of(nd.params[0] if nd.params else None);
+    if struct_name is None or struct_name not in self.struct_types {
+        # Unknown / foreign / not-lowered operand: cannot read field 0 soundly.
+        self._emit_unsupported_builtin_call(nd, "isinstance");
+        return None;
+    }
+    if struct_name not in self.vtable_globals {
+        # A locally lowered struct with no vtable participates in no inheritance,
+        # so it can never be an instance of a vtable-bearing target: the result
+        # is statically False (and field 0 is a user field, not a vtable slot).
+        if self._is_owned(operand) {
+            self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
+        }
+        return ir.Constant(i1, 0);
+    }
+    # Guard the field-0 load behind a null check: `isinstance(None, T)` is
+    # False and must not dereference.
+    pre_bb = self.builder.block;
+    null_ptr = ir.Constant(operand.type, None);
+    is_null = self.builder.icmp_unsigned(
+        "==", operand, null_ptr, name="isinst.null.chk"
+    );
+    nonnull_bb = self.builder.append_basic_block(name="isinst.nonnull");
+    merge_bb = self.builder.append_basic_block(name="isinst.merge");
+    self.builder.cbranch(is_null, merge_bb, nonnull_bb);
+    # Non-null: read the vtable pointer at field 0 and OR-compare it against
+    # every concrete target vtable base.
+    self.builder.position_at_end(nonnull_bb);
+    i8_pp = i8.as_pointer().as_pointer();
+    op_as = self.builder.bitcast(operand, i8_pp.as_pointer(), name="isinst.obj");
+    vptr = self.builder.load(op_as, name="isinst.vptr");
+    cmp: (ir.Value | None) = None;
+    for vt in target_vtables {
+        vt_base = self.builder.gep(
+            vt, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="isinst.vt.base"
+        );
+        eq = self.builder.icmp_unsigned("==", vptr, vt_base, name="isinst.eq");
+        cmp = eq if cmp is None else self.builder.or_(cmp, eq, name="isinst.or");
+    }
+    # Only the vtable pointer was inspected; release an owned operand temporary
+    # exactly once (e.g. `isinstance(make_node(), Leaf)`). Owned temporaries are
+    # never null, so this runs only on the non-null path.
+    if self._is_owned(operand) {
+        self._emit_rc_release_simple(operand, op="isinstance_arg", loc="");
+    }
+    end_nonnull = self.builder.block;
+    self.builder.branch(merge_bb);
+    # Merge: False when the operand was null, else the comparison result.
+    self.builder.position_at_end(merge_bb);
+    result = self.builder.phi(i1, name="isinst.result");
+    result.add_incoming(ir.Constant(i1, 0), pre_bb);
+    result.add_incoming(cmp, end_nonnull);
     return result;
 }
 # ─── External Function Support ───────────────────────────────

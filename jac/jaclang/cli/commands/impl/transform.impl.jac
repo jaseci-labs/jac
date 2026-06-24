@@ -30,6 +30,10 @@ impl py2jac(filename: str) -> int {
         for error in prog.errors_had {
             console.error(f"{error}");
         }
+        # Surface failures: emitting invalid Jac must not exit 0 (#6928).
+        if prog.errors_had {
+            return 1;
+        }
     } else {
         console.error('Not a .py file.');
         return 1;
