@@ -354,7 +354,15 @@ fn macosShim(
     // [1-10]" -> segfault), so point ld64 at the release's OWN libLTO.dylib (kept
     // by payload.zig extractLlvmSubset) -- it matches the bitcode it produced.
     // This is link-time only; the output dylib gains no libLTO runtime dep.
-    cc.addPrefixedFileArg("-Wl,-lto_library,", .{ .cwd_relative = b.fmt("{s}/lib/libLTO.dylib", .{llvm_dir}) });
+    //
+    // The path MUST be absolute: ld64 silently falls back to its default libLTO
+    // when -lto_library can't be resolved, and a relative path is not reliably
+    // resolved from ld's cwd. Set LIBLTO_PATH too -- the env override ld honors
+    // most reliably across ld64 / ld-prime.
+    const lto_dylib = b.fmt("{s}/lib/libLTO.dylib", .{llvm_dir});
+    const lto_abs = if (std.fs.path.isAbsolute(lto_dylib)) lto_dylib else b.pathFromRoot(lto_dylib);
+    cc.setEnvironmentVariable("LIBLTO_PATH", lto_abs);
+    cc.addPrefixedFileArg("-Wl,-lto_library,", .{ .cwd_relative = lto_abs });
     // LLVM's system deps. zstd comes from Homebrew (not on the default search
     // path); z/xml2 are in the macOS SDK, and clang++ links libc++ itself.
     cc.addArgs(&.{ "-lz", "-lxml2" });
