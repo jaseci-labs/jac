@@ -262,6 +262,11 @@ def get_inference_sched -> list[type[Transform[uni.Module, uni.Module]]] {
 def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
     global _codegen_sched_loading;
     if _codegen_sched_loading or _ir_sched_loading {
+        # Re-entrancy fallback hit only while compiling the pass modules this
+        # schedule depends on (internal jaclang modules, never a torch.compile
+        # entry point). GraphBreakDetectPass is intentionally omitted: importing
+        # it here would re-trigger compiling it, the circular import this guard
+        # exists to break -- and it would prune on these modules anyway.
         return [PyastGenPass, PyBytecodeGenPass];
     }
     _codegen_sched_loading = True;
@@ -270,16 +275,37 @@ def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.pyjac_ast_link_pass {
             PyJacAstLinkPass
         }
+        # GraphMend (PyTorch 2 graph-break elimination) runs before PyastGenPass
+        # so it analyzes only the Python lowering target. GraphBreakDetectPass
+        # self-gates on --graphmend (inert otherwise) and only tags candidates;
+        # the transformation passes that consume the tags land separately.
+        import from jaclang.compiler.passes.main.graphmend.graph_break_detect_pass {
+            GraphBreakDetectPass
+        }
         # InteropAnalysis + WalkerEffects were merged into BoundaryAnalysisPass,
         # which now runs once in the shared front-end (get_boundary_analysis_sched)
         # rather than here in codegen.
         passes: list[type[Transform[uni.Module, uni.Module]]] = [EsastGenPass];
         import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
         passes.extend([NaIRGenPass, NativeCompilePass]);
-        passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
+        passes.extend(
+            [GraphBreakDetectPass, PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]
+        );
         return passes;
     } except ImportError {
-        return [PyastGenPass, PyBytecodeGenPass];
+        # The ecmascript / native imports above can fail in a Python-only
+        # environment; GraphMend depends only on core modules, so keep it in the
+        # fallback schedule too -- otherwise --graphmend would silently no-op.
+        # Guard its import as well: should GraphMend itself ever fail to import,
+        # degrade to a working schedule rather than break Python-only compilation.
+        try {
+            import from jaclang.compiler.passes.main.graphmend.graph_break_detect_pass {
+                GraphBreakDetectPass
+            }
+            return [GraphBreakDetectPass, PyastGenPass, PyBytecodeGenPass];
+        } except ImportError {
+            return [PyastGenPass, PyBytecodeGenPass];
+        }
     } finally {
         _codegen_sched_loading = False;
     }
