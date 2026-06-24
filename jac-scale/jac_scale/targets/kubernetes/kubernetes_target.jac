@@ -10,6 +10,7 @@ import from jac_scale.abstractions.models.resource_status {
 }
 import from jac_scale.abstractions.logger { Logger }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.targets.kubernetes.microservice.source_bundle { JAC_ZIG_VERSION }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     COMPANION_DEFS,
     check_deployment_status,
@@ -253,20 +254,38 @@ obj KubernetesTarget(DeploymentTarget) {
                 commands.append(f"git checkout {config.jaseci_commit}");
             }
             commands.append('git submodule update --init --recursive');
-            commands.append('pip install pluggy');
-            # The image pre-installs jaclang from PyPI; if that released version
-            # is newer than this branch, a plain `pip install -e ./jac` is a
-            # no-op (pip sees the requirement already satisfied) and the pod runs
-            # released jaclang instead of the local checkout. --force-reinstall
-            # makes the local editable win regardless of version; --no-deps
-            # keeps it from re-resolving the already-installed dependency tree.
-            commands.append('pip install --force-reinstall --no-deps -e ./jac');
-            commands.append('jac install -e ./jac-scale --extras all');
-            # Only when the checkout still ships jac-client (older forks pre-#6840):
-            # skip-when-absent. The client framework now lives in jaclang core.
-            commands.append('[ ! -d ./jac-client ] || jac install -e ./jac-client');
-            commands.append('jac install -e ./jac-byllm');
-            commands.append('jac install -e ./jac-mcp');
+            # jaclang ships as the self-contained `jac` binary, not a pip/editable
+            # package, so the checkout is compiled with `zig build` to run the
+            # branch's own jaclang (the point of experimental mode). zstd is
+            # needed by build.zig's python-build-standalone payload step. The Zig
+            # version comes from source_bundle.JAC_ZIG_VERSION (single source of
+            # truth, tracking jac/build.zig.zon's minimum_zig_version).
+            commands.append(
+                'apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 '
+                '-o Acquire::https::Timeout=20 update || true'
+            );
+            commands.append('apt-get install -y --no-install-recommends xz-utils zstd');
+            commands.append(
+                'ZARCH="$(uname -m)"; [ "$ZARCH" = "arm64" ] && ZARCH="aarch64"'
+            );
+            commands.append(f'ZDIR="zig-${{ZARCH}}-linux-{JAC_ZIG_VERSION}"');
+            commands.append(
+                f'curl -fsSL "https://ziglang.org/download/{JAC_ZIG_VERSION}/${{ZDIR}}.tar.xz" '
+                '| tar -xJ -C /tmp'
+            );
+            commands.append('export PATH="/tmp/${ZDIR}:$PATH"');
+            commands.append('( cd jac && zig build )');
+            commands.append('export PATH="$PWD/jac/zig-out/bin:$PATH"');
+            # --global: plugins go into the binary's own site so `jac start`
+            # finds them after `cd ..` (a bare `jac install` would target a
+            # per-project .jac/venv that isn't on PATH at run time).
+            commands.append('jac install -e ./jac-scale --extras all --global');
+            # byllm/mcp are optional: a core-only fork branch may not ship them,
+            # so skip-when-absent rather than failing the bootstrap.
+            commands.append(
+                '[ ! -d ./jac-byllm ] || jac install -e ./jac-byllm --global'
+            );
+            commands.append('[ ! -d ./jac-mcp ] || jac install -e ./jac-mcp --global');
             commands.append('cd ..');
         } else {
             packages = config.plugin_versions or {};
@@ -274,28 +293,41 @@ obj KubernetesTarget(DeploymentTarget) {
             scale_v = packages.get('jac_scale', 'latest');
             byllm_v = packages.get('jac_byllm', 'latest');
             mcp_v = packages.get('jac_mcp', 'latest');
-            if jaclang_v == 'latest' {
-                commands.append('pip install jaclang');
-            } else {
-                commands.append(f'pip install jaclang=={jaclang_v}');
+            # jaclang ships as the self-contained `jac` binary (not on PyPI); the
+            # official installer fetches it from GitHub Releases onto PATH.
+            # `--version` pins to a specific jaseci release; omit it for latest.
+            install_jac = (
+                'curl -fsSL https://raw.githubusercontent.com/jaseci-labs/'
+                'jaseci/main/scripts/install.sh | bash'
+            );
+            if jaclang_v != 'latest' {
+                install_jac += f" -s -- --version {jaclang_v}";
             }
+            commands.append(install_jac);
+            commands.append('export PATH="$HOME/.local/bin:$PATH"');
+            # Plugins install --global (into the binary's own site, honoring any
+            # pins in config.plugin_versions) so `jac start` finds them: these run
+            # before `cd {app_mount_path}`, so a bare `jac install` would have no
+            # project venv to target. Extras ride in the spec as PEP 508 brackets
+            # (`jac-scale[all]`) because `--extras` is dropped for named packages.
+            # jac-scale[all] is always needed; byllm/mcp are opt-out via 'none'.
             if scale_v == 'latest' {
-                commands.append('pip install "jac-scale[all]"');
+                commands.append("jac install 'jac-scale[all]' --global");
             } else {
-                commands.append(f'pip install "jac-scale[all]=={scale_v}"');
+                commands.append(f"jac install 'jac-scale[all]=={scale_v}' --global");
             }
             if byllm_v and byllm_v != 'none' {
                 if byllm_v == 'latest' {
-                    commands.append('pip install byllm');
+                    commands.append('jac install byllm --global');
                 } else {
-                    commands.append(f'pip install byllm=={byllm_v}');
+                    commands.append(f'jac install byllm=={byllm_v} --global');
                 }
             }
             if mcp_v and mcp_v != 'none' {
                 if mcp_v == 'latest' {
-                    commands.append('pip install jac-mcp');
+                    commands.append('jac install jac-mcp --global');
                 } else {
-                    commands.append(f'pip install jac-mcp=={mcp_v}');
+                    commands.append(f'jac install jac-mcp=={mcp_v} --global');
                 }
             }
         }
