@@ -269,6 +269,13 @@ fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
 
     const lib = b.addLibrary(.{ .name = "jacllvm", .linkage = .dynamic, .root_module = mod });
 
+    // macOS: Zig's self-hosted Mach-O linker rejects some object members in
+    // LLVM's release archives ("unknown cpu architecture: 0"). LLD's Mach-O
+    // backend (bundled with Zig) links LLVM's own archives cleanly, so force it
+    // there. Linux keeps its default linker -- the path that already builds and
+    // is exercised in CI.
+    if (target.result.os.tag == .macos) lib.use_lld = true;
+
     // Link every LLVM static archive; the linker drops what the shim never
     // references (host-only pruning of the archive set is a size follow-up).
     var it = dir.iterate();
