@@ -688,6 +688,25 @@ test "py to jac" {
     assert '"""Print function."""' in stdout_value;
 }
 
+test "py to jac line continuation does not drop file" {
+    # #6928: implicit string concat joined by a `\` line-continuation used to
+    # leak the backslash into the emitted Jac, so py2jac exited 0 while writing
+    # empty stdout -- silently dropping the file in a batch port.
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+    try {
+        result = transform.py2jac(fixture_path("py2jac_line_continuation.py"));
+    } finally {
+        sys.stdout = old_stdout;
+    }
+    stdout_value = captured.getvalue();
+    assert result == 0 , f"py2jac should succeed, got exit {result}";
+    assert stdout_value.strip() , "py2jac must not emit empty output on success";
+    assert "\\\n" not in stdout_value , f"Stray line-continuation in:\n{stdout_value}";
+    assert '"hello " "world"' in stdout_value , f"Expected folded concat in:\n{stdout_value}";
+}
+
 test "lambda arg annotation" {
     captured = io.StringIO();
     old_stdout = sys.stdout;
