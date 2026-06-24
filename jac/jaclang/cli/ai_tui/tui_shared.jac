@@ -341,7 +341,7 @@ def _ensure_na_artifact(
     # bin/* by hand). build.sh / build.ps1 --quick builds both jac-na-tui and the
     # shared lib, so the same invocation works for either artifact.
     #
-    # pkg_root: jac_super/ package root (parent of ai_tui_na/).
+    # pkg_root: jaclang/cli/ package root (parent of ai_tui_na/).
     # artifact_path: full path to the built artifact -- also used in error messages.
     # source_file: full path to a NA source file used to detect a dev tree.
     # label: human-readable name used in console messages and error hints.

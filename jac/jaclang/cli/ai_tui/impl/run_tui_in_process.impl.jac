@@ -17,16 +17,16 @@ impl run_tui_in_process(req: AgentRequest) -> int {
     import from pathlib { Path }
     import from jaclang.cli.ai_agent { ui_configure, ui_stop, ui_stream }
     import from jaclang.cli.console { console }
-    import from jac_super.ai_agent.tui_shared {
+    import from jaclang.cli.ai_tui.tui_shared {
         _configure_ui_env,
         _debug_log,
         _dispatch_cmd,
         _frame_blob,
         _require_tty
     }
-    import from jac_super.ai_agent.tui_host { TuiHost, _ensure_tui_lib, _tui_lib_path }
+    import from jaclang.cli.ai_tui.tui_host { TuiHost, _ensure_tui_lib, _tui_lib_path }
 
-    # run_tui_in_process.jac lives in jac_super/ai_agent/; the .so in ai_tui_na/.
+    # run_tui_in_process.jac lives in jaclang/cli/ai_tui/; the .so in ai_tui_na/.
     pkg_root = Path(__file__).resolve().parent.parent;
 
     typed_req: AgentRequest = req;

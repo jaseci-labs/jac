@@ -26,7 +26,7 @@ text_escaped: \n -> \\n, \\ -> \\\\
 """
 
 import from jaclang.cli.agent_api { AgentRequest }
-import from jac_super.ai_agent.tui_shared {
+import from jaclang.cli.ai_tui.tui_shared {
     _configure_ui_env,
     _debug_log,
     _dispatch_cmd,
@@ -42,7 +42,7 @@ impl run_tui_session(req: AgentRequest) -> int {
     import from jaclang.cli.ai_agent { ui_configure, ui_stop, ui_stream }
     import from jaclang.cli.console { console }
 
-    # run_tui_session.jac lives in jac_super/ai_agent/; sidecars in jac_super/ai_tui_*/
+    # run_tui_session.jac lives in jaclang/cli/ai_tui/; sidecars in jaclang/cli/ai_tui_na/
     pkg_root = Path(__file__).resolve().parent.parent;
 
     typed_req: AgentRequest = req;
@@ -216,7 +216,7 @@ def _resolve_tui_command(pkg_root: any, initial: str) -> dict {
             "ok": False,
             "cmd_args": [],
             "error": f"jac-na-tui not found at {binary}",
-            "hint": "Build it with:  jac-super/jac_super/ai_tui_na/build.sh",
+            "hint": "Build it with:  jac/jaclang/cli/ai_tui_na/build.sh",
 
         };
     }

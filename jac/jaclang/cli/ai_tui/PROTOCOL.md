@@ -1,11 +1,11 @@
 # `jac ai --tui` Renderer Protocol
 
 This is the wire contract between the Jac/Python **control plane**
-(`jaclang.cli.ai_agent` + `jac_super.ai_agent.run_tui_session`) and a renderer
+(`jaclang.cli.ai_agent` + `jaclang.cli.ai_tui.run_tui_session`) and a renderer
 **sidecar** (the `na` native renderer).
 
 It is derived from the live implementation in
-`jac_super/ai_agent/impl/run_tui_session.impl.jac`. Any sidecar that speaks
+`jaclang/cli/ai_tui/impl/run_tui_session.impl.jac`. Any sidecar that speaks
 this protocol is interchangeable. **Do not change it casually**; behavior is
 defined against this document.
 

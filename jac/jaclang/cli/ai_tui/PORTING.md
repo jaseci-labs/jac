@@ -101,7 +101,7 @@ plus `terminal.na.jac` (pure ANSI strings).
 ## Recommended source layout
 
 ```
-jac_super/ai_tui_na/
+jaclang/cli/ai_tui_na/
   tty/
     libc_tty.linux.na.jac    # promote current libc_tty.na.jac
     libc_tty.darwin.na.jac   # macOS
@@ -265,7 +265,7 @@ All `JAC_AI_UI_*` startup vars in `PROTOCOL.md` stay the same on every OS.
 
 1. **macOS** - POSIX variant of `libc_tty`; smallest diff from Linux.
 2. **Windows** - new `console.win32.na.jac` + spawn/handle plumbing.
-3. **CI matrix** - build artifacts per OS; publish alongside `jac-super`.
+3. **CI matrix** - build artifacts per OS; publish alongside the jaclang core wheel.
 
 ## What not to port per platform
 

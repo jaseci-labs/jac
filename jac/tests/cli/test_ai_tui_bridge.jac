@@ -59,7 +59,7 @@ obj DummySpawnedProc {
 
 test "SEND dispatch resolves the UI bridge in dispatcher scope" {
     seen: list[str] = [];
-    tui_mod = importlib.import_module("jac_super.ai_agent.run_tui_session");
+    tui_mod = importlib.import_module("jaclang.cli.ai_tui.run_tui_session");
     dispatch = getattr(tui_mod, "_dispatch_cmd");
     old_send = getattr(ai_mod, "ui_send");
 
@@ -81,7 +81,7 @@ test "SEND dispatch resolves the UI bridge in dispatcher scope" {
 
 test "QUIT dispatch resolves ui_stop and tears down the sidecar" {
     seen: list[str] = [];
-    tui_mod = importlib.import_module("jac_super.ai_agent.run_tui_session");
+    tui_mod = importlib.import_module("jaclang.cli.ai_tui.run_tui_session");
     dispatch = getattr(tui_mod, "_dispatch_cmd");
     old_stop = getattr(ai_mod, "ui_stop");
 
@@ -107,10 +107,10 @@ test "QUIT dispatch resolves ui_stop and tears down the sidecar" {
 
 
 test "command resolution reports missing binary and threads seed prompt" {
-    tui_mod = importlib.import_module("jac_super.ai_agent.run_tui_session");
+    tui_mod = importlib.import_module("jaclang.cli.ai_tui.run_tui_session");
     resolve_cmd = getattr(tui_mod, "_resolve_tui_command");
-    # run_tui_session lives in jac_super/ai_agent/; the sidecar is in
-    # jac_super/ai_tui_na/, so pkg_root is jac_super/ (mirrors the launcher's own
+    # run_tui_session lives in jaclang/cli/ai_tui/; the sidecar is in
+    # jaclang/cli/ai_tui_na/, so pkg_root is jaclang/cli/ (mirrors the launcher's own
     # `Path(__file__).resolve().parent.parent`).
     pkg_root = Path(tui_mod.__file__).resolve().parent.parent;
 
@@ -127,7 +127,7 @@ test "command resolution reports missing binary and threads seed prompt" {
 
 test "_list_project_files enumerates files under a project dir" {
     import tempfile;
-    shared_mod = importlib.import_module("jac_super.ai_agent.tui_shared");
+    shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
     lister = getattr(shared_mod, "_list_project_files");
     with tempfile.TemporaryDirectory() as d {
         os.makedirs(os.path.join(d, "sub"));
@@ -162,7 +162,7 @@ test "_probe_tty on win32 returns available=True with empty device and skips tty
     import sys;
     import unittest.mock;
 
-    shared_mod = importlib.import_module("jac_super.ai_agent.tui_shared");
+    shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
     probe_tty = getattr(shared_mod, "_probe_tty");
 
     mock_stream = unittest.mock.MagicMock();
@@ -189,7 +189,7 @@ test "_probe_tty on win32 returns available=False when no stream is a tty" {
     import sys;
     import unittest.mock;
 
-    shared_mod = importlib.import_module("jac_super.ai_agent.tui_shared");
+    shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
     probe_tty = getattr(shared_mod, "_probe_tty");
 
     with unittest.mock.patch.object(sys, "platform", "win32") {
@@ -209,7 +209,7 @@ test "_probe_tty on posix resolves ttyname from first tty stream" {
     import sys;
     import unittest.mock;
 
-    shared_mod = importlib.import_module("jac_super.ai_agent.tui_shared");
+    shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
     probe_tty = getattr(shared_mod, "_probe_tty");
 
     mock_stream = unittest.mock.MagicMock();
@@ -236,7 +236,7 @@ test "_probe_tty on posix returns available=False when no tty stream" {
     import sys;
     import unittest.mock;
 
-    shared_mod = importlib.import_module("jac_super.ai_agent.tui_shared");
+    shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
     probe_tty = getattr(shared_mod, "_probe_tty");
 
     with unittest.mock.patch.object(sys, "platform", "linux") {
@@ -256,7 +256,7 @@ test "_probe_tty on posix falls back to empty device when ttyname raises" {
     import sys;
     import unittest.mock;
 
-    shared_mod = importlib.import_module("jac_super.ai_agent.tui_shared");
+    shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
     probe_tty = getattr(shared_mod, "_probe_tty");
 
     mock_stream = unittest.mock.MagicMock();
@@ -279,7 +279,7 @@ test "_probe_tty on posix falls back to empty device when ttyname raises" {
 
 
 test "run_tui_session suppresses terminal prints only for the session lifetime" {
-    tui_mod = importlib.import_module("jac_super.ai_agent.run_tui_session");
+    tui_mod = importlib.import_module("jaclang.cli.ai_tui.run_tui_session");
     runner = getattr(tui_mod, "run_tui_session");
     old_ensure = getattr(tui_mod, "_ensure_tui_binary");
     old_resolve = getattr(tui_mod, "_resolve_tui_command");

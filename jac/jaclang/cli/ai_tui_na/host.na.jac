@@ -1,7 +1,7 @@
 """In-process TUI host: the C-ABI :pub surface the sv agent dlopens (plan §5).
 
 Built as a shared library:  jac nacompile host.na.jac --shared -o bin/libtui.so
-Loaded from the sv side via ctypes.CDLL; see jac_super/ai_agent/tui_host (Phase 2).
+Loaded from the sv side via ctypes.CDLL; see jaclang/cli/ai_tui/tui_host (Phase 2).
 
 The TUI owns its own TuiState + DiffEngine as module globs -- they never cross
 the ABI as Jac objects, so no jac_retain/jac_release dance is needed (plan §4).

@@ -9,7 +9,7 @@ the frozen frame/command seam crossing it. Two layers:
      the shared `_frame_blob` encoder + native parser, and assert it round-trips
      into the rendered screen buffer. Also proves the na -> sv pull queue starts
      drained and quit is unset. This is the sv-side twin of the native Phase-1
-     gate (`jac-super/jac_super/ai_tui_na/test_host.jac`), reached through the real `TuiHost` wrapper
+     gate (`jac/jaclang/cli/ai_tui_na/test_host.jac`), reached through the real `TuiHost` wrapper
      rather than raw ctypes.
   2. Real PTY (skips cleanly where openpty is unavailable): open a pseudo-tty,
      `start` the host on it, type `hi`+Enter into the controller end, and drive
@@ -31,8 +31,8 @@ import from pathlib { Path }
 def _host_env -> dict {
     # Resolve the TuiHost binding, the shared frame encoder, and the libtui.so
     # path. Returns {"ok": False} when the .so is unavailable so callers can skip.
-    host_mod = importlib.import_module("jac_super.ai_agent.tui_host");
-    shared_mod = importlib.import_module("jac_super.ai_agent.tui_shared");
+    host_mod = importlib.import_module("jaclang.cli.ai_tui.tui_host");
+    shared_mod = importlib.import_module("jaclang.cli.ai_tui.tui_shared");
     pkg_root = Path(host_mod.__file__).resolve().parent.parent;
 
     ensure_lib = getattr(host_mod, "_ensure_tui_lib");

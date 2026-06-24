@@ -49,7 +49,12 @@ glob PT_NULL = 0,
      PT_DYNAMIC = 2,
      PT_INTERP = 3,
      PT_PHDR = 6,
-     PT_GNU_STACK = 0x6474e551;
+     PT_GNU_STACK = 0x6474e551,
+     # PT_GNU_RELRO marks a sub-range of the RW data segment the loader should
+     # mprotect read-only AFTER applying relocations. Combined with eager binding
+     # (DF_BIND_NOW) it makes .got.plt/.got immutable for the process lifetime,
+     # so a stray write can never silently redirect a PLT slot (e.g. GOT[free]).
+     PT_GNU_RELRO = 0x6474e552;
 
 # ── Program header flags ─────────────────────────────────────────
 glob PF_X = 0x1,
@@ -77,7 +82,18 @@ glob DT_NULL = 0,
      # at a vector of init function pointers the loader runs on dlopen/load.
      DT_SONAME = 14,
      DT_INIT_ARRAY = 25,
-     DT_INIT_ARRAYSZ = 27;
+     DT_INIT_ARRAYSZ = 27,
+     # Eager-binding flags. DT_FLAGS/DF_BIND_NOW is the generic form; many loaders
+     # only honour the DT_FLAGS_1/DF_1_NOW pair, so emit both. They tell the
+     # dynamic linker to resolve every PLT relocation at load time instead of
+     # lazily on first call -- no runtime writes to GOT.PLT, which closes the
+     # window where a concurrent thread could observe/clobber a half-bound slot.
+     DT_FLAGS = 30,
+     DT_FLAGS_1 = 0x6ffffffb;
+
+# ── Dynamic flag bits ────────────────────────────────────────────
+glob DF_BIND_NOW = 0x8,
+     DF_1_NOW = 0x1;
 
 # ── ELF object type ──────────────────────────────────────────────
 # ET_EXEC = 2 (declared above); ET_DYN = 3 is a shared object / PIE.
@@ -1792,7 +1808,7 @@ impl ElfLinker.build_shared_object -> bytes {
 
     # ── Layout: code segment (RX/R, file offset == vaddr since BASE 0) ──
     ehdr_size = 64;
-    num_phdrs = 5;  # PHDR, LOAD(code), LOAD(data), DYNAMIC, GNU_STACK — no INTERP
+    num_phdrs = 6;  # PHDR, LOAD(code), LOAD(data), DYNAMIC, GNU_STACK, GNU_RELRO — no INTERP
     phdr_size = num_phdrs * 56;
     cur_offset = ehdr_size + phdr_size;
     cur_offset = _align(cur_offset, 8);
@@ -1882,13 +1898,27 @@ impl ElfLinker.build_shared_object -> bytes {
         dyn_entries.append((DT_INIT_ARRAY, 0));
         dyn_entries.append((DT_INIT_ARRAYSZ, init_arr_size));
     }
+    # Force eager symbol binding so the loader resolves all JUMP_SLOT relocations
+    # at dlopen and never writes GOT.PLT once NA code is running. With PT_GNU_RELRO
+    # (below) the GOT then becomes read-only -- removing the lazy-binding window
+    # that let a concurrent thread corrupt GOT[free] in the in-process backend.
+    dyn_entries.append((DT_FLAGS, DF_BIND_NOW));
+    dyn_entries.append((DT_FLAGS_1, DF_1_NOW));
     dyn_entries.append((DT_NULL, 0));
     dynamic_size = len(dyn_entries) * 16;
     cur_offset = dynamic_foff + dynamic_size;
-    cur_offset = _align(cur_offset, 8);
+    # Page-align .data so the RELRO region (GOTs + init_array + .dynamic) occupies
+    # whole pages ending exactly where .data begins. The loader mprotects RELRO by
+    # rounding both ends DOWN to a page boundary, so a sub-page region (or .data
+    # sharing the GOT's last page) would protect nothing -- this padding is what
+    # makes PT_GNU_RELRO actually cover .got.plt. Writable globals start fresh.
+    cur_offset = _align(cur_offset, PAGE_SIZE);
     data_foff = cur_offset;
     cur_offset += len(data_blob);
     data_seg_size = cur_offset - data_seg_foff;
+    # RELRO spans the data segment up to (not including) .data: full pages, so the
+    # loader's round-down leaves the entire GOT/dynamic region read-only.
+    relro_size = data_foff - data_seg_foff;
     total_file_size = data_seg_foff + data_seg_size;
 
     # ── Virtual addresses (BASE 0, so vaddr == file offset) ──
@@ -2448,6 +2478,25 @@ impl ElfLinker.build_shared_object -> bytes {
     # kernel refuses dlopen ("cannot enable executable stack"). All fields 0.
     struct.pack_into(
         "<IIQQQQQQ", output, phdr_off, PT_GNU_STACK, PF_R | PF_W, 0, 0, 0, 0, 0, 0
+    );
+    phdr_off += 56;
+    # PT_GNU_RELRO — covers the data segment from its start (the GOTs) through the
+    # end of .dynamic. The loader mprotects this read-only after relocating, so
+    # .got.plt/.got become immutable once dlopen returns. .data lives past the end
+    # of this range and stays writable (the loader rounds the protected end down
+    # to a page boundary). p_align is 1 — RELRO needs no segment alignment.
+    struct.pack_into(
+        "<IIQQQQQQ",
+        output,
+        phdr_off,
+        PT_GNU_RELRO,
+        PF_R,
+        data_seg_foff,
+        data_seg_vaddr,
+        data_seg_vaddr,
+        relro_size,
+        relro_size,
+        1
     );
 
     # ── Write all the pieces ──

@@ -24,10 +24,10 @@ cd "$SCRIPT_DIR"
 #                            source still resolves into the working tree (no zig
 #                            needed), so the dev loop survives without a zig install
 #   4. jac on PATH         — last resort (may be a stale global install)
-# This dir is now a top-level package, so the repo root is one level up.
+# This dir lives at jac/jaclang/cli/ai_tui_na, so the repo root is four levels up.
 # Canonicalize it (no trailing `..`) so the editable venv's sys.prefix matches
 # and python doesn't emit a "Unexpected value in sys.prefix" RuntimeWarning.
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 REPO_JAC="$REPO_ROOT/jac/zig-out/bin/jac"
 REPO_VENV="$REPO_ROOT/.venv"
 if [ -n "${JAC_BIN:-}" ]; then

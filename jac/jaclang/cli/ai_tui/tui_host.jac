@@ -13,7 +13,7 @@ released for the duration of the foreign call); `apply_frame` / `handle_key` /
 TuiState and MUST run under the host's render lock.
 """
 
-import from jac_super.ai_agent.tui_shared { _ensure_na_artifact }
+import from jaclang.cli.ai_tui.tui_shared { _ensure_na_artifact }
 
 
 obj TuiHost {

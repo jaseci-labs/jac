@@ -61,7 +61,7 @@ keeps stdin/stdout as IPC pipes and opens the real TTY on a separate fd (see
 ┌────────────────────────┴───────────────────────────────────┐
 │  jac ai  (parent, Python/Jac control plane)                  │
 │                                                            │
-│  JacSuperAiPlugin.run_ai_agent  →  run_tui_session           │
+│  JacCmd.run_ai_agent (--tui)    →  run_tui_session           │
 │  ai_agent.ui_configure / ui_stream / ui_stop               │
 │                                                            │
 │  Thread A: ui_stream() → serialize frames → child.stdin    │
@@ -100,10 +100,10 @@ commands are **pulled** from `tui_next_command()` rather than read from a pipe.
 
 | Piece | Location |
 | ----- | -------- |
-| ctypes binding (`TuiHost`) | `jac_super/ai_agent/tui_host.jac` |
-| feeder/ticker driver + lifecycle | `jac_super/ai_agent/impl/run_tui_in_process.impl.jac` |
-| shared encoder/dispatcher (both backends) | `jac_super/ai_agent/tui_shared.jac` |
-| backend selection | `jac_super/ai_agent/impl/plugin.impl.jac` (`JAC_AI_TUI_BACKEND`) |
+| ctypes binding (`TuiHost`) | `jaclang/cli/ai_tui/tui_host.jac` |
+| feeder/ticker driver + lifecycle | `jaclang/cli/ai_tui/impl/run_tui_in_process.impl.jac` |
+| shared encoder/dispatcher (both backends) | `jaclang/cli/ai_tui/tui_shared.jac` |
+| backend selection | `jaclang/jac0core/impl/runtime.impl.jac` (`JacCmd.run_ai_agent`, `JAC_AI_TUI_BACKEND`) |
 | `:pub` C-ABI surface | `ai_tui_na/host.na.jac` (built to `bin/libtui.so`) |
 
 **Two threads, one lock.** A *feeder* thread reads `ui_stream()` and calls
@@ -129,8 +129,8 @@ releasing it**, so the render lock and the agent bus lock are never nested.
 jac ai --tui
   → jaclang.cli.commands.ai (tui flag)
   → build_agent_request(..., tui=True)
-  → JacSuperAiPlugin.run_ai_agent (jac_super/ai_agent/impl/plugin.impl.jac)
-  → run_tui_in_process (jac_super/ai_agent/impl/run_tui_in_process.impl.jac)
+  → JacCmd.run_ai_agent (--tui dispatch, jaclang/jac0core/impl/runtime.impl.jac)
+  → run_tui_in_process (jaclang/cli/ai_tui/impl/run_tui_in_process.impl.jac)
   → ctypes: ai_tui_na/bin/libtui.so
 ```
 
@@ -168,7 +168,7 @@ and `EV:id:kind:node:text` events. Heartbeats are skipped on the wire.
 
 ## Sidecar (`jac-na-tui` child)
 
-Built from `jac-super/jac_super/ai_tui_na/` via `build.sh` (`jac nacompile`).
+Built from `jac/jaclang/cli/ai_tui_na/` via `build.sh` (`jac nacompile`).
 
 ### Layer stack
 
@@ -261,8 +261,8 @@ Full spec: `PROTOCOL.md`.
 
 | Layer | Location |
 | ----- | -------- |
-| Protocol + resolver + stdout gating (subprocess) | `jac-super/tests/test_ai_tui_bridge.jac` |
-| In-process `TuiHost` binding + real-PTY input→command (in-process) | `jac-super/tests/test_ai_tui_host.jac` |
+| Protocol + resolver + stdout gating (subprocess) | `jac/tests/cli/test_ai_tui_bridge.jac` |
+| In-process `TuiHost` binding + real-PTY input→command (in-process) | `jac/tests/cli/test_ai_tui_host.jac` |
 | Native host gate: load `libtui.so`, parse+render headless | `ai_tui_na/test_host.py` (in `build.sh`) |
 | Picker / overlay logic (headless) | `ai_tui_na/test_pickers.na.jac` (in `build.sh`) |
 | Libc tty smoke | `ai_tui_na/proto/no_c_*.na.jac` (needs real TTY) |

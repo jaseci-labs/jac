@@ -7,7 +7,7 @@ protocol in `PROTOCOL.md`, over one of two transports.
 
 ## Transport selection (`JAC_AI_TUI_BACKEND`)
 
-`jac_super/ai_agent/impl/plugin.impl.jac` routes `req.tui` to a backend based on
+`jaclang/cli/ai_tui/impl/plugin.impl.jac` routes `req.tui` to a backend based on
 the `JAC_AI_TUI_BACKEND` env var:
 
 | Value | Backend | Driver |
@@ -18,13 +18,13 @@ the `JAC_AI_TUI_BACKEND` env var:
 The default is the in-process shared library; `JAC_AI_TUI_BACKEND=subprocess`
 opts into the crash-isolated sidecar fallback. Both share `_frame_blob` /
 `_dispatch_cmd` / `_list_project_files` /
-`_sidecar_tty_device` from `jac_super/ai_agent/tui_shared.jac`, so they can never
+`_sidecar_tty_device` from `jaclang/cli/ai_tui/tui_shared.jac`, so they can never
 drift on the protocol.
 
 ## Backend: subprocess sidecar (fallback)
 
 Selection and spawning live in
-`jac_super/ai_agent/impl/run_tui_session.impl.jac`:
+`jaclang/cli/ai_tui/impl/run_tui_session.impl.jac`:
 
 - `_resolve_tui_command(pkg_root, initial) -> {ok, cmd_args, error, hint}` -
   validates that the NA binary is present and returns its spawn command.
@@ -32,8 +32,8 @@ Selection and spawning live in
 
 ## Backend: `na` (native)
 
-- Binary: `jac_super/ai_tui_na/bin/jac-na-tui`
-- Built with `jac_super/ai_tui_na/build.sh` (`jac nacompile`).
+- Binary: `jaclang/cli/ai_tui_na/bin/jac-na-tui`
+- Built with `jaclang/cli/ai_tui_na/build.sh` (`jac nacompile`).
 - If the binary is missing but NA sources are present (dev checkout),
   `run_tui_session` runs `build.sh --quick` once before spawn. Installed
   packages without sources still need a prebuilt binary or a manual build.
@@ -62,12 +62,12 @@ from the control plane.
 
 ## Backend: in-process shared library (default)
 
-- Library: `jac_super/ai_tui_na/bin/libtui.so`
+- Library: `jaclang/cli/ai_tui_na/bin/libtui.so`
 - Built by the same `build.sh` (`jac nacompile host.na.jac --shared -o
   bin/libtui.so`). If missing on a dev checkout, `run_tui_in_process` builds it
   once via `build.sh --quick` (`_ensure_tui_lib`); `JAC_AI_TUI_REBUILD=1` forces
   a recompile. Installed packages ship a prebuilt `.so` (no LLVM at runtime).
-- Bound by `jac_super/ai_agent/tui_host.jac` (`TuiHost`): `ctypes.CDLL` +
+- Bound by `jaclang/cli/ai_tui/tui_host.jac` (`TuiHost`): `ctypes.CDLL` +
   `restype`/`argtypes` for the eight seam exports (`tui_init`, `tui_apply_frame`,
   `tui_wait_key`, `tui_handle_key`, `tui_next_command`, `tui_quit_requested`,
   `tui_render`, `tui_shutdown`). The wrapper for `tui_init` is named `start`
@@ -83,5 +83,5 @@ from the control plane.
    commands on stdout, render to its own terminal surface).
 2. Add a branch to `_resolve_tui_command()` returning its `cmd_args` and a
    present/absent check with a helpful `hint`.
-3. Cover the new branch in `jac-super/tests/test_ai_tui_bridge.jac`.
+3. Cover the new branch in `jac/tests/cli/test_ai_tui_bridge.jac`.
 4. Document it here.

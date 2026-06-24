@@ -640,14 +640,40 @@ impl JacBuiltin.printgraph(
 """Create Jac CLI cmds."""
 impl JacCmd.create_cmd -> None { }
 
-"""Run the `jac ai` coding agent -- the built-in byLLM implementation.
+"""Run the `jac ai` coding agent -- the built-in implementation.
 
-This is the default hook implementation: it lazily imports the bundled
-byLLM-powered agent so the core CLI keeps no hard dependency on byLLM. A
+This is the default hook implementation. With `--tui` it launches the bundled
+native terminal UI (`jaclang.cli.ai_tui`); otherwise it lazily imports the
+byLLM-powered REPL agent so the core CLI keeps no hard dependency on byLLM. A
 plugin that registers its own `run_ai_agent` hook outranks this one and
 replaces the agent entirely.
+
+`--tui` backend (`JAC_AI_TUI_BACKEND`): unset/`inprocess` (default) drives
+`libtui.so` in-process via ctypes; `subprocess` spawns the `jac-na-tui` sidecar
+over pipes (crash-isolated fallback, not supported on Windows yet).
 """
 impl JacCmd.run_ai_agent(req: object) -> int {
+    import os;
+    r: any = req;
+    if bool(r?.tui) {
+        backend = os.environ.get("JAC_AI_TUI_BACKEND", "").strip().lower();
+        if backend == "subprocess" {
+            import sys;
+            if sys.platform == "win32" {
+                import from jaclang.cli.console { console }
+                console.error(
+                    "JAC_AI_TUI_BACKEND=subprocess is not supported on Windows "
+                    "(IPC stdio remap is not yet wired). "
+                    "Unset JAC_AI_TUI_BACKEND to use the default in-process backend."
+                );
+                return 1;
+            }
+            import from jaclang.cli.ai_tui.run_tui_session { run_tui_session }
+            return run_tui_session(req);
+        }
+        import from jaclang.cli.ai_tui.run_tui_in_process { run_tui_in_process }
+        return run_tui_in_process(req);
+    }
     try {
         import from jaclang.cli.ai_agent { run_agent }
     } except ImportError {

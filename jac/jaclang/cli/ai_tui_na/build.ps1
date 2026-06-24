@@ -21,7 +21,7 @@ try {
 # NOTE: python-build-standalone has no Windows target, so there is no native
 # Windows `jac` binary yet -- native Windows builds are deferred (see the
 # test-tui-windows workflow). build.sh cross-compiles the Windows artifacts on Linux.
-$RepoRoot = (Resolve-Path (Join-Path $ScriptDir "..")).Path
+$RepoRoot = (Resolve-Path (Join-Path $ScriptDir "..\..\..\..")).Path
 $RepoJac  = Join-Path $RepoRoot "jac\zig-out\bin\jac.exe"
 $RepoVenvPy = Join-Path $RepoRoot ".venv\Scripts\python.exe"
 if ($env:JAC_BIN) {
