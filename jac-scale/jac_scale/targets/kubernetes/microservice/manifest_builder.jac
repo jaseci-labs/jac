@@ -918,17 +918,17 @@ obj MicroserviceManifestBuilder {
                 APP_VOLUME_NAME,
                 APP_MOUNT_PATH,
                 PYDEPS_DIR,
-                VENV_DIR
+                JAC_BIN_DIR
             }
             container["workingDir"] = APP_MOUNT_PATH;
             if self.experimental {
-                # Run out of the shared venv the experimental bootstrap built
-                # (editable jac + plugins); no PYDEPS_DIR / PYTHONPATH override.
-                env_list.append({"name": "VIRTUAL_ENV", "value": VENV_DIR});
+                # Run the `jac` binary the experimental bootstrap built from the
+                # cloned checkout; plugins live in the binary's own resolver, so
+                # no PYDEPS_DIR / PYTHONPATH override.
                 env_list.append(
                     {
                         "name": "PATH",
-                        "value": f"{VENV_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
+                        "value": f"{JAC_BIN_DIR}:/usr/local/bin:/usr/bin:/bin"
                     }
                 );
             } else {
