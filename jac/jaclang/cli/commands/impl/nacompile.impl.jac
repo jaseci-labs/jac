@@ -377,7 +377,7 @@ impl nacompile(
     console.print("  LLVM IR generated successfully.");
 
     # Step 3: Initialize llvmlite
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
 

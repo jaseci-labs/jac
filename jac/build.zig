@@ -39,6 +39,12 @@ pub fn build(b: *std.Build) void {
         b.resolveTargetQuery(.{ .cpu_model = .baseline });
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSmall });
 
+    // --- LLVMPY_* shim: compile jac/native/*.cpp + statically link host LLVM ---
+    // Replaces the bundled libllvmlite.so (llvmlite wheel). Gated on -Dllvm-dir
+    // (an extracted LLVM 20.1.x prebuilt); without it the step is unavailable so
+    // the normal binary build is unaffected. See jac/native/README.md, #6925.
+    addLlvmShim(b, target, optimize);
+
     // --- launcher stub (links libc only; Python is dlopened at runtime) ----
     const launcher_mod = b.createModule(.{
         .root_source_file = b.path("launcher/launcher.zig"),
@@ -168,6 +174,63 @@ fn addTreeInputs(b: *std.Build, run: *std.Build.Step.Run, sub_path: []const u8) 
         if (std.mem.endsWith(u8, entry.path, ".pyc")) continue;
         run.addFileInput(b.path(b.fmt("{s}/{s}", .{ sub_path, entry.path })));
     }
+}
+
+/// `zig build jacllvm -Dllvm-dir=PATH` -> compile the llvmlite LLVMPY_* C++ shim
+/// (jac/native/*.cpp) and statically link the LLVM in PATH into libjacllvm.so,
+/// the in-tree replacement for the 167 MB libllvmlite.so from the llvmlite wheel.
+/// PATH is an extracted LLVM 20.1.x release (`lib/libLLVM*.a` + `include/`); a
+/// future `fetch-llvm` step downloads it at a pinned version (mirrors fetch-pbs).
+/// The Jac binding loads the result via ctypes (JAC_LLVM_SHIM / payload path).
+fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
+    const llvm_dir = b.option([]const u8, "llvm-dir",
+        "Path to an extracted LLVM 20.1.x prebuilt (lib/*.a + include/); enables the jacllvm shim step") orelse return;
+
+    const mod = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .link_libcpp = true,
+    });
+    // The shim wraps LLVM's C++ API; CMake builds it C++17, no-RTTI/exceptions.
+    mod.addCSourceFiles(.{
+        .root = b.path("native"),
+        .files = &.{
+            "assembly.cpp",       "bitcode.cpp",        "config.cpp",
+            "core.cpp",           "custom_passes.cpp",  "dylib.cpp",
+            "executionengine.cpp", "initfini.cpp",      "linker.cpp",
+            "memorymanager.cpp",  "module.cpp",         "newpassmanagers.cpp",
+            "object_file.cpp",    "orcjit.cpp",         "targets.cpp",
+            "type.cpp",           "value.cpp",
+        },
+        .flags = &.{ "-std=c++17", "-fno-rtti", "-fno-exceptions", "-DNDEBUG" },
+    });
+    mod.addIncludePath(.{ .cwd_relative = b.fmt("{s}/include", .{llvm_dir}) });
+
+    const lib = b.addLibrary(.{ .name = "jacllvm", .linkage = .dynamic, .root_module = mod });
+
+    // Link every LLVM static archive; the linker drops what the shim never
+    // references (host-only pruning of the archive set is a size follow-up).
+    const libdir = b.fmt("{s}/lib", .{llvm_dir});
+    const io = b.graph.io;
+    var dir = b.build_root.handle.openDir(io, libdir, .{ .iterate = true }) catch |err|
+        std.debug.panic("jacllvm: cannot open {s}: {s}", .{ libdir, @errorName(err) });
+    defer dir.close(io);
+    var it = dir.iterate();
+    while (it.next(io) catch @panic("jacllvm: lib iterate failed")) |entry| {
+        if (entry.kind != .file) continue;
+        if (std.mem.startsWith(u8, entry.name, "libLLVM") and std.mem.endsWith(u8, entry.name, ".a")) {
+            mod.addObjectFile(.{ .cwd_relative = b.fmt("{s}/{s}", .{ libdir, entry.name }) });
+        }
+    }
+    // LLVM's system deps. zstd must be the shared lib: the system static
+    // libzstd.a is non-PIC and cannot link into a shared object.
+    mod.linkSystemLibrary("z", .{});
+    mod.linkSystemLibrary("xml2", .{});
+    mod.addObjectFile(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu/libzstd.so" });
+
+    b.step("jacllvm", "Build the LLVMPY_* shim (jac/native) statically linked against -Dllvm-dir's LLVM")
+        .dependOn(&b.addInstallArtifact(lib, .{}).step);
 }
 
 fn addTests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {

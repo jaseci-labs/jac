@@ -39,7 +39,7 @@ def register_py_callbacks(
     py_func_table: dict[(str, Callable[(..., object)])],
     callbacks_list: list
 ) {
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     for binding in manifest.native_imports {
         ret_ct = JAC_TO_CTYPES.get(binding.ret_type, ctypes.c_int64);
         arg_cts = [JAC_TO_CTYPES.get(pt, ctypes.c_int64) for pt in binding.param_types];

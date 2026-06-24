@@ -10,7 +10,7 @@ impl NaIRGenPass.postinit -> None {
     _ni_src: str = self.ir_in.loc.mod_path if self.ir_in.loc else "";
     _ni_mod_name: str = _ni_os.path.basename(_ni_src) if _ni_src else "jac_native";
     self.llvm_module = ir.Module(name=_ni_mod_name, context=ir.Context());
-    import llvmlite.binding as _llvm_bind;
+    import jaclang.compiler.passes.native.llvm.binding as _llvm_bind;
     # JAC_NATIVE_TARGET cross-compiles for another triple (e.g.
     # aarch64-unknown-linux-gnu). The triple drives both the data layout and
     # the platform ABI classification, so it must be set on the module here;

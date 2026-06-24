@@ -264,7 +264,7 @@ impl JacCompiler.get_bytecode(
             native_bc = result.gen.native_bitcode;
             if native_bc is not None {
                 import struct as _struct;
-                import llvmlite.binding as _llvm;
+                import jaclang.compiler.passes.native.llvm.binding as _llvm;
                 triple = _llvm.get_default_triple().encode('utf-8');
                 hdr = _struct.pack('<H', len(triple)) + triple;
                 sections[SEC_NATIVE_OBJ] = hdr + native_bc;
@@ -315,7 +315,7 @@ impl JacCompiler._load_native_from_cache(
     cached_interop: (dict[str, any] | None)
 ) -> None {
     try {
-        import llvmlite.binding as llvm;
+        import jaclang.compiler.passes.native.llvm.binding as llvm;
         llvm.initialize_native_target();
         llvm.initialize_native_asmprinter();
         import ctypes;
@@ -374,7 +374,7 @@ impl JacCompiler._load_native_from_bitcode(
     cached_interop: (dict[str, any] | None)
 ) -> None {
     import struct as _struct;
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     llvm.initialize_native_target();
     llvm.initialize_native_asmprinter();
     # Parse platform header: [triple_len: 2 LE] [triple: UTF-8] [bitcode ...]

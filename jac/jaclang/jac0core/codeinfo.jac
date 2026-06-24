@@ -10,7 +10,10 @@ import type from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
 import type from jaclang.compiler.passes.tool.doc_ir { Doc }
 import type from jaclang.jac0core.unitree { Source, Token }
 import type from jaclang.jac0core.osp_model { OspModel }
-import type from llvmlite.binding { ModuleRef, ExecutionEngine }
+import type from jaclang.compiler.passes.native.llvm.binding {
+    ModuleRef,
+    ExecutionEngine
+}
 
 """Client-side rendering manifest metadata."""
 obj ClientManifest {
