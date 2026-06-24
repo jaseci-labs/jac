@@ -14,6 +14,7 @@ happen. The CLI `run` command consumes the plan and either prints it
 
 import os;
 import from jaclang.project.config { JacConfig }
+import from jaclang.jac0core.ext_registry { base_stem, codespace_of, MODULE_SUFFIXES }
 
 # The canonical project-kind table: the single source of truth shared by
 # `jac create` (which template/entry-point to scaffold, which plugin a kind
@@ -94,13 +95,7 @@ def is_valid_kind(kind: str) -> bool {
 
 """Strip the codespace suffix from an entry filename, leaving the bare stem."""
 def _entry_stem(path: str) -> str {
-    name = os.path.basename(path);
-    for suf in [".na.jac", ".sv.jac", ".cl.jac", ".jac", ".py"] {
-        if name.endswith(suf) {
-            return name[:-len(suf)];
-        }
-    }
-    return name;
+    return base_stem(path);
 }
 
 """True when the project opts into the client (cl) codespace via plugin/deps."""
@@ -145,7 +140,7 @@ def resolve_entry(config: JacConfig, project_root: str) -> str {
     # which is the intended behavior: an absolute entry-point is searched at its
     # own location, while a relative one stays anchored under the project root.
     base = os.path.join(project_root, os.path.dirname(ep), stem);
-    for suf in [".jac", ".na.jac", ".sv.jac", ".cl.jac", ".py"] {
+    for suf in list(MODULE_SUFFIXES) + [".py"] {
         cand = base + suf;
         if os.path.isfile(cand) {
             return os.path.abspath(cand);
@@ -165,13 +160,14 @@ def resolve_project_kind(config: JacConfig, entry_path: str) -> str {
     if explicit {
         return explicit;
     }
-    if entry_path.endswith(".na.jac") {
+    entry_codespace = codespace_of(entry_path);
+    if (entry_codespace == 'native') {
         return "native-app";
     }
-    if entry_path.endswith(".sv.jac") {
+    if (entry_codespace == 'server') {
         return "api-service";
     }
-    if entry_path.endswith(".cl.jac") {
+    if (entry_codespace == 'client') {
         return "fullstack";
     }
     if _has_client(config) {

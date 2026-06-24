@@ -68,10 +68,12 @@ glob SOURCE_ARCHIVE_KEY: str = "source.tar.gz",
      APP_VOLUME_NAME: str = "jac-app",
      APP_MOUNT_PATH: str = "/app",
      PYDEPS_DIR: str = "/app/.pydeps",
-     # Experimental mode installs an editable jaseci checkout into a venv on
-     # the shared app volume (jac plugins can't go into PYDEPS_DIR via
-     # `pip --target`); the main container runs out of this venv instead.
-     VENV_DIR: str = "/app/.venv";
+     # Experimental mode builds the `jac` binary from a cloned checkout onto the
+     # shared app volume (jaclang is the self-contained Zig binary, not a
+     # pip/editable package); the main container runs that binary instead. Zig
+     # version tracks jac/build.zig.zon's minimum_zig_version.
+     JAC_BIN_DIR: str = "/app/.jacbin",
+     JAC_ZIG_VERSION: str = "0.16.0";
 
 
 """ConfigMap name holding a service app's packed source (caller pre-sanitizes
@@ -325,31 +327,22 @@ def build_source_configmap(
 }
 
 
-"""In-pod pip specs, pinned to the versions the developer ran. `requests` is a
-runtime dep of the scale plugin but jac-scale ships it only in the `test`
-extra, so it (and the `[all]` deploy extras) must be installed explicitly or
-the plugin fails to load in every pod. jac-client is added only when present
-locally (fullstack apps)."""
-def pinned_install_specs -> list[str] {
-    import importlib.metadata as _md;
-    specs: list[str] = [];
-    # (pip spec name, distribution name, required-even-if-absent).
-    targets: list[tuple[str, str, bool]] = [
-        ("jaclang", "jaclang", True),
-        ("jac-scale[all]", "jac-scale", True),
-        ("requests", "requests", True),
-        ("jac-client", "jac-client", False)
+"""Plugin install commands for the non-experimental in-pod bootstrap, run against
+the copied `jac` binary (`jac_bin`). jaclang ships as the binary itself (fetched
+by install.sh), so it isn't listed here. `--global` is required: it installs into
+the binary's own site (which travels with the binary on the shared volume) rather
+than a project `.jac/venv` that lives in the init container's ephemeral $HOME and
+vanishes before the main container starts. Extras ride in the package spec as
+PEP 508 brackets (`jac-scale[all]`): `jac install`'s `--extras` flag is only
+honored for editable (`-e`) targets and is silently dropped for named packages.
+`requests` is a scale-plugin runtime dep that jac-scale ships only in the `test`
+extra (not `all`), so it must be installed explicitly or the plugin fails to load
+in every pod."""
+def pinned_install_commands(jac_bin: str) -> list[str] {
+    return [
+        f"{jac_bin} install 'jac-scale[all]' --global",
+        f"{jac_bin} install requests --global"
     ];
-    for (pip_name, dist_name, required) in targets {
-        try {
-            specs.append(f"{pip_name}=={_md.version(dist_name)}");
-        } except Exception {
-            if required {
-                specs.append(pip_name);
-            }
-        }
-    }
-    return specs;
 }
 
 
@@ -379,34 +372,50 @@ def _https_clone_url(repo_url: str) -> str {
 }
 
 
-"""Bootstrap script for experimental mode: clone the jaseci repo/branch into a
-venv on the shared volume and editable-install it. repo/branch/commit arrive as
-`JACX_*` env vars (data, never spliced into shell code), so a value with a space
-or `$(...)` can't break or inject the clone."""
+"""Bootstrap script for experimental mode: clone the jaseci repo/branch and build
+the `jac` binary from that source onto the shared volume, so the pod runs the
+checkout's own jaclang (the whole point of experimental mode is testing
+uncommitted core changes). jaclang is the self-contained Zig binary, not a
+pip/editable package, so the checkout is compiled with `zig build` rather than
+`pip install -e`. repo/branch/commit arrive as `JACX_*` env vars (data, never
+spliced into shell code), so a value with a space or `$(...)` can't break or
+inject the clone."""
 def experimental_bootstrap_script -> str {
+    jac_bin: str = f"{JAC_BIN_DIR}/jac";
     steps: list[str] = [
         "set -eu",
-        # Install git via whichever package manager the base image ships (Debian
-        # slim -> apt, Alpine -> apk); skip entirely when it's already present.
-        "command -v git >/dev/null 2>&1 || { apt-get update && apt-get install -y --no-install-recommends git || apk add --no-cache git; }",
+        # Build deps via whichever package manager the base image ships (Debian
+        # slim -> apt, Alpine -> apk); skip when already present. zstd is needed
+        # by build.zig's python-build-standalone payload step.
+        "command -v git >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 && command -v zstd >/dev/null 2>&1 || { apt-get update && apt-get install -y --no-install-recommends git curl xz-utils zstd || apk add --no-cache git curl xz zstd; }",
         f"tar xzf {SOURCE_MOUNT_PATH}/{SOURCE_ARCHIVE_KEY} -C {APP_MOUNT_PATH}",
         _ensure_jac_toml_cmd(),
-        f"python3 -m venv {VENV_DIR}",
-        f". {VENV_DIR}/bin/activate",
         f"rm -rf {APP_MOUNT_PATH}/jaseci",
         f'git clone --branch "$JACX_BRANCH" --single-branch "$JACX_REPO_URL" {APP_MOUNT_PATH}/jaseci',
         f"cd {APP_MOUNT_PATH}/jaseci",
         # Optional pin: skip when unset, but surface a real checkout failure.
         '[ -z "$JACX_COMMIT" ] || git checkout "$JACX_COMMIT"',
         "git submodule update --init --recursive",
-        "pip install pluggy",
-        # --force-reinstall --no-deps so the local checkout wins over any
-        # already-resolved release of the same version.
-        "pip install --force-reinstall --no-deps -e ./jac",
-        "jac install -e ./jac-scale --extras all",
-        # Only when the fork ships jac-client: skip-when-absent, but let a genuine
-        # install failure propagate (don't blanket-swallow with `|| true`).
-        '[ ! -d ./jac-client ] || jac install -e ./jac-client'
+        # Fetch the pinned Zig toolchain for the pod's arch (build.zig.zon sets
+        # the minimum; JAC_ZIG_VERSION tracks it). uname -m -> ziglang's arch.
+        'ZARCH="$(uname -m)"; [ "$ZARCH" = "arm64" ] && ZARCH="aarch64"',
+        f'ZDIR="zig-${{ZARCH}}-linux-{JAC_ZIG_VERSION}"',
+        f'curl -fsSL "https://ziglang.org/download/{JAC_ZIG_VERSION}/${{ZDIR}}.tar.xz" | tar -xJ -C /tmp',
+        'export PATH="/tmp/${ZDIR}:$PATH"',
+        # Build the binary from this checkout's jac/ and drop it on PATH for the
+        # main container.
+        f"mkdir -p {JAC_BIN_DIR}",
+        "( cd jac && zig build )",
+        f"cp jac/zig-out/bin/jac {jac_bin}",
+        f'export PATH="{JAC_BIN_DIR}:$PATH"',
+        # Plugins install --global (into the built binary's own site on the
+        # shared volume, not an ephemeral project venv) from this same checkout
+        # so PR changes to the plugins are tested too.
+        f"{jac_bin} install -e ./jac-scale --extras all --global",
+        # Skip-when-absent (core-only forks may omit these) but let a genuine
+        # install failure propagate rather than swallowing it with `|| true`.
+        f"[ ! -d ./jac-byllm ] || {jac_bin} install -e ./jac-byllm --global",
+        f"[ ! -d ./jac-mcp ] || {jac_bin} install -e ./jac-mcp --global"
     ];
     return " && ".join(steps);
 }
@@ -414,8 +423,9 @@ def experimental_bootstrap_script -> str {
 
 """initContainer that extracts the packed source into the shared app volume and
 installs jac onto that same volume (so the main container starts fast against a
-ready tree). PyPI-pinned by default; in experimental mode it git-clones the
-jaseci repo/branch into a venv on the shared volume instead."""
+ready tree). By default it fetches the released `jac` binary and installs the
+plugins; in experimental mode it git-clones the jaseci repo/branch and builds the
+binary from that checkout instead."""
 def build_bootstrap_init_container(
     base_image: str,
     experimental: bool = False,
@@ -442,15 +452,24 @@ def build_bootstrap_init_container(
             {"name": "JACX_COMMIT", "value": commit}
         ];
     } else {
-        # Single-quote each spec so the `[all]` extras marker isn't treated as a
-        # shell glob char-class by the `sh -c` bootstrap.
-        install = " ".join([f"'{spec}'" for spec in pinned_install_specs()]);
-        container["args"] = [
-            "set -eu; "
-            f"tar xzf {SOURCE_MOUNT_PATH}/{SOURCE_ARCHIVE_KEY} -C {APP_MOUNT_PATH}; "
-            f"{_ensure_jac_toml_cmd()}; "
-            f"pip install --no-cache-dir --target={PYDEPS_DIR} {install}"
+        jac_bin: str = f"{PYDEPS_DIR}/bin/jac";
+        steps: list[str] = [
+            "set -eu",
+            # curl drives the installer; skip when the base image already has it.
+            "command -v curl >/dev/null 2>&1 || { apt-get update && apt-get install -y --no-install-recommends curl || apk add --no-cache curl; }",
+            f"tar xzf {SOURCE_MOUNT_PATH}/{SOURCE_ARCHIVE_KEY} -C {APP_MOUNT_PATH}",
+            _ensure_jac_toml_cmd(),
+            # jaclang ships as the self-contained `jac` binary (not on PyPI). The
+            # official installer fetches it from GitHub Releases; drop it under
+            # PYDEPS_DIR/bin so it's on the main container's PATH.
+            f"mkdir -p {PYDEPS_DIR}/bin",
+            "curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash",
+            f'cp "$HOME/.local/bin/jac" {jac_bin}'
         ];
+        # Plugins install --global so they land in the binary's own site (on the
+        # shared volume), not an ephemeral project venv the main container can't see.
+        steps.extend(pinned_install_commands(jac_bin));
+        container["args"] = [" && ".join(steps)];
     }
     return container;
 }

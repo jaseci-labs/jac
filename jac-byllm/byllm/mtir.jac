@@ -54,7 +54,10 @@ obj MTRuntime {
         # handler-driven invoke can return the parsed result after the event
         # stream is fully consumed.
         _final_output: object = None,
-        _has_final_output: bool = False;
+        _has_final_output: bool = False,
+        # Bumped when a transient-error retry resets partial stream output;
+        # consumers watch it to emit `stream_reset` and discard shown tokens.
+        _stream_reset_count: int = 0;
 
     static def factory(mtir: MTIR) -> MTRuntime;
     def dispatch_params -> dict[str, object];

@@ -1650,6 +1650,19 @@ impl NaIRGenPass._codegen_field_access(
             obj_val, self.struct_types[type_name].as_pointer(), name="osp.handle.ptr"
         );
     }
+    # The checker may have narrowed the receiver to a subclass (e.g. via an
+    # `isinstance` guard), making `type_name` more specific than the value's
+    # static LLVM struct. The field index was computed from the narrowed
+    # struct's layout, so reinterpret the pointer as that struct before the GEP.
+    # Sound: the narrowing established the object is an instance of `type_name`.
+    target_struct = self.struct_types.get(type_name);
+    if target_struct is not None
+    and isinstance(obj_val.type, ir.PointerType)
+    and obj_val.type.pointee is not target_struct {
+        obj_val = self.builder.bitcast(
+            obj_val, target_struct.as_pointer(), name=f"narrow.{type_name}"
+        );
+    }
     # AttributeError: check for null pointer (None) before accessing field
     if isinstance(obj_val.type, ir.PointerType) {
         null_ptr = ir.Constant(obj_val.type, None);

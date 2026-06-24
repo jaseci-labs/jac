@@ -15,10 +15,10 @@
 
 byLLM is an innovative AI integration framework built for the Jaseci ecosystem, implementing the cutting-edge Meaning Typed Programming (MTP) paradigm. MTP revolutionizes AI integration by embedding prompt engineering directly into code semantics, making AI interactions more natural and maintainable. While primarily designed to complement the Jac programming language, byLLM also provides a powerful Python library interface.
 
-Installation is simple via PyPI:
+Installation is simple via the Jac plugin installer:
 
 ```bash
-pip install byllm
+jac install byllm
 ```
 
 ## Basic Example

@@ -4,9 +4,7 @@ This script is used  to handle the jac compile data for jac playground.
 """
 
 import os
-import shutil
 import subprocess
-import tempfile
 import time
 import zipfile
 
@@ -28,20 +26,21 @@ EXCLUDE_SUBDIRS = {
 }
 
 
-def fetch_pypi_jaclang() -> str:
-    """Install jaclang from PyPI into a temp dir to get pre-compiled .jir files."""
+def resolve_jaclang_dir() -> str:
+    """Locate the host jaclang package directory for the playground zip.
 
-    tmp_dir = tempfile.mkdtemp(prefix="jaclang_pypi_")
-    print("Installing jaclang from PyPI (for pre-compiled .jir files)...")
-    subprocess.run(
-        ["pip", "install", "jaclang", "--target", tmp_dir, "--no-deps", "--quiet"],
-        check=True,
-    )
-    jaclang_dir = os.path.join(tmp_dir, "jaclang")
+    jaclang is no longer published to PyPI -- it ships inside the self-contained
+    `jac` binary, whose bundled copy already carries the pre-compiled .jir files
+    the playground needs. Use that installed package directly instead of
+    `pip install --target`. Caller must NOT delete the returned directory.
+    """
+    import jaclang
+
+    jaclang_dir = os.path.dirname(os.path.abspath(jaclang.__file__))
     jir_count = sum(
         1 for _, _, files in os.walk(jaclang_dir) for f in files if f.endswith(".jir")
     )
-    print(f"Found {jir_count} pre-compiled .jir files")
+    print(f"Using host jaclang at {jaclang_dir} ({jir_count} pre-compiled .jir files)")
     return jaclang_dir
 
 
@@ -55,16 +54,13 @@ def pre_build_hook(**kwargs: dict) -> None:
         print(f"Removing existing zip file: {PLAYGROUND_ZIP_PATH}")
         os.remove(PLAYGROUND_ZIP_PATH)
 
-    jaclang_dir = None
     try:
-        jaclang_dir = fetch_pypi_jaclang()
+        # The host jaclang package (do not delete it -- it belongs to the binary).
+        jaclang_dir = resolve_jaclang_dir()
         create_playground_zip(jaclang_dir)
         print("Jaclang zip file created successfully.")
     except Exception as e:
-        print(f"Warning: Failed to fetch from PyPI: {e}. Skipping playground zip.")
-    finally:
-        if jaclang_dir:
-            shutil.rmtree(os.path.dirname(jaclang_dir), ignore_errors=True)
+        print(f"Warning: Failed to build playground zip: {e}. Skipping playground zip.")
 
     if is_file_older_than_minutes(UNIIR_NODE_DOC, 5):
         with open(UNIIR_NODE_DOC, "w") as f:

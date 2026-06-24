@@ -6,14 +6,11 @@ import shutil;
 import json;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
+import from jaclang.jac0core.ext_registry { base_stem, is_client_module, is_annex }
 
-# File-suffix and skip-dir constants shared by the collection/compile pass.
-glob _SV_SUFFIX: str = ".sv.jac",
-     _CL_SUFFIX: str = ".cl.jac",
-     _IMPL_SUFFIX: str = ".impl.jac",
-     _TEST_SUFFIX: str = ".test.jac",
-     # Directories never traversed when collecting source files.
-     _SKIP_DIRS: set = {
+# Skip-dir constants shared by the collection/compile pass. Suffix knowledge
+# (codespace variants, annexes) comes from the shared extension registry.
+glob _SKIP_DIRS: set = {
          ".jac",
          ".git",
          ".venv",
@@ -216,7 +213,7 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         } else {
             bmod = ".".join(parent_parts + [stem]);
         }
-        is_client = rel.name.endswith(_CL_SUFFIX);
+        is_client = is_client_module(rel.name);
         server = _is_meaningful_python(py_code) and (not is_client);
 
         # `:pub` walkers/functions become open endpoints; the rest are
@@ -340,7 +337,7 @@ def _collect_jac_files(src: Path) -> list[Path] {
             continue;
         }
         name = path.name;
-        if name.endswith(_IMPL_SUFFIX) or name.endswith(_TEST_SUFFIX) {
+        if is_annex(name) {
             continue;
         }
         results.append(path);
@@ -363,18 +360,9 @@ def _dir_excluded(rel: Path) -> bool {
 }
 
 
-"""Strip the .sv.jac / .cl.jac / .jac suffix from a filename, returning the stem."""
+"""Strip the codespace/.jac suffix from a filename, returning the bare stem."""
 def _strip_jac_suffix(name: str) -> str {
-    if name.endswith(_SV_SUFFIX) {
-        return name[:-len(_SV_SUFFIX)];
-    }
-    if name.endswith(_CL_SUFFIX) {
-        return name[:-len(_CL_SUFFIX)];
-    }
-    if name.endswith(".jac") {
-        return name[:-4];
-    }
-    return name;
+    return base_stem(name);
 }
 
 

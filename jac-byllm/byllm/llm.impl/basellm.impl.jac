@@ -13,6 +13,37 @@ def _should_parallelize(mt_run: MTRuntime) -> bool {
 }
 
 
+"""True for transient transport errors worth retrying the same model: read-timeout
+stall, mid-stream connection drop, and brief 5xx. Auth/RateLimit/NotFound and all
+other errors are non-transient and propagate unchanged."""
+def _is_transient_error(exc: object) -> bool {
+    return isinstance(
+        exc,
+        (
+            litellm.Timeout,
+            litellm.APIConnectionError,
+            litellm.InternalServerError,
+            litellm.ServiceUnavailableError
+        )
+    );
+}
+
+
+"""Backoff before a transient-error retry (exponential, capped at 10s)."""
+def _retry_sleep(attempt: int) {
+    base = _streaming_config.get("retry_backoff", 1.0);
+    time.sleep(min(base * (2 ** max(0, attempt - 1)), 10.0));
+}
+
+
+"""Async _retry_sleep - never blocks the event loop."""
+async def _aretry_sleep(attempt: int) {
+    import asyncio;
+    base = _streaming_config.get("retry_backoff", 1.0);
+    await asyncio.sleep(min(base * (2 ** max(0, attempt - 1)), 10.0));
+}
+
+
 """Check if the model is eligible for Anthropic prompt caching."""
 def _is_prompt_caching_eligible(model_name: str) -> bool {
     pc_config = _byllm_config.get_prompt_caching_config();
@@ -424,6 +455,23 @@ impl BaseLLM._resolve_output_attempts(mt_run: MTRuntime) -> int {
 }
 
 
+"""Transient-transport retry budget (retries after the first attempt; 0 disables).
+Priority: call_params["stream_num_retries"] > self.call_params > jac.toml > 2."""
+impl BaseLLM._resolve_stream_retries(mt_run: MTRuntime) -> int {
+    num_retries = mt_run.call_params.get("stream_num_retries");
+    if num_retries is None {
+        num_retries = self.call_params.get("stream_num_retries");
+    }
+    if num_retries is None {
+        num_retries = _streaming_config.get("num_retries");
+    }
+    if num_retries is None {
+        num_retries = 2;
+    }
+    return max(0, int(num_retries));
+}
+
+
 """Invoke the non-streaming path, regenerating empty/malformed typed output.
 
 A weak model may emit empty content or unparseable JSON for a structured return;
@@ -676,8 +724,24 @@ impl BaseLLM._invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> obje
     and mt_run.resp_type is not str {
         self._usage_history = [];
         accumulated = "";
+        _seen_resets = mt_run._stream_reset_count;
         try {
             for token in self.dispatch_streaming(mt_run) {
+                # Retry reset the stream: discard the partial JSON so parse_response
+                # sees only the final attempt.
+                if mt_run._stream_reset_count != _seen_resets {
+                    _seen_resets = mt_run._stream_reset_count;
+                    accumulated = "";
+                    try {
+                        on_event(
+                            StreamEvent(
+                                event_type="stream_reset", data={"scope": "answer"}
+                            )
+                        );
+                    } except Exception as e {
+                        logger.debug(f"stream_handler raised: {e}");
+                    }
+                }
                 if token {
                     accumulated += token;
                     try {
@@ -731,7 +795,10 @@ impl BaseLLM._invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> obje
         } except Exception as e {
             logger.debug(f"stream_handler raised: {e}");
         }
-        if ev.event_type == "chunk" {
+        if ev.event_type == "stream_reset" {
+            # Drop the partial answer text accumulated before the retry.
+            parts = [];
+        } elif ev.event_type == "chunk" {
             parts.append(str(ev.data.get("content", "")));
         }
     }
@@ -1073,6 +1140,19 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
     if not self.supports_native_tools {
         params = inject_tool_hint(params);
     }
+    # Streaming: an inter-chunk read timeout (resets per chunk) catches a silent
+    # mid-stream stall in `read_timeout`s instead of litellm's ~600s default,
+    # without cutting a healthy long generation. Non-streaming keeps the default
+    # (one read for the whole body, so a read timeout would cap total gen time).
+    if mt_run.stream {
+        import httpx;
+        params["timeout"] = httpx.Timeout(
+            connect=_streaming_config.get("connect_timeout", 30.0),
+            read=_streaming_config.get("read_timeout", 90.0),
+            write=_streaming_config.get("write_timeout", 30.0),
+            pool=_streaming_config.get("pool_timeout", 30.0)
+        );
+    }
     return params;
 }
 
@@ -1270,12 +1350,27 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     log_params = self.format_prompt(params);
     self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
     params.pop("api_key", None);
-    try {
-        response = self.model_call_no_stream(params);
-    } except Exception {
-        # Log with model_name on failure so verbose output is still captured
-        self.log_info(f"Calling LLM: {self.model_name} with params: {log_params}");
-        raise;
+    attempt = 0;
+    while True {
+        try {
+            response = self.model_call_no_stream(params);
+            break;
+        } except Exception as e {
+            # Retry the same model on a transient transport error; others propagate.
+            if _is_transient_error(e)
+            and attempt < self._resolve_stream_retries(mt_run) {
+                attempt += 1;
+                self.log_info(
+                    f"Transient LLM error ({type(e).__name__}); "
+                    f"retry {attempt} on {self.model_name}"
+                );
+                _retry_sleep(attempt);
+                continue;
+            }
+            # Log with model_name on failure so verbose output is still captured
+            self.log_info(f"Calling LLM: {self.model_name} with params: {log_params}");
+            raise;
+        }
     }
     # Log the actual model that served the request (from response, useful for proxy/pool)
     actual_model = response.get("model", self.model_name);
@@ -1328,16 +1423,40 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
     self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}");
     self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
     params.pop("api_key", None);
-    response = self.model_call_with_stream(params);
-    for chunk in response {
-        # Final chunk carries usage when stream_options.include_usage is set.
-        chunk_usage = chunk?.usage;
-        if chunk_usage {
-            self._usage_history.append(chunk_usage);
-        }
-        if chunk?.choices and chunk?.choices?[0]?.delta {
-            delta = chunk.choices[0].delta;
-            yield delta.content or "";
+    attempt = 0;
+    usage_base = len(self._usage_history);
+    while True {
+        try {
+            response = self.model_call_with_stream(params);
+            for chunk in response {
+                # Final chunk carries usage when stream_options.include_usage is set.
+                chunk_usage = chunk?.usage;
+                if chunk_usage {
+                    self._usage_history.append(chunk_usage);
+                }
+                if chunk?.choices and chunk?.choices?[0]?.delta {
+                    delta = chunk.choices[0].delta;
+                    yield delta.content or "";
+                }
+            }
+            break;
+        } except Exception as e {
+            # Transient mid-stream drop: retry the same model from scratch, drop the
+            # failed attempt's usage, and bump the reset counter so consumers discard
+            # tokens already shown.
+            if _is_transient_error(e)
+            and attempt < self._resolve_stream_retries(mt_run) {
+                attempt += 1;
+                self._usage_history = self._usage_history[:usage_base];
+                mt_run._stream_reset_count += 1;
+                self.log_info(
+                    f"Transient stream error ({type(e).__name__}); "
+                    f"retry {attempt} on {self.model_name}"
+                );
+                _retry_sleep(attempt);
+                continue;
+            }
+            raise;
         }
     }
 }
@@ -1365,27 +1484,50 @@ impl BaseLLM.dispatch_streaming_with_tools(
     content_buf = "";
     no_stream = False;
     finish_reason = "";
-    try {
-        for chunk in self.model_call_with_stream(params) {
-            chunks.append(chunk);
-            delta_content = "";
-            if chunk?.choices and chunk?.choices?[0]?.delta {
-                delta_content = chunk.choices[0].delta?.content or "";
-            } elif isinstance(chunk, dict) {
-                _choices = chunk.get("choices") or [];
-                if _choices {
-                    delta_content = (_choices[0].get("delta") or {}).get("content")
-                    or "";
+    attempt = 0;
+    while True {
+        # Reset accumulators each attempt so a retried step is never doubled.
+        chunks = [];
+        content_buf = "";
+        try {
+            for chunk in self.model_call_with_stream(params) {
+                chunks.append(chunk);
+                delta_content = "";
+                if chunk?.choices and chunk?.choices?[0]?.delta {
+                    delta_content = chunk.choices[0].delta?.content or "";
+                } elif isinstance(chunk, dict) {
+                    _choices = chunk.get("choices") or [];
+                    if _choices {
+                        delta_content = (_choices[0].get("delta") or {}).get("content")
+                        or "";
+                    }
+                }
+                if delta_content {
+                    content_buf += str(delta_content);
+                    yield str(delta_content);
                 }
             }
-            if delta_content {
-                content_buf += str(delta_content);
-                yield str(delta_content);
+            break;
+        } except NotImplementedError {
+            # Backend has no streaming - fall back to a single non-streaming call.
+            no_stream = True;
+            break;
+        } except Exception as e {
+            # Transient mid-stream drop: discard the partial step and retry the same
+            # model; the reset counter tells consumers to drop shown tokens.
+            if _is_transient_error(e)
+            and attempt < self._resolve_stream_retries(mt_run) {
+                attempt += 1;
+                mt_run._stream_reset_count += 1;
+                self.log_info(
+                    f"Transient stream error ({type(e).__name__}); "
+                    f"retry {attempt} on {self.model_name}"
+                );
+                _retry_sleep(attempt);
+                continue;
             }
+            raise;
         }
-    } except NotImplementedError {
-        # Backend has no streaming - fall back to a single non-streaming call.
-        no_stream = True;
     }
     if no_stream {
         out.append(self.dispatch_no_streaming(mt_run));
@@ -1450,11 +1592,25 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     log_params = self.format_prompt(params);
     self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
     params.pop("api_key", None);
-    try {
-        response = await self.model_call_no_stream_async(params);
-    } except Exception {
-        self.log_info(f"Calling LLM: {self.model_name} with params: {log_params}");
-        raise;
+    attempt = 0;
+    while True {
+        try {
+            response = await self.model_call_no_stream_async(params);
+            break;
+        } except Exception as e {
+            if _is_transient_error(e)
+            and attempt < self._resolve_stream_retries(mt_run) {
+                attempt += 1;
+                self.log_info(
+                    f"Transient LLM error ({type(e).__name__}); "
+                    f"retry {attempt} on {self.model_name}"
+                );
+                await _aretry_sleep(attempt);
+                continue;
+            }
+            self.log_info(f"Calling LLM: {self.model_name} with params: {log_params}");
+            raise;
+        }
     }
     actual_model = response.get("model", self.model_name);
     self.log_info(f"Calling LLM: {actual_model} with params: {log_params}");
@@ -1494,15 +1650,36 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) {
     self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}");
     self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
     params.pop("api_key", None);
-    response = await self.model_call_with_stream_async(params);
-    async for chunk in response {
-        chunk_usage = chunk?.usage;
-        if chunk_usage {
-            self._usage_history.append(chunk_usage);
-        }
-        if chunk?.choices and chunk?.choices?[0]?.delta {
-            delta = chunk.choices[0].delta;
-            yield delta.content or "";
+    attempt = 0;
+    usage_base = len(self._usage_history);
+    while True {
+        try {
+            response = await self.model_call_with_stream_async(params);
+            async for chunk in response {
+                chunk_usage = chunk?.usage;
+                if chunk_usage {
+                    self._usage_history.append(chunk_usage);
+                }
+                if chunk?.choices and chunk?.choices?[0]?.delta {
+                    delta = chunk.choices[0].delta;
+                    yield delta.content or "";
+                }
+            }
+            break;
+        } except Exception as e {
+            if _is_transient_error(e)
+            and attempt < self._resolve_stream_retries(mt_run) {
+                attempt += 1;
+                self._usage_history = self._usage_history[:usage_base];
+                mt_run._stream_reset_count += 1;
+                self.log_info(
+                    f"Transient stream error ({type(e).__name__}); "
+                    f"retry {attempt} on {self.model_name}"
+                );
+                await _aretry_sleep(attempt);
+                continue;
+            }
+            raise;
         }
     }
 }
@@ -1718,7 +1895,13 @@ impl BaseLLM._invoke_streaming(
     self._usage_history = [];
     # No tools: wrap plain streaming tokens in StreamEvent
     if len(mt_run.tools) == 0 {
+        _seen_resets = mt_run._stream_reset_count;
         for token in self.dispatch_streaming(mt_run) {
+            # Retry reset the stream: tell the consumer to drop the partial answer.
+            if mt_run._stream_reset_count != _seen_resets {
+                _seen_resets = mt_run._stream_reset_count;
+                yield StreamEvent(event_type="stream_reset", data={"scope": "answer"});
+            }
             if token {
                 yield StreamEvent(event_type="chunk", data={"content": token});
             }
@@ -1808,7 +1991,16 @@ impl BaseLLM._invoke_streaming(
                 # Stream the model's content tokens live as `thought` events
                 # while collecting the full response (content + tool calls).
                 _stream_out: list[CompletionResult] = [];
+                _seen_resets = mt_run._stream_reset_count;
                 for _tok in self.dispatch_streaming_with_tools(mt_run, _stream_out) {
+                    # Retry reset this step: drop the partial reasoning for it.
+                    if mt_run._stream_reset_count != _seen_resets {
+                        _seen_resets = mt_run._stream_reset_count;
+                        yield StreamEvent(
+                            event_type="stream_reset",
+                            data={"scope": "thought", "iteration": iter_count}
+                        );
+                    }
                     if _tok {
                         yield StreamEvent(
                             event_type="thought",

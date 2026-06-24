@@ -402,26 +402,6 @@ test "generate client config" {
     }
 }
 
-"""Test that generate_client_config command no longer exists."""
-test "generate client config existing file" {
-    with tempfile.TemporaryDirectory() as temp_dir {
-        original_cwd = os.getcwd();
-        try {
-            os.chdir(temp_dir);
-
-            # Run generate_client_config command - should not exist
-            result = run(
-                ["jac", "generate_client_config"], capture_output=True, text=True,
-            );
-
-            # Command should not exist anymore
-            assert result.returncode != 0;
-        } finally {
-            os.chdir(original_cwd);
-        }
-    }
-}
-
 """Create a minimal jac.toml file for testing."""
 def _create_jac_toml(temp_dir: str, deps: str = "", dev_deps: str = "") -> str {
     deps_section = f"\n{deps}" if deps else "";
