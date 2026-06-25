@@ -672,12 +672,39 @@ test "lambda arg annotation" {
         sys.stdout = old_stdout;
     }
     stdout_value = captured.getvalue();
+    # bare-type annotations (existing)
     assert "x = lambda a, b: b + a" in stdout_value;
     assert "y = lambda: 567" in stdout_value;
     assert "f = lambda x: 'even' if x % 2 == 0 else 'odd'" in stdout_value;
+    # subscripted/generic/union annotations — annotation stripped, body preserved
     assert "g = lambda d: d[0]" in stdout_value;
     assert "h = lambda d: d['n']" in stdout_value;
     assert "k = lambda v: v" in stdout_value;
+    # regression: bodies with arithmetic, calls, subscripts, unary must not be
+    # misread as type annotations — body must appear intact in transpiled output
+    assert "lambda x: x * 2" in stdout_value;
+    assert "lambda s: len(s) > 2" in stdout_value;
+    assert "lambda d: d['active']" in stdout_value;
+    assert "lambda x: -x" in stdout_value;
+}
+
+test "lambda arg annotation runtime" {
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+    try {
+        execution.run(fixture_path("lambda_arg_annotation.jac"));
+    } finally {
+        sys.stdout = old_stdout;
+    }
+    stdout_value = captured.getvalue();
+    # subscripted/generic/union annotations execute correctly
+    assert "10" in stdout_value;
+    assert "42" in stdout_value;
+    # regression: body lambdas produce correct runtime results
+    assert "ccc" in stdout_value;
+    assert "99" in stdout_value;
+    assert "-5" in stdout_value;
 }
 
 test "lambda self" {
