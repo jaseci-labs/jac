@@ -863,7 +863,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 );
                                 _idx_stored = True;
                             } elif _wr_sname is not None
-                            and _wr_sname in self.struct_types {
+                            and _wr_sname in self.struct_types
+                            and isinstance(target_val.type, ir.IntType) {
                                 _i64 = ir.IntType(64);
                                 _struct_t = self.struct_types[_wr_sname];
                                 _struct_ptr_t = _struct_t.as_pointer();
@@ -880,7 +881,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 elem_ptr = self.builder.gep(
                                     arr_ptr, [_wide_idx], name="ptr.elem.ptr"
                                 );
-                                if isinstance(value.type, ir.IdentifiedStructType) {
+                                if isinstance(value.type, ir.IdentifiedStructType)
+                                and value.type == _struct_t {
                                     self.builder.store(value, elem_ptr);
                                     _idx_stored = True;
                                 } elif (

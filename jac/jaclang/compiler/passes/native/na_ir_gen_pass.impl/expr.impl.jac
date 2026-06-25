@@ -1487,7 +1487,8 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                         if idx_val is None and idx_node?.start {
                             idx_val = self._codegen_expr(idx_node.start);
                         }
-                        if idx_val is not None {
+                        if idx_val is not None
+                        and isinstance(target_val.type, ir.IntType) {
                             _i64 = ir.IntType(64);
                             _struct_ptr_t = self.struct_types[_rd_sname].as_pointer();
                             arr_ptr = self.builder.inttoptr(
