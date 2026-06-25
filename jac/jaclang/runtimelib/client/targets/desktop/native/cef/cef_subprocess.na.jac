@@ -1,4 +1,4 @@
-# cef_subprocess — imports + entry; cef_platform.na.jac is inserted at # PLATFORM by build_cef_subprocess.sh
+# cef_subprocess -- imports + entry; cef_platform.na.jac is spliced in at # PLATFORM by desktop_build._splice_platform (the # ENTRY marker is dropped)
 import sys;
 
 # Import order is load-order sensitive: libcef.so MUST be NEEDED before

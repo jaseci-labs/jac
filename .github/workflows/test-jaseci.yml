@@ -249,9 +249,7 @@ jobs:
 
     - name: Build dispatch shim and subprocess binary
       working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
-      run: |
-        bash build_cef_dispatch.sh
-        bash build_cef_subprocess.sh
+      run: jac run build.jac
 
     - name: Verify shared-object exports
       working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef

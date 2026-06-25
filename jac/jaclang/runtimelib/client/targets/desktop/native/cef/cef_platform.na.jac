@@ -64,7 +64,7 @@ def _assert_cef_abi {
     _eprint(".");
     _write_uint(pat);
     _eprint("\n");
-    _eprint("[cef]   re-run fetch_libcef.sh to stage the pinned CEF runtime.\n");
+    _eprint("[cef]   re-stage the pinned CEF runtime with a fresh cef build.\n");
     abort();
 }
 

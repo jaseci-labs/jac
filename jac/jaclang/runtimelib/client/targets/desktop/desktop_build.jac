@@ -6,6 +6,9 @@ import hashlib;
 import subprocess;
 import sys;
 import sysconfig;
+import tarfile;
+import platform;
+import from urllib.request { urlopen, urlretrieve }
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 
@@ -36,26 +39,36 @@ def _find_cef_dir -> Path {
     return _find_native_asset_dir("cef", "cef.na.jac");
 }
 
+"""Set an ELF RUNPATH on a binary via patchelf; warn (don't fail) if absent.
+
+Single place that shells out to patchelf for every desktop artifact -- the host
+binary (`$ORIGIN:LIBDIR` for libpython) and the CEF native pieces (`$ORIGIN` for
+the sibling libcef.so). Returns whether the rpath was set."""
+def _patchelf_rpath(binary: Path, rpath: str) -> bool {
+    patchelf = shutil.which("patchelf");
+    if not patchelf {
+        console.print(
+            f"  [yellow]patchelf not found; {binary.name}'s shared deps must be on LD_LIBRARY_PATH at runtime[/yellow]"
+        );
+        return False;
+    }
+    res = subprocess.run([patchelf, "--set-rpath", rpath, str(binary)]);
+    if res.returncode != 0 {
+        console.print(
+            f"  [yellow]patchelf rpath patch failed for {binary.name}; rebuild on this machine if it won't start[/yellow]"
+        );
+        return False;
+    }
+    return True;
+}
+
 """Add $ORIGIN + libpython LIBDIR to the host ELF RUNPATH."""
 def _patch_host_rpath(binary: Path) -> None {
     libdir = sysconfig.get_config_var("LIBDIR") or "";
     if not libdir {
         return;
     }
-    patchelf = shutil.which("patchelf");
-    if not patchelf {
-        console.print(
-            "  [yellow]patchelf not found; libpython must be on LD_LIBRARY_PATH at runtime[/yellow]"
-        );
-        return;
-    }
-    rpath = f"$ORIGIN:{libdir}";
-    res = subprocess.run([patchelf, "--set-rpath", rpath, str(binary)]);
-    if res.returncode != 0 {
-        console.print(
-            "  [yellow]patchelf rpath patch failed; rebuild on this machine if the binary won't start[/yellow]"
-        );
-    }
+    _patchelf_rpath(binary, f"$ORIGIN:{libdir}");
 }
 
 """Resolve the jac CLI for nacompile."""
@@ -299,4 +312,356 @@ def _stage_plugins(out_dir: Path) {
         target.parent.mkdir(parents=True, exist_ok=True);
         target.write_text(res_stdout);
     }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CEF native build (in-Jac replacement for the retired build_cef_*.sh /
+# fetch_libcef.sh scripts; see native/cef/build.jac for the runnable entry).
+# ─────────────────────────────────────────────────────────────────────────────
+"""Splice the shared cef_platform fragment into a host source at `# PLATFORM`.
+
+Faithful in-Jac replacement for the awk splice the build_cef_*.sh scripts ran: a
+line that is exactly `# PLATFORM` is replaced by the full cef_platform.na.jac
+text, and (when drop_entry is set, for the subprocess build) a line that is
+exactly `# ENTRY` is dropped. Output is byte-identical to the old awk pass."""
+def _splice_platform(host_src: str, platform_src: str, drop_entry: bool) -> str {
+    # awk re-adds one newline per spliced line via print; the fragment text
+    # already ends in one, so drop a single trailing newline to avoid a blank.
+    plat = platform_src[:-1] if platform_src.endswith("\n") else platform_src;
+    out: list[str] = [];
+    for line in host_src.split("\n") {
+        if line == "# PLATFORM" {
+            out.append(plat);
+            continue;
+        }
+        if drop_entry and line == "# ENTRY" {
+            continue;
+        }
+        out.append(line);
+    }
+    return "\n".join(out);
+}
+
+"""Splice + `jac nacompile` a CEF source, then set its $ORIGIN rpath.
+
+Shared by the dispatch shared-library build and the subprocess binary build:
+writes the spliced source under cef_dir/.build/ (gitignored), compiles it, and
+fails loudly if the expected artifact is missing."""
+def _nacompile_cef(
+    cef_dir: Path,
+    source_name: str,
+    build_name: str,
+    output: Path,
+    drop_entry: bool,
+    shared: bool,
+) -> Path {
+    build_dir = cef_dir / ".build";
+    build_dir.mkdir(parents=True, exist_ok=True);
+    build_src = build_dir / build_name;
+    host_src = (cef_dir / source_name).read_text();
+    platform_src = (cef_dir / "cef_platform.na.jac").read_text();
+    build_src.write_text(_splice_platform(host_src, platform_src, drop_entry));
+    cmd = [_jac_bin(), "nacompile"];
+    if shared {
+        cmd.append("--shared");
+    }
+    cmd += [str(build_src), "-o", str(output)];
+    res = subprocess.run(cmd);
+    if res.returncode != 0 or not output.exists() {
+        raise RuntimeError(
+            f"jac nacompile failed for {output.name} (source {source_name})."
+        );
+    }
+    _patchelf_rpath(output, "$ORIGIN");
+    return output;
+}
+
+"""Build libcef_dispatch.so (vtables/callbacks/lifecycle) from cef_dispatch.na.jac."""
+def build_cef_dispatch(cef_dir: Path) -> Path {
+    return _nacompile_cef(
+        cef_dir,
+        "cef_dispatch.na.jac",
+        "cef_dispatch_build.na.jac",
+        cef_dir / "libcef_dispatch.so",
+        False,
+        True,
+    );
+}
+
+"""Build the cef-subprocess helper binary from cef_subprocess.na.jac."""
+def build_cef_subprocess(cef_dir: Path) -> Path {
+    return _nacompile_cef(
+        cef_dir,
+        "cef_subprocess.na.jac",
+        "cef_subprocess_build.na.jac",
+        cef_dir / "cef-subprocess",
+        True,
+        False,
+    );
+}
+
+"""Pinned CEF version from the `# version:` directive in cef_sums.lock."""
+def _cef_locked_version(sums_lock: Path) -> str {
+    for line in sums_lock.read_text().split("\n") {
+        s = line.strip();
+        if s.startswith("# version:") {
+            return s[len("# version:"):].strip();
+        }
+    }
+    return "";
+}
+
+"""SHA-1 the cef_sums.lock pins for an archive filename (empty if unpinned)."""
+def _cef_expected_sha1(sums_lock: Path, archive: str) -> str {
+    for line in sums_lock.read_text().split("\n") {
+        s = line.strip();
+        if (not s) or s.startswith("#") {
+            continue;
+        }
+        parts = s.split();
+        if len(parts) == 2 and parts[1] == archive {
+            return parts[0];
+        }
+    }
+    return "";
+}
+
+"""CEF CDN platform tag for the current machine (linux64 / linuxarm64)."""
+def _cef_plat_tag -> str {
+    arch = platform.machine();
+    if arch == "x86_64" {
+        return "linux64";
+    }
+    if arch == "aarch64" {
+        return "linuxarm64";
+    }
+    raise RuntimeError(f"unsupported architecture for CEF: {arch}");
+}
+
+"""Best-effort SHA-1 the live Spotify index advertises for an archive.
+
+A secondary cross-check against the in-tree pin; returns "" on any failure so a
+missing index never blocks a build whose bytes already match the pinned digest."""
+def _cef_index_sha1(plat_tag: str, archive: str) -> str {
+    try {
+        with urlopen(
+            "https://cef-builds.spotifycdn.com/index.json", timeout=30
+        ) as resp {
+            idx = json.loads(resp.read().decode("utf-8"));
+        }
+        versions = idx.get(plat_tag, {}).get("versions", []);
+        for v in versions {
+            for f in v.get("files", []) {
+                if f.get("name") == archive {
+                    return f.get("sha1", "");
+                }
+            }
+        }
+    } except Exception {
+        return "";
+    }
+    return "";
+}
+
+"""Streaming SHA-1 of a (large) file."""
+def _sha1_file(path: Path) -> str {
+    h = hashlib.sha1();
+    with open(str(path), "rb") as f {
+        while True {
+            chunk = f.read(1048576);
+            if not chunk {
+                break;
+            }
+            h.update(chunk);
+        }
+    }
+    return h.hexdigest();
+}
+
+"""Extract the CEF SDK headers (include/** subtree) into headers_dir."""
+def _extract_cef_headers(tarball: Path, headers_dir: Path) {
+    if headers_dir.exists() {
+        shutil.rmtree(headers_dir);
+    }
+    with tarfile.open(str(tarball), "r:bz2") as tf {
+        for m in tf {
+            parts = m.name.split("/", 1);
+            if len(parts) < 2 {
+                continue;
+            }
+            rel = parts[1];
+            if not rel.startswith("include/") {
+                continue;
+            }
+            target = headers_dir / rel;
+            if m.isdir() {
+                target.mkdir(parents=True, exist_ok=True);
+            } else {
+                target.parent.mkdir(parents=True, exist_ok=True);
+                with tf.extractfile(m) as src {
+                    with open(str(target), "wb") as dst {
+                        shutil.copyfileobj(src, dst);
+                    }
+                }
+            }
+        }
+    }
+}
+
+"""Extract the CEF runtime files flat into dist_dir.
+
+Mirrors fetch_libcef.sh: pulls the libs, ICU data, V8 snapshots, every .pak, and
+the locales/ tree, flattening the Release/ and Resources/ tarball prefixes."""
+def _extract_cef_runtime(tarball: Path, dist_dir: Path) {
+    need = {
+        "libcef.so",
+        "libEGL.so",
+        "libGLESv2.so",
+        "libvk_swiftshader.so",
+        "vk_swiftshader_icd.json",
+        "v8_context_snapshot.bin",
+        "chrome-sandbox",
+        "icudtl.dat"
+    };
+    if dist_dir.exists() {
+        shutil.rmtree(dist_dir);
+    }
+    dist_dir.mkdir(parents=True, exist_ok=True);
+    with tarfile.open(str(tarball), "r:bz2") as tf {
+        for m in tf {
+            parts = m.name.split("/", 1);
+            if len(parts) < 2 {
+                continue;
+            }
+            rel = parts[1];
+            base = rel.split("/")[-1];
+            seg0 = rel.split("/")[0];
+            want = (base in need) or base.endswith(".pak") or (seg0 == "locales");
+            if not want {
+                continue;
+            }
+            flat = rel;
+            for pfx in ["Release/", "Resources/", "Debug/"] {
+                if flat.startswith(pfx) {
+                    flat = flat[len(pfx):];
+                    break;
+                }
+            }
+            target = dist_dir / flat;
+            if m.isdir() {
+                target.mkdir(parents=True, exist_ok=True);
+            } else {
+                target.parent.mkdir(parents=True, exist_ok=True);
+                with tf.extractfile(m) as src {
+                    with open(str(target), "wb") as dst {
+                        shutil.copyfileobj(src, dst);
+                    }
+                }
+            }
+        }
+    }
+}
+
+"""Download + stage the pinned CEF prebuilt distribution into cef_dir.
+
+In-Jac replacement for fetch_libcef.sh. cef_sums.lock is the trust anchor: the
+exact version is read from its `# version:` directive and the archive bytes are
+verified against the pinned SHA-1 (fail closed). The live Spotify index is a
+secondary cross-check that surfaces a stale/tampered pin. Idempotent: reuses a
+cached tarball and skips extraction when the staged version already matches. Set
+headers_only to stage just the SDK headers."""
+def fetch_cef_dist(cef_dir: Path, headers_only: bool = False) -> Path {
+    sums_lock = cef_dir / "cef_sums.lock";
+    if not sums_lock.exists() {
+        raise RuntimeError(f"missing CEF trust anchor: {sums_lock}");
+    }
+    version = os.environ.get("CEF_VERSION") or _cef_locked_version(sums_lock);
+    if not version {
+        raise RuntimeError(f"no '# version:' directive in {sums_lock}");
+    }
+    dist_dir = cef_dir / "cef_dist";
+    version_stamp = dist_dir / ".cef_version";
+    headers_dir = cef_dir / "cef_headers";
+    headers_marker = headers_dir / "include" / "capi" / "cef_app_capi.h";
+    cached_tarball = cef_dir / ".cef_tarball.tar.bz2";
+
+    if headers_only and headers_marker.exists() {
+        return headers_dir;
+    }
+    if (
+        (not headers_only)
+        and version_stamp.exists()
+        and (version_stamp.read_text().strip() == version)
+        and (dist_dir / "libcef.so").exists()
+        and headers_marker.exists()
+    ) {
+        return dist_dir;
+    }
+
+    plat_tag = _cef_plat_tag();
+    archive = f"cef_binary_{version}_{plat_tag}.tar.bz2";
+    expected = _cef_expected_sha1(sums_lock, archive);
+    if not expected {
+        raise RuntimeError(
+            f"no pinned SHA-1 for {archive} in cef_sums.lock; refusing to "
+            "download an unverified CEF archive."
+        );
+    }
+    resolved = f"https://cef-builds.spotifycdn.com/{archive}";
+    console.print(f"  Resolving CEF {version} for {plat_tag}...", style="muted");
+
+    index_sha1 = _cef_index_sha1(plat_tag, archive);
+    if index_sha1 and (index_sha1 != expected) {
+        raise RuntimeError(
+            "live CEF index SHA-1 disagrees with cef_sums.lock for " + archive + f" (pinned {expected}, index {index_sha1}); pin or release host is stale."
+        );
+    }
+
+    if not cached_tarball.exists() {
+        console.print(
+            "  Downloading CEF distribution (~800 MB, one-time)...", style="muted"
+        );
+        ok = False;
+        last_err = "";
+        for _ in range(3) {
+            try {
+                urlretrieve(resolved, str(cached_tarball));
+                ok = True;
+                break;
+            } except Exception as err {
+                last_err = str(err);
+            }
+        }
+        if not ok {
+            raise RuntimeError(f"CEF download failed: {last_err}");
+        }
+    }
+
+    actual = _sha1_file(cached_tarball);
+    if actual != expected {
+        cached_tarball.unlink();
+        raise RuntimeError(
+            f"SHA-1 mismatch for CEF archive (expected {expected}, got {actual}); "
+            "deleted the corrupted download."
+        );
+    }
+    console.print(f"  SHA-1 verified: {actual}", style="muted");
+
+    if headers_only {
+        if not headers_marker.exists() {
+            _extract_cef_headers(cached_tarball, headers_dir);
+        }
+        return headers_dir;
+    }
+
+    if not (dist_dir / "libcef.so").exists() {
+        console.print(f"  Extracting CEF runtime to {dist_dir}...", style="muted");
+        _extract_cef_runtime(cached_tarball, dist_dir);
+    }
+    version_stamp.write_text(version);
+    if not headers_marker.exists() {
+        _extract_cef_headers(cached_tarball, headers_dir);
+    }
+    console.print(f"  Staged CEF {version} in {dist_dir}", style="muted");
+    return dist_dir;
 }

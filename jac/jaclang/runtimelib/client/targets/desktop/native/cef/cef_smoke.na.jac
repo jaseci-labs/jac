@@ -1,6 +1,7 @@
 """Minimal CEF smoke test — validates the dispatch binding initializes CEF.
 
-Run from this directory after fetch_libcef.sh + build_cef_dispatch.sh:
+Run from this directory after `jac run build.jac` builds libcef_dispatch.so and
+the CEF runtime is staged in cef_dist/ (via a `cef` build / fetch_cef_dist):
     jac nacompile cef_smoke.na.jac -o cef_smoke
     LD_LIBRARY_PATH=cef_dist:. ./cef_smoke
 """

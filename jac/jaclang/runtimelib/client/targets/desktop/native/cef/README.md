@@ -87,24 +87,25 @@ nacompile`. They differ only in the renderer:
 |------|------|
 | `cef.na.jac` | Thin Jac binding over `libcef_dispatch.so` + message-loop imports from `libcef.so` |
 | `cef_dispatch.na.jac` | Source for `libcef_dispatch.so` (vtable structs, callbacks, lifecycle) |
-| `cef_platform.na.jac` | Shared stub vtables + `/proc/self/cmdline` parsing (spliced at build time) |
+| `cef_platform.na.jac` | Shared stub vtables + `/proc/self/cmdline` parsing (spliced into both `.na.jac` sources at the `# PLATFORM` marker) |
 | `cef_subprocess.na.jac` | Source for the `cef-subprocess` helper binary |
-| `build_cef_dispatch.sh` | `jac nacompile --shared` → `libcef_dispatch.so` |
-| `build_cef_subprocess.sh` | `jac nacompile` → `cef-subprocess` |
-| `fetch_libcef.sh` | Downloads pinned CEF binary + SDK headers (one-time, ~800 MB tarball) |
+| `build.jac` | Runnable entry: `jac run build.jac` → `libcef_dispatch.so` + `cef-subprocess` (used by CI) |
+| `cef_sums.lock` | Pinned CEF version + archive SHA-1 digests (download trust anchor) |
 | `minimal-fonts.conf` | fontconfig used at runtime via `FONTCONFIG_FILE` |
 | `cef_smoke.na.jac` | Smoke test: init + shutdown |
 | `cef_test_host.na.jac` | Manual test: opens a page in a CEF window |
 
 ## Prerequisites
 
-On first `cef` build the pipeline runs `fetch_libcef.sh`,
-`build_cef_dispatch.sh`, and `build_cef_subprocess.sh` automatically. You need:
+On first `cef` build the pipeline fetches the CEF distribution and compiles the
+native pieces automatically (all in Jac -- see `desktop_build.jac`; `build.jac`
+is the standalone entry). You need:
 
-- `curl` for downloading the CEF distribution
-- `jac` on `PATH` (the native pieces compile with `jac nacompile`, **no gcc**)
-- `patchelf` (optional) to set `$ORIGIN` rpath; without it, `libcef.so` must be
-  on `LD_LIBRARY_PATH` at runtime
+- `jac` on `PATH` (the native pieces compile with `jac nacompile`, **no gcc**;
+  the download + SHA-1 verify + unpack run in-process via the Python stdlib, so
+  **no `curl`**)
+- `patchelf` (optional) -- the Jac native linker already emits an `$ORIGIN`
+  RUNPATH, so this is belt-and-suspenders for any host/linker that does not
 - ~1 GB disk for the cached CEF tarball + staged runtime
 
 Generated artifacts (not committed; see `.gitignore`):
@@ -124,7 +125,8 @@ Without setuid, the host passes `--no-sandbox` (OK for dev).
 
 ## Notes
 
-- **Pinned CEF version**: `fetch_libcef.sh` pins the CEF major version. The flat
+- **Pinned CEF version**: `cef_sums.lock` pins the exact CEF version (its
+  `# version:` directive) and archive digests. The flat
   struct layouts in `cef.na.jac` / `cef_dispatch.na.jac` are version-specific
   (field offsets and `sizeof` are hard-coded for the pinned major); a version
   bump requires re-verifying every offset.
@@ -133,8 +135,3 @@ Without setuid, the host passes `--no-sandbox` (OK for dev).
   V8 global object before any page scripts execute (the CEF equivalent of the
   native target's `webview_init(BOOTSTRAP_JS)`).
 - `cache_path` controls CEF profile/localStorage persistence.
-
-## QA
-
-Proactive testing checklist, CI smoke patterns, and pre-ship matrix:
-[`QA.md`](QA.md).

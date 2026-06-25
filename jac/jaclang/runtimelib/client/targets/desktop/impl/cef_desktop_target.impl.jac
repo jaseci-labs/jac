@@ -23,6 +23,9 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     _plugin_bootstrap_py,
     _stage_oauth_broker,
     _stage_plugins,
+    build_cef_dispatch,
+    build_cef_subprocess,
+    fetch_cef_dist,
 }
 
 """Ensure the CEF binary distribution is staged (fetch it on first use)."""
@@ -33,8 +36,8 @@ def _ensure_cef_dist(cef_dir: Path) -> Path {
         return dist;
     }
     console.print("  Fetching CEF binary distribution (one-time)...", style="muted");
-    res = subprocess.run([str(cef_dir / "fetch_libcef.sh")]);
-    if res.returncode != 0 or not (dist / "libcef.so").exists() {
+    fetch_cef_dist(cef_dir);
+    if not (dist / "libcef.so").exists() {
         raise RuntimeError(
             "Failed to fetch CEF binary distribution. "
             "See targets/desktop/native/cef/README.md for prerequisites."
@@ -42,8 +45,7 @@ def _ensure_cef_dist(cef_dir: Path) -> Path {
     }
     if not headers.exists() {
         raise RuntimeError(
-            "CEF SDK headers missing after fetch. "
-            "Re-run targets/desktop/native/cef/fetch_libcef.sh."
+            "CEF SDK headers missing after fetch (re-run the cef build)."
         );
     }
     return dist;
@@ -67,49 +69,26 @@ def _is_stale(output: Path, inputs: list[Path]) -> bool {
 def _ensure_libcef_dispatch(cef_dir: Path) -> Path {
     lib = cef_dir / "libcef_dispatch.so";
     src = cef_dir / "cef_dispatch.na.jac";
-    stale = _is_stale(
-        lib, [src, cef_dir / "cef_platform.na.jac", cef_dir / "build_cef_dispatch.sh"]
-    );
+    stale = _is_stale(lib, [src, cef_dir / "cef_platform.na.jac"]);
     if not stale {
         return lib;
     }
     console.print(
         "  Building libcef_dispatch.so (jac nacompile --shared)...", style="muted"
     );
-    env = dict(os.environ);
-    env["JAC_BIN"] = _jac_bin();
-    res = subprocess.run([str(cef_dir / "build_cef_dispatch.sh")], env=env);
-    if res.returncode != 0 or not lib.exists() {
-        raise RuntimeError(
-            "Failed to build libcef_dispatch.so. "
-            "Ensure the active jac binary and patchelf are available."
-        );
-    }
-    return lib;
+    return build_cef_dispatch(cef_dir);
 }
 
 """Ensure cef-subprocess helper exists (jac nacompile binary for CEF browser subprocesses)."""
 def _ensure_cef_subprocess(cef_dir: Path) -> Path {
     helper = cef_dir / "cef-subprocess";
     src = cef_dir / "cef_subprocess.na.jac";
-    stale = _is_stale(
-        helper,
-        [src, cef_dir / "cef_platform.na.jac", cef_dir / "build_cef_subprocess.sh"]
-    );
+    stale = _is_stale(helper, [src, cef_dir / "cef_platform.na.jac"]);
     if not stale {
         return helper;
     }
     console.print("  Building cef-subprocess (jac nacompile)...", style="muted");
-    env = dict(os.environ);
-    env["JAC_BIN"] = _jac_bin();
-    res = subprocess.run([str(cef_dir / "build_cef_subprocess.sh")], env=env);
-    if res.returncode != 0 or not helper.exists() {
-        raise RuntimeError(
-            "Failed to build cef-subprocess. "
-            "Ensure the active jac binary and patchelf are available."
-        );
-    }
-    return helper;
+    return build_cef_subprocess(cef_dir);
 }
 
 """Generate the CEF native host source (`host.na.jac`).
