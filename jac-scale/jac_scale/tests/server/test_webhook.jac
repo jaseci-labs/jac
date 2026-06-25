@@ -624,11 +624,14 @@ def _run_with_shared_mongo(run_test: Callable[[str], None]) {
     uri = _shared_mongo_uri();
     os.environ["MONGODB_URI"] = uri;
     _cleanup_db_files(wh_fixtures_dir);
-    sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
+    sp = None;
     try {
+        sp = _start_server(wh_fixtures_dir, wh_test_file, port, base_url);
         run_test(base_url);
     } finally {
-        _stop_server(sp);
+        if sp is not None {
+            _stop_server(sp);
+        }
         os.environ.pop("MONGODB_URI", None);
         _reset_shared_mongo(uri);
         _cleanup_db_files(wh_fixtures_dir);
