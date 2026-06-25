@@ -532,6 +532,7 @@ obj Parser {
     def parse_compr_clause -> InnerCompr;
     def parse_lambda_expr -> Expr;
     def parse_lambda_params(sig_kid: list) -> list;
+    def _lambda_colon_is_annotation -> bool;
     def parse_lambda_param -> ParamVar;
     # JSX parsing
     def parse_jsx_element -> Expr;

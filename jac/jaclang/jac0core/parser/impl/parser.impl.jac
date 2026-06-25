@@ -3083,6 +3083,34 @@ impl Parser.parse_lambda_params(sig_kid: list) -> list {
     return params;
 }
 
+impl Parser._lambda_colon_is_annotation -> bool {
+    # Current token must be COLON. Scan forward without consuming to decide
+    # whether this colon is a param-type separator (i.e. a second COLON exists
+    # at bracket depth 0 before the lambda's enclosing scope ends).
+    save = self.pos;
+    self.advance();  # step past COLON
+    depth = 0;
+    found = False;
+    while not self.at_end() {
+        if self.check_any(TokenKind.LPAREN, TokenKind.LSQUARE, TokenKind.LBRACE) {
+            depth += 1;
+        } elif self.check_any(TokenKind.RPAREN, TokenKind.RSQUARE, TokenKind.RBRACE) {
+            if depth == 0 {
+                break;  # left the enclosing scope — no annotation
+            }
+            depth -= 1;
+        } elif self.check(TokenKind.SEMI) {
+            break;
+        } elif self.check(TokenKind.COLON) and depth == 0 {
+            found = True;
+            break;
+        }
+        self.advance();
+    }
+    self.pos = save;  # always restore
+    return found;
+}
+
 impl Parser.parse_lambda_param -> ParamVar | None {
     # Handle *args or **kwargs prefix
     unpack: UniToken | None = None;
@@ -3121,31 +3149,11 @@ impl Parser.parse_lambda_param -> ParamVar | None {
         return None;
     }
     type_tag: SubTag | None = None;
-    # An un-parenthesized lambda reuses `:` for both the param annotation and
-    # the body separator: `name : <type> : <body>`. Unlike `def`/`has` params
-    # (whose colon is unambiguous), disambiguate by parsing the candidate type
-    # with parse_bitwise_or — the precedence rung that covers type syntax
-    # (names, dotted, subscripts like `list[int]`/`dict[str, int]`, `|` unions)
-    # but stops below comparison and other operators. A real type lands on a
-    # param/body delimiter (`:` `,` `=` `->` `{`); a body like `len(s) > 1,`
-    # stops at `>` and `-x` at `-`, so the trailing-token check rejects them and
-    # the colon falls through to the body.
-    if self.check(TokenKind.COLON) {
-        save_pos = self.pos;
-        self.advance();  # consume COLON
+    if self.check(TokenKind.COLON) and self._lambda_colon_is_annotation() {
+        self.advance();  # consume COLON (annotation separator)
         lam_colon = self.make_uni_token(self.previous());
-        te = self.parse_bitwise_or();
-        if self.check_any(
-            TokenKind.COMMA,
-            TokenKind.EQ,
-            TokenKind.COLON,
-            TokenKind.RETURN_HINT,
-            TokenKind.LBRACE
-        ) {
-            type_tag = SubTag(tag=te, kid=[lam_colon, te]);
-        } else {
-            self.pos = save_pos;  # not a type — the colon belongs to the body
-        }
+        te = self.parse_pipe();
+        type_tag = SubTag(tag=te, kid=[lam_colon, te]);
     }
     default_val: Expr | None = None;
     if self.match_tok(TokenKind.EQ) {
