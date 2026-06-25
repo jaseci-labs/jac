@@ -25,10 +25,8 @@ bundled one. A bundled module links through the existing cross-module machinery
 ### Flat-import form (`import json; json.dumps(...)`)
 
 Besides `import from json { dumps }`, a **flat** `import json;` followed by
-`json.dumps(...)` member calls also resolves to the bundled module (issue
-
-# 6964). The flat form is admitted only for **single-segment** module names that
-
+`json.dumps(...)` member calls also resolves to the bundled module (issue 6964).
+The flat form is admitted only for **single-segment** module names that
 `resolve_native_module` finds as a `.na.jac` (json, zlib, datetime, hashlib);
 a dotted `import os.path;` stays rejected (use the `import from` form), since
 the flat dotted form would bind the leading segment as an alias and could shadow
