@@ -861,12 +861,15 @@ test "run snippet output exactly at cap has no truncation marker" {
     # Output that is exactly MAX_OUTPUT_SIZE bytes must not be falsely marked as
     # truncated -- _cap_read reads one extra byte to confirm overflow.
     import from jac_mcp.compiler_bridge { MAX_OUTPUT_SIZE, OUTPUT_TRUNCATION_MARKER }
-    # Produce exactly MAX_OUTPUT_SIZE bytes: 102400 = 25 * 4096 lines of 24 chars
-    # each ("0" * 23 + newline). Adjust: print adds a newline, so each call
-    # produces 25 bytes. 102400 / 25 = 4096 iterations.
-    snippet = "with entry { for i in range(4096) { print(\"000000000000000000000000\"); } }";
+    # Produce exactly MAX_OUTPUT_SIZE bytes. Each `print` of 24 chars emits 25
+    # bytes (24 + newline), so the iteration count is derived from the cap
+    # rather than hardcoded, keeping the test correct if MAX_OUTPUT_SIZE changes.
+    iterations = MAX_OUTPUT_SIZE // 25;
+    snippet = f"with entry {{ for i in range({iterations}) {{ print(\"000000000000000000000000\"); }} }}";
     result = CompilerBridge.run_snippet(snippet);
     assert "stdout" in result;
+    assert len(result["stdout"]) == MAX_OUTPUT_SIZE;
+    assert OUTPUT_TRUNCATION_MARKER not in result["stdout"];
     assert "truncated" not in result["stdout"];
 }
 
