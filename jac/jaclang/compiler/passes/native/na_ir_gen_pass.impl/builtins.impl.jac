@@ -432,11 +432,15 @@ CPython's `s.strip(chars)` — `strchr(charset, ch) != NULL`. The stripping loop
 only test bytes inside the string body (never the terminator), so a '\\0' never
 reaches here and strchr's match-on-NUL quirk cannot fire. (#6943 NA-9)
 """
-impl NaIRGenPass._emit_is_strip_char(ch: ir.Value, charset: (ir.Value | None)) -> ir.Value {
+impl NaIRGenPass._emit_is_strip_char(
+    ch: ir.Value, charset: (ir.Value | None)
+) -> ir.Value {
     i8 = ir.IntType(8);
     i32 = ir.IntType(32);
     if charset is None {
-        is_space = self.builder.icmp_signed("==", ch, ir.Constant(i8, 32), name="is.space");
+        is_space = self.builder.icmp_signed(
+            "==", ch, ir.Constant(i8, 32), name="is.space"
+        );
         is_tab = self.builder.icmp_signed("==", ch, ir.Constant(i8, 9), name="is.tab");
         is_nl = self.builder.icmp_signed("==", ch, ir.Constant(i8, 10), name="is.nl");
         is_cr = self.builder.icmp_signed("==", ch, ir.Constant(i8, 13), name="is.cr");
@@ -492,7 +496,9 @@ impl NaIRGenPass._codegen_str_strip_chars(
         is_strip = self._emit_is_strip_char(ch, charset);
         self.builder.cbranch(is_strip, start_inc_bb, start_done_bb);
         self.builder.position_at_end(start_inc_bb);
-        next_start = self.builder.add(start_val, ir.Constant(i64, 1), name="next.start");
+        next_start = self.builder.add(
+            start_val, ir.Constant(i64, 1), name="next.start"
+        );
         self.builder.store(next_start, start_alloca);
         self.builder.branch(start_check_bb);
         self.builder.position_at_end(start_done_bb);

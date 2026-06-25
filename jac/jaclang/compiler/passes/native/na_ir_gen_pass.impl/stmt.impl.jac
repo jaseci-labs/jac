@@ -478,7 +478,11 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
             if nd.loc
             else 0}";
         self._emit_loop_iter_cleanup(
-            [_v for _v in _while_body_locals if _v not in _while_prebody],
+            [
+                _v
+                for _v in _while_body_locals
+                if _v not in _while_prebody
+            ],
             loc=_while_loc
         );
         self.builder.branch(cond_bb);
@@ -543,7 +547,12 @@ impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
         else 0}";
     if not self.builder.block.is_terminated {
         self._emit_loop_iter_cleanup(
-            [_v for _v in _saved_locals if _v not in _iterfor_prebody], loc=_loc
+            [
+                _v
+                for _v in _saved_locals
+                if _v not in _iterfor_prebody
+            ],
+            loc=_loc
         );
         self.builder.branch(step_bb);
     }
@@ -2081,7 +2090,12 @@ impl NaIRGenPass._codegen_for_indexed(
     }
     if not self.builder.block.is_terminated {
         self._emit_loop_iter_cleanup(
-            [_v for _v in _for_saved if _v not in _for_prebody], loc=_for_loc
+            [
+                _v
+                for _v in _for_saved
+                if _v not in _for_prebody
+            ],
+            loc=_for_loc
         );
         self.builder.branch(incr_bb);
     }

@@ -1381,7 +1381,9 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                             _any_key = self._codegen_expr(_any_idx_node.start);
                         }
                         if _any_key is not None {
-                            _any_res = self._codegen_any_subscript(target_val, _any_key);
+                            _any_res = self._codegen_any_subscript(
+                                target_val, _any_key
+                            );
                             if _any_res is not None {
                                 return _any_res;
                             }

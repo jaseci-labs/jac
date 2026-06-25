@@ -1286,7 +1286,12 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     }
     if not self.builder.block.is_terminated {
         self._emit_loop_iter_cleanup(
-            [_v for _v in _saved if _v not in _iter_prebody], loc=_loc
+            [
+                _v
+                for _v in _saved
+                if _v not in _iter_prebody
+            ],
+            loc=_loc
         );
         self.builder.branch(cond_bb);
     }

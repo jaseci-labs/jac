@@ -699,11 +699,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_index(
         target_val: ir.Value, index_val: ir.Value, elem_type_name: str
     ) -> (ir.Value | None);
+
     def _codegen_any_subscript(
         jacval: ir.Value, key_val: ir.Value
     ) -> (ir.Value | None);
-    def _codegen_any_len(jacval: ir.Value) -> ir.Value;
 
+    def _codegen_any_len(jacval: ir.Value) -> ir.Value;
     def _codegen_index_set(
         target_val: ir.Value, index_val: ir.Value, value: ir.Value, elem_type_name: str
     ) -> None;
@@ -736,6 +737,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_str_strip_chars(
         str_val: ir.Value, charset: (ir.Value | None), do_left: bool, do_right: bool
     ) -> (ir.Value | None);
+
     def _codegen_str_split(str_val: ir.Value, sep_val: ir.Value) -> (ir.Value | None);
     def _codegen_list_slice(
         target_val: ir.Value, slice_node: object, elem_type_name: str
