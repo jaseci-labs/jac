@@ -2,7 +2,6 @@
 import os;
 import shutil;
 import json;
-import hashlib;
 import subprocess;
 import sysconfig;
 import from pathlib { Path }
@@ -10,6 +9,15 @@ import from typing { Optional }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.client.targets.desktop.plugin.webview_lib {
     libwebview_name
+}
+import from jaclang.runtimelib.client.targets.desktop.desktop_build {
+    _find_webview_dir,
+    _jac_bin,
+    _jac_sdk_js,
+    _loopback_serve_py,
+    _plugin_bootstrap_py,
+    _stage_oauth_broker,
+    _stage_plugins,
 }
 
 """Read lines from a file between start_marker and end_marker (exclusive).
@@ -32,43 +40,6 @@ def _read_between(path: Path, start_marker: str, end_marker: str) -> str {
         }
     }
     return "".join(result);
-}
-
-"""Locate the shipped native/webview assets (binding + build tooling).
-
-native/webview lives inside this package, one dir up from this targets module
-(targets/desktop/ -> targets/desktop/native/webview). Verified by the presence
-of webview.na.jac; walks up as a fallback for unusual layouts.
-"""
-def _find_webview_dir -> Path {
-    here = Path(os.path.abspath(__file__)).parent;
-    candidates = [here.parent / "native" / "webview", here / "native" / "webview"];
-    p = here;
-    for _ in range(6) {
-        candidates.append(p / "native" / "webview");
-        p = p.parent;
-    }
-    for cand in candidates {
-        if (cand / "webview.na.jac").exists() {
-            return cand;
-        }
-    }
-    raise RuntimeError(
-        "desktop target: native/webview assets not found in the package."
-    );
-}
-
-"""Resolve the jac CLI for nacompile (we're running under it)."""
-def _jac_bin -> str {
-    found = shutil.which("jac");
-    if found {
-        return found;
-    }
-    cand = Path(os.path.dirname(os.sys.executable)) / "jac";
-    if cand.exists() {
-        return str(cand);
-    }
-    raise RuntimeError("jac CLI not found on PATH.");
 }
 
 """Ensure the platform webview shared library exists beside the binding (build it on first use)."""
@@ -111,136 +82,17 @@ def _generate_host_source(
     app_name: str,
     plugin_configs: dict = {}
 ) -> str {
-    # Deterministic per-app port in the dynamic/private range (49152-65215) so
-    # the same app reuses the same origin across launches; computed at build
-    # time so the host needs no hashing at runtime.
-    pref_port = 49152 + (int(hashlib.sha1(app_name.encode()).hexdigest(), 16) % 16000);
-    serve_py = (
-        "import os, sys, socketserver, threading, importlib.util\n"
-        "if os.path.isfile('/proc/self/exe'):\n"
-        "    _exe = os.path.realpath('/proc/self/exe')\n"
-        "else:\n"
-        "    _exe = os.path.abspath(sys.argv[0])\n"
-        "_root = os.path.dirname(_exe)\n"
-        "_dir = os.path.join(_root, 'dist')\n"
-        "_spec = importlib.util.spec_from_file_location("
-        "'oauth_broker', os.path.join(_root, 'oauth_broker.py'))\n"
-        "_broker = importlib.util.module_from_spec(_spec)\n"
-        "_spec.loader.exec_module(_broker)\n"
-        # Persist the session under the user data dir (JAC_DATA_PATH honored),
-        # never inside the web-served dist/ tree.
-        "_data = os.environ.get('JAC_DATA_PATH', _root)\n"
-        "_store = _broker.SessionStore("
-        "os.path.join(_data, '.jac', 'desktop', 'session.json'))\n"
-        "_H = _broker.make_handler(_dir, _store)\n"
-        # Stable origin: rebind the same deterministic port each launch
-        # (SO_REUSEADDR clears TIME_WAIT); fall back through a small scan, then
-        # to an ephemeral port only if the whole range is contended.
-        "socketserver.TCPServer.allow_reuse_address = True\n"
-        f"_pref = {pref_port}\n"
-        "_srv = None; _port = None\n"
-        "for _i in range(64):\n"
-        "    try:\n"
-        "        _srv = socketserver.TCPServer(('127.0.0.1', _pref + _i), _H)\n"
-        "        _port = _pref + _i; break\n"
-        "    except OSError:\n"
-        "        continue\n"
-        "if _srv is None:\n"
-        "    _srv = socketserver.TCPServer(('127.0.0.1', 0), _H)\n"
-        "    _port = _srv.server_address[1]\n"
-        "threading.Thread(target=_srv.serve_forever, daemon=True).start()\n"
-        "print('JAC_DESKTOP_SERVING http://127.0.0.1:' + str(_port) + '/', flush=True)\n"
+    # Embedded-CPython loopback server (shared with the CEF target). Binds the
+    # stable per-app origin port, then splices in the plugin bootstrap so
+    # _host/_dispatch_fn are available to the webview bind. The native target
+    # serves single-threaded (no SSE push route); CEF passes threaded=True.
+    serve_py = _loopback_serve_py(
+        app_name, plugin_bootstrap=_plugin_bootstrap_py(plugin_configs), threaded=False
     );
-    # --- Plugin IPC bootstrap (embedded CPython) ---
-    # Import plugin modules, register enabled plugins, expose dispatch.
-    # registry.jac (BUILTIN_PLUGINS + bootstrap_plugins) owns *which plugins to
-    # register and how*. This list owns the *module load order* for the embedded
-    # importlib bootstrap, which runs before registry is importable, so it can't
-    # be derived from BUILTIN_PLUGINS — it must be hand-kept in sync: every
-    # `built_in.*` plugin module here must match a BUILTIN_PLUGINS entry.
-    # Order is load order. `registry` imports every `built_in.*` plugin at
-    # module scope, so it MUST come last: in the embedded CPython `built_in`
-    # is a bare ModuleType (not a real package), so `from built_in.x import Y`
-    # only resolves once `built_in.x` is already in sys.modules. Loading
-    # registry before the built_in modules raises ModuleNotFoundError and
-    # crashes the whole plugin bootstrap (dispatch then never gets defined).
-    _plugin_mods = [
-        "manifest",
-        "desktop_plugin",
-        "webview_lib",
-        "plugin_host",
-        "built_in.path_plugin",
-        "built_in.window_plugin",
-        "built_in.fs_plugin",
-        "built_in.notification_plugin",
-        "built_in.clipboard_plugin",
-        "built_in.dialog_plugin",
-        "built_in.shell_plugin",
-        "registry"
-    ];
-    # Build plugin bootstrap as string concat (not Jac f-strings with nested
-    # quotes — those lower to broken Python like
-    # spec_from_file_location('mod, mod.py') with a null loader).
-    plugin_py = (
-        "import sys, importlib.util, types\n"
-        "if _root not in sys.path:\n"
-        "    sys.path.insert(0, _root)\n"
-        "if 'built_in' not in sys.modules:\n"
-        "    sys.modules['built_in'] = types.ModuleType('built_in')\n"
-    );
-    for _mod in _plugin_mods {
-        _py_rel = _mod.replace(".", "/") + ".py";
-        plugin_py += (
-            "_spec = importlib.util.spec_from_file_location(\n" + json.dumps(_mod) + ", os.path.join(_root, " + json.dumps(
-                _py_rel
-            ) + "))\n" "_m = importlib.util.module_from_spec(_spec)\n" "sys.modules[" + json.dumps(
-                _mod
-            ) + "] = _m\n" "_spec.loader.exec_module(_m)\n"
-        );
-        if _mod.startswith("built_in.") {
-            _child = _mod.split(".", 1)[1];
-            plugin_py += (
-                "setattr(sys.modules['built_in'], " + json.dumps(_child) + ", _m)\n"
-            );
-        }
-    }
-    # Build plugin host using registry bootstrap_plugins().
-    # This replaces seven hand-written registration blocks with a single call.
-    _pc = plugin_configs;  # baked at build time
-    plugin_py += f"_pc = {repr(_pc)}\n";
-    plugin_py += (
-        "_host = sys.modules['registry'].bootstrap_plugins(_pc, sys.modules)\n"
-        "_dispatch_fn = _host.dispatch\n"
-    );
-    serve_py = serve_py + "\n" + plugin_py;
     # --- JS SDK: window.__jac.invoke() + window.__jac.on() ---
-    # Replaces the existing bootstrap with a backward-compatible superset.
-    # Sets __JAC_DESKTOP__ and __JAC_BROKER__ for backward compat.
-    js_sdk = (
-        "(function(){"
-        "var _l={};"
-        "window.__jac={"
-        "invoke:function(p,c,a){"
-        "return window.__jac_invoke(p,c,a||{}).then(function(r){"
-        "if(typeof r==='string')r=JSON.parse(r);"
-        "if(r.ok)return r.data;"
-        "var e=new Error(r.error.message);"
-        "e.code=r.error.code;throw e;"
-        "});"
-        "},"
-        "on:function(ev,cb){"
-        "(_l[ev]=_l[ev]||[]).push(cb);"
-        "return function(){var a=_l[ev]||[];var i=a.indexOf(cb);"
-        "if(i!==-1)a.splice(i,1);};"
-        "},"
-        "__emit__:function(ev,p){"
-        "(_l[ev]||[]).forEach(function(h){try{h(p);}catch(_){}});"
-        "}"
-        "};"
-        "window.__JAC_DESKTOP__=true;"
-        "window.__JAC_BROKER__='/__jac';"
-        "})();"
-    );
+    # Backward-compatible superset; also sets __JAC_DESKTOP__/__JAC_BROKER__.
+    # Shared with the CEF target (desktop_build.jac).
+    js_sdk = _jac_sdk_js();
     # --- Generated host source ---
     # The plugin bridge is extracted from plugin_bridge.na.jac between
     # BRIDGE START / BRIDGE END markers — that file is the single source.
@@ -342,64 +194,12 @@ impl NativeDesktopTarget.build(
     shutil.copy2(lib, out_dir / out_lib_name);
     shutil.copy2(webview_dir / "webview.na.jac", out_dir / "webview.na.jac");
 
-    # 5. Transpile oauth_broker.jac -> .py (unchanged from before).
-    broker_src = webview_dir.parent / "oauth_broker.jac";
-    console.print(
-        "  Transpiling oauth_broker.jac -> oauth_broker.py...", style="muted"
-    );
-    broker_res = subprocess.run(
-        [_jac_bin(), "jac2py", str(broker_src)], capture_output=True, text=True
-    );
-    if broker_res.returncode != 0 {
-        raise RuntimeError("oauth_broker transpile failed:\n" + broker_res.stderr);
-    }
-    (out_dir / "oauth_broker.py").write_text(broker_res.stdout);
+    # 5. Transpile oauth_broker.jac -> .py beside the binary.
+    _stage_oauth_broker(out_dir);
 
-    # 6. Transpile all plugin .jac -> .py for the embedded CPython.
-    plugin_src_dir = webview_dir.parent.parent / "plugin";
-    if plugin_src_dir.exists() {
-        console.print("  Transpiling plugin IPC modules...", style="muted");
-        for jac_file in plugin_src_dir.rglob("*.jac") {
-            # rglob("*.jac") also matches directories named ".jac" (build cache).
-            if not jac_file.is_file() {
-                continue;
-            }
-            rel = jac_file.relative_to(plugin_src_dir);
-            py_name = str(rel.with_suffix(".py"));
-            console.print(f"    {rel} -> {py_name}", style="muted");
-            # Embedded CPython has no jaclang — prefer jac0 (stdlib-only output).
-            import jaclang.jac0 as jac0;
-            res_stdout = "";
-            try {
-                res_stdout = jac0.compile_jac(jac_file.read_text());
-                if not res_stdout or not res_stdout.strip() {
-                    raise RuntimeError("jac0 produced empty output");
-                }
-            } except Exception as jac0_err {
-                res = subprocess.run(
-                    [_jac_bin(), "jac2py", str(jac_file)],
-                    capture_output=True,
-                    text=True
-                );
-                if res.returncode != 0 or not res.stdout.strip() {
-                    raise RuntimeError(
-                        f"Plugin transpile failed: {rel} "
-                        f"(jac0 and jac2py failed)\n"
-                        f"jac0 error: {jac0_err}\n"
-                        f"jac2py stderr: {res.stderr or '(empty)'}"
-                    );
-                }
-                console.print(
-                    f"    ⚠ jac0 failed for {rel}, using jac2py fallback",
-                    style="yellow"
-                );
-                res_stdout = res.stdout;
-            }
-            target = out_dir / py_name;
-            target.parent.mkdir(parents=True, exist_ok=True);
-            target.write_text(res_stdout);
-        }
-    }
+    # 6. Transpile all plugin .jac -> .py for the embedded CPython (shared with
+    # the CEF target).
+    _stage_plugins(out_dir);
 
     # 7. The plugin bridge is inlined into the generated host source
     # (nacompile does not support string-literal imports between .na.jac files).

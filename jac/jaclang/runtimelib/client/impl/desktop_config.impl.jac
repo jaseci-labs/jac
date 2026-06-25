@@ -49,6 +49,17 @@ impl JacDesktopConfig.get_window_config(self: JacDesktopConfig) -> WindowConfig 
     return WindowConfig.from_dict(window_data, title_fallback=identity.name);
 }
 
+impl JacDesktopConfig.get_engine(self: JacDesktopConfig) -> str {
+    config = self.load();
+    engine = str(config.get('engine', 'native'));
+    if engine not in ('native', 'cef') {
+        raise ValueError(
+            f"Desktop configuration error: engine must be 'native' or 'cef', got '{engine}'"
+        );
+    }
+    return engine;
+}
+
 impl JacDesktopConfig.get_plugin_configs(self: JacDesktopConfig) -> dict[str, any] {
     config = self.load();
     plugins = config.get('plugins', {});

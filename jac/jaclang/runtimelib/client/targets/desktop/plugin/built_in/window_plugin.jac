@@ -6,14 +6,24 @@ Requires the webview handle and the loaded libwebview CDLL.
 Transpiled to dependency-free Python at build time.
 """
 import ctypes;
+import json;
 import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
 import from manifest { PluginManifest, PluginContext }
 
 
-"""Controls the native webview window via ctypes -> libwebview."""
+"""Controls the native webview window via ctypes -> libwebview.
+
+On the CEF target there is no libwebview and the renderer is out-of-process.
+set_title/set_size drive the real OS window through libcef_dispatch (X11) via
+host.set_window_title/set_window_size, falling back to renderer-side
+document.title / window.resizeTo over the SSE eval channel when no window id is
+available yet (e.g. headless). fullscreen/terminate are expressed as JS pushed
+through that same channel.
+"""
 obj WindowPlugin(DesktopPlugin) {
     has _wv: ctypes.CDLL | None = None,
-        _handle: int = 0;
+        _handle: int = 0,
+        _host: object | None = None;
 
     static def manifest -> PluginManifest {
         return PluginManifest(
@@ -41,7 +51,62 @@ obj WindowPlugin(DesktopPlugin) {
         self._wv = wv_lib;
     }
 
+    """CEF backend: capture the host for eval_js()-based window control."""
+    def setup_cef(host: object) {
+        self._host = host;
+    }
+
+    """CEF window control.
+
+    set_title/set_size try the real OS window first (libcef_dispatch X11 via the
+    host); if that no-ops (no window id yet / headless), they fall back to a
+    renderer-side document.title / window.resizeTo over the SSE eval channel.
+    fullscreen/terminate are expressed as JS pushed via that same channel.
+    """
+    def _handle_cef(command: str, args: dict) -> dict {
+        if command == "set_title" {
+            title = args.get("title", "");
+            if not title {
+                raise PluginError(ErrorCode.INVALID_ARGS, "'title' is required");
+            }
+            if not self._host.set_window_title(title) {
+                self._host.eval_js("document.title=" + json.dumps(title));
+            }
+            return {};
+        }
+        if command == "set_size" {
+            width = int(args.get("width", 0));
+            height = int(args.get("height", 0));
+            if width <= 0 or height <= 0 {
+                raise PluginError(
+                    ErrorCode.INVALID_ARGS,
+                    "'width' and 'height' must be positive integers"
+                );
+            }
+            if not self._host.set_window_size(width, height) {
+                self._host.eval_js(
+                    "try{window.resizeTo(" + str(width) + "," + str(height) + ");}catch(e){}"
+                );
+            }
+            return {};
+        }
+        if command == "fullscreen" {
+            self._host.eval_js(
+                "document.documentElement.requestFullscreen().catch(function(){});"
+            );
+            return {};
+        }
+        if command == "terminate" {
+            self._host.eval_js("window.close();");
+            return {};
+        }
+        return super.handle(command, args);
+    }
+
     def handle(command: str, args: dict) -> dict {
+        if self._host is not None {
+            return self._handle_cef(command, args);
+        }
         if self._wv is None {
             raise PluginError(ErrorCode.NOT_READY, "Window plugin not yet initialized");
         }

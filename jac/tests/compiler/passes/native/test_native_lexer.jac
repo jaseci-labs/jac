@@ -17,7 +17,7 @@ import from jaclang.jac0core.codeinfo { NativeFunctionInfo }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.parser.tokens { Token, TokenKind, SourceLoc }
 import from jaclang.jac0core.parser.lexer { Lexer }
-import from llvmlite.binding { ExecutionEngine }
+import from jaclang.compiler.passes.native.llvm.binding { ExecutionEngine }
 import jaclang.jac0core.unitree as uni;
 
 glob NA_LEXER_PATH = str(

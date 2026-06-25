@@ -11,6 +11,8 @@ import json;
 import os;
 import sys;
 import ctypes;
+import queue;
+import threading;
 import from pathlib { Path }
 import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
 import from webview_lib { libwebview_name }
@@ -34,10 +36,22 @@ def _binary_dir -> str {
 obj PluginHost {
     has plugins: dict,
         _wv_handle: int = 0,
-        _wv_lib: ctypes.CDLL | None = None;
+        _wv_lib: ctypes.CDLL | None = None,
+        # CEF (multi-process) push transport: emit()/eval_js() fan out to the
+        # SSE subscribers (one queue.Queue per /__jac/events connection) instead
+        # of calling libwebview, which the CEF target does not load.
+        _cef: bool = False,
+        _subscribers: list = [],
+        _sub_lock: object = None,
+        # libcef_dispatch.so (CEF target only), loaded in setup_cef for native
+        # window control (set_title/set_size). None if unavailable -> WindowPlugin
+        # falls back to renderer-side document.title / window.resizeTo.
+        _cef_lib: object = None;
 
     def init {
         self.plugins = {};
+        self._subscribers = [];
+        self._sub_lock = threading.Lock();
     }
 
     """Register a plugin under the given name (e.g. 'jac.fs')."""
@@ -64,6 +78,110 @@ obj PluginHost {
         for plugin in self.plugins.values() {
             plugin.setup(wv_handle, self._wv_lib);
         }
+    }
+
+    """CEF setup: switch emit()/eval_js() to the SSE transport.
+
+    The CEF target has no libwebview, and its render process is out-of-process,
+    so host->JS pushes go over the /__jac/events SSE channel instead. Plugins
+    that need to drive the renderer (e.g. WindowPlugin) get a reference to the
+    host via setup_cef() so they can call eval_js().
+    """
+    def setup_cef {
+        self._cef = True;
+        self._cef_lib = self._load_cef_lib();
+        for plugin in self.plugins.values() {
+            plugin.setup_cef(self);
+        }
+    }
+
+    """Load libcef_dispatch.so and bind the native window-control entry points.
+
+    The DSO is already loaded by the CEF host binary; CDLL returns the same
+    handle. Returns None (and logs nothing) if it cannot be loaded so window
+    control degrades to the renderer-side best-effort path.
+    """
+    def _load_cef_lib -> object {
+        try {
+            lib_path = os.path.join(_binary_dir(), "libcef_dispatch.so");
+            lib = ctypes.CDLL(lib_path);
+            # char* (c_char_p) for the title; the .so takes it as an int pointer.
+            lib.cef_dispatch_window_set_title.argtypes = [ctypes.c_char_p];
+            lib.cef_dispatch_window_set_title.restype = ctypes.c_int;
+            lib.cef_dispatch_window_set_size.argtypes = [ctypes.c_long, ctypes.c_long];
+            lib.cef_dispatch_window_set_size.restype = ctypes.c_int;
+            return lib;
+        } except Exception as e {
+            return None;
+        }
+    }
+
+    """Set the real OS window title via libcef_dispatch (X11). True if applied."""
+    def set_window_title(title: str) -> bool {
+        if self._cef_lib is None {
+            return False;
+        }
+        rc = self._cef_lib.cef_dispatch_window_set_title(title.encode("utf-8"));
+        return bool(rc);
+    }
+
+    """Resize the real OS window via libcef_dispatch (X11). True if applied."""
+    def set_window_size(width: int, height: int) -> bool {
+        if self._cef_lib is None {
+            return False;
+        }
+        rc = self._cef_lib.cef_dispatch_window_set_size(int(width), int(height));
+        return bool(rc);
+    }
+
+    """Register a new SSE subscriber; returns its event queue, or None if the
+    subscriber pool is full (each live subscriber pins a server thread)."""
+    def subscribe -> (queue.Queue | None) {
+        q = queue.Queue();
+        with self._sub_lock {
+            if len(self._subscribers) >= 256 {
+                return None;
+            }
+            self._subscribers.append(q);
+        }
+        return q;
+    }
+
+    """Drop an SSE subscriber (connection closed)."""
+    def unsubscribe(q: queue.Queue) {
+        with self._sub_lock {
+            if q in self._subscribers {
+                self._subscribers.remove(q);
+            }
+        }
+    }
+
+    """Fan a pre-serialized SSE data line out to every live subscriber."""
+    def _push(message: str) {
+        with self._sub_lock {
+            subs = list(self._subscribers);
+        }
+        for q in subs {
+            q.put(message);
+        }
+    }
+
+    """Execute JS in the renderer (host->JS).
+
+    On CEF this rides the SSE channel ({"eval": code}); on the native webview it
+    calls libwebview directly. Used by WindowPlugin's CEF backend.
+    """
+    def eval_js(code: str) -> None {
+        if self._cef {
+            self._push(json.dumps({"eval": code}));
+            return;
+        }
+        if self._wv_lib is None or self._wv_handle == 0 {
+            return;
+        }
+        self._wv_lib.webview_eval(
+            ctypes.c_void_p(self._wv_handle), code.encode("utf-8")
+        );
     }
 
     """Normalize a webview bind callback payload into {plugin, command, args}.
@@ -133,6 +251,11 @@ obj PluginHost {
     Uses json.dumps for both event and payload to prevent injection.
     """
     def emit(event: str, payload: dict) -> None {
+        if self._cef {
+            # SSE: the page's EventSource routes {event,payload} to __jac.__emit__.
+            self._push(json.dumps({"event": event, "payload": payload}));
+            return;
+        }
         if self._wv_lib is None or self._wv_handle == 0 {
             return;
         }

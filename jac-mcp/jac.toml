@@ -1,6 +1,6 @@
 [project]
 name = "jac-mcp"
-version = "0.1.23"
+version = "0.1.24"
 description = "MCP server for AI-assisted Jac development"
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
