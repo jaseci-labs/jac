@@ -35,7 +35,7 @@ import sys;
 
 import from jaclang { JacRuntime as Jac, plugin_manager }
 import from jaclang.jac0core.constant { Constants as Con }
-import from jaclang.cli.commands.cli_helpers { module_stem_from_file }
+import from jaclang.jac0core.ext_registry { base_stem }
 import from jac_scale.serve { JacAPIServer }
 
 
@@ -154,7 +154,7 @@ def prepare_inprocess_runtime(
     # module a prior import (e.g. the test runner) left behind.
     (base, _) = os.path.split(jac_file);
     base = base or "./";
-    mod = module_stem_from_file(jac_file);
+    mod = base_stem(jac_file);
     os.makedirs(base_path, exist_ok=True);
     Jac.set_base_path(base_path);
     # Capture the caller's context so the except path can restore it on failure.
