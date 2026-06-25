@@ -86,7 +86,18 @@ def _scale_pre_hook(context: HookContext) -> None {
         import from jac_scale.runtime.realizer.kubernetes_realizer {
             KubernetesRealizer
         }
-        KubernetesRealizer(ms_config=ms_config).realize(context);
+        try {
+            KubernetesRealizer(ms_config=ms_config).realize(context);
+        } except Exception as e {
+            # A --scale failure (missing deploy deps, bad config, no cluster,
+            # ...) must NOT fall through to local serving - the user asked to
+            # deploy. Abort the command cleanly with the error instead of letting
+            # the pre-hook exception surface as a non-fatal warning that then
+            # boots a local server.
+            console.error(f"Deploy failed: {e}", emoji=False);
+            context.set_data("cancel_execution", True);
+            context.set_data("cancel_return_code", 1);
+        }
     }
 }
 
