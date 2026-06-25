@@ -159,14 +159,10 @@ jobs:
       # as the source of truth. jaclang is NOT published to PyPI -- it ships as
       # the native `jac` binary (release-jaclang.yml) -- so there is no jaclang
       # wheel build here.
-      #
-      # `--precompile` produces .jir through the jac binary's bundled interpreter
-      # (the only Python here); a consumer on a different Python recompiles
-      # transparently on first import.
       - name: Build plugin wheel
         if: matrix.publish_pypi == true
         working-directory: ${{ matrix.dir }}
-        run: jac bundle ${{ matrix.precompile == true && '--precompile' || '' }}
+        run: jac bundle
 
       - name: Upload package artifacts
         if: matrix.publish_pypi == true

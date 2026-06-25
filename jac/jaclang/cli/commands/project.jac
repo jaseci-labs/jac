@@ -426,27 +426,14 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
             help="Build target: 'wheel' (PyPI), 'npm' (npmjs), 'all', or 'npm-runtime'",
             short="t"
         ),
-        Arg.create(
-            "precompile",
-            typ=bool,
-            default=False,
-            help="Precompile .jac → .jir for python3.X versions on PATH; requires python3.X executables (wheel only)",
-            short="p"
-        ),
 
     ],
     examples=[
         ("jac bundle", "Build wheel into dist/"),
         ("jac bundle --target npm", "Build an npm .tgz into dist/"),
-        (
-            "jac bundle --precompile",
-            "Precompile for all Py-versions on PATH then bundle"
-        ),
         ("jac bundle -o /tmp/wheels", "Build to custom output directory"),
 
     ],
     group="project"
 )
-def bundle(
-    output: str = "dist", target: str = "wheel", precompile: bool = False
-) -> int;
+def bundle(output: str = "dist", target: str = "wheel") -> int;
