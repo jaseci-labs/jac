@@ -40,43 +40,44 @@ impl DependencyInstaller.ensure_venv -> None {
             raise;
         }
     }
-    def _seed_host_fastuuid(dest_site: str) {
-        # The free-threaded binary host-provides a pure-Python `fastuuid`
-        # stand-in (the real Rust fastuuid ships no cp314t wheel and is a hard
-        # litellm dependency). A project venv is isolated from the host site, so
-        # without seeding it here pip would try to build the wheelless sdist and
-        # die with `Cannot import 'maturin'`. Copy the host module + its
-        # dist-info into the venv so pip resolves `fastuuid` as already
-        # satisfied. No-ops off the binary (no bundled fastuuid stand-in).
-        # Remove once upstream fastuuid publishes cp314t wheels.
+    def _seed_host_stub(dest_site: str, name: str) {
+        # The free-threaded binary host-provides single-module stand-ins for two
+        # Rust deps that ship no cp314t wheel but are hard, eagerly-imported
+        # litellm dependencies: `fastuuid` (a faithful stdlib-uuid stand-in) and
+        # `tokenizers` (an import-safe, raise-on-use stub). A project venv is
+        # isolated from the host site, so without seeding here pip would try to
+        # build the wheelless Rust sdist and die with `Cannot import 'maturin'`.
+        # Copy the host module + its dist-info into the venv so pip resolves the
+        # requirement as already satisfied. No-ops off the binary and for a real
+        # (package-layout) install. Remove a stub once upstream ships cp314t.
         import importlib.util;
         import importlib.metadata as _meta;
         import shutil;
         dest = Path(dest_site);
-        if (dest / "fastuuid.py").exists() {
+        if (dest / f"{name}.py").exists() {
             return;  # already seeded
         }
         origin = "";
         ver = "";
         try {
-            spec = importlib.util.find_spec("fastuuid");
+            spec = importlib.util.find_spec(name);
             if spec is not None and spec.origin {
                 origin = spec.origin;
             }
-            ver = _meta.version("fastuuid");
+            ver = _meta.version(name);
         } except Exception {
             return;
         }
         if not origin or not ver {
             return;
         }
-        info = Path(origin).parent / f"fastuuid-{ver}.dist-info";
+        info = Path(origin).parent / f"{name}-{ver}.dist-info";
         if not info.is_dir() {
-            return;  # host fastuuid isn't the bundled stand-in; leave it to pip
+            return;  # host module isn't the bundled single-file stub; leave to pip
         }
         try {
             dest.mkdir(parents=True, exist_ok=True);
-            shutil.copy2(origin, str(dest / "fastuuid.py"));
+            shutil.copy2(origin, str(dest / f"{name}.py"));
             shutil.copytree(str(info), str(dest / info.name), dirs_exist_ok=True);
         } except Exception {
             return;  # best-effort; pip falls back to its normal resolution
@@ -109,7 +110,8 @@ impl DependencyInstaller.ensure_venv -> None {
     }
     # Add venv site-packages to sys.path
     site_packages = str(get_venv_site_packages(self.venv_dir));
-    _seed_host_fastuuid(site_packages);
+    _seed_host_stub(site_packages, "fastuuid");
+    _seed_host_stub(site_packages, "tokenizers");
     if site_packages not in sys.path {
         sys.path.insert(0, site_packages);
     }

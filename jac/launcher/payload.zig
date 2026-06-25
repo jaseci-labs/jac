@@ -121,6 +121,57 @@ const FASTUUID_SHIM_PY =
     \\    return [str(uuid7()) for _ in range(n)]
     \\
 ;
+
+// Import-safe `tokenizers` (HuggingFace) stub, host-provided like fastuuid. The
+// real tokenizers is a Rust (PyO3/maturin) extension with no cp314t wheel, and
+// its abi3 wheel is not usable on the free-threaded ABI, so it cannot install on
+// the free-threaded binary. It is a hard, EAGERLY-imported dependency of litellm
+// (`from tokenizers import Tokenizer` runs on `import litellm`), so its absence
+// breaks `import byllm` outright. Unlike fastuuid this cannot be faithfully
+// reimplemented (it is a real tokenization engine), so the stub lets the import
+// succeed -- byllm's OpenAI/Anthropic flows count tokens via tiktoken, not HF --
+// and raises a clear error if a HuggingFace tokenizer is actually used (rather
+// than silently returning wrong counts). Remove once upstream ships cp314t.
+const TOKENIZERS_VER = "0.23.1";
+const TOKENIZERS_SHIM_PY =
+    \\"""Import-safe stub for `tokenizers` (HuggingFace) on the free-threaded build.
+    \\
+    \\Host-provided by the jac binary because the real tokenizers is a Rust
+    \\extension with no cp314t wheel. Import succeeds; using a HuggingFace
+    \\tokenizer raises. See payload.zig TOKENIZERS_SHIM_PY.
+    \\"""
+    \\__version__ = "0.23.1"
+    \\
+    \\_MSG = (
+    \\    "The 'tokenizers' package (HuggingFace) is unavailable on the "
+    \\    "free-threaded jac build: it ships no cp314t wheel. HuggingFace/Cohere/"
+    \\    "Anthropic-local token counting is disabled; OpenAI-style (tiktoken) "
+    \\    "counting is unaffected."
+    \\)
+    \\
+    \\
+    \\class Tokenizer:
+    \\    def __init__(self, *args, **kwargs):
+    \\        raise RuntimeError(_MSG)
+    \\
+    \\    @classmethod
+    \\    def from_pretrained(cls, *args, **kwargs):
+    \\        raise RuntimeError(_MSG)
+    \\
+    \\    @classmethod
+    \\    def from_str(cls, *args, **kwargs):
+    \\        raise RuntimeError(_MSG)
+    \\
+    \\    @classmethod
+    \\    def from_file(cls, *args, **kwargs):
+    \\        raise RuntimeError(_MSG)
+    \\
+    \\
+    \\class Encoding:
+    \\    def __init__(self, *args, **kwargs):
+    \\        raise RuntimeError(_MSG)
+    \\
+;
 const PBS_BASE = "https://github.com/astral-sh/python-build-standalone/releases/download";
 // The window pbs compresses its archives with (verified: `zstd -lv` reports
 // 128 MiB). `fetch-pbs.sh` passed `zstd -d --long=31` only as a permissive cap;
@@ -638,6 +689,20 @@ fn mkPayload(
     try Dir.cwd().writeFile(io, .{
         .sub_path = try std.fmt.allocPrint(a, "{s}/METADATA", .{fu_di}),
         .data = try std.fmt.allocPrint(a, "Metadata-Version: 2.1\nName: fastuuid\nVersion: {s}\n", .{FASTUUID_VER}),
+    });
+
+    // Host-provide the import-safe `tokenizers` stub the same way -- see
+    // TOKENIZERS_SHIM_PY for why (hard, eagerly-imported litellm dep with no
+    // cp314t wheel that cannot be faithfully reimplemented).
+    try Dir.cwd().writeFile(io, .{
+        .sub_path = try std.fmt.allocPrint(a, "{s}/tokenizers.py", .{site}),
+        .data = TOKENIZERS_SHIM_PY,
+    });
+    const tk_di = try std.fmt.allocPrint(a, "{s}/tokenizers-{s}.dist-info", .{ site, TOKENIZERS_VER });
+    try Dir.cwd().createDirPath(io, tk_di);
+    try Dir.cwd().writeFile(io, .{
+        .sub_path = try std.fmt.allocPrint(a, "{s}/METADATA", .{tk_di}),
+        .data = try std.fmt.allocPrint(a, "Metadata-Version: 2.1\nName: tokenizers\nVersion: {s}\n", .{TOKENIZERS_VER}),
     });
 
     try stageTree(io, gpa, a, pbs_py_dir, site, stage);
