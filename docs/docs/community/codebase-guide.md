@@ -276,16 +276,19 @@ GitHub Actions workflows in `.github/workflows/`:
 
 | Workflow | What it checks |
 |----------|---------------|
-| `test-binary.yml` | Builds the `jac` binary and runs the full suite through it (the test gate) |
-| `test-jaseci.yml` | Plugin and runtime test jobs (run through the binary) |
-| `jac-check.yml` | Lint and format enforcement |
-| `docs-validation.yml` | Documentation builds without errors |
-| `test-installer.yml` | Clean install from scratch works |
+| `ci-core.yml` | Builds the `jac` binary and runs the full suite through it (the test gate) |
+| `ci-plugins.yml` | Plugin and runtime test jobs (run through the binary) |
+| `ci-packaging.yml` | Wheel builds + jacpack/eject smoke servers |
+| `ci-typecheck.yml` | Lint and format enforcement |
+| `ci-quality.yml` | Contribution gates (AI-attribution / no-`.py` / docs build / release notes) |
+| `ci-installer.yml` | Clean install from scratch works |
+| `ci-e2e-k8s.yml` | Real microk8s deploy e2e |
 | `create-release-pr.yml` | Automated version bump PRs |
 | `release-jaclang.yml` | Build + release the native `jac` binary |
-| `release-byllm.yml` / `release-scale.yml` / `release-mcp.yml` | Per-plugin PyPI publishing |
-| `publish-release.yml` | Tiered plugin PyPI publish on release merge |
-| `deploy-docs.yml` | Deploy docs site to production |
+| `release-github.yml` | Manually cut a GitHub Release (escape hatch) |
+| `publish-release.yml` | Tiered plugin PyPI publish on release merge (incl. byllm/scale/mcp) |
+| `ops-deploy-docs.yml` | Deploy docs site to production |
+| `ops-cef-smoke.yml` | Nightly CEF desktop headless smoke |
 
 Pre-commit hooks run formatting and linting on every commit locally. See `.pre-commit-config.yaml` for the full hook list.
 

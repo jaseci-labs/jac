@@ -1,4 +1,4 @@
-name: Build and Deploy jac-lang.org Documentation
+name: Ops · deploy docs (jac-lang.org)
 
 on:
   release:
@@ -9,7 +9,7 @@ on:
       - main
     paths:
       - 'docs/**'
-      - '.github/workflows/deploy-docs.yml'
+      - '.github/workflows/ops-deploy-docs.yml'
   schedule:
     # Rebuild documentation daily at 2 AM UTC
     - cron: '0 2 * * *'
@@ -25,7 +25,7 @@ env:
   # freshly built binary would otherwise pick up the checkout's `[dev]
   # jaclang_source` stanza and reroute `import jaclang` to the source tree while
   # skipping the precompiled JIR bundle, slowing every `jac` invocation here.
-  # (Mirrors the guard in test-binary.yml / test-jaseci.yml.)
+  # (Mirrors the guard in ci-core.yml / ci-plugins.yml.)
   JAC_NO_DEV_SOURCE: "1"
 
 jobs:

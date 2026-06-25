@@ -1,4 +1,4 @@
-name: Jac Type Check
+name: CI · typecheck
 
 on:
   push:

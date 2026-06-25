@@ -1,4 +1,4 @@
-name: CEF headless smoke
+name: Ops · CEF headless smoke
 on:
   schedule:
     - cron: '0 3 * * *'

@@ -1,4 +1,4 @@
-name: Contribution Checks
+name: CI · quality gates
 
 on:
   pull_request:
@@ -15,7 +15,7 @@ on:
     paths:
       - 'docs/**/*.md'
       - 'docs/scripts/validate_docs_code.jac'
-      - '.github/workflows/contribution-checks.yml'
+      - '.github/workflows/ci-quality.yml'
   workflow_dispatch:
 
 # Cancel superseded PR runs; never cancel a run for a commit on main.

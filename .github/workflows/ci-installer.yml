@@ -1,4 +1,4 @@
-name: Test Installer
+name: CI · installer
 
 # Exercises the user-facing install path: scripts/install.sh downloads the
 # self-contained native `jac` binary from the latest GitHub Release and runs it.
@@ -8,7 +8,7 @@ on:
   pull_request:
     paths:
       - "scripts/install.sh"
-      - ".github/workflows/test-installer.yml"
+      - ".github/workflows/ci-installer.yml"
   workflow_dispatch:
 
 # Cancel superseded PR runs; never cancel a run for a commit on main.

@@ -1,4 +1,4 @@
-name: jac single-binary self-test
+name: CI · core (binary)
 
 # Builds the self-contained `jac` binary ONCE (one `zig build` via setup-jac:
 # fetch pbs, assemble the payload, pack it onto the launcher stub), smoke-tests
