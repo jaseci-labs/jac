@@ -1290,7 +1290,7 @@ obj KubernetesTarget(DeploymentTarget) {
         if self.logger {
             self.logger.info(
                 f"Deploying application '{app_name}' to Kubernetes",
-                {'namespace': namespace, 'build': app_config.build}
+                {'namespace': namespace}
             );
         }
 
@@ -1381,35 +1381,35 @@ obj KubernetesTarget(DeploymentTarget) {
                 secret_ref_name=secret_ref_name
             );
 
-            # 10. Handle volumes and build container if not building image
-            if not app_config.build {
-                volumes_config = self._build_volumes_config(
-                    app_name, app_config, namespace, core_v1, apps_v1
-                );
-                details["sync_code_to_pvc"] = "Successful";
-                volumes = volumes_config['volumes'];
-                build_container = volumes_config['build_container'];
-                init_containers.append(build_container);
-                # Build runtime setup command
-                command = self._build_runtime_setup_command(app_config);
-                container_config = self._build_container_config(
-                    app_name,
-                    self.k8s_config.python_image,
-                    probe_configs,
-                    resources_config,
-                    command=command,
-                    working_dir=self.k8s_config.app_mount_path,
-                    volume_mounts=[
-                        {
-                            'name': 'app-code',
-                            'mountPath': self.k8s_config.app_mount_path
-                        },
-                        {'name': 'tmp', 'mountPath': '/tmp'}
-                    ],
-                    secret_ref_name=secret_ref_name,
-                    needs_root=True
-                );
-            }
+            # 10. Volumes + code-sync: source is always shipped into the cluster
+            # (no-image path) and jac is installed at pod startup; there is no
+            # image-build branch anymore.
+            volumes_config = self._build_volumes_config(
+                app_name, app_config, namespace, core_v1, apps_v1
+            );
+            details["sync_code_to_pvc"] = "Successful";
+            volumes = volumes_config['volumes'];
+            build_container = volumes_config['build_container'];
+            init_containers.append(build_container);
+            # Build runtime setup command
+            command = self._build_runtime_setup_command(app_config);
+            container_config = self._build_container_config(
+                app_name,
+                self.k8s_config.python_image,
+                probe_configs,
+                resources_config,
+                command=command,
+                working_dir=self.k8s_config.app_mount_path,
+                volume_mounts=[
+                    {
+                        'name': 'app-code',
+                        'mountPath': self.k8s_config.app_mount_path
+                    },
+                    {'name': 'tmp', 'mountPath': '/tmp'}
+                ],
+                secret_ref_name=secret_ref_name,
+                needs_root=True
+            );
 
             # 11. Create dedicated ServiceAccount for the app
             app_sa_name = f"{app_name}-sa";

@@ -99,12 +99,12 @@ test "kubernetes config from dict" {
 
 test "app config creation" {
     app_config = AppConfig(
-        code_folder="/path/to/code", file_name="main.jac", build=True
+        code_folder="/path/to/code", file_name="main.jac", no_image=True
     );
 
     assert app_config.code_folder == "/path/to/code";
     assert app_config.file_name == "main.jac";
-    assert app_config.build is True;
+    assert app_config.no_image is True;
     assert app_config.testing is False;
 }
 
