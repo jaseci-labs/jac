@@ -11,9 +11,10 @@ request goes, in this order:
   5. static                SPA fallback for everything else
 
 Keeping this pure (path + the registered service prefixes in, a decision out)
-makes the order testable in isolation, and it is the single place the future
-no-/api/ change lives: with bare prefixes, services must claim only their member
-subpaths so an SPA route of the same name still falls through to static.
+makes the order testable in isolation. With the no-/api/ scheme, a service claims
+only its member subpaths (`/<svc>/walker/...`, `/<svc>/function/...`, ...): the
+bare `/<svc>` and any non-member subpath fall through to static, so an SPA route
+that shares a service's name still renders the SPA instead of hitting the proxy.
 """
 
 glob _BUILTIN_EXACT: set[str] = {
@@ -36,6 +37,18 @@ glob _PASSTHROUGH_SEGMENTS: set[str] = {
          "ws",
          "jobs",
          "graph"
+     };
+
+# A service pod (JacAPIServer) exposes exactly these first-segments under its
+# gateway prefix: the sv-call surface (_PASSTHROUGH_SEGMENTS) plus its own
+# builtins. A request matches the proxy only when its first post-prefix segment
+# is one of these; everything else under the prefix is the SPA's to own.
+glob _SERVICE_MEMBER_SEGMENTS: set[str] = _PASSTHROUGH_SEGMENTS | {
+         "healthz",
+         "health",
+         "metrics",
+         "openapi.json",
+         "docs"
      };
 
 glob ROUTE_BUILTIN: str = "builtin",
@@ -74,13 +87,17 @@ def _first_segment(norm_path: str) -> str {
 }
 
 
-"""Longest service prefix that owns `norm_path` (exact or as a path prefix), or
-'' when none match."""
+"""Longest service prefix whose member subpath owns `norm_path`, or '' when none
+match. A prefix owns `norm_path` only when the first segment after it is a service
+member (`/<prefix>/walker/...`); the bare prefix and non-member subpaths are left
+to the SPA, so a service and a same-named SPA route coexist."""
 def _longest_prefix_match(norm_path: str, service_prefixes: list[str]) -> str {
     best = "";
     for prefix in service_prefixes {
-        if norm_path == prefix or norm_path.startswith(prefix + "/") {
-            if len(prefix) > len(best) {
+        if norm_path.startswith(prefix + "/") {
+            remainder = norm_path[len(prefix) + 1:];
+            first_member = remainder.split("/")[0];
+            if first_member in _SERVICE_MEMBER_SEGMENTS and len(prefix) > len(best) {
                 best = prefix;
             }
         }

@@ -14,9 +14,9 @@ import from jac_scale.runtime.orchestrator.process_manager { ServiceProcessManag
 # =============================================================================
 test "auto assigns hash-based ports in 18000-18999 range" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
+    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/orders"));
     reg.register(
-        ServiceEntry(name="payments", file="payments.jac", prefix="/api/payments")
+        ServiceEntry(name="payments", file="payments.jac", prefix="/payments")
     );
 
     pm = ServiceProcessManager(registry=reg);
@@ -33,12 +33,12 @@ test "auto assigns hash-based ports in 18000-18999 range" {
 
 test "auto assigned port is deterministic for same service name" {
     reg1 = ServiceRegistry();
-    reg1.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
+    reg1.register(ServiceEntry(name="orders", file="orders.jac", prefix="/orders"));
     pm1 = ServiceProcessManager(registry=reg1);
     port1 = pm1._assign_port(reg1.entries["orders"]);
 
     reg2 = ServiceRegistry();
-    reg2.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
+    reg2.register(ServiceEntry(name="orders", file="orders.jac", prefix="/orders"));
     pm2 = ServiceProcessManager(registry=reg2);
     port2 = pm2._assign_port(reg2.entries["orders"]);
 
@@ -51,7 +51,7 @@ test "auto assigned port is deterministic for same service name" {
 test "uses explicit port when set" {
     reg = ServiceRegistry();
     reg.register(
-        ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders", port=9090)
+        ServiceEntry(name="orders", file="orders.jac", prefix="/orders", port=9090)
     );
 
     pm = ServiceProcessManager(registry=reg);
@@ -65,7 +65,7 @@ test "uses explicit port when set" {
 # =============================================================================
 test "start service launches subprocess" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
+    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/orders"));
 
     pm = ServiceProcessManager(registry=reg);
 
@@ -93,9 +93,9 @@ test "start service with nonexistent name returns false" {
 
 test "start all launches all services" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
+    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/orders"));
     reg.register(
-        ServiceEntry(name="payments", file="payments.jac", prefix="/api/payments")
+        ServiceEntry(name="payments", file="payments.jac", prefix="/payments")
     );
 
     pm = ServiceProcessManager(registry=reg);
@@ -115,7 +115,7 @@ test "start all launches all services" {
 test "stop service terminates process" {
     reg = ServiceRegistry();
     reg.register(
-        ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders", port=8001)
+        ServiceEntry(name="orders", file="orders.jac", prefix="/orders", port=8001)
     );
 
     pm = ServiceProcessManager(registry=reg);
@@ -139,7 +139,7 @@ test "stop service terminates process" {
 test "stop service force kills on timeout" {
     reg = ServiceRegistry();
     reg.register(
-        ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders", port=8001)
+        ServiceEntry(name="orders", file="orders.jac", prefix="/orders", port=8001)
     );
 
     pm = ServiceProcessManager(registry=reg);
@@ -166,9 +166,9 @@ test "stop nonexistent service returns false" {
 
 test "stop all stops all running services" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
+    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/orders"));
     reg.register(
-        ServiceEntry(name="payments", file="payments.jac", prefix="/api/payments")
+        ServiceEntry(name="payments", file="payments.jac", prefix="/payments")
     );
 
     pm = ServiceProcessManager(registry=reg);
@@ -190,7 +190,7 @@ test "stop all stops all running services" {
 test "check health returns false on no url" {
     reg = ServiceRegistry();
     reg.register(
-        ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders", port=8001)
+        ServiceEntry(name="orders", file="orders.jac", prefix="/orders", port=8001)
     );
 
     pm = ServiceProcessManager(registry=reg);
@@ -203,7 +203,7 @@ test "check health returns false on network error" {
         ServiceEntry(
             name="orders",
             file="orders.jac",
-            prefix="/api/orders",
+            prefix="/orders",
             port=8001,
             url="http://127.0.0.1:8001"
         )
@@ -224,7 +224,7 @@ test "check all health marks service unhealthy after max failures" {
         ServiceEntry(
             name="orders",
             file="orders.jac",
-            prefix="/api/orders",
+            prefix="/orders",
             port=8001,
             url="http://127.0.0.1:8001"
         )
@@ -247,7 +247,7 @@ test "check all health resets failure count on success" {
         ServiceEntry(
             name="orders",
             file="orders.jac",
-            prefix="/api/orders",
+            prefix="/orders",
             port=8001,
             url="http://127.0.0.1:8001"
         )
@@ -274,7 +274,7 @@ test "check all health resets failure count on success" {
 # =============================================================================
 test "restart stops then starts service" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
+    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/orders"));
 
     pm = ServiceProcessManager(registry=reg);
 
@@ -307,7 +307,7 @@ test "stop_service with pidfile only kills by pid when Popen handle is absent" {
     import from pathlib { Path }
 
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
+    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/orders"));
     pm = ServiceProcessManager(registry=reg);
 
     # Use a dedicated tempdir as cwd so we don't stomp on any real pidfile
@@ -352,7 +352,7 @@ test "stop_service returns false when neither pidfile nor Popen handle exist" {
     import tempfile;
 
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
+    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/orders"));
     pm = ServiceProcessManager(registry=reg);
 
     tmp = tempfile.mkdtemp();
@@ -378,7 +378,7 @@ test "stop_service cleans up stale pidfile when pid is already dead" {
     import from pathlib { Path }
 
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
+    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/orders"));
     pm = ServiceProcessManager(registry=reg);
 
     tmp = tempfile.mkdtemp();

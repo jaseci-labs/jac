@@ -3,7 +3,7 @@
 Each microservice exposes its own `/openapi.json` via jac-scale's
 FastAPI machinery. Individually those are useful only to callers who
 already know each service's port. The gateway hides the ports - all
-traffic goes through `/api/{service}/...` - so the gateway should
+traffic goes through `/<service>/...` - so the gateway should
 expose ONE merged OpenAPI document that describes the full external
 API surface.
 
@@ -11,7 +11,7 @@ Strategy:
   1. For each healthy service in the registry, fetch its raw
      /openapi.json over HTTP (async, parallel).
   2. Rewrite every path by prefixing with the service's gateway route
-     prefix, e.g. /function/list_products -> /api/products/function/list_products.
+     prefix, e.g. /function/list_products -> /products/function/list_products.
   3. Merge components.schemas across services. Name collisions keep
      the first occurrence (deterministic by iteration order).
   4. Overlay the gateway's own paths (/health, /metrics) so consumers

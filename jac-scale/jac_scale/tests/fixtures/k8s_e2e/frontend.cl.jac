@@ -5,7 +5,7 @@ import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
 import from .components.AuthForm { AuthForm }
 
 # In microservice mode, walkers are called via gateway API
-# /api/products/walker/ListProducts, /api/cart/walker/AddToCart, etc.
+# /products/walker/ListProducts, /cart/walker/AddToCart, etc.
 def:pub app -> any {
     has isLoggedIn: bool = False,
         checkingAuth: bool = True,

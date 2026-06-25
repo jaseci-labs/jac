@@ -51,7 +51,7 @@ obj KubernetesRealizer {
                     label = "auto-detected" if enabled is None else "default routes";
                     console.print(
                         f"Microservice mode ({label}): {len(scale_discovered)} "
-                        f"services [{names}], routes /api/<name>. Deploying to "
+                        f"services [{names}], routes /<name>. Deploying to "
                         f"kubernetes; set [plugins.scale.microservices] to customize.",
                         style="cyan"
                     );

@@ -54,8 +54,8 @@ test "request flows through middleware, classifies to a service, dispatches in-p
     audit: list[str] = [];
     registry.register(AuditMiddleware(name="audit", priority=10, log=audit));
 
-    handler = _make_handler(transport, {"/api/orders": "orders"}, ["/api/orders"]);
-    request = {"path": "/api/orders/function/create", "function": "create", "payload": {"n": 4}};
+    handler = _make_handler(transport, {"/orders": "orders"}, ["/orders"]);
+    request = {"path": "/orders/function/create", "function": "create", "payload": {"n": 4}};
 
     result = asyncio.run(registry.run(request, handler));
     assert result == {"order_id": 40};
@@ -69,7 +69,7 @@ test "an unmatched path is served as static, never reaching the transport" {
     transport.register_function("orders", "create", lambda payload: dict : reached.append(1));
 
     registry = MiddlewareRegistry();
-    handler = _make_handler(transport, {"/api/orders": "orders"}, ["/api/orders"]);
+    handler = _make_handler(transport, {"/orders": "orders"}, ["/orders"]);
     request = {"path": "/dashboard", "function": "create", "payload": {}};
 
     result = asyncio.run(registry.run(request, handler));
@@ -88,8 +88,8 @@ test "a gate middleware short-circuits before the request reaches a service" {
     audit: list[str] = [];
     registry.register(AuditMiddleware(name="audit", priority=10, log=audit));
 
-    handler = _make_handler(transport, {"/api/orders": "orders"}, ["/api/orders"]);
-    request = {"path": "/api/orders/function/create", "function": "create", "payload": {"n": 1}};
+    handler = _make_handler(transport, {"/orders": "orders"}, ["/orders"]);
+    request = {"path": "/orders/function/create", "function": "create", "payload": {"n": 1}};
 
     result = asyncio.run(registry.run(request, handler));
     assert result == {"error": "rate_limited"};

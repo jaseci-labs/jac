@@ -172,10 +172,11 @@ def discover_sv_services(entry_file: str) -> dict[str, str] {
         # gateway segment (admin, walker, ...) - a clear error here beats a silent
         # route collision at gateway routing time.
         guard_route_name(name);
-        # The "/api" namespace is kept transitionally so routing behavior is
-        # unchanged; the gateway redesign drops it (route_policy is then the
-        # single slug source for BE routing, FE serviceRoutes, and OpenAPI).
-        routes[name] = "/api" + derive_route_prefix(name);
+        # Bare `/<slug>` route, no "/api" namespace: route_policy is the single
+        # slug source for BE routing (gateway member-subpath dispatch), FE
+        # serviceRoutes, and OpenAPI. The reserved-name guard above keeps a
+        # service from shadowing a builtin gateway segment.
+        routes[name] = derive_route_prefix(name);
     }
     return routes;
 }
