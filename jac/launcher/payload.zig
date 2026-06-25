@@ -50,6 +50,77 @@ const py_ver = "3.14t";
 const PBS_TAG = "20260610";
 const PBS_PY = "3.14.6";
 const PBS_FLAVOR = "freethreaded+pgo+lto-full";
+
+// Pure-Python `fastuuid` stand-in, host-provided into the binary's site (see
+// stageTree). The real fastuuid is a Rust (PyO3/maturin) extension that ships no
+// free-threaded (cp314t) wheel and is a hard dependency of litellm (-> byllm), so
+// without this, pip falls back to building the wheelless sdist and dies on
+// `Cannot import 'maturin'`. litellm uses fastuuid only as a drop-in for the
+// stdlib uuid module (overwhelmingly uuid4()), so this re-exports the stdlib
+// equivalents plus fastuuid's extra helpers. The matching dist-info METADATA
+// (version FASTUUID_VER) makes pip resolve `fastuuid>=0.13.0` as already
+// satisfied. Remove once upstream fastuuid publishes cp314t wheels.
+const FASTUUID_VER = "0.14.0";
+const FASTUUID_SHIM_PY =
+    \\"""Pure-Python stand-in for `fastuuid`, backed by the stdlib `uuid` module.
+    \\
+    \\Host-provided by the jac binary because the real fastuuid is a Rust extension
+    \\with no free-threaded (cp314t) wheel. See payload.zig FASTUUID_SHIM_PY.
+    \\"""
+    \\import uuid as _uuid
+    \\from uuid import (
+    \\    NAMESPACE_DNS,
+    \\    NAMESPACE_OID,
+    \\    NAMESPACE_URL,
+    \\    NAMESPACE_X500,
+    \\    UUID,
+    \\    uuid1,
+    \\    uuid4,
+    \\)
+    \\
+    \\
+    \\def _name(n):
+    \\    # fastuuid's uuid3/uuid5 accept bytes; the stdlib accepts str. Bridge both.
+    \\    return n.decode("utf-8") if isinstance(n, (bytes, bytearray)) else n
+    \\
+    \\
+    \\def uuid3(namespace, name):
+    \\    return _uuid.uuid3(namespace, _name(name))
+    \\
+    \\
+    \\def uuid5(namespace, name):
+    \\    return _uuid.uuid5(namespace, _name(name))
+    \\
+    \\
+    \\def uuid_v1mc():
+    \\    import random
+    \\
+    \\    return _uuid.uuid1(node=random.getrandbits(48) | (1 << 40))
+    \\
+    \\
+    \\try:
+    \\    from uuid import uuid7  # stdlib uuid7 landed in 3.14 (free-threaded is 3.14+)
+    \\except ImportError:
+    \\    def uuid7():
+    \\        return uuid4()
+    \\
+    \\
+    \\def uuid4_bulk(n):
+    \\    return [uuid4() for _ in range(n)]
+    \\
+    \\
+    \\def uuid4_as_strings_bulk(n):
+    \\    return [str(uuid4()) for _ in range(n)]
+    \\
+    \\
+    \\def uuid7_bulk(n):
+    \\    return [uuid7() for _ in range(n)]
+    \\
+    \\
+    \\def uuid7_as_strings_bulk(n):
+    \\    return [str(uuid7()) for _ in range(n)]
+    \\
+;
 const PBS_BASE = "https://github.com/astral-sh/python-build-standalone/releases/download";
 // The window pbs compresses its archives with (verified: `zstd -lv` reports
 // 128 MiB). `fetch-pbs.sh` passed `zstd -d --long=31` only as a permissive cap;
@@ -554,6 +625,20 @@ fn mkPayload(
     log("==> bundling pytest + pytest-xdist (jac test) + watchdog (jac start --dev) + setuptools/wheel (PEP 517 build backend)", .{});
     Dir.cwd().deleteTree(io, try std.fmt.allocPrint(a, "{s}/__pycache__", .{site})) catch {};
     _ = runChild(io, &.{ py, "-m", "pip", "install", "--quiet", "pytest", "pytest-xdist", "watchdog>=3.0.0", "tomlkit", "setuptools", "wheel", "--target", site }, null, false);
+
+    // Host-provide the pure-Python `fastuuid` stand-in straight into the site
+    // (single module + a minimal dist-info, exactly like jaclang above) so pip
+    // sees `fastuuid>=0.13.0` as already satisfied -- see FASTUUID_SHIM_PY for why.
+    try Dir.cwd().writeFile(io, .{
+        .sub_path = try std.fmt.allocPrint(a, "{s}/fastuuid.py", .{site}),
+        .data = FASTUUID_SHIM_PY,
+    });
+    const fu_di = try std.fmt.allocPrint(a, "{s}/fastuuid-{s}.dist-info", .{ site, FASTUUID_VER });
+    try Dir.cwd().createDirPath(io, fu_di);
+    try Dir.cwd().writeFile(io, .{
+        .sub_path = try std.fmt.allocPrint(a, "{s}/METADATA", .{fu_di}),
+        .data = try std.fmt.allocPrint(a, "Metadata-Version: 2.1\nName: fastuuid\nVersion: {s}\n", .{FASTUUID_VER}),
+    });
 
     try stageTree(io, gpa, a, pbs_py_dir, site, stage);
 
