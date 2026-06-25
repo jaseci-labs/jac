@@ -57,7 +57,7 @@ glob _DEFAULT_HTTP_FORWARD_TIMEOUT: float = 30.0;
 
 # Microservice-mode defaults shared by gateway, orchestrator, and the K8s
 # runtime adapter. Centralizing avoids drift if the gateway's listen
-# port/host ever changes — the local-mode banner, K8s DNS map, and
+# port/host ever changes - the local-mode banner, K8s DNS map, and
 # in-pod default were all hardcoding the same values independently.
 glob DEFAULT_GATEWAY_PORT: int = 8000,
      DEFAULT_GATEWAY_HOST: str = "0.0.0.0",

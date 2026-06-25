@@ -101,7 +101,7 @@ obj KubernetesConfig(BaseConfig) {
         # the deploy for the full retry budget; setting this lets the deploy
         # finish on app readiness alone and DNS/cert resolve asynchronously.
         shared_ingress_skip_reachability: bool = False,
-        # Rate limiting (DDoS protection) — applied as NGINX Ingress annotations.
+        # Rate limiting (DDoS protection) - applied as NGINX Ingress annotations.
         # limit_rps: sustained requests/sec per client IP.
         # limit_burst_multiplier: burst headroom (burst = limit_rps * multiplier).
         # limit_connections: max concurrent open connections per client IP.

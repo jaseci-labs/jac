@@ -17,7 +17,7 @@ import from jac_scale._optdeps.apscheduler { HAS_APSCHEDULER, BackgroundSchedule
 import from jac_scale._optdeps.kubernetes { HAS_KUBERNETES, client as k8s_client }
 
 # =============================================================================
-# require_optional — happy path (installed packages)
+# require_optional - happy path (installed packages)
 # =============================================================================
 test "require_optional does not raise for installed stdlib package" {
     # json is always available
@@ -30,7 +30,7 @@ test "require_optional does not raise for installed package" {
 }
 
 # =============================================================================
-# require_optional — error messages
+# require_optional - error messages
 # =============================================================================
 test "require_optional raises ImportError for missing package" {
     raised = False;
@@ -287,7 +287,7 @@ test "scheduler setup succeeds without apscheduler installed" {
                 "jac_scale.scheduler.scheduler.ThreadPoolExecutor", None
             ) {
                 sched = JacScaleScheduler();
-                # setup() should not crash — APScheduler init is skipped gracefully.
+                # setup() should not crash - APScheduler init is skipped gracefully.
                 sched.setup(system_user_id="system-user-id");
                 assert sched._apscheduler is None , "APScheduler should be None when package is not installed";
                 # start/stop should be no-ops, not errors.

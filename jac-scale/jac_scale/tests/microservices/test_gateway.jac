@@ -701,7 +701,7 @@ test "serve static css file returns text content type" {
 }
 
 # =============================================================================
-# static_mounts — declarative extra static directories
+# static_mounts - declarative extra static directories
 # =============================================================================
 test "serve_extra_static serves a file from a configured local dir" {
     tmp = tempfile.mkdtemp();
@@ -767,7 +767,7 @@ test "static_mounts wins over dist_dir for matching URL" {
     assets.mkdir();
     (assets / "logo.png").write_bytes(b"FROM_MOUNT");
     # A same-named file under dist would only be reached if static_mounts
-    # was ignored — the test asserts the mount wins.
+    # was ignored - the test asserts the mount wins.
     (dist / "static" / "assets").mkdir(parents=True);
     (dist / "static" / "assets" / "logo.png").write_bytes(b"FROM_DIST");
 
@@ -822,12 +822,12 @@ test "matched static_mount with missing file does not fall back to dist" {
     dist = Path(tmp) / "dist";
     dist.mkdir();
     # If we DID fall back, the gateway would find this file at the same
-    # URL — the test asserts mounts have canonical ownership of their
+    # URL - the test asserts mounts have canonical ownership of their
     # prefix, so a 404 is preferred over silently serving from dist.
     (dist / "static" / "assets").mkdir(parents=True);
     (dist / "static" / "assets" / "logo.png").write_bytes(b"FROM_DIST");
     assets = Path(tmp) / "assets";
-    assets.mkdir();  # empty — no logo.png here
+    assets.mkdir();  # empty - no logo.png here
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(

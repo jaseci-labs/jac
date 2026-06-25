@@ -1124,7 +1124,7 @@ impl JFastApiServer._get(
 impl JFastApiServer.set_user_manager(self: JFastApiServer, user_manager: any) -> None {
     if user_manager is None {
         raise RuntimeError(
-            "set_user_manager() called with None — jwt_validation_middleware will be "
+            "set_user_manager() called with None - jwt_validation_middleware will be "
             "non-functional and all authenticated requests will run as the guest user."
         );
     }

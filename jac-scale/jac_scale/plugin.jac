@@ -570,7 +570,7 @@ class JacScalePlugin {
         base_path_dir: (str | None) = None,
         full_target_path: (str | None) = None
     ) -> ExecutionContext {
-        # Storage backend configured via environment (MONGODB_URI, etc.) —
+        # Storage backend configured via environment (MONGODB_URI, etc.) -
         # base_path_dir / full_target_path are SQLite-backend artifacts that
         # don't apply here, but the spec carries them so we accept the kwargs.
         ctx = JScaleExecutionContext();
@@ -798,7 +798,7 @@ class JacScalePlugin {
     serve.endpoints emits an `text/event-stream` body framed by
     sse_frame_stream. We detect that via Content-Type and return a
     Python generator (consume_sse_stream) that yields parsed event
-    dicts. Retries only cover connect-time failures — once a stream is
+    dicts. Retries only cover connect-time failures - once a stream is
     open, an in-flight error surfaces to the caller's iterator as a
     RuntimeError (we cannot replay events that were already consumed).
     """
@@ -818,7 +818,7 @@ class JacScalePlugin {
     instance so call sites read `walker_inst.reports[0]` directly.
 
     Walker calls share the per-provider circuit breaker with function
-    calls — both express the same liveness signal for the provider, so
+    calls - both express the same liveness signal for the provider, so
     a breaker trip from either RPC kind protects the other. Auth and
     trace headers are forwarded the same way. SSE streaming is not
     plumbed for walkers (walker endpoints don't return generators); the

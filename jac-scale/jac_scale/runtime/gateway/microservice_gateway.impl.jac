@@ -558,7 +558,7 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
                 continue;
             }
             if file_path == prefix {
-                # request is exactly the prefix — treat as a directory
+                # request is exactly the prefix - treat as a directory
                 # listing request, which we don't serve. Defer to dist
                 # or 404.
                 continue;

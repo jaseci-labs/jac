@@ -334,7 +334,7 @@ impl JacAPIServerCore.start(
 impl JacAPIServerCore._print_startup_banner(dev: bool, no_client: bool) -> None {
     import from importlib.metadata { version as pkg_version }
 
-    # Dev+client: skip — self.port is the API; the on_ready banner has the real URLs.
+    # Dev+client: skip - self.port is the API; the on_ready banner has the real URLs.
     if dev and not no_client {
         return;
     }
@@ -716,7 +716,7 @@ impl JacAPIServerCore._setup_scheduler -> None {
             );
         } except asyncio.TimeoutError {
             logger.warning(
-                f"Scheduler drain exceeded {timeout_sec}s — forcing shutdown"
+                f"Scheduler drain exceeded {timeout_sec}s - forcing shutdown"
             );
             JacScaleScheduler.instance().stop(drain=False);
         }

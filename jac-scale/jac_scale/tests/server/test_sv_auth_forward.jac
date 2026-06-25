@@ -23,7 +23,7 @@ import from jac_scale.plugin { JacScalePlugin }
 # The plugin's sv_service_call uses httpx.Client(timeout=...).stream("POST", ...)
 # to inspect Content-Type before consuming the body (so it can pivot to SSE
 # streaming when the downstream returns a generator). For tests we need to
-# intercept at the Client level — `transport=MockTransport(handler)` lets a
+# intercept at the Client level - `transport=MockTransport(handler)` lets a
 # real Client serve canned Responses without doing real I/O. Both .stream()
 # and .post() on the Client go through the transport, so a single helper
 # covers every existing test pattern (plain JSON, ConnectError on retry,
@@ -34,7 +34,7 @@ def _mock_client_class(handler: any, on_init: any = None) -> any {
     # httpx.Client inside a Jac function and calling super().__init__
     # raises 'super' object is not callable (Jac compiles the inner
     # class differently than CPython expects). The factory pattern
-    # sidesteps that — we just hand back a fresh real Client backed by
+    # sidesteps that - we just hand back a fresh real Client backed by
     # our MockTransport on every call.
     #
     # Capture the *original* httpx.Client at helper-construction time:

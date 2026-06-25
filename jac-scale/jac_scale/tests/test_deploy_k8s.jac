@@ -642,7 +642,7 @@ test "redis ingress rule must not set host before TLS is enabled" {
         1
     ]["body"];
 
-    # Redis rule must NOT have a host — same requirement as the main ingress
+    # Redis rule must NOT have a host - same requirement as the main ingress
     redis_rule = redis_created_body["spec"]["rules"][0];
     assert "host" not in redis_rule , "Redis ingress rule must not set host before TLS is enabled";
 }
@@ -747,7 +747,7 @@ test "redis ACL is secret mounted not in configmap and creds validated" {
 # ---------------------------------------------------------------------------
 test "shared ingress skips deploying dedicated nginx controller" {
     # start_controller must be a no-op for _deploy_nginx_controller when
-    # shared_ingress=True — a pre-existing cluster-wide controller is used.
+    # shared_ingress=True - a pre-existing cluster-wide controller is used.
     k8s_config = KubernetesConfig(shared_ingress=True, domain="myapp.example.com");
     ingress_deployer = IngressDeployer(k8s_config, None);
 
@@ -803,7 +803,7 @@ test "shared ingress rule sets host immediately without waiting for tls" {
 test "shared ingress destroy skips controller resource teardown" {
     # App-level Ingress objects are always cleaned up.  The NGINX controller
     # Deployment, Service, ServiceAccount, ConfigMap, ClusterRole,
-    # ClusterRoleBinding, and IngressClass must NOT be deleted — those belong
+    # ClusterRoleBinding, and IngressClass must NOT be deleted - those belong
     # to the shared controller and are managed externally.
     k8s_config = KubernetesConfig(shared_ingress=True, domain="myapp.example.com");
     ingress_deployer = IngressDeployer(k8s_config, None);
@@ -856,7 +856,7 @@ test "shared ingress deploy fails fast when domain is not set" {
     target_config['app_name'] = 'test-app';
     target_config['namespace'] = 'test-ns';
     target_config['shared_ingress'] = True;
-    target_config['domain'] = '';  # explicitly empty — the invalid state
+    target_config['domain'] = '';  # explicitly empty - the invalid state
 
     logger = UtilityFactory.create_logger('standard');
     deployment_target = DeploymentTargetFactory.create(
@@ -871,7 +871,7 @@ test "shared ingress deploy fails fast when domain is not set" {
 
     assert result.success is False , "deploy must fail when shared_ingress=True but domain is empty";
     assert "domain" in result.message.lower() , "error message must mention domain requirement";
-    # validate_shared_ingress must NOT be present — the exception fires before
+    # validate_shared_ingress must NOT be present - the exception fires before
     # details['validate_shared_ingress'] is written
     assert "validate_shared_ingress" not in result.details , "deploy must abort before recording validate_shared_ingress";
 }
@@ -922,7 +922,7 @@ test "shared ingress deploy skips nodeport validation" {
                             "jac_scale.targets.kubernetes.kubernetes_target.client"
                         ) {
                             # deploy() may fail at a later step once mocked K8s
-                            # APIs return generic MagicMocks — that is expected.
+                            # APIs return generic MagicMocks - that is expected.
                             # We only care that the provider was obtained and
                             # validate_ports was never invoked on it.
                             deployment_target.deploy(app_config);
@@ -933,7 +933,7 @@ test "shared ingress deploy skips nodeport validation" {
         }
     }
 
-    assert not mock_provider.validate_ports.called , "validate_ports must not be called when shared_ingress=True — no NodePort is created";
+    assert not mock_provider.validate_ports.called , "validate_ports must not be called when shared_ingress=True - no NodePort is created";
 }
 
 test "shared ingress merges caller-supplied annotations for non-nginx controllers" {

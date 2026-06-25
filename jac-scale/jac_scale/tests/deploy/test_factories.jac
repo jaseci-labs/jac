@@ -272,7 +272,7 @@ test "hpa autoscaler build manifests produces correct dict" {
 }
 
 test "autoscaler factory creates keda autoscaler for engine=keda" {
-    # Ensures "keda" is a registered built-in engine — not just a custom override.
+    # Ensures "keda" is a registered built-in engine - not just a custom override.
     # This test will fail until KEDAAutoscaler and its factory registration exist.
     autoscaler = AutoscalerFactory.create("keda", {});
     assert isinstance(autoscaler, KEDAAutoscaler);

@@ -149,7 +149,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
     """Build Kubernetes service configuration.
 
-    Always ClusterIP — the app is reached exclusively through the NGINX Ingress
+    Always ClusterIP - the app is reached exclusively through the NGINX Ingress
     controller, so no direct NodePort or cloud LoadBalancer is needed.
     """
     def _build_service_config(
@@ -195,7 +195,7 @@ obj KubernetesTarget(DeploymentTarget) {
         # apt-get update from hanging/failing on missing Release files.
         # Legacy one-line format lives in *.list; modern python:3.x-slim images
         # (Debian trixie) use the deb822 *.sources format where the suites are
-        # combined on a single `Suites:` line — the *.list-only sed misses it,
+        # combined on a single `Suites:` line - the *.list-only sed misses it,
         # so we also strip the trixie-updates token from `Suites:` lines there.
         commands.append(
             'sed -i \'/trixie-updates\\|trixie-security/d\' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true'
@@ -290,11 +290,11 @@ obj KubernetesTarget(DeploymentTarget) {
         # and a writable filesystem. Pre-built image containers can be fully locked down.
         if needs_root {
             # Drop ALL then add back only what apt/pip need at runtime:
-            #   CHOWN       — chown files during package post-install scripts
-            #   DAC_OVERRIDE — access _apt-owned /var/lib/apt/lists/partial/
-            #   FOWNER      — chmod directories not owned by the running uid
-            #   FSETID      — preserve SUID/SGID bits written by package scripts
-            #   SETUID/SETGID — some package post-install scripts switch uid/gid
+            #   CHOWN       - chown files during package post-install scripts
+            #   DAC_OVERRIDE - access _apt-owned /var/lib/apt/lists/partial/
+            #   FOWNER      - chmod directories not owned by the running uid
+            #   FSETID      - preserve SUID/SGID bits written by package scripts
+            #   SETUID/SETGID - some package post-install scripts switch uid/gid
             security_context = {
                 'readOnlyRootFilesystem': False,
                 'allowPrivilegeEscalation': False,
@@ -932,7 +932,7 @@ obj KubernetesTarget(DeploymentTarget) {
     def _deploy_network_policy(app_name: str, namespace: str, networking_v1: any) {
         # Common egress rules for all policies
         common_egress_rules = [
-            # DNS — explicit kube-system selector so CNIs that evaluate policy
+            # DNS - explicit kube-system selector so CNIs that evaluate policy
             # before DNAT (e.g. Flannel) can reach kube-dns.
             {
                 'to': [
@@ -951,7 +951,7 @@ obj KubernetesTarget(DeploymentTarget) {
             },
             # All pods within the same namespace
             {'to': [{'podSelector': {}}]},
-            # External HTTPS — needed for pip/apt installs during runtime setup
+            # External HTTPS - needed for pip/apt installs during runtime setup
             {
                 'ports': [
                     {'protocol': 'TCP', 'port': 443},
@@ -966,7 +966,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 'name': f"{app_name}-network-policy",
                 'pod_selector': {'matchLabels': {'app': app_name}},
                 'ingress_rules': [
-                    # App container port — accepts traffic from NodePort/LoadBalancer
+                    # App container port - accepts traffic from NodePort/LoadBalancer
                     {
                         'ports': [
                             {'protocol': 'TCP', 'port': self.k8s_config.container_port}
@@ -978,7 +978,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 'name': f"{app_name}-mongodb-network-policy",
                 'pod_selector': {'matchLabels': {'app': f"{app_name}-mongodb"}},
                 'ingress_rules': [
-                    # MongoDB port — accepts traffic from main app and mongo-express dashboard
+                    # MongoDB port - accepts traffic from main app and mongo-express dashboard
                     {
                         'from': [
                             {'podSelector': {'matchLabels': {'app': app_name}}},
@@ -996,7 +996,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 'name': f"{app_name}-redis-network-policy",
                 'pod_selector': {'matchLabels': {'app': f"{app_name}-redis"}},
                 'ingress_rules': [
-                    # Redis port — accepts traffic from main app and RedisInsight dashboard
+                    # Redis port - accepts traffic from main app and RedisInsight dashboard
                     {
                         'from': [
                             {'podSelector': {'matchLabels': {'app': app_name}}},
@@ -1010,7 +1010,7 @@ obj KubernetesTarget(DeploymentTarget) {
                     }
                 ]
             },
-            # Prometheus — allow grafana and the main app to query on port 9090.
+            # Prometheus - allow grafana and the main app to query on port 9090.
             # The main app reads Prometheus directly for the admin Deployments
             # view, so it needs ingress here alongside Grafana.
             {
@@ -1030,7 +1030,7 @@ obj KubernetesTarget(DeploymentTarget) {
                     }
                 ]
             },
-            # Grafana — allow ingress controller to reach it on port 3000 (/grafana route)
+            # Grafana - allow ingress controller to reach it on port 3000 (/grafana route)
             {
                 'name': f"{app_name}-grafana-network-policy",
                 'pod_selector': {'matchLabels': {'app': f"{app_name}-grafana"}},
@@ -1040,14 +1040,14 @@ obj KubernetesTarget(DeploymentTarget) {
                 'name': f"{app_name}-code-server-network-policy",
                 'pod_selector': {'matchLabels': {'app': f"{app_name}-code-server"}},
                 'ingress_rules': [
-                    # Code-server port — accepts traffic from main app
+                    # Code-server port - accepts traffic from main app
                     {
                         'from': [{'podSelector': {'matchLabels': {'app': app_name}}}],
                         'ports': [{'protocol': 'TCP', 'port': 8080}]
                     }
                 ]
             },
-            # kube-state-metrics — allow prometheus to scrape on port 8080
+            # kube-state-metrics - allow prometheus to scrape on port 8080
             {
                 'name': f"{app_name}-kube-state-metrics-network-policy",
                 'pod_selector': {
@@ -1066,7 +1066,7 @@ obj KubernetesTarget(DeploymentTarget) {
                     }
                 ]
             },
-            # node-exporter — allow prometheus to scrape on port 9100
+            # node-exporter - allow prometheus to scrape on port 9100
             {
                 'name': f"{app_name}-node-exporter-network-policy",
                 'pod_selector': {'matchLabels': {'app': f"{app_name}-node-exporter"}},
@@ -1083,13 +1083,13 @@ obj KubernetesTarget(DeploymentTarget) {
                     }
                 ]
             },
-            # mongo-express — allow ingress controller to reach it on port 8081 (/db-dashboard route)
+            # mongo-express - allow ingress controller to reach it on port 8081 (/db-dashboard route)
             {
                 'name': f"{app_name}-mongo-express-network-policy",
                 'pod_selector': {'matchLabels': {'app': f"{app_name}-mongo-express"}},
                 'ingress_rules': [{'ports': [{'protocol': 'TCP', 'port': 8081}]}]
             },
-            # redis-insight — allow ingress controller to reach it on port 5540
+            # redis-insight - allow ingress controller to reach it on port 5540
             {
                 'name': f"{app_name}-redis-insight-network-policy",
                 'pod_selector': {'matchLabels': {'app': f"{app_name}-redis-insight"}},
@@ -1149,7 +1149,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
         # In shared ingress mode the dedicated controller service (NodePort/NLB)
         # is never created. Instead, check reachability against the domain directly.
-        # Failure is a warning, not an error — the CNAME record may not have
+        # Failure is a warning, not an error - the CNAME record may not have
         # propagated yet or DNS may not be configured yet.
         if self.k8s_config.shared_ingress {
             # For a user's custom domain (pointed at the shared controller only
@@ -1215,7 +1215,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 # health-check pass.  Raw domain_details (e.g. "Timeout reached")
                 # would be indistinguishable from a real failure to the caller.
                 return (
-                    f"Warning: DNS not propagated yet — health check skipped. {dns_hint}"
+                    f"Warning: DNS not propagated yet - health check skipped. {dns_hint}"
                 );
             }
             return domain_details;
@@ -1232,7 +1232,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 }
                 core_v1 = client.CoreV1Api();
                 # The app service is ClusterIP; the NLB is on the NGINX ingress
-                # controller's LoadBalancer service — same source as get_service_url().
+                # controller's LoadBalancer service - same source as get_service_url().
                 ingress_svc_name = f"{app_name}-ingress-nginx-service";
                 service_obj = core_v1.read_namespaced_service(
                     ingress_svc_name, namespace
@@ -1349,7 +1349,7 @@ obj KubernetesTarget(DeploymentTarget) {
             # 4. Determine cluster provider (encapsulates all provider-specific behaviour)
             provider = get_cluster_provider();
             # 4b. Validate NodePort availability (no-op on AWS, checked on local).
-            #     Skipped in shared ingress mode — no NodePort is created.
+            #     Skipped in shared ingress mode - no NodePort is created.
             if not self.k8s_config.shared_ingress {
                 provider.validate_ports(
                     node_port=self.k8s_config.ingress_node_port,
@@ -1453,7 +1453,7 @@ obj KubernetesTarget(DeploymentTarget) {
             time.sleep(self.k8s_config.resource_deletion_wait);
 
             # 12b. Start NGINX Ingress controller early so it boots in parallel with
-            # databases, app, HPA, and monitoring — minimising the wait in finish_ingress().
+            # databases, app, HPA, and monitoring - minimising the wait in finish_ingress().
             rbac_v1 = client.RbacAuthorizationV1Api();
             networking_v1 = client.NetworkingV1Api();
             ingress_deployer = IngressDeployer(self.k8s_config, self.logger);
@@ -1575,7 +1575,7 @@ obj KubernetesTarget(DeploymentTarget) {
                     record_type = "A" if is_ip else "CNAME";
                     self.logger.info(f"\n{'=' * 62}");
                     self.logger.info(
-                        f"ACTION REQUIRED — add a {record_type} record in your DNS provider:"
+                        f"ACTION REQUIRED - add a {record_type} record in your DNS provider:"
                     );
                     self.logger.info(f"  Type   : {record_type}");
                     self.logger.info(f"  Name   : {self.k8s_config.domain}");
@@ -2486,7 +2486,7 @@ obj KubernetesTarget(DeploymentTarget) {
         }
 
         # Resolve status for each component from the cached maps.
-        # Derived from COMPANION_DEFS — add new companions there, not here.
+        # Derived from COMPANION_DEFS - add new companions there, not here.
         component_defs = [
             {'k8s_name': app_name + d[0], 'display': d[1], 'is_sts': d[2]}
             for d in COMPANION_DEFS

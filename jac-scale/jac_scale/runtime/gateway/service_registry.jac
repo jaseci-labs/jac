@@ -1,4 +1,4 @@
-"""Service registry — tracks declared microservices and their runtime state."""
+"""Service registry - tracks declared microservices and their runtime state."""
 
 import from datetime { datetime }
 

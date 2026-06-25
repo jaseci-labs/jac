@@ -154,7 +154,7 @@ class JacScalePluginConfig {
                             "default": "hpa",
                             "description": "Autoscaler engine to use. Built-in: 'hpa' (default, CPU/memory only) or 'keda' (event-driven, supports scale-to-zero). External plugins can register additional engines via AutoscalerFactory.register()."
                         },
-                        # Note: the [services.NAME.hpa] sub-block name is historical — min/max/cpu_target
+                        # Note: the [services.NAME.hpa] sub-block name is historical - min/max/cpu_target
                         # apply to whichever autoscaler_engine is active. A rename to [autoscaling] is
                         # tracked as a separate cleanup, not part of this phase.
                         "min_replicas": {

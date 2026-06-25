@@ -3,7 +3,7 @@
 The serve.endpoints layer detects an iterator return value and wraps
 it in a StreamingResponse with `media_type='text/event-stream'`. But
 StarletteResponse just iterates the body and writes each yield to the
-wire — which for a generator of dicts produces the dict's repr, not
+wire - which for a generator of dicts produces the dict's repr, not
 valid SSE. Browsers (and our `sv_service_call` SSE consumer) expect
 the canonical:
 
@@ -20,7 +20,7 @@ Errors raised inside the user's generator are caught and emitted as
 structured error instead of a partial-stream EOF.
 
 Sync iterators are awaited via `asyncio.to_thread` so a blocking
-`q.get()` (the common pattern for cross-thread event queues — see
+`q.get()` (the common pattern for cross-thread event queues - see
 jac-coder's stream_events) does not pin the event loop.
 """
 
@@ -80,7 +80,7 @@ async def sse_frame_stream(gen: any) -> AsyncIterator[str] {
     try {
         if sync {
             # Drive the sync generator on the default executor so a blocking
-            # next() — e.g. queue.get(timeout=...) inside the producer —
+            # next() - e.g. queue.get(timeout=...) inside the producer -
             # does not stall the event loop. `loop.run_in_executor` returns
             # a Future awaitable that Jac's stdlib stubs recognise (whereas
             # asyncio.to_thread's TypeVar return is opaque to the checker).
@@ -97,7 +97,7 @@ async def sse_frame_stream(gen: any) -> AsyncIterator[str] {
                 yield f"data: {json.dumps(item, default=_DEFAULT)}\n\n";
             }
         }
-        # Normal close — explicit so the consumer can tell EOF apart
+        # Normal close - explicit so the consumer can tell EOF apart
         # from a dropped connection.
         yield "event: end\ndata: {}\n\n";
     } except Exception as e {

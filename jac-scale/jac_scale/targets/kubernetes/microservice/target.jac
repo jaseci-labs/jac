@@ -539,7 +539,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
             triggers = [];
             # extra_triggers from [plugins.scale.kubernetes] targets the
-            # gateway only — it is the microservice-mode equivalent of the
+            # gateway only - it is the microservice-mode equivalent of the
             # monolith ScaledObject.  Per-service triggers belong under
             # [[plugins.scale.microservices.services.{name}.triggers]].
             is_gateway = svc_name == GATEWAY_NAME;

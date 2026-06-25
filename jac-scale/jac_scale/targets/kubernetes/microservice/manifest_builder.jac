@@ -685,7 +685,7 @@ obj MicroserviceManifestBuilder {
     """Autoscaler config for a service; None if autoscaling is disabled."""
     def _get_autoscaler_config(svc_name: str) -> dict[str, any] | None {
         svc: dict[str, any] = self._service_config(svc_name);
-        # 'hpa' block name is historical — applies to whichever autoscaler_engine is active
+        # 'hpa' block name is historical - applies to whichever autoscaler_engine is active
         hpa: dict[str, any] = svc.get("hpa", {});
         if not hpa.get("enabled", True) {
             return None;
