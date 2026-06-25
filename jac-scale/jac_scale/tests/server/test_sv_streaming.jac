@@ -2,18 +2,18 @@
 
 Stack under test:
 
-  jaclang.runtimelib._finalize_call_response  — passes generator results
+  jaclang.runtimelib._finalize_call_response  - passes generator results
                                                 straight through
-  jac_scale.microservices._sse.sse_frame_stream — wraps yields into
+  jac_scale.runtime.middleware.sse.sse_frame_stream - wraps yields into
                                                   `data: {json}\n\n`
-  jac_scale serve.endpoints.create_function_callback — emits as
+  jac_scale serve.endpoints.create_function_callback - emits as
                                                        text/event-stream
                                                        StreamingResponse
-  jaclang.runtimelib.sv_sse._parse_sse / consume_sse_stream — parses
+  jaclang.runtimelib.sv_sse._parse_sse / consume_sse_stream - parses
                                                               the framed
                                                               body line
                                                               by line
-  jac_scale.plugin.sv_service_call (override) — picks SSE vs JSON by
+  jac_scale.plugin.sv_service_call (override) - picks SSE vs JSON by
                                                 Content-Type, hands back a
                                                 generator on SSE
 
@@ -31,7 +31,7 @@ import from jac_scale.plugin { JacScalePlugin }
 
 
 # =============================================================================
-# Test helper (same shape as test_sv_auth_forward._mock_client_class — kept
+# Test helper (same shape as test_sv_auth_forward._mock_client_class - kept
 # duplicated to avoid an import cycle; if a third file needs it, hoist into
 # a shared tests/_mock_httpx.jac).
 # =============================================================================
@@ -49,8 +49,8 @@ def _mock_client_class(handler: any) -> any {
 
 `events` are JSON-serialized as one `data: {...}\n\n` chunk each.
 `trailer` decides whether to append `event: end\ndata: {}\n\n`
-(graceful close — the default) or `event: error\ndata: ...\n\n`
-or "" (raw EOF — caller handles).
+(graceful close - the default) or `event: error\ndata: ...\n\n`
+or "" (raw EOF - caller handles).
 """
 def _sse_body(events: list[dict], trailer: str = "end") -> str {
     parts: list[str] = [];
@@ -97,7 +97,7 @@ test "_parse_sse picks up event: tags and trims one leading space" {
 
 test "_parse_sse ignores comment lines and unknown fields" {
     body = (
-        ": this is a heartbeat comment — ignore me\n" "id: 42\n" "data: keep_me\n" "\n"
+        ": this is a heartbeat comment - ignore me\n" "id: 42\n" "data: keep_me\n" "\n"
     );
     out: list = [];
     for ev in _parse_sse(body.splitlines()) {
@@ -127,7 +127,7 @@ test "_parse_sse decodes bytes input (httpx iter_lines() under raw mode)" {
 
 
 # =============================================================================
-# consume_sse_stream — orchestrates _parse_sse over an httpx Response
+# consume_sse_stream - orchestrates _parse_sse over an httpx Response
 # =============================================================================
 obj _FakeResp {
     has body: str;

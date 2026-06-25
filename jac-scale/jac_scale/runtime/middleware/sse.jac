@@ -31,7 +31,7 @@ import from inspect { isgenerator }
 import from typing { AsyncIterator, AsyncGenerator }
 
 
-glob _logger: logging.Logger = logging.getLogger("jac_scale.microservices.sse"),
+glob _logger: logging.Logger = logging.getLogger("jac_scale.runtime.middleware.sse"),
      # Use the str() builtin as the json.dumps default so types like UUID,
      # datetime, etc. that the user's events may contain become string
      # representations instead of raising. Hoisted to module scope so we

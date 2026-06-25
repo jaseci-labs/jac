@@ -859,16 +859,7 @@ obj MicroserviceManifestBuilder {
         # no-image runs on the generic Python base image; the per-service
         # image_tag override is meaningless without a built image.
         resolved_image: str = self.k8s_config.python_image;
-        # JAC_IMAGE_REF (B-01): the resolved ref incl. K-29's content-id
-        # suffix, surfaced so an in-pod self-check can report "running build X"
-        # with zero RBAC. Strip any user-set copy first so the rendered YAML
-        # has a single, system-owned entry (no duplicate-env reliance).
-        env_list = [
-            e
-            for e in self._build_env(svc_name, svc_cfg)
-            if e["name"] != "JAC_IMAGE_REF"
-        ];
-        env_list.append({"name": "JAC_IMAGE_REF", "value": resolved_image});
+        env_list = self._build_env(svc_name, svc_cfg);
         # Container name must be DNS-1123 (no underscores); JAC_SV_NAME
         # env carries the raw name.
         container: dict[str, any] = {
