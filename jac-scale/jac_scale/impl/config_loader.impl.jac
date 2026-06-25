@@ -403,7 +403,17 @@ impl reset_scale_config -> None {
 }
 
 impl resolve_password_hash_rounds(configured_rounds: int) -> int {
-    rounds = int(os.environ.get('JAC_SCALE_BCRYPT_ROUNDS') or configured_rounds);
+    env_val = os.environ.get('JAC_SCALE_BCRYPT_ROUNDS');
+    if not env_val {
+        return max(4, min(31, configured_rounds));
+    }
+    try {
+        rounds = int(env_val);
+    } except ValueError as e {
+        raise ValueError(
+            f"JAC_SCALE_BCRYPT_ROUNDS must be an integer in 4..31, got: {env_val!r}"
+        ) from e;
+    }
     return max(4, min(31, rounds));
 }
 
