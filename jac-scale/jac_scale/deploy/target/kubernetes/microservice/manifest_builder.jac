@@ -2,8 +2,8 @@
 {deployments, services, autoscalers, pdbs, pod_specs, [pvcs, user_secret,
 ingress]} that KubernetesMicroserviceTarget hands to apply_manifests."""
 
-import from jac_scale.abstractions.config.app_config { AppConfig }
-import from jac_scale.abstractions.models.deploy_context { DeployContext }
+import from jac_scale.config.app_config { AppConfig }
+import from jac_scale.models.deploy_context { DeployContext }
 import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.deploy.autoscale.autoscaler { DEFAULT_CPU_UTILIZATION_TARGET }
 

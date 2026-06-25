@@ -65,7 +65,7 @@ import from jac_scale.auth_models {
     MeResponse
 }
 import from jac_scale.scheduler.scheduler_models { CreateJobRequest, UpdateJobRequest }
-import from jac_scale.abstractions.emailer { Emailer }
+import from jac_scale.emailer.emailer { Emailer }
 
 # Load configuration from jac.toml with env var overrides
 glob _jwt_config = get_scale_config().get_jwt_config(),

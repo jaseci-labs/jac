@@ -2,10 +2,10 @@
 
 All deployment target implementations should inherit from this class.
 """
-import from jac_scale.abstractions.config.app_config { AppConfig }
-import from jac_scale.abstractions.config.base_config { BaseConfig }
-import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
-import from jac_scale.abstractions.models.resource_status { ResourceStatusInfo }
+import from jac_scale.config.app_config { AppConfig }
+import from jac_scale.config.base_config { BaseConfig }
+import from jac_scale.models.deployment_result { DeploymentResult }
+import from jac_scale.models.resource_status { ResourceStatusInfo }
 import from jac_scale.deploy.database.database_provider { DatabaseProvider }
 import from jac_scale.observability.logger { Logger }
 

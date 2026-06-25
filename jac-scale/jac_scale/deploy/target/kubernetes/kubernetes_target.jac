@@ -2,9 +2,9 @@
 import from typing { Any }
 import from jaclang.runtimelib.client { BUN_VERSION }
 import from jac_scale.deploy.target.deployment_target { DeploymentTarget }
-import from jac_scale.abstractions.config.app_config { AppConfig }
-import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
-import from jac_scale.abstractions.models.resource_status {
+import from jac_scale.config.app_config { AppConfig }
+import from jac_scale.models.deployment_result { DeploymentResult }
+import from jac_scale.models.resource_status {
     ResourceStatus,
     ResourceStatusInfo
 }

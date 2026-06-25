@@ -6,9 +6,9 @@ DeploymentTargetFactory."""
 
 import logging;
 import from jac_scale.deploy.target.kubernetes.kubernetes_target { KubernetesTarget }
-import from jac_scale.abstractions.config.app_config { AppConfig }
-import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
-import from jac_scale.abstractions.models.deploy_context { DeployContext }
+import from jac_scale.config.app_config { AppConfig }
+import from jac_scale.models.deployment_result { DeploymentResult }
+import from jac_scale.models.deploy_context { DeployContext }
 import from jac_scale._optdeps.kubernetes {
     client,
     config as k8s_cluster_config,

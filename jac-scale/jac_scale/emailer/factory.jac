@@ -15,7 +15,7 @@ modifying jac-scale: drop the class in your project, set `provider =
 import importlib;
 import logging;
 import from typing { Any }
-import from jac_scale.abstractions.emailer { Emailer }
+import from jac_scale.emailer.emailer { Emailer }
 
 glob _registry: dict[str, type] = {},
      logger = logging.getLogger(__name__);
@@ -98,7 +98,7 @@ def create(config: dict[str, Any]) -> Emailer | None {
     if provider == 'smtp' {
         # Deferred import keeps email/mime deps out of the import graph when
         # the user doesn't configure SMTP.
-        import from jac_scale.emailers { SMTPEmailer }
+        import from jac_scale.emailer.emailers { SMTPEmailer }
         return _instantiate(SMTPEmailer, provider, config, from_address, enabled);
     }
     if provider in _registry {

@@ -3,8 +3,8 @@
 import sys;
 import from pathlib { Path }
 import from typing { Any }
-import from jac_scale.abstractions.emailer { Emailer }
-import from jac_scale.factories.emailer_factory { create as create_emailer, register }
+import from jac_scale.emailer.emailer { Emailer }
+import from jac_scale.emailer.factory { create as create_emailer, register }
 import from jac_scale.auth_tokens { AuthTokenStore, reset_auth_token_store }
 
 
@@ -44,7 +44,7 @@ test "factory_returns_none_when_provider_unset" {
 }
 
 test "factory_builds_smtp_provider" {
-    import from jac_scale.emailers { SMTPEmailer }
+    import from jac_scale.emailer.emailers { SMTPEmailer }
     cfg = {
         "provider": "smtp",
         "from_address": "noreply@example.com",

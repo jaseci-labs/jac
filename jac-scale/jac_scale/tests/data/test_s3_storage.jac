@@ -177,7 +177,7 @@ test "s3 download nonexistent raises" {
 }
 
 test "store builtin defaults to local storage" {
-    cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+    cfg_patcher = patch("jac_scale.storage.factory.get_config");
     env_patcher = patch.dict("os.environ", {}, clear=True);
 
     mock_cfg = cfg_patcher.start();
@@ -201,7 +201,7 @@ test "store builtin resolves to s3 storage when configured" {
             "JAC_STORAGE_TYPE": "s3",
             "JAC_STORAGE_S3_BUCKET": "builtin-test-bucket"
         };
-        cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+        cfg_patcher = patch("jac_scale.storage.factory.get_config");
         env_patcher = patch.dict("os.environ", env);
         mock_cfg = cfg_patcher.start();
         env_patcher.start();
@@ -251,7 +251,7 @@ region = "eu-central-1"
     config = JacConfig.from_toml_str(toml_content);
 
     # 2. Mock get_config to return our parsed object
-    cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+    cfg_patcher = patch("jac_scale.storage.factory.get_config");
     env_patcher = patch.dict("os.environ", {}, clear=True);
     mock_get_cfg = cfg_patcher.start();
     env_patcher.start();
@@ -313,7 +313,7 @@ base_path = "/tmp/custom-local"
     config = JacConfig.from_toml_str(toml_content);
 
     # 2. Mock get_config to return our parsed object
-    cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+    cfg_patcher = patch("jac_scale.storage.factory.get_config");
     env_patcher = patch.dict("os.environ", {}, clear=True);
     mock_get_cfg = cfg_patcher.start();
     env_patcher.start();

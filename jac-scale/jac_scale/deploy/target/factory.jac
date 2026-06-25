@@ -5,7 +5,7 @@ External packages can register custom targets via DeploymentTargetFactory.regist
 """
 import from typing { Callable }
 import from jac_scale.deploy.target.deployment_target { DeploymentTarget }
-import from jac_scale.abstractions.config.base_config { BaseConfig }
+import from jac_scale.config.base_config { BaseConfig }
 import from jac_scale.observability.logger { Logger }
 import from jac_scale._optdeps.optional_deps { require_optional }
 

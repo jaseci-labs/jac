@@ -1,5 +1,5 @@
 """Kubernetes-specific configuration."""
-import from jac_scale.abstractions.config.base_config { BaseConfig }
+import from jac_scale.config.base_config { BaseConfig }
 
 """Configuration for Kubernetes deployments."""
 obj KubernetesConfig(BaseConfig) {

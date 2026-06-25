@@ -2,14 +2,14 @@
 
 Currently only SMTPEmailer ships out of the box. Custom backends (SendGrid,
 Mailgun, Amazon SES, etc.) live in user code and are registered with the
-EmailerFactory (see jac_scale.factories.emailer_factory).
+EmailerFactory (see jac_scale.emailer.factory).
 """
 import logging;
 import smtplib;
 import from email.mime.multipart { MIMEMultipart }
 import from email.mime.text { MIMEText }
 import from typing { Any }
-import from jac_scale.abstractions.emailer { Emailer }
+import from jac_scale.emailer.emailer { Emailer }
 
 glob logger = logging.getLogger(__name__);
 

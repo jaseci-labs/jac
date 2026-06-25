@@ -14,7 +14,7 @@ import from .jserver.jfast_api { JFastApiServer }
 import from .config_loader { get_scale_config }
 import from .deploy.target.factory { DeploymentTargetFactory }
 import from .observability.factory { UtilityFactory }
-import from .abstractions.config.app_config { AppConfig }
+import from .config.app_config { AppConfig }
 import from .user_manager { JacScaleUserManager }
 import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.storage { Storage }
@@ -613,7 +613,7 @@ class JacScalePlugin {
     static def store(
         base_path: str = "./storage", create_dirs: bool = True
     ) -> Storage {
-        import from .factories.storage_factory { StorageFactory }
+        import from .storage.factory { StorageFactory }
         return StorageFactory.get_default(base_path, create_dirs);
     }
 

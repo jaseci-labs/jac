@@ -2,7 +2,7 @@
 
 import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
-import from jac_scale.abstractions.config.app_config { AppConfig }
+import from jac_scale.config.app_config { AppConfig }
 import from jac_scale.deploy.target.factory { DeploymentTargetFactory }
 import from jac_scale.deploy.autoscale.factory { AutoscalerFactory }
 import from jac_scale.observability.factory { UtilityFactory }

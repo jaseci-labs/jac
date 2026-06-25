@@ -3,7 +3,7 @@ Redis (when enabled in k8s_config) via the parent KubernetesTarget's
 _deploy_databases, returns a DeployContext with the connection env vars
 and wait-for-DB init containers populated."""
 
-import from jac_scale.abstractions.models.deploy_context { DeployContext }
+import from jac_scale.models.deploy_context { DeployContext }
 import from jac_scale._optdeps.kubernetes { client }
 import from jac_scale.deploy.target.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists
