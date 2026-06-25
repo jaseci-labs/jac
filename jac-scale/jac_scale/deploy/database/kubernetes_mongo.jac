@@ -1,7 +1,7 @@
 """Kubernetes MongoDB provider implementation."""
 import from typing { Any }
 import from jac_scale.deploy.database.database_provider { DatabaseProvider }
-import from jac_scale.abstractions.deployment_target { DeploymentTarget }
+import from jac_scale.deploy.target.deployment_target { DeploymentTarget }
 import from jac_scale.config_loader { get_scale_config }
 
 """MongoDB provider for Kubernetes deployments."""

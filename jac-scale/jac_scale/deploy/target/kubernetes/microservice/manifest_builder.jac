@@ -4,7 +4,7 @@ ingress]} that KubernetesMicroserviceTarget hands to apply_manifests."""
 
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deploy_context { DeployContext }
-import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.deploy.autoscale.autoscaler { DEFAULT_CPU_UTILIZATION_TARGET }
 
 
@@ -135,7 +135,7 @@ obj MicroserviceManifestBuilder {
         # Ops Console: read-only namespace Role + RoleBinding on the
         # gateway SA (opt-in). Mutation verbs only when ops_console_mutations.
         if getattr(self.k8s_config, "ops_console", False) {
-            import from jac_scale.targets.kubernetes.microservice.ops_rbac {
+            import from jac_scale.deploy.target.kubernetes.microservice.ops_rbac {
                 build_ops_rbac
             }
             bundle["ops_rbac"] = build_ops_rbac(

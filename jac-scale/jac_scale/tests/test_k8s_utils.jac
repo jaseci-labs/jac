@@ -7,8 +7,8 @@ import from types { SimpleNamespace }
 import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
 import from jaclang.runtimelib.test { parametrize }
-import from jac_scale.targets.kubernetes.utils { kubernetes_utils as utils }
-import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
+import from jac_scale.deploy.target.kubernetes.utils { kubernetes_utils as utils }
+import from jac_scale.deploy.target.kubernetes.utils.kubernetes_utils {
     check_pods_restarted,
     create_tarball,
     ensure_pvc_exists,
@@ -385,7 +385,7 @@ test "resize pvc if needed: increase patches, no-op skips, decrease raises" {
         return pvc;
     }
 
-    # Case 1 — increase: patch must be called with the larger size.
+    # Case 1 - increase: patch must be called with the larger size.
     core_v1 = unittest.mock.MagicMock();
     core_v1.read_namespaced_persistent_volume_claim.return_value = make_pvc("1Gi");
     resize_pvc_if_needed(core_v1, "ns", "mongo-pvc", "10Gi");
@@ -393,7 +393,7 @@ test "resize pvc if needed: increase patches, no-op skips, decrease raises" {
         "mongo-pvc", "ns", {"spec": {"resources": {"requests": {"storage": "10Gi"}}}}
     );
 
-    # Case 2 — same size: patch must NOT be called.
+    # Case 2 - same size: patch must NOT be called.
     core_v1_noop = unittest.mock.MagicMock();
     core_v1_noop.read_namespaced_persistent_volume_claim.return_value = make_pvc(
         "10Gi"
@@ -401,7 +401,7 @@ test "resize pvc if needed: increase patches, no-op skips, decrease raises" {
     resize_pvc_if_needed(core_v1_noop, "ns", "mongo-pvc", "10Gi");
     core_v1_noop.patch_namespaced_persistent_volume_claim.assert_not_called();
 
-    # Case 3 — decrease: must raise ValueError.
+    # Case 3 - decrease: must raise ValueError.
     core_v1_shrink = unittest.mock.MagicMock();
     core_v1_shrink.read_namespaced_persistent_volume_claim.return_value = make_pvc(
         "10Gi"
@@ -414,7 +414,7 @@ test "resize pvc if needed: increase patches, no-op skips, decrease raises" {
     }
     assert raised , "Expected ValueError when trying to shrink PVC";
 
-    # Case 4 — PVC not yet provisioned (first deploy): 404 must return silently.
+    # Case 4 - PVC not yet provisioned (first deploy): 404 must return silently.
     core_v1_new = unittest.mock.MagicMock();
     core_v1_new.read_namespaced_persistent_volume_claim.side_effect = ApiException(
         status=404

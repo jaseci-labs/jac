@@ -14,7 +14,7 @@ import from jaclang.cli.command { HookContext }
 import from jaclang.cli.console { console }
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.observability.factory { UtilityFactory }
-import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
+import from jac_scale.deploy.target.factory { DeploymentTargetFactory }
 import from jac_scale.abstractions.config.app_config { AppConfig }
 
 

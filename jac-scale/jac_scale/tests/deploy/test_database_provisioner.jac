@@ -4,11 +4,11 @@ import inspect;
 import from types { SimpleNamespace }
 import unittest.mock;
 
-import from jac_scale.targets.kubernetes.kubernetes_target { KubernetesTarget }
-import from jac_scale.targets.kubernetes.microservice.database_provisioner {
+import from jac_scale.deploy.target.kubernetes.kubernetes_target { KubernetesTarget }
+import from jac_scale.deploy.target.kubernetes.microservice.database_provisioner {
     MicroserviceDatabaseProvisioner
 }
-import from jac_scale.targets.kubernetes.microservice {
+import from jac_scale.deploy.target.kubernetes.microservice {
     database_provisioner as dp_module
 }
 

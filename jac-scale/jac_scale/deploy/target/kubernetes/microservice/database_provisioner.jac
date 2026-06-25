@@ -5,7 +5,7 @@ and wait-for-DB init containers populated."""
 
 import from jac_scale.abstractions.models.deploy_context { DeployContext }
 import from jac_scale._optdeps.kubernetes { client }
-import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
+import from jac_scale.deploy.target.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists
 }
 

@@ -7,7 +7,7 @@ Alloy OTLP lane). The deploy path itself is exercised end-to-end on a
 live cluster rather than against a mocked Kubernetes client.
 """
 
-import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesConfig }
 
 
 test "KubernetesConfig round-trips tracing_enabled" {

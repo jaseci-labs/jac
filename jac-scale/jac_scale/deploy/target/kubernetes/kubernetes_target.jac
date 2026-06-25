@@ -1,7 +1,7 @@
 """Kubernetes deployment target implementation."""
 import from typing { Any }
 import from jaclang.runtimelib.client { BUN_VERSION }
-import from jac_scale.abstractions.deployment_target { DeploymentTarget }
+import from jac_scale.deploy.target.deployment_target { DeploymentTarget }
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
 import from jac_scale.abstractions.models.resource_status {
@@ -9,8 +9,8 @@ import from jac_scale.abstractions.models.resource_status {
     ResourceStatusInfo
 }
 import from jac_scale.observability.logger { Logger }
-import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
-import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
+import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.deploy.target.kubernetes.utils.kubernetes_utils {
     COMPANION_DEFS,
     check_deployment_status,
     check_pods_restarted,
@@ -27,7 +27,7 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     sync_code_to_pvc,
     resize_pvc_if_needed
 }
-import from jac_scale.targets.kubernetes.cluster_provider { ClusterProvider }
+import from jac_scale.deploy.target.kubernetes.cluster_provider { ClusterProvider }
 import from jac_scale.deploy.database.kubernetes_mongo { KubernetesMongoProvider }
 import from jac_scale.deploy.database.kubernetes_redis { KubernetesRedisProvider }
 import from jac_scale._optdeps.optional_deps { require_optional }
@@ -37,8 +37,8 @@ import from jac_scale._optdeps.kubernetes {
     ApiException
 }
 import from jac_scale.deploy.database.factory { DatabaseProviderFactory }
-import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
-import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
+import from jac_scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
+import from jac_scale.deploy.target.kubernetes.ingress { IngressDeployer }
 import from jac_scale.deploy.autoscale.factory { AutoscalerFactory }
 import from jac_scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger, TriggerAuth }
 import time;

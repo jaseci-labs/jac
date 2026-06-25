@@ -3,13 +3,13 @@
 import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
 import from jac_scale.abstractions.config.app_config { AppConfig }
-import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
+import from jac_scale.deploy.target.factory { DeploymentTargetFactory }
 import from jac_scale.deploy.autoscale.factory { AutoscalerFactory }
 import from jac_scale.observability.factory { UtilityFactory }
 import from jac_scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
 import from jac_scale.deploy.autoscale.hpa_autoscaler { HPAAutoscaler }
 import from jac_scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
-import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesConfig }
 
 test "deployment target factory creates kubernetes target" {
     config = {"app_name": "test-app", "namespace": "default", "container_port": 8000};
@@ -112,7 +112,7 @@ test "deployment target with logger" {
     # KubernetesTarget is lazily imported inside create() (gated by
     # require_optional), so patch it at its source module, not on the factory.
     with unittest.mock.patch(
-        "jac_scale.targets.kubernetes.kubernetes_target.KubernetesTarget"
+        "jac_scale.deploy.target.kubernetes.kubernetes_target.KubernetesTarget"
     ) as mock_kubernetes_target {
         mock_target = unittest.mock.MagicMock();
         mock_kubernetes_target.return_value = mock_target;

@@ -2,10 +2,10 @@
 
 import unittest.mock as mock;
 import json;
-import from jac_scale.targets.kubernetes.microservice.manifest_builder {
+import from jac_scale.deploy.target.kubernetes.microservice.manifest_builder {
     MicroserviceManifestBuilder
 }
-import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesConfig }
 
 
 test "build_env injects JAC_SV_ROUTES so pods get routes without a toml table" {

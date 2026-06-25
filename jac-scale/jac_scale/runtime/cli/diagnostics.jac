@@ -6,7 +6,7 @@ checks read raw TOML so authored bad bounds are caught before the
 manifest builder masks them with defaults."""
 
 import from typing { Any }
-import from jac_scale.targets.kubernetes.microservice.manifest_builder { GATEWAY_NAME }
+import from jac_scale.deploy.target.kubernetes.microservice.manifest_builder { GATEWAY_NAME }
 import from jac_scale.runtime.cli._narrow {
     bget,
     dget,

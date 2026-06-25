@@ -10,8 +10,8 @@ when a cert-manager issuer annotation is present (and nulls it otherwise).
 
 import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
-import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
-import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.deploy.target.kubernetes.ingress { IngressDeployer }
+import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesConfig }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def _make_deployer(domain: str = '', cert_email: str = '') -> IngressDeployer {

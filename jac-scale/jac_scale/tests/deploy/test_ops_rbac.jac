@@ -5,7 +5,7 @@ Role + RoleBinding bound to the gateway ServiceAccount, with mutation verbs
 appended only when requested. No K8s I/O, so it's unit-tested directly.
 """
 
-import from jac_scale.targets.kubernetes.microservice.ops_rbac {
+import from jac_scale.deploy.target.kubernetes.microservice.ops_rbac {
     build_ops_rbac,
     ops_role_name
 }

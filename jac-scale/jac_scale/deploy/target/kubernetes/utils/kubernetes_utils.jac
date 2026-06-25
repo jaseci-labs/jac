@@ -14,7 +14,7 @@ import from jac_scale._optdeps.kubernetes {
     ApiException,
     ConfigException
 }
-import from jac_scale.targets.kubernetes.cluster_provider { ClusterProvider }
+import from jac_scale.deploy.target.kubernetes.cluster_provider { ClusterProvider }
 import from requests.exceptions { RequestException }
 
 """Each companion component: (suffix, display_name, is_statefulset).

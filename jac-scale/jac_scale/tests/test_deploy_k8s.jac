@@ -19,11 +19,11 @@ import from types { SimpleNamespace }
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
 import from jac_scale.config_loader { JacScaleConfig, get_scale_config }
-import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
+import from jac_scale.deploy.target.factory { DeploymentTargetFactory }
 import from jac_scale.deploy.database.factory { DatabaseProviderFactory }
 import from jac_scale.observability.factory { UtilityFactory }
-import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
-import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
+import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.deploy.target.kubernetes.ingress { IngressDeployer }
 import from jac_scale.deploy.autoscale.factory { AutoscalerFactory }
 import from jac_scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
 
@@ -486,10 +486,10 @@ test "get service url switches between http and https based on tls state" {
         spec=SimpleNamespace(tls=[tls_entry])
     );
     with unittest.mock.patch(
-        "jac_scale.targets.kubernetes.kubernetes_target.k8s_cluster_config"
+        "jac_scale.deploy.target.kubernetes.kubernetes_target.k8s_cluster_config"
     ) {
         with unittest.mock.patch(
-            "jac_scale.targets.kubernetes.kubernetes_target.client.NetworkingV1Api",
+            "jac_scale.deploy.target.kubernetes.kubernetes_target.client.NetworkingV1Api",
             return_value=mock_networking_v1
         ) {
             assert deployment_target.get_service_url("myapp") == "https://app.example.com";
@@ -501,10 +501,10 @@ test "get service url switches between http and https based on tls state" {
         spec=SimpleNamespace(tls=[])
     );
     with unittest.mock.patch(
-        "jac_scale.targets.kubernetes.kubernetes_target.k8s_cluster_config"
+        "jac_scale.deploy.target.kubernetes.kubernetes_target.k8s_cluster_config"
     ) {
         with unittest.mock.patch(
-            "jac_scale.targets.kubernetes.kubernetes_target.client.NetworkingV1Api",
+            "jac_scale.deploy.target.kubernetes.kubernetes_target.client.NetworkingV1Api",
             return_value=mock_networking_v1
         ) {
             assert deployment_target.get_service_url("myapp") == "http://app.example.com";
@@ -532,20 +532,20 @@ test "enable tls raises when no domain configured" {
 
     raised = False;
     with unittest.mock.patch(
-        "jac_scale.targets.kubernetes.kubernetes_target.k8s_cluster_config"
+        "jac_scale.deploy.target.kubernetes.kubernetes_target.k8s_cluster_config"
     ) {
         with unittest.mock.patch(
-            "jac_scale.targets.kubernetes.kubernetes_target.client.NetworkingV1Api",
+            "jac_scale.deploy.target.kubernetes.kubernetes_target.client.NetworkingV1Api",
             return_value=mock_networking_v1
         ) {
             with unittest.mock.patch(
-                "jac_scale.targets.kubernetes.kubernetes_target.client.CustomObjectsApi"
+                "jac_scale.deploy.target.kubernetes.kubernetes_target.client.CustomObjectsApi"
             ) {
                 with unittest.mock.patch(
-                    "jac_scale.targets.kubernetes.kubernetes_target.client.CoreV1Api"
+                    "jac_scale.deploy.target.kubernetes.kubernetes_target.client.CoreV1Api"
                 ) {
                     with unittest.mock.patch(
-                        "jac_scale.targets.kubernetes.kubernetes_target.client.AppsV1Api"
+                        "jac_scale.deploy.target.kubernetes.kubernetes_target.client.AppsV1Api"
                     ) {
                         try {
                             deployment_target.enable_tls("myapp");
@@ -823,7 +823,7 @@ test "shared ingress destroy skips controller resource teardown" {
     mock_custom_api.delete_namespaced_custom_object.side_effect = not_found;
 
     with unittest.mock.patch(
-        "jac_scale.targets.kubernetes.ingress.client"
+        "jac_scale.deploy.target.kubernetes.ingress.client"
     ) as mock_client {
         mock_client.CustomObjectsApi.return_value = mock_custom_api;
         ingress_deployer.destroy(
@@ -902,24 +902,24 @@ test "shared ingress deploy skips nodeport validation" {
     mock_provider.log_ingress_deployed.return_value = None;
 
     with unittest.mock.patch(
-        "jac_scale.targets.kubernetes.kubernetes_target.k8s_cluster_config"
+        "jac_scale.deploy.target.kubernetes.kubernetes_target.k8s_cluster_config"
     ) {
         with unittest.mock.patch(
-            "jac_scale.targets.kubernetes.kubernetes_target.check_K8s_status"
+            "jac_scale.deploy.target.kubernetes.kubernetes_target.check_K8s_status"
         ) {
             with unittest.mock.patch(
-                "jac_scale.targets.kubernetes.kubernetes_target.ensure_namespace_exists"
+                "jac_scale.deploy.target.kubernetes.kubernetes_target.ensure_namespace_exists"
             ) {
                 with unittest.mock.patch(
-                    "jac_scale.targets.kubernetes.kubernetes_target.load_env_variables",
+                    "jac_scale.deploy.target.kubernetes.kubernetes_target.load_env_variables",
                     return_value=[]
                 ) {
                     with unittest.mock.patch(
-                        "jac_scale.targets.kubernetes.kubernetes_target.get_cluster_provider",
+                        "jac_scale.deploy.target.kubernetes.kubernetes_target.get_cluster_provider",
                         return_value=mock_provider
                     ) {
                         with unittest.mock.patch(
-                            "jac_scale.targets.kubernetes.kubernetes_target.client"
+                            "jac_scale.deploy.target.kubernetes.kubernetes_target.client"
                         ) {
                             # deploy() may fail at a later step once mocked K8s
                             # APIs return generic MagicMocks - that is expected.

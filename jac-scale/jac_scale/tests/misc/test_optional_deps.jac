@@ -214,10 +214,10 @@ test "database factory requires redis for redis" {
 }
 
 test "deployment factory requires kubernetes for k8s target" {
-    import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
+    import from jac_scale.deploy.target.factory { DeploymentTargetFactory }
 
     with unittest.mock.patch(
-        "jac_scale.factories.deployment_factory.require_optional",
+        "jac_scale.deploy.target.factory.require_optional",
         side_effect=ImportError(
             "'kubernetes' is required. Install: pip install jac-scale[deploy]"
         )

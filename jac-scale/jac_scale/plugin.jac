@@ -12,7 +12,7 @@ import from .context { JScaleExecutionContext }
 import from .serve { JacAPIServer }
 import from .jserver.jfast_api { JFastApiServer }
 import from .config_loader { get_scale_config }
-import from .factories.deployment_factory { DeploymentTargetFactory }
+import from .deploy.target.factory { DeploymentTargetFactory }
 import from .observability.factory { UtilityFactory }
 import from .abstractions.config.app_config { AppConfig }
 import from .user_manager { JacScaleUserManager }
@@ -654,7 +654,7 @@ class JacScalePlugin {
         if "KUBERNETES_SERVICE_HOST" in os.environ {
             try {
                 import from jac_scale.config_loader { get_scale_config }
-                import from jac_scale.targets.kubernetes.microservice.manifest_builder {
+                import from jac_scale.deploy.target.kubernetes.microservice.manifest_builder {
                     k8s_safe_name
                 }
                 import from jac_scale.runtime.context.util {
@@ -752,7 +752,7 @@ class JacScalePlugin {
         # K8s mode: build DNS map from configured routes.
         try {
             import from jac_scale.config_loader { get_scale_config }
-            import from jac_scale.targets.kubernetes.microservice.runtime_resolver {
+            import from jac_scale.deploy.target.kubernetes.microservice.runtime_resolver {
                 build_k8s_registry
             }
             ms_cfg = get_scale_config().get_microservices_config();

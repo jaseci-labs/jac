@@ -5,7 +5,7 @@ generic Python base image. Registered as `kubernetes-microservice` in
 DeploymentTargetFactory."""
 
 import logging;
-import from jac_scale.targets.kubernetes.kubernetes_target { KubernetesTarget }
+import from jac_scale.deploy.target.kubernetes.kubernetes_target { KubernetesTarget }
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
 import from jac_scale.abstractions.models.deploy_context { DeployContext }
@@ -15,18 +15,18 @@ import from jac_scale._optdeps.kubernetes {
     ApiException,
     ConfigException
 }
-import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
+import from jac_scale.deploy.target.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists,
     create_k8s_secret,
     get_cluster_provider
 }
-import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
-import from jac_scale.targets.kubernetes.microservice.manifest_builder {
+import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.deploy.target.kubernetes.microservice.manifest_builder {
     MicroserviceManifestBuilder,
     GATEWAY_NAME,
     k8s_safe_name
 }
-import from jac_scale.targets.kubernetes.microservice.database_provisioner {
+import from jac_scale.deploy.target.kubernetes.microservice.database_provisioner {
     MicroserviceDatabaseProvisioner
 }
 import from jac_scale.deploy.autoscale.factory { AutoscalerFactory }
@@ -36,7 +36,7 @@ import from jac_scale.deploy.autoscale.autoscaler {
     TriggerAuth,
     DEFAULT_CPU_UTILIZATION_TARGET
 }
-import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
+import from jac_scale.deploy.target.kubernetes.monitoring { MonitoringDeployer }
 import from jac_scale.config_loader { get_scale_config }
 
 glob logger = logging.getLogger(__name__);

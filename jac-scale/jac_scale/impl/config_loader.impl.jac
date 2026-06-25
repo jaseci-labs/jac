@@ -234,7 +234,7 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any
     # /metrics endpoint (must match what the metrics handler validates).
     k8s_config['admin_username'] = self.get_admin_config().get('username', 'admin');
     # Convert to dict using KubernetesConfig.from_dict() which handles all defaults
-    import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
+    import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesConfig }
     k8s_config_obj = KubernetesConfig.from_dict(KubernetesConfig, k8s_config);
     return k8s_config_obj.to_dict();
 }

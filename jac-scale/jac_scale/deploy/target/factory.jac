@@ -4,7 +4,7 @@ Supports both built-in targets (kubernetes) and plugin-registered targets.
 External packages can register custom targets via DeploymentTargetFactory.register().
 """
 import from typing { Callable }
-import from jac_scale.abstractions.deployment_target { DeploymentTarget }
+import from jac_scale.deploy.target.deployment_target { DeploymentTarget }
 import from jac_scale.abstractions.config.base_config { BaseConfig }
 import from jac_scale.observability.logger { Logger }
 import from jac_scale._optdeps.optional_deps { require_optional }
@@ -71,10 +71,10 @@ class DeploymentTargetFactory {
         # Built-in targets
         if target_type == 'kubernetes' {
             require_optional("kubernetes", "deploy");
-            import from jac_scale.targets.kubernetes.kubernetes_target {
+            import from jac_scale.deploy.target.kubernetes.kubernetes_target {
                 KubernetesTarget
             }
-            import from jac_scale.targets.kubernetes.kubernetes_config {
+            import from jac_scale.deploy.target.kubernetes.kubernetes_config {
                 KubernetesConfig
             }
             k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);
@@ -86,10 +86,10 @@ class DeploymentTargetFactory {
             # true; users don't normally pass --target=kubernetes-microservice
             # directly.
             require_optional("kubernetes", "deploy");
-            import from jac_scale.targets.kubernetes.kubernetes_config {
+            import from jac_scale.deploy.target.kubernetes.kubernetes_config {
                 KubernetesConfig
             }
-            import from jac_scale.targets.kubernetes.microservice.target {
+            import from jac_scale.deploy.target.kubernetes.microservice.target {
                 KubernetesMicroserviceTarget
             }
             k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);

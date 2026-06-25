@@ -2,10 +2,10 @@
 
 import from types { SimpleNamespace }
 import unittest.mock;
-import from jac_scale.targets.kubernetes { cluster_provider as cp_module }
-import from jac_scale.targets.kubernetes.cluster_provider { AWSProvider, LocalProvider }
-import from jac_scale.targets.kubernetes.utils { kubernetes_utils as utils }
-import from jac_scale.targets.kubernetes.utils.kubernetes_utils { get_cluster_provider }
+import from jac_scale.deploy.target.kubernetes { cluster_provider as cp_module }
+import from jac_scale.deploy.target.kubernetes.cluster_provider { AWSProvider, LocalProvider }
+import from jac_scale.deploy.target.kubernetes.utils { kubernetes_utils as utils }
+import from jac_scale.deploy.target.kubernetes.utils.kubernetes_utils { get_cluster_provider }
 
 # ── Provider pure-function contracts ─────────────────────────────────────────
 #
@@ -33,8 +33,8 @@ test "AWSProvider and LocalProvider honour their per-provider contracts" {
     assert local.prometheus_scrape_port(3000) == 3000;
 
     # service_url:
-    #   AWS — returns the NLB hostname when one is available, None while provisioning
-    #   Local — always localhost:port; lb_endpoint is irrelevant and must be ignored
+    #   AWS - returns the NLB hostname when one is available, None while provisioning
+    #   Local - always localhost:port; lb_endpoint is irrelevant and must be ignored
     assert aws.service_url("my-nlb.us-east-1.elb.amazonaws.com", 30080) == "http://my-nlb.us-east-1.elb.amazonaws.com";
     assert aws.service_url(None, 30080) is None;
     assert local.service_url(None, 30080) == "http://localhost:30080";
@@ -54,7 +54,7 @@ test "validate_ports: AWS skips the API; Local raises on conflict and excludes o
         );
     }
 
-    # Scenario 1 — AWSProvider must never touch CoreV1Api.
+    # Scenario 1 - AWSProvider must never touch CoreV1Api.
     # NLB does not use NodePorts, so there is nothing to check.
     api_spy = unittest.mock.MagicMock();
     with unittest.mock.patch.object(cp_module.client, "CoreV1Api", lambda : api_spy ) {
@@ -62,7 +62,7 @@ test "validate_ports: AWS skips the API; Local raises on conflict and excludes o
     }
     api_spy.list_service_for_all_namespaces.assert_not_called();
 
-    # Scenario 2 — LocalProvider: port 30080 already claimed by another namespace → ValueError.
+    # Scenario 2 - LocalProvider: port 30080 already claimed by another namespace → ValueError.
     # The error message must name the port and the owning service so the user knows
     # exactly which ingress_node_port to change.
     conflict_svc = make_svc("other-ns", "other-ingress", [30080]);
@@ -86,7 +86,7 @@ test "validate_ports: AWS skips the API; Local raises on conflict and excludes o
     assert "30080" in error_msg , "Error message must include the conflicting port number";
     assert "other-ns/other-ingress" in error_msg , "Error message must identify the owning service";
 
-    # Scenario 3 — same port is bound by a service in the CURRENT namespace → must not raise.
+    # Scenario 3 - same port is bound by a service in the CURRENT namespace → must not raise.
     # Services in the same namespace belong to a previous deploy of this same app
     # and will be replaced, so they are excluded from the conflict check.
     same_ns_svc = make_svc("my-ns", "existing-ingress", [30080]);

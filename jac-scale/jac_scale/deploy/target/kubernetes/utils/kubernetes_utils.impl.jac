@@ -2,7 +2,7 @@ import os;
 import pathlib;
 import from jaclang.cli.console { console }
 import from jac_scale._optdeps.kubernetes { client }
-import from jac_scale.targets.kubernetes.cluster_provider {
+import from jac_scale.deploy.target.kubernetes.cluster_provider {
     AWSProvider,
     ClusterProvider,
     LocalProvider
@@ -635,7 +635,7 @@ impl check_deployment_status(
             if (response.status_code == 200) {
                 return (True, "Successful");
             }
-            # Non-200 (e.g. 503 from NGINX when app pod is down) — check for restarts
+            # Non-200 (e.g. 503 from NGINX when app pod is down) - check for restarts
             if check_pods_restarted(namespace, app_name) {
                 return (False, "Containers restarted");
             }
