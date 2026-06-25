@@ -67,7 +67,7 @@ impl NaIRGenPass._emit_exc_push_helper -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     fnty = ir.FunctionType(ir.VoidType(), [exc_state_ptr]);
-    func = ir.Function(self.llvm_module, fnty, name="__jac_exc_push");
+    func = self._define_function("__jac_exc_push", fnty);
     func.linkage = "private";
     func.args[0].name = "state";
     bb = func.append_basic_block("entry");
@@ -102,7 +102,7 @@ impl NaIRGenPass._emit_exc_pop_helper -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     fnty = ir.FunctionType(ir.VoidType(), []);
-    func = ir.Function(self.llvm_module, fnty, name="__jac_exc_pop");
+    func = self._define_function("__jac_exc_pop", fnty);
     func.linkage = "private";
     bb = func.append_basic_block("entry");
     b = ir.IRBuilder(bb);
@@ -129,7 +129,7 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     fnty = ir.FunctionType(ir.VoidType(), [i8p, i32]);
-    func = ir.Function(self.llvm_module, fnty, name="__jac_exc_raise");
+    func = self._define_function("__jac_exc_raise", fnty);
     func.linkage = "private";
     func.args[0].name = "msg";
     func.args[1].name = "type_id";

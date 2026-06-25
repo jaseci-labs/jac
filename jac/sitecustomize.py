@@ -15,6 +15,11 @@ with __import__("contextlib").suppress(Exception):
 
     # Project venv (deps + plugins) onto sys.path for both jac CLI and `jac -m`.
     _jac_finder.add_project_venv_to_path()
+    # Editable dev loop: if jac.toml has [dev] jaclang_source, reroute `import
+    # jaclang` to that in-repo source tree. Runs AFTER the venv step so the dev
+    # source lands at the very front of sys.path, ahead of both venv and the
+    # bundled site/. No-op without the key.
+    _jac_finder.apply_dev_source_override()
     # Lazy .jac finder so `jac -m <jac_module>` can import .jac in python mode
     # too. install() is idempotent (the CLI's BOOT_SRC calls it as well) and the
     # finder stays cheap until the first .jac import.

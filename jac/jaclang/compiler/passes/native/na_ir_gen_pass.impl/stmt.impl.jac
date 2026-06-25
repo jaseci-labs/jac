@@ -466,6 +466,10 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     _while_body_locals = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
+    # Exclude enclosing-scope vars (e.g. an accumulator mutated in the body) that
+    # only look body-local under a misbinding; their storage predates the body
+    # and per-iteration release would free them mid-loop (#6943 NA-2).
+    _while_prebody = set(self.local_vars.keys());
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
     }
@@ -473,7 +477,14 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
         _while_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
             if nd.loc
             else 0}";
-        self._emit_loop_iter_cleanup(_while_body_locals, loc=_while_loc);
+        self._emit_loop_iter_cleanup(
+            [
+                _v
+                for _v in _while_body_locals
+                if _v not in _while_prebody
+            ],
+            loc=_while_loc
+        );
         self.builder.branch(cond_bb);
     }
     self.loop_stack.pop();
@@ -525,6 +536,9 @@ impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
     _saved_locals = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
+    # Exclude enclosing-scope vars mutated in the body (misbinding guard, #6943
+    # NA-2): their storage predates the body, so they are not per-iteration locals.
+    _iterfor_prebody = set(self.local_vars.keys());
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
     }
@@ -532,7 +546,14 @@ impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
         if nd.loc
         else 0}";
     if not self.builder.block.is_terminated {
-        self._emit_loop_iter_cleanup(_saved_locals, loc=_loc);
+        self._emit_loop_iter_cleanup(
+            [
+                _v
+                for _v in _saved_locals
+                if _v not in _iterfor_prebody
+            ],
+            loc=_loc
+        );
         self.builder.branch(step_bb);
     }
     self.loop_stack.pop();
@@ -1741,6 +1762,35 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             return;
         }
     }
+    # ── Iterate an `any` (boxed JacVal) ── for e in x where x: any ──
+    # The value holds a list[any] (the canonical heterogeneous layout that
+    # json.loads / the Mechanism-B tier produce); unbox to List.jacval* and
+    # drive the standard indexed list loop, yielding `any` (JacVal) elements,
+    # so `parsed` from a loads() result is directly walkable. dict/set/str
+    # iteration over a bare `any` should narrow first (`d: dict[str, any] = x;`),
+    # the form json.dumps uses. (#6943 NA-4)
+    if _coll_memo is not None
+    and self?.jacval_type
+    and _coll_memo.type == self.jacval_type {
+        self._emit_list_helpers("jacval", self.jacval_type);
+        _any_list_helpers = self.list_helpers.get("jacval");
+        if _any_list_helpers is not None {
+            _any_list = self._unbox_from_jacval(
+                _coll_memo, self.list_types["jacval"].as_pointer()
+            );
+            self._codegen_for_indexed(
+                nd,
+                kind="list",
+                collection_val=_any_list,
+                helpers=_any_list_helpers,
+                var_names=[loop_var_name],
+                var_types=[self.jacval_type],
+                rc_vars=False,
+                coll_release_op=""
+            );
+            return;
+        }
+    }
     # ── Bytes iteration: for x in b ── yields i64 byte values (#6749).
     # A distinct struct type, so it precedes the str/list paths cleanly.
     if _coll_memo is not None and self._is_bytes_value(_coll_memo) {
@@ -2026,11 +2076,27 @@ impl NaIRGenPass._codegen_for_indexed(
     _for_saved = loop_body_locals(
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
+    # Snapshot the locals that already exist before the body so per-iteration
+    # cleanup never releases an enclosing-scope accumulator. A variable declared
+    # outside the loop but mutated inside it (`out += k`, `out = out + k`) can
+    # bind to a symbol whose only `defn` is that in-loop assignment when an
+    # enclosing block adds a scope level, so loop_body_locals misclassifies it as
+    # a fresh per-iteration local; releasing it then frees the accumulator under
+    # the next iteration (use-after-free; #6943 NA-2). Its storage predates the
+    # body, so excluding pre-existing names is the robust guard. (#6943 NA-2)
+    _for_prebody = set(self.local_vars.keys());
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
     }
     if not self.builder.block.is_terminated {
-        self._emit_loop_iter_cleanup(_for_saved, loc=_for_loc);
+        self._emit_loop_iter_cleanup(
+            [
+                _v
+                for _v in _for_saved
+                if _v not in _for_prebody
+            ],
+            loc=_for_loc
+        );
         self.builder.branch(incr_bb);
     }
     self.loop_stack.pop();

@@ -14,6 +14,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# These jobs build and validate the SHIPPED jac binary (bundled + precompiled
+# jaclang). The checkout's jac.toml files (root and jac/) carry a `[dev]
+# jaclang_source` stanza for the local editable dev loop; on a freshly built
+# binary `_jac_finder` would pick it up at startup and reroute `import jaclang`
+# to the source tree, setting JAC_NO_PRECOMPILE=1 (skipping the shipped JIR
+# bundle). That regresses the artifact under test: cold start recompiles the
+# whole compiler (the `timeout 5 jac --version` smoke then times out), the
+# precompile step emits a degraded bundle, and the plugin suites run against the
+# source tree rather than the binary as shipped. Force the dev loop OFF so CI
+# exercises the real artifact. (Mirrors the guard in test-binary.yml.)
+env:
+  JAC_NO_DEV_SOURCE: "1"
+
 jobs:
   # NOTE: jaclang's own test suite (formerly test-core-compiler / test-core-runtime,
   # `pip install -e jac` + pytest) now runs through the single `jac` binary in
@@ -131,8 +144,8 @@ jobs:
     - name: Set up jac (build the binary)
       uses: ./.github/actions/setup-jac
 
-    - name: Install jac-byllm (deps into venv; jaclang host-provided by the binary)
-      run: jac install -e jac-byllm
+    - name: Install jac-byllm (global so its tests, run from jac-byllm/, can import it)
+      run: jac install -e jac-byllm --global
 
     - name: Set environment for testing
       run: echo "TEST_ENV=true" >> $GITHUB_ENV
@@ -142,7 +155,7 @@ jobs:
       run: jac test .
 
     - name: Install docs dependencies
-      run: jac install -e docs
+      run: jac install -e docs --global
 
     - name: Build documentation
       working-directory: docs
@@ -218,11 +231,49 @@ jobs:
   # NOTE: the real-windows-host native job (test-native-windows) was retired in
   # the clean break to the single binary. jaclang ships only as the `jac` binary,
   # which builds for Linux and macOS (python-build-standalone has no Windows
-  # target -- see build.zig osArchString / fetch-pbs.sh), so there is no way to
+  # target -- see build.zig osArchString / payload.zig), so there is no way to
   # run jaclang on a windows-latest runner via `pip install -e jac` anymore. The
   # PE/COFF linker logic stays covered by the cross-compiled PE tests in the
   # blocking binary gate (test_pe_linker.jac); restoring a real-Windows-loader
   # check needs a Windows binary build, tracked as a follow-up.
+
+  test-cef-build:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
+
+    - name: Build dispatch shim and subprocess binary
+      working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
+      run: jac run build.jac
+
+    - name: Verify shared-object exports
+      working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
+      run: |
+        nm -D libcef_dispatch.so | grep -q cef_dispatch_startup
+        nm -D libcef_dispatch.so | grep -q cef_dispatch_execute_process
+        nm -D libcef_dispatch.so | grep -q cef_platform_bootstrap
+
+    - name: Check RPATH
+      working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
+      run: |
+        # The Jac native linker emits DT_RUNPATH (readelf prints "RUNPATH"),
+        # not the legacy DT_RPATH — so match either.
+        readelf -d libcef_dispatch.so | grep -qE '(RUN)?PATH.*\$ORIGIN'
+
+    - name: ldd audit (no missing deps against libc + libcef stub)
+      working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
+      run: |
+        # With libcef.so absent, ldd will report it missing — that is expected.
+        # The audit checks that no *other* unexpected dep is missing.
+        # grep exits non-zero when it matches nothing (the expected/good case);
+        # the trailing `|| true` keeps `set -e` from aborting the step there.
+        MISSING=$(ldd libcef_dispatch.so 2>&1 | grep 'not found' | grep -v libcef || true)
+        [ -z "$MISSING" ] || (echo "Unexpected missing deps: $MISSING" && exit 1)
 
   test-mcp:
     needs: changes
@@ -238,12 +289,12 @@ jobs:
     - name: Set up jac (build the binary)
       uses: ./.github/actions/setup-jac
 
-    - name: Install jac-mcp (deps into venv; jaclang host-provided by the binary)
-      run: jac install -e jac-mcp
+    - name: Install jac-mcp (global so its tests, run from jac-mcp/, can import it)
+      run: jac install -e jac-mcp --global
 
     - name: Run jac-mcp tests
-      # cwd = plugin dir so jac auto-loads jac-mcp/.jac/venv (its deps) on top of
-      # the binary's host jaclang.
+      # cwd = plugin dir; the plugin + deps live in the binary's global site
+      # (installed above), on sys.path alongside the host jaclang.
       working-directory: jac-mcp
       run: jac test .
 
@@ -268,8 +319,8 @@ jobs:
     - name: Set up jac (build the binary)
       uses: ./.github/actions/setup-jac
 
-    - name: Install jac-scale with all test extras (jaclang host-provided)
-      run: jac install -e jac-scale --extras test
+    - name: Install jac-scale with all test extras (global, importable from jac-scale/)
+      run: jac install -e jac-scale --extras test --global
 
     - name: Run ${{ matrix.group }} tests
       # cwd = plugin dir so jac auto-loads jac-scale/.jac/venv (its deps).
@@ -311,8 +362,8 @@ jobs:
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac
 
-      - name: Install Jaseci scale package (jaclang host-provided by the binary)
-        run: jac install -e jac-scale --extras deploy
+      - name: Install Jaseci scale package (global, importable from jac-scale/)
+        run: jac install -e jac-scale --extras deploy --global
 
       - name: Write kind config
         run: |
@@ -395,12 +446,12 @@ jobs:
 
     - name: Pre-build admin dashboard UI
       run: |
-        jac install -e jac-scale --extras all
+        jac install -e jac-scale --extras all --global
         cd jac-scale && jac run scripts/build_admin_ui.jac
 
     - name: Uninstall editable packages
       run: |
-        pip uninstall -y jac-scale
+        jac -m pip uninstall -y jac-scale
 
     - name: Clean egg-info to simulate fresh build (like publish-release)
       run: |
@@ -415,8 +466,8 @@ jobs:
         # Install the freshly built wheels INTO the binary's runtime (not system
         # Python -- jaclang is host-provided by the binary, so the plugins must
         # be importable by it). pytest ships in the binary, so no pip pytest.
-        SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && jac install "${SCALE_WHL}"
-        jac install jac-byllm/dist/byllm-*.whl
+        SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && jac install "${SCALE_WHL}" --global
+        jac install jac-byllm/dist/byllm-*.whl --global
 
     - name: Verify cold start with precompiled bytecode
       run: |
@@ -446,9 +497,10 @@ jobs:
         cd jac-gpt && jac install
 
     - name: Install Playwright dependencies
-      # Into the binary runtime, since the e2e test runs through the binary.
+      # --global puts it in the binary's own site so the e2e (run from jac-gpt/)
+      # can import it; a plain install would land in the repo-root project venv.
       run: |
-        jac install playwright
+        jac install playwright --global
         jac -m playwright install chromium --with-deps
 
     - name: Type check jac-gpt

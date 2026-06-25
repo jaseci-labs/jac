@@ -12,7 +12,7 @@ import os;
 """Parse, optimise (opt2, no internalize so every defined fn stays exported),
 emit one relocatable wasm object, and link it into a module."""
 def emit_wasm_from_ir(llvm_ir_str: str, export_funcs: list = []) -> bytes {
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     import from jaclang.compiler.passes.native.wasm_linker { WasmLinker }
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();

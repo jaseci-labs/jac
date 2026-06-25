@@ -1808,6 +1808,7 @@ jac-client supports building for multiple deployment targets from a single codeb
 |--------|---------|--------|----------------|
 | **Web** (default) | `jac build` | `.jac/client/dist/` | No |
 | **Desktop** (native webview) | `jac build --client desktop` | Single binary under `.jac/client/desktop/` | No |
+| **CEF** (Chromium) | `jac build --client cef` | CEF bundle under `.jac/client/cef/` | No |
 | **Mobile** (Capacitor) | `jac build --client mobile --platform android` | Android APK / iOS build products | Yes |
 | **PWA** | `jac build --client pwa` | Installable web app | No |
 
@@ -1822,16 +1823,28 @@ jac start --dev              # Dev server with HMR
 
 **Output:** `.jac/client/dist/` with `index.html`, bundled JS, and CSS.
 
-### Desktop Target (native webview)
+### Desktop Targets
 
-The desktop target ships with `jaclang` core (documented in the **[jac-desktop Reference](jac-desktop.md)**). It reuses jac-client's Vite frontend pipeline and compiles a native host (`jac nacompile`) that embeds the OS webview to render your `cl` UI - one self-contained binary, no Rust toolchain, no PyInstaller, no setup step.
+The desktop targets ship with `jaclang` core (documented in the **[jac-desktop Reference](jac-desktop.md)**). They reuse jac-client's Vite frontend pipeline and compile a native host (`jac nacompile`) that renders your `cl` UI - one self-contained binary, no Rust toolchain, no PyInstaller, no setup step.
 
 ```bash
 jac build --client desktop
 jac start --client desktop
+
+jac build --client cef
+jac start --client cef
 ```
 
-See the **[jac-desktop Reference](jac-desktop.md)** for architecture and `[plugins.desktop]` configuration.
+Use `desktop` for the OS-native webview. Use `cef` for a bundled
+Chromium Embedded Framework renderer:
+
+```toml
+[plugins.desktop]
+engine = "cef"
+```
+
+See the **[jac-desktop Reference](jac-desktop.md)** for architecture,
+`[plugins.desktop]` configuration, and CEF runtime flags.
 
 Tutorial: [Building a Desktop App](../../tutorials/fullstack/desktop.md).
 

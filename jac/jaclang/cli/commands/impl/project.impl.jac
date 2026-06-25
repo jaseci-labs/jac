@@ -546,11 +546,14 @@ impl install(
     no_deps: bool = False,
     quiet: bool = False,
     prefer_binary: bool = False,
-    no_uv: bool = False
+    install_global: bool = False
 ) -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
-    import from jaclang.project.dependencies { DependencyInstaller, pip_command }
+    import from jaclang.project.dependencies {
+        DependencyInstaller,
+        get_venv_site_packages
+    }
     import from jaclang.project.dep_registry { get_dependency_registry }
 
     flag_defs: list = [
@@ -568,13 +571,13 @@ impl install(
         for (enabled, flag) in flag_defs
         if enabled
     ];
-    # ── Direct install into activated environment ─────────────────────────────
-    # A bare `jac install <pkg>` installs into the binary's environment and works
-    # outside a project (no jac.toml needed) -- this is the global/tool install
-    # path. Per-project deps go through `jac add` / the no-arg `jac install`
-    # (which target the project venv); editable installs (-e, below) likewise go
-    # into the activated environment so the linked source is importable from any
-    # project (e.g. installing a plugin like jac-scale for the whole toolchain).
+    # ── Install package(s) ─────────────────────────────────────────────────────
+    # `jac install <pkg>` installs into the current project's .jac/venv by default
+    # (the one place third-party packages live), requiring a project. With
+    # --global it installs into the binary's own site instead -- a jac-owned
+    # location (never the host) that is importable from any project, for plugins
+    # and tools you install once and use everywhere. Unlike `jac add`, neither
+    # records the package in jac.toml; use `jac add <pkg>` to track it.
     if packages {
         if editable {
             console.error(
@@ -589,54 +592,74 @@ impl install(
                 "Use 'jac add <pkg> --dev' to track packages in jac.toml."
             );
         }
-        console.print(
-            f"\n📦 Installing {len(packages)} package(s) into activated environment",
-            style="bold"
-        );
-        cmd: list[str] = [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--upgrade"
-        ] + install_flags + packages;
-        if verbose {
-            console.print(f"  Running: {' '.join(cmd)}", style="muted");
-        }
-        result = subprocess.run(cmd, capture_output=not verbose, text=True);
-        if result.returncode != 0 {
-            err_detail: str = result.stderr or result.stdout or "(see output above)";
-            console.error(f"Install failed:\n{err_detail}");
-            return 1;
-        }
-        if dry_run {
-            if result.stdout {
-                console.print(result.stdout, style="dim");
+        if install_global {
+            # Global tier: install into the binary's own site (jac-owned, on
+            # sys.path everywhere), via the bundled pip -- never the host Python.
+            console.print(
+                f"\n📦 Installing {len(packages)} package(s) into the global site",
+                style="bold"
+            );
+            cmd: list[str] = [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--upgrade"
+            ] + install_flags + packages;
+            if verbose {
+                console.print(f"  Running: {' '.join(cmd)}", style="muted");
             }
-            console.success("Dry run complete (nothing installed).");
+            result = subprocess.run(cmd, capture_output=not verbose, text=True);
+            if result.returncode != 0 {
+                console.error(
+                    f"Install failed:\n{result.stderr
+                    or result.stdout
+                    or '(see output above)'}"
+                );
+                return 1;
+            }
+            if dry_run {
+                if result.stdout {
+                    console.print(result.stdout, style="dim");
+                }
+                console.success("Dry run complete (nothing installed).");
+                return 0;
+            }
+            console.success("Package(s) installed into the global site");
             return 0;
         }
-        if not verbose {
-            for pkg in packages {
-                console.print(f"  ✔ {pkg}", style="success");
-            }
+        config = get_config();
+        if config is None {
+            console.error(
+                "No jac.toml found",
+                hint="Run 'jac create' first; packages install into the project's .jac/venv (or pass --global)."
+            );
+            return 1;
         }
-        console.success("Package(s) installed");
-        return 0;
+        installer = DependencyInstaller(
+            config=config, verbose=verbose, install_flags=install_flags
+        );
+        console.print(
+            f"\n📦 Installing {len(packages)} package(s) into {config.get_venv_dir()}",
+            style="bold"
+        );
+        return 0 if installer.install_package(packages) else 1;
     }
     # ── Editable install ──────────────────────────────────────────────────────
     # Flatten nested lists produced by action="append" with nargs="+":
     #   -e ./a ./b -e ./c  →  [["./a","./b"],["./c"]]  →  ["./a","./b","./c"]
     editable = [p for group in (editable or []) for p in group];
     if editable {
-        import site;
         import from jaclang.publish.builder { WheelBuilder }
 
-        # Editable targets are linked into the activated (binary) environment so
-        # the source is importable from any project -- the global/tool install
-        # model shared with bare `jac install <pkg>`. jaclang itself is provided
-        # by the binary, so it is never installed here.
-        # Phase 1 — collect all dep specs for a single unified pip call.
+        # Default: editable targets + their deps go into the CURRENT project's
+        # .jac/venv (the consuming project owns every third-party package). With
+        # --global they go into the binary's own site instead -- jac-owned, never
+        # the host, importable from any project. jaclang itself is provided by the
+        # binary, so it is never installed here.
+
+        # Phase 1 — validate targets and collect all dep specs (from each
+        # target's jac.toml) for a single unified install.
         editable_targets: list = [];
         all_dep_specs: list[str] = [];
         for editable_path in editable {
@@ -656,16 +679,13 @@ impl install(
                 );
                 return 1;
             }
-            installer = DependencyInstaller(
-                config=config,
-                verbose=verbose,
-                install_flags=install_flags,
-                use_uv=not no_uv
+            specs_installer = DependencyInstaller(
+                config=config, verbose=verbose, install_flags=install_flags
             );
-            dep_specs = installer.get_pip_package_specs(include_dev=dev);
+            dep_specs = specs_installer.get_pip_package_specs(include_dev=dev);
             if extras {
                 try {
-                    extra_specs = installer.get_extra_package_specs(extras);
+                    extra_specs = specs_installer.get_extra_package_specs(extras);
                     if extra_specs {
                         dep_specs.extend(extra_specs);
                     }
@@ -684,37 +704,78 @@ impl install(
             );
         }
 
-        # Phase 2 — single pip call for all combined deps (unified resolver)
-        if all_dep_specs {
-            console.print(
-                f"\n  Installing {len(all_dep_specs)} dependencies...", style="muted"
-            );
-            result = subprocess.run(
-                pip_command(
-                    sys.executable,
-                    ["install", "--upgrade"] + (
-                        installer.install_flags or []
-                    ) + all_dep_specs,
-                    installer.use_uv
-                ),
-                capture_output=not verbose,
-                text=True,
-            );
-            if result.returncode != 0 {
+        # Phase 2/3 — install the deps and link the editable source, either into
+        # the binary's own site (--global) or the current project's .jac/venv.
+        if install_global {
+            if all_dep_specs {
+                console.print(
+                    f"\n  Installing {len(
+                        all_dep_specs
+                    )} dependencies into the global site...",
+                    style="muted"
+                );
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "install",
+                        "--upgrade"
+                    ] + install_flags + all_dep_specs,
+                    capture_output=not verbose,
+                    text=True,
+                );
+                if result.returncode != 0 {
+                    console.error(
+                        f"Dependency install failed:\n{result.stderr or result.stdout}"
+                    );
+                    return 1;
+                }
+            }
+            if dry_run {
+                console.print(
+                    "  ✔ Dry run complete (nothing installed).", style="success"
+                );
+                return 0;
+            }
+            import site;
+            site_pkgs = Path(site.getsitepackages()[0]);
+        } else {
+            # force_discover so the cwd's project is found fresh: Phase 1 above
+            # set the global config cache to the LAST -e target's own jac.toml,
+            # which must not be mistaken for the consuming (cwd) project.
+            host_config = get_config(force_discover=True);
+            if host_config is None {
                 console.error(
-                    f"Dependency install failed:\n{result.stderr or result.stdout}"
+                    "No jac.toml found",
+                    hint="Run 'jac create' first; `jac install -e` links into the current project's .jac/venv (or pass --global)."
                 );
                 return 1;
             }
+            host_installer = DependencyInstaller(
+                config=host_config, verbose=verbose, install_flags=install_flags
+            );
+            if all_dep_specs {
+                console.print(
+                    f"\n  Installing {len(all_dep_specs)} dependencies into {host_config.get_venv_dir()}...",
+                    style="muted"
+                );
+                if not host_installer.install_package(all_dep_specs) {
+                    return 1;
+                }
+            }
+            if dry_run {
+                console.print(
+                    "  ✔ Dry run complete (nothing installed).", style="success"
+                );
+                return 0;
+            }
+            # ensure_venv covers the no-deps case (install_package skipped) so the
+            # venv exists for linking.
+            host_installer.ensure_venv();
+            site_pkgs = get_venv_site_packages(host_config.get_venv_dir());
         }
 
-        if dry_run {
-            console.print("  ✔ Dry run complete (nothing installed).", style="success");
-            return 0;
-        }
-
-        # Phase 3 — link each package as editable into the activated site-packages
-        site_pkgs = Path(site.getsitepackages()[0]);
         for (config, src_dir) in editable_targets {
             WheelBuilder(config=config).install_editable(src_dir, site_pkgs);
             console.print(f"  ✔ Linked {src_dir}", style="success");
@@ -731,7 +792,7 @@ impl install(
         return 1;
     }
     installer = DependencyInstaller(
-        config=config, verbose=verbose, install_flags=install_flags, use_uv=not no_uv
+        config=config, verbose=verbose, install_flags=install_flags
     );
     console.print(
         f"\n📦 Installing dependencies for {config.project.name}", style="bold"
@@ -1335,102 +1396,8 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
     return 1;
 }
 
-"""Return (executable, version_tag) for every python3.X found on PATH."""
-def _find_precompile_pythons -> list[tuple[str, str]] {
-    found: list[tuple[str, str]] = [];
-    for minor in _PRECOMPILE_MINOR_RANGE {
-        exe: str | None = shutil.which(f"python3.{minor}");
-        if not exe {
-            console.warning(
-                f"python3.{minor} not found on PATH — skipping this version"
-            );
-            continue;
-        }
-        found.append((exe, f"cpython-3{minor}"));
-    }
-    return found;
-}
-
-"""Run precompile script for pyexe in a temp venv. Returns None on success or an error string."""
-def _run_precompile_in_venv(
-    pyexe: str, script_path: str, project_root: str, dep_specs: list[str],
-) -> str | None {
-    jac_version = importlib.metadata.version("jaclang");
-    # Release-PR/CI escape hatch: install jaclang from a local path (sdist, wheel,
-    # or source tree) instead of PyPI when the named version isn't yet published.
-    local_install = os.environ.get("JAC_PRECOMPILE_LOCAL_INSTALL");
-    jac_spec = local_install or f"jaclang=={jac_version}";
-    # Same, for sibling Jac packages (comma-separated source dirs): install them
-    # from local source first so a not-yet-published sibling pin still resolves.
-    local_deps_raw = os.environ.get("JAC_PRECOMPILE_LOCAL_DEPS", "");
-    local_dep_specs = [
-        d.strip()
-        for d in local_deps_raw.split(",")
-        if d.strip()
-    ];
-
-    with tempfile.TemporaryDirectory() as tmp {
-        venv_dir = Path(tmp) / "venv";
-        venv_result = subprocess.run(
-            [pyexe, "-m", "venv", str(venv_dir)], capture_output=True
-        );
-        if venv_result.returncode != 0 {
-            return f"venv creation failed:\n{venv_result.stderr.decode(
-                errors='replace'
-            )}";
-        }
-        if sys.platform == "win32" {
-            venv_python = str(venv_dir / "Scripts" / "python");
-            venv_jac = str(venv_dir / "Scripts" / "jac");
-        } else {
-            venv_python = str(venv_dir / "bin" / "python");
-            venv_jac = str(venv_dir / "bin" / "jac");
-        }
-        import from jaclang.project.dependencies { pip_command }
-        use_uv: bool = not bool(os.environ.get("JAC_NO_UV"));
-        jac_install = subprocess.run(
-            pip_command(venv_python, ["install", jac_spec, "--quiet"], use_uv),
-            capture_output=True
-        );
-        if jac_install.returncode != 0 {
-            return f"install {jac_spec} failed:\n{jac_install.stderr.decode(
-                errors='replace'
-            )}";
-        }
-        # Use `jac install -e` (not pip): Jac plugins have no pyproject.toml.
-        for sib in local_dep_specs {
-            sib_install = subprocess.run(
-                [venv_jac, "install", "-e", sib, "--quiet"], capture_output=True
-            );
-            if sib_install.returncode != 0 {
-                return f"jac install -e {sib} (local sibling) failed:\n{sib_install.stderr.decode(
-                    errors='replace'
-                )}";
-            }
-        }
-        if dep_specs {
-            deps_install = subprocess.run(
-                pip_command(venv_python, ["install"] + dep_specs + ["--quiet"], use_uv),
-                capture_output=True
-            );
-            if deps_install.returncode != 0 {
-                return f"install project deps failed:\n{deps_install.stderr.decode(
-                    errors='replace'
-                )}";
-            }
-        }
-        result = subprocess.run([venv_jac, "run", script_path, project_root]);
-        if result.returncode != 0 {
-            return "precompile script exited with non-zero status";
-        }
-        return None;
-    }
-}
-
-"""Run precompile for all Python versions found on PATH. Returns 0 on success, 1 on error."""
-def _precompile_all_pythons(config: JacConfig) -> int {
-    import from jaclang.project.dependencies { DependencyInstaller }
-
+"""Precompile the project to .jir through the bundled interpreter. Returns 0 on success."""
+def _precompile_project(config: JacConfig) -> int {
     _jac_path = sys.modules.get("jaclang")?.__path__;
     _jac_root: Path | None = None;
     if _jac_path {
@@ -1445,61 +1412,23 @@ def _precompile_all_pythons(config: JacConfig) -> int {
         console.error(f"Precompile script not found: {script_path}");
         return 1;
     }
-
     project_root_str = str(config.project_root);
-
-    # Under the single self-contained binary there is no system Python to build a
-    # venv around, and jaclang is not on PyPI to pip-install. The bundled
-    # interpreter already has jaclang, so run the precompile through it directly
+    # The self-contained binary precompiles through its own bundled interpreter
     # (`sys.executable` is pinned to this binary), producing .jir for the binary's
-    # own Python version.
-    if os.environ.get("JAC_STANDALONE") {
-        tag = f"cpython-3{sys.version_info.minor}";
-        console.print(
-            f"\n  Precompiling for {tag} (bundled interpreter)...", style="muted"
-        );
-        result = subprocess.run([sys.executable, "run", script_path, project_root_str]);
-        if result.returncode != 0 {
-            console.error(f"Precompilation failed for {tag}.");
-            return 1;
-        }
-        console.print(f"  ✔ {tag}", style="success");
-        return 0;
-    }
-
-    pythons = _find_precompile_pythons();
-
-    if not pythons {
-        console.error(
-            "No matching Python executables found on PATH — cannot precompile."
-        );
-        return 1;
-    }
-
-    installer = DependencyInstaller(config=config);
-    dep_specs = installer.get_pip_package_specs(include_dev=False);
+    # own Python version. There is no system Python to build a venv around, and
+    # jaclang is not on PyPI to install. Wheels published this way carry .jir for
+    # the bundled version only; on a different host Python a consumer recompiles
+    # transparently on first import.
+    tag = f"cpython-3{sys.version_info.minor}";
     console.print(
-        f"\n  Precompiling for {len(pythons)} Python version(s)...", style="muted"
+        f"\n  Precompiling for {tag} (bundled interpreter)...", style="muted"
     );
-    failed_versions: list[str] = [];
-    for (pyexe, pyver) in pythons {
-        console.print(f"    → {pyver}...", style="muted");
-        err = _run_precompile_in_venv(pyexe, script_path, project_root_str, dep_specs);
-        if err is not None {
-            console.warning(f"  ✘ {pyver} skipped: {err}");
-            failed_versions.append(pyver);
-        } else {
-            console.print(f"  ✔ {pyver}", style="success");
-        }
-    }
-    if failed_versions {
-        console.error(
-            "Precompilation incomplete — "
-            f"{len(failed_versions)}/{len(pythons)} version(s) failed: "
-            f"{', '.join(failed_versions)}"
-        );
+    result = subprocess.run([sys.executable, "run", script_path, project_root_str]);
+    if result.returncode != 0 {
+        console.error(f"Precompilation failed for {tag}.");
         return 1;
     }
+    console.print(f"  ✔ {tag}", style="success");
     return 0;
 }
 
@@ -1508,7 +1437,7 @@ def _bundle_wheel(config: any, output: str, precompile: bool) -> int {
     import from jaclang.publish.builder { WheelBuilder }
 
     if precompile {
-        if _precompile_all_pythons(config) != 0 {
+        if _precompile_project(config) != 0 {
             return 1;
         }
     }

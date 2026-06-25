@@ -128,7 +128,13 @@ obj CheckConfig {
         # When True, access-modifier violations (private/protected member access,
         # cross-module/cross-project visibility) are reported as hard errors
         # instead of the default warnings. See AccessCheckPass.
-        enforce_access: bool = False;
+        enforce_access: bool = False,
+        # When True (default), the native backend prints a terminal warning each
+        # time it demotes an un-lowerable method to its Python implementation
+        # (workstream A4, #6930), so a silent native fallback is visible during a
+        # build. Set False for quiet builds. JAC_NATIVE_DEBUG forces it on
+        # regardless. See NaIRGenPass._demote_method_if_unlowerable.
+        warn_native_seams: bool = True;
 }
 
 """Dot/graph visualization defaults from [dot] section."""
@@ -194,6 +200,20 @@ obj ClientConfig {
     has framework: str = "react";
 }
 
+"""Editable dev-loop settings from [dev] section.
+
+`jaclang_source` (the in-repo source dir the editable dev loop reroutes
+`import jaclang` to) is read independently by the binary's standalone
+`_jac_finder` at startup -- before jaclang loads -- so it is mirrored here only
+so a parsed config round-trips faithfully. `test_jobs` is the default xdist
+worker count for `jac test` when the JAC_TEST_JOBS env var is unset
+("auto" = one worker per core, "0" = serial); the env var overrides it.
+"""
+obj DevConfig {
+    has jaclang_source: str = "",
+        test_jobs: str = "auto";
+}
+
 # Interpolate environment variables in a string value.
 # Supports ${VAR_NAME}, ${VAR_NAME:-default}, ${VAR_NAME:?error message}
 def interpolate_env_vars(value: str) -> str;
@@ -235,6 +255,7 @@ obj JacConfig {
         environment: EnvironmentConfig = EnvironmentConfig(),
         client_errors: ClientErrorsConfig = ClientErrorsConfig(),
         client: ClientConfig = ClientConfig(),
+        dev: DevConfig = DevConfig(),
         # Dependencies
         dependencies: dict[str, str] = {},
         dev_dependencies: dict[str, str] = {},

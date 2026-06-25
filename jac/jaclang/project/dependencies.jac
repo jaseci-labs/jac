@@ -24,9 +24,7 @@ obj DependencyInstaller {
     has config: JacConfig | None = None,
         venv_dir: Path | None = None,
         verbose: bool = False,
-        install_flags: list[str] | None = None,
-        use_uv: bool = True,
-        _warned_prefer_binary: bool = False;
+        install_flags: list[str] | None = None;
 
     def postinit -> None;
     def ensure_venv -> None;
@@ -54,8 +52,8 @@ obj DependencyResolver {
     def resolve(include_dev: bool = False) -> list[ResolvedDependency];
 }
 
-"""Build a pip-equivalent command for the given interpreter, preferring `uv pip` when available."""
-def pip_command(python: str, args: list[str], use_uv: bool = True) -> list[str];
+"""Build a pip command for the given interpreter (the project venv's bundled pip)."""
+def pip_command(python: str, args: list[str]) -> list[str];
 
 def get_venv_site_packages(venv_dir: Path) -> Path;
 

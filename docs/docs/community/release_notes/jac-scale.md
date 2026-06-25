@@ -2,7 +2,21 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.30 (Latest Release)
+## jac-scale 0.2.31 (Latest Release)
+
+### Bug Fixes
+
+- **Fix Prometheus metrics registry collision**: `PrometheusMetricsCollector` now owns an isolated `CollectorRegistry` instead of the global default registry, so constructing more than one collector with the same namespace (e.g. several apps in a single process, or repeated setup in tests) no longer fails with `ValueError: Duplicated timeseries in CollectorRegistry` (#6850).
+- **Fix: microservice deploys fetch the `jac` binary instead of pip-installing jaclang**: the shipped/embedded Dockerfiles and the no-image bootstrap installed jaclang from PyPI, where it no longer ships (it is the self-contained `jac` binary), so deployed pods ran a stale, broken release. They now download the released binary via the official installer and add plugins with `jac install`; experimental mode builds the cloned checkout with `zig build` so the pod runs that branch's own jaclang.
+- **Fix: first write to a freshly-created node no longer fails with a spurious write conflict**: on MongoDB-backed deployments, the first persist of a brand-new node that a request had read from raised `WriteConflict` even with no concurrent writer, so the node was never saved. Such first writes now insert correctly, while genuine concurrent overwrites still surface a conflict.
+
+### Refactors
+
+- **Refactor: drop react-hook-form deps from the Ops Console admin UI**: `jac-scale/jac_scale/admin/ui/jac.toml` no longer depends on `react-hook-form` or `@hookform/resolvers`, aligning the admin UI's client dependency surface with the `@jac/runtime` TanStack Form migration (#6539). The form layer now uses TanStack Form's Standard Schema validators directly, matching the rest of the client stack.
+- **Internal: server log handler references the built-in jac console**: jac-scale's access-log routing now points at jaclang's built-in console (the standalone `jac-super` console package was folded into jaclang core and removed).
+- **Refactor: cluster deploys stop installing the removed `jac-client` package from PyPI**: The Kubernetes image build no longer runs `pip install jac-client` (the client framework now ships with `jaclang` core, which the image already installs); the editable source install is now guarded `[ ! -d ./jac-client ] || jac install -e ./jac-client` so deploys pinned to an older commit that still vendors `jac-client/` keep working. The now-inert `jac_client` key under `[plugins.scale.kubernetes.plugin_versions]` was dropped from the documented example.
+
+## jac-scale 0.2.30
 
 ### New Features
 

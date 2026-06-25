@@ -13,6 +13,7 @@ import from jaclang.jac0core.helpers { pascal_to_snake }
 obj UnparsePass(UniPass) {
     def _comma_sep(nodes: list) -> str;
     def exit_node(nd: uni.UniNode) -> None;
+    def default_exit(nd: uni.UniNode) -> None;
     # Token types
     def exit_token(nd: uni.Token) -> None;
     def exit_name(nd: uni.Name) -> None;

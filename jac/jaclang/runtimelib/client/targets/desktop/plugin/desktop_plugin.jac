@@ -84,6 +84,14 @@ Only an explicit False (or None/missing) disables the plugin.
     """
     def setup(wv_handle: int, wv_lib: ctypes.CDLL) { }
 
+    """Receive the PluginHost on the CEF target (no libwebview).
+
+    Default is a no-op; override in plugins that drive the renderer (e.g.
+    WindowPlugin) to capture the host so they can call host.eval_js(). Called by
+    PluginHost.setup_cef().
+    """
+    def setup_cef(host: object) { }
+
     """Handle a command from JS. Returns a dict result or raises PluginError.
 
     Base implementation raises UNKNOWN_COMMAND. Plugins override handle() with

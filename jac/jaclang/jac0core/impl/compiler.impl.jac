@@ -189,9 +189,18 @@ impl JacCompiler.get_bytecode(
                     precompiled_bc, compute_module_key(full_target), FLAG_PRECOMPILED
                 );
                 cache_path.parent.mkdir(parents=True, exist_ok=True);
-                tmp_path = cache_path.with_suffix('.tmp');
-                tmp_path.write_bytes(jir_bytes);
-                tmp_path.rename(cache_path);
+                # Process-unique temp + atomic rename. A shared `.tmp` lets
+                # concurrent compiles of the same module (parallel xdist workers,
+                # CLI + LSP) clobber each other mid-write and publish a JIR whose
+                # header validates but whose body is truncated (issue #6793 race).
+                import os as _os;
+                tmp_path = cache_path.with_suffix(f'.{_os.getpid()}.tmp');
+                try {
+                    tmp_path.write_bytes(jir_bytes);
+                    tmp_path.rename(cache_path);
+                } finally {
+                    tmp_path.unlink(missing_ok=True);
+                }
             } except Exception {
                 ;
             }
@@ -255,7 +264,7 @@ impl JacCompiler.get_bytecode(
             native_bc = result.gen.native_bitcode;
             if native_bc is not None {
                 import struct as _struct;
-                import llvmlite.binding as _llvm;
+                import jaclang.compiler.passes.native.llvm.binding as _llvm;
                 triple = _llvm.get_default_triple().encode('utf-8');
                 hdr = _struct.pack('<H', len(triple)) + triple;
                 sections[SEC_NATIVE_OBJ] = hdr + native_bc;
@@ -274,9 +283,17 @@ impl JacCompiler.get_bytecode(
             writer = JirWriter();
             jir_bytes = writer.write_module(result, sections=sections);
             cache_path.parent.mkdir(parents=True, exist_ok=True);
-            tmp_path = cache_path.with_suffix('.tmp');
-            tmp_path.write_bytes(jir_bytes);
-            tmp_path.rename(cache_path);
+            # Process-unique temp + atomic rename: a shared `.tmp` lets concurrent
+            # compiles of the same module clobber each other mid-write and publish
+            # a truncated JIR whose header still validates (issue #6793 race).
+            import os as _os;
+            tmp_path = cache_path.with_suffix(f'.{_os.getpid()}.tmp');
+            try {
+                tmp_path.write_bytes(jir_bytes);
+                tmp_path.rename(cache_path);
+            } finally {
+                tmp_path.unlink(missing_ok=True);
+            }
         } except Exception {
             ;
         }
@@ -298,7 +315,7 @@ impl JacCompiler._load_native_from_cache(
     cached_interop: (dict[str, any] | None)
 ) -> None {
     try {
-        import llvmlite.binding as llvm;
+        import jaclang.compiler.passes.native.llvm.binding as llvm;
         llvm.initialize_native_target();
         llvm.initialize_native_asmprinter();
         import ctypes;
@@ -357,7 +374,7 @@ impl JacCompiler._load_native_from_bitcode(
     cached_interop: (dict[str, any] | None)
 ) -> None {
     import struct as _struct;
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     llvm.initialize_native_target();
     llvm.initialize_native_asmprinter();
     # Parse platform header: [triple_len: 2 LE] [triple: UTF-8] [bitcode ...]

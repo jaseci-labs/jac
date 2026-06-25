@@ -117,19 +117,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Set up additional Python versions needed for precompile (both plugins and jaclang itself).
-      - name: Set up Python 3.13 (for precompile)
-        if: matrix.precompile == true
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Set up Python 3.14 (for precompile)
-        if: matrix.precompile == true
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-
       # Build the jac binary for plugin builds (jac bundle) + extra build commands.
       # jaclang itself ships as the binary (released via release-jaclang.yml), not a
       # PyPI wheel, so the parse step should not emit a 'jaclang' matrix entry; the
@@ -138,16 +125,18 @@ jobs:
         if: matrix.name != 'jaclang'
         uses: ./.github/actions/setup-jac
 
-      # Install the package itself for extra build commands.
-      # Plugins have no pyproject.toml (jac.toml is the source of truth), so use `jac install`.
+      # Install the package itself for extra build commands. --global puts it in
+      # the binary's own site so the build command (run from the package dir) can
+      # import it. Plugins have no pyproject.toml (jac.toml is the source of
+      # truth), so use `jac install`.
       - name: Install package (for build commands)
         if: matrix.extra_build_cmd != '' && matrix.name != 'jaclang'
-        run: jac install -e ./${{ matrix.dir }}
+        run: jac install -e ./${{ matrix.dir }} --global
 
       # Install extra pip dependencies for build commands (a sibling plugin a build step needs)
       - name: Install extra build dependencies
         if: matrix.extra_build_deps != ''
-        run: jac install -e ./${{ matrix.extra_build_deps }}
+        run: jac install -e ./${{ matrix.extra_build_deps }} --global
 
       # Set up Node.js for packages that need it (e.g., admin UI build)
       - name: Set up Node.js (for client builds)
@@ -171,16 +160,12 @@ jobs:
       # the native `jac` binary (release-jaclang.yml) -- so there is no jaclang
       # wheel build here.
       #
-      # Plugins precompile against jaclang from the local source tree, not PyPI:
-      # this build runs before the freshly-bumped plugin version is published.
+      # `--precompile` produces .jir through the jac binary's bundled interpreter
+      # (the only Python here); a consumer on a different Python recompiles
+      # transparently on first import.
       - name: Build plugin wheel
         if: matrix.publish_pypi == true
         working-directory: ${{ matrix.dir }}
-        env:
-          JAC_PRECOMPILE_LOCAL_INSTALL: ${{ github.workspace }}/jac
-          # Precompile a sibling plugin from local source so its not-yet-published
-          # version pin resolves without PyPI.
-          JAC_PRECOMPILE_LOCAL_DEPS: ${{ matrix.extra_build_deps != '' && format('{0}/{1}', github.workspace, matrix.extra_build_deps) || '' }}
         run: jac bundle ${{ matrix.precompile == true && '--precompile' || '' }}
 
       - name: Upload package artifacts
