@@ -24,8 +24,8 @@ import from jac_scale.factories.database_factory { DatabaseProviderFactory }
 import from jac_scale.factories.utility_factory { UtilityFactory }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
-import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
-import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger }
+import from jac_scale.deploy.autoscale.factory { AutoscalerFactory }
+import from jac_scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
 
 """Get current git repository URL, branch, and commit hash.
 

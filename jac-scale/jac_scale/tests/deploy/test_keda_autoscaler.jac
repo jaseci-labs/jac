@@ -11,8 +11,8 @@ result from a previous test leaking into the current one.
 
 import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
-import from jac_scale.abstractions.autoscalers.keda_autoscaler { KEDAAutoscaler }
-import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger, TriggerAuth }
+import from jac_scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
+import from jac_scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger, TriggerAuth }
 
 
 # ─────────────────────────────────────────────────────────────────────────────

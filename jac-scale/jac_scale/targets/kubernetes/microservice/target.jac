@@ -29,8 +29,8 @@ import from jac_scale.targets.kubernetes.microservice.manifest_builder {
 import from jac_scale.targets.kubernetes.microservice.database_provisioner {
     MicroserviceDatabaseProvisioner
 }
-import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
-import from jac_scale.abstractions.autoscaler {
+import from jac_scale.deploy.autoscale.factory { AutoscalerFactory }
+import from jac_scale.deploy.autoscale.autoscaler {
     AutoscalerSpec,
     Trigger,
     TriggerAuth,

@@ -39,8 +39,8 @@ import from jac_scale._optdeps.kubernetes {
 import from jac_scale.factories.database_factory { DatabaseProviderFactory }
 import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
-import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
-import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger, TriggerAuth }
+import from jac_scale.deploy.autoscale.factory { AutoscalerFactory }
+import from jac_scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger, TriggerAuth }
 import time;
 
 """Kubernetes deployment target implementation."""

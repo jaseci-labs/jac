@@ -5,7 +5,7 @@ ingress]} that KubernetesMicroserviceTarget hands to apply_manifests."""
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deploy_context { DeployContext }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
-import from jac_scale.abstractions.autoscaler { DEFAULT_CPU_UTILIZATION_TARGET }
+import from jac_scale.deploy.autoscale.autoscaler { DEFAULT_CPU_UTILIZATION_TARGET }
 
 
 # Sentinel for the gateway pod-spec entry; reserved to avoid collision

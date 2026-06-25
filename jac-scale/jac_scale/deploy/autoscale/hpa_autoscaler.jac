@@ -1,5 +1,5 @@
 import from jac_scale._optdeps.kubernetes { AutoscalingV2Api, ApiException, client }
-import from jac_scale.abstractions.autoscaler {
+import from jac_scale.deploy.autoscale.autoscaler {
     Autoscaler,
     AutoscalerSpec,
     DEFAULT_CPU_UTILIZATION_TARGET

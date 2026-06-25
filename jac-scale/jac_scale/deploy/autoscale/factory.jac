@@ -4,7 +4,7 @@ Supports both built-in engines (hpa) and plugin-registered engines.
 External packages can register custom engines via AutoscalerFactory.register().
 """
 import from typing { Callable }
-import from jac_scale.abstractions.autoscaler { Autoscaler }
+import from jac_scale.deploy.autoscale.autoscaler { Autoscaler }
 import from jac_scale.abstractions.logger { Logger }
 
 """Type alias for autoscaler engine factory callables.""" type AutoscalerFactoryFn = Callable[
@@ -67,13 +67,13 @@ class AutoscalerFactory {
         }
         # Built-in engines
         if engine is None or engine == "hpa" {
-            import from jac_scale.abstractions.autoscalers.hpa_autoscaler {
+            import from jac_scale.deploy.autoscale.hpa_autoscaler {
                 HPAAutoscaler
             }
             return HPAAutoscaler(logger=logger);
         }
         if engine == "keda" {
-            import from jac_scale.abstractions.autoscalers.keda_autoscaler {
+            import from jac_scale.deploy.autoscale.keda_autoscaler {
                 KEDAAutoscaler
             }
             return KEDAAutoscaler(logger=logger);

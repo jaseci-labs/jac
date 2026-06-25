@@ -4,11 +4,11 @@ import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
-import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
+import from jac_scale.deploy.autoscale.factory { AutoscalerFactory }
 import from jac_scale.factories.utility_factory { UtilityFactory }
-import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger }
-import from jac_scale.abstractions.autoscalers.hpa_autoscaler { HPAAutoscaler }
-import from jac_scale.abstractions.autoscalers.keda_autoscaler { KEDAAutoscaler }
+import from jac_scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
+import from jac_scale.deploy.autoscale.hpa_autoscaler { HPAAutoscaler }
+import from jac_scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
 test "deployment target factory creates kubernetes target" {
@@ -318,10 +318,10 @@ test "hpa apply deletes competing ScaledObject when switching from keda engine" 
         triggers=[Trigger(type="cpu", metadata={})]
     );
     with unittest.mock.patch(
-        "jac_scale.abstractions.autoscalers.hpa_autoscaler.AutoscalingV2Api"
+        "jac_scale.deploy.autoscale.hpa_autoscaler.AutoscalingV2Api"
     ) as mock_v2_cls {
         with unittest.mock.patch(
-            "jac_scale.abstractions.autoscalers.hpa_autoscaler.client"
+            "jac_scale.deploy.autoscale.hpa_autoscaler.client"
         ) as mock_client {
             mock_v2_cls.return_value.read_namespaced_horizontal_pod_autoscaler.side_effect = ApiException(
                 status=404
@@ -347,10 +347,10 @@ test "hpa apply engine-switch ScaledObject deletion is a no-op when no ScaledObj
         triggers=[Trigger(type="cpu", metadata={})]
     );
     with unittest.mock.patch(
-        "jac_scale.abstractions.autoscalers.hpa_autoscaler.AutoscalingV2Api"
+        "jac_scale.deploy.autoscale.hpa_autoscaler.AutoscalingV2Api"
     ) as mock_v2_cls {
         with unittest.mock.patch(
-            "jac_scale.abstractions.autoscalers.hpa_autoscaler.client"
+            "jac_scale.deploy.autoscale.hpa_autoscaler.client"
         ) as mock_client {
             mock_v2_cls.return_value.read_namespaced_horizontal_pod_autoscaler.side_effect = ApiException(
                 status=404
@@ -368,10 +368,10 @@ test "hpa destroy collection also sweeps competing KEDA resources" {
     # destroy_collection is called on teardown.  Any ScaledObjects and
     # TriggerAuthentications left from a prior keda-engine deploy must be removed.
     with unittest.mock.patch(
-        "jac_scale.abstractions.autoscalers.hpa_autoscaler.AutoscalingV2Api"
+        "jac_scale.deploy.autoscale.hpa_autoscaler.AutoscalingV2Api"
     ) {
         with unittest.mock.patch(
-            "jac_scale.abstractions.autoscalers.hpa_autoscaler.client"
+            "jac_scale.deploy.autoscale.hpa_autoscaler.client"
         ) as mock_client {
             mock_client.CustomObjectsApi.return_value.list_namespaced_custom_object.return_value = {
                 "items": []
