@@ -17,8 +17,13 @@ obj ServiceTransport {
         raise NotImplementedError("call_function() must be implemented by a ServiceTransport");
     }
 
-    """Spawn walker `name` on `service` with `payload` and return its result."""
-    def call_walker(service: str, name: str, payload: dict[str, any]) -> any {
+    """Spawn walker `name` on `service` with `payload` and return its result.
+    `stub_cls`, when given, is the consumer-side stub the result is rehydrated
+    into; a network adapter needs it to type the wire envelope, an in-process
+    adapter returns the real object and ignores it."""
+    def call_walker(
+        service: str, name: str, payload: dict[str, any], stub_cls: any = None
+    ) -> any {
         raise NotImplementedError("call_walker() must be implemented by a ServiceTransport");
     }
 }
@@ -63,12 +68,54 @@ obj InProcessTransport(ServiceTransport) {
         return handler(payload);
     }
 
-    def call_walker(service: str, name: str, payload: dict[str, any]) -> any {
+    def call_walker(
+        service: str, name: str, payload: dict[str, any], stub_cls: any = None
+    ) -> any {
         key = _member_key(service, name);
         handler = self._walkers.get(key);
         if handler is None {
             raise KeyError(f"no in-process walker registered for {key}");
         }
+        # In-process returns the real walker object; no wire rehydration, so
+        # stub_cls is accepted for port-conformance and intentionally unused.
         return handler(payload);
     }
+}
+
+
+"""Network transport: forwards an `sv` call over HTTP to the target service.
+
+Delegates to the rpc layer, which carries the distributed-topology concerns the
+in-process adapter has no need for: auth/trace-header forwarding, retry with
+exponential backoff, a per-provider circuit breaker, and SSE-aware function
+calls. This is the adapter the `sv_service_call` / `sv_walker_call` hooks and the
+process gateway use; collapsing to a monolith swaps in `InProcessTransport` at the
+same port, so no call site branches on topology.
+
+Stateless, so a single shared instance is safe across concurrent requests (the
+breaker/registry state it touches lives in the rpc layer, not on the adapter).
+"""
+obj HttpTransport(ServiceTransport) {
+    def call_function(service: str, name: str, payload: dict[str, any]) -> any {
+        import from jac_scale.runtime.rpc.rpc { service_call }
+        return service_call(service, name, payload);
+    }
+
+    def call_walker(
+        service: str, name: str, payload: dict[str, any], stub_cls: any = None
+    ) -> any {
+        import from jac_scale.runtime.rpc.rpc { walker_call }
+        return walker_call(service, name, payload, stub_cls);
+    }
+}
+
+
+"""Process-wide HTTP transport singleton. `HttpTransport` is stateless, so the
+sv-RPC hooks share one instance rather than constructing a new adapter per call."""
+glob _HTTP_TRANSPORT: HttpTransport = HttpTransport();
+
+
+"""The shared HttpTransport adapter the sv-RPC hooks dispatch through."""
+def http_transport() -> HttpTransport {
+    return _HTTP_TRANSPORT;
 }

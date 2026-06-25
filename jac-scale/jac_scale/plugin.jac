@@ -804,8 +804,8 @@ class JacScalePlugin {
     """
     @hookimpl
     static def sv_service_call(module_name: str, func_name: str, args: dict) -> any {
-        import from jac_scale.runtime.rpc.rpc { service_call }
-        return service_call(module_name, func_name, args);
+        import from jac_scale.runtime.transport.transport { http_transport }
+        return http_transport().call_function(module_name, func_name, args);
     }
 
     """Override core's sv_walker_call with auth forwarding, retry, and breaker.
@@ -828,8 +828,8 @@ class JacScalePlugin {
     static def sv_walker_call(
         module_name: str, walker_name: str, args: dict, stub_cls: any
     ) -> any {
-        import from jac_scale.runtime.rpc.rpc { walker_call }
-        return walker_call(module_name, walker_name, args, stub_cls);
+        import from jac_scale.runtime.transport.transport { http_transport }
+        return http_transport().call_walker(module_name, walker_name, args, stub_cls);
     }
 }
 
