@@ -389,6 +389,14 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     if (nd).body is not None {
         for stmt in (nd).body {
             if isinstance(stmt, uni.ArchHas) {
+                # `static has` (#6951): class attributes are NOT instance struct
+                # fields. Lower each to a module-level global ("Class.field"),
+                # reusing the same const-init / __jac_glob_init machinery as
+                # module globals so the read site can `load` it.
+                if stmt.is_static {
+                    self._register_static_fields(arch_name, stmt);
+                    continue;
+                }
                 for var in stmt.vars {
                     fname = var.name.value if var.name else "field";
                     if fname in seen_fields {
@@ -448,7 +456,65 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     self.struct_field_opaque[arch_name] = opaque_fields;
 }
 
-"""Forward-declare a method with self pointer as first parameter."""
+"""Lower a `static has` block to per-class module-level globals (issue #6951).
+
+Each `static has field: T = init` becomes a global named "Class.field" rather than
+an instance struct slot. The global is registered in both `static_fields` (for the
+`Class.attr` read site) and `global_vars` (so the shared __jac_glob_init path
+initializes non-constant values), mirroring module-global lowering exactly."""
+impl NaIRGenPass._register_static_fields(arch_name: str, archhas: uni.ArchHas) -> None {
+    for var in archhas.vars {
+        fname = var.name.value if var.name else "field";
+        full_name = f"{arch_name}.{fname}";
+        if full_name in self.static_fields {
+            continue;
+        }
+        ftype: ir.Type = ir.IntType(64);
+        if var.type_tag is not None {
+            ftype = self._resolve_jac_type(var.type_tag);
+        } elif var.value is not None {
+            inferred = self._infer_global_init_type(var.value);
+            if inferred is not None {
+                ftype = inferred;
+            }
+        }
+        try {
+            gv = ir.GlobalVariable(self.llvm_module, ftype, name=full_name);
+        } except Exception {
+            continue;  # duplicate (re-visited module): keep the first.
+        }
+        # External linkage so a `static has` read in another module (e.g. a
+        # bundled stdlib class attribute) resolves through link_in, the same way
+        # public module globals do.
+        gv.linkage = "";
+        const_init = self._codegen_const_expr(var.value, ftype)
+            if var.value is not None
+            else None;
+        if const_init is not None {
+            gv.initializer = const_init;
+        } else {
+            gv.initializer = ir.Constant(ftype, None);
+        }
+        self.static_fields[full_name] = gv;
+        self.static_field_types[full_name] = ftype;
+        self.global_vars[full_name] = gv;
+        self.global_var_types[full_name] = ftype;
+        self.has_native_code = True;
+        # Defer non-constant initializers (strings, constructor calls) to
+        # __jac_glob_init, exactly like module globals.
+        if var.value is not None and const_init is None {
+            if not self?._global_init_nodes {
+                self._global_init_nodes: list = [];
+            }
+            self._global_init_nodes.append((full_name, var.value, ftype));
+        }
+    }
+}
+
+
+"""Forward-declare a method. Instance methods take a self pointer as their first
+parameter; a `static def` (issue #6951) takes only its declared parameters and is
+recorded in `static_methods` so the call site omits self."""
 impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) -> None {
     method_name = method.name_ref.sym_name if method.name_ref else "unnamed";
     full_name = f"{arch_name}.{method_name}";
@@ -461,8 +527,9 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
     if struct_type is None or sig is None {
         return;
     }
-    # Build parameter types: self pointer + declared params
-    param_types: list[ir.Type] = [struct_type.as_pointer()];
+    _is_static = method.is_static;
+    # Build parameter types: self pointer (instance only) + declared params.
+    param_types: list[ir.Type] = [] if _is_static else [struct_type.as_pointer()];
     for p in sig.get_parameters() {
         param_types.append(
             self._resolve_jac_type(p) if p.type_tag is not None else ir.IntType(64)
@@ -475,13 +542,19 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
     }
     fnty = ir.FunctionType(ret_type, param_types);
     func = ir.Function(self.llvm_module, fnty, name=full_name);
-    # Name the parameters
-    func.args[0].name = "self";
+    # Name the parameters (self is implicit only for instance methods).
+    _base = 0 if _is_static else 1;
+    if not _is_static {
+        func.args[0].name = "self";
+    }
     for (i, p) in enumerate(sig.get_parameters()) {
-        func.args[i + 1].name = p.name.value if p.name else f"arg{i}";
+        func.args[i + _base].name = p.name.value if p.name else f"arg{i}";
     }
     self.method_funcs[full_name] = func;
     self.func_symtab[full_name] = func;
+    if _is_static {
+        self.static_methods[full_name] = True;
+    }
 }
 
 """Generate LLVM IR for a method body."""
@@ -509,16 +582,22 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self._attach_di_subprogram(
         func, full_name, method.loc.first_line if method.loc else 0
     );
-    # Store self pointer
-    self_alloca = self.builder.alloca(func.args[0].type, name="self");
-    self.builder.store(func.args[0], self_alloca);
-    self.local_vars["self"] = self_alloca;
+    # A `static def` has no self pointer (issue #6951): its parameters start at
+    # arg 0. An instance method binds self at arg 0 and shifts params by one.
+    _is_static = method.is_static;
+    _base = 0;
+    if not _is_static {
+        self_alloca = self.builder.alloca(func.args[0].type, name="self");
+        self.builder.store(func.args[0], self_alloca);
+        self.local_vars["self"] = self_alloca;
+        _base = 1;
+    }
     # Store other parameters
     sig = method.signature;
     import from jaclang.compiler.ownership { param_plainly_rebound }
     for (i, p) in enumerate(sig.get_parameters()) {
         param_name = p.name.value if p.name else f"arg{i}";
-        arg_val = func.args[i + 1];
+        arg_val = func.args[i + _base];
         alloca = self.builder.alloca(arg_val.type, name=param_name);
         self.builder.store(arg_val, alloca);
         self.local_vars[param_name] = alloca;
@@ -1308,6 +1387,44 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     method_name = self._get_name(trailer.right);
     if method_name is None {
         return None;
+    }
+    # --- Static method call: `ClassName.method(args)` on a `static def` (#6951).
+    # The target Name is a class (archetype), not an instance variable; the
+    # static is resolved through the MRO (so a subclass inherits it) and called
+    # with no self pointer. Guarded by `not in local_vars` so a local that
+    # shadows a class name still dispatches as an instance method below.
+    if (
+        target_name is not None
+        and target_name in self.struct_types
+        and target_name not in self.local_vars
+    ) {
+        _sfull: (str | None) = None;
+        for _cn in self._mro_of(target_name) {
+            _cand = f"{_cn}.{method_name}";
+            if _cand in self.static_methods {
+                _sfull = _cand;
+                break;
+            }
+        }
+        if _sfull is not None {
+            _sfunc = self.method_funcs[_sfull];
+            _sargs: list[ir.Value] = [];
+            for (_i, _p) in enumerate(nd.params or []) {
+                _pv = self._codegen_expr(_p);
+                if _pv is None {
+                    return None;
+                }
+                if _i < len(_sfunc.args) {
+                    _pv = self._coerce_type(_pv, _sfunc.args[_i].type);
+                }
+                _sargs.append(_pv);
+            }
+            _sr = self.builder.call(_sfunc, _sargs, name=f"scall.{method_name}");
+            if isinstance(_sfunc.return_value.type, ir.VoidType) {
+                return None;
+            }
+            return _sr;
+        }
     }
     # --- Callable struct field: `obj.field(args)` where `field` is a
     # function-pointer field (not a method). Load the pointer and indirect-call.

@@ -166,6 +166,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # evaluation, RC management, and to keep the slot null-only.
         struct_field_opaque: dict[str, set] = {},
         method_funcs: dict[str, ir.Function] = {},
+        # Static-method full names ("Class.method") declared WITHOUT a self
+        # pointer (issue #6951), so the call dispatch omits self and a bare
+        # `ClassName.method(args)` resolves like a namespaced free function.
+        static_methods: dict[str, bool] = {},
+        # Static class attributes (`static has`) lowered as module-level globals
+        # (issue #6951): "Class.field" -> GlobalVariable, with the value type
+        # tracked alongside. Initialised in __jac_glob_init like module globals.
+        static_fields: dict[str, object] = {},
+        static_field_types: dict[str, object] = {},
         # Interop-marshalling return facts for free functions, recorded at
         # declaration time (while the Ability node is in hand) and consumed
         # by build_interop_layout. These replaced the name-keyed
@@ -575,6 +584,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _osp_isa_bases(arch_name: str) -> list[int];
     def _codegen_archetype(nd: uni.Archetype) -> None;
+    # Lower a `static has` block to per-class module-level globals (#6951).
+    def _register_static_fields(arch_name: str, archhas: uni.ArchHas) -> None;
     def _forward_declare_method(arch_name: str, method: uni.Ability) -> None;
     def _visit_nonprimary_ancestor_methods(arch: uni.Archetype, declare: bool) -> None;
     def _codegen_method(arch_name: str, method: uni.Ability) -> None;

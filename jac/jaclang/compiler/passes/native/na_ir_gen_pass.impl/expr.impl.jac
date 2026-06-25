@@ -1204,6 +1204,22 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             if full_name in self.enum_values {
                 return self.enum_values[full_name];
             }
+            # Static class-attribute read: `Class.attr` on a `static has` (#6951),
+            # resolved through the MRO so a subclass sees an inherited static.
+            # Guarded by `not in local_vars` so a local shadowing a class name
+            # still resolves as instance access below.
+            if (
+                target_name in self.struct_types and target_name not in self.local_vars
+            ) {
+                for _cn in self._mro_of(target_name) {
+                    _sf = f"{_cn}.{right_name}";
+                    if _sf in self.static_fields {
+                        return self.builder.load(
+                            self.static_fields[_sf], name=f"sfld.{right_name}"
+                        );
+                    }
+                }
+            }
             # Enum .value / .name attribute: kind.value, self.kind.name —
             # enum-ness comes from the checked type of the target expression
             # (covers bare vars, params, and chained field access alike).

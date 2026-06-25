@@ -230,6 +230,29 @@ test "zlib bundled" {
     run_with_both("prim_zlib.jac", "zlib_py", "zlib_cl", "zlib_na", require=["na"]);
 }
 
+# --- Static-method calls + class-attribute reads on user classes (issue #6951).
+# `ClassName.method(args)` on a `static def` and `ClassName.attr` on a
+# `static has`, including inheritance through the MRO; unblocks datetime. ---
+test "static members" {
+    run_with_both(
+        "prim_static_members.jac",
+        "static_members_py",
+        "static_members_cl",
+        "static_members_na",
+        require=["na"]
+    );
+}
+
+# --- Bundled native stdlib: datetime (Mechanism B, issue #6940 / #6951). The
+# same `import from datetime { datetime, timezone }` binds CPython datetime on sv
+# and na_stdlib/datetime.na.jac on na, riding the static-method + class-attribute
+# capability (datetime.now / fromtimestamp + timezone.utc). ---
+test "datetime bundled" {
+    run_with_both(
+        "prim_datetime.jac", "datetime_py", "datetime_cl", "datetime_na", require=["na"]
+    );
+}
+
 # --- Bundled native stdlib: json (Mechanism B via na_stdlib resolution
 # keystone, issue #6940 Phase 1). The same `import from json { loads, dumps }`
 # binds CPython json on sv and the bundled na_stdlib/json.na.jac on na: a
