@@ -1,0 +1,63 @@
+name: CEF headless smoke
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
+
+    - name: Install display deps
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 \
+          libcups2 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
+          libasound2
+
+    - name: Build notes-app example
+      run: |
+        cd jac/examples/notes-app
+        jac build --client cef
+
+    - name: Bundle existence audit
+      working-directory: jac/examples/notes-app
+      run: |
+        BUNDLE=.jac/client/cef
+        test -f $BUNDLE/libcef.so
+        test -f $BUNDLE/cef-subprocess
+        test -f $BUNDLE/minimal-fonts.conf
+        test -f $BUNDLE/icudtl.dat
+        test -d $BUNDLE/locales
+        ldd $BUNDLE/notes-app | grep 'not found' && exit 1 || true
+
+    - name: Headless smoke with timeout (X11)
+      working-directory: jac/examples/notes-app/.jac/client/cef
+      run: |
+        Xvfb :99 -screen 0 1280x720x24 &
+        XVFB_PID=$!
+        DISPLAY=:99 \
+        FONTCONFIG_FILE=$PWD/minimal-fonts.conf \
+        JAC_CEF_DISABLE_GPU=1 \
+        OZONE_PLATFORM=x11 \
+        timeout 30s ./notes-app 2>&1 | tee /tmp/notes-app.log &
+        SMOKE_PID=$!
+        sleep 10
+        # Assert cef_initialize succeeded
+        grep -q "startup: cef_initialize ok" /tmp/notes-app.log \
+          || (cat /tmp/notes-app.log && exit 1)
+        kill $SMOKE_PID $XVFB_PID 2>/dev/null || true
+
+    - name: Upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: notes-app-logs
+        path: /tmp/notes-app.log

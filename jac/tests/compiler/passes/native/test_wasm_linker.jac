@@ -30,7 +30,7 @@ import from jaclang.compiler.passes.native.wasm_linker {
     _rd_sleb,
     _u32le
 }
-import llvmlite.binding as llvm;
+import jaclang.compiler.passes.native.llvm.binding as llvm;
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"

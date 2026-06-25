@@ -165,6 +165,13 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             self._emit_list_helpers("ptr", ir.IntType(8).as_pointer());
         } elif elem_type_name == "f64" {
             self._emit_list_helpers("f64", ir.DoubleType());
+        } elif elem_type_name == "jacval" and self?.jacval_type {
+            # Empty `list[any] = []`: a heterogeneous list whose slots are boxed
+            # JacVals (mirrors the non-empty `jacval` path and the empty
+            # `dict[str, any] = {}` case). Without this the literal fell through
+            # to the i64 helpers, which were never keyed "jacval", so lowering
+            # returned None and raised E5090. (#6943 NA-6)
+            self._emit_list_helpers("jacval", self.jacval_type);
         } else {
             self._emit_list_helpers("i64", ir.IntType(64));
         }
@@ -305,6 +312,73 @@ impl NaIRGenPass._codegen_index(
     is_oob = self.builder.or_(below, above, name="idx.range.chk");
     self._emit_runtime_raise(is_oob, "IndexError", "list index out of range");
     return self.builder.call(helpers["get"], [target_val, index_val], name="list.get");
+}
+
+"""Subscript an `any` (a boxed JacVal): `x[k]` where `x: any`.
+
+Dispatches on the index's static type to the canonical heterogeneous container
+layout that `json.loads`/the Mechanism-B tier produce — `dict[str, any]`
+(`Dict.ptr.jacval`) for a str key, `list[any]` (`List.jacval`) for an int index.
+The payload is unboxed to that container pointer and the existing typed
+dict-access / index paths are reused (so KeyError/IndexError still fire). The
+result is itself an `any`, so a caller can read `parsed["k"]` / `parsed[i]`
+straight out of a `loads()` result. (#6943 NA-3)
+"""
+impl NaIRGenPass._codegen_any_subscript(
+    jacval: ir.Value, key_val: ir.Value
+) -> (ir.Value | None) {
+    if not self?.jacval_type {
+        return None;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    if key_val.type == i8p {
+        # str key -> dict[str, any]
+        self._emit_dict_helpers("ptr", "jacval", i8p, self.jacval_type);
+        d = self._unbox_from_jacval(jacval, self.dict_types["ptr:jacval"].as_pointer());
+        return self._codegen_dict_access(d, key_val, "ptr", "jacval");
+    }
+    if isinstance(key_val.type, ir.IntType) {
+        # int index -> list[any] (_codegen_index coerces the index to i64 and
+        # bounds-checks it).
+        self._emit_list_helpers("jacval", self.jacval_type);
+        l = self._unbox_from_jacval(jacval, self.list_types["jacval"].as_pointer());
+        return self._codegen_index(l, key_val, "jacval");
+    }
+    return None;
+}
+
+"""`len(x)` where `x: any` (a boxed JacVal). Tag-dispatched: a str (tag 2) uses
+strlen on the unboxed i8*; every container (list/dict/set, tags 3/4/5) stores its
+length as field 0 of its struct, so the payload reinterpreted as `i64*` and loaded
+gives the count uniformly. Lets a generic walker measure a `loads()` result
+without first narrowing it to a concrete container type. (#6943 NA-5)"""
+impl NaIRGenPass._codegen_any_len(jacval: ir.Value) -> ir.Value {
+    b = self.builder;
+    i8 = ir.IntType(8);
+    i64 = ir.IntType(64);
+    i8p = i8.as_pointer();
+    tag = b.extract_value(jacval, 0, name="anylen.tag");
+    payload = b.extract_value(jacval, 1, name="anylen.payload");
+    is_str = b.icmp_unsigned("==", tag, ir.Constant(i8, 2), name="anylen.isstr");
+    func = b.function;
+    str_bb = func.append_basic_block(name="anylen.str");
+    cont_bb = func.append_basic_block(name="anylen.cont");
+    merge_bb = func.append_basic_block(name="anylen.end");
+    b.cbranch(is_str, str_bb, cont_bb);
+    b.position_at_end(str_bb);
+    strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p]);
+    sp = b.inttoptr(payload, i8p, name="anylen.sp");
+    sl = b.call(strlen_fn, [sp], name="anylen.strlen");
+    b.branch(merge_bb);
+    b.position_at_end(cont_bb);
+    lp = b.inttoptr(payload, i64.as_pointer(), name="anylen.lp");
+    cl = b.load(lp, name="anylen.contlen");
+    b.branch(merge_bb);
+    b.position_at_end(merge_bb);
+    phi = b.phi(i64, name="anylen");
+    phi.add_incoming(sl, str_bb);
+    phi.add_incoming(cl, cont_bb);
+    return phi;
 }
 
 """Set element at index in a list (with IndexError bounds check)."""

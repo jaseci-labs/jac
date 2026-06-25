@@ -5,13 +5,13 @@
 //! first run it materializes that payload into a versioned cache dir, then
 //! **dlopens** the bundled shared libpython and drives it in-process. Nothing
 //! Python is linked at build time -- the launcher links only libc/libdl, exactly
-//! the way jac-native loads LLVM/native code at runtime (llvmlite + ctypes).
+//! the way jac-native loads LLVM at runtime (the LLVMPY_* shim + ctypes).
 //! No system Python, uv, or pip is required at install or runtime.
 //!
 //! Payload layout (materialized to `<cache>/rt/<hash16>/`):
 //!     python/lib/libpython3.14.{dylib,so}   <- dlopened
 //!     python/lib/python3.14/                 <- stdlib (.pyc)
-//!     site/                                  <- jaclang + _jac_finder + llvmlite
+//!     site/                                  <- jaclang (+ the bundled LLVMPY_* shim)
 //!
 //! The pure-Zig materialization half (trailer parse, cache resolution,
 //! zstd+tar extract, GC) lives in `runtime.zig` and is unit-tested separately.

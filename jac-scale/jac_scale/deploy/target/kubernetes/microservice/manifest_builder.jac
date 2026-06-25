@@ -36,6 +36,10 @@ obj MicroserviceManifestBuilder {
         # image (no docker build/push). Retained as a field for callers/tests;
         # always treated as true.
         no_image: bool = True,
+        # --experimental: the pod's `jac` binary is built from a cloned jaseci
+        # checkout, so the runtime PATH points at JAC_BIN_DIR instead of the
+        # pip-deps dir (mirrors the bootstrap branch in kubernetes_target).
+        experimental: bool = False,
         project_dir: str = "",
         _bundle_object_key: str = "",
         # The app's [plugins.scale.microservices] config. When set (e.g. a
@@ -893,16 +897,29 @@ obj MicroserviceManifestBuilder {
         # installed console script.
         import from jac_scale.injector.bundle {
             APP_MOUNT_PATH,
-            PYDEPS_DIR
+            PYDEPS_DIR,
+            JAC_BIN_DIR
         }
         container["workingDir"] = APP_MOUNT_PATH;
-        env_list.append({"name": "PYTHONPATH", "value": PYDEPS_DIR});
-        env_list.append(
-            {
-                "name": "PATH",
-                "value": f"{PYDEPS_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
-            }
-        );
+        if self.experimental {
+            # Run the `jac` binary the experimental bootstrap built from the
+            # cloned checkout; plugins live in the binary's own resolver, so
+            # no PYDEPS_DIR / PYTHONPATH override.
+            env_list.append(
+                {
+                    "name": "PATH",
+                    "value": f"{JAC_BIN_DIR}:/usr/local/bin:/usr/bin:/bin"
+                }
+            );
+        } else {
+            env_list.append({"name": "PYTHONPATH", "value": PYDEPS_DIR});
+            env_list.append(
+                {
+                    "name": "PATH",
+                    "value": f"{PYDEPS_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
+                }
+            );
+        }
         if shared_mounts {
             container["volumeMounts"] = shared_mounts;
         }

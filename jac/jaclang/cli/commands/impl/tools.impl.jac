@@ -278,3 +278,29 @@ impl gen_jir_registry(verify: bool = False) -> int {
     console.print(f"Generated {registry_path} ({len(content)} bytes)");
     return 0;
 }
+
+"""Regenerate (or verify) the static visitor-dispatch annexes for passes.
+
+Each annex overrides the reflective uni_pass enter_node/exit_node with exact
+node-kind dispatch so the pass is native-lowerable (#6942 A.1). The file I/O
+lives in `gen_uni_dispatch` so this command stays a thin shell over it.
+"""
+impl gen_uni_dispatch(verify: bool = False) -> int {
+    import from jaclang.jac0core.gen_uni_dispatch { write_all, verify_all }
+    if verify {
+        stale = verify_all();
+        for rel in stale {
+            console.error(f"Dispatch annex OUT OF DATE: {rel}");
+        }
+        if stale {
+            console.error("Run `jac gen-uni-dispatch` to update.");
+            return 1;
+        }
+        console.print("All dispatch annexes are up to date.");
+        return 0;
+    }
+    for msg in write_all() {
+        console.print(msg);
+    }
+    return 0;
+}

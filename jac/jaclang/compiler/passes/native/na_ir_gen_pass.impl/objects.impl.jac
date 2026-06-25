@@ -311,6 +311,10 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     field_index_map: dict[(str, int)] = {};
     field_type_map: dict[(str, ir.Type)] = {};
     field_default_map: dict[(str, object)] = {};
+    # Foreign-typed fields lowered to nullable opaque `i8*` slots (issue #6930,
+    # A3). Tracked so construction nulls them (no default eval), the destructor
+    # skips RC on them, and any native dereference still surfaces E5090.
+    opaque_fields: set = set();
     # Field 0 is the vtable slot. OSP archetypes always reserve it (null when
     # the type has no vtable) so the i64 `__type_tag` lands at a uniform field
     # index 1 across every OSP archetype -- letting the kernel's `tag_of` read
@@ -349,6 +353,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
         ancestor_indices = self.struct_field_indices[ancestor_name];
         ancestor_types = self.struct_field_types.get(ancestor_name, {});
         ancestor_defaults = self.struct_field_defaults.get(ancestor_name, {});
+        ancestor_opaque = self.struct_field_opaque.get(ancestor_name, set());
         # Record start index for this ancestor's region
         if arch_name not in self.parent_field_start {
             self.parent_field_start[arch_name] = {};
@@ -371,7 +376,11 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
             field_types.append(ftype);
             field_index_map[fname] = new_idx;
             field_type_map[fname] = ftype;
-            if fname in ancestor_defaults {
+            # An inherited opaque slot stays opaque (and default-free) in the
+            # subclass layout.
+            if fname in ancestor_opaque {
+                opaque_fields.add(fname);
+            } elif fname in ancestor_defaults {
                 field_default_map[fname] = ancestor_defaults[fname];
             }
         }
@@ -387,6 +396,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                     }
                     seen_fields.add(fname);
                     ftype = ir.IntType(64);
+                    _is_opaque = False;
                     if var.type_tag is not None {
                         # HasVar.type is checker-stamped for regular Jac archetypes.
                         # For clib imports the checker leaves .type unstamped, so we
@@ -395,7 +405,16 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                         if arch_name in self.clib_struct_names {
                             ftype = self._resolve_jac_type(var.type_tag);
                         } else {
-                            ftype = self._resolve_jac_type(var);
+                            # A foreign type the checker stamped but native cannot
+                            # model lowers to a nullable opaque `i8*` slot instead
+                            # of E5090 (issue #6930, A3): the declaration rides
+                            # Tier-1 untouched and only an actual native dereference
+                            # of the slot is rejected, downstream. A genuinely
+                            # unknown type name still raises E2018 via the resolver.
+                            (ftype, _is_opaque) = self._try_resolve_field_type(var);
+                            if _is_opaque {
+                                opaque_fields.add(fname);
+                            }
                         }
                         # Track enum-typed fields
                         ftag_name = self._get_name(var.type_tag.tag);
@@ -410,7 +429,10 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
                     field_types.append(ftype);
                     field_index_map[fname] = new_idx;
                     field_type_map[fname] = ftype;
-                    if var.value is not None {
+                    # An opaque slot is null-only: its (foreign) default is never
+                    # native-constructed, so it is left out of the default map and
+                    # zero-inits to null.
+                    if var.value is not None and not _is_opaque {
                         field_default_map[fname] = var.value;
                     }
                 }
@@ -423,6 +445,7 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
     self.struct_field_indices[arch_name] = field_index_map;
     self.struct_field_types[arch_name] = field_type_map;
     self.struct_field_defaults[arch_name] = field_default_map;
+    self.struct_field_opaque[arch_name] = opaque_fields;
 }
 
 """Forward-declare a method with self pointer as first parameter."""
@@ -507,6 +530,21 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
             self.param_vars.add(param_name);
         }
     }
+    # Per-method native-capability boundary (workstream A4, #6930). Two method
+    # classes are exempt and keep a gap as a hard error:
+    #   - construction-critical methods (init/postinit): a gap there means the
+    #     class genuinely cannot be natively constructed.
+    #   - vtable slots: native polymorphic dispatch cannot fall back to Python,
+    #     so demoting a virtual method would leave its (already-built) vtable
+    #     index dangling and its vtable global slot pointing at an abort stub.
+    #     A virtual method that will not lower disqualifies the class instead.
+    # Every other (non-virtual, direct-dispatch) method may fall back to its
+    # Python implementation, so mark the diagnostic lists and demote it if its
+    # body cannot lower.
+    _isolate = method_name not in ("init", "__init__", "postinit", "__post_init__")
+    and method_name not in self.vtable_method_indices.get(arch_name, {});
+    _err_mark = len(self.prog.errors_had) if _isolate else 0;
+    _local_mark = len(self.errors_had) if _isolate else 0;
     # Generate body (handle ImplDef wrapper from DeclImplMatchPass)
     body = ModuleCodegenPass.unwrap_body(method);
     if body is not None {
@@ -537,6 +575,72 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.param_vars = saved_param_vars;
     self.var_list_elem_struct = saved_list_elem_struct;
     self._self_arch = saved_self_arch;
+    # If the body raised diagnostics it could not lower, demote the method to
+    # Python-only rather than poisoning the module (workstream A4, #6930).
+    if _isolate {
+        self._demote_method_if_unlowerable(full_name, func, _err_mark, _local_mark);
+    }
+}
+
+"""Demote an un-lowerable method to Python-only (workstream A4, #6930).
+
+If the method body emitted any diagnostics, the native backend cannot lower
+it: discard those diagnostics (the Python implementation stays in force),
+reduce the partially-emitted body to an abort stub so the module IR stays
+valid and any unexpected native dispatch fails loudly, and drop the method
+from the native symbol + export tables (method_funcs / func_symtab, hence
+NativeModuleLayout.methods and install_native_wrappers) so it is neither
+call-resolvable from native code nor advertised as native; a native call site
+that still references it emits E5090 via _native_skipped_methods. The
+ir.Function object is preserved (only its body is replaced) so the abort stub
+stays a valid definition. Callers gate this on the method being eligible (not
+a vtable slot or constructor), so a demoted method is never a live vtable
+entry. Returns True if the method was demoted."""
+impl NaIRGenPass._demote_method_if_unlowerable(
+    full_name: str, func: ir.Function, err_mark: int, local_mark: int
+) -> bool {
+    if len(self.prog.errors_had) <= err_mark {
+        return False;
+    }
+    # Native acceleration is best-effort: the demotion is invisible to a clean
+    # build, which makes a wrongly-rejected method hard to spot. Surface the
+    # discarded diagnostics so the fallback is visible while developing against
+    # the native backend. On by default via [check] warn_native_seams (set it
+    # False for quiet builds); JAC_NATIVE_DEBUG forces it on regardless. This is
+    # a terminal warning, not a compiler diagnostic: the editor compiles
+    # no_cgen so this pass never runs there (mirrors native_accel).
+    import os;
+    _warn = bool(os.environ.get("JAC_NATIVE_DEBUG", ""));
+    if not _warn {
+        _warn = True;
+        try {
+            import from jaclang.project.config { get_config }
+            _cfg = get_config();
+            if _cfg and _cfg.check {
+                _warn = bool(_cfg.check.warn_native_seams);
+            }
+        } except Exception { }
+    }
+    if _warn {
+        import sys;
+        _why = "; ".join(str(e) for e in self.prog.errors_had[err_mark:]);
+        sys.stderr.write(
+            f"warning: native seam -- demoting {full_name} to Python-only "
+            f"(un-lowerable): {_why}\n"
+        );
+    }
+    del self.prog.errors_had[err_mark:];
+    del self.errors_had[local_mark:];
+    func.blocks.clear();
+    blk = func.append_basic_block(name="entry");
+    b = ir.IRBuilder(blk);
+    self._get_or_declare_extern("abort", ir.VoidType(), []);
+    b.call(self.extern_funcs["abort"], []);
+    b.unreachable();
+    self.method_funcs.pop(full_name, None);
+    self.func_symtab.pop(full_name, None);
+    self._native_skipped_methods.add(full_name);
+    return True;
 }
 
 """Generate method body for methods without FuncSignature (e.g., postinit)."""
@@ -956,6 +1060,7 @@ impl NaIRGenPass._codegen_instantiation(
     field_indices = self.struct_field_indices.get(type_name, {});
     field_types = self.struct_field_types.get(type_name, {});
     field_defaults = self.struct_field_defaults.get(type_name, {});
+    opaque_fields = self.struct_field_opaque.get(type_name, set());
     # Track which fields were explicitly set
     set_fields: set[str] = set();
     params = (nd.params or []) if _is_call else [];
@@ -963,6 +1068,14 @@ impl NaIRGenPass._codegen_instantiation(
         if isinstance(param, uni.KWPair) {
             key_name = param.key.sym_name if param.key else None;
             if key_name is None or key_name not in field_indices {
+                continue;
+            }
+            # Opaque foreign slots are null-only and outside the RC discipline
+            # (issue #6930, A3): never retain/store an explicitly-passed value
+            # here -- the zero-init pass nulls the slot, consistent with the
+            # defaults loop and the destructor. (Native code can only pass
+            # `None` for a foreign-typed field anyway.)
+            if key_name in opaque_fields {
                 continue;
             }
             val = self._codegen_expr(param.value);
@@ -1043,6 +1156,11 @@ impl NaIRGenPass._codegen_instantiation(
     }
     # Initialize unset fields with defaults
     for (fname, default_expr) in field_defaults.items() {
+        # Opaque foreign slots are null-only -- their default is a foreign value
+        # the native path never constructs; the zero-init pass below nulls them.
+        if fname in opaque_fields {
+            continue;
+        }
         if fname not in set_fields {
             # An empty collection literal default types itself: the checker
             # stamps it with the declared field type (bidirectional
@@ -1562,14 +1680,39 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     # Find method: walk MRO
     func = None;
     full_name = "";
+    _demoted = False;
     for check_name in self._mro_of(type_name) {
         full_name = f"{check_name}.{method_name}";
         if full_name in self.method_funcs {
             func = self.method_funcs[full_name];
             break;
         }
+        if full_name in self._native_skipped_methods {
+            _demoted = True;
+            break;
+        }
     }
     if func is None {
+        # The callee was demoted to Python-only (workstream A4, #6930). The
+        # native pathway cannot fall back to Python mid-stream, so surface the
+        # call as E5090 instead of silently dropping it (which would yield a
+        # null result). The diagnostic cascades correctly: a demotable caller
+        # falls back to Python too, while an entry / free function rejects the
+        # whole module -- both honest, since a Python-only method is not
+        # callable from native code.
+        if _demoted {
+            self.emit(
+                E5090,
+                node_override=nd,
+                kind="method",
+                name=f"{type_name}.{method_name}",
+                help_text=(
+                    f"'{method_name}' has no native lowering and was demoted to "
+                    f"its Python implementation; it cannot be called from native "
+                    f"code. Call it from a Python/@sv context instead."
+                )
+            );
+        }
         return None;
     }
     # Get the object pointer (reuse if already computed in chained path)
@@ -1648,6 +1791,19 @@ impl NaIRGenPass._codegen_field_access(
     if isinstance(obj_val.type, ir.IntType) and (type_name in self.struct_types) {
         obj_val = self.builder.inttoptr(
             obj_val, self.struct_types[type_name].as_pointer(), name="osp.handle.ptr"
+        );
+    }
+    # The checker may have narrowed the receiver to a subclass (e.g. via an
+    # `isinstance` guard), making `type_name` more specific than the value's
+    # static LLVM struct. The field index was computed from the narrowed
+    # struct's layout, so reinterpret the pointer as that struct before the GEP.
+    # Sound: the narrowing established the object is an instance of `type_name`.
+    target_struct = self.struct_types.get(type_name);
+    if target_struct is not None
+    and isinstance(obj_val.type, ir.PointerType)
+    and obj_val.type.pointee is not target_struct {
+        obj_val = self.builder.bitcast(
+            obj_val, target_struct.as_pointer(), name=f"narrow.{type_name}"
         );
     }
     # AttributeError: check for null pointer (None) before accessing field

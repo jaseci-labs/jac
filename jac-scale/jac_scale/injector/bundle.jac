@@ -19,7 +19,12 @@ glob SOURCE_ARCHIVE_NAME: str = "source.tar.gz",
      SOURCE_MOUNT_PATH: str = "/jac-src",
      APP_VOLUME_NAME: str = "jac-app",
      APP_MOUNT_PATH: str = "/app",
-     PYDEPS_DIR: str = "/app/.pydeps";
+     PYDEPS_DIR: str = "/app/.pydeps",
+     # Experimental bootstrap: the `jac` binary is built from the cloned checkout
+     # into JAC_BIN_DIR; JAC_ZIG_VERSION tracks jac/build.zig.zon's
+     # minimum_zig_version (single source of truth for the zig toolchain fetch).
+     JAC_BIN_DIR: str = "/app/.jacbin",
+     JAC_ZIG_VERSION: str = "0.16.0";
 
 # Directories never shipped into the cluster: build output, caches, vendored
 # deps, VCS metadata, virtualenvs.

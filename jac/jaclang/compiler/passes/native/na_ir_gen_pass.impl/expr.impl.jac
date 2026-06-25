@@ -1119,6 +1119,13 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
     if nd.is_attr {
         target_name = self._get_name(nd.target);
         right_name = self._get_name(nd.right);
+        # `self.__class__.__name__` / `type(self).__name__` -> the class name
+        # (issue #6930 A2). Must run before generic field access, which has no
+        # field for the synthetic `__class__` / `__name__` attributes.
+        _cls_name = self._codegen_class_name(nd);
+        if _cls_name is not None {
+            return _cls_name;
+        }
         # Check .value / .name on a direct enum member: Priority.HIGH.value.
         # The member access nests as AtomTrailer(AtomTrailer(Enum, MEMBER), attr),
         # and _get_name(nd.target) is None for the inner trailer, so this must run
@@ -1362,6 +1369,27 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             # Chained index: evaluate target expression, infer list type or string
             target_val = self._codegen_expr(nd.target);
             if target_val is not None {
+                # Subscript on an `any` (boxed JacVal): dispatch on the key's
+                # static type to the canonical heterogeneous container layout.
+                # The result is itself an `any`. (#6943 NA-3)
+                if self?.jacval_type and target_val.type == self.jacval_type {
+                    _any_slices = nd.right.slices or [];
+                    if _any_slices {
+                        _any_idx_node = _any_slices[0];
+                        _any_key = self._codegen_expr(_any_idx_node);
+                        if _any_key is None and _any_idx_node?.start {
+                            _any_key = self._codegen_expr(_any_idx_node.start);
+                        }
+                        if _any_key is not None {
+                            _any_res = self._codegen_any_subscript(
+                                target_val, _any_key
+                            );
+                            if _any_res is not None {
+                                return _any_res;
+                            }
+                        }
+                    }
+                }
                 # bytes[i] -> int (length-aware; embedded NULs are reachable).
                 if self._is_bytes_value(target_val) {
                     slices = nd.right.slices or [];

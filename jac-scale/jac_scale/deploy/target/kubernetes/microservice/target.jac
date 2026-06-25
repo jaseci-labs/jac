@@ -405,6 +405,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             deploy_context=self._deploy_context,
             logger=self.logger,
             no_image=True,
+            experimental=app_config.experimental,
             project_dir=app_config.code_folder,
             microservices_config=self.microservices_config
         );

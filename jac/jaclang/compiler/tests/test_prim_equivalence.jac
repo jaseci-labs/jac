@@ -20,7 +20,7 @@ import from jaclang.compiler.tests.xbackend_equiv {
 
 
 # =======================================================================
-# Tests — one per emitter class in primitives.jac
+# Tests -- one per emitter class in primitives.jac
 # =======================================================================
 
 # --- Numeric Types (IntEmitter) ---
@@ -194,12 +194,12 @@ test "builtins" {
     run_with_both("prim_builtins.jac", "builtins_py", "builtins_cl", "builtins_na");
 }
 
-# --- Stdlib: math module (Mechanism A → libm, issue #6404 v1) ---
+# --- Stdlib: math module (Mechanism A -> libm, issue #6404 v1) ---
 test "math" {
     run_with_both("prim_math.jac", "math_py", "math_cl", "math_na", require=["na"]);
 }
 
-# --- Stdlib: time module (Mechanism A → clock_gettime/nanosleep, #6404 v1) ---
+# --- Stdlib: time module (Mechanism A -> clock_gettime/nanosleep, #6404 v1) ---
 test "time" {
     run_with_both("prim_time.jac", "time_py", "time_cl", "time_na", require=["na"]);
 }
@@ -209,9 +209,33 @@ test "sys" {
     run_with_both("prim_sys.jac", "sys_py", "sys_cl", "sys_na", require=["na"]);
 }
 
-# --- Stdlib: os + os.path (Mechanism A/H → libc, issue #6404 v1) ---
+# --- Stdlib: os + os.path (Mechanism A/H -> libc, issue #6404 v1) ---
 test "os" {
     run_with_both("prim_os.jac", "os_py", "os_cl", "os_na", require=["na"]);
+}
+
+# --- Bundled native stdlib: os.path (Mechanism B via na_stdlib resolution
+# keystone, issue #6940). The same `import from os.path { ... }` binds CPython
+# posixpath on sv and the bundled na_stdlib/os/path.na.jac on na. ---
+test "os.path bundled" {
+    run_with_both(
+        "prim_ospath.jac", "ospath_py", "ospath_cl", "ospath_na", require=["na"]
+    );
+}
+
+# --- Bundled native stdlib: zlib (Mechanism F — pure-Jac surface over the
+# system libz FFI floor, issue #6940 Phase 2). The same `import from zlib { ... }`
+# binds CPython's zlib on sv and the bundled na_stdlib/zlib.na.jac on na. ---
+test "zlib bundled" {
+    run_with_both("prim_zlib.jac", "zlib_py", "zlib_cl", "zlib_na", require=["na"]);
+}
+
+# --- Bundled native stdlib: json (Mechanism B via na_stdlib resolution
+# keystone, issue #6940 Phase 1). The same `import from json { loads, dumps }`
+# binds CPython json on sv and the bundled na_stdlib/json.na.jac on na: a
+# recursive-descent parser over boxed `any` plus a CPython-default serializer. ---
+test "json bundled" {
+    run_with_both("prim_json.jac", "json_py", "json_cl", "json_na", require=["na"]);
 }
 
 # --- Stdlib: random module (CPython-faithful MT19937, issue #6404 v1) ---
@@ -232,6 +256,43 @@ test "any dispatch" {
     );
 }
 
+# --- native `any`/`str()` stdlib gaps closed for #6943 (gates a pure-Jac json) ---
+# Scalar/string congruence: str(None) (NA-1), str(bool) (NA-8),
+# strip/lstrip/rstrip(chars) (NA-9), empty-string truthiness in a ternary (NA-10).
+test "native any congruence" {
+    run_with_both(
+        "native_any_stdlib_gaps.jac",
+        "congruence_check_py",
+        "congruence_check_cl",
+        "congruence_check_na",
+        require=["na"]
+    );
+}
+
+# Produce + consume `any` containers: subscript an `any` (NA-3), iterate an `any`
+# (NA-4), len() on an `any` (NA-5), empty `list[any] = []` (NA-6).
+test "native any container ops" {
+    run_with_both(
+        "native_any_stdlib_gaps.jac",
+        "any_ops_check_py",
+        "any_ops_check_cl",
+        "any_ops_check_na",
+        require=["na"]
+    );
+}
+
+# The json.dumps object-branch shape: isinstance-guarded any->dict narrow +
+# dict-key iteration + `str +=` / `out = out + k` (NA-2, was a SIGSEGV/UAF).
+test "native any guarded consume" {
+    run_with_both(
+        "native_any_stdlib_gaps.jac",
+        "guard_consume_check_py",
+        "guard_consume_check_cl",
+        "guard_consume_check_na",
+        require=["na"]
+    );
+}
+
 # --- dict insertion-order lock (issue #6404 congruence #3, gates json) ---
 test "dict order" {
     run_with_both(
@@ -243,7 +304,7 @@ test "dict order" {
     );
 }
 
-# --- Exception Types (ExceptionEmitter) — dict-comparison for py/cl ---
+# --- Exception Types (ExceptionEmitter) -- dict-comparison for py/cl ---
 test "exception hierarchy" {
     py_result = run_py_fixture("prim_exceptions", "exceptions_py");
     try {
@@ -266,7 +327,7 @@ test "runtime error hierarchy" {
     } except Exception { }
 }
 
-# --- Exception Types (ExceptionEmitter) — NA int-returning tests ---
+# --- Exception Types (ExceptionEmitter) -- NA int-returning tests ---
 test "exception basic catch" {
     (eng, _) = compile_native("prim_exceptions.jac");
     f = get_func(eng, "test_basic_catch_na", ctypes.c_int64);
@@ -393,7 +454,7 @@ test "runtime error with finally" {
     assert f() == 11;
 }
 
-# --- Builtin Functions (BuiltinEmitter) — introspection methods ---
+# --- Builtin Functions (BuiltinEmitter) -- introspection methods ---
 # emit_enumerate, emit_zip, emit_map, emit_filter, emit_isinstance,
 # emit_issubclass, emit_type, emit_repr, emit_ascii, emit_callable,
 # emit_hash, emit_id, emit_iter, emit_next, emit_hasattr, emit_getattr,

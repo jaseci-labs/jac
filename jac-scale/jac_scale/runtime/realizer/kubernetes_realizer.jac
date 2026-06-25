@@ -29,6 +29,9 @@ obj KubernetesRealizer {
         enabled = self.ms_config.get("enabled", None);
         filename = context.get_arg("filename");
         target = context.get_arg("target", "kubernetes");
+        # --experimental: build the pod's `jac` from a cloned jaseci checkout
+        # (branch's own jaclang) instead of the released installer.
+        experimental = context.get_arg("experimental", False);
         # Zero-config: pick the microservice target when opted in (enabled=true)
         # or auto-detected sv services. enabled=false stays a monolith deploy.
         if target == "kubernetes" and enabled is not False {
@@ -106,7 +109,8 @@ obj KubernetesRealizer {
         app_config = AppConfig(
             code_folder=code_folder,
             file_name=base_file_path,
-            no_image=no_image
+            no_image=no_image,
+            experimental=experimental
         );
         if no_image {
             deployment_target.no_image = True;
