@@ -116,6 +116,40 @@ impl MicroserviceGateway.serve_static(file_path: str) -> Response | None {
     return Response(content=target.read_bytes(), media_type=content_type);
 }
 
+"""Serve `/static/<rest>` from the project's static locations, mirroring the
+monolith server's /static resolver so a client that references
+`/static/assets/logo.svg` works without an explicit static_mount. Checks the same
+candidate dirs core does (assets/, dist/, public/, .jac/client/{dist,compiled})
+under base_path, trying both the full sub-path and the bare filename; each lookup
+is path-jailed by serve_extra_static. Returns None when nothing matches."""
+impl MicroserviceGateway.serve_project_static(rest: str) -> Response | None {
+    if not rest {
+        return None;
+    }
+    root = Path(self.base_path);
+    file_name: str = Path(rest).name;
+    candidate_dirs: list[str] = [
+        "assets",
+        "dist",
+        "public",
+        ".jac/client/dist",
+        ".jac/client/compiled",
+        ".jac/client/compiled/assets"
+    ];
+    for d in candidate_dirs {
+        local_dir: str = str(root / d);
+        # Full sub-path first (e.g. assets/icons/x.svg), then the bare filename
+        # (the common case: /static/assets/x.svg -> assets/x.svg).
+        for candidate in (rest, file_name) {
+            resp = self.serve_extra_static(local_dir, candidate);
+            if resp {
+                return resp;
+            }
+        }
+    }
+    return None;
+}
+
 """Serve a static file from a configured static_mounts local directory.
 Path-jails to local_dir (rejects symlink/.. escapes via realpath compare).
 Returns None if not found, not a regular file, or outside the jail."""
@@ -579,6 +613,15 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
             static_resp = self.serve_static(file_path);
             if static_resp {
                 return static_resp;
+            }
+            # /static/* falls back to the project's static locations (assets/,
+            # dist/, .jac/client/*) the same way the monolith server resolves
+            # it, so client-referenced assets work without an explicit mount.
+            if file_path.startswith("static/") {
+                proj_resp = self.serve_project_static(file_path[len("static/"):]);
+                if proj_resp {
+                    return proj_resp;
+                }
             }
         }
     } else {

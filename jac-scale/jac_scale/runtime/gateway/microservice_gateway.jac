@@ -147,6 +147,11 @@ obj MicroserviceGateway(JacAPIServerAdmin, JacAPIServerLogs, JacAPIServerTraces,
     None if not found."""
     def serve_extra_static(local_dir: str, file_path: str) -> Response | None;
 
+    """Serve `/static/<rest>` from the project's static locations (assets/, dist/,
+    public/, .jac/client/{dist,compiled}), mirroring the monolith /static
+    resolver. Returns None if not found."""
+    def serve_project_static(rest: str) -> Response | None;
+
     """Serve index.html for SPA fallback. Returns None if no index.html exists."""
     def serve_spa_fallback -> Response | None;
 
