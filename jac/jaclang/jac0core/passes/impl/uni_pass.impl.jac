@@ -11,21 +11,22 @@ impl UniPass.before_pass -> None { }
 """Run once after pass."""
 impl UniPass.after_pass -> None { }
 
-"""Run on entering node."""
+"""Run on entering node — delegate to the static dispatch hook."""
 impl UniPass.enter_node(nd: uni.UniNode) -> None {
-    import from jaclang.jac0core.helpers { pascal_to_snake }
-    if hasattr(self, f"enter_{pascal_to_snake(type(nd).__name__)}") {
-        getattr(self, f"enter_{pascal_to_snake(type(nd).__name__)}")(nd);
-    }
+    nd.accept_enter(self);
 }
 
-"""Run on exiting node."""
+"""Run on exiting node — delegate to the static dispatch hook."""
 impl UniPass.exit_node(nd: uni.UniNode) -> None {
-    import from jaclang.jac0core.helpers { pascal_to_snake }
-    if hasattr(self, f"exit_{pascal_to_snake(type(nd).__name__)}") {
-        getattr(self, f"exit_{pascal_to_snake(type(nd).__name__)}")(nd);
-    }
+    nd.accept_exit(self);
 }
+
+
+"""Default visit hook (no-op); overridable, e.g. UnparsePass default rendering."""
+impl UniPass.default_enter(nd: uni.UniNode) -> None { }
+
+"""Default visit hook (no-op); overridable, e.g. UnparsePass default rendering."""
+impl UniPass.default_exit(nd: uni.UniNode) -> None { }
 
 """Prune traversal."""
 impl UniPass.prune -> None {
