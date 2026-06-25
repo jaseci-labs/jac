@@ -26,7 +26,6 @@ cl {
     # ``client_ui.shims.js`` but is not yet surfaced through the core
     # ``@jac/ui`` module surface, so the Animated entrance is omitted here.
     # See ``jac/examples/universal_tags`` for the full primitive vocabulary.
-
     glob color = {
              bg: "#1e1e2f",
              surface: "#2a2a40",

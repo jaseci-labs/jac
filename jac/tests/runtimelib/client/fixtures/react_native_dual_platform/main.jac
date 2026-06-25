@@ -11,7 +11,7 @@ walker:pub get_greeting {
 
 cl {
     import from '@jac/runtime' { Router, Routes, Route }
-    import from ./src/header { PlatformHeader }
+    import from .src.header { PlatformHeader }
 
     import "./src/styles.css";
 

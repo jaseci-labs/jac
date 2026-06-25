@@ -1,6 +1,7 @@
 """Type checker pass tests -- migrated from test_checker_pass.py."""
 
 import os;
+import from pathlib { Path }
 import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;

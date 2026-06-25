@@ -32,7 +32,7 @@ class ViteCompiler {
             'useParams',
             'AuthGuard'
         ];
-        COMPOUND_EXTENSIONS = [CLIENT_SUFFIX] + list(ANNEX_SUFFIXES);
+        COMPOUND_EXTENSIONS = ['.native.cl.jac', CLIENT_SUFFIX] + list(ANNEX_SUFFIXES);
     }
 
     def _jac_path_to_js(self: ViteCompiler, rel_str: str) -> str;

@@ -3,6 +3,7 @@ name = "{{name}}"
 version = "0.1.0"
 description = "A full-stack Jac application"
 entry-point = "main.jac"
+kind = "fullstack"
 
 [dependencies]
 

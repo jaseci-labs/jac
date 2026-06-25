@@ -116,10 +116,6 @@ impl ViteCompiler._emit_na_wasm(self: ViteCompiler, module_path: Path) -> None {
 
 """Create the main entry file for Vite bundling."""
 impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> None {
-    import from jaclang.compiler.passes.ecmascript.backends.registry {
-        resolve_active_backend
-    }
-    backend = resolve_active_backend();
     # Use _entry.js to avoid conflict with compiled modules that may be named main.js
     entry_file = self.compiled_dir / '_entry.js';
     if self._has_pages {
@@ -127,7 +123,8 @@ impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> No
         entry_content = self._create_pages_entry_content(module_path);
     } else {
         # Explicit routing mode: import app from entry module (original behavior)
-        entry_content = backend.build_entry_script(module_path.stem);
+        import from jaclang.runtimelib.entry_generators { get_entry_generator }
+        entry_content = get_entry_generator("web")(module_path.stem);
     }
     entry_file.write_text(entry_content, encoding='utf-8');
 }
