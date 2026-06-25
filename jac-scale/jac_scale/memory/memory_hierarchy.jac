@@ -37,7 +37,7 @@ import from jaclang.runtimelib.utils { storage_key, to_uuid }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.typecache { get_field_types }
 import from jac_scale.config_loader { get_scale_config }
-import from jac_scale.l1_invalidation {
+import from jac_scale.memory.l1_invalidation {
     DEFAULT_INVALIDATION_CHANNEL,
     build_message,
     consume_stale,

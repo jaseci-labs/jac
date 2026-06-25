@@ -21,7 +21,7 @@ import from testcontainers.redis { RedisContainer }
 import from jaclang.jac0core.runtime { JacRuntime }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.project.config { JacConfig, set_config }
-import from jac_scale.memory_hierarchy { MongoBackend, RedisBackend, ScaleTieredMemory }
+import from jac_scale.memory.memory_hierarchy { MongoBackend, RedisBackend, ScaleTieredMemory }
 
 
 node _PushdownLead {

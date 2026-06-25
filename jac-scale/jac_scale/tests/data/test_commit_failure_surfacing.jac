@@ -17,7 +17,7 @@ import asyncio;
 
 import from jaclang.jac0core.archetype { Root }
 import from jaclang.runtimelib.changeset { ChangeSet }
-import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+import from jac_scale.memory.memory_hierarchy { ScaleTieredMemory }
 
 
 """L3 stand-in whose flush always fails, like a Mongo outage mid-request."""

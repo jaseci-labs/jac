@@ -22,7 +22,7 @@ import from jaclang.jac0core.archetype { EdgeAnchor, GenericEdge, Root }
 import from jaclang.runtimelib.changeset { ChangeSet }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.exceptions { WriteConflict }
-import from jac_scale.memory_hierarchy { MongoBackend }
+import from jac_scale.memory.memory_hierarchy { MongoBackend }
 
 glob _shared: dict = {},
      _DB: str = "jac_test_occ";

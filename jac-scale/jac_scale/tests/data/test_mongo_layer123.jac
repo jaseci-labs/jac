@@ -27,7 +27,7 @@ import from jaclang.jac0core.archetype {
     NodeArchetype
 }
 import from jaclang.runtimelib.serializer { Serializer }
-import from jac_scale.memory_hierarchy {
+import from jac_scale.memory.memory_hierarchy {
     _process_cache,
     MongoBackend,
     ScaleTieredMemory

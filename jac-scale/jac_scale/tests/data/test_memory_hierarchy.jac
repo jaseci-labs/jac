@@ -16,8 +16,8 @@ import from pymongo { MongoClient }
 import from testcontainers.mongodb { MongoDbContainer }
 import from testcontainers.redis { RedisContainer }
 import from jaclang.jac0core.archetype { Root }
-import from jac_scale.context { JScaleExecutionContext }
-import from jac_scale.memory_hierarchy { _process_cache, MongoBackend }
+import from jac_scale.memory.context { JScaleExecutionContext }
+import from jac_scale.memory.memory_hierarchy { _process_cache, MongoBackend }
 import from jac_scale.db { close_all_db_connections }
 
 def get_free_port -> int {
@@ -1322,7 +1322,7 @@ so commit() receives whatever was passed.
 test "acommit forwards anchor argument to commit()" {
     import asyncio;
     import from unittest.mock { patch }
-    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+    import from jac_scale.memory.memory_hierarchy { ScaleTieredMemory }
 
     received: list = [None];
 
@@ -1356,7 +1356,7 @@ O(L1-size) hash computation are skipped entirely.
 test "acommit is idempotent — _committed flag prevents second sync pass" {
     import asyncio;
     import from unittest.mock { patch }
-    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+    import from jac_scale.memory.memory_hierarchy { ScaleTieredMemory }
 
     call_count = [0];
 
@@ -1388,7 +1388,7 @@ remain False so the middleware safety-net path can retry the commit.
 test "acommit leaves _committed False when commit() raises" {
     import asyncio;
     import from unittest.mock { patch }
-    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+    import from jac_scale.memory.memory_hierarchy { ScaleTieredMemory }
 
     def failing_commit(self: ScaleTieredMemory, anchor: any = None) {
         raise RuntimeError("simulated commit failure");
@@ -1555,7 +1555,7 @@ test "L2 Redis is invalidated (not re-poisoned) after edge-delta atomic write (i
     import from uuid { uuid4, UUID }
     import from jaclang.jac0core.archetype { EdgeAnchor, NodeAnchor }
     import from jaclang.runtimelib.utils { to_uuid }
-    import from jac_scale.memory_hierarchy { ScaleTieredMemory, MongoBackend }
+    import from jac_scale.memory.memory_hierarchy { ScaleTieredMemory, MongoBackend }
 
     _reset_mongo();
     _reset_redis();
@@ -1666,7 +1666,7 @@ test "L2 Redis is invalidated (not re-poisoned) after edge-delta atomic write (i
 # ----------------------------------------------------------------------
 test "L1 invalidation: marks every sibling stale, skips origin, never pops" {
     import from uuid { uuid4 }
-    import from jac_scale.l1_invalidation {
+    import from jac_scale.memory.l1_invalidation {
         register_l1,
         deregister_l1,
         evict_local_l1,
@@ -1705,8 +1705,8 @@ test "L1 invalidation: marks every sibling stale, skips origin, never pops" {
 
 test "L1 invalidation: stale-but-clean entries reload, dirty entries survive" {
     import from jaclang.runtimelib.serializer { Serializer }
-    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
-    import from jac_scale.l1_invalidation { evict_local_l1, deregister_l1, new_l1_id }
+    import from jac_scale.memory.memory_hierarchy { ScaleTieredMemory }
+    import from jac_scale.memory.l1_invalidation { evict_local_l1, deregister_l1, new_l1_id }
     import sys;
     sys.path.insert(0, str(FIXTURES_DIR));
     import from mutation_app { Item }
@@ -1758,7 +1758,7 @@ test "L1 invalidation: stale-but-clean entries reload, dirty entries survive" {
 test "L1 invalidation: GC reclaims the registry and clears stale marks" {
     import gc;
     import from uuid { uuid4 }
-    import from jac_scale.l1_invalidation {
+    import from jac_scale.memory.l1_invalidation {
         register_l1,
         evict_local_l1,
         new_l1_id,
@@ -1784,8 +1784,8 @@ test "L1 invalidation: GC reclaims the registry and clears stale marks" {
 test "L1 invalidation: pub/sub delivers (origin suppressed) and recovers after a drop" {
     import time;
     import from uuid { uuid4 }
-    import from jac_scale.memory_hierarchy { ScaleTieredMemory, _process_cache }
-    import from jac_scale.l1_invalidation { stop_listener, consume_stale }
+    import from jac_scale.memory.memory_hierarchy { ScaleTieredMemory, _process_cache }
+    import from jac_scale.memory.l1_invalidation { stop_listener, consume_stale }
 
     _reset_redis();
     _reset_process_cache();
@@ -1843,7 +1843,7 @@ test "L1 invalidation: pub/sub delivers (origin suppressed) and recovers after a
 
 test "L1 invalidation: ensure_listener is idempotent and self-heals" {
     import time;
-    import from jac_scale.l1_invalidation { ensure_listener, stop_listener }
+    import from jac_scale.memory.l1_invalidation { ensure_listener, stop_listener }
 
     _reset_process_cache();
     _redis_result = _get_redis();
@@ -1888,7 +1888,7 @@ obj _L2CachePerson(Root) {
 
 
 test "RedisBackend loads carry a field-hash snapshot (L2 parity with L3 loads)" {
-    import from jac_scale.memory_hierarchy { RedisBackend }
+    import from jac_scale.memory.memory_hierarchy { RedisBackend }
     import from jaclang.runtimelib.changeset { derive_dirty_fields }
 
     _reset_redis();

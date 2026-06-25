@@ -8,7 +8,7 @@ import from jaclang.cli.console { console }
 import from jaclang.jac0core.runtime { hookimpl, plugin_manager }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.server { JacAPIServer as JacServer }
-import from .context { JScaleExecutionContext }
+import from .memory.context { JScaleExecutionContext }
 import from .serve { JacAPIServer }
 import from .jserver.jfast_api { JFastApiServer }
 import from .config_loader { get_scale_config }

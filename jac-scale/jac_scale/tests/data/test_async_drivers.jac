@@ -12,7 +12,7 @@ import asyncio;
 import from uuid { UUID }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.changeset { ChangeSet }
-import from jac_scale.memory_hierarchy { MongoBackend, RedisBackend }
+import from jac_scale.memory.memory_hierarchy { MongoBackend, RedisBackend }
 import from jaclang.runtimelib.utils { storage_key }
 
 glob _mongo_uri: (str | None) = None,

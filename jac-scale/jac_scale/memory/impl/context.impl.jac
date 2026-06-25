@@ -5,7 +5,7 @@ not per-context parameters.
 """
 
 impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
-    import from jac_scale.memory_hierarchy { ScaleTieredMemory, _process_cache }
+    import from jac_scale.memory.memory_hierarchy { ScaleTieredMemory, _process_cache }
     import from jaclang.jac0core.constructs {
         Anchor,
         NodeAnchor,

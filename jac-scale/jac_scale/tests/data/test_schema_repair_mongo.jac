@@ -18,7 +18,7 @@ import from testcontainers.mongodb { MongoDbContainer }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.serializer { Serializer }
-import from jac_scale.memory_hierarchy { MongoBackend }
+import from jac_scale.memory.memory_hierarchy { MongoBackend }
 
 glob _shared: dict = {};
 
