@@ -3,7 +3,7 @@ import re;
 import hashlib;
 import from jac_scale._optdeps.kubernetes { client, ApiException }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
-import from jac_scale.abstractions.logger { Logger }
+import from jac_scale.observability.logger { Logger }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     delete_if_exists,
     delete_k8s_secret
@@ -132,7 +132,7 @@ obj MonitoringDeployer {
         }
 
         # Secret holding the scrape password, mounted into the pod and referenced
-        # by basic_auth.password_file — keeps the credential out of the ConfigMap.
+        # by basic_auth.password_file - keeps the credential out of the ConfigMap.
         scrape_secret_name = f"{prometheus_name}-scrape-secret";
         scrape_secret = {
             'apiVersion': 'v1',
@@ -432,7 +432,7 @@ obj MonitoringDeployer {
             }
         }
 
-        # ClusterRole (cluster-scoped — grants read access to K8s resources)
+        # ClusterRole (cluster-scoped - grants read access to K8s resources)
         cluster_role_body = {
             'apiVersion': 'rbac.authorization.k8s.io/v1',
             'kind': 'ClusterRole',
@@ -501,7 +501,7 @@ obj MonitoringDeployer {
             }
         }
 
-        # ClusterRoleBinding (cluster-scoped — binds ServiceAccount to ClusterRole)
+        # ClusterRoleBinding (cluster-scoped - binds ServiceAccount to ClusterRole)
         crb_body = {
             'apiVersion': 'rbac.authorization.k8s.io/v1',
             'kind': 'ClusterRoleBinding',
@@ -591,7 +591,7 @@ obj MonitoringDeployer {
             }
         }
 
-        # Service (ClusterIP) — Prometheus scrapes this at port 8080
+        # Service (ClusterIP) - Prometheus scrapes this at port 8080
         ksm_service = {
             'apiVersion': 'v1',
             'kind': 'Service',
@@ -636,7 +636,7 @@ obj MonitoringDeployer {
 
     node-exporter runs on every cluster node and exposes host-level metrics
     (CPU, memory, disk I/O, network) at port 9100. Host paths /proc, /sys, and /
-    are volume-mounted so node-exporter can read them without hostNetwork — this
+    are volume-mounted so node-exporter can read them without hostNetwork - this
     ensures the pod gets a normal overlay IP and the ClusterIP service can route
     to it correctly.
     """
@@ -667,7 +667,7 @@ obj MonitoringDeployer {
                             {
                                 'name': 'node-exporter',
                                 'image': 'prom/node-exporter:v1.10.2',
-                                # node-exporter reads host proc/sys paths — readOnlyRootFilesystem
+                                # node-exporter reads host proc/sys paths - readOnlyRootFilesystem
                                 # and allowPrivilegeEscalation are still hardened; capabilities
                                 # are kept minimal (only SYS_TIME omitted as not needed).
                                 'securityContext': {
@@ -716,7 +716,7 @@ obj MonitoringDeployer {
             }
         }
 
-        # Service (ClusterIP) — Prometheus scrapes this at port 9100
+        # Service (ClusterIP) - Prometheus scrapes this at port 9100
         ne_service = {
             'apiVersion': 'v1',
             'kind': 'Service',
@@ -1148,7 +1148,7 @@ obj MonitoringDeployer {
             '"targets":[{"refId":"A",'
             '"expr":"count(kube_pod_info' + '{node!=\\"\\"}) by (node)",'
             f'"legendFormat":"{{{{node}}}}","datasource":{ds}' + '}]},'
-            # Node CPU usage % (node-exporter — per node)
+            # Node CPU usage % (node-exporter - per node)
             '{"id":16,"type":"timeseries","title":"Node CPU Usage (%) per Node",'
             '"gridPos":{"x":0,"y":48,"w":12,"h":8},'
             '"fieldConfig":{"defaults":{"unit":"percent","min":0,"max":100}},'
@@ -1156,7 +1156,7 @@ obj MonitoringDeployer {
             '"targets":[{"refId":"A",'
             '"expr":"(1 - avg(rate(node_cpu_seconds_total' + '{mode=\\"idle\\"}[5m])) by (instance)) * 100",'
             f'"legendFormat":"{{{{instance}}}}","datasource":{ds}' + '}]},'
-            # Node memory usage % (node-exporter — per node)
+            # Node memory usage % (node-exporter - per node)
             '{"id":17,"type":"timeseries","title":"Node Memory Usage (%) per Node",'
             '"gridPos":{"x":12,"y":48,"w":12,"h":8},'
             '"fieldConfig":{"defaults":{"unit":"percent","min":0,"max":100}},'
@@ -1369,7 +1369,7 @@ obj MonitoringDeployer {
             }
         }
 
-        # Service: always ClusterIP — exposed via NGINX Ingress at /grafana
+        # Service: always ClusterIP - exposed via NGINX Ingress at /grafana
         grafana_service = {
             'apiVersion': 'v1',
             'kind': 'Service',
@@ -1630,7 +1630,7 @@ obj MonitoringDeployer {
 
     """Deploy Loki as a single-process log store.
 
-    Loki is always ClusterIP — Grafana and Alloy talk to it internally.
+    Loki is always ClusterIP - Grafana and Alloy talk to it internally.
     Data is stored in emptyDir so it is ephemeral (suitable for dev/staging).
     """
     def _deploy_loki(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {

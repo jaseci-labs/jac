@@ -1,12 +1,12 @@
 """Cloud-provider strategy for Kubernetes deployment decisions."""
 import from jac_scale._optdeps.kubernetes { client }
-import from jac_scale.abstractions.logger { Logger }
+import from jac_scale.observability.logger { Logger }
 
 """Abstract base class for cloud-provider-specific deployment behaviour.
 
 Subclass for each new provider (e.g. GCP, DigitalOcean). Return the
 appropriate instance from get_cluster_provider(). Callers never branch on
-provider type — all conditional logic lives in the subclass.
+provider type - all conditional logic lives in the subclass.
 """
 obj ClusterProvider {
     """Return the Kubernetes service type for the NGINX ingress controller."""
@@ -44,7 +44,7 @@ obj AWSProvider(ClusterProvider) {
     }
 
     def validate_ports(node_port: int, current_namespace: str) {
-    # AWS NLB does not use NodePorts — nothing to validate.
+    # AWS NLB does not use NodePorts - nothing to validate.
     }
 
     def service_url(lb_endpoint: (str | None), ingress_node_port: int) -> (str | None) {

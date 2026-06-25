@@ -1,5 +1,5 @@
 """Standard logger implementation using jac console."""
-import from jac_scale.abstractions.logger { Logger }
+import from jac_scale.observability.logger { Logger }
 import from jaclang.cli.console { console }
 
 """Standard logger using jac console for Rich-styled output."""

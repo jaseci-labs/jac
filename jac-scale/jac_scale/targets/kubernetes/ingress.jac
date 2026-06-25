@@ -4,7 +4,7 @@ import subprocess;
 import bcrypt;
 import from jac_scale._optdeps.kubernetes { client, ApiException }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
-import from jac_scale.abstractions.logger { Logger }
+import from jac_scale.observability.logger { Logger }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils { delete_if_exists }
 import from jac_scale.targets.kubernetes.cluster_provider { ClusterProvider }
 
@@ -561,7 +561,7 @@ obj IngressDeployer {
         );
         # Only the shared-ingress path manages spec.tls here. The dedicated
         # (non-shared) path's TLS is owned by enable_tls, so we must not touch
-        # the key at all for it — setting it (even to None) would clobber that
+        # the key at all for it - setting it (even to None) would clobber that
         # cert on every redeploy via the strategic-merge patch.
         if self.k8s_config.shared_ingress {
             if (
@@ -605,7 +605,7 @@ obj IngressDeployer {
         }
 
         # --- RedisInsight Ingress ---
-        # Auth is enforced by NGINX Ingress basic-auth annotations — no sidecar needed.
+        # Auth is enforced by NGINX Ingress basic-auth annotations - no sidecar needed.
         # RIPROXYPATH=/cache-dashboard is set on the container so the ingress passes
         # the full /cache-dashboard/... path unchanged (no rewrite-target).
         if redis_dashboard {
@@ -661,7 +661,7 @@ obj IngressDeployer {
             # API/socket calls with /cache-dashboard (which nginx strips via rewrite-target).
             # Accept-Encoding "" lets sub_filter work on raw HTML from the upstream.
             # Compression is handled at the server level via the nginx ConfigMap
-            # (use-gzip: true), NOT in the snippet — gzip directives in location
+            # (use-gzip: true), NOT in the snippet - gzip directives in location
             # snippets can crash the ingress controller.
             redis_ingress_annotations: dict = {
                 'nginx.ingress.kubernetes.io/proxy-body-size': '0',
@@ -1220,7 +1220,7 @@ obj IngressDeployer {
         }
 
         # Delete controller namespaced resources and cluster-scoped RBAC/IngressClass.
-        # Skipped when shared_ingress=True — those resources belong to the shared
+        # Skipped when shared_ingress=True - those resources belong to the shared
         # controller and must not be torn down by an individual app.
         if not self.k8s_config.shared_ingress {
             delete_if_exists(

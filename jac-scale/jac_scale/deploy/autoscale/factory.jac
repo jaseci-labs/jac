@@ -5,7 +5,7 @@ External packages can register custom engines via AutoscalerFactory.register().
 """
 import from typing { Callable }
 import from jac_scale.deploy.autoscale.autoscaler { Autoscaler }
-import from jac_scale.abstractions.logger { Logger }
+import from jac_scale.observability.logger { Logger }
 
 """Type alias for autoscaler engine factory callables.""" type AutoscalerFactoryFn = Callable[
     [dict[str, any], Logger | None],

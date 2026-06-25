@@ -4,7 +4,7 @@ Provides HTTP request metrics, active request tracking, and optional
 walker execution timing using the prometheus-client library.
 """
 import from typing { Callable }
-import from jac_scale.abstractions.metrics { MetricsCollector }
+import from jac_scale.observability.metrics { MetricsCollector }
 import from jac_scale._optdeps.prometheus {
     Counter,
     Histogram,

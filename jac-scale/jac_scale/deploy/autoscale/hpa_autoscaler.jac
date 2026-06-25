@@ -4,7 +4,7 @@ import from jac_scale.deploy.autoscale.autoscaler {
     AutoscalerSpec,
     DEFAULT_CPU_UTILIZATION_TARGET
 }
-import from jac_scale.abstractions.logger { Logger }
+import from jac_scale.observability.logger { Logger }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils { delete_if_exists }
 
 """HPA-backed autoscaler engine; implements the Autoscaler interface."""

@@ -21,7 +21,7 @@ import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
 import from jac_scale.config_loader { JacScaleConfig, get_scale_config }
 import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
 import from jac_scale.deploy.database.factory { DatabaseProviderFactory }
-import from jac_scale.factories.utility_factory { UtilityFactory }
+import from jac_scale.observability.factory { UtilityFactory }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
 import from jac_scale.deploy.autoscale.factory { AutoscalerFactory }

@@ -1,8 +1,8 @@
 """Tests for Prometheus metrics integration."""
 
-import from jac_scale.abstractions.metrics { NoOpMetricsCollector }
-import from jac_scale.factories.utility_factory { UtilityFactory }
-import from jac_scale.utilities.metrics.prometheus_metrics {
+import from jac_scale.observability.metrics { NoOpMetricsCollector }
+import from jac_scale.observability.factory { UtilityFactory }
+import from jac_scale.observability.prometheus_metrics {
     PrometheusMetricsCollector
 }
 

@@ -5,7 +5,7 @@ import from kubernetes.client.exceptions { ApiException }
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
 import from jac_scale.deploy.autoscale.factory { AutoscalerFactory }
-import from jac_scale.factories.utility_factory { UtilityFactory }
+import from jac_scale.observability.factory { UtilityFactory }
 import from jac_scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
 import from jac_scale.deploy.autoscale.hpa_autoscaler { HPAAutoscaler }
 import from jac_scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }

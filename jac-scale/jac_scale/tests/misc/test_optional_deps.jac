@@ -137,11 +137,11 @@ test "kubernetes exports are real when installed" {
 # Factory fallback behavior
 # =============================================================================
 test "utility factory returns noop metrics when prometheus missing" {
-    import from jac_scale.factories.utility_factory { UtilityFactory }
-    import from jac_scale.abstractions.metrics { NoOpMetricsCollector }
+    import from jac_scale.observability.factory { UtilityFactory }
+    import from jac_scale.observability.metrics { NoOpMetricsCollector }
 
     with unittest.mock.patch(
-        "jac_scale.factories.utility_factory.is_optional_available", return_value=False
+        "jac_scale.observability.factory.is_optional_available", return_value=False
     ) {
         config = {"enabled": True, "namespace": "test"};
         collector = UtilityFactory.create_metrics("prometheus", config);
@@ -153,8 +153,8 @@ test "utility factory returns prometheus when available" {
     if not HAS_PROMETHEUS {
         return;
     }
-    import from jac_scale.factories.utility_factory { UtilityFactory }
-    import from jac_scale.utilities.metrics.prometheus_metrics {
+    import from jac_scale.observability.factory { UtilityFactory }
+    import from jac_scale.observability.prometheus_metrics {
         PrometheusMetricsCollector
     }
 

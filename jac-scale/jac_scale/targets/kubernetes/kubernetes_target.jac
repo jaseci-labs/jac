@@ -8,7 +8,7 @@ import from jac_scale.abstractions.models.resource_status {
     ResourceStatus,
     ResourceStatusInfo
 }
-import from jac_scale.abstractions.logger { Logger }
+import from jac_scale.observability.logger { Logger }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     COMPANION_DEFS,

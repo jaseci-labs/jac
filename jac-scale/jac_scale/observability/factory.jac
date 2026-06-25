@@ -1,6 +1,6 @@
 """Factory for creating utility instances (loggers, metrics, etc.)."""
-import from jac_scale.abstractions.logger { Logger }
-import from jac_scale.abstractions.metrics { MetricsCollector, NoOpMetricsCollector }
+import from jac_scale.observability.logger { Logger }
+import from jac_scale.observability.metrics { MetricsCollector, NoOpMetricsCollector }
 import from jac_scale._optdeps.optional_deps { is_optional_available }
 
 """Factory for creating utility instances."""
@@ -22,7 +22,7 @@ class UtilityFactory {
         logger_type: str = 'standard', config: (dict[str, any] | None) = None
     ) -> Logger {
         if logger_type == 'standard' {
-            import from jac_scale.utilities.loggers.standard_logger { StandardLogger }
+            import from jac_scale.observability.standard_logger { StandardLogger }
             return StandardLogger(config=config or {});
         } elif logger_type == 'cloudwatch' {
             raise NotImplementedError("CloudWatch logger not yet implemented");
@@ -54,7 +54,7 @@ class UtilityFactory {
             if not is_optional_available("prometheus_client") {
                 return NoOpMetricsCollector();
             }
-            import from jac_scale.utilities.metrics.prometheus_metrics {
+            import from jac_scale.observability.prometheus_metrics {
                 PrometheusMetricsCollector
             }
             return PrometheusMetricsCollector(config=config);

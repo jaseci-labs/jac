@@ -94,7 +94,7 @@ impl JacAPIServerCore.postinit -> None {
         self.server.app.add_middleware(CustomHeadersMiddleware);
     }
     # Initialize Prometheus metrics if enabled
-    import from jac_scale.factories.utility_factory { UtilityFactory }
+    import from jac_scale.observability.factory { UtilityFactory }
     metrics_config = get_scale_config().get_monitoring_config();
     self._metrics = UtilityFactory.create_metrics('prometheus', metrics_config);
     if self._metrics.is_enabled() {

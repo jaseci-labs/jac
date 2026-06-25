@@ -7,7 +7,7 @@ import from jac_scale.abstractions.config.base_config { BaseConfig }
 import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
 import from jac_scale.abstractions.models.resource_status { ResourceStatusInfo }
 import from jac_scale.deploy.database.database_provider { DatabaseProvider }
-import from jac_scale.abstractions.logger { Logger }
+import from jac_scale.observability.logger { Logger }
 
 """Base class for all deployment target implementations."""
 class DeploymentTarget {

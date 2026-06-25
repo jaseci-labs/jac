@@ -7,7 +7,7 @@ import from jac_scale.deploy.autoscale.autoscaler {
     DEFAULT_CPU_UTILIZATION_TARGET,
     DEFAULT_MEMORY_UTILIZATION_TARGET
 }
-import from jac_scale.abstractions.logger { Logger }
+import from jac_scale.observability.logger { Logger }
 
 obj KEDAAutoscaler(Autoscaler) {
     has _custom_api: (any | None) = None,

@@ -4,7 +4,7 @@ Queries the in-cluster Prometheus for kube-state-metrics and cAdvisor data,
 then projects it into a flat, UI-friendly shape so the admin panel can render
 traffic-light cards without doing any PromQL math.
 
-Scopes everything by K8S_NAMESPACE — the namespace IS the application boundary,
+Scopes everything by K8S_NAMESPACE - the namespace IS the application boundary,
 no name-pattern filtering. The monitoring stack (Prometheus, Grafana, etc.)
 shows up in the list and the UI labels it as infrastructure.
 """
@@ -21,7 +21,7 @@ import from jac_scale.jserver.jserver {
     APIParameter,
     ParameterType
 }
-import from jac_scale.utilities.metrics.prometheus_client {
+import from jac_scale.observability.prometheus_client {
     query as prom_query,
     query_range as prom_query_range,
     scalar as prom_scalar,

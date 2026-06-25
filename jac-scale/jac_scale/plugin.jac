@@ -13,7 +13,7 @@ import from .serve { JacAPIServer }
 import from .jserver.jfast_api { JFastApiServer }
 import from .config_loader { get_scale_config }
 import from .factories.deployment_factory { DeploymentTargetFactory }
-import from .factories.utility_factory { UtilityFactory }
+import from .observability.factory { UtilityFactory }
 import from .abstractions.config.app_config { AppConfig }
 import from .user_manager { JacScaleUserManager }
 import from jaclang.runtimelib.server { UserManager }
