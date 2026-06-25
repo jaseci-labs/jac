@@ -57,6 +57,7 @@ obj DocIRGenPass(UniPass) {
     ) -> None;
 
     def is_within(kid_node: uni.UniNode, block: Sequence[uni.UniNode]) -> bool;
+    def is_body_member(kid_node: uni.UniNode, block: Sequence[uni.UniNode]) -> bool;
     def trim_trailing_line(parts: list[doc.DocType]) -> None;
     def jsx_whitespace -> doc.DocType;
     def jsx_mixed_child_parts(children: Sequence[uni.UniNode]) -> list[doc.DocType];
