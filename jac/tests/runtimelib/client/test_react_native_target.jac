@@ -1447,6 +1447,10 @@ test "react native scaffold writes eas.json with build and update profiles" {
     import from jaclang.runtimelib.client.targets.react_native.scaffold {
         write_expo_scaffold
     }
+    import from jaclang.runtimelib.client.targets.react_native.common {
+        EAS_CLI_VERSION,
+        EXPO_SDK_VERSION
+    }
 
     with tempfile.TemporaryDirectory() as tmp {
         project_root = Path(tmp);
@@ -1476,6 +1480,22 @@ test "react native scaffold writes eas.json with build and update profiles" {
             "preview ios profile must enable simulator builds"
         );
         assert "submit" in eas , "eas.json must have a 'submit' section";
+        # cli.version constrains the EAS CLI, which is versioned
+        # independently of the Expo SDK. Guard against the regression of
+        # deriving it from EXPO_SDK_VERSION (which produced an impossible
+        # constraint like ">=54.0.0" that no EAS CLI could satisfy).
+        assert "cli" in eas and "version" in eas["cli"] , (
+            "eas.json must declare a cli.version constraint"
+        );
+        cli_version = eas["cli"]["version"];
+        assert f">={EAS_CLI_VERSION}.0.0" == cli_version , (
+            f"cli.version must track EAS_CLI_VERSION (>= {EAS_CLI_VERSION}.0.0), "
+            f"got '{cli_version}'"
+        );
+        assert str(EXPO_SDK_VERSION) not in cli_version , (
+            f"cli.version must not derive from EXPO_SDK_VERSION (got '{cli_version}'); "
+            "EAS CLI is versioned independently of the Expo SDK"
+        );
     }
 }
 

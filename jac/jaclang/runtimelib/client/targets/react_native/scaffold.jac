@@ -41,6 +41,7 @@ import from jaclang.runtimelib.client.targets.react_native.common {
     DEFAULT_APP_NAME,
     DEFAULT_APP_SLUG,
     EXPO_SDK_VERSION,
+    EAS_CLI_VERSION,
     REACT_NATIVE_VERSION,
     run_manifest_install
 }
@@ -341,8 +342,11 @@ def _build_eas_json -> str {
     # EAS Build + Update. The scaffold writes a baseline eas.json
     # with two profiles (preview / production) so ``eas build`` and
     # ``eas update`` work immediately. Authors customise this file in-place.
+    # NOTE: ``cli.version`` constrains the EAS CLI (shipped via
+    # ``npx eas-cli``), NOT the Expo SDK — the two are versioned
+    # independently, so it must track EAS_CLI_VERSION.
     cfg = {
-        "cli": {"version": f">={EXPO_SDK_VERSION}.0.0", "appVersionSource": "remote"},
+        "cli": {"version": f">={EAS_CLI_VERSION}.0.0", "appVersionSource": "remote"},
         "build": {
             "preview": {
                 "distribution": "internal",
