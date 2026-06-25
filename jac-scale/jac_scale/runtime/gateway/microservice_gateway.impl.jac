@@ -126,7 +126,7 @@ impl MicroserviceGateway.serve_project_static(rest: str) -> Response | None {
     if not rest {
         return None;
     }
-    root = Path(self.base_path);
+    project_root = Path(self.base_path);
     file_name: str = Path(rest).name;
     candidate_dirs: list[str] = [
         "assets",
@@ -137,7 +137,7 @@ impl MicroserviceGateway.serve_project_static(rest: str) -> Response | None {
         ".jac/client/compiled/assets"
     ];
     for d in candidate_dirs {
-        local_dir: str = str(root / d);
+        local_dir: str = str(project_root / d);
         # Full sub-path first (e.g. assets/icons/x.svg), then the bare filename
         # (the common case: /static/assets/x.svg -> assets/x.svg).
         for candidate in (rest, file_name) {
