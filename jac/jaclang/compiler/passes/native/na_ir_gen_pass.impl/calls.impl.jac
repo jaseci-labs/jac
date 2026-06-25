@@ -831,14 +831,24 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     # bytes argument, where `coerced` is the interior data pointer (unowned)
     # while the owned temporary is the original jacbytes value.
     release_args: list[ir.Value] = [];
+    _i8ptr = ir.IntType(8).as_pointer();
     for (i, arg) in enumerate(args) {
-        if _is_foreign and self._is_bytes_value(arg) {
+        if (
+            _is_foreign
+            and self._is_bytes_value(arg)
+            and i < len(func.args)
+            and func.args[i].type == _i8ptr
+        ) {
             # A `bytes` / `bytearray` argument to a foreign (C) function is passed
             # as its raw data pointer — the C buffer-protocol convention — not the
             # internal { i64 len, [n x i8] } struct pointer. The element count
             # travels separately through the C API's explicit length parameter.
             # Without this, C reads the 8-byte length header as leading data
             # (#6940 Phase 2: the FFI floor under na_stdlib zlib/zipfile).
+            # Gate on the declared parameter actually being an `i8*`: a bytes
+            # value handed to a non-pointer slot (e.g. an `i32`) must fall through
+            # to _coerce_type so the type mismatch surfaces instead of silently
+            # producing a pointer.
             coerced.append(self._bytes_data_ptr(arg));
             release_args.append(arg);
         } elif i < len(func.args) {
