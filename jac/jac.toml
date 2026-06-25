@@ -7,9 +7,11 @@ description = "Jac programming language - Python-like syntax, compiles to Python
 license = "MIT"
 readme = "README.md"
 requires_python = ">=3.14"
-# No runtime PyPI deps: native LLVM is the in-tree LLVMPY_* shim, statically
-# linked by Zig (jac/native + `zig build fetch-llvm`), not the llvmlite wheel.
-dependencies = []
+# Native LLVM is the in-tree LLVMPY_* shim, statically linked by Zig
+# (jac/native + `zig build fetch-llvm`), not the llvmlite wheel — no llvmlite dep.
+dependencies = [
+    "pycparser>=2.22",  # c2jac's C parser
+]
 
 [project.urls]
 Repository = "https://github.com/jaseci-labs/jaseci"

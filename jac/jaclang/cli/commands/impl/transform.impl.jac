@@ -35,6 +35,44 @@ impl py2jac(filename: str) -> int {
     return 0;
 }
 
+"""Convert C to Jac."""
+impl c2jac(filename: str) -> int {
+    import from jaclang.compiler.c2jac.driver { transpile_c_str }
+    import from jaclang.compiler.c2jac.report { write_report }
+    if not filename.endswith(".c") and not filename.endswith(".i") {
+        console.error("Not a .c or .i file.");
+        return 1;
+    }
+    try {
+        with open(filename) as f {
+            c_src = f.read();
+        }
+    } except OSError as e {
+        console.error(f"Cannot read {filename}: {e}");
+        return 1;
+    }
+    try {
+        (jac_str, tags) = transpile_c_str(c_src, filename);
+    } except Exception as e {
+        console.error(f"Transpilation failed: {e}");
+        return 1;
+    }
+    console.print(jac_str, markup=False, highlight=False);
+    try {
+        report_path = write_report(filename, tags);
+        tier_b = tags.tier_b_entries();
+        if tier_b {
+            console.warning(
+                f"[c2jac] {len(tier_b)} best-effort site(s) → {report_path}"
+            );
+        }
+    } except OSError as e {
+        console.warning(f"[c2jac] Could not write report: {e}");
+    }
+    return 0;
+}
+
+"""Convert Jac to Python."""
 impl jac2py(filename: str) -> int {
     import from jaclang.jac0core.program { JacProgram }
     if filename.endswith('.jac') {

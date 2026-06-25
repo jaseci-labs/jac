@@ -30,6 +30,24 @@ def jac2py(filename: str) -> int;
 )
 def jac2js(filename: str) -> int;
 
+"""Convert C to Jac."""
+@registry.command(
+    name="c2jac",
+    help="Convert C code to Jac (writes Jac to stdout, sidecar report to <file>.c2jac.report.json)",
+    args=[
+        Arg.create(
+            "filename",
+            kind=ArgKind.POSITIONAL,
+            help="Path to a preprocessed .c/.i file (no #include/#define; run `gcc -E -P` first)"
+        ),
+
+    ],
+    examples=[("jac c2jac myprogram.i", "Convert a preprocessed C file to Jac"), ],
+    group="transform"
+)
+def c2jac(filename: str) -> int;
+
+"""Deprecated alias for jac2js."""
 @registry.command(
     name="js",
     help="[Deprecated] Alias for 'jac2js'. Convert Jac code to JavaScript",
