@@ -49,7 +49,13 @@ impl CommandSpec.get_all_args -> list[Arg] {
 
 """Add an extension argument from a plugin."""
 impl CommandSpec.add_extension_arg(arg: Arg, source: str) -> None {
-    # Set the source on the arg
+    # Skip if an arg with the same name is already registered (inline or extended).
+    # This prevents duplicate args when both an installed plugin and embedded core
+    # code call extend_command for the same arg on the same command.
+    existing_names = {a.name for a in self.args} | {a.name for a in self.extra_args};
+    if arg.name in existing_names {
+        return;
+    }
     arg.source = source;
     self.extra_args.append(arg);
 }

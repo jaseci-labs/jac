@@ -12,7 +12,7 @@ import from urllib.request { urlopen, urlretrieve }
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 
-"""Locate a shipped native/ asset dir (webview, cef, …) inside jac_desktop."""
+"""Locate a shipped native/ asset dir (webview, cef, …) beside this target."""
 def _find_native_asset_dir(subdir: str, marker: str) -> Path {
     here = Path(os.path.abspath(__file__)).parent;
     candidates = [here.parent / "native" / subdir, here / "native" / subdir];

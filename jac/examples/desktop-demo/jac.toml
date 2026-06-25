@@ -1,0 +1,38 @@
+[project]
+name = "desktop-demo"
+version = "1.0.0"
+entry-point = "main.jac"
+
+[plugins.client]
+
+[plugins.desktop]
+name = "Desktop Plugin Demo"
+identifier = "org.jac.desktop-demo"
+version = "1.0.0"
+
+[plugins.desktop.window]
+title = "Desktop Plugin Demo"
+width = 1200
+height = 800
+
+# Least privilege: this demo only sends a notification, so only that capability
+# is enabled. Turn on others (window, path, clipboard, dialog, fs, shell) here
+# as your app actually needs them — fs/shell additionally require allow-lists.
+[plugins.desktop.plugins]
+notification = true
+
+[dependencies.npm]
+react = "^18.2.0"
+react-dom = "^18.2.0"
+react-router-dom = "^6.22.0"
+react-error-boundary = "^5.0.0"
+react-hook-form = "^7.71.0"
+zod = "^4.3.6"
+"@hookform/resolvers" = "^5.2.2"
+
+[dependencies.npm.dev]
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.2.1"
+typescript = "^5.3.3"
+"@types/react" = "^18.2.0"
+"@types/react-dom" = "^18.2.0"

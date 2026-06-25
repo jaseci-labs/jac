@@ -5,6 +5,31 @@ import from jaclang.cli.console { console }
 import from jaclang.jac0core.ext_registry { base_stem, is_jac, is_python }
 
 
+"""Strip compound and plain suffixes from a .jac or .py file path and return
+the bare module stem.
+
+Compound codespace suffixes (.na.jac / .sv.jac / .cl.jac) collapse to the bare
+stem; plain .jac and .py each strip one suffix. Raises ValueError for
+unrecognised extensions. This is the single source of truth for suffix handling;
+proc_file() and the in-process seam (jac_scale.inprocess) both delegate here so
+a new suffix only needs to be added in one place. See issue #6696."""
+def module_stem_from_file(filename: str) -> str {
+    (_base, mod) = os.path.split(filename);
+    if (
+        filename.endswith('.na.jac')
+        or filename.endswith('.sv.jac')
+        or filename.endswith('.cl.jac')
+    ) {
+        return mod[:-7];
+    } elif filename.endswith('.jac') {
+        return mod[:-4];
+    } elif filename.endswith('.py') {
+        return mod[:-3];
+    }
+    raise ValueError("not a valid jac/py entry file: " + filename);
+}
+
+
 """Create JacRuntime and return the base path, module name, and runtime state.
 
 This is the canonical function for setting up CLI execution context.

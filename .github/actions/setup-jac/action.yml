@@ -17,6 +17,16 @@ runs:
   steps:
     # typeshed stdlib stubs are vendored as plain files now (no submodule);
     # third-party stubs are installed per-project by `jac add` (PEP 561 types-*).
+    # The stdlib/ dir is gitignored and populated by `zig build` (via payload.zig's
+    # fetch-typeshed), so we cache it separately to ensure it's available even
+    # when the binary cache hits and zig build is skipped.
+    - name: Restore cached typeshed stdlib stubs
+      id: typeshed-cache
+      uses: actions/cache@v4
+      with:
+        path: jac/jaclang/vendor/typeshed/stdlib
+        key: typeshed-stdlib-${{ runner.os }}-${{ hashFiles('jac/jaclang/vendor/typeshed/PIN') }}
+
     - name: Restore cached jac binary
       id: cache
       uses: actions/cache@v4

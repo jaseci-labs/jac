@@ -167,6 +167,30 @@ impl __invalidateEndpoint(endpoint_key: str) -> None {
 
 # Direct walker fetch (POST /walker/<name>[/<nodeId>])
 impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
+    if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
+        token = __getLocalStorage("jac_token") or "";
+        payload = {
+            "kind": "walker",
+            "name": `walker,
+            "node": nodeId,
+            "fields": fields,
+            "token": token
+        };
+        response = await globalThis.__jac_invoke(JSON.stringify(payload));
+        if not response["ok"] {
+            if response["status"] == 401 {
+                __removeLocalStorage("jac_token");
+                window.location.reload();
+                return {};
+            }
+            error_msg = "Unknown error";
+            try {
+                error_msg = response["body"]["error"]["message"];
+            } except Exception { }
+            raise Exception(f"Walker {`walker} failed: {error_msg}");
+        }
+        return response["body"]["data"] if response["body"]["data"] else {};
+    }
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
     url = f"{base_url}/walker/{`walker}";
@@ -196,6 +220,34 @@ impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
 
 # Direct function fetch (POST /function/<name>)
 impl __doFuncFetch(function_name: str, args: dict) -> any {
+    if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
+        token = __getLocalStorage("jac_token") or "";
+        payload = {
+            "kind": "function",
+            "name": function_name,
+            "node": "",
+            "fields": args,
+            "token": token
+        };
+        response = await globalThis.__jac_invoke(JSON.stringify(payload));
+        if not response["ok"] {
+            error_msg = "Unknown error";
+            try {
+                error_msg = response["body"]["error"]["message"];
+            } except Exception { }
+            raise Exception(f"Function {function_name} failed: {error_msg}");
+        }
+        result = None;
+        try {
+            data = response["body"]["data"];
+            if data and data["result"] is not None {
+                result = data["result"];
+            }
+        } except Exception as e {
+            console.warn(f"Failed to extract result for {function_name} (native):", e);
+        }
+        return result;
+    }
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
     headers = {"Content-Type": "application/json"};
@@ -217,7 +269,7 @@ impl __doFuncFetch(function_name: str, args: dict) -> any {
     }
     result = None;
     try {
-        if payload["data"] and payload["data"]["result"] {
+        if payload["data"] and "result" in payload["data"] {
             result = payload["data"]["result"];
         }
     } except Exception as e {

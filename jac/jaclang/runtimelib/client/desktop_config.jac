@@ -38,6 +38,21 @@ obj WindowConfig {
     }
 }
 
+"""In-process `sv` dispatch tuning from [plugins.desktop.dispatch] (issue #6596)."""
+obj DispatchConfig {
+    has timeout_s: float = 30.0,
+        max_queue: int = 128,
+        debug: bool = False;
+
+    static def from_dict(data: dict[str, any]) -> DispatchConfig {
+        return DispatchConfig(
+            timeout_s=float(data.get("timeout_s", 30.0)),
+            max_queue=int(data.get("max_queue", 128)),
+            debug=bool(data.get("debug", False))
+        );
+    }
+}
+
 """Default [plugins.desktop] values before merging user jac.toml."""
 obj DesktopDefaultConfig {
     has name: str,
@@ -69,6 +84,7 @@ class JacDesktopConfig(PluginConfigBase) {
     override def get_default_config(self: JacDesktopConfig) -> dict[str, any];
     def get_identity(self: JacDesktopConfig) -> DesktopIdentity;
     def get_window_config(self: JacDesktopConfig) -> WindowConfig;
+    def get_dispatch_config(self: JacDesktopConfig) -> DispatchConfig;
     def get_engine(self: JacDesktopConfig) -> str;
     def get_plugin_configs(self: JacDesktopConfig) -> dict[str, any];
     def validate(self: JacDesktopConfig) -> None;

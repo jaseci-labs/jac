@@ -93,7 +93,10 @@ def is_valid_kind(kind: str) -> bool {
     return kind in VALID_KINDS;
 }
 
-"""Strip the codespace suffix from an entry filename, leaving the bare stem."""
+"""Strip the codespace suffix from an entry filename, leaving the bare stem.
+
+Delegates to module_stem_from_file (the single source of truth in cli_helpers)
+so a new codespace suffix only needs to be added in one place."""
 def _entry_stem(path: str) -> str {
     return base_stem(path);
 }
