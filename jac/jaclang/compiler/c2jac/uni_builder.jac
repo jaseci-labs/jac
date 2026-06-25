@@ -349,8 +349,43 @@ obj CUniBuilder {
             return [];
         }
 
-        # Any other statement (nested loop, switch, goto, bare call, ...) has no
-        # direct-IR lowering yet. Record it so the enclosing loop is Tier-B.
+        if isinstance(stmt, c_ast.FuncCall) {
+            call = self._funccall_to_uni(stmt, sline, scol);
+            if call is not None {
+                return [uni.ExprStmt(expr=call, in_fstring=False, kid=[call])];
+            }
+            self._loop_lossy.append("function call");
+            return [];
+        }
+
+        if isinstance(stmt, c_ast.While) {
+            wcond = self._expr_to_uni(stmt.cond, sline, scol);
+            if wcond is None {
+                self._loop_lossy.append("while condition");
+                return [];
+            }
+            wbody = self._c_stmt_to_uni(stmt.stmt, sline, scol);
+            return [
+                uni.WhileStmt(
+                    kid=[wcond, *wbody], condition=wcond, body=wbody, else_body=None,
+                )
+            ];
+        }
+
+        if isinstance(stmt, c_ast.For) {
+            # Recurse through the full for-builder so a nested loop gets the same
+            # IterForStmt-or-while-desugar treatment (and its own Tier-B marking).
+            # _build_for resets self._loop_lossy, so snapshot and restore the
+            # outer accumulator around the call to avoid cross-contaminating which
+            # loop is flagged.
+            saved = self._loop_lossy;
+            inner = self._build_for(stmt);
+            self._loop_lossy = saved;
+            return inner;
+        }
+
+        # Any other statement (switch, goto, do-while, ...) has no direct-IR
+        # lowering yet. Record it so the enclosing loop is Tier-B.
         self._loop_lossy.append(type(stmt).__name__);
         return [];
     }
@@ -631,16 +666,53 @@ obj CUniBuilder {
             );
         }
         if isinstance(nd, c_ast.UnaryOp) {
-            if nd.op == "-" {
+            # Unary `+x` is the identity on a numeric value — emit the operand.
+            if nd.op == "+" {
+                return self._expr_to_uni(nd.expr, nline, ncol);
+            }
+            unary_tok: dict[str, tuple[str, str]] = {
+                "-": ("MINUS", "-"),
+                "!": (Tok.NOT, "not"),
+                "~": (Tok.BW_NOT, "~"),
+
+            };
+            entry = unary_tok.get(nd.op);
+            if entry is not None {
                 operand = self._expr_to_uni(nd.expr, nline, ncol);
                 if operand is None {
                     return None;
                 }
-                op_tok = self._tok("MINUS", "-", nline, ncol);
+                (tok_name, tok_val) = entry;
+                op_tok = self._tok(tok_name, tok_val, nline, ncol);
                 return uni.UnaryExpr(kid=[op_tok, operand], operand=operand, op=op_tok);
             }
+            # `*p`, `&p`, `sizeof`, `p++`/`p--` have no faithful direct-IR analog.
+            return None;
+        }
+        if isinstance(nd, c_ast.FuncCall) {
+            return self._funccall_to_uni(nd, nline, ncol);
         }
         return None;
+    }
+
+    def _funccall_to_uni(nd: object, line: int, col: int) -> uni.UniNode | None {
+        target = self._expr_to_uni(nd.name, line, col);
+        if target is None {
+            return None;
+        }
+        params: list[uni.UniNode] = [];
+        if nd.args {
+            for e in nd.args.exprs {
+                pe = self._expr_to_uni(e, line, col);
+                if pe is None {
+                    # An unmappable argument means we cannot emit a faithful call.
+                    return None;
+                }
+                params.append(pe);
+            }
+        }
+        kids = [target, *params] if params else [target];
+        return uni.FuncCall(target=target, params=params, genai_call=None, kid=kids);
     }
 
     def _lvalue_to_uni(nd: object, line: int, col: int) -> uni.UniNode | None {
