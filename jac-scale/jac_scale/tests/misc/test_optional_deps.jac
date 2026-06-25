@@ -164,13 +164,13 @@ test "utility factory returns prometheus when available" {
 }
 
 test "database factory requires pymongo for mongodb" {
-    import from jac_scale.factories.database_factory {
+    import from jac_scale.deploy.database.factory {
         DatabaseProviderFactory,
         DatabaseType
     }
 
     with unittest.mock.patch(
-        "jac_scale.factories.database_factory.require_optional",
+        "jac_scale.deploy.database.factory.require_optional",
         side_effect=ImportError(
             "'pymongo' is required. Install: pip install jac-scale[data]"
         )
@@ -189,13 +189,13 @@ test "database factory requires pymongo for mongodb" {
 }
 
 test "database factory requires redis for redis" {
-    import from jac_scale.factories.database_factory {
+    import from jac_scale.deploy.database.factory {
         DatabaseProviderFactory,
         DatabaseType
     }
 
     with unittest.mock.patch(
-        "jac_scale.factories.database_factory.require_optional",
+        "jac_scale.deploy.database.factory.require_optional",
         side_effect=ImportError(
             "'redis' is required. Install: pip install jac-scale[data]"
         )

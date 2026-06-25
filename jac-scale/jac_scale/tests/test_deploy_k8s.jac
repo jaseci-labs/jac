@@ -20,7 +20,7 @@ import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
 import from jac_scale.config_loader { JacScaleConfig, get_scale_config }
 import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
-import from jac_scale.factories.database_factory { DatabaseProviderFactory }
+import from jac_scale.deploy.database.factory { DatabaseProviderFactory }
 import from jac_scale.factories.utility_factory { UtilityFactory }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
@@ -265,7 +265,7 @@ test "deployment target methods" {
 """Test that redis.conf.template is included in package distribution."""
 test "redis template file in package" {
     try {
-        ref = importlib.resources.files("jac_scale") / "providers" / "database" / "redis.conf.template";
+        ref = importlib.resources.files("jac_scale") / "deploy" / "database" / "redis.conf.template";
         assert ref.is_file() , (
             "redis.conf.template not discoverable as package data. "
             "Ensure it's included via pyproject.toml package-data"

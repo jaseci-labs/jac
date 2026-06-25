@@ -10,7 +10,7 @@ import from jac_scale._optdeps.pymongo {
     Collection
 }
 import from jac_scale._optdeps.redis { Redis }
-import from jac_scale.factories.database_factory {
+import from jac_scale.deploy.database.factory {
     DatabaseProviderFactory,
     DatabaseType,
     _resolve_uri

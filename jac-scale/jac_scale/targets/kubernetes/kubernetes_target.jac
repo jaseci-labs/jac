@@ -28,15 +28,15 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     resize_pvc_if_needed
 }
 import from jac_scale.targets.kubernetes.cluster_provider { ClusterProvider }
-import from jac_scale.providers.database.kubernetes_mongo { KubernetesMongoProvider }
-import from jac_scale.providers.database.kubernetes_redis { KubernetesRedisProvider }
+import from jac_scale.deploy.database.kubernetes_mongo { KubernetesMongoProvider }
+import from jac_scale.deploy.database.kubernetes_redis { KubernetesRedisProvider }
 import from jac_scale._optdeps.optional_deps { require_optional }
 import from jac_scale._optdeps.kubernetes {
     client,
     config as k8s_cluster_config,
     ApiException
 }
-import from jac_scale.factories.database_factory { DatabaseProviderFactory }
+import from jac_scale.deploy.database.factory { DatabaseProviderFactory }
 import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
 import from jac_scale.deploy.autoscale.factory { AutoscalerFactory }

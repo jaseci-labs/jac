@@ -1,7 +1,7 @@
 import from jac_scale.db { Db, get_mongo_client, get_redis_client }
 import from jac_scale.mongo_db { MongoDb }
 import from jac_scale.redis_db { RedisDb }
-import from jac_scale.factories.database_factory { DatabaseType }
+import from jac_scale.deploy.database.factory { DatabaseType }
 
 def kvstore(
     db_name: str = 'jac_db', db_type: str = 'mongodb', uri: (str | None) = None

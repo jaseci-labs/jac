@@ -4,7 +4,7 @@ import hashlib;
 import logging;
 import from pathlib { Path }
 import from typing { Any }
-import from jac_scale.abstractions.database_provider { DatabaseProvider }
+import from jac_scale.deploy.database.database_provider { DatabaseProvider }
 import from jac_scale.abstractions.deployment_target { DeploymentTarget }
 import from jac_scale.config_loader { get_scale_config }
 
@@ -554,7 +554,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                 'env': [
                     # Auto-accept EULA so the dashboard is usable immediately.
                     {'name': 'RI_ACCEPT_TERMS_AND_CONDITIONS', 'value': 'true'},
-                    # Container has no OS keyring — provide an explicit encryption key.
+                    # Container has no OS keyring - provide an explicit encryption key.
                     {
                         'name': 'RI_ENCRYPTION_KEY',
                         'value': f"{self.app_name}-redis-insight-key"

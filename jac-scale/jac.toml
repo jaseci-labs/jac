@@ -22,7 +22,7 @@ packages = ["jac_scale*"]
 [project.include.data]
 jac_scale = [
    "templates/**/*.html",
-   "providers/**/*.template",
+   "deploy/**/*.template",
    "admin/_dist/*",
    "admin/_dist/**/*",
 ]

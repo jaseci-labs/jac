@@ -1,6 +1,6 @@
 """Kubernetes MongoDB provider implementation."""
 import from typing { Any }
-import from jac_scale.abstractions.database_provider { DatabaseProvider }
+import from jac_scale.deploy.database.database_provider { DatabaseProvider }
 import from jac_scale.abstractions.deployment_target { DeploymentTarget }
 import from jac_scale.config_loader { get_scale_config }
 
@@ -319,7 +319,7 @@ obj KubernetesMongoProvider(DatabaseProvider) {
             }
         };
 
-        # Service: always ClusterIP — exposed via NGINX Ingress at /db-dashboard
+        # Service: always ClusterIP - exposed via NGINX Ingress at /db-dashboard
         express_service = {
             'apiVersion': 'v1',
             'kind': 'Service',
