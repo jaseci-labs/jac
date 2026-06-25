@@ -3,9 +3,16 @@
 The local environment has two topology cells:
   monolith     - the single app is served in-process by core's app server; the
                  realizer declines (returns False) so core serves it. This is the
-                 embedded-gateway N=1 case (gateway middleware folds in later).
-  microservice - a real-process fleet fronted by the process gateway, run by the
-                 orchestrator.
+                 embedded cell: core's JFastApiServer already provides the app, its
+                 middleware, and jac-scale's enhanced JacAPIServer features, so the
+                 monolith needs no separate gateway.
+  microservice - a real-process fleet fronted by the ProcessGateway (the Gateway
+                 port's out-of-process adapter), run by the orchestrator.
+
+Both cells run through the same ports: the ProcessGateway serves the fleet via the
+Gateway port; the EmbeddedGateway (the in-process Gateway adapter, paired with an
+InProcessTransport) is the in-process collapse of a fleet into one process - a
+local-dev realization whose live `jac start` wiring is the remaining step.
 
 The pre-hook asks the realizer to decide and dispatch; it never branches on
 topology itself.
