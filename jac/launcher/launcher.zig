@@ -10,7 +10,7 @@
 //!
 //! Payload layout (materialized to `<cache>/rt/<hash16>/`):
 //!     python/lib/libpython3.14t.{dylib,so}  <- dlopened (free-threaded ABI)
-//!     python/lib/python3.14/                 <- stdlib (.pyc)
+//!     python/lib/python3.14t/                <- stdlib (.pyc)
 //!     site/                                  <- jaclang (+ the bundled LLVMPY_* shim)
 //!
 //! The pure-Zig materialization half (trailer parse, cache resolution,
@@ -64,17 +64,17 @@ const BOOT_SRC =
     "from jaclang.jac0core.cli_boot import start_cli\n" ++
     "start_cli()\n";
 
-/// Bundled CPython minor version. Must stay in lockstep with payload.zig
-/// (PBS_PY / py_ver) staging; it names the lib-dynload / stdlib path below.
-/// A single bump point for the embedded interpreter.
-const py_ver = "3.14";
-/// Free-threaded ABI tag: the libpython soname carries the `t` abiflag while the
-/// stdlib dir (py_ver) does not. Keep in lockstep with payload.zig `py_abi`.
-const py_abi = "3.14t";
+/// Bundled CPython version + ABI. This is a free-threaded build, so the `t`
+/// abiflag is on EVERYTHING in the pbs tree -- the libpython soname, the
+/// `python3.14t` binary, and the `lib/python3.14t` stdlib dir alike -- so one
+/// constant covers the soname, the lib-dynload path, and the stdlib dir below.
+/// Must stay in lockstep with payload.zig (PBS_PY / py_ver). A single bump point
+/// for the embedded interpreter.
+const py_ver = "3.14t";
 
 const lib_basename = switch (builtin.os.tag) {
-    .macos => "libpython" ++ py_abi ++ ".dylib",
-    else => "libpython" ++ py_abi ++ ".so",
+    .macos => "libpython" ++ py_ver ++ ".dylib",
+    else => "libpython" ++ py_ver ++ ".so",
 };
 
 fn die(comptime msg: []const u8) noreturn {

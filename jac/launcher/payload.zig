@@ -43,11 +43,10 @@ const Dir = Io.Dir;
 const runtime = @import("runtime.zig");
 
 // --- pinned versions (keep in lockstep with launcher.zig `py_ver`) -----------
-const py_ver = "3.14";
-// Free-threaded ABI: the libpython soname and the pbs `python<X.Y>t` binary carry
-// the `t` abiflag, but the stdlib dir stays `python<X.Y>` (no `t`). Keep `py_ver`
-// for stdlib paths and `py_abi` for the lib/bin names.
-const py_abi = "3.14t";
+// Free-threaded build: the `t` abiflag is on everything in the pbs tree -- the
+// libpython soname, the `python3.14t` binary, AND the `lib/python3.14t` stdlib
+// dir -- so one constant covers all three. Keep in lockstep with launcher.zig.
+const py_ver = "3.14t";
 const PBS_TAG = "20260610";
 const PBS_PY = "3.14.6";
 const PBS_FLAVOR = "freethreaded+pgo+lto-full";
@@ -561,9 +560,9 @@ fn mkPayload(
 /// fallback -- there is no python outside the jac-bundled pbs tree, so a missing
 /// binary is a hard error rather than a silent slide onto a foreign `python3`.
 fn resolvePython(io: Io, a: Allocator, pbs_py_dir: []const u8) ![]const u8 {
-    const p1 = try std.fmt.allocPrint(a, "{s}/install/bin/python{s}", .{ pbs_py_dir, py_abi });
+    const p1 = try std.fmt.allocPrint(a, "{s}/install/bin/python{s}", .{ pbs_py_dir, py_ver });
     if (fileExists(io, p1)) return p1;
-    die("mkpayload: no python at {s}/install/bin/python{s}", .{ pbs_py_dir, py_abi });
+    die("mkpayload: no python at {s}/install/bin/python{s}", .{ pbs_py_dir, py_ver });
 }
 
 /// Precompile jaclang -> _precompiled JIR for a fast first run. The precompiler
@@ -661,7 +660,7 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
         for ([_][]const u8{ "test", "idlelib", "turtledemo", "tkinter", "lib2to3" }) |d| {
             Dir.cwd().deleteTree(io, try std.fmt.allocPrint(a, "{s}/{s}", .{ stdlib_dst, d })) catch {};
         }
-        // config-3.14-* build dirs.
+        // config-3.14t-* build dirs.
         var sd = try Dir.cwd().openDir(io, stdlib_dst, .{ .iterate = true });
         defer sd.close(io);
         var dit = sd.iterate();
@@ -728,8 +727,8 @@ const FoundLib = struct { src: []const u8, bare: []const u8 };
 
 /// Find the shared libpython in `lib_dir` and the bare name to stage it under.
 fn findLibpython(io: Io, a: Allocator, lib_dir: []const u8) !FoundLib {
-    const so = "libpython" ++ py_abi ++ ".so";
-    const dy = "libpython" ++ py_abi ++ ".dylib";
+    const so = "libpython" ++ py_ver ++ ".so";
+    const dy = "libpython" ++ py_ver ++ ".dylib";
     if (fileExists(io, try std.fmt.allocPrint(a, "{s}/{s}", .{ lib_dir, so }))) return .{ .src = so, .bare = so };
     if (fileExists(io, try std.fmt.allocPrint(a, "{s}/{s}", .{ lib_dir, dy }))) return .{ .src = dy, .bare = dy };
     // Versioned variant (e.g. libpython3.14t.so.1.0).

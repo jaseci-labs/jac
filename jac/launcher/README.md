@@ -32,7 +32,7 @@ Payload, materialized to `<cache>/rt/<hash16>/` on first run:
 
 ```
 python/lib/libpython3.14t.{dylib,so}  <- dlopened (RTLD_NOW|RTLD_GLOBAL; free-threaded ABI)
-python/lib/python3.14/                 <- stdlib (incl. lib-dynload: extension .so)
+python/lib/python3.14t/                <- stdlib (incl. lib-dynload: extension .so)
 site/                                  <- jaclang + _jac_finder + llvmlite
 ```
 
