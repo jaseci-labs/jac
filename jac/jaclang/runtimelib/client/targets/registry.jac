@@ -10,9 +10,11 @@ import from pathlib { Path }
 enum TargetType {
     WEB = "web",
     DESKTOP = "desktop",
+    DESKTOP_CEF = "cef",
     PWA = "pwa",
     STATIC = "static",
-    MOBILE = "mobile"
+    MOBILE = "mobile",
+    REACT_NATIVE = "react-native"
 }
 
 """Get TargetType from string name."""
@@ -24,6 +26,9 @@ def get_target_type(name: str) -> TargetType {
     if name_lower == "desktop" {
         return TargetType.DESKTOP;
     }
+    if name_lower == "cef" {
+        return TargetType.DESKTOP_CEF;
+    }
     if name_lower == "pwa" {
         return TargetType.PWA;
     }
@@ -32,6 +37,10 @@ def get_target_type(name: str) -> TargetType {
     }
     if name_lower == "mobile" {
         return TargetType.MOBILE;
+    }
+    # Accept common aliases for the React Native target.
+    if name_lower in ("react-native", "react_native", "rn") {
+        return TargetType.REACT_NATIVE;
     }
     raise ValueError(
         f"Unknown target: {name}. Available: {', '.join([t.value for t in TargetType])}"

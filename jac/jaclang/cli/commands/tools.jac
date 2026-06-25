@@ -147,3 +147,26 @@ def completions(shell: str = "bash", install: bool = False) -> int;
     group="tools"
 )
 def gen_jir_registry(verify: bool = False) -> int;
+
+"""Regenerate the static visitor-dispatch annexes for de-dynamized passes."""
+@registry.command(
+    name="gen-uni-dispatch",
+    help="Regenerate static enter_node/exit_node dispatch for UniPass subclasses",
+    args=[
+        Arg.create(
+            "verify",
+            typ=bool,
+            default=False,
+            help="Check that dispatch annexes are up to date; exit 1 if not",
+            short="v"
+        ),
+
+    ],
+    examples=[
+        ("jac gen-uni-dispatch", "Regenerate all dispatch annexes"),
+        ("jac gen-uni-dispatch --verify", "Check annexes are up to date (for CI)"),
+
+    ],
+    group="tools"
+)
+def gen_uni_dispatch(verify: bool = False) -> int;

@@ -2199,6 +2199,30 @@ test "clib import inside na block" {
     assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
 }
 
+test "clib bytes argument lowers to a raw data pointer (issue #6940 Phase 2)" {
+    # A `bytes` parameter on a foreign signature is the C buffer-protocol
+    # convention: the extern declares an `i8*` (not the internal jacbytes
+    # `{ i64 len, [n x i8] }` struct pointer), and the call site passes the
+    # pointer to the first data byte so C never reads the 8-byte length header
+    # as leading data. The element count travels through the explicit length
+    # parameter. This is the FFI floor under the bundled na_stdlib zlib tier.
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "clib_bytes_buffer.na.jac")));
+    assert not prog.errors_had , f"Errors: {prog.errors_had}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    llvm_ir_str = str(ir.gen.llvm_ir);
+    # The extern's bytes parameter is declared as a raw i8*, not jacbytes*.
+    assert 'declare i64 @"crc32_z"(i64 %"crc", i8* %"buf", i64 %"len")' in llvm_ir_str , (
+        f"clib bytes param not declared as i8*: {llvm_ir_str}"
+    );
+    # The call passes the data pointer (the by.data GEP/bitcast), and the
+    # jacbytes struct pointer is never handed to C.
+    assert 'call i64 @"crc32_z"(i64 0, i8* %"by.data.i8"' in llvm_ir_str , (
+        f"clib call did not pass the bytes data pointer: {llvm_ir_str}"
+    );
+    assert 'i8* %"by.data.i8"' in llvm_ir_str , "no data-pointer bitcast emitted";
+}
+
 test "clib extensionless logical import produces extern declares (issue #6387)" {
     # `import from raylib { def ... }` (no path, no extension) must still emit
     # extern `declare`s for the brace-block decls and resolve to exactly one

@@ -2050,10 +2050,14 @@ jac setup mobile --platform all
 
 #### Desktop builds
 
-The `desktop` client target ships with `jaclang` core -- no separate install. There is no
-separate `jac desktop` command and no setup step - build and run with
-`jac build --client desktop` / `jac start --client desktop`. See the
-[jac-desktop Reference](../plugins/jac-desktop.md) for configuration.
+The `desktop` and `cef` client targets ship with `jaclang` core -- no
+separate install. There is no separate `jac desktop` command and no setup step.
+Build and run the OS-native webview target with `jac build --client desktop` /
+`jac start --client desktop`, or the Chromium Embedded Framework target with
+`jac build --client cef` / `jac start --client cef`. Set
+`engine = "cef"` under `[plugins.desktop]` for CEF projects. See the
+[jac-desktop Reference](../plugins/jac-desktop.md) for configuration and CEF
+runtime flags.
 
 ---
 

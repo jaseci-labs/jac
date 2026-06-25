@@ -229,9 +229,15 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 arg_val = self._codegen_expr(params_l[0]);
                 if arg_val is not None {
                     _len_result: (ir.Value | None) = None;
+                    # len() on an `any` (boxed JacVal): tag-dispatch at runtime so
+                    # a generic walker can measure a list/dict/set/str pulled out
+                    # of a loads() result without narrowing it first. (#6943 NA-5)
+                    if self?.jacval_type and arg_val.type == self.jacval_type {
+                        _len_result = self._codegen_any_len(arg_val);
+                    }
                     # bytes: read the explicit length field (never strlen — the
                     # buffer may contain embedded NULs).
-                    if self._is_bytes_value(arg_val) {
+                    if _len_result is None and self._is_bytes_value(arg_val) {
                         _len_result = self._bytes_len_val(arg_val);
                     }
                     # Check for dict type by inferring from value
@@ -818,12 +824,40 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return self._codegen_clib_call(func, func_name, args);
     }
     # Type coerce arguments
+    _is_foreign = func_name in self.clib_extern_names;
     coerced: list[ir.Value] = [];
+    # `release_args` mirrors `coerced` but holds the value whose ownership we
+    # account for at this seam — the same as `coerced` except for a foreign
+    # bytes argument, where `coerced` is the interior data pointer (unowned)
+    # while the owned temporary is the original jacbytes value.
+    release_args: list[ir.Value] = [];
+    _i8ptr = ir.IntType(8).as_pointer();
     for (i, arg) in enumerate(args) {
-        if i < len(func.args) {
-            coerced.append(self._coerce_type(arg, func.args[i].type));
+        if (
+            _is_foreign
+            and self._is_bytes_value(arg)
+            and i < len(func.args)
+            and func.args[i].type == _i8ptr
+        ) {
+            # A `bytes` / `bytearray` argument to a foreign (C) function is passed
+            # as its raw data pointer — the C buffer-protocol convention — not the
+            # internal { i64 len, [n x i8] } struct pointer. The element count
+            # travels separately through the C API's explicit length parameter.
+            # Without this, C reads the 8-byte length header as leading data
+            # (#6940 Phase 2: the FFI floor under na_stdlib zlib/zipfile).
+            # Gate on the declared parameter actually being an `i8*`: a bytes
+            # value handed to a non-pointer slot (e.g. an `i32`) must fall through
+            # to _coerce_type so the type mismatch surfaces instead of silently
+            # producing a pointer.
+            coerced.append(self._bytes_data_ptr(arg));
+            release_args.append(arg);
+        } elif i < len(func.args) {
+            _c = self._coerce_type(arg, func.args[i].type);
+            coerced.append(_c);
+            release_args.append(_c);
         } else {
             coerced.append(arg);
+            release_args.append(arg);
         }
     }
     result = self.builder.call(func, coerced, name=f"call.{func_name}");
@@ -831,7 +865,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     # release any owned temporaries we passed so they don't leak (e.g.
     # `f([(-1,-1), (1,1)])` — the list literal, and any value-tuple boxed by
     # _coerce_type, are owned temporaries borrowed by the callee).
-    self._release_owned_args(coerced, op="call_arg");
+    self._release_owned_args(release_args, op="call_arg");
     # Box clib extern struct return values: C returns by value (or ABI int), Jac uses pointers
     if func_name in self.clib_extern_names {
         # Check ABI integer return types first (small structs coerced to int)

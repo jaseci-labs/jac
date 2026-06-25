@@ -424,81 +424,114 @@ impl NaIRGenPass._codegen_string_slice(
     return new_str;
 }
 
-"""String strip: remove leading/trailing whitespace."""
+"""i1 predicate: should char `ch` (i8) be stripped?
+
+When `charset` is None this is the whitespace test (str.strip()/lstrip()/rstrip()
+with no argument). When `charset` is an i8* it is membership in that set, matching
+CPython's `s.strip(chars)` — `strchr(charset, ch) != NULL`. The stripping loops
+only test bytes inside the string body (never the terminator), so a '\\0' never
+reaches here and strchr's match-on-NUL quirk cannot fire. (#6943 NA-9)
+"""
+impl NaIRGenPass._emit_is_strip_char(
+    ch: ir.Value, charset: (ir.Value | None)
+) -> ir.Value {
+    i8 = ir.IntType(8);
+    i32 = ir.IntType(32);
+    if charset is None {
+        is_space = self.builder.icmp_signed(
+            "==", ch, ir.Constant(i8, 32), name="is.space"
+        );
+        is_tab = self.builder.icmp_signed("==", ch, ir.Constant(i8, 9), name="is.tab");
+        is_nl = self.builder.icmp_signed("==", ch, ir.Constant(i8, 10), name="is.nl");
+        is_cr = self.builder.icmp_signed("==", ch, ir.Constant(i8, 13), name="is.cr");
+        is_ws = self.builder.or_(is_space, is_tab, name="ws1");
+        is_ws = self.builder.or_(is_ws, is_nl, name="ws2");
+        return self.builder.or_(is_ws, is_cr, name="ws3");
+    }
+    i8p = i8.as_pointer();
+    strchr_fn = self._get_or_declare_extern("strchr", i8p, [i8p, i32]);
+    ch_i32 = self.builder.zext(ch, i32, name="strip.ch.i32");
+    found = self.builder.call(strchr_fn, [charset, ch_i32], name="strip.find");
+    return self.builder.icmp_unsigned(
+        "!=", found, ir.Constant(i8p, None), name="strip.in"
+    );
+}
+
+"""String strip: remove leading/trailing whitespace (no-arg form)."""
 impl NaIRGenPass._codegen_str_strip(str_val: ir.Value) -> (ir.Value | None) {
+    return self._codegen_str_strip_chars(str_val, None, True, True);
+}
+
+"""General string strip backing strip()/lstrip()/rstrip(), with or without a
+character set. `charset` is None for the whitespace form or an i8* for the
+set form; `do_left`/`do_right` select which ends are trimmed. A single
+implementation keeps strip/lstrip/rstrip congruent across the no-arg and
+char-set cases (#6943 NA-9)."""
+impl NaIRGenPass._codegen_str_strip_chars(
+    str_val: ir.Value, charset: (ir.Value | None), do_left: bool, do_right: bool
+) -> (ir.Value | None) {
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
-    i32 = ir.IntType(32);
-    i1 = ir.IntType(1);
     func = self.builder.function;
-    # Get string length
     strlen_fn = self._get_or_declare_extern("strlen", i64, [i8p]);
     slen = self.builder.call(strlen_fn, [str_val], name="strip.len");
-    # Find start index: skip whitespace from beginning
-    # We use a simple loop: start = 0; while start < len and (s[start] == ' ' or s[start] == '\t' or s[start] == '\n'): start++
-    start_alloca = self.builder.alloca(i64, name="strip.start");
-    self.builder.store(ir.Constant(i64, 0), start_alloca);
-    # Loop to find start: skip leading whitespace
-    start_check_bb = func.append_basic_block(name="strip.start.check");
-    start_body_bb = func.append_basic_block(name="strip.start.body");
-    start_inc_bb = func.append_basic_block(name="strip.start.inc");
-    start_done_bb = func.append_basic_block(name="strip.start.done");
-    self.builder.branch(start_check_bb);
-    self.builder.position_at_end(start_check_bb);
-    start_val = self.builder.load(start_alloca, name="start.cur");
-    in_range = self.builder.icmp_signed("<", start_val, slen, name="start.inrange");
-    self.builder.cbranch(in_range, start_body_bb, start_done_bb);
-    self.builder.position_at_end(start_body_bb);
-    ch_ptr = self.builder.gep(str_val, [start_val], name="start.ch.ptr");
-    ch = self.builder.load(ch_ptr, name="start.ch");
-    is_space = self.builder.icmp_signed("==", ch, ir.Constant(i8, 32), name="is.space");
-    is_tab = self.builder.icmp_signed("==", ch, ir.Constant(i8, 9), name="is.tab");
-    is_nl = self.builder.icmp_signed("==", ch, ir.Constant(i8, 10), name="is.nl");
-    is_cr = self.builder.icmp_signed("==", ch, ir.Constant(i8, 13), name="is.cr");
-    is_ws = self.builder.or_(is_space, is_tab, name="ws1");
-    is_ws = self.builder.or_(is_ws, is_nl, name="ws2");
-    is_ws = self.builder.or_(is_ws, is_cr, name="ws3");
-    self.builder.cbranch(is_ws, start_inc_bb, start_done_bb);
-    # Only increment when whitespace
-    self.builder.position_at_end(start_inc_bb);
-    next_start = self.builder.add(start_val, ir.Constant(i64, 1), name="next.start");
-    self.builder.store(next_start, start_alloca);
-    self.builder.branch(start_check_bb);
-    # Find end index: skip trailing whitespace
-    self.builder.position_at_end(start_done_bb);
-    final_start = self.builder.load(start_alloca, name="final.start");
-    end_alloca = self.builder.alloca(i64, name="strip.end");
-    self.builder.store(slen, end_alloca);
-    end_check_bb = func.append_basic_block(name="strip.end.check");
-    end_body_bb = func.append_basic_block(name="strip.end.body");
-    end_dec_bb = func.append_basic_block(name="strip.end.dec");
-    end_done_bb = func.append_basic_block(name="strip.end.done");
-    self.builder.branch(end_check_bb);
-    self.builder.position_at_end(end_check_bb);
-    end_val = self.builder.load(end_alloca, name="end.cur");
-    end_gt_start = self.builder.icmp_signed(
-        ">", end_val, final_start, name="end.gt.start"
-    );
-    self.builder.cbranch(end_gt_start, end_body_bb, end_done_bb);
-    self.builder.position_at_end(end_body_bb);
-    prev_end = self.builder.sub(end_val, ir.Constant(i64, 1), name="prev.end");
-    ech_ptr = self.builder.gep(str_val, [prev_end], name="end.ch.ptr");
-    ech = self.builder.load(ech_ptr, name="end.ch");
-    e_space = self.builder.icmp_signed("==", ech, ir.Constant(i8, 32), name="e.space");
-    e_tab = self.builder.icmp_signed("==", ech, ir.Constant(i8, 9), name="e.tab");
-    e_nl = self.builder.icmp_signed("==", ech, ir.Constant(i8, 10), name="e.nl");
-    e_cr = self.builder.icmp_signed("==", ech, ir.Constant(i8, 13), name="e.cr");
-    e_ws = self.builder.or_(e_space, e_tab, name="ews1");
-    e_ws = self.builder.or_(e_ws, e_nl, name="ews2");
-    e_ws = self.builder.or_(e_ws, e_cr, name="ews3");
-    self.builder.cbranch(e_ws, end_dec_bb, end_done_bb);
-    # Only decrement when whitespace
-    self.builder.position_at_end(end_dec_bb);
-    self.builder.store(prev_end, end_alloca);
-    self.builder.branch(end_check_bb);
-    self.builder.position_at_end(end_done_bb);
-    final_end = self.builder.load(end_alloca, name="final.end");
+    # Leading scan: advance final_start over strip chars (only if do_left).
+    final_start = ir.Constant(i64, 0);
+    if do_left {
+        start_alloca = self.builder.alloca(i64, name="strip.start");
+        self.builder.store(ir.Constant(i64, 0), start_alloca);
+        start_check_bb = func.append_basic_block(name="strip.start.check");
+        start_body_bb = func.append_basic_block(name="strip.start.body");
+        start_inc_bb = func.append_basic_block(name="strip.start.inc");
+        start_done_bb = func.append_basic_block(name="strip.start.done");
+        self.builder.branch(start_check_bb);
+        self.builder.position_at_end(start_check_bb);
+        start_val = self.builder.load(start_alloca, name="start.cur");
+        in_range = self.builder.icmp_signed("<", start_val, slen, name="start.inrange");
+        self.builder.cbranch(in_range, start_body_bb, start_done_bb);
+        self.builder.position_at_end(start_body_bb);
+        ch_ptr = self.builder.gep(str_val, [start_val], name="start.ch.ptr");
+        ch = self.builder.load(ch_ptr, name="start.ch");
+        is_strip = self._emit_is_strip_char(ch, charset);
+        self.builder.cbranch(is_strip, start_inc_bb, start_done_bb);
+        self.builder.position_at_end(start_inc_bb);
+        next_start = self.builder.add(
+            start_val, ir.Constant(i64, 1), name="next.start"
+        );
+        self.builder.store(next_start, start_alloca);
+        self.builder.branch(start_check_bb);
+        self.builder.position_at_end(start_done_bb);
+        final_start = self.builder.load(start_alloca, name="final.start");
+    }
+    # Trailing scan: retreat final_end over strip chars (only if do_right).
+    final_end = slen;
+    if do_right {
+        end_alloca = self.builder.alloca(i64, name="strip.end");
+        self.builder.store(slen, end_alloca);
+        end_check_bb = func.append_basic_block(name="strip.end.check");
+        end_body_bb = func.append_basic_block(name="strip.end.body");
+        end_dec_bb = func.append_basic_block(name="strip.end.dec");
+        end_done_bb = func.append_basic_block(name="strip.end.done");
+        self.builder.branch(end_check_bb);
+        self.builder.position_at_end(end_check_bb);
+        end_val = self.builder.load(end_alloca, name="end.cur");
+        end_gt_start = self.builder.icmp_signed(
+            ">", end_val, final_start, name="end.gt.start"
+        );
+        self.builder.cbranch(end_gt_start, end_body_bb, end_done_bb);
+        self.builder.position_at_end(end_body_bb);
+        prev_end = self.builder.sub(end_val, ir.Constant(i64, 1), name="prev.end");
+        ech_ptr = self.builder.gep(str_val, [prev_end], name="end.ch.ptr");
+        ech = self.builder.load(ech_ptr, name="end.ch");
+        e_strip = self._emit_is_strip_char(ech, charset);
+        self.builder.cbranch(e_strip, end_dec_bb, end_done_bb);
+        self.builder.position_at_end(end_dec_bb);
+        self.builder.store(prev_end, end_alloca);
+        self.builder.branch(end_check_bb);
+        self.builder.position_at_end(end_done_bb);
+        final_end = self.builder.load(end_alloca, name="final.end");
+    }
     # Allocate result: end - start + 1 (for null terminator)
     result_len = self.builder.sub(final_end, final_start, name="result.len");
     alloc_size = self.builder.add(result_len, ir.Constant(i64, 1), name="alloc.size");

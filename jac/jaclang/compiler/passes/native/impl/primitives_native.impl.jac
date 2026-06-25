@@ -1042,105 +1042,25 @@ impl NativeStrEmitter.emit_replace(
 impl NativeStrEmitter.emit_strip(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return ctx.pass_ref._codegen_str_strip(target);
+    # strip(chars?) — both ends; whitespace when no char-set argument is given.
+    charset = args[0] if args else None;
+    return ctx.pass_ref._codegen_str_strip_chars(target, charset, True, True);
 }
 
 impl NativeStrEmitter.emit_lstrip(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # lstrip: skip leading whitespace, return new string
-    p = ctx.pass_ref;
-    b = get_builder(p);
-    i8 = ir.IntType(8);
-    i8p = i8.as_pointer();
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-    rc_alloc_fn = p.rc_alloc_fn;
-    isspace_fn = p._get_or_declare_extern("isspace", i32, [i32]);
-    strcpy_fn = p._get_or_declare_extern("strcpy", i8p, [i8p, i8p]);
-    slen = b.call(strlen_fn, [target], name="lstrip.len");
-    func = b.basic_block.function;
-    entry_bb = b.basic_block;
-    loop_bb = func.append_basic_block(name="lstrip.loop");
-    body_bb = func.append_basic_block(name="lstrip.body");
-    done_bb = func.append_basic_block(name="lstrip.done");
-    b.branch(loop_bb);
-    b.position_at_start(loop_bb);
-    idx = b.phi(i64, name="lstrip.idx");
-    idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-    at_end = b.icmp_unsigned(">=", idx, slen, name="lstrip.atend");
-    b.cbranch(at_end, done_bb, body_bb);
-    b.position_at_start(body_bb);
-    ch_ptr = b.gep(target, [idx], name="lstrip.ch.ptr");
-    ch = b.load(ch_ptr, name="lstrip.ch");
-    ch_i32 = b.zext(ch, i32, name="lstrip.ch.i32");
-    is_sp = b.call(isspace_fn, [ch_i32], name="lstrip.issp");
-    is_sp_bool = b.icmp_signed("!=", is_sp, ir.Constant(i32, 0), name="lstrip.issp.b");
-    next_idx = b.add(idx, ir.Constant(i64, 1), name="lstrip.next");
-    idx.add_incoming(next_idx, body_bb);
-    b.cbranch(is_sp_bool, loop_bb, done_bb);
-    b.position_at_start(done_bb);
-    start = b.phi(i64, name="lstrip.start");
-    start.add_incoming(idx, loop_bb);
-    start.add_incoming(idx, body_bb);
-    new_len = b.sub(slen, start, name="lstrip.newlen");
-    alloc_size = b.add(new_len, ir.Constant(i64, 1), name="lstrip.alloc");
-    p._set_rc_ctx("lstrip", "");
-    result = b.call(rc_alloc_fn, [alloc_size], name="lstrip.buf");
-    p._clear_rc_ctx();
-    start_ptr = b.gep(target, [start], name="lstrip.start.ptr");
-    b.call(strcpy_fn, [result, start_ptr]);
-    return result;
+    # lstrip(chars?) — leading only; whitespace when no char-set argument.
+    charset = args[0] if args else None;
+    return ctx.pass_ref._codegen_str_strip_chars(target, charset, True, False);
 }
 
 impl NativeStrEmitter.emit_rstrip(
     self, ctx: NativeEmitCtx, target: ir.Value, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    # rstrip: remove trailing whitespace
-    p = ctx.pass_ref;
-    b = get_builder(p);
-    i8 = ir.IntType(8);
-    i8p = i8.as_pointer();
-    i32 = ir.IntType(32);
-    i64 = ir.IntType(64);
-    strlen_fn = p._get_or_declare_extern("strlen", i64, [i8p]);
-    rc_alloc_fn = p.rc_alloc_fn;
-    isspace_fn = p._get_or_declare_extern("isspace", i32, [i32]);
-    memcpy_fn = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
-    slen = b.call(strlen_fn, [target], name="rstrip.len");
-    func = b.basic_block.function;
-    entry_bb = b.basic_block;
-    loop_bb = func.append_basic_block(name="rstrip.loop");
-    body_bb = func.append_basic_block(name="rstrip.body");
-    done_bb = func.append_basic_block(name="rstrip.done");
-    b.branch(loop_bb);
-    b.position_at_start(loop_bb);
-    end = b.phi(i64, name="rstrip.end");
-    end.add_incoming(slen, entry_bb);
-    is_zero = b.icmp_unsigned("==", end, ir.Constant(i64, 0), name="rstrip.iszero");
-    b.cbranch(is_zero, done_bb, body_bb);
-    b.position_at_start(body_bb);
-    prev = b.sub(end, ir.Constant(i64, 1), name="rstrip.prev");
-    ch_ptr = b.gep(target, [prev], name="rstrip.ch.ptr");
-    ch = b.load(ch_ptr, name="rstrip.ch");
-    ch_i32 = b.zext(ch, i32, name="rstrip.ch.i32");
-    is_sp = b.call(isspace_fn, [ch_i32], name="rstrip.issp");
-    is_sp_bool = b.icmp_signed("!=", is_sp, ir.Constant(i32, 0), name="rstrip.issp.b");
-    end.add_incoming(prev, body_bb);
-    b.cbranch(is_sp_bool, loop_bb, done_bb);
-    b.position_at_start(done_bb);
-    final_end = b.phi(i64, name="rstrip.final.end");
-    final_end.add_incoming(end, loop_bb);
-    final_end.add_incoming(end, body_bb);
-    alloc_size = b.add(final_end, ir.Constant(i64, 1), name="rstrip.alloc");
-    p._set_rc_ctx("rstrip", "");
-    result = b.call(rc_alloc_fn, [alloc_size], name="rstrip.buf");
-    p._clear_rc_ctx();
-    b.call(memcpy_fn, [result, target, final_end]);
-    null_ptr = b.gep(result, [final_end], name="rstrip.null.ptr");
-    b.store(ir.Constant(i8, 0), null_ptr);
-    return result;
+    # rstrip(chars?) — trailing only; whitespace when no char-set argument.
+    charset = args[0] if args else None;
+    return ctx.pass_ref._codegen_str_strip_chars(target, charset, False, True);
 }
 
 impl NativeStrEmitter.emit_removeprefix(
@@ -5927,6 +5847,14 @@ impl NativeBuiltinEmitter.emit_str(
     if p._is_bytes_value(arg_val) {
         return p._emit_bytes_repr(arg_val);
     }
+    # str(bool): honor the bool tag — CPython prints "True"/"False", not the
+    # integer repr. bool literals/locals lower to i1, so width==1 discriminates
+    # them from plain ints (which keep the %ld path below). (#6943 NA-8)
+    if isinstance(arg_val.type, ir.IntType) and arg_val.type.width == 1 {
+        true_s = p._make_global_string("True", name_prefix=".str.true");
+        false_s = p._make_global_string("False", name_prefix=".str.false");
+        return b.select(arg_val, true_s, false_s, name="str.bool");
+    }
     # str() of something already a string (char*) is the string itself.
     # Native strings and bound exception messages are both i8*, so str(e)
     # in `except E as e` returns the message rather than formatting the
@@ -5935,7 +5863,15 @@ impl NativeBuiltinEmitter.emit_str(
         if arg_val.type != i8p {
             return b.bitcast(arg_val, i8p, name="str.identity");
         }
-        return arg_val;
+        # str(None): None lowers to a null i8*; CPython prints "None". Guard the
+        # null here (a select needs no deref) so the result flows on as a real
+        # string instead of segfaulting downstream when print/concat reads it.
+        # A genuine (non-null) string passes through unchanged. (#6943 NA-1)
+        none_s = p._make_global_string("None", name_prefix=".str.none");
+        is_null = b.icmp_unsigned(
+            "==", arg_val, ir.Constant(i8p, None), name="str.isnone"
+        );
+        return b.select(is_null, none_s, arg_val, name="str.ornone");
     }
     rc_alloc_fn = p.rc_alloc_fn;
     buf_ptr = b.call(rc_alloc_fn, [ir.Constant(ir.IntType(64), 32)], name="str.buf");

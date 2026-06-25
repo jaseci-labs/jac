@@ -9,6 +9,9 @@
 //!   zig build test                 # launcher unit tests (no libpython/pbs)
 //!   zig build stub                 # just the launcher stub (no payload)
 //!   zig build                      # the full jac binary -> zig-out/bin/jac
+//!   zig build -Ddev                # FAST dev binary: don't bundle the compiler,
+//!                                  #   link it live from the build root instead
+//!   zig build -Djaclang-dir=PATH   # like -Ddev but link an explicit compiler dir
 //!   zig build -Dpayload=PATH       # pack a prebuilt payload (skip fetch+mkpayload)
 //!   zig build -Dpayload-progress   # stream the payload build live (no caching)
 //!   zig build -Dtarget=aarch64-macos
@@ -174,21 +177,56 @@ pub fn build(b: *std.Build) void {
         if (b.option(bool, "skip-precompile", "mkpayload: skip the JIR precompile (faster link validation)") orelse false) {
             mk.addArg("--skip-precompile");
         }
+        // Editable dev binary: ship a payload WITHOUT the bundled compiler and
+        // reroute `import jaclang` to a live source dir at startup (see
+        // _jac_finder.py apply_dev_source_override). This skips the ~100 MB tree
+        // copy AND the JIR precompile, so the build is much faster -- for
+        // fresh_env / contributors who run the editable dev loop anyway. The
+        // resulting binary is NOT distributable: it hard-depends on `link_dir`.
+        //   -Ddev            link the build root (jaclang/ in THIS tree; the case
+        //                    fresh_env wants -- typeshed is already fetched here).
+        //   -Djaclang-dir=P  link an explicit dir containing jaclang/ (abs, or
+        //                    resolved against the build root if relative).
+        const opt_jaclang_dir = b.option([]const u8, "jaclang-dir", "Editable dev binary: link the compiler from this dir (containing jaclang/) instead of bundling it");
+        const opt_dev = b.option(bool, "dev", "Editable dev binary: link the compiler from the build root instead of bundling it (implies skip-precompile)") orelse false;
+        const link_dir: ?[]const u8 = if (opt_jaclang_dir) |d|
+            (if (std.fs.path.isAbsolute(d)) d else b.pathFromRoot(d))
+        else if (opt_dev) b.pathFromRoot(".") else null;
+        if (link_dir) |d| {
+            mk.addArg(b.fmt("--link-source={s}", .{d}));
+            // The linked binary serves the compiler from `d`, so the LLVMPY_*
+            // shim must be PLACED in that tree: the compile schedule imports the
+            // native passes, which ctypes-load the shim at import time -- there is
+            // no bundled copy to fall back on, so a shimless linked binary crashes
+            // even on `jac run`. Require the shim exactly like a normal build (its
+            // `place` step, wired above via `shim.place`, writes it in-tree).
+            if (jacllvm == null) std.debug.panic(
+                "-Ddev/-Djaclang-dir needs the LLVM shim placed under {s}/jaclang/compiler/passes/native/llvm/. " ++
+                    "Run `zig build fetch-llvm` once first (then -Ddev places it automatically).",
+                .{d},
+            );
+        }
+
         // Track the payload's real inputs so it repacks when any source changes.
         // NOTE: addDirectoryArg hashes only the directory PATH (Zig 0.16
         // Run.zig), not its contents -- a bare dir arg silently never
         // invalidates. addFileInput content-hashes each file, so enumerate the
-        // tree (this is what mkpayload bundles via the jaclang copy).
-        addTreeInputs(b, mk, "jaclang");
+        // tree (this is what mkpayload bundles via the jaclang copy). In
+        // linked-source mode none of jaclang/typeshed is bundled, so tracking it
+        // would only force needless repacks on every compiler edit -- skip it;
+        // the --link-source arg itself is the cache key for that mode.
+        if (link_dir == null) {
+            addTreeInputs(b, mk, "jaclang");
+            // PIN + TARBALL_SHA256 drive the fetched typeshed version; they live
+            // under jaclang/ (so addTreeInputs covers them) but list them
+            // explicitly as the cache-bust keys.
+            mk.addFileInput(b.path("jaclang/vendor/typeshed/PIN"));
+            mk.addFileInput(b.path("jaclang/vendor/typeshed/TARBALL_SHA256"));
+        }
         mk.addFileInput(b.path("_jac_finder.py"));
         mk.addFileInput(b.path("sitecustomize.py"));
         mk.addFileInput(b.path("jac.toml"));
         mk.addFileInput(b.path("launcher/payload.zig"));
-        // PIN + TARBALL_SHA256 drive the fetched typeshed version; they live
-        // under jaclang/ (so addTreeInputs covers them) but list them explicitly
-        // as the cache-bust keys.
-        mk.addFileInput(b.path("jaclang/vendor/typeshed/PIN"));
-        mk.addFileInput(b.path("jaclang/vendor/typeshed/TARBALL_SHA256"));
         break :payload out;
     };
 
@@ -240,8 +278,7 @@ fn addLlvmShim(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     // neither has LLVM, return null and the build fails at mkpayload with a
     // "run `zig build fetch-llvm`" message (so fetch-llvm itself still configures
     // before LLVM exists). The shim is required -- there is no wheel fallback.
-    const llvm_dir = b.option([]const u8, "llvm-dir",
-        "Extracted LLVM 20.1.x dir (default: the fetch-llvm cache .llvm-build/...)") orelse
+    const llvm_dir = b.option([]const u8, "llvm-dir", "Extracted LLVM 20.1.x dir (default: the fetch-llvm cache .llvm-build/...)") orelse
         (llvmCacheDir(b, target) orelse return null);
     const io = b.graph.io;
     const libdir = b.fmt("{s}/lib", .{llvm_dir});
