@@ -22,7 +22,7 @@ import from jac_scale.identity_storage { IdentityTakenError }
 import from jac_scale.runtime.middleware.rate_limit {
     InProcessRateLimiter
 }
-import from jac_scale.utils { authenticate_or_fail }
+import from jac_scale.shared.utils { authenticate_or_fail }
 
 glob _forgot_password_limiter: InProcessRateLimiter | None = None,
      _send_verification_limiter: InProcessRateLimiter | None = None;

@@ -1,4 +1,4 @@
-import from jac_scale.utils { authenticate_or_fail }
+import from jac_scale.shared.utils { authenticate_or_fail }
 import from jac_scale._optdeps.pymongo { PyMongoError }
 
 """Map an exception to the caller-facing TransportResponse.

@@ -23,7 +23,7 @@ import from jaclang.runtimelib.server { JacAPIServer as JServer }
 import from jaclang.runtimelib.server { JsonValue }
 import from jaclang.runtimelib.transport { TransportResponse, Meta, MessageType }
 import from fastapi_sso.sso.google { GoogleSSO }
-import from jac_scale.utils { generate_random_password, _extract_path_param_names }
+import from jac_scale.shared.utils { generate_random_password, _extract_path_param_names }
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.webhook.webhook { ApiKeyManager, WebhookUtils }
 import from jac_scale.observability.metrics { MetricsCollector }
@@ -44,13 +44,13 @@ import from jac_scale.admin.ops { JacAPIServerOps }
 import from jac_scale.admin.deploy_health { JacAPIServerDeployHealth }
 import from jac_scale.admin.network { JacAPIServerNetwork }
 import from jac_scale.admin.podenv { JacAPIServerPodEnv }
-import from jac_scale.enums { Platforms, Operations }
+import from jac_scale.shared.enums { Platforms, Operations }
 import from jac_scale.scheduler.scheduler { JacScaleScheduler, TriggerSpec }
 import from jaclang.runtimelib.builtin { ScheduleTrigger }
 import from jaclang.jac0core.constant { Constants as Con }
 import traceback;
 import from urllib.parse { quote }
-import from jac_scale.utils { authenticate_or_fail, is_safe_loopback_redirect }
+import from jac_scale.shared.utils { authenticate_or_fail, is_safe_loopback_redirect }
 import from jac_scale.auth_models {
     RegisterRequest,
     LoginRequest,

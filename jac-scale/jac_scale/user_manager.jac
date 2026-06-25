@@ -5,8 +5,8 @@ import from fastapi { Request, Response }
 import from contextvars { ContextVar }
 import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
-import from jac_scale.enums { Platforms, Operations }
-import from jac_scale.utils { generate_random_password, is_safe_loopback_redirect }
+import from jac_scale.shared.enums { Platforms, Operations }
+import from jac_scale.shared.utils { generate_random_password, is_safe_loopback_redirect }
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.sso.provider { SSOProvider, SSOUserInfo }
 import from jac_scale.identity_storage {

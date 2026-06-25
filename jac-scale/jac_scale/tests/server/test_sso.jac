@@ -15,12 +15,12 @@ import from fastapi { Request }
 import from fastapi.responses { JSONResponse, RedirectResponse }
 
 import from jac_scale.config_loader { reset_scale_config }
-import from jac_scale.utils { is_safe_loopback_redirect }
+import from jac_scale.shared.utils { is_safe_loopback_redirect }
 import from jac_scale.sso.google { GoogleSSOProvider }
 import from jac_scale.sso.apple { AppleSSOProvider }
 import from jac_scale.sso.github { GithubSSOProvider }
 import from jac_scale.serve { JacAPIServer }
-import from jac_scale.enums { Platforms, Operations }
+import from jac_scale.shared.enums { Platforms, Operations }
 import from jac_scale.user_manager { JacScaleUserManager }
 import from jaclang.runtimelib.transport { TransportResponse }
 

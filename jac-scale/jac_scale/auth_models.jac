@@ -3,7 +3,7 @@ import json;
 import re;
 import from typing { Annotated, Literal, Union }
 import from pydantic { BaseModel, Field, EmailStr, AfterValidator }
-import from jac_scale.enums { CredentialType }
+import from jac_scale.shared.enums { CredentialType }
 
 glob PROFILE_MAX_KEYS: int = 20,
      PROFILE_MAX_KEY_LENGTH: int = 64,
