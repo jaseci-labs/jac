@@ -19,8 +19,8 @@ import from datetime { UTC, datetime, timedelta }
 import from typing { Any }
 import from uuid { uuid4 }
 import from jac_scale.config_loader { get_scale_config }
-import from jac_scale.db { get_mongo_client }
-import from jac_scale.mongo_db { MongoDb }
+import from jac_scale.persistence.db { get_mongo_client }
+import from jac_scale.persistence.mongo_db { MongoDb }
 
 glob _auth_token_store: (AuthTokenStore | None) = None,
      logger = logging.getLogger(__name__);

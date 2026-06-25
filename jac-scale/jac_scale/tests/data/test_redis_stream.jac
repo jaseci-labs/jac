@@ -7,7 +7,7 @@ import contextlib;
 import time;
 import threading;
 import from testcontainers.redis { RedisContainer }
-import from jac_scale.db { close_all_db_connections, get_redis_client }
+import from jac_scale.persistence.db { close_all_db_connections, get_redis_client }
 import from jac_scale.events.broker { Event, RetryPolicy }
 import from jac_scale.events.streams.redis { RedisEventStream }
 

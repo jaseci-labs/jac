@@ -1,5 +1,5 @@
 """Redis-backed database implementation."""
-import from jac_scale.db { Db, DeleteResult }
+import from jac_scale.persistence.db { Db, DeleteResult }
 import from jac_scale._optdeps.redis { Redis }
 
 obj RedisDb(Db) {

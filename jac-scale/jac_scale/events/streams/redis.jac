@@ -10,7 +10,7 @@ import from jac_scale.events.broker {
     HealthStatus
 }
 import from jac_scale._optdeps.redis { Redis }
-import from jac_scale.db { get_redis_client }
+import from jac_scale.persistence.db { get_redis_client }
 import logging;
 import json;
 import socket;

@@ -1,5 +1,5 @@
 """MongoDB implementation for MongoDb."""
-import from jac_scale._db_helpers { _validate_not_read_only }
+import from jac_scale.persistence._db_helpers { _validate_not_read_only }
 
 """Return a parsed ObjectId, or None if key is not valid ObjectId hex."""
 def _as_object_id(key: str) -> ObjectId | None {

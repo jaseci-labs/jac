@@ -1,5 +1,5 @@
 """MongoDB-backed database implementation."""
-import from jac_scale.db {
+import from jac_scale.persistence.db {
     Db,
     InsertResult,
     InsertManyResult,

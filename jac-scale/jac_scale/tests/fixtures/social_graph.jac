@@ -3,7 +3,7 @@
 Graph shape:  Root --> User --> Post
               (each User can have multiple Posts)
 """
-import from jac_scale.lib { kvstore }
+import from jac_scale.persistence.lib { kvstore }
 
 node User {
     has name: str,

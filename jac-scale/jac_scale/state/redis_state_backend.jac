@@ -2,7 +2,7 @@
 
 Implements the same `StateBackend` port as `InProcessStateBackend` over a Redis
 client, so rate-limit buckets, scheduler leader locks, and the token store stay
-coherent across pods. The redis client is reused from `jac_scale.db`
+coherent across pods. The redis client is reused from `jac_scale.persistence.db`
 (`get_redis_client`, which reads `[plugins.scale.database].redis_url`); redis is
 an optional dependency, so the import is guarded and a missing/unreachable redis
 surfaces as a clear error in postinit rather than an obscure failure later.
@@ -20,11 +20,11 @@ obj RedisStateBackend(StateBackend) {
     def postinit {
         if self.client is None {
             try {
-                import from jac_scale.db { get_redis_client }
+                import from jac_scale.persistence.db { get_redis_client }
             } except ImportError as e {
                 raise RuntimeError(
                     "RedisStateBackend requires the redis client helper "
-                    + "(jac_scale.db.get_redis_client); install the optional "
+                    + "(jac_scale.persistence.db.get_redis_client); install the optional "
                     + "'data' dependency group. Original error: "
                     + str(e)
                 );

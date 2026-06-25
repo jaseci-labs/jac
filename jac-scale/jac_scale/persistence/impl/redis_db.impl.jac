@@ -1,6 +1,6 @@
 """Redis implementation for RedisDb."""
 import json;
-import from jac_scale._db_helpers { _validate_not_read_only }
+import from jac_scale.persistence._db_helpers { _validate_not_read_only }
 
 """Generate Redis key in format: {db_name}:{col_name}:{key}."""
 def _redis_key(db_name: str, col_name: str, key: str) -> str {

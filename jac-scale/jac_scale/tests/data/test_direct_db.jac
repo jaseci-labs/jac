@@ -5,8 +5,8 @@ import os;
 import from collections.abc { Generator }
 import from testcontainers.mongodb { MongoDbContainer }
 import from testcontainers.redis { RedisContainer }
-import from jac_scale.db { close_all_db_connections }
-import from jac_scale.lib { kvstore }
+import from jac_scale.persistence.db { close_all_db_connections }
+import from jac_scale.persistence.lib { kvstore }
 
 # Helper to safely close DB connections
 def cleanup_connections {

@@ -18,7 +18,7 @@ import from testcontainers.redis { RedisContainer }
 import from jaclang.jac0core.archetype { Root }
 import from jac_scale.memory.context { JScaleExecutionContext }
 import from jac_scale.memory.memory_hierarchy { _process_cache, MongoBackend }
-import from jac_scale.db { close_all_db_connections }
+import from jac_scale.persistence.db { close_all_db_connections }
 
 def get_free_port -> int {
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {

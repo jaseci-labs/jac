@@ -10,7 +10,7 @@ get_db convenience constructor.
 
 def get_db -> Db {
     # Local imports avoid a circular dependency: db.impl -> mongo_db -> db.
-    import from jac_scale.db { get_mongo_client }
-    import from jac_scale.mongo_db { MongoDb }
+    import from jac_scale.persistence.db { get_mongo_client }
+    import from jac_scale.persistence.mongo_db { MongoDb }
     return MongoDb(client=get_mongo_client(), db_name='jac_db');
 }

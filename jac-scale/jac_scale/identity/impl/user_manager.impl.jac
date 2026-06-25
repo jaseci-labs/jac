@@ -18,7 +18,7 @@ impl JacScaleUserManager.postinit -> None {
     mongodb_uri = db_config.get('mongodb_uri');
 
     if mongodb_uri is not None {
-        import from jac_scale.db { get_mongo_client }
+        import from jac_scale.persistence.db { get_mongo_client }
         client = get_mongo_client();
         db = client['jac_db'];
         self._identity_storage = MongoIdentityStorage(users_col=db['users']);
