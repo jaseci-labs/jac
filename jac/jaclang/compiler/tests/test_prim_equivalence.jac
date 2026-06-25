@@ -232,6 +232,43 @@ test "any dispatch" {
     );
 }
 
+# --- native `any`/`str()` stdlib gaps closed for #6943 (gates a pure-Jac json) ---
+# Scalar/string congruence: str(None) (NA-1), str(bool) (NA-8),
+# strip/lstrip/rstrip(chars) (NA-9), empty-string truthiness in a ternary (NA-10).
+test "native any congruence" {
+    run_with_both(
+        "native_any_stdlib_gaps.jac",
+        "congruence_check_py",
+        "congruence_check_cl",
+        "congruence_check_na",
+        require=["na"]
+    );
+}
+
+# Produce + consume `any` containers: subscript an `any` (NA-3), iterate an `any`
+# (NA-4), len() on an `any` (NA-5), empty `list[any] = []` (NA-6).
+test "native any container ops" {
+    run_with_both(
+        "native_any_stdlib_gaps.jac",
+        "any_ops_check_py",
+        "any_ops_check_cl",
+        "any_ops_check_na",
+        require=["na"]
+    );
+}
+
+# The json.dumps object-branch shape: isinstance-guarded any->dict narrow +
+# dict-key iteration + `str +=` / `out = out + k` (NA-2, was a SIGSEGV/UAF).
+test "native any guarded consume" {
+    run_with_both(
+        "native_any_stdlib_gaps.jac",
+        "guard_consume_check_py",
+        "guard_consume_check_cl",
+        "guard_consume_check_na",
+        require=["na"]
+    );
+}
+
 # --- dict insertion-order lock (issue #6404 congruence #3, gates json) ---
 test "dict order" {
     run_with_both(

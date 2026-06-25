@@ -877,6 +877,33 @@ impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
         if self._is_bytes_value(val) {
             return self._emit_bytes_truthy(val);
         }
+        # str (i8*): falsy when EMPTY ("" → first byte '\0'), like the containers
+        # above — NOT just when null. The old null-only test made "" truthy
+        # everywhere (`if ""`, ternary `x if "" else y`, `and`/`or`), diverging
+        # from CPython where "" is falsy (#6943 NA-10). Guard the deref so a null
+        # str (None) stays falsy without reading through the null pointer.
+        i8p = ir.IntType(8).as_pointer();
+        if val.type == i8p {
+            func = self.builder.function;
+            cur_bb = self.builder.block;
+            load_bb = func.append_basic_block(name="tobool.str.load");
+            merge_bb = func.append_basic_block(name="tobool.str.end");
+            is_null = self.builder.icmp_unsigned(
+                "==", val, ir.Constant(i8p, None), name="tobool.str.null"
+            );
+            self.builder.cbranch(is_null, merge_bb, load_bb);
+            self.builder.position_at_end(load_bb);
+            first = self.builder.load(val, name="tobool.str.ch");
+            nonempty = self.builder.icmp_unsigned(
+                "!=", first, ir.Constant(ir.IntType(8), 0), name="tobool.str.ne"
+            );
+            self.builder.branch(merge_bb);
+            self.builder.position_at_end(merge_bb);
+            phi = self.builder.phi(ir.IntType(1), name="tobool.str");
+            phi.add_incoming(ir.Constant(ir.IntType(1), 0), cur_bb);
+            phi.add_incoming(nonempty, load_bb);
+            return phi;
+        }
         null_ptr = ir.Constant(val.type, None);
         return self.builder.icmp_unsigned("!=", val, null_ptr, name="tobool");
     }
