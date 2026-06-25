@@ -47,7 +47,7 @@ import from "/usr/lib/libSystem.B.dylib" {
 # we never pass structs by value -- only pointer buffers built as fresh strings.
 #
 # Constants that differ from Linux/glibc are annotated with the glibc value for
-# reference (see PLAN-tui-macos.md §"The real crux is the flag table").
+# reference (glibc value in parentheses).
 glob O_RDWR: int = 2,
      O_NONBLOCK: int = 4,  # xnu: 0x4    (linux glibc: 0x800)
      F_GETFL: int = 3,
@@ -160,7 +160,7 @@ def tty_open -> int {
 def tty_fd -> int {
     # The opened tty fd (>= 10 after relocation), or -1 if not open. Lets the
     # in-process host (host.na.jac) render/poll against the tty it owns rather
-    # than fd 1, which in-process is the sv process's real stdout (see plan §2).
+    # than fd 1, which in-process is the sv process's real stdout.
     return g_tty.fd;
 }
 

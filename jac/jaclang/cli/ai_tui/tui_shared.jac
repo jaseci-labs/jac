@@ -4,8 +4,7 @@ The frame/command grammar (ai_tui/PROTOCOL.md) is identical across the subproces
 and in-process transports; only the carrier differs. These helpers are the one
 copy of the wire grammar + command dispatcher + project-file/tty plumbing that
 `run_tui_session` (subprocess) and `run_tui_in_process` (in-process) both import,
-so the two backends can never drift on the protocol. See PLAN-tui-in-process
-§3/§6/§12.
+so the two backends can never drift on the protocol.
 
 `_frame_blob` is the body of the old `_write_frame` (it joins the same KEY:VALUE
 lines, just returns the string instead of flushing it to a pipe). `_dispatch_cmd`

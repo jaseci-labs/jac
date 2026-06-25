@@ -193,7 +193,7 @@ def ipc_read_frame_v2(state: TuiState) -> bool {
 }
 
 # In-process command sink. Native enqueues command strings here when there is no
-# IPC pipe fd; the sv host drains them via tui_next_command() (Phase 1). Must be
+# IPC pipe fd; the sv host drains them via tui_next_command(). Must be
 # an `obj` glob with list/cursor FIELDS -- bare scalar globs don't persist writes
 # across :pub calls in NA codegen (jaseci-labs/jaseci#6816).
 obj CmdQueue {
@@ -237,7 +237,7 @@ def ipc_send_cmd(fd: int, cmd: str) {
 }
 
 # Pull the next queued in-process command (FIFO), "" when drained. The sv host
-# calls this in a loop after tui_handle_key (plan §5/§8) and feeds each line to
+# calls this in a loop after tui_handle_key and feeds each line to
 # _dispatch_cmd -- the exact SEND:/STOP/RESET/QUIT/APPLY: grammar as the pipe.
 def ipc_next_command -> str {
     return cmd_queue.pop_next();

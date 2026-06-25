@@ -1,16 +1,16 @@
-"""In-process TUI host: the C-ABI :pub surface the sv agent dlopens (plan §5).
+"""In-process TUI host: the C-ABI :pub surface the sv agent dlopens.
 
 Built as a shared library:  jac nacompile host.na.jac --shared -o bin/libtui.so
-Loaded from the sv side via ctypes.CDLL; see jaclang/cli/ai_tui/tui_host (Phase 2).
+Loaded from the sv side via ctypes.CDLL; see jaclang/cli/ai_tui/tui_host.jac.
 
 The TUI owns its own TuiState + DiffEngine as module globs -- they never cross
-the ABI as Jac objects, so no jac_retain/jac_release dance is needed (plan §4).
-Only scalars and the frame/command `str` (c_char_p) cross. na -> sv is a PULL
+the ABI as Jac objects, so no jac_retain/jac_release dance is needed. Only
+scalars and the frame/command `str` (c_char_p) cross. na -> sv is a PULL
 QUEUE, not callbacks: tui_handle_key enqueues commands into ipc.na.jac's
-cmd_queue and the host drains them via tui_next_command (plan §4/§5/§8).
+cmd_queue and the host drains them via tui_next_command.
 
-Threading contract the host MUST honor (plan §9): tui_wait_key is the ONLY
-lock-free export (pure poll, GIL released); tui_apply_frame / tui_handle_key /
+Threading contract the host MUST honor: tui_wait_key is the ONLY lock-free
+export (pure poll, GIL released); tui_apply_frame / tui_handle_key /
 tui_render all read or mutate TuiState and MUST run under the host's render lock.
 """
 
@@ -129,9 +129,8 @@ def:pub tui_apply_frame(blob: str) -> int {
 # Block on poll(2) over the tty for up to `timeout_ms`. PURE I/O: does NOT touch
 # TuiState, does NOT dispatch, does NOT render. Safe to call LOCK-FREE (the GIL
 # is released for the poll). Returns 1 if a key is ready, 0 on timeout. (The raw
-# key is read under the lock in tui_handle_key; see plan §5/§9. The stdin pollfd
-# slot is irrelevant in-process -- there is no IPC stdin; a tty-only poll is a
-# Phase-2 refinement.)
+# key is read under the lock in tui_handle_key. The stdin pollfd
+# slot is irrelevant in-process -- there is no IPC stdin.)
 def:pub tui_wait_key(timeout_ms: int) -> int {
     tty_poll(timeout_ms);
     return tty_key_ready();
@@ -171,7 +170,7 @@ def:pub tui_quit_requested -> int {
 }
 
 # Render if dirty into the tty fd the host owns (NOT fd 1 -- in-process fd 1 is
-# the sv stdout; see plan §2). Host holds the lock. Returns 1 if it painted, 0 if
+# the sv stdout). Host holds the lock. Returns 1 if it painted, 0 if
 # nothing changed (or the tty is not open).
 def:pub tui_render -> int {
     fd: int = tty_fd();
@@ -190,9 +189,8 @@ def:pub tui_render -> int {
 }
 
 # Headless render: paint a full snapshot of the current TuiState into diff's
-# in-memory buffer (fd = -1) and return it. No TTY required -- this is the
-# Phase-1 gate path (feed a frame via tui_apply_frame, then assert the rendered
-# bytes). tui_render() is the real on-tty path used in Phase 2.
+# in-memory buffer (fd = -1) and return it. No TTY required -- feed a frame via
+# tui_apply_frame, then assert the rendered bytes. tui_render() is the on-tty path.
 def:pub tui_render_buf -> str {
     host_diff.invalidate();
     host_state.dirty = True;

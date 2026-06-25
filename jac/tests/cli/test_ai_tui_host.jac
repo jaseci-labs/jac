@@ -1,5 +1,4 @@
-"""Regression tests for the in-process `jac ai --tui` backend (PLAN-tui-in-process
-Phase 3).
+"""Regression tests for the in-process `jac ai --tui` backend.
 
 `test_ai_tui_bridge.jac` covers the *subprocess* transport; this file covers the
 *in-process* one: the `TuiHost` ctypes binding to `ai_tui_na/bin/libtui.so` and

@@ -108,10 +108,10 @@ echo "==> Compiling $BINNAME ..."
 "${JAC[@]}" nacompile tui.na.jac ${XFLAGS:+$XFLAGS} -o "bin/$BINNAME"
 echo "==> Done. Binary: $SCRIPT_DIR/bin/$BINNAME"
 
-# ── build in-process shared library (host.na.jac :pub surface, plan §5/§11.2) ─
+# ── build in-process shared library (host.na.jac :pub surface) ─
 # Explicit -o keeps the exact path (no lib<stem>.so renaming); the sv host
-# ctypes.CDLL's this. Needs the PT_GNU_STACK compiler fix (§11.1, already landed)
-# so CPython's dlopen accepts the .so on a hardened kernel.
+# ctypes.CDLL's this. Needs the PT_GNU_STACK compiler fix so CPython's dlopen
+# accepts the .so on a hardened kernel.
 echo "==> Compiling $LIBNAME (in-process host) ..."
 "${JAC[@]}" nacompile host.na.jac --shared ${XFLAGS:+$XFLAGS} -o "bin/$LIBNAME"
 echo "==> Done. Shared lib: $SCRIPT_DIR/bin/$LIBNAME"

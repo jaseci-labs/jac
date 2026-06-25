@@ -3,7 +3,7 @@
 Implements the same function surface as libc_tty.linux.na.jac. Attaches to
 the parent console (parent-console v1 mode); no ConPTY (v2 follow-up).
 
-KEY TRANSLATION (the crux — see PLAN-tui-windows.md §"The real crux"):
+KEY TRANSLATION:
 ReadConsoleInputW delivers INPUT_RECORD structs; each keystroke is a discrete
 KEY_EVENT. Unlike the Linux byte stream, no coalescing is needed: arrow keys
 arrive as VK_UP/VK_DOWN/... records and map directly to the escape strings

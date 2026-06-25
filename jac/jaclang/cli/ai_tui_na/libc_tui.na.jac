@@ -147,7 +147,7 @@ def tty_open -> int {
 def tty_fd -> int {
     # The opened tty fd (>= 10 after relocation), or -1 if not open. Lets the
     # in-process host (host.na.jac) render/poll against the tty it owns rather
-    # than fd 1, which in-process is the sv process's real stdout (see plan §2).
+    # than fd 1, which in-process is the sv process's real stdout.
     return g_tty.fd;
 }
 

@@ -33,7 +33,33 @@ env:
   JAC_NO_DEV_SOURCE: "1"
 
 jobs:
+  # Cheap path filter on a free GitHub-hosted runner, mirroring the gate in
+  # test-jaseci.yml. test-binary only exercises jac/tests/, so a PR touching
+  # none of jac core, this workflow, or setup-jac cannot affect it. `build`
+  # below is the single gate point: on PRs it (and its test-compiler /
+  # test-runtime dependents, which `needs: build`) skip unless `core` is true;
+  # on push/dispatch everything always runs, so main and feat/** keep full
+  # coverage regardless of the filter. If build/test-* are required
+  # branch-protection checks, configure protection to tolerate the skip (same
+  # model test-jaseci.yml already relies on).
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            core:
+              - 'jac/**'
+              - '.github/workflows/test-binary.yml'
+              - '.github/actions/setup-jac/**'
+
   build:
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       # typeshed stdlib stubs are now vendored as plain files (no submodule);

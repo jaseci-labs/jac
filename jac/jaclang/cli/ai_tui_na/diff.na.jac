@@ -16,7 +16,7 @@ import from .terminal { term_sync_start, term_sync_end }
 glob _BG: str = "\033[48;2;18;18;28m",
      _RESET: str = "\033[0m";
 
-# Headless render sink (Decision C, plan §15-C): when paint() is called with
+# Headless render sink: when paint() is called with
 # fd < 0 the byte stream is appended here instead of written to a tty, so the
 # in-process host can render into memory for tests (tui_render_buf) with no TTY.
 # Must be an `obj` glob with a string FIELD -- a bare scalar glob would not

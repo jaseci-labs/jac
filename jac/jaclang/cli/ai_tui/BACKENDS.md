@@ -40,8 +40,9 @@ Selection and spawning live in
   `ipc.na.jac`, `tui.na.jac`, and related modules under `ai_tui_na/`.
 - Renders to `/dev/tty` (stdio remapped via `libc_tty.na.jac`) so process
   stdin/stdout stay the protocol pipes.
-- **Platform:** Linux (and WSL) only today. macOS and Windows port plans are in
-  `PORTING.md`.
+- **Platform:** Linux/WSL (`libc_tty.linux.na.jac`), macOS (`libc_tty.darwin.na.jac`),
+  Windows (`console.win32.na.jac`). `build.sh` selects the backend for the host
+  (override with `JAC_AI_TUI_TARGET`).
 
 ## Environment passed to the sidecar
 
@@ -74,7 +75,8 @@ from the control plane.
 - Renders to the controlling tty the native side opens itself (`tui_init`'s
   `tty_dev`); the driver redirects the agent's real stdout/stderr to `/dev/null`
   for the session so stray output can't corrupt the alt-screen.
-- **Platform:** Linux (and WSL) only today, same as the sidecar.
+- **Platform:** Linux/WSL, macOS, and Windows (`libtui.so` / `libtui.dylib` /
+  `tui.dll`), same targets as the sidecar.
 
 ## Adding a new backend
 

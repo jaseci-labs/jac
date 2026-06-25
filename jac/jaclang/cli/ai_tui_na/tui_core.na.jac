@@ -1,7 +1,7 @@
 """Shared TUI lifecycle helpers: setup / loop-once / teardown.
 
 Factored out of tui.na.jac so the subprocess entry (tui.na.jac) and the
-in-process host (host.na.jac, Phase 1) drive the same renderer through one set
+in-process host (host.na.jac) drive the same renderer through one set
 of helpers -- no duplication. These touch libc / g_tty and must NEVER run during
 glob init: call them from `with entry` or a :pub export only.
 """
@@ -82,7 +82,7 @@ def tui_populate_state(
 
 # Enter the alt screen on `fd`, hide the cursor, enable mouse, sync the size and
 # mark dirty. Shared by both paths; the subprocess passes fd 1, the in-process
-# host passes the tty fd it owns (see plan §2).
+# host passes the tty fd it owns.
 def tui_enter_screen(state: TuiState, fd: int) {
     term_enter_alt_screen(fd);
     term_hide_cursor(fd);

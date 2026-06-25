@@ -33,9 +33,10 @@ The native renderer is loaded into the agent process as a shared library
   arg); the agent's own stdout/stderr fds are redirected away from that tty for
   the session's lifetime so stray output can't corrupt the alt-screen.
 
-See `../../../PLAN-tui-in-process.md` for the full design and the `tui_init` /
-`tui_apply_frame` / `tui_wait_key` / `tui_handle_key` / `tui_next_command` /
-`tui_quit_requested` / `tui_render` / `tui_shutdown` C-ABI surface.
+The C-ABI surface is defined in `ai_tui_na/host.na.jac` and bound by
+`ai_tui/tui_host.jac`: `tui_init`, `tui_apply_frame`, `tui_wait_key`,
+`tui_handle_key`, `tui_next_command`, `tui_quit_requested`, `tui_render`,
+`tui_shutdown`.
 
 ### Subprocess transport (`JAC_AI_TUI_BACKEND=subprocess`)
 

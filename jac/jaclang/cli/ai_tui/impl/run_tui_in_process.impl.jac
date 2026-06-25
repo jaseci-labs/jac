@@ -1,4 +1,4 @@
-"""In-process TUI driver (PLAN-tui-in-process §8).
+"""In-process TUI driver.
 
 Mirrors the subprocess backend's two-thread shape (feeder ≈ stream_writer,
 ticker ≈ cmd_reader) but both threads call into one in-process `TuiHost` over
@@ -6,7 +6,7 @@ ctypes instead of pipes. The render lock serializes every TuiState-touching call
 (apply_frame / handle_key / next_command / quit_requested / render); only the
 50 ms `wait_key` poll runs lock-free (GIL released). Commands are pulled into a
 local list under the lock and dispatched AFTER releasing it, so the render lock
-and the agent bus lock are never nested (§9).
+and the agent bus lock are never nested.
 """
 
 import from jaclang.cli.agent_api { AgentRequest }

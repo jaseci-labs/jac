@@ -1,13 +1,13 @@
 """ctypes binding to the in-process NA TUI shared library (libtui.so).
 
-This is the sv-side half of the in-process seam (PLAN-tui-in-process §5/§6). It
+This is the sv-side half of the in-process seam. It
 `ctypes.CDLL`s `ai_tui_na/bin/libtui.so` and wraps its eight `:pub` exports in a
 `TuiHost` object. na -> sv is a PULL QUEUE, not callbacks: there are no
 `CFUNCTYPE` trampolines and no keep-alive globals -- the host calls
 `next_command()` after each key to drain commands the native layer enqueued.
 
 Threading contract the caller (run_tui_in_process) MUST honor, mirrored from the
-native side (PLAN §9): `wait_key` is the ONLY lock-free call (pure poll(2), GIL
+native side: `wait_key` is the ONLY lock-free call (pure poll(2), GIL
 released for the duration of the foreign call); `apply_frame` / `handle_key` /
 `next_command` / `quit_requested` / `render` all read or mutate the native
 TuiState and MUST run under the host's render lock.
@@ -22,7 +22,7 @@ obj TuiHost {
     def load(lib_path: str) {
         # Resolve to an absolute path before CDLL: a bare name only works if it is
         # next to the loader or on the search path (a Windows footgun; harmless on
-        # Linux/macOS). See PLAN §16 "Windows DLL search path".
+        # Linux/macOS).
         import ctypes;
         import os;
 

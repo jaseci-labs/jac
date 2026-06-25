@@ -18,9 +18,6 @@ Related docs:
 | --- | -------- |
 | `PROTOCOL.md` | Wire format (frames + commands) - **do not change casually** |
 | `BACKENDS.md` | Binary path, spawn flags, env vars |
-| `PORTING.md` | macOS / Windows port plan |
-| `../../PLAN.md` | Feature roadmap and phase history |
-| `../../../agents.md` | Agent-oriented file map and protocol summary |
 
 ## Design goals
 
@@ -254,8 +251,9 @@ Full spec: `PROTOCOL.md`.
 
 ## Platform
 
-**Linux / WSL only** today. Terminal backend is `libc_tty.na.jac` (glibc FFI,
-`/dev/tty`, termios, poll). See `PORTING.md` for macOS and Windows.
+**Linux / WSL**, **macOS**, and **Windows** each ship a platform tty backend under
+`ai_tui_na/tty/` (`libc_tty.linux.na.jac`, `libc_tty.darwin.na.jac`,
+`console.win32.na.jac`). `build.sh` stages the matching backend at compile time.
 
 ## Testing
 
