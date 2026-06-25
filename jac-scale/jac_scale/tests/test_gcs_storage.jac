@@ -66,6 +66,46 @@ test "gcs delete returns false for missing blob" {
     assert storage.delete("missing/file.txt") == False;
 }
 
+test "gcs download raises FileNotFoundError for missing blob" {
+    import from google.cloud.exceptions { NotFound }
+
+    (storage, _, _, blob) = get_mock_gcs_storage();
+    blob.download_as_bytes.side_effect = NotFound("missing");
+
+    raised = False;
+    try {
+        storage.download("missing/file.txt");
+    } except FileNotFoundError {
+        raised = True;
+    }
+    assert raised;
+}
+
+test "gcs get_metadata raises FileNotFoundError for missing blob" {
+    import from google.cloud.exceptions { NotFound }
+
+    (storage, _, _, blob) = get_mock_gcs_storage();
+    blob.reload.side_effect = NotFound("missing");
+
+    raised = False;
+    try {
+        storage.get_metadata("missing/file.txt");
+    } except FileNotFoundError {
+        raised = True;
+    }
+    assert raised;
+}
+
+test "gcs copy returns false when source vanishes after exists check" {
+    import from google.cloud.exceptions { NotFound }
+
+    (storage, _, bucket_obj, blob) = get_mock_gcs_storage();
+    blob.exists.return_value = True;
+    bucket_obj.copy_blob.side_effect = NotFound("vanished");
+
+    assert storage.copy("dir/a.txt", "dir/c.txt") == False;
+}
+
 test "gcs list metadata copy move and url" {
     (storage, client, bucket_obj, blob) = get_mock_gcs_storage(
         prefix="app/", public=False

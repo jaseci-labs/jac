@@ -53,14 +53,20 @@ impl GcsStorage.download(
 ) -> (bytes | None) {
     key = self._resolve_key(source);
     blob = self._bucket.blob(key);
-    if destination is None {
-        return blob.download_as_bytes();
-    } elif isinstance(destination, str) {
-        blob.download_to_filename(destination);
-        return None;
-    } else {
-        blob.download_to_file(destination);
-        return None;
+    # Match LocalStorage: a missing object surfaces as a predictable, standard
+    # FileNotFoundError rather than leaking the vendor's NotFound exception.
+    try {
+        if destination is None {
+            return blob.download_as_bytes();
+        } elif isinstance(destination, str) {
+            blob.download_to_filename(destination);
+            return None;
+        } else {
+            blob.download_to_file(destination);
+            return None;
+        }
+    } except NotFound {
+        raise FileNotFoundError(f"Object not found in storage: {source}");
     }
 }
 
@@ -104,7 +110,14 @@ impl GcsStorage.list_files(
 impl GcsStorage.get_metadata(self: GcsStorage, path: str) -> dict[str, Any] {
     key = self._resolve_key(path);
     blob = self._bucket.blob(key);
-    blob.reload();
+    # blob.reload() hits the GCS metadata API and raises NotFound when the object
+    # is absent; translate it to the standard FileNotFoundError so callers get a
+    # predictable signal instead of a vendor exception (parity with LocalStorage).
+    try {
+        blob.reload();
+    } except NotFound {
+        raise FileNotFoundError(f"Object not found in storage: {path}");
+    }
     return {
         "size": blob.size,
         "modified": blob.updated,
@@ -123,7 +136,13 @@ impl GcsStorage.copy(self: GcsStorage, source: str, destination: str) -> bool {
         return False;
     }
 
-    new_blob = self._bucket.copy_blob(src_blob, self._bucket, new_name=dest_key);
+    # copy_blob raises NotFound if the source is deleted between the exists()
+    # check above and now (TOCTOU); treat that the same as a pre-check miss.
+    try {
+        new_blob = self._bucket.copy_blob(src_blob, self._bucket, new_name=dest_key);
+    } except NotFound {
+        return False;
+    }
     if self.public_read {
         new_blob.make_public();
     }
