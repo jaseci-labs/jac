@@ -1487,25 +1487,19 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                         if idx_val is None and idx_node?.start {
                             idx_val = self._codegen_expr(idx_node.start);
                         }
-                        if idx_val is not None
-                        and isinstance(target_val.type, ir.IntType) {
-                            _i64 = ir.IntType(64);
-                            _struct_ptr_t = self.struct_types[_rd_sname].as_pointer();
-                            arr_ptr = self.builder.inttoptr(
-                                target_val, _struct_ptr_t, name="arr.ptr"
-                            );
-                            if idx_val.type != _i64 {
-                                idx_val = self.builder.sext(
-                                    idx_val, _i64, name="arr.idx.i64"
-                                );
-                            }
-                            elem_ptr = self.builder.gep(
-                                arr_ptr, [idx_val], name="ptr.elem.ptr"
+                        # Require an i64 base handle: a coerced small clib struct
+                        # (SysV-ABI'd to i32/i16) is NOT a pointer-as-int and must
+                        # never be inttoptr'd here.
+                        if idx_val is not None and target_val.type == ir.IntType(64) {
+                            elem_ptr = self._clib_struct_elem_ptr(
+                                target_val, _rd_sname, idx_val
                             );
                             # Return element address as i64; field access via
                             # clib_local_struct_names uses inttoptr to recover ptr.
+                            # NOTE: this aliases the buffer element (C pointer
+                            # semantics) -- `c = buf[i]` does not copy the struct.
                             return self.builder.ptrtoint(
-                                elem_ptr, _i64, name="arr.elem.i64"
+                                elem_ptr, ir.IntType(64), name="arr.elem.i64"
                             );
                         }
                     }

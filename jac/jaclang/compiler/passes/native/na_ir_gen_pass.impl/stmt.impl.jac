@@ -864,22 +864,13 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 _idx_stored = True;
                             } elif _wr_sname is not None
                             and _wr_sname in self.struct_types
-                            and isinstance(target_val.type, ir.IntType) {
-                                _i64 = ir.IntType(64);
+                            and target_val.type == ir.IntType(64) {
+                                # i64 base handle only: a coerced small clib struct
+                                # (SysV-ABI'd to i32/i16) is not a pointer-as-int.
                                 _struct_t = self.struct_types[_wr_sname];
                                 _struct_ptr_t = _struct_t.as_pointer();
-                                arr_ptr = self.builder.inttoptr(
-                                    target_val, _struct_ptr_t, name="arr.ptr"
-                                );
-                                _wide_idx = (
-                                    idx_val
-                                        if idx_val.type == _i64
-                                        else self.builder.sext(
-                                            idx_val, _i64, name="arr.idx.i64"
-                                        )
-                                );
-                                elem_ptr = self.builder.gep(
-                                    arr_ptr, [_wide_idx], name="ptr.elem.ptr"
+                                elem_ptr = self._clib_struct_elem_ptr(
+                                    target_val, _wr_sname, idx_val
                                 );
                                 if isinstance(value.type, ir.IdentifiedStructType)
                                 and value.type == _struct_t {
@@ -894,8 +885,10 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                         elem_ptr
                                     );
                                     _idx_stored = True;
-                                } elif isinstance(value.type, ir.IntType) {
-                                    # value is i64 (pointer-as-int, e.g. from _clib_alloc_box)
+                                } elif value.type == ir.IntType(64) {
+                                    # value is an i64 pointer-as-int handle (e.g. from
+                                    # _clib_alloc_box). Restrict to i64 so a coerced
+                                    # struct value (i32 Color, etc.) is never deref'd.
                                     c_ptr = self.builder.inttoptr(
                                         value, _struct_ptr_t, name="arr.val.ptr"
                                     );
@@ -942,10 +935,12 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 } elif uni?.BuiltinType and isinstance(_redecl_tag, uni.BuiltinType) {
                     bare_redecl = _redecl_tag.value;
                 }
-                # Keep the clib struct tracking map in sync on typed re-declaration
-                # (#6707, #6708): a new clib struct annotation overrides the stale
+                # Keep the named-struct tracking map in sync on typed re-declaration
+                # (#6707, #6708): a new struct annotation overrides the stale
                 # mapping; a non-struct annotation clears it so subsequent field
                 # accesses don't use the wrong struct layout / GEP indices.
+                # Gate on struct_types (all native structs) so unstamped plain
+                # struct re-binds stay tracked, mirroring the param site.
                 if isinstance(_redecl_tag, uni.Name)
                 and _redecl_tag.value in self.struct_types {
                     self.clib_local_struct_names[var_name] = _redecl_tag.value;
@@ -1539,7 +1534,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             var_type = value.type;
             if nd.type_tag and nd.type_tag.tag {
                 tag_node = nd.type_tag.tag;
-                # Track clib struct local annotations for subscript codegen (#6707, #6708)
+                # Track named-struct local annotations for subscript / field-access
+                # codegen (#6707, #6708). Gate on struct_types (all native structs),
+                # not just clib_struct_names: an unstamped plain struct local (e.g.
+                # `c: Color = buf[i]`) is held as an i64 handle, so this name-keyed
+                # table is the only way _struct_name_of can recover its struct name.
                 if isinstance(tag_node, uni.Name)
                 and tag_node.value in self.struct_types {
                     self.clib_local_struct_names[var_name] = tag_node.value;

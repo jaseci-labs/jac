@@ -203,7 +203,12 @@ impl NaIRGenPass._prim_ir_types -> dict {
         'i32': ir.IntType(32),
         'i16': ir.IntType(16),
         'i8': ir.IntType(8),
+        'u64': ir.IntType(64),
+        'u32': ir.IntType(32),
+        'u16': ir.IntType(16),
+        'u8': ir.IntType(8),
         'bool': ir.IntType(1),
+        'float': ir.DoubleType(),
         'f64': ir.DoubleType(),
         'f32': ir.FloatType(),
         'str': ir.IntType(8).as_pointer(),
@@ -330,6 +335,24 @@ impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
         }
     }
     return None;
+}
+
+"""Compute the element StructName* for a clib struct array handle (#6707, #6708).
+`addr` is the i64 base handle, `struct_name` names a registered clib struct, and
+`idx_val` is the element index. Lowers as inttoptr(addr) -> StructName*, then a
+single-index GEP (advances one whole struct) after widening idx to i64."""
+impl NaIRGenPass._clib_struct_elem_ptr(
+    addr: ir.Value, struct_name: str, idx_val: ir.Value
+) -> ir.Value {
+    _i64 = ir.IntType(64);
+    _struct_ptr_t = self.struct_types[struct_name].as_pointer();
+    arr_ptr = self.builder.inttoptr(addr, _struct_ptr_t, name="arr.ptr");
+    _wide_idx = (
+        idx_val
+            if idx_val.type == _i64
+            else self.builder.sext(idx_val, _i64, name="arr.idx.i64")
+    );
+    return self.builder.gep(arr_ptr, [_wide_idx], name="ptr.elem.ptr");
 }
 
 """Return the lowered LLVM type of a checked list type's element, or None.

@@ -123,8 +123,18 @@ obj NaIRGenPass(ModuleCodegenPass) {
         clib_extern_names: set[str] = set(),
         clib_struct_names: set[str] = set(),
         clib_struct_abi_types: dict[str, ir.Type] = {},
-        # Maps local variable / parameter name → clib struct name for
-        # subscript codegen when annotations are unstamped (#6707, #6708).
+        # Maps local variable / parameter name → native struct name for
+        # subscript / field-access codegen when annotations are unstamped
+        # (#6707, #6708). Despite the "clib" name this tracks ALL native
+        # structs (clib AND plain Jac archetypes), because a struct annotation
+        # the checker never stamped lowers to an i64 handle either way, so the
+        # struct name can only be recovered from this name-keyed table.
+        # LIMITATION: the table is flat per-ability (no block scoping /
+        # shadowing) and keyed by name, so a name rebound to a different type
+        # in a nested scope can carry a stale mapping; a same-level redecl
+        # clears it (see _codegen_assignment). The deeper fix is stamping these
+        # annotations in the checker (it currently skips clib import blocks and
+        # leaves native def/param annotations unstamped).
         clib_local_struct_names: dict[str, str] = {},
         # Foreign declaration model (Phase 8): module universe for the
         # central collector, and its memoized result. The memo is keyed on
@@ -467,6 +477,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _list_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     # Native struct name from a checked instance type (handles T | None).
     def _struct_name_of(expr: (uni.UniNode | None)) -> (str | None);
+    # Element-pointer GEP for a clib struct array handle (#6707, #6708):
+    # inttoptr(addr_i64) -> StructName*, sext(idx) -> i64, GEP[idx]. The
+    # single-index GEP advances by one whole struct, giving array semantics.
+    # Returns the element StructName* (caller ptrtoint's it for reads / stores
+    # through it for writes). Shared by the read (expr) and write (stmt) paths.
+    def _clib_struct_elem_ptr(
+        addr: ir.Value, struct_name: str, idx_val: ir.Value
+    ) -> ir.Value;
     # Lowered LLVM type of a checked list type's element.
     def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     # Lowered LLVM element type of a checked Iterator[T] expression (#6403).
