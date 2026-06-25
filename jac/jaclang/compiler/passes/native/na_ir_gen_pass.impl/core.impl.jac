@@ -509,6 +509,37 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         mod_name = self._extract_import_module_name(imp);
         if mod_name {
             wq.append((mod_name, entry_base));
+            # Track the bound name of a flat `import json;` so a `json.dumps(x)`
+            # member call routes to the linked free function (issue #6964). A
+            # `import from json {...}` (from_loc set) brings its names into
+            # scope directly and needs no alias routing. Gate on actual
+            # resolution: a Mechanism-A `import os;` does NOT resolve to a
+            # bundled `.na.jac` here, so `os` is never aliased and its existing
+            # member intercepts (os.getcwd(), ...) are left untouched.
+            if imp.from_loc is None {
+                (_amod, _apath) = resolve_native_module(mod_name, entry_base);
+                if _apath is not None {
+                    for _it in (imp.items or []) {
+                        if isinstance(_it, uni.ModulePath) {
+                            _alias = (
+                                _it.alias.value
+                                    if (_it.alias and isinstance(_it.alias, uni.Name))
+                                    else (
+                                        _it.path[0].value
+                                            if (
+                                                _it.path
+                                                and isinstance(_it.path[0], uni.Name)
+                                            )
+                                            else None
+                                    )
+                            );
+                            if _alias {
+                                self._native_module_aliases.add(_alias);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -618,6 +649,28 @@ impl NaIRGenPass._register_imported_struct_types -> None {
 Skips clib imports (from "libname") and non-module imports."""
 impl NaIRGenPass._extract_import_module_name(imp: uni.Import) -> (str | None) {
     if not imp.from_loc or not isinstance(imp.from_loc, uni.ModulePath) {
+        # A flat `import json;` (no from_loc) naming a bundled / project-local
+        # na_stdlib module: the same cross-module machinery that serves
+        # `import from json {...}` registers its types, abilities, and glob
+        # init from this name. The caller filters non-resolving names via
+        # resolve_native_module, so only an actual `.na.jac` module survives
+        # (a Mechanism-A `import os` / `import sys` resolves to nothing here
+        # and is left to its codegen intercepts). See issue #6964.
+        if imp.from_loc is None and not imp.clib_decls and imp.items {
+            for _it in imp.items {
+                if isinstance(_it, uni.ModulePath) {
+                    _bare = _it.dot_path_str;
+                    if not _bare and _it.path {
+                        _bare = '.'.join(getattr(p, 'value', str(p)) for p in _it.path);
+                    }
+                    # Single-segment bundled modules only; a dotted flat import
+                    # (`import os.path;`) is not a bare-import-routed module.
+                    if _bare and "." not in _bare {
+                        return _bare;
+                    }
+                }
+            }
+        }
         return None;
     }
     # A native C-FFI import (`import from raylib { def ...; }`) is a shared

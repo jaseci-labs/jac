@@ -22,6 +22,23 @@ bundled one. A bundled module links through the existing cross-module machinery
 (binding population, then extern forward-decl, then `link_in`), on both the AOT
 (`jac nacompile`) and JIT execution paths.
 
+### Flat-import form (`import json; json.dumps(...)`)
+
+Besides `import from json { dumps }`, a **flat** `import json;` followed by
+`json.dumps(...)` member calls also resolves to the bundled module (issue
+#6964). The flat form is admitted only for **single-segment** module names that
+`resolve_native_module` finds as a `.na.jac` (json, zlib, datetime, hashlib);
+a dotted `import os.path;` stays rejected (use the `import from` form), since
+the flat dotted form would bind the leading segment as an alias and could shadow
+the Mechanism-A `import os` member intercepts. The routing reuses the
+import-from machinery end to end: `BoundaryAnalysisPass` enumerates the module's
+public top-level symbols and creates one NATIVE binding per symbol (driving
+`link_in`), `NaIRGenPass` registers the module's types/abilities and records the
+bound alias, and a `json.dumps(x)` member call is rewritten to the free call
+`dumps(x)` against the linked symbol. The Mechanism-A bare imports (`math`,
+`os`, `sys`, `time`, `random`, `struct`) keep their dedicated member intercepts
+and are untouched.
+
 ## Shipped modules
 
 - **`os/path.na.jac`** (#6940 Phase 0) -- pure-string POSIX path helpers
@@ -42,6 +59,17 @@ bundled one. A bundled module links through the existing cross-module machinery
   intercept, so it is exact for a fixed timestamp; `year`/`month`/`day`/`hour`/
   `minute`/`second`, `weekday()`, and `isoformat()` match CPython. SCOPE: UTC /
   fixed-offset only (no tz database, DST, leap seconds, or microseconds).
+- **`hashlib.na.jac`** (#6964) -- pure-Jac SHA-256 (Mechanism B, FIPS 180-4)
+  over 32-bit integer arithmetic, so it is portable to every native target with
+  no system library. `sha256()` returns a CPython-shaped hash object with
+  `update(data)` / `hexdigest()` / `digest()`; the digest is pinned byte-for-byte
+  against the FIPS / CPython vectors (empty, single-block, multi-block, and
+  incremental `update`) by `prim_hashlib.jac`. The round constants are a
+  function-local list, NOT a module `glob`: a runtime-initialized global would
+  need its owning module's `__jac_glob_init` to have run, which an entry-less
+  consumer does not chain -- a self-contained module sidesteps that ordering.
+  SCOPE: `sha256` (the content-addressing digest the workload needs); `sha1` /
+  `sha512` / `md5` layer on the same skeleton as a mechanical follow-up.
 
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, ...) are Mechanism-A/H compiler intercepts, reached via the

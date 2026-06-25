@@ -132,11 +132,34 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         import from jaclang.compiler.symbol_utils { classify_call }
         _call_kind = classify_call(nd).value;
     }
+    # Bare-import bundled-module member call (issue #6964): `json.dumps(x)`
+    # routes to the linked free function `dumps(x)`. The receiver `json` is a
+    # module namespace bound by a flat `import json;`, not a value — so the
+    # checker classifies it "method", but it is really a free call. Rewriting
+    # the effective callee name here reuses the entire free-function resolution
+    # below (func_symtab / interop-binding extern / constructor) unchanged.
+    _alias_member: (str | None) = None;
+    if (
+        isinstance(nd.target, uni.AtomTrailer)
+        and nd.target.is_attr
+        and self?._native_module_aliases
+    ) {
+        _recv_nm = self._get_name(nd.target.target);
+        if (
+            _recv_nm is not None
+            and _recv_nm in self._native_module_aliases
+            and _recv_nm not in self.local_vars
+        ) {
+            _alias_member = self._get_name(nd.target.right);
+        }
+    }
     # Handle method calls: obj.method(args)
-    if _call_kind == "method" {
+    if _alias_member is None and _call_kind == "method" {
         return self._codegen_method_call(nd);
     }
-    func_name = self._get_name(nd.target);
+    func_name = _alias_member
+        if _alias_member is not None
+        else self._get_name(nd.target);
     if func_name is None {
         return None;
     }

@@ -84,6 +84,11 @@ in NATIVE_SUPPORTED_STDLIB; a (name, False) result in native context is
 the E5090 rejection case (enforced by native_capability_violations)."""
 def classify_native_import(item: uni.UniNode) -> tuple;
 
+"""Whether a bare `import <name>;` resolves to a native `.na.jac` module
+(project-local or shipped na_stdlib). Admits the flat import form for bundled
+modules through the native capability gate (issue #6964)."""
+def _resolves_to_native_module(mod: uni.Module, mod_name: str) -> bool;
+
 """Name a plain `import X;` / `import X as Y;` item binds into scope: the
 alias if present, else the top-level module name (`os` for `import os.path`).
 None for non-ModulePath items. Used to decide whether a foreign import is

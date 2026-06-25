@@ -221,19 +221,23 @@ test "guardrail: field access on an untyped (any) node-ref element is rejected w
 # Native compilation cannot import arbitrary Python modules: the import is
 # dropped, then `json.dumps(...)` lowers to nothing and the binary prints empty
 # output. That silent-wrong result is the worst failure mode -- reject it.
-# (`math`/`time`/`sys`/`os`/`random` are now lowered; `json` is still
-# unsupported per the #6404 roadmap, so it stays a valid rejection example.)
+# (`math`/`time`/`sys`/`os`/`random` are lowered, and `json`/`zlib`/`hashlib`
+# are now bundled na_stdlib modules reachable via the flat import form — see
+# test_native_stdlib_io.jac. `pickle` has no native lowering, so it stays a
+# valid rejection example for a genuinely-unsupported Python module import.)
 test "guardrail: Python module import is rejected" {
     prog = compile_na_inline(
-        "py_import_json",
-        "import json;\n" "with entry { print(json.dumps({\"a\": 1})); }\n"
+        "py_import_pickle",
+        "import pickle;\n" "with entry { print(pickle.dumps({\"a\": 1})); }\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'json', got: {fmt_errors(
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'pickle', got: {fmt_errors(
         prog
     )}";
 }
 
-# A dotted Python import (`import os.path;`) is equally unsupported.
+# A dotted flat Python import (`import os.path;`) stays unsupported: the bundled
+# `os.path` is reachable via `import from os.path {...}`, not the flat form
+# (issue #6964 restricts flat-import routing to single-segment modules).
 test "guardrail: dotted Python module import is rejected" {
     prog = compile_na_inline(
         "py_import_dotted", "import os.path;\n" "with entry { print(\"hi\"); }\n"
@@ -522,7 +526,9 @@ test "nacompile surfaces native E5090 help text, not just the generic message" {
     with tempfile.TemporaryDirectory() as td {
         src = os.path.join(td, "bad_import.na.jac");
         with open(src, "w") as f {
-            f.write("import json;\nwith entry { print(0); }\n");
+            # `pickle` has no native lowering (json/zlib/hashlib are now bundled
+            # — issue #6964), so it is the stable single-file E5090 carrier.
+            f.write("import pickle;\nwith entry { print(0); }\n");
         }
         buf = io.StringIO();
         with contextlib.redirect_stdout(buf) {
@@ -689,6 +695,55 @@ test "clib decl with known types is not rejected" {
         prog
     )}";
     assert not has_error_code(prog, "E5090") , f"Known clib types triggered E5090: {fmt_errors(
+        prog
+    )}";
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Deferred native stdlib modules (issue #6964)
+# ─────────────────────────────────────────────────────────────────────
+# `import json` / `import zlib` / `import hashlib` are now bundled na_stdlib
+# modules reachable via the flat import form (see test_native_stdlib_io.jac).
+# These three remain deferred and MUST still reject cleanly with E5090 (naming
+# the module + the allowlist) rather than dropping the import and emitting a
+# silently-wrong binary:
+#   * zipfile  -- gated on the raw-DEFLATE (negative-window z_stream) inflate
+#                 floor under libz, tracked as #6940 Phase 2.
+#   * subprocess / socket -- need a process / BSD-sockets FFI floor (the
+#                 "broader gaps" of #6964); HTTP is already covered by the
+#                 libcurl-backed urllib.request floor.
+# When one gains real support, replace its guardrail here with a behavioral
+# test in test_native_stdlib_io.jac (the same convention the json/zlib/hashlib
+# entries followed).
+test "guardrail: import zipfile is rejected cleanly" {
+    prog = compile_na_inline(
+        "mod_zipfile",
+        "import zipfile;\n"
+        "with entry { zf = zipfile.ZipFile(\"/tmp/x.zip\", \"w\"); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for import zipfile, got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "guardrail: import subprocess is rejected cleanly" {
+    prog = compile_na_inline(
+        "mod_subprocess",
+        "import subprocess;\n"
+        "with entry { r = subprocess.run([\"echo\", \"hi\"]); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for import subprocess, got: {fmt_errors(
+        prog
+    )}";
+}
+
+test "guardrail: import socket is rejected cleanly" {
+    prog = compile_na_inline(
+        "mod_socket",
+        "import socket;\n"
+        "with entry { s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); }\n"
+    );
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for import socket, got: {fmt_errors(
         prog
     )}";
 }

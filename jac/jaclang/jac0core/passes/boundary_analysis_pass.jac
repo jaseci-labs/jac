@@ -48,6 +48,19 @@ linking
     """Track imports from .na.jac modules and sv-to-sv microservice imports."""
     def enter_import(self: BoundaryAnalysisPass, nd: uni.Import) -> None;
 
+    """Register a flat `import json;` of a bundled / project-local na_stdlib
+    module: create a NATIVE binding per public top-level symbol so the link
+    pass pulls the module in (issue #6964)."""
+    def _register_flat_native_import(
+        self: BoundaryAnalysisPass, nd: uni.Import, import_context: InteropContext
+    ) -> None;
+
+    """Collect a native module's PUBLIC top-level symbol names (`def:pub`
+    abilities and `:pub` archetypes). See issue #6964."""
+    def _collect_pub_native_symbols(
+        self: BoundaryAnalysisPass, source_mod: uni.Module
+    ) -> list[str];
+
     """Register an sv import edge (sv->sv or cl->sv): bindings per item."""
     def _register_sv_import(
         self: BoundaryAnalysisPass,

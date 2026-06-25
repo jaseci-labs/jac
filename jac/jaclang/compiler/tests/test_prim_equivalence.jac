@@ -261,6 +261,17 @@ test "json bundled" {
     run_with_both("prim_json.jac", "json_py", "json_cl", "json_na", require=["na"]);
 }
 
+# --- Bundled native stdlib: hashlib (Mechanism B — pure-Jac SHA-256 over 32-bit
+# integer arithmetic, FIPS 180-4, issue #6964). The same `import from hashlib {
+# sha256 }` binds CPython's hashlib on sv and the bundled na_stdlib/hashlib.na.jac
+# on na, pinned byte-for-byte across empty / single-block / multi-block /
+# incremental inputs. ---
+test "hashlib bundled" {
+    run_with_both(
+        "prim_hashlib.jac", "hashlib_py", "hashlib_cl", "hashlib_na", require=["na"]
+    );
+}
+
 # --- Stdlib: random module (CPython-faithful MT19937, issue #6404 v1) ---
 test "random" {
     run_with_both(

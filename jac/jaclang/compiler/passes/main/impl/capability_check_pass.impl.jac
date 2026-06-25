@@ -101,6 +101,32 @@ impl classify_native_import(item: uni.UniNode) -> tuple {
     return (mod_name, mod_name is not None and mod_name in NATIVE_SUPPORTED_STDLIB);
 }
 
+"""Whether a bare `import <name>;` resolves to a native `.na.jac` module —
+either a project-local sibling/dotted module or a shipped na_stdlib module
+(json, zlib, datetime, ...). Used to admit the flat import form for bundled
+modules through the native capability gate (issue #6964). Resolution is the
+single shared `resolve_native_module`, so it is congruent with the boundary
+analysis / IR-gen / link paths."""
+impl _resolves_to_native_module(mod: uni.Module, mod_name: str) -> bool {
+    import os;
+    import from jaclang.jac0core.codeinfo { resolve_native_module }
+    # Restrict the flat-import admission to single-segment names (json, zlib,
+    # hashlib, datetime). A dotted `import os.path;` stays rejected (use
+    # `import from os.path {...}`): the flat dotted form would also bind the
+    # leading segment (`os`) as an alias and could shadow the Mechanism-A
+    # `import os` member intercepts. See issue #6964.
+    if "." in mod_name {
+        return False;
+    }
+    base_dir = (
+        os.path.dirname(os.path.abspath(mod.loc.mod_path))
+            if (mod?.loc and mod.loc.mod_path)
+            else os.getcwd()
+    );
+    (src_mod_str, full_path) = resolve_native_module(mod_name, base_dir);
+    return full_path is not None and os.path.isfile(full_path);
+}
+
 impl import_bound_name(item: uni.UniNode) -> (str | None) {
     if not isinstance(item, uni.ModulePath) {
         return None;
@@ -190,6 +216,16 @@ impl native_capability_violations(mod: uni.Module) -> list {
             for item in stmt.items {
                 (mod_name, _ok) = classify_native_import(item);
                 if mod_name is not None and not _ok {
+                    # A bare `import json;` whose name resolves to a bundled
+                    # (or project-local) na_stdlib `.na.jac` module is a native
+                    # module import, not a Python one — legal, and lowered by
+                    # the bare-import routing in NaIRGenPass (issue #6964). The
+                    # `import from mod {...}` form already carries from_loc and
+                    # is exempt above; this admits the flat `import mod;` form
+                    # for the SAME bundled modules (json, zlib, datetime, ...).
+                    if _resolves_to_native_module(mod, mod_name) {
+                        continue;
+                    }
                     # Type-only foreign import: the bound name only names a
                     # foreign type in annotations and is never lowered to a
                     # runtime value, so the import is harmless. It lets a field

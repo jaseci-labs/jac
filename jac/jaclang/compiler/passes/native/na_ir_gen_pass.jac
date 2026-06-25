@@ -360,6 +360,10 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # Lazily initialized tracking sets
         _struct_bodies_done: set[str] = set(),
         _native_stdlib_modules: set[str] = set(),
+        # Bound names of flat `import json;` imports that resolve to a bundled /
+        # project-local na_stdlib module, so a `json.dumps(x)` member call can
+        # be routed to the linked free function `dumps(x)` (issue #6964).
+        _native_module_aliases: set[str] = set(),
         # names of one-time stdlib runtime-helper groups already emitted (#6404)
         _stdlib_helpers_emitted: set[str] = set(),
         _global_origins: dict[str, str] = {},

@@ -169,7 +169,118 @@ impl BoundaryAnalysisPass.enter_import(
                 }
             }
         }
+    } else {
+        self._register_flat_native_import(nd, import_context);
     }
+}
+
+"""Flat `import json;` of a bundled / project-local na_stdlib module (issue
+#6964). The `import from json {...}` branch above handles the explicit-items
+form; this handles the bare module import. Because the flat form lists no
+items, the module's public top-level functions and archetypes are enumerated
+from its AST and a NATIVE InteropBinding is created for each — exactly the
+binding the import-from path makes per item. Its presence is what drives
+NativeCompilePass to link the module; the real call signatures are recovered
+by the IR-gen abilities walk, so placeholder types here are correct (this
+mirrors the import-from native binding, which is also a type placeholder)."""
+impl BoundaryAnalysisPass._register_flat_native_import(
+    self: BoundaryAnalysisPass, nd: uni.Import, import_context: InteropContext
+) -> None {
+    import os;
+    import from jaclang.jac0core.codeinfo { resolve_native_module }
+    import from jaclang.jac0core.ext_registry { is_native_module }
+    if nd.from_loc is not None or nd.clib_decls or not nd.items {
+        return;
+    }
+    is_native_ctx = (
+        import_context == InteropContext.NATIVE
+        or (self.ir_in and self.ir_in.loc and is_native_module(self.ir_in.loc.mod_path))
+    );
+    if not is_native_ctx {
+        return;
+    }
+    base_dir = os.path.dirname(self.ir_in.loc.mod_path)
+        if (self.ir_in and self.ir_in.loc)
+        else '.';
+    manifest = self.ir_in.gen.interop_manifest;
+    for item in nd.items {
+        if not isinstance(item, uni.ModulePath) {
+            continue;
+        }
+        mod_name = item.dot_path_str;
+        if not mod_name and item.path {
+            mod_name = '.'.join(getattr(p, 'value', str(p)) for p in item.path);
+        }
+        # Single-segment bundled modules only (json/zlib/hashlib/datetime); a
+        # dotted flat import is not admitted (see _resolves_to_native_module).
+        if not mod_name or "." in mod_name {
+            continue;
+        }
+        (native_path, full_path) = resolve_native_module(mod_name, base_dir);
+        if native_path is None or full_path is None {
+            continue;
+        }
+        source_mod: (uni.Module | None) = None;
+        try {
+            if (self.prog and self.prog.mod and self.prog.mod.hub) {
+                source_mod = self.prog.mod.hub.get(full_path);
+            }
+        } except Exception {
+            source_mod = None;
+        }
+        if source_mod is None and os.path.isfile(full_path) {
+            try {
+                source_mod = self._parse_only_source_module(full_path);
+            } except Exception {
+                source_mod = None;
+            }
+        }
+        if source_mod is None {
+            continue;
+        }
+        for sym_name in self._collect_pub_native_symbols(source_mod) {
+            if sym_name not in manifest.bindings {
+                manifest.bindings[sym_name] = InteropBinding(
+                    name=sym_name,
+                    source_context=InteropContext.NATIVE,
+                    callers={InteropContext.NATIVE},
+                    ret_type='int',
+                    param_types=[],
+                    param_names=[],
+                    ast_node=None,
+                    route=[InteropContext.NATIVE, InteropContext.NATIVE],
+                    source_module=native_path
+                );
+            }
+        }
+    }
+}
+
+"""Collect the names of a native module's PUBLIC top-level symbols — `def:pub`
+abilities and `:pub` archetypes (class constructors). Restricted to the
+module's direct children so a public class's methods (reached on an instance,
+not the module namespace) are not bound as free functions. See issue #6964."""
+impl BoundaryAnalysisPass._collect_pub_native_symbols(
+    self: BoundaryAnalysisPass, source_mod: uni.Module
+) -> list[str] {
+    out: list[str] = [];
+    body = source_mod.body if source_mod?.body else [];
+    for stmt in body {
+        if isinstance(stmt, (uni.Ability, uni.Archetype)) and stmt.sym_name {
+            is_pub = False;
+            try {
+                is_pub = (
+                    stmt.access is not None and stmt.access.tag?.name == Tok.KW_PUB
+                );
+            } except Exception {
+                is_pub = False;
+            }
+            if is_pub {
+                out.append(stmt.sym_name);
+            }
+        }
+    }
+    return out;
 }
 
 """Register an sv import edge: create InteropBindings for each item.

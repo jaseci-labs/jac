@@ -1488,6 +1488,19 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 } elif uni?.BuiltinType and isinstance(tag_node, uni.BuiltinType) {
                     bare_name = tag_node.value;
                 }
+                # A bare `tuple` annotation carries no element layout, so
+                # `_resolve_jac_type` falls back to the i64 default — which
+                # cannot hold the value-struct the RHS literal already lowered
+                # to ({i64, i64}, {i8*, i64}, ...). Adopt the struct type
+                # directly, mirroring the bare-collection inference below; the
+                # shared alloca + store path then handles it (a value tuple is
+                # not a pointer, so the RC blocks are skipped). Parameterized
+                # `tuple[int, int]` and the un-annotated form already lower
+                # correctly; only bare `tuple` tripped. See #6964.
+                infer_tuple_from_val = (
+                    bare_name == "tuple"
+                    and isinstance(value.type, ir.LiteralStructType)
+                );
                 infer_from_val = (
                     bare_name in {"list", "dict", "set", "frozenset"}
                     and isinstance(value.type, ir.PointerType)
@@ -1521,8 +1534,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         infer_from_val = False;
                     }
                 }
-                if infer_from_val {
-                    var_type = value.type;  # element type inferred from RHS literal
+                if infer_tuple_from_val or infer_from_val {
+                    var_type = value.type;  # layout inferred from RHS literal
                 } else {
                     var_type = self._resolve_jac_type(tag_node);
                     value = self._coerce_type(value, var_type);
