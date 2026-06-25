@@ -247,6 +247,34 @@ def _firestore_batch_finalize(batch: any, pending: int) {
     }
 }
 
+"""Commit a batch of update() writes, tolerating concurrently-deleted docs.
+
+A Firestore batch is atomic: if any document in `refs` was deleted between the
+query stream and this commit, the whole commit raises NotFound and nothing is
+written. Replay each update individually in that case, skipping docs that no
+longer exist, and return the number actually updated.
+"""
+def _firestore_commit_updates(batch: any, refs: list, update_fields: dict) -> int {
+    if not refs {
+        return 0;
+    }
+    try {
+        batch.commit();
+        return len(refs);
+    } except NotFound {
+        written = 0;
+        for ref in refs {
+            try {
+                ref.update(update_fields);
+                written += 1;
+            } except NotFound {
+                continue;
+            }
+        }
+        return written;
+    }
+}
+
 """Build a best-effort Firestore document for upsert from filter + update.
 
 Note: callers pass this to set(merge=True), which deep-merges nested dicts by
@@ -441,17 +469,29 @@ impl FirestoreDb.update_many(
 
     # Stream matches straight into batches rather than materializing the
     # whole result set: memory stays bounded to one batch (500 writes).
+    # Track the refs per batch so a commit failed by a concurrent delete can
+    # be replayed per-document (see _firestore_commit_updates).
     batch = self.client.batch();
-    pending = 0;
+    refs: list = [];
+    matched_count = 0;
     modified_count = 0;
 
     for snapshot in query.stream() {
-        batch.update(col.document(snapshot.id), update_fields);
-        modified_count += 1;
-        (batch, pending) = _firestore_batch_after_write(self.client, batch, pending);
+        ref = col.document(snapshot.id);
+        batch.update(ref, update_fields);
+        refs.append(ref);
+        matched_count += 1;
+        if len(refs) >= _FIRESTORE_BATCH_LIMIT {
+            modified_count += _firestore_commit_updates(batch, refs, update_fields);
+            batch = self.client.batch();
+            refs = [];
+        }
     }
 
-    if modified_count == 0 {
+    # Upsert only when nothing matched the query at all; matches that all got
+    # concurrently deleted (matched_count > 0, modified_count == 0) are not
+    # treated as a miss.
+    if matched_count == 0 {
         if not upsert_mode {
             return UpdateResult(matched_count=0, modified_count=0);
         }
@@ -461,8 +501,8 @@ impl FirestoreDb.update_many(
         return UpdateResult(matched_count=0, modified_count=0, upserted_id=doc_id);
     }
 
-    _firestore_batch_finalize(batch, pending);
-    return UpdateResult(matched_count=modified_count, modified_count=modified_count);
+    modified_count += _firestore_commit_updates(batch, refs, update_fields);
+    return UpdateResult(matched_count=matched_count, modified_count=modified_count);
 }
 
 impl FirestoreDb.delete_many(col_name: str, filter: dict) -> DeleteResult {
@@ -503,7 +543,15 @@ impl FirestoreDb.update_by_id(
 
     update_fields = _firestore_update_fields(update_data);
     if exists {
-        doc_ref.update(update_fields);
+        # The get() above and this update() are non-transactional, so a
+        # concurrent delete can make .update() raise NotFound. Translate the
+        # race into matched_count=0 (parity with update_one) instead of
+        # letting the vendor exception escape.
+        try {
+            doc_ref.update(update_fields);
+        } except NotFound {
+            return UpdateResult(matched_count=0, modified_count=0);
+        }
         return UpdateResult(matched_count=1, modified_count=1);
     }
 

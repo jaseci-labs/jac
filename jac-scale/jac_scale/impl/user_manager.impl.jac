@@ -401,7 +401,6 @@ impl JacScaleUserManager.sso_callback(
     }
     try {
         user_info = await sso.handle_callback(request);
-        return self._complete_sso_login(platform, user_info);
     } except Exception as e {
         # A failed callback means the provider rejected the credential
         # (bad/expired token, denied consent) — a client error, not a 500.
@@ -411,6 +410,10 @@ impl JacScaleUserManager.sso_callback(
             meta=Meta(extra={'http_status': 401})
         );
     }
+    # Outside the 401 catch: _complete_sso_login does DB work, and an
+    # infrastructure failure there must surface as a 500, not be misreported
+    # as an authentication (401) failure.
+    return self._complete_sso_login(platform, user_info);
 }
 
 # ============================================================================
@@ -439,7 +442,6 @@ impl JacScaleUserManager.firebase_token_auth_with_id_token(
     sso = self.get_sso(platform);
     try {
         user_info = await sso.handle_id_token(id_token);
-        return self._complete_sso_login(platform, user_info);
     } except Exception as e {
         # Token verification failed (bad signature, expired, wrong audience,
         # missing email claim) — a client error, not a 500.
@@ -449,6 +451,10 @@ impl JacScaleUserManager.firebase_token_auth_with_id_token(
             meta=Meta(extra={'http_status': 401})
         );
     }
+    # Outside the 401 catch: _complete_sso_login does DB work, and an
+    # infrastructure failure there must surface as a 500, not be misreported
+    # as an authentication (401) failure.
+    return self._complete_sso_login(platform, user_info);
 }
 
 # ============================================================================

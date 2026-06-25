@@ -159,9 +159,36 @@ impl GcsStorage.get_url(
         return blob.public_url;
     }
 
+    expiration = timedelta(seconds=expires_in if expires_in is not None else 3600);
+    # Service-account JSON credentials sign V4 URLs locally. Application
+    # Default Credentials in serverless runtimes (Cloud Run/GKE/Cloud
+    # Functions) have no local private key, so blob-side signing raises
+    # AttributeError — fall back to the IAM SignBlob API in that case.
+    try {
+        return blob.generate_signed_url(
+            version="v4", expiration=expiration, method="GET"
+        );
+    } except AttributeError {
+        return _gcs_signed_url_via_iam(blob, expiration);
+    }
+}
+
+"""Sign a V4 GET URL via the IAM SignBlob API for ADC without a private key.
+
+Delegates signing to the runtime service account's identity. Requires the
+'Service Account Token Creator' role (iam.serviceAccounts.signBlob) on that
+service account.
+"""
+def _gcs_signed_url_via_iam(blob: any, expiration: any) -> str {
+    import google.auth;
+    import from google.auth.transport.requests { Request as GoogleAuthRequest }
+    (credentials, _) = google.auth.default();
+    credentials.refresh(GoogleAuthRequest());
     return blob.generate_signed_url(
         version="v4",
-        expiration=timedelta(seconds=expires_in if expires_in is not None else 3600),
-        method="GET"
+        expiration=expiration,
+        method="GET",
+        service_account_email=credentials.service_account_email,
+        access_token=credentials.token
     );
 }
