@@ -968,7 +968,7 @@ they bypass the validate-then-extract flow).
 """
 impl MicroserviceGateway._install_admin_api -> None {
     import from jac_scale.jserver.jfast_api { JFastApiServer }
-    import from jac_scale.webhook { ApiKeyManager }
+    import from jac_scale.webhook.webhook { ApiKeyManager }
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
     # 1. JFastApiServer wrapping OUR FastAPI app. The constructor accepts

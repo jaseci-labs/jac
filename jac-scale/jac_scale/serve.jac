@@ -25,7 +25,7 @@ import from jaclang.runtimelib.transport { TransportResponse, Meta, MessageType 
 import from fastapi_sso.sso.google { GoogleSSO }
 import from jac_scale.utils { generate_random_password, _extract_path_param_names }
 import from jac_scale.config_loader { get_scale_config }
-import from jac_scale.webhook { ApiKeyManager, WebhookUtils }
+import from jac_scale.webhook.webhook { ApiKeyManager, WebhookUtils }
 import from jac_scale.observability.metrics { MetricsCollector }
 import from jac_scale.events.broker { EventStreamBroker }
 import from jac_scale.websocket { WebSocketConnectionManager }
