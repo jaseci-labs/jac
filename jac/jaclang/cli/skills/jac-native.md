@@ -47,18 +47,22 @@ with entry {
 
 - **Collections**: `list`/`dict`/`set`/`tuple` literals, indexing, and methods (`append`/`sort`/`pop`/`insert`, `get`/`keys`/`values`/`items`/`update`, `add`/`remove`/union ops); list/dict/set comprehensions.
 - **Enums**, incl. typed-base `enum HttpStatus: int { OK=200, NOT_FOUND=404 }` (members usable as `int`).
-- **Objects**: `has` fields with defaults, methods, `def init`, `def postinit`, single inheritance with vtable virtual dispatch (`override def`), chained `a.b.c` access. Types may reference later-defined types directly.
+- **Objects**: `has` fields with defaults, methods, `def init`, `def postinit`, single inheritance with vtable virtual dispatch (`override def`), chained `a.b.c` access. **Static methods** (`static def`) and **class attributes** (`static has`, e.g. `timezone.utc`) resolve on the type itself; `isinstance(x, T)` works on `any` values. Types may reference later-defined types directly.
 - **Functions**: default params, recursion, union types (`Piece | None`).
 - **Control flow**: `if/elif/else`, `while`, `for-in` over range/collections/lazy `map`/`filter`/`enumerate`/`zip`, `break`/`continue`, ternary.
 - **Exceptions**: `try/except/else/finally`, `raise`, `except ValueError as e`, hierarchy matching.
 - **File I/O**: `open`/`read`/`write`/`close`, `with open(...) as f { }`, custom `__enter__`/`__exit__`.
 - **Builtins**: `print`, `len`, `range`, `abs`/`min`/`max`/`pow`, `chr`/`ord`, `str`/`int`/`float`, `input`; f-strings. **str methods**: `upper`/`lower`/`strip`/`split`/`join`/`replace`/`find`/`startswith`/`endswith`/`count`; substring `in`.
 
-**Stdlib** (Python-congruent subset, same source runs on both pathways): `math` (libm-backed), `time` (clocks + `sleep`), `sys` (`argv`/`exit`/`maxsize`/`platform`/`byteorder`), `os` + `os.path` subset (`getcwd`/`getenv`/`mkdir`/`remove`/`system`; `join`/`basename`/`exists`/`isfile`), `random` (faithful MT19937 - same seed gives the same sequence as CPython).
+**Stdlib** - the *same* `import` source runs on both pathways (`import math`, `import from os.path { normpath }`); natively it binds a bundled module instead of CPython's. How each module is implemented decides its portability:
 
-Anything else fails **loudly at compile time** - `import json` -> *"Native pathway does not yet support Python module import 'json'"*. Unsupported imports never silently produce a garbage binary. PyPI imports never work natively; keep that code in the Python codespace.
+- **Pure-Jac, portable to every target** (incl. `--target wasm32`): `os.path` (`normpath`/`dirname`/`basename`/`split`/`splitext`/`isabs`), `json` (`loads`/`dumps`), `datetime` (`datetime.fromtimestamp(ts, tz)`/`datetime.now(tz)`, `.weekday()`/`.isoformat()`, `timezone.utc`). Byte-for-byte congruent with CPython.
+- **Compiler intrinsics over libm/libc/syscalls, native-host only**: `math` (libm-backed, ULP-congruent), `time` (clocks + `sleep`), `sys` (`argv`/`exit`/`maxsize`/`platform`/`byteorder`), `os` (`getcwd`/`getenv`/`mkdir`/`makedirs`/`remove`/`rmdir`/`system`; `os.path.exists`/`isfile`/`isdir`/`realpath`), `random` (faithful MT19937 - same seed gives the same sequence as CPython), `struct` + length-aware `bytes`.
+- **FFI over a system C library, native-host only**: `zlib` over libz (`compress`/`decompress`/`crc32`/`adler32`), `urllib.request.urlopen(url) -> HTTPResponse` (`.status`/`.body`/`.body_length`/`.reason`) over libcurl - follows redirects; a transport error raises, but an HTTP 4xx/5xx *status* is returned, not raised (v1).
 
-The stdlib table is for **host** binaries. On `--target wasm32` there is no libc/libm to link: each unresolved symbol becomes a wasm *import* the JS host must supply (`math.sin` -> an `env.sin` import, `time.time` -> `clock_gettime`; `random` is self-contained and works in-browser). Supply `Math.sin` etc. from JS or hand-roll - the shooter flagship hand-rolls Taylor `jcos`/`jsin` to keep one source for both targets. See `jac-native-wasm`.
+An unsupported import - a stdlib module not yet ported, or any PyPI package (`import from numpy { array }`) - fails **loudly at compile time**, never a silent garbage binary. PyPI imports never work natively; keep that code in the Python codespace.
+
+On `--target wasm32` only the **pure-Jac** modules above link: the intrinsic (libm/libc) and FFI (libz/libcurl) modules have no libc to bind, so each unresolved symbol becomes a wasm *import* the JS host must supply (`math.sin` -> an `env.sin` import, `time.time` -> `clock_gettime`; `random` is self-contained and works in-browser). Supply `Math.sin` etc. from JS or hand-roll - the shooter flagship hand-rolls Taylor `jcos`/`jsin` to keep one source for both targets. See `jac-native-wasm`.
 
 **Not supported** (compile errors): walkers/nodes/edges, `async`, generators/`yield`, decorators, multiple inheritance, `::py::`, `by llm()`, PyPI. Lambdas: see gotchas.
 

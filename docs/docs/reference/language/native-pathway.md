@@ -43,12 +43,12 @@ Native compilation is ideal for:
 | **Dedicated file** | `.na.jac` extension |
 | **Entry point** | `with entry { }` (standalone binaries only) |
 | **CLI command** | `jac nacompile <file> [-o output] [--shared]` |
-| **Backend** | LLVM IR via llvmlite |
+| **Backend** | LLVM IR (self-contained -- no Python `llvmlite` or external LLVM toolchain dependency) |
 | **Platforms** | Linux (x86_64, aarch64), macOS (x86_64, arm64), Windows (x86_64) |
 | **External toolchain** | None -- entire pipeline is self-contained |
 | **C interop (in)** | `import from libname` (logical) or `import from "path"` (explicit) |
 | **C interop (out)** | `jac nacompile --shared` exports `:pub` symbols as a `.so`/`.dylib`/`.dll` |
-| **Std library** | `import math` / `time` / `sys` / `os` / `random` (Python-congruent subset) |
+| **Std library** | Python-congruent: `math` / `time` / `sys` / `os` / `os.path` / `random` / `struct` / `json` / `datetime` / `zlib` / `urllib.request` -- the same `import` source on both pathways |
 | **Memory model** | Automatic reference counting |
 | **Testing** | `test "description" { }` blocks compile native and run via `jac test` |
 
@@ -489,6 +489,9 @@ Collections are represented as LLVM struct types:
 | Keyword / positional construction | `Point(x=10, y=20)` or `Point(10, 20)` |
 | Single inheritance | `obj Dog(Animal) { ... }` |
 | Method override (virtual dispatch) | Subclass methods override parent via vtables |
+| Static methods | `static def make(x: int) -> Point { ... }` -- called on the type: `Point.make(3)` |
+| Class attributes | `static has origin: Point = Point(0, 0);` -- read on the type: `Point.origin` |
+| `isinstance` on `any` | `isinstance(x, int)` / `isinstance(x, (int, str))` (runtime tag check) |
 | Chained access | `obj.inner.field`, `obj.inner.method()` |
 
 ### Exception Handling
@@ -537,16 +540,31 @@ The `map`, `filter`, `enumerate`, and `zip` builtins are lazy iterator adapters:
 
 Native Jac ships a growing, **Python-congruent** subset of the standard library:
 the *same* `import X` + `X.func(...)` source compiles and runs on both the
-Python/`sv` pathway and the native/`na` pathway, with the native side lowering
-to libc/libm. Where behavior can still diverge, it is noted per module below.
+Python/`sv` pathway and the native/`na` pathway. Each module is implemented one
+of three ways, which determines its portability:
 
-| Module | Status | Lowering |
-|--------|--------|----------|
-| `math` | full (results match CPython to within floating-point ULP) | libm |
-| `time` | full | `clock_gettime` / `nanosleep` |
-| `sys` | subset | constants + argv/exit |
-| `os` / `os.path` | subset | libc |
-| `random` | seed-sequence faithful | CPython MT19937 |
+- **Pure-Jac** -- ordinary Jac compiled like user code over native primitives;
+  portable to **every** target, including `--target wasm32`.
+- **Compiler intrinsics** over libm/libc/syscalls -- native **host only**.
+- **FFI** over a system C library (libz, libcurl) -- native **host only**.
+
+The same source runs unchanged on the `sv` pathway (where it binds CPython's real
+module); on `na` the resolver prefers a user module of the same name and falls
+back to the bundled one. Where behavior can still diverge, it is noted per module.
+
+| Module | Surface | Mechanism | wasm |
+|--------|---------|-----------|------|
+| `os.path` (string ops) | `normpath` / `dirname` / `basename` / `split` / `splitext` / `isabs` | pure-Jac | yes |
+| `json` | `loads` / `dumps` | pure-Jac | yes |
+| `datetime` | `fromtimestamp` / `now` / `weekday` / `isoformat`, `timezone.utc` | pure-Jac | yes |
+| `random` | seed-sequence faithful (CPython MT19937) | intrinsic (self-contained) | yes |
+| `math` | full (CPython ULP-congruent) | libm intrinsic | host only |
+| `time` | full | `clock_gettime` / `nanosleep` | host only |
+| `sys` | subset (constants + argv/exit) | intrinsic | host only |
+| `os` / `os.path` (filesystem) | `getcwd` / `mkdir` / `makedirs` / `realpath` / `exists` / ... | libc intrinsic | host only |
+| `struct` + `bytes` | `pack` / `unpack` / `calcsize`, length-aware `bytes` | intrinsic | host only |
+| `zlib` | `compress` / `decompress` / `crc32` / `adler32` | FFI -> libz | host only |
+| `urllib.request` | `urlopen(url) -> HTTPResponse` | FFI -> libcurl | host only |
 
 Anything not yet lowered is **rejected at compile time** (rather than silently
 producing a wrong binary), so an unsupported `import` or member fails loudly.
@@ -617,6 +635,7 @@ the real filesystem.
 | `os.getenv(name)` | Environment value or `None` |
 | `os.chdir(path)` | Change directory |
 | `os.mkdir(path)` / `os.rmdir(path)` | Create / remove a directory |
+| `os.makedirs(path)` | Recursive `mkdir -p` (creates intermediate dirs) |
 | `os.remove(path)` / `os.unlink(path)` | Remove a file |
 | `os.rename(src, dst)` | Rename |
 | `os.system(cmd)` | Run a shell command, return its exit code |
@@ -625,10 +644,18 @@ the real filesystem.
 |-----------|-------|
 | `os.path.join(*parts)` | Join with `/`; an absolute part or trailing slash is handled |
 | `os.path.basename(p)` / `os.path.dirname(p)` | Final component / parent |
+| `os.path.split(p)` / `os.path.splitext(p)` | `(head, tail)` / `(root, ext)` -- return tuples |
+| `os.path.normpath(p)` / `os.path.isabs(p)` | Collapse `..`/`.`/`//` (pure-Jac, CPython `posixpath`) / absolute test |
+| `os.path.realpath(p)` | Canonical absolute path via libc `realpath(3)` |
 | `os.path.exists(p)` | `access(F_OK)` |
 | `os.path.isfile(p)` / `os.path.isdir(p)` | `stat`-based |
 
-`split` / `splitext` / `abspath` / `normpath` are not yet lowered.
+The `os.path` string operations (`normpath` / `dirname` / `basename` / `split` /
+`splitext` / `isabs`) are a **pure-Jac** bundled module, byte-for-byte congruent
+with CPython `posixpath` (including the collapsed-slash, `..`-resolution, and
+leading-dot edge cases); the filesystem calls (`exists` / `isfile` / `realpath` /
+`makedirs` / ...) lower to libc and are host-only. `os.path.abspath` is not yet
+lowered.
 
 #### `random` -- Pseudo-Random Numbers
 
@@ -679,6 +706,81 @@ arg: --verbose
 arg: world
 Verbose mode enabled
 ```
+
+#### `json` -- JSON Encode / Decode
+
+`import from json { loads, dumps }` is a **pure-Jac** module (portable to every
+target, including wasm). `loads` parses to scalars / `list` / `dict`; `dumps`
+serializes with CPython's default separators (`", "`, `": "`) and insertion-ordered
+keys.
+
+```jac
+import from json { loads, dumps }
+
+with entry {
+    data = loads("{\"x\": [1, 2, 3]}");   # dict[str, any]
+    print(dumps({"n": 42, "ok": True}));  # {"n": 42, "ok": true}
+}
+```
+
+#### `datetime` -- Civil Date / Time
+
+`import from datetime { datetime, timezone }` is **pure-Jac**. Construct via the
+static methods `datetime.fromtimestamp(ts, tz)` / `datetime.now(tz)` (both take an
+explicit `timezone`); `timezone.utc` is a class attribute. The civil split is
+floor-correct across the whole timestamp domain, including pre-1970 (negative)
+timestamps.
+
+```jac
+import from datetime { datetime, timezone }
+
+with entry {
+    dt = datetime.fromtimestamp(1700000000.0, timezone.utc);
+    print(dt.isoformat());   # 2023-11-14T22:13:20+00:00
+    print(dt.weekday());     # 1  (Tuesday; Monday=0)
+}
+```
+
+#### `zlib` -- DEFLATE Compression
+
+`import from zlib { compress, decompress, crc32, adler32 }` is an **FFI** wrapper
+over the system **libz** (native host only). One-shot DEFLATE: `compress` output
+is byte-identical to CPython's, `decompress` round-trips, and the checksums accept
+an optional continuation seed.
+
+```jac
+import from zlib { compress, decompress, crc32 }
+
+with entry {
+    comp = compress(b"hello world", 6);
+    print(len(decompress(comp)));   # 11
+    print(crc32(b"hello"));         # 907060870
+}
+```
+
+#### `urllib.request` -- HTTP GET
+
+`import from urllib.request { urlopen }` is an **FFI** wrapper over **libcurl**
+(native host only). `urlopen(url)` performs an HTTP/HTTPS GET and follows
+redirects. `.status` (`int`), `.reason`, and `.url` read on both pathways. The
+response **body is the one place the surfaces still diverge**: native exposes it
+as a `.body` (`bytes`) field plus `.body_length`, while CPython's `urlopen` uses
+`.read()` -- a unified body accessor is the documented next slice (#6940). A
+transport-level failure (DNS / connect / TLS error) raises, mirroring urllib's
+`URLError`; an HTTP 4xx/5xx *status* is returned on the response, not raised (v1).
+
+```jac
+import from urllib.request { urlopen }
+
+with entry {
+    resp = urlopen("https://example.com");
+    print(resp.status);            # 200 (reads on both pathways)
+    print(resp.reason);            # "OK"
+}
+```
+
+In a `.na.jac` / `na { }` codespace the response body is then available as
+`resp.body` (length-aware `bytes`, `.decode()` for text) and `resp.body_length`.
 
 ---
 
