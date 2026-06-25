@@ -31,7 +31,7 @@ trailer = "JACBIN01" | payload_len(u64 LE) | sha256_hex(64)   (80 bytes, at EOF)
 Payload, materialized to `<cache>/rt/<hash16>/` on first run:
 
 ```
-python/lib/libpython3.14.{dylib,so}   <- dlopened (RTLD_NOW|RTLD_GLOBAL)
+python/lib/libpython3.14t.{dylib,so}  <- dlopened (RTLD_NOW|RTLD_GLOBAL; free-threaded ABI)
 python/lib/python3.14/                 <- stdlib (incl. lib-dynload: extension .so)
 site/                                  <- jaclang + _jac_finder + llvmlite
 ```
@@ -80,5 +80,6 @@ archive is only a payload input; it is never linked.
     laundering, not compilation. Sealing the runtime (shipping JIR-only, no
     `.jac`/live compile of the bootstrap layer) is the further win -- issue
     #6852 Phase 4.
-- **Linux**: the staged shared lib is named `libpython3.14.so` (pbs may ship
-  `libpython3.14.so.1.0` -- `mkpayload` dereferences it to the bare name).
+- **Linux**: the staged shared lib is named `libpython3.14t.so` (free-threaded
+  ABI; pbs may ship `libpython3.14t.so.1.0` -- `mkpayload` dereferences it to the
+  bare name).

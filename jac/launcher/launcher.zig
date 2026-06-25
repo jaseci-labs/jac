@@ -9,7 +9,7 @@
 //! No system Python, uv, or pip is required at install or runtime.
 //!
 //! Payload layout (materialized to `<cache>/rt/<hash16>/`):
-//!     python/lib/libpython3.14.{dylib,so}   <- dlopened
+//!     python/lib/libpython3.14t.{dylib,so}  <- dlopened (free-threaded ABI)
 //!     python/lib/python3.14/                 <- stdlib (.pyc)
 //!     site/                                  <- jaclang (+ the bundled LLVMPY_* shim)
 //!
@@ -65,13 +65,16 @@ const BOOT_SRC =
     "start_cli()\n";
 
 /// Bundled CPython minor version. Must stay in lockstep with payload.zig
-/// (PBS_PY / py_ver) staging; it names the dlopened libpython and the
-/// lib-dynload path below. A single bump point for the embedded interpreter.
+/// (PBS_PY / py_ver) staging; it names the lib-dynload / stdlib path below.
+/// A single bump point for the embedded interpreter.
 const py_ver = "3.14";
+/// Free-threaded ABI tag: the libpython soname carries the `t` abiflag while the
+/// stdlib dir (py_ver) does not. Keep in lockstep with payload.zig `py_abi`.
+const py_abi = "3.14t";
 
 const lib_basename = switch (builtin.os.tag) {
-    .macos => "libpython" ++ py_ver ++ ".dylib",
-    else => "libpython" ++ py_ver ++ ".so",
+    .macos => "libpython" ++ py_abi ++ ".dylib",
+    else => "libpython" ++ py_abi ++ ".so",
 };
 
 fn die(comptime msg: []const u8) noreturn {

@@ -4,7 +4,6 @@ import json;
 import shutil;
 import hashlib;
 import subprocess;
-import sys;
 import sysconfig;
 import tarfile;
 import platform;
@@ -88,7 +87,7 @@ def _jac_bin -> str {
 def _libpython_soname -> str {
     return str(
         sysconfig.get_config_var("INSTSONAME")
-        or f"libpython{sys.version_info.major}.{sys.version_info.minor}.so.1.0"
+        or f"libpython{sysconfig.get_config_var('LDVERSION')}.so.1.0"
     );
 }
 

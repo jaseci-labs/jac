@@ -44,9 +44,13 @@ const runtime = @import("runtime.zig");
 
 // --- pinned versions (keep in lockstep with launcher.zig `py_ver`) -----------
 const py_ver = "3.14";
+// Free-threaded ABI: the libpython soname and the pbs `python<X.Y>t` binary carry
+// the `t` abiflag, but the stdlib dir stays `python<X.Y>` (no `t`). Keep `py_ver`
+// for stdlib paths and `py_abi` for the lib/bin names.
+const py_abi = "3.14t";
 const PBS_TAG = "20260610";
 const PBS_PY = "3.14.6";
-const PBS_FLAVOR = "pgo+lto-full";
+const PBS_FLAVOR = "freethreaded+pgo+lto-full";
 const PBS_BASE = "https://github.com/astral-sh/python-build-standalone/releases/download";
 // The window pbs compresses its archives with (verified: `zstd -lv` reports
 // 128 MiB). `fetch-pbs.sh` passed `zstd -d --long=31` only as a permissive cap;
@@ -203,7 +207,7 @@ fn fetchPbs(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []co
     defer gpa.free(window);
     var src = Io.Reader.fixed(tarzst);
     var dz = zstd.Decompress.init(&src, window, .{ .window_len = PBS_WINDOW, .verify_checksum = true });
-    // executable_bit_only (not .ignore!) so the bundled `python3.14` keeps its
+    // executable_bit_only (not .ignore!) so the bundled `python3.14t` keeps its
     // exec bit -- mkpayload spawns it for pip + precompile. With .ignore it
     // extracts 0o644 and the spawn fails EACCES (AccessDenied).
     std.tar.extract(io, ddir, &dz.reader, .{ .mode_mode = .executable_bit_only, .strip_components = 0 }) catch |err|
@@ -553,13 +557,13 @@ fn mkPayload(
     log("==> payload: {s}", .{out});
 }
 
-/// `<pbs>/install/bin/python3.14`, falling back to `python3`.
+/// The bundled pbs interpreter binary: `<pbs>/install/bin/python3.14t`. No
+/// fallback -- there is no python outside the jac-bundled pbs tree, so a missing
+/// binary is a hard error rather than a silent slide onto a foreign `python3`.
 fn resolvePython(io: Io, a: Allocator, pbs_py_dir: []const u8) ![]const u8 {
-    const p1 = try std.fmt.allocPrint(a, "{s}/install/bin/python{s}", .{ pbs_py_dir, py_ver });
+    const p1 = try std.fmt.allocPrint(a, "{s}/install/bin/python{s}", .{ pbs_py_dir, py_abi });
     if (fileExists(io, p1)) return p1;
-    const p2 = try std.fmt.allocPrint(a, "{s}/install/bin/python3", .{pbs_py_dir});
-    if (fileExists(io, p2)) return p2;
-    die("mkpayload: no python at {s}/install/bin", .{pbs_py_dir});
+    die("mkpayload: no python at {s}/install/bin/python{s}", .{ pbs_py_dir, py_abi });
 }
 
 /// Precompile jaclang -> _precompiled JIR for a fast first run. The precompiler
@@ -627,7 +631,7 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
     try Dir.cwd().createDirPath(io, lib_dst);
 
     // Stage the shared libpython under its bare name. pbs may ship it only as
-    // libpython3.14.so.1.0 (with a .so symlink); copyFile dereferences, so the
+    // libpython3.14t.so.1.0 (with a .so symlink); copyFile dereferences, so the
     // real library lands at the bare name the launcher dlopens.
     const pbs_lib = try std.fmt.allocPrint(a, "{s}/install/lib", .{pbs_py_dir});
     const found = try findLibpython(io, a, pbs_lib);
@@ -724,11 +728,11 @@ const FoundLib = struct { src: []const u8, bare: []const u8 };
 
 /// Find the shared libpython in `lib_dir` and the bare name to stage it under.
 fn findLibpython(io: Io, a: Allocator, lib_dir: []const u8) !FoundLib {
-    const so = "libpython" ++ py_ver ++ ".so";
-    const dy = "libpython" ++ py_ver ++ ".dylib";
+    const so = "libpython" ++ py_abi ++ ".so";
+    const dy = "libpython" ++ py_abi ++ ".dylib";
     if (fileExists(io, try std.fmt.allocPrint(a, "{s}/{s}", .{ lib_dir, so }))) return .{ .src = so, .bare = so };
     if (fileExists(io, try std.fmt.allocPrint(a, "{s}/{s}", .{ lib_dir, dy }))) return .{ .src = dy, .bare = dy };
-    // Versioned variant (e.g. libpython3.14.so.1.0).
+    // Versioned variant (e.g. libpython3.14t.so.1.0).
     var dir = try Dir.cwd().openDir(io, lib_dir, .{ .iterate = true });
     defer dir.close(io);
     var dit = dir.iterate();

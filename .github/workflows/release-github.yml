@@ -21,22 +21,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       - name: Determine version
         id: version
         run: |
           if [ -n "${{ inputs.version }}" ]; then
             VERSION="${{ inputs.version }}"
           else
-            VERSION=$(python3 -c "
-          import tomllib
-          with open('jac/jac.toml', 'rb') as f:
-              print(tomllib.load(f)['project']['version'])
-          ")
+            # No interpreter in this job (jaclang ships as the jac binary, not a
+            # system python). Read the [project] version straight from the TOML.
+            VERSION=$(grep -m1 -oP '^version\s*=\s*"\K[^"]+' jac/jac.toml)
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VERSION"

@@ -16,11 +16,6 @@ jobs:
         with:
           submodules: true
 
-      - name: Set up Python 3.12 (for twine upload)
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -37,10 +32,10 @@ jobs:
           jac install -e .
           jac run scripts/build_admin_ui.jac
 
-      - name: Install build tools
-        run: pip install twine
+      - name: Install build tools (into the binary's bundled interpreter)
+        run: jac -m pip install twine
 
       - name: Build and publish
         run: |
           jac bundle
-          twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}
+          jac -m twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}

@@ -206,7 +206,10 @@ impl NativeDesktopTarget.build(
     # The standalone plugin_bridge.na.jac is kept for documentation only.
 
     # 8. Generate + compile the native host into the output dir.
-    libpy = str(sysconfig.get_config_var("INSTSONAME") or "libpython3.12.so.1.0");
+    libpy = str(
+        sysconfig.get_config_var("INSTSONAME")
+        or f"libpython{sysconfig.get_config_var('LDVERSION')}.so.1.0"
+    );
     host_src = _generate_host_source(
         libpy,
         win.title or app_name,

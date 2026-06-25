@@ -112,11 +112,6 @@ jobs:
           persist-credentials: false
           submodules: ${{ matrix.submodules }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       # Build the jac binary for plugin builds (jac bundle) + extra build commands.
       # jaclang itself ships as the binary (released via release-jaclang.yml), not a
       # PyPI wheel, so the parse step should not emit a 'jaclang' matrix entry; the
@@ -205,12 +200,6 @@ jobs:
           echo "pkg=$PKG" >> "$GITHUB_OUTPUT"
           echo "any=$ANY" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Python
-        if: steps.npm.outputs.any == 'true'
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       - name: Set up Node.js
         if: steps.npm.outputs.any == 'true'
         uses: actions/setup-node@v4
@@ -291,11 +280,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac
 
@@ -352,11 +336,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac
 
@@ -412,11 +391,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
 
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac
@@ -476,11 +450,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
 
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac

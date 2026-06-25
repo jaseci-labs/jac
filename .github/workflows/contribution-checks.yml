@@ -54,11 +54,6 @@ jobs:
             exit 1
           fi
 
-      - name: Set up Python 3.12 (for the mkdocs docs build)
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac
 
