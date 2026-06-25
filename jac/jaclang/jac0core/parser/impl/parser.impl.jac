@@ -3121,41 +3121,30 @@ impl Parser.parse_lambda_param -> ParamVar | None {
         return None;
     }
     type_tag: SubTag | None = None;
-    # Heuristic to distinguish type annotation from lambda body colon:
-    # Type annotation COLON is followed by a type and then COMMA, EQ, COLON, RETURN_HINT, or LBRACE
+    # An un-parenthesized lambda reuses `:` for both the param annotation and
+    # the body separator: `name : <type> : <body>`. Unlike `def`/`has` params
+    # (whose colon is unambiguous), disambiguate by parsing the candidate type
+    # with parse_bitwise_or — the precedence rung that covers type syntax
+    # (names, dotted, subscripts like `list[int]`/`dict[str, int]`, `|` unions)
+    # but stops below comparison and other operators. A real type lands on a
+    # param/body delimiter (`:` `,` `=` `->` `{`); a body like `len(s) > 1,`
+    # stops at `>` and `-x` at `-`, so the trailing-token check rejects them and
+    # the colon falls through to the body.
     if self.check(TokenKind.COLON) {
-        next_tok = self.peek();
-        is_type_annotation = False;
-        if next_tok.kind in [
-            TokenKind.NAME,
-            TokenKind.TYP_STRING,
-            TokenKind.TYP_INT,
-            TokenKind.TYP_FLOAT,
-            TokenKind.TYP_LIST,
-            TokenKind.TYP_TUPLE,
-            TokenKind.TYP_SET,
-            TokenKind.TYP_DICT,
-            TokenKind.TYP_BOOL,
-            TokenKind.TYP_BYTES,
-            TokenKind.TYP_ANY,
-            TokenKind.TYP_TYPE
-        ] {
-            after_type = self.peek(2);
-            if after_type.kind in [
-                TokenKind.COMMA,
-                TokenKind.EQ,
-                TokenKind.COLON,
-                TokenKind.RETURN_HINT,
-                TokenKind.LBRACE
-            ] {
-                is_type_annotation = True;
-            }
-        }
-        if is_type_annotation {
-            self.advance();  # consume COLON
-            lam_colon = self.make_uni_token(self.previous());
-            te = self.parse_pipe();
+        save_pos = self.pos;
+        self.advance();  # consume COLON
+        lam_colon = self.make_uni_token(self.previous());
+        te = self.parse_bitwise_or();
+        if self.check_any(
+            TokenKind.COMMA,
+            TokenKind.EQ,
+            TokenKind.COLON,
+            TokenKind.RETURN_HINT,
+            TokenKind.LBRACE
+        ) {
             type_tag = SubTag(tag=te, kid=[lam_colon, te]);
+        } else {
+            self.pos = save_pos;  # not a type — the colon belongs to the body
         }
     }
     default_val: Expr | None = None;

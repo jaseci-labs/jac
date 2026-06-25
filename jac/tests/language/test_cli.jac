@@ -720,6 +720,9 @@ test "lambda arg annotation" {
     assert "x = lambda a, b: b + a" in stdout_value;
     assert "y = lambda: 567" in stdout_value;
     assert "f = lambda x: 'even' if x % 2 == 0 else 'odd'" in stdout_value;
+    assert "g = lambda d: d[0]" in stdout_value;
+    assert "h = lambda d: d['n']" in stdout_value;
+    assert "k = lambda v: v" in stdout_value;
 }
 
 test "lambda self" {
