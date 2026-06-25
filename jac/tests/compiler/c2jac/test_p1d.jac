@@ -241,6 +241,32 @@ test "enum_tu_collision.c: enum constant colliding with a top-level function dem
     assert "tier_b" in verdicts , f"Expected tier_b for TU-name collision in {verdicts}";
 }
 
+# --- Review finding 4: direct-IR for-body/condition expression coverage.
+# A function call and a unary `!` inside a C-for body now lower faithfully, so
+# the loop stays a clean IterForStmt and is NOT demoted to Tier-B. ---
+test "for_call_body.c: call + unary-! in the body lower faithfully (clean IterForStmt)" {
+    (jac_str, tags) = _transpile("for_call_body.c");
+    assert "for i = 0 to i < n by i += 1 {" in jac_str , f"Expected clean IterForStmt in:\n{jac_str}";
+    # The bare call statement and the call sub-expression both survive.
+    assert "total + sink(i)" in jac_str , f"Expected call expression preserved in:\n{jac_str}";
+    # Unary `!` lowers to `not`.
+    assert "if not total {" in jac_str , f"Expected unary-! → 'not' in:\n{jac_str}";
+}
+
+test "for_call_body.c: faithfully-lowered body does NOT demote the loop to Tier-B" {
+    (jac_str, tags) = _transpile("for_call_body.c");
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    # Regression: calls/unary-! used to have no direct-IR case and demoted the
+    # whole loop. They are faithful now, so no "not faithfully lowered" flag.
+    assert not any("not faithfully lowered" in r for r in reasons) , f"Body is faithful now, unexpected Tier-B: {reasons}";
+}
+
+test "for_call_body.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_call_body.c");
+    errs = _recompile_errors(jac_str, "for_call_body.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
 test "enum_tu_collision.c: no duplicate module global shadows the function" {
     (jac_str, tags) = _transpile("enum_tu_collision.c");
     assert jac_str != "";

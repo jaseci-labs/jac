@@ -97,6 +97,74 @@ test "for_block_spacing.c: multi-line loop body has no spurious blank line" {
     assert "\n\n\n" not in jac_str , f"double blank line in output:\n{jac_str}";
 }
 
+test "switch_basic.c: switch lowers to an if/elif chain with OR-folded case labels" {
+    jac_str = _transpile("switch_basic.c");
+    assert jac_str != "" , "Expected non-empty output for switch_basic.c";
+    # Empty-statement cases (`case 1: case 2:`) fold into one OR-ed branch.
+    assert "(x == 1) or (x == 2)" in jac_str , f"Expected OR-folded case labels in:\n{jac_str}";
+    assert "elif (x == 3)" in jac_str , f"Expected elif branch in:\n{jac_str}";
+    # default → else; the switch-terminating breaks are dropped.
+    assert "} else {" in jac_str , f"Expected default→else in:\n{jac_str}";
+    assert "break" not in jac_str , f"switch breaks should be dropped, not emitted:\n{jac_str}";
+}
+
+test "switch_basic.c: switch is recorded as a Tier-B site" {
+    (jac_str, tags) = transpile_c_str(_read("switch_basic.c"), "switch_basic.c");
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert any("switch lowered" in r for r in reasons) , f"Expected a Tier-B switch flag, got {reasons}";
+}
+
+test "switch_basic.c emitted Jac recompiles cleanly" {
+    jac_str = _transpile("switch_basic.c");
+    errs = _recompile_errors(jac_str, "switch_basic.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+test "do_while.c: do-while desugars to a faithful while-True/break" {
+    (jac_str, tags) = transpile_c_str(_read("do_while.c"), "do_while.c");
+    assert "while True {" in jac_str , f"Expected while-True desugar in:\n{jac_str}";
+    # Body runs before the post-test, which guards an exit `break`.
+    assert "if not (n > 0) {" in jac_str , f"Expected post-body condition guard in:\n{jac_str}";
+    assert "break;" in jac_str , f"Expected exit break in:\n{jac_str}";
+    # No loop-level `continue` → the desugar is faithful, so no Tier-B flag.
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert not any("do-while" in r for r in reasons) , f"continue-free do-while must stay faithful, got {reasons}";
+}
+
+test "do_while.c emitted Jac recompiles cleanly" {
+    jac_str = _transpile("do_while.c");
+    errs = _recompile_errors(jac_str, "do_while.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+test "ternary.c: ?: lowers to a Jac conditional expression (faithful)" {
+    (jac_str, tags) = transpile_c_str(_read("ternary.c"), "ternary.c");
+    assert "a if (a > 0) else -a" in jac_str , f"Expected conditional expression in:\n{jac_str}";
+    # A plain ternary is a faithful mapping — it must not be flagged Tier-B.
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert not any("?:" in r or "ternary" in r.lower() for r in reasons) , f"ternary should be faithful, got {reasons}";
+}
+
+test "ternary.c emitted Jac recompiles cleanly" {
+    jac_str = _transpile("ternary.c");
+    errs = _recompile_errors(jac_str, "ternary.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+def _recompile_errors(jac_str: str, name: str) -> list {
+    import tempfile;
+    import from jaclang.jac0core.program { JacProgram }
+    out_dir = tempfile.mkdtemp();
+    stem = name.rsplit(".", 1)[0];
+    path = os.path.join(out_dir, stem + ".jac");
+    with open(path, "w") as f {
+        f.write(jac_str);
+    }
+    prog = JacProgram();
+    prog.compile(file_path=path);
+    return prog.errors_had;
+}
+
 test "unsupported node yields valid Jac surrogate" {
     # A file with only a Goto (unsupported) should still emit valid Jac — not crash.
     c_src = "void f(void) { goto label; label: ; }";
