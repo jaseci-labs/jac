@@ -50,9 +50,22 @@ impl SqliteIdentityStorage.postinit -> None {
     self.ensure_indexes();
 }
 
-"""Create tables."""
+"""Create tables (idempotent and race-safe across processes).
+
+create_all already passes checkfirst=True, but the has_table -> CREATE TABLE
+step is a TOCTOU race across processes: pytest-xdist workers (or
+multi-process server boot sharing one SQLite file) can both observe a table
+absent and both issue CREATE TABLE, so the loser raises "already exists".
+That is the desired end state, so swallow it.
+"""
 impl SqliteIdentityStorage.ensure_indexes -> None {
-    self._table.metadata.create_all(self._engine);
+    try {
+        self._table.metadata.create_all(self._engine);
+    } except OperationalError as e {
+        if 'already exists' not in str(e).lower() {
+            raise;
+        }
+    }
 }
 
 """Convert a row to a dict (excludes credentials)."""

@@ -31,7 +31,7 @@ import from sqlalchemy {
     delete,
     update
 }
-import from sqlalchemy.exc { IntegrityError }
+import from sqlalchemy.exc { IntegrityError, OperationalError }
 import from jac_scale._optdeps.pymongo { DuplicateKeyError }
 import type from pymongo.collection { Collection }
 import from jaclang.jac0core.constant { Constants as Con }
