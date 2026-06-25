@@ -2038,7 +2038,7 @@ test "dev mode named endpoints and HMR refresh" {
 # =============================================================================
 # GROUP 7: PORT FALLBACK TESTS
 # =============================================================================
-import from jac_scale.serve {
+import from jac_scale.server.serve {
     _find_available_port,
     _get_network_ips,
     PORT_RETRY_LIMIT,

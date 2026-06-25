@@ -28,7 +28,7 @@ import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.webhook.webhook { ApiKeyManager, WebhookUtils }
 import from jac_scale.observability.metrics { MetricsCollector }
 import from jac_scale.events.broker { EventStreamBroker }
-import from jac_scale.websocket { WebSocketConnectionManager }
+import from jac_scale.server.ws_support { WebSocketConnectionManager }
 import from typing { AsyncGenerator }
 import from inspect { isgenerator }
 import from fastapi.responses { StreamingResponse }

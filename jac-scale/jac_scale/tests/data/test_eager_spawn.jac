@@ -34,7 +34,7 @@ import from jaclang { JacRuntime as Jac }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.runtimelib { sv_client as __jac_sv }
 import from starlette.testclient { TestClient }
-import from jac_scale.serve { JacAPIServer }
+import from jac_scale.server.serve { JacAPIServer }
 
 glob FIXTURES: Path = Path(__file__).parent.parent / "fixtures" / "microservice";
 

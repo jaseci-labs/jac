@@ -19,7 +19,7 @@ import from jac_scale.shared.utils { is_safe_loopback_redirect }
 import from jac_scale.sso.google { GoogleSSOProvider }
 import from jac_scale.sso.apple { AppleSSOProvider }
 import from jac_scale.sso.github { GithubSSOProvider }
-import from jac_scale.serve { JacAPIServer }
+import from jac_scale.server.serve { JacAPIServer }
 import from jac_scale.shared.enums { Platforms, Operations }
 import from jac_scale.identity.user_manager { JacScaleUserManager }
 import from jaclang.runtimelib.transport { TransportResponse }
@@ -930,7 +930,7 @@ test "register sso endpoints" {
     mock_user_manager = unittest.mock.Mock();
     mock_config = MockScaleConfig(mock_sso_config_with_credentials());
     with unittest.mock.patch(
-        "jac_scale.serve.get_scale_config", return_value=mock_config
+        "jac_scale.server.serve.get_scale_config", return_value=mock_config
     ) {
         with unittest.mock.patch(
             "jaclang.jac0core.runtime.JacRuntimeInterface.get_user_manager",
@@ -972,7 +972,7 @@ def _setup_callback_wrapper_server(sso_config: dict) -> tuple {
     mock_user_manager = unittest.mock.Mock();
     mock_config = MockScaleConfig(sso_config);
     with unittest.mock.patch(
-        "jac_scale.serve.get_scale_config", return_value=mock_config
+        "jac_scale.server.serve.get_scale_config", return_value=mock_config
     ) {
         with unittest.mock.patch(
             "jaclang.jac0core.runtime.JacRuntimeInterface.get_user_manager",
@@ -1001,7 +1001,7 @@ test "sso callback honors loopback client callback from state" {
     loopback = "http://127.0.0.1:43117/auth/callback";
     mock_request.query_params = {"state": loopback};
     with unittest.mock.patch(
-        "jac_scale.serve.get_scale_config", return_value=mock_config
+        "jac_scale.server.serve.get_scale_config", return_value=mock_config
     ) {
         result = asyncio.run(wrapper(mock_request, Platforms.GOOGLE.value));
     }
@@ -1027,7 +1027,7 @@ test "sso callback rejects non-loopback client callback from state" {
     mock_request = unittest.mock.Mock(spec=Request);
     mock_request.query_params = {"state": "https://evil.com/steal"};
     with unittest.mock.patch(
-        "jac_scale.serve.get_scale_config", return_value=mock_config
+        "jac_scale.server.serve.get_scale_config", return_value=mock_config
     ) {
         result = asyncio.run(wrapper(mock_request, Platforms.GOOGLE.value));
     }

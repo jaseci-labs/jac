@@ -81,7 +81,7 @@ obj ScaleTestClient {
     """Initialize the jac-scale server and Starlette TestClient."""
     def _initialize {
         import from starlette.testclient { TestClient }
-        import from jac_scale.serve { JacAPIServer }
+        import from jac_scale.server.serve { JacAPIServer }
 
         (base, mod) = os.path.split(self._jac_file);
         base = base or "./";
