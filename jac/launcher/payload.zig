@@ -89,11 +89,18 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
     const gpa = init.gpa;
 
-    var argv: [8][]const u8 = undefined;
+    var argv: [16][]const u8 = undefined;
     var n: usize = 0;
     var it = init.minimal.args.iterate();
-    while (it.next()) |a| : (n += 1) {
-        if (n < argv.len) argv[n] = a;
+    // Cap at argv.len: every subcommand here takes a fixed, small set of args, so
+    // dropping any beyond the cap is harmless -- and it keeps `n` an exact count
+    // of the SLOTS WRITTEN, so the later flag loops (`while (i < n)`) never index
+    // past the array. (Unconditionally incrementing `n` would let it exceed
+    // argv.len and read uninitialized/out-of-bounds slots.)
+    while (it.next()) |a| {
+        if (n >= argv.len) break;
+        argv[n] = a;
+        n += 1;
     }
     if (n < 2) die("usage: payload <fetch-pbs|fetch-typeshed|mkpayload> ...", .{});
 
@@ -116,10 +123,11 @@ pub fn main(init: std.process.Init) !void {
             try fetchTypeshed(io, gpa, a, argv[2]);
         },
         .mkpayload => {
-            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile]", .{});
+            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--link-source=PATH]", .{});
             // Trailing flags (after the positional pbs/root/out, see build.zig):
             var shim_so: ?[]const u8 = null;
             var skip_precompile = false;
+            var link_source: ?[]const u8 = null;
             var i: usize = 5;
             while (i < n) : (i += 1) {
                 const arg = argv[i];
@@ -127,9 +135,11 @@ pub fn main(init: std.process.Init) !void {
                     shim_so = arg["--shim=".len..];
                 } else if (std.mem.eql(u8, arg, "--skip-precompile")) {
                     skip_precompile = true;
+                } else if (std.mem.startsWith(u8, arg, "--link-source=")) {
+                    link_source = arg["--link-source=".len..];
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, skip_precompile);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, skip_precompile, link_source);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -421,6 +431,12 @@ fn mkPayload(
     out: []const u8,
     shim_so: ?[]const u8,
     skip_precompile: bool,
+    // Editable dev binary: an absolute path to the dir CONTAINING jaclang/. When
+    // set, the compiler is NOT bundled -- the payload ships only CPython + the
+    // bootstrap shims + the test runner, and a baked `site/jac_linked_source`
+    // marker reroutes `import jaclang` to this dir at startup (see _jac_finder.py
+    // apply_dev_source_override). Implies skip_precompile and a tiny, fast build.
+    link_source: ?[]const u8,
 ) !void {
     const py = try resolvePython(io, a, pbs_py_dir);
     const work = try std.fmt.allocPrint(a, "{s}.work", .{out});
@@ -444,13 +460,25 @@ fn mkPayload(
     // jaclang is pure source + data (no compiled extension), so copy it straight
     // from the tree -- no wheel build. Skip caches, node_modules, and a stale
     // _precompiled (regenerated below) and the full typeshed stubs/ (stdlib only).
-    {
+    // In linked-source mode we skip this entirely: the compiler stays in `link_source`
+    // and the runtime reroutes to it (no bundled copy, no stale-source risk).
+    if (link_source == null) {
         var jac_src = try Dir.cwd().openDir(io, try std.fmt.allocPrint(a, "{s}/jaclang", .{repo_root}), .{ .iterate = true });
         defer jac_src.close(io);
         try copyTree(io, gpa, a, jac_src, try std.fmt.allocPrint(a, "{s}/jaclang", .{site}), skipJaclang);
+    } else {
+        log("==> linked-source mode: NOT bundling jaclang (compiler served from {s})", .{link_source.?});
     }
     try copyInto(io, a, repo_root, "_jac_finder.py", site);
     try copyInto(io, a, repo_root, "sitecustomize.py", site);
+    // Bake the linked compiler path so the binary reroutes regardless of cwd or
+    // any jac.toml [dev] stanza -- read first by apply_dev_source_override.
+    if (link_source) |src| {
+        try Dir.cwd().writeFile(io, .{
+            .sub_path = try std.fmt.allocPrint(a, "{s}/jac_linked_source", .{site}),
+            .data = src,
+        });
+    }
 
     // Minimal dist-info so importlib.metadata sees jaclang -- the version keys
     // JIR (pkg_version) and the entry points back the pytest11 plugin (`jac
@@ -483,21 +511,29 @@ fn mkPayload(
     // linked against host LLVM) next to its Jac binding. The Jac binding
     // ctypes-loads it (jaclang/compiler/passes/native/llvm/binding/ffi.jac).
     // The shim is required -- there is no llvmlite wheel fallback (#6925).
-    const so = shim_so orelse die(
-        "mkpayload: no LLVM shim (--shim). Run `zig build fetch-llvm` once so the" ++
-            " build can compile + statically link the LLVMPY_* shim.",
-        .{},
-    );
-    const dst_dir = try std.fmt.allocPrint(a, "{s}/jaclang/compiler/passes/native/llvm", .{site});
-    try Dir.cwd().createDirPath(io, dst_dir);
-    // Keep the platform-correct basename (libjacllvm.so / .dylib / jacllvm.dll)
-    // so ffi.jac's _shim_name() finds it; build.zig emits the right name per OS.
-    const shim_base = std.fs.path.basename(so);
-    log("==> bundling Zig-built LLVMPY_* shim ({s})", .{so});
-    try Dir.cwd().copyFile(so, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst_dir, shim_base }), io, .{});
+    // Skipped in linked-source mode: there is no bundled site/jaclang/ to host
+    // it, and build.zig's `place` step writes the shim into the linked tree
+    // (jaclang/compiler/passes/native/llvm/) where ffi.jac finds it instead.
+    if (link_source == null) {
+        const so = shim_so orelse die(
+            "mkpayload: no LLVM shim (--shim). Run `zig build fetch-llvm` once so the" ++
+                " build can compile + statically link the LLVMPY_* shim.",
+            .{},
+        );
+        const dst_dir = try std.fmt.allocPrint(a, "{s}/jaclang/compiler/passes/native/llvm", .{site});
+        try Dir.cwd().createDirPath(io, dst_dir);
+        // Keep the platform-correct basename (libjacllvm.so / .dylib / jacllvm.dll)
+        // so ffi.jac's _shim_name() finds it; build.zig emits the right name per OS.
+        const shim_base = std.fs.path.basename(so);
+        log("==> bundling Zig-built LLVMPY_* shim ({s})", .{so});
+        try Dir.cwd().copyFile(so, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst_dir, shim_base }), io, .{});
+    }
 
-    if (skip_precompile) {
-        log("==> skipping JIR precompile (--skip-precompile); modules compile on first run", .{});
+    // Linked-source mode implies skip-precompile: the compiler lives in the
+    // linked tree and the dev override sets JAC_NO_PRECOMPILE, so a bundled JIR
+    // cache would never be consulted anyway.
+    if (skip_precompile or link_source != null) {
+        log("==> skipping JIR precompile; modules compile on first run", .{});
     } else {
         try precompile(io, gpa, a, parent_env, py, pbs_py_dir, site);
     }

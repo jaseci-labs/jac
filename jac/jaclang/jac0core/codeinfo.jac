@@ -163,10 +163,37 @@ def native_safe_sym(src: str) -> str {
     return f"{safe}_{hashlib.sha1(src.encode()).hexdigest()[:8]}";
 }
 
+"""Absolute path to the bundled native standard library root
+(`jaclang/runtimelib/na_stdlib`), or None if it cannot be located.
+
+The pure-Jac `.na.jac` modules shipped under this root are the Mechanism-B
+delivery vehicle for the Python-congruent native standard library (issues
+#6404 / #6940): a bundled `<name>.na.jac` is reachable by `resolve_native_module`
+so `import from <name> { fn }` resolves and links through the SAME cross-module
+machinery as any user `.na.jac`, with zero per-module backend work. Resolved
+relative to the installed `jaclang` package so it works both from the editable
+source tree and a packaged binary.
+"""
+def native_stdlib_root -> (str | None) {
+    import os;
+    import jaclang;
+    if not jaclang?.__file__ {
+        return None;
+    }
+    root = os.path.join(os.path.dirname(jaclang.__file__), "runtimelib", "na_stdlib");
+    return root if os.path.isdir(root) else None;
+}
+
 """Resolve a module name to a .na.jac file path.
 
 Shared resolver used by both BoundaryAnalysisPass and NaIRGenPass to
 ensure consistent native module path resolution across the compiler.
+
+Resolution precedence is nearest-wins: the importing project's own tree is
+searched first (a flat sibling, then the dotted hierarchy walked up to the
+filesystem root), and only if that misses do we fall back to the bundled
+native standard library (`native_stdlib_root`). A user module therefore
+always shadows a bundled module of the same name.
 
 Returns (source_module_str, full_path) or (None, None) if not found.
 source_module_str mirrors the value stored in InteropBinding.source_module.
@@ -196,6 +223,21 @@ def resolve_native_module(
                 break;
             }
             search = parent;
+        }
+    }
+    # Bundled native standard library fallback (nearest-wins: only consulted
+    # after the user tree misses). A bundled `<name>.na.jac` is keyed on its
+    # dotted import name (`json` → json.na, `os.path` → os/path.na.jac on disk)
+    # and returns a stable `<name>.na` source string for the symbol-naming
+    # contract (native_safe_sym).
+    bundled_root = native_stdlib_root();
+    if bundled_root is not None {
+        bundled = os.path.join(bundled_root, f"{path_name}.na.jac");
+        if os.path.exists(bundled) {
+            # `path_name` carries os.sep, mirroring the dotted user relpath form
+            # (`os/path.na`), so NativeCompilePass can re-root the same suffix at
+            # the bundled stdlib dir to find the module's object code to link.
+            return (f"{path_name}.na", bundled);
         }
     }
     return (None, None);

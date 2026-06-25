@@ -155,6 +155,10 @@ def _desktop_config_schema -> PluginConfigSchema {
                 "com.myapp", "Reverse-domain identifier (com.example.myapp)"
             ),
             "version": schema_str_option("1.0.0", "Desktop app version"),
+            "engine": schema_str_option(
+                "native",
+                "Desktop engine: 'native' (OS webview) or 'cef' (Chromium Embedded Framework)"
+            ),
             "window": schema_dict_option(
                 "Window geometry: title, width, height, min_width, min_height, resizable.",
                 nested={

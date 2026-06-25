@@ -781,6 +781,13 @@ impl ElfLinker.build_executable -> bytes {
         sym_i += 1;
     }
     extern_syms: list[str] = extern_func_syms + extern_data_syms;
+    # Defined symbols exported for dlsym (e.g. close() for CEF hosts).
+    exec_exports: list[str] = [];
+    for nm in self.export_symbols {
+        if nm in local_sym_map and nm not in extern_syms {
+            exec_exports.append(nm);
+        }
+    }
 
     # ── Layout ────────────────────────────────────────────────────
     ehdr_size = 64;
@@ -804,11 +811,11 @@ impl ElfLinker.build_executable -> bytes {
     # Build dynamic string table. "$ORIGIN" backs the DT_RUNPATH entry so the
     # loader resolves needed libraries relative to the executable's own
     # directory (a sibling .so is found no matter the launch CWD).
-    dynstr_strings = [""] + extern_syms + self.needed_libs + ["$ORIGIN"];
+    dynstr_strings = [""] + extern_syms + exec_exports + self.needed_libs + ["$ORIGIN"];
     (dynstr_data, dynstr_offsets) = _build_strtab(dynstr_strings);
 
     # Build dynamic symbol table
-    num_dynsyms = 1 + len(extern_syms);
+    num_dynsyms = 1 + len(extern_syms) + len(exec_exports);
     dynsym_data = bytearray();
     dynsym_data.extend(struct.pack("<IBBHQQ", 0, 0, 0, 0, 0, 0));
     extern_data_set = set(extern_data_syms);
@@ -819,6 +826,11 @@ impl ElfLinker.build_executable -> bytes {
         dynsym_data.extend(
             struct.pack("<IBBHQQ", st_name, st_info, 0, SHN_UNDEF, 0, 0)
         );
+    }
+    for sym_name in exec_exports {
+        st_name = dynstr_offsets.get(sym_name, 0);
+        st_info = (STB_GLOBAL << 4) | STT_FUNC;
+        dynsym_data.extend(struct.pack("<IBBHQQ", st_name, st_info, 0, 0, 0, 0));
     }
 
     # Build hash table
@@ -956,6 +968,18 @@ impl ElfLinker.build_executable -> bytes {
         dynsym_offset = (1 + len(extern_func_syms) + idx) * 24;
         copy_vaddr = data_got_vaddr + idx * 8;
         struct.pack_into("<QQ", dynsym_data, dynsym_offset + 8, copy_vaddr, 8);
+    }
+
+    # ── Patch dynsym entries for exported defined symbols ─────────
+    for idx in range(len(exec_exports)) {
+        nm = exec_exports[idx];
+        place = local_sym_map[nm];
+        sym_vaddr = _resolve_seg_vaddr(
+            place[0], place[1], text_vaddr, rodata_vaddr, data_vaddr
+        );
+        dynsym_offset = (1 + len(extern_syms) + idx) * 24;
+        struct.pack_into("<Q", dynsym_data, dynsym_offset + 8, sym_vaddr);
+        struct.pack_into("<H", dynsym_data, dynsym_offset + 6, 1);
     }
 
     # ── Build PLT (architecture-dispatched) ───────────────────────

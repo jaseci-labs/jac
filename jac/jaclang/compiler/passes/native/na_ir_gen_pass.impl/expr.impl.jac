@@ -1204,6 +1204,22 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             if full_name in self.enum_values {
                 return self.enum_values[full_name];
             }
+            # Static class-attribute read: `Class.attr` on a `static has` (#6951),
+            # resolved through the MRO so a subclass sees an inherited static.
+            # Guarded by `not in local_vars` so a local shadowing a class name
+            # still resolves as instance access below.
+            if (
+                target_name in self.struct_types and target_name not in self.local_vars
+            ) {
+                for _cn in self._mro_of(target_name) {
+                    _sf = f"{_cn}.{right_name}";
+                    if _sf in self.static_fields {
+                        return self.builder.load(
+                            self.static_fields[_sf], name=f"sfld.{right_name}"
+                        );
+                    }
+                }
+            }
             # Enum .value / .name attribute: kind.value, self.kind.name —
             # enum-ness comes from the checked type of the target expression
             # (covers bare vars, params, and chained field access alike).
@@ -1369,6 +1385,27 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             # Chained index: evaluate target expression, infer list type or string
             target_val = self._codegen_expr(nd.target);
             if target_val is not None {
+                # Subscript on an `any` (boxed JacVal): dispatch on the key's
+                # static type to the canonical heterogeneous container layout.
+                # The result is itself an `any`. (#6943 NA-3)
+                if self?.jacval_type and target_val.type == self.jacval_type {
+                    _any_slices = nd.right.slices or [];
+                    if _any_slices {
+                        _any_idx_node = _any_slices[0];
+                        _any_key = self._codegen_expr(_any_idx_node);
+                        if _any_key is None and _any_idx_node?.start {
+                            _any_key = self._codegen_expr(_any_idx_node.start);
+                        }
+                        if _any_key is not None {
+                            _any_res = self._codegen_any_subscript(
+                                target_val, _any_key
+                            );
+                            if _any_res is not None {
+                                return _any_res;
+                            }
+                        }
+                    }
+                }
                 # bytes[i] -> int (length-aware; embedded NULs are reachable).
                 if self._is_bytes_value(target_val) {
                     slices = nd.right.slices or [];

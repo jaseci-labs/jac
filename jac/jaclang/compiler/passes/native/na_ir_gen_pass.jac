@@ -4,7 +4,7 @@ Compiles Jac AST nodes in NATIVE context to LLVM IR using llvmlite.
 All code in na {} or .na.jac is guaranteed to compile to native LLVM IR.
 
 Derives from ModuleCodegenPass (not UniPass) because LLVM IR generation
-uses manual tree-walking rather than the visitor pattern — instructions
+uses manual tree-walking rather than the visitor pattern -- instructions
 must be emitted into specific basic blocks in order for control flow.
 """
 
@@ -36,13 +36,14 @@ glob NATIVE_TIME_FUNCS: set[str] = {
      };
 
 # os-module function names lowered by _emit_os_call. Gated explicitly because
-# most are void (chdir/mkdir/rmdir/remove/unlink/rename) — None ≠ unhandled.
+# most are void (chdir/mkdir/rmdir/remove/unlink/rename) -- None ≠ unhandled.
 glob NATIVE_OS_FUNCS: set[str] = {
          "getpid",
          "getcwd",
          "getenv",
          "chdir",
          "mkdir",
+         "makedirs",
          "rmdir",
          "remove",
          "unlink",
@@ -65,11 +66,11 @@ glob NATIVE_RANDOM_FUNCS: set[str] = {
 
 # struct-module function names lowered by _emit_struct_call (#6404). The format
 # string is a compile-time literal, so pack/unpack/calcsize are fully resolved
-# in codegen — the canonical, sv-congruent way to reinterpret bytes ↔ scalars.
+# in codegen -- the canonical, sv-congruent way to reinterpret bytes ↔ scalars.
 glob NATIVE_STRUCT_FUNCS: set[str] = {"pack", "unpack", "calcsize", };
 
 # ── Sentinel refcount value for static (immortal) strings.
-# INT64_MAX = 0x7FFFFFFFFFFFFFFF — never reaches 0 even if accidentally decremented.
+# INT64_MAX = 0x7FFFFFFFFFFFFFFF -- never reaches 0 even if accidentally decremented.
 glob RC_SENTINEL: int = 0x7FFFFFFFFFFFFFFF;
 
 # ── 32-byte allocation header layout (offsets from user_ptr) ──────────────
@@ -77,15 +78,15 @@ glob RC_SENTINEL: int = 0x7FFFFFFFFFFFFFFF;
 # relative to user_ptr, so the values are negative for header fields.
 glob HDR_ALLOC_ID_OFF: int = -32,  # i64 alloc_id (with HDR_MAGIC in upper 32 bits)
      HDR_TAG_OFF: int = -24,  # i8*  type_tag string
-     HDR_RC_OFF: int = -16,  # i64  refcount    (UNCHANGED — also valid for static-string 16-byte hdr)
-     HDR_DTOR_OFF: int = -8,  # i64  dtor_fn_ptr (UNCHANGED — 0 = plain free)
+     HDR_RC_OFF: int = -16,  # i64  refcount    (UNCHANGED -- also valid for static-string 16-byte hdr)
+     HDR_DTOR_OFF: int = -8,  # i64  dtor_fn_ptr (UNCHANGED -- 0 = plain free)
      HDR_TOTAL: int = 32;
 
 # ── live-objects linked-list node layout (offsets from node start) ────────
 glob LIVE_NODE_ID_OFF: int = 0,  # i64  node id (matches header alloc_id)
      LIVE_NODE_USER_OFF: int = 8,  # i8*  user pointer being tracked
      LIVE_NODE_TAG_OFF: int = 16,  # i8*  cached type_tag (mirrors header)
-     LIVE_NODE_RC_OFF: int = 24,  # i64  rc_snap — last observed refcount
+     LIVE_NODE_RC_OFF: int = 24,  # i64  rc_snap -- last observed refcount
      LIVE_NODE_NEXT_OFF: int = 32,  # i8*  next node in the list
      LIVE_NODE_SIZE: int = 40;
 
@@ -134,11 +135,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _foreign_fns_nmods: int = -1,
         # Per-clib-function System V ABI plan (Phase 1 ABI lowering).
         # name -> {"params": [plan...], "ret": plan, "sret": bool}. This is the
-        # single source of truth for how a foreign call is marshalled — it
+        # single source of truth for how a foreign call is marshalled -- it
         # replaces the old non-injective `result.type == abi_type` matching that
         # corrupted scalar returns sharing an LLVM type with a struct (gap #7).
         clib_fn_abi: dict[str, dict] = {},
-        # Clib vtable structs (fn-ptr slots) and their C→Jac callback
+        # Clib vtable structs (fn-ptr slots) and their C->Jac callback
         # trampolines, cached per (jac_fn, c_fn_type) pair (issue #6570).
         clib_vtable_structs: set[str] = set(),
         clib_trampoline_funcs: dict[str, ir.Function] = {},
@@ -165,6 +166,15 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # evaluation, RC management, and to keep the slot null-only.
         struct_field_opaque: dict[str, set] = {},
         method_funcs: dict[str, ir.Function] = {},
+        # Static-method full names ("Class.method") declared WITHOUT a self
+        # pointer (issue #6951), so the call dispatch omits self and a bare
+        # `ClassName.method(args)` resolves like a namespaced free function.
+        static_methods: dict[str, bool] = {},
+        # Static class attributes (`static has`) lowered as module-level globals
+        # (issue #6951): "Class.field" -> GlobalVariable, with the value type
+        # tracked alongside. Initialised in __jac_glob_init like module globals.
+        static_fields: dict[str, object] = {},
+        static_field_types: dict[str, object] = {},
         # Interop-marshalling return facts for free functions, recorded at
         # declaration time (while the Ability node is in hand) and consumed
         # by build_interop_layout. These replaced the name-keyed
@@ -199,9 +209,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _non_overridden_methods: dict[str, set[str]] = {},
         # Partial-native classes / per-method opt-out (workstream A4, #6930):
         # full-names (`Arch.method`) of methods whose body the native backend
-        # could not lower. They are demoted to Python-only — dropped from
+        # could not lower. They are demoted to Python-only -- dropped from
         # method_funcs / the native layout, their body reduced to an abort stub
-        # — so an un-lowerable method does not poison its class's native layout,
+        # -- so an un-lowerable method does not poison its class's native layout,
         # constructor, or lowerable siblings. Read by _codegen_method_call to
         # turn a native call to a demoted method into an E5090 (rather than a
         # silently-dropped null call). Construction-critical methods
@@ -263,7 +273,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _osp_kernel_inited_gv: (object | None) = None,
         # The kernel glob-init Function (`__jac_glob_init_osp_kernel`), stashed by
         # _emit_osp_setup. _codegen_entry guards the program-entry call to it by
-        # IDENTITY against this, not by re-matching the symbol name — so the guard
+        # IDENTITY against this, not by re-matching the symbol name -- so the guard
         # can never silently drift from the symbol the kernel link produces (a
         # name mismatch surfaces as a loud undefined-symbol link error instead).
         _osp_kernel_glob_init_fn: (object | None) = None,
@@ -304,7 +314,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # returns length-aware bytes (#6404). Same struct layout as File.
         _binary_file_struct_type: (object | None) = None,
         _binary_file_helpers_emitted: bool = False,
-        # Length-aware bytes type: pointer to { i64 len, [0 x i8] data } — a
+        # Length-aware bytes type: pointer to { i64 len, [0 x i8] data } -- a
         # single rc_alloc'd block so embedded NULs survive and len() is exact
         # (#6404 Track 0). Distinct from str (i8*) so dispatch never confuses
         # the two.
@@ -326,7 +336,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # ctx attribution, leak dump). Read from JAC_RC_DEBUG_CODEGEN env var
         # in postinit. When False (default), every Jac allocation skips the
         # malloc(LIVE_NODE_SIZE) live-list insert and the corresponding
-        # release-time list walk — recovering the per-allocation overhead.
+        # release-time list walk -- recovering the per-allocation overhead.
         _rc_debug_codegen: bool = False,
         rc_alloc_fn: (ir.Function | None) = None,
         rc_retain_fn: (ir.Function | None) = None,
@@ -404,7 +414,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_unsupported_builtin_call(nd: uni.FuncCall, func_name: str) -> None;
     # Lambda expressions (Phase 17)
-    # Maps variable name → list of (cap_name, cap_alloca) for closure injection.
+    # Maps variable name -> list of (cap_name, cap_alloca) for closure injection.
     # Populated during assignment of a capturing lambda, consumed during calls.
     has lambda_captures: dict[str, list[tuple]] = {},
         _pending_lambda_captures: (list[tuple] | None) = None;
@@ -429,6 +439,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _prim_ir_types -> dict;
     def _try_resolve_field_type(var: uni.UniNode) -> tuple;
     def _type_base_is_unknown(tb: any) -> bool;
     def _parse_callable_type_string(s: str) -> (ir.Type | None);
@@ -573,6 +584,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
 
     def _osp_isa_bases(arch_name: str) -> list[int];
     def _codegen_archetype(nd: uni.Archetype) -> None;
+    # Lower a `static has` block to per-class module-level globals (#6951).
+    def _register_static_fields(arch_name: str, archhas: uni.ArchHas) -> None;
     def _forward_declare_method(arch_name: str, method: uni.Ability) -> None;
     def _visit_nonprimary_ancestor_methods(arch: uni.Archetype, declare: bool) -> None;
     def _codegen_method(arch_name: str, method: uni.Ability) -> None;
@@ -700,6 +713,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
         target_val: ir.Value, index_val: ir.Value, elem_type_name: str
     ) -> (ir.Value | None);
 
+    def _codegen_any_subscript(
+        jacval: ir.Value, key_val: ir.Value
+    ) -> (ir.Value | None);
+
+    def _codegen_any_len(jacval: ir.Value) -> ir.Value;
     def _codegen_index_set(
         target_val: ir.Value, index_val: ir.Value, value: ir.Value, elem_type_name: str
     ) -> None;
@@ -728,6 +746,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> (ir.Value | None);
 
     def _codegen_str_strip(str_val: ir.Value) -> (ir.Value | None);
+    def _emit_is_strip_char(ch: ir.Value, charset: (ir.Value | None)) -> ir.Value;
+    def _codegen_str_strip_chars(
+        str_val: ir.Value, charset: (ir.Value | None), do_left: bool, do_right: bool
+    ) -> (ir.Value | None);
+
     def _codegen_str_split(str_val: ir.Value, sep_val: ir.Value) -> (ir.Value | None);
     def _codegen_list_slice(
         target_val: ir.Value, slice_node: object, elem_type_name: str
@@ -954,19 +977,19 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _resolve_clib_lib_name(components: list[str], level: int) -> str;
     def _declare_clib_ability(nd: uni.Ability) -> None;
     def _resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type;
-    # ─── C→Jac callback trampolines for clib vtable structs (#6570) ───
+    # ─── C->Jac callback trampolines for clib vtable structs (#6570) ───
     # True when a registered clib struct has a function-pointer field.
     def _clib_struct_has_fn_ptr(name: str) -> bool;
     # Record clib structs with fn-ptr slots in clib_vtable_structs.
     def _clib_detect_vtable_structs -> None;
     # Coerce a value stored into a vtable fn-ptr slot to the slot's C type
-    # (Jac def → trampoline, int 0 → NULL fn ptr, passthrough otherwise).
+    # (Jac def -> trampoline, int 0 -> NULL fn ptr, passthrough otherwise).
     def _clib_coerce_callback(val: ir.Value, c_fn_ty: ir.Type) -> ir.Value;
     # Sign-correct scalar coercion at the C↔Jac trampoline boundary.
     def _clib_cb_coerce_scalar(val: ir.Value, target_type: ir.Type) -> ir.Value;
     # Emit (or fetch from cache) the C-ABI wrapper for a Jac def.
     def _emit_clib_c_trampoline(jac_fn: ir.Function, c_fn_ty: ir.Type) -> ir.Function;
-    # Allocate a clib vtable struct as flat, zeroed, C-owned memory —
+    # Allocate a clib vtable struct as flat, zeroed, C-owned memory --
     # no RC header/destructor/type tag (#6571).
     def _clib_alloc_vtable(name: str) -> ir.Value;
     # ─── System V AMD64 ABI lowering for foreign structs (Phase 1) ───
@@ -1065,7 +1088,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     ) -> None;
 
     def _emit_rc_live_dump -> None;
-    # GC debug helpers (gc_debug.impl.jac — R3 extracted)
+    # GC debug helpers (gc_debug.impl.jac -- R3 extracted)
     def _emit_rc_debug_globals -> None;
     def _emit_ctx_load(b: ir.IRBuilder) -> tuple;
     def _emit_live_node_insert(
