@@ -195,3 +195,58 @@ test "for_unsupported.c: unsupported for is marked Tier-B" {
     has_for = any("IterForStmt" in r for r in reasons);
     assert has_for , f"Expected a Tier-B entry for the unsupported for-loop, got {reasons}";
 }
+
+# --- Review finding 1: for-body lowering must be faithful or honest, never
+# silently lossy. else/return are now preserved; a body construct with no
+# direct-IR analog (e.g. an uninitialized local decl) demotes the loop Tier-B. ---
+test "for_body_rich.c: if/else arm is preserved (else not dropped)" {
+    (jac_str, tags) = _transpile("for_body_rich.c");
+    assert jac_str != "";
+    # Regression: _c_stmt_to_uni built IfStmt with else_body=None, dropping the
+    # entire else arm of every `if` in a C-for body.
+    assert "} else {" in jac_str , f"Expected the else arm preserved in:\n{jac_str}";
+    assert "result = 1" in jac_str , f"Expected else-body statement in:\n{jac_str}";
+}
+
+test "for_body_rich.c: return inside a for body is preserved" {
+    (jac_str, tags) = _transpile("for_body_rich.c");
+    # Regression: a `return` in a C-for body had no case and was silently dropped.
+    assert "return result" in jac_str , f"Expected 'return result' in:\n{jac_str}";
+}
+
+test "for_body_rich.c: dropped uninitialized decl demotes the loop to Tier-B" {
+    (jac_str, tags) = _transpile("for_body_rich.c");
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    # The bare `int local;` has no faithful direct-IR analog, so the loop must be
+    # flagged rather than presenting a truncated body as faithful.
+    assert any("declaration" in r for r in reasons) , f"Expected a Tier-B decl flag, got {reasons}";
+}
+
+test "for_body_rich.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_body_rich.c");
+    errs = _recompile_errors(jac_str, "for_body_rich.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- Review finding 2: collision check must cover the whole translation unit,
+# not just prior enum-derived names. An enum constant clashing with a top-level
+# function/variable name demotes to Tier-B instead of shadowing it at module scope. ---
+test "enum_tu_collision.c: enum constant colliding with a top-level function demotes to Tier-B" {
+    src = _read("enum_tu_collision.c");
+    file_ast = c_parser.CParser().parse(src, "enum_tu_collision.c");
+    ev = build_enum_map(file_ast);
+    verdicts = list(ev.verdicts.values());
+    # STATUS_OK is also a top-level function name — seeding TU names makes this
+    # collision visible regardless of declaration order.
+    assert "tier_b" in verdicts , f"Expected tier_b for TU-name collision in {verdicts}";
+}
+
+test "enum_tu_collision.c: no duplicate module global shadows the function" {
+    (jac_str, tags) = _transpile("enum_tu_collision.c");
+    assert jac_str != "";
+    # The enum was demoted, so STATUS_OK must not be re-emitted as a glob const.
+    assert jac_str.count("glob STATUS_OK") == 0 , f"Enum const must not shadow the function:\n{jac_str}";
+    assert jac_str.count("def STATUS_OK") == 1 , f"Expected the function preserved exactly once:\n{jac_str}";
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert any("collides" in r for r in reasons) , f"Expected a collision reason, got {reasons}";
+}

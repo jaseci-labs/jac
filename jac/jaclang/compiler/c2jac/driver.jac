@@ -221,23 +221,51 @@ def _fix_zero_toks_in_subtree(nd: object) -> None {
     for kid in kids {
         _fix_zero_toks_in_subtree(kid);
     }
-    # If any direct-child token still has line_no=0, propagate from all descendants.
+    # If any direct-child token still has line_no=0, give it a real line based on
+    # its POSITION among the kids, not a single blanket value. A leading/opening
+    # token (e.g. `{`) takes the first line that follows it; a trailing/closing
+    # token (e.g. `}`) takes the last line that precedes it. Stamping every zero
+    # token with min(desc_lines) instead compressed a block's apparent span — the
+    # formatter's blank-line gap logic keys off a node's last_line, so a closing
+    # `}` carrying the block's FIRST line mis-computed spacing to the next sibling.
     has_zero = any(isinstance(k, uni.Token) and k.line_no == 0 for k in kids);
     if not has_zero {
         return;
     }
-    desc_lines: list[int] = [];
+    # Per-kid first/last real descendant line (None when the kid has no real line).
+    kid_first: list[int | None] = [];
+    kid_last: list[int | None] = [];
     for kid in kids {
-        _collect_non_zero_lines(kid, desc_lines);
+        sub: list[int] = [];
+        _collect_non_zero_lines(kid, sub);
+        kid_first.append(min(sub) if sub else None);
+        kid_last.append(max(sub) if sub else None);
     }
-    if not desc_lines {
-        return;
-    }
-    ref_line = min(desc_lines);
-    for k in kids {
-        if isinstance(k, uni.Token) and k.line_no == 0 {
-            k.line_no = ref_line;
-            k.end_line = ref_line;
+    n = len(kids);
+    for i in range(n) {
+        k = kids[i];
+        if not (isinstance(k, uni.Token) and k.line_no == 0) {
+            continue;
+        }
+        # Nearest real line AFTER this token (opening tokens), else BEFORE it.
+        chosen: int | None = None;
+        for j in range(i + 1, n) {
+            if kid_first[j] is not None {
+                chosen = kid_first[j];
+                break;
+            }
+        }
+        if chosen is None {
+            for j in range(i - 1, -1, -1) {
+                if kid_last[j] is not None {
+                    chosen = kid_last[j];
+                    break;
+                }
+            }
+        }
+        if chosen is not None {
+            k.line_no = chosen;
+            k.end_line = chosen;
         }
     }
 }

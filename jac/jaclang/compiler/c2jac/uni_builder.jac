@@ -20,12 +20,18 @@ import from jaclang.compiler.c2jac.c_common {
 obj CUniBuilder {
     has src: uni.Source,
         tags: TagTable,
-        enum_verdicts: EnumVerdicts;
+        enum_verdicts: EnumVerdicts,
+        # Accumulates the names of C-for body constructs that could not be
+        # faithfully lowered during the most recent loop build. A non-empty list
+        # forces the enclosing loop to Tier-B so the sidecar report never claims
+        # faithful coverage of a body it actually dropped. Reset at each loop entry.
+        _loop_lossy: list[str] = [];
 
     def init(src: uni.Source, tags: TagTable, enum_verdicts: EnumVerdicts) {
         self.src = src;
         self.tags = tags;
         self.enum_verdicts = enum_verdicts;
+        self._loop_lossy = [];
     }
 
     # ------------------------------------------------------------------ #
@@ -117,12 +123,28 @@ obj CUniBuilder {
         init_nodes = self._for_init(getattr(nd, "init"), line, col);
         cond_expr = self._for_cond(nd.cond, line, col);
         step_assign = self._for_step(nd.next, line, col);
+        self._loop_lossy = [];
         body_stmts = self._for_body(nd.stmt, line, col);
 
         if init_nodes is None or cond_expr is None or step_assign is None {
             # Can't build IterForStmt — fall back to a faithful while-desugar
-            # (preserves init/cond/body/step instead of dropping them).
+            # (preserves init/cond/body/step instead of dropping them). That path
+            # rebuilds (and re-scans) the body itself, so the lossy list collected
+            # above is discarded there.
             return self._for_as_while(nd, line, col);
+        }
+        if self._loop_lossy {
+            # Body shape was lowered, but at least one statement could not be
+            # represented faithfully (e.g. a nested loop, switch, call). Mark the
+            # whole loop Tier-B so the report flags it rather than presenting a
+            # silently-truncated body as faithful.
+            self._mark_tier_b(
+                nd,
+                line,
+                "C-for body contains constructs not faithfully lowered: " + ", ".join(
+                    sorted(set(self._loop_lossy))
+                ),
+            );
         }
         return [
             uni.IterForStmt(
@@ -286,17 +308,24 @@ obj CUniBuilder {
         if isinstance(stmt, c_ast.If) {
             cond = self._expr_to_uni(stmt.cond, sline, scol);
             if cond is None {
+                self._loop_lossy.append("if condition");
                 return [];
             }
             body_stmts = self._c_stmt_to_uni(stmt.iftrue, sline, scol);
+            else_body = self._c_else_to_uni(getattr(stmt, "iffalse"), sline, scol);
+            if_kid: list[uni.UniNode] = [cond, *body_stmts];
+            if else_body is not None {
+                if_kid.append(else_body);
+            }
             return [
                 uni.IfStmt(
-                    kid=[cond, *body_stmts],
-                    condition=cond,
-                    body=body_stmts,
-                    else_body=None,
+                    kid=if_kid, condition=cond, body=body_stmts, else_body=else_body,
                 )
             ];
+        }
+
+        if isinstance(stmt, c_ast.Return) {
+            return self._return_to_uni(stmt, sline, scol);
         }
 
         if isinstance(stmt, c_ast.Assignment) {
@@ -304,6 +333,7 @@ obj CUniBuilder {
             if result_a is not None {
                 return [result_a];
             }
+            self._loop_lossy.append("assignment");
             return [];
         }
 
@@ -312,10 +342,58 @@ obj CUniBuilder {
             if result_d is not None {
                 return [result_d];
             }
+            # Uninitialized or non-scalar local decl: no faithful Jac analog in
+            # the direct-IR path (no type lowering here). Drop but flag, so the
+            # loop demotes to Tier-B instead of silently losing the declaration.
+            self._loop_lossy.append("uninitialized/complex local declaration");
             return [];
         }
 
+        # Any other statement (nested loop, switch, goto, bare call, ...) has no
+        # direct-IR lowering yet. Record it so the enclosing loop is Tier-B.
+        self._loop_lossy.append(type(stmt).__name__);
         return [];
+    }
+
+    def _c_else_to_uni(else_node: object, line: int, col: int) -> uni.UniNode | None {
+        # Lower a C `else` arm. A bare `else if` reaches here as a nested c_ast.If;
+        # mirror PyastBuildPass.proc_if by collapsing the single-If case into an
+        # ElseIf chain, otherwise wrap the statements in an ElseStmt.
+        if else_node is None {
+            return None;
+        }
+        else_stmts = self._c_stmt_to_uni(else_node, line, col);
+        if (
+            isinstance(else_node, c_ast.If)
+            and len(else_stmts) == 1
+            and isinstance(else_stmts[0], uni.IfStmt)
+        ) {
+            inner = else_stmts[0];
+            return uni.ElseIf(
+                condition=inner.condition,
+                body=inner.body,
+                else_body=inner.else_body,
+                kid=inner.kid,
+            );
+        }
+        return uni.ElseStmt(body=else_stmts, kid=[*else_stmts]);
+    }
+
+    def _return_to_uni(stmt: object, line: int, col: int) -> list[uni.UniNode] {
+        expr_node = getattr(stmt, "expr");
+        if expr_node is None {
+            ret_tok = self._tok(Tok.KW_RETURN, "return", line, col);
+            return [uni.ReturnStmt(expr=None, kid=[ret_tok])];
+        }
+        ret_expr = self._expr_to_uni(expr_node, line, col);
+        if ret_expr is None {
+            # Had a value we couldn't lower — emit a bare `return` and flag, so the
+            # loop is Tier-B rather than silently changing the returned value.
+            self._loop_lossy.append("return expression");
+            ret_tok = self._tok(Tok.KW_RETURN, "return", line, col);
+            return [uni.ReturnStmt(expr=None, kid=[ret_tok])];
+        }
+        return [uni.ReturnStmt(expr=ret_expr, kid=[ret_expr])];
     }
 
     def _for_body(stmt: object, line: int, col: int) -> list[uni.UniNode] {
@@ -326,12 +404,6 @@ obj CUniBuilder {
         # Fallback: can't build IterForStmt. Desugar to `init; while (cond) {
         # body; step }` — faithful except that C `continue` jumps to the step
         # whereas here it skips it, so the loop is marked Tier-B (§5.3).
-        self._mark_tier_b(
-            nd,
-            line,
-            "C-for loop not expressible as IterForStmt; desugared to while "
-            "(C `continue` runs the step, the desugared `continue` skips it — verify)",
-        );
         result: list[uni.UniNode] = [];
         # init statement before the loop (skip the IterForStmt dummy for for(;;)).
         # NB: read the field via getattr — bare `nd.init` resolves to a bound
@@ -345,8 +417,21 @@ obj CUniBuilder {
             }
         }
         cond = self._while_cond(nd.cond, line, col);
+        self._loop_lossy = [];
         body_stmts = self._for_body(nd.stmt, line, col);
         step_stmt = self._step_as_stmt(nd.next, line, col);
+        reason = (
+            "C-for loop not expressible as IterForStmt; desugared to while "
+            "(C `continue` runs the step, the desugared `continue` skips it — verify)"
+        );
+        if self._loop_lossy {
+            reason += (
+                " | body constructs not faithfully lowered: " + ", ".join(
+                    sorted(set(self._loop_lossy))
+                )
+            );
+        }
+        self._mark_tier_b(nd, line, reason);
         full_body: list[uni.UniNode] = [*body_stmts];
         if step_stmt is not None {
             full_body.append(step_stmt);
