@@ -14,7 +14,7 @@ import from jac_scale.runtime.gateway.service_registry {
 }
 import from jac_scale.runtime.orchestrator.process_manager { ServiceProcessManager }
 import from jac_scale.runtime.orchestrator.local_deployer { LocalDeployer }
-import from jac_scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
+import from jac_scale.runtime.gateway.process_gateway { ProcessGateway }
 import from jac_scale.runtime.context.util {
     DEFAULT_GATEWAY_PORT,
     DEFAULT_GATEWAY_HOST,
@@ -24,7 +24,7 @@ import from jac_scale.runtime.context.util {
 glob logger = logging.getLogger(__name__);
 
 
-"""Lifecycle methods block on gateway.start()."""
+"""Lifecycle methods block on the Gateway port's serve()."""
 obj MicroserviceOrchestrator {
     has ms_config: dict[str, any];
 
@@ -94,14 +94,14 @@ obj MicroserviceOrchestrator {
             static_mounts
         );
 
-        gateway = MicroserviceGateway(
+        gateway = ProcessGateway(
             registry=registry,
             port=gateway_port,
             host=gateway_host,
             client_dist_dir=client_dist,
             static_mounts=static_mounts
         );
-        gateway.start();
+        gateway.serve();
 
         # Cleanup (runs when gateway shuts down)
         deployer.destroy_all();
@@ -128,7 +128,7 @@ obj MicroserviceOrchestrator {
 
         static_mounts: list[dict[str, str]] = self._parse_static_mounts(client_config);
 
-        gateway = MicroserviceGateway(
+        gateway = ProcessGateway(
             registry=registry,
             port=gateway_port,
             host=gateway_host,
@@ -139,7 +139,7 @@ obj MicroserviceOrchestrator {
             f"Starting gateway-only mode on {gateway_host}:{gateway_port} "
             f"(K8s pod context; no service spawning)"
         );
-        gateway.start();
+        gateway.serve();
     }
 
     """Routes map: {module_name: prefix}. Entries have `file = {name}.jac`
