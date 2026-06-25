@@ -8,18 +8,41 @@ v1 heuristic for ENUM_AS_ENUM:
   - named enum
   - all enumerator values are implicit (auto-sequential int) OR explicit simple int literals
   - no duplicate values
-  - no bitwise/arithmetic expressions in value definitions
-  - no bitwise operation with an enumerator name at a use site (scanned shallowly; conservative)
+  - no bitwise/arithmetic expressions in value definitions (the value resolver in
+    `_enumerator_value` rejects these — anything non-simple forces ENUM_AS_CONSTS)
+  - no arithmetic/bitwise operation with an enumerator name at a use site anywhere in
+    the translation unit (`_collect_int_use_names`): a named enum whose members are
+    consumed as integers (flags, masks, `x | FLAG`) is demoted to ENUM_AS_CONSTS so the
+    integer semantics survive.
 
 Everything else → ENUM_AS_CONSTS, subject to glob-name collision check.
-Collision check: two block-scoped enums sharing an enumerator name when both would be
-ENUM_AS_CONSTS → the second demotes to TIER_B ("enumerator name collides with an existing
-module global").
+Collision check: an ENUM_AS_CONSTS enum whose enumerator name collides with ANY existing
+module-level identifier — another lowered enum's constant, or a top-level C function /
+variable / typedef name (`_collect_tu_names`) — demotes to TIER_B ("enumerator name
+collides with an existing module global"). Seeding the TU names up front makes the check
+order-independent, so an enum constant clashing with a function declared later still
+demotes instead of silently shadowing it at module scope.
 """
 
 import from pycparser { c_ast }
 import from jaclang.compiler.c2jac.tags { Idiom, Tier, Mechanism, NodeTag, TagTable }
 import from jaclang.compiler.c2jac.c_common { parse_c_int }
+
+# Binary ops whose operands are being consumed as plain integers. An enumerator
+# appearing as an operand of one of these is evidence the program relies on the
+# enum's integer value, not its symbolic identity → lower it to consts.
+glob _INT_USE_BINOPS: set[str] = {
+         "|",
+         "&",
+         "^",
+         "<<",
+         ">>",
+         "+",
+         "-",
+         "*",
+         "/",
+         "%"
+     };
 
 obj EnumVerdicts {
     has verdicts: dict[int, str],  # id(c_enum) → verdict string
@@ -33,24 +56,52 @@ obj EnumVerdicts {
     }
 }
 
-def _has_complex_expr(expr: object) -> bool {
-    if expr is None {
-        return False;
+def _collect_tu_names(file_ast: object) -> set[str] {
+    # Every top-level identifier the lowered module already binds: C function and
+    # global-variable names (Decl / FuncDef) plus typedef names. An ENUM_AS_CONSTS
+    # enumerator that collides with one of these would shadow it once hoisted to
+    # module scope, so they pre-seed the collision set.
+    names: set[str] = set();
+    ext = getattr(file_ast, "ext");
+    if ext is None {
+        return names;
     }
-
-    if isinstance(expr, c_ast.Constant) {
-        return False;
-    }
-    if isinstance(expr, c_ast.ID) {
-        return False;
-    }
-    if isinstance(expr, c_ast.UnaryOp) {
-        if expr.op in ("-", "+") {
-            return _has_complex_expr(expr.expr);
+    for entry in ext {
+        if isinstance(entry, c_ast.FuncDef) {
+            decl = getattr(entry, "decl");
+            nm = getattr(decl, "name") if decl is not None else None;
+            if nm {
+                names.add(nm);
+            }
+        } elif isinstance(entry, c_ast.Decl) or isinstance(entry, c_ast.Typedef) {
+            nm = getattr(entry, "name");
+            if nm {
+                names.add(nm);
+            }
         }
-        return True;
     }
-    return True;
+    return names;
+}
+
+def _collect_int_use_names(nd: object, names: set[str]) {
+    # Walk the whole TU collecting identifier names used as operands of an
+    # arithmetic/bitwise binary op, or of a bitwise-not. An ENUM_AS_ENUM candidate
+    # whose enumerator appears here is being used as an integer and is demoted.
+    if isinstance(nd, c_ast.BinaryOp) and nd.op in _INT_USE_BINOPS {
+        for operand in (nd.left, nd.right) {
+            if isinstance(operand, c_ast.ID) {
+                names.add(operand.name);
+            }
+        }
+    }
+    if isinstance(nd, c_ast.UnaryOp) and nd.op == "~" {
+        if isinstance(nd.expr, c_ast.ID) {
+            names.add(nd.expr.name);
+        }
+    }
+    for (_, child) in nd.children() {
+        _collect_int_use_names(child, names);
+    }
 }
 
 def _enumerator_value(en: object, counter: int) -> tuple[int, bool] {
@@ -117,19 +168,29 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
     ev = EnumVerdicts();
     enums: list[object] = [];
     _collect_enums(file_ast, enums);
-    seen_glob_names: set[str] = set();
+    # Pre-seed the collision set with every module-level identifier the lowered
+    # output already binds, so the ENUM_AS_CONSTS collision check is complete and
+    # order-independent rather than only catching enum-vs-enum clashes.
+    seen_glob_names: set[str] = _collect_tu_names(file_ast);
+    # Names consumed by integer arithmetic/bitwise ops anywhere in the TU; a named
+    # enum whose members appear here is demoted from ENUM_AS_ENUM to ENUM_AS_CONSTS.
+    int_use_names: set[str] = set();
+    _collect_int_use_names(file_ast, int_use_names);
     for en in enums {
         if en.values is None {
             # Forward declaration — skip.
             continue;
         }
         name_map = _enum_sequential_values(en.values);
-        if en.name is not None and name_map is not None {
+        used_as_int = name_map is not None
+        and any(nm in int_use_names for nm in name_map);
+        if en.name is not None and name_map is not None and not used_as_int {
             # Candidate for ENUM_AS_ENUM.
             ev.verdicts[id(en)] = Idiom.ENUM_AS_ENUM.value;
             ev.name_map[id(en)] = name_map;
         } elif name_map is not None {
-            # Anonymous or complex value — check collision.
+            # Anonymous, or a named enum whose members are used as integers
+            # (demoted from ENUM_AS_ENUM above) — lower to consts, check collision.
             collision = False;
             for nm in name_map {
                 if nm in seen_glob_names {
