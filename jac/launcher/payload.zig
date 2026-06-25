@@ -92,8 +92,15 @@ pub fn main(init: std.process.Init) !void {
     var argv: [16][]const u8 = undefined;
     var n: usize = 0;
     var it = init.minimal.args.iterate();
-    while (it.next()) |a| : (n += 1) {
-        if (n < argv.len) argv[n] = a;
+    // Cap at argv.len: every subcommand here takes a fixed, small set of args, so
+    // dropping any beyond the cap is harmless -- and it keeps `n` an exact count
+    // of the SLOTS WRITTEN, so the later flag loops (`while (i < n)`) never index
+    // past the array. (Unconditionally incrementing `n` would let it exceed
+    // argv.len and read uninitialized/out-of-bounds slots.)
+    while (it.next()) |a| {
+        if (n >= argv.len) break;
+        argv[n] = a;
+        n += 1;
     }
     if (n < 2) die("usage: payload <fetch-pbs|fetch-typeshed|mkpayload> ...", .{});
 

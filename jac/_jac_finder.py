@@ -122,9 +122,20 @@ def apply_dev_source_override() -> None:
     Plain Python, dev-only, never fatal.
     """
     try:
-        if os.environ.get("JAC_NO_DEV_SOURCE"):
+        # A baked marker is a LINKED dev binary's ONLY compiler -- there is no
+        # bundled jaclang to fall back on -- so it must apply even when
+        # JAC_NO_DEV_SOURCE is set. That flag means "use the shipped compiler,
+        # not a dev tree"; for a linked binary the linked tree IS the shipped
+        # compiler, so honoring it here would brick the binary (sys.path never
+        # gets the source, `import jaclang` then fails). JAC_NO_DEV_SOURCE only
+        # suppresses the jac.toml-based loop, where a bundled jaclang takes over.
+        baked = _baked_source_dir()
+        if baked is not None:
+            src_dir: str | None = baked
+        elif os.environ.get("JAC_NO_DEV_SOURCE"):
             return
-        src_dir = _baked_source_dir() or _dev_source_from_toml()
+        else:
+            src_dir = _dev_source_from_toml()
         if src_dir is None:
             return
         # Must contain a `jaclang/` package, else this would shadow nothing
@@ -206,9 +217,15 @@ def _ext_registry() -> ModuleType:
     if _registry is None:
         # Prefer the linked dev source when set (JAC_DEV_SOURCE, exported by
         # apply_dev_source_override): a `-Ddev` binary ships no bundled jaclang/
-        # beside this module, so the registry lives only in the linked tree.
-        # Falls back to the bundled copy for a normal self-contained binary.
-        base = os.environ.get("JAC_DEV_SOURCE") or os.path.dirname(__file__)
+        # beside this module, so the registry lives only in the linked tree. Fall
+        # back through the baked marker directly (resilient even if
+        # apply_dev_source_override never ran), then the bundled copy beside this
+        # module for a normal self-contained binary.
+        base = (
+            os.environ.get("JAC_DEV_SOURCE")
+            or _baked_source_dir()
+            or os.path.dirname(__file__)
+        )
         path = os.path.join(base, "jaclang", "jac0core", "ext_registry.py")
         spec = importlib.util.spec_from_file_location("_jac_ext_registry", path)
         if spec is None or spec.loader is None:
