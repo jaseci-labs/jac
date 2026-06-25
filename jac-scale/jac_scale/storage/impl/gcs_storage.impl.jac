@@ -184,11 +184,25 @@ def _gcs_signed_url_via_iam(blob: any, expiration: any) -> str {
     import from google.auth.transport.requests { Request as GoogleAuthRequest }
     (credentials, _) = google.auth.default();
     credentials.refresh(GoogleAuthRequest());
+    # IAM SignBlob needs the runtime service account's email. User-account ADC
+    # (e.g. `gcloud auth application-default login` in development) has no
+    # service_account_email, so raise an actionable error instead of leaking a
+    # bare AttributeError from the missing attribute.
+    service_account_email = credentials?.service_account_email;
+    if not service_account_email {
+        raise RuntimeError(
+            "Cannot generate a signed URL: Application Default Credentials are a "
+            "user account with no associated service account. Run under a service "
+            "account, set GOOGLE_APPLICATION_CREDENTIALS to a service-account key, "
+            "or use `gcloud auth application-default login "
+            "--impersonate-service-account=<sa-email>`."
+        );
+    }
     return blob.generate_signed_url(
         version="v4",
         expiration=expiration,
         method="GET",
-        service_account_email=credentials.service_account_email,
+        service_account_email=service_account_email,
         access_token=credentials.token
     );
 }

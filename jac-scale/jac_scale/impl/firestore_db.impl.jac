@@ -1,6 +1,8 @@
 """Firestore implementation for FirestoreDb."""
 import from uuid { uuid4 }
 import from google.cloud.exceptions { NotFound }
+import from google.api_core.exceptions { AlreadyExists }
+import from jac_scale._optdeps.pymongo { DuplicateKeyError }
 import from jac_scale._db_helpers { _validate_not_read_only }
 
 # ===== FIRESTORE HELPERS =====
@@ -275,6 +277,26 @@ def _firestore_commit_updates(batch: any, refs: list, update_fields: dict) -> in
     }
 }
 
+"""Commit a Firestore insert batch, translating duplicate-id conflicts.
+
+A create() batch is atomic and insert-only: if any document's _id already
+exists, the whole commit raises AlreadyExists and nothing is written. Translate
+that to DuplicateKeyError for parity with the Mongo backend's duplicate-insert
+behavior instead of leaking the vendor exception.
+"""
+def _firestore_commit_inserts(batch: any, pending: int) {
+    if pending == 0 {
+        return;
+    }
+    try {
+        batch.commit();
+    } except AlreadyExists {
+        raise DuplicateKeyError(
+            "insert_many: a document with a supplied _id already exists"
+        );
+    }
+}
+
 """Build a best-effort Firestore document for upsert from filter + update.
 
 Note: callers pass this to set(merge=True), which deep-merges nested dicts by
@@ -388,9 +410,18 @@ impl FirestoreDb.create_index(
 impl FirestoreDb.insert_one(col_name: str, document: dict) -> InsertResult {
     _validate_not_read_only(col_name);
     doc_id = _firestore_document_id(document) or str(uuid4());
-    self._get_firestore_collection(col_name).document(doc_id).create(
-        _firestore_document_body(document)
-    );
+    # create() is insert-only: a pre-existing _id raises AlreadyExists. Translate
+    # it to DuplicateKeyError so callers get the same predictable error the Mongo
+    # backend raises on a duplicate insert, instead of a leaked vendor exception.
+    try {
+        self._get_firestore_collection(col_name).document(doc_id).create(
+            _firestore_document_body(document)
+        );
+    } except AlreadyExists {
+        raise DuplicateKeyError(
+            f"Document with _id '{doc_id}' already exists in '{col_name}'"
+        );
+    }
     return InsertResult(inserted_id=doc_id);
 }
 
@@ -441,6 +472,7 @@ impl FirestoreDb.delete_one(col_name: str, filter: dict) -> DeleteResult {
 
 impl FirestoreDb.insert_many(col_name: str, documents: list) -> InsertManyResult {
     _validate_not_read_only(col_name);
+    col = self._get_firestore_collection(col_name);
     inserted_ids: list = [];
     batch = self.client.batch();
     pending = 0;
@@ -448,14 +480,16 @@ impl FirestoreDb.insert_many(col_name: str, documents: list) -> InsertManyResult
     for document in documents {
         doc_id = _firestore_document_id(document) or str(uuid4());
         inserted_ids.append(doc_id);
-        batch.create(
-            self._get_firestore_collection(col_name).document(doc_id),
-            _firestore_document_body(document)
-        );
-        (batch, pending) = _firestore_batch_after_write(self.client, batch, pending);
+        batch.create(col.document(doc_id), _firestore_document_body(document));
+        pending += 1;
+        if pending >= _FIRESTORE_BATCH_LIMIT {
+            _firestore_commit_inserts(batch, pending);
+            batch = self.client.batch();
+            pending = 0;
+        }
     }
 
-    _firestore_batch_finalize(batch, pending);
+    _firestore_commit_inserts(batch, pending);
     return InsertManyResult(inserted_ids=inserted_ids);
 }
 
