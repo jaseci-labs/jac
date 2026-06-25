@@ -1,5 +1,6 @@
 """Firestore implementation for FirestoreDb."""
 import from uuid { uuid4 }
+import from google.cloud.exceptions { NotFound }
 import from jac_scale._db_helpers { _validate_not_read_only }
 
 # ===== FIRESTORE HELPERS =====
@@ -385,9 +386,17 @@ impl FirestoreDb.update_one(
         return UpdateResult(matched_count=0, modified_count=0, upserted_id=doc_id);
     }
 
-    self._get_firestore_collection(col_name).document(results[0].id).update(
-        update_fields
-    );
+    # The query (line ~373) and this update are non-transactional, so a
+    # concurrent delete can make .update() raise NotFound. The abstract
+    # interface signals "not found" via matched_count=0, so translate the
+    # race into that result instead of letting the exception escape.
+    try {
+        self._get_firestore_collection(col_name).document(results[0].id).update(
+            update_fields
+        );
+    } except NotFound {
+        return UpdateResult(matched_count=0, modified_count=0);
+    }
     return UpdateResult(matched_count=1, modified_count=1);
 }
 
