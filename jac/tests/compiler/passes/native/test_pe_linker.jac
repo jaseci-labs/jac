@@ -24,7 +24,7 @@ import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.compiler.passes.native.pe_linker { PeLinker }
-import llvmlite.binding as llvm;
+import jaclang.compiler.passes.native.llvm.binding as llvm;
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"

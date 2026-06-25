@@ -170,7 +170,7 @@ impl NaIRGenPass._emit_dict_helpers(
     self._emit_grow_array(b, keys_p2, key_type, cur_len, cap_p2, cur_cap);
     # Reload cap after first grow (cap_p2 was updated)
     new_cap = b.load(cap_p2, name="new.cap.reload");
-    # Grow vals — pass new_cap directly via a manual grow since cap is already doubled
+    # Grow vals -- pass new_cap directly via a manual grow since cap is already doubled
     val_null2 = ir.Constant(val_type.as_pointer(), None);
     val_gep2 = b.gep(val_null2, [ir.Constant(i32, 1)], name="val.sizeof");
     val_sz = b.ptrtoint(val_gep2, i64, name="val.size");
@@ -351,13 +351,13 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
         jv_alloca, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="jv.payload.ptr"
     );
     if isinstance(value.type, ir.IntType) and value.type.width == 1 {
-        # bool (i1) → tag 7, payload zero-extended (kept distinct from int so
+        # bool (i1) -> tag 7, payload zero-extended (kept distinct from int so
         # isinstance-on-`any` can tell `bool` from `int`; see the tag table).
         b.store(ir.Constant(i8, 7), tag_ptr);
         ext = b.zext(value, i64, name="jv.bext");
         b.store(ext, payload_ptr);
     } elif isinstance(value.type, ir.IntType) {
-        # Any integer width → zero/sign-extend to i64, tag 0
+        # Any integer width -> zero/sign-extend to i64, tag 0
         b.store(ir.Constant(i8, 0), tag_ptr);
         if value.type.width == 64 {
             b.store(value, payload_ptr);
@@ -365,7 +365,7 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
             b.store(b.zext(value, i64, name="jv.iext"), payload_ptr);
         }
     } elif isinstance(value.type, ir.DoubleType) {
-        # float → bitcast f64 to i64, tag 1
+        # float -> bitcast f64 to i64, tag 1
         b.store(ir.Constant(i8, 1), tag_ptr);
         payload = b.bitcast(value, i64, name="jv.f2i");
         b.store(payload, payload_ptr);
@@ -396,7 +396,7 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
         }
         if ptr_tag == 2 {
             # Archetype / struct pointer (node / walker / edge / obj instance)
-            # → tag 6, so a struct handle can round-trip through `any`.
+            # -> tag 6, so a struct handle can round-trip through `any`.
             for (_, structt) in self.struct_types.items() {
                 if value.type == structt.as_pointer() {
                     ptr_tag = 6;
@@ -404,8 +404,23 @@ impl NaIRGenPass._box_to_jacval(value: ir.Value) -> ir.Value {
                 }
             }
         }
-        b.store(ir.Constant(i8, ptr_tag), tag_ptr);
         payload = b.ptrtoint(value, i64, name="jv.p2i");
+        if ptr_tag == 2 {
+            # A null `i8*` is `None`, not a null string: box it with the dedicated
+            # None tag (8) so `isinstance(None, str)` is False and a boxed None no
+            # longer masquerades as a str (which made str()/len()/iteration deref
+            # a null pointer). Real list/dict/set/struct pointers keep their tags;
+            # only the str/default arm can carry the `None` literal (a null i8*).
+            is_null = b.icmp_unsigned(
+                "==", payload, ir.Constant(i64, 0), name="jv.isnone"
+            );
+            none_or_str = b.select(
+                is_null, ir.Constant(i8, 8), ir.Constant(i8, 2), name="jv.nonetag"
+            );
+            b.store(none_or_str, tag_ptr);
+        } else {
+            b.store(ir.Constant(i8, ptr_tag), tag_ptr);
+        }
         b.store(payload, payload_ptr);
     } else {
         # Unknown type: store zero int
@@ -522,7 +537,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     );
     # For dict[*, any] the value is boxed into a JacVal struct stored by value,
     # so helpers["set"] does NOT retain the inner pointer the way the typed-set
-    # path does. Retain it explicitly to mirror that contract — otherwise the
+    # path does. Retain it explicitly to mirror that contract -- otherwise the
     # owned-release below frees a pointer the dict still references (use-after-
     # free with two+ owned string values; issue #6404).
     if use_jacval and isinstance(first_val.type, ir.PointerType) {
@@ -552,7 +567,7 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
             self._rc_call_with_ctx(
                 helpers["set"], [dict_val, k, v], op="dict_init", loc=_dinit_loc
             );
-            # Retain the inner pointer for boxed (dict[*, any]) values — see the
+            # Retain the inner pointer for boxed (dict[*, any]) values -- see the
             # first-pair note above; balances the owned-release below (#6404).
             if use_jacval and isinstance(_orig_v.type, ir.PointerType) {
                 self._emit_rc_retain(_orig_v, op="dict_init", loc=_dinit_loc);

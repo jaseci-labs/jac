@@ -25,14 +25,17 @@ jobs:
       matrix:
         # One native runner per target so the smoke test runs on real hardware.
         # The launcher links only libc and dlopens libpython, so each build is
-        # self-contained; build.zig fetches the per-target python-build-standalone.
+        # self-contained; build.zig fetches the per-target python-build-standalone
+        # and (for the native backend) the per-target LLVM release.
         include:
           - os: ubuntu-latest
             platform: linux-x86_64
           - os: ubuntu-24.04-arm
             platform: linux-aarch64
-          - os: macos-13
-            platform: macos-x86_64
+          # No macos-x86_64 (Intel) leg: the native (na) backend statically links
+          # a pinned LLVM release, and LLVM ships no macOS-x64 prebuilt for 20.1.8
+          # (only Linux-X64/ARM64 + macOS-ARM64). Apple Silicon is covered by
+          # macos-aarch64; restoring Intel-Mac needs an x86_64 LLVM static source.
           - os: macos-14
             platform: macos-aarch64
     runs-on: ${{ matrix.os }}
@@ -60,6 +63,14 @@ jobs:
         id: ver
         working-directory: jac
         run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      # The native (na) backend statically links a pinned LLVM into the LLVMPY_*
+      # shim, so the per-target LLVM release must be extracted before `zig build`
+      # (there is no llvmlite wheel anymore). One-time ~1.5-2 GB download; not
+      # cached here, matching this workflow's fresh-each-release policy.
+      - name: Fetch LLVM for the jacllvm shim
+        working-directory: jac
+        run: zig build fetch-llvm --summary all
 
       - name: Build the jac binary (one command)
         working-directory: jac
