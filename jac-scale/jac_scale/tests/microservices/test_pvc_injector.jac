@@ -21,7 +21,14 @@ test "pack_source keeps app files but drops secrets and strips plugins.scale" {
             handle.write("PRIVATE");
         }
         with open(os.path.join(project, "jac.toml"), "w") as handle {
-            handle.write("[project]\nname = \"x\"\n[plugins.scale.kubernetes]\nimage_registry = \"creds\"\n");
+            # Includes an inline-comment header and a top-level dotted-key form -
+            # both must be stripped (regression guards for the credential leak).
+            handle.write(
+                "plugins.scale.jwt.secret = \"topsecret\"\n"
+                + "[project]\nname = \"x\"\n"
+                + "[plugins.scale] # deploy creds\nimage_registry = \"creds\"\n"
+                + "[plugins.scale.kubernetes]\nmongodb_uri = \"mongodb://u:p@h\"\n"
+            );
         }
         raw = pack_source(project);
         names: list[str] = [];
@@ -35,6 +42,12 @@ test "pack_source keeps app files but drops secrets and strips plugins.scale" {
         assert "tls.key" not in names;
         assert "[project]" in toml_text;
         assert "plugins.scale" not in toml_text;
+        # No credential value survives, regardless of how it was declared.
+        assert "topsecret" not in toml_text;   # top-level dotted key
+        assert "creds" not in toml_text;        # inline-comment header section
+        assert "mongodb" not in toml_text;      # normal scale section
+        # Non-scale config is preserved.
+        assert "name = \"x\"" in toml_text;
     }
 }
 
