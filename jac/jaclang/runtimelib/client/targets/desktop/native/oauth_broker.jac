@@ -57,12 +57,17 @@ import from urllib.parse { parse_qs, quote, urlparse }
 # its own hostname in `Host` -- cannot become same-origin and read the token.
 glob _LOOPBACK_HOSTS: frozenset = frozenset({"127.0.0.1", "localhost", "::1"});
 
-# `Sec-Fetch-Site` values a same-origin request can carry. A cross-site page's
-# fetch is stamped `cross-site` (or `cross-origin`) by the browser, which a
-# script cannot forge -- see `_origin_allowed`. `none` is a user-initiated load
-# (address bar / bookmark), not a cross-site script, so it is allowed.
+# `Sec-Fetch-Site` values accepted on a state-changing route. The UI is served
+# from the broker's own loopback origin, so its fetches are *same-origin* and
+# carry `same-origin`; a cross-site page's fetch is stamped `cross-site` (or
+# `cross-origin`) by the browser, which a script cannot forge -- see
+# `_origin_allowed`. `none` is a user-initiated load (address bar / bookmark),
+# not a cross-site script, so it is allowed. `same-site` is deliberately *not*
+# accepted: the same-origin UI never produces it, and it would otherwise trust
+# any other page sharing our site -- i.e. a different loopback port (`Origin`
+# host still `127.0.0.1`), widening the surface for zero functional gain.
 glob _SAME_SITE_VALUES: frozenset = frozenset(
-         {"same-origin", "same-site", "none"}
+         {"same-origin", "none"}
      );
 
 glob DEFAULT_PREFIX: str = "/__jac",
@@ -302,17 +307,20 @@ def make_handler(
             self.wfile.write(payload);
         }
 
-        def _read_json_body(self: _BrokerHandler) -> dict {
+        def _read_json_body(self: _BrokerHandler) -> dict | None {
             try {
                 n = int(self.headers.get("Content-Length", 0) or 0);
             } except (TypeError, ValueError) {
                 n = 0;
             }
             # Bound the read like /invoke and /walker do: a JSON session body is
-            # tiny, so cap it so a malformed/hostile request can't drive the host
-            # OOM with one oversized POST.
+            # tiny, so reject an oversized POST outright (413) rather than read it.
+            # Returning None signals the caller to bail -- truncating to {} would
+            # both write an empty token *and* leave the unread body desyncing a
+            # keep-alive connection.
             if n > 1048576 {  # 1 MiB
-                return {};
+                self.send_error(413);
+                return None;
             }
             raw = self.rfile.read(n) if n > 0 else b"";
             try {
@@ -516,7 +524,11 @@ def make_handler(
                 # exists for the store's read/write/clear lifecycle (exercised by
                 # tests); _reject_cross_site() above keeps a remote page from
                 # abusing it to inject a token.
-                token = str(self._read_json_body().get("token", "") or "");
+                body = self._read_json_body();
+                if body is None {
+                    return;  # oversized; _read_json_body already sent 413
+                }
+                token = str(body.get("token", "") or "");
                 tok_store.write(token);
                 self._json({"ok": True});
                 return;

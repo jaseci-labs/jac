@@ -389,6 +389,37 @@ test "broker rejects a cross-site oauth start" {
     }
 }
 
+"""A cross-site DELETE cannot force a logout (clear the token)."""
+test "broker rejects a cross-site session delete" {
+    (srv, port, store, _opened, _web) = _start_server();
+    try {
+        store.write("live-token");
+        (s, _b) = _req(
+            port,
+            "/__jac/session",
+            "DELETE",
+            None,
+            {"Origin": "https://evil.example", "Sec-Fetch-Site": "cross-site"}
+        );
+        assert s == 403 , "a cross-site DELETE must be rejected";
+        assert store.read() == "live-token" , "a cross-site DELETE must not clear the token";
+
+        # The same-origin UI page can still log out.
+        (s2, _b2) = _req(
+            port,
+            "/__jac/session",
+            "DELETE",
+            None,
+            {"Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}
+        );
+        assert s2 == 200;
+        assert store.read() == "";
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}
+
 # ============================================================================
 # Static passthrough: non-broker paths still serve the app bundle
 # ============================================================================
