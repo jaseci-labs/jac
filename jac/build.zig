@@ -88,6 +88,20 @@ pub fn build(b: *std.Build) void {
     b.step("stub", "Build just the launcher stub (no payload)")
         .dependOn(&b.addInstallArtifact(stub, .{}).step);
 
+    // --- libjacpyembed shim: the na desktop host's bridge to the fused runtime --
+    // A shared library that DT_NEEDED-links into the `na` desktop host and brings
+    // up the SAME bundled CPython the launcher embeds (embed.zig), instead of the
+    // build machine's libpython. Links libc only (libpython is dlopened at boot).
+    const pyembed_mod = b.createModule(.{
+        .root_source_file = b.path("launcher/pyembed.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    const pyembed = b.addLibrary(.{ .name = "jacpyembed", .root_module = pyembed_mod, .linkage = .dynamic });
+    b.step("pyembed", "Build the libjacpyembed shim (na desktop host -> fused runtime)")
+        .dependOn(&b.addInstallArtifact(pyembed, .{}).step);
+
     // --- unit tests (pure Zig, no libpython) -------------------------------
     addTests(b, target, optimize);
 
