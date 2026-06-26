@@ -561,7 +561,7 @@ impl nacompile(
     # In --shared mode we must NOT internalize: the exported `:pub` symbols and
     # the RC wrappers have to survive as externally-visible definitions.
     if _opt_level > 0 {
-        pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level, size_level=0);
+        pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level);
         pb = llvm.create_pass_builder(target_machine, pto);
         opt_mpm = pb.getModulePassManager();
         if not shared {
