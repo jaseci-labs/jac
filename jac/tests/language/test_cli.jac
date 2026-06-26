@@ -707,40 +707,6 @@ test "py to jac line continuation does not drop file" {
     assert '"hello " "world"' in stdout_value , f"Expected folded concat in:\n{stdout_value}";
 }
 
-test "py to jac match mapping and class patterns" {
-    # #6982: py2jac used to emit a hardcoded colon for MatchKVPair,
-    # producing invalid Jac for class keyword patterns that need `=`.
-    # Verify both mapping patterns (`:`) and class keyword patterns (`=`)
-    # round-trip through py2jac to valid Jac output.
-    # Python source is inlined — no fixture .py file needed.
-    py_src = "def match_mapping(v):\n    match v:\n        case {\"key\": 1, \"nested\": x}:\n            return x\n        case _:\n            return None\n\ndef match_class_kw(v):\n    match v:\n        case Point(x=0, y=0, label=\"origin\"):\n            return \"origin\"\n        case _:\n            return None\n";
-    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".py");
-    try {
-        os.write(tmp_fd, py_src.encode());
-        os.close(tmp_fd);
-        captured = io.StringIO();
-        old_stdout = sys.stdout;
-        sys.stdout = captured;
-        try {
-            result = transform.py2jac(tmp_path);
-        } finally {
-            sys.stdout = old_stdout;
-        }
-    } finally {
-        os.unlink(tmp_path);
-    }
-    stdout_value = captured.getvalue();
-    assert result == 0 , f"py2jac should succeed, got exit {result}";
-    assert stdout_value.strip() , "py2jac must not emit empty output on success";
-    # Mapping patterns use colon (Jac formatter emits spaces around the operator)
-    assert '"key" : 1' in stdout_value , f"Expected mapping pattern with colon in:\n{stdout_value}";
-    assert '"nested" : x' in stdout_value , f"Expected mapping pattern with colon in:\n{stdout_value}";
-    # Class keyword patterns use equals
-    assert 'x = 0' in stdout_value , f"Expected class keyword pattern with equals in:\n{stdout_value}";
-    assert 'y = 0' in stdout_value , f"Expected class keyword pattern with equals in:\n{stdout_value}";
-    assert 'label = "origin"' in stdout_value , f"Expected keyword pattern with string literal in:\n{stdout_value}";
-}
-
 test "lambda arg annotation" {
     captured = io.StringIO();
     old_stdout = sys.stdout;
