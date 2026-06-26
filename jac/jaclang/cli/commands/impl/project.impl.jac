@@ -498,6 +498,7 @@ impl install(
         capability_specs_for_install
     }
     import from jaclang.project.dep_registry { get_dependency_registry }
+    import from jaclang.cli.commands.cli_helpers { flatten_append }
 
     flag_defs: list = [
         (force_reinstall, "--force-reinstall"),
@@ -580,8 +581,10 @@ impl install(
         );
         return 0 if installer.install_package(packages) else 1;
     }
-
-    editable = [p for group in (editable or []) for p in group];
+    # ── Editable install ──────────────────────────────────────────────────────
+    # Flatten nested lists produced by action="append" with nargs="+":
+    #   -e ./a ./b -e ./c  →  [["./a","./b"],["./c"]]  →  ["./a","./b","./c"]
+    editable = flatten_append(editable);
     if editable {
         import from jaclang.publish.builder { WheelBuilder }
 

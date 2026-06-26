@@ -1,18 +1,7 @@
 import ast as ast3;
 
 import from jaclang.cli.console { console }
-
-"""Flatten a repeatable CLI flag's list-of-lists into a flat list.
-
-argparse `action="append"` with `nargs="+"` yields `[["a"], ["b","c"]]` for
-`-I a -I b c`; the preprocessor wants `["a","b","c"]`. Returns None when the
-flag was never given, so the driver's own defaults apply."""
-def _flatten_append(groups: list | None) -> list | None {
-    if not groups {
-        return None;
-    }
-    return [v for g in groups for v in g];
-}
+import from jaclang.cli.commands.cli_helpers { flatten_append }
 
 """Convert Python to Jac."""
 impl py2jac(filename: str) -> int {
@@ -65,10 +54,10 @@ impl c2jac(
     try {
         (jac_str, tags) = transpile_c_file(
             filename,
-            include_dirs=_flatten_append(incdir),
-            defines=_flatten_append(define),
-            undefines=_flatten_append(undef),
-            force_includes=_flatten_append(force_include),
+            include_dirs=flatten_append(incdir),
+            defines=flatten_append(define),
+            undefines=flatten_append(undef),
+            force_includes=flatten_append(force_include),
             nostdinc=nostdinc,
         );
     } except OSError as e {

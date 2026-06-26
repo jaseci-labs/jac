@@ -492,6 +492,9 @@ obj CMapper {
             self._list_bound.add(nd.name);
         } else {
             ann = self._type_ann(nd);
+            # A fresh non-list (re)declaration of this name clears any stale
+            # list-bound state from an outer-scope binding of the same name.
+            self._list_bound.discard(nd.name);
         }
         aa = ast3.AnnAssign(target=target, annotation=ann, value=value, simple=1);
         return self._stamp(aa, nd, text=nd.name);
@@ -530,14 +533,25 @@ obj CMapper {
     }
 
     def c_Assignment(nd: object) -> object {
-        # Track `arr = malloc(n*sizeof(T))` reassignment as list-bound (§7.5).
-        if nd.op == "="
-        and isinstance(nd.lvalue, c_ast.ID)
-        and self._malloc_array_match(nd.rvalue) is not None {
-            self._list_bound.add(nd.lvalue.name);
-        }
         lhs = self.conv_expr(nd.lvalue);
+        # Convert the rvalue BEFORE updating list-bound state so a `realloc` inside
+        # it (via _realloc_elide) sees the pointer's pre-assignment binding.
         rhs = self.conv_expr(nd.rvalue);
+        # Track list-boundness across reassignment (§7.5) by last-write-wins.
+        # `arr = malloc(n*sizeof(T))` marks `arr` list-bound; `arr = realloc(arr,…)`
+        # on an already-bound pointer preserves it (same logical buffer); ANY other
+        # plain `arr = …` invalidates it. Without the invalidation the set is
+        # monotonic, so `arr = malloc(); arr = raw; realloc(arr, n)` would falsely
+        # stamp the trailing realloc Tier-A. (Branch-conditional rebinds still need
+        # real dataflow tracking — see §9.5; this keeps straight-line flow sound.)
+        if nd.op == "=" and isinstance(nd.lvalue, c_ast.ID) {
+            if self._malloc_array_match(nd.rvalue) is not None
+            or self._realloc_of_list_bound(nd.rvalue) {
+                self._list_bound.add(nd.lvalue.name);
+            } else {
+                self._list_bound.discard(nd.lvalue.name);
+            }
+        }
         if nd.op == "=" {
             # Convert lhs context to Store.
             lhs_store = self._to_store(lhs);
@@ -864,6 +878,23 @@ obj CMapper {
             return inner.name;
         }
         return None;
+    }
+
+    def _realloc_of_list_bound(nd: object) -> bool {
+        # True if nd is `realloc(p, …)` where p is an ID currently proven list-bound.
+        # Such a reassignment yields the same logical buffer, so list-boundness is
+        # preserved across `arr = realloc(arr, …)` rather than dropped (§7.5).
+        if not isinstance(nd, c_ast.FuncCall) {
+            return False;
+        }
+        if not isinstance(nd.name, c_ast.ID) or nd.name.name != "realloc" {
+            return False;
+        }
+        if nd.args is None or len(nd.args.exprs) < 1 {
+            return False;
+        }
+        ptr = nd.args.exprs[0];
+        return isinstance(ptr, c_ast.ID) and ptr.name in self._list_bound;
     }
 
     def _realloc_elide(nd: object) -> object | None {
