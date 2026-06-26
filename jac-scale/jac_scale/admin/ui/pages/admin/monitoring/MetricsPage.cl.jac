@@ -13,7 +13,7 @@ import from "lucide-react" {
     AlertTriangle
 }
 
-import from react { useEffect }
+import from react { useEffect, useRef }
 import from ....components.common.Button { Button }
 import from ....context.AuthContext { useAuth }
 import from ....services.metricsService { getMetrics }
@@ -28,6 +28,11 @@ def:pub MetricsPage -> JsxElement {
         autoRefresh: bool = True;
 
     auth = useAuth();
+    # Accumulate the chart history in a ref, not via reading `history` state
+    # inside the polling interval -- that lambda captures a stale `history`
+    # (closure), so the chart froze after the first few points. The ref is
+    # stable across renders, so .current always reads the latest buffer.
+    histRef = useRef([]);
 
     async def loadMetrics {
         result = await getMetrics(auth["authToken"]);
@@ -35,11 +40,12 @@ def:pub MetricsPage -> JsxElement {
             metricsEnabled = result["data"]["enabled"];
             summary = result["data"]["summary"] or {};
             metrics = result["data"]["metrics"] or [];
+            prevBuf = histRef.current or [];
             newReqsTotal = summary["total_requests"] or 0;
             # Bars plot per-interval traffic (delta of the cumulative counter),
             # so an idle window reads ~0 instead of a flat full-height block.
-            prevReqsTotal = history[len(history) - 1]["requests"]
-                if len(history) > 0
+            prevReqsTotal = prevBuf[len(prevBuf) - 1]["requests"]
+                if len(prevBuf) > 0
                 else newReqsTotal;
             reqDelta = newReqsTotal - prevReqsTotal;
             if reqDelta < 0 {
@@ -53,10 +59,11 @@ def:pub MetricsPage -> JsxElement {
                 "errors": summary["error_count"] or 0,
                 "latency": summary["avg_latency_ms"] or 0
             };
-            # Keep the last 20 points. Avoid a negative slice ([-20:]) -- the
-            # client transpiler mishandles it (returns []), which is why the
-            # chart never accumulated. Trim from a computed positive index.
-            combined = history + [newPoint];
+            # Keep the last 20 points. Read/write through histRef (stable across
+            # renders) so the polling interval accumulates instead of freezing
+            # on a stale `history` closure. Avoid a negative slice ([-20:]) too --
+            # the client transpiler mishandles it (returns []).
+            combined = prevBuf + [newPoint];
             startIdx = max(0, len(combined) - 20);
             trimmed = [];
             idx = 0;
@@ -66,6 +73,7 @@ def:pub MetricsPage -> JsxElement {
                 }
                 idx += 1;
             }
+            histRef.current = trimmed;
             history = trimmed;
         }
         isLoading = False;
