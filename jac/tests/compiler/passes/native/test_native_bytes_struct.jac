@@ -13,7 +13,7 @@ import tempfile;
 import from pathlib { Path }
 import from jaclang.jac0core.program { JacProgram }
 import jaclang.jac0core.unitree as uni;
-import from llvmlite.binding { ExecutionEngine }
+import from jaclang.compiler.passes.native.llvm.binding { ExecutionEngine }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 

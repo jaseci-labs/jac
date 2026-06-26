@@ -1278,11 +1278,21 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     }
     import from jaclang.compiler.ownership { loop_body_locals }
     _saved = loop_body_locals(nd.body if isinstance(nd.body, (list, tuple)) else None);
+    # Exclude enclosing-scope vars mutated in the body (misbinding guard, #6943
+    # NA-2): their storage predates the body, so they are not per-iteration locals.
+    _iter_prebody = set(self.local_vars.keys());
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
     }
     if not self.builder.block.is_terminated {
-        self._emit_loop_iter_cleanup(_saved, loc=_loc);
+        self._emit_loop_iter_cleanup(
+            [
+                _v
+                for _v in _saved
+                if _v not in _iter_prebody
+            ],
+            loc=_loc
+        );
         self.builder.branch(cond_bb);
     }
     self.loop_stack.pop();

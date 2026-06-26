@@ -21,6 +21,17 @@ on:
 permissions:
   contents: read
 
+# This workflow tests the SHIPPED binary's bundled + precompiled jaclang. The
+# checkout's jac.toml files (root and jac/) carry a `[dev] jaclang_source` stanza
+# for the local editable dev loop, which `_jac_finder` would otherwise pick up
+# (working-directory: jac -> nearest is jac/jac.toml) and use to reroute `import
+# jaclang` to the source tree (skipping the precompiled JIR bundle). Force the
+# dev loop OFF so the binary under test is the real artifact. (The hermetic
+# `env -i` smoke steps below clear the environment, so they set this inline
+# instead of inheriting it from here.)
+env:
+  JAC_NO_DEV_SOURCE: "1"
+
 jobs:
   build:
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -32,6 +43,24 @@ jobs:
       - name: Set up jac (build the binary once, cached)
         uses: ./.github/actions/setup-jac
 
+      # setup-jac only runs `zig build` (which fetches the gitignored typeshed
+      # stdlib stubs into the checkout) on a binary-cache MISS. On a cache HIT
+      # the prebuilt binary is restored and the build -- and the stub fetch with
+      # it -- is skipped, so the stubs the upload step below publishes for
+      # test-compiler are absent (the upload then hard-fails on if-no-files-found).
+      # `zig build fetch-typeshed` is a lightweight, idempotent fetch (builds the
+      # small payload tool, no binary build, no LLVM/pbs) that materializes them
+      # regardless of the cache outcome; on a miss it is a no-op (stamp check).
+      - name: Set up Zig 0.16.0 (for the typeshed fetch on a binary-cache hit)
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+
+      - name: Materialize typeshed stdlib stubs into the checkout
+        working-directory: jac
+        run: zig build fetch-typeshed --summary all
+
       - name: Hermeticity + smoke (no system Python)
         working-directory: jac
         run: |
@@ -42,8 +71,8 @@ jobs:
           ! ldd "$BIN" | grep -qi python
           WORK="$(mktemp -d)"
           printf 'obj P { has x:int=0; def sq->int { return self.x*self.x; } }\nwith entry { print(P(x=7).sq()); }\n' > "$WORK/obj.jac"
-          env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" --version
-          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/obj.jac")"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" --version
+          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" run "$WORK/obj.jac")"
           echo "$out" | grep -q 49
 
       - name: Run real jac programs (end-to-end execution)
@@ -61,7 +90,7 @@ jobs:
               print([i*i for i in range(5)]);
           }
           JAC
-          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/a.jac")"
+          out="$(env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_NO_DEV_SOURCE=1 "$BIN" run "$WORK/a.jac")"
           echo "$out" | grep -q "dist 5.0"
           echo "$out" | grep -q "0, 1, 4, 9, 16"
 
@@ -79,13 +108,25 @@ jobs:
           test "comprehension" { assert [i for i in range(3)] == [0, 1, 2]; }
           test "strings" { assert "ja" + "c" == "jac"; }
           JAC
-          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_TEST_JOBS=0 "$BIN" test "$WORK/test_smoke.jac"
+          env -i HOME="$WORK" PATH=/usr/bin:/bin JAC_TEST_JOBS=0 JAC_NO_DEV_SOURCE=1 "$BIN" test "$WORK/test_smoke.jac"
 
       - name: Upload the jac binary
         uses: actions/upload-artifact@v4
         with:
           name: jac-binary
           path: jac/zig-out/bin/jac
+          retention-days: 1
+          if-no-files-found: error
+
+      # The fetch-typeshed step above materialized the gitignored typeshed stdlib
+      # stubs into the checkout (on both a binary-cache hit and miss); publish
+      # them so the test jobs get them without a zig toolchain (they only
+      # download the prebuilt binary).
+      - name: Upload typeshed stdlib stubs
+        uses: actions/upload-artifact@v4
+        with:
+          name: typeshed-stdlib
+          path: jac/jaclang/vendor/typeshed/stdlib
           retention-days: 1
           if-no-files-found: error
 
@@ -96,15 +137,17 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch typeshed stdlib stubs into the checkout
+      - name: Restore typeshed stdlib stubs into the checkout
         # The nacompile subprocess tests shell out to `<jac> -m jaclang`, which
         # (via -m's cwd-prepend, working-directory: jac) resolves the IN-TREE
         # jaclang and loads jac/jaclang/vendor/typeshed/stdlib for native type
         # resolution. Those stubs are gitignored now (fetched at the pinned
-        # commit, not committed), so materialize them in the checkout -- without
-        # them the checker is blind and na-compilation fails.
-        working-directory: jac
-        run: bash launcher/fetch-typeshed.sh
+        # commit, not committed); the build job published them as an artifact so
+        # this job needs no zig toolchain. Without them na-compilation fails.
+        uses: actions/download-artifact@v4
+        with:
+          name: typeshed-stdlib
+          path: jac/jaclang/vendor/typeshed/stdlib
       - name: Download the jac binary
         uses: actions/download-artifact@v4
         with:

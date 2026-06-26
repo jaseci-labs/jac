@@ -2,17 +2,27 @@
 # the build reads version/metadata here (not from a Python pyproject backend).
 [project]
 name = "jaclang"
-version = "0.30.0"
+version = "0.30.1"
 description = "Jac programming language - Python-like syntax, compiles to Python bytecode, JavaScript, and native machine code with novel constructs for AI-integrated programming."
 license = "MIT"
 readme = "README.md"
 requires_python = ">=3.14"
-dependencies = ["llvmlite>=0.47.0"]  # cp314 wheels for the bundled Python 3.14
+# No runtime PyPI deps: native LLVM is the in-tree LLVMPY_* shim, statically
+# linked by Zig (jac/native + `zig build fetch-llvm`), not the llvmlite wheel.
+dependencies = []
 
 [project.urls]
 Repository = "https://github.com/jaseci-labs/jaseci"
 Homepage = "https://jaseci.org"
 Documentation = "https://docs.jaseci.org"
+
+# Editable dev loop: reroute `import jaclang` to this in-repo source so the `jac`
+# binary runs your latest edits with no rebuild. Config resolves to the nearest
+# jac.toml, so this mirrors the root jac.toml's stanza to keep the loop active
+# when running from this dir (e.g. `cd jac && jac test tests`). `"."` is this
+# dir, which contains `jaclang/`. Set JAC_NO_DEV_SOURCE=1 to force it off.
+[dev]
+jaclang_source = "."
 
 # `jac test` discovers the suite here (mirrors pytest's testpaths).
 [test]

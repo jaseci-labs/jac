@@ -9,6 +9,7 @@ import from hashlib { md5 }
 import from types { EllipsisType }
 import from typing { Any, cast }
 import from jaclang.jac0core.bccache { discover_base_file }
+import type from jaclang.jac0core.passes.uni_pass { UniPass }
 import from jaclang.jac0core.codeinfo { CodeGenTarget, CodeLocInfo }
 import from jaclang.jac0core.constant {
     DELIM_MAP,
@@ -43,6 +44,17 @@ obj UniNode {
         loc: CodeLocInfo by postinit;
 
     def postinit -> None;
+    """Visitor double-dispatch hooks (generated overrides per node kind).
+
+    `UniPass.enter_node`/`exit_node` call these; the base impls route to the
+    pass's `default_enter`/`default_exit`, and each handled node kind gets a
+    generated override that calls the pass's `enter_<kind>`/`exit_<kind>`
+    ability directly -- static, native-lowerable double dispatch (#6942 A.1).
+    Regenerate overrides with `jac gen-uni-dispatch`.
+    """
+    def accept_enter(v: UniPass) -> None;
+
+    def accept_exit(v: UniPass) -> None;
 
     has gen: CodeGenTarget { getter; setter(value: CodeGenTarget); }
     has _sub_node_tab: dict[(type, list[UniNode])] { getter; }
@@ -300,6 +312,9 @@ obj Expr(UniNode) {
 Used for each BoolExpr operand and each IfElseExpr branch so that type
 narrowing can be resolved with a single backward CFG walk."""
 obj CfgExpr(Expr, ConditionalNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has expr: Expr;
 
     def postinit -> None;
@@ -373,6 +388,9 @@ obj MatchPattern(UniNode) {}
 
 """SubTag node type for Jac Ast."""
 obj SubTag[T](UniNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has tag: T;
 
     def postinit -> None;
@@ -380,6 +398,9 @@ obj SubTag[T](UniNode) {
 
 """Whole Program node type for Jac Ast."""
 obj Module(AstDocNode, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has name: str,
         source: Source,
         body: Sequence[ElementStmt | String | EmptyToken],
@@ -436,6 +457,9 @@ obj ProgramModule(UniNode) {
 
 """TypeParam node type for Jac Ast: T, T: Bound, T = Default."""
 obj TypeParam(AstSymbolNode, UniNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has name: Name,
         bound: (Expr | None),
         default_val: (Expr | None);
@@ -445,6 +469,9 @@ obj TypeParam(AstSymbolNode, UniNode) {
 
 """TypeAlias node type for Jac Ast: type Name[T, E = X] = TypeExpr;"""
 obj TypeAlias(ContextAwareNode, AstAccessNode, ElementStmt, AstSymbolNode, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has name: Name,
         type_params: (Sequence[TypeParam] | None),
         value: Expr;
@@ -454,6 +481,9 @@ obj TypeAlias(ContextAwareNode, AstAccessNode, ElementStmt, AstSymbolNode, UniSc
 
 """GlobalVars node type for Jac Ast."""
 obj GlobalVars(ContextAwareNode, ElementStmt, AstAccessNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has assignments: Sequence[Assignment],
         is_frozen: bool;
 
@@ -462,6 +492,9 @@ obj GlobalVars(ContextAwareNode, ElementStmt, AstAccessNode) {
 
 """Test node type for Jac Ast."""
 obj Test(ContextAwareNode, AstSymbolNode, ElementStmt, CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     with entry {
         TEST_COUNT = 0;
     }
@@ -476,6 +509,9 @@ obj Test(ContextAwareNode, AstSymbolNode, ElementStmt, CodeBlockStmt, UniScopeNo
 
 """ModuleCode node type for Jac Ast."""
 obj ModuleCode(ContextAwareNode, ElementStmt, ArchBlockStmt, EnumBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has name: (Name | None),
         body: Sequence[CodeBlockStmt];
 
@@ -484,6 +520,9 @@ obj ModuleCode(ContextAwareNode, ElementStmt, ArchBlockStmt, EnumBlockStmt) {
 
 """ClientBlock node type for cl { ... } blocks in Jac Ast."""
 obj ClientBlock(ElementStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has body: Sequence[ElementStmt],
         implicit: bool = False;
 
@@ -492,6 +531,9 @@ obj ClientBlock(ElementStmt) {
 
 """ServerBlock node type for sv { ... } blocks in Jac Ast."""
 obj ServerBlock(ElementStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has body: Sequence[ElementStmt],
         implicit: bool = False;
 
@@ -500,6 +542,9 @@ obj ServerBlock(ElementStmt) {
 
 """NativeBlock node type for na { ... } blocks in Jac Ast."""
 obj NativeBlock(ElementStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has body: Sequence[ElementStmt],
         implicit: bool = False;
 
@@ -508,6 +553,9 @@ obj NativeBlock(ElementStmt) {
 
 """PyInlineCode node type for Jac Ast."""
 obj PyInlineCode(ElementStmt, ArchBlockStmt, EnumBlockStmt, CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has code: Token;
 
     def postinit -> None;
@@ -515,6 +563,9 @@ obj PyInlineCode(ElementStmt, ArchBlockStmt, EnumBlockStmt, CodeBlockStmt) {
 
 """Import node type for Jac Ast."""
 obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has from_loc: (ModulePath | None),
         items: (Sequence[ModuleItem] | Sequence[ModulePath]),
         is_absorb: bool,
@@ -531,6 +582,9 @@ obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
 
 """ModulePath node type for Jac Ast."""
 obj ModulePath(UniNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has path: (Sequence[(Name | String)] | None),
         level: int,
         alias: (Name | None),
@@ -554,6 +608,9 @@ obj ModulePath(UniNode) {
     - Token (STAR_MUL): for namespace imports (Category 4)
     """
 obj ModuleItem(UniNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has name: (Name | Token),
         alias: (Name | None),
         abs_path: (str | None) by postinit;
@@ -568,6 +625,9 @@ obj ModuleItem(UniNode) {
 
 """ObjectArch node type for Jac Ast."""
 obj Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImplNeedingNode, UniScopeNode, UniCFGNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has name: Name,
         arch_type: Token,
         base_classes: (Sequence[Expr] | None),
@@ -589,6 +649,9 @@ obj Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImplN
 
 """AstImplOnlyNode node type for Jac Ast."""
 obj ImplDef(ContextAwareNode, CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymbolNode, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has decorators: (Sequence[Expr] | None),
         target: Sequence[NameAtom],
         spec: (Sequence[Expr] | FuncSignature | EventSignature | None),
@@ -601,6 +664,9 @@ obj ImplDef(ContextAwareNode, CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymb
 
 """SemDef node type for Jac Ast."""
 obj SemDef(ElementStmt, AstSymbolNode, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has target: Sequence[NameAtom],
         value: MultiString;
 
@@ -617,6 +683,9 @@ the parenthesized form `enum X(B1, B2) { ... }`. The two are mutually
 exclusive at the grammar level — the parser never populates both.
 """
 obj Enum(ContextAwareNode, ArchSpec, AstAccessNode, AstImplNeedingNode, ArchBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has name: Name,
         value_type: (Expr | None),
         base_classes: (Sequence[Expr] | None);
@@ -626,6 +695,9 @@ obj Enum(ContextAwareNode, ArchSpec, AstAccessNode, AstImplNeedingNode, ArchBloc
 
 """Ability node type for Jac Ast."""
 obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBlockStmt, CodeBlockStmt, AstImplNeedingNode, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has name_ref: (NameAtom | None),
         is_override: bool,
         is_static: bool,
@@ -656,6 +728,9 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
 
 """FuncSignature node type for Jac Ast."""
 obj FuncSignature(UniNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has posonly_params: Sequence[ParamVar],
         params: (Sequence[ParamVar] | None),
         varargs: (ParamVar | None),
@@ -672,6 +747,9 @@ obj FuncSignature(UniNode) {
 
 """EventSignature node type for Jac Ast."""
 obj EventSignature(WalkerStmtOnlyNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has event: Token,
         arch_tag_info: (Expr | None);
 
@@ -691,6 +769,9 @@ class ParamKind(IntEnum) {
 
 """ParamVar node type for Jac Ast."""
 obj ParamVar(AstSymbolNode, AstTypedVarNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has name: Name,
         unpack: (Token | None),
         value: (Expr | None),
@@ -704,6 +785,9 @@ obj ParamVar(AstSymbolNode, AstTypedVarNode) {
 
 """ArchHas node type for Jac Ast."""
 obj ArchHas(AstAccessNode, AstDocNode, ArchBlockStmt, CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has is_static: bool,
         vars: Sequence[HasVar],
         is_frozen: bool;
@@ -713,6 +797,9 @@ obj ArchHas(AstAccessNode, AstDocNode, ArchBlockStmt, CodeBlockStmt) {
 
 """HasVar node type for Jac Ast."""
 obj HasVar(AstSymbolNode, AstTypedVarNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has name: Name,
         value: (Expr | None),
         defer: bool,
@@ -723,6 +810,9 @@ obj HasVar(AstSymbolNode, AstTypedVarNode) {
 
 """TypedCtxBlock node type for Jac Ast."""
 obj TypedCtxBlock(CodeBlockStmt, WalkerStmtOnlyNode, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has type_ctx: Expr,
         body: Sequence[CodeBlockStmt];
 
@@ -731,6 +821,9 @@ obj TypedCtxBlock(CodeBlockStmt, WalkerStmtOnlyNode, UniScopeNode) {
 
 """IfStmt node type for Jac Ast."""
 obj IfStmt(CodeBlockStmt, AstElseBodyNode, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has condition: Expr,
         body: Sequence[CodeBlockStmt];
 
@@ -738,10 +831,16 @@ obj IfStmt(CodeBlockStmt, AstElseBodyNode, UniScopeNode) {
 }
 
 """ElseIf node type for Jac Ast."""
-obj ElseIf(IfStmt) {}
+obj ElseIf(IfStmt) {
+    def accept_enter(v: UniPass) -> None;
+    def accept_exit(v: UniPass) -> None;
+}
 
 """ElseStmt node type for Jac Ast."""
 obj ElseStmt(UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has body: Sequence[CodeBlockStmt];
 
     def postinit -> None;
@@ -749,6 +848,9 @@ obj ElseStmt(UniScopeNode) {
 
 """ExprStmt node type for Jac Ast."""
 obj ExprStmt(CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has expr: Expr,
         in_fstring: bool;
 
@@ -757,6 +859,9 @@ obj ExprStmt(CodeBlockStmt) {
 
 """TryStmt node type for Jac Ast."""
 obj TryStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has body: Sequence[CodeBlockStmt],
         excepts: Sequence[Except],
         awaiting_body: (AwaitingClause | None),
@@ -774,6 +879,9 @@ into the React `Suspense` fallback of the synthesized `<JacAwaiting>`
 wrapper. On `sv`/`na` the clause is currently ignored with W2020 until
 the streaming-SSR and native-thread lowerings land."""
 obj AwaitingClause(CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has body: Sequence[CodeBlockStmt];
 
     def postinit -> None;
@@ -781,6 +889,9 @@ obj AwaitingClause(CodeBlockStmt, UniScopeNode) {
 
 """Except node type for Jac Ast."""
 obj Except(CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has ex_type: Expr,
         name: (Name | None),
         body: Sequence[CodeBlockStmt];
@@ -790,6 +901,9 @@ obj Except(CodeBlockStmt, UniScopeNode) {
 
 """FinallyStmt node type for Jac Ast."""
 obj FinallyStmt(CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has body: Sequence[CodeBlockStmt];
 
     def postinit -> None;
@@ -797,6 +911,9 @@ obj FinallyStmt(CodeBlockStmt, UniScopeNode) {
 
 """IterForStmt node type for Jac Ast."""
 obj IterForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has iter: Assignment,
         condition: Expr,
         count_by: Assignment,
@@ -807,6 +924,9 @@ obj IterForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
 
 """InForStmt node type for Jac Ast."""
 obj InForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has target: Expr,
         collection: Expr,
         body: Sequence[CodeBlockStmt];
@@ -816,6 +936,9 @@ obj InForStmt(AstAsyncNode, AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
 
 """WhileStmt node type for Jac Ast."""
 obj WhileStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has condition: Expr,
         body: Sequence[CodeBlockStmt];
 
@@ -824,6 +947,9 @@ obj WhileStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
 
 """WithStmt node type for Jac Ast."""
 obj WithStmt(AstAsyncNode, CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has exprs: Sequence[ExprAsItem],
         body: Sequence[CodeBlockStmt];
 
@@ -832,6 +958,9 @@ obj WithStmt(AstAsyncNode, CodeBlockStmt, UniScopeNode) {
 
 """ExprAsItem node type for Jac Ast."""
 obj ExprAsItem(UniNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has expr: Expr,
         alias: (Expr | None);
 
@@ -840,6 +969,9 @@ obj ExprAsItem(UniNode) {
 
 """RaiseStmt node type for Jac Ast."""
 obj RaiseStmt(CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has cause: (Expr | None),
         from_target: (Expr | None);
 
@@ -848,6 +980,9 @@ obj RaiseStmt(CodeBlockStmt) {
 
 """AssertStmt node type for Jac Ast."""
 obj AssertStmt(CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has condition: Expr,
         error_msg: (Expr | None);
 
@@ -856,6 +991,9 @@ obj AssertStmt(CodeBlockStmt) {
 
 """CtrlStmt node type for Jac Ast."""
 obj CtrlStmt(CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has ctrl: Token;
 
     def postinit -> None;
@@ -863,6 +1001,9 @@ obj CtrlStmt(CodeBlockStmt) {
 
 """DeleteStmt node type for Jac Ast."""
 obj DeleteStmt(CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has target: Expr;
 
     def postinit -> None;
@@ -872,6 +1013,9 @@ obj DeleteStmt(CodeBlockStmt) {
 
 """ReportStmt node type for Jac Ast."""
 obj ReportStmt(CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has expr: Expr;
 
     def postinit -> None;
@@ -879,6 +1023,9 @@ obj ReportStmt(CodeBlockStmt) {
 
 """ReturnStmt node type for Jac Ast."""
 obj ReturnStmt(CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has expr: (Expr | None);
 
     def postinit -> None;
@@ -886,6 +1033,9 @@ obj ReturnStmt(CodeBlockStmt) {
 
 """VisitStmt node type for Jac Ast."""
 obj VisitStmt(WalkerStmtOnlyNode, AstElseBodyNode, CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has insert_loc: (Expr | None),
         target: Expr;
 
@@ -894,11 +1044,16 @@ obj VisitStmt(WalkerStmtOnlyNode, AstElseBodyNode, CodeBlockStmt) {
 
 """DisengageStmt node type for Jac Ast."""
 obj DisengageStmt(WalkerStmtOnlyNode, CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
     def postinit -> None;
 }
 
 """AwaitExpr node type for Jac Ast."""
 obj AwaitExpr(Expr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has target: Expr;
 
     def postinit -> None;
@@ -908,6 +1063,9 @@ obj AwaitExpr(Expr) {
 Represents `value as cast_type` -- an unchecked, type-erased cast. At runtime
 it evaluates to `value` unchanged; statically its type is `cast_type`."""
 obj CastExpr(Expr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has value: Expr,
         cast_type: Expr;
 
@@ -916,16 +1074,25 @@ obj CastExpr(Expr) {
 
 """GlobalStmt node type for Jac Ast."""
 obj GlobalStmt(CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has target: Sequence[NameAtom];
 
     def postinit -> None;
 }
 
 """NonLocalStmt node type for Jac Ast."""
-obj NonLocalStmt(GlobalStmt) {}
+obj NonLocalStmt(GlobalStmt) {
+    def accept_enter(v: UniPass) -> None;
+    def accept_exit(v: UniPass) -> None;
+}
 
 """Assignment node type for Jac Ast."""
 obj Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has target: Sequence[Expr],
         value: Expr | YieldExpr | None,
         mutable: bool = True,
@@ -936,6 +1103,9 @@ obj Assignment(AstTypedVarNode, EnumBlockStmt, CodeBlockStmt) {
 
 """ConcurrentExpr node type for Jac Ast."""
 obj ConcurrentExpr(Expr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has tok: (Token | None),
         target: Expr;
 
@@ -944,6 +1114,9 @@ obj ConcurrentExpr(Expr) {
 
 """BinaryExpr node type for Jac Ast."""
 obj BinaryExpr(Expr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has left: Expr,
         right: Expr,
         op: Token | DisconnectOp | ConnectOp;
@@ -953,6 +1126,9 @@ obj BinaryExpr(Expr) {
 
 """CompareExpr node type for Jac Ast."""
 obj CompareExpr(Expr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has left: Expr,
         rights: list[Expr],
         ops: list[Token];
@@ -964,6 +1140,9 @@ obj CompareExpr(Expr) {
 Each operand is wrapped in a CfgExpr so that short-circuit evaluation
 is modeled at the expression level in the CFG."""
 obj BoolExpr(Expr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has op: Token,
         values: list[CfgExpr];
 
@@ -972,6 +1151,9 @@ obj BoolExpr(Expr) {
 
 """LambdaExpr node type for Jac Ast."""
 obj LambdaExpr(Expr, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has body: (Expr | Sequence[CodeBlockStmt]),
         signature: (FuncSignature | None) = None;
 
@@ -984,6 +1166,9 @@ obj LambdaExpr(Expr, UniScopeNode) {
 
 """UnaryExpr node type for Jac Ast."""
 obj UnaryExpr(Expr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has operand: Expr,
         op: Token;
 
@@ -994,6 +1179,9 @@ obj UnaryExpr(Expr) {
 Each branch is wrapped in a CfgExpr so that conditional evaluation
 is modeled at the expression level in the CFG."""
 obj IfElseExpr(Expr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has condition: CfgExpr,
         value: CfgExpr,
         else_value: CfgExpr;
@@ -1003,6 +1191,9 @@ obj IfElseExpr(Expr) {
 
 """MultiString node type for Jac Ast."""
 obj MultiString(AtomExpr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has strings: Sequence[(String | FString)];
 
     def postinit -> None;
@@ -1014,6 +1205,9 @@ obj MultiString(AtomExpr) {
 
 """FString node type for Jac Ast."""
 obj FString(AtomExpr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has start: (Token | None),
         parts: Sequence[(String | FormattedValue)],
         end: (Token | None);
@@ -1023,6 +1217,9 @@ obj FString(AtomExpr) {
 
 """FormattedValue node type for Jac Ast."""
 obj FormattedValue(Expr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has format_part: Expr,
         conversion: int,
         format_spec: (Expr | None);
@@ -1032,6 +1229,9 @@ obj FormattedValue(Expr) {
 
 """ListVal node type for Jac Ast."""
 obj ListVal(AtomExpr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has values: Sequence[Expr];
 
     def postinit -> None;
@@ -1039,6 +1239,9 @@ obj ListVal(AtomExpr) {
 
 """SetVal node type for Jac Ast."""
 obj SetVal(AtomExpr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has values: (Sequence[Expr] | None);
 
     def postinit -> None;
@@ -1046,6 +1249,9 @@ obj SetVal(AtomExpr) {
 
 """TupleVal node type for Jac Ast."""
 obj TupleVal(AtomExpr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has values: Sequence[(Expr | KWPair)];
 
     def postinit -> None;
@@ -1053,6 +1259,9 @@ obj TupleVal(AtomExpr) {
 
 """DictVal node type for Jac Ast."""
 obj DictVal(AtomExpr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has kv_pairs: Sequence[KVPair];
 
     def postinit -> None;
@@ -1060,6 +1269,9 @@ obj DictVal(AtomExpr) {
 
 """KVPair node type for Jac Ast."""
 obj KVPair(UniNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has key: (Expr | None),
         value: Expr;
 
@@ -1068,6 +1280,9 @@ obj KVPair(UniNode) {
 
 """KWPair node type for Jac Ast."""
 obj KWPair(UniNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has key: (NameAtom | None),
         value: Expr;
 
@@ -1076,6 +1291,9 @@ obj KWPair(UniNode) {
 
 """InnerCompr node type for Jac Ast."""
 obj InnerCompr(AstAsyncNode, UniScopeNode, UniCFGNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has target: Expr,
         collection: Expr,
         conditional: (list[Expr] | None);
@@ -1092,6 +1310,9 @@ CFG narrowing engine threads filter narrowing into the head expression
 without any side-channel state on the type evaluator.
 """
 obj ListCompr(AtomExpr, UniScopeNode, UniCFGNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has out_expr: Expr,
         compr: list[InnerCompr];
 
@@ -1099,10 +1320,16 @@ obj ListCompr(AtomExpr, UniScopeNode, UniCFGNode) {
 }
 
 """GenCompr node type for Jac Ast."""
-obj GenCompr(ListCompr) {}
+obj GenCompr(ListCompr) {
+    def accept_enter(v: UniPass) -> None;
+    def accept_exit(v: UniPass) -> None;
+}
 
 """SetCompr node type for Jac Ast."""
-obj SetCompr(ListCompr) {}
+obj SetCompr(ListCompr) {
+    def accept_enter(v: UniPass) -> None;
+    def accept_exit(v: UniPass) -> None;
+}
 
 """DictCompr node type for Jac Ast.
 
@@ -1110,6 +1337,9 @@ Same UniCFGNode rationale as ListCompr -- the conditional filters wire
 through the CFG so narrowing flows into the head key/value expressions.
 """
 obj DictCompr(AtomExpr, UniScopeNode, UniCFGNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has kv_pair: KVPair,
         compr: list[InnerCompr];
 
@@ -1118,6 +1348,9 @@ obj DictCompr(AtomExpr, UniScopeNode, UniCFGNode) {
 
 """AtomTrailer node type for Jac Ast."""
 obj AtomTrailer(Expr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has target: Expr,
         right: (AtomExpr | Expr),
         is_attr: bool,
@@ -1131,6 +1364,9 @@ obj AtomTrailer(Expr) {
 
 """AtomUnit node type for Jac Ast."""
 obj AtomUnit(Expr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has value: Expr | YieldExpr | Ability;
 
     def postinit -> None;
@@ -1138,6 +1374,9 @@ obj AtomUnit(Expr) {
 
 """YieldExpr node type for Jac Ast."""
 obj YieldExpr(Expr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has expr: (Expr | None),
         with_from: bool;
 
@@ -1146,6 +1385,9 @@ obj YieldExpr(Expr) {
 
 """FuncCall node type for Jac Ast."""
 obj FuncCall(Expr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has target: Expr,
         params: (Sequence[(Expr | KWPair)] | None),
         genai_call: (Expr | None),
@@ -1169,6 +1411,9 @@ obj FuncCall(Expr) {
 
 """Slice item node type for IndexSlice."""
 obj Slice(UniNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has start: (Expr | None),
         stop: (Expr | None),
         step: (Expr | None);
@@ -1178,6 +1423,9 @@ obj Slice(UniNode) {
 
 """IndexSlice node type for Jac Ast."""
 obj IndexSlice(AtomExpr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has slices: list[Slice],
         is_range: bool;
 
@@ -1186,6 +1434,9 @@ obj IndexSlice(AtomExpr) {
 
 """EdgeRefTrailer node type for Jac Ast."""
 obj EdgeRefTrailer(Expr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has chain: list[(Expr | FilterCompr)],
         edges_only: bool,
         is_async: bool;
@@ -1195,6 +1446,9 @@ obj EdgeRefTrailer(Expr) {
 
 """EdgeOpRef node type for Jac Ast."""
 obj EdgeOpRef(WalkerStmtOnlyNode, AtomExpr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has filter_cond: (FilterCompr | None),
         edge_dir: EdgeDir;
 
@@ -1203,6 +1457,9 @@ obj EdgeOpRef(WalkerStmtOnlyNode, AtomExpr) {
 
 """DisconnectOp node type for Jac Ast."""
 obj DisconnectOp(WalkerStmtOnlyNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has edge_spec: EdgeOpRef;
 
     def postinit -> None;
@@ -1210,6 +1467,9 @@ obj DisconnectOp(WalkerStmtOnlyNode) {
 
 """ConnectOpRef node type for Jac Ast."""
 obj ConnectOp(UniNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has conn_type: (Expr | None),
         conn_assign: (AssignCompr | None),
         edge_dir: EdgeDir;
@@ -1219,6 +1479,9 @@ obj ConnectOp(UniNode) {
 
 """FilterCompr node type for Jac Ast."""
 obj FilterCompr(AtomExpr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has f_type: (Expr | None),
         compares: Sequence[CompareExpr];
 
@@ -1227,6 +1490,9 @@ obj FilterCompr(AtomExpr) {
 
 """AssignCompr node type for Jac Ast."""
 obj AssignCompr(AtomExpr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has assigns: Sequence[KWPair];
 
     def postinit -> None;
@@ -1234,6 +1500,9 @@ obj AssignCompr(AtomExpr) {
 
 """JsxElement node type for Jac Ast."""
 obj JsxElement(AtomExpr) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has name: (JsxElementName | None),
         attributes: (Sequence[JsxAttribute] | None),
         children: (Sequence[(JsxChild | JsxElement)] | None),
@@ -1248,6 +1517,9 @@ obj JsxElement(AtomExpr) {
 
 """JsxElementName node type for Jac Ast."""
 obj JsxElementName(UniNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has parts: Sequence[(Name | Token)];
 
     def postinit -> None;
@@ -1255,11 +1527,16 @@ obj JsxElementName(UniNode) {
 
 """JsxAttribute node type for Jac Ast (base class)."""
 obj JsxAttribute(UniNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
     def postinit -> None;
 }
 
 """JsxSpreadAttribute node type for Jac Ast."""
 obj JsxSpreadAttribute(JsxAttribute) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has expr: Expr;
 
     def postinit -> None;
@@ -1272,6 +1549,9 @@ attribute shorthand — semantically identical to `name={name}` but the
 formatter must round-trip the shorter spelling. Both `name` and `value`
 point at the same identifier when this flag is set."""
 obj JsxNormalAttribute(JsxAttribute) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has name: (Name | Token),
         value: String | Expr | None,
         is_shorthand: bool = False;
@@ -1281,11 +1561,16 @@ obj JsxNormalAttribute(JsxAttribute) {
 
 """JsxChild node type for Jac Ast (base class)."""
 obj JsxChild(UniNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
     def postinit -> None;
 }
 
 """JsxText node type for Jac Ast."""
 obj JsxText(JsxChild) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has value: (str | Token);
 
     def postinit -> None;
@@ -1294,6 +1579,9 @@ obj JsxText(JsxChild) {
 
 """JsxExpression node type for Jac Ast."""
 obj JsxExpression(JsxChild) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has expr: Expr;
 
     def postinit -> None;
@@ -1313,6 +1601,9 @@ Single-expression slots (`{name}`, `{1 + 2}`, `{<p>hi</p>}`) still emit
 `JsxExpression` so the cheap path (no IIFE) is preserved.
 """
 obj JsxSlot(JsxChild) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has body: list[UniNode];
     # The body holds the author's faithful `{ stmt; ... }` statement
     # template. No pre-codegen pass mutates it — the cl-target accumulator
@@ -1329,6 +1620,9 @@ round-trip the comment verbatim; codegen passes treat it as a no-op
 child and emit nothing.
 """
 obj JsxComment(JsxChild) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has value: Token;
 
     def postinit -> None;
@@ -1336,6 +1630,9 @@ obj JsxComment(JsxChild) {
 
 """MatchStmt node type for Jac Ast."""
 obj MatchStmt(CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has target: Expr,
         cases: list[MatchCase];
 
@@ -1344,6 +1641,9 @@ obj MatchStmt(CodeBlockStmt) {
 
 """MatchCase node type for Jac Ast."""
 obj MatchCase(CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has pattern: MatchPattern,
         guard: (Expr | None),
         body: list[CodeBlockStmt];
@@ -1353,6 +1653,9 @@ obj MatchCase(CodeBlockStmt, UniScopeNode) {
 
 """SwitchStmt node type for Jac Ast."""
 obj SwitchStmt(CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has target: Expr,
         cases: list[SwitchCase];
 
@@ -1361,6 +1664,9 @@ obj SwitchStmt(CodeBlockStmt) {
 
 """SwitchCase node type for Jac Ast."""
 obj SwitchCase(CodeBlockStmt, UniScopeNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has pattern: (MatchPattern | None),
         body: list[CodeBlockStmt];
 
@@ -1369,6 +1675,9 @@ obj SwitchCase(CodeBlockStmt, UniScopeNode) {
 
 """MatchOr node type for Jac Ast."""
 obj MatchOr(MatchPattern) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has patterns: list[MatchPattern];
 
     def postinit -> None;
@@ -1376,6 +1685,9 @@ obj MatchOr(MatchPattern) {
 
 """MatchAs node type for Jac Ast."""
 obj MatchAs(MatchPattern) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has name: NameAtom,
         pattern: (MatchPattern | None);
 
@@ -1383,10 +1695,16 @@ obj MatchAs(MatchPattern) {
 }
 
 """MatchWild node type for Jac Ast."""
-obj MatchWild(MatchPattern) {}
+obj MatchWild(MatchPattern) {
+    def accept_enter(v: UniPass) -> None;
+    def accept_exit(v: UniPass) -> None;
+}
 
 """MatchValue node type for Jac Ast."""
 obj MatchValue(MatchPattern) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has value: Expr;
 
     def postinit -> None;
@@ -1394,6 +1712,9 @@ obj MatchValue(MatchPattern) {
 
 """MatchSingleton node type for Jac Ast."""
 obj MatchSingleton(MatchPattern) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has value: (Bool | Null);
 
     def postinit -> None;
@@ -1401,6 +1722,9 @@ obj MatchSingleton(MatchPattern) {
 
 """MatchSequence node type for Jac Ast."""
 obj MatchSequence(MatchPattern) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has values: list[MatchPattern];
 
     def postinit -> None;
@@ -1408,6 +1732,9 @@ obj MatchSequence(MatchPattern) {
 
 """MatchMapping node type for Jac Ast."""
 obj MatchMapping(MatchPattern) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has values: list[(MatchKVPair | MatchStar)];
 
     def postinit -> None;
@@ -1415,6 +1742,9 @@ obj MatchMapping(MatchPattern) {
 
 """MatchKVPair node type for Jac Ast."""
 obj MatchKVPair(MatchPattern) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has key: MatchPattern | NameAtom | AtomExpr,
         value: MatchPattern;
 
@@ -1423,6 +1753,9 @@ obj MatchKVPair(MatchPattern) {
 
 """MatchStar node type for Jac Ast."""
 obj MatchStar(MatchPattern) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has name: NameAtom,
         is_list: bool;
 
@@ -1431,6 +1764,9 @@ obj MatchStar(MatchPattern) {
 
 """MatchArch node type for Jac Ast."""
 obj MatchArch(MatchPattern) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has name: (AtomTrailer | NameAtom),
         arg_patterns: (Sequence[MatchPattern] | None),
         kw_patterns: (Sequence[MatchKVPair] | None);
@@ -1440,6 +1776,9 @@ obj MatchArch(MatchPattern) {
 
 """Token node type for Jac Ast."""
 obj Token(UniNode) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has orig_src: Source by postinit,
         line_no: int by postinit,
         end_line: int by postinit,
@@ -1469,6 +1808,8 @@ obj Token(UniNode) {
 
 """Name node type for Jac Ast."""
 obj Name(Token, NameAtom) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
     def init(
         orig_src: Source,
         name: str,
@@ -1505,6 +1846,9 @@ obj Name(Token, NameAtom) {
 
 """SpecialVarRef node type for Jac Ast."""
 obj SpecialVarRef(Name) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     has orig: Name by postinit;
 
     def init(var: Name, is_enum_stmt: bool = False) -> None;
@@ -1548,6 +1892,9 @@ obj Literal(Token, AtomExpr) {
 
 """BuiltinType node type for Jac Ast."""
 obj BuiltinType(Name, Literal) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     with entry {
         SYMBOL_TYPE = SymbolType.VAR;
     }
@@ -1557,6 +1904,8 @@ obj BuiltinType(Name, Literal) {
 
 """Float node type for Jac Ast."""
 obj Float(Literal) {
+    def accept_exit(v: UniPass) -> None;
+
     with entry {
         SYMBOL_TYPE = SymbolType.NUMBER;
     }
@@ -1566,6 +1915,8 @@ obj Float(Literal) {
 
 """Int node type for Jac Ast."""
 obj Int(Literal) {
+    def accept_exit(v: UniPass) -> None;
+
     with entry {
         SYMBOL_TYPE = SymbolType.NUMBER;
     }
@@ -1575,6 +1926,9 @@ obj Int(Literal) {
 
 """String node type for Jac Ast."""
 obj String(Literal) {
+    def accept_exit(v: UniPass) -> None;
+    def accept_enter(v: UniPass) -> None;
+
     with entry {
         SYMBOL_TYPE = SymbolType.STRING;
     }
@@ -1584,6 +1938,8 @@ obj String(Literal) {
 
 """Bool node type for Jac Ast."""
 obj Bool(Literal) {
+    def accept_exit(v: UniPass) -> None;
+
     with entry {
         SYMBOL_TYPE = SymbolType.BOOL;
     }
@@ -1593,6 +1949,8 @@ obj Bool(Literal) {
 
 """Null node type for Jac Ast."""
 obj Null(Literal) {
+    def accept_exit(v: UniPass) -> None;
+
     with entry {
         SYMBOL_TYPE = SymbolType.NULL;
     }
@@ -1602,6 +1960,8 @@ obj Null(Literal) {
 
 """Ellipsis node type for Jac Ast."""
 obj Ellipsis(Literal) {
+    def accept_exit(v: UniPass) -> None;
+
     with entry {
         SYMBOL_TYPE = SymbolType.NULL;
     }
@@ -1616,6 +1976,7 @@ obj EmptyToken(Token) {
 
 """Semicolon node type for Jac Ast."""
 obj Semi(Token, CodeBlockStmt) {
+    def accept_exit(v: UniPass) -> None;
     def init(
         orig_src: Source,
         name: str,
@@ -1631,6 +1992,7 @@ obj Semi(Token, CodeBlockStmt) {
 
 """CommentToken node type for Jac Ast."""
 obj CommentToken(Token) {
+    def accept_exit(v: UniPass) -> None;
     def init(
         orig_src: Source,
         name: str,

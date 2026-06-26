@@ -123,6 +123,13 @@ def collect_foreign_fns(modules: list) -> dict {
                 }
                 params: list = [];
                 for p in decl.signature.get_parameters() {
+                    # A `*rest` / `**kw` marker declares C variadicity, not a
+                    # fixed boundary param: exclude it so the ABI struct plan
+                    # sees only the fixed C signature (the variadic tail is
+                    # emitted verbatim on the legacy scalar path).
+                    if p.is_vararg or p.is_kwargs {
+                        continue;
+                    }
                     ptn = declared_type_name(p.type_tag.tag)
                         if (p.type_tag and p.type_tag.tag)
                         else None;

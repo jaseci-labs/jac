@@ -35,48 +35,109 @@ def _find_project_toml() -> str | None:
         directory = parent
 
 
+def _baked_source_dir() -> str | None:
+    """Return the compiler dir baked into a linked dev binary, or ``None``.
+
+    ``zig build -Ddev`` / ``-Djaclang-dir=PATH`` ships a payload WITHOUT a
+    bundled ``jaclang`` and writes the absolute compiler path into a
+    ``jac_linked_source`` file beside this module (see ``payload.zig``
+    ``mkPayload``). Reading it here makes such a binary reroute to live source
+    from ANY directory, with no ``[dev]`` ``jac.toml`` stanza in scope. The file
+    is one line of plain text; absent on a normal (self-contained) binary.
+    """
+    marker = os.path.join(os.path.dirname(__file__), "jac_linked_source")
+    try:
+        with open(marker, encoding="utf-8") as handle:
+            return handle.read().strip() or None
+    except OSError:
+        return None
+
+
+def _dev_source_from_toml() -> str | None:
+    """Resolve ``[dev] jaclang_source`` from the nearest ``jac.toml``, or ``None``.
+
+    The stanza is read from the NEAREST ``jac.toml`` -- the same project root
+    every other config setting resolves against (see ``_find_project_toml``), so
+    a directory that wants the loop must carry its own ``[dev]`` stanza rather
+    than inherit one from an enclosing project. A cheap substring guard avoids
+    importing ``tomllib`` unless the key is literally present, so non-dev startup
+    pays only a small file read.
+    """
+    toml = _find_project_toml()
+    if toml is None:
+        return None
+    with open(toml, "rb") as handle:
+        raw = handle.read()
+    # Fast path: skip the tomllib import/parse entirely unless the key exists.
+    if b"jaclang_source" not in raw:
+        return None
+    import tomllib
+
+    section = tomllib.loads(raw.decode("utf-8")).get("dev")
+    if not isinstance(section, dict):
+        return None
+    src = section.get("jaclang_source")
+    if not isinstance(src, str) or not src:
+        return None
+    return os.path.abspath(os.path.join(os.path.dirname(toml), src))
+
+
 def apply_dev_source_override() -> None:
     """Reroute ``import jaclang`` to an in-repo source tree -- an editable dev loop.
 
-    When the nearest ``jac.toml`` declares::
+    The source dir comes from one of two places, in order:
 
-        [dev]
-        jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to jac.toml
+    1. A ``jac_linked_source`` marker baked into a linked dev binary
+       (``zig build -Ddev`` / ``-Djaclang-dir``; see ``_baked_source_dir``).
+       This wins because it is fixed at build time and cwd-independent -- the
+       "linked compiler" mode, where the binary ships no bundled ``jaclang``.
+    2. Otherwise, ``[dev] jaclang_source`` from the nearest ``jac.toml``::
 
-    this prepends that directory to the FRONT of ``sys.path`` so ``import
-    jaclang`` resolves to the live source instead of the single binary's bundled
-    copy -- edits take effect with no rebuild. It runs in ``sitecustomize``
-    during site init, BEFORE the launcher's BOOT_SRC does ``import jaclang``, so
-    the override wins over the bundled ``site/`` on ``PYTHONPATH``.
+           [dev]
+           jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to jac.toml
+
+       This repo ships it in both the root ``jac.toml`` and ``jac/jac.toml``
+       (both pointing at the same source), so the loop holds from the repo root
+       AND from ``cd jac`` (where the suite runs); other subprojects opt in by
+       adding their own stanza.
+
+    Either way the directory is prepended to the FRONT of ``sys.path`` so
+    ``import jaclang`` resolves to the live source instead of the single binary's
+    bundled copy -- edits take effect with no rebuild. It runs in
+    ``sitecustomize`` during site init, BEFORE the launcher's BOOT_SRC does
+    ``import jaclang``, so the override wins over the bundled ``site/`` on
+    ``PYTHONPATH``.
+
+    Set ``JAC_NO_DEV_SOURCE=1`` to force the loop OFF even when a source is in
+    scope -- used by CI jobs that must exercise the shipped binary's bundled +
+    precompiled jaclang rather than the checked-out source tree.
 
     Caches: sets ``JAC_NO_PRECOMPILE=1`` so the shipped, version-keyed
     ``_precompiled`` JIR bundle is skipped. The per-module ``.jir`` cache is
     content-keyed (``compute_module_key`` folds the source sha256), so source
     edits self-invalidate on their own -- no forced full rebuild needed. Exports
-    ``JAC_DEV_SOURCE`` as a marker for tooling.
+    ``JAC_DEV_SOURCE`` as a marker for tooling (also consumed by
+    ``_ext_registry`` to locate the registry inside the linked tree).
 
-    Plain Python, dev-only, never fatal. A cheap substring guard avoids importing
-    ``tomllib`` unless the key is literally present, so non-dev startup pays only
-    a small file read.
+    Plain Python, dev-only, never fatal.
     """
     try:
-        toml = _find_project_toml()
-        if toml is None:
+        # A baked marker is a LINKED dev binary's ONLY compiler -- there is no
+        # bundled jaclang to fall back on -- so it must apply even when
+        # JAC_NO_DEV_SOURCE is set. That flag means "use the shipped compiler,
+        # not a dev tree"; for a linked binary the linked tree IS the shipped
+        # compiler, so honoring it here would brick the binary (sys.path never
+        # gets the source, `import jaclang` then fails). JAC_NO_DEV_SOURCE only
+        # suppresses the jac.toml-based loop, where a bundled jaclang takes over.
+        baked = _baked_source_dir()
+        if baked is not None:
+            src_dir: str | None = baked
+        elif os.environ.get("JAC_NO_DEV_SOURCE"):
             return
-        with open(toml, "rb") as handle:
-            raw = handle.read()
-        # Fast path: skip the tomllib import/parse entirely unless the key exists.
-        if b"jaclang_source" not in raw:
+        else:
+            src_dir = _dev_source_from_toml()
+        if src_dir is None:
             return
-        import tomllib
-
-        section = tomllib.loads(raw.decode("utf-8")).get("dev")
-        if not isinstance(section, dict):
-            return
-        src = section.get("jaclang_source")
-        if not isinstance(src, str) or not src:
-            return
-        src_dir = os.path.abspath(os.path.join(os.path.dirname(toml), src))
         # Must contain a `jaclang/` package, else this would shadow nothing
         # useful and risk hiding the real bundled copy.
         if not os.path.isdir(os.path.join(src_dir, "jaclang")):
@@ -154,9 +215,18 @@ def _ext_registry() -> ModuleType:
     """Lazily load and cache the plain-Python extension registry by path."""
     global _registry
     if _registry is None:
-        path = os.path.join(
-            os.path.dirname(__file__), "jaclang", "jac0core", "ext_registry.py"
+        # Prefer the linked dev source when set (JAC_DEV_SOURCE, exported by
+        # apply_dev_source_override): a `-Ddev` binary ships no bundled jaclang/
+        # beside this module, so the registry lives only in the linked tree. Fall
+        # back through the baked marker directly (resilient even if
+        # apply_dev_source_override never ran), then the bundled copy beside this
+        # module for a normal self-contained binary.
+        base = (
+            os.environ.get("JAC_DEV_SOURCE")
+            or _baked_source_dir()
+            or os.path.dirname(__file__)
         )
+        path = os.path.join(base, "jaclang", "jac0core", "ext_registry.py")
         spec = importlib.util.spec_from_file_location("_jac_ext_registry", path)
         if spec is None or spec.loader is None:
             raise ImportError(f"cannot load extension registry from {path}")

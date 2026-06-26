@@ -21,6 +21,12 @@ permissions:
 env:
   ECR_REGISTRY: 776241927220.dkr.ecr.us-east-2.amazonaws.com
   ECR_REPOSITORY: jac-lang-website
+  # Build/serve docs through the SHIPPED binary, not the editable dev loop: a
+  # freshly built binary would otherwise pick up the checkout's `[dev]
+  # jaclang_source` stanza and reroute `import jaclang` to the source tree while
+  # skipping the precompiled JIR bundle, slowing every `jac` invocation here.
+  # (Mirrors the guard in test-binary.yml / test-jaseci.yml.)
+  JAC_NO_DEV_SOURCE: "1"
 
 jobs:
   deploy-jac-lang-website:
@@ -83,12 +89,11 @@ jobs:
             TAG="manual-$(date +%Y%m%d-%H%M%S)"
           elif [[ "${{ github.event_name }}" == "release" ]]; then
             TAG_NAME=${GITHUB_REF#refs/tags/}
+            # The canonical release tag is `v<version>` (e.g. v0.30.1). The
+            # `jac-lang-docs-*` form is still accepted for docs-only releases;
+            # anything else (incl. the canonical `v*`) is used verbatim.
             if [[ $TAG_NAME =~ ^jac-lang-docs-(.+)$ ]]; then
               TAG="${BASH_REMATCH[1]}"
-            elif [[ $TAG_NAME =~ ^jaclang-(.+)$ ]]; then
-              TAG="${BASH_REMATCH[1]}"
-            elif [[ $TAG_NAME =~ ^v(.+)$ ]]; then
-              TAG="$TAG_NAME"
             else
               TAG="$TAG_NAME"
             fi

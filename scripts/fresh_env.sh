@@ -3,12 +3,18 @@
 #
 # jaclang ships as the one self-contained `jac` binary (Zig launcher + a private
 # bundled CPython). There is NO pip-installed jaclang and no editable `.venv` for
-# the language itself. For an editable dev loop, set `[dev] jaclang_source = "jac"`
-# in the root jac.toml so the binary runs the in-repo jac/jaclang source live --
-# no rebuild per edit (see CONTRIBUTING.md). You only rebuild the binary
-# (`cd jac && zig build`) for changes that live inside it (launcher .zig,
-# sitecustomize.py / _jac_finder.py, bundled CPython). The binary bundles the
-# test runner (pytest + xdist), so `jac test` needs no system Python.
+# the language itself. This script builds a `jac` for the EDITABLE DEV LOOP with
+# `zig build -Ddev`: the compiler is NOT bundled into the binary; instead the
+# binary links the in-repo `jac/` source and runs it live, so day-to-day edits to
+# jac/jaclang take effect with no rebuild. -Ddev also skips the JIR precompile and
+# the ~100 MB compiler-tree copy, so this build is much faster than a release one.
+# It still needs the LLVMPY_* shim placed in-tree (the compiler imports the native
+# passes at startup), so we fetch+place LLVM once below -- same prerequisite as a
+# release build, just not bundled into the binary. You only
+# rebuild for changes that live inside the binary itself (launcher .zig,
+# sitecustomize.py / _jac_finder.py, bundled CPython). The binary bundles the test
+# runner (pytest + xdist), so `jac test` needs no system Python. For a fully
+# self-contained release binary instead, run a plain `cd jac && zig build`.
 #
 # Plugins (byllm/scale/mcp) are still ordinary Python packages. We install them
 # with `--global` so their source + deps land in the binary's own jac-owned site
@@ -20,10 +26,18 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-# Build the binary (needs zig 0.16.0 + zstd). zig build fetches the pinned
-# typeshed stdlib stubs itself (launcher/fetch-typeshed.sh), so there is no
-# submodule to check out.
-( cd jac && zig build )
+# Fetch the pinned LLVM once (idempotent; range-fetches only the ~84 MB subset the
+# shim needs from the llvm-slice zip -- not the ~1 GB upstream tarball -- into
+# jac/.llvm-build, ~0.35 GB on disk). The -Ddev build below compiles the LLVMPY_*
+# shim from it and places it into jac/jaclang/compiler/passes/native/llvm/ where
+# the linked compiler loads it.
+( cd jac && zig build fetch-llvm )
+
+# Build the dev binary (needs zig 0.16.0 + network; no zstd/curl/git -- payload.zig
+# does it all in std). zig build fetches the pinned typeshed stdlib stubs itself
+# (the fetch-typeshed step), so there is no submodule to check out. -Ddev links the
+# compiler from this checkout instead of bundling it -- fast to build, edits run live.
+( cd jac && zig build -Ddev -Dpayload-progress )
 
 JAC_BIN="$PWD/jac/zig-out/bin/jac"
 echo "Built: $JAC_BIN"

@@ -17,7 +17,7 @@ import from jac_scale.targets.kubernetes.microservice.source_bundle {
     build_source_configmap,
     source_configmap_name,
     build_bootstrap_init_container,
-    pinned_install_specs,
+    pinned_install_commands,
     auto_no_image_fallback,
     decide_zeroconfig_image_strategy,
     IMAGE_STRATEGY_IMAGE,
@@ -195,26 +195,45 @@ test "build_source_configmap rejects oversized source trees" {
     shutil.rmtree(tmp);
 }
 
-test "pinned_install_specs pins jaclang and jac-scale[all]" {
-    specs = pinned_install_specs();
-    joined = " ".join(specs);
-    assert "jaclang" in joined;
-    assert "jac-scale[all]" in joined;
+test "pinned_install_commands install jac-scale[all] and requests --global, not jaclang" {
+    cmds = pinned_install_commands("/app/.pydeps/bin/jac");
+    joined = " ".join(cmds);
+    # Extras ride in the spec as PEP 508 brackets: `jac install`'s --extras flag
+    # is dropped for named packages, so `jac-scale[all]` is the only form that
+    # actually installs the deploy/data/tracing deps the plugin needs in-pod.
+    assert "install 'jac-scale[all]' --global" in joined;
+    assert "--extras" not in joined;
     # requests is a scale-plugin runtime dep but ships only in jac-scale's
     # `test` extra, so it must be installed explicitly or the plugin can't load
     # in-pod (gateway crashes, services 404 on /healthz).
-    assert "requests" in joined;
+    assert "install requests --global" in joined;
+    # --global is required: plugins must land in the binary's own site (shared
+    # volume), not an ephemeral project venv the main container can't see.
+    for c in cmds {
+        assert "--global" in c;
+    }
+    # jaclang is the `jac` binary (fetched by install.sh), not a plugin spec.
+    assert "jaclang" not in joined;
 }
 
-test "bootstrap init container extracts source and installs to pydeps" {
+test "bootstrap init container fetches the jac binary and installs plugins" {
     init = build_bootstrap_init_container("python:3.12-slim");
     assert init["name"] == "jac-bootstrap";
     assert init["image"] == "python:3.12-slim";
     script = init["args"][0];
     assert "tar xzf" in script;
-    assert f"--target={PYDEPS_DIR}" in script;
-    # jac-scale[all] must be quoted so `sh -c` doesn't glob the `[all]` marker.
-    assert "'jac-scale[all]" in script;
+    # jaclang ships as the `jac` binary (not on PyPI); the installer fetches it
+    # onto the main container's PATH (PYDEPS_DIR/bin), then plugins install
+    # through the binary's resolver.
+    assert "scripts/install.sh" in script;
+    assert f"{PYDEPS_DIR}/bin/jac" in script;
+    # Plugins install --global so they persist on the shared volume (not an
+    # ephemeral project venv). Extras ride as PEP 508 brackets ('jac-scale[all]')
+    # since `--extras` is silently dropped for named (non-editable) packages.
+    assert "install 'jac-scale[all]' --global" in script;
+    assert "install requests --global" in script;
+    # Regression guard: no more pip-installing jaclang into a --target dir.
+    assert "pip install" not in script;
     mount_names = {m["name"] for m in init["volumeMounts"]};
     assert "jac-app" in mount_names;
     assert "jac-source" in mount_names;
@@ -388,7 +407,7 @@ test "client entry auto-detects main.jac for a fullstack project (no [...client]
     shutil.rmtree(be);
 }
 
-test "experimental bootstrap git-clones the branch into a shared venv" {
+test "experimental bootstrap git-clones the branch and zig-builds the binary" {
     init = build_bootstrap_init_container(
         "python:3.12-slim",
         experimental=True,
@@ -396,11 +415,12 @@ test "experimental bootstrap git-clones the branch into a shared venv" {
         branch="fix/no-image-bootstrap-deps"
     );
     script = init["args"][0];
-    assert "python3 -m venv /app/.venv" in script;
-    assert "jac install -e ./jac-scale --extras all" in script;
-    assert "jac install -e ./jac-client" in script;
-    # No PyPI pin in experimental mode.
-    assert "pip install --no-cache-dir --target" not in script;
+    # jaclang is the self-contained `jac` binary: the checkout is compiled with
+    # zig build (not pip-installed editable) so the pod runs the branch's jaclang.
+    assert "zig build" in script;
+    assert "/app/.jacbin/jac install -e ./jac-scale --extras all --global" in script;
+    # Regression guard: no editable pip install (jac/pyproject.toml is gone).
+    assert "pip install" not in script;
     # repo/branch ride as env data, referenced as $VARs - never spliced into the
     # script, so a hostile branch name can't inject shell.
     assert 'git clone --branch "$JACX_BRANCH"' in script;
@@ -408,11 +428,9 @@ test "experimental bootstrap git-clones the branch into a shared venv" {
     env = {e["name"]: e["value"] for e in init["env"]};
     assert env["JACX_BRANCH"] == "fix/no-image-bootstrap-deps";
     assert env["JACX_REPO_URL"] == "https://github.com/udithishanka/jaseci.git";
-    # git install works on Debian and Alpine bases, and only when missing.
+    # build deps install on Debian and Alpine bases, and only when missing.
     assert "command -v git" in script;
     assert "apk add" in script;
-    # jac-client install is guarded so a fork without it doesn't kill the pod.
-    assert "[ ! -d ./jac-client ]" in script;
 }
 
 test "experimental clone URL normalizes SCP/ssh GitHub URLs to https" {
