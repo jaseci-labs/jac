@@ -113,11 +113,13 @@ impl CMapper.c_Switch(nd: object) -> object {
     # C `switch` → nested if/elif/else. pycparser nests each Case/Default as a
     # block_item carrying its own statement list; empty-statement cases
     # (`case 1: case 2: ...`) fold their labels onto the next case that has a
-    # body, modelling `1 || 2`. This is always Tier-B: case fall-through between
-    # non-empty cases is NOT modelled (if/elif has no fall-through), `break` is
-    # dropped as the switch terminator (so a `break` meant for an enclosing loop
-    # would be mis-handled), and the selector is re-evaluated per branch rather
-    # than once. The clean, common shape (every case ends in `break`) is exact.
+    # body, modelling `1 || 2`. The clean, common shape (every body-bearing
+    # case ends in break/return/continue and the selector is pure) lowers
+    # *exactly* and is promoted to Tier-A by `_switch_is_safe`; only the lossy
+    # shapes — case fall-through between body-bearing sections (if/elif has no
+    # fall-through) or a side-effecting selector re-evaluated per branch — stay
+    # Tier-B. A direct `break` always binds to the switch, so dropping it as the
+    # terminator is never itself a hazard.
     (line, col) = self._loc(nd);
     groups: list[tuple] = [];  # (list[c_value_node], list[c_stmt_node])
     pending: list[object] = [];
@@ -134,6 +136,12 @@ impl CMapper.c_Switch(nd: object) -> object {
                 pending = [];
             }
         } elif isinstance(it, c_ast.Default) {
+            # Any empty `case` labels accumulated just before this `default`
+            # fall INTO it (an empty case has no break), so they belong to the
+            # default/else catch-all, not to the next body-bearing case. Drop
+            # them from `pending` — leaving them would leak their selector
+            # values onto a later case's `==` test (a wrong match set).
+            pending = [];
             default_stmts = it.stmts or [];
         }
     }
@@ -220,9 +228,16 @@ impl CMapper._switch_test(
 impl CMapper._switch_branch_body(stmts: list | None) -> list[object] {
     # Convert one case's direct statements, dropping the switch-terminating
     # `break` (direct break only — a break inside a nested loop lives in that
-    # loop's converted body, not here). Empty bodies get a Pass.
+    # loop's converted body, not here). A braced case body `case N: { ... }`
+    # arrives as a single Compound; unwrap it so its terminating break is
+    # dropped exactly like an unbraced one (Python has no block scope, so
+    # flattening the braces changes nothing else). Empty bodies get a Pass.
+    items: list = stmts or [];
+    if len(items) == 1 and isinstance(items[0], c_ast.Compound) {
+        items = items[0].block_items or [];
+    }
     out: list[object] = [];
-    for s in (stmts or []) {
+    for s in items {
         if isinstance(s, c_ast.Break) {
             continue;
         }
@@ -242,33 +257,44 @@ impl CMapper._switch_branch_body(stmts: list | None) -> list[object] {
 impl CMapper._switch_is_safe(items: list, cond: object) -> bool {
     # A switch lowers to an EXACT if/elif/else chain iff neither lossy shape is
     # present (§5.3):
-    #   1. No fall-through: every body-bearing case/default section except the
-    #      last one in source order must end in a control transfer (break /
-    #      return / continue). Empty label-only cases (`case 1: case 2:`) carry
-    #      no body and are faithfully OR-folded, so they never fall through.
+    #   1. No fall-through: every section except the last in source order must
+    #      end in a control transfer (break / return / continue). The one
+    #      exception is an empty label-only `case` (`case 1: case 2:`): it carries
+    #      no body and is faithfully OR-folded onto the next body-bearing section,
+    #      so it never falls through. This does NOT extend to an empty `default`
+    #      — a default is never OR-folded, so an empty default that is not the
+    #      last section falls straight into the following case, which if/elif
+    #      cannot model.
     #   2. Pure selector: it is re-emitted once per `==` comparison, so it must
     #      be free of side effects to be safe to evaluate more than once.
     # Conservative on both counts — any shape we can't prove clean stays Tier-B.
     if not self._expr_reeval_safe(cond) {
         return False;
     }
-    # Indices of the sections that actually carry a body (the OR-fold closes a
-    # group at each Case/Default whose stmts are non-empty).
-    body_idxs: list[int] = [];
+    # Source-order indices of every case/default label (a body may be empty).
+    sec_idxs: list[int] = [];
     for (i, it) in enumerate(items) {
-        if (
-            (isinstance(it, c_ast.Case) or isinstance(it, c_ast.Default)) and it.stmts
-        ) {
-            body_idxs.append(i);
+        if isinstance(it, c_ast.Case) or isinstance(it, c_ast.Default) {
+            sec_idxs.append(i);
         }
     }
-    if not body_idxs {
+    if not sec_idxs {
         return True;
     }
-    last = body_idxs[-1];
-    for i in body_idxs {
+    last = sec_idxs[-1];
+    for i in sec_idxs {
         # The final section has nothing to fall into, so its terminator is moot.
-        if i != last and not self._section_terminates(items[i].stmts) {
+        if i == last {
+            continue;
+        }
+        it = items[i];
+        # An empty `case` label OR-folds onto the next section (faithful); every
+        # other non-final section — a body-bearing case, or ANY default — must
+        # transfer control or it falls into the next case.
+        if isinstance(it, c_ast.Case) and not it.stmts {
+            continue;
+        }
+        if not self._section_terminates(it.stmts) {
             return False;
         }
     }
@@ -280,12 +306,20 @@ impl CMapper._section_terminates(stmts: list | None) -> bool {
     # the section, so execution can't fall into the next case. A bare break is
     # the switch terminator; return leaves the function; continue jumps to the
     # enclosing loop — all three are emitted faithfully and stop fall-through.
-    # Anything else (incl. a break nested inside an `if`) is treated as
-    # potential fall-through and keeps the switch Tier-B.
+    # A braced body `case N: { ...; break; }` nests its terminator inside a
+    # trailing Compound, so descend through it to find the real last statement.
+    # Anything else (incl. a break nested inside an `if`) is treated as potential
+    # fall-through and keeps the switch Tier-B.
     if not stmts {
         return False;
     }
     last = stmts[-1];
+    while isinstance(last, c_ast.Compound) {
+        if not last.block_items {
+            return False;
+        }
+        last = last.block_items[-1];
+    }
     return (
         isinstance(last, c_ast.Break)
         or isinstance(last, c_ast.Return)
