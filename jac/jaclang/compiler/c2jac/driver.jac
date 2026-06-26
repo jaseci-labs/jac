@@ -1,10 +1,19 @@
-"""c2jac orchestrator: parse → prepass → map → PyastBuildPass → splice → unparse → format.
+"""c2jac orchestrator: preprocess → parse → prepass → map → PyastBuildPass → splice → unparse → format.
 
-Entry point: transpile_c_str(c_src, filename) -> (jac_str, TagTable)
+Entry points:
+  transpile_c_file(filename, ...) -> (jac_str, TagTable)
+      File-level driver used by the CLI. Reads `filename`, preprocesses a `.c`
+      with pcpp (§8.1) — expanding #include/#define/#pragma/#if — passes an
+      already-preprocessed `.i` straight through, then transpiles. This is the
+      path callers should normally use; preprocessing is automatic.
+  transpile_c_str(c_src, filename) -> (jac_str, TagTable)
+      Lower-level entry for callers that already hold *preprocessed* C (a
+      translation unit with no surviving preprocessor directives). pycparser does
+      not run the C preprocessor, so directives reaching this path are an error.
 
-Input must be *preprocessed* C (a translation unit with no surviving
-preprocessor directives). pycparser does not run the C preprocessor, so
-#include/#define/#pragma/#if must be expanded first (e.g. `gcc -E -P`).
+Dependency separation: only transpile_c_file's raw-`.c` branch needs pcpp, so it
+imports `preprocess_c` lazily. transpile_c_str / _transpile_ast (and the `.i`
+branch) run with pycparser alone — pcpp need not be installed to use them.
 """
 
 import ast as ast3;
@@ -18,8 +27,10 @@ import from jaclang.compiler.c2jac.mapper { CMapper, _SLOT_SENTINEL }
 import from jaclang.compiler.c2jac.enum_prepass { build_enum_map }
 import from jaclang.compiler.c2jac.uni_builder { CUniBuilder }
 import from jaclang.compiler.c2jac.comments { inject_tier_b_comments }
-import from jaclang.compiler.c2jac.preprocess { preprocess_c }
-
+# NOTE: `preprocess_c` (pcpp) is imported lazily inside transpile_c_file — the
+# only path that preprocesses. transpile_c_str and _transpile_ast stay usable
+# with pycparser alone, so callers holding already-preprocessed C (and tests)
+# don't pull in the pcpp dependency. See the module docstring.
 def transpile_c_file(
     filename: str,
     include_dirs: (list[str] | None) = None,
@@ -36,9 +47,13 @@ def transpile_c_file(
     }
     if filename.endswith(".i") {
         # Already preprocessed — running the preprocessor again is wrong (its
-        # output may carry #line markers / be re-tokenized). Parse as-is.
+        # output may carry #line markers / be re-tokenized). Parse as-is. No pcpp
+        # import on this path either.
         return transpile_c_str(c_src, filename);
     }
+    # Lazy import: pcpp is only needed to preprocess a raw `.c`. Keeping it here
+    # (not at module load) lets the pycparser-only entry points run without it.
+    import from jaclang.compiler.c2jac.preprocess { preprocess_c }
     pre = preprocess_c(
         c_src,
         filename,
@@ -55,17 +70,19 @@ def transpile_c_str(c_src: str, filename: str) -> tuple[str, TagTable] {
     # pycparser does NOT run the C preprocessor: it expects an already-
     # preprocessed translation unit. #include / #define / #pragma / #if reach
     # the parser verbatim and fail with a cryptic "Directives not supported
-    # yet". Detect that case up front and raise actionable guidance instead.
+    # yet". transpile_c_file/the `jac c2jac` CLI preprocess .c with pcpp before
+    # getting here, so directives at this point mean a raw .c reached the
+    # low-level entry directly — surface actionable guidance instead.
     parser = c_parser.CParser();
     try {
         file_ast = parser.parse(c_src, filename);
     } except Exception as e {
         if "Directive" in str(e) {
             raise ValueError(
-                f"{filename}: c2jac expects preprocessed C — the C preprocessor "
-                f"is not run, so #include/#define/#pragma/#if are unsupported. "
-                f"Preprocess first (e.g. `gcc -E -P {filename} > out.i`) and run "
-                f"c2jac on the resulting .i file."
+                f"{filename}: transpile_c_str expects already-preprocessed C, but "
+                f"the input still has #include/#define/#pragma/#if directives. "
+                f"Use transpile_c_file (or the `jac c2jac` CLI), which preprocesses "
+                f".c with pcpp automatically."
             ) from e;
         }
         raise;
