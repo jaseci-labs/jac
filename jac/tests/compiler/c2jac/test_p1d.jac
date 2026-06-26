@@ -197,6 +197,60 @@ test "for_unsupported.c: unsupported for is marked Tier-B" {
     assert has_for , f"Expected a Tier-B entry for the unsupported for-loop, got {reasons}";
 }
 
+# --- Review finding: an unmappable for-condition that becomes `while True`
+# must be flagged explicitly, not hidden behind the generic continue-semantics
+# reason. The `*p` deref condition has no direct-IR analog, so the loop is both
+# while-desugared AND its condition is dropped — init/step/body stay faithful so
+# the only loss is the condition itself. ---
+test "for_unmappable_cond.c: dropped condition becomes `while True` and is preserved-as-much-as-possible" {
+    (jac_str, tags) = _transpile("for_unmappable_cond.c");
+    assert "while True" in jac_str , f"Expected `while True` for the unmappable condition in:\n{jac_str}";
+    # Init/step/body must still survive (the desugar is faithful except the cond).
+    assert "i = 0" in jac_str , f"Expected preserved initializer 'i = 0' in:\n{jac_str}";
+    assert "i += 1" in jac_str , f"Expected preserved step 'i += 1' in:\n{jac_str}";
+    assert "n = n + 1" in jac_str , f"Expected preserved body 'n = n + 1' in:\n{jac_str}";
+}
+
+test "for_unmappable_cond.c: the dropped condition is flagged with its own Tier-B reason" {
+    (jac_str, tags) = _transpile("for_unmappable_cond.c");
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    # The explicit condition-loss clause must be present — a user must not have to
+    # infer that `complex_cond()` silently became `while True`.
+    assert any("loop condition not faithfully lowered" in r for r in reasons) , f"Expected an explicit condition-loss Tier-B reason, got {reasons}";
+    # The body is faithful, so the body-construct clause must NOT appear.
+    assert not any("body constructs not faithfully lowered" in r for r in reasons) , f"Body is faithful; unexpected body-loss flag in {reasons}";
+}
+
+# --- Review finding: _cond_lossy is shared mutable builder state. A nested
+# fallback loop in the body re-enters _for_as_while and resets the flag, so an
+# outer loop whose condition was dropped (`while True`) lost its explicit
+# condition-loss clause when its body held a nested while-desugared loop. The
+# verdict is now captured locally right after _while_cond, before the body. ---
+test "for_nested_cond_clobber.c: outer dropped condition stays flagged despite a nested fallback loop" {
+    (jac_str, tags) = _transpile("for_nested_cond_clobber.c");
+    # The outer `*p` condition has no analog and became `while True`...
+    assert "while True" in jac_str , f"Expected `while True` for the outer unmappable condition in:\n{jac_str}";
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    # ...so SOME loop must carry the explicit condition-loss clause. Before the
+    # fix, the nested descending loop (faithful `j > 0` cond) reset _cond_lossy
+    # while the outer body was built, erasing this clause entirely.
+    cond_loss = [
+        r
+        for r in reasons
+        if "loop condition not faithfully lowered" in r
+    ];
+    assert len(cond_loss) >= 1 , f"Outer dropped condition must stay flagged, got {reasons}";
+    # The nested loop's condition IS faithful (`j > 0` lowers fine), so exactly
+    # one loop — the outer — should carry the condition-loss clause, not both.
+    assert len(cond_loss) == 1 , f"Only the outer loop dropped its condition; nested cond is faithful:\n{reasons}";
+}
+
+test "for_nested_cond_clobber.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_nested_cond_clobber.c");
+    errs = _recompile_errors(jac_str, "for_nested_cond_clobber.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
 # --- Review finding 1: for-body lowering must be faithful or honest, never
 # silently lossy. else/return are now preserved; a body construct with no
 # direct-IR analog (e.g. an uninitialized local decl) demotes the loop Tier-B. ---
@@ -331,6 +385,27 @@ test "for_array_body.c: indexed swap inside a for body is preserved (not silentl
     assert "tmp = arr[j];" in jac_str , f"Expected decl-init from arr[j] in:\n{jac_str}";
 }
 
+test "for_array_body.c: the three swap statements live INSIDE the if-condition body" {
+    (jac_str, tags) = _transpile("for_array_body.c");
+    # Sharper than the file-wide substrings above: the original bug emitted an
+    # empty `if { }` while the swap statements vanished. Slice out the actual
+    # `if arr[j] > arr[j + 1] { ... }` block and assert all three swap legs are
+    # enclosed by its braces, so a future regression that empties the conditional
+    # (or relocates the assignments elsewhere) is caught even when the loose
+    # file-wide substrings still match.
+    header = "if arr[j] > arr[j + 1] {";
+    start = jac_str.find(header);
+    assert start != -1 , f"Expected the ArrayRef if-condition in:\n{jac_str}";
+    # The swap body has no nested braces, so the next `}` closes the if-block.
+    body_start = start + len(header);
+    body_end = jac_str.find("}", body_start);
+    assert body_end != -1 , f"Expected a closing brace for the if-block in:\n{jac_str}";
+    if_body = jac_str[body_start:body_end];
+    assert "tmp = arr[j];" in if_body , f"Expected decl-init swap leg inside the if-body, got:\n{if_body}";
+    assert "arr[j] = arr[j + 1];" in if_body , f"Expected first swap leg inside the if-body, got:\n{if_body}";
+    assert "arr[j + 1] = tmp;" in if_body , f"Expected second swap leg inside the if-body, got:\n{if_body}";
+}
+
 test "for_array_body.c: ArrayRef rvalue and if-condition lower faithfully" {
     (jac_str, tags) = _transpile("for_array_body.c");
     # `s += arr[i]` — ArrayRef as an aug-assign rvalue used to drop the statement.
@@ -345,6 +420,15 @@ test "for_array_body.c: string-literal call arg and nested struct-field lvalue l
     assert 'note("hi");' in jac_str , f"Expected string-literal call arg in:\n{jac_str}";
     # `pts[i].x = i` — StructRef over an ArrayRef as an lvalue (both nested forms).
     assert "pts[i].x = i;" in jac_str , f"Expected nested field-of-element lvalue in:\n{jac_str}";
+}
+
+test "for_array_body.c: escaped string literal is emitted verbatim (escapes not decoded)" {
+    (jac_str, tags) = _transpile("for_array_body.c");
+    # `_string_node` emits the raw C literal verbatim — the backslash escapes in
+    # `"a\tb\n"` must survive as the two-char sequences `\t`/`\n`, not be decoded
+    # to a real tab/newline (which would either corrupt the source or break the
+    # round-trip). This guards the exact behavior the _string_node comment relies on.
+    assert r'note("a\tb\n");' in jac_str , f"Expected escapes preserved verbatim in:\n{jac_str}";
 }
 
 test "for_array_body.c: faithfully-lowered bodies do NOT demote any loop to Tier-B" {

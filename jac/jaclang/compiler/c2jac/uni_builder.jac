@@ -14,7 +14,14 @@ import from jaclang.compiler.c2jac.c_common {
     C_AUGOPS,
     parse_c_int,
     parse_c_float,
-    coord_of
+    coord_of,
+    classify_c_constant,
+    c_char_ord,
+    c_string_inner,
+    CLIT_INT,
+    CLIT_FLOAT,
+    CLIT_CHAR,
+    CLIT_STRING
 }
 
 obj CUniBuilder {
@@ -25,13 +32,19 @@ obj CUniBuilder {
         # faithfully lowered during the most recent loop build. A non-empty list
         # forces the enclosing loop to Tier-B so the Tier-B comments never claim
         # faithful coverage of a body it actually dropped. Reset at each loop entry.
-        _loop_lossy: list[str] = [];
+        _loop_lossy: list[str] = [],
+        # Set when a C-for/while loop had a real condition expression that could
+        # not be lowered and was replaced by a bare `True`. Tracked separately
+        # from _loop_lossy because the condition is built before that list is
+        # reset, and its Tier-B reason is distinct from a dropped body construct.
+        _cond_lossy: bool = False;
 
     def init(src: uni.Source, tags: TagTable, enum_verdicts: EnumVerdicts) {
         self.src = src;
         self.tags = tags;
         self.enum_verdicts = enum_verdicts;
         self._loop_lossy = [];
+        self._cond_lossy = False;
     }
 
     # ------------------------------------------------------------------ #
@@ -101,26 +114,6 @@ obj CUniBuilder {
     def _coord(c_node: object) -> tuple[int, int] {
         # Direct-IR builder has no running line cursor; fall back to line 1.
         return coord_of(c_node, 1);
-    }
-
-    def _c_char_ord(raw: str) -> int | None {
-        # C char constant ("'z'", "'\n'", "'\0'") → its integer value. Decodes
-        # the common escape sequences via unicode_escape; returns None for
-        # multi-character or otherwise non-single-char constants so the caller
-        # can flag the loss instead of guessing.
-        if not (raw.startswith("'") and raw.endswith("'")) or len(raw) < 3 {
-            return None;
-        }
-        inner = raw[1:-1];
-        try {
-            decoded = bytes(inner, "utf-8").decode("unicode_escape");
-        } except Exception {
-            return None;
-        }
-        if len(decoded) != 1 {
-            return None;
-        }
-        return ord(decoded);
     }
 
     # ------------------------------------------------------------------ #
@@ -489,7 +482,14 @@ obj CUniBuilder {
                 result.append(init_stmt);
             }
         }
+        self._cond_lossy = False;
         cond = self._while_cond(nd.cond, line, col);
+        # Capture the condition-loss verdict into a local NOW, before building the
+        # body. _cond_lossy is shared mutable builder state and a nested fallback
+        # loop in the body re-runs _for_as_while, which resets it — so reading
+        # self._cond_lossy after _for_body would report the inner loop's verdict,
+        # silently dropping this loop's own condition-loss clause.
+        cond_lossy = self._cond_lossy;
         self._loop_lossy = [];
         body_stmts = self._for_body(nd.stmt, line, col);
         step_stmt = self._step_as_stmt(nd.next, line, col);
@@ -497,6 +497,13 @@ obj CUniBuilder {
             "C-for loop not expressible as IterForStmt; desugared to while "
             "(C `continue` runs the step, the desugared `continue` skips it — verify)"
         );
+        if cond_lossy {
+            reason += (
+                " | loop condition not faithfully lowered: real `for (...; cond; ...)` "
+                "test replaced by `while True` (the loop no longer terminates on the "
+                "original condition — verify)"
+            );
+        }
         if self._loop_lossy {
             reason += (
                 " | body constructs not faithfully lowered: " + ", ".join(
@@ -524,6 +531,10 @@ obj CUniBuilder {
             if c is not None {
                 return c;
             }
+            # A real condition existed but couldn't be lowered — flag it so the
+            # caller's Tier-B reason says so explicitly, rather than letting the
+            # silent `True` fallback masquerade as faithful for(;;) semantics.
+            self._cond_lossy = True;
         }
         # for(;;) or an unmappable condition → True (matches for(;;) semantics).
         return uni.Bool(
@@ -660,17 +671,19 @@ obj CUniBuilder {
 
         (nline, ncol) = self._coord(nd);
         if isinstance(nd, c_ast.Constant) {
-            # pycparser reports the widened C type ("unsigned int", "long double",
-            # ...), so match on the family suffix — same as mapper.c_Constant — to
-            # cover suffixed literals like `10U`/`1.5f` that parse_c_int/float
-            # recover after stripping the suffix.
-            if nd.type.endswith("int") {
+            # classify_c_constant matches pycparser's widened C type ("unsigned
+            # int", "long double", ...) on the family suffix — same source of
+            # truth as mapper.c_Constant — so suffixed literals like `10U`/`1.5f`
+            # that parse_c_int/float recover after stripping the suffix classify
+            # correctly here too.
+            family = classify_c_constant(nd.type);
+            if family == CLIT_INT {
                 iv = parse_c_int(nd.value);
                 if iv is not None {
                     return self._int_node(iv, nline, ncol);
                 }
             }
-            if nd.type.endswith("double") or nd.type.endswith("float") {
+            if family == CLIT_FLOAT {
                 fv = parse_c_float(nd.value);
                 if fv is not None {
                     sv = str(fv);
@@ -687,24 +700,24 @@ obj CUniBuilder {
                     );
                 }
             }
-            if nd.type == "char" {
+            if family == CLIT_CHAR {
                 # A C char constant is an integer; lower `'z'` to its ordinal
                 # (122) so a condition like `i < 'z'` stays faithful instead of
                 # collapsing to `i < 0`.
-                cv = self._c_char_ord(nd.value);
+                cv = c_char_ord(nd.value);
                 if cv is not None {
                     return self._int_node(cv, nline, ncol);
                 }
             }
-            if nd.type == "string" {
+            if family == CLIT_STRING {
                 # A plain C string literal carries its double quotes and escapes
-                # in nd.value; emit them verbatim as a Jac string (same family as
-                # mapper.c_Constant's "string" branch). A prefixed literal
-                # (L"…"/u8"…") doesn't start with `"`, so it falls through to the
-                # None path below and the loop is honestly demoted to Tier-B.
-                raw = nd.value;
-                if raw.startswith('"') and raw.endswith('"') and len(raw) >= 2 {
-                    return self._string_node(raw, nline, ncol);
+                # in nd.value; emit them verbatim as a Jac string (the direct-IR
+                # path has no later source re-slice, unlike mapper.c_Constant). A
+                # prefixed literal (L"…"/u8"…") makes c_string_inner return None,
+                # so it falls through to the None path below and the loop is
+                # honestly demoted to Tier-B.
+                if c_string_inner(nd.value) is not None {
+                    return self._string_node(nd.value, nline, ncol);
                 }
             }
             # Unparseable / unsupported constant (multi-char literal, exotic
@@ -846,10 +859,11 @@ obj CUniBuilder {
             return self._name_node(nd.name, nline, ncol);
         }
         # `arr[i] = …`, `m[i][j] = …`, `s.f = …`, `p->f = …`: the subscript /
-        # attribute trailer is the same node in lvalue and rvalue position (its
-        # Store-vs-Load context is resolved downstream), so reuse the rvalue
-        # builders. Previously only a bare ID lowered here, so every indexed or
-        # field assignment in a for-body was silently dropped.
+        # attribute trailer is the same Uni node whether it sits in lvalue or
+        # rvalue position — its role as an assignment target comes from being
+        # placed in `uni.Assignment.target`, not from any flag on the node — so
+        # reuse the rvalue builders. Previously only a bare ID lowered here, so
+        # every indexed or field assignment in a for-body was silently dropped.
         if isinstance(nd, c_ast.ArrayRef) {
             (nline, ncol) = self._coord(nd);
             return self._arrayref_to_uni(nd, nline, ncol);
