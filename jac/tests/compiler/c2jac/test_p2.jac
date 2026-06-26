@@ -95,3 +95,14 @@ test "ptr_idioms.c non-list-bound realloc stays Tier-B" {
     assert len(re) == 1 , "Expected one REALLOC_ELIDE idiom";
     assert re[0].tier.value == "tier_b" , "realloc on a pointer not proven list-bound should be Tier-B";
 }
+
+test "list-bound pointer overwritten by raw buffer falls back to Tier-B" {
+    # §7.5: list-boundness must be invalidated by a non-list rebind. After
+    # `arr = malloc(...)` marks arr list-bound, `arr = raw` overwrites it with an
+    # unproven buffer, so the trailing realloc can no longer claim Tier-A.
+    src = "void *malloc(unsigned int n);\nvoid *realloc(void *p, unsigned int n);\n" + "void *make(int *raw, int n) {\n" + "  int *arr = malloc(n * sizeof(int));\n" + "  arr = raw;\n" + "  arr = realloc(arr, 2 * n * sizeof(int));\n" + "  return arr;\n}\n";
+    (jac_str, tags) = transpile_c_str(src, "overwritten_realloc.c");
+    re = tags.by_idiom(Idiom.REALLOC_ELIDE);
+    assert len(re) == 1 , "Expected one REALLOC_ELIDE idiom";
+    assert re[0].tier.value == "tier_b" , "realloc on a pointer overwritten by a raw buffer must drop to Tier-B";
+}
