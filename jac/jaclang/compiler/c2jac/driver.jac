@@ -120,25 +120,13 @@ def _transpile_ast(
     builder = CUniBuilder(src=orig_src, tags=tags, enum_verdicts=enum_verdicts);
     _splice_directir(uni_mod, mapper.slot_map, builder);
 
-    # --- Step 5b: give synthesized zero-line tokens a real source line ---
-    # NormalizePass synthesizes structural tokens (braces, parens, operators)
-    # with line=0. Body *classification* no longer depends on this — the formatter
-    # keys body membership off node identity (DocIRGenPass.is_body_member), and
-    # break/continue carry real lines now (PyastBuildPass.proc_break/continue) —
-    # but the formatter's blank-line *spacing* (DocIRGenPass.has_gap) is still
-    # line-based, so a zero-line `}` would mis-compute a block's last line and
-    # emit a spurious blank line. Propagating the nearest real line to those
-    # tokens keeps spacing faithful. This is the lone remaining coordinate fix-up;
-    # the prior _fix_ctrl_locs pass and the c2jac-specific is_within bypass in
-    # DocIRGenPass.exit_else_stmt were both retired by the identity/root-line work
-    # above. The eventual upstream fix is for NormalizePass to stamp real lines on
-    # the structural tokens it synthesizes, retiring this step too.
-    _propagate_source_lines(uni_mod);
-
     # --- Step 6: unparse + format ---
     # requires_format=True runs NormalizePass → DocIRGenPass → JacFormatPass which
     # correctly emits "to" and "by" keywords for IterForStmt (the False path uses
     # UnparsePass which omits those structural keywords, breaking the formatter).
+    # NormalizePass.after_pass stamps real source lines on the zero-line structural
+    # tokens it synthesizes for the spliced DIRECT_IR nodes, so no coordinate
+    # fix-up is needed here (this retired the former Step 5b _propagate_source_lines).
     jac_str = uni_mod.unparse(requires_format=True);
 
     # --- Step 7: post-format Tier-B comment injection (§7, §9.2a) ---
@@ -250,86 +238,6 @@ def _do_splice(sentinel: uni.ExprStmt, replacements: list[uni.UniNode]) -> None 
         isinstance(r, uni.GlobalVars) or isinstance(r, uni.Enum) for r in replacements
     ) {
         _hoist_to_module_body(sentinel, parent, replacements);
-    }
-}
-
-def _collect_non_zero_lines(nd: object, result: list) -> None {
-    if isinstance(nd, uni.Token) {
-        if nd.line_no > 0 {
-            result.append(nd.line_no);
-        }
-        return;
-    }
-    kids = nd?.kid;
-    if kids {
-        for kid in kids {
-            _collect_non_zero_lines(kid, result);
-        }
-    }
-}
-
-def _propagate_source_lines(mod: uni.Module) {
-    _fix_zero_toks_in_subtree(mod);
-}
-
-def _fix_zero_toks_in_subtree(nd: object) -> None {
-    if isinstance(nd, uni.Token) {
-        return;
-    }
-    kids = nd?.kid;
-    if not kids {
-        return;
-    }
-    # Post-order: fix children first so descendant lines are already correct.
-    for kid in kids {
-        _fix_zero_toks_in_subtree(kid);
-    }
-    # If any direct-child token still has line_no=0, give it a real line based on
-    # its POSITION among the kids, not a single blanket value. A leading/opening
-    # token (e.g. `{`) takes the first line that follows it; a trailing/closing
-    # token (e.g. `}`) takes the last line that precedes it. Stamping every zero
-    # token with min(desc_lines) instead compressed a block's apparent span — the
-    # formatter's blank-line gap logic keys off a node's last_line, so a closing
-    # `}` carrying the block's FIRST line mis-computed spacing to the next sibling.
-    has_zero = any(isinstance(k, uni.Token) and k.line_no == 0 for k in kids);
-    if not has_zero {
-        return;
-    }
-    # Per-kid first/last real descendant line (None when the kid has no real line).
-    kid_first: list[int | None] = [];
-    kid_last: list[int | None] = [];
-    for kid in kids {
-        sub: list[int] = [];
-        _collect_non_zero_lines(kid, sub);
-        kid_first.append(min(sub) if sub else None);
-        kid_last.append(max(sub) if sub else None);
-    }
-    n = len(kids);
-    for i in range(n) {
-        k = kids[i];
-        if not (isinstance(k, uni.Token) and k.line_no == 0) {
-            continue;
-        }
-        # Nearest real line AFTER this token (opening tokens), else BEFORE it.
-        chosen: int | None = None;
-        for j in range(i + 1, n) {
-            if kid_first[j] is not None {
-                chosen = kid_first[j];
-                break;
-            }
-        }
-        if chosen is None {
-            for j in range(i - 1, -1, -1) {
-                if kid_last[j] is not None {
-                    chosen = kid_last[j];
-                    break;
-                }
-            }
-        }
-        if chosen is not None {
-            k.line_no = chosen;
-            k.end_line = chosen;
-        }
     }
 }
 

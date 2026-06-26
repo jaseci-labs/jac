@@ -1811,3 +1811,88 @@ impl NormalizePass.enter_token(nd: uni.Token) -> None { }
 impl NormalizePass.enter_string(nd: uni.String) -> None {
     nd.value = f"{nd.value}";
 }
+
+"""Stamp real source lines on synthesized zero-line tokens.
+
+gen_token stamps every structural token (braces, parens, operators, keywords)
+it synthesizes with the *node's* first_line/last_line. When a node carries no
+real position -- as happens for IR spliced in without source coordinates (e.g.
+the c2jac C->Jac path) -- those tokens inherit line=0. A zero-line closing `}`
+then mis-computes a block's last line, and the formatter's blank-line gap logic
+(DocIRGenPass.has_gap) keys off that, emitting spurious blank lines.
+
+This post-traversal walk gives any token still at line=0 a real line based on
+its POSITION among its siblings: an opening/leading token takes the first real
+line that follows it; a closing/trailing token takes the last real line that
+precedes it. Gated on line_no==0, so it is a no-op for normally-parsed source
+where every token already carries its own line.
+"""
+impl NormalizePass.after_pass -> None {
+    NormalizePass._fix_zero_toks_in_subtree(self.ir_in);
+}
+
+impl NormalizePass._collect_non_zero_lines(nd: uni.UniNode, result: list[int]) -> None {
+    if isinstance(nd, uni.Token) {
+        if nd.line_no > 0 {
+            result.append(nd.line_no);
+        }
+        return;
+    }
+    for kid in nd.kid {
+        NormalizePass._collect_non_zero_lines(kid, result);
+    }
+}
+
+impl NormalizePass._fix_zero_toks_in_subtree(nd: uni.UniNode) -> None {
+    if isinstance(nd, uni.Token) {
+        return;
+    }
+    kids = nd.kid;
+    if not kids {
+        return;
+    }
+    # Post-order: fix children first so descendant lines are already correct.
+    for kid in kids {
+        NormalizePass._fix_zero_toks_in_subtree(kid);
+    }
+    has_zero = any(isinstance(k, uni.Token) and k.line_no == 0 for k in kids);
+    if not has_zero {
+        return;
+    }
+    # Per-kid first/last real descendant line (None when the kid has no real line).
+    kid_first: list[int | None] = [];
+    kid_last: list[int | None] = [];
+    for kid in kids {
+        sub: list[int] = [];
+        NormalizePass._collect_non_zero_lines(kid, sub);
+        kid_first.append(min(sub) if sub else None);
+        kid_last.append(max(sub) if sub else None);
+    }
+    n = len(kids);
+    for i in range(n) {
+        k = kids[i];
+        if not (isinstance(k, uni.Token) and k.line_no == 0) {
+            continue;
+        }
+        # Nearest real line AFTER this token (opening tokens), else BEFORE it.
+        chosen: int | None = None;
+        for j in range(i + 1, n) {
+            if kid_first[j] is not None {
+                chosen = kid_first[j];
+                break;
+            }
+        }
+        if chosen is None {
+            for j in range(i - 1, -1, -1) {
+                if kid_last[j] is not None {
+                    chosen = kid_last[j];
+                    break;
+                }
+            }
+        }
+        if chosen is not None {
+            k.line_no = chosen;
+            k.end_line = chosen;
+        }
+    }
+}
