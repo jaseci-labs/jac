@@ -313,3 +313,50 @@ test "nonascii_str.c emitted Jac recompiles cleanly (no unterminated string)" {
     errs = _recompile_errors(jac_str, "nonascii_str.c");
     assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
 }
+
+# --- Review finding: the direct-IR for-body path lowered a far narrower set of
+# expressions/lvalues than the top-level mapper, so array-indexed and field
+# assignments, array-ref rvalues, and string-literal call args inside a C-for
+# body were silently dropped (worst case: a bubble-sort swap vanished, leaving an
+# empty `if {}` with only a header-comment hint). _expr_to_uni now lowers string
+# literals + ArrayRef/StructRef and _lvalue_to_uni accepts indexed/field targets. ---
+test "for_array_body.c: indexed swap inside a for body is preserved (not silently dropped)" {
+    (jac_str, tags) = _transpile("for_array_body.c");
+    assert jac_str != "";
+    # Regression: `arr[i] = x` was dropped because _lvalue_to_uni only took bare
+    # IDs, so the whole swap (and its enclosing if) became an empty `{ }`.
+    assert "arr[j] = arr[j + 1];" in jac_str , f"Expected indexed swap assignment in:\n{jac_str}";
+    assert "arr[j + 1] = tmp;" in jac_str , f"Expected second swap leg in:\n{jac_str}";
+    # The `int tmp = arr[j];` decl-with-ArrayRef-init also survives.
+    assert "tmp = arr[j];" in jac_str , f"Expected decl-init from arr[j] in:\n{jac_str}";
+}
+
+test "for_array_body.c: ArrayRef rvalue and if-condition lower faithfully" {
+    (jac_str, tags) = _transpile("for_array_body.c");
+    # `s += arr[i]` — ArrayRef as an aug-assign rvalue used to drop the statement.
+    assert "s += arr[i];" in jac_str , f"Expected `s += arr[i]` in:\n{jac_str}";
+    # An if-condition containing an ArrayRef used to drop the entire if-block.
+    assert "if arr[j] > arr[j + 1] {" in jac_str , f"Expected ArrayRef if-condition in:\n{jac_str}";
+}
+
+test "for_array_body.c: string-literal call arg and nested struct-field lvalue lower" {
+    (jac_str, tags) = _transpile("for_array_body.c");
+    # `note("hi")` — a string literal arg used to make the whole call unmappable.
+    assert 'note("hi");' in jac_str , f"Expected string-literal call arg in:\n{jac_str}";
+    # `pts[i].x = i` — StructRef over an ArrayRef as an lvalue (both nested forms).
+    assert "pts[i].x = i;" in jac_str , f"Expected nested field-of-element lvalue in:\n{jac_str}";
+}
+
+test "for_array_body.c: faithfully-lowered bodies do NOT demote any loop to Tier-B" {
+    (jac_str, tags) = _transpile("for_array_body.c");
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    # Every body construct is now faithful, so no loop should carry the
+    # "not faithfully lowered" demotion (which previously hid the dropped swap).
+    assert not any("not faithfully lowered" in r for r in reasons) , f"Bodies are faithful now, unexpected Tier-B: {reasons}";
+}
+
+test "for_array_body.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_array_body.c");
+    errs = _recompile_errors(jac_str, "for_array_body.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
