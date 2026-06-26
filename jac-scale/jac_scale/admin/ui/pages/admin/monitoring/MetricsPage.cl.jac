@@ -77,6 +77,15 @@ def:pub MetricsPage -> JsxElement {
         return {};
     }
 
+    def getMetricBySuffix(suffix: str) -> dict {
+        for m in metrics {
+            if str(m["name"]).endswith(suffix) {
+                return m;
+            }
+        }
+        return {};
+    }
+
     def getMetricValue(name: str, labelKey: str = "", labelVal: str = "") -> float {
         m = getMetricByName(name);
         if not m or not m["values"] {
@@ -112,7 +121,7 @@ def:pub MetricsPage -> JsxElement {
     }
 
     def getHttpRequestsData -> list {
-        m = getMetricByName("default_http_requests_total");
+        m = getMetricBySuffix("_http_requests_total");
         if not m or not m["values"] {
             return [];
         }
@@ -132,7 +141,7 @@ def:pub MetricsPage -> JsxElement {
     }
 
     def getLatencyForPath(path: str) -> float {
-        m = getMetricByName("default_http_request_duration_seconds");
+        m = getMetricBySuffix("_http_request_duration_seconds");
         if not m or not m["values"] {
             return 0.0;
         }
