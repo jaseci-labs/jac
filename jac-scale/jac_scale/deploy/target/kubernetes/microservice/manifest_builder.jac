@@ -70,6 +70,21 @@ obj MicroserviceManifestBuilder {
     bundle. Returns `{deployments, services, autoscalers, pdbs, pod_specs}`,
     plus optional `pvcs`, `user_secret`, `ingress`."""
     def generate_manifests(app_config: AppConfig, image: str) -> dict[str, any] {
+        # Pack the bundle FIRST: each service pod-spec embeds an init container
+        # whose unpack path is derived from self._bundle_object_key (via
+        # _injector_object_key). prepare() is what sets that key, so it must run
+        # before generate_service_pod_specs() below - otherwise pods unpack an
+        # empty path and CrashLoop. seed() (the deploy-time publish) happens later
+        # in apply_manifests, once the PVC from extra_manifests() exists.
+        import from jac_scale.injector.pvc_injector { PvcInjector }
+        injector = PvcInjector();
+        injector.prepare(
+            k8s_safe_name(self.k8s_config.app_name),
+            self.k8s_config.namespace,
+            self.project_dir or app_config.code_folder
+        );
+        self._bundle_object_key = injector._object_key;
+
         pod_specs = self.generate_service_pod_specs(app_config, image);
         deployments: dict[str, dict[str, any]] = {};
         services: dict[str, dict[str, any]] = {};
@@ -97,16 +112,8 @@ obj MicroserviceManifestBuilder {
             "pdbs": pdbs,
             "pod_specs": pod_specs
         };
-        # Publish source to the bundle PVC via the injector and record its
-        # manifests (the PVC itself) so the deploy path can apply them.
-        import from jac_scale.injector.pvc_injector { PvcInjector }
-        injector = PvcInjector();
-        injector.prepare(
-            k8s_safe_name(self.k8s_config.app_name),
-            self.k8s_config.namespace,
-            self.project_dir or app_config.code_folder
-        );
-        self._bundle_object_key = injector._object_key;
+        # Record the prepared injector (for the deploy-time seed) and its
+        # cluster manifests (the bundle PVC) so the deploy path can apply them.
         bundle["injector"] = injector;
         for manifest in injector.extra_manifests(
             k8s_safe_name(self.k8s_config.app_name), self.k8s_config.namespace
@@ -117,9 +124,14 @@ obj MicroserviceManifestBuilder {
                 bundle["pvcs"] = pvcs_from_injector;
             }
         }
-        pvcs = self._build_shared_pvc_manifests();
-        if pvcs {
-            bundle["pvcs"] = pvcs;
+        # Merge shared-volume PVCs INTO the injector's bundle PVC, never replace:
+        # an overwrite here would drop the `<app>-bundles` claim the pods mount,
+        # so they would reference a PVC that was never created.
+        shared_pvcs = self._build_shared_pvc_manifests();
+        if shared_pvcs {
+            merged_pvcs = bundle.get("pvcs", {});
+            merged_pvcs.update(shared_pvcs);
+            bundle["pvcs"] = merged_pvcs;
         }
         user_secret = self._build_user_secret_manifest();
         if user_secret is not None {
@@ -710,7 +722,8 @@ obj MicroserviceManifestBuilder {
     """Single Ingress -> gateway Service; controller-agnostic. Built from
     `[...ingress]`, or the deploy-wide `shared_ingress` (host=domain) when that
     table is unset. Returns None if neither is configured. Backend always points
-    at gateway-service path "/" Prefix - the gateway owns /api/{svc}/* dispatch."""
+    at gateway-service path "/" Prefix - the gateway owns /<svc>/* dispatch
+    (member-subpath; the /api prefix was dropped)."""
     def _build_ingress_manifest(ingress_cfg: dict[str, any]) -> dict[str, any] | None {
         cfg = self.k8s_config;
         enabled: bool = bool(ingress_cfg.get("enabled", False));

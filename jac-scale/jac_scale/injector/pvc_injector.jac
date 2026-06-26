@@ -109,30 +109,148 @@ def _ensure_volume(pod_spec: dict[str, any], volume: dict[str, any]) -> None {
 obj PvcInjector(Injector) {
     has size: str = "1Gi",
         storage_class: str = "",
-        _object_key: str = "";
+        # Image for the short-lived loader pod that kubectl-cp's the bundle onto
+        # the PVC. Needs only `sh`, `tar`, and `mkdir`; busybox is tiny and has all
+        # three. Override only for air-gapped registries.
+        loader_image: str = "busybox:1.36",
+        _object_key: str = "",
+        _bundle_bytes: bytes = b"";
 
-    """Pack the project, content-address it, and seed it onto the PVC. Records the
-    object key for mutate_pod_spec(). The seed itself is deploy-time I/O."""
+    """Pack the project and content-address it, recording the object key (for
+    mutate_pod_spec) and the packed bytes (for seed). Build-time and free of
+    cluster I/O so it can run during manifest generation, before the PVC exists."""
     def prepare(app_name: str, namespace: str, project_dir: str) {
         raw = pack_source(project_dir);
         digest = content_address(raw);
         self._object_key = bundle_object_key(app_name, digest);
-        self._seed(app_name, namespace, raw);
+        self._bundle_bytes = raw;
     }
 
-    """Place `raw` on the bundle PVC under the recorded object key.
+    """Publish the packed bundle onto the bundle PVC. Deploy-time, side-effecting,
+    and run AFTER extra_manifests() are applied so the PVC exists: a short-lived
+    loader pod mounts the PVC read-write, the deploy host kubectl-cp's the
+    content-addressed tar.gz onto it, then the pod is deleted. App pods mount the
+    same PVC read-only and unpack the bundle in their init container.
 
-    Deploy-time, side-effecting: a short-lived loader pod mounts the PVC and the
-    deploy host kubectl-cp's the bundle in. Kept out of this commit so the pure
-    manifest and bundle logic stays unit-testable without a cluster; covered by
-    the k8s e2e.
-    """
-    def _seed(app_name: str, namespace: str, raw: bytes) {
-        logger.info(
-            f"pvc-injector: publishing {len(raw)} bytes for app {app_name} " + f"at {bundle_pvc_path(
-                self._object_key
-            )}"
-        );
+    Idempotent: the on-PVC path is content-addressed, so re-seeding identical bytes
+    just overwrites the same file. `kubectl` must be on the deploy host PATH (the
+    monolith code-sync path already requires it)."""
+    def seed(app_name: str, namespace: str) {
+        if not self._bundle_bytes {
+            raise ValueError(
+                "PvcInjector.seed() called before prepare(); there are no bundle "
+                "bytes to publish. prepare() must run first to pack the project."
+            );
+        }
+        import from jac_scale._optdeps.kubernetes { client, ApiException }
+        import from jac_scale.deploy.target.kubernetes.utils.kubernetes_utils {
+            run_kubectl_command,
+            wait_for_pod_phase,
+            wait_for_pod_deletion
+        }
+        import tempfile;
+        import from pathlib { Path }
+
+        core_v1 = client.CoreV1Api();
+        pvc_name = bundle_pvc_name(app_name);
+        loader_pod = f"{app_name}-bundle-loader";
+        bundle_path = bundle_pvc_path(self._object_key);
+        parent_dir = str(Path(bundle_path).parent);
+
+        pod_body = {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "name": loader_pod,
+                "labels": {"managed": "jac-scale", "jac-scale.role": "bundle-loader"}
+            },
+            "spec": {
+                "restartPolicy": "Never",
+                "securityContext": {
+                    "runAsNonRoot": True,
+                    "runAsUser": 1000,
+                    "fsGroup": 1000,
+                    "seccompProfile": {"type": "RuntimeDefault"}
+                },
+                "containers": [
+                    {
+                        "name": "loader",
+                        "image": self.loader_image,
+                        "command": ["sh", "-c", "sleep 3600"],
+                        "securityContext": {
+                            "runAsNonRoot": True,
+                            "runAsUser": 1000,
+                            "readOnlyRootFilesystem": True,
+                            "allowPrivilegeEscalation": False,
+                            "capabilities": {"drop": ["ALL"]},
+                            "seccompProfile": {"type": "RuntimeDefault"}
+                        },
+                        "volumeMounts": [
+                            {"name": "bundles", "mountPath": BUNDLE_MOUNT_PATH},
+                            {"name": "tmp", "mountPath": "/tmp"}
+                        ]
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "bundles",
+                        "persistentVolumeClaim": {"claimName": pvc_name}
+                    },
+                    {"name": "tmp", "emptyDir": {}}
+                ]
+            }
+        };
+        try {
+            core_v1.create_namespaced_pod(namespace, pod_body);
+        } except ApiException as exc {
+            if exc.status == 409 {
+                core_v1.delete_namespaced_pod(loader_pod, namespace);
+                wait_for_pod_deletion(core_v1, namespace, loader_pod);
+                core_v1.create_namespaced_pod(namespace, pod_body);
+            } else {
+                raise;
+            }
+        }
+        # Loader Pending past this wait usually means the PVC never bound (no RWX
+        # storage class on a multi-node cluster); the timeout surfaces it.
+        wait_for_pod_phase(core_v1, namespace, loader_pod, {"Running"});
+
+        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp {
+            tmp.write(self._bundle_bytes);
+            tmp_path = Path(tmp.name);
+        }
+        try {
+            run_kubectl_command(
+                [
+                    "exec",
+                    "-n",
+                    namespace,
+                    loader_pod,
+                    "--",
+                    "sh",
+                    "-c",
+                    f"mkdir -p '{parent_dir}'"
+                ]
+            );
+            run_kubectl_command(
+                ["cp", "-n", namespace, tmp_path.name, f"{loader_pod}:{bundle_path}"],
+                cwd=tmp_path.parent
+            );
+            logger.info(
+                f"pvc-injector: seeded {len(self._bundle_bytes)} bytes to "
+                f"{pvc_name} at {bundle_path}"
+            );
+        } finally {
+            tmp_path.unlink(missing_ok=True);
+            try {
+                core_v1.delete_namespaced_pod(loader_pod, namespace);
+                wait_for_pod_deletion(core_v1, namespace, loader_pod);
+            } except ApiException as exc {
+                if exc.status != 404 {
+                    raise;
+                }
+            }
+        }
     }
 
     def mutate_pod_spec(pod_spec: dict[str, any], base_image: str) -> dict[str, any] {

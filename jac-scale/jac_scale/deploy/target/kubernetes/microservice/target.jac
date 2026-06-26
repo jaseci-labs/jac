@@ -491,6 +491,22 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
+        # Publish the source bundle onto the now-applied bundle PVC, BEFORE the
+        # deployments roll: the service pods' init containers unpack it, so it has
+        # to be on the PVC first or they CrashLoop on a missing archive. The
+        # injector owns the loader-pod + kubectl-cp mechanics; the PVC it targets
+        # was just applied in the loop above.
+        injector = bundle.get("injector");
+        if injector is not None {
+            injector.seed(k8s_safe_name(self.k8s_config.app_name), namespace);
+            if self.logger {
+                self.logger.info(
+                    "Seeded source bundle onto the bundle PVC",
+                    {"app_name": k8s_safe_name(self.k8s_config.app_name)}
+                );
+            }
+        }
+
         user_secret = bundle.get("user_secret");
         if user_secret {
             create_k8s_secret(

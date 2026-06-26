@@ -260,7 +260,7 @@ class JacScalePluginConfig {
                         "ingress": {
                             "type": "dict",
                             "default": {},
-                            "description": "Optional K8s Ingress for the gateway. Default off (no Ingress emitted) so existing deployments don't grow one unexpectedly. Subkeys: `enabled` (bool, opt-in), `host` (str, omitted means match-any-host), `ingress_class_name` (str, e.g. \"nginx\", \"alb\", \"gce\"), `annotations` (dict[str,str], controller-specific knobs like nginx.ingress.kubernetes.io/proxy-body-size). HTTP only - TLS via cert-manager / ACM is deployment-specific. Routes all external traffic to gateway-service:container_port; the gateway dispatches /api/{svc}/* internally."
+                            "description": "Optional K8s Ingress for the gateway. Default off (no Ingress emitted) so existing deployments don't grow one unexpectedly. Subkeys: `enabled` (bool, opt-in), `host` (str, omitted means match-any-host), `ingress_class_name` (str, e.g. \"nginx\", \"alb\", \"gce\"), `annotations` (dict[str,str], controller-specific knobs like nginx.ingress.kubernetes.io/proxy-body-size). HTTP only - TLS via cert-manager / ACM is deployment-specific. Routes all external traffic to gateway-service:container_port; the gateway dispatches /<svc>/* internally (member-subpath; the /api prefix was dropped)."
                         },
                         "routes": {
                             "type": "dict",
