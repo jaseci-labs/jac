@@ -733,6 +733,8 @@ test "lambda arg annotation" {
     assert "lambda x: -x" in stdout_value;
     # regression: list of lambdas — sibling lambda boundary must not be crossed
     assert "lambda y: y + 3" in stdout_value;
+    # regression: dict-value lambdas — dict key colon must not fire as annotation
+    assert "lambda x: x + 1" in stdout_value;  # ops["inc"] body intact
 }
 
 test "lambda arg annotation runtime" {
@@ -761,6 +763,10 @@ test "lambda arg annotation runtime" {
     # regression: bare-name body alongside dict-literal arg must not trigger
     # brace-body false positive (crossed-comma guard)
     assert "r5:12" in stdout_value;
+    # regression: dict-value lambdas — dict key colon after cross-comma must not
+    # be mistaken for an annotation separator
+    assert "r6:12" in stdout_value;
+    assert "r7:10" in stdout_value;
 }
 
 test "lambda self" {

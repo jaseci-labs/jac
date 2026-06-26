@@ -3107,6 +3107,7 @@ impl Parser._lambda_colon_is_annotation -> bool {
             depth += 1;
         } elif self.check(TokenKind.COMMA) and depth == 0 {
             crossed_comma = True;
+            saw_type_token = False;  # reset: token after comma must re-establish type context
         } elif self.check_any(TokenKind.RPAREN, TokenKind.RSQUARE, TokenKind.RBRACE) {
             if depth == 0 {
                 break;  # left the enclosing scope — no annotation
@@ -3116,7 +3117,10 @@ impl Parser._lambda_colon_is_annotation -> bool {
             break;
         } elif self.check(TokenKind.KW_LAMBDA) and depth == 0 {
             break;  # crossed into a sibling lambda — no annotation
-        } elif self.check(TokenKind.COLON) and depth == 0 {
+        } elif self.check(TokenKind.COLON)
+        and depth == 0
+        and not in_expr
+        and saw_type_token {
             found = True;
             break;
         } elif self.check(TokenKind.RETURN_HINT) and depth == 0 {

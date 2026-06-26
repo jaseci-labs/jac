@@ -52,4 +52,10 @@ with entry {
     # for a brace-body annotation when a depth-0 comma was already crossed
     def apply(fn: any, d: dict) -> any { return fn(d["v"]); }
     print("r5:" + str(apply(lambda x: x * 3, {"v": 4})));
+
+    # dict-value lambdas — the dict key colon after a cross-comma must not
+    # be mistaken for an annotation separator (even without expression operators)
+    ops: dict = {"double": lambda x: x * 2, "inc": lambda x: x + 1};
+    print("r6:" + str(ops["double"](6)));
+    print("r7:" + str(ops["inc"](9)));
 }
