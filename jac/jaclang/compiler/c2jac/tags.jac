@@ -51,6 +51,22 @@ obj TagTable {
         ];
     }
 
+    def tier_counts -> tuple[int, int] {
+        # (Tier-A node count, total tagged node count) across every C-AST node.
+        # The aggregate-faithfulness gate (test_compat_matrix) sums these over
+        # the whole corpus so a net drift toward Tier-B can't pass silently —
+        # the per-row tests only pin individual forms, nothing aggregates them.
+        total = len(self._data);
+        tier_a = len(
+            [
+                v
+                for v in self._data.values()
+                if v.tier == Tier.TIER_A
+            ]
+        );
+        return (tier_a, total);
+    }
+
     def by_idiom(idiom: Idiom) -> list[NodeTag] {
         return [
             v
