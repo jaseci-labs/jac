@@ -1,15 +1,23 @@
-"""End-to-end gate for static C-archive linking on Mach-O (#6978 Phase 0.1a).
+"""End-to-end gate for static C-archive linking on Mach-O and ELF (#6978 0.1a).
 
-Compiles a tiny `na` program that calls `lzma_crc32` (an extern C symbol),
-selects the defining member out of the bundled `liblzma.a` via the ar reader,
-merges it into the binary through MachOLinker's new multi-object path, and runs
-the result -- proving the floor links statically into the executable instead of
-being a runtime dylib dependency. Gated to macOS arm64 (where the binary can run
-and the bundled archives are TLS-free); skips elsewhere or when no pbs build is
-staged.
+The Mach-O tests compile a tiny `na` program that calls `lzma_crc32` (an extern
+C symbol), select the defining member out of the bundled `liblzma.a` via the ar
+reader, merge it through MachOLinker's multi-object path, and run the result --
+proving the floor links statically into the executable instead of being a
+runtime dylib dependency. Gated to macOS arm64 (where the binary can run and the
+bundled archives are TLS-free); skips elsewhere or when no pbs build is staged.
+
+The ELF test is the Linux counterpart of the same linker fix: it emits a member
+relocatable object (the raw bytes select_ar_members hands back as `.data`) and
+folds it into the binary through ElfLinker's new `archive_members` path. It
+builds on any host (the object is ELF regardless) and executes only on a Linux
+x86_64 host -- where an unmerged member would leave `jac_floor_magic` an
+unresolved libc import and the loader would abort, so a clean run proves the
+merge. Together the file covers the archive-merge path on both object formats.
 """
 
 import os;
+import struct;
 import subprocess;
 import sys;
 import tempfile;
@@ -17,6 +25,7 @@ import from pathlib { Path }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.compiler.passes.native.macho_linker { MachOLinker }
+import from jaclang.compiler.passes.native.elf_linker { ElfLinker }
 import from jaclang.compiler.passes.native.linker_common { select_ar_members }
 import jaclang.compiler.passes.native.llvm.binding as llvm;
 
@@ -70,6 +79,22 @@ def _inject_macho(ir_txt: str) -> str {
         else "@__jac_argc = global i32 0\n@__jac_argv = global ptr null\n\n";
     return ir_txt + (
         "\n; --- injected entry point ---\n" + globals_ir + "define i32 @main(i32 %argc, ptr %argv) {\nentry:\n" + "    store i32 %argc, ptr @__jac_argc\n" + "    store ptr %argv, ptr @__jac_argv\n" + "    call void @jac_entry()\n    ret i32 0\n}\n"
+    );
+}
+
+
+"""Inject `main` + `_start` for ELF — mirrors nacompile's _inject_entry_elf
+(see test_exec_link). ELF executables need an explicit `_start` that calls
+`main` and `exit`, unlike Mach-O where dyld provides the entry stub."""
+def _inject_elf(ir_txt: str) -> str {
+    globals_ir = ""
+        if "__jac_argc" in ir_txt
+        else "@__jac_argc = global i32 0\n@__jac_argv = global ptr null\n\n";
+    exit_decl = ""
+        if ("@exit" in ir_txt or '@"exit"' in ir_txt)
+        else "declare void @exit(i32) noreturn\n\n";
+    return ir_txt + (
+        "\n; --- injected entry point ---\n" + globals_ir + exit_decl + "declare ptr @llvm.stacksave()\n\n" + "define i32 @main(i32 %argc, ptr %argv) {\nentry:\n" + "    store i32 %argc, ptr @__jac_argc\n" + "    store ptr %argv, ptr @__jac_argv\n" + "    call void @jac_entry()\n    ret i32 0\n}\n\n" + "define void @_start() naked noreturn {\nentry:\n" + "    %sp = call ptr @llvm.stacksave()\n" + "    %argc = load i32, ptr %sp\n" + "    %argv = getelementptr i8, ptr %sp, i64 8\n" + "    %ret = call i32 @main(i32 %argc, ptr %argv)\n" + "    call void @exit(i32 %ret)\n    unreachable\n}\n"
     );
 }
 
@@ -192,4 +217,47 @@ test "nacompile CLI: `import from lzma` static-links the floor, no dylib dep (#6
         ["otool", "-L", out], capture_output=True, text=True, timeout=30
     );
     assert "lzma" not in deps.stdout , f"unexpected liblzma dep:\n{deps.stdout}";
+}
+
+
+test "ELF: static-link jac_floor_magic from a member object, run, verify (#6978 0.1a)" {
+    # Pin an explicit ELF triple so the object is ELF on any host (this file also
+    # runs on the macOS native job, whose default triple is darwin/Mach-O).
+    # Execution stays gated to a Linux x86_64 host that can run the result.
+    triple = "x86_64-unknown-linux-gnu";
+    main_obj = _emit_object(
+        _inject_elf(_compile_ir("static_archive_elf_leaf.na.jac", triple)), triple
+    );
+    # The archive member as a raw relocatable object -- the same shape
+    # select_ar_members hands back as `.data`: a leaf defining the extern the
+    # main object calls. Emitted from IR so the test needs no checked-in binary
+    # and no host C toolchain, and stays cross-host (Mach-O `ar` cannot build an
+    # ELF member's symbol index, so a real archive can't be assembled on macOS).
+    member_ir = f'target triple = "{triple}"\n\n'
+        + "define i64 @jac_floor_magic() {\nentry:\n  ret i64 1234605616436508552\n}\n";
+    member_obj = _emit_object(member_ir, triple);
+
+    d = tempfile.mkdtemp();
+    out = os.path.join(d, "floor_static_elf");
+    ok = ElfLinker.link(
+        obj_bytes=main_obj,
+        output_path=out,
+        needed_libs=["libc.so.6"],
+        shared=False,
+        archive_members=[member_obj]
+    );
+    assert ok , "ElfLinker.link with archive_members returned False";
+    raw = Path(out).read_bytes();
+    assert raw[:4] == b"\x7fELF" , "not an ELF image";
+    e_type = struct.unpack_from("<H", raw, 16)[0];
+    assert e_type == 2 , f"expected ET_EXEC (2), got {e_type}";
+
+    # Only a Linux x86_64 host can execute the produced ELF. Were the member not
+    # merged, jac_floor_magic would stay an unresolved libc import and the loader
+    # would abort -- so a clean run with the right value proves the merge.
+    if sys.platform.startswith("linux") and ("x86_64" in llvm.get_default_triple()) {
+        res = subprocess.run([out], capture_output=True, timeout=30);
+        assert res.returncode == 0 , (f"exec exited {res.returncode}, stderr={res.stderr}");
+        assert b"1234605616436508552" in res.stdout , f"unexpected output: {res.stdout}";
+    }
 }

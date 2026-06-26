@@ -660,7 +660,8 @@ impl nacompile(
                 shared=shared,
                 export_symbols=export_symbols,
                 init_funcs=init_funcs,
-                soname=os.path.basename(output)
+                soname=os.path.basename(output),
+                archive_members=archive_members
             );
         } except Exception as e {
             console.error(f"ELF linking failed: {e}");

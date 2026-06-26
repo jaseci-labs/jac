@@ -2713,7 +2713,8 @@ impl ElfLinker.link(
     shared: bool = False,
     export_symbols: list[str] = [],
     init_funcs: list[str] = [],
-    soname: str = ""
+    soname: str = "",
+    archive_members: list[bytes] = []
 ) -> bool {
     linker = ElfLinker(
         obj_data=obj_bytes,
@@ -2733,6 +2734,20 @@ impl ElfLinker.link(
     # Merge CRT objects (e.g. crt1.o) into the main object
     for crt_bytes in crt_objects {
         if not _merge_crt_object(linker, crt_bytes) {
+            return False;
+        }
+    }
+
+    # Merge selected static-archive members (#6978 Phase 0.1a). An ar member is
+    # just a relocatable object, so it folds in through the same path as a CRT
+    # object: _merge_crt_object upgrades a currently-undefined symbol to its
+    # in-member definition in place, so a member symbol referenced by the main
+    # object (or an earlier member) resolves locally instead of being emitted as
+    # a libc.so dynamic import. This is why ELF needs no separate crossref pass
+    # like Mach-O's _resolve_crossrefs -- build_executable only imports symbols
+    # still left at SHN_UNDEF after all merges.
+    for member in archive_members {
+        if not _merge_crt_object(linker, member) {
             return False;
         }
     }
