@@ -172,6 +172,12 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
         kwargs["action"] = "append";
         kwargs["nargs"] = "+";
         kwargs["default"] = None;
+        # Normalize hyphens to underscores so the parser stores the value
+        # under a key that matches Python-style parameter names. Without
+        # this, `--force-include` would be stored as "force-include" but
+        # the handler expects "force_include" (same issue as FLAG, see #6115).
+        shared_dest: str = kwargs.get("dest") or arg.name.replace("-", "_");
+        kwargs["dest"] = shared_dest;
         if arg.short {
             parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
         } else {
