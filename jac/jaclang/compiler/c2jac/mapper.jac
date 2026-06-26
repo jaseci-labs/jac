@@ -37,6 +37,7 @@ glob _SLOT_SENTINEL: str = "__c2jac_directir__",
          "float",
          "double",
          "void",
+         "char",
          "long",
          "short",
          "unsigned",
@@ -186,7 +187,7 @@ obj CMapper {
         # Retag a node Tier-B for a lossy-but-best-effort emission. Unlike the
         # surrogate helpers this does NOT replace the emitted Jac — the handler
         # still emits its best-effort form — it only records the loss so the
-        # node reaches the sidecar report (§3 honest-report invariant). Used by
+        # node is flagged in the Tier-B comments (§3 honest-report invariant). Used by
         # representation-changing casts and side-effect-dropping comma/designated
         # initializers, which would otherwise silently stay at the default
         # Tier-A from _populate_default_tags.
@@ -207,8 +208,8 @@ obj CMapper {
     def _mark_tier_a(c_node: object, idiom: Idiom, reason: str = "") {
         # Record a recognized Tier-A pointer idiom (§7). The handler still emits
         # the faithful Jac form; this only stamps the verdict so the idiom is
-        # queryable (TagTable.by_idiom) for metrics/tests. Tier-A never reaches
-        # the sidecar report (which serializes Tier-B only).
+        # queryable (TagTable.by_idiom) for metrics/tests. Tier-A is never
+        # flagged in the Tier-B comments (which surface Tier-B only).
         (line, _) = self._loc(c_node);
         self.tags.tag(
             c_node,
@@ -992,12 +993,25 @@ obj CMapper {
     }
 
     def c_Constant(nd: object) -> object {
-        if nd.type == "int" {
+        # Default the rendered text to the raw C literal; numeric branches
+        # override it with the parsed value so a stripped suffix (`10L`→`10`)
+        # doesn't leak verbatim into the emitted Jac.
+        txt: str = str(nd.value);
+        # pycparser reports the widened C type, not a bare keyword: `10L` is
+        # "long int", `5U` is "unsigned int", `1.0L` is "long double". Match on
+        # the family suffix so every integer / floating constant is normalized.
+        if nd.type.endswith("int") {
             iv = parse_c_int(nd.value);
             val: object = iv if iv is not None else repr(nd.value);
-        } elif nd.type in ("double", "float") {
+            if iv is not None {
+                txt = str(iv);
+            }
+        } elif nd.type.endswith("double") or nd.type.endswith("float") {
             fv = parse_c_float(nd.value);
             val = fv if fv is not None else repr(nd.value);
+            if fv is not None {
+                txt = str(fv);
+            }
         } elif nd.type == "char" {
             # char literal: 'a' → single char string.
             raw = nd.value;
@@ -1021,7 +1035,7 @@ obj CMapper {
             val = repr(nd.value);
         }
         c = ast3.Constant(value=val);
-        return self._stamp(c, nd, text=str(nd.value));
+        return self._stamp(c, nd, text=txt);
     }
 
     # ------------------------------------------------------------------ #
@@ -1313,12 +1327,26 @@ obj CMapper {
     # ------------------------------------------------------------------ #
     # Type helpers                                                         #
     # ------------------------------------------------------------------ #
-    def _prim_typename(names: list) -> str {
+    def _jac_prim(names: list) -> str {
         # Map a C IdentifierType name list to a Jac builtin type name.
+        # `char` alone is treated as text (→ str), but `signed char` /
+        # `unsigned char` are byte-numeric integers (→ int) — keying on
+        # names[-1]=="char" alone would wrongly call those str.
         if not names {
             return "int";
         }
+        if "char" in names {
+            if "signed" in names or "unsigned" in names {
+                return "int";
+            }
+            return "str";
+        }
         return _C_PRIM_MAP.get(names[-1], "int");
+    }
+
+    def _prim_typename(names: list) -> str {
+        # Map a C IdentifierType name list to a Jac builtin type name.
+        return self._jac_prim(names);
     }
 
     def _user_type_name(t: object) -> str | None {
@@ -1343,7 +1371,9 @@ obj CMapper {
         inner = ptr_decl.type;
         if isinstance(inner, c_ast.TypeDecl) {
             names = inner.type?.names or [];
-            if "char" in names {
+            # Only a plain `char *` is a C string; `signed/unsigned char *`
+            # are byte buffers, so route the decision through _jac_prim.
+            if "char" in names and self._jac_prim(names) == "str" {
                 return "str";
             }
             user = self._user_type_name(inner.type);

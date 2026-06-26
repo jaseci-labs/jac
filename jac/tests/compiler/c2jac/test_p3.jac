@@ -1,9 +1,7 @@
-"""P3 phase-exit: Tier-B sidecar report + post-format comment injection."""
+"""P3 phase-exit: Tier-B detection + post-format comment injection."""
 
-import json;
 import re;
 import from jaclang.compiler.c2jac.driver { transpile_c_str }
-import from jaclang.compiler.c2jac.report { report_json }
 import from jaclang.jac0core.program { JacProgram }
 
 def _transpile(src: str) -> tuple {
@@ -23,41 +21,19 @@ test "Union yields at least one Tier-B entry" {
     assert len(tags.tier_b_entries()) > 0 , "Expected Tier-B entries for Union";
 }
 
-test "report_json produces valid JSON" {
+test "Tier-B entries carry c_line and an explained reason" {
     (jac_str, tags) = _transpile("union U { int i; float f; };\nint x;");
-    js = report_json("test.c", tags);
-    parsed = json.loads(js);
-    assert isinstance(parsed, dict);
-}
-
-test "report_json has required fields" {
-    (jac_str, tags) = _transpile("union U { int i; float f; };\nint x;");
-    parsed = json.loads(report_json("test.c", tags));
-    assert parsed["version"] == 1;
-    assert parsed["input"] == "test.c";
-    assert "tier_b_sites" in parsed;
-    assert isinstance(parsed["tier_b_sites"], list);
-}
-
-test "report_json tier_b_sites have c_line idiom reason snippet" {
-    (jac_str, tags) = _transpile("union U { int i; float f; };\nint x;");
-    parsed = json.loads(report_json("test.c", tags));
-    sites = parsed["tier_b_sites"];
+    sites = tags.tier_b_entries();
     assert len(sites) > 0;
     site = sites[0];
-    assert "c_line" in site;
-    assert "idiom" in site;
-    assert "reason" in site;
-    assert "snippet" in site;
+    assert site.c_line > 0 , f"Expected a real C line, got {site.c_line}";
+    assert site.idiom is not None;
 }
 
-test "Tier-A-only file has zero tier_b_sites" {
+test "Tier-A-only file has zero Tier-B entries" {
     src = "int add(int a, int b) { return a + b; }\nint main(void) { return add(1, 2); }";
     (jac_str, tags) = _transpile(src);
-    parsed = json.loads(report_json("test.c", tags));
-    assert parsed["tier_b_sites"] == [] , f"Expected no Tier-B sites, got: {parsed[
-        'tier_b_sites'
-    ]}";
+    assert tags.tier_b_entries() == [] , f"Expected no Tier-B sites, got: {tags.tier_b_entries()}";
 }
 
 test "representation-changing cast is flagged Tier-B (not silently dropped)" {
@@ -100,11 +76,13 @@ test "surrogate emits a valid int-line marker (not re-sliced C text)" {
     assert _parses(jac_str) , f"Emitted Jac must parse (§8.2):\n{jac_str}";
 }
 
-test "Tier-B output carries a header pointing at the sidecar" {
+test "Tier-B output carries a self-contained header" {
     (jac_str, tags) = transpile_c_str("union U { int i; float f; };", "u.c");
     assert jac_str.startswith("# c2jac:") , f"Expected header first:\n{jac_str[:120]}";
     assert "best-effort (Tier-B)" in jac_str;
-    assert "u.c2jac.report.json" in jac_str , f"Header should name the sidecar:\n{jac_str[:120]}";
+    # The header is the authoritative record — it must NOT defer to a sidecar file.
+    assert "report.json" not in jac_str , f"Header must not reference a sidecar:\n{jac_str[:120]}";
+    assert re.search(r"#\s+L\d+\s+", jac_str) is not None , f"Header should list sites by C line:\n{jac_str[:200]}";
 }
 
 test "surrogate lines get an inline BEST-EFFORT note" {
