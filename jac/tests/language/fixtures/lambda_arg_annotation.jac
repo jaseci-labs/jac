@@ -45,6 +45,6 @@ with entry {
     print(fns[1](4));
 
     # return-hint form: lambda param: type -> ReturnType { body }
-    inc = lambda n: int -> int { n + 1 };
+    inc = lambda n: int -> int { return n + 1; };
     print("inc:" + str(inc(9)));
 }
