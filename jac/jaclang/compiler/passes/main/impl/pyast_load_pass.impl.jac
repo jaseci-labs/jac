@@ -1051,10 +1051,21 @@ impl PyastBuildPass.proc_match_mapping(nd: py_ast.MatchMapping) -> uni.MatchMapp
         if isinstance(i, uni.MatchPattern)
     ];
     for i in range(len(valid_keys)) {
+        colon_token = uni.Token(
+            orig_src=self.orig_src,
+            name=Tok.COLON,
+            value=":",
+            line=0,
+            end_line=0,
+            col_start=0,
+            col_end=0,
+            pos_start=0,
+            pos_end=0
+        );
         kv_pair = uni.MatchKVPair(
             key=valid_keys[i],
             value=valid_patterns[i],
-            kid=[valid_keys[i], valid_patterns[i]]
+            kid=[valid_keys[i], colon_token, valid_patterns[i]]
         );
         values.append(kv_pair);
     }
@@ -1130,11 +1141,22 @@ impl PyastBuildPass.proc_match_class(nd: py_ast.MatchClass) -> uni.MatchArch {
             if isinstance(i, uni.MatchPattern)
         ];
         for i in range(len(kwd_patterns)) {
+            eq_token = uni.Token(
+                orig_src=self.orig_src,
+                name=Tok.EQ,
+                value="=",
+                line=0,
+                end_line=0,
+                col_start=0,
+                col_end=0,
+                pos_start=0,
+                pos_end=0
+            );
             kv_pairs.append(
                 uni.MatchKVPair(
                     key=names[i],
                     value=valid_kwd_patterns[i],
-                    kid=[names[i], valid_kwd_patterns[i]]
+                    kid=[names[i], eq_token, valid_kwd_patterns[i]]
                 )
             );
         }
