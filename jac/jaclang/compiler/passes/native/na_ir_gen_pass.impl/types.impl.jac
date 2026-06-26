@@ -337,22 +337,36 @@ impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
     return None;
 }
 
-"""Compute the element StructName* for a clib struct array handle (#6707, #6708).
-`addr` is the i64 base handle, `struct_name` names a registered clib struct, and
-`idx_val` is the element index. Lowers as inttoptr(addr) -> StructName*, then a
-single-index GEP (advances one whole struct) after widening idx to i64."""
-impl NaIRGenPass._clib_struct_elem_ptr(
-    addr: ir.Value, struct_name: str, idx_val: ir.Value
-) -> ir.Value {
+"""Name of the registered native struct a value points to, or None (#6707, #6708).
+Returns the struct name when `val` has type StructName* -- a pointer to one of the
+named structs in `struct_types` -- which is how a struct-typed param/local (e.g.
+`buf: Color`) is represented. List/dict/bytes internal structs are not registered
+in `struct_types`, so they return None and fall through to their own subscript
+paths."""
+impl NaIRGenPass._struct_ptr_pointee_name(val: ir.Value) -> (str | None) {
+    _vt = val.type;
+    if isinstance(_vt, ir.PointerType)
+    and isinstance(_vt.pointee, ir.IdentifiedStructType) {
+        _name = _vt.pointee.name;
+        if _name in self.struct_types and self.struct_types[_name] == _vt.pointee {
+            return _name;
+        }
+    }
+    return None;
+}
+
+"""Element StructName* for `buf[i]` on a struct array (#6707, #6708). `ptr` is a
+StructName* base; a single-index GEP (after widening idx to i64) advances by one
+whole struct, giving C array semantics. The returned element pointer aliases the
+buffer -- it is not a copy."""
+impl NaIRGenPass._struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.Value {
     _i64 = ir.IntType(64);
-    _struct_ptr_t = self.struct_types[struct_name].as_pointer();
-    arr_ptr = self.builder.inttoptr(addr, _struct_ptr_t, name="arr.ptr");
     _wide_idx = (
         idx_val
             if idx_val.type == _i64
             else self.builder.sext(idx_val, _i64, name="arr.idx.i64")
     );
-    return self.builder.gep(arr_ptr, [_wide_idx], name="ptr.elem.ptr");
+    return self.builder.gep(ptr, [_wide_idx], name="ptr.elem.ptr");
 }
 
 """Return the lowered LLVM type of a checked list type's element, or None.

@@ -845,32 +845,26 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 _idx_stored = True;
                             }
                         } else {
-                            # List / clib struct-array assignment.
+                            # List / named-struct-array assignment.
                             elem_type_name: (str | None) = (
                                 self._infer_list_elem_type(target_val)
                             );
-                            # Named struct pointer array write: buf[i] = val (#6707).
-                            # Native annotations are unstamped; use clib_local_struct_names.
+                            # Named struct pointer array write: buf[i] = c (#6707).
+                            # A struct-typed param/local (`buf: Color`) lowers to a
+                            # StructName*, so GEP on it -- one index per whole
+                            # struct -- and copy the struct value into the element.
                             _wr_sname: (str | None) = (
-                                self.clib_local_struct_names[idx_target_name]
-                                    if idx_target_name is not None
-                                    and idx_target_name in self.clib_local_struct_names
-                                    else None
+                                self._struct_ptr_pointee_name(target_val)
                             );
                             if elem_type_name is not None {
                                 self._codegen_index_set(
                                     target_val, idx_val, value, elem_type_name
                                 );
                                 _idx_stored = True;
-                            } elif _wr_sname is not None
-                            and _wr_sname in self.struct_types
-                            and target_val.type == ir.IntType(64) {
-                                # i64 base handle only: a coerced small clib struct
-                                # (SysV-ABI'd to i32/i16) is not a pointer-as-int.
+                            } elif _wr_sname is not None {
                                 _struct_t = self.struct_types[_wr_sname];
-                                _struct_ptr_t = _struct_t.as_pointer();
-                                elem_ptr = self._clib_struct_elem_ptr(
-                                    target_val, _wr_sname, idx_val
+                                elem_ptr = self._struct_array_elem_ptr(
+                                    target_val, idx_val
                                 );
                                 if isinstance(value.type, ir.IdentifiedStructType)
                                 and value.type == _struct_t {
@@ -880,20 +874,11 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                     isinstance(value.type, ir.PointerType)
                                     and value.type.pointee == _struct_t
                                 ) {
+                                    # value is a StructName* (the usual struct-value
+                                    # representation, e.g. `c = Color(...)`): copy the
+                                    # struct contents into the element (C array store).
                                     self.builder.store(
                                         self.builder.load(value, name="arr.val.struct"),
-                                        elem_ptr
-                                    );
-                                    _idx_stored = True;
-                                } elif value.type == ir.IntType(64) {
-                                    # value is an i64 pointer-as-int handle (e.g. from
-                                    # _clib_alloc_box). Restrict to i64 so a coerced
-                                    # struct value (i32 Color, etc.) is never deref'd.
-                                    c_ptr = self.builder.inttoptr(
-                                        value, _struct_ptr_t, name="arr.val.ptr"
-                                    );
-                                    self.builder.store(
-                                        self.builder.load(c_ptr, name="arr.val.struct"),
                                         elem_ptr
                                     );
                                     _idx_stored = True;

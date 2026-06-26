@@ -1470,16 +1470,16 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                         }
                     }
                 }
-                # Named struct (clib) pointer used as array: buf[i] (#6708).
-                # Native annotations are unstamped; look up the struct name
-                # via clib_local_struct_names, then inttoptr the i64 address.
-                _rd_sname: (str | None) = (
-                    self.clib_local_struct_names[target_name]
-                        if target_name is not None
-                        and target_name in self.clib_local_struct_names
-                        else None
-                );
-                if _rd_sname is not None and _rd_sname in self.struct_types {
+                # Named struct pointer used as a C array: buf[i] (#6708).
+                # A struct-typed param/local (`buf: Color`) lowers to a
+                # StructName* (PointerType(IdentifiedStructType)), so a single
+                # GEP on that pointer -- one index advances a whole struct --
+                # gives true array semantics. The element pointer is returned
+                # as-is (the same StructName* a Color value is represented by),
+                # which aliases the buffer: `c = buf[i]` does not copy the
+                # struct, matching C pointer semantics.
+                _rd_sname: (str | None) = self._struct_ptr_pointee_name(target_val);
+                if _rd_sname is not None {
                     slices = nd.right.slices or [];
                     if slices {
                         idx_node = slices[0];
@@ -1487,20 +1487,8 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                         if idx_val is None and idx_node?.start {
                             idx_val = self._codegen_expr(idx_node.start);
                         }
-                        # Require an i64 base handle: a coerced small clib struct
-                        # (SysV-ABI'd to i32/i16) is NOT a pointer-as-int and must
-                        # never be inttoptr'd here.
-                        if idx_val is not None and target_val.type == ir.IntType(64) {
-                            elem_ptr = self._clib_struct_elem_ptr(
-                                target_val, _rd_sname, idx_val
-                            );
-                            # Return element address as i64; field access via
-                            # clib_local_struct_names uses inttoptr to recover ptr.
-                            # NOTE: this aliases the buffer element (C pointer
-                            # semantics) -- `c = buf[i]` does not copy the struct.
-                            return self.builder.ptrtoint(
-                                elem_ptr, ir.IntType(64), name="arr.elem.i64"
-                            );
+                        if idx_val is not None {
+                            return self._struct_array_elem_ptr(target_val, idx_val);
                         }
                     }
                 }

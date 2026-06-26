@@ -1669,6 +1669,24 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                     }
                 }
+                # Native C array-of-struct idiom (#6707, #6708): a struct-typed
+                # value used as a pointer (`buf: Color`) supports `buf[i]`, which
+                # yields one struct element. A user struct has no __getitem__, so
+                # model it here -- scoped to native context so a normal Jac
+                # `obj[i]` on a non-subscriptable object still errors. Integer
+                # index only (matches the native GEP-by-element lowering).
+                if (
+                    self._in_native_context()
+                    and isinstance(base_type, types.ClassType)
+                    and base_type.is_class_instance()
+                    and not base_type.is_builtin()
+                ) {
+                    idx_type = self.get_type_of_expression(subscript_arg);
+                    if isinstance(idx_type, types.ClassType)
+                    and idx_type.is_builtin("int") {
+                        return base_type;
+                    }
+                }
                 return result or types.UnknownType();
             }
 
