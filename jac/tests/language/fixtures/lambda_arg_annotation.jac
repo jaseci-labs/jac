@@ -38,4 +38,9 @@ with entry {
     # unary body — `-x` must not be read as a type
     r4 = list(map(lambda x: -x, [5, 6, 7]));
     print(r4[0]);
+
+    # list of lambdas — scan must not cross sibling lambda boundary
+    fns: list = [lambda x: x * 2, lambda y: y + 3];
+    print(fns[0](4));
+    print(fns[1](4));
 }

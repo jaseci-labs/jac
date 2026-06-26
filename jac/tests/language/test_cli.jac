@@ -686,6 +686,9 @@ test "lambda arg annotation" {
     assert "lambda s: len(s) > 2" in stdout_value;
     assert "lambda d: d['active']" in stdout_value;
     assert "lambda x: -x" in stdout_value;
+    # regression: list of lambdas — sibling lambda boundary must not be crossed
+    assert "lambda x: x * 2" in stdout_value;
+    assert "lambda y: y + 3" in stdout_value;
 }
 
 test "lambda arg annotation runtime" {
@@ -705,6 +708,9 @@ test "lambda arg annotation runtime" {
     assert "ccc" in stdout_value;
     assert "99" in stdout_value;
     assert "-5" in stdout_value;
+    # regression: list of lambdas — each element executes independently
+    assert "8" in stdout_value;  # fns[0](4) == 4 * 2
+    assert "7" in stdout_value;  # fns[1](4) == 4 + 3
 }
 
 test "lambda self" {

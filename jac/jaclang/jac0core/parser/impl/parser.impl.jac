@@ -3101,6 +3101,8 @@ impl Parser._lambda_colon_is_annotation -> bool {
             depth -= 1;
         } elif self.check(TokenKind.SEMI) {
             break;
+        } elif self.check(TokenKind.KW_LAMBDA) and depth == 0 {
+            break;  # crossed into a sibling lambda — no annotation
         } elif self.check(TokenKind.COLON) and depth == 0 {
             found = True;
             break;
