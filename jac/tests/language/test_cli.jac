@@ -712,11 +712,12 @@ test "py to jac match mapping and class patterns" {
     # producing invalid Jac for class keyword patterns that need `=`.
     # Verify both mapping patterns (`:`) and class keyword patterns (`=`)
     # round-trip through py2jac to valid Jac output.
+    # Uses the existing py2jac.py fixture (no new .py files allowed).
     captured = io.StringIO();
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
-        result = transform.py2jac(fixture_path("py2jac_match.py"));
+        result = transform.py2jac(fixture_path("py2jac.py"));
     } finally {
         sys.stdout = old_stdout;
     }
@@ -729,8 +730,8 @@ test "py to jac match mapping and class patterns" {
     # Class keyword patterns use equals (Jac formatter emits spaces around the operator)
     assert 'x = 0' in stdout_value , f"Expected class keyword pattern with equals in:\n{stdout_value}";
     assert 'y = 0' in stdout_value , f"Expected class keyword pattern with equals in:\n{stdout_value}";
-    # Mixed patterns
-    assert 'label = "origin"' in stdout_value , f"Expected mixed keyword pattern in:\n{stdout_value}";
+    # Keyword pattern with string literal value
+    assert 'label = "origin"' in stdout_value , f"Expected keyword pattern with string literal in:\n{stdout_value}";
 }
 
 test "lambda arg annotation" {
