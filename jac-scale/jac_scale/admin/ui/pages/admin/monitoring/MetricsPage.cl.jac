@@ -410,7 +410,9 @@ def:pub MetricsPage -> JsxElement {
                                     className="flex-1 bg-accent rounded-t opacity-80 hover:opacity-100 transition-opacity"
                                     style={{
                                         "minHeight": "2px",
-                                        "height": getBarHeight(h["delta"] or 0, maxReqs, 14)
+                                        "height": getBarHeight(
+                                            h["delta"] or 0, maxReqs, 14
+                                        )
                                     }}
                                     title={str(h["delta"] or 0) + " req / interval"}
                                 ></div> for h in history

@@ -462,7 +462,9 @@ impl JacAPIServerWorkloads.admin_workloads_list(
     # microservice (e.g. builder_sv). One grouped query each for rate, errors,
     # and p95, indexed by service, then joined to each workload by name.
     svc_rps = _index_by(
-        prom_query('sum by (service)(rate({__name__=~".+_gateway_requests_total"}[1m]))'),
+        prom_query(
+            'sum by (service)(rate({__name__=~".+_gateway_requests_total"}[1m]))'
+        ),
         'service'
     );
     svc_err = _index_by(
