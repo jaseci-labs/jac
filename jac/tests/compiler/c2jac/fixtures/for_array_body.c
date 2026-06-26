@@ -25,6 +25,7 @@ int sum_array(int arr[], int n) {
 void greet(int n) {
     for (int i = 0; i < n; i++) {
         note("hi");
+        note("a\tb\n");
     }
 }
 

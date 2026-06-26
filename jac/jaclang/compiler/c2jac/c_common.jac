@@ -91,6 +91,78 @@ def parse_c_float(raw: str) -> float | None {
     }
 }
 
+# --- C constant classification ------------------------------------------- #
+# Family labels for a pycparser `Constant`. Both backends switch on the family
+# returned by classify_c_constant; the encoding (CPython `ast` Constant vs uni
+# node) and the failure policy stay backend-specific.
+glob CLIT_INT: str = "int",
+     CLIT_FLOAT: str = "float",
+     CLIT_CHAR: str = "char",
+     CLIT_STRING: str = "string",
+     CLIT_UNKNOWN: str = "unknown";
+
+def classify_c_constant(c_type: str) -> str {
+    # Map pycparser's *widened* Constant type to a c2jac literal family. The
+    # type is reported as the C family ("unsigned int" / "long double" / ...),
+    # so integers and floats are matched on the suffix; `char` / `string` are
+    # exact. A new C type spelling is now classified in one place instead of
+    # being mirrored in mapper.c_Constant and uni_builder._expr_to_uni.
+    if c_type.endswith("int") {
+        return CLIT_INT;
+    }
+    if c_type.endswith("double") or c_type.endswith("float") {
+        return CLIT_FLOAT;
+    }
+    if c_type == "char" {
+        return CLIT_CHAR;
+    }
+    if c_type == "string" {
+        return CLIT_STRING;
+    }
+    return CLIT_UNKNOWN;
+}
+
+def c_char_text(raw: str) -> str {
+    # C char constant spelling `'a'` → its inner text `a` (quotes stripped).
+    # Returns the spelling unchanged when it is not single-quote wrapped, so a
+    # malformed value is preserved verbatim for the caller to flag.
+    if raw.startswith("'") and raw.endswith("'") {
+        return raw[1:-1];
+    }
+    return raw;
+}
+
+def c_char_ord(raw: str) -> int | None {
+    # C char constant ("'z'", "'\n'", "'\0'") → its integer value. Decodes the
+    # common escape sequences via unicode_escape; returns None for multi-char
+    # or otherwise non-single-char constants so the caller can flag the loss
+    # instead of guessing.
+    if not (raw.startswith("'") and raw.endswith("'")) or len(raw) < 3 {
+        return None;
+    }
+    inner = raw[1:-1];
+    try {
+        decoded = bytes(inner, "utf-8").decode("unicode_escape");
+    } except Exception {
+        return None;
+    }
+    if len(decoded) != 1 {
+        return None;
+    }
+    return ord(decoded);
+}
+
+def c_string_inner(raw: str) -> str | None {
+    # Plain C string literal `"…"` → its inner text (quotes stripped). Returns
+    # None when the spelling is not a bare double-quoted literal — a prefixed
+    # form (L"…"/u8"…") or a malformed value — so the caller can demote/flag
+    # rather than emit a wrong-shaped string.
+    if raw.startswith('"') and raw.endswith('"') and len(raw) >= 2 {
+        return raw[1:-1];
+    }
+    return None;
+}
+
 # --- pycparser coordinate extraction ------------------------------------- #
 def coord_of(c_node: object, default_line: int) -> tuple[int, int] {
     # Resolve a pycparser node's (line, col) — col is 0-based for CPython ast /
