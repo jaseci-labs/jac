@@ -122,7 +122,8 @@ impl NativeDesktopTarget.build(
         sv_entry_rel,
         dispatch.timeout_s,
         dispatch.max_queue,
-        dispatch.debug
+        dispatch.debug,
+        plugin_configs
     );
     (out_dir / "host.na.jac").write_text(host_src);
 

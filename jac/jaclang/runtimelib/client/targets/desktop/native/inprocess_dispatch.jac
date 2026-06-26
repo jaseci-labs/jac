@@ -605,8 +605,9 @@ def handle(call_id: int, req_ptr: int, w: int) {
         # dropping silently is correct. Log so production logs show if this fires
         # unexpectedly (a real call arriving with a null id would hang its promise).
         sys.stderr.write(
-            "inprocess_dispatch: handle() called with null pointer"
-            " (call_id=" + str(call_id) + ", req_ptr=" + str(req_ptr) + "); dropping\n"
+            "inprocess_dispatch: handle() called with null pointer" " (call_id=" + str(
+                call_id
+            ) + ", req_ptr=" + str(req_ptr) + "); dropping\n"
         );
         return;
     }

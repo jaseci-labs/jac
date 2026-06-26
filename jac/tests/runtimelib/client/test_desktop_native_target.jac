@@ -173,16 +173,16 @@ test "dev-build DISPATCH_PY contains dev-pin and site deps append" {
     }
 }
 
-"""Generated host source must call inprocess_dispatch.shutdown() after wv.run()
+"""Generated host source must call inprocess_dispatch.shutdown() after run_main_loop()
 and before Py_Finalize() so the dispatch worker and transport tear down cleanly."""
-test "generated host calls shutdown after wv.run()" {
+test "generated host calls shutdown after run_main_loop()" {
     import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
         _generate_host_source
     }
 
     src = _generate_host_source("libpython3.12.so.1.0", "T", 800, 600, "test-app");
     assert "inprocess_dispatch.shutdown()" in src , "host must tear down dispatch on exit";
-    assert src.index("wv.run()") < src.index("inprocess_dispatch.shutdown()") , "shutdown must run after the webview event loop exits";
+    assert src.index("run_main_loop()") < src.index("inprocess_dispatch.shutdown()") , "shutdown must run after the webview event loop exits";
     # Match the entry-block call, not the Py_Finalize FFI declaration above.
     assert src.index("inprocess_dispatch.shutdown()") < src.index(
         "    Py_Finalize();\n"

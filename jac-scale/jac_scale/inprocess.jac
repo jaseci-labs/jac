@@ -220,7 +220,9 @@ def prepare_inprocess_runtime(
 
         client = TestClient(server.server.app, raise_server_exceptions=False);
         return PreparedInProcessRuntime(
-            server=server, transport_kind=transport_kind, client=client,
+            server=server,
+            transport_kind=transport_kind,
+            client=client,
             _prior_ctx=prior_ctx
         );
     } except Exception {

@@ -96,6 +96,61 @@ def _dev_runtime_pin_py -> str {
 }
 
 
+"""Generate the embedded CPython plugin bootstrap for the native desktop host.
+
+Imports all plugin modules via importlib in stable load order, bakes
+plugin_configs, then calls registry.bootstrap_plugins(...) to wire up the
+plugin host. Runs in the embedded CPython with only the transpiled plugin
+.py files on disk (no jaclang). Module load order is hardcoded: `registry`
+imports all built_in.* at module scope so it must load last.
+
+Mirrors `_plugin_bootstrap_py` in desktop_build.jac; kept separate so this
+module stays free of jac_desktop imports (testable in isolation)."""
+def _make_plugin_bootstrap_py(plugin_configs: dict) -> str {
+    _plugin_mods = [
+        "manifest",
+        "desktop_plugin",
+        "webview_lib",
+        "plugin_host",
+        "built_in.path_plugin",
+        "built_in.window_plugin",
+        "built_in.fs_plugin",
+        "built_in.notification_plugin",
+        "built_in.clipboard_plugin",
+        "built_in.dialog_plugin",
+        "built_in.shell_plugin",
+        "registry"
+    ];
+    py = (
+        "import sys, importlib.util, types\n"
+        "if _root not in sys.path:\n"
+        "    sys.path.insert(0, _root)\n"
+        "if 'built_in' not in sys.modules:\n"
+        "    sys.modules['built_in'] = types.ModuleType('built_in')\n"
+    );
+    for _mod in _plugin_mods {
+        _py_rel = _mod.replace(".", "/") + ".py";
+        py += (
+            "_spec = importlib.util.spec_from_file_location(\n" + json.dumps(_mod) + ", os.path.join(_root, " + json.dumps(
+                _py_rel
+            ) + "))\n" "_m = importlib.util.module_from_spec(_spec)\n" "sys.modules[" + json.dumps(
+                _mod
+            ) + "] = _m\n" "_spec.loader.exec_module(_m)\n"
+        );
+        if _mod.startswith("built_in.") {
+            _child = _mod.split(".", 1)[1];
+            py += "setattr(sys.modules['built_in'], " + json.dumps(_child) + ", _m)\n";
+        }
+    }
+    py += f"_pc = {repr(plugin_configs)}\n";
+    py += (
+        "_host = sys.modules['registry'].bootstrap_plugins(_pc, sys.modules)\n"
+        "_dispatch_fn = _host.dispatch\n"
+    );
+    return py;
+}
+
+
 """The CPython snippet that imports + boots `inprocess_dispatch` (Phase J4, #6596).
 
 Single-sourced so both desktop hosts boot the in-process sv backend identically:
@@ -176,7 +231,8 @@ def _generate_host_source(
     entry_rel: str = "",
     dispatch_timeout_s: float = 30.0,
     dispatch_max_queue: int = 128,
-    dispatch_debug: bool = False
+    dispatch_debug: bool = False,
+    plugin_configs: dict = None
 ) -> str {
     # Deterministic per-app port in the dynamic/private range (49152-65215) so
     # the same app reuses the same origin across launches; computed at build
@@ -229,6 +285,8 @@ def _generate_host_source(
     dispatch_py = _dispatch_boot_py(
         entry_rel, dispatch_timeout_s, dispatch_max_queue, dispatch_debug
     );
+    _pc = plugin_configs if plugin_configs is not None else {};
+    plugin_py = _make_plugin_bootstrap_py(_pc);
     # Runs at document-start (before the SPA's own scripts) on every full load.
     # Just flags desktop mode + the broker prefix so the SPA can detect the shell
     # and drive /__jac/oauth/*. Token persistence is handled by the stable origin
@@ -263,7 +321,8 @@ def _generate_host_source(
     );
     return (
         '"""Generated native desktop host - do not edit (jac-desktop)."""\n'
-        "import from webview { Webview, new_webview, HINT_NONE }\n"
+        "import from webview { def webview_create(debug: i32, window: int) -> int; }\n"
+        "import from webview { Webview, respond, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n"
         f'import from "{libpy}" {{\n'
         "    def Py_Initialize() -> None;\n"
         "    def Py_Finalize() -> None;\n"
@@ -276,43 +335,51 @@ def _generate_host_source(
         "    def PyEval_RestoreThread(s: int) -> None;\n"
         "    def PyGILState_Ensure() -> int;\n"
         "    def PyGILState_Release(state: int) -> None;\n"
+        "    def PyObject_CallOneArg(fn: int, arg: int) -> int;\n"
+        "    def PyUnicode_FromString(s: str) -> int;\n"
+        "    def PyUnicode_AsUTF8(pyobj: int) -> str;\n"
+        "    def Py_DecRef(pyobj: int) -> None;\n"
         "}\n"
         "glob PY_EVAL: i32 = 258;\n"
         f"glob SERVE_PY: str = {json.dumps(serve_py, ensure_ascii=False)};\n"
+        f"glob PLUGIN_PY: str = {json.dumps(plugin_py, ensure_ascii=False)};\n"
         f"glob DISPATCH_PY: str = {json.dumps(dispatch_py, ensure_ascii=False)};\n"
         f"glob BOOTSTRAP_JS: str = {json.dumps(bootstrap_js, ensure_ascii=False)};\n"
         f"glob BOOT_ERROR_HTML: str = {json.dumps(
             boot_error_html, ensure_ascii=False
         )};\n"
-        # window.__jac_invoke handler. Fires on the UI thread, where the host has
-        # released the GIL via PyEval_SaveThread() before wv.run(); reacquire it
-        # around the Python call with PyGILState_Ensure/Release. id/req/arg are raw
-        # C pointers carried as int; _jac_dispatch (= inprocess_dispatch.handle,
-        # bound once in DISPATCH_PY at boot) decodes them.
-        #
-        # NOTE: each invoke still executes a fresh Python source string via
-        # PyRun_SimpleString. The `_jac_dispatch` alias decouples the per-call string
-        # from the module/function name: a rename now fails loudly at boot (rc != 0 ->
-        # error page) rather than silently on every invoke.
-        # TODO: replace PyRun_SimpleString per-invoke with PyObject_GetAttrString +
-        # PyObject_Call (resolve the callable once at boot, call via pointer each time).
-        # Blocked on NA gaining a PyObject * type binding.
-        "def _on_invoke(id: int, req: int, arg: int) -> None {\n"
-        "    g = PyGILState_Ensure();\n"
-        "    # Layer B insurance: handle() has a last-resort try/except that replies\n"
-        "    # with NATIVE_INVOKE_ERROR before returning, so rc != 0 should be rare\n"
-        "    # (syntax/import failure, or a bug escaping the guard). Log if it happens.\n"
-        "    rc = PyRun_SimpleString(f\"_jac_dispatch({id}, {req}, {arg})\");\n"
-        "    if rc != 0 {\n"
-        "        PyRun_SimpleString(\n"
-        "            f\"import sys; sys.stderr.write('inprocess_dispatch: invoke rc={rc}\\n')\"\n"
+        # Plugin bridge inlined from plugin_bridge.na.jac (BRIDGE START/END).
+        # Wires window.__jac_invoke → the Python plugin host via PyObject_CallOneArg
+        # (_PH_DISPATCH is set by registry.bootstrap_plugins via _host.setup()).
+        "glob _PH_DISPATCH: int = 0;\n"
+        "def _jac_invoke_handler(id: int, req: int, wv_handle: int) {\n"
+        "    gstate = PyGILState_Ensure();\n"
+        "    py_req = PyUnicode_FromString(req as str);\n"
+        "    py_result = PyObject_CallOneArg(_PH_DISPATCH, py_req);\n"
+        "    if py_result == 0 {\n"
+        "        Py_DecRef(py_req);\n"
+        "        PyGILState_Release(gstate);\n"
+        "        respond(\n"
+        "            wv_handle, id, \"{\\\"ok\\\":false,\\\"error\\\":{\\\"code\\\":\\\"DISPATCH_CRASHED\\\"}}\"\n"
         "        );\n"
+        "        return;\n"
         "    }\n"
-        "    PyGILState_Release(g);\n"
+        "    result_str = PyUnicode_AsUTF8(py_result);\n"
+        "    Py_DecRef(py_req);\n"
+        "    respond(wv_handle, id, result_str);\n"
+        "    Py_DecRef(py_result);\n"
+        "    PyGILState_Release(gstate);\n"
+        "}\n"
+        # nacompile cannot lower wv.get_handle() inside an f-string;
+        # passing the int through a native helper works.
+        "def _stash_wv_in_python(h: int) {\n"
+        "    PyRun_SimpleString(f\"_wv_handle = {h}\");\n"
+        "    PyRun_SimpleString(\"_host.setup(_wv_handle)\");\n"
         "}\n"
         "with entry {\n"
         "    Py_Initialize();\n"
         "    serve_rc = PyRun_SimpleString(SERVE_PY);\n"
+        "    plugin_rc = PyRun_SimpleString(PLUGIN_PY);\n"
         # P1-B: capture the boot return code. Non-zero means the in-process
         # backend raised during boot (import/syntax/boot() failure) -- show the
         # native error page below instead of navigating to a broken app.
@@ -328,18 +395,21 @@ def _generate_host_source(
         "        port = PyLong_AsLong(PyRun_String(\"_port\", PY_EVAL, d, d));\n"
         "        url = f\"http://127.0.0.1:{port}/\";\n"
         "    }\n"
-        "    wv = new_webview(False);\n"
+        "    _wv_raw = webview_create(0, 0);\n"
+        "    LAST_WEBVIEW_HANDLE = _wv_raw;\n"
+        "    wv = Webview(handle=_wv_raw);\n"
         f"    wv.title({json.dumps(title, ensure_ascii=False)});\n"
         f"    wv.size({width}, {height}, HINT_NONE);\n"
         "    wv.on_load(BOOTSTRAP_JS);\n"
-        "    wv.bind(\"__jac_invoke\", _on_invoke);\n"
-        "    if serve_rc == 0 and boot_rc == 0 {\n"
+        "    wv.bind(\"__jac_invoke\", _jac_invoke_handler);\n"
+        "    if serve_rc == 0 and plugin_rc == 0 and boot_rc == 0 {\n"
+        "        _stash_wv_in_python(_wv_raw);\n"
         "        wv.navigate(url);\n"
         "    } else {\n"
         "        wv.html(BOOT_ERROR_HTML);\n"
         "    }\n"
         "    ts = PyEval_SaveThread();\n"
-        "    wv.run();\n"
+        "    run_main_loop();\n"
         "    PyEval_RestoreThread(ts);\n"
         # GIL must be held for shutdown (drain queue, join worker, close transport).
         "    PyRun_SimpleString(\"import inprocess_dispatch; inprocess_dispatch.shutdown()\");\n"
