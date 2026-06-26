@@ -702,8 +702,9 @@ test "lambda arg annotation runtime" {
     }
     stdout_value = captured.getvalue();
     # subscripted/generic/union annotations execute correctly
-    assert "10" in stdout_value;
-    assert "42" in stdout_value;
+    assert "g:10" in stdout_value;
+    assert "h:42" in stdout_value;
+    assert "k:7" in stdout_value;
     # regression: body lambdas produce correct runtime results
     assert "ccc" in stdout_value;
     assert "99" in stdout_value;

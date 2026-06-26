@@ -12,11 +12,11 @@ with entry {
 
 with entry {
     g = lambda d: list[int] : d[0];
-    print(g([10, 20]));
+    print("g:" + str(g([10, 20])));
     h = lambda d: dict[str, int] : d["n"];
-    print(h({"n": 42}));
+    print("h:" + str(h({"n": 42})));
     k = lambda v: int | str : v;
-    print(k(7));
+    print("k:" + str(k(7)));
 }
 
 # Regression: bodies containing arithmetic, calls, subscripts, or unary ops
