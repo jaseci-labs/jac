@@ -2,25 +2,40 @@
 
 Status of the advanced-C frontier, ordered **simplest → hardest** to implement.
 Today's baseline: a Tier-A core (functions, control flow incl. switch/do-while/
-ternary, structs, enums, basic typedefs, 1-D arrays, malloc pointer idioms) with
-a Tier-B surrogate fallback for everything else. Everything below is currently
-either dropped silently or emitted as a `__c2jac_unsupported__` surrogate.
+ternary, structs, enums, basic typedefs, 1-D arrays, malloc pointer idioms), a
+*best-effort* band that emits a valid-but-lossy Jac form and flags the loss
+(Tier-B), and a `__c2jac_unsupported__` surrogate fallback for forms that have no
+sensible best-effort lowering at all.
 
 Effort scale: **XS** (a few lines) · **S** (one handler/util) · **M** (new pass
 or cross-cutting change) · **L** (new subsystem) · **XL** (semantic model work).
+
+Status markers - be precise about what "done" means, because the gap between
+"faithful" and "emits something + confesses" is the whole honesty story:
+
+- ✅ **FAITHFUL** - lowered exactly; no semantics lost, no Tier-B tag, no
+  surrogate. This is the only sense in which a C form is truly *supported*.
+- ◑ **BEST-EFFORT** - emits a valid Jac form but drops or approximates real
+  semantics, and *flags every such site Tier-B* so the loss is never silent.
+  Honest, but NOT faithful: the output is a skeleton with a confession attached.
+- (blank) - unsupported: dropped silently or replaced by a surrogate marker.
+
+An item that mixes the two (e.g. one sub-form faithful, another best-effort) is
+marked **✅/◑** and the split is spelled out in its body - a flat ✅ on such an
+item would oversell it.
 
 ---
 
 ## Tier 1 - Simplest
 
-### 1. `register` keyword as recognized no-op - XS ✅ DONE
+### 1. `register` keyword as recognized no-op - XS ✅ FAITHFUL
 
 `register` is read off `Decl.storage` and ignored (no surrogate, Tier-A) - it is
 not in the static/extern/volatile/restrict classification set added for #5/#6,
 so it falls through to the normal emit. Locked by `register_noop` in
 `test_compat_matrix.jac`.
 
-### 2. Better integer-family normalization - S ✅ DONE
+### 2. Better integer-family normalization - S ✅ FAITHFUL
 
 `_C_PRIM_MAP` (`mapper.jac`) collapses `long/short/unsigned/signed`→`int`.
 Multi-word names already normalized via `names[-1]`, but `unsigned char` /
@@ -36,7 +51,7 @@ Add a focused test suite asserting grouping survives round-trip for every
 supported operator; fix any AST-shape mismatches found. Mostly verification, not
 new lowering.
 
-### 4. `const char *` string APIs as first-class - S ✅ DONE
+### 4. `const char *` string APIs as first-class - S ✅ FAITHFUL
 
 `const char *` params/returns already resolve to `str` (the `char`-family check
 in `_jac_prim`/`_ptr_typename` ignores the `const` qualifier). Locked by
@@ -46,27 +61,31 @@ in `_jac_prim`/`_ptr_typename` ignores the `const` qualifier). Locked by
 
 ## Tier 1 - Moderate
 
-### 5. static / extern storage-class classification - S→M ✅ DONE
+### 5. static / extern storage-class classification - S→M ✅/◑ MIXED
 
-`c_Decl` now reads `nd.storage`. `extern` with no initializer → no-op `return []`
-(like the FuncDecl prototype path); `extern` WITH an initializer falls through as
-a definition. File-scope `static` is unchanged (already a module var, Tier-A).
-**Function-local `static`** is detected via a new `_func_depth` counter (bumped
-around the function-body build in `c_FuncDef`): emitted as a best-effort
-re-initialized local and flagged Tier-B for the lost cross-call persistence.
-Locked by `extern_noop` / `extern_with_init` / `static_global` / `static_local`
-in `test_compat_matrix.jac`.
+Faithful (✅): `extern` with no initializer → no-op `return []` (like the FuncDecl
+prototype path); `extern` WITH an initializer falls through as a definition;
+file-scope `static` is unchanged (already a module var). Best-effort (◑):
+**function-local `static`** - detected via a new `_func_depth` counter (bumped
+around the function-body build in `c_FuncDef`) and emitted as a re-initialized
+local, which *loses cross-call persistence*. It is flagged Tier-B at every site,
+never silently dropped, but the emitted code is a skeleton, not a faithful
+lowering - the value resets each call. Locked by `extern_noop` /
+`extern_with_init` / `static_global` (Tier-A) and `static_local` (Tier-B) in the
+compat-matrix tests.
 
-### 6. const / volatile / restrict qualifier handling - S→M ✅ DONE
+### 6. const / volatile / restrict qualifier handling - S→M ✅/◑ MIXED
 
 `c_Decl` collects qualifiers from the whole decl type chain via `_all_quals`
 (`const`/`volatile` may sit on the Decl or the pointed-to TypeDecl; `restrict`
 lives on the PtrDecl, so reading `nd.quals` alone misses `int * restrict p`).
-`const` is a benign drop (value semantics preserved, immutability advisory) →
-Tier-A. `volatile` (no read-cache suppression) and `restrict` (no-alias) carry
-real semantics Jac can't express → emitted faithfully but flagged Tier-B, never
-surrogated. Locked by `const_qual` / `volatile_var` / `restrict_ptr` in
-`test_compat_matrix.jac`.
+Faithful (✅): `const` is a benign drop - value semantics are preserved and the
+immutability guarantee is only advisory, so nothing is lost → Tier-A. Best-effort
+(◑): `volatile` (no read-cache suppression) and `restrict` (no-alias) carry real
+semantics Jac cannot express; the value is emitted but the qualifier's guarantee
+is *dropped* and flagged Tier-B at the site - emitted, not faithful. Locked by
+`const_qual` (Tier-A) / `volatile_var` / `restrict_ptr` (Tier-B) in the
+compat-matrix tests.
 
 ### 7. `typedef enum/struct Name;` edge forms - M
 
@@ -80,13 +99,14 @@ scalar alias: handle tag-reference typedefs, forward typedefs, and
 `ArrayDecl` to build `list[list[T]]` and the nested default initializer; extend
 `ArrayRef` lowering for `a[i][j]`. Self-contained but fiddly.
 
-### 9. Variadic functions (printf-style) - M ◑ PARTIAL
+### 9. Variadic functions (printf-style) - M ◑ BEST-EFFORT (partial)
 
-Decl-level done: `c_FuncDef` detects `EllipsisParam` in the param list and emits
-a Jac `*args` vararg, flagging the function Tier-B (was previously crashing the
-whole transpilation with `'EllipsisParam' object has no attribute 'name'`).
-Locked by `variadic` in `test_compat_matrix.jac`. Still open: faithful call-site
-lowering and `va_list`/`va_arg` bodies (Tier-B for now).
+Decl-level only, and best-effort even there: `c_FuncDef` detects `EllipsisParam`
+in the param list and emits a Jac `*args` vararg, flagging the function Tier-B
+(was previously crashing the whole transpilation with `'EllipsisParam' object has
+no attribute 'name'`). The signature stays callable but the body's variadic
+semantics are not modelled. Locked by `variadic` (Tier-B) in the compat-matrix
+tests. Still open: faithful call-site lowering and `va_list`/`va_arg` bodies.
 
 ### 10. Declaration vs definition classifier - M
 
@@ -125,19 +145,24 @@ widened pycparser type names (`long int`, `unsigned int`, `long double`) and
 stamps the parsed value so suffixes no longer leak into emitted Jac. The broader
 fold-extraction (array sizes, initializer arithmetic) is still open.
 
-### 14. Tier-1/2/unsupported compatibility matrix in tests - S
+### 14. Tier-1/2/unsupported compatibility matrix in tests - S ✅ FAITHFUL
 
-A table-driven test asserting each C form's tier. Cheap, and it keeps every item
-above honest as it lands. **Do early.**
+A characterization test pinning each C form's tier (faithful / best-effort /
+surrogate). Lives in `test_compat_matrix.jac` as the `_ROWS` table; each row gets
+its **own** `test` block (via the shared `check` helper) so a regression names the
+exact form that broke, and a `matrix_coverage` guard test fails if a row is added
+without a dedicated test. Keeps every item above honest as it lands. **Do early.**
 
-### 15. Canonical internal C type model - XL
+### 15. Canonical internal C type model - XL ◑ (seeded)
 
-The big one. Type logic is ad-hoc today (`_C_PRIM_MAP`, `_typename`,
-`_resolve_*` scattered in `mapper.jac`). A real type model makes #2, #6, #8, #11,
-
-# 12 dramatically cleaner - but it's the largest single piece and best done once
-
-a few of the above expose the requirements.
+The big one. Type logic was ad-hoc, scattered through `mapper.jac`. First step
+taken: the name-resolution layer (`C_PRIM_MAP`, `jac_prim`, `ptr_typename`,
+`typename`, `user_type_name`) is now extracted into `c_types.jac` as pure
+functions - one place to read and extend. That is *organization*, not yet a real
+type *model*: there is still no structured C-type representation (qualifiers,
+width, signedness, pointer depth as data). A real model makes #2, #6, #8, #11, #12
+dramatically cleaner - the largest single piece, best done once a few of the above
+expose the requirements.
 
 ---
 

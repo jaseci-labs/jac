@@ -77,6 +77,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | `jac script` | Run project scripts |
 | `jac py2jac` | Convert Python to Jac |
 | `jac jac2py` | Convert Jac to Python |
+| `jac c2jac` | Convert C to Jac (best-effort sites flagged inline) |
 | `jac tool` | Language tools (IR, AST) |
 | `jac lsp` | Language server |
 | `jac jac2js` | Convert Jac to JavaScript |
@@ -2061,6 +2062,124 @@ jac jac2py filename
 ```bash
 jac jac2py main.jac
 ```
+
+---
+
+### jac c2jac
+
+Convert C source to Jac. The transpiler reuses the existing Python-AST pipeline
+(pycparser C-AST → CPython `ast` → `PyastBuildPass` → Jac), with a direct-IR path
+for constructs that have no faithful Python-AST analog (C `for`, enums). The
+generated Jac is written to **stdout**; redirect it to a file to keep it.
+
+```bash
+jac c2jac filename [-I dir] [-D NAME[=VALUE]] [-U NAME] [--force-include header] [--nostdinc]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `filename` | A `.c` source, or an already-preprocessed `.i` file | Required |
+| `-I`, `--incdir` | Add a directory to the `#include` search path (repeatable) | - |
+| `-D`, `--define` | Define a macro, `NAME` or `NAME=VALUE` (repeatable) | - |
+| `-U`, `--undef` | Undefine a macro `NAME` (repeatable) | - |
+| `--force-include` | Force-include a header before the main source (like gcc `-include`; repeatable) | - |
+| `--nostdinc` | Do not add pycparser's bundled fake-libc headers to the include path | off |
+
+A `.c` input is preprocessed automatically with [pcpp](https://github.com/ned14/pcpp)
+(expanding `#include` / `#define` / `#pragma` / `#if`); a `.i` input is assumed to
+be already preprocessed and is parsed as-is. Any other extension is rejected.
+
+**Examples:**
+
+```bash
+# Convert an already-preprocessed translation unit
+jac c2jac myprogram.i
+
+# Preprocess a raw .c (headers + a macro) then convert, saving the result
+jac c2jac lib.c -I include -DDEBUG=1 > lib.jac
+```
+
+#### Interpreting the output - Tier-A vs Tier-B
+
+Every C construct is routed on two axes: **Mechanism** (`PY_AST` vs `DIRECT_IR`,
+an internal detail) and **Tier**, which is what you read in the output:
+
+- **Tier-A - faithful.** Lowered exactly, with no lost semantics. Emitted as
+  ordinary Jac with no marker. Covers the recognized core: functions, control flow
+  (incl. `switch` / `do-while` / ternary), structs, enums, basic typedefs, 1-D
+  arrays, and common `malloc` pointer idioms.
+- **Tier-B - best-effort.** Emits valid Jac but drops or approximates real
+  semantics (e.g. a function-local `static` that loses cross-call persistence, or a
+  variadic signature whose body semantics aren't modelled). **Every Tier-B site is
+  flagged** - never silently lost.
+
+Tier-B is reported in two places so the loss is never hidden:
+
+1. A **header block** at the top of the file listing every best-effort site by its
+   **C-source line** and the reason.
+2. An **inline note** `# c2jac: BEST-EFFORT - <reason>` on each affected line (for
+   sites that emit a surrogate marker). Purely-skeletal sites that emit otherwise
+   normal-looking Jac are still accounted for in the header.
+
+After transpiling, the CLI also prints a one-line count of Tier-B sites to stderr.
+
+Constructs with no sensible best-effort lowering at all are replaced by a
+`__c2jac_unsupported__(<c_line>)` surrogate call, which is likewise annotated
+inline so it is obvious in the output.
+
+**Example.** Given this C:
+
+```c
+enum Color { RED, GREEN, BLUE };
+
+int sum_to(int n) {
+    int total = 0;
+    for (int i = 0; i < n; i++) {
+        total += i;
+    }
+    return total;
+}
+
+int next_id(void) {
+    static int local = 5;   // line 12
+    local++;
+    return local;
+}
+```
+
+`jac c2jac` emits:
+
+```jac
+# c2jac: 1 best-effort (Tier-B) site - each is listed below and marked inline at its site
+#   L12  function-local 'static' loses cross-call persistence
+enum Color { RED = 0, GREEN = 1, BLUE = 2 }
+with entry { }
+
+def sum_to(n: int) -> int {
+    total: int = 0;
+    for i = 0 to i < n by i += 1 {
+        total += i;
+    }
+
+    return total;
+}
+
+def next_id() -> int {
+    local: int = 5;
+    local += 1;
+    return local;
+}
+```
+
+The header pins the one lossy site to its original C line (`L12`): the C `static`
+became a plain local, so `next_id()` no longer counts across calls - review and fix
+those sites by hand. Everything else here is Tier-A and faithful.
+
+> **Coverage.** The set of C forms classified as faithful, best-effort, or
+> unsupported is tracked in `jaclang/compiler/c2jac/COVERAGE_ROADMAP.md` and pinned
+> by the characterization tests in `tests/compiler/c2jac/test_compat_matrix.jac`.
+> Treat `c2jac` as a porting aid that does the mechanical 80% and tells you exactly
+> where to look, not a drop-in C compiler.
 
 ---
 

@@ -23,7 +23,12 @@ import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.compiler.c2jac.tags { Tier, Mechanism, Idiom, NodeTag, TagTable }
 import from jaclang.compiler.c2jac.boundary { default_tier, default_mechanism }
-import from jaclang.compiler.c2jac.mapper { CMapper, _SLOT_SENTINEL }
+import from jaclang.compiler.c2jac.mapper { CMapper }
+import from jaclang.compiler.c2jac.directir {
+    SLOT_SENTINEL,
+    is_slot_placeholder,
+    slot_id_of
+}
 import from jaclang.compiler.c2jac.enum_prepass { build_enum_map }
 import from jaclang.compiler.c2jac.uni_builder { CUniBuilder }
 import from jaclang.compiler.c2jac.comments { inject_tier_b_comments }
@@ -158,53 +163,55 @@ def _populate_default_tags(nd: object, tags: TagTable) {
     }
 }
 
-def _is_sentinel_expr_stmt(nd: uni.UniNode) -> bool {
-    if not isinstance(nd, uni.ExprStmt) {
-        return False;
-    }
-    expr = nd.expr;
-    if not isinstance(expr, uni.FuncCall) {
-        return False;
-    }
-    target = expr.target;
-    if not isinstance(target, uni.Name) {
-        return False;
-    }
-    return target.value == _SLOT_SENTINEL;
-}
-
-def _get_slot_id(sentinel: uni.ExprStmt) -> int | None {
-    params = sentinel.expr.params;
-    if params and len(params) == 1 and isinstance(params[0], uni.Int) {
-        try {
-            return int(params[0].value);
-        } except ValueError {
-        # skip
-        }
-    }
-    return None;
-}
-
 def _splice_directir(
     mod_root: uni.Module, slot_map: dict[int, object], builder: CUniBuilder
 ) {
+    # Replace every direct-IR placeholder (see c2jac.directir) with the real uni
+    # nodes for its slot. Recognition and slot-decode live in `directir` — the one
+    # owner of the placeholder shape; this driver only walks, resolves, splices.
+    #
+    # Every failure mode is a hard error, never a silent skip: a leaked
+    # `__c2jac_directir__(N)` call reaching emitted Jac is far worse than a crash.
     sentinels = mod_root.get_all_sub_nodes(uni.ExprStmt);
     to_replace: list[tuple[uni.ExprStmt, int]] = [];
     for s in sentinels {
-        if _is_sentinel_expr_stmt(s) {
-            slot_id = _get_slot_id(s);
-            if slot_id is not None {
-                to_replace.append((s, slot_id));
+        if is_slot_placeholder(s) {
+            slot_id = slot_id_of(s);
+            if slot_id is None {
+                raise ValueError(
+                    f"c2jac: malformed direct-IR placeholder (no int slot id) — "
+                    f"the {SLOT_SENTINEL} protocol is broken"
+                );
             }
+            to_replace.append((s, slot_id));
         }
     }
     for (sentinel, slot_id) in to_replace {
         c_node = slot_map.get(slot_id);
         if c_node is None {
-            continue;
+            raise ValueError(
+                f"c2jac: direct-IR placeholder references unregistered slot "
+                f"{slot_id} — mapper.slot_map and the emitted placeholders are "
+                f"out of sync"
+            );
         }
         replacements = builder.build(c_node);
         _do_splice(sentinel, replacements);
+    }
+    # Post-condition: no placeholder may survive into the tree we are about to
+    # unparse. If one does, the splice silently failed to find it (e.g. it sat in
+    # a parent collection _do_splice does not patch) and would leak into output —
+    # surface it now instead. The `directir_no_leak` test locks this end to end.
+    leaked = [
+        s
+        for s in mod_root.get_all_sub_nodes(uni.ExprStmt)
+        if is_slot_placeholder(s)
+    ];
+    if leaked {
+        raise ValueError(
+            f"c2jac: {len(leaked)} direct-IR placeholder(s) survived the splice — "
+            f"would leak {SLOT_SENTINEL} into emitted Jac"
+        );
     }
 }
 

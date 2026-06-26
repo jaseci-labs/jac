@@ -7,6 +7,15 @@ surrogates that are syntactically valid Jac, satisfying §8.2.
 DIRECT_IR nodes (For, Enum, Enumerator, EnumeratorList) are replaced by
 placeholder call expressions keyed on a slot_id; the driver splices in the real
 uni nodes after PyastBuildPass runs.
+
+This module is the node dispatcher + `ast`-node builder. The three cross-cutting
+*analyses* it used to inline now live in focused sibling modules — each pure (no
+`CMapper` state, no node-building), so they read and test on their own:
+  - c_types.jac    — C type-name resolution (the type model)
+  - c_idioms.jac   — malloc/realloc pointer-idiom structural recognizers (§7)
+  - c_dataflow.jac — list-bound MUST-dataflow across control flow (§9.5)
+The handlers below call those to *decide*, then emit the Jac form and stamp the
+Tier verdict here.
 """
 
 import ast as ast3;
@@ -20,48 +29,27 @@ import from jaclang.compiler.c2jac.c_common {
     parse_c_float,
     coord_of
 }
+import from jaclang.compiler.c2jac.c_types {
+    C_PRIM_MAP,
+    jac_prim,
+    typename,
+    user_type_name
+}
+import from jaclang.compiler.c2jac.c_idioms {
+    flatten_mult,
+    sizeof_type,
+    malloc_array_match,
+    malloc_struct_type,
+    realloc_of_list_bound
+}
+import from jaclang.compiler.c2jac.c_dataflow { lb_merge, collect_lb_kills }
+# The direct-IR placeholder protocol (emit here, splice in the driver) is owned by
+# c2jac.directir — see that module for why the py-ast round-trip is safe and how
+# leaks are made impossible. We only need the sentinel name to emit a placeholder.
+import from jaclang.compiler.c2jac.directir { SLOT_SENTINEL }
 
-# COUPLING: _SLOT_SENTINEL is emitted here as a plain Name in an ExprStmt
-# (`__c2jac_directir__(slot_id)`) and rides PyastBuildPass *untouched* — it is an
-# ordinary identifier to that pass — then driver._splice_directir greps the uni
-# tree for ExprStmts whose call target Name equals this exact string and swaps in
-# the real direct-IR nodes. The string must therefore stay in sync between this
-# module and the driver, and must remain something PyastBuildPass never rewrites.
-glob _SLOT_SENTINEL: str = "__c2jac_directir__",
-     _UNSUPPORTED_STMT: str = "__c2jac_unsupported__",
-     _UNSUPPORTED_EXPR: str = "__c2jac_unsupported_expr__",
-     # C primitive/builtin type names that must NOT be treated as struct/typedef
-     # names when resolving a pointer or sizeof target to a Jac type reference.
-     _C_BUILTIN_TYPES: set = {
-         "int",
-         "float",
-         "double",
-         "void",
-         "char",
-         "long",
-         "short",
-         "unsigned",
-         "signed",
-         "bool",
-         "size_t",
-
-     },
-     # Canonical C-primitive → Jac builtin type-name map. Any C type name absent
-     # here resolves to "int" (the conservative scalar default). Single source of
-     # truth for every scalar type-name lookup in this module.
-     _C_PRIM_MAP: dict = {
-         "int": "int",
-         "float": "float",
-         "double": "float",
-         "char": "str",
-         "void": "None",
-         "long": "int",
-         "short": "int",
-         "unsigned": "int",
-         "signed": "int",
-         "bool": "bool",
-
-     };
+glob _UNSUPPORTED_STMT: str = "__c2jac_unsupported__",
+     _UNSUPPORTED_EXPR: str = "__c2jac_unsupported_expr__";
 
 obj CMapper {
     has tags: TagTable,
@@ -251,10 +239,7 @@ obj CMapper {
         (line, col) = self._loc(c_node);
         sid = self._alloc_slot(c_node);
         name_n = self._stamp_manual(
-            ast3.Name(id=_SLOT_SENTINEL, ctx=ast3.Load()),
-            line,
-            col,
-            text=_SLOT_SENTINEL
+            ast3.Name(id=SLOT_SENTINEL, ctx=ast3.Load()), line, col, text=SLOT_SENTINEL
         );
         sid_c = self._stamp_manual(ast3.Constant(value=sid), line, col, text=str(sid));
         call_n = self._stamp_manual(
@@ -500,7 +485,7 @@ obj CMapper {
         # LIST_OF_OBJECTS (§7.2): `T *arr = malloc(n*sizeof(T))` is a list, not a
         # bare T — annotate `list[T]` (not the pointer's `T`) and record the name
         # as list-bound so a later realloc on it elides cleanly (§7.5).
-        arr_elem = self._malloc_array_match(nd_init) if nd_init is not None else None;
+        arr_elem = malloc_array_match(nd_init) if nd_init is not None else None;
         if arr_elem is not None {
             ann = self._list_ann_of(arr_elem);
             self._list_bound.add(nd.name);
@@ -569,7 +554,7 @@ obj CMapper {
         if isinstance(inner, c_ast.TypeDecl) {
             names = inner.type?.names or [];
         }
-        jac = self._jac_prim(names);
+        jac = jac_prim(names);
         if jac == "float" {
             (d, t) = (ast3.Constant(value=0.0), "0.0");
         } elif jac == "bool" {
@@ -597,8 +582,8 @@ obj CMapper {
         # stamp the trailing realloc Tier-A. (Branch-conditional rebinds still need
         # real dataflow tracking — see §9.5; this keeps straight-line flow sound.)
         if nd.op == "=" and isinstance(nd.lvalue, c_ast.ID) {
-            if self._malloc_array_match(nd.rvalue) is not None
-            or self._realloc_of_list_bound(nd.rvalue) {
+            if malloc_array_match(nd.rvalue) is not None
+            or realloc_of_list_bound(nd.rvalue, self._list_bound) {
                 self._list_bound.add(nd.lvalue.name);
             } else {
                 self._list_bound.discard(nd.lvalue.name);
@@ -672,7 +657,7 @@ obj CMapper {
             s_false = base;
         }
         # Join: list-bound after the if only if list-bound on BOTH paths.
-        self._list_bound = self._lb_merge([s_true, s_false]);
+        self._list_bound = lb_merge([s_true, s_false]);
         ifs = ast3.If(test=test, body=true_stmts, orelse=false_stmts);
         return self._stamp(ifs, nd, text="if");
     }
@@ -684,13 +669,13 @@ obj CMapper {
         # realloc in the body is judged against what holds on every iteration's
         # back-edge, not just the first (§9.5). Re-gens in the body re-add them.
         killed: set = set();
-        self._collect_lb_kills(nd.stmt, killed);
+        collect_lb_kills(nd.stmt, killed);
         self._list_bound = base - killed;
         body = self._stmts_from(nd.stmt);
         s_end: set = self._list_bound;
         # The loop may run zero times: keep only names list-bound on both the
         # skip path (base) and the body-exit path.
-        self._list_bound = self._lb_merge([base, s_end]);
+        self._list_bound = lb_merge([base, s_end]);
         w = ast3.While(test=test, body=body, orelse=[]);
         return self._stamp(w, nd, text="while");
     }
@@ -708,7 +693,7 @@ obj CMapper {
         # non-list before walking, so a realloc in the body holds on every
         # back-edge, not just the first iteration (§9.5).
         killed: set = set();
-        self._collect_lb_kills(nd.stmt, killed);
+        collect_lb_kills(nd.stmt, killed);
         self._list_bound -= killed;
         body = self._stmts_from(nd.stmt);
         cond = self.conv_expr(nd.cond);
@@ -816,7 +801,7 @@ obj CMapper {
             );
             orelse = [ifs];
         }
-        self._list_bound = self._lb_merge(branch_states);
+        self._list_bound = lb_merge(branch_states);
         if orelse {
             if len(orelse) == 1 and isinstance(orelse[0], ast3.If) {
                 return orelse[0];
@@ -931,7 +916,7 @@ obj CMapper {
             return arr;
         }
         # OBJECT_CREATE: malloc(sizeof(T)) → T() constructor (§7.1)
-        struct_name = self._malloc_struct_type(nd);
+        struct_name = malloc_struct_type(nd);
         if struct_name is not None {
             self._mark_tier_a(
                 nd, Idiom.OBJECT_CREATE, "malloc(sizeof(T)) → T() constructor"
@@ -951,46 +936,6 @@ obj CMapper {
         call = ast3.Call(func=func, args=args, keywords=[]);
         call_expr = self._stamp(call, nd, text="call");
         return call_expr;
-    }
-
-    def _malloc_struct_type(nd: object) -> str | None {
-        # Returns the struct/typedef name if nd is malloc(sizeof(T)) for a named type T, else None.
-        if not isinstance(nd.name, c_ast.ID) or nd.name.name != "malloc" {
-            return None;
-        }
-        if nd.args is None or len(nd.args.exprs) != 1 {
-            return None;
-        }
-        arg = nd.args.exprs[0];
-        if not isinstance(arg, c_ast.UnaryOp) or arg.op != "sizeof" {
-            return None;
-        }
-        inner = arg.expr;
-        if isinstance(inner, c_ast.Typename)
-        and isinstance(inner.type, c_ast.TypeDecl) {
-            return self._user_type_name(inner.type.type);
-        }
-        if isinstance(inner, c_ast.ID) {
-            return inner.name;
-        }
-        return None;
-    }
-
-    def _realloc_of_list_bound(nd: object) -> bool {
-        # True if nd is `realloc(p, …)` where p is an ID currently proven list-bound.
-        # Such a reassignment yields the same logical buffer, so list-boundness is
-        # preserved across `arr = realloc(arr, …)` rather than dropped (§7.5).
-        if not isinstance(nd, c_ast.FuncCall) {
-            return False;
-        }
-        if not isinstance(nd.name, c_ast.ID) or nd.name.name != "realloc" {
-            return False;
-        }
-        if nd.args is None or len(nd.args.exprs) < 1 {
-            return False;
-        }
-        ptr = nd.args.exprs[0];
-        return isinstance(ptr, c_ast.ID) and ptr.name in self._list_bound;
     }
 
     def _realloc_elide(nd: object) -> object | None {
@@ -1019,165 +964,10 @@ obj CMapper {
         return py_ptr;
     }
 
-    # ------------------------------------------------------------------ #
-    # List-bound dataflow across control flow (§9.5)                      #
-    # ------------------------------------------------------------------ #
-    # `_list_bound` is a MUST property: a name is list-bound at a point only when
-    # it is provably list-bound on EVERY path reaching it. A single mutable set
-    # walked in tree order conflates branches, making a later realloc's Tier-A/B
-    # verdict depend on traversal order. The branch handlers below snapshot the
-    # set, walk each path from a copy, and merge by intersection at the join so
-    # the verdict reflects what is actually provable after the construct.
-    def _lb_merge(states: list) -> set {
-        # Intersection across path-end states — list-bound only if list-bound on
-        # all of them. Empty input (no reachable path) → empty set.
-        if not states {
-            return set();
-        }
-        out: set = set(states[0]);
-        for s in states[1:] {
-            out &= s;
-        }
-        return out;
-    }
-
-    def _lb_assignment_kills(name: str, rhs: object) -> bool {
-        # Mirrors c_Assignment's gen/preserve rules: `name = rhs` keeps list-bound
-        # status only when rhs is a malloc-array (gen) or a self-realloc
-        # `realloc(name, …)` (same logical buffer). Any other rhs rebinds the name
-        # to a non-list → a kill. A cross-pointer `name = realloc(other, …)` is
-        # treated as a kill here (conservative: at worst it demotes a later realloc
-        # to Tier-B, which is always sound).
-        if self._malloc_array_match(rhs) is not None {
-            return False;
-        }
-        if isinstance(rhs, c_ast.FuncCall)
-        and isinstance(rhs.name, c_ast.ID)
-        and rhs.name.name == "realloc"
-        and rhs.args is not None
-        and len(rhs.args.exprs) >= 1 {
-            ptr = rhs.args.exprs[0];
-            if isinstance(ptr, c_ast.ID) and ptr.name == name {
-                return False;
-            }
-        }
-        return True;
-    }
-
-    def _collect_lb_kills(nd: object, killed: set) {
-        # Names a loop body may rebind to a non-list on some iteration. Removing
-        # them from `_list_bound` before walking the body makes a realloc inside
-        # the loop sound across the 0-or-more iterations (a name killed on any
-        # iteration is not provably list-bound on the back-edge); a re-gen earlier
-        # in the same iteration re-adds it during the walk.
-        if nd is None {
-            return;
-        }
-        if isinstance(nd, c_ast.Assignment)
-        and nd.op == "="
-        and isinstance(nd.lvalue, c_ast.ID) {
-            if self._lb_assignment_kills(nd.lvalue.name, nd.rvalue) {
-                killed.add(nd.lvalue.name);
-            }
-        } elif isinstance(nd, c_ast.Decl) and nd.name is not None {
-            # A re-decl rebinds the name; only a malloc-array init keeps it bound.
-            decl_init = getattr(nd, "init");
-            if decl_init is None or self._malloc_array_match(decl_init) is None {
-                killed.add(nd.name);
-            }
-        }
-        for (_, child) in nd.children() {
-            self._collect_lb_kills(child, killed);
-        }
-    }
-
-    def _flatten_mult(nd: object, acc: list) {
-        # Collect the multiplicative factors of a `*`-chain into acc (so
-        # `n * sizeof(T)` and `2 * n * sizeof(T)` both yield a flat factor list).
-        if isinstance(nd, c_ast.BinaryOp) and nd.op == "*" {
-            self._flatten_mult(nd.left, acc);
-            self._flatten_mult(nd.right, acc);
-        } else {
-            acc.append(nd);
-        }
-    }
-
-    def _sizeof_type(f: object) -> str | None {
-        # Raw C type name of a `sizeof(T)` / `sizeof(T*)` factor, else None.
-        if not isinstance(f, c_ast.UnaryOp) or f.op != "sizeof" {
-            return None;
-        }
-        inner = f.expr;
-        if isinstance(inner, c_ast.ID) {
-            return inner.name;
-        }
-        if isinstance(inner, c_ast.Typename) {
-            tt = inner.type;
-            if isinstance(tt, c_ast.PtrDecl) {
-                tt = tt.type;
-            }
-            if isinstance(tt, c_ast.TypeDecl) {
-                it = tt.type;
-                if isinstance(it, c_ast.Struct) and it.name {
-                    return it.name;
-                }
-                names = it?.names;
-                if names {
-                    return names[-1];
-                }
-            }
-        }
-        return None;
-    }
-
-    def _is_listable_elem(tname: str) -> bool {
-        # A malloc element type we can default-initialize into a Jac list: any
-        # user type, or a numeric/bool primitive. char (string buffer) and void
-        # are not list-of-objects — they stay Tier-B.
-        if tname in _C_PRIM_MAP {
-            return _C_PRIM_MAP.get(tname, "int") in ("int", "float", "bool");
-        }
-        return True;
-    }
-
-    def _malloc_array_match(nd: object) -> str | None {
-        # Pure structural test (no node-building, no tagging): if nd is
-        # `malloc(<count> * sizeof(T))` with at least one non-sizeof factor and a
-        # list-able element T, return T's C name; else None.
-        if not isinstance(nd, c_ast.FuncCall) {
-            return None;
-        }
-        if not isinstance(nd.name, c_ast.ID) or nd.name.name != "malloc" {
-            return None;
-        }
-        if nd.args is None or len(nd.args.exprs) != 1 {
-            return None;
-        }
-        factors: list = [];
-        self._flatten_mult(nd.args.exprs[0], factors);
-        sizeof_name: str | None = None;
-        others = 0;
-        for f in factors {
-            t = self._sizeof_type(f);
-            if t is not None and sizeof_name is None {
-                sizeof_name = t;
-            } else {
-                others += 1;
-            }
-        }
-        if sizeof_name is None or others == 0 {
-            return None;
-        }
-        if not self._is_listable_elem(sizeof_name) {
-            return None;
-        }
-        return sizeof_name;
-    }
-
     def _elem_default(tname: str) -> object {
         # Default-element Jac node for a list-of-objects of C type tname.
-        if tname in _C_PRIM_MAP {
-            jac = _C_PRIM_MAP.get(tname, "int");
+        if tname in C_PRIM_MAP {
+            jac = C_PRIM_MAP.get(tname, "int");
             if jac == "float" {
                 d = ast3.Constant(value=0.0);
             } elif jac == "bool" {
@@ -1209,17 +999,17 @@ obj CMapper {
     def _malloc_array(nd: object) -> object | None {
         # `malloc(n*sizeof(T))` → `[T() for _ in range(n)]` (§7.2). Distinct
         # elements (comprehension, not `[x]*n`) so mutable objects don't alias.
-        tname = self._malloc_array_match(nd);
+        tname = malloc_array_match(nd);
         if tname is None {
             return None;
         }
         default = self._elem_default(tname);
         factors: list = [];
-        self._flatten_mult(nd.args.exprs[0], factors);
+        flatten_mult(nd.args.exprs[0], factors);
         others = [
             f
             for f in factors
-            if self._sizeof_type(f) is None
+            if sizeof_type(f) is None
         ];
         count = self._product_expr(others);
         range_fn = self._stamp_manual(
@@ -1238,7 +1028,7 @@ obj CMapper {
 
     def _list_ann_of(tname: str) -> object {
         # Build a `list[T]` annotation node for a C element type tname.
-        jac = _C_PRIM_MAP.get(tname, tname);
+        jac = C_PRIM_MAP.get(tname, tname);
         elem = self._stamp_manual(
             ast3.Name(id=jac, ctx=ast3.Load()), self._lineno, 0, text=jac
         );
@@ -1462,7 +1252,7 @@ obj CMapper {
         target = self._stamp_manual(
             ast3.Name(id=nd.name, ctx=ast3.Store()), line, col, text=nd.name
         );
-        val_name = self._typename(nd.type);
+        val_name = typename(nd.type);
         value = self._stamp_manual(
             ast3.Name(id=val_name, ctx=ast3.Load()), line, col, text=val_name
         );
@@ -1505,7 +1295,7 @@ obj CMapper {
             value = self.conv_expr(nd_init);
         } elif arr_decl.dim is not None {
             dim_expr = self.conv_expr(arr_decl.dim);
-            elem_default_name = self._typename(arr_decl.type);
+            elem_default_name = typename(arr_decl.type);
             elem_call = ast3.Call(
                 func=ast3.Name(id=elem_default_name, ctx=ast3.Load()),
                 args=[],
@@ -1632,104 +1422,23 @@ obj CMapper {
     # ------------------------------------------------------------------ #
     # Type helpers                                                         #
     # ------------------------------------------------------------------ #
-    def _jac_prim(names: list) -> str {
-        # Map a C IdentifierType name list to a Jac builtin type name.
-        # `char` alone is treated as text (→ str), but `signed char` /
-        # `unsigned char` are byte-numeric integers (→ int) — keying on
-        # names[-1]=="char" alone would wrongly call those str.
-        if not names {
-            return "int";
-        }
-        if "char" in names {
-            if "signed" in names or "unsigned" in names {
-                return "int";
-            }
-            return "str";
-        }
-        return _C_PRIM_MAP.get(names[-1], "int");
-    }
-
-    def _prim_typename(names: list) -> str {
-        # Map a C IdentifierType name list to a Jac builtin type name.
-        return self._jac_prim(names);
-    }
-
-    def _user_type_name(t: object) -> str | None {
-        # Return the user-defined (struct tag / typedef) name carried by a type
-        # node, or None when it names only C builtins. Shared by pointer
-        # resolution and malloc(sizeof(T)) struct detection.
-        if isinstance(t, c_ast.Struct) and t.name {
-            return t.name;
-        }
-        names = t?.names;
-        if names and names[-1] not in _C_BUILTIN_TYPES {
-            return names[-1];
-        }
-        return None;
-    }
-
-    def _ptr_typename(ptr_decl: object) -> str {
-        # Resolve a PtrDecl to a Jac type name:
-        #   char*      → str
-        #   struct T*  → T   (PTR_REF; also non-builtin typedef pointers)
-        #   otherwise  → object
-        inner = ptr_decl.type;
-        if isinstance(inner, c_ast.TypeDecl) {
-            names = inner.type?.names or [];
-            # Only a plain `char *` is a C string; `signed/unsigned char *`
-            # are byte buffers, so route the decision through _jac_prim.
-            if "char" in names and self._jac_prim(names) == "str" {
-                return "str";
-            }
-            user = self._user_type_name(inner.type);
-            if user is not None {
-                return user;
-            }
-        }
-        return "object";
-    }
-
-    def _typename(decl_type: object) -> str {
-        # Canonical scalar/pointer/array type-name resolver. Walks the declarator
-        # chain (FuncDecl wrappers, etc.) down to the underlying TypeDecl.
-        t = decl_type;
-        while not isinstance(t, c_ast.TypeDecl) {
-            if isinstance(t, c_ast.ArrayDecl) {
-                return "list";
-            }
-            if isinstance(t, c_ast.PtrDecl) {
-                return self._ptr_typename(t);
-            }
-            if isinstance(t, c_ast.FuncDecl) {
-                t = t.type;
-                continue;
-            }
-            t = t?.type;
-            if t is None {
-                return "int";
-            }
-        }
-        names = t.type?.names or ["int"];
-        return self._prim_typename(names);
-    }
-
     def _type_ann(decl: object) -> object {
         # Works on a Decl node.
-        name = self._typename(decl.type);
+        name = typename(decl.type);
         n = ast3.Name(id=name, ctx=ast3.Load());
         return self._stamp(n, decl, text=name);
     }
 
     def _type_ann_from_type(t: object) -> object {
         # Works on a raw type node (TypeDecl, PtrDecl, etc.).
-        name = self._typename(t);
+        name = typename(t);
         (line, col) = (self._lineno, 0);
         n = ast3.Name(id=name, ctx=ast3.Load());
         return self._stamp_manual(n, line, col, text=name);
     }
 
     def _ret_ann(funcdecl: object) -> object {
-        name = self._typename(funcdecl.type);
+        name = typename(funcdecl.type);
         n = ast3.Name(id=name, ctx=ast3.Load());
         n.lineno = 1;
         n.col_offset = 0;
