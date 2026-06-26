@@ -72,6 +72,24 @@ def _finite(v: list) -> float {
     return val if math.isfinite(val) else 0.0;
 }
 
+"""Map a k8s workload name to the gateway route's `service` label.
+
+The gateway tags request metrics with the route name from
+[plugins.scale.microservices.routes] (underscores, e.g. `builder_sv`), while
+the workload is named `builder-sv-deployment` (hyphens + a kind suffix). Strip
+the kind suffix and swap hyphens for underscores so per-workload traffic can be
+joined to the gateway counter. Non-routed infra workloads simply won't match.
+"""
+def _workload_to_service(name: str) -> str {
+    base = name;
+    for suffix in ['-deployment', '-statefulset', '-daemonset'] {
+        if base.endswith(suffix) {
+            base = base[:len(base) - len(suffix)];
+        }
+    }
+    return base.replace('-', '_');
+}
+
 """Build a namespace-scoped PromQL selector for a bare metric.
 
 `scoped("kube_deployment_created", 'namespace="x"')` ->
@@ -440,11 +458,36 @@ impl JacAPIServerWorkloads.admin_workloads_list(
         restarts_by_owner[owner] = restarts_by_owner.get(owner, 0) + int(_finite(v));
     }
 
+    # Per-service traffic: the gateway counter's `service` label is the routed
+    # microservice (e.g. builder_sv). One grouped query each for rate, errors,
+    # and p95, indexed by service, then joined to each workload by name.
+    svc_rps = _index_by(
+        prom_query('sum by (service)(rate({__name__=~".+_gateway_requests_total"}[1m]))'),
+        'service'
+    );
+    svc_err = _index_by(
+        prom_query(
+            'sum by (service)(rate({__name__=~".+_gateway_requests_total",outcome=~"5xx|err"}[1m]))'
+        ),
+        'service'
+    );
+    svc_p95 = _index_by(
+        prom_query(
+            'histogram_quantile(0.95, sum by (service, le)(rate({__name__=~".+_gateway_request_duration_seconds_bucket"}[5m])))'
+        ),
+        'service'
+    );
+
     workloads: list = [];
     for e in entries {
         name = e["name"];
         restarts = restarts_by_owner.get(name, 0);
         status = phase_to_status(e["ready"], e["desired"], restarts);
+        svc = _workload_to_service(name);
+        wl_rps = svc_rps.get(svc, 0.0);
+        wl_err = svc_err.get(svc, 0.0);
+        wl_p95 = svc_p95.get(svc, 0.0);
+        wl_err_pct = (wl_err / wl_rps * 100.0) if wl_rps > 0 else 0.0;
         workloads.append(
             {
                 'name': name,
@@ -455,7 +498,16 @@ impl JacAPIServerWorkloads.admin_workloads_list(
                 'cpu_cores': round(cpu_by_owner.get(name, 0.0), 3),
                 'memory_bytes': int(mem_by_owner.get(name, 0.0)),
                 'restarts_last_hour': restarts,
-                'created': e["created"]
+                'created': e["created"],
+                # `routed` distinguishes a gateway-fronted microservice (show
+                # numbers) from infra workloads (grafana/mongo) that the gateway
+                # never sees, so the UI can label them differently.
+                'traffic': {
+                    'requests_per_sec': round(wl_rps, 2),
+                    'error_rate_pct': round(wl_err_pct, 2),
+                    'p95_latency_ms': round(wl_p95 * 1000.0, 1),
+                    'routed': svc in svc_rps
+                }
             }
         );
     }

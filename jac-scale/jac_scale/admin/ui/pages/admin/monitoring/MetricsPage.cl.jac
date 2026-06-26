@@ -35,14 +35,38 @@ def:pub MetricsPage -> JsxElement {
             metricsEnabled = result["data"]["enabled"];
             summary = result["data"]["summary"] or {};
             metrics = result["data"]["metrics"] or [];
+            newReqsTotal = summary["total_requests"] or 0;
+            # Bars plot per-interval traffic (delta of the cumulative counter),
+            # so an idle window reads ~0 instead of a flat full-height block.
+            prevReqsTotal = history[len(history) - 1]["requests"]
+                if len(history) > 0
+                else newReqsTotal;
+            reqDelta = newReqsTotal - prevReqsTotal;
+            if reqDelta < 0 {
+                reqDelta = 0;
+            }
             newPoint = {
                 "time": Date.now(),
-                "requests": summary["total_requests"] or 0,
+                "requests": newReqsTotal,
+                "delta": reqDelta,
                 "active": summary["active_requests"] or 0,
                 "errors": summary["error_count"] or 0,
                 "latency": summary["avg_latency_ms"] or 0
             };
-            history = (history + [newPoint])[-20:];
+            # Keep the last 20 points. Avoid a negative slice ([-20:]) -- the
+            # client transpiler mishandles it (returns []), which is why the
+            # chart never accumulated. Trim from a computed positive index.
+            combined = history + [newPoint];
+            startIdx = max(0, len(combined) - 20);
+            trimmed = [];
+            idx = 0;
+            for p in combined {
+                if idx >= startIdx {
+                    trimmed.append(p);
+                }
+                idx += 1;
+            }
+            history = trimmed;
         }
         isLoading = False;
     }
@@ -227,8 +251,8 @@ def:pub MetricsPage -> JsxElement {
     maxReqs = 1;
     maxLatency = 1;
     for h in history {
-        if h["requests"] > maxReqs {
-            maxReqs = h["requests"];
+        if (h["delta"] or 0) > maxReqs {
+            maxReqs = h["delta"];
         }
         if h["latency"] > maxLatency {
             maxLatency = h["latency"];
@@ -372,9 +396,9 @@ def:pub MetricsPage -> JsxElement {
                                     key={str(h["time"])}
                                     className="flex-1 bg-accent rounded-t opacity-80 hover:opacity-100 transition-opacity"
                                     style={{
-                                        "height": getBarHeight(h["requests"], maxReqs)
+                                        "height": getBarHeight(h["delta"] or 0, maxReqs)
                                     }}
-                                    title={str(h["requests"]) + " requests"}
+                                    title={str(h["delta"] or 0) + " req / interval"}
                                 ></div> for h in history
                             ]}
                         </div>

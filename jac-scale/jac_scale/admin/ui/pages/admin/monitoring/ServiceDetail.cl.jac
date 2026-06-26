@@ -124,10 +124,24 @@ cl {
             {"label": "Age", "value": formatAge(service["created"] or 0)}
         ];
 
+        traffic = service["traffic"] or {};
+        isRouted = traffic["routed"] or False;
         trafficStats = [
-            {"label": "Requests", "value": "-", "sub": "per second"},
-            {"label": "Errors", "value": "-", "sub": "of requests"},
-            {"label": "Response time", "value": "-", "sub": "p95 latency"}
+            {
+                "label": "Requests",
+                "value": (str(traffic["requests_per_sec"] or 0) + " r/s") if isRouted else "-",
+                "sub": "per second"
+            },
+            {
+                "label": "Errors",
+                "value": (str(traffic["error_rate_pct"] or 0) + "%") if isRouted else "-",
+                "sub": "of requests"
+            },
+            {
+                "label": "Response time",
+                "value": (str(traffic["p95_latency_ms"] or 0) + " ms") if isRouted else "-",
+                "sub": "p95 latency"
+            }
         ];
 
         return
@@ -183,7 +197,7 @@ cl {
                         <span
                             className="ml-auto text-[11px] text-faint border border-line rounded-full px-2 py-0.5"
                         >
-                            Per-service traffic coming soon
+                            {"Live (last 60s)" if isRouted else "No gateway traffic"}
                         </span>
                     </div>
                     <div className="grid grid-cols-3 gap-3">
@@ -195,7 +209,8 @@ cl {
                                     {t["label"]}
                                 </p>
                                 <p
-                                    className="text-2xl font-semibold text-faint mt-1 tabular-nums"
+                                    className={"text-2xl font-semibold mt-1 tabular-nums "
+                                    + ("text-fg" if isRouted else "text-faint")}
                                 >
                                     {t["value"]}
                                 </p>
