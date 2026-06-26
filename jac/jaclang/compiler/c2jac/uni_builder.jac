@@ -80,6 +80,24 @@ obj CUniBuilder {
         );
     }
 
+    def _string_node(value: str, line: int, col: int) -> uni.String {
+        # `value` is the raw C string literal *including* its surrounding quotes
+        # (e.g. `"hi"` / `"\n"`). DocIRGenPass.exit_string emits nd.value
+        # verbatim, so the quotes and escapes must already be part of it — unlike
+        # the Python-AST mapper, there is no later re-slice from the C source here.
+        return uni.String(
+            orig_src=self.src,
+            name="STRING",
+            value=value,
+            line=line,
+            end_line=line,
+            col_start=col,
+            col_end=col + len(value),
+            pos_start=0,
+            pos_end=len(value),
+        );
+    }
+
     def _coord(c_node: object) -> tuple[int, int] {
         # Direct-IR builder has no running line cursor; fall back to line 1.
         return coord_of(c_node, 1);
@@ -678,6 +696,17 @@ obj CUniBuilder {
                     return self._int_node(cv, nline, ncol);
                 }
             }
+            if nd.type == "string" {
+                # A plain C string literal carries its double quotes and escapes
+                # in nd.value; emit them verbatim as a Jac string (same family as
+                # mapper.c_Constant's "string" branch). A prefixed literal
+                # (L"…"/u8"…") doesn't start with `"`, so it falls through to the
+                # None path below and the loop is honestly demoted to Tier-B.
+                raw = nd.value;
+                if raw.startswith('"') and raw.endswith('"') and len(raw) >= 2 {
+                    return self._string_node(raw, nline, ncol);
+                }
+            }
             # Unparseable / unsupported constant (multi-char literal, exotic
             # form): return None so the caller records the loss and the enclosing
             # loop demotes to Tier-B, rather than silently emitting a wrong-typed
@@ -728,7 +757,67 @@ obj CUniBuilder {
         if isinstance(nd, c_ast.FuncCall) {
             return self._funccall_to_uni(nd, nline, ncol);
         }
+        if isinstance(nd, c_ast.ArrayRef) {
+            return self._arrayref_to_uni(nd, nline, ncol);
+        }
+        if isinstance(nd, c_ast.StructRef) {
+            return self._structref_to_uni(nd, nline, ncol);
+        }
         return None;
+    }
+
+    def _arrayref_to_uni(nd: object, line: int, col: int) -> uni.UniNode | None {
+        # `arr[i]` → AtomTrailer(target=arr, right=IndexSlice[i]) — the same shape
+        # PyastBuildPass.proc_subscript builds. Recurses through _expr_to_uni so a
+        # nested subscript/field base (`m[i][j]`, `s.arr[i]`) lowers too; a base or
+        # index that can't be lowered yields None so the caller flags the loss.
+        arr = self._expr_to_uni(nd.name, line, col);
+        idx = self._expr_to_uni(nd.subscript, line, col);
+        if arr is None or idx is None {
+            return None;
+        }
+        slice_item = uni.Slice(start=idx, stop=None, step=None, kid=[idx]);
+        index_slice = uni.IndexSlice(
+            slices=[slice_item], is_range=False, kid=[slice_item]
+        );
+        return uni.AtomTrailer(
+            target=arr,
+            right=index_slice,
+            is_attr=False,
+            is_null_ok=False,
+            kid=[arr, index_slice],
+        );
+    }
+
+    def _structref_to_uni(nd: object, line: int, col: int) -> uni.UniNode | None {
+        # `s.field` and `s->field` both → AtomTrailer attribute access (mirrors
+        # mapper.c_StructRef; the `->` deref is the PTR_REF identity). is_kwesc on a
+        # field literally named `init` keeps it a field access, not a constructor.
+        obj_expr = self._expr_to_uni(nd.name, line, col);
+        if obj_expr is None {
+            return None;
+        }
+        field = nd.field.name;
+        (fline, fcol) = self._coord(nd.field);
+        attr = uni.Name(
+            orig_src=self.src,
+            name=Tok.NAME,
+            value=field,
+            line=fline,
+            end_line=fline,
+            col_start=fcol,
+            col_end=fcol + len(field),
+            pos_start=0,
+            pos_end=len(field),
+            is_kwesc=(field == "init"),
+        );
+        return uni.AtomTrailer(
+            target=obj_expr,
+            right=attr,
+            is_attr=True,
+            is_null_ok=False,
+            kid=[obj_expr, attr],
+        );
     }
 
     def _funccall_to_uni(nd: object, line: int, col: int) -> uni.UniNode | None {
@@ -756,6 +845,21 @@ obj CUniBuilder {
             (nline, ncol) = self._coord(nd);
             return self._name_node(nd.name, nline, ncol);
         }
+        # `arr[i] = …`, `m[i][j] = …`, `s.f = …`, `p->f = …`: the subscript /
+        # attribute trailer is the same node in lvalue and rvalue position (its
+        # Store-vs-Load context is resolved downstream), so reuse the rvalue
+        # builders. Previously only a bare ID lowered here, so every indexed or
+        # field assignment in a for-body was silently dropped.
+        if isinstance(nd, c_ast.ArrayRef) {
+            (nline, ncol) = self._coord(nd);
+            return self._arrayref_to_uni(nd, nline, ncol);
+        }
+        if isinstance(nd, c_ast.StructRef) {
+            (nline, ncol) = self._coord(nd);
+            return self._structref_to_uni(nd, nline, ncol);
+        }
+        # A `*p = …` deref or otherwise computed lvalue has no faithful direct-IR
+        # analog yet; return None so the caller records the loss (Tier-B).
         return None;
     }
 
