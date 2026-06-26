@@ -21,7 +21,13 @@ runs:
       id: cache
       uses: actions/cache@v4
       with:
-        path: jac/zig-out/bin/jac
+        # Also cache the gitignored typeshed stdlib stubs: they are materialized
+        # during `zig build` and test-binary.yml publishes them as an artifact for
+        # the compiler suite. Without them here, a binary cache hit skips the
+        # build and the upload step fails on a fresh checkout.
+        path: |
+          jac/zig-out/bin/jac
+          jac/jaclang/vendor/typeshed/stdlib
         key: jac-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac/build.zig', 'jac/launcher/**') }}
 
     # Avoid re-downloading + re-decoding the ~600 MB python-build-standalone tree
@@ -71,6 +77,31 @@ runs:
       shell: bash
       working-directory: jac
       run: zig build --summary all
+
+    # Binary cache hits skip `zig build`, which is what normally runs fetch-typeshed.
+    # Older cache entries only stored the binary, so materialize stubs when missing.
+    - id: typeshed_check
+      if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        if [ -f jac/jaclang/vendor/typeshed/stdlib/VERSIONS ]; then
+          echo "needed=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "needed=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Set up Zig 0.16.0 (for typeshed after binary cache hit)
+      if: steps.cache.outputs.cache-hit == 'true' && steps.typeshed_check.outputs.needed == 'true'
+      uses: mlugg/setup-zig@v2
+      with:
+        version: 0.16.0
+        use-cache: false
+
+    - name: Materialize typeshed stdlib stubs
+      if: steps.cache.outputs.cache-hit == 'true' && steps.typeshed_check.outputs.needed == 'true'
+      shell: bash
+      working-directory: jac
+      run: zig build fetch-typeshed
 
     - name: Put jac on PATH
       shell: bash

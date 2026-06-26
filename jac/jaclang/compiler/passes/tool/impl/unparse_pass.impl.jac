@@ -1276,9 +1276,9 @@ impl UnparsePass.exit_match_mapping(nd: uni.MatchMapping) -> None {
     nd.gen.jac = "{" + self._comma_sep(nd.values) + "}";
 }
 
-"""MatchKVPair: key: value."""
+"""MatchKVPair: key OP value (OP is '=' for class patterns, ':' for mappings)."""
 impl UnparsePass.exit_match_k_v_pair(nd: uni.MatchKVPair) -> None {
-    nd.gen.jac = nd.key.gen.jac + " : " + nd.value.gen.jac;
+    nd.gen.jac = nd.key.gen.jac + " " + nd.kid[1].gen.jac + " " + nd.value.gen.jac;
 }
 
 """MatchStar: *[name]."""
