@@ -629,30 +629,54 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     and method_name not in self.vtable_method_indices.get(arch_name, {});
     _err_mark = len(self.prog.errors_had) if _isolate else 0;
     _local_mark = len(self.errors_had) if _isolate else 0;
-    # Generate body (handle ImplDef wrapper from DeclImplMatchPass)
-    body = ModuleCodegenPass.unwrap_body(method);
-    if body is not None {
-        self._codegen_body(body);
-    }
-    # Ensure function has a terminator
-    if not self.builder.block.is_terminated {
-        _mth_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{method.loc.last_line
-            if method.loc
-            else 0}";
-        # release all pointer-typed locals before implicit return.
-        self._emit_scope_cleanup(skip_var=None, loc=_mth_loc);
-        ret_type = func.return_value.type;
-        if isinstance(ret_type, ir.VoidType) {
-            self.builder.ret_void();
-        } elif isinstance(ret_type, ir.PointerType) {
-            self.builder.ret(ir.Constant(ret_type, None));
-        } else {
-            self.builder.ret(ir.Constant(ret_type, 0));
+    # Best-effort isolation: an un-lowerable construct can raise a hard Python
+    # exception deep in IR building (e.g. a void operand type-mismatch in a
+    # binary op, or a void alloca) instead of cleanly emitting a diagnostic. For
+    # a demotable method, convert that crash into an E5090 so the demotion below
+    # drops it to Python rather than aborting the whole module's native compile.
+    # Construction-critical and vtable methods cannot fall back, so their
+    # failures still propagate.
+    try {
+        # Generate body (handle ImplDef wrapper from DeclImplMatchPass)
+        body = ModuleCodegenPass.unwrap_body(method);
+        if body is not None {
+            self._codegen_body(body);
         }
+        # Ensure function has a terminator
+        if not self.builder.block.is_terminated {
+            _mth_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{method.loc.last_line
+                if method.loc
+                else 0}";
+            # release all pointer-typed locals before implicit return.
+            self._emit_scope_cleanup(skip_var=None, loc=_mth_loc);
+            ret_type = func.return_value.type;
+            if isinstance(ret_type, ir.VoidType) {
+                self.builder.ret_void();
+            } elif isinstance(ret_type, ir.PointerType) {
+                self.builder.ret(ir.Constant(ret_type, None));
+            } else {
+                self.builder.ret(ir.Constant(ret_type, 0));
+            }
+        }
+        method.gen.llvm_ir = func;
+        # DWARF post-pass: tag untagged instructions with fallback line
+        self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
+    } except Exception as _codegen_exc {
+        if not _isolate {
+            raise;
+        }
+        # Record an E5090 so _demote_method_if_unlowerable (below) sees the
+        # method as un-lowerable and resets it to a Python-fallback abort stub.
+        self.emit(
+            E5090,
+            node_override=method,
+            kind="method (native emitter error in)",
+            name=full_name,
+            help_text=f"The native backend raised {type(_codegen_exc).__name__} "
+            f"while lowering this method; it falls back to its Python "
+            f"implementation. Original error: {_codegen_exc}"
+        );
     }
-    method.gen.llvm_ir = func;
-    # DWARF post-pass: tag untagged instructions with fallback line
-    self._finalize_di_locations(func, method.loc.first_line if method.loc else 1);
     # Restore saved state
     self._builder = saved_builder;
     self.local_vars = saved_locals;
@@ -695,7 +719,17 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     # no_cgen so this pass never runs there (mirrors native_accel).
     import os;
     _warn = bool(os.environ.get("JAC_NATIVE_DEBUG", ""));
-    if not _warn {
+    # The deferred autonative self-acceleration compiles jaclang's own bootstrap
+    # modules best-effort in the background; its demotions are not user-actionable
+    # and must not spam stderr on every import. A thread-local set by
+    # native_accel.accelerate_module flags that context. JAC_NATIVE_DEBUG
+    # (checked above) still forces the warnings on for backend development.
+    _accel_quiet = False;
+    try {
+        import from jaclang.jac0core.native_accel { native_accel_warnings_suppressed }
+        _accel_quiet = native_accel_warnings_suppressed();
+    } except Exception { }
+    if not _warn and not _accel_quiet {
         _warn = True;
         try {
             import from jaclang.project.config { get_config }
