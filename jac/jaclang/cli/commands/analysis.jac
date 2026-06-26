@@ -158,10 +158,10 @@ def format(
     help="Run Jac test suite",
     args=[
         Arg.create(
-            "filepath",
-            kind=ArgKind.POSITIONAL,
-            help="Path to test file or directory",
-            default=""
+            "paths",
+            kind=ArgKind.MULTI,
+            help="Paths to test files or directories",
+            default=[]
         ),
         Arg.create(
             "test_name",
@@ -198,6 +198,7 @@ def format(
     examples=[
         ("jac test", "Run all tests in current directory"),
         ("jac test mytest.jac", "Run tests in specific file"),
+        ("jac test a.jac b.jac", "Run tests in several files"),
         ("jac test --test_name my_test", "Run only test_my_test"),
         ("jac test --xit --verbose", "Stop on first failure with verbose output"),
 
@@ -205,7 +206,7 @@ def format(
     group="analysis"
 )
 def `test(
-    filepath: str = "",
+    paths: list = [],
     test_name: str = "",
     filter: str = "",
     xit: bool = False,

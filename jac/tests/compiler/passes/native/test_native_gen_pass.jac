@@ -4890,3 +4890,26 @@ test "isinstance mixed tuple unsupported type errors" {
         f"expected E5090 for mixed-tuple isinstance, got {codes}"
     );
 }
+
+# ─── FIX: clib struct pointer subscript read/write (#6707, #6708) ─────────────
+# Before the fix, buf[i] on a clib struct pointer emitted E5090.
+# Fix: a struct-typed param/local (`buf: Color`) lowers to a StructName*, so
+# NaIRGenPass emits a single-index GEP (one index advances a whole struct) for
+# buf[i], and a struct load + store into the element pointer for buf[i] = val.
+test "ptr subscript read/write: no E5090 and correct GEP IR (#6707, #6708)" {
+    prog = JacProgram();
+    ir = prog.compile(str(os.path.join(FIXTURES, "ptr_subscript.na.jac")));
+    e5090 = [
+        e.code.code
+        for e in (prog.errors_had or [])
+        if e.code and e.code.code == "E5090"
+    ];
+    assert not e5090 , f"Unexpected E5090 errors: {e5090}";
+    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
+    s = str(ir.gen.llvm_ir);
+    # Read path (#6708): single-index GEP on the StructName* base yields the
+    # element pointer, which is returned as-is (aliases the buffer, no copy).
+    assert "ptr.elem.ptr" in s , "Expected array-element GEP (ptr.elem.ptr)";
+    # Write path (#6707): GEP the element, load the source struct value, store.
+    assert "arr.val.struct" in s , "Expected struct load for write (arr.val.struct)";
+}

@@ -203,7 +203,12 @@ impl NaIRGenPass._prim_ir_types -> dict {
         'i32': ir.IntType(32),
         'i16': ir.IntType(16),
         'i8': ir.IntType(8),
+        'u64': ir.IntType(64),
+        'u32': ir.IntType(32),
+        'u16': ir.IntType(16),
+        'u8': ir.IntType(8),
         'bool': ir.IntType(1),
+        'float': ir.DoubleType(),
         'f64': ir.DoubleType(),
         'f32': ir.FloatType(),
         'str': ir.IntType(8).as_pointer(),
@@ -326,6 +331,38 @@ impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
         }
     }
     return None;
+}
+
+"""Name of the registered native struct a value points to, or None (#6707, #6708).
+Returns the struct name when `val` has type StructName* -- a pointer to one of the
+named structs in `struct_types` -- which is how a struct-typed param/local (e.g.
+`buf: Color`) is represented. List/dict/bytes internal structs are not registered
+in `struct_types`, so they return None and fall through to their own subscript
+paths."""
+impl NaIRGenPass._struct_ptr_pointee_name(val: ir.Value) -> (str | None) {
+    _vt = val.type;
+    if isinstance(_vt, ir.PointerType)
+    and isinstance(_vt.pointee, ir.IdentifiedStructType) {
+        _name = _vt.pointee.name;
+        if _name in self.struct_types and self.struct_types[_name] == _vt.pointee {
+            return _name;
+        }
+    }
+    return None;
+}
+
+"""Element StructName* for `buf[i]` on a struct array (#6707, #6708). `ptr` is a
+StructName* base; a single-index GEP (after widening idx to i64) advances by one
+whole struct, giving C array semantics. The returned element pointer aliases the
+buffer -- it is not a copy."""
+impl NaIRGenPass._struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.Value {
+    _i64 = ir.IntType(64);
+    _wide_idx = (
+        idx_val
+            if idx_val.type == _i64
+            else self.builder.sext(idx_val, _i64, name="arr.idx.i64")
+    );
+    return self.builder.gep(ptr, [_wide_idx], name="ptr.elem.ptr");
 }
 
 """Return the lowered LLVM type of a checked list type's element, or None.

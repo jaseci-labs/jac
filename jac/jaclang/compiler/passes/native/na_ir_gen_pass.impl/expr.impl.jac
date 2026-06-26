@@ -1470,6 +1470,28 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                         }
                     }
                 }
+                # Named struct pointer used as a C array: buf[i] (#6708).
+                # A struct-typed param/local (`buf: Color`) lowers to a
+                # StructName* (PointerType(IdentifiedStructType)), so a single
+                # GEP on that pointer -- one index advances a whole struct --
+                # gives true array semantics. The element pointer is returned
+                # as-is (the same StructName* a Color value is represented by),
+                # which aliases the buffer: `c = buf[i]` does not copy the
+                # struct, matching C pointer semantics.
+                _rd_sname: (str | None) = self._struct_ptr_pointee_name(target_val);
+                if _rd_sname is not None {
+                    slices = nd.right.slices or [];
+                    if slices {
+                        idx_node = slices[0];
+                        idx_val = self._codegen_expr(idx_node);
+                        if idx_val is None and idx_node?.start {
+                            idx_val = self._codegen_expr(idx_node.start);
+                        }
+                        if idx_val is not None {
+                            return self._struct_array_elem_ptr(target_val, idx_val);
+                        }
+                    }
+                }
                 # Check for tuple indexing (value or pointer to LiteralStructType)
                 tsub_struct: (ir.LiteralStructType | None) = None;
                 if isinstance(target_val.type, ir.LiteralStructType) {

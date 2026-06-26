@@ -637,7 +637,7 @@ impl format(
 
 """Run the test suite in the specified .jac file or directory."""
 impl `test(
-    filepath: str = "",
+    paths: list = [],
     test_name: str = "",
     filter: str = "",
     xit: bool = False,
@@ -648,13 +648,20 @@ impl `test(
 ) -> int {
     import os;
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    # Accept a single path string as well as a list (matches `check`/`lint`):
+    # programmatic callers pass `test("file.jac")` positionally, which would
+    # otherwise iterate the string character-by-character as if each char were a
+    # path.
+    if isinstance(paths, str) {
+        paths = [paths];
+    }
     # With neither an explicit file nor --directory, scope discovery to the
     # project's `[test] directory` (jac.toml) when configured -- pytest's
     # `testpaths`. This keeps `jac test` from walking the whole project and
     # importing app modules whose top-level `with entry` would execute (and
     # crash collection) as a side effect of being imported. The directory is
     # resolved against the project root so it holds from any working directory.
-    if (not filepath and not directory) {
+    if (not paths and not directory) {
         import from jaclang.project.config { get_config }
         cfg = get_config();
         if (cfg and cfg.test.directory) {
@@ -671,8 +678,8 @@ impl `test(
             }
         }
     }
-    # e.g. jac test --test_name "typevar7 constrained operations"  (no filepath given)
-    if (test_name and not filepath) {
+    # e.g. jac test --test_name "typevar7 constrained operations"  (no path given)
+    if (test_name and not paths) {
         console.error(
             "Error: --test_name requires a filepath. "
             "Running by name across all files is ambiguous.\n"
@@ -681,13 +688,15 @@ impl `test(
         return 1;
     }
     # e.g. jac test test_typevar.jac  (run from wrong directory)
-    if (filepath and not Path(filepath).exists()) {
-        console.error(
-            f"Error: File not found: '{filepath}'\n"
-            "Make sure you are in the correct directory or provide the full path.\n"
-            f"Usage: jac test /full/path/to/{filepath}"
-        );
-        return 1;
+    for fp in paths {
+        if not Path(fp).exists() {
+            console.error(
+                f"Error: File not found: '{fp}'\n"
+                "Make sure you are in the correct directory or provide the full path.\n"
+                f"Usage: jac test /full/path/to/{fp}"
+            );
+            return 1;
+        }
     }
     # Route `jac test` through the bundled pytest (+ xdist for `-n auto`) when it
     # is available -- the single-binary build ships it, so the suite runs with
@@ -703,8 +712,9 @@ impl `test(
         }
         if run_pytest {
             pargs: list[str] = [];
-            target = filepath or directory;
-            if target {
+            # One or more explicit paths, else the resolved directory (if any).
+            targets = paths or ([directory] if directory else []);
+            for target in targets {
                 pargs.append(target);
             }
             # Skip a subtree during collection (pytest `--ignore`). Lets the suite
@@ -754,15 +764,26 @@ impl `test(
         }
     }
     normalized_name = test_name.strip().replace(' ', '_') if test_name else '';
-    failcount = Jac.run_test(
-        filepath=filepath,
-        func_name=('test_' + normalized_name) if normalized_name else None,
-        filter=filter,
-        xit=xit,
-        maxfail=maxfail,
-        directory=directory,
-        verbose=verbose
-    );
+    func_name = ('test_' + normalized_name) if normalized_name else None;
+    # Native runner fallback (no pytest / JAC_TEST_NATIVE=1): run each path in
+    # turn, or a single directory-scoped pass when no explicit paths were given.
+    run_targets = paths or [""];
+    failcount = 0;
+    for fp in run_targets {
+        failcount += Jac.run_test(
+            filepath=fp,
+            func_name=func_name,
+            filter=filter,
+            xit=xit,
+            maxfail=maxfail,
+            directory=directory,
+            verbose=verbose
+        );
+        # Honor --xit across files too: stop at the first file with failures.
+        if xit and failcount > 0 {
+            break;
+        }
+    }
     if failcount {
         console.error(f"Tests failed: {failcount}");
         return 1;

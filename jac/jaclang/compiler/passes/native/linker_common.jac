@@ -36,3 +36,38 @@ def _resolve_patch_site(
 def _find_entry_vaddr(
     local_sym_map: dict[str, tuple[str, int]], code_vaddr: int
 ) -> int;
+
+# ─── Static `ar` archive support (#6978 Phase 0.1a) ───────────
+# A `.a` static archive is `!<arch>\n` followed by 60-byte member headers each
+# introducing a relocatable object. Two name encodings appear in the wild: BSD
+# (`#1/N`, the real name is the first N bytes of the member payload; used by
+# macOS) and GNU (a `//` long-name string table referenced by `/offset`). The
+# first member is a symbol index mapping every exported symbol to the header
+# offset of its defining member -- BSD spells it `__.SYMDEF[ SORTED][_64]`, GNU
+# spells it `/` (or `/SYM64/`). We reuse that index to pull only the members a
+# program actually needs (transitive closure over undefined symbols) instead of
+# linking the whole archive.
+"""One relocatable object member of an `ar` archive. `header_offset` is the file
+offset of the member's 60-byte header -- the key the symbol index points at."""
+obj ArMember {
+    has name: str,
+        header_offset: int,
+        data: bytes;
+}
+
+"""Parse `data` as an `ar` archive, returning its object members (the symbol
+index, the `//` long-name table, and `__.SYMDEF*` are excluded). Returns []
+when `data` is not an archive."""
+def parse_ar_archive(data: bytes) -> list[ArMember];
+
+"""Read an `ar` archive's symbol index into {symbol_name -> defining member's
+header_offset}. Handles both the BSD `__.SYMDEF` ranlib table and the GNU `/`
+big-endian table (32- and 64-bit). Returns {} when there is no index."""
+def parse_ar_symbol_index(data: bytes) -> dict[str, int];
+
+"""Select the minimal set of archive members needed to satisfy `root_undef`,
+chasing each pulled member's own undefined symbols transitively through the
+symbol index. Symbols not in the index (libc, other archives) are left for the
+rest of the link to resolve. Result is ordered by header offset for
+determinism."""
+def select_ar_members(data: bytes, root_undef: list[str]) -> list[ArMember];

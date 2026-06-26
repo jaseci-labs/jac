@@ -456,12 +456,29 @@ impl nacompile(
     # in the compiled module and its transitive dependencies.
     # _clib_paths is accumulated by _compile_and_link_native_imports.
     clib_paths = ir_module.gen._clib_paths;
+    # #6978 Phase 0.1a: a clib import that has a bundled static archive (a C
+    # floor like lzma/bz2/expat) is linked into the binary instead of becoming a
+    # runtime dylib dependency. _collect_floor_archives selects the needed
+    # members and returns the set of clib paths it handled so they are dropped
+    # from needed_libs / symbol_lib_map below. (Mach-O only so far; ELF/PE keep
+    # the dylib path until their linkers gain object merge.)
+    (archive_members, _floor_handled) = _collect_floor_archives(
+        clib_paths or [], ir_module.gen._clib_symbol_lib, triple, is_macos
+    );
+    if archive_members {
+        console.print(
+            f"  Static-linking {len(archive_members)} floor archive member(s)."
+        );
+    }
     # Maps a raw clib path to the soname actually recorded in needed_libs, so
     # the per-symbol library attribution below lines up with the linker's
     # LC_LOAD_DYLIB ordinals.
     _lib_norm: dict[str, str] = {};
     if clib_paths {
         for lib_path in clib_paths {
+            if lib_path in _floor_handled {
+                continue;  # statically linked from its archive, not a dylib dep
+            }
             # A relative path with a directory component (e.g. "./libfoo.so")
             # names a library shipped beside the binary. Record only its soname
             # so the linker's DT_RUNPATH=$ORIGIN entry resolves it relative to
@@ -503,6 +520,9 @@ impl nacompile(
     # unused (the loader searches all DT_NEEDED libs flatly).
     symbol_lib_map: dict[str, str] = {};
     for (_sym, _raw) in ir_module.gen._clib_symbol_lib.items() {
+        if _raw in _floor_handled {
+            continue;  # resolved by a statically-linked archive member
+        }
         symbol_lib_map[_sym] = _lib_norm.get(_raw, _raw);
     }
 
@@ -617,7 +637,8 @@ impl nacompile(
                 shared=shared,
                 export_symbols=export_symbols,
                 init_funcs=init_funcs,
-                soname=os.path.basename(output)
+                soname=os.path.basename(output),
+                archive_members=archive_members
             );
         } except Exception as e {
             console.error(f"Mach-O linking failed: {e}");
@@ -639,7 +660,8 @@ impl nacompile(
                 shared=shared,
                 export_symbols=export_symbols,
                 init_funcs=init_funcs,
-                soname=os.path.basename(output)
+                soname=os.path.basename(output),
+                archive_members=archive_members
             );
         } except Exception as e {
             console.error(f"ELF linking failed: {e}");
@@ -665,4 +687,119 @@ impl nacompile(
         console.print(f"  Run with: ./{output}");
     }
     return 0;
+}
+
+
+# ─── Static C-floor archive resolution (#6978 Phase 0.1a) ─────────────────────
+"""Locate the bundled pbs C-archive lib dir for `triple`, or None.
+
+Dev/CI builds keep the floor archives under
+`<repo>/jac/.pbs-build/<osarch>/python/build/lib`, found relative to the jaclang
+package. An installed/payload build has no such tree, so this returns None and
+the caller falls back to a dynamic dylib dependency (production staging of these
+archives into the payload is #6978 Phase 0.2). `JAC_NATIVE_FLOOR_DIR` overrides
+the lookup."""
+def _floor_lib_dir(triple: str) -> (str | None) {
+    import os;
+    env = os.environ.get("JAC_NATIVE_FLOOR_DIR", "");
+    if env and os.path.isdir(env) {
+        return env;
+    }
+    import jaclang;
+    jac_dir = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
+    pbs = os.path.join(jac_dir, ".pbs-build");
+    if not os.path.isdir(pbs) {
+        return None;
+    }
+    want = "aarch64" if ("aarch64" in triple or "arm64" in triple) else "x86_64";
+    fallback: (str | None) = None;
+    for d in sorted(os.listdir(pbs)) {
+        libdir = os.path.join(pbs, d, "python", "build", "lib");
+        if os.path.isdir(libdir) {
+            if fallback is None {
+                fallback = libdir;
+            }
+            if want in d {
+                return libdir;
+            }
+        }
+    }
+    return fallback;
+}
+
+
+"""Map a resolved clib soname/path to its static-archive filename. A floor lib
+stem has no internal dots, so everything from the first `.` is extension/version
+noise: `@loader_path/liblzma.dylib`, `liblzma.so.5`, and `liblzma.5.dylib` all
+map to `liblzma.a`."""
+def _clib_to_archive_name(clib_path: str) -> str {
+    import os;
+    return os.path.basename(clib_path).split(".")[0] + ".a";
+}
+
+
+"""For each clib import that has a bundled static archive, select the members
+that satisfy the symbols imported from it and return (member_object_bytes,
+handled_clib_paths). The caller drops handled paths from needed_libs /
+symbol_lib_map so the floor links in statically instead of as a dylib. Mach-O
+only for now (#6978 Phase 0.1a); ELF/PE keep the dylib path until their linkers
+gain archive-member merge. Cross-archive floors (e.g. ssl -> crypto) are a
+follow-up: only symbols defined in the directly-imported archive are pulled."""
+def _collect_floor_archives(
+    clib_paths: list, clib_symbol_lib: dict, triple: str, is_macos: bool
+) -> tuple {
+    import os;
+    import from jaclang.compiler.passes.native.linker_common { select_ar_members }
+    member_bytes: list = [];
+    handled: set = set();
+    if not is_macos or not clib_paths {
+        return (member_bytes, handled);
+    }
+    lib_dir = _floor_lib_dir(triple);
+    if lib_dir is None {
+        return (member_bytes, handled);
+    }
+    # Reverse the per-symbol attribution into per-library symbol lists.
+    syms_by_lib: dict = {};
+    for (sym, raw) in clib_symbol_lib.items() {
+        syms_by_lib.setdefault(raw, []).append(sym);
+    }
+    # Group clib paths by their resolved archive, unioning the symbols each
+    # contributes. Several paths can map to one archive (e.g. `liblzma.dylib`
+    # and `@rpath/liblzma.dylib`); resolving them in one pass per archive avoids
+    # dropping a second path's symbols. A path is only marked handled once its
+    # archive actually yields members, so an unused or empty import stays on the
+    # dynamic path instead of vanishing from both.
+    roots_by_archive: dict = {};
+    paths_by_archive: dict = {};
+    for clib_path in clib_paths {
+        arch_file = os.path.join(lib_dir, _clib_to_archive_name(clib_path));
+        if not os.path.isfile(arch_file) {
+            continue;  # not a bundled floor -> leave as a dylib dependency
+        }
+        paths_by_archive.setdefault(arch_file, []).append(clib_path);
+        for s in syms_by_lib.get(clib_path, []) {
+            # Mach-O symbols carry a leading underscore.
+            roots_by_archive.setdefault(arch_file, []).append("_" + s);
+        }
+    }
+    for (arch_file, roots) in roots_by_archive.items() {
+        if not roots {
+            continue;
+        }
+        with open(arch_file, "rb") as _f {
+            data = _f.read();
+        }
+        members = select_ar_members(data, roots);
+        if not members {
+            continue;
+        }
+        for m in members {
+            member_bytes.append(m.data);
+        }
+        for p in paths_by_archive.get(arch_file, []) {
+            handled.add(p);
+        }
+    }
+    return (member_bytes, handled);
 }

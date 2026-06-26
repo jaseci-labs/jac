@@ -1051,10 +1051,21 @@ impl PyastBuildPass.proc_match_mapping(nd: py_ast.MatchMapping) -> uni.MatchMapp
         if isinstance(i, uni.MatchPattern)
     ];
     for i in range(len(valid_keys)) {
+        colon_token = uni.Token(
+            orig_src=self.orig_src,
+            name=Tok.COLON,
+            value=":",
+            line=0,
+            end_line=0,
+            col_start=0,
+            col_end=0,
+            pos_start=0,
+            pos_end=0
+        );
         kv_pair = uni.MatchKVPair(
             key=valid_keys[i],
             value=valid_patterns[i],
-            kid=[valid_keys[i], valid_patterns[i]]
+            kid=[valid_keys[i], colon_token, valid_patterns[i]]
         );
         values.append(kv_pair);
     }
@@ -1106,35 +1117,46 @@ impl PyastBuildPass.proc_match_class(nd: py_ast.MatchClass) -> uni.MatchArch {
         patterns_list = None;
     }
     if len(nd.kwd_patterns) {
-        names: list[uni.Name] = [];
         kv_pairs: list[uni.MatchKVPair] = [];
-        for kwd_attrs in nd.kwd_attrs {
-            names.append(
-                uni.Name(
-                    orig_src=self.orig_src,
-                    name=Tok.NAME,
-                    value=kwd_attrs,
-                    line=nd.lineno,
-                    end_line=nd.end_lineno or nd.lineno,
-                    col_start=nd.col_offset,
-                    col_end=(nd.col_offset + len(kwd_attrs)),
-                    pos_start=0,
-                    pos_end=0
-                )
-            );
-        }
+        names: list[uni.Name] = [];
+        valid_kwd_patterns: list[uni.MatchPattern] = [];
         kwd_patterns = [self.convert(i) for i in nd.kwd_patterns];
-        valid_kwd_patterns = [
-            i
-            for i in kwd_patterns
-            if isinstance(i, uni.MatchPattern)
-        ];
-        for i in range(len(kwd_patterns)) {
+        for i in range(len(nd.kwd_attrs)) {
+            kwd_attrs = nd.kwd_attrs[i];
+            if isinstance(kwd_patterns[i], uni.MatchPattern) {
+                names.append(
+                    uni.Name(
+                        orig_src=self.orig_src,
+                        name=Tok.NAME,
+                        value=kwd_attrs,
+                        line=nd.lineno,
+                        end_line=nd.end_lineno or nd.lineno,
+                        col_start=nd.col_offset,
+                        col_end=(nd.col_offset + len(kwd_attrs)),
+                        pos_start=0,
+                        pos_end=0
+                    )
+                );
+                valid_kwd_patterns.append(kwd_patterns[i]);
+            }
+        }
+        for i in range(len(valid_kwd_patterns)) {
+            eq_token = uni.Token(
+                orig_src=self.orig_src,
+                name=Tok.EQ,
+                value="=",
+                line=0,
+                end_line=0,
+                col_start=0,
+                col_end=0,
+                pos_start=0,
+                pos_end=0
+            );
             kv_pairs.append(
                 uni.MatchKVPair(
                     key=names[i],
                     value=valid_kwd_patterns[i],
-                    kid=[names[i], valid_kwd_patterns[i]]
+                    kid=[names[i], eq_token, valid_kwd_patterns[i]]
                 )
             );
         }

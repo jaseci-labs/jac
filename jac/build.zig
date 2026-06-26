@@ -117,9 +117,9 @@ pub fn build(b: *std.Build) void {
     }
 
     // Standalone: fetch the pinned LLVM subset the jacllvm shim needs into
-    // .llvm-build/ (one-time, ~84 MB range-fetched from the llvm-slice zip; set
-    // JAC_LLVM_FULL_TARBALL=1 for the full upstream .tar.xz). After this, a plain
-    // `zig build` picks it up via llvmCacheDir and ships the wheel-free binary.
+    // .llvm-build/ (one-time, ~84 MB range-fetched from the llvm-slice zip). After
+    // this, a plain `zig build` picks it up via llvmCacheDir and ships the
+    // wheel-free binary.
     {
         const fetch_llvm = b.addRunArtifact(tool);
         fetch_llvm.addArgs(&.{ "fetch-llvm", b.pathFromRoot(".llvm-build") });
@@ -441,7 +441,7 @@ fn macosShim(
     // native code at link time via libLTO. Apple's bundled libLTO tracks Xcode and
     // is too old on the CI runners ("Invalid summary version 12, should be in
     // [1-10]" -> segfault), so point ld64 at the release's OWN libLTO.dylib (kept
-    // by payload.zig extractLlvmSubset) -- it matches the bitcode it produced.
+    // by payload.zig fetchLlvmSlice) -- it matches the bitcode it produced.
     // This is link-time only; the output dylib gains no libLTO runtime dep.
     //
     // The path MUST be absolute: ld64 silently falls back to its default libLTO

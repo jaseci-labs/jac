@@ -466,6 +466,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _list_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     # Native struct name from a checked instance type (handles T | None).
     def _struct_name_of(expr: (uni.UniNode | None)) -> (str | None);
+    # Name of the registered native struct a value points to (StructName*),
+    # or None (#6707, #6708). Identifies a struct-array base for buf[i].
+    def _struct_ptr_pointee_name(val: ir.Value) -> (str | None);
+    # Element StructName* for buf[i] on a struct array (#6707, #6708): sext(idx)
+    # -> i64, then a single-index GEP that advances one whole struct (array
+    # semantics). Shared by the read (expr) and write (stmt) paths; the returned
+    # element pointer aliases the buffer (not a copy).
+    def _struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.Value;
     # Lowered LLVM type of a checked list type's element.
     def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     # Lowered LLVM element type of a checked Iterator[T] expression (#6403).

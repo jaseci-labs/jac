@@ -38,7 +38,6 @@ const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const flate = std.compress.flate;
 const zstd = std.compress.zstd;
-const xz = std.compress.xz;
 const Dir = Io.Dir;
 const runtime = @import("runtime.zig");
 
@@ -62,28 +61,23 @@ const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", mkpayload, @"
 
 // LLVM release whose static archives the LLVMPY_* shim (jac/native) links
 // against. Must match the version the shim source (llvmlite 0.48.0rc1) targets.
-const LLVM_TAG = "llvmorg-22.1.8";
 const LLVM_VER = "22.1.8";
-const LLVM_BASE = "https://github.com/llvm/llvm-project/releases/download";
 
 // jaseci-labs/llvm-slice repackages the official LLVM release into a per-member,
 // HTTP-range-fetchable zip. fetchLlvmSlice pulls only the ~84 MB the shim needs
 // (lib/libLLVM*.a + include/llvm[-c], +macOS lib/libLTO.dylib) out of the ~970 MB
 // "dev" zip -- skipping the slow xz tarball download+decompress entirely. The
 // pinned `manifest_sha256` anchors a hash chain (verified manifest -> per-archive
-// sha256), preserving the tarball path's "no swapped asset slips through" guarantee
-// for the archives that get linked into the shipped shim.
+// sha256), so no swapped asset slips into the archives linked into the shipped shim.
 const SLICE_BASE = "https://github.com/jaseci-labs/llvm-slice/releases/download";
 const SLICE_TAG = "v" ++ LLVM_VER;
 
-// The release is selected per host. `dirname` is the tarball's top-level dir (also
-// the -Dllvm-dir basename in build.zig llvmCacheDir -- keep in sync). `sha256` is
-// the upstream .tar.xz digest, used only by the JAC_LLVM_FULL_TARBALL fallback.
-// `triple`/`manifest_sha256`/`zip_size` drive the default slice fetch. Add a row
-// to support another host platform.
+// The release is selected per host. `dirname` is the release's top-level dir (also
+// the -Dllvm-dir basename in build.zig llvmCacheDir -- keep in sync).
+// `triple`/`manifest_sha256`/`zip_size` drive the slice fetch. Add a row to
+// support another host platform.
 const LlvmRelease = struct {
     dirname: []const u8,
-    sha256: []const u8,
     triple: []const u8,
     manifest_sha256: []const u8,
     zip_size: u64,
@@ -93,14 +87,12 @@ fn llvmRelease() ?LlvmRelease {
         .linux => switch (builtin.cpu.arch) {
             .x86_64 => .{
                 .dirname = "LLVM-22.1.8-Linux-X64",
-                .sha256 = "df0e1ecf16caf3489a272a5eea4eec9b0d82878f6477fa309504f918a0006384",
                 .triple = "x86_64-linux",
                 .manifest_sha256 = "353ec23280b6453595714bd4db3fa3339fdcec96c8fb0ccfe4f8fa4de455b64a",
                 .zip_size = 970350875,
             },
             .aarch64 => .{
                 .dirname = "LLVM-22.1.8-Linux-ARM64",
-                .sha256 = "805efad2bb91cb4967fa569e0881d10c0f69c04461cf671cccbae19f547acc34",
                 .triple = "aarch64-linux",
                 .manifest_sha256 = "b1aae9c16de5feff6fd4441f0bf32671b27c6dda98382ee389d305db6351e598",
                 .zip_size = 932506999,
@@ -110,7 +102,6 @@ fn llvmRelease() ?LlvmRelease {
         .macos => switch (builtin.cpu.arch) {
             .aarch64 => .{
                 .dirname = "LLVM-22.1.8-macOS-ARM64",
-                .sha256 = "f260f4f7c0d430828a81ae8a3826a1d63fc0963ec2459489308cc23b1f7eab4f",
                 .triple = "aarch64-apple-darwin",
                 .manifest_sha256 = "541721f3501de4bd4f19b0319d857b7d51651856b26fa8f600ad317edb8ea441",
                 .zip_size = 743879473,
@@ -152,7 +143,7 @@ pub fn main(init: std.process.Init) !void {
         },
         .@"fetch-llvm" => {
             if (n < 3) die("usage: payload fetch-llvm <dest-dir>", .{});
-            try fetchLlvm(io, gpa, a, init.environ_map, argv[2]);
+            try fetchLlvm(io, gpa, a, argv[2]);
         },
         .@"fetch-typeshed" => {
             if (n < 3) die("usage: payload fetch-typeshed <repo-root>", .{});
@@ -253,11 +244,10 @@ fn fetchPbs(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []co
 
 /// fetch-llvm: materialize the LLVM headers + static archives the LLVMPY_* shim
 /// links, into <dest>/LLVM-...; build.zig points -Dllvm-dir there. Idempotent
-/// (skips when the marker archive is already present). The default path is
-/// fetchLlvmSlice -- range-fetch only the ~84 MB subset the shim needs from the
-/// llvm-slice repackaged zip (no xz, no clang/tools). Set JAC_LLVM_FULL_TARBALL=1
-/// (or JAC_LLVM_TARBALL=<path>) to use the full ~1 GB upstream .tar.xz instead.
-fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map, dest: []const u8) !void {
+/// (skips when the marker archive is already present). fetchLlvmSlice range-fetches
+/// only the ~84 MB subset the shim needs from the llvm-slice repackaged zip (no xz,
+/// no clang/tools).
+fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, dest: []const u8) !void {
     const rel = llvmRelease() orelse
         die("fetch-llvm: no pinned LLVM release for this host ({s}-{s}); add a row to llvmRelease().", .{ @tagName(builtin.cpu.arch), @tagName(builtin.os.tag) });
     // Presence marker / success check. On macOS the shim link needs the release's
@@ -271,95 +261,10 @@ fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map
     }
     try Dir.cwd().createDirPath(io, dest);
 
-    if (env.get("JAC_LLVM_FULL_TARBALL") != null or env.get("JAC_LLVM_TARBALL") != null) {
-        try fetchLlvmTarball(io, gpa, a, env, dest, rel, marker);
-    } else {
-        try fetchLlvmSlice(io, gpa, a, dest, rel);
-    }
+    try fetchLlvmSlice(io, gpa, a, dest, rel);
 
     if (!fileExists(io, marker)) die("fetch-llvm: fetch produced no {s}", .{marker_lib});
     log("fetch-llvm: ready at {s}/{s}", .{ dest, rel.dirname });
-}
-
-/// Full-tarball fallback (JAC_LLVM_FULL_TARBALL / JAC_LLVM_TARBALL): download the
-/// upstream .tar.xz, sha256-verify the whole asset, xz-extract the include/ +
-/// libLLVM*.a (+macOS libLTO) subset. For offline/air-gapped builds, or if the
-/// slice repo is unavailable.
-fn fetchLlvmTarball(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map, dest: []const u8, rel: LlvmRelease, marker: []const u8) !void {
-    const asset = try std.fmt.allocPrint(a, "{s}.tar.xz", .{rel.dirname});
-    const url = try std.fmt.allocPrint(a, "{s}/{s}/{s}", .{ LLVM_BASE, LLVM_TAG, asset });
-    // JAC_LLVM_TARBALL points at a pre-downloaded release (offline/CI/air-gapped).
-    const tarxz = if (env.get("JAC_LLVM_TARBALL")) |path| blk: {
-        log("fetch-llvm: using local tarball {s}", .{path});
-        break :blk try Dir.cwd().readFileAlloc(io, path, gpa, .unlimited);
-    } else blk: {
-        log("fetch-llvm: downloading {s} (~1 GB, one-time)", .{asset});
-        break :blk try httpGetAlloc(io, gpa, url);
-    };
-    defer gpa.free(tarxz);
-
-    // The static archives become host LLVM linked into the shipped shim, so a
-    // swapped/MITM'd asset must not slip through.
-    const actual = sha256Hex(tarxz);
-    if (!std.mem.eql(u8, &actual, rel.sha256))
-        die("fetch-llvm: checksum mismatch for {s}\n  expected {s}\n  actual   {s}", .{ asset, rel.sha256, &actual });
-
-    var ddir = try Dir.cwd().openDir(io, dest, .{});
-    defer ddir.close(io);
-    var src = Io.Reader.fixed(tarxz);
-    const buf = try gpa.alloc(u8, 1 << 20);
-    var dx = xz.Decompress.init(&src, gpa, buf) catch |err|
-        die("fetch-llvm: xz init failed: {s}", .{@errorName(err)});
-    // xz.Decompress took ownership of `buf` (and may resize it); free via deinit.
-    defer dx.deinit();
-    // The xz/tar stream can report a benign tail error (trailing padding/index)
-    // after every kept entry is written, so judge success by the marker.
-    extractLlvmSubset(io, ddir, &dx.reader) catch |err| {
-        if (!fileExists(io, marker)) die("fetch-llvm: extract failed: {s}", .{@errorName(err)});
-        log("fetch-llvm: tolerated benign post-extract error: {s}", .{@errorName(err)});
-    };
-}
-
-/// Stream a decompressed LLVM release tar and write only the entries the shim
-/// needs -- `*/include/**` headers, `*/lib/libLLVM*.a` static archives, and
-/// `*/lib/libLTO.dylib` (the macOS shim link lowers the release's ThinLTO bitcode
-/// archives to native code through this libLTO; see build.zig macosShim, #6938) --
-/// skipping everything else (bin/ clang+tools, clang/LTO .a). Unkept entries are
-/// discarded by the iterator, so we never materialize the ~10 GB we drop.
-fn extractLlvmSubset(io: Io, dir: Dir, reader: *Io.Reader) !void {
-    var name_buf: [Dir.max_path_bytes]u8 = undefined;
-    var link_buf: [Dir.max_path_bytes]u8 = undefined;
-    var content_buf: [64 * 1024]u8 = undefined;
-    var discard_buf: [64 * 1024]u8 = undefined;
-    var discarding: Io.Writer.Discarding = .init(&discard_buf);
-    var it = std.tar.Iterator.init(reader, .{ .file_name_buffer = &name_buf, .link_name_buffer = &link_buf });
-    while (try it.next()) |file| {
-        const keep = file.kind == .file and
-            (std.mem.indexOf(u8, file.name, "/include/") != null or
-                (std.mem.indexOf(u8, file.name, "/lib/libLLVM") != null and std.mem.endsWith(u8, file.name, ".a")) or
-                std.mem.endsWith(u8, file.name, "/lib/libLTO.dylib"));
-        if (!keep) {
-            // Read+discard ANY unwanted content (file, hard link, ...) via a
-            // discarding writer. The iterator's own skip path calls
-            // reader.discard, which the xz decompressor doesn't implement
-            // (@panic("TODO")) in this Zig; streaming uses the read path instead.
-            if (file.size > 0) try it.streamRemaining(file, &discarding.writer);
-            continue;
-        }
-        // Overwrite rather than fail on an existing file, so re-extracting over a
-        // stale tree (e.g. an older cache that predates keeping libLTO.dylib) is
-        // idempotent instead of dying with PathAlreadyExists.
-        const fs_file = dir.createFile(io, file.name, .{}) catch |err| blk: {
-            if (err != error.FileNotFound) return err;
-            const parent = std.fs.path.dirname(file.name) orelse return err;
-            try dir.createDirPath(io, parent);
-            break :blk try dir.createFile(io, file.name, .{});
-        };
-        defer fs_file.close(io);
-        var fw = fs_file.writer(io, &content_buf);
-        try it.streamRemaining(file, &fw.interface);
-        try fw.interface.flush();
-    }
 }
 
 // ------------------------------------------------------ slice (range) fetch ---
@@ -427,9 +332,9 @@ fn inflateMember(gpa: Allocator, method: u16, data: []const u8) ![]u8 {
     return list.toOwnedSlice(gpa);
 }
 
-/// Default fetch path: range-fetch only the shim's subset from the llvm-slice zip.
+/// Range-fetch only the shim's subset from the llvm-slice zip.
 /// Writes into <dest>/<rel.dirname>/{include,lib} (the slice members carry no
-/// top-level dir, unlike the tarball, so we root them under rel.dirname).
+/// top-level dir, unlike the upstream tarball, so we root them under rel.dirname).
 fn fetchLlvmSlice(io: Io, gpa: Allocator, a: Allocator, dest: []const u8, rel: LlvmRelease) !void {
     const zip_url = try std.fmt.allocPrint(a, "{s}/{s}/llvm-{s}-{s}-dev.zip", .{ SLICE_BASE, SLICE_TAG, LLVM_VER, rel.triple });
     const man_url = try std.fmt.allocPrint(a, "{s}/{s}/llvm-{s}-{s}-manifest.json", .{ SLICE_BASE, SLICE_TAG, LLVM_VER, rel.triple });
