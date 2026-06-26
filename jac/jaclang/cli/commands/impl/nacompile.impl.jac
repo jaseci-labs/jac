@@ -479,6 +479,26 @@ impl nacompile(
             and ("/" in lib_path or "\\" in lib_path) {
                 _needed = os.path.basename(lib_path);
             }
+            # A bare ELF soname (no directory, no $ORIGIN/@loader_path token) is
+            # a system-search import such as `import from curl`. The backend
+            # emits the unversioned `libcurl.so`, but on a stock host only the
+            # runtime soname `libcurl.so.N` exists -- the bare name ships only
+            # with the library's `-dev` package, so the binary fails to load.
+            # Resolve it to the real soname, exactly as libc/libm are recorded
+            # as `libc.so.6` / `libm.so.6` below. Unresolved names fall back to
+            # the bare soname unchanged.
+            if (_needed == lib_path)
+            and _needed.endswith(".so")
+            and ("/" not in _needed)
+            and (not _needed.startswith("$"))
+            and (not _needed.startswith("@")) {
+                import from ctypes.util { find_library }
+                _stem = _needed[3:-3] if _needed.startswith("lib") else _needed[:-3];
+                _found = find_library(_stem);
+                if _found {
+                    _needed = os.path.basename(_found);
+                }
+            }
             if _needed not in needed_libs {
                 needed_libs.append(_needed);
             }
