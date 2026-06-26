@@ -10,7 +10,6 @@ import base64;
 import importlib.metadata;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
-import from jaclang.project.config { JacConfig }
 
 """Initialize a new Jac project."""
 impl create(
@@ -1396,51 +1395,9 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
     return 1;
 }
 
-"""Precompile the project to .jir through the bundled interpreter. Returns 0 on success."""
-def _precompile_project(config: JacConfig) -> int {
-    _jac_path = sys.modules.get("jaclang")?.__path__;
-    _jac_root: Path | None = None;
-    if _jac_path {
-        _jac_root = Path(str(_jac_path[0]));
-    }
-    if _jac_root is None {
-        console.error("Cannot locate jaclang package root for precompile script.");
-        return 1;
-    }
-    script_path = str(_jac_root / "utils" / "precompile_bytecode.jac");
-    if not Path(script_path).exists() {
-        console.error(f"Precompile script not found: {script_path}");
-        return 1;
-    }
-    project_root_str = str(config.project_root);
-    # The self-contained binary precompiles through its own bundled interpreter
-    # (`sys.executable` is pinned to this binary), producing .jir for the binary's
-    # own Python version. There is no system Python to build a venv around, and
-    # jaclang is not on PyPI to install. Wheels published this way carry .jir for
-    # the bundled version only; on a different host Python a consumer recompiles
-    # transparently on first import.
-    tag = f"cpython-3{sys.version_info.minor}";
-    console.print(
-        f"\n  Precompiling for {tag} (bundled interpreter)...", style="muted"
-    );
-    result = subprocess.run([sys.executable, "run", script_path, project_root_str]);
-    if result.returncode != 0 {
-        console.error(f"Precompilation failed for {tag}.");
-        return 1;
-    }
-    console.print(f"  ✔ {tag}", style="success");
-    return 0;
-}
-
 """Build a wheel for `jac bundle`; returns 0 on success."""
-def _bundle_wheel(config: any, output: str, precompile: bool) -> int {
+def _bundle_wheel(config: any, output: str) -> int {
     import from jaclang.publish.builder { WheelBuilder }
-
-    if precompile {
-        if _precompile_project(config) != 0 {
-            return 1;
-        }
-    }
 
     out_dir = Path(output);
     out_dir.mkdir(parents=True, exist_ok=True);
@@ -1531,9 +1488,7 @@ def _bundle_npm_runtime(output: str, framework: str = "") -> int {
     return 0;
 }
 
-impl bundle(
-    output: str = "dist", target: str = "wheel", precompile: bool = False
-) -> int {
+impl bundle(output: str = "dist", target: str = "wheel") -> int {
     import from jaclang.project.config { get_config }
 
     # The runtime package is a standalone artifact and needs no project config.
@@ -1569,7 +1524,7 @@ impl bundle(
     );
 
     if target in ("wheel", "all") {
-        if _bundle_wheel(config, output, precompile) != 0 {
+        if _bundle_wheel(config, output) != 0 {
             return 1;
         }
     }

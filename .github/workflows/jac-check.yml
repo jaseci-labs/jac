@@ -21,6 +21,32 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+          # Full history so we can diff a PR against its merge-base on main.
+          fetch-depth: 0
+
+      # On pull_request, scope the format/check steps to the .jac files actually
+      # changed in the PR (vs the merge-base on the base branch). On push to main
+      # or manual dispatch there is no changelist, so fall back to the whole repo.
+      - name: Determine changed .jac files
+        id: changes
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+            echo "Full-repo mode (event: ${{ github.event_name }})."
+            exit 0
+          fi
+          git fetch --no-tags --quiet origin "${{ github.base_ref }}"
+          BASE="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
+          git diff --name-only --diff-filter=ACMR "$BASE" HEAD -- '*.jac' > changed-jac.txt || true
+          echo "mode=scoped" >> "$GITHUB_OUTPUT"
+          if [ -s changed-jac.txt ]; then
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "any=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Changed .jac files in this PR:"
+          cat changed-jac.txt || true
 
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac
@@ -35,7 +61,25 @@ jobs:
 
       - name: Run jac format (check formatting)
         run: |
-          find . -type f -name "*.jac" ! -path "*/fixtures/*" ! -path "./scripts/*" ! -name "*_err.jac" ! -name "*_syntax_err.jac" -print0 | xargs -0 --no-run-if-empty jac format --check --lintfix
+          set -euo pipefail
+          if [ "${{ steps.changes.outputs.mode }}" = "scoped" ]; then
+            if [ "${{ steps.changes.outputs.any }}" != "true" ]; then
+              echo "No .jac files changed in this PR; skipping format check."
+              exit 0
+            fi
+            # Mirror the full-repo find exclusions against the changed list:
+            # skip fixtures, top-level scripts/, native llvm passes, and *_err.jac.
+            # (|| true: grep exits 1 when every changed file is excluded.)
+            FILES="$(grep -vE '(/fixtures/|^scripts/|/passes/native/llvm/|_err\.jac$)' changed-jac.txt || true)"
+            if [ -z "$FILES" ]; then
+              echo "No formattable .jac files changed (all excluded); skipping."
+              exit 0
+            fi
+            printf '%s\n' "$FILES" | tr '\n' '\0' \
+              | xargs -0 --no-run-if-empty jac format --check --lintfix
+          else
+            find . -type f -name "*.jac" ! -path "*/fixtures/*" ! -path "./scripts/*" ! -path "*/passes/native/llvm/*" ! -name "*_err.jac" ! -name "*_syntax_err.jac" -print0 | xargs -0 --no-run-if-empty jac format --check --lintfix
+          fi
 
       - name: Verify jir_registry.jac is up to date
         run: |
@@ -43,7 +87,20 @@ jobs:
 
       - name: Run jac check (using .jacignore)
         run: |
-          jac check . --ignore tests checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ') --nowarn
+          set -euo pipefail
+          IGNORE_ARGS="tests checker_*.jac *_err.jac $(grep -v '^#' .jacignore | grep -v '^[[:space:]]*$' | tr '\n' ' ')"
+          if [ "${{ steps.changes.outputs.mode }}" = "scoped" ]; then
+            if [ "${{ steps.changes.outputs.any }}" != "true" ]; then
+              echo "No .jac files changed in this PR; skipping jac check."
+              exit 0
+            fi
+            # Pass the changed files explicitly but keep the same --ignore args:
+            # jac check applies them as substring matches on each error's mod_path,
+            # so ignored files are filtered out exactly as in the full-repo run.
+            jac check $(cat changed-jac.txt) --ignore $IGNORE_ARGS --nowarn
+          else
+            jac check . --ignore $IGNORE_ARGS --nowarn
+          fi
 
       - name: Error-code breakdown (label "type-error-report")
         if: contains(github.event.pull_request.labels.*.name, 'type-error-report')

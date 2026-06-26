@@ -186,6 +186,10 @@ memory.impl.jac
 model.impl.jac
 monitoring.jac
 native_accel.jac
+# Vendored py2jac llvmlite translation (#6925): ctypes-heavy, intentionally not
+# type-clean. jac format excludes it via the find in jac-check.yml; this skips it
+# for `jac check`. fnmatch path-pattern -> matches every file under the package.
+passes/native/llvm/*
 normalize_pass.impl.jac
 plugin.impl.jac
 primitives_native.jac

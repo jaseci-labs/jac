@@ -932,7 +932,8 @@ impl _parse_toml_data(
             lint=lint_config,
             suppress=check_data.get("suppress", []),
             suppress_categories=check_data.get("suppress_categories", []),
-            enforce_access=check_data.get("enforce_access", False)
+            enforce_access=check_data.get("enforce_access", False),
+            warn_native_seams=check_data.get("warn_native_seams", True)
         );
     }
     if "dot" in data {

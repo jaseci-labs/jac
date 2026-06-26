@@ -4,7 +4,7 @@ jac-desktop keeps TWO parallel plugin lists that cannot be unified:
 
   - `BUILTIN_PLUGINS` in plugin/registry.jac — the ordered list of plugin
     manifests (which plugins to construct + register, gated by config).
-  - `_plugin_mods` in targets/desktop/impl/native_desktop_target.impl.jac — the module
+  - `_plugin_mods` in targets/desktop/desktop_build.jac — the module
     load order for the embedded CPython importlib bootstrap, which runs
     *before* registry is importable.
 
@@ -17,7 +17,7 @@ ModuleNotFoundError when registry imports a plugin that was never loaded, or
 
 These tests pin that invariant so adding plugin #8 fails loudly if only one
 side is updated. See the long comments in registry.jac and
-native_desktop_target.impl.jac for why the two lists exist separately.
+desktop_build.jac for why the two lists exist separately.
 """
 import ast;
 import os;
@@ -43,9 +43,9 @@ def _pkg_root -> Path {
     return pkg;
 }
 
-"""Path to native_desktop_target.impl.jac — the file that owns _plugin_mods."""
+"""Path to desktop_build.jac — the file that owns _plugin_mods."""
 def _impl_path -> Path {
-    return _pkg_root() / "impl" / "native_desktop_target.impl.jac";
+    return _pkg_root() / "desktop_build.jac";
 }
 
 """Path to the plugin source directory (where each module's .jac file lives)."""
@@ -55,7 +55,7 @@ def _plugin_src_dir -> Path {
 
 """Extract the `_plugin_mods` literal list from the impl source.
 
-`_plugin_mods` is a local variable inside `_generate_host_source`, so it cannot
+`_plugin_mods` is a local variable inside `_plugin_bootstrap_py`, so it cannot
 be imported — we parse the source instead. `ast.literal_eval` is safe because
 the list contains only string literals. Returns the list of module names in
 load order."""
@@ -63,7 +63,7 @@ def _extract_plugin_mods -> list[str] {
     src = _impl_path().read_text();
     marker = "_plugin_mods = [";
     start = src.find(marker);
-    assert start != -1 , "_plugin_mods list not found in native_desktop_target.impl.jac";
+    assert start != -1 , "_plugin_mods list not found in desktop_build.jac";
     bracket = src.find("[", start);
     # The list is the first ']'-terminated block after the opening bracket.
     end_sep = "];";
@@ -121,7 +121,7 @@ test "_plugin_mods built_in.* entries match BUILTIN_PLUGINS modules" {
             ];
             assert missing_in_bootstrap == [] , (
                 "registry.jac BUILTIN_PLUGINS has plugin modules with no matching "
-                "entry in _plugin_mods (native_desktop_target.impl.jac). The "
+                "entry in _plugin_mods (desktop_build.jac). The "
                 "embedded CPython bootstrap will NOT load them, so "
                 "bootstrap_plugins() crashes with ModuleNotFoundError. Add each "
                 "to _plugin_mods (before 'registry'): " + ", ".join(
@@ -129,7 +129,7 @@ test "_plugin_mods built_in.* entries match BUILTIN_PLUGINS modules" {
                 )
             );
             assert missing_in_registry == [] , (
-                "_plugin_mods (native_desktop_target.impl.jac) loads built_in.* "
+                "_plugin_mods (desktop_build.jac) loads built_in.* "
                 "modules that are NOT in BUILTIN_PLUGINS (registry.jac). They get "
                 "imported but never registered. Remove them from _plugin_mods or "
                 "add them to BUILTIN_PLUGINS: " + ", ".join(missing_in_registry)

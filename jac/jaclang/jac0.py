@@ -1079,6 +1079,9 @@ class Parser:
             if v == "def" or v == "can":
                 return self._parse_funcdef([])
             if v == "static":
+                if self._peek(1).type == TT.NAME and self._peek(1).value == "has":
+                    self._advance()  # consume "static"
+                    return self._parse_has()
                 return self._parse_funcdef([])
             if v == "async":
                 nxt = self._peek(1)
@@ -1290,8 +1293,15 @@ class Parser:
             tok = self._peek()
             if tok.type == TT.NAME and not tok.backtick:
                 v = tok.value
-                if v in ("def", "static", "async", "can"):
+                if v in ("def", "async", "can"):
                     body.append(self._parse_funcdef([]))
+                    continue
+                if v == "static":
+                    if self._peek(1).type == TT.NAME and self._peek(1).value == "has":
+                        self._advance()  # consume "static"
+                        body.append(self._parse_has())
+                    else:
+                        body.append(self._parse_funcdef([]))
                     continue
                 if v == "has":
                     body.append(self._parse_has())

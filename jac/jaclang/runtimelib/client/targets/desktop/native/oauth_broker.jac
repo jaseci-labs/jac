@@ -39,6 +39,7 @@ import hmac;
 import http.server;
 import json;
 import os;
+import queue;
 import secrets;
 import time;
 import webbrowser;
@@ -218,7 +219,9 @@ def make_handler(
     directory: str,
     tok_store: SessionStore,
     opener: Callable = webbrowser.open,
-    prefix: str = DEFAULT_PREFIX
+    prefix: str = DEFAULT_PREFIX,
+    dispatch: Callable | None = None,
+    events: object | None = None
 ) -> type {
     # Per-broker pending-flow store. Shared across all requests this server
     # handles (the same loopback process serves both the UI and the system
@@ -239,6 +242,17 @@ def make_handler(
         # ---- small response helpers ----
         def _json(self: _BrokerHandler, body: object, status: int = 200) {
             payload = json.dumps(body).encode("utf-8");
+            self.send_response(status);
+            self.send_header("Content-Type", "application/json");
+            self.send_header("Content-Length", str(len(payload)));
+            self.end_headers();
+            self.wfile.write(payload);
+        }
+
+        # Write an already-serialized JSON string verbatim (PluginHost.dispatch
+        # returns its own JSON envelope; re-encoding would double-wrap it).
+        def _raw_json(self: _BrokerHandler, raw: str, status: int = 200) {
+            payload = raw.encode("utf-8");
             self.send_response(status);
             self.send_header("Content-Type", "application/json");
             self.send_header("Content-Length", str(len(payload)));
@@ -336,7 +350,61 @@ def make_handler(
                 self._oauth_callback(state);
                 return;
             }
+            if route == prefix + "/events" {
+                self._sse_events();
+                return;
+            }
             super.do_GET();
+        }
+
+        # ---- server-sent events (host->JS push for the CEF target) ----
+        # The page's EventSource subscribes here; the plugin host fans emit()/
+        # eval_js() out to one queue.Queue per connection. Requires a threaded
+        # server (the stream blocks for the connection's lifetime) -- the CEF
+        # host uses ThreadingTCPServer. Loopback-pinned by _reject_foreign_host
+        # above, same as every other route.
+        def _sse_events(self: _BrokerHandler) -> None {
+            if events is None {
+                self.send_error(404);
+                return;
+            }
+            # Each stream pins a server thread for its lifetime; refuse once the
+            # subscriber pool is full so connections can't exhaust the host.
+            q = events.subscribe();
+            if q is None {
+                self.send_error(503);
+                return;
+            }
+            self.send_response(200);
+            self.send_header("Content-Type", "text/event-stream");
+            self.send_header("Cache-Control", "no-cache");
+            self.send_header("Connection", "keep-alive");
+            # Defeat proxy/output buffering so events flush immediately.
+            self.send_header("X-Accel-Buffering", "no");
+            self.end_headers();
+            try {
+                self.wfile.write(b": connected\n\n");
+                self.wfile.flush();
+                while True {
+                    try {
+                        msg = q.get(timeout=15);
+                    } except queue.Empty {
+                        # Periodic comment doubles as a dead-client probe.
+                        self.wfile.write(b": keepalive\n\n");
+                        self.wfile.flush();
+                        continue;
+                    }
+                    if msg is None {
+                        break;  # shutdown sentinel
+                    }
+                    self.wfile.write(("data: " + msg + "\n\n").encode("utf-8"));
+                    self.wfile.flush();
+                }
+            } except (BrokenPipeError, ConnectionResetError, OSError) {
+            # client disconnected; fall through to unsubscribe
+            } finally {
+                events.unsubscribe(q);
+            }
         }
 
         def do_POST(self: _BrokerHandler) -> None {
@@ -348,6 +416,33 @@ def make_handler(
                 token = str(self._read_json_body().get("token", "") or "");
                 tok_store.write(token);
                 self._json({"ok": True});
+                return;
+            }
+            if route == prefix + "/invoke" {
+                # JS->plugin bridge for the CEF target: the page's __jac_invoke
+                # fetch shim POSTs the wire array [plugin, command, args] here and
+                # we hand it straight to the in-process plugin host. dispatch()
+                # owns parsing + the {ok/error} envelope and returns a JSON
+                # string, so we echo it verbatim. _reject_foreign_host() above
+                # already pins this to loopback, same as /session.
+                if dispatch is None {
+                    self.send_error(404);
+                    return;
+                }
+                try {
+                    n = int(self.headers.get("Content-Length", 0) or 0);
+                } except (TypeError, ValueError) {
+                    n = 0;
+                }
+                # Loopback-pinned, but still cap the body so a runaway/hostile
+                # page can't drive the host OOM with one giant POST.
+                if n > 1048576 {  # 1 MiB
+                    self.send_error(413);
+                    return;
+                }
+                raw = self.rfile.read(n) if n > 0 else b"";
+                body = raw.decode("utf-8") if raw else "[]";
+                self._raw_json(dispatch(body));
                 return;
             }
             self.send_error(404);

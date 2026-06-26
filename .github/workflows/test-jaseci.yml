@@ -237,6 +237,44 @@ jobs:
   # blocking binary gate (test_pe_linker.jac); restoring a real-Windows-loader
   # check needs a Windows binary build, tracked as a follow-up.
 
+  test-cef-build:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up jac (build the binary)
+      uses: ./.github/actions/setup-jac
+
+    - name: Build dispatch shim and subprocess binary
+      working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
+      run: jac run build.jac
+
+    - name: Verify shared-object exports
+      working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
+      run: |
+        nm -D libcef_dispatch.so | grep -q cef_dispatch_startup
+        nm -D libcef_dispatch.so | grep -q cef_dispatch_execute_process
+        nm -D libcef_dispatch.so | grep -q cef_platform_bootstrap
+
+    - name: Check RPATH
+      working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
+      run: |
+        # The Jac native linker emits DT_RUNPATH (readelf prints "RUNPATH"),
+        # not the legacy DT_RPATH — so match either.
+        readelf -d libcef_dispatch.so | grep -qE '(RUN)?PATH.*\$ORIGIN'
+
+    - name: ldd audit (no missing deps against libc + libcef stub)
+      working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
+      run: |
+        # With libcef.so absent, ldd will report it missing — that is expected.
+        # The audit checks that no *other* unexpected dep is missing.
+        # grep exits non-zero when it matches nothing (the expected/good case);
+        # the trailing `|| true` keeps `set -e` from aborting the step there.
+        MISSING=$(ldd libcef_dispatch.so 2>&1 | grep 'not found' | grep -v libcef || true)
+        [ -z "$MISSING" ] || (echo "Unexpected missing deps: $MISSING" && exit 1)
+
   test-mcp:
     needs: changes
     # Not a required check. Skip on PRs that touch neither jac core nor jac-mcp; always run on push/dispatch.

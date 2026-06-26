@@ -29,5 +29,5 @@ jobs:
 
       - name: Build and publish
         run: |
-          jac bundle --precompile
+          jac bundle
           twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}

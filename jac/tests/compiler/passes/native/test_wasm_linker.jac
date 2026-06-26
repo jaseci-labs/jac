@@ -30,7 +30,7 @@ import from jaclang.compiler.passes.native.wasm_linker {
     _rd_sleb,
     _u32le
 }
-import llvmlite.binding as llvm;
+import jaclang.compiler.passes.native.llvm.binding as llvm;
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "passes", "native", "fixtures"
@@ -57,7 +57,7 @@ def emit_wasm_object(fixture: str) -> bytes {
         mod = llvm.parse_assembly(str(ir.gen.llvm_ir));
         mod.verify();
         tm = llvm.Target.from_triple(WASM_TRIPLE).create_target_machine(opt=2);
-        pto = llvm.create_pipeline_tuning_options(speed_level=2, size_level=0);
+        pto = llvm.create_pipeline_tuning_options(speed_level=2);
         pb = llvm.create_pass_builder(tm, pto);
         pb.getModulePassManager().run(mod, pb);
         relobj = tm.emit_object(mod);
