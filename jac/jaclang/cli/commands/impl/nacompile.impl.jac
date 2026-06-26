@@ -3,7 +3,7 @@
 Compiles a .na.jac file to a standalone native binary:
 1. Compile .na.jac through Jac pipeline to get LLVM IR
 2. Inject main() (+ _start on Linux, _jac_win_start on Windows) as pure LLVM IR
-3. Emit object code via llvmlite
+3. Emit object code via the LLVMPY_* shim
 4. Link into executable via pure Python linker (ELF on Linux, Mach-O on macOS,
    PE/COFF .exe on Windows)
 """
@@ -98,7 +98,12 @@ def _inject_shared_init(
 ) -> tuple[str, list[str]] {
     init_calls: list[str] = [];
     # This module's own glob-init (NaIRGenPass always emits it when present).
-    if "@__jac_glob_init(" in llvm_ir_str {
+    # LLVM quotes the symbol ("define void @\"__jac_glob_init\"()") because the
+    # name is not a bare IR identifier, so check both the quoted and unquoted
+    # forms -- matching the transitive-source branch below. Checking only the
+    # unquoted form let `__jac_shared_init` be emitted empty, leaving global
+    # clib structs uninitialized (NULL) and segfaulting on first field access.
+    if ('@"__jac_glob_init"' in llvm_ir_str) or ("@__jac_glob_init(" in llvm_ir_str) {
         init_calls.append("  call void @__jac_glob_init()");
     }
     import from jaclang.jac0core.codeinfo { native_safe_sym }
@@ -377,7 +382,7 @@ impl nacompile(
     console.print("  LLVM IR generated successfully.");
 
     # Step 3: Initialize llvmlite
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
 
@@ -556,7 +561,7 @@ impl nacompile(
     # In --shared mode we must NOT internalize: the exported `:pub` symbols and
     # the RC wrappers have to survive as externally-visible definitions.
     if _opt_level > 0 {
-        pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level, size_level=0);
+        pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level);
         pb = llvm.create_pass_builder(target_machine, pto);
         opt_mpm = pb.getModulePassManager();
         if not shared {

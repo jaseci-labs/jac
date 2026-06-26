@@ -164,9 +164,7 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
             _opt_level = 0;
         }
         if _opt_level > 0 {
-            pto = llvm.create_pipeline_tuning_options(
-                speed_level=_opt_level, size_level=0
-            );
+            pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level);
             pb = llvm.create_pass_builder(target_machine, pto);
             opt_mpm = pb.getModulePassManager();
             opt_mpm.run(mod, pb);
@@ -472,6 +470,11 @@ impl NativeCompilePass._compile_and_link_native_imports(
     for binding in imports {
         work_queue.append((binding, base_dir));
     }
+    # Resolve the bundled native-stdlib root once: it is invariant for this
+    # compile, so hoisting it avoids a redundant os.path.isdir() probe per
+    # local-miss dep inside the loop below (issue #6940).
+    import from jaclang.jac0core.codeinfo { native_stdlib_root }
+    _bundled_stdlib_root = native_stdlib_root();
     queue_idx = 0;
     while queue_idx < len(work_queue) {
         (binding, cur_base_dir) = work_queue[queue_idx];
@@ -503,6 +506,25 @@ impl NativeCompilePass._compile_and_link_native_imports(
                 if os.path.exists(na_path) {
                     full_path = na_path;
                 }
+            }
+        }
+
+        # Bundled native stdlib fallback (issue #6940): a dep whose
+        # source_module names a shipped na_stdlib module lives outside the
+        # importing project's tree, so the relative joins above miss it.
+        # Re-root the same `<source>.na.jac` suffix at the bundled stdlib dir
+        # so the bundled module's object code is compiled and link_in'd exactly
+        # like a user dep. resolve_native_module already chose this module for
+        # the importer; this is the matching link-side lookup.
+        if (not os.path.exists(full_path)) and _bundled_stdlib_root is not None {
+            _bundled_rel = source_mod_path + ".jac"
+                if source_mod_path.endswith(".na")
+                else source_mod_path
+                    if source_mod_path.endswith(".jac")
+                    else source_mod_path + ".na.jac";
+            _bundled_cand = os.path.join(_bundled_stdlib_root, _bundled_rel);
+            if os.path.exists(_bundled_cand) {
+                full_path = _bundled_cand;
             }
         }
 

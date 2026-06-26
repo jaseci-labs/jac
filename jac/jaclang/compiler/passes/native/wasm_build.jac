@@ -12,14 +12,14 @@ import os;
 """Parse, optimise (opt2, no internalize so every defined fn stays exported),
 emit one relocatable wasm object, and link it into a module."""
 def emit_wasm_from_ir(llvm_ir_str: str, export_funcs: list = []) -> bytes {
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     import from jaclang.compiler.passes.native.wasm_linker { WasmLinker }
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
     mod = llvm.parse_assembly(llvm_ir_str);
     mod.verify();
     tm = llvm.Target.from_triple("wasm32-unknown-unknown").create_target_machine(opt=2);
-    pto = llvm.create_pipeline_tuning_options(speed_level=2, size_level=0);
+    pto = llvm.create_pipeline_tuning_options(speed_level=2);
     pb = llvm.create_pass_builder(tm, pto);
     pb.getModulePassManager().run(mod, pb);
     obj_bytes = tm.emit_object(mod);

@@ -39,8 +39,8 @@ jobs:
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac
 
-      - name: Install jac-scale[deploy] (jaclang is host-provided by the binary)
-        run: jac install -e jac-scale --extras deploy
+      - name: Install jac-scale[deploy] (global so the e2e app can import it)
+        run: jac install -e jac-scale --extras deploy --global
 
       - name: Set up microk8s
         run: |

@@ -688,6 +688,25 @@ test "py to jac" {
     assert '"""Print function."""' in stdout_value;
 }
 
+test "py to jac line continuation does not drop file" {
+    # #6928: implicit string concat joined by a `\` line-continuation used to
+    # leak the backslash into the emitted Jac, so py2jac exited 0 while writing
+    # empty stdout -- silently dropping the file in a batch port.
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+    try {
+        result = transform.py2jac(fixture_path("py2jac_line_continuation.py"));
+    } finally {
+        sys.stdout = old_stdout;
+    }
+    stdout_value = captured.getvalue();
+    assert result == 0 , f"py2jac should succeed, got exit {result}";
+    assert stdout_value.strip() , "py2jac must not emit empty output on success";
+    assert "\\\n" not in stdout_value , f"Stray line-continuation in:\n{stdout_value}";
+    assert '"hello " "world"' in stdout_value , f"Expected folded concat in:\n{stdout_value}";
+}
+
 test "lambda arg annotation" {
     captured = io.StringIO();
     old_stdout = sys.stdout;
@@ -1268,9 +1287,10 @@ test "jac create without name initializes current directory" {
     }
 }
 
-test "install editable resolves config from target package when outside project dir" {
-    import from unittest.mock { patch }
-
+test "install editable outside any project errors" {
+    # Editable installs land in the CURRENT project's .jac/venv, so they require a
+    # consuming project; running from a directory with no jac.toml must error
+    # rather than fall back to a binary-global/host install target.
     _tmpdir = tempfile.mkdtemp();
     original_cwd = os.getcwd();
     try {
@@ -1279,26 +1299,12 @@ test "install editable resolves config from target package when outside project 
         (pkg_dir / "jac.toml").write_text(
             '[project]\nname = "my-lib"\nversion = "0.1.0"\ndescription = "Test lib"\nentry-point = "main.jac"\n'
         );
-        # cwd has no jac.toml — install must not fall back to cwd
+        # cwd (_tmpdir) has no jac.toml of its own; clear any cached config from a
+        # prior test so discovery actually runs against this project-less cwd.
         os.chdir(_tmpdir);
-
-        captured_src_dir = [];
-        def fake_install_editable(self: object, src_dir: object, site_pkgs: object) {
-            captured_src_dir.append(src_dir);
-        }
-
-        with patch(
-            "jaclang.publish.builder.WheelBuilder.install_editable",
-            fake_install_editable
-        ) {
-            result = project.install(editable=[[str(pkg_dir)]]);
-        }
-
-        assert result == 0 , f"Expected success, got exit code {result}";
-        assert len(captured_src_dir) == 1 , "install_editable should be called once";
-        assert captured_src_dir[0] == pkg_dir , (
-            f"Expected src_dir={pkg_dir}, got {captured_src_dir[0]}"
-        );
+        _reset_config();
+        result = project.install(editable=[[str(pkg_dir)]]);
+        assert result == 1 , f"Expected error exit (no project), got {result}";
     } finally {
         _reset_config();
         os.chdir(original_cwd);
@@ -1360,6 +1366,10 @@ test "jac install -e accepts space-separated and repeated flag forms" {
         (pkg_c / "jac.toml").write_text(
             '[project]\nname = "pkg-c"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
         );
+        # The host project (cwd) receives the editable links in its .jac/venv.
+        (Path(_tmpdir) / "jac.toml").write_text(
+            '[project]\nname = "host"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
 
         # -e pkg_a pkg_b exercises space-separated; -e pkg_c exercises repeated flag
         process = subprocess.Popen(
@@ -1373,6 +1383,7 @@ test "jac install -e accepts space-separated and repeated flag forms" {
                 str(pkg_c),
                 "--dry-run"
             ],
+            cwd=_tmpdir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
@@ -1412,6 +1423,10 @@ test "jac install -e links all packages for space-separated and repeated flag fo
         (pkg_c / "jac.toml").write_text(
             '[project]\nname = "pkg-c"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
         );
+        # The host project (cwd) receives the editable links in its .jac/venv.
+        (Path(_tmpdir) / "jac.toml").write_text(
+            '[project]\nname = "host"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
         os.chdir(_tmpdir);
 
         linked: list = [];
@@ -1441,20 +1456,51 @@ test "jac install -e links all packages for space-separated and repeated flag fo
     }
 }
 
-test "jac install <pkg> routes package names through argparse" {
-    # Verifies CLI wiring: argparse maps positional args into packages,
-    # bypasses jac.toml, and --dry-run keeps it network/disk-free.
+test "jac install <pkg> routes package names to the project venv installer" {
+    # Verifies CLI wiring: positional args map into `packages` and are installed
+    # into the current project's venv. install_package is patched so the test
+    # touches neither the network nor a real venv.
+    import from unittest.mock { patch }
+
+    _tmpdir = tempfile.mkdtemp();
+    original_cwd = os.getcwd();
+    try {
+        (Path(_tmpdir) / "jac.toml").write_text(
+            '[project]\nname = "host"\nversion = "0.1.0"\ndescription = ""\nentry-point = "main.jac"\n'
+        );
+        os.chdir(_tmpdir);
+        captured: list = [];
+        def fake_install_package(self: object, specs: object) -> bool {
+            captured.append(specs);
+            return True;
+        }
+        with patch(
+            "jaclang.project.dependencies.DependencyInstaller.install_package",
+            fake_install_package
+        ) {
+            result = project.install(packages=["numpy", "pandas"]);
+        }
+        assert result == 0 , f"Expected exit 0, got {result}";
+        assert captured == [["numpy", "pandas"]] , f"unexpected specs routed: {captured}";
+    } finally {
+        _reset_config();
+        os.chdir(original_cwd);
+        shutil.rmtree(_tmpdir, ignore_errors=True);
+    }
+}
+
+test "jac install <pkg> outside a project errors" {
+    # `jac install <pkg>` targets the project venv, so it requires a project.
     with tempfile.TemporaryDirectory() as tmp {
         result = subprocess.run(
-            ["jac", "install", "numpy", "pandas", "--dry-run"],
+            ["jac", "install", "numpy", "--dry-run"],
             capture_output=True,
             text=True,
             cwd=str(tmp)
         );
         combined = result.stdout + result.stderr;
-        assert result.returncode == 0 , f"Expected exit 0:\n{combined}";
-        assert "No jac.toml found" not in combined;
-        assert "Dry run complete" in combined;
+        assert result.returncode == 1 , f"Expected exit 1 (no project):\n{combined}";
+        assert "No jac.toml found" in combined , f"Expected hint about missing project:\n{combined}";
     }
 }
 

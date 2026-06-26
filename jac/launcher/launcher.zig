@@ -5,13 +5,13 @@
 //! first run it materializes that payload into a versioned cache dir, then
 //! **dlopens** the bundled shared libpython and drives it in-process. Nothing
 //! Python is linked at build time -- the launcher links only libc/libdl, exactly
-//! the way jac-native loads LLVM/native code at runtime (llvmlite + ctypes).
+//! the way jac-native loads LLVM at runtime (the LLVMPY_* shim + ctypes).
 //! No system Python, uv, or pip is required at install or runtime.
 //!
 //! Payload layout (materialized to `<cache>/rt/<hash16>/`):
-//!     python/lib/libpython3.12.{dylib,so}   <- dlopened
-//!     python/lib/python3.12/                 <- stdlib (.pyc)
-//!     site/                                  <- jaclang + _jac_finder + llvmlite
+//!     python/lib/libpython3.14.{dylib,so}   <- dlopened
+//!     python/lib/python3.14/                 <- stdlib (.pyc)
+//!     site/                                  <- jaclang (+ the bundled LLVMPY_* shim)
 //!
 //! The pure-Zig materialization half (trailer parse, cache resolution,
 //! zstd+tar extract, GC) lives in `runtime.zig` and is unit-tested separately.
@@ -27,6 +27,11 @@ extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int
 // wchar_t* so we never need Python.h / CPython struct layouts.
 const Py_Initialize_t = *const fn () callconv(.c) void;
 const Py_DecodeLocale_t = *const fn (arg: [*:0]const u8, size: ?*usize) callconv(.c) ?*anyopaque;
+// Sets the program full path getpath uses to derive sys.prefix/sys.executable.
+// Pinned to *this* binary so getpath does not fall back to a PATH search for
+// `python3` (see hermeticity note at the call site). Legacy but stable on 3.x,
+// and consistent with the other pre-PyConfig init calls used here.
+const Py_SetProgramName_t = *const fn (name: ?*anyopaque) callconv(.c) void;
 const PySys_SetArgvEx_t = *const fn (argc: c_int, argv: ?[*]?*anyopaque, updatepath: c_int) callconv(.c) void;
 const PyMem_RawFree_t = *const fn (p: ?*anyopaque) callconv(.c) void;
 const PyRun_SimpleString_t = *const fn (cmd: [*:0]const u8) callconv(.c) c_int;
@@ -43,7 +48,7 @@ const Py_BytesMain_t = *const fn (argc: c_int, argv: [*c][*c]u8) callconv(.c) c_
 /// PATH search for `python3`, so `sys.executable` ends up pointing at a *foreign*
 /// interpreter (e.g. /bin/python3). Anything that re-spawns `sys.executable`
 /// then runs that foreign Python while inheriting our PYTHONHOME/PYTHONPATH ->
-/// it loads our bundled 3.12 stdlib with the wrong libpython and dies importing
+/// it loads our bundled 3.14 stdlib with the wrong libpython and dies importing
 /// builtin C-extensions (_decimal/_contextvars). That is exactly how pytest-xdist
 /// / execnet workers crash. Re-pointing it at this binary makes every re-spawn
 /// come back through worker mode (Py_BytesMain), which has the right interpreter.
@@ -59,9 +64,14 @@ const BOOT_SRC =
     "from jaclang.jac0core.cli_boot import start_cli\n" ++
     "start_cli()\n";
 
+/// Bundled CPython minor version. Must stay in lockstep with payload.zig
+/// (PBS_PY / py_ver) staging; it names the dlopened libpython and the
+/// lib-dynload path below. A single bump point for the embedded interpreter.
+const py_ver = "3.14";
+
 const lib_basename = switch (builtin.os.tag) {
-    .macos => "libpython3.12.dylib",
-    else => "libpython3.12.so",
+    .macos => "libpython" ++ py_ver ++ ".dylib",
+    else => "libpython" ++ py_ver ++ ".so",
 };
 
 fn die(comptime msg: []const u8) noreturn {
@@ -106,11 +116,12 @@ fn boot(rt: []const u8, exe_path: []const u8, init: std.process.Init) u8 {
     // that ship stdlib C-extensions as shared .so (e.g. linux-aarch64 noopt)
     // rather than compiled into libpython: in worker mode (Py_BytesMain) that dir
     // is otherwise not on sys.path even with PYTHONHOME set. (On the pinned
-    // linux-x86_64 pgo-full pbs nearly everything is *builtin* -- lib-dynload has
-    // only _crypt.so -- so it is mostly redundant there; the xdist worker crash
-    // that looked like a missing _decimal/_contextvars was actually a wrong
-    // sys.executable, fixed via JAC_EXECUTABLE below. See XDIST_LINUX_NOTES.md.)
-    const pythonpath = std.fmt.bufPrintZ(&ppbuf, "{s}/site:{s}/python/lib/python3.12/lib-dynload", .{ rt, rt }) catch die("path too long");
+    // linux-x86_64 pgo+lto-full pbs nearly everything is *builtin* -- lib-dynload
+    // carries only a few stdlib C-extensions -- so it is mostly redundant there;
+    // the xdist worker crash that looked like a missing _decimal/_contextvars was
+    // actually a wrong sys.executable, fixed via JAC_EXECUTABLE below. See
+    // XDIST_LINUX_NOTES.md.)
+    const pythonpath = std.fmt.bufPrintZ(&ppbuf, "{s}/site:{s}/python/lib/python" ++ py_ver ++ "/lib-dynload", .{ rt, rt }) catch die("path too long");
 
     // We own a private, hermetic interpreter: point it at our tree, force UTF-8,
     // never write bytecode (shipped stdlib is .pyc), ignore user site.
@@ -168,10 +179,22 @@ fn boot(rt: []const u8, exe_path: []const u8, init: std.process.Init) u8 {
 
     const Py_Initialize: Py_Initialize_t = sym(h, Py_Initialize_t, "Py_Initialize");
     const Py_DecodeLocale: Py_DecodeLocale_t = sym(h, Py_DecodeLocale_t, "Py_DecodeLocale");
+    const Py_SetProgramName: Py_SetProgramName_t = sym(h, Py_SetProgramName_t, "Py_SetProgramName");
     const PySys_SetArgvEx: PySys_SetArgvEx_t = sym(h, PySys_SetArgvEx_t, "PySys_SetArgvEx");
     const PyMem_RawFree: PyMem_RawFree_t = sym(h, PyMem_RawFree_t, "PyMem_RawFree");
     const PyRun_SimpleString: PyRun_SimpleString_t = sym(h, PyRun_SimpleString_t, "PyRun_SimpleString");
     const Py_FinalizeEx: Py_FinalizeEx_t = sym(h, Py_FinalizeEx_t, "Py_FinalizeEx");
+
+    // Hermeticity: pin the program name to this binary BEFORE init. Otherwise
+    // getpath, unable to recover the launcher's own path under embedding, searches
+    // PATH for `python3` -- and if an activated venv's bin is on PATH it adopts
+    // that venv's pyvenv.cfg, shifting sys.prefix (and thus site-packages) to a
+    // foreign environment. PYTHONHOME already pins base_prefix/stdlib, but only an
+    // explicit program name stops the venv-prefix takeover. Our binary has no
+    // adjacent pyvenv.cfg, so prefix stays the bundled runtime regardless of host.
+    // The decoded string is intentionally not freed -- CPython retains it.
+    const wexe = Py_DecodeLocale(exe_z.ptr, null) orelse die("failed to decode executable path");
+    Py_SetProgramName(wexe);
 
     Py_Initialize();
 

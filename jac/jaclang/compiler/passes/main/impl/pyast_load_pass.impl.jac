@@ -1840,6 +1840,13 @@ impl PyastBuildPass.proc_constant(nd: py_ast.Constant) -> uni.Literal {
                 raw_repr = repr(nd.value);
                 quote = "'" if raw_repr.startswith("'") else '"';
                 value = f"{quote}{raw_repr[1:-1]}{quote}";
+            } else {
+                # CPython folds implicitly-concatenated string literals into one
+                # constant. When the pieces were joined by a `\` line-continuation
+                # (e.g. `"a" \` <newline> `"b"`), the source segment carries that
+                # `\` *outside* any quote -- valid Python, but an unparsable stray
+                # backslash once emitted as Jac. Drop those (#6928).
+                value = self._strip_string_continuations(value);
             }
         } else {
             value = str(nd.value);
@@ -2863,6 +2870,16 @@ impl PyastBuildPass.proc_function_def(
     return ret;
 }
 
+"""Python 3.14 PEP 750 template strings (t-strings) have no Jac equivalent."""
+impl PyastBuildPass.proc_template_str(nd: py_ast.AST) -> uni.UniNode {
+    raise self.ice("Python 3.14 t-strings (PEP 750) are not supported in Jac");
+}
+
+"""A t-string interpolation field; unreachable unless a t-string is processed."""
+impl PyastBuildPass.proc_interpolation(nd: py_ast.AST) -> uni.UniNode {
+    raise self.ice("Python 3.14 t-string interpolations are not supported in Jac");
+}
+
 """
 Process python node.
 
@@ -3008,4 +3025,74 @@ impl PyastBuildPass._get_source_segment(nd: py_ast.AST) -> (str | None) {
     middle = lines[lineno + 1:end_lineno];
     result_lines = [first] + middle + [last];
     return ''.join(result_lines);
+}
+
+"""Strip Python backslash line-continuations sitting between concatenated string literals.
+
+A backslash directly followed by a newline is only legal Jac inside a string
+literal, so one left dangling outside a quote (as produced by implicit
+concatenation joined with a backslash) emits an unparsable stray backslash. Such
+backslashes are removed while the newline is kept, leaving valid adjacent-literal
+concatenation. Backslash-newlines inside a literal (line continuations within a
+single string) are preserved verbatim. See #6928.
+"""
+impl PyastBuildPass._strip_string_continuations(seg: str) -> str {
+    # Only multi-line segments that actually contain a backslash can carry one.
+    if not ('\\' in seg and '\n' in seg) {
+        return seg;
+    }
+    out: list[str] = [];
+    i = 0;
+    n = len(seg);
+    quote = '';  # '' => currently outside any string literal
+    triple = False;
+    while (i < n) {
+        c = seg[i];
+        if quote {
+            # Inside a literal: copy verbatim, letting `\` escape the next char so
+            # an escaped quote never looks like a terminator.
+            if (c == '\\') {
+                out.append(seg[i:i + 2]);
+                i += 2;
+                continue;
+            }
+            if (triple and seg[i:i + 3] == (quote * 3)) {
+                out.append(quote * 3);
+                quote = '';
+                i += 3;
+                continue;
+            }
+            if ((not triple) and c == quote) {
+                out.append(c);
+                quote = '';
+                i += 1;
+                continue;
+            }
+            out.append(c);
+            i += 1;
+            continue;
+        }
+        # Outside any literal: a `\` before a newline is a stray continuation.
+        if (c == '\\' and (i + 1) < n and seg[i + 1] in '\r\n') {
+            i += 1;  # drop the backslash, keep the newline as a separator
+            continue;
+        }
+        if (c == '"' or c == "'") {
+            if (seg[i:i + 3] == (c * 3)) {
+                triple = True;
+                quote = c;
+                out.append(c * 3);
+                i += 3;
+                continue;
+            }
+            triple = False;
+            quote = c;
+            out.append(c);
+            i += 1;
+            continue;
+        }
+        out.append(c);
+        i += 1;
+    }
+    return ''.join(out);
 }

@@ -435,7 +435,7 @@ impl NaIRGenPass._osp_emit_h2i_fn(
 ) -> ir.Function {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    fn = ir.Function(self.llvm_module, ir.FunctionType(i64, [i64]), name="__osp_h2i");
+    fn = self._define_function("__osp_h2i", ir.FunctionType(i64, [i64]));
     fn.linkage = "internal";
     fn.args[0].name = "tag";
     _saved = self._builder;
@@ -488,7 +488,7 @@ impl NaIRGenPass._osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> d
     out: dict = {};
     # tag_of(JacVal h) -> i64: read the instance __type_tag at byte offset 8
     # (field 0 is the reserved vtable slot, field 1 is the i64 __type_tag).
-    _tf = ir.Function(self.llvm_module, _fields["tag_of"].pointee, name="__osp_tag_of");
+    _tf = self._define_function("__osp_tag_of", _fields["tag_of"].pointee);
     _tf.linkage = "internal";
     self._builder = ir.IRBuilder(_tf.append_basic_block("entry"));
     _pl = self.builder.extract_value(_tf.args[0], 1, name="h.payload");
@@ -503,7 +503,7 @@ impl NaIRGenPass._osp_emit_callbacks(isa_global: ir.GlobalVariable, n: int) -> d
     # is_a(i64 t, i64 b) -> i1: translate stable tags t,b to local indices via
     # __osp_h2i, then lookup isa_global[ti*n + bi] != 0. Either tag unknown
     # (h2i -1) -> not is-a.
-    _iaf = ir.Function(self.llvm_module, _fields["is_a"].pointee, name="__osp_is_a");
+    _iaf = self._define_function("__osp_is_a", _fields["is_a"].pointee);
     _iaf.linkage = "internal";
     _ia_entry = _iaf.append_basic_block("entry");
     _ia_ok = _iaf.append_basic_block("ok");

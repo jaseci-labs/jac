@@ -20,7 +20,6 @@ class PackageInfo(NamedTuple) {
     has release_notes: str = "";
     has notes_display: str = "";
     has submodules: bool = False;
-    has precompile: bool = False;
     has extra_build_cmd: str = "";
     has needs_nodejs: bool = False;
     has extra_build_deps: str = "";
@@ -41,7 +40,6 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
              release_notes="docs/docs/community/release_notes/jaclang.md",
              notes_display="jaclang",
              submodules=True,
-             precompile=True,
              publish_pypi=False,
              is_anchor=True
          ),
@@ -51,8 +49,7 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
              tier=2,
              release_notes="docs/docs/community/release_notes/byllm.md",
              notes_display="byllm",
-             submodules=True,
-             precompile=True
+             submodules=True
          ),
          "jac-scale": PackageInfo(
              dir="jac-scale",
@@ -61,7 +58,6 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
              release_notes="docs/docs/community/release_notes/jac-scale.md",
              notes_display="jac-scale",
              submodules=True,
-             precompile=True,
              extra_build_cmd="jac run scripts/build_admin_ui.jac",
              needs_nodejs=True
          ),
@@ -72,7 +68,6 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
              release_notes="docs/docs/community/release_notes/jac-mcp.md",
              notes_display="jac-mcp",
              submodules=True,
-             precompile=True,
              extra_build_cmd="jac run scripts/bundle_docs.jac"
          )
      },

@@ -22,12 +22,15 @@ RUN apt-get update \
 # CVE-2022-24765 dubious-ownership check on mounted dirs.
 RUN git config --system --add safe.directory '*'
 
-# Pin versions to match your CI to avoid dev/prod skew.
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir \
-        jaclang \
-        "jac-scale[deploy,data,tracing]" \
-        jac-client
+# jaclang ships as the self-contained `jac` binary (bundled CPython; not on
+# PyPI). The official installer downloads it from GitHub Releases onto PATH;
+# plugins are then added with the binary's own installer. The client framework
+# now lives in jaclang core, so there is no separate jac-client to install.
+# Pass `--version <jaseci-release>` to install.sh to pin and avoid dev/prod skew.
+RUN curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh \
+    | bash \
+    && cp "$HOME/.local/bin/jac" /usr/local/bin/jac \
+    && jac install "jac-scale[deploy,data,tracing]" --global
 
 WORKDIR /app
 COPY . /app
