@@ -47,7 +47,7 @@ glob _INT_USE_BINOPS: set[str] = {
 obj EnumVerdicts {
     has verdicts: dict[int, str],  # id(c_enum) → verdict string
         name_map: dict[int, dict[str, int]],  # id(c_enum) → {name: value}
-        reasons: dict[int, str];  # id(c_enum) → Tier-B reason (for the sidecar report)
+        reasons: dict[int, str];  # id(c_enum) → Tier-B reason (for the Tier-B comments)
 
     def init {
         self.verdicts = {};
@@ -240,7 +240,7 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
         }
     }
     # Propagate verdicts into the tag table so the enum's idiom is recorded and
-    # Tier-B enums (collisions / non-constant values) reach the sidecar report.
+    # Tier-B enums (collisions / non-constant values) are flagged in the Tier-B comments.
     # Without this the default tagger leaves every Enum at TIER_A and a demoted
     # enum silently vanishes (uni_builder emits nothing) with an empty report.
     if tags is not None {

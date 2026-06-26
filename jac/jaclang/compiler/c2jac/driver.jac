@@ -120,10 +120,10 @@ def _transpile_ast(
     jac_str = uni_mod.unparse(requires_format=True);
 
     # --- Step 7: post-format Tier-B comment injection (§7, §9.2a) ---
-    # Derived from the same TagTable the sidecar JSON serializes; adds a header
-    # summary of every Tier-B site plus inline notes on surrogate-marker lines.
-    # No-op for Tier-A-only output.
-    jac_str = inject_tier_b_comments(jac_str, tags, filename);
+    # The single authoritative Tier-B record: a header summary of every Tier-B
+    # site plus inline notes on surrogate-marker lines. No-op for Tier-A-only
+    # output.
+    jac_str = inject_tier_b_comments(jac_str, tags);
     return (jac_str, tags);
 }
 

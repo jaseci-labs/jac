@@ -23,7 +23,7 @@ obj CUniBuilder {
         enum_verdicts: EnumVerdicts,
         # Accumulates the names of C-for body constructs that could not be
         # faithfully lowered during the most recent loop build. A non-empty list
-        # forces the enclosing loop to Tier-B so the sidecar report never claims
+        # forces the enclosing loop to Tier-B so the Tier-B comments never claim
         # faithful coverage of a body it actually dropped. Reset at each loop entry.
         _loop_lossy: list[str] = [];
 
