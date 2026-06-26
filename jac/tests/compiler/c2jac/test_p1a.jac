@@ -140,6 +140,47 @@ test "switch with a side-effecting selector stays Tier-B" {
     assert any("switch lowered" in r for r in reasons) , f"side-effecting selector must be Tier-B, got {reasons}";
 }
 
+test "an empty default mid-switch falls through and stays Tier-B" {
+    # `default:` is never OR-folded, so an empty default that is not the last
+    # section falls straight into the following case (x not 1 → default → case 2
+    # body). if/elif cannot model that, so it must NOT be promoted to Tier-A.
+    c_src = "int f(int x) { int r = 0; switch (x) { case 1: r = 10; break; default: case 2: r = 20; break; } return r; }";
+    (jac_str, tags) = transpile_c_str(c_src, "sw_empty_default.c");
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert any("switch lowered" in r for r in reasons) , f"empty default mid-switch must be Tier-B, got {reasons}";
+    assert len(tags.by_idiom(Idiom.SWITCH_CLEAN)) == 0 , "fall-through via empty default must not be SWITCH_CLEAN";
+}
+
+test "an empty case before default does not leak its label onto a later case" {
+    # `case 1:` is empty and precedes `default:`, so in C x==1 falls into the
+    # default body, NOT case 2. The grouping must drop the pending `1` at the
+    # default, never OR-fold it into case 2's `==` test.
+    c_src = "int f(int x) { int r = 0; switch (x) { case 1: default: r = 9; break; case 2: r = 2; break; } return r; }";
+    (jac_str, tags) = transpile_c_str(c_src, "sw_case_default.c");
+    assert "(x == 1) or (x == 2)" not in jac_str , f"case 1's label leaked onto case 2:\n{jac_str}";
+    assert "x == 2" in jac_str , f"expected a case-2 branch:\n{jac_str}";
+    # default carries a terminating break, so the lowering is exact → faithful.
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert not any("switch lowered" in r for r in reasons) , f"this shape is faithful, got {reasons}";
+    errs = _recompile_errors(jac_str, "sw_case_default.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+test "a clean braced switch is faithful (Tier-A)" {
+    # Each case body is wrapped in `{ ... }` (a Compound) ending in break. The
+    # terminator must be seen through the braces, and the break dropped from the
+    # emitted branch — a clean braced switch is exactly an if/elif chain.
+    c_src = "int f(int x) { int r = 0; switch (x) { case 1: { r = 1; break; } case 2: { r = 2; break; } default: { r = -1; } } return r; }";
+    (jac_str, tags) = transpile_c_str(c_src, "sw_braced.c");
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert not any("switch lowered" in r for r in reasons) , f"clean braced switch must stay faithful, got {reasons}";
+    assert len(tags.by_idiom(Idiom.SWITCH_CLEAN)) == 1 , "Expected the braced switch recorded as a SWITCH_CLEAN idiom";
+    # The switch-terminating breaks must be dropped, not emitted.
+    assert "break;" not in jac_str , f"braced-case breaks should be dropped:\n{jac_str}";
+    errs = _recompile_errors(jac_str, "sw_braced.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
 test "switch_fallthrough.c emitted Jac recompiles cleanly" {
     jac_str = _transpile("switch_fallthrough.c");
     errs = _recompile_errors(jac_str, "switch_fallthrough.c");
