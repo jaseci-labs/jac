@@ -2,7 +2,7 @@
 
 
 Moved verbatim from client_runtime.impl.jac. Uses only ambient JS globals
-(window, globalThis, fetch, JSON, Date, Reflect, ...) — no framework imports.
+(window, globalThis, fetch, JSON, Date, Reflect, ...) - no framework imports.
 """
 
 impl navigate(path: str) -> None {
@@ -212,7 +212,7 @@ impl __doFuncFetch(function_name: str, args: dict) -> any {
     }
     payload = await response.json();
     if not payload["ok"] {
-        error_msg = payload["error"] if payload["error"] else "Unknown error";
+        error_msg = __errorMessage(payload["error"]) or "Unknown error";
         raise Exception(f"Function {function_name} failed: {error_msg}");
     }
     result = None;
@@ -320,6 +320,21 @@ impl __normalizeCredential(x: any) -> dict {
     return {"type": "password", "password": x};
 }
 
+impl __errorMessage(err: any) -> str {
+    # The response envelope carries errors as {code, message, details}
+    # (see HTTPTransport.send / the gateway error frames). Unwrap the
+    # human-readable `message` here so callers never render the raw object
+    # as "[object Object]" - mirroring how the success path unwraps `data`.
+    # A bare string (legacy request-parse errors) is returned as-is.
+    if err == None {
+        return "";
+    }
+    if Object.prototype.toString.call(err) == "[object Object]" {
+        return err["message"] if err["message"] else "";
+    }
+    return String(err);
+}
+
 impl jacSignup(
     identities_or_username: (str | list),
     credential_or_password: (str | dict),
@@ -363,12 +378,8 @@ impl jacSignup(
         error_text = await response.text();
         try {
             error_data = JSON.parse(error_text);
-            return {
-                "success": False,
-                "error": error_data["error"]
-                    if error_data["error"] != None
-                    else "Signup failed"
-            };
+            message = __errorMessage(error_data["error"]);
+            return {"success": False, "error": message if message else "Signup failed"};
         } except Exception {
             return {"success": False, "error": error_text};
         }

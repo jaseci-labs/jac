@@ -28,6 +28,7 @@ async def:pub __jacCallFunction(function_name: str, args: dict = {}) -> any;
 
 def:pub __normalizeIdentity(x: any) -> dict;
 def:pub __normalizeCredential(x: any) -> dict;
+def:pub __errorMessage(err: any) -> str;
 
 # Auth.
 async def:pub jacSignup(
