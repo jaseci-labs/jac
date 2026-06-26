@@ -28,14 +28,3 @@ match Container(inner=Inner(x=a, y=b)):
         print(f"4.Inner.x={a}, Inner.y={b}")
     case _:
         print("5.No match")
-
-
-def match_extra_patterns(val: object) -> None:
-    """Extra match patterns for py2jac regression tests (#6982)."""
-    match val:
-        case {"key": 1, "nested": x}:
-            return x
-        case Inner(x=0, y=0, label="origin"):
-            return "origin"
-        case _:
-            return None
