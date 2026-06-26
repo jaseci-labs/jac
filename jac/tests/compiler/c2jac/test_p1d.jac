@@ -83,13 +83,15 @@ test "enum_prepass: Color gets ENUM_AS_ENUM verdict" {
     assert Idiom.ENUM_AS_ENUM.value in verdicts , f"Expected ENUM_AS_ENUM in {verdicts}";
 }
 
-test "enum_prepass: Permissions gets ENUM_AS_CONSTS verdict (non-sequential values)" {
+test "enum_prepass: Permissions gets ENUM_AS_ENUM verdict (non-sequential, unique values)" {
     src = _read("enum_flags.c");
     file_ast = c_parser.CParser().parse(src, "enum_flags.c");
     ev = build_enum_map(file_ast);
     verdicts = list(ev.verdicts.values());
-    # PERM_ALL = 7 breaks sequential rule and values are power-of-2 flags.
-    assert Idiom.ENUM_AS_CONSTS.value in verdicts , f"Expected ENUM_AS_CONSTS in {verdicts}";
+    # PERM_ALL = 7 is non-sequential but every value is unique; _enum_as_enum
+    # writes each value explicitly, so it lowers faithfully to an enum rather
+    # than being demoted over a cosmetic gap.
+    assert Idiom.ENUM_AS_ENUM.value in verdicts , f"Expected ENUM_AS_ENUM in {verdicts}";
 }
 
 test "enum_simple.c transpiles: named enum appears as enum keyword" {
@@ -99,11 +101,12 @@ test "enum_simple.c transpiles: named enum appears as enum keyword" {
     assert "Color" in jac_str , f"Expected 'Color' in output:\n{jac_str}";
 }
 
-test "enum_flags.c transpiles: flag values appear as glob consts" {
+test "enum_flags.c transpiles: flag members appear in output" {
     (jac_str, tags) = _transpile("enum_flags.c");
     assert jac_str != "";
-    # Permissions flag values should appear as integer constants.
-    assert "PERM_READ" in jac_str or "1" in jac_str , "Expected PERM_READ constant";
+    # Permissions members should appear (as enum members after the non-sequential
+    # fix; the loose check tolerates either lowering).
+    assert "PERM_READ" in jac_str or "1" in jac_str , "Expected PERM_READ member";
 }
 
 test "enum_collision.c second enum demotes to TIER_B no duplicate glob" {
@@ -273,4 +276,40 @@ test "enum_tu_collision.c: no duplicate module global shadows the function" {
     assert jac_str.count("def STATUS_OK") == 1 , f"Expected the function preserved exactly once:\n{jac_str}";
     reasons = [nt.reason for nt in tags.tier_b_entries()];
     assert any("collides" in r for r in reasons) , f"Expected a collision reason, got {reasons}";
+}
+
+# --- Greptile finding: direct-IR `_expr_to_uni` silently substituted int `0`
+# for char literals (and unparseable constants), so `i < 'z'` lowered to `i < 0`.
+# A C char constant is an integer, so it now lowers to its ordinal faithfully. ---
+test "for_char_cond.c: char literal in a for-condition lowers to its ordinal (not 0)" {
+    (jac_str, tags) = _transpile("for_char_cond.c");
+    # 'z' is 122; the loop must compare against 122, never the silent `0`.
+    assert "i < 122" in jac_str , f"Expected `i < 122` (ord('z')) in:\n{jac_str}";
+    assert "i < 0" not in jac_str , f"char literal must not collapse to 0 in:\n{jac_str}";
+    # Faithful → clean IterForStmt, no Tier-B demotion for this loop.
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert not any("not faithfully lowered" in r for r in reasons) , f"Unexpected Tier-B: {reasons}";
+}
+
+test "for_char_cond.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_char_cond.c");
+    errs = _recompile_errors(jac_str, "for_char_cond.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- Greptile finding: non-ASCII C string literals were mishandled — unicode_escape
+# corrupted the AST value and the char-vs-byte column mismatch truncated the closing
+# quote, emitting unterminated (uncompilable) Jac. The literal is now re-sliced
+# verbatim from the C source with a byte-accurate end column, so it round-trips. ---
+test "nonascii_str.c: non-ASCII literal round-trips faithfully (quote not truncated)" {
+    (jac_str, tags) = _transpile("nonascii_str.c");
+    assert 'cafe: str = "café";' in jac_str , f"Expected faithful `café` with closing quote in:\n{jac_str}";
+    # ASCII escape sequences are preserved verbatim from the source slice.
+    assert r'escapes: str = "a\tb\n";' in jac_str , f"Expected escapes preserved in:\n{jac_str}";
+}
+
+test "nonascii_str.c emitted Jac recompiles cleanly (no unterminated string)" {
+    (jac_str, tags) = _transpile("nonascii_str.c");
+    errs = _recompile_errors(jac_str, "nonascii_str.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
 }

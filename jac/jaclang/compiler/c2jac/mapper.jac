@@ -1264,15 +1264,31 @@ obj CMapper {
         # the family suffix so every integer / floating constant is normalized.
         if nd.type.endswith("int") {
             iv = parse_c_int(nd.value);
-            val: object = iv if iv is not None else repr(nd.value);
             if iv is not None {
+                val: object = iv;
                 txt = str(iv);
+            } else {
+                # Unparseable even after suffix-stripping: a string placeholder
+                # is the wrong type, so flag it rather than pass it off as exact.
+                self._mark_tier_b(
+                    nd,
+                    "integer literal `" + str(nd.value) + "` could not be parsed; "
+                    "emitted as a string placeholder — verify",
+                );
+                val = repr(nd.value);
             }
         } elif nd.type.endswith("double") or nd.type.endswith("float") {
             fv = parse_c_float(nd.value);
-            val = fv if fv is not None else repr(nd.value);
             if fv is not None {
+                val = fv;
                 txt = str(fv);
+            } else {
+                self._mark_tier_b(
+                    nd,
+                    "float literal `" + str(nd.value) + "` could not be parsed; "
+                    "emitted as a string placeholder — verify",
+                );
+                val = repr(nd.value);
             }
         } elif nd.type == "char" {
             # char literal: 'a' → single char string.
@@ -1285,19 +1301,46 @@ obj CMapper {
         } elif nd.type == "string" {
             raw = nd.value;
             if raw.startswith('"') and raw.endswith('"') {
-                try {
-                    val = bytes(raw[1:-1], "utf-8").decode("unicode_escape");
-                } except Exception {
-                    val = raw[1:-1];
+                inner = raw[1:-1];
+                if inner.isascii() {
+                    # unicode_escape resolves the common ASCII escapes (\n, \t, …)
+                    # for the AST value; the emitted Jac is re-sliced verbatim from
+                    # the C source, so escape/quote style is preserved either way.
+                    try {
+                        val = bytes(inner, "utf-8").decode("unicode_escape");
+                    } except Exception {
+                        val = inner;
+                    }
+                } else {
+                    # Non-ASCII: unicode_escape would re-decode UTF-8 multibyte
+                    # sequences (e.g. `\xc3\xa9` → `é`) as Latin-1 pairs and corrupt
+                    # the text, so keep the real characters for the AST value. The
+                    # emitted Jac still comes from the verbatim source slice below.
+                    val = inner;
                 }
             } else {
                 val = raw;
             }
         } else {
+            self._mark_tier_b(
+                nd,
+                "constant of unrecognized type `" + str(nd.type) + "` emitted as a "
+                "string placeholder — verify",
+            );
             val = repr(nd.value);
         }
         c = ast3.Constant(value=val);
-        return self._stamp(c, nd, text=txt);
+        stamped = self._stamp(c, nd, text=txt);
+        if nd.type == "string" {
+            # PyastBuildPass re-slices a string Constant verbatim from orig_src
+            # (the C source) using BYTE offsets, but _stamp derives end_col from the
+            # character count. For a multibyte (non-ASCII) literal the two diverge
+            # and the closing quote is sliced off; pin the byte length so the quote
+            # survives and the literal round-trips faithfully.
+            (sline, scol) = self._loc(nd);
+            stamped.end_col_offset = scol + len(str(nd.value).encode("utf-8"));
+        }
+        return stamped;
     }
 
     # ------------------------------------------------------------------ #
