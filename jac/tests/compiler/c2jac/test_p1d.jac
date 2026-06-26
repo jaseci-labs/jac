@@ -6,7 +6,6 @@ import from tests.support { JAC_ROOT }
 import from jaclang.compiler.c2jac.driver { transpile_c_str }
 import from jaclang.compiler.c2jac.enum_prepass { build_enum_map }
 import from jaclang.compiler.c2jac.tags { Idiom, Tier }
-import from jaclang.compiler.c2jac.report { report_json }
 import from jaclang.jac0core.program { JacProgram }
 import from pycparser { c_parser }
 
@@ -139,15 +138,14 @@ test "expr_stmts.c: i++ statement lowers to augmented assignment" {
     assert "i += 1" in jac_str , f"Expected 'i += 1' from 'i++' in:\n{jac_str}";
 }
 
-# --- Bug #2: Tier-B enum verdict reaches the tag table / sidecar report ---
+# --- Bug #2: Tier-B enum verdict reaches the tag table ---
 test "enum_collision.c: demoted enum is recorded as a Tier-B site" {
     (jac_str, tags) = _transpile("enum_collision.c");
     tier_b = tags.tier_b_entries();
     assert len(tier_b) >= 1 , "Expected at least one Tier-B entry for the collided enum";
-    report_str = report_json("enum_collision.c", tags);
-    assert "tier_b_sites" in report_str;
-    # The previously-empty sidecar must now list the demoted enum.
-    assert "collides" in report_str , f"Expected collision reason in report:\n{report_str}";
+    # The demoted enum must carry its collision reason on the tag.
+    reasons = [nt.reason for nt in tier_b];
+    assert any("collides" in r for r in reasons) , f"Expected collision reason on a Tier-B tag:\n{reasons}";
 }
 
 # --- Bug #3: unsupported for forms preserve semantics + mark Tier-B ---

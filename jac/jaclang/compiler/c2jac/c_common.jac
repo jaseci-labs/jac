@@ -54,20 +54,39 @@ glob C_BINOPS: dict[str, tuple[str, str, str, str]] = {
 
 # --- C literal parsers --------------------------------------------------- #
 def parse_c_int(raw: str) -> int | None {
-    # C integer literal → int (handles 0x/0o/0b prefixes via base 0). Returns
-    # None on failure (e.g. suffixed literals like `10U`), letting callers fall
-    # back. Single source for every `int(v, 0)` site in c2jac.
+    # C integer literal → int (handles 0x/0o/0b prefixes via base 0). On failure
+    # retries with any C integer suffix stripped (u/U and l/L combos: `10L`,
+    # `5U`, `3ULL`). Returns None only when still unparseable. Single source for
+    # every `int(v, 0)` site in c2jac.
     try {
         return int(raw, 0);
     } except ValueError {
+        stripped = raw.rstrip("uUlL");
+        if stripped and stripped != raw {
+            try {
+                return int(stripped, 0);
+            } except ValueError {
+                return None;
+            }
+        }
         return None;
     }
 }
 
 def parse_c_float(raw: str) -> float | None {
+    # C float literal → float, retrying with any C float suffix stripped
+    # (f/F/l/L: `1.5f`, `2.0L`) when the verbatim parse fails.
     try {
         return float(raw);
     } except ValueError {
+        stripped = raw.rstrip("fFlL");
+        if stripped and stripped != raw {
+            try {
+                return float(stripped);
+            } except ValueError {
+                return None;
+            }
+        }
         return None;
     }
 }

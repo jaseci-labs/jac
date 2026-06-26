@@ -33,7 +33,7 @@ def jac2js(filename: str) -> int;
 """Convert C to Jac."""
 @registry.command(
     name="c2jac",
-    help="Convert C code to Jac (writes Jac to stdout, sidecar report to <file>.c2jac.report.json)",
+    help="Convert C code to Jac (writes Jac to stdout; best-effort sites are flagged inline in the output)",
     args=[
         Arg.create(
             "filename",
