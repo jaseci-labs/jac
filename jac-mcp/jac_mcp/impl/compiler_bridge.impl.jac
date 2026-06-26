@@ -44,34 +44,44 @@ if it exists the stream was genuinely truncated, so the pipe is drained
 (discarding the excess) to let the child exit normally, and
 OUTPUT_TRUNCATION_MARKER is appended. Decoded by the caller with
 errors='replace' since truncation can split a multibyte sequence.
+
+Closes the stream itself when done so the caller never has to close a pipe
+that this thread might still be blocked reading -- closing a BufferedReader
+held by an in-progress read() would block on its buffer lock.
 """
 def _cap_read(stream: object, holder: list, cap: int) {
-    chunks: list = [];
-    total: int = 0;
-    while True {
-        want: int = min(4096, cap - total);
-        if want <= 0 {
-            break;
+    try {
+        chunks: list = [];
+        total: int = 0;
+        while True {
+            want: int = min(4096, cap - total);
+            if want <= 0 {
+                break;
+            }
+            chunk: bytes = stream.read(want);
+            if not chunk {
+                break;
+            }
+            chunks.append(chunk);
+            total += len(chunk);
         }
-        chunk: bytes = stream.read(want);
-        if not chunk {
-            break;
-        }
-        chunks.append(chunk);
-        total += len(chunk);
-    }
-    data: bytes = b"".join(chunks);
-    if total >= cap {
-        # One extra byte distinguishes exact-cap (no truncation) from overflow.
-        if stream.read(1) {
-            # Drain so the child isn't blocked on a full OS pipe buffer.
-            while stream.read(65536) { }
-            holder[0] = data + OUTPUT_TRUNCATION_MARKER.encode();
+        data: bytes = b"".join(chunks);
+        if total >= cap {
+            # One extra byte distinguishes exact-cap (no truncation) from overflow.
+            if stream.read(1) {
+                # Drain so the child isn't blocked on a full OS pipe buffer.
+                while stream.read(65536) { }
+                holder[0] = data + OUTPUT_TRUNCATION_MARKER.encode();
+            } else {
+                holder[0] = data;
+            }
         } else {
             holder[0] = data;
         }
-    } else {
-        holder[0] = data;
+    } finally {
+        try {
+            stream.close();
+        } except Exception { }
     }
 }
 
@@ -79,7 +89,9 @@ def _cap_read(stream: object, holder: list, cap: int) {
 
 A descendant that inherited the pipe write-end and survived killpg/taskkill /T
 could otherwise block this handler indefinitely. Threads are daemon-marked so
-they never block process exit; this merely bounds the per-request wait.
+they never block process exit; this bounds the per-request wait. The caller
+must not close a pipe whose reader is still alive after this returns -- see
+run_snippet's teardown -- since the reader owns closing its own stream.
 """
 def _join_reader(t: threading.Thread, name: str, deadline: float = 5.0) {
     t.join(timeout=deadline);
@@ -584,19 +596,22 @@ impl CompilerBridge.run_snippet(
         }
         out_buf: list = [None];
         err_buf: list = [None];
-        with proc {
-            t_out = threading.Thread(
-                target=_cap_read,
-                args=(proc.stdout, out_buf, MAX_OUTPUT_SIZE),
-                daemon=True
-            );
-            t_err = threading.Thread(
-                target=_cap_read,
-                args=(proc.stderr, err_buf, MAX_OUTPUT_SIZE),
-                daemon=True
-            );
-            t_out.start();
-            t_err.start();
+        t_out = threading.Thread(
+            target=_cap_read, args=(proc.stdout, out_buf, MAX_OUTPUT_SIZE), daemon=True
+        );
+        t_err = threading.Thread(
+            target=_cap_read, args=(proc.stderr, err_buf, MAX_OUTPUT_SIZE), daemon=True
+        );
+        t_out.start();
+        t_err.start();
+        # The reader threads own closing proc.stdout/stderr (see _cap_read), so
+        # we do NOT use `with proc`: Popen.__exit__ would close those pipes, and
+        # closing one whose reader is still blocked in read() (a descendant
+        # escaped killpg/taskkill and holds the write-end) deadlocks on the
+        # buffer lock -- defeating _join_reader's bound. proc.wait() below reaps
+        # the child on every path, so there is no zombie. The only residual cost
+        # of an evasive descendant is one leaked fd until that thread exits.
+        try {
             try {
                 proc.wait(timeout=timeout);
                 _join_reader(t_out, "stdout");
@@ -640,6 +655,20 @@ impl CompilerBridge.run_snippet(
                 result["error"] = err_text or f"Process exited with code {exit_code}";
             }
             return result;
+        } finally {
+            # Safety net for the rare path where a reader thread never ran (e.g.
+            # thread-start failure): close any pipe whose reader has finished.
+            # Skip a still-alive reader -- closing under it would block.
+            if not t_out.is_alive() {
+                try {
+                    proc.stdout.close();
+                } except Exception { }
+            }
+            if not t_err.is_alive() {
+                try {
+                    proc.stderr.close();
+                } except Exception { }
+            }
         }
     } finally {
         try {
