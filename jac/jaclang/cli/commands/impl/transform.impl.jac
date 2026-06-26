@@ -58,7 +58,6 @@ impl c2jac(
     nostdinc: bool = False
 ) -> int {
     import from jaclang.compiler.c2jac.driver { transpile_c_file }
-    import from jaclang.compiler.c2jac.report { write_report }
     if not filename.endswith(".c") and not filename.endswith(".i") {
         console.error("Not a .c or .i file.");
         return 1;
@@ -80,16 +79,12 @@ impl c2jac(
         return 1;
     }
     console.print(jac_str, markup=False, highlight=False);
-    try {
-        report_path = write_report(filename, tags);
-        tier_b = tags.tier_b_entries();
-        if tier_b {
-            console.warning(
-                f"[c2jac] {len(tier_b)} best-effort site(s) → {report_path}"
-            );
-        }
-    } except OSError as e {
-        console.warning(f"[c2jac] Could not write report: {e}");
+    tier_b = tags.tier_b_entries();
+    if tier_b {
+        console.warning(
+            f"[c2jac] {len(tier_b)} best-effort (Tier-B) site(s) — flagged inline "
+            f"in the output (see the `# c2jac:` header and per-site notes)"
+        );
     }
     return 0;
 }
