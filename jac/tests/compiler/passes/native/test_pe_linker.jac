@@ -77,7 +77,7 @@ def emit_coff_object(fixture: str) -> bytes {
         tm = llvm.Target.from_triple(WIN_TRIPLE).create_target_machine(
             opt=2, codemodel="large"
         );
-        pto = llvm.create_pipeline_tuning_options(speed_level=2, size_level=0);
+        pto = llvm.create_pipeline_tuning_options(speed_level=2);
         pb = llvm.create_pass_builder(tm, pto);
         mpm = pb.getModulePassManager();
         mpm.add_internalize_pass();
