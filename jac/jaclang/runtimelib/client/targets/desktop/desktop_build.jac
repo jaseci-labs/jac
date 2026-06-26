@@ -149,7 +149,7 @@ Used by the CEF host, whose cef.na.jac binds `"libcef.so"` by an explicit path
 use logical names, which the native backend already resolves with a $ORIGIN
 runpath -- so the libpython LIBDIR the old build appended here is gone: the shim
 dlopens the bundled CPython from the cache, nothing links libpython by soname."""
-def _patch_host_rpath(binary: Path) -> None {
+def _patch_host_rpath(binary: Path) {
     _patchelf_rpath(binary, "$ORIGIN");
 }
 

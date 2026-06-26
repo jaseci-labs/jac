@@ -117,60 +117,39 @@ test "desktop dispatch config loads from jac.toml" {
     }
 }
 
-"""Release-build generated host source must NOT reference user-site packages.
-The `site.addsitedir(site.getusersitepackages())` call is dev-only (moved into
-_dev_runtime_pin_py); release builds must not depend on ambient user-site state."""
-test "release-build DISPATCH_PY has no site.getusersitepackages" {
+"""The host brings up the fused runtime via the libjacpyembed shim (jac_engine_boot)
+instead of binding the build machine's libpython, and never bakes build-machine
+state. DISPATCH_PY's jac-scale seam is a slim runtime-only hook (no user-site/
+getsitepackages baking)."""
+test "host source boots the fused runtime and bakes no build-machine state" {
     import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
         _generate_host_source
     }
-    import os;
 
-    saved_jac = os.environ.pop("JAC_DESKTOP_JAC_SRC", None);
-    saved_scale = os.environ.pop("JAC_DESKTOP_SCALE_SRC", None);
-    try {
-        src = _generate_host_source("libpython3.12.so.1.0", "T", 800, 600, "test-app");
-        assert "getusersitepackages" not in src , "release DISPATCH_PY must not reference user-site packages";
-        assert "DISPATCH_PY" in src , "host source must declare DISPATCH_PY";
-        assert "inprocess_dispatch.boot" in src , "DISPATCH_PY must call boot()";
-    } finally {
-        if saved_jac is not None {
-            os.environ["JAC_DESKTOP_JAC_SRC"] = saved_jac;
-        }
-        if saved_scale is not None {
-            os.environ["JAC_DESKTOP_SCALE_SRC"] = saved_scale;
-        }
-    }
+    src = _generate_host_source("T", 800, 600, "test-app");
+    # Fused-runtime bring-up: the shim, not libpython-by-soname.
+    assert "import from jacpyembed" in src , "host must import the libjacpyembed shim";
+    assert "jac_engine_boot()" in src , "host must boot the fused runtime";
+    assert "libpython" not in src , "host must not bind a libpython soname";
+    assert "DISPATCH_PY" in src , "host source must declare DISPATCH_PY";
+    assert "inprocess_dispatch.boot" in src , "DISPATCH_PY must call boot()";
+    # No build-machine site-package baking (the old _builder_dep_site_dirs path).
+    assert "getusersitepackages" not in src , "must not reference user-site packages";
+    assert "getsitepackages" not in src , "must not bake interpreter site-packages";
+    assert "_baked_dep_sites" not in src , "must not bake builder site dirs";
 }
 
-"""Dev-build generated host source must contain the dev-pin block AND append
-interpreter site dirs for third-party deps when JAC_DESKTOP_JAC_SRC/SCALE are set."""
-test "dev-build DISPATCH_PY contains dev-pin and site deps append" {
+"""DISPATCH_PY's jac-scale seam is runtime-only and portable: it reads
+JAC_DESKTOP_SCALE_SRC / JAC_DESKTOP_DEPS at runtime, with no build-time baking,
+so the one binary stays portable until jac-scale is bundled into the runtime."""
+test "DISPATCH_PY jac-scale hook is the slim runtime-only seam" {
     import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
         _generate_host_source
     }
-    import os;
 
-    saved_jac = os.environ.get("JAC_DESKTOP_JAC_SRC");
-    saved_scale = os.environ.get("JAC_DESKTOP_SCALE_SRC");
-    os.environ["JAC_DESKTOP_JAC_SRC"] = "/fake/jac";
-    try {
-        src = _generate_host_source("libpython3.12.so.1.0", "T", 800, 600, "test-app");
-        assert "JAC_DESKTOP_JAC_SRC" in src , "dev build must embed the dev-pin block";
-        assert "getusersitepackages" in src , "dev build must append user-site for deps";
-        assert "getsitepackages" in src , "dev build must append interpreter site-packages for deps";
-        assert "_baked_dep_sites" in src , "dev build must bake builder site-packages for jac-scale deps";
-        assert "jaclang.meta_importer" not in src , "dev pin must not strip JacMetaImporter";
-    } finally {
-        if saved_jac is not None {
-            os.environ["JAC_DESKTOP_JAC_SRC"] = saved_jac;
-        } else {
-            del os.environ["JAC_DESKTOP_JAC_SRC"];
-        }
-        if saved_scale is not None {
-            os.environ["JAC_DESKTOP_SCALE_SRC"] = saved_scale;
-        }
-    }
+    src = _generate_host_source("T", 800, 600, "test-app");
+    assert "JAC_DESKTOP_SCALE_SRC" in src , "host must read the runtime jac-scale source seam";
+    assert "JAC_DESKTOP_DEPS" in src , "host must read the runtime deps seam";
 }
 
 """Generated host source must call inprocess_dispatch.shutdown() after run_main_loop()
@@ -180,13 +159,12 @@ test "generated host calls shutdown after run_main_loop()" {
         _generate_host_source
     }
 
-    src = _generate_host_source("libpython3.12.so.1.0", "T", 800, 600, "test-app");
+    src = _generate_host_source("T", 800, 600, "test-app");
     assert "inprocess_dispatch.shutdown()" in src , "host must tear down dispatch on exit";
     assert src.index("run_main_loop()") < src.index("inprocess_dispatch.shutdown()") , "shutdown must run after the webview event loop exits";
-    # Match the entry-block call, not the Py_Finalize FFI declaration above.
-    assert src.index("inprocess_dispatch.shutdown()") < src.index(
-        "    Py_Finalize();\n"
-    ) , "shutdown must run before Py_Finalize()";
+    # Match the entry-block call ("Py_Finalize();"), not the FFI decl
+    # ("Py_Finalize() -> None;") above it.
+    assert src.index("inprocess_dispatch.shutdown()") < src.index("Py_Finalize();") , "shutdown must run before Py_Finalize()";
 }
 
 """Editable worktree roots are auto-detected from __editable__.*.pth links."""

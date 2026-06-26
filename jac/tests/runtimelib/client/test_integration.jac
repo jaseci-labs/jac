@@ -1005,7 +1005,6 @@ test "generated host source contains required elements" {
     _generate_host_source = sys.modules[mod_name]._generate_host_source;
 
     src = _generate_host_source(
-        libpy="libpython3.12.so.1.0",
         title="TestApp",
         width=800,
         height=600,
@@ -1014,7 +1013,8 @@ test "generated host source contains required elements" {
     );
     # Must contain key elements
     assert "import from webview" in src;
-    assert "Py_Initialize" in src;
+    assert "import from jacpyembed" in src;
+    assert "jac_engine_boot" in src;
     assert "Py_Finalize" in src;
     assert "_jac_invoke_handler" in src;
     assert "_PH_DISPATCH" in src;
@@ -1052,7 +1052,6 @@ test "generated host source with no plugins" {
     _generate_host_source = sys.modules[mod_name]._generate_host_source;
 
     src = _generate_host_source(
-        libpy="libpython3.12.so.1.0",
         title="NoPlugins",
         width=640,
         height=480,
@@ -1423,9 +1422,7 @@ test "build pipeline produces all expected artifacts" {
         }
 
         # Generate host source and verify it references the transpiled modules
-        libpy = str(sysconfig.get_config_var("INSTSONAME") or "libpython3.12.so.1.0");
         host_src = _generate_host_source(
-            libpy=libpy,
             title="SmokeTest",
             width=800,
             height=600,

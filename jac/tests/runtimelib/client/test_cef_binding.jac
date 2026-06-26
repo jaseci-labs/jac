@@ -214,17 +214,7 @@ test "cef host source boots inprocess and wires the sv bridge (#6596)" {
         _generate_host_source
     }
     src = _generate_host_source(
-        "libpython3.12.so.1.0",
-        "Title",
-        800,
-        600,
-        "myapp",
-        "/tmp/cache",
-        {},
-        "main.jac",
-        30.0,
-        128,
-        False
+        "Title", 800, 600, "myapp", "/tmp/cache", {}, "main.jac", 30.0, 128, False
     );
     # The CEF host boots the SAME staged in-process backend the webview host runs,
     # and the loopback routes /walker/* + /function/* into it via forward().

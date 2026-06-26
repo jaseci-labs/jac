@@ -66,9 +66,7 @@ glob _LOOPBACK_HOSTS: frozenset = frozenset({"127.0.0.1", "localhost", "::1"});
 # accepted: the same-origin UI never produces it, and it would otherwise trust
 # any other page sharing our site -- i.e. a different loopback port (`Origin`
 # host still `127.0.0.1`), widening the surface for zero functional gain.
-glob _SAME_SITE_VALUES: frozenset = frozenset(
-         {"same-origin", "none"}
-     );
+glob _SAME_SITE_VALUES: frozenset = frozenset({"same-origin", "none"});
 
 glob DEFAULT_PREFIX: str = "/__jac",
      # Providers the desktop shell knows how to start. Kept in lockstep with
