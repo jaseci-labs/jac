@@ -58,12 +58,12 @@ def _plugin_config_path -> Path {
     return _pkg_root().parent.parent / "desktop_plugin_config.jac";
 }
 
-"""The BOOTSTRAP_JS bridge shim, as emitted by _generate_host_source.
+"""The rich window.__jac SDK shim (invoke/on/__emit__).
 
-Single in-test copy of the shim so the JS tests below don't each carry their
-own. `_generate_host_source` remains the source of truth; the
-"js sdk snippet matches generated host source" test asserts this copy has not
-drifted from it whenever the native target module is importable in the runner."""
+Single in-test copy of the SDK so the JS tests below don't each carry their own.
+`cef_dispatch.na.jac`'s BOOTSTRAP_JS glob is the source of truth (this is the
+slice `_jac_sdk_js()` extracts for the web target); the "js sdk snippet matches
+generated host source" test asserts this copy has not drifted from it."""
 def _bootstrap_js_snippet -> str {
     return (
         "(function(){"
@@ -1134,29 +1134,18 @@ test "js sdk invoke produces correct request format" {
     assert result_data["x"] == 1;
 }
 
-"""The in-test JS shim must match the BOOTSTRAP_JS the host generator emits.
+"""The in-test JS shim must match the canonical SDK source of truth.
 
 Guards the single _bootstrap_js_snippet() copy against drifting from the real
-shim built by _generate_host_source. Only checkable when the native target
-module is importable in this runner; otherwise there's nothing to compare to."""
+window.__jac SDK, which is single-sourced from cef_dispatch.na.jac's BOOTSTRAP_JS
+glob (the slice _jac_sdk_js() extracts for the web target). The native desktop
+target no longer carries this rich SDK -- its _generate_host_source emits a
+flag-only document-start shim (__JAC_DESKTOP__/__JAC_BROKER__/__JAC_NATIVE__) and
+binds window.__jac_invoke directly via wv.bind -- so the CEF glob, not the native
+host source, is what this snippet must track."""
 test "js sdk snippet matches generated host source" {
-    import sys;
-    mod_name = "jaclang.runtimelib.client.targets.desktop.native_desktop_target";
-    if mod_name not in sys.modules {
-        return;  # native target not loaded here; covered when it is
-    }
-    _generate_host_source = sys.modules[mod_name]._generate_host_source;
-    src = _generate_host_source(
-        libpy="libpython3.12.so.1.0",
-        title="T",
-        width=1,
-        height=1,
-        app_name="t",
-        plugin_configs={}
-    );
-    # _generate_host_source emits: glob BOOTSTRAP_JS: str = <json>;
-    encoded = json.dumps(_bootstrap_js_snippet(), ensure_ascii=False);
-    assert encoded in src , "in-test JS shim drifted from _generate_host_source BOOTSTRAP_JS";
+    cef_src = (_native_dir() / "cef" / "cef_dispatch.na.jac").read_text();
+    assert _bootstrap_js_snippet() in cef_src , "in-test JS shim drifted from cef_dispatch.na.jac BOOTSTRAP_JS";
 }
 
 """Every command the client SDK invokes maps to a real host plugin command.
