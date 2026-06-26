@@ -137,11 +137,17 @@ obj CMapper {
             col,
             text=_UNSUPPORTED_STMT
         );
-        reason_c = self._stamp_manual(
-            ast3.Constant(value=reason), line, col, text=repr(reason)
+        # Anchor arg is the C-source line as an INT, not the reason string. A
+        # string Constant here would be re-sliced from orig_src (the C source) by
+        # PyastBuildPass._get_source_segment — the manual coords point into the C
+        # text — emitting invalid Jac (e.g. `__c2jac_unsupported__(U { int i; )`).
+        # An int uses str(value) verbatim, so the call stays valid Jac, and the
+        # line doubles as the key the post-format comment injector matches on (§7).
+        line_c = self._stamp_manual(
+            ast3.Constant(value=line), line, col, text=str(line)
         );
         call_n = self._stamp_manual(
-            ast3.Call(func=name_n, args=[reason_c], keywords=[]), line, col
+            ast3.Call(func=name_n, args=[line_c], keywords=[]), line, col
         );
         return self._stamp_manual(ast3.Expr(value=call_n), line, col);
     }
@@ -166,11 +172,13 @@ obj CMapper {
             col,
             text=_UNSUPPORTED_EXPR
         );
-        reason_c = self._stamp_manual(
-            ast3.Constant(value=reason), line, col, text=repr(reason)
+        # Int line anchor, not the reason string — see _surrogate_stmt for why a
+        # string Constant would re-slice the C source into invalid Jac.
+        line_c = self._stamp_manual(
+            ast3.Constant(value=line), line, col, text=str(line)
         );
         return self._stamp_manual(
-            ast3.Call(func=name_n, args=[reason_c], keywords=[]), line, col
+            ast3.Call(func=name_n, args=[line_c], keywords=[]), line, col
         );
     }
 
