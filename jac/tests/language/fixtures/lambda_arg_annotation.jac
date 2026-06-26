@@ -43,4 +43,8 @@ with entry {
     fns: list = [lambda x: x * 2, lambda y: y + 3];
     print(fns[0](4));
     print(fns[1](4));
+
+    # return-hint form: lambda param: type -> ReturnType { body }
+    inc = lambda n: int -> int { n + 1 };
+    print("inc:" + str(inc(9)));
 }

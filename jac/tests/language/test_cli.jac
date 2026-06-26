@@ -757,6 +757,8 @@ test "lambda arg annotation runtime" {
     # regression: list of lambdas — each element executes independently
     assert "8" in stdout_value;  # fns[0](4) == 4 * 2
     assert "7" in stdout_value;  # fns[1](4) == 4 + 3
+    # return-hint form: lambda param: type -> ReturnType { body }
+    assert "inc:10" in stdout_value;
 }
 
 test "lambda self" {

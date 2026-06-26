@@ -3085,14 +3085,24 @@ impl Parser.parse_lambda_params(sig_kid: list) -> list {
 
 impl Parser._lambda_colon_is_annotation -> bool {
     # Current token must be COLON. Scan forward without consuming to decide
-    # whether this colon is a param-type separator (i.e. a second COLON exists
-    # at bracket depth 0 before the lambda's enclosing scope ends).
+    # whether this colon is a param-type separator. Returns True if a second
+    # COLON, a RETURN_HINT (->), or an unmatched LBRACE (brace body) appears
+    # at bracket depth 0 before the lambda's enclosing scope ends.
     save = self.pos;
     self.advance();  # step past COLON
     depth = 0;
     found = False;
+    in_expr = False;  # True once we see an operator that can't appear in a type
+    saw_type_token = False;  # True once we've seen at least one type-expression token
     while not self.at_end() {
-        if self.check_any(TokenKind.LPAREN, TokenKind.LSQUARE, TokenKind.LBRACE) {
+        if self.check_any(TokenKind.LPAREN, TokenKind.LSQUARE) {
+            saw_type_token = True;
+            depth += 1;
+        } elif self.check(TokenKind.LBRACE) {
+            if depth == 0 and saw_type_token and not in_expr {
+                found = True;  # lambda x: type { body } — brace body form
+                break;
+            }
             depth += 1;
         } elif self.check_any(TokenKind.RPAREN, TokenKind.RSQUARE, TokenKind.RBRACE) {
             if depth == 0 {
@@ -3106,6 +3116,49 @@ impl Parser._lambda_colon_is_annotation -> bool {
         } elif self.check(TokenKind.COLON) and depth == 0 {
             found = True;
             break;
+        } elif self.check(TokenKind.RETURN_HINT) and depth == 0 {
+            found = True;  # lambda e: any -> None { body } form
+            break;
+        } elif depth == 0
+        and not in_expr
+        and self.check_any(
+            TokenKind.NAME,
+            TokenKind.TYP_STRING,
+            TokenKind.TYP_INT,
+            TokenKind.TYP_FLOAT,
+            TokenKind.TYP_LIST,
+            TokenKind.TYP_TUPLE,
+            TokenKind.TYP_SET,
+            TokenKind.TYP_DICT,
+            TokenKind.TYP_BOOL,
+            TokenKind.TYP_BYTES,
+            TokenKind.TYP_ANY,
+            TokenKind.TYP_TYPE,
+            TokenKind.NULL,
+            TokenKind.BW_OR,
+            TokenKind.DOT
+        ) {
+            saw_type_token = True;
+        } elif depth == 0
+        and self.check_any(
+            TokenKind.PLUS,
+            TokenKind.MINUS,
+            TokenKind.STAR_MUL,
+            TokenKind.STAR_POW,
+            TokenKind.DIV,
+            TokenKind.MOD,
+            TokenKind.EQ_EQ,
+            TokenKind.NE,
+            TokenKind.LT,
+            TokenKind.GT,
+            TokenKind.LT_EQ,
+            TokenKind.GT_EQ,
+            TokenKind.KW_AND,
+            TokenKind.KW_OR,
+            TokenKind.KW_NOT,
+            TokenKind.KW_IF
+        ) {
+            in_expr = True;
         }
         self.advance();
     }
