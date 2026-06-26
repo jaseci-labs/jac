@@ -366,9 +366,23 @@ obj CMapper {
         self._list_bound = set();
         name = nd.decl.name;
         params: list[object] = [];
+        vararg = None;
         pl = nd.decl.type.args;
         if pl is not None {
             for p in pl.params {
+                if isinstance(p, c_ast.EllipsisParam) {
+                    # Variadic `...` (§roadmap #9): map the *declaration* to a Jac
+                    # `*args` so the signature stays callable, and flag the function
+                    # Tier-B — the body's `va_list`/`va_arg` semantics are not modelled.
+                    vararg = ast3.arg(arg="args", annotation=None);
+                    self._stamp(vararg, p, text="...");
+                    self._mark_tier_b(
+                        nd.decl,
+                        "variadic `...` lowered to Jac `*args`: va_list/va_arg "
+                        "semantics are not modelled — verify"
+                    );
+                    continue;
+                }
                 if p.name is None {
                     continue;
                 }
@@ -381,7 +395,7 @@ obj CMapper {
         args = ast3.arguments(
             posonlyargs=[],
             args=params,
-            vararg=None,
+            vararg=vararg,
             kwonlyargs=[],
             kw_defaults=[],
             kwarg=None,
@@ -496,6 +510,13 @@ obj CMapper {
             # list-bound state from an outer-scope binding of the same name.
             self._list_bound.discard(nd.name);
         }
+        # Static storage duration (#2): an uninitialized file-scope var or a
+        # function-local `static` is zero-initialized in C. Synthesize that zero
+        # so the guarantee survives; automatic locals (no static, in a function)
+        # stay annotation-only, matching C's indeterminate value.
+        if value is None and (self._func_depth == 0 or "static" in storage) {
+            value = self._zero_default(inner);
+        }
         aa = ast3.AnnAssign(target=target, annotation=ann, value=value, simple=1);
         return self._stamp(aa, nd, text=nd.name);
     }
@@ -530,6 +551,37 @@ obj CMapper {
         value = self.conv_expr(nd_init) if nd_init is not None else None;
         aa = ast3.AnnAssign(target=target, annotation=ann_n, value=value, simple=1);
         return self._stamp(aa, nd, text=nd.name);
+    }
+
+    def _zero_default(inner: object) -> object {
+        # Zero-initializer for an uninitialized *static-storage-duration* decl
+        # (file-scope, or function-local `static`). C guarantees such objects
+        # start at zero — NULL for pointers, 0/0.0/false for scalars — so a bare
+        # `n: int` annotation would silently drop that guarantee (vs an automatic
+        # local, whose value is genuinely indeterminate and stays annotation-only).
+        (line, col) = (self._lineno, 0);
+        if isinstance(inner, c_ast.PtrDecl) {
+            return self._stamp_manual(
+                ast3.Constant(value=None), line, col, text="None"
+            );
+        }
+        names: list = [];
+        if isinstance(inner, c_ast.TypeDecl) {
+            names = inner.type?.names or [];
+        }
+        jac = self._jac_prim(names);
+        if jac == "float" {
+            (d, t) = (ast3.Constant(value=0.0), "0.0");
+        } elif jac == "bool" {
+            (d, t) = (ast3.Constant(value=False), "False");
+        } elif jac == "str" {
+            # A zero `char` is the NUL byte; modelled as "" (empty string) rather
+            # than embedding a literal NUL into the generated Jac source.
+            (d, t) = (ast3.Constant(value=""), '""');
+        } else {
+            (d, t) = (ast3.Constant(value=0), "0");
+        }
+        return self._stamp_manual(d, line, col, text=t);
     }
 
     def c_Assignment(nd: object) -> object {
@@ -603,18 +655,42 @@ obj CMapper {
 
     def c_If(nd: object) -> object {
         test = self.conv_expr(nd.cond);
+        # Snapshot AFTER the condition — a cond like `if ((arr = malloc(...)))`
+        # mutates list-bound state, and that effect is on every path. Each branch
+        # then walks from its own copy so neither leaks into the other (§9.5).
+        base: set = set(self._list_bound);
+        self._list_bound = set(base);
         true_stmts = self._stmts_from(nd.iftrue);
+        s_true: set = self._list_bound;
         false_stmts: list[object] = [];
         if nd.iffalse is not None {
+            self._list_bound = set(base);
             false_stmts = self._stmts_from(nd.iffalse);
+            s_false: set = self._list_bound;
+        } else {
+            # No else → the fall-through path keeps `base` unchanged.
+            s_false = base;
         }
+        # Join: list-bound after the if only if list-bound on BOTH paths.
+        self._list_bound = self._lb_merge([s_true, s_false]);
         ifs = ast3.If(test=test, body=true_stmts, orelse=false_stmts);
         return self._stamp(ifs, nd, text="if");
     }
 
     def c_While(nd: object) -> object {
         test = self.conv_expr(nd.cond);
+        base: set = set(self._list_bound);
+        # Drop names the body may rebind to a non-list before walking it, so a
+        # realloc in the body is judged against what holds on every iteration's
+        # back-edge, not just the first (§9.5). Re-gens in the body re-add them.
+        killed: set = set();
+        self._collect_lb_kills(nd.stmt, killed);
+        self._list_bound = base - killed;
         body = self._stmts_from(nd.stmt);
+        s_end: set = self._list_bound;
+        # The loop may run zero times: keep only names list-bound on both the
+        # skip path (base) and the body-exit path.
+        self._list_bound = self._lb_merge([base, s_end]);
         w = ast3.While(test=test, body=body, orelse=[]);
         return self._stamp(w, nd, text="while");
     }
@@ -628,6 +704,12 @@ obj CMapper {
         # spin without ever re-checking cond. Flag that case Tier-B; the common
         # continue-free do-while stays faithful (Tier-A).
         (line, col) = self._loc(nd);
+        # Body runs at least once, but still loops: drop names it may rebind to a
+        # non-list before walking, so a realloc in the body holds on every
+        # back-edge, not just the first iteration (§9.5).
+        killed: set = set();
+        self._collect_lb_kills(nd.stmt, killed);
+        self._list_bound -= killed;
         body = self._stmts_from(nd.stmt);
         cond = self.conv_expr(nd.cond);
         not_cond = self._stamp_manual(
@@ -709,18 +791,32 @@ obj CMapper {
             "`break` is dropped as the switch terminator, and the selector is "
             "re-evaluated per branch — verify (faithful when every case ends in break)",
         );
-        orelse: list[object] = (
-            self._switch_branch_body(default_stmts) if default_stmts is not None else []
-        );
+        # Each case body is a distinct path; walk it from a copy of the pre-switch
+        # state and merge at the end so list-bound status leaving the switch is
+        # what holds on every path, not whatever the last-walked case left (§9.5).
+        base: set = set(self._list_bound);
+        branch_states: list = [];
+        if default_stmts is not None {
+            self._list_bound = set(base);
+            orelse: list[object] = self._switch_branch_body(default_stmts);
+            branch_states.append(self._list_bound);
+        } else {
+            orelse = [];
+            # No default → the no-match path falls through with `base` unchanged.
+            branch_states.append(base);
+        }
         for grp in reversed(groups) {
             (vals, stmts) = grp;
+            self._list_bound = set(base);
             body = self._switch_branch_body(stmts);
+            branch_states.append(self._list_bound);
             test = self._switch_test(nd.cond, vals, line, col);
             ifs = self._stamp_manual(
                 ast3.If(test=test, body=body, orelse=orelse), line, col, text="case"
             );
             orelse = [ifs];
         }
+        self._list_bound = self._lb_merge(branch_states);
         if orelse {
             if len(orelse) == 1 and isinstance(orelse[0], ast3.If) {
                 return orelse[0];
@@ -921,6 +1017,78 @@ obj CMapper {
             );
         }
         return py_ptr;
+    }
+
+    # ------------------------------------------------------------------ #
+    # List-bound dataflow across control flow (§9.5)                      #
+    # ------------------------------------------------------------------ #
+    # `_list_bound` is a MUST property: a name is list-bound at a point only when
+    # it is provably list-bound on EVERY path reaching it. A single mutable set
+    # walked in tree order conflates branches, making a later realloc's Tier-A/B
+    # verdict depend on traversal order. The branch handlers below snapshot the
+    # set, walk each path from a copy, and merge by intersection at the join so
+    # the verdict reflects what is actually provable after the construct.
+    def _lb_merge(states: list) -> set {
+        # Intersection across path-end states — list-bound only if list-bound on
+        # all of them. Empty input (no reachable path) → empty set.
+        if not states {
+            return set();
+        }
+        out: set = set(states[0]);
+        for s in states[1:] {
+            out &= s;
+        }
+        return out;
+    }
+
+    def _lb_assignment_kills(name: str, rhs: object) -> bool {
+        # Mirrors c_Assignment's gen/preserve rules: `name = rhs` keeps list-bound
+        # status only when rhs is a malloc-array (gen) or a self-realloc
+        # `realloc(name, …)` (same logical buffer). Any other rhs rebinds the name
+        # to a non-list → a kill. A cross-pointer `name = realloc(other, …)` is
+        # treated as a kill here (conservative: at worst it demotes a later realloc
+        # to Tier-B, which is always sound).
+        if self._malloc_array_match(rhs) is not None {
+            return False;
+        }
+        if isinstance(rhs, c_ast.FuncCall)
+        and isinstance(rhs.name, c_ast.ID)
+        and rhs.name.name == "realloc"
+        and rhs.args is not None
+        and len(rhs.args.exprs) >= 1 {
+            ptr = rhs.args.exprs[0];
+            if isinstance(ptr, c_ast.ID) and ptr.name == name {
+                return False;
+            }
+        }
+        return True;
+    }
+
+    def _collect_lb_kills(nd: object, killed: set) {
+        # Names a loop body may rebind to a non-list on some iteration. Removing
+        # them from `_list_bound` before walking the body makes a realloc inside
+        # the loop sound across the 0-or-more iterations (a name killed on any
+        # iteration is not provably list-bound on the back-edge); a re-gen earlier
+        # in the same iteration re-adds it during the walk.
+        if nd is None {
+            return;
+        }
+        if isinstance(nd, c_ast.Assignment)
+        and nd.op == "="
+        and isinstance(nd.lvalue, c_ast.ID) {
+            if self._lb_assignment_kills(nd.lvalue.name, nd.rvalue) {
+                killed.add(nd.lvalue.name);
+            }
+        } elif isinstance(nd, c_ast.Decl) and nd.name is not None {
+            # A re-decl rebinds the name; only a malloc-array init keeps it bound.
+            decl_init = getattr(nd, "init");
+            if decl_init is None or self._malloc_array_match(decl_init) is None {
+                killed.add(nd.name);
+            }
+        }
+        for (_, child) in nd.children() {
+            self._collect_lb_kills(child, killed);
+        }
     }
 
     def _flatten_mult(nd: object, acc: list) {

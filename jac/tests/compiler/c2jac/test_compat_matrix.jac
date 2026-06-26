@@ -166,6 +166,45 @@ glob _MATRIX: list[dict] = [
              "tier": "Bf",
 
          },
+         # -- static storage duration (#2): C zero-initializes file-scope and ------- #
+         # `static` objects, so an uninitialized decl must carry that guarantee.       #
+         {
+             "label": "uninit_global_int",
+             "src": "int g;",
+             "want": ["g: int = 0"],
+             "deny": [],
+             "tier": "A",
+
+         },
+         # Uninitialized file-scope pointer → NULL → None.
+         {
+             "label": "uninit_global_ptr",
+             "src": "int *p;",
+             "want": ["p: object = None"],
+             "deny": [],
+             "tier": "A",
+
+         },
+         # Uninitialized function-local static: zero-initialized AND flagged for the
+         # lost cross-call persistence (#2 + #5).
+         {
+             "label": "uninit_static_local",
+             "src": "int f(void){ static int n; return n; }",
+             "want": ["n: int = 0", "function-local 'static'"],
+             "deny": ["__c2jac_unsupported"],
+             "tier": "Bf",
+
+         },
+         # An automatic (non-static) local is genuinely indeterminate in C, so it
+         # stays annotation-only — no synthesized zero.
+         {
+             "label": "uninit_auto_local",
+             "src": "int f(void){ int x; return x; }",
+             "want": ["x: int"],
+             "deny": ["x: int = 0"],
+             "tier": "A",
+
+         },
          # -- qualifiers (#6): volatile / restrict carry semantics Jac can't express -- #
          # Emitted faithfully but flagged; const (above) stays Tier-A as a benign drop.
          {
@@ -180,6 +219,17 @@ glob _MATRIX: list[dict] = [
              "label": "restrict_ptr",
              "src": "int *restrict rp;",
              "want": ["rp", "'restrict' qualifier dropped"],
+             "deny": ["__c2jac_unsupported"],
+             "tier": "Bf",
+
+         },
+         # Variadic `...` (#9): the declaration maps to a Jac `*args` so the
+         # signature stays callable, and the function is flagged Tier-B (va_list/
+         # va_arg body semantics are not modelled). Must NOT crash or be dropped.
+         {
+             "label": "variadic",
+             "src": "int log_many(const char *fmt, ...){ return 0; }",
+             "want": ["*args", "variadic `...` lowered to Jac `*args`"],
              "deny": ["__c2jac_unsupported"],
              "tier": "Bf",
 

@@ -106,3 +106,39 @@ test "list-bound pointer overwritten by raw buffer falls back to Tier-B" {
     assert len(re) == 1 , "Expected one REALLOC_ELIDE idiom";
     assert re[0].tier.value == "tier_b" , "realloc on a pointer overwritten by a raw buffer must drop to Tier-B";
 }
+
+# ---------------------------------------------------------------------------- #
+# §9.5 — list-bound status must MERGE across control flow, not leak in tree    #
+# order. A realloc after a branch is Tier-A only if list-bound on EVERY path.  #
+# ---------------------------------------------------------------------------- #
+test "realloc after a conditional rebind is not provably list-bound (Tier-B)" {
+    # arr is list-bound after malloc, but one branch rebinds it to a raw buffer.
+    # On the merge the name is list-bound on only one path, so the trailing
+    # realloc cannot claim Tier-A regardless of traversal order.
+    src = "void *malloc(unsigned int n);\nvoid *realloc(void *p, unsigned int n);\n" + "void *make(int *raw, int n) {\n" + "  int *arr = malloc(n * sizeof(int));\n" + "  if (n > 0) { arr = raw; }\n" + "  arr = realloc(arr, 2 * n * sizeof(int));\n" + "  return arr;\n}\n";
+    (jac_str, tags) = transpile_c_str(src, "branch_rebind_realloc.c");
+    re = tags.by_idiom(Idiom.REALLOC_ELIDE);
+    assert len(re) == 1 , "Expected one REALLOC_ELIDE idiom";
+    assert re[0].tier.value == "tier_b" , "realloc after a conditional rebind must be Tier-B (list-bound on only one path)";
+}
+
+test "realloc after a branch that never rebinds stays list-bound (Tier-A)" {
+    # Neither path touches arr's binding, so the merge preserves list-boundness
+    # and the trailing realloc remains a clean Tier-A elide.
+    src = "void *malloc(unsigned int n);\nvoid *realloc(void *p, unsigned int n);\n" + "void *make(int n) {\n" + "  int *arr = malloc(n * sizeof(int));\n" + "  if (n > 0) { arr[0] = 1; }\n" + "  arr = realloc(arr, 2 * n * sizeof(int));\n" + "  return arr;\n}\n";
+    (jac_str, tags) = transpile_c_str(src, "branch_keep_realloc.c");
+    re = tags.by_idiom(Idiom.REALLOC_ELIDE);
+    assert len(re) == 1 , "Expected one REALLOC_ELIDE idiom";
+    assert re[0].tier.value == "tier_a" , "realloc after a non-rebinding branch should stay Tier-A";
+}
+
+test "realloc in a loop that later rebinds the pointer is Tier-B (back-edge)" {
+    # On the first iteration arr is the malloc'd list, but the loop body rebinds
+    # it to a raw buffer, so on every later iteration the realloc sees a non-list
+    # pointer. The kill pre-pass drops arr before the body, yielding Tier-B.
+    src = "void *malloc(unsigned int n);\nvoid *realloc(void *p, unsigned int n);\n" + "void *grow(int *raw, int n) {\n" + "  int *arr = malloc(n * sizeof(int));\n" + "  while (n > 0) {\n" + "    arr = realloc(arr, n * sizeof(int));\n" + "    arr = raw;\n" + "    n = n - 1;\n" + "  }\n" + "  return arr;\n}\n";
+    (jac_str, tags) = transpile_c_str(src, "loop_rebind_realloc.c");
+    re = tags.by_idiom(Idiom.REALLOC_ELIDE);
+    assert len(re) == 1 , "Expected one REALLOC_ELIDE idiom";
+    assert re[0].tier.value == "tier_b" , "realloc preceding a same-loop rebind must be Tier-B (unsound on the back-edge)";
+}
