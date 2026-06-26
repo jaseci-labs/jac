@@ -74,10 +74,10 @@ glob FORBIDDEN: dict[str, str] = {
              "declaration-surface reads at interop layout export"
          ),
          ("native/na_ir_gen_pass.impl/func.impl.jac", "type_tag.tag"): (
-             6,
+             4,
              "scalar LLVM materialization from declared clib annotations "
-             "at the declaration site - the backend's lowering role; "
-             "+2 for named-struct param tracking in _codegen_ability (#6707, #6708)"
+             "at the declaration site - the backend's lowering role "
+             "(sysv sig planning + fixed-param lowering, #6707, #6708)"
          ),
          ("native/na_ir_gen_pass.impl/objects.impl.jac", "type_tag.tag"): (
              1,
