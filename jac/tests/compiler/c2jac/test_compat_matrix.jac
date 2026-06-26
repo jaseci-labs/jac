@@ -18,7 +18,10 @@ import from jaclang.compiler.c2jac.driver { transpile_c_str }
 #   src   — inline C translation unit
 #   want  — substrings that MUST appear in the emitted Jac
 #   deny  — substrings that must NOT appear
-#   tier  — "A": expect zero Tier-B tags + no surrogate; "B": expect a surrogate
+#   tier  — "A":  zero Tier-B tags + no surrogate (faithful)
+#           "Bf": faithful best-effort — >=1 Tier-B tag but NO surrogate (emitted
+#                 form is valid, the lost semantics are only flagged in comments)
+#           "B":  surrogate-backed best-effort (a __c2jac_unsupported marker)
 glob _MATRIX: list[dict] = [
          # -- integer-family normalization (#2) — currently correct via names[-1] -- #
          {
@@ -126,6 +129,61 @@ glob _MATRIX: list[dict] = [
              "tier": "A",
 
          },
+         # -- storage class (#5): extern w/o init is a pure declaration → no-op ------- #
+         {
+             "label": "extern_noop",
+             "src": "extern int ctr; int use(void){ return 0; }",
+             "want": ["def use() -> int"],
+             "deny": ["ctr"],
+             "tier": "A",
+
+         },
+         # extern WITH an initializer is itself the definition → emitted faithfully.
+         {
+             "label": "extern_with_init",
+             "src": "extern int e = 7;",
+             "want": ["e: int = 7"],
+             "deny": [],
+             "tier": "A",
+
+         },
+         # File-scope static is just a module var — no semantic loss.
+         {
+             "label": "static_global",
+             "src": "static int s = 4;",
+             "want": ["s: int = 4"],
+             "deny": [],
+             "tier": "A",
+
+         },
+         # Function-local static loses cross-call persistence: emitted as a plain
+         # local (best-effort) and flagged Tier-B, never silently dropped.
+         {
+             "label": "static_local",
+             "src": "int f(void){ static int n = 0; return n; }",
+             "want": ["n: int = 0", "function-local 'static'"],
+             "deny": ["__c2jac_unsupported"],
+             "tier": "Bf",
+
+         },
+         # -- qualifiers (#6): volatile / restrict carry semantics Jac can't express -- #
+         # Emitted faithfully but flagged; const (above) stays Tier-A as a benign drop.
+         {
+             "label": "volatile_var",
+             "src": "volatile int v = 1;",
+             "want": ["v: int = 1", "'volatile' qualifier dropped"],
+             "deny": ["__c2jac_unsupported"],
+             "tier": "Bf",
+
+         },
+         {
+             "label": "restrict_ptr",
+             "src": "int *restrict rp;",
+             "want": ["rp", "'restrict' qualifier dropped"],
+             "deny": ["__c2jac_unsupported"],
+             "tier": "Bf",
+
+         },
 
      ];
 
@@ -143,8 +201,10 @@ test "c-form compatibility matrix" {
                 failures.append(f"[{row['label']}] unexpected {repr(d)} in:\n{js}");
             }
         }
-        if row["tier"] == "A" {
-            tb = tags.tier_b_entries();
+        tb = tags.tier_b_entries();
+        surrogate = "__c2jac_unsupported" in js;
+        tier = row["tier"];
+        if tier == "A" {
             if len(tb) != 0 {
                 failures.append(
                     f"[{row['label']}] expected Tier-A but got Tier-B sites: {[
@@ -152,13 +212,28 @@ test "c-form compatibility matrix" {
                     ]}"
                 );
             }
-            if "__c2jac_unsupported" in js {
+            if surrogate {
                 failures.append(
                     f"[{row['label']}] expected Tier-A but found surrogate in:\n{js}"
                 );
             }
+        } elif tier == "Bf" {
+            if len(tb) == 0 {
+                failures.append(
+                    f"[{row[
+                        'label'
+                    ]}] expected a faithful Tier-B tag, none recorded in:\n{js}"
+                );
+            }
+            if surrogate {
+                failures.append(
+                    f"[{row[
+                        'label'
+                    ]}] expected faithful Tier-B (no surrogate) but found one in:\n{js}"
+                );
+            }
         } else {
-            if "__c2jac_unsupported" not in js {
+            if not surrogate {
                 failures.append(
                     f"[{row['label']}] expected Tier-B surrogate, none in:\n{js}"
                 );
