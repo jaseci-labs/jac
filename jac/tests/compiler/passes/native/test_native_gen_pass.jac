@@ -395,6 +395,55 @@ test "strings simple escapes still decode" {
     assert f() == b"p\tq\nr";
 }
 
+# str(float) must be CPython's shortest round-trip repr, not %g (#6978 0.3).
+# Every value below is compared byte-for-byte against Python's own repr(), so
+# fixed vs. exponential notation, the trailing `.0`, -0.0, and inf/nan spelling
+# are all held to sv parity.
+test "float repr shortest round-trip matches CPython (na == sv) (#6978 0.3)" {
+    (eng, _) = compile_native("float_repr.na.jac");
+    f = get_func(eng, "frepr", ctypes.c_char_p, ctypes.c_double);
+    cases = [
+        0.0,
+        1.0,
+        -0.0,
+        -1.0,
+        0.1,
+        0.2,
+        0.3,
+        1.1,
+        3.14,
+        2.5,
+        0.5,
+        -2.75,
+        100.0,
+        1234.5,
+        100000.0,
+        0.001,
+        0.0001,
+        0.000123,
+        1234567890123456.0,
+        123456789.123456789,
+        0.1 + 0.2,
+        1e16,
+        1.5e16,
+        1e-5,
+        1e-10,
+        1e100,
+        1e-100,
+        1.7976931348623157e308,
+        2.2250738585072014e-308,
+        5e-324,
+        float("inf"),
+        float("-inf"),
+        float("nan")
+    ];
+    for v in cases {
+        assert f(v) == repr(v).encode("utf-8") , (
+            f"str({v!r}): na={f(v)!r} sv={repr(v).encode('utf-8')!r}"
+        );
+    }
+}
+
 test "strings str equal" {
     (eng, _) = compile_native("strings.na.jac");
     f = get_func(eng, "str_equal", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p);

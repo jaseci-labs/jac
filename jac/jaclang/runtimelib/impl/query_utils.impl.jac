@@ -9,6 +9,34 @@ impl _trace_enabled -> bool {
 }
 
 
+"""Compute the derived cache-key components from the lambda. Constructor
+takes only `filt`; `code` and `closure_types` are filled here so callers
+don't have to pre-compute them."""
+impl _CodeKey.postinit -> None {
+    self.code = self.filt.__code__;
+    cells = self.filt.__closure__ if self.filt.__closure__ is not None else ();
+    self.closure_types = tuple(
+        c.cell_contents
+        for c in cells
+        if isinstance(c.cell_contents, `type)
+    );
+}
+
+
+impl _CodeKey.__hash__ -> int {
+    return hash((self.code, self.closure_types));
+}
+
+
+impl _CodeKey.__eq__(other: object) -> bool {
+    return (
+        isinstance(other, _CodeKey)
+        and self.code is other.code
+        and self.closure_types == other.closure_types
+    );
+}
+
+
 impl _filter_type_name(filt: (Callable[[Archetype], bool] | None)) -> (str | None) {
     if filt is None {
         return None;
@@ -20,19 +48,11 @@ impl _filter_type_name(filt: (Callable[[Archetype], bool] | None)) -> (str | Non
     } except Exception {
         ;
     }
-    try {
-        closure = inspect.getclosurevars(filt);
-        for val in `list(closure.nonlocals.values()) + `list(
-            closure.globals.values()
-        ) {
-            if isinstance(val, `type) and issubclass(val, Archetype) {
-                return val.__name__;
-            }
-        }
-    } except Exception {
-        ;
+    code = filt?.__code__;
+    if code is None {
+        return None;
     }
-    return None;
+    return _filter_type_name_by_code(_CodeKey(filt));
 }
 
 
@@ -40,12 +60,17 @@ impl _filter_has_predicates(filt: (Callable[[Archetype], bool] | None)) -> bool 
     if filt is None {
         return False;
     }
-    try {
-        opcodes = {instr.opname for instr in dis.get_instructions(filt)};
-    } except (TypeError, AttributeError, ValueError) {
-        return True;
+    code = filt?.__code__;
+    if code is None {
+        # Non-function callable (rare); run uncached.
+        try {
+            opcodes = {instr.opname for instr in dis.get_instructions(filt)};
+        } except (TypeError, AttributeError, ValueError) {
+            return True;
+        }
+        return bool(opcodes & {'LOAD_ATTR', 'COMPARE_OP', 'CONTAINS_OP', 'IS_OP'});
     }
-    return bool(opcodes & {'LOAD_ATTR', 'COMPARE_OP', 'CONTAINS_OP', 'IS_OP'});
+    return _filter_has_predicates_by_code(code);
 }
 
 

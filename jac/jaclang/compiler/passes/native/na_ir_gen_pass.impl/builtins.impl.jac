@@ -66,13 +66,14 @@ impl NaIRGenPass._emit_print(nd: uni.FuncCall) -> (ir.Value | None) {
             fmt_parts.append("%lld");
             args.append(val);
         } elif isinstance(val.type, ir.DoubleType) {
-            fmt_parts.append("%f");
-            args.append(val);
+            # print(float): CPython str(float) shortest round-trip, not %f. (#6978 0.3)
+            fmt_parts.append("%s");
+            args.append(self._emit_float_repr(val));
         } elif isinstance(val.type, ir.FloatType) {
-            # C `float` (f32) — widen to double for printf's %f varargs slot.
+            # C `float` (f32) — widen to double, then shortest round-trip repr.
             val = self.builder.fpext(val, ir.DoubleType());
-            fmt_parts.append("%f");
-            args.append(val);
+            fmt_parts.append("%s");
+            args.append(self._emit_float_repr(val));
         } elif isinstance(val.type, ir.PointerType) {
             fmt_parts.append("%s");
             args.append(val);
@@ -252,8 +253,9 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                 fmt_parts.append("%lld");
                 args.append(val);
             } elif isinstance(val.type, ir.DoubleType) {
-                fmt_parts.append("%f");
-                args.append(val);
+                # f"{float}": CPython str(float) shortest round-trip, not %f. (#6978 0.3)
+                fmt_parts.append("%s");
+                args.append(self._emit_float_repr(val));
             } elif isinstance(val.type, ir.PointerType) {
                 fmt_parts.append("%s");
                 args.append(val);
@@ -754,5 +756,152 @@ impl NaIRGenPass._emit_sys_exit(args: list[ir.Value]) -> (ir.Value | None) {
     self.builder.call(exit_fn, [code]);
     self.builder.unreachable();
     return ir.Constant(ir.IntType(64), 0);
+}
+
+# ─── Float repr (#6978 Phase 0.3) ────────────────────────────
+"""Emit a call to the (lazily built) __jac_float_repr helper for a double."""
+impl NaIRGenPass._emit_float_repr(fv: ir.Value) -> ir.Value {
+    return self.builder.call(self._float_repr_fn(), [fv], name="f.repr");
+}
+
+"""Build (once) `i8* __jac_float_repr(double)` producing CPython's `repr(float)`:
+the shortest decimal that round-trips back to the exact double, replacing the
+lossy `%g` (`str(1.0)` was "1" on na vs "1.0" on sv). Strategy mirrors what a
+Ryu/Grisu pass would yield but leans on libc's correctly-rounded printf: find
+the smallest precision p in [0,17] whose `%.*e` rendering re-parses (`strtod`)
+to the exact input, then reformat in CPython's `'r'` style -- exponential when
+decpt<=-4 or decpt>16 (the winning `%.*e` buffer already matches CPython there),
+else fixed `%.*f` with a trailing `.0` for integral values (`Py_DTSF_ADD_DOT_0`).
+nan/inf/-inf are spelled as CPython does. One helper per module (memoized)."""
+impl NaIRGenPass._float_repr_fn -> ir.Function {
+    if self._float_repr_function is not None {
+        return self._float_repr_function;
+    }
+    f64 = ir.DoubleType();
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    fnty = ir.FunctionType(i8p, [f64]);
+    fn = ir.Function(self.llvm_module, fnty, name="__jac_float_repr");
+    fn.linkage = "private";
+    fn.args[0].name = "d";
+    d = fn.args[0];
+    # Build with a private builder, but point self.builder at it so the
+    # _make_global_string / extern helpers emit into this function, not the
+    # caller that triggered the lazy build.
+    saved_builder = self._builder;
+    entry_bb = fn.append_basic_block("entry");
+    b = ir.IRBuilder(entry_bb);
+    self._builder = b;
+
+    snprintf = self._get_or_declare_extern(
+        "snprintf", i32, [i8p, i64, i8p], var_arg=True
+    );
+    strtod = self._get_or_declare_extern("strtod", f64, [i8p, i8p.as_pointer()]);
+    strtol = self._get_or_declare_extern("strtol", i64, [i8p, i8p.as_pointer(), i32]);
+    strlen = self._get_or_declare_extern("strlen", i64, [i8p]);
+    strchr = self._get_or_declare_extern("strchr", i8p, [i8p, i32]);
+
+    fmt_e = self._make_global_string("%.*e", name_prefix=".frepr.e");
+    fmt_f = self._make_global_string("%.*f", name_prefix=".frepr.f");
+    s_nan = self._make_global_string("nan", name_prefix=".frepr.nan");
+    s_inf = self._make_global_string("inf", name_prefix=".frepr.inf");
+    s_ninf = self._make_global_string("-inf", name_prefix=".frepr.ninf");
+
+    # ── special cases: nan / +inf / -inf (returned globals carry the RC
+    # sentinel header, so the caller may treat them as owned strings) ──
+    is_nan = b.not_(b.fcmp_ordered("==", d, d, name="fr.ord"), name="fr.isnan");
+    nan_bb = fn.append_basic_block("fr.nan");
+    chk_pinf = fn.append_basic_block("fr.chk.pinf");
+    b.cbranch(is_nan, nan_bb, chk_pinf);
+    b.position_at_end(nan_bb);
+    b.ret(s_nan);
+    b.position_at_end(chk_pinf);
+    pinf = ir.Constant(f64, float("inf"));
+    ninf = ir.Constant(f64, float("-inf"));
+    is_pinf = b.fcmp_ordered("==", d, pinf, name="fr.ispinf");
+    pinf_bb = fn.append_basic_block("fr.pinf");
+    chk_ninf = fn.append_basic_block("fr.chk.ninf");
+    b.cbranch(is_pinf, pinf_bb, chk_ninf);
+    b.position_at_end(pinf_bb);
+    b.ret(s_inf);
+    b.position_at_end(chk_ninf);
+    is_ninf = b.fcmp_ordered("==", d, ninf, name="fr.isninf");
+    ninf_bb = fn.append_basic_block("fr.ninf");
+    setup_bb = fn.append_basic_block("fr.setup");
+    b.cbranch(is_ninf, ninf_bb, setup_bb);
+    b.position_at_end(ninf_bb);
+    b.ret(s_ninf);
+
+    # ── shortest precision search: smallest p whose %.*e re-parses exactly ──
+    b.position_at_end(setup_bb);
+    cap = ir.Constant(i64, 64);
+    tmp = b.call(self.rc_alloc_fn, [cap], name="fr.tmp");
+    endptr = b.alloca(i8p, name="fr.endptr");
+    pvar = b.alloca(i32, name="fr.p");
+    b.store(ir.Constant(i32, 0), pvar);
+    loop_cond = fn.append_basic_block("fr.cond");
+    loop_inc = fn.append_basic_block("fr.inc");
+    loop_done = fn.append_basic_block("fr.done");
+    b.branch(loop_cond);
+    b.position_at_end(loop_cond);
+    pv = b.load(pvar, name="fr.pv");
+    b.call(snprintf, [tmp, cap, fmt_e, pv, d]);
+    parsed = b.call(strtod, [tmp, endptr], name="fr.parsed");
+    eq = b.fcmp_ordered("==", parsed, d, name="fr.eq");
+    at_max = b.icmp_signed(">=", pv, ir.Constant(i32, 17), name="fr.atmax");
+    b.cbranch(b.or_(eq, at_max, name="fr.stop"), loop_done, loop_inc);
+    b.position_at_end(loop_inc);
+    b.store(b.add(pv, ir.Constant(i32, 1)), pvar);
+    b.branch(loop_cond);
+
+    # ── decpt = exp + 1; ndigits = p + 1; pick notation per CPython 'r' ──
+    b.position_at_end(loop_done);
+    pfin = b.load(pvar, name="fr.pfin");
+    ndig = b.add(b.zext(pfin, i64), ir.Constant(i64, 1), name="fr.ndig");
+    epos = b.call(strchr, [tmp, ir.Constant(i32, 101)], name="fr.epos");  # 'e'
+    eptr = b.gep(epos, [ir.Constant(i64, 1)], name="fr.eptr");
+    expo = b.call(strtol, [eptr, endptr, ir.Constant(i32, 10)], name="fr.exp");
+    decpt = b.add(expo, ir.Constant(i64, 1), name="fr.decpt");
+    lo = b.icmp_signed("<=", decpt, ir.Constant(i64, -4), name="fr.lo");
+    hi = b.icmp_signed(">", decpt, ir.Constant(i64, 16), name="fr.hi");
+    use_exp = b.or_(lo, hi, name="fr.useexp");
+    exp_bb = fn.append_basic_block("fr.exp.out");
+    fixed_bb = fn.append_basic_block("fr.fixed");
+    b.cbranch(use_exp, exp_bb, fixed_bb);
+
+    # exponential: tmp already holds the winning %.*e rendering, which glibc
+    # spells exactly as CPython repr (lowercase e, signed >=2-digit exponent,
+    # no trailing .0).
+    b.position_at_end(exp_bb);
+    b.ret(tmp);
+
+    # fixed: %.*f with frac = max(0, ndigits - decpt); append ".0" if integral.
+    b.position_at_end(fixed_bb);
+    fr0 = b.sub(ndig, decpt, name="fr.frac0");
+    is_neg = b.icmp_signed("<", fr0, ir.Constant(i64, 0), name="fr.fracneg");
+    frac = b.select(is_neg, ir.Constant(i64, 0), fr0, name="fr.frac");
+    fbuf = b.call(self.rc_alloc_fn, [cap], name="fr.fbuf");
+    frac32 = b.trunc(frac, i32, name="fr.frac32");
+    b.call(snprintf, [fbuf, cap, fmt_f, frac32, d]);
+    is_int = b.icmp_signed("==", frac, ir.Constant(i64, 0), name="fr.isint");
+    dot_bb = fn.append_basic_block("fr.adddot");
+    ret_bb = fn.append_basic_block("fr.fixed.ret");
+    b.cbranch(is_int, dot_bb, ret_bb);
+    b.position_at_end(dot_bb);
+    flen = b.call(strlen, [fbuf], name="fr.flen");
+    b.store(ir.Constant(i8, 46), b.gep(fbuf, [flen], name="fr.dotp"));  # '.'
+    f1 = b.add(flen, ir.Constant(i64, 1), name="fr.f1");
+    b.store(ir.Constant(i8, 48), b.gep(fbuf, [f1], name="fr.zerop"));  # '0'
+    f2 = b.add(flen, ir.Constant(i64, 2), name="fr.f2");
+    b.store(ir.Constant(i8, 0), b.gep(fbuf, [f2], name="fr.nulp"));
+    b.branch(ret_bb);
+    b.position_at_end(ret_bb);
+    b.ret(fbuf);
+
+    self._builder = saved_builder;
+    self._float_repr_function = fn;
+    return fn;
 }
 # ─── Phase 8: Entry Block ────────────────────────────────────

@@ -43,6 +43,24 @@ jobs:
       - name: Set up jac (build the binary once, cached)
         uses: ./.github/actions/setup-jac
 
+      # setup-jac only runs `zig build` (which fetches the gitignored typeshed
+      # stdlib stubs into the checkout) on a binary-cache MISS. On a cache HIT
+      # the prebuilt binary is restored and the build -- and the stub fetch with
+      # it -- is skipped, so the stubs the upload step below publishes for
+      # test-compiler are absent (the upload then hard-fails on if-no-files-found).
+      # `zig build fetch-typeshed` is a lightweight, idempotent fetch (builds the
+      # small payload tool, no binary build, no LLVM/pbs) that materializes them
+      # regardless of the cache outcome; on a miss it is a no-op (stamp check).
+      - name: Set up Zig 0.16.0 (for the typeshed fetch on a binary-cache hit)
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+
+      - name: Materialize typeshed stdlib stubs into the checkout
+        working-directory: jac
+        run: zig build fetch-typeshed --summary all
+
       - name: Hermeticity + smoke (no system Python)
         working-directory: jac
         run: |
@@ -100,9 +118,10 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-      # setup-jac's `zig build` already materialized the gitignored typeshed
-      # stdlib stubs into the checkout; publish them so the test jobs get them
-      # without a zig toolchain (they only download the prebuilt binary).
+      # The fetch-typeshed step above materialized the gitignored typeshed stdlib
+      # stubs into the checkout (on both a binary-cache hit and miss); publish
+      # them so the test jobs get them without a zig toolchain (they only
+      # download the prebuilt binary).
       - name: Upload typeshed stdlib stubs
         uses: actions/upload-artifact@v4
         with:

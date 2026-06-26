@@ -11,10 +11,8 @@ def create_new_function_pass_manager() -> object {
 def create_pass_builder(tm: Any, pto: Any) -> object {
     return PassBuilder(tm, pto);
 }
-def create_pipeline_tuning_options(
-    speed_level: Any = 2, size_level: Any = 0
-) -> object {
-    return PipelineTuningOptions(speed_level, size_level);
+def create_pipeline_tuning_options(speed_level: Any = 2) -> object {
+    return PipelineTuningOptions(speed_level);
 }
 with entry {
     _prunestats = namedtuple('PruneStats', 'basicblock diamond fanout fanout_raise');
@@ -226,13 +224,6 @@ class NewPassManager {
             ffi.lib.LLVMPY_module_AddPostDomOnlyViewer(self);
         } else {
             ffi.lib.LLVMPY_function_AddPostDomOnlyViewer(self);
-        }
-    }
-    def add_lint_pass(self: NewPassManager) -> object {
-        if isinstance(self, ModulePassManager) {
-            ffi.lib.LLVMPY_module_AddLintPass(self);
-        } else {
-            ffi.lib.LLVMPY_function_AddLintPass(self);
         }
     }
     def add_aggressive_dce_pass(self: NewPassManager) -> object {
@@ -533,13 +524,9 @@ class FunctionPassManager(ffi.ObjectRef, NewPassManager) {
 }
 
 class PipelineTuningOptions(ffi.ObjectRef) {
-    def init(
-        self: PipelineTuningOptions, speed_level: Any = 2, size_level: Any = 0
-    ) -> object {
-        self._speed_level = None;
-        self._size_level = None;
+    def init(self: PipelineTuningOptions, speed_level: Any = 2) -> object {
+        self._speed_level = speed_level;
         self.speed_level = speed_level;
-        self.size_level = size_level;
         super.init(ffi.lib.LLVMPY_CreatePipelineTuningOptions());
     }
     @property
@@ -552,22 +539,6 @@ class PipelineTuningOptions(ffi.ObjectRef) {
             raise ValueError("Optimization level for speed should be 0, 1, 2, or 3");
         }
         self._speed_level = value;
-    }
-    @property
-    def size_level(self: PipelineTuningOptions) -> object {
-        return self._size_level;
-    }
-    @size_level.setter
-    def size_level(self: PipelineTuningOptions, value: Any) -> object {
-        if not (0 <= value <= 2) {
-            raise ValueError("Optimization level for size should be 0, 1, or 2");
-        }
-        if ((value != 0) and (self.speed_level != 2)) {
-            raise ValueError(
-                "Optimization for size should be encoded with speed level == 2"
-            );
-        }
-        self._size_level = value;
     }
     @property
     def loop_interleaving(self: PipelineTuningOptions) -> object {
@@ -631,14 +602,14 @@ class PassBuilder(ffi.ObjectRef) {
     def getModulePassManager(self: PassBuilder) -> object {
         return ModulePassManager(
             ffi.lib.LLVMPY_buildPerModuleDefaultPipeline(
-                self, self._pto.speed_level, self._pto.size_level
+                self, self._pto.speed_level
             )
         );
     }
     def getFunctionPassManager(self: PassBuilder) -> object {
         return FunctionPassManager(
             ffi.lib.LLVMPY_buildFunctionSimplificationPipeline(
-                self, self._pto.speed_level, self._pto.size_level
+                self, self._pto.speed_level
             )
         );
     }
@@ -716,7 +687,6 @@ with entry {
     ffi.lib.LLVMPY_module_AddPostDomOnlyViewer.argtypes = [
         ffi.LLVMModulePassManagerRef
     ];
-    ffi.lib.LLVMPY_module_AddLintPass.argtypes = [ffi.LLVMModulePassManagerRef];
     ffi.lib.LLVMPY_module_AddADCEPass.argtypes = [ffi.LLVMModulePassManagerRef];
     ffi.lib.LLVMPY_module_AddBreakCriticalEdgesPass.argtypes = [
         ffi.LLVMModulePassManagerRef
@@ -854,7 +824,6 @@ with entry {
     ffi.lib.LLVMPY_function_AddPostDomOnlyViewer.argtypes = [
         ffi.LLVMFunctionPassManagerRef
     ];
-    ffi.lib.LLVMPY_function_AddLintPass.argtypes = [ffi.LLVMFunctionPassManagerRef];
     ffi.lib.LLVMPY_function_AddADCEPass.argtypes = [ffi.LLVMFunctionPassManagerRef];
     ffi.lib.LLVMPY_function_AddBreakCriticalEdgesPass.argtypes = [
         ffi.LLVMFunctionPassManagerRef
@@ -971,13 +940,11 @@ with entry {
     ffi.lib.LLVMPY_buildPerModuleDefaultPipeline.restype = ffi.LLVMModulePassManagerRef;
     ffi.lib.LLVMPY_buildPerModuleDefaultPipeline.argtypes = [
         ffi.LLVMPassBuilderRef,
-        c_int,
         c_int
     ];
     ffi.lib.LLVMPY_buildFunctionSimplificationPipeline.restype = ffi.LLVMFunctionPassManagerRef;
     ffi.lib.LLVMPY_buildFunctionSimplificationPipeline.argtypes = [
         ffi.LLVMPassBuilderRef,
-        c_int,
         c_int
     ];
 }

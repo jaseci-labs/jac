@@ -1,29 +1,63 @@
-name: Release jac native binary
+name: Release jac dev binary (rolling main)
 
-# jaclang ships as a single self-contained `jac` binary (Zig launcher that
-# dlopens a bundled CPython; no system Python, uv, or pip). This workflow builds
-# that binary per platform and attaches it to the GitHub Release. jaclang is no
-# longer published to PyPI -- the binary is the distribution.
+# Rolling "dev" build of the self-contained `jac` binary. On every push to main
+# this rebuilds the per-platform binaries and re-publishes them to a single
+# prerelease tag `dev`, force-moved to the current main HEAD. The download URLs
+# are therefore stable and always map to the tip of upstream main:
+#
+#   https://github.com/<owner>/<repo>/releases/download/dev/jac-dev-linux-x86_64
+#   https://github.com/<owner>/<repo>/releases/download/dev/jac-dev-linux-aarch64
+#   https://github.com/<owner>/<repo>/releases/download/dev/jac-dev-macos-aarch64
+#
+# This mirrors release-jaclang.yml (the versioned, tagged release path) but with
+# a push-on-main trigger and a fixed, clobbered `dev` tag instead of a per-version
+# one. The `dev` release is kept as a *prerelease* so it never shows as "Latest".
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      tag:
-        # Use the canonical release tag `v<version>` (e.g. v0.30.1) so binaries
-        # land on the release the publish pipeline already cut. Do NOT invent a
-        # new tag (e.g. `jaclang-0.30.1`) -- that creates a duplicate release.
-        # Empty = build the artifact only, attach nothing.
-        description: "Canonical release tag to upload assets to (e.g. v0.30.1). Empty = artifact only."
-        required: false
-        type: string
 
 permissions:
   contents: write
 
+# A newer push to main supersedes an in-flight dev build: cancel the old run so
+# the `dev` tag/assets always reflect the most recent main commit.
+concurrency:
+  group: release-dev
+  cancel-in-progress: true
+
 jobs:
+  # Force-move the `dev` tag to the current commit and ensure the prerelease
+  # exists, before the matrix jobs upload their assets to it.
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Point the `dev` prerelease at this commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          SHA="${GITHUB_SHA}"
+          SHORT="${SHA:0:7}"
+          NOTES="Rolling build of \`main\` @ ${SHORT}. Auto-updated on every push to main; not a stable release."
+          # Move the dev tag to HEAD (created on first run, force-moved after).
+          git tag -f dev "$SHA"
+          git push -f origin refs/tags/dev
+          if gh release view dev >/dev/null 2>&1; then
+            gh release edit dev --prerelease --target "$SHA" \
+              --title "Dev build (main)" --notes "$NOTES"
+          else
+            gh release create dev --prerelease --target "$SHA" \
+              --title "Dev build (main)" --notes "$NOTES"
+          fi
+
   build:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -60,18 +94,12 @@ jobs:
           version: 0.16.0
           # Fresh cache each run: build.zig's payload step doesn't reliably
           # invalidate on jaclang/ changes, so a cached payload could ship stale
-          # bits in a release. Force a rebuild.
+          # bits. Force a rebuild.
           use-cache: false
-
-      - name: Read version (from jac.toml)
-        id: ver
-        working-directory: jac
-        run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
 
       # The native (na) backend statically links a pinned LLVM into the LLVMPY_*
       # shim, so the per-target LLVM release must be extracted before `zig build`
-      # (there is no llvmlite wheel anymore). One-time ~1.5-2 GB download; not
-      # cached here, matching this workflow's fresh-each-release policy.
+      # (there is no llvmlite wheel anymore). One-time ~1.5-2 GB download.
       - name: Fetch LLVM for the jacllvm shim
         working-directory: jac
         run: zig build fetch-llvm --summary all
@@ -95,29 +123,20 @@ jobs:
         working-directory: jac
         run: |
           set -euxo pipefail
-          ASSET="jac-${{ steps.ver.outputs.version }}-${{ matrix.platform }}"
+          ASSET="jac-dev-${{ matrix.platform }}"
           mkdir -p dist
           cp zig-out/bin/jac "dist/$ASSET"
           if [ "$RUNNER_OS" = "macOS" ]; then codesign --force --sign - "dist/$ASSET" || true; fi
           ( cd dist && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
           echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
 
-      - name: Upload to GitHub Release
-        if: github.event_name == 'release' || inputs.tag != ''
+      - name: Upload to the `dev` prerelease (clobber)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         working-directory: jac
         run: |
           set -euo pipefail
-          TAG="${{ inputs.tag }}"
-          [ -n "$TAG" ] || TAG="${{ github.event.release.tag_name }}"
-          gh release upload "$TAG" \
+          gh release upload dev \
             "dist/${{ steps.pkg.outputs.asset }}" \
             "dist/${{ steps.pkg.outputs.asset }}.sha256" \
             --clobber
-
-      - name: Upload as workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.pkg.outputs.asset }}
-          path: jac/dist/*
