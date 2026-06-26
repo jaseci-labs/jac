@@ -43,53 +43,28 @@ def _scale_runtime_hook_py -> str {
 
 """Generate the embedded CPython plugin bootstrap for the native desktop host.
 
-Imports all plugin modules via importlib in stable load order, bakes
-plugin_configs, then calls registry.bootstrap_plugins(...) to wire up the
-plugin host. Runs in the embedded CPython with only the transpiled plugin
-.py files on disk (no jaclang). Module load order is hardcoded: `registry`
-imports all built_in.* at module scope so it must load last.
+Imports the desktop plugin modules straight from the fused runtime's jaclang
+tree -- no transpiled .py staged beside the binary. Puts the plugin dir on
+sys.path so the modules' bare cross-imports (`import from manifest`, `built_in.*`)
+resolve and the jac meta-importer compiles them (precompiled to JIR in the
+payload), then calls registry.bootstrap_plugins(...). `import registry` cascades
+to every built_in.* plugin via its module-scope imports, so explicit per-plugin
+loading + the synthetic `built_in` package the old staged path needed are gone.
 
 Mirrors `_plugin_bootstrap_py` in desktop_build.jac; kept separate so this
 module stays free of jac_desktop imports (testable in isolation)."""
 def _make_plugin_bootstrap_py(plugin_configs: dict) -> str {
-    _plugin_mods = [
-        "manifest",
-        "desktop_plugin",
-        "webview_lib",
-        "plugin_host",
-        "built_in.path_plugin",
-        "built_in.window_plugin",
-        "built_in.fs_plugin",
-        "built_in.notification_plugin",
-        "built_in.clipboard_plugin",
-        "built_in.dialog_plugin",
-        "built_in.shell_plugin",
-        "registry"
-    ];
     py = (
-        "import sys, importlib.util, types\n"
-        "if _root not in sys.path:\n"
-        "    sys.path.insert(0, _root)\n"
-        "if 'built_in' not in sys.modules:\n"
-        "    sys.modules['built_in'] = types.ModuleType('built_in')\n"
+        "import jaclang, os, sys\n"
+        "_pdir = os.path.join(os.path.dirname(jaclang.__file__),\n"
+        "    'runtimelib', 'client', 'targets', 'desktop', 'plugin')\n"
+        "if _pdir not in sys.path:\n"
+        "    sys.path.insert(0, _pdir)\n"
+        "import manifest, desktop_plugin, webview_lib, plugin_host, registry\n"
     );
-    for _mod in _plugin_mods {
-        _py_rel = _mod.replace(".", "/") + ".py";
-        py += (
-            "_spec = importlib.util.spec_from_file_location(\n" + json.dumps(_mod) + ", os.path.join(_root, " + json.dumps(
-                _py_rel
-            ) + "))\n" "_m = importlib.util.module_from_spec(_spec)\n" "sys.modules[" + json.dumps(
-                _mod
-            ) + "] = _m\n" "_spec.loader.exec_module(_m)\n"
-        );
-        if _mod.startswith("built_in.") {
-            _child = _mod.split(".", 1)[1];
-            py += "setattr(sys.modules['built_in'], " + json.dumps(_child) + ", _m)\n";
-        }
-    }
     py += f"_pc = {repr(plugin_configs)}\n";
     py += (
-        "_host = sys.modules['registry'].bootstrap_plugins(_pc, sys.modules)\n"
+        "_host = registry.bootstrap_plugins(_pc, sys.modules)\n"
         "_dispatch_fn = _host.dispatch\n"
     );
     return py;
@@ -131,12 +106,10 @@ def _dispatch_boot_py(
         f"_ENTRY_REL = {json.dumps(entry_rel, ensure_ascii=False)}\n"
         "_ENTRY_FILE = os.path.join(_root, 'sv', _ENTRY_REL)\n"
     ) + _scale_runtime_hook_py() + (
-        "if _root not in sys.path:\n"
-        "    sys.path.insert(0, _root)\n"
-        # inprocess_dispatch is a pre-transpiled .py file staged beside the binary;
-        # importing it needs no JacMetaImporter. boot()/_boot_impl() re-register the
-        # importer and evict any pip-resident jac_scale before loading the pinned tree.
-        "import inprocess_dispatch\n"
+        # inprocess_dispatch ships in the fused runtime's jaclang tree (precompiled
+        # to JIR); import it straight from there -- no staged .py beside the binary.
+        # boot()/_boot_impl() handle jac_scale loading for the sv app at runtime.
+        "from jaclang.runtimelib.client.targets.desktop.native import inprocess_dispatch\n"
         "inprocess_dispatch.boot(_ENTRY_FILE,\n"
         "    os.path.join(_data, '.jac', 'desktop', 'graph'),\n"
         f"    timeout_s={dispatch_timeout_s}, max_queue={dispatch_max_queue},\n"
@@ -187,12 +160,11 @@ def _generate_host_source(
         "_exe = os.path.realpath('/proc/self/exe')\n"
         "_root = os.path.dirname(_exe)\n"
         "_data = os.environ.get('JAC_DATA_PATH', _root)\n"
-        "import socketserver, threading, importlib.util\n"
+        "import socketserver, threading\n"
         "_dir = os.path.join(_root, 'dist')\n"
-        "_spec = importlib.util.spec_from_file_location("
-        "'oauth_broker', os.path.join(_root, 'oauth_broker.py'))\n"
-        "_broker = importlib.util.module_from_spec(_spec)\n"
-        "_spec.loader.exec_module(_broker)\n"
+        # oauth_broker ships in the fused runtime's jaclang tree -- import it from
+        # there (no transpiled oauth_broker.py staged beside the binary).
+        "from jaclang.runtimelib.client.targets.desktop.native import oauth_broker as _broker\n"
         # Persist the session under the user data dir (JAC_DATA_PATH honored),
         # never inside the web-served dist/ tree.
         "_store = _broker.SessionStore("
@@ -380,7 +352,7 @@ def _generate_host_source(
         "        run_main_loop();\n"
         "        PyEval_RestoreThread(ts);\n"
         # GIL must be held for shutdown (drain queue, join worker, close transport).
-        "        PyRun_SimpleString(\"import inprocess_dispatch; inprocess_dispatch.shutdown()\");\n"
+        "        PyRun_SimpleString(\"from jaclang.runtimelib.client.targets.desktop.native import inprocess_dispatch; inprocess_dispatch.shutdown()\");\n"
         "        Py_Finalize();\n"
         "    } else {\n"
         "        run_main_loop();\n"

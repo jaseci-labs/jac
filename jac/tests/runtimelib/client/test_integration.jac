@@ -1383,8 +1383,11 @@ test "plugin bridge links with full native stack" {
 # ---------------------------------------------------------------------------
 # 9. Full build pipeline smoke test (transpile + stage + generate)
 # ---------------------------------------------------------------------------
-"""Build pipeline: transpile all plugins, generate host, verify artifacts."""
-test "build pipeline produces all expected artifacts" {
+"""Build pipeline (fused runtime): the generated host imports the plugins,
+oauth_broker, and inprocess_dispatch from the bundled jaclang tree -- no
+transpiled .py staged beside the binary. Verify the generated bootstrap wires
+the runtime-import path (not spec_from_file_location)."""
+test "build pipeline wires the runtime-imported bootstrap" {
     import sys;
     mod_name = "jaclang.runtimelib.client.targets.desktop.native_desktop_target";
     if mod_name not in sys.modules {
@@ -1392,72 +1395,25 @@ test "build pipeline produces all expected artifacts" {
     }
     _generate_host_source = sys.modules[mod_name]._generate_host_source;
 
-    (tmp, results) = _transpile_all_plugins();
-    try {
-        # All transpiled
-        failures = [
-            r
-            for r in results.items()
-            if not r[1]["ok"]
-        ];
-        assert len(failures) == 0;
-
-        # Check expected files exist
-        expected = [
-            "manifest.py",
-            "desktop_plugin.py",
-            "plugin_host.py",
-            "webview_lib.py",
-            "registry.py",
-            "built_in/path_plugin.py",
-            "built_in/window_plugin.py",
-            "built_in/fs_plugin.py",
-            "built_in/notification_plugin.py",
-            "built_in/clipboard_plugin.py",
-            "built_in/dialog_plugin.py",
-            "built_in/shell_plugin.py"
-        ];
-        for f in expected {
-            assert os.path.exists(os.path.join(tmp, f)) , f"Missing transpiled file: {f}";
-        }
-
-        # Generate host source and verify it references the transpiled modules
-        host_src = _generate_host_source(
-            title="SmokeTest",
-            width=800,
-            height=600,
-            app_name="smoke-test",
-            plugin_configs={"path": True, "notification": True}
-        );
-        # All plugin modules must be loaded in the generated bootstrap
-        for mod in [
-            "manifest",
-            "desktop_plugin",
-            "plugin_host",
-            "registry",
-            "webview_lib",
-            "built_in.path_plugin",
-            "built_in.window_plugin",
-            "built_in.fs_plugin",
-            "built_in.notification_plugin",
-            "built_in.clipboard_plugin",
-            "built_in.dialog_plugin",
-            "built_in.shell_plugin"
-        ] {
-            assert mod in host_src , f"Generated host missing module: {mod}";
-        }
-        # Bridge is extracted from plugin_bridge.na.jac, verify it's present
-        assert "_jac_invoke_handler" in host_src;
-        assert "_PH_DISPATCH" in host_src;
-        assert "PyGILState_Ensure" in host_src;
-        # Registry-based bootstrap must be present
-        assert "bootstrap_plugins" in host_src;
-        # JS SDK must be injected
-        assert "__jac" in host_src;
-        assert "__JAC_DESKTOP__" in host_src;
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-    }
+    host_src = _generate_host_source(
+        title="SmokeTest",
+        width=800,
+        height=600,
+        app_name="smoke-test",
+        plugin_configs={"path": True, "notification": True}
+    );
+    # No transpiled-plugin staging: plugins are imported from the runtime.
+    assert "spec_from_file_location" not in host_src , "must not load staged .py via spec_from_file_location";
+    assert "import manifest, desktop_plugin, webview_lib, plugin_host, registry" in host_src;
+    assert "bootstrap_plugins" in host_src;
+    # oauth_broker + inprocess_dispatch also come from the fused runtime.
+    assert "from jaclang.runtimelib.client.targets.desktop.native import oauth_broker" in host_src;
+    assert "from jaclang.runtimelib.client.targets.desktop.native import inprocess_dispatch" in host_src;
+    # Bridge + JS SDK still present.
+    assert "_jac_invoke_handler" in host_src;
+    assert "_PH_DISPATCH" in host_src;
+    assert "PyGILState_Ensure" in host_src;
+    assert "__JAC_DESKTOP__" in host_src;
 }
 
 

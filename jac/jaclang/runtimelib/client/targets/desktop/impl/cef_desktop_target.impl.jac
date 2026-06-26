@@ -20,9 +20,6 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     _loopback_serve_py,
     _patch_host_rpath,
     _plugin_bootstrap_py,
-    _stage_inprocess_dispatch,
-    _stage_oauth_broker,
-    _stage_plugins,
     _stage_pyembed_shim,
     _bundle_runtime,
     build_cef_dispatch,
@@ -300,14 +297,11 @@ impl CefDesktopTarget.build(
     (out_dir / "cef-subprocess").chmod(0o755);
     shutil.copy2(cef_dir / "cef.na.jac", out_dir / "cef.na.jac");
     _stage_cef_runtime(cef_dist, out_dir);
-    _stage_oauth_broker(out_dir, project_dir);
-    # Transpile plugin .jac -> .py for the embedded CPython (same as native).
-    _stage_plugins(out_dir, project_dir);
 
-    # Phase J4 (#6596): stage the in-process sv backend + the sv source tree beside
-    # the binary, exactly like the webview target. The loopback boots inprocess_
-    # dispatch and bridges /walker/* + /function/* into it (see _generate_host_source).
-    _stage_inprocess_dispatch(out_dir, project_dir);
+    # Phase J4 (#6596): stage only the sv source tree beside the binary. oauth_
+    # broker, inprocess_dispatch, and the plugins are imported from the fused
+    # runtime's jaclang tree at boot (no transpiled .py staging). The loopback
+    # boots inprocess_dispatch and bridges /walker/* + /function/* into it.
     sv_root = entry_file.parent;
     sv_ignore = shutil.ignore_patterns(
         ".jac", ".git", "node_modules", ".venv*", "__pycache__", "*.pyc"

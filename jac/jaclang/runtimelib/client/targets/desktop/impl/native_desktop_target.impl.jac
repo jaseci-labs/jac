@@ -12,9 +12,6 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     _find_webview_dir,
     _jac_bin,
     _jac_subprocess_env,
-    _stage_oauth_broker,
-    _stage_inprocess_dispatch,
-    _stage_plugins,
     _stage_pyembed_shim,
     _bundle_runtime,
 }
@@ -26,7 +23,16 @@ import from jaclang.runtimelib.client.targets.desktop._dev_launch {
     desktop_app_runtime_env
 }
 
-"""Ensure the platform webview shared library exists beside the binding (build it on first use)."""
+"""Ensure the platform webview shared library exists beside the binding (build it on first use).
+
+Deliberately NOT bundled into the fused payload like the libjacpyembed shim.
+The pyembed shim is pure Zig with no system deps, so a single prebuilt is
+portable; libwebview instead wraps the host's OS web engine (WebKitGTK on Linux)
+and DYNAMICALLY links it, with an ABI that varies by distro (webkit2gtk-4.1 vs
+4.0 -- build_libwebview.sh picks at build time). A payload-bundled prebuilt would
+pin one WebKitGTK ABI and fail on a target with the other, so it stays an
+on-demand build that adapts to the target's WebKitGTK. It builds once into the
+runtime's webview dir (under the materialized rt) and is reused across apps."""
 def _ensure_libwebview(webview_dir: Path) -> Path {
     lib = webview_dir / libwebview_name();
     if lib.exists() {
@@ -81,11 +87,9 @@ impl NativeDesktopTarget.build(
     shutil.copy2(lib, out_dir / out_lib_name);
     shutil.copy2(webview_dir / "webview.na.jac", out_dir / "webview.na.jac");
 
-    # 5. Transpile oauth_broker + inprocess_dispatch beside the binary.
-    _stage_oauth_broker(out_dir, project_dir);
-    _stage_inprocess_dispatch(out_dir, project_dir);
-
-    # 6. Stage sv source beside the binary for runtime boot().
+    # 5. Stage sv source beside the binary for runtime boot(). oauth_broker,
+    #    inprocess_dispatch, and the plugins are no longer transpiled + staged --
+    #    the host imports them from the fused runtime's jaclang tree at boot.
     sv_root = entry_file.parent;
     sv_stage = out_dir / "sv";
     sv_ignore = shutil.ignore_patterns(
@@ -108,9 +112,6 @@ impl NativeDesktopTarget.build(
     );
     shutil.copytree(sv_root, sv_stage, ignore=sv_ignore);
     sv_entry_rel = str(entry_file.name);
-
-    # 7. Transpile plugin .jac -> .py for embedded CPython IPC.
-    _stage_plugins(out_dir, project_dir);
 
     # 8. Stage the fused-runtime bridge shim ($ORIGIN-adjacent) so the host's
     #    `import from jacpyembed` resolves a sibling libjacpyembed at load, then

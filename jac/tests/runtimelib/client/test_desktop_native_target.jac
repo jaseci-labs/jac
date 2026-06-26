@@ -167,6 +167,57 @@ test "generated host calls shutdown after run_main_loop()" {
     assert src.index("inprocess_dispatch.shutdown()") < src.index("Py_Finalize();") , "shutdown must run before Py_Finalize()";
 }
 
+"""na (LLVM) is first-class in the fused runtime a desktop app bundles.
+
+The desktop host appends the CLI's `[payload][trailer]` (desktop_build.
+_bundle_runtime), so an app materializes the SAME fused runtime the CLI uses --
+which carries the LLVMPY shim the native backend ctypes-loads AND the na compiler
+pass. So any app on this runtime can `jac nacompile` / run `na` exactly like the
+CLI. This test runs in that runtime (the test interpreter), so locating the shim
++ the na pass here verifies na is first-class on desktop by construction."""
+test "na/LLVM backend is first-class in the desktop fused runtime" {
+    import os;
+    import importlib.util;
+    import from jaclang.compiler.passes.native.llvm.binding.ffi {
+        _find_shim,
+        _shim_name
+    }
+
+    shim = _find_shim();
+    assert os.path.isfile(shim) , f"LLVMPY shim missing from the fused runtime: {shim}";
+    assert shim.endswith(_shim_name()) , "resolved shim must be the platform LLVMPY shim";
+    # The native compiler pass is importable, so `nacompile` is available to any
+    # app running on this fused runtime (the one the desktop host bundles).
+    spec = importlib.util.find_spec("jaclang.compiler.passes.native.na_compile_pass");
+    assert spec is not None , "na compiler pass must be importable in the desktop runtime";
+}
+
+"""The desktop host imports its bootstrap modules from the fused runtime -- no
+transpiled .py staged beside the binary. Prove it by running the generated plugin
+bootstrap + the broker/dispatch imports in THIS runtime (the same fused runtime a
+desktop app boots): the closest dependency-free proxy for the embedded host,
+catching an import-from-runtime regression without a display."""
+test "host bootstrap modules import + run from the fused runtime" {
+    import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
+        _make_plugin_bootstrap_py
+    }
+    import from jaclang.runtimelib.client.targets.desktop.native {
+        oauth_broker,
+        inprocess_dispatch
+    }
+
+    # The plugin bootstrap loads the plugins from the runtime + wires the dispatch
+    # host (registry.bootstrap_plugins) when run in the fused runtime.
+    _pp = _make_plugin_bootstrap_py({"path": True});
+    _ns = {};
+    exec(_pp, _ns);
+    assert callable(_ns.get("_dispatch_fn")) , "plugin bootstrap must yield a dispatch callable from the runtime";
+    # oauth_broker + inprocess_dispatch resolve from the runtime too (no staging).
+    assert hasattr(oauth_broker, "make_handler") , "oauth_broker must import from the runtime";
+    assert hasattr(inprocess_dispatch, "boot")
+    and hasattr(inprocess_dispatch, "forward") , "inprocess_dispatch must import from the runtime";
+}
+
 """Editable worktree roots are auto-detected from __editable__.*.pth links."""
 test "dev launch detects editable worktree roots" {
     import os;
