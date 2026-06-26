@@ -50,4 +50,12 @@ obj TagTable {
             if v.tier == Tier.TIER_B
         ];
     }
+
+    def by_idiom(idiom: Idiom) -> list[NodeTag] {
+        return [
+            v
+            for v in self._data.values()
+            if v.idiom == idiom
+        ];
+    }
 }

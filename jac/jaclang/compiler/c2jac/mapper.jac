@@ -66,13 +66,15 @@ obj CMapper {
     has tags: TagTable,
         slot_map: dict[int, object],  # slot_id -> c_node
         _next_slot: int,
-        _lineno: int;
+        _lineno: int,
+        _list_bound: set[str];  # names known to back a Jac list (§7.5 realloc-elide)
 
     def init(tags: TagTable) {
         self.tags = tags;
         self.slot_map = {};
         self._next_slot = 0;
         self._lineno = 1;
+        self._list_bound = set();
     }
 
     # ------------------------------------------------------------------ #
@@ -187,6 +189,43 @@ obj CMapper {
                 tier=Tier.TIER_B,
                 mechanism=Mechanism.PY_AST,
                 idiom=Idiom.TIER_B,
+                reason=reason,
+                c_line=line,
+                snippet=reason
+            )
+        );
+    }
+
+    def _mark_tier_a(c_node: object, idiom: Idiom, reason: str = "") {
+        # Record a recognized Tier-A pointer idiom (§7). The handler still emits
+        # the faithful Jac form; this only stamps the verdict so the idiom is
+        # queryable (TagTable.by_idiom) for metrics/tests. Tier-A never reaches
+        # the sidecar report (which serializes Tier-B only).
+        (line, _) = self._loc(c_node);
+        self.tags.tag(
+            c_node,
+            NodeTag(
+                tier=Tier.TIER_A,
+                mechanism=Mechanism.PY_AST,
+                idiom=idiom,
+                reason=reason,
+                c_line=line,
+                snippet=reason
+            )
+        );
+    }
+
+    def _mark_tier_b_idiom(c_node: object, idiom: Idiom, reason: str) {
+        # Tier-B emission carrying a *specific* idiom verdict (e.g. a realloc we
+        # elided but could not prove list-bound). Like _mark_tier_b but preserves
+        # the idiom so the report names what was attempted, not a bare "tier_b".
+        (line, _) = self._loc(c_node);
+        self.tags.tag(
+            c_node,
+            NodeTag(
+                tier=Tier.TIER_B,
+                mechanism=Mechanism.PY_AST,
+                idiom=idiom,
                 reason=reason,
                 c_line=line,
                 snippet=reason
@@ -310,6 +349,10 @@ obj CMapper {
     }
 
     def c_FuncDef(nd: object) -> object {
+        # Reset list-bound tracking per function — a name proven list-bound in one
+        # function must not license a Tier-A realloc-elide on a same-named param in
+        # another (§7.5).
+        self._list_bound = set();
         name = nd.decl.name;
         params: list[object] = [];
         pl = nd.decl.type.args;
@@ -384,9 +427,18 @@ obj CMapper {
         }
         target = ast3.Name(id=nd.name, ctx=ast3.Store());
         self._stamp(target, nd, text=nd.name);
-        ann = self._type_ann(nd);
         nd_init = getattr(nd, "init");
         value = self.conv_expr(nd_init) if nd_init is not None else None;
+        # LIST_OF_OBJECTS (§7.2): `T *arr = malloc(n*sizeof(T))` is a list, not a
+        # bare T — annotate `list[T]` (not the pointer's `T`) and record the name
+        # as list-bound so a later realloc on it elides cleanly (§7.5).
+        arr_elem = self._malloc_array_match(nd_init) if nd_init is not None else None;
+        if arr_elem is not None {
+            ann = self._list_ann_of(arr_elem);
+            self._list_bound.add(nd.name);
+        } else {
+            ann = self._type_ann(nd);
+        }
         aa = ast3.AnnAssign(target=target, annotation=ann, value=value, simple=1);
         return self._stamp(aa, nd, text=nd.name);
     }
@@ -406,6 +458,12 @@ obj CMapper {
     }
 
     def c_Assignment(nd: object) -> object {
+        # Track `arr = malloc(n*sizeof(T))` reassignment as list-bound (§7.5).
+        if nd.op == "="
+        and isinstance(nd.lvalue, c_ast.ID)
+        and self._malloc_array_match(nd.rvalue) is not None {
+            self._list_bound.add(nd.lvalue.name);
+        }
         lhs = self.conv_expr(nd.lvalue);
         rhs = self.conv_expr(nd.rvalue);
         if nd.op == "=" {
@@ -669,13 +727,33 @@ obj CMapper {
     }
 
     def c_FuncCall(nd: object) -> object {
-        # FREE_ELIDE: free(p) → Pass (GC handles it; P2 §7.3)
+        # FREE_ELIDE: free(p) → Pass (GC handles it; §7.3)
         if isinstance(nd.name, c_ast.ID) and nd.name.name == "free" {
+            self._mark_tier_a(nd, Idiom.FREE_ELIDE, "free() elided — Jac GC reclaims");
             return self._stamp_manual(ast3.Pass(), self._lineno, 0);
         }
-        # OBJECT_CREATE: malloc(sizeof(T)) → T() constructor (P2 §7.1)
+        # REALLOC_ELIDE: realloc(p, n) → p (§7.5). A Jac list grows under GC, so
+        # the resize is a no-op that yields the same binding.
+        if isinstance(nd.name, c_ast.ID) and nd.name.name == "realloc" {
+            re = self._realloc_elide(nd);
+            if re is not None {
+                return re;
+            }
+        }
+        # LIST_OF_OBJECTS: malloc(n*sizeof(T)) → [T() for _ in range(n)] (§7.2)
+        arr = self._malloc_array(nd);
+        if arr is not None {
+            self._mark_tier_a(
+                nd, Idiom.LIST_OF_OBJECTS, "malloc(n*sizeof(T)) → list[T]"
+            );
+            return arr;
+        }
+        # OBJECT_CREATE: malloc(sizeof(T)) → T() constructor (§7.1)
         struct_name = self._malloc_struct_type(nd);
         if struct_name is not None {
+            self._mark_tier_a(
+                nd, Idiom.OBJECT_CREATE, "malloc(sizeof(T)) → T() constructor"
+            );
             func_n = ast3.Name(id=struct_name, ctx=ast3.Load());
             self._stamp_manual(func_n, self._lineno, 0, text=struct_name);
             call = ast3.Call(func=func_n, args=[], keywords=[]);
@@ -714,6 +792,190 @@ obj CMapper {
             return inner.name;
         }
         return None;
+    }
+
+    def _realloc_elide(nd: object) -> object | None {
+        # realloc(p, n) → p. Tier-A when p is provably list-bound in this function
+        # (the list grows under GC, so the resize is moot, §7.5/§9.5); otherwise
+        # still elided to p but flagged Tier-B — a raw-buffer resize would be lost.
+        if nd.args is None or len(nd.args.exprs) < 1 {
+            return None;
+        }
+        ptr = nd.args.exprs[0];
+        py_ptr = self.conv_expr(ptr);
+        if isinstance(ptr, c_ast.ID) and ptr.name in self._list_bound {
+            self._mark_tier_a(
+                nd,
+                Idiom.REALLOC_ELIDE,
+                "realloc on list-bound pointer elided — Jac list grows under GC",
+            );
+        } else {
+            self._mark_tier_b_idiom(
+                nd,
+                Idiom.REALLOC_ELIDE,
+                "realloc elided to its pointer arg, but the pointer is not proven "
+                "list-bound; if it backed a raw buffer the resize is lost — verify",
+            );
+        }
+        return py_ptr;
+    }
+
+    def _flatten_mult(nd: object, acc: list) {
+        # Collect the multiplicative factors of a `*`-chain into acc (so
+        # `n * sizeof(T)` and `2 * n * sizeof(T)` both yield a flat factor list).
+        if isinstance(nd, c_ast.BinaryOp) and nd.op == "*" {
+            self._flatten_mult(nd.left, acc);
+            self._flatten_mult(nd.right, acc);
+        } else {
+            acc.append(nd);
+        }
+    }
+
+    def _sizeof_type(f: object) -> str | None {
+        # Raw C type name of a `sizeof(T)` / `sizeof(T*)` factor, else None.
+        if not isinstance(f, c_ast.UnaryOp) or f.op != "sizeof" {
+            return None;
+        }
+        inner = f.expr;
+        if isinstance(inner, c_ast.ID) {
+            return inner.name;
+        }
+        if isinstance(inner, c_ast.Typename) {
+            tt = inner.type;
+            if isinstance(tt, c_ast.PtrDecl) {
+                tt = tt.type;
+            }
+            if isinstance(tt, c_ast.TypeDecl) {
+                it = tt.type;
+                if isinstance(it, c_ast.Struct) and it.name {
+                    return it.name;
+                }
+                names = it?.names;
+                if names {
+                    return names[-1];
+                }
+            }
+        }
+        return None;
+    }
+
+    def _is_listable_elem(tname: str) -> bool {
+        # A malloc element type we can default-initialize into a Jac list: any
+        # user type, or a numeric/bool primitive. char (string buffer) and void
+        # are not list-of-objects — they stay Tier-B.
+        if tname in _C_PRIM_MAP {
+            return _C_PRIM_MAP.get(tname, "int") in ("int", "float", "bool");
+        }
+        return True;
+    }
+
+    def _malloc_array_match(nd: object) -> str | None {
+        # Pure structural test (no node-building, no tagging): if nd is
+        # `malloc(<count> * sizeof(T))` with at least one non-sizeof factor and a
+        # list-able element T, return T's C name; else None.
+        if not isinstance(nd, c_ast.FuncCall) {
+            return None;
+        }
+        if not isinstance(nd.name, c_ast.ID) or nd.name.name != "malloc" {
+            return None;
+        }
+        if nd.args is None or len(nd.args.exprs) != 1 {
+            return None;
+        }
+        factors: list = [];
+        self._flatten_mult(nd.args.exprs[0], factors);
+        sizeof_name: str | None = None;
+        others = 0;
+        for f in factors {
+            t = self._sizeof_type(f);
+            if t is not None and sizeof_name is None {
+                sizeof_name = t;
+            } else {
+                others += 1;
+            }
+        }
+        if sizeof_name is None or others == 0 {
+            return None;
+        }
+        if not self._is_listable_elem(sizeof_name) {
+            return None;
+        }
+        return sizeof_name;
+    }
+
+    def _elem_default(tname: str) -> object {
+        # Default-element Jac node for a list-of-objects of C type tname.
+        if tname in _C_PRIM_MAP {
+            jac = _C_PRIM_MAP.get(tname, "int");
+            if jac == "float" {
+                d = ast3.Constant(value=0.0);
+            } elif jac == "bool" {
+                d = ast3.Constant(value=False);
+            } else {
+                d = ast3.Constant(value=0);
+            }
+            return self._stamp_manual(d, self._lineno, 0);
+        }
+        fn = ast3.Name(id=tname, ctx=ast3.Load());
+        self._stamp_manual(fn, self._lineno, 0, text=tname);
+        call = ast3.Call(func=fn, args=[], keywords=[]);
+        return self._stamp_manual(call, self._lineno, 0);
+    }
+
+    def _product_expr(factors: list) -> object {
+        # Fold converted factors into a left-leaning `*` BinOp (the element count).
+        exprs = [self.conv_expr(f) for f in factors];
+        acc = exprs[0];
+        i = 1;
+        while i < len(exprs) {
+            acc = ast3.BinOp(left=acc, op=ast3.Mult(), right=exprs[i]);
+            self._stamp_manual(acc, self._lineno, 0, text="*");
+            i += 1;
+        }
+        return acc;
+    }
+
+    def _malloc_array(nd: object) -> object | None {
+        # `malloc(n*sizeof(T))` → `[T() for _ in range(n)]` (§7.2). Distinct
+        # elements (comprehension, not `[x]*n`) so mutable objects don't alias.
+        tname = self._malloc_array_match(nd);
+        if tname is None {
+            return None;
+        }
+        default = self._elem_default(tname);
+        factors: list = [];
+        self._flatten_mult(nd.args.exprs[0], factors);
+        others = [
+            f
+            for f in factors
+            if self._sizeof_type(f) is None
+        ];
+        count = self._product_expr(others);
+        range_fn = self._stamp_manual(
+            ast3.Name(id="range", ctx=ast3.Load()), self._lineno, 0, text="range"
+        );
+        range_call = self._stamp_manual(
+            ast3.Call(func=range_fn, args=[count], keywords=[]), self._lineno, 0
+        );
+        tgt = self._stamp_manual(
+            ast3.Name(id="_", ctx=ast3.Store()), self._lineno, 0, text="_"
+        );
+        comp = ast3.comprehension(target=tgt, iter=range_call, ifs=[], is_async=0);
+        lc = ast3.ListComp(elt=default, generators=[comp]);
+        return self._stamp_manual(lc, self._lineno, 0, text="[]");
+    }
+
+    def _list_ann_of(tname: str) -> object {
+        # Build a `list[T]` annotation node for a C element type tname.
+        jac = _C_PRIM_MAP.get(tname, tname);
+        elem = self._stamp_manual(
+            ast3.Name(id=jac, ctx=ast3.Load()), self._lineno, 0, text=jac
+        );
+        lst = self._stamp_manual(
+            ast3.Name(id="list", ctx=ast3.Load()), self._lineno, 0, text="list"
+        );
+        sub = ast3.Subscript(value=lst, slice=elem, ctx=ast3.Load());
+        return self._stamp_manual(sub, self._lineno, 0, text="list");
     }
 
     def c_ID(nd: object) -> object {
@@ -757,6 +1019,17 @@ obj CMapper {
     # ------------------------------------------------------------------ #
     # P1a — unary ops                                                      #
     # ------------------------------------------------------------------ #
+    def _is_simple_ref(c_node: object) -> bool {
+        # A reference-shaped operand: names a storage location without pointer
+        # arithmetic or reinterpretation. ID / s.f / s->f / a[i] qualify; a
+        # BinaryOp (`p+1`), Cast, or nested `*`/`&` does not (those are Tier-B).
+        return (
+            isinstance(c_node, c_ast.ID)
+            or isinstance(c_node, c_ast.StructRef)
+            or isinstance(c_node, c_ast.ArrayRef)
+        );
+    }
+
     def c_UnaryOp(nd: object) -> object {
         unary_map: dict[str, object] = {
             "-": ast3.USub(),
@@ -777,11 +1050,24 @@ obj CMapper {
             return self._surrogate_expr(nd);
         }
         if nd.op == "*" {
-            # Pointer dereference — PTR_REF idiom to be handled in P2; surrogate for now.
+            # PTR_REF (§7.4): dereferencing a plain pointer-as-reference is
+            # identity in Jac — `*p`/`(*p).f` → `p`/`p.f`. Only when the operand
+            # is a simple lvalue (no pointer arithmetic); `*(p+1)` stays Tier-B.
+            if self._is_simple_ref(nd.expr) {
+                self._mark_tier_a(
+                    nd, Idiom.PTR_REF, "pointer dereference → Jac reference"
+                );
+                return self.conv_expr(nd.expr);
+            }
             return self._surrogate_expr(nd);
         }
         if nd.op == "&" {
-            # Address-of — surrogate.
+            # PTR_REF (§7.4): address-of a simple lvalue → pass the object by
+            # reference, i.e. identity. `&(p+1)`/computed addresses stay Tier-B.
+            if self._is_simple_ref(nd.expr) {
+                self._mark_tier_a(nd, Idiom.PTR_REF, "address-of → Jac reference");
+                return self.conv_expr(nd.expr);
+            }
             return self._surrogate_expr(nd);
         }
         if nd.op == "sizeof" {
