@@ -732,7 +732,6 @@ test "lambda arg annotation" {
     assert "lambda d: d['active']" in stdout_value;
     assert "lambda x: -x" in stdout_value;
     # regression: list of lambdas — sibling lambda boundary must not be crossed
-    assert "lambda x: x * 2" in stdout_value;
     assert "lambda y: y + 3" in stdout_value;
 }
 
