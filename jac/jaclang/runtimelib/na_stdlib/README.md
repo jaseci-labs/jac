@@ -34,6 +34,14 @@ bundled one. A bundled module links through the existing cross-module machinery
   the Ryu float repr, #6940 Phase 0.3); and only the control set + JSON
   metacharacters are escaped, so congruence holds for ASCII payloads
   (`ensure_ascii` of non-ASCII is a follow-up).
+- **`datetime.na.jac`** (#6940 Phase 1 / #6951) -- a UTC `datetime` and
+  `timezone` pair. `timezone.utc` is a class attribute and `datetime.now` /
+  `datetime.fromtimestamp` are class-level constructors, riding the native
+  static-method and class-attribute capability added for #6951. The civil date
+  is computed from the POSIX epoch (Hinnant's days->civil) over the `time`
+  intercept, so it is exact for a fixed timestamp; `year`/`month`/`day`/`hour`/
+  `minute`/`second`, `weekday()`, and `isoformat()` match CPython. SCOPE: UTC /
+  fixed-offset only (no tz database, DST, leap seconds, or microseconds).
 
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, ...) are Mechanism-A/H compiler intercepts, reached via the

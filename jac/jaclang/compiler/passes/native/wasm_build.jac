@@ -19,7 +19,7 @@ def emit_wasm_from_ir(llvm_ir_str: str, export_funcs: list = []) -> bytes {
     mod = llvm.parse_assembly(llvm_ir_str);
     mod.verify();
     tm = llvm.Target.from_triple("wasm32-unknown-unknown").create_target_machine(opt=2);
-    pto = llvm.create_pipeline_tuning_options(speed_level=2, size_level=0);
+    pto = llvm.create_pipeline_tuning_options(speed_level=2);
     pb = llvm.create_pass_builder(tm, pto);
     pb.getModulePassManager().run(mod, pb);
     obj_bytes = tm.emit_object(mod);

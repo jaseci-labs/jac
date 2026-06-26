@@ -474,6 +474,18 @@ impl BoundaryAnalysisPass.enter_func_call(
         func_name = nd.target.value;
     } elif isinstance(nd.target, uni.NameAtom) {
         func_name = nd.target.sym_name;
+    } elif isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
+        # Static-method call on an imported class: `Class.method(...)` (#6951).
+        # Bind on the base class name so a bundled/cross-module class used only
+        # via its statics still pulls its defining module into the native link
+        # set (instance calls on locals miss the `_imported_native_funcs` gate
+        # below, so this never disturbs ordinary `obj.method()` dispatch).
+        base = nd.target.target;
+        if isinstance(base, uni.Name) {
+            func_name = base.value;
+        } elif isinstance(base, uni.NameAtom) {
+            func_name = base.sym_name;
+        }
     }
     if not func_name {
         return;

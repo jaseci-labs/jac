@@ -10,14 +10,13 @@ This is the recursive-descent half of the workload's JSON needs (#6940): a
 parser producing boxed `any` (dict/list/str/int/float/bool/None -- all of which
 now lower on na, unblocked by #6943/#6944) and a serializer consuming it.
 
-KNOWN DIVERGENCES (both documented, both narrow):
-  * float repr -- `dumps` renders floats via the native `str(float)` (`%g`), which
-    is NOT yet CPython's shortest-round-trip repr (`dumps(1.0)` -> "1.0" on sv,
-    "1" on na). Full parity is gated on the Ryu float repr (#6940 Phase 0.3);
-    until then `dumps` of a bare float is not guaranteed byte-equal. Parsing
-    floats (`loads`) is exact (compared with a tolerance). Integers, strings,
-    bools, None, lists and objects all serialize byte-for-byte like CPython
-    (default `(', ', ': ')` separators, insertion-ordered keys).
+KNOWN DIVERGENCES (documented, narrow):
+  * float repr -- `dumps` renders floats via the native `str(float)`, which now
+    emits CPython's shortest-round-trip repr (#6978 Phase 0.3, closed): a bare
+    `dumps(1.0)` is byte-equal ("1.0") on both backends. Parsing floats
+    (`loads`) is exact (compared with a tolerance). Integers, strings, bools,
+    None, lists and objects all serialize byte-for-byte like CPython (default
+    `(', ', ': ')` separators, insertion-ordered keys).
   * ensure_ascii -- CPython escapes non-ASCII as `\uXXXX` by default; this module
     escapes the control set (< 0x20) and the JSON metacharacters but passes
     printable non-ASCII through. Congruence therefore holds for ASCII payloads.
@@ -335,7 +334,7 @@ def _dump_value(value: any) -> str {
         i_val: int = value;
         return str(i_val);
     }
-    if isinstance(value, float) {  # %g -- see module docstring float-repr gap
+    if isinstance(value, float) {  # str(float) is shortest round-trip (#6978 0.3)
         f_val: float = value;
         return str(f_val);
     }

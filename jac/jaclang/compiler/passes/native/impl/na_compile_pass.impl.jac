@@ -164,9 +164,7 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
             _opt_level = 0;
         }
         if _opt_level > 0 {
-            pto = llvm.create_pipeline_tuning_options(
-                speed_level=_opt_level, size_level=0
-            );
+            pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level);
             pb = llvm.create_pass_builder(target_machine, pto);
             opt_mpm = pb.getModulePassManager();
             opt_mpm.run(mod, pb);

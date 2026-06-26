@@ -29,14 +29,40 @@ identically named `crc32` / `adler32` functions. The `_z` variants
 module re-exports them through the `z_`-prefixed wrappers below.
 """
 
+# libz width assumption: `sourceLen` is libz's `uLong` and `destLen` is a
+# `uLongf*` (pointer to `uLong`). On LP64 (Linux/macOS) `uLong` is 64-bit, so the
+# `u64` declarations and the 8-byte LE `destLen` scratch buffer below are exact.
+# On Windows (LLP64) `uLong` is 32-bit: the extra 32 high bits we pass are zero
+# (libz reads only the low word) and the high 4 bytes of the 8-byte `destLen`
+# buffer stay zero, so values round-trip for the <4 GiB lengths this surface
+# handles. A >4 GiB Windows payload would need a 32-bit `uLong` binding here.
+# One clib `def` per `import from z` block: the formatter packs several decls in
+# a single block onto shared physical lines, so a block apiece keeps each libz
+# signature on its own readable, diffable line.
 import from z {
-    def compress2(
-        dest: bytes, destLen: bytes, source: bytes, sourceLen: u64, level: i32
-    ) -> i32;  def uncompress(
-        dest: bytes, destLen: bytes, source: bytes, sourceLen: u64
-    ) -> i32;  def compressBound(sourceLen: u64) -> u64;  def crc32_z(
-        crc: u64, buf: bytes, len: u64
-    ) -> u64;  def adler32_z(adler: u64, buf: bytes, len: u64) -> u64;
+    def compress2(dst: bytes, dlen: bytes, src: bytes, slen: u64, lvl: i32) -> i32;
+}
+import from z {
+    def uncompress(dst: bytes, dlen: bytes, src: bytes, slen: u64) -> i32;
+}
+import from z { def compressBound(slen: u64) -> u64;  }
+import from z { def crc32_z(crc: u64, buf: bytes, n: u64) -> u64;  }
+import from z { def adler32_z(adler: u64, buf: bytes, n: u64) -> u64;  }
+
+
+"""Reinterpret a 32-bit libz status as a signed int.
+
+libz status functions return a C `int` (i32), which widens to Jac's 64-bit
+`int` zero-extended — so a negative status like Z_BUF_ERROR (-5) arrives as
+4294967291. Fold the top half back to two's-complement so the public module's
+comparisons against the signed zlib.h codes (and any error message) are exact.
+Without this, decompress's `rc == Z_BUF_ERROR` grow-on-demand retry never fires
+and any payload larger than the initial buffer estimate fails."""
+def _signed32(status: int) -> int {
+    if status >= 2147483648 {
+        return status - 4294967296;
+    }
+    return status;
 }
 
 
@@ -48,21 +74,22 @@ def:pub z_compress_bound(source_len: int) -> int {
 
 """One-shot zlib-format DEFLATE of `source[:source_len]` into `dest`. `dest_len`
 is an 8-byte LE scratch buffer: capacity in, compressed length out. Returns the
-libz status code (0 == Z_OK)."""
+signed libz status code (0 == Z_OK)."""
 def:pub z_compress2(
     dest: bytes, dest_len: bytes, source: bytes, source_len: int, level: int
 ) -> int {
-    return compress2(dest, dest_len, source, source_len, level);
+    return _signed32(compress2(dest, dest_len, source, source_len, level));
 }
 
 
 """One-shot zlib-format INFLATE of `source[:source_len]` into `dest`. `dest_len`
 is an 8-byte LE scratch buffer: capacity in, decompressed length out. Returns
-the libz status code (0 == Z_OK, -5 == Z_BUF_ERROR when `dest` is too small)."""
+the signed libz status code (0 == Z_OK, -5 == Z_BUF_ERROR when `dest` is too
+small)."""
 def:pub z_uncompress(
     dest: bytes, dest_len: bytes, source: bytes, source_len: int
 ) -> int {
-    return uncompress(dest, dest_len, source, source_len);
+    return _signed32(uncompress(dest, dest_len, source, source_len));
 }
 
 

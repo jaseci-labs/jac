@@ -1528,6 +1528,20 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     value = self._coerce_type(value, var_type);
                 }
             }
+            if isinstance(var_type, ir.VoidType) {
+                # A void-typed RHS (a None-returning / void call result) has no
+                # storage; binding it to a variable cannot lower. Surface E5090
+                # so the enclosing ability demotes to Python rather than
+                # asserting in _entry_alloca -> PointerType.as_pointer() on a
+                # void pointee.
+                self.emit(
+                    E5090,
+                    node_override=nd,
+                    kind="binding a void-typed value to variable",
+                    name=var_name
+                );
+                return;
+            }
             alloca = self._entry_alloca(var_type, var_name);
             # RC loop-local init: for pointer-typed locals, null-initialize the alloca
             # in the entry block (right after the alloca itself, which _entry_alloca

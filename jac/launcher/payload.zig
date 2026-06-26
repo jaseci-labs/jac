@@ -61,24 +61,60 @@ const MAX_PATH = Dir.max_path_bytes;
 const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", mkpayload, @"typeshed-sha" };
 
 // LLVM release whose static archives the LLVMPY_* shim (jac/native) links
-// against. Must match the version the shim source (llvmlite 0.47.0) targets.
-const LLVM_TAG = "llvmorg-20.1.8";
+// against. Must match the version the shim source (llvmlite 0.48.0rc1) targets.
+const LLVM_TAG = "llvmorg-22.1.8";
+const LLVM_VER = "22.1.8";
 const LLVM_BASE = "https://github.com/llvm/llvm-project/releases/download";
 
-// The release is selected per host: `dirname` is the tarball's top-level dir
-// (also the -Dllvm-dir basename in build.zig llvmCacheDir -- keep the two in
-// sync), and `sha256` is the .tar.xz digest from the GitHub release, verified
-// after download. Add a row to support another host platform.
-const LlvmRelease = struct { dirname: []const u8, sha256: []const u8 };
+// jaseci-labs/llvm-slice repackages the official LLVM release into a per-member,
+// HTTP-range-fetchable zip. fetchLlvmSlice pulls only the ~84 MB the shim needs
+// (lib/libLLVM*.a + include/llvm[-c], +macOS lib/libLTO.dylib) out of the ~970 MB
+// "dev" zip -- skipping the slow xz tarball download+decompress entirely. The
+// pinned `manifest_sha256` anchors a hash chain (verified manifest -> per-archive
+// sha256), preserving the tarball path's "no swapped asset slips through" guarantee
+// for the archives that get linked into the shipped shim.
+const SLICE_BASE = "https://github.com/jaseci-labs/llvm-slice/releases/download";
+const SLICE_TAG = "v" ++ LLVM_VER;
+
+// The release is selected per host. `dirname` is the tarball's top-level dir (also
+// the -Dllvm-dir basename in build.zig llvmCacheDir -- keep in sync). `sha256` is
+// the upstream .tar.xz digest, used only by the JAC_LLVM_FULL_TARBALL fallback.
+// `triple`/`manifest_sha256`/`zip_size` drive the default slice fetch. Add a row
+// to support another host platform.
+const LlvmRelease = struct {
+    dirname: []const u8,
+    sha256: []const u8,
+    triple: []const u8,
+    manifest_sha256: []const u8,
+    zip_size: u64,
+};
 fn llvmRelease() ?LlvmRelease {
     return switch (builtin.os.tag) {
         .linux => switch (builtin.cpu.arch) {
-            .x86_64 => .{ .dirname = "LLVM-20.1.8-Linux-X64", .sha256 = "1ead36b3dfcb774b57be530df42bec70ab2d239fbce9889447c7a29a4ddc1ae6" },
-            .aarch64 => .{ .dirname = "LLVM-20.1.8-Linux-ARM64", .sha256 = "b855cc17d935fdd83da82206b7a7cfc680095efd1e9e8182c4a05e761958bef8" },
+            .x86_64 => .{
+                .dirname = "LLVM-22.1.8-Linux-X64",
+                .sha256 = "df0e1ecf16caf3489a272a5eea4eec9b0d82878f6477fa309504f918a0006384",
+                .triple = "x86_64-linux",
+                .manifest_sha256 = "353ec23280b6453595714bd4db3fa3339fdcec96c8fb0ccfe4f8fa4de455b64a",
+                .zip_size = 970350875,
+            },
+            .aarch64 => .{
+                .dirname = "LLVM-22.1.8-Linux-ARM64",
+                .sha256 = "805efad2bb91cb4967fa569e0881d10c0f69c04461cf671cccbae19f547acc34",
+                .triple = "aarch64-linux",
+                .manifest_sha256 = "b1aae9c16de5feff6fd4441f0bf32671b27c6dda98382ee389d305db6351e598",
+                .zip_size = 932506999,
+            },
             else => null,
         },
         .macos => switch (builtin.cpu.arch) {
-            .aarch64 => .{ .dirname = "LLVM-20.1.8-macOS-ARM64", .sha256 = "a9a22f450d35f1f73cd61ab6a17c6f27d8f6051d56197395c1eb397f0c9bbec4" },
+            .aarch64 => .{
+                .dirname = "LLVM-22.1.8-macOS-ARM64",
+                .sha256 = "f260f4f7c0d430828a81ae8a3826a1d63fc0963ec2459489308cc23b1f7eab4f",
+                .triple = "aarch64-apple-darwin",
+                .manifest_sha256 = "541721f3501de4bd4f19b0319d857b7d51651856b26fa8f600ad317edb8ea441",
+                .zip_size = 743879473,
+            },
             else => null,
         },
         else => null,
@@ -215,35 +251,49 @@ fn fetchPbs(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []co
 
 // =============================================================== fetch-llvm ===
 
-/// Download + verify + extract the pinned LLVM release into <dest>/LLVM-...-X64.
-/// build.zig points -Dllvm-dir at that tree; jacllvm links its static archives
-/// into the LLVMPY_* shim. Idempotent (skips if already extracted). Mirrors
-/// fetch-pbs, but the LLVM asset is .tar.xz rather than .tar.zst.
+/// fetch-llvm: materialize the LLVM headers + static archives the LLVMPY_* shim
+/// links, into <dest>/LLVM-...; build.zig points -Dllvm-dir there. Idempotent
+/// (skips when the marker archive is already present). The default path is
+/// fetchLlvmSlice -- range-fetch only the ~84 MB subset the shim needs from the
+/// llvm-slice repackaged zip (no xz, no clang/tools). Set JAC_LLVM_FULL_TARBALL=1
+/// (or JAC_LLVM_TARBALL=<path>) to use the full ~1 GB upstream .tar.xz instead.
 fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map, dest: []const u8) !void {
-    // Select the release for this host (see llvmRelease). Fail loudly on an
-    // unsupported host rather than fetching a mismatched multi-GB tarball.
     const rel = llvmRelease() orelse
         die("fetch-llvm: no pinned LLVM release for this host ({s}-{s}); add a row to llvmRelease().", .{ @tagName(builtin.cpu.arch), @tagName(builtin.os.tag) });
-    const asset = try std.fmt.allocPrint(a, "{s}.tar.xz", .{rel.dirname});
     // Presence marker / success check. On macOS the shim link needs the release's
-    // own libLTO.dylib (the LLVM release archives are ThinLTO bitcode; ld64 lowers
-    // them to native code via this version-matched libLTO -- see build.zig
-    // macosShim and #6938), so require it there. This also self-heals an older
-    // cache that predates keeping libLTO.dylib: a missing marker re-fetches.
+    // own libLTO.dylib (ThinLTO bitcode archives; see build.zig macosShim, #6938),
+    // so require it there. A missing marker re-fetches (self-heals a stale cache).
     const marker_lib = if (builtin.os.tag == .macos) "libLTO.dylib" else "libLLVMCore.a";
     const marker = try std.fmt.allocPrint(a, "{s}/{s}/lib/{s}", .{ dest, rel.dirname, marker_lib });
     if (fileExists(io, marker)) {
         log("fetch-llvm: already present at {s}/{s}", .{ dest, rel.dirname });
         return;
     }
+    try Dir.cwd().createDirPath(io, dest);
 
+    if (env.get("JAC_LLVM_FULL_TARBALL") != null or env.get("JAC_LLVM_TARBALL") != null) {
+        try fetchLlvmTarball(io, gpa, a, env, dest, rel, marker);
+    } else {
+        try fetchLlvmSlice(io, gpa, a, dest, rel);
+    }
+
+    if (!fileExists(io, marker)) die("fetch-llvm: fetch produced no {s}", .{marker_lib});
+    log("fetch-llvm: ready at {s}/{s}", .{ dest, rel.dirname });
+}
+
+/// Full-tarball fallback (JAC_LLVM_FULL_TARBALL / JAC_LLVM_TARBALL): download the
+/// upstream .tar.xz, sha256-verify the whole asset, xz-extract the include/ +
+/// libLLVM*.a (+macOS libLTO) subset. For offline/air-gapped builds, or if the
+/// slice repo is unavailable.
+fn fetchLlvmTarball(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map, dest: []const u8, rel: LlvmRelease, marker: []const u8) !void {
+    const asset = try std.fmt.allocPrint(a, "{s}.tar.xz", .{rel.dirname});
     const url = try std.fmt.allocPrint(a, "{s}/{s}/{s}", .{ LLVM_BASE, LLVM_TAG, asset });
     // JAC_LLVM_TARBALL points at a pre-downloaded release (offline/CI/air-gapped).
     const tarxz = if (env.get("JAC_LLVM_TARBALL")) |path| blk: {
         log("fetch-llvm: using local tarball {s}", .{path});
         break :blk try Dir.cwd().readFileAlloc(io, path, gpa, .unlimited);
     } else blk: {
-        log("fetch-llvm: downloading {s} (~1.5-2 GB, one-time)", .{asset});
+        log("fetch-llvm: downloading {s} (~1 GB, one-time)", .{asset});
         break :blk try httpGetAlloc(io, gpa, url);
     };
     defer gpa.free(tarxz);
@@ -251,33 +301,23 @@ fn fetchLlvm(io: Io, gpa: Allocator, a: Allocator, env: *std.process.Environ.Map
     // The static archives become host LLVM linked into the shipped shim, so a
     // swapped/MITM'd asset must not slip through.
     const actual = sha256Hex(tarxz);
-    if (!std.mem.eql(u8, &actual, rel.sha256)) {
+    if (!std.mem.eql(u8, &actual, rel.sha256))
         die("fetch-llvm: checksum mismatch for {s}\n  expected {s}\n  actual   {s}", .{ asset, rel.sha256, &actual });
-    }
 
-    try Dir.cwd().createDirPath(io, dest);
     var ddir = try Dir.cwd().openDir(io, dest, .{});
     defer ddir.close(io);
-
     var src = Io.Reader.fixed(tarxz);
     const buf = try gpa.alloc(u8, 1 << 20);
     var dx = xz.Decompress.init(&src, gpa, buf) catch |err|
         die("fetch-llvm: xz init failed: {s}", .{@errorName(err)});
-    // xz.Decompress took ownership of `buf` (and may resize it); free it via
-    // deinit, NOT gpa.free(buf) -- that double-frees the possibly-moved buffer.
+    // xz.Decompress took ownership of `buf` (and may resize it); free via deinit.
     defer dx.deinit();
-    // Surgical extract: keep only include/ + lib/libLLVM*.a (the headers + static
-    // archives the shim links). Skips bin/ (clang + tools, ~8 GB) and the
-    // clang/LTO .a (~1 GB), cutting the extracted tree from ~11 GB to ~0.5 GB.
     // The xz/tar stream can report a benign tail error (trailing padding/index)
     // after every kept entry is written, so judge success by the marker.
     extractLlvmSubset(io, ddir, &dx.reader) catch |err| {
         if (!fileExists(io, marker)) die("fetch-llvm: extract failed: {s}", .{@errorName(err)});
         log("fetch-llvm: tolerated benign post-extract error: {s}", .{@errorName(err)});
     };
-
-    if (!fileExists(io, marker)) die("fetch-llvm: extract produced no {s}", .{marker_lib});
-    log("fetch-llvm: ready at {s}/{s}", .{ dest, rel.dirname });
 }
 
 /// Stream a decompressed LLVM release tar and write only the entries the shim
@@ -320,6 +360,217 @@ fn extractLlvmSubset(io: Io, dir: Dir, reader: *Io.Reader) !void {
         try it.streamRemaining(file, &fw.interface);
         try fw.interface.flush();
     }
+}
+
+// ------------------------------------------------------ slice (range) fetch ---
+// Pull only the ~84 MB the shim links (lib/libLLVM*.a + include/llvm[-c], +macOS
+// lib/libLTO.dylib) out of the ~1 GB llvm-slice "dev" zip via a handful of HTTP
+// range requests -- the zip stores each member with its own DEFLATE stream, so we
+// fetch the central directory, then just the byte spans covering our members.
+
+fn rdU16(b: []const u8, off: usize) u16 {
+    return std.mem.readInt(u16, b[off..][0..2], .little);
+}
+fn rdU32(b: []const u8, off: usize) u32 {
+    return std.mem.readInt(u32, b[off..][0..4], .little);
+}
+
+const ZipMember = struct { name: []const u8, method: u16, csize: u32, usize_: u32, crc: u32, lho: u64 };
+fn lessByLho(_: void, x: ZipMember, y: ZipMember) bool {
+    return x.lho < y.lho;
+}
+
+/// True for the zip members the shim needs: the LLVM static archives, the llvm/
+/// + llvm-c/ headers, and (macOS) the release's libLTO.dylib.
+fn sliceWanted(name: []const u8) bool {
+    if (std.mem.startsWith(u8, name, "lib/libLLVM") and std.mem.endsWith(u8, name, ".a")) return true;
+    if (std.mem.startsWith(u8, name, "include/llvm/")) return true;
+    if (std.mem.startsWith(u8, name, "include/llvm-c/")) return true;
+    if (builtin.os.tag == .macos and std.mem.eql(u8, name, "lib/libLTO.dylib")) return true;
+    return false;
+}
+
+/// HTTP GET of [start, end] (inclusive) into a fresh buffer (caller frees).
+/// Follows the GitHub -> signed-CDN redirect and REQUIRES a 206: a 200 would mean
+/// the range was ignored and we'd pull the whole ~1 GB zip, so reject it loudly.
+fn httpGetRange(io: Io, gpa: Allocator, url: []const u8, start: u64, end: u64) ![]u8 {
+    var rbuf: [64]u8 = undefined;
+    const range = std.fmt.bufPrint(&rbuf, "bytes={d}-{d}", .{ start, end }) catch unreachable;
+    var client: std.http.Client = .{ .allocator = gpa, .io = io };
+    defer client.deinit();
+    var aw: Io.Writer.Allocating = .init(gpa);
+    errdefer aw.deinit();
+    const res = client.fetch(.{
+        .location = .{ .url = url },
+        .response_writer = &aw.writer,
+        .redirect_behavior = @enumFromInt(10),
+        .extra_headers = &.{.{ .name = "range", .value = range }},
+    }) catch |err| die("fetch-llvm: range fetch failed for {s}: {s}", .{ url, @errorName(err) });
+    if (res.status != .partial_content)
+        die("fetch-llvm: expected 206 for range {s}, got {d} (server ignored Range)", .{ range, @intFromEnum(res.status) });
+    var list = aw.toArrayList();
+    return list.toOwnedSlice(gpa);
+}
+
+/// Decompress one zip member's DEFLATE (method 8) or stored (0) payload.
+fn inflateMember(gpa: Allocator, method: u16, data: []const u8) ![]u8 {
+    if (method == 0) return gpa.dupe(u8, data);
+    if (method != 8) die("fetch-llvm: unsupported zip compression method {d}", .{method});
+    var aw: Io.Writer.Allocating = .init(gpa);
+    errdefer aw.deinit();
+    const window = try gpa.alloc(u8, flate.max_window_len);
+    defer gpa.free(window);
+    var src = Io.Reader.fixed(data);
+    var dz = flate.Decompress.init(&src, .raw, window);
+    _ = dz.reader.streamRemaining(&aw.writer) catch |err| die("fetch-llvm: inflate failed: {s}", .{@errorName(err)});
+    var list = aw.toArrayList();
+    return list.toOwnedSlice(gpa);
+}
+
+/// Default fetch path: range-fetch only the shim's subset from the llvm-slice zip.
+/// Writes into <dest>/<rel.dirname>/{include,lib} (the slice members carry no
+/// top-level dir, unlike the tarball, so we root them under rel.dirname).
+fn fetchLlvmSlice(io: Io, gpa: Allocator, a: Allocator, dest: []const u8, rel: LlvmRelease) !void {
+    const zip_url = try std.fmt.allocPrint(a, "{s}/{s}/llvm-{s}-{s}-dev.zip", .{ SLICE_BASE, SLICE_TAG, LLVM_VER, rel.triple });
+    const man_url = try std.fmt.allocPrint(a, "{s}/{s}/llvm-{s}-{s}-manifest.json", .{ SLICE_BASE, SLICE_TAG, LLVM_VER, rel.triple });
+    log("fetch-llvm: slice range-fetch (~84 MB) from llvm-slice {s} {s}", .{ SLICE_TAG, rel.triple });
+
+    // 1) manifest -> pinned-hash anchor + per-archive sha256 map. The strings the
+    //    map points at live in `manifest`/`parsed`, so both outlive its use.
+    const manifest = try httpGetAlloc(io, gpa, man_url);
+    defer gpa.free(manifest);
+    {
+        const ms = sha256Hex(manifest);
+        if (!std.mem.eql(u8, &ms, rel.manifest_sha256))
+            die("fetch-llvm: manifest checksum mismatch\n  expected {s}\n  actual   {s}", .{ rel.manifest_sha256, &ms });
+    }
+    var parsed = std.json.parseFromSlice(std.json.Value, gpa, manifest, .{}) catch |err|
+        die("fetch-llvm: manifest parse failed: {s}", .{@errorName(err)});
+    defer parsed.deinit();
+    var sha_map = std.StringHashMap([]const u8).init(gpa);
+    defer sha_map.deinit();
+    if (parsed.value.object.get("libs")) |libs_v| {
+        var lit = libs_v.object.iterator();
+        while (lit.next()) |e| {
+            const o = e.value_ptr.*.object;
+            const fv = o.get("file") orelse continue;
+            const sv = o.get("sha256") orelse continue;
+            if (fv != .string or sv != .string) continue;
+            try sha_map.put(fv.string, sv.string);
+        }
+    }
+
+    // 2) EOCD (last 64 KiB) -> central-directory offset/size. These releases are
+    //    < 4 GiB with < 65535 members, so no Zip64 record to chase.
+    const tail_len: u64 = @min(rel.zip_size, 65536);
+    const tail = try httpGetRange(io, gpa, zip_url, rel.zip_size - tail_len, rel.zip_size - 1);
+    defer gpa.free(tail);
+    const eocd = std.mem.lastIndexOf(u8, tail, "PK\x05\x06") orelse die("fetch-llvm: no zip EOCD found", .{});
+    const cd_size = rdU32(tail, eocd + 12);
+    const cd_off = rdU32(tail, eocd + 16);
+
+    // 3) central directory -> every member's (name, method, sizes, crc, offset).
+    const cd = try httpGetRange(io, gpa, zip_url, cd_off, @as(u64, cd_off) + cd_size - 1);
+    defer gpa.free(cd);
+    var count: usize = 0;
+    {
+        var p: usize = 0;
+        while (p + 46 <= cd.len and std.mem.eql(u8, cd[p..][0..4], "PK\x01\x02")) {
+            count += 1;
+            p += 46 + rdU16(cd, p + 28) + rdU16(cd, p + 30) + rdU16(cd, p + 32);
+        }
+    }
+    const members = try gpa.alloc(ZipMember, count);
+    defer gpa.free(members);
+    {
+        var p: usize = 0;
+        var i: usize = 0;
+        while (i < count) : (i += 1) {
+            const nlen = rdU16(cd, p + 28);
+            members[i] = .{
+                .method = rdU16(cd, p + 10),
+                .crc = rdU32(cd, p + 16),
+                .csize = rdU32(cd, p + 20),
+                .usize_ = rdU32(cd, p + 24),
+                .lho = rdU32(cd, p + 42),
+                .name = cd[p + 46 ..][0..nlen],
+            };
+            p += 46 + nlen + rdU16(cd, p + 30) + rdU16(cd, p + 32);
+        }
+    }
+    // Sort by local-header offset: member i's stored bytes end where member i+1
+    // begins (or at the central directory for the last), which bounds each fetch.
+    std.sort.block(ZipMember, members, {}, lessByLho);
+
+    var rdir = try Dir.cwd().openDir(io, dest, .{});
+    defer rdir.close(io);
+    var name_buf: [Dir.max_path_bytes]u8 = undefined;
+    var content_buf: [64 * 1024]u8 = undefined;
+
+    // 4) coalesce wanted members into byte runs (merge when the gap to the next
+    //    wanted member is < 16 MiB) and range-fetch each run, then extract every
+    //    wanted member from the in-memory span. For these zips the wanted set is
+    //    two contiguous groups (lib archives, then headers) -> ~2 range requests.
+    const end_byte = struct {
+        fn f(ms: []const ZipMember, i: usize, cdo: u64) u64 {
+            return if (i + 1 < ms.len) ms[i + 1].lho else cdo;
+        }
+    }.f;
+    const GAP: u64 = 16 * 1024 * 1024;
+    var written: usize = 0;
+    var i: usize = 0;
+    while (i < count) {
+        if (!sliceWanted(members[i].name)) {
+            i += 1;
+            continue;
+        }
+        // Grow a run [ra..rb] over consecutive wanted members with small gaps.
+        const ra = i;
+        var rb = i;
+        var j = i + 1;
+        while (j < count) : (j += 1) {
+            if (!sliceWanted(members[j].name)) continue;
+            if (members[j].lho - end_byte(members, rb, cd_off) >= GAP) break;
+            rb = j;
+        }
+        const run_start = members[ra].lho;
+        const run_end = end_byte(members, rb, cd_off); // exclusive
+        const run = try httpGetRange(io, gpa, zip_url, run_start, run_end - 1);
+        defer gpa.free(run);
+        // Extract each wanted member whose data lies in this run.
+        var k = ra;
+        while (k <= rb) : (k += 1) {
+            const m = members[k];
+            if (!sliceWanted(m.name)) continue;
+            const o: usize = @intCast(m.lho - run_start);
+            if (!std.mem.eql(u8, run[o..][0..4], "PK\x03\x04")) die("fetch-llvm: bad local header for {s}", .{m.name});
+            const data_off = o + 30 + rdU16(run, o + 26) + rdU16(run, o + 28);
+            const data = run[data_off..][0..m.csize];
+            const bytes = try inflateMember(gpa, m.method, data);
+            defer gpa.free(bytes);
+            if (std.hash.crc.Crc32.hash(bytes) != m.crc) die("fetch-llvm: crc mismatch for {s}", .{m.name});
+            // Linked archives carry a pinned sha256 in the verified manifest.
+            if (sha_map.get(m.name)) |want_sha| {
+                const got = sha256Hex(bytes);
+                if (!std.mem.eql(u8, &got, want_sha)) die("fetch-llvm: sha256 mismatch for {s}", .{m.name});
+            }
+            // Write <dest>/<dirname>/<member.name>, creating parent dirs.
+            const rel_path = std.fmt.bufPrint(&name_buf, "{s}/{s}", .{ rel.dirname, m.name }) catch
+                die("fetch-llvm: path too long: {s}", .{m.name});
+            const fh = rdir.createFile(io, rel_path, .{}) catch |err| blk: {
+                if (err != error.FileNotFound) return err;
+                try rdir.createDirPath(io, std.fs.path.dirname(rel_path).?);
+                break :blk try rdir.createFile(io, rel_path, .{});
+            };
+            defer fh.close(io);
+            var fw = fh.writer(io, &content_buf);
+            try fw.interface.writeAll(bytes);
+            try fw.interface.flush();
+            written += 1;
+        }
+        i = rb + 1; // advance past the run we just processed
+    }
+    log("fetch-llvm: slice extracted {d} members", .{written});
 }
 
 fn pbsPlatform(osarch: []const u8) ?[]const u8 {
