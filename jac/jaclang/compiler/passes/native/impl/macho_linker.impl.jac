@@ -683,6 +683,10 @@ impl MachOLinker._consolidate(
             );
             sym_remap[si] = ni;
         } else {
+            # N_UNDF carries no value, but N_ABS (0x2) keeps its absolute value
+            # in n_value (e.g. versioning/sentinel constants) -- zeroing it would
+            # silently corrupt relocations that reference an absolute symbol.
+            keep_val = sym.n_value if (sym.n_type & N_TYPE_MASK) == 0x02 else 0;
             ni = len(self.symbols);
             self.symbols.append(
                 MachOSymbol(
@@ -690,7 +694,7 @@ impl MachOLinker._consolidate(
                     n_type=sym.n_type,
                     n_sect=0,
                     n_desc=sym.n_desc,
-                    n_value=0
+                    n_value=keep_val
                 )
             );
             sym_remap[si] = ni;
@@ -755,7 +759,12 @@ impl MachOLinker._resolve_crossrefs -> None {
         }
     }
     for i in resolved.keys() {
+        # Neutralize the now-satisfied undefined entry: blank the name AND clear
+        # n_type so it no longer reads as N_UNDF|N_EXT. Symbol classification
+        # already guards on a non-empty name, but making the type explicit keeps
+        # any future pass from treating it as a dylib import.
         self.symbols[i].name = "";
+        self.symbols[i].n_type = 0;
     }
 }
 

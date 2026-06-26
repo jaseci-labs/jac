@@ -728,19 +728,13 @@ def _floor_lib_dir(triple: str) -> (str | None) {
 }
 
 
-"""Map a resolved clib soname/path (e.g. `@loader_path/liblzma.dylib`,
-`liblzma.so.5`) to its static-archive filename (`liblzma.a`)."""
+"""Map a resolved clib soname/path to its static-archive filename. A floor lib
+stem has no internal dots, so everything from the first `.` is extension/version
+noise: `@loader_path/liblzma.dylib`, `liblzma.so.5`, and `liblzma.5.dylib` all
+map to `liblzma.a`."""
 def _clib_to_archive_name(clib_path: str) -> str {
     import os;
-    base = os.path.basename(clib_path);
-    for ext in [".dylib", ".so", ".dll"] {
-        i = base.find(ext);
-        if i != -1 {
-            base = base[:i];
-            break;
-        }
-    }
-    return base + ".a";
+    return os.path.basename(clib_path).split(".")[0] + ".a";
 }
 
 
@@ -770,29 +764,41 @@ def _collect_floor_archives(
     for (sym, raw) in clib_symbol_lib.items() {
         syms_by_lib.setdefault(raw, []).append(sym);
     }
-    seen_archives: set = set();
+    # Group clib paths by their resolved archive, unioning the symbols each
+    # contributes. Several paths can map to one archive (e.g. `liblzma.dylib`
+    # and `@rpath/liblzma.dylib`); resolving them in one pass per archive avoids
+    # dropping a second path's symbols. A path is only marked handled once its
+    # archive actually yields members, so an unused or empty import stays on the
+    # dynamic path instead of vanishing from both.
+    roots_by_archive: dict = {};
+    paths_by_archive: dict = {};
     for clib_path in clib_paths {
         arch_file = os.path.join(lib_dir, _clib_to_archive_name(clib_path));
         if not os.path.isfile(arch_file) {
             continue;  # not a bundled floor -> leave as a dylib dependency
         }
-        handled.add(clib_path);
-        if arch_file in seen_archives {
-            continue;
-        }
-        seen_archives.add(arch_file);
-        roots: list = [];
+        paths_by_archive.setdefault(arch_file, []).append(clib_path);
         for s in syms_by_lib.get(clib_path, []) {
-            roots.append("_" + s);  # Mach-O symbols carry a leading underscore
+            # Mach-O symbols carry a leading underscore.
+            roots_by_archive.setdefault(arch_file, []).append("_" + s);
         }
+    }
+    for (arch_file, roots) in roots_by_archive.items() {
         if not roots {
             continue;
         }
         with open(arch_file, "rb") as _f {
             data = _f.read();
         }
-        for m in select_ar_members(data, roots) {
+        members = select_ar_members(data, roots);
+        if not members {
+            continue;
+        }
+        for m in members {
             member_bytes.append(m.data);
+        }
+        for p in paths_by_archive.get(arch_file, []) {
+            handled.add(p);
         }
     }
     return (member_bytes, handled);

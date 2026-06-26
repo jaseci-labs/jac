@@ -779,6 +779,10 @@ impl `test(
             directory=directory,
             verbose=verbose
         );
+        # Honor --xit across files too: stop at the first file with failures.
+        if xit and failcount > 0 {
+            break;
+        }
     }
     if failcount {
         console.error(f"Tests failed: {failcount}");

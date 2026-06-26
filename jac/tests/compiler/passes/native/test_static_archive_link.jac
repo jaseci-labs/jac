@@ -233,8 +233,7 @@ test "ELF: static-link jac_floor_magic from a member object, run, verify (#6978 
     # main object calls. Emitted from IR so the test needs no checked-in binary
     # and no host C toolchain, and stays cross-host (Mach-O `ar` cannot build an
     # ELF member's symbol index, so a real archive can't be assembled on macOS).
-    member_ir = f'target triple = "{triple}"\n\n'
-        + "define i64 @jac_floor_magic() {\nentry:\n  ret i64 1234605616436508552\n}\n";
+    member_ir = f'target triple = "{triple}"\n\n' + "define i64 @jac_floor_magic() {\nentry:\n  ret i64 1234605616436508552\n}\n";
     member_obj = _emit_object(member_ir, triple);
 
     d = tempfile.mkdtemp();
@@ -257,7 +256,9 @@ test "ELF: static-link jac_floor_magic from a member object, run, verify (#6978 
     # would abort -- so a clean run with the right value proves the merge.
     if sys.platform.startswith("linux") and ("x86_64" in llvm.get_default_triple()) {
         res = subprocess.run([out], capture_output=True, timeout=30);
-        assert res.returncode == 0 , (f"exec exited {res.returncode}, stderr={res.stderr}");
+        assert res.returncode == 0 , (
+            f"exec exited {res.returncode}, stderr={res.stderr}"
+        );
         assert b"1234605616436508552" in res.stdout , f"unexpected output: {res.stdout}";
     }
 }
