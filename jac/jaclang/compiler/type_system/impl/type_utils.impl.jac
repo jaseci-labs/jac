@@ -206,8 +206,32 @@ impl lookup_symtab(
     } else {
         mod = symtable.find_parent_of_type(uni.Module);
     }
-    if (mod and ((mod.parent_scope is None) and (mod != builtins_to_inject))) {
-        mod.parent_scope = builtins_to_inject;
+    if (mod and ((mod.parent_scope is None) and (mod is not builtins_to_inject))) {
+        # Cycle guard: two distinct `builtins` stub modules can coexist (e.g.
+        # one parsed into a throwaway native program during boundary analysis),
+        # and injecting each as the other's builtins fallback would close a
+        # `parent_scope` loop. Every scope walk that follows `parent_scope`
+        # (Symbol.sym_dotted_name, Symbol.storage, UniScopeNode.lookup) is an
+        # unguarded loop, so a cyclic chain spins forever and exhausts memory.
+        # Only link when `builtins_to_inject` does not already descend from
+        # `mod` (issue #6964).
+        anc: (uni.UniScopeNode | None) = builtins_to_inject;
+        forms_cycle = False;
+        seen_ids: set = set();
+        while anc is not None {
+            if anc is mod {
+                forms_cycle = True;
+                break;
+            }
+            if id(anc) in seen_ids {
+                break;
+            }
+            seen_ids.add(id(anc));
+            anc = anc.parent_scope;
+        }
+        if not forms_cycle {
+            mod.parent_scope = builtins_to_inject;
+        }
     }
     # Live-guard-branch resolution before the plain deep walk, so a guarded
     # declaration (e.g. typing_extensions' `else`-branch ParamSpec) isn't
