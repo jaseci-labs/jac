@@ -26,7 +26,6 @@ def release_entry(pkg_name_lower: str, version: str) -> dict {
         "tier": pkg_info.tier,
         "version": version,
         "submodules": pkg_info.submodules,
-        "precompile": pkg_info.precompile,
         "extra_build_cmd": pkg_info.extra_build_cmd,
         "needs_nodejs": pkg_info.needs_nodejs,
         "extra_build_deps": pkg_info.extra_build_deps,
@@ -99,9 +98,6 @@ def main() -> int {
     print("Packages to release:");
     for r in releases {
         print(f"  - {r['pypi']} {r['version']} (tier {r['tier']})");
-        if r["precompile"] {
-            print("    (requires precompilation)");
-        }
     }
     summary = ", ".join(f"{r['pypi']} {r['version']}" for r in releases);
     set_output("has_releases", "true");

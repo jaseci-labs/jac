@@ -50,6 +50,17 @@ obj RunConfig {
     has session: str = "",
         main: bool = True,
         cache: bool = True,
+        # Deferred native acceleration. When true, `import jaclang` schedules a
+        # best-effort background compile of the bootstrap `.na.jac` modules
+        # (lexer/tokens) through the native pipeline and hot-swaps the matching
+        # Python functions with native-backed wrappers (see
+        # jaclang.jac0core.native_accel). It is fail-safe: any compile/lowering
+        # failure silently keeps the Python implementation, and the parser is
+        # written to use whichever lexer is installed. Off by default because the
+        # bootstrap lexer is not yet fully lowerable, so today it only adds
+        # background compile cost; flip to true (here or via the `--autonative`
+        # CLI flag) to opt in. This same key also enables `jac run`'s
+        # auto-promotion of the entry module to native JIT.
         autonative: bool = False,
         topology_index: bool = True,
         diagnostics: str = "error";  # "error" | "all" | "none"

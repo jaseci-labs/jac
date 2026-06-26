@@ -610,6 +610,32 @@ impl NaIRGenPass._resolve_primitive_name(
         }
         return ir.IntType(64);
     }
+    # `T | None` (and general unions) peel to the first value (non-None)
+    # member. The generic kid-walk below returns the first kid that resolves to
+    # a type, but a bare `None` operand resolves to VoidType -- so for a member
+    # the primitive table does not know (an enum or user struct, e.g.
+    # `Color | None`, `Point | None`) the walk would reach the `None` and
+    # collapse the whole annotation to `void`. Skip the None operand(s) here and
+    # resolve the value member; returning None for a non-primitive member defers
+    # to _resolve_jac_type's struct/i64 fallback (so `Color | None` lands on the
+    # same i64 + enum-marshalling path as a plain `-> Color`). Mirrors the
+    # _lower_type union branch (the TypeBase path) so both resolvers agree.
+    if isinstance(expr, uni.BinaryExpr) and getattr(expr.op, "value", "") == "|" {
+        for _operand in (expr?.kid or []) {
+            if isinstance(_operand, uni.Null) {
+                continue;
+            }
+            if isinstance(_operand, uni.Name)
+            and _operand.value in ("None", "NoneType") {
+                continue;
+            }
+            _vr = self._resolve_primitive_name(_operand);
+            if _vr is not None {
+                return _vr;
+            }
+        }
+        return None;
+    }
     # Fall back: walk sub-nodes for a nested Name (e.g. subscript base,
     # binary union operand). This handles `Callable[[int, int], None]`
     # where the outer node is a Subscript or BinaryExpr, not a Name.
