@@ -60,7 +60,9 @@ const BOOT_SRC =
     "if _exe:\n" ++
     "    sys.executable = _exe\n" ++
     "    sys._base_executable = _exe\n" ++
-    "import _jac_finder; _jac_finder.install()\n" ++
+    "import _jac_finder as _jf\n" ++
+    "_jf.apply_dev_source_override()\n" ++
+    "_jf.install()\n" ++
     "from jaclang.jac0core.cli_boot import start_cli\n" ++
     "start_cli()\n";
 

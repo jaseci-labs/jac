@@ -11,13 +11,80 @@ import platform;
 import from urllib.request { urlopen, urlretrieve }
 import from pathlib { Path }
 import from jaclang.cli.console { console }
+import from jaclang.runtimelib.client.targets.desktop._dev_launch { desktop_launch_env }
+
+"""Candidate jaclang source roots (env pin then installed package fallback).
+
+JAC_DESKTOP_JAC_SRC is set by ensure_dev_build_env() before any caller runs
+(derived from editable-install .pth files or JAC_DEV_SOURCE set by the
+launcher's apply_dev_source_override()).  Reading jac.toml here would duplicate
+what the launcher already did and requires project_dir threading everywhere."""
+def _jaclang_src_roots -> list[Path] {
+    roots: list[Path] = [];
+    jac_src = os.environ.get("JAC_DESKTOP_JAC_SRC");
+    if jac_src {
+        roots.append(Path(jac_src));
+    }
+    try {
+        import jaclang;
+        jl = jaclang?.__file__;
+        if jl {
+            roots.append(Path(str(jl)).resolve().parent.parent);
+        }
+    } except Exception {
+        pass;
+    }
+    return roots;
+}
+
+"""Locate desktop/native/ with oauth_broker, inprocess_dispatch, and webview.
+
+Skips incomplete trees (e.g. a stale bundled payload that has webview/ but
+predates oauth_broker.jac). Prefers JAC_DESKTOP_JAC_SRC / installed package."""
+def _find_desktop_native_dir -> Path {
+    for src in _jaclang_src_roots() {
+        native = (
+            src / "jaclang" / "runtimelib" / "client" / "targets" / "desktop" / "native"
+        );
+        if (
+            (native / "oauth_broker.jac").is_file()
+            and (native / "inprocess_dispatch.jac").is_file()
+            and (native / "webview" / "webview.na.jac").is_file()
+        ) {
+            return native;
+        }
+    }
+    here = Path(os.path.abspath(__file__)).parent;
+    candidates = [here.parent / "native", here / "native"];
+    p = here;
+    for _ in range(6) {
+        candidates.append(p / "native");
+        p = p.parent;
+    }
+    for cand in candidates {
+        if (
+            (cand / "oauth_broker.jac").is_file()
+            and (cand / "inprocess_dispatch.jac").is_file()
+            and (cand / "webview" / "webview.na.jac").is_file()
+        ) {
+            return cand;
+        }
+    }
+    raise RuntimeError(
+        "jac-desktop: desktop/native assets incomplete -- need "
+        "oauth_broker.jac, inprocess_dispatch.jac, and webview/webview.na.jac. "
+        "Rebuild the jac binary (zig build) or set JAC_DESKTOP_JAC_SRC."
+    );
+}
 
 """Locate a shipped native/ asset dir (webview, cef, …) beside this target."""
 def _find_native_asset_dir(subdir: str, marker: str) -> Path {
-    jac_src = os.environ.get("JAC_DESKTOP_JAC_SRC");
-    if jac_src {
+    if subdir == "webview" and marker == "webview.na.jac" {
+        return _find_desktop_native_dir() / "webview";
+    }
+    for src in _jaclang_src_roots() {
         dev = (
-            Path(jac_src) / "jaclang" / "runtimelib" / "client" / "targets" / "desktop" / "native" / subdir
+            src / "jaclang" / "runtimelib" / "client" / "targets" / "desktop" / "native" / subdir
         );
         if (dev / marker).exists() {
             return dev;
@@ -41,11 +108,16 @@ def _find_native_asset_dir(subdir: str, marker: str) -> Path {
 }
 
 def _find_webview_dir -> Path {
-    return _find_native_asset_dir("webview", "webview.na.jac");
+    return _find_desktop_native_dir() / "webview";
 }
 
 def _find_cef_dir -> Path {
     return _find_native_asset_dir("cef", "cef.na.jac");
+}
+
+"""Environment for child ``jac jac2py`` / ``jac nacompile`` subprocesses."""
+def _jac_subprocess_env -> dict[str, str] {
+    return desktop_launch_env();
 }
 
 """Set an ELF RUNPATH on a binary via patchelf; warn (don't fail) if absent.
@@ -154,19 +226,44 @@ def _loopback_serve_py(
 }
 
 """Transpile oauth_broker.jac and stage oauth_broker.py beside the binary."""
-def _stage_oauth_broker(out_dir: Path) {
-    webview_dir = _find_webview_dir();
-    broker_src = webview_dir.parent / "oauth_broker.jac";
+def _stage_oauth_broker(out_dir: Path, project_dir: Path) {
+    broker_src = _find_desktop_native_dir() / "oauth_broker.jac";
     console.print(
         "  Transpiling oauth_broker.jac -> oauth_broker.py...", style="muted"
     );
     broker_res = subprocess.run(
-        [_jac_bin(), "jac2py", str(broker_src)], capture_output=True, text=True
+        [_jac_bin(), "jac2py", str(broker_src)],
+        cwd=str(project_dir),
+        env=_jac_subprocess_env(),
+        capture_output=True,
+        text=True
     );
     if broker_res.returncode != 0 {
         raise RuntimeError("oauth_broker transpile failed:\n" + broker_res.stderr);
     }
     (out_dir / "oauth_broker.py").write_text(broker_res.stdout);
+}
+
+"""Transpile inprocess_dispatch.jac and stage inprocess_dispatch.py beside the binary."""
+def _stage_inprocess_dispatch(out_dir: Path, project_dir: Path) {
+    dispatch_src = _find_desktop_native_dir() / "inprocess_dispatch.jac";
+    console.print(
+        "  Transpiling inprocess_dispatch.jac -> inprocess_dispatch.py...",
+        style="muted"
+    );
+    dispatch_res = subprocess.run(
+        [_jac_bin(), "jac2py", str(dispatch_src)],
+        cwd=str(project_dir),
+        env=_jac_subprocess_env(),
+        capture_output=True,
+        text=True
+    );
+    if dispatch_res.returncode != 0 {
+        raise RuntimeError(
+            "inprocess_dispatch transpile failed:\n" + dispatch_res.stderr
+        );
+    }
+    (out_dir / "inprocess_dispatch.py").write_text(dispatch_res.stdout);
 }
 
 """Build the embedded-CPython plugin bootstrap source.
@@ -278,7 +375,7 @@ def _jac_sdk_js -> str {
 
 Embedded CPython has no jaclang, so prefer jac0 (stdlib-only output) and fall
 back to `jac jac2py`. Shared by both desktop targets."""
-def _stage_plugins(out_dir: Path) {
+def _stage_plugins(out_dir: Path, project_dir: Path) {
     webview_dir = _find_webview_dir();
     plugin_src_dir = webview_dir.parent.parent / "plugin";
     if not plugin_src_dir.exists() {
@@ -302,7 +399,11 @@ def _stage_plugins(out_dir: Path) {
             }
         } except Exception as jac0_err {
             res = subprocess.run(
-                [_jac_bin(), "jac2py", str(jac_file)], capture_output=True, text=True
+                [_jac_bin(), "jac2py", str(jac_file)],
+                cwd=str(project_dir),
+                env=_jac_subprocess_env(),
+                capture_output=True,
+                text=True
             );
             if res.returncode != 0 or not res.stdout.strip() {
                 raise RuntimeError(

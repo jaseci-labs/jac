@@ -12,7 +12,9 @@ import from jaclang.runtimelib.client.targets.desktop.plugin.webview_lib {
 import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     _find_webview_dir,
     _jac_bin,
+    _jac_subprocess_env,
     _stage_oauth_broker,
+    _stage_inprocess_dispatch,
     _stage_plugins,
 }
 import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
@@ -20,7 +22,7 @@ import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
 }
 import from jaclang.runtimelib.client.targets.desktop._dev_launch {
     ensure_dev_build_env,
-    desktop_launch_env
+    desktop_app_runtime_env
 }
 
 """Ensure the platform webview shared library exists beside the binding (build it on first use)."""
@@ -78,26 +80,11 @@ impl NativeDesktopTarget.build(
     shutil.copy2(lib, out_dir / out_lib_name);
     shutil.copy2(webview_dir / "webview.na.jac", out_dir / "webview.na.jac");
 
-    # 5. Transpile oauth_broker.jac -> .py beside the binary.
-    _stage_oauth_broker(out_dir);
+    # 5. Transpile oauth_broker + inprocess_dispatch beside the binary.
+    _stage_oauth_broker(out_dir, project_dir);
+    _stage_inprocess_dispatch(out_dir, project_dir);
 
-    # 6. Transpile inprocess_dispatch.jac -> .py (Phase J4 in-process sv backend).
-    dispatch_src = webview_dir.parent / "inprocess_dispatch.jac";
-    console.print(
-        "  Transpiling inprocess_dispatch.jac -> inprocess_dispatch.py...",
-        style="muted"
-    );
-    dispatch_res = subprocess.run(
-        [_jac_bin(), "jac2py", str(dispatch_src)], capture_output=True, text=True
-    );
-    if dispatch_res.returncode != 0 {
-        raise RuntimeError(
-            "inprocess_dispatch transpile failed:\n" + dispatch_res.stderr
-        );
-    }
-    (out_dir / "inprocess_dispatch.py").write_text(dispatch_res.stdout);
-
-    # 7. Stage sv source beside the binary for runtime boot().
+    # 6. Stage sv source beside the binary for runtime boot().
     sv_root = entry_file.parent;
     sv_stage = out_dir / "sv";
     sv_ignore = shutil.ignore_patterns(
@@ -106,10 +93,10 @@ impl NativeDesktopTarget.build(
     shutil.copytree(sv_root, sv_stage, ignore=sv_ignore);
     sv_entry_rel = str(entry_file.name);
 
-    # 8. Transpile plugin .jac -> .py for embedded CPython IPC.
-    _stage_plugins(out_dir);
+    # 7. Transpile plugin .jac -> .py for embedded CPython IPC.
+    _stage_plugins(out_dir, project_dir);
 
-    # 9. Generate + compile the native host into the output dir.
+    # 8. Generate + compile the native host into the output dir.
     libpy = str(sysconfig.get_config_var("INSTSONAME") or "libpython3.12.so.1.0");
     host_src = _generate_host_source(
         libpy,
@@ -125,13 +112,19 @@ impl NativeDesktopTarget.build(
     (out_dir / "host.na.jac").write_text(host_src);
 
     console.print("  Compiling native host (jac nacompile)...", style="muted");
+    binary = out_dir / app_name;
     res = subprocess.run(
-        [_jac_bin(), "nacompile", "host.na.jac", "-o", app_name], cwd=str(out_dir)
+        [_jac_bin(), "nacompile", str(out_dir / "host.na.jac"), "-o", str(binary)],
+        cwd=str(out_dir),
+        env=_jac_subprocess_env()
     );
-    if res.returncode != 0 {
+    if res.returncode != 0 or not binary.exists() {
         raise RuntimeError("Native host compilation failed.");
     }
-    binary = out_dir / app_name;
+    stray = project_dir / app_name;
+    if stray.exists() and stray.resolve() != binary.resolve() {
+        stray.unlink();
+    }
     launcher = out_dir / f"{app_name}-launch.sh";
     launcher.write_text(
         "#!/bin/sh\n"
@@ -154,10 +147,7 @@ impl NativeDesktopTarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
     binary = self.build(entry_file, project_dir, None);
-    env = desktop_launch_env();
-    env.setdefault("GDK_BACKEND", "x11");
-    env.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-    env.setdefault("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    env = desktop_app_runtime_env();
     console.print(f"\n🚀 Launching {binary.name}", style="bold green");
     try {
         subprocess.run([str(binary)], cwd=str(binary.parent), env=env);

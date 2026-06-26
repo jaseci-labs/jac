@@ -10,6 +10,33 @@ import os;
 import sysconfig;
 import site;
 import from pathlib { Path }
+import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
+    _builder_dep_site_dirs
+}
+
+
+"""Derive JAC_DESKTOP_* roots from JAC_DEV_SOURCE set by the launcher.
+
+apply_dev_source_override() in _jac_finder.py reads [dev] jaclang_source from
+the nearest jac.toml and exports JAC_DEV_SOURCE before jaclang is imported.
+Desktop build/launch code should consume that instead of re-reading jac.toml."""
+def _dev_roots_from_env -> dict[str, str] {
+    roots: dict[str, str] = {};
+    dev_src = os.environ.get("JAC_DEV_SOURCE");
+    if not dev_src {
+        return roots;
+    }
+    src = Path(dev_src);
+    if not (src / "jaclang").is_dir() {
+        return roots;
+    }
+    roots["JAC_DESKTOP_JAC_SRC"] = dev_src;
+    scale = src.parent / "jac-scale";
+    if (scale / "jac_scale" / "inprocess.jac").exists() {
+        roots["JAC_DESKTOP_SCALE_SRC"] = str(scale);
+    }
+    return roots;
+}
 
 
 """Map ``__editable__.*.pth`` link farms to ``JAC_DESKTOP_*`` worktree roots."""
@@ -103,6 +130,53 @@ def ensure_dev_build_env {
     for (key, val) in _editable_roots_from_site().items() {
         os.environ.setdefault(key, val);
     }
+    for (key, val) in _dev_roots_from_env().items() {
+        os.environ.setdefault(key, val);
+    }
+}
+
+
+"""Append builder interpreter site dirs so embedded boot can import jac-scale deps."""
+def _merge_desktop_deps(env: dict[str, str]) {
+    if not (env.get("JAC_DESKTOP_JAC_SRC") or env.get("JAC_DESKTOP_SCALE_SRC")) {
+        return;
+    }
+    parts = [
+        p
+        for p in (env.get("JAC_DESKTOP_DEPS", "") or "").split(os.pathsep)
+        if p
+    ];
+    for d in _builder_dep_site_dirs() {
+        if d not in parts {
+            parts.append(d);
+        }
+    }
+    if parts {
+        env["JAC_DESKTOP_DEPS"] = os.pathsep.join(parts);
+    }
+}
+
+
+"""Env for launching the native desktop binary (embedded CPython is hermetic).
+
+The jac CLI sets PYTHONHOME/PYTHONPATH for its own interpreter; inheriting
+those breaks the binary's embedded CPython (e.g. ``_socket`` import failures)."""
+def desktop_app_runtime_env(base: any = None) -> dict[str, str] {
+    env = desktop_launch_env(base);
+    for key in [
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "PYTHONEXECUTABLE",
+        "JAC_EXECUTABLE",
+        "VIRTUAL_ENV",
+
+    ] {
+        env.pop(key, None);
+    }
+    env.setdefault("GDK_BACKEND", "x11");
+    env.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    env.setdefault("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    return env;
 }
 
 
@@ -112,6 +186,10 @@ def desktop_launch_env(base: any = None) -> dict[str, str] {
     for (key, val) in _editable_roots_from_site().items() {
         env.setdefault(key, val);
     }
+    for (key, val) in _dev_roots_from_env().items() {
+        env.setdefault(key, val);
+    }
+    _merge_desktop_deps(env);
     libdir = sysconfig.get_config_var("LIBDIR");
     if libdir {
         _prepend_libdir(env, str(libdir));

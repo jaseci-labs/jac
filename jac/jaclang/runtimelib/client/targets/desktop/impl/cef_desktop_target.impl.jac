@@ -263,9 +263,9 @@ impl CefDesktopTarget.build(
     (out_dir / "cef-subprocess").chmod(0o755);
     shutil.copy2(cef_dir / "cef.na.jac", out_dir / "cef.na.jac");
     _stage_cef_runtime(cef_dist, out_dir);
-    _stage_oauth_broker(out_dir);
+    _stage_oauth_broker(out_dir, project_dir);
     # Transpile plugin .jac -> .py for the embedded CPython (same as native).
-    _stage_plugins(out_dir);
+    _stage_plugins(out_dir, project_dir);
 
     cache_path = str(project_dir / ".jac" / "desktop" / "cef-cache" / str(app_name));
     host_src = _generate_host_source(

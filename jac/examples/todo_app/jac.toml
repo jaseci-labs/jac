@@ -8,6 +8,10 @@ kind = "desktop"
 [dependencies.npm]
 react = "^18.2.0"
 react-dom = "^18.2.0"
+react-router-dom = "^6.22.0"
+react-error-boundary = "^5.0.0"
+"@tanstack/react-form" = "^1.33.0"
+zod = "^4.3.6"
 
 [dependencies.npm.dev]
 vite = "^6.4.1"
@@ -31,5 +35,9 @@ version = "0.1.0"
 
 [plugins.desktop.window]
 title = "Todo App"
-width = 720
+width = 900
 height = 800
+min_width = 800
+
+[dev]
+jaclang_source = "../.."

@@ -127,9 +127,11 @@ def _generate_host_source(
     # time so the host needs no hashing at runtime.
     pref_port = 49152 + (int(hashlib.sha1(app_name.encode()).hexdigest(), 16) % 16000);
     serve_py = (
-        "import os, socketserver, threading, importlib.util\n"
+        "import os\n"
         "_exe = os.path.realpath('/proc/self/exe')\n"
         "_root = os.path.dirname(_exe)\n"
+        "_data = os.environ.get('JAC_DATA_PATH', _root)\n"
+        "import socketserver, threading, importlib.util\n"
         "_dir = os.path.join(_root, 'dist')\n"
         "_spec = importlib.util.spec_from_file_location("
         "'oauth_broker', os.path.join(_root, 'oauth_broker.py'))\n"
@@ -137,7 +139,6 @@ def _generate_host_source(
         "_spec.loader.exec_module(_broker)\n"
         # Persist the session under the user data dir (JAC_DATA_PATH honored),
         # never inside the web-served dist/ tree.
-        "_data = os.environ.get('JAC_DATA_PATH', _root)\n"
         "_store = _broker.SessionStore("
         "os.path.join(_data, '.jac', 'desktop', 'session.json'))\n"
         "_H = _broker.make_handler(_dir, _store)\n"
