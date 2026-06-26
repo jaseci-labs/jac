@@ -130,7 +130,7 @@ def _enumerator_value(en: object, counter: int) -> tuple[int, bool] {
     return (0, False);
 }
 
-def _enum_sequential_values(enumerator_list: object) -> dict[str, int] | None {
+def _enum_explicit_values(enumerator_list: object) -> dict[str, int] | None {
     result: dict[str, int] = {};
     counter: int = 0;
     for en in enumerator_list.enumerators {
@@ -146,12 +146,10 @@ def _enum_sequential_values(enumerator_list: object) -> dict[str, int] | None {
     if len(vals) != len(set(vals)) {
         return None;
     }
-    # Check values are actually sequential (each = previous + 1).
-    for i in range(1, len(vals)) {
-        if vals[i] != vals[i - 1] + 1 {
-            return None;
-        }
-    }
+    # No unit-step requirement: _enum_as_enum writes every member's value
+    # explicitly (`= val`), so a non-consecutive named enum like
+    # `enum Status { OK=0, WARN=2, ERR=4 }` lowers faithfully to an enum
+    # instead of being demoted to ENUM_AS_CONSTS over a cosmetic gap.
     return result;
 }
 
@@ -181,7 +179,7 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
             # Forward declaration — skip.
             continue;
         }
-        name_map = _enum_sequential_values(en.values);
+        name_map = _enum_explicit_values(en.values);
         used_as_int = name_map is not None
         and any(nm in int_use_names for nm in name_map);
         if en.name is not None and name_map is not None and not used_as_int {
