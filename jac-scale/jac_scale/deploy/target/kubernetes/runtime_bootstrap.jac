@@ -96,15 +96,27 @@ def build_runtime_install_commands(
         commands.append('git submodule update --init --recursive');
         # jaclang ships as the self-contained `jac` binary, not a pip/editable
         # package, so the checkout is compiled with `zig build` to run the
-        # branch's own jaclang (the point of experimental mode). zstd is needed
-        # by build.zig's python-build-standalone payload step. The Zig version
+        # branch's own jaclang (the point of experimental mode). The Zig version
         # comes from injector.bundle.JAC_ZIG_VERSION (single source of truth,
         # tracking jac/build.zig.zon's minimum_zig_version).
+        #
+        # Build deps on the bare python:3.x-slim base (it has neither a C++
+        # toolchain nor the -dev libs the native LLVM shim links against):
+        #   - xz-utils, zstd: build.zig's python-build-standalone payload step.
+        #   - build-essential: build.zig compiles + links libjacllvm.so with the
+        #     system `c++`/`ld` (jac/build.zig), absent from the slim image.
+        #   - libzstd-dev, zlib1g-dev, libxml2-dev: the shim links `-lzstd -lz
+        #     -lxml2`; without the -dev packages `zig build` dies at the C++ link
+        #     step ("cannot find -lzstd") and the missing binary then surfaces
+        #     downstream as a confusing `jac: command not found`.
         commands.append(
             'apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 '
             '-o Acquire::https::Timeout=20 update || true'
         );
-        commands.append('apt-get install -y --no-install-recommends xz-utils zstd');
+        commands.append(
+            'apt-get install -y --no-install-recommends xz-utils zstd '
+            'build-essential libzstd-dev zlib1g-dev libxml2-dev'
+        );
         commands.append(
             'ZARCH="$(uname -m)"; [ "$ZARCH" = "arm64" ] && ZARCH="aarch64"'
         );
