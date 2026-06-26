@@ -117,8 +117,14 @@ def build_runtime_install_commands(
             'apt-get install -y --no-install-recommends xz-utils zstd '
             'build-essential libzstd-dev zlib1g-dev libxml2-dev'
         );
+        # NB: `if/fi`, not `[ ... ] && ZARCH=...`. The commands list is joined
+        # with ` && `, so a bare test that is false on x86_64 ("$ZARCH" != arm64)
+        # short-circuits the ENTIRE rest of the chain - the zig download, `zig
+        # build`, and PATH export all silently skip, and the run falls through to
+        # `jac install` with no binary ("jac: command not found"). An if-stmt
+        # always exits 0, so the chain survives on every arch.
         commands.append(
-            'ZARCH="$(uname -m)"; [ "$ZARCH" = "arm64" ] && ZARCH="aarch64"'
+            'ZARCH="$(uname -m)"; if [ "$ZARCH" = "arm64" ]; then ZARCH="aarch64"; fi'
         );
         commands.append(f'ZDIR="zig-${{ZARCH}}-linux-{JAC_ZIG_VERSION}"');
         commands.append(
