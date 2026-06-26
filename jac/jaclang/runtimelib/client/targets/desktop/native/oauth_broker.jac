@@ -221,7 +221,8 @@ def make_handler(
     opener: Callable = webbrowser.open,
     prefix: str = DEFAULT_PREFIX,
     dispatch: Callable | None = None,
-    events: object | None = None
+    events: object | None = None,
+    sv_bridge: Callable | None = None
 ) -> type {
     # Per-broker pending-flow store. Shared across all requests this server
     # handles (the same loopback process serves both the UI and the system
@@ -255,6 +256,24 @@ def make_handler(
             payload = raw.encode("utf-8");
             self.send_response(status);
             self.send_header("Content-Type", "application/json");
+            self.send_header("Content-Length", str(len(payload)));
+            self.end_headers();
+            self.wfile.write(payload);
+        }
+
+        # Write a body verbatim with a caller-supplied status + content-type. Used
+        # for the sv walker/function bridge, which proxies the in-process app's raw
+        # response (real HTTP status, untouched {ok,data,error} body) so the page's
+        # normal web fetch path sees exactly what a remote jac-scale server returns.
+        def _raw_response(
+            self: _BrokerHandler,
+            body: str,
+            status: int = 200,
+            content_type: str = "application/json"
+        ) {
+            payload = body.encode("utf-8");
+            self.send_response(status);
+            self.send_header("Content-Type", content_type);
             self.send_header("Content-Length", str(len(payload)));
             self.end_headers();
             self.wfile.write(payload);
@@ -443,6 +462,32 @@ def make_handler(
                 raw = self.rfile.read(n) if n > 0 else b"";
                 body = raw.decode("utf-8") if raw else "[]";
                 self._raw_json(dispatch(body));
+                return;
+            }
+            if sv_bridge is not None
+            and (route.startswith("/walker/") or route.startswith("/function/")) {
+                # JS->sv bridge for the CEF target: the page leaves __JAC_NATIVE__
+                # unset, so the client runtime takes its normal web fetch path and
+                # POSTs the walker/function call here (same-origin loopback). We
+                # forward it to the in-process jac-scale app and echo the response
+                # VERBATIM -- real status (incl. 401 -> re-login) + raw {ok,data,
+                # error} body -- so the page sees exactly what a remote server
+                # returns. _reject_foreign_host() above already pins this to
+                # loopback. sv_bridge() owns serialization against the TestClient.
+                try {
+                    n = int(self.headers.get("Content-Length", 0) or 0);
+                } except (TypeError, ValueError) {
+                    n = 0;
+                }
+                if n > 1048576 {  # 1 MiB, same cap as /invoke
+                    self.send_error(413);
+                    return;
+                }
+                raw = self.rfile.read(n) if n > 0 else b"";
+                auth = self.headers.get("Authorization", "") or "";
+                token = auth[7:] if auth.startswith("Bearer ") else "";
+                (status, sv_body, ctype) = sv_bridge("POST", route, raw, token);
+                self._raw_response(sv_body, status, ctype);
                 return;
             }
             self.send_error(404);

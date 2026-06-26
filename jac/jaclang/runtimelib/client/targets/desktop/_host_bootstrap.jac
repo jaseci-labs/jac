@@ -96,6 +96,55 @@ def _dev_runtime_pin_py -> str {
 }
 
 
+"""The CPython snippet that imports + boots `inprocess_dispatch` (Phase J4, #6596).
+
+Single-sourced so both desktop hosts boot the in-process sv backend identically:
+the webview host runs it as its own DISPATCH_PY (right after SERVE_PY), and the
+CEF host splices it after its loopback server starts. The in-process backend boots
+the jac-scale ASGI app over a Starlette TestClient (no socket, no remote server)
+and replays the frozen {kind,name,node,fields,token} contract against it.
+
+Built as: a fixed head (the entry-file constant) + the dev-only runtime pin (empty
+in release builds; includes sys.path fixup + user-site for dev installs -- see
+_dev_runtime_pin_py) + a fixed tail that imports the staged inprocess_dispatch
+module and boots it against a graph/persistence dir under the user data dir.
+
+`_ENTRY_FILE` is resolved at RUNTIME relative to `_root` (the binary dir, set by
+the caller from /proc/self/exe): the sv source tree is staged beside the binary
+under `sv/` at build time, so the entry stays importable after the binary moves --
+a baked-in absolute build-time path would point at nothing on the target machine.
+
+COUPLING: this references `_root` and `_data` by bare name; the caller's serve
+bootstrap must define both in the same `__main__` scope before this runs (the
+webview SERVE_PY and CEF `_loopback_serve_py` both do). The per-call timeout,
+bounded-queue depth, and debug flag from [plugins.desktop.dispatch] are baked in
+here so the staged module needs no config access of its own at runtime (a bool
+interpolates as Python `True`/`False`, valid in the PyRun'd source)."""
+def _dispatch_boot_py(
+    entry_rel: str = "",
+    dispatch_timeout_s: float = 30.0,
+    dispatch_max_queue: int = 128,
+    dispatch_debug: bool = False
+) -> str {
+    return (
+        "import sys, os\n"
+        f"_ENTRY_REL = {json.dumps(entry_rel, ensure_ascii=False)}\n"
+        "_ENTRY_FILE = os.path.join(_root, 'sv', _ENTRY_REL)\n"
+    ) + _dev_runtime_pin_py() + (
+        "if _root not in sys.path:\n"
+        "    sys.path.insert(0, _root)\n"
+        # inprocess_dispatch is a pre-transpiled .py file staged beside the binary;
+        # importing it needs no JacMetaImporter. boot()/_boot_impl() re-register the
+        # importer and evict any pip-resident jac_scale before loading the pinned tree.
+        "import inprocess_dispatch\n"
+        "inprocess_dispatch.boot(_ENTRY_FILE,\n"
+        "    os.path.join(_data, '.jac', 'desktop', 'graph'),\n"
+        f"    timeout_s={dispatch_timeout_s}, max_queue={dispatch_max_queue},\n"
+        f"    debug={dispatch_debug})\n"
+    );
+}
+
+
 """Generate the native host source: embed CPython, serve `dist/` (resolved next
 to the binary via /proc/self/exe) on loopback through the OAuth/session broker,
 and render it in the webview.
@@ -160,21 +209,9 @@ def _generate_host_source(
         "threading.Thread(target=_srv.serve_forever, daemon=True).start()\n"
         "print('JAC_DESKTOP_SERVING http://127.0.0.1:' + str(_port) + '/', flush=True)\n"
     );
-    # Phase J4 (#6596): in-process sv walker/function dispatch. The boot/dispatch
-    # logic lives in `inprocess_dispatch` -- a Jac module transpiled to Python and
-    # staged beside the binary (see build()), exactly like `oauth_broker`. It boots
-    # the jac-scale ASGI app over a Starlette TestClient (no socket, no remote
-    # server) and replays the frozen {kind,name,node,fields,token} contract against
-    # it. This bootstrap just makes that module importable and boots it; _on_invoke
-    # (below) routes window.__jac_invoke calls to its `handle`.
-    #
-    # Built as: a fixed head (the entry-file constant) + the dev-only runtime pin
-    # (empty in release builds; includes sys.path fixup + user-site for dev installs
-    # -- see _dev_runtime_pin_py) + a fixed tail.
-    # The tail imports the staged inprocess_dispatch module (it sits next to the
-    # binary; _root was resolved from /proc/self/exe in SERVE_PY) and boots it
-    # against a graph/persistence dir under the user data dir (shared with the
-    # broker session).
+    # Phase J4 (#6596): in-process sv walker/function dispatch. The boot snippet is
+    # single-sourced in _dispatch_boot_py (shared with the CEF host); _on_invoke
+    # (below) routes window.__jac_invoke calls to inprocess_dispatch.handle.
     #
     # COUPLING: DISPATCH_PY references `_root` and `_data` by bare name. Both are
     # defined in SERVE_PY (lines `_root = os.path.dirname(_exe)` and
@@ -182,30 +219,8 @@ def _generate_host_source(
     # each string in the same `__main__` scope, so the names resolve -- but a
     # rename in SERVE_PY breaks boot silently at runtime (NameError swallowed as
     # boot_rc != 0). Keep these names in sync or hoist them to shared constants.
-    dispatch_py = (
-        "import sys, os\n"
-        # _ENTRY_FILE is resolved at RUNTIME relative to the binary dir (_root,
-        # set in SERVE_PY from /proc/self/exe). The sv source tree is staged
-        # beside the binary under `sv/` at build time (see build()), so the entry
-        # stays importable after the binary is moved or distributed -- a baked-in
-        # absolute build-time path would point at nothing on the target machine.
-        f"_ENTRY_REL = {json.dumps(entry_rel, ensure_ascii=False)}\n"
-        "_ENTRY_FILE = os.path.join(_root, 'sv', _ENTRY_REL)\n"
-    ) + _dev_runtime_pin_py() + (
-        "if _root not in sys.path:\n"
-        "    sys.path.insert(0, _root)\n"
-        # inprocess_dispatch is a pre-transpiled .py file staged beside the binary;
-        # importing it needs no JacMetaImporter. boot()/_boot_impl() re-register the
-        # importer and evict any pip-resident jac_scale before loading the pinned tree.
-        "import inprocess_dispatch\n"
-        # P1-A/P1-C: the per-call timeout, bounded-queue depth, and the error-
-        # detail debug flag from [plugins.desktop.dispatch] are baked in here so
-        # the staged module needs no config access of its own at runtime. (A bool
-        # interpolates as Python `True`/`False` -- valid in the PyRun'd source.)
-        "inprocess_dispatch.boot(_ENTRY_FILE,\n"
-        "    os.path.join(_data, '.jac', 'desktop', 'graph'),\n"
-        f"    timeout_s={dispatch_timeout_s}, max_queue={dispatch_max_queue},\n"
-        f"    debug={dispatch_debug})\n"
+    dispatch_py = _dispatch_boot_py(
+        entry_rel, dispatch_timeout_s, dispatch_max_queue, dispatch_debug
     );
     # Runs at document-start (before the SPA's own scripts) on every full load.
     # Just flags desktop mode + the broker prefix so the SPA can detect the shell

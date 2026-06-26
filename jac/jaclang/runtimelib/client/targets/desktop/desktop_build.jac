@@ -180,12 +180,20 @@ module loads but before `make_handler`, so it can define `_host`/`_dispatch_fn`.
 When `dispatch_arg` is set (e.g. ", dispatch=_dispatch_fn") the broker server
 routes `POST /__jac/invoke` straight into the plugin host -- the CEF target's
 JS->plugin bridge, since CEF's render process cannot bind into the host
-in-process the way the single-process webview target does."""
+in-process the way the single-process webview target does.
+
+`sv_arg` (e.g. ", sv_bridge=inprocess_dispatch.forward") wires the broker's
+`POST /walker/*` + `/function/*` routes into the in-process sv backend -- the CEF
+target's JS->sv bridge. The `inprocess_dispatch` module it names must be imported
++ booted by `plugin_bootstrap` (which runs before `make_handler`); the CEF caller
+defines `_data` at the head of its `plugin_bootstrap` so the boot snippet can use
+it (`_root` is already defined by the time `plugin_bootstrap` runs)."""
 def _loopback_serve_py(
     app_name: str,
     plugin_bootstrap: str = "",
     dispatch_arg: str = "",
-    threaded: bool = False
+    threaded: bool = False,
+    sv_arg: str = ""
 ) -> str {
     pref_port = 49152 + (int(hashlib.sha1(app_name.encode()).hexdigest(), 16) % 16000);
     # The CEF target needs a threaded server: /__jac/events holds the SSE
@@ -208,7 +216,7 @@ def _loopback_serve_py(
         "_broker = importlib.util.module_from_spec(_spec)\n"
         "_spec.loader.exec_module(_broker)\n" + plugin_bootstrap + "_data = os.environ.get('JAC_DATA_PATH', _root)\n"
         "_store = _broker.SessionStore("
-        "os.path.join(_data, '.jac', 'desktop', 'session.json'))\n" + "_H = _broker.make_handler(_dir, _store" + dispatch_arg + ")\n" + "_S.allow_reuse_address = True\n"
+        "os.path.join(_data, '.jac', 'desktop', 'session.json'))\n" + "_H = _broker.make_handler(_dir, _store" + dispatch_arg + sv_arg + ")\n" + "_S.allow_reuse_address = True\n"
         f"_pref = {pref_port}\n"
         "_srv = None; _port = None\n"
         "for _i in range(64):\n"

@@ -155,6 +155,94 @@ test "root.shared round-trips a write then read on the desktop path (P1-D / #668
 }
 
 
+"""Forward a raw HTTP request through `forward()` (the CEF loopback bridge),
+booting the fixture once on first use; returns `(status, body_text, content_type)`.
+
+`forward()` is the CEF half of the `cl` -> `sv` path: the page leaves
+__JAC_NATIVE__ unset and POSTs to the loopback, which hands the request here and
+echoes our return straight back -- so unlike `dispatch()` this returns the
+jac-scale response VERBATIM (real status + raw {ok,data,error} body), not the
+{status,ok,body} envelope."""
+def _forward_request(method: str, path: str, body: bytes, token: str = "") -> tuple {
+    global _BOOTED;
+    import from jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch {
+        boot,
+        forward
+    }
+
+    if not _BOOTED {
+        graph_root = tempfile.mkdtemp(prefix="jac_ipd_test_");
+        boot(_FIXTURE, os.path.join(graph_root, "graph"));
+        _BOOTED = True;
+    }
+    with warnings.catch_warnings() {
+        warnings.filterwarnings(
+            "ignore", message=r".*iscoroutinefunction.*", category=DeprecationWarning
+        );
+        return forward(method, path, body, token);
+    }
+}
+
+
+test "forward() passes a walker call through to the in-process app verbatim" {
+    if not _backend_available() {
+        print("[skip] jac-scale backend (starlette + jac_scale) not installed");
+        return;
+    }
+    (status, body, ctype) = _forward_request(
+        "POST", "/walker/greet", b'{"name": "Ada"}', ""
+    );
+    # Raw passthrough: a real 200 and the untouched {ok,data,...} body the web
+    # fetch client parses -- NOT the {status,ok,body} envelope dispatch() wraps.
+    assert status == 200;
+    assert "application/json" in ctype;
+    payload = json.loads(body);
+    assert payload["ok"] == True;
+    assert payload["data"]["reports"][0]["greeting"] == "hello Ada";
+}
+
+
+test "forward() surfaces the real non-200 status for an unknown walker" {
+    if not _backend_available() {
+        print("[skip] jac-scale backend (starlette + jac_scale) not installed");
+        return;
+    }
+    # Proves the raw-passthrough contract: dispatch()'s wrapper would always ride
+    # on HTTP 200, but the web client needs the real status (e.g. 401 -> re-login),
+    # so an unknown walker must come back as a genuine error status, not 200.
+    (status, body, ctype) = _forward_request(
+        "POST", "/walker/no_such_walker_here", b'{}', ""
+    );
+    assert status != 200;
+}
+
+
+test "forward() before boot() returns a 503 envelope, never raises" {
+    # No backend needed: a guarded reply (not an exception) when _tc is unset is
+    # what keeps a dead backend from hanging the loopback handler thread. Drive it
+    # on a fresh module instance so a prior boot in this process can't mask it.
+    import from importlib { import_module }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    # Force the "never booted" state regardless of test order.
+    saved_tc = ipd._tc;
+    saved_err = ipd._BOOT_ERROR;
+    ipd._tc = None;
+    ipd._BOOT_ERROR = "";
+    try {
+        (status, body, ctype) = ipd.forward("POST", "/walker/greet", b'{}', "");
+    } finally {
+        ipd._tc = saved_tc;
+        ipd._BOOT_ERROR = saved_err;
+    }
+    assert status == 503;
+    payload = json.loads(body);
+    assert payload["ok"] == False;
+}
+
+
 # Mailbox for the worker-mechanics test: _capture_return (installed as the
 # module's webview_return) records the reply here instead of calling into the
 # host-only symbol. Module-level (not a closure) to keep the Jac simple.

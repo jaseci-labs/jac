@@ -104,7 +104,12 @@ glob _tc: any = None,
      _BOOT_ERROR: str = "",
      # Set by shutdown(); handle() rejects new work and _reply() is a no-op so timer
      # callbacks cannot call webview_return after the window closes.
-     _shutting_down: bool = False;
+     _shutting_down: bool = False,
+     # Serializes forward() calls (the CEF loopback path) against the single
+     # in-process TestClient. The webview path serializes via the daemon worker;
+     # CEF has no worker -- its ThreadingTCPServer can drive concurrent loopback
+     # threads into _tc, so they take this lock instead. None until first use.
+     _sv_lock: any = None;
 
 
 """Boot the in-process jac-scale ASGI app for `entry_file`'s module.
@@ -159,7 +164,7 @@ def _ensure_jac_meta_importer {
 wrapper (P1-B). Boots the in-process jac-scale ASGI app and leaves it in `_tc`,
 then starts the single dispatch worker. Raises on any failure."""
 def _boot_impl(entry_file: str, graph_path: str) {
-    global _tc,_runtime,_work_q,_worker,_shutting_down;
+    global _tc,_runtime,_work_q,_worker,_shutting_down,_sv_lock;
     # Guard against double boot() without an intervening shutdown(): close the
     # existing runtime to avoid leaking its JFastApiServer and Jac machine
     # context (which hold open DB connections and memory).
@@ -177,6 +182,11 @@ def _boot_impl(entry_file: str, graph_path: str) {
         _tc = None;
     }
     _shutting_down = False;
+    # Serialization lock for the CEF loopback forward() path (created here, at
+    # single-threaded boot, so concurrent loopback threads never race to make it).
+    if _sv_lock is None {
+        _sv_lock = threading.Lock();
+    }
     import jaclang;
     _ensure_jac_meta_importer();
     import from jac_scale.inprocess { prepare_inprocess_runtime }
@@ -345,6 +355,59 @@ def dispatch(payload_json: str) -> str {
     return json.dumps(
         {"status": resp.status_code, "ok": resp.is_success, "body": body}
     );
+}
+
+
+"""Forward a raw HTTP request to the in-process app (the CEF loopback path).
+
+Unlike `dispatch()` -- which wraps the reply in the `{status, ok, body}` envelope
+the native-bind transport expects and always rides on HTTP 200 -- this returns
+the jac-scale response VERBATIM: `(status_code, body_text, content_type)`. The
+CEF target leaves `__JAC_NATIVE__` unset, so the client runtime takes its normal
+web fetch path (`POST {origin}/walker/<name>` etc.) against the loopback server;
+that server hands the request here and echoes our tuple straight back, so the
+client sees a real status (incl. 401 -> re-login) and the raw `{ok,data,error}`
+body it parses on web.
+
+`token` is the bearer extracted from the request's `Authorization` header by the
+loopback handler (the web client sends it there, not in an envelope field).
+
+Serialized by `_sv_lock`: the CEF loopback is a ThreadingTCPServer, so concurrent
+request threads would otherwise hit the single TestClient at once. A 503 envelope
+is returned (never an exception) if boot() failed or never ran, mirroring how the
+web path would surface a dead backend.
+"""
+def forward(
+    method: str, path: str, body: bytes, token: str = ""
+) -> tuple[int, str, str] {
+    if _BOOT_ERROR {
+        return (
+            503,
+            json.dumps({"ok": False, "error": {"message": "backend boot failed"}}),
+            "application/json"
+        );
+    }
+    tc = _tc;
+    if tc is None {
+        return (
+            503,
+            json.dumps({"ok": False, "error": {"message": "backend not booted"}}),
+            "application/json"
+        );
+    }
+    global _sv_lock;
+    if _sv_lock is None {
+        _sv_lock = threading.Lock();
+    }
+    headers = {"Content-Type": "application/json"};
+    if token {
+        headers["Authorization"] = "Bearer " + token;
+    }
+    with _sv_lock {
+        resp = tc.request(method, path, content=body, headers=headers);
+    }
+    ctype = resp.headers.get("content-type", "application/json");
+    return (resp.status_code, resp.text, ctype);
 }
 
 

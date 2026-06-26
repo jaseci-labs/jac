@@ -17,15 +17,24 @@ import from jaclang.cli.console { console }
 import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     _find_cef_dir,
     _jac_bin,
+    _jac_subprocess_env,
     _libpython_soname,
     _loopback_serve_py,
     _patch_host_rpath,
     _plugin_bootstrap_py,
+    _stage_inprocess_dispatch,
     _stage_oauth_broker,
     _stage_plugins,
     build_cef_dispatch,
     build_cef_subprocess,
     fetch_cef_dist,
+}
+import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
+    _dispatch_boot_py
+}
+import from jaclang.runtimelib.client.targets.desktop._dev_launch {
+    ensure_dev_build_env,
+    desktop_app_runtime_env
 }
 
 """Ensure the CEF binary distribution is staged (fetch it on first use)."""
@@ -104,6 +113,10 @@ def _generate_host_source(
     app_name: str,
     cache_path: str,
     plugin_configs: dict = {},
+    entry_rel: str = "",
+    dispatch_timeout_s: float = 30.0,
+    dispatch_max_queue: int = 128,
+    dispatch_debug: bool = False,
 ) -> str {
     # Splice the plugin host into the loopback server: it builds _host/_dispatch_fn,
     # switches the host to the SSE push transport (setup_cef), routes POST
@@ -112,11 +125,25 @@ def _generate_host_source(
     # the EventSource in cef_dispatch.na.jac's BOOTSTRAP_JS (CEF's render process
     # can't bind into the host in-process the way the single-process webview
     # target does). Threaded server: the SSE stream blocks for its lifetime.
+    #
+    # Phase J4 (#6596) for CEF: after the plugin host, also import + boot
+    # inprocess_dispatch (the SAME shared boot snippet the webview host uses) so
+    # the loopback's POST /walker/* + /function/* routes (sv_bridge=inprocess_
+    # dispatch.forward) replay sv calls against the in-process jac-scale app. The
+    # boot must run before make_handler so the sv_bridge= reference resolves, so it
+    # rides in the plugin_bootstrap slot (which runs first); we define `_data`
+    # there too (`_root` is already set) since the loopback's own `_data` is only
+    # assigned later. CEF leaves __JAC_NATIVE__ unset, so the page reaches these
+    # routes through its normal same-origin web fetch path -- no frontend change,
+    # functionally identical to the webview target for the end user.
     serve_py = _loopback_serve_py(
         app_name,
-        _plugin_bootstrap_py(plugin_configs) + "_host.setup_cef()\n",
+        _plugin_bootstrap_py(plugin_configs) + "_host.setup_cef()\n" + "_data = os.environ.get('JAC_DATA_PATH', _root)\n" + _dispatch_boot_py(
+            entry_rel, dispatch_timeout_s, dispatch_max_queue, dispatch_debug
+        ),
         ", dispatch=_dispatch_fn, events=_host",
-        True
+        True,
+        ", sv_bridge=inprocess_dispatch.forward"
     );
     return (
         '"""Generated CEF desktop host - do not edit (jac-desktop)."""\n'
@@ -229,6 +256,8 @@ impl CefDesktopTarget.build(
 ) -> Path {
     import from jaclang.runtimelib.client.desktop_config { get_desktop_config }
 
+    ensure_dev_build_env();
+
     console.print("\n🖥️  Building CEF desktop app (Chromium)", style="bold");
     web_bundle = super.build(entry_file, project_dir, platform);
     dist_dir = web_bundle.parent;
@@ -239,6 +268,7 @@ impl CefDesktopTarget.build(
     cfg.validate();
     ident = cfg.get_identity();
     win = cfg.get_window_config();
+    dispatch = cfg.get_dispatch_config();
     plugin_configs = cfg.get_plugin_configs();
     app_name = ident.name or "app";
 
@@ -267,6 +297,17 @@ impl CefDesktopTarget.build(
     # Transpile plugin .jac -> .py for the embedded CPython (same as native).
     _stage_plugins(out_dir, project_dir);
 
+    # Phase J4 (#6596): stage the in-process sv backend + the sv source tree beside
+    # the binary, exactly like the webview target. The loopback boots inprocess_
+    # dispatch and bridges /walker/* + /function/* into it (see _generate_host_source).
+    _stage_inprocess_dispatch(out_dir, project_dir);
+    sv_root = entry_file.parent;
+    sv_ignore = shutil.ignore_patterns(
+        ".jac", ".git", "node_modules", ".venv*", "__pycache__", "*.pyc"
+    );
+    shutil.copytree(sv_root, out_dir / "sv", ignore=sv_ignore);
+    sv_entry_rel = str(entry_file.name);
+
     cache_path = str(project_dir / ".jac" / "desktop" / "cef-cache" / str(app_name));
     host_src = _generate_host_source(
         _libpython_soname(),
@@ -276,12 +317,18 @@ impl CefDesktopTarget.build(
         str(app_name),
         cache_path,
         plugin_configs,
+        sv_entry_rel,
+        dispatch.timeout_s,
+        dispatch.max_queue,
+        dispatch.debug,
     );
     (out_dir / "host.na.jac").write_text(host_src);
 
     console.print("  Compiling CEF native host (jac nacompile)...", style="muted");
     res = subprocess.run(
-        [_jac_bin(), "nacompile", "host.na.jac", "-o", app_name], cwd=str(out_dir),
+        [_jac_bin(), "nacompile", "host.na.jac", "-o", app_name],
+        cwd=str(out_dir),
+        env=_jac_subprocess_env(),
     );
     if res.returncode != 0 {
         raise RuntimeError("CEF native host compilation failed.");
@@ -297,12 +344,7 @@ impl CefDesktopTarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
     binary = self.build(entry_file, project_dir, None);
-    env = dict(os.environ);
-    libdir = sysconfig.get_config_var("LIBDIR") or "";
-    if libdir {
-        prev = env.get("LD_LIBRARY_PATH", "");
-        env["LD_LIBRARY_PATH"] = libdir if not prev else f"{libdir}:{prev}";
-    }
+    env = desktop_app_runtime_env();
     env.setdefault("LIBGL_ALWAYS_SOFTWARE", "1");
     env.setdefault("GALLIUM_DRIVER", "llvmpipe");
     fonts_conf = binary.parent / "minimal-fonts.conf";
