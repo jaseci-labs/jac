@@ -68,7 +68,8 @@ obj CMapper {
         slot_map: dict[int, object],  # slot_id -> c_node
         _next_slot: int,
         _lineno: int,
-        _list_bound: set[str];  # names known to back a Jac list (§7.5 realloc-elide)
+        _list_bound: set[str],  # names known to back a Jac list (§7.5 realloc-elide)
+        _func_depth: int;  # >0 while building a function body (function-local scope)
 
     def init(tags: TagTable) {
         self.tags = tags;
@@ -76,6 +77,7 @@ obj CMapper {
         self._next_slot = 0;
         self._lineno = 1;
         self._list_bound = set();
+        self._func_depth = 0;
     }
 
     # ------------------------------------------------------------------ #
@@ -385,7 +387,12 @@ obj CMapper {
             kwarg=None,
             defaults=[],
         );
+        # Mark function-local scope so c_Decl can classify function-local
+        # `static` (whose cross-call persistence Jac cannot express) distinctly
+        # from a file-scope static (a plain module var).
+        self._func_depth += 1;
         raw_body = self.c_Compound(nd.body);
+        self._func_depth -= 1;
         body: list[object] = raw_body or [self._stamp_manual(ast3.Pass(), 1, 0)];
         ret = self._ret_ann(nd.decl.type);
         fn = ast3.FunctionDef(
@@ -416,6 +423,44 @@ obj CMapper {
             return self._surrogate_stmt(nd);
         }
         inner = nd.type;
+        storage = nd.storage or [];
+        quals = self._all_quals(nd);
+        # --- storage class (#5) ---
+        # `extern` names a definition in another TU; with no initializer it is a
+        # pure declaration → no-op in Jac (like a function prototype). `extern`
+        # WITH an initializer is itself the definition, so fall through and emit.
+        # NB: read the initializer via 2-arg `getattr(nd, "init")`, never
+        # `nd.init` — Jac maps the bare `.init` attribute to the object's
+        # constructor (def init → __init__), so `nd.init` returns a bound method,
+        # not pycparser's field. (A 3-arg getattr-with-None is also unsafe: it is
+        # rewritten by jac-format into `nd?.init`, which hits the same trap.)
+        if "extern" in storage and getattr(nd, "init") is None {
+            return [];
+        }
+        # Function-local `static` keeps its value across calls; a Jac local
+        # cannot. Emit a best-effort local (re-initialized each call) and flag
+        # the lost persistence. File-scope `static` is just a module var — no
+        # loss, so only the function-local variant is demoted.
+        if "static" in storage and self._func_depth > 0 {
+            self._mark_tier_b(
+                nd, "function-local 'static' loses cross-call persistence"
+            );
+        }
+        # --- qualifiers (#6) ---
+        # `const` is a benign, idiomatic drop (value semantics are preserved;
+        # only the immutability guarantee is advisory) → stays Tier-A. `volatile`
+        # and `restrict` carry real semantics Jac cannot express, so emit
+        # faithfully but flag the loss rather than dropping it silently.
+        if "volatile" in quals {
+            self._mark_tier_b(
+                nd, "'volatile' qualifier dropped (Jac cannot suppress read caching)"
+            );
+        }
+        if "restrict" in quals {
+            self._mark_tier_b(
+                nd, "'restrict' qualifier dropped (no-alias guarantee not expressible)"
+            );
+        }
         # Function forward declaration (prototype) — no-op in Jac.
         if isinstance(inner, c_ast.FuncDecl) {
             return [];
@@ -450,6 +495,24 @@ obj CMapper {
         }
         aa = ast3.AnnAssign(target=target, annotation=ann, value=value, simple=1);
         return self._stamp(aa, nd, text=nd.name);
+    }
+
+    def _all_quals(nd: object) -> set {
+        # Collect type qualifiers from a Decl and the whole nested type chain.
+        # `const`/`volatile` may sit on the Decl or the pointed-to TypeDecl;
+        # `restrict` lives on the PtrDecl, not the Decl — so reading nd.quals
+        # alone would miss the common `int * restrict p`. The chain is short
+        # (pointer/array/typedecl nesting), so a bounded walk suffices.
+        quals: set = set(nd?.quals or []);
+        t = nd?.type;
+        for _ in range(8) {
+            if t is None {
+                break;
+            }
+            quals |= set(t?.quals or []);
+            t = t?.type;
+        }
+        return quals;
     }
 
     def _decl_struct_var(nd: object) -> object {
