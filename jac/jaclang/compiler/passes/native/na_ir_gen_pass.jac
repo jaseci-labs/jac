@@ -123,19 +123,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
         clib_extern_names: set[str] = set(),
         clib_struct_names: set[str] = set(),
         clib_struct_abi_types: dict[str, ir.Type] = {},
-        # Maps local variable / parameter name → native struct name for
-        # subscript / field-access codegen when annotations are unstamped
-        # (#6707, #6708). Despite the "clib" name this tracks ALL native
-        # structs (clib AND plain Jac archetypes), because a struct annotation
-        # the checker never stamped lowers to an i64 handle either way, so the
-        # struct name can only be recovered from this name-keyed table.
-        # LIMITATION: the table is flat per-ability (no block scoping /
-        # shadowing) and keyed by name, so a name rebound to a different type
-        # in a nested scope can carry a stale mapping; a same-level redecl
-        # clears it (see _codegen_assignment). The deeper fix is stamping these
-        # annotations in the checker (it currently skips clib import blocks and
-        # leaves native def/param annotations unstamped).
-        clib_local_struct_names: dict[str, str] = {},
         # Foreign declaration model (Phase 8): module universe for the
         # central collector, and its memoized result. The memo is keyed on
         # the universe size (_foreign_model_nmods) because _foreign_modules

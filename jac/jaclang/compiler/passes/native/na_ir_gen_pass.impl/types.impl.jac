@@ -288,10 +288,6 @@ impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
     ) {
         return self._self_arch;
     }
-    # Unstamped annotations: fall back to the name-based struct mapping (#6707, #6708).
-    if isinstance(expr, uni.Name) and expr.value in self.clib_local_struct_names {
-        return self.clib_local_struct_names[expr.value];
-    }
     if not isinstance(expr, uni.Expr) or expr.type is None {
         # Fallback for clib struct locals/globals whose type annotation was
         # not stamped by the checker (checker skips clib import blocks).

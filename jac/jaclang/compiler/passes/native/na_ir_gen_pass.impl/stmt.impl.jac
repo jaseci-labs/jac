@@ -920,18 +920,6 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 } elif uni?.BuiltinType and isinstance(_redecl_tag, uni.BuiltinType) {
                     bare_redecl = _redecl_tag.value;
                 }
-                # Keep the named-struct tracking map in sync on typed re-declaration
-                # (#6707, #6708): a new struct annotation overrides the stale
-                # mapping; a non-struct annotation clears it so subsequent field
-                # accesses don't use the wrong struct layout / GEP indices.
-                # Gate on struct_types (all native structs) so unstamped plain
-                # struct re-binds stay tracked, mirroring the param site.
-                if isinstance(_redecl_tag, uni.Name)
-                and _redecl_tag.value in self.struct_types {
-                    self.clib_local_struct_names[var_name] = _redecl_tag.value;
-                } elif var_name in self.clib_local_struct_names {
-                    del self.clib_local_struct_names[var_name];
-                }
                 _skip_redecl = bare_redecl in {"list", "dict", "set", "frozenset"};
                 if not _skip_redecl {
                     _declared_type = self._resolve_jac_type(_redecl_tag);
@@ -1519,15 +1507,6 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             var_type = value.type;
             if nd.type_tag and nd.type_tag.tag {
                 tag_node = nd.type_tag.tag;
-                # Track named-struct local annotations for subscript / field-access
-                # codegen (#6707, #6708). Gate on struct_types (all native structs),
-                # not just clib_struct_names: an unstamped plain struct local (e.g.
-                # `c: Color = buf[i]`) is held as an i64 handle, so this name-keyed
-                # table is the only way _struct_name_of can recover its struct name.
-                if isinstance(tag_node, uni.Name)
-                and tag_node.value in self.struct_types {
-                    self.clib_local_struct_names[var_name] = tag_node.value;
-                }
                 # Bare unparameterized collection annotations (list/dict/set/frozenset):
                 # infer the variable type from the RHS value rather than defaulting,
                 # so `a: list = [1, 2]`, `d: dict = {"k": v}`, `s: set = {1, 2}` all work
