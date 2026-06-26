@@ -18,6 +18,7 @@ enum Idiom {
     ENUM_AS_ENUM = "enum_as_enum",
     ENUM_AS_CONSTS = "enum_as_consts",
     C_FOR = "c_for",
+    SWITCH_CLEAN = "switch_clean",
     TIER_B = "tier_b"
 }
 
