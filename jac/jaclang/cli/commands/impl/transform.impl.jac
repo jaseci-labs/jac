@@ -68,10 +68,14 @@ impl c2jac(
         return 1;
     }
     console.print(jac_str, markup=False, highlight=False);
-    tier_b = tags.tier_b_entries();
-    if tier_b {
+    import from jaclang.compiler.c2jac.comments { tier_b_site_count }
+    # Report the authoritative site count (distinct header rows), not the raw
+    # tag count — the latter includes empty-reason container tags the header
+    # suppresses and would contradict the inline record (§3 honest report).
+    n_tier_b = tier_b_site_count(tags);
+    if n_tier_b {
         console.warning(
-            f"[c2jac] {len(tier_b)} best-effort (Tier-B) site(s) — flagged inline "
+            f"[c2jac] {n_tier_b} best-effort (Tier-B) site(s) — flagged inline "
             f"in the output (see the `# c2jac:` header and per-site notes)"
         );
     }

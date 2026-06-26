@@ -79,6 +79,23 @@ def _reasons_by_line(entries: list[NodeTag]) -> dict[int, list[str]] {
     return by_line;
 }
 
+def tier_b_site_count(tags: TagTable) -> int {
+    # The authoritative count of best-effort sites: distinct (C line, reason)
+    # rows as rendered in the header — NOT len(tier_b_entries()). The boundary
+    # table default-tags container nodes Tier-B with an empty reason (e.g. a
+    # wrapper sharing a C line with an already-explained child), which
+    # _reasons_by_line collapses away. Reporting the raw entry count would
+    # over-state the site total and contradict the inline header (§3 honest
+    # report). Callers (the CLI warning) should use this so the user-facing
+    # number matches the record in the output.
+    entries = tags.tier_b_entries();
+    if not entries {
+        return 0;
+    }
+    by_line = _reasons_by_line(entries);
+    return sum([len(reasons) for reasons in by_line.values()]);
+}
+
 def _build_header(by_line: dict[int, list[str]]) -> str {
     # One row per (C line, reason), counting distinct explained sites. The header
     # plus the inline per-site notes are the authoritative Tier-B record.
