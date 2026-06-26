@@ -88,7 +88,22 @@ impl NativeDesktopTarget.build(
     sv_root = entry_file.parent;
     sv_stage = out_dir / "sv";
     sv_ignore = shutil.ignore_patterns(
-        ".jac", ".git", "node_modules", ".venv*", "__pycache__", "*.pyc"
+        ".jac",
+        ".git",
+        "node_modules",
+        ".venv*",
+        "__pycache__",
+        "*.pyc",
+        ".env",
+        ".env.*",
+        "*.env",
+        "*.sqlite",
+        "*.sqlite3",
+        "*.db",
+        "*.key",
+        "*.pem",
+        "*.p12",
+        "*.pfx"
     );
     shutil.copytree(sv_root, sv_stage, ignore=sv_ignore);
     sv_entry_rel = str(entry_file.name);

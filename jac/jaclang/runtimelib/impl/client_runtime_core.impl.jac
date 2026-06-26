@@ -166,10 +166,15 @@ impl __invalidateEndpoint(endpoint_key: str) -> None {
 # ============================================================================
 
 # Native bridge helpers (desktop only — only reachable when __JAC_NATIVE__ is set).
-
-async def __nativeInvoke(kind: str, name: str, node: str, fields: dict) -> any {
+async def __nativeInvoke(kind: str, name: str, `node: str, fields: dict) -> any {
     token = __getLocalStorage("jac_token") or "";
-    payload = {"kind": kind, "name": name, "node": node, "fields": fields, "token": token};
+    payload = {
+        "kind": kind,
+        "name": name,
+        "node": `node,
+        "fields": fields,
+        "token": token
+    };
     return await globalThis.__jac_invoke(JSON.stringify(payload));
 }
 
@@ -226,12 +231,14 @@ impl __doFuncFetch(function_name: str, args: dict) -> any {
     if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
         response = await __nativeInvoke("function", function_name, "", args);
         if not response["ok"] {
-            raise Exception(f"Function {function_name} failed: {__nativeErrorMsg(response)}");
+            raise Exception(
+                f"Function {function_name} failed: {__nativeErrorMsg(response)}"
+            );
         }
         result = None;
         try {
             data = response["body"]["data"];
-            if data and data["result"] is not None {
+            if data and "result" in data {
                 result = data["result"];
             }
         } except Exception as e {

@@ -319,8 +319,15 @@ def _generate_host_source(
         "    boot_rc = PyRun_SimpleString(DISPATCH_PY);\n"
         "    main_mod = PyImport_AddModule(\"__main__\");\n"
         "    d = PyModule_GetDict(main_mod);\n"
-        "    port = PyLong_AsLong(PyRun_String(\"_port\", PY_EVAL, d, d));\n"
-        "    url = f\"http://127.0.0.1:{port}/\";\n"
+        # Guard port extraction: when serve_rc != 0, `_port` is undefined in __main__
+        # so PyRun_String returns NULL (0). PyLong_AsLong(0) sets a CPython error that
+        # survives into PyRun_SimpleString("...shutdown()"), causing it to return -1
+        # without executing shutdown. Only evaluate _port when SERVE_PY succeeded.
+        "    url = \"\";\n"
+        "    if serve_rc == 0 {\n"
+        "        port = PyLong_AsLong(PyRun_String(\"_port\", PY_EVAL, d, d));\n"
+        "        url = f\"http://127.0.0.1:{port}/\";\n"
+        "    }\n"
         "    wv = new_webview(False);\n"
         f"    wv.title({json.dumps(title, ensure_ascii=False)});\n"
         f"    wv.size({width}, {height}, HINT_NONE);\n"
