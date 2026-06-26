@@ -321,6 +321,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
         _bytes_struct_type: (object | None) = None,
         # #6749: memoized __jac_bytes_repr helper (one per module).
         _bytes_repr_function: (object | None) = None,
+        # #6978 0.3: memoized __jac_float_repr helper (one per module).
+        _float_repr_function: (object | None) = None,
         # Iterator protocol (#6403): boxed JacIter + per-kind state structs.
         _jac_iter_type: (object | None) = None,
         _iter_structs_registered: bool = False,
@@ -802,6 +804,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _emit_bytes_cmp(left: ir.Value, right: ir.Value, op_sym: str) -> ir.Value;
     def _emit_bytes_repr(bv: ir.Value) -> ir.Value;
     def _bytes_repr_fn -> ir.Function;
+    def _emit_float_repr(fv: ir.Value) -> ir.Value;
+    def _float_repr_fn -> ir.Function;
     def _make_bytes_iter(bytes_val: ir.Value) -> ir.Value;
     def _bytes_iter_next_fn -> ir.Function;
     # Phase 8: Entry Block

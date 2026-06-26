@@ -11,7 +11,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to upload assets to (e.g. jaclang-0.16.7). Empty = artifact only."
+        # Use the canonical release tag `v<version>` (e.g. v0.30.1) so binaries
+        # land on the release the publish pipeline already cut. Do NOT invent a
+        # new tag (e.g. `jaclang-0.30.1`) -- that creates a duplicate release.
+        # Empty = build the artifact only, attach nothing.
+        description: "Canonical release tag to upload assets to (e.g. v0.30.1). Empty = artifact only."
         required: false
         type: string
 
