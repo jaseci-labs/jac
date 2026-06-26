@@ -316,6 +316,80 @@ test "broker rejects requests with a non-loopback Host header" {
 }
 
 # ============================================================================
+# Cross-site (CSRF) defense: Origin / Sec-Fetch-Site on state-changing routes
+# ============================================================================
+"""A cross-site page cannot inject a token via POST /session (CSRF defense).
+
+The Host pin alone does not catch this: a remote page's `fetch` reaches us with
+our own loopback host in `Host` (the request target), but the browser also
+stamps the attacker's page in `Origin` / `Sec-Fetch-Site`, which a script cannot
+forge. The broker rejects a state-changing request initiated cross-site.
+"""
+test "broker rejects a cross-site token injection on post session" {
+    (srv, port, store, _opened, _web) = _start_server();
+    try {
+        # Attacker page POSTs a forged token from its own origin.
+        (s, _b) = _req(
+            port,
+            "/__jac/session",
+            "POST",
+            {"token": "tok-evil"},
+            {"Origin": "https://evil.example", "Sec-Fetch-Site": "cross-site"}
+        );
+        assert s == 403 , "a cross-site Origin must be rejected";
+        assert store.read() == "" , "a cross-site POST must not inject a token";
+
+        # Sec-Fetch-Site alone (no Origin header) is enough to reject.
+        (s2, _b2) = _req(
+            port,
+            "/__jac/session",
+            "POST",
+            {"token": "tok-evil2"},
+            {"Sec-Fetch-Site": "cross-site"}
+        );
+        assert s2 == 403;
+        assert store.read() == "";
+
+        # The same-origin UI page still writes the token (loopback Origin +
+        # same-origin Sec-Fetch-Site are accepted).
+        (s3, _b3) = _req(
+            port,
+            "/__jac/session",
+            "POST",
+            {"token": "tok-ok"},
+            {"Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}
+        );
+        assert s3 == 200;
+        assert store.read() == "tok-ok";
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}
+
+"""A cross-site GET cannot drive /oauth/start (forced logout + browser popup)."""
+test "broker rejects a cross-site oauth start" {
+    (srv, port, store, opened, _web) = _start_server();
+    try {
+        store.write("live-token");
+        (s, _b) = _req(
+            port,
+            "/__jac/oauth/start?platform=github&api_base=http://localhost:8000",
+            "GET",
+            None,
+            {"Origin": "https://evil.example", "Sec-Fetch-Site": "cross-site"}
+        );
+        assert s == 403 , "a cross-site oauth/start must be rejected";
+        # The rejected request must not have cleared the token or opened a browser.
+        assert store.read() == "live-token";
+        assert len(opened) == 0;
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}
+
+# ============================================================================
 # Static passthrough: non-broker paths still serve the app bundle
 # ============================================================================
 """Paths outside the broker prefix serve files from the dist directory."""

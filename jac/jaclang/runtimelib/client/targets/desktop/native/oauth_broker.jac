@@ -27,7 +27,13 @@ survives an app restart even though the loopback port -- and therefore the
 origin -- changes on every launch.
 
 All routes are pinned to a loopback `Host` header so a DNS-rebinding page cannot
-reach the broker as same-origin and read the token from `/session`.
+reach the broker as same-origin and read the token from `/session`. State-changing
+routes additionally reject any request a browser stamps as cross-site
+(`Origin` / `Sec-Fetch-Site`, neither forgeable by a script), so a remote page
+cannot CSRF the broker into injecting a token or driving the plugin/sv bridges
+even though it reaches us on a loopback `Host`. The OAuth callback is exempt --
+it is a legitimate cross-site top-level redirect, bound to this process by the
+single-use `state` nonce instead.
 
 This module is transpiled to dependency-free Python (`jac jac2py`) at build time
 and shipped beside the binary: the desktop host's embedded CPython has only the
@@ -50,6 +56,14 @@ import from urllib.parse { parse_qs, quote, urlparse }
 # of these (see `_host_allowed`) so a DNS-rebinding page -- which arrives with
 # its own hostname in `Host` -- cannot become same-origin and read the token.
 glob _LOOPBACK_HOSTS: frozenset = frozenset({"127.0.0.1", "localhost", "::1"});
+
+# `Sec-Fetch-Site` values a same-origin request can carry. A cross-site page's
+# fetch is stamped `cross-site` (or `cross-origin`) by the browser, which a
+# script cannot forge -- see `_origin_allowed`. `none` is a user-initiated load
+# (address bar / bookmark), not a cross-site script, so it is allowed.
+glob _SAME_SITE_VALUES: frozenset = frozenset(
+         {"same-origin", "same-site", "none"}
+     );
 
 glob DEFAULT_PREFIX: str = "/__jac",
      # Providers the desktop shell knows how to start. Kept in lockstep with
@@ -294,6 +308,12 @@ def make_handler(
             } except (TypeError, ValueError) {
                 n = 0;
             }
+            # Bound the read like /invoke and /walker do: a JSON session body is
+            # tiny, so cap it so a malformed/hostile request can't drive the host
+            # OOM with one oversized POST.
+            if n > 1048576 {  # 1 MiB
+                return {};
+            }
             raw = self.rfile.read(n) if n > 0 else b"";
             try {
                 data = json.loads(raw or b"{}");
@@ -332,6 +352,46 @@ def make_handler(
             return True;
         }
 
+        def _origin_allowed(self: _BrokerHandler) -> bool {
+            # Defense-in-depth beyond the Host pin: a cross-site page's `fetch`
+            # to our loopback port still carries a browser-set `Origin` (and
+            # `Sec-Fetch-Site`) naming the *attacker's* page, and a script cannot
+            # forge or strip either (both are forbidden header names). So even a
+            # request that passes the loopback Host check is rejected if it was
+            # initiated cross-site -- this is what stops a remote page from
+            # driving `/session`, `/invoke`, or `/walker` (a state-changing CSRF
+            # the Host pin alone does not catch, since the browser fills `Host`
+            # with our loopback target, not the attacker's origin). A non-browser
+            # local client sends neither header and is allowed, matching the
+            # Host-pin stance that local, non-browser callers are trusted.
+            origin = self.headers.get("Origin");
+            if origin {
+                try {
+                    host = urlparse(origin).hostname;
+                } except Exception {
+                    return False;
+                }
+                # A `null` / opaque origin (sandboxed iframe, `data:` URL) parses
+                # to None and is treated as foreign for a state-changing route.
+                if host not in _LOOPBACK_HOSTS {
+                    return False;
+                }
+            }
+            site = self.headers.get("Sec-Fetch-Site");
+            if site and site not in _SAME_SITE_VALUES {
+                return False;
+            }
+            return True;
+        }
+
+        def _reject_cross_site(self: _BrokerHandler) -> bool {
+            if self._origin_allowed() {
+                return False;
+            }
+            self.send_error(403, "cross-site request blocked");
+            return True;
+        }
+
         def _callback_url(self: _BrokerHandler, state: str) -> str {
             # Derive the callback from the request's Host so it always matches
             # the OS-assigned loopback port the UI reached us on (Host is already
@@ -349,6 +409,19 @@ def make_handler(
                 return;
             }
             route = urlparse(self.path).path;
+            cb_route = prefix + "/oauth/callback";
+            is_callback = route == cb_route or route.startswith(cb_route + "/");
+            # Cross-site gate on the broker's own GET routes (/session reads the
+            # token, /oauth/start clears it + opens a browser). The OAuth callback
+            # is deliberately exempt: it is a legitimate cross-site top-level
+            # navigation (the provider redirects the system browser here) and is
+            # bound to this process by the single-use state nonce instead. Static
+            # asset GETs (below the prefix) fall through to the file server.
+            if route.startswith(prefix)
+            and not is_callback
+            and self._reject_cross_site() {
+                return;
+            }
             if route == prefix + "/health" {
                 self._json({"ok": True});
                 return;
@@ -361,8 +434,7 @@ def make_handler(
                 self._oauth_start();
                 return;
             }
-            cb_route = prefix + "/oauth/callback";
-            if route == cb_route or route.startswith(cb_route + "/") {
+            if is_callback {
                 state = route[len(cb_route) + 1:]
                     if route.startswith(cb_route + "/")
                     else "";
@@ -430,8 +502,20 @@ def make_handler(
             if self._reject_foreign_host() {
                 return;
             }
+            # Every POST route mutates host state (writes the session token, or
+            # drives the plugin/sv bridges), so none is a legitimate cross-site
+            # request -- reject one outright before reading the body.
+            if self._reject_cross_site() {
+                return;
+            }
             route = urlparse(self.path).path;
             if route == prefix + "/session" {
+                # Direct token write. The real login flow never uses this -- a
+                # token reaches the store only via the nonce-gated OAuth callback,
+                # and the UI just *reads* it back with GET /session. This route
+                # exists for the store's read/write/clear lifecycle (exercised by
+                # tests); _reject_cross_site() above keeps a remote page from
+                # abusing it to inject a token.
                 token = str(self._read_json_body().get("token", "") or "");
                 tok_store.write(token);
                 self._json({"ok": True});
@@ -495,6 +579,11 @@ def make_handler(
 
         def do_DELETE(self: _BrokerHandler) -> None {
             if self._reject_foreign_host() {
+                return;
+            }
+            # DELETE /session clears the token (logout); a cross-site page must
+            # not be able to force it, so apply the same gate as the POST routes.
+            if self._reject_cross_site() {
                 return;
             }
             route = urlparse(self.path).path;
