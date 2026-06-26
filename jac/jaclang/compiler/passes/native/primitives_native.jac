@@ -1644,10 +1644,8 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
             return buf_ptr;
         }
         if isinstance(arg_val.type, ir.DoubleType) {
-            fmt = p._get_snprintf_fmt("%g");
-            fmt_ptr = b.bitcast(fmt, i8p, name="repr.fmt.ptr");
-            b.call(snprintf, [buf_ptr, ir.Constant(i64, 64), fmt_ptr, arg_val]);
-            return buf_ptr;
+            # repr(float): CPython's shortest round-trip repr (#6978 0.3).
+            return p._emit_float_repr(arg_val);
         }
         if isinstance(arg_val.type, ir.PointerType) and arg_val.type == i8p {
             fmt = p._get_snprintf_fmt("'%s'");
