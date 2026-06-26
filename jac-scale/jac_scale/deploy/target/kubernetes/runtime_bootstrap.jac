@@ -132,7 +132,12 @@ def build_runtime_install_commands(
             '| tar -xJ -C /tmp'
         );
         commands.append('export PATH="/tmp/${ZDIR}:$PATH"');
-        commands.append('( cd jac && zig build )');
+        # `fetch-llvm` is a prerequisite, not a default build dep: it range-fetches
+        # the pinned LLVM slice and compiles the LLVMPY_* shim that `zig build`
+        # statically links. Without it the build fails late at the payload step
+        # ("mkpayload: no LLVM shim ... Run `zig build fetch-llvm` once"). Matches
+        # scripts/fresh_env.sh, which runs fetch-llvm before the build.
+        commands.append('( cd jac && zig build fetch-llvm && zig build )');
         commands.append('export PATH="$PWD/jac/zig-out/bin:$PATH"');
         # --global: plugins go into the binary's own site so `jac start` finds
         # them after `cd ..` (a bare `jac install` would target a per-project
