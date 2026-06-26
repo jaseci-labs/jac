@@ -983,3 +983,16 @@ test "bug_evolving_none_narrowing" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
+
+# Bug #POSTLOOP-DIAG: the post-loop narrowing walk re-evaluates a back-edge
+# assignment's RHS for inference; that must not swallow a genuine error on the
+# same expression. The main checker walk re-types it against real flow state
+# and must still report `cur.nxt.val` (.val on Node | None).
+test "bug_loop_body_diag_not_swallowed" {
+    program = compile_and_check("checker_loop_body_diag.jac");
+    assert len(program.errors_had) == 1 , (
+        "A real error inside a loop body must still be reported even though the "
+        "narrowing walk re-evaluates that RHS against a pre-loop seed. "
+        f"Expected 1 error, got: {[str(e) for e in program.errors_had]}"
+    );
+}

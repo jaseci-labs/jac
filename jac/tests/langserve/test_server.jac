@@ -1124,3 +1124,32 @@ test "test_format_document_lintfix" {
         teardown_test();
     }
 }
+
+test "test_postloop_narrowing_hover" {
+    setup_test();
+    try {
+        lsp = create_server();
+        file = uris.from_fs_path(fixture_path("postloop_narrowing.jac"));
+        lsp.type_check_file(file);
+
+        # `out = fb;` after the for-loop: fb must be the union of the body
+        # assignments and the pre-loop None, not the bare pre-loop type.
+        # Regression for the post-loop narrowing bug (hover showed `None`).
+        hover_fb = lsp.get_hover_info(file, lspt.Position(9, 10));
+        assert hover_fb is not None , "Hover should return info for fb after the loop";
+        fb_ty = hover_fb.contents.value;
+        assert "int" in fb_ty and "None" in fb_ty , (
+            f"post-loop fb must union int with None, got: {fb_ty}"
+        );
+
+        # `res = x;` after the while-loop: x must be int | None, not None.
+        hover_x = lsp.get_hover_info(file, lspt.Position(18, 10));
+        assert hover_x is not None , "Hover should return info for x after the while-loop";
+        x_ty = hover_x.contents.value;
+        assert "int" in x_ty and "None" in x_ty , (
+            f"post-while x must union int with None, got: {x_ty}"
+        );
+    } finally {
+        teardown_test();
+    }
+}

@@ -261,6 +261,17 @@ obj TypeEvaluator {
         _flow_node_type_cache: dict[tuple, types.TypeBase | None] = {},
         _flow_pending_symbols: set[int] by postinit,
         _flow_pending_keys: set[str] by postinit,
+        # Loop-header post-loop join narrowing. `_flow_loop_pending` maps an
+        # in-progress loop-header join to its pre-loop seed type; a body back-edge
+        # that recurses back into the same header reads this seed instead of
+        # recursing, so the single-pass union terminates without iteration.
+        _flow_loop_pending: dict[tuple, types.TypeBase | None] = {},
+        # Re-entrancy guard: > 0 while the backward narrowing walk re-evaluates
+        # expressions (e.g. a back-edge assignment's RHS) for inference only.
+        # Diagnostics raised in this window are an inference artifact, not a real
+        # finding, so `emit_diag` defers them via the pass stash rather than
+        # emitting; the main checker walk surfaces any genuine error.
+        _narrowing_walk_depth: int = 0,
         _module_type_cache: dict[str, types.ModuleType] = {},
         # Cache for `_is_strict_site` keyed by `id(module)`. Maps to True
         # when the module is Jac source (Layer 2 strict-Any applies),
@@ -718,7 +729,28 @@ obj TypeEvaluator {
     ) -> TypeBase | None;
 
     def _get_type_from_flow_node(
+        target: NarrowingTarget,
+        flow_node: uni.UniCFGNode,
+        visited: set,
+        prebody_header: uni.UniCFGNode | None = None
+    ) -> TypeBase | None;
+
+    def _loop_join_type(
+        target: NarrowingTarget,
+        flow_node: uni.UniCFGNode,
+        cache_key: tuple,
+        visited: set
+    ) -> TypeBase | None;
+
+    def _loop_prebody_type(
         target: NarrowingTarget, flow_node: uni.UniCFGNode, visited: set
+    ) -> TypeBase | None;
+
+    def _merge_flow_preds(
+        target: NarrowingTarget,
+        flow_node: uni.UniCFGNode,
+        visited: set,
+        skip_loop_backedges: bool = False
     ) -> TypeBase | None;
 
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;

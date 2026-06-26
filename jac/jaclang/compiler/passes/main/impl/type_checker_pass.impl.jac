@@ -1118,6 +1118,7 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
         # the now-cleared Expr.type results; stale entries would skew the
         # re-derivation. Clear them so narrowing re-runs from scratch too.
         self.evaluator._flow_node_type_cache.clear();
+        self.evaluator._flow_loop_pending.clear();
         self.evaluator._and_narrowing_overrides.clear();
     }
 }

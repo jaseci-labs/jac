@@ -4167,6 +4167,32 @@ def _find_cfg_node_for(at_node: uni.UniNode) -> uni.UniCFGNode | None {
     return None;
 }
 
+"""True when `at_node` reads from a loop's pre-body region (the iterable/target
+of a `for`, the condition of a `while`, or the iter/condition/count_by of a
+range-`for`). Such reads execute in the pre-loop state, so they must use
+pre-loop narrowing (back-edges skipped) rather than the post-loop union. Reads
+inside the loop body or in the post-loop successor are not pre-body reads."""
+def _is_loop_prebody_read(at_node: uni.UniNode, header: uni.UniCFGNode) -> bool {
+    roots: list = [];
+    if isinstance(header, uni.InForStmt) {
+        roots = [header.target, header.collection];
+    } elif isinstance(header, uni.WhileStmt) {
+        roots = [header.condition];
+    } elif isinstance(header, uni.IterForStmt) {
+        roots = [header.iter, header.condition, header.count_by];
+    } else {
+        return False;
+    }
+    cur = at_node;
+    while cur is not None and cur is not header {
+        if cur in roots {
+            return True;
+        }
+        cur = cur.parent;
+    }
+    return False;
+}
+
 """Get the narrowed type of a symbol at the given AST node via CFG walk."""
 impl TypeEvaluator.get_narrowed_type(
     symbol: uni.Symbol, at_node: uni.UniNode
@@ -4190,16 +4216,21 @@ impl TypeEvaluator.get_narrowed_type(
         return None;
     }
     self._flow_pending_symbols.add(sym_id);
+    self._narrowing_walk_depth += 1;
     try {
         narrowing_target = NarrowingTarget(
             key=symbol.sym_name, declared_type=symbol_type, symbol=symbol
         );
         flow_node = _find_cfg_node_for(at_node);
         if flow_node is not None {
-            return self._get_type_from_flow_node(narrowing_target, flow_node, set());
+            prebody = flow_node if _is_loop_prebody_read(at_node, flow_node) else None;
+            return self._get_type_from_flow_node(
+                narrowing_target, flow_node, set(), prebody
+            );
         }
         return None;
     } finally {
+        self._narrowing_walk_depth -= 1;
         self._flow_pending_symbols.discard(sym_id);
     }
 }
@@ -4221,6 +4252,7 @@ impl TypeEvaluator.get_narrowed_type_for_expr(
         return None;
     }
     self._flow_pending_keys.add(key);
+    self._narrowing_walk_depth += 1;
     try {
         narrowing_target = NarrowingTarget(
             key=key,
@@ -4229,10 +4261,14 @@ impl TypeEvaluator.get_narrowed_type_for_expr(
         );
         flow_node = _find_cfg_node_for(at_node);
         if flow_node is not None {
-            return self._get_type_from_flow_node(narrowing_target, flow_node, set());
+            prebody = flow_node if _is_loop_prebody_read(at_node, flow_node) else None;
+            return self._get_type_from_flow_node(
+                narrowing_target, flow_node, set(), prebody
+            );
         }
         return None;
     } finally {
+        self._narrowing_walk_depth -= 1;
         self._flow_pending_keys.discard(key);
     }
 }
@@ -4243,22 +4279,37 @@ Backward walk over bb_in with an affected_symbols fast path: predecessors
 that neither narrow nor assign the target are skipped without recursion.
 """
 impl TypeEvaluator._get_type_from_flow_node(
-    target: NarrowingTarget, flow_node: uni.UniCFGNode, visited: set
+    target: NarrowingTarget,
+    flow_node: uni.UniCFGNode,
+    visited: set,
+    prebody_header: uni.UniCFGNode | None = None
 ) -> TypeBase | None {
     import from jaclang.compiler.type_system.type_evaluator { NarrowingTarget }
     key = target.key;
+    # A read from a loop's pre-body region (iterable/condition) executes in the
+    # pre-loop state: skip body back-edges so only pre-loop narrowing survives.
+    # Distinct cache namespace ("prebody") so it never collides with the
+    # post-loop union computed for the same header.
+    is_prebody = prebody_header is not None and flow_node is prebody_header;
+    cache_tag = "prebody" if is_prebody else "join";
     # Keyed by (flow_node, symbol) when a symbol is available so that
     # different scopes with the same name don't collide; otherwise keyed
     # by the reference string (expression-based narrowing).
-    cache_key = (id(flow_node), id(target.symbol))
+    cache_key = (id(flow_node), id(target.symbol), cache_tag)
         if target.symbol is not None
-        else (id(flow_node), key);
+        else (id(flow_node), key, cache_tag);
     if cache_key in self._flow_node_type_cache {
         return self._flow_node_type_cache[cache_key];
     }
+    # Loop back-edge re-entry: a body predecessor recursed back into the same
+    # loop-header join that is still being computed. Return its pre-loop seed so
+    # the single-pass union terminates instead of recursing forever.
+    if cache_key in self._flow_loop_pending {
+        return self._flow_loop_pending[cache_key];
+    }
     flow_node_id = id(flow_node);
     if flow_node_id in visited {
-        # Cycle (loop back-edge): conservative None.
+        # Cycle (non-loop back-edge): conservative None.
         return None;
     }
     # Cap recursion depth in pathological graphs.
@@ -4266,17 +4317,38 @@ impl TypeEvaluator._get_type_from_flow_node(
         self._flow_node_type_cache[cache_key] = None;
         return None;
     }
-    visited.add(flow_node_id);
     if not flow_node.bb_in {
         self._flow_node_type_cache[cache_key] = None;
-        visited.discard(flow_node_id);
         return None;
     }
-    # Loop headers: skip back-edges from the loop body so pre-loop
-    # narrowing survives the join.
-    is_loop_header: bool = isinstance(
-        flow_node, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt)
+    # Loop headers double as the post-loop join (the successor statement reads
+    # through this same node). The join unions the pre-loop edge with every body
+    # back-edge in a single pass, so in-loop assignments survive. A pre-body read
+    # (iterable/condition) instead uses pre-loop-only narrowing.
+    if isinstance(flow_node, (uni.InForStmt, uni.IterForStmt, uni.WhileStmt))
+    and not is_prebody {
+        return self._loop_join_type(target, flow_node, cache_key, visited);
+    }
+    visited.add(flow_node_id);
+    result = self._merge_flow_preds(
+        target, flow_node, visited, skip_loop_backedges=is_prebody
     );
+    self._flow_node_type_cache[cache_key] = result;
+    visited.discard(flow_node_id);
+    return result;
+}
+
+"""Per-predecessor backward merge for a single flow node (no caching/cycle
+handling -- the caller owns those). Returns the narrowed type or None to widen.
+"""
+impl TypeEvaluator._merge_flow_preds(
+    target: NarrowingTarget,
+    flow_node: uni.UniCFGNode,
+    visited: set,
+    skip_loop_backedges: bool = False
+) -> TypeBase | None {
+    import from jaclang.compiler.type_system.type_evaluator { NarrowingTarget }
+    key = target.key;
     incoming_types: list[TypeBase] = [];
     has_unnarrowed_pred: bool = False;
     for pred in flow_node.bb_in {
@@ -4284,23 +4356,25 @@ impl TypeEvaluator._get_type_from_flow_node(
             has_unnarrowed_pred = True;
             continue;
         }
-        # Wrapper CfgExpr around a nested BoolExpr has no real inflow
-        # (real flow is patched to inner operands); skip to avoid widening.
-        if isinstance(pred, uni.CfgExpr) and not pred.bb_in {
-            continue;
-        }
-        if is_loop_header {
+        # Pre-body read of a loop header: skip predecessors that come from
+        # inside the loop body (back-edges) so only pre-loop narrowing survives.
+        if skip_loop_backedges {
             ancestor: uni.UniNode | None = None;
             if isinstance(flow_node, uni.InForStmt) {
                 ancestor = pred.find_parent_of_type(uni.InForStmt);
             } elif isinstance(flow_node, uni.IterForStmt) {
                 ancestor = pred.find_parent_of_type(uni.IterForStmt);
-            } else {
+            } elif isinstance(flow_node, uni.WhileStmt) {
                 ancestor = pred.find_parent_of_type(uni.WhileStmt);
             }
             if ancestor is flow_node {
                 continue;
             }
+        }
+        # Wrapper CfgExpr around a nested BoolExpr has no real inflow
+        # (real flow is patched to inner operands); skip to avoid widening.
+        if isinstance(pred, uni.CfgExpr) and not pred.bb_in {
+            continue;
         }
 
         # Fast path: predecessor neither narrows nor assigns this key.
@@ -4534,9 +4608,51 @@ impl TypeEvaluator._get_type_from_flow_node(
     } else {
         result = self._union_narrowed_types(incoming_types);
     }
-    self._flow_node_type_cache[cache_key] = result;
-    visited.discard(flow_node_id);
     return result;
+}
+
+"""Post-loop join type for a loop-header node: a single-pass union of the
+pre-loop edge with every body back-edge, so assignments inside the loop survive
+the join. The body back-edge that recurses back into this same header reads the
+pre-loop seed from `_flow_loop_pending` (a body assignment is a barrier that
+overwrites the seed anyway), which terminates the walk without iteration."""
+impl TypeEvaluator._loop_join_type(
+    target: NarrowingTarget, flow_node: uni.UniCFGNode, cache_key: tuple, visited: set
+) -> TypeBase | None {
+    flow_node_id = id(flow_node);
+    # Seed with the PRE-LOOP narrowed type (back-edges skipped). A back-edge
+    # re-entry then sees the value the variable holds entering the loop, on which
+    # the caller still applies loop-condition narrowing and assignment barriers.
+    # Falls back to the declared type when pre-loop narrowing widened (None).
+    seed_visited = set();
+    seed_visited.add(flow_node_id);
+    pre_loop_type = self._loop_prebody_type(target, flow_node, seed_visited);
+    self._flow_loop_pending[cache_key] = pre_loop_type
+        if pre_loop_type is not None
+        else target.declared_type;
+    # Fresh visited containing only the header: the outer walk reached this
+    # header THROUGH body nodes (in `visited`), but the body re-evaluation must
+    # be able to re-enter them via the back-edge. The header cycle is broken by
+    # `_flow_loop_pending`, not by `visited`; depth is bounded by the recursion
+    # cap.
+    inner_visited = set();
+    inner_visited.add(flow_node_id);
+    try {
+        result = self._merge_flow_preds(target, flow_node, inner_visited);
+    } finally {
+        self._flow_loop_pending.pop(cache_key, None);
+    }
+    self._flow_node_type_cache[cache_key] = result;
+    return result;
+}
+
+"""Pre-loop narrowed type at a loop header: merge only the pre-loop
+predecessors (body back-edges skipped). Used for reads in the loop's
+iterable/condition, which run before any iteration."""
+impl TypeEvaluator._loop_prebody_type(
+    target: NarrowingTarget, flow_node: uni.UniCFGNode, visited: set
+) -> TypeBase | None {
+    return self._merge_flow_preds(target, flow_node, visited, skip_loop_backedges=True);
 }
 
 """Classify a CFG edge from an IfStmt predecessor to a successor as true/false."""

@@ -1051,9 +1051,20 @@ impl TypeEvaluator._collect_typevars_from_base(
 impl TypeEvaluator.emit_diag(
     diag: DiagnosticInfo, nd: uni.UniNode, **kwargs: object
 ) -> None {
-    if self._pass is not None {
-        self._pass.emit(diag, node_override=nd, **kwargs);
+    if self._pass is None {
+        return;
     }
+    # Drop diagnostics raised while the backward narrowing walk re-evaluates an
+    # expression (e.g. a back-edge assignment's RHS typed against a pre-loop
+    # seed). These are an inference artifact of the seed, not the real flow state
+    # at that node, so they are not genuine findings. The main checker walk
+    # re-types every such node against its actual flow state and emits any real
+    # error there -- so dropping here suppresses only the seed-induced noise,
+    # never a true error. (Deferring instead would replay it in after_pass.)
+    if self._narrowing_walk_depth > 0 {
+        return;
+    }
+    self._pass.emit(diag, node_override=nd, **kwargs);
 }
 
 impl TypeEvaluator._invalidate_expr_type_cache(node_: uni.UniNode) -> None {
