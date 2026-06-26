@@ -3150,8 +3150,6 @@ impl Parser._lambda_colon_is_annotation -> bool {
         and self.check_any(
             TokenKind.PLUS,
             TokenKind.MINUS,
-            TokenKind.STAR_MUL,
-            TokenKind.STAR_POW,
             TokenKind.DIV,
             TokenKind.MOD,
             TokenKind.EE,
@@ -3166,6 +3164,10 @@ impl Parser._lambda_colon_is_annotation -> bool {
             TokenKind.KW_IF
         ) {
             in_expr = True;
+        } elif depth == 0
+        and not crossed_comma
+        and self.check_any(TokenKind.STAR_MUL, TokenKind.STAR_POW) {
+            in_expr = True;  # multiplication/power in body; not starred-param after comma
         }
         self.advance();
     }
