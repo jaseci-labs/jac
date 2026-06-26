@@ -85,6 +85,26 @@ obj CUniBuilder {
         return coord_of(c_node, 1);
     }
 
+    def _c_char_ord(raw: str) -> int | None {
+        # C char constant ("'z'", "'\n'", "'\0'") → its integer value. Decodes
+        # the common escape sequences via unicode_escape; returns None for
+        # multi-character or otherwise non-single-char constants so the caller
+        # can flag the loss instead of guessing.
+        if not (raw.startswith("'") and raw.endswith("'")) or len(raw) < 3 {
+            return None;
+        }
+        inner = raw[1:-1];
+        try {
+            decoded = bytes(inner, "utf-8").decode("unicode_escape");
+        } except Exception {
+            return None;
+        }
+        if len(decoded) != 1 {
+            return None;
+        }
+        return ord(decoded);
+    }
+
     # ------------------------------------------------------------------ #
     # Main dispatch                                                         #
     # ------------------------------------------------------------------ #
@@ -622,13 +642,17 @@ obj CUniBuilder {
 
         (nline, ncol) = self._coord(nd);
         if isinstance(nd, c_ast.Constant) {
-            if nd.type == "int" {
+            # pycparser reports the widened C type ("unsigned int", "long double",
+            # ...), so match on the family suffix — same as mapper.c_Constant — to
+            # cover suffixed literals like `10U`/`1.5f` that parse_c_int/float
+            # recover after stripping the suffix.
+            if nd.type.endswith("int") {
                 iv = parse_c_int(nd.value);
                 if iv is not None {
                     return self._int_node(iv, nline, ncol);
                 }
             }
-            if nd.type in ("double", "float") {
+            if nd.type.endswith("double") or nd.type.endswith("float") {
                 fv = parse_c_float(nd.value);
                 if fv is not None {
                     sv = str(fv);
@@ -645,8 +669,20 @@ obj CUniBuilder {
                     );
                 }
             }
-            # Fallback — treat as int 0.
-            return self._int_node(0, nline, ncol);
+            if nd.type == "char" {
+                # A C char constant is an integer; lower `'z'` to its ordinal
+                # (122) so a condition like `i < 'z'` stays faithful instead of
+                # collapsing to `i < 0`.
+                cv = self._c_char_ord(nd.value);
+                if cv is not None {
+                    return self._int_node(cv, nline, ncol);
+                }
+            }
+            # Unparseable / unsupported constant (multi-char literal, exotic
+            # form): return None so the caller records the loss and the enclosing
+            # loop demotes to Tier-B, rather than silently emitting a wrong-typed
+            # `0` with no entry in the report (honest-reporting invariant).
+            return None;
         }
         if isinstance(nd, c_ast.ID) {
             return self._name_node(nd.name, nline, ncol);
