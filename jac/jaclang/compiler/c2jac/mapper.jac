@@ -27,7 +27,14 @@ import from jaclang.compiler.c2jac.c_common {
     C_AUGOPS,
     parse_c_int,
     parse_c_float,
-    coord_of
+    coord_of,
+    classify_c_constant,
+    c_char_text,
+    c_string_inner,
+    CLIT_INT,
+    CLIT_FLOAT,
+    CLIT_CHAR,
+    CLIT_STRING
 }
 import from jaclang.compiler.c2jac.c_types {
     C_PRIM_MAP,
@@ -1049,10 +1056,12 @@ obj CMapper {
         # override it with the parsed value so a stripped suffix (`10L`→`10`)
         # doesn't leak verbatim into the emitted Jac.
         txt: str = str(nd.value);
-        # pycparser reports the widened C type, not a bare keyword: `10L` is
-        # "long int", `5U` is "unsigned int", `1.0L` is "long double". Match on
-        # the family suffix so every integer / floating constant is normalized.
-        if nd.type.endswith("int") {
+        # classify_c_constant matches pycparser's widened C type (`10L` is
+        # "long int", `5U` is "unsigned int", `1.0L` is "long double") on the
+        # family suffix so every integer / floating constant is normalized —
+        # shared source of truth with uni_builder._expr_to_uni.
+        family = classify_c_constant(nd.type);
+        if family == CLIT_INT {
             iv = parse_c_int(nd.value);
             if iv is not None {
                 val: object = iv;
@@ -1067,7 +1076,7 @@ obj CMapper {
                 );
                 val = repr(nd.value);
             }
-        } elif nd.type.endswith("double") or nd.type.endswith("float") {
+        } elif family == CLIT_FLOAT {
             fv = parse_c_float(nd.value);
             if fv is not None {
                 val = fv;
@@ -1080,18 +1089,12 @@ obj CMapper {
                 );
                 val = repr(nd.value);
             }
-        } elif nd.type == "char" {
+        } elif family == CLIT_CHAR {
             # char literal: 'a' → single char string.
-            raw = nd.value;
-            if raw.startswith("'") and raw.endswith("'") {
-                val = raw[1:-1];
-            } else {
-                val = raw;
-            }
-        } elif nd.type == "string" {
-            raw = nd.value;
-            if raw.startswith('"') and raw.endswith('"') {
-                inner = raw[1:-1];
+            val = c_char_text(nd.value);
+        } elif family == CLIT_STRING {
+            inner = c_string_inner(nd.value);
+            if inner is not None {
                 if inner.isascii() {
                     # unicode_escape resolves the common ASCII escapes (\n, \t, …)
                     # for the AST value; the emitted Jac is re-sliced verbatim from
@@ -1109,7 +1112,9 @@ obj CMapper {
                     val = inner;
                 }
             } else {
-                val = raw;
+                # Not a bare double-quoted literal (prefixed L"…"/u8"… or
+                # malformed): keep the raw spelling as the AST value.
+                val = nd.value;
             }
         } else {
             self._mark_tier_b(
