@@ -560,6 +560,7 @@ impl install(
         return run_npm_add(packages, dev);
     }
     import from pathlib { Path }
+    import from jaclang.cli.commands.cli_helpers { flatten_append }
     import from jaclang.project.config { get_config }
     import from jaclang.project.pyvenv {
         ensure_venv,
@@ -716,7 +717,10 @@ impl install(
         return 0;
     }
 
-    editable = [p for group in (editable or []) for p in group];
+    # ── Editable install ──────────────────────────────────────────────────────
+    # Flatten nested lists produced by action="append" with nargs="+":
+    #   -e ./a ./b -e ./c  →  [["./a","./b"],["./c"]]  →  ["./a","./b","./c"]
+    editable = flatten_append(editable);
     if editable {
         import from jaclang.publish.builder { WheelBuilder }
 
