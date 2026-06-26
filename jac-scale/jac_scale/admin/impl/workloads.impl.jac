@@ -246,22 +246,25 @@ impl JacAPIServerWorkloads.admin_workloads_summary(
         )
     );
     nodes_total = int(prom_scalar(prom_query('count(kube_node_info)')));
-    # The app's own /metrics series carry no `namespace` label (only k8s SD
-    # metrics do), so these app-traffic queries are NOT namespace-filtered.
-    # Safe because Prometheus is per-namespace and only this app exposes
-    # *_http_requests_total here.
+    # Cluster traffic comes from the gateway's request counter
+    # (*_gateway_requests_total), the single ingress point Prometheus scrapes
+    # in microservice mode. Its `outcome` label is the classified status bucket
+    # (2xx/3xx/4xx/5xx/err); errors = 5xx + connection errors. The app's own
+    # /metrics series carry no `namespace` label (only k8s SD metrics do), so
+    # these app-traffic queries are NOT namespace-filtered -- safe because
+    # Prometheus is per-namespace and only this app exposes these series.
     request_rate = prom_scalar(
-        prom_query('sum(rate({__name__=~".+_http_requests_total"}[1m]))')
+        prom_query('sum(rate({__name__=~".+_gateway_requests_total"}[1m]))')
     );
     error_rate = prom_scalar(
         prom_query(
-            'sum(rate({__name__=~".+_http_requests_total",status_code=~"5.."}[1m]))'
+            'sum(rate({__name__=~".+_gateway_requests_total",outcome=~"5xx|err"}[1m]))'
         )
     );
     error_pct = (error_rate / request_rate * 100.0) if request_rate > 0 else 0.0;
     p95_latency = prom_scalar(
         prom_query(
-            'histogram_quantile(0.95, sum(rate({__name__=~".+_http_request_duration_seconds_bucket"}[5m])) by (le))'
+            'histogram_quantile(0.95, sum(rate({__name__=~".+_gateway_request_duration_seconds_bucket"}[5m])) by (le))'
         )
     );
     return TransportResponse.success(
