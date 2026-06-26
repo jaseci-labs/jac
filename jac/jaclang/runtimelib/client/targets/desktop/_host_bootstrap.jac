@@ -141,6 +141,13 @@ def _dispatch_boot_py(
         "    os.path.join(_data, '.jac', 'desktop', 'graph'),\n"
         f"    timeout_s={dispatch_timeout_s}, max_queue={dispatch_max_queue},\n"
         f"    debug={dispatch_debug})\n"
+        # Bind a stable per-process alias for the hot dispatch callable. The per-call
+        # PyRun_SimpleString then references only `_jac_dispatch` -- a name under this
+        # codebase's control -- instead of `inprocess_dispatch.handle` (two coupled
+        # string literals). A rename/move of the module or function now breaks loudly
+        # at boot (DISPATCH_PY returns != 0 -> error page) rather than silently on
+        # every invoke (rc != 0 with no traceback and a hung JS promise).
+        "_jac_dispatch = inprocess_dispatch.handle\n"
     );
 }
 
@@ -280,19 +287,22 @@ def _generate_host_source(
         # window.__jac_invoke handler. Fires on the UI thread, where the host has
         # released the GIL via PyEval_SaveThread() before wv.run(); reacquire it
         # around the Python call with PyGILState_Ensure/Release. id/req/arg are raw
-        # C pointers carried as int; inprocess_dispatch.handle decodes them.
+        # C pointers carried as int; _jac_dispatch (= inprocess_dispatch.handle,
+        # bound once in DISPATCH_PY at boot) decodes them.
         #
-        # KNOWN LIMITATION: each invoke parses/executes a fresh Python source string
-        # via PyRun_SimpleString; renaming `inprocess_dispatch` or `handle` breaks
-        # all cl->sv dispatch silently (rc != 0, no traceback). The upgrade path is
-        # to resolve the callable once at boot via PyObject_GetAttrString and call it
-        # with PyObject_Call on each invocation (needs a Jac NA PyObject * binding).
+        # NOTE: each invoke still executes a fresh Python source string via
+        # PyRun_SimpleString. The `_jac_dispatch` alias decouples the per-call string
+        # from the module/function name: a rename now fails loudly at boot (rc != 0 ->
+        # error page) rather than silently on every invoke.
+        # TODO: replace PyRun_SimpleString per-invoke with PyObject_GetAttrString +
+        # PyObject_Call (resolve the callable once at boot, call via pointer each time).
+        # Blocked on NA gaining a PyObject * type binding.
         "def _on_invoke(id: int, req: int, arg: int) -> None {\n"
         "    g = PyGILState_Ensure();\n"
         "    # Layer B insurance: handle() has a last-resort try/except that replies\n"
         "    # with NATIVE_INVOKE_ERROR before returning, so rc != 0 should be rare\n"
         "    # (syntax/import failure, or a bug escaping the guard). Log if it happens.\n"
-        "    rc = PyRun_SimpleString(f\"inprocess_dispatch.handle({id}, {req}, {arg})\");\n"
+        "    rc = PyRun_SimpleString(f\"_jac_dispatch({id}, {req}, {arg})\");\n"
         "    if rc != 0 {\n"
         "        PyRun_SimpleString(\n"
         "            f\"import sys; sys.stderr.write('inprocess_dispatch: invoke rc={rc}\\n')\"\n"

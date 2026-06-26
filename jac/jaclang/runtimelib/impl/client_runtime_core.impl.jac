@@ -165,29 +165,32 @@ impl __invalidateEndpoint(endpoint_key: str) -> None {
 # RAW FETCH HELPERS (no caching, just HTTP)
 # ============================================================================
 
+# Native bridge helpers (desktop only — only reachable when __JAC_NATIVE__ is set).
+
+async def __nativeInvoke(kind: str, name: str, node: str, fields: dict) -> any {
+    token = __getLocalStorage("jac_token") or "";
+    payload = {"kind": kind, "name": name, "node": node, "fields": fields, "token": token};
+    return await globalThis.__jac_invoke(JSON.stringify(payload));
+}
+
+def __nativeErrorMsg(response: any) -> str {
+    try {
+        return response["body"]["error"]["message"];
+    } except Exception { }
+    return "Unknown error";
+}
+
 # Direct walker fetch (POST /walker/<name>[/<nodeId>])
 impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
     if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
-        token = __getLocalStorage("jac_token") or "";
-        payload = {
-            "kind": "walker",
-            "name": `walker,
-            "node": nodeId,
-            "fields": fields,
-            "token": token
-        };
-        response = await globalThis.__jac_invoke(JSON.stringify(payload));
+        response = await __nativeInvoke("walker", `walker, nodeId, fields);
         if not response["ok"] {
             if response["status"] == 401 {
                 __removeLocalStorage("jac_token");
                 window.location.reload();
                 return {};
             }
-            error_msg = "Unknown error";
-            try {
-                error_msg = response["body"]["error"]["message"];
-            } except Exception { }
-            raise Exception(f"Walker {`walker} failed: {error_msg}");
+            raise Exception(f"Walker {`walker} failed: {__nativeErrorMsg(response)}");
         }
         return response["body"]["data"] if response["body"]["data"] else {};
     }
@@ -221,21 +224,9 @@ impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
 # Direct function fetch (POST /function/<name>)
 impl __doFuncFetch(function_name: str, args: dict) -> any {
     if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
-        token = __getLocalStorage("jac_token") or "";
-        payload = {
-            "kind": "function",
-            "name": function_name,
-            "node": "",
-            "fields": args,
-            "token": token
-        };
-        response = await globalThis.__jac_invoke(JSON.stringify(payload));
+        response = await __nativeInvoke("function", function_name, "", args);
         if not response["ok"] {
-            error_msg = "Unknown error";
-            try {
-                error_msg = response["body"]["error"]["message"];
-            } except Exception { }
-            raise Exception(f"Function {function_name} failed: {error_msg}");
+            raise Exception(f"Function {function_name} failed: {__nativeErrorMsg(response)}");
         }
         result = None;
         try {

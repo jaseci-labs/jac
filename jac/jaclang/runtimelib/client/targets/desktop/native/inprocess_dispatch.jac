@@ -58,6 +58,7 @@ import traceback;
 import ctypes;
 import threading;
 import queue;
+import uuid;
 
 """Per-call claim state shared between the dispatch worker and the arming timer.
 
@@ -415,7 +416,6 @@ def forward(
 stderr log line (P1-C), so a developer can correlate an error surfaced in the app
 with its full traceback in the terminal/log."""
 def _new_request_id -> str {
-    import uuid;
     return uuid.uuid4().hex[:12];
 }
 
@@ -600,6 +600,14 @@ JS promise never hangs.
 """
 def handle(call_id: int, req_ptr: int, w: int) {
     if call_id == 0 or req_ptr == 0 {
+        # Null pointers mean this is an internal webview library event (e.g. teardown
+        # callback), not a JS caller -- there is no pending promise to resolve, so
+        # dropping silently is correct. Log so production logs show if this fires
+        # unexpectedly (a real call arriving with a null id would hang its promise).
+        sys.stderr.write(
+            "inprocess_dispatch: handle() called with null pointer"
+            " (call_id=" + str(call_id) + ", req_ptr=" + str(req_ptr) + "); dropping\n"
+        );
         return;
     }
     id_bytes = b"";

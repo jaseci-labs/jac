@@ -49,7 +49,8 @@ built (P0-0). Call `close()` on shutdown to tear the transport down.
 obj PreparedInProcessRuntime {
     has server: any,
         transport_kind: str,
-        client: any | None = None;
+        client: any | None = None,
+        _prior_ctx: any = None;
 
     """Tear down the transport and drop the server reference.
 
@@ -65,6 +66,11 @@ obj PreparedInProcessRuntime {
         # user_manager via the stale closure after server is dropped.
         Jac.set_shared_root_resolver(None);
         self.server = None;
+        # Restore the caller's Jac context that was active before prepare_inprocess_runtime().
+        # Without this, sequential runtimes (test re-use, desktop re-boot) leave the
+        # process permanently in the last runtime's machine context.
+        Jac.set_context(self._prior_ctx);
+        self._prior_ctx = None;
     }
 }
 
@@ -98,10 +104,8 @@ def _register_endpoint_profile(server: any, profile: str) {
         server.register_client_js_endpoint();
     } elif profile == "full" {
         # Everything a real `start()` registers (minus the socket bind).
-        # TODO: _register_endpoints() is a private method; this creates invisible
-        # coupling to JacAPIServerCore internals. A public prepare_server() facade
-        # on JacAPIServerCore should encapsulate endpoint registration so callers
-        # don't reach into underscore methods. Track in a follow-up issue.
+        # TODO(jaseci-labs/jaseci#6797): _register_endpoints() is a private method;
+        # a public prepare_server() facade on JacAPIServerCore should own this.
         server._register_endpoints();
     } else {
         raise ValueError(
@@ -157,13 +161,8 @@ def prepare_inprocess_runtime(
     mod = base_stem(jac_file);
     os.makedirs(base_path, exist_ok=True);
     Jac.set_base_path(base_path);
-    # Capture the caller's context so the except path can restore it on failure.
-    # On the happy path prior_ctx is intentionally NOT restored: the caller's
-    # context is replaced by `mach` for the lifetime of this runtime, and
-    # PreparedInProcessRuntime.close() does not restore it either. This mirrors
-    # the pre-existing behaviour in ScaleTestClient._initialize(). Callers that
-    # need to re-enter their own context after close() must save Jac.exec_ctx
-    # themselves before calling prepare_inprocess_runtime().
+    # Capture the caller's context so it can be restored both on failure (except
+    # path below) and on clean close() (stored in PreparedInProcessRuntime._prior_ctx).
     prior_ctx = Jac.exec_ctx;
     mach = Jac.create_j_context(user_root=None);
     Jac.set_context(mach);
@@ -210,6 +209,7 @@ def prepare_inprocess_runtime(
             # NOTE: the seam depends on these JacAPIServer hooks (three are underscore-
             # private today). A future refactor should fold them behind a single public
             # prepare_server(profile, background_services) facade on JacAPIServerCore.
+            # TODO: tracked in jaseci-labs/jaseci#6797.
             server.setup_emailer();
             server._setup_scheduler();
             server._setup_events();
@@ -220,7 +220,8 @@ def prepare_inprocess_runtime(
 
         client = TestClient(server.server.app, raise_server_exceptions=False);
         return PreparedInProcessRuntime(
-            server=server, transport_kind=transport_kind, client=client
+            server=server, transport_kind=transport_kind, client=client,
+            _prior_ctx=prior_ctx
         );
     } except Exception {
         if mod in Jac.loaded_modules {
