@@ -758,6 +758,9 @@ test "lambda arg annotation runtime" {
     assert "7" in stdout_value;  # fns[1](4) == 4 + 3
     # return-hint form: lambda param: type -> ReturnType { body }
     assert "inc:10" in stdout_value;
+    # regression: bare-name body alongside dict-literal arg must not trigger
+    # brace-body false positive (crossed-comma guard)
+    assert "r5:12" in stdout_value;
 }
 
 test "lambda self" {

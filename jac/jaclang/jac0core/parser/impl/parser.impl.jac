@@ -3094,16 +3094,19 @@ impl Parser._lambda_colon_is_annotation -> bool {
     found = False;
     in_expr = False;  # True once we see an operator that can't appear in a type
     saw_type_token = False;  # True once we've seen at least one type-expression token
+    crossed_comma = False;  # True once we cross a depth-0 COMMA (argument boundary)
     while not self.at_end() {
         if self.check_any(TokenKind.LPAREN, TokenKind.LSQUARE) {
             saw_type_token = True;
             depth += 1;
         } elif self.check(TokenKind.LBRACE) {
-            if depth == 0 and saw_type_token and not in_expr {
+            if depth == 0 and saw_type_token and not in_expr and not crossed_comma {
                 found = True;  # lambda x: type { body } — brace body form
                 break;
             }
             depth += 1;
+        } elif self.check(TokenKind.COMMA) and depth == 0 {
+            crossed_comma = True;
         } elif self.check_any(TokenKind.RPAREN, TokenKind.RSQUARE, TokenKind.RBRACE) {
             if depth == 0 {
                 break;  # left the enclosing scope — no annotation

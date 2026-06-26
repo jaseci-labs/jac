@@ -47,4 +47,9 @@ with entry {
     # return-hint form: lambda param: type -> ReturnType { body }
     inc = lambda n: int -> int { return n + 1; };
     print("inc:" + str(inc(9)));
+
+    # bare-name body alongside dict-literal arg — LBRACE must not be mistaken
+    # for a brace-body annotation when a depth-0 comma was already crossed
+    def apply(fn: any, d: dict) -> any { return fn(d["v"]); }
+    print("r5:" + str(apply(lambda x: x * 3, {"v": 4})));
 }
