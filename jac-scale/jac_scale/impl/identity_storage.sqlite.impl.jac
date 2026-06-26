@@ -7,7 +7,14 @@ Business logic lives in the base IdentityStorage (identity_storage.impl.jac).
 """
 
 impl SqliteIdentityStorage.postinit -> None {
-    self._engine = create_engine(f"sqlite:///{self.db_path}", echo=False);
+    # busy_timeout: hold off writers for up to 30s instead of raising
+    # "database is locked" under concurrent access to the shared users.db
+    # (e.g. parallel test workers sharing one data dir).
+    self._engine = create_engine(
+        f"sqlite:///{self.db_path}",
+        echo=False,
+        connect_args={"timeout": 30}
+    );
     metadata = MetaData();
     self._table = Table(
         'identity_users',
