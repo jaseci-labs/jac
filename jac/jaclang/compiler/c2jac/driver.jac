@@ -17,6 +17,39 @@ import from jaclang.compiler.c2jac.boundary { default_tier, default_mechanism }
 import from jaclang.compiler.c2jac.mapper { CMapper, _SLOT_SENTINEL }
 import from jaclang.compiler.c2jac.enum_prepass { build_enum_map }
 import from jaclang.compiler.c2jac.uni_builder { CUniBuilder }
+import from jaclang.compiler.c2jac.comments { inject_tier_b_comments }
+import from jaclang.compiler.c2jac.preprocess { preprocess_c }
+
+def transpile_c_file(
+    filename: str,
+    include_dirs: (list[str] | None) = None,
+    defines: (list[str] | None) = None,
+    undefines: (list[str] | None) = None,
+    force_includes: (list[str] | None) = None,
+    nostdinc: bool = False
+) -> tuple[str, TagTable] {
+    # File-level entry: read `filename`, preprocess if it's a `.c` (pcpp, §8.1),
+    # pass an already-preprocessed `.i` straight through, then transpile. The
+    # CLI uses this; tests that already hold preprocessed C call transpile_c_str.
+    with open(filename) as f {
+        c_src = f.read();
+    }
+    if filename.endswith(".i") {
+        # Already preprocessed — running the preprocessor again is wrong (its
+        # output may carry #line markers / be re-tokenized). Parse as-is.
+        return transpile_c_str(c_src, filename);
+    }
+    pre = preprocess_c(
+        c_src,
+        filename,
+        include_dirs=include_dirs,
+        defines=defines,
+        undefines=undefines,
+        force_includes=force_includes,
+        nostdinc=nostdinc,
+    );
+    return transpile_c_str(pre, filename);
+}
 
 def transpile_c_str(c_src: str, filename: str) -> tuple[str, TagTable] {
     # pycparser does NOT run the C preprocessor: it expects an already-
@@ -85,6 +118,12 @@ def _transpile_ast(
     # correctly emits "to" and "by" keywords for IterForStmt (the False path uses
     # UnparsePass which omits those structural keywords, breaking the formatter).
     jac_str = uni_mod.unparse(requires_format=True);
+
+    # --- Step 7: post-format Tier-B comment injection (§7, §9.2a) ---
+    # Derived from the same TagTable the sidecar JSON serializes; adds a header
+    # summary of every Tier-B site plus inline notes on surrogate-marker lines.
+    # No-op for Tier-A-only output.
+    jac_str = inject_tier_b_comments(jac_str, tags, filename);
     return (jac_str, tags);
 }
 

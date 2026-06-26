@@ -2,6 +2,19 @@ import ast as ast3;
 
 import from jaclang.cli.console { console }
 
+"""Flatten a repeatable CLI flag's list-of-lists into a flat list.
+
+argparse `action="append"` with `nargs="+"` yields `[["a"], ["b","c"]]` for
+`-I a -I b c`; the preprocessor wants `["a","b","c"]`. Returns None when the
+flag was never given, so the driver's own defaults apply."""
+def _flatten_append(groups: list | None) -> list | None {
+    if not groups {
+        return None;
+    }
+    return [v for g in groups for v in g];
+}
+
+"""Convert Python to Jac."""
 impl py2jac(filename: str) -> int {
     import jaclang.jac0core.unitree as uni;
     import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
@@ -36,23 +49,32 @@ impl py2jac(filename: str) -> int {
 }
 
 """Convert C to Jac."""
-impl c2jac(filename: str) -> int {
-    import from jaclang.compiler.c2jac.driver { transpile_c_str }
+impl c2jac(
+    filename: str,
+    incdir: list | None = None,
+    define: list | None = None,
+    undef: list | None = None,
+    force_include: list | None = None,
+    nostdinc: bool = False
+) -> int {
+    import from jaclang.compiler.c2jac.driver { transpile_c_file }
     import from jaclang.compiler.c2jac.report { write_report }
     if not filename.endswith(".c") and not filename.endswith(".i") {
         console.error("Not a .c or .i file.");
         return 1;
     }
     try {
-        with open(filename) as f {
-            c_src = f.read();
-        }
+        (jac_str, tags) = transpile_c_file(
+            filename,
+            include_dirs=_flatten_append(incdir),
+            defines=_flatten_append(define),
+            undefines=_flatten_append(undef),
+            force_includes=_flatten_append(force_include),
+            nostdinc=nostdinc,
+        );
     } except OSError as e {
         console.error(f"Cannot read {filename}: {e}");
         return 1;
-    }
-    try {
-        (jac_str, tags) = transpile_c_str(c_src, filename);
     } except Exception as e {
         console.error(f"Transpilation failed: {e}");
         return 1;

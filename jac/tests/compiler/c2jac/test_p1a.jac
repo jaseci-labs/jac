@@ -105,7 +105,9 @@ test "switch_basic.c: switch lowers to an if/elif chain with OR-folded case labe
     assert "elif (x == 3)" in jac_str , f"Expected elif branch in:\n{jac_str}";
     # default → else; the switch-terminating breaks are dropped.
     assert "} else {" in jac_str , f"Expected default→else in:\n{jac_str}";
-    assert "break" not in jac_str , f"switch breaks should be dropped, not emitted:\n{jac_str}";
+    # A `break` *statement* ends with `;`; the Tier-B header prose may mention the
+    # word "break", so assert on the statement form, not a bare substring.
+    assert "break;" not in jac_str , f"switch breaks should be dropped, not emitted:\n{jac_str}";
 }
 
 test "switch_basic.c: switch is recorded as a Tier-B site" {
