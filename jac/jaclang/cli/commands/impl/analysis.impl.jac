@@ -236,7 +236,7 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
                 unfixable_count += 1;
             }
             error_count = fixed_count + unfixable_count;
-            # Write if there were lint violations that were fixed
+            # Write the head back if it had lint violations that were fixed.
             if fixed_count > 0 {
                 changed = formatted_code != original_code;
                 if changed {
@@ -244,14 +244,39 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
                         f.write(formatted_code);
                     }
                 }
-                for impl_mod in prog.mod.main.impl_mod {
-                    impl_path = impl_mod.loc.mod_path;
-                    impl_formatted = impl_mod.gen.jac;
-                    impl_original = impl_mod.source.code;
-                    if (impl_formatted != impl_original) {
-                        with open(impl_path, 'w', encoding='utf-8') as f {
-                            f.write(impl_formatted);
-                        }
+            }
+            # Annex files (.impl.jac/.test.jac) are formatted as their own tool
+            # programs and written back independently. This runs regardless of
+            # the head's fixed_count: a fixable violation (e.g. a signature
+            # mismatch) can live entirely in the annex while the head is clean.
+            import from jaclang.jac0core.bccache { discover_annex_files }
+            annex_paths = (
+                discover_annex_files(str(path_obj), '.impl.jac') + discover_annex_files(
+                    str(path_obj), '.test.jac'
+                )
+            );
+            for annex_path in annex_paths {
+                try {
+                    annex_prog = JacProgram.jac_file_formatter(
+                        annex_path, auto_lint=True
+                    );
+                    annex_formatted = annex_prog.mod.main.gen.jac;
+                    annex_original = annex_prog.mod.main.source.code;
+                } except Exception {
+                    continue;
+                }
+                for warning in annex_prog.warnings_had {
+                    console.warning(f"{warning}");
+                    error_count += 1;
+                }
+                for error in annex_prog.errors_had {
+                    console.error(f"{error}");
+                    error_count += 1;
+                    unfixable_count += 1;
+                }
+                if (annex_formatted and annex_formatted != annex_original) {
+                    with open(annex_path, 'w', encoding='utf-8') as f {
+                        f.write(annex_formatted);
                     }
                 }
             }
@@ -351,15 +376,32 @@ def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> di
             if changed and not check {
                 result['formatted_code'] = formatted_code;
             }
-            # Check impl modules
-            for impl_mod in prog.mod.main.impl_mod {
-                impl_path = impl_mod.loc.mod_path;
-                impl_formatted = impl_mod.gen.jac;
-                impl_original = impl_mod.source.code;
-                if impl_formatted != impl_original {
-                    result['changed'] = True;
-                    if not check {
-                        result['impl_results'].append((impl_path, impl_formatted));
+            # Annex files (.impl.jac/.test.jac) are formatted as their own tool
+            # programs when lint-fixing a head file directly.
+            if lintfix {
+                import from jaclang.jac0core.bccache { discover_annex_files }
+                annex_paths = (
+                    discover_annex_files(file_path, '.impl.jac') + discover_annex_files(
+                        file_path, '.test.jac'
+                    )
+                );
+                for annex_path in annex_paths {
+                    try {
+                        annex_prog = JacProgram.jac_file_formatter(
+                            annex_path, auto_lint=True
+                        );
+                        annex_formatted = annex_prog.mod.main.gen.jac;
+                        annex_original = annex_prog.mod.main.source.code;
+                    } except Exception {
+                        continue;
+                    }
+                    if (annex_formatted and annex_formatted != annex_original) {
+                        result['changed'] = True;
+                        if not check {
+                            result['impl_results'].append(
+                                (annex_path, annex_formatted)
+                            );
+                        }
                     }
                 }
             }
@@ -601,7 +643,8 @@ impl `test(
     xit: bool = False,
     maxfail: int = None,
     directory: str = "",
-    verbose: bool = False
+    verbose: bool = False,
+    ignore: str = ""
 ) -> int {
     import os;
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
@@ -645,6 +688,70 @@ impl `test(
             f"Usage: jac test /full/path/to/{filepath}"
         );
         return 1;
+    }
+    # Route `jac test` through the bundled pytest (+ xdist for `-n auto`) when it
+    # is available -- the single-binary build ships it, so the suite runs with
+    # pytest collection and parallelism and no system Python. Falls back to the
+    # native runner when pytest is absent or `JAC_TEST_NATIVE=1` is set.
+    #   JAC_TEST_JOBS=auto (default) -> -n auto;  JAC_TEST_JOBS=0 -> serial
+    run_pytest = not os.environ.get('JAC_TEST_NATIVE', '');
+    if run_pytest {
+        try {
+            import pytest;
+        } except ImportError {
+            run_pytest = False;
+        }
+        if run_pytest {
+            pargs: list[str] = [];
+            target = filepath or directory;
+            if target {
+                pargs.append(target);
+            }
+            # Skip a subtree during collection (pytest `--ignore`). Lets the suite
+            # be split across jobs, e.g. `jac test tests/ --ignore tests/compiler`
+            # runs everything the dedicated compiler job does not.
+            if ignore {
+                pargs.append('--ignore=' + ignore);
+            }
+            # Worker count precedence: the JAC_TEST_JOBS env var wins, else the
+            # `[dev] test_jobs` setting in jac.toml, else 'auto'. '0' (from either)
+            # forces serial -- handled by the guard below.
+            jobs = os.environ.get('JAC_TEST_JOBS', '');
+            if not jobs {
+                import from jaclang.project.config { get_config }
+                jobs_cfg = get_config();
+                jobs = jobs_cfg.dev.test_jobs if jobs_cfg else 'auto';
+            }
+            # No worker pool for a single named test (overhead > benefit).
+            if jobs and jobs != '0' and not test_name {
+                pargs.append('-n');
+                pargs.append(jobs);
+            }
+            if xit {
+                pargs.append('-x');
+            }
+            if maxfail {
+                pargs.append('--maxfail');
+                pargs.append(str(maxfail));
+            }
+            if test_name {
+                # pytest `-k` is a boolean expression over name substrings, and
+                # each bare word must be a single identifier. A Jac test's
+                # display name can contain spaces (e.g. "early exit"), which `-k`
+                # rejects as two adjacent identifiers. AND the whitespace-split
+                # words so `--test_name "early exit"` selects that one test.
+                pargs.append('-k');
+                pargs.append(' and '.join(test_name.split()) or test_name);
+            } elif filter {
+                # `filter` is passed through verbatim as a pytest `-k` expression.
+                pargs.append('-k');
+                pargs.append(filter);
+            }
+            if verbose {
+                pargs.append('-vv');
+            }
+            return int(pytest.main(pargs));
+        }
     }
     normalized_name = test_name.strip().replace(' ', '_') if test_name else '';
     failcount = Jac.run_test(

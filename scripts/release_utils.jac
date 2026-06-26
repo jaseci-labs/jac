@@ -20,110 +20,69 @@ class PackageInfo(NamedTuple) {
     has release_notes: str = "";
     has notes_display: str = "";
     has submodules: bool = False;
-    has precompile: bool = False;
     has extra_build_cmd: str = "";
     has needs_nodejs: bool = False;
     has extra_build_deps: str = "";
+    # jaclang ships as the native `jac` binary, not a PyPI wheel. It does not
+    # publish to PyPI (publish_pypi=False) and it anchors the GitHub Release
+    # (is_anchor=True): a release that bumps jaclang creates the v<version> tag,
+    # which fires release-jaclang.yml to build + attach the binaries.
+    has publish_pypi: bool = True;
+    has is_anchor: bool = False;
 }
+
 glob PACKAGES: dict[(str, PackageInfo)] = {
-    "jaclang": PackageInfo(
-        dir="jac",
-        pypi="jaclang",
-        tier=1,
-        release_notes="docs/docs/community/release_notes/jaclang.md",
-        notes_display="jaclang",
-        submodules=True,
-        precompile=True
-    ),
-    "jac-byllm": PackageInfo(
-        dir="jac-byllm",
-        pypi="byllm",
-        tier=2,
-        release_notes="docs/docs/community/release_notes/byllm.md",
-        notes_display="byllm",
-        submodules=True,
-        precompile=True
-    ),
-    "jac-client": PackageInfo(
-        dir="jac-client",
-        pypi="jac-client",
-        tier=2,
-        release_notes="docs/docs/community/release_notes/jac-client.md",
-        notes_display="jac-client",
-        submodules=True,
-        precompile=True
-    ),
-    "jac-scale": PackageInfo(
-        dir="jac-scale",
-        pypi="jac-scale",
-        tier=2,
-        release_notes="docs/docs/community/release_notes/jac-scale.md",
-        notes_display="jac-scale",
-        submodules=True,
-        precompile=True,
-        extra_build_cmd="jac run scripts/build_admin_ui.jac",
-        needs_nodejs=True,
-        extra_build_deps="jac-client"
-    ),
-    "jac-super": PackageInfo(
-        dir="jac-super",
-        pypi="jac-super",
-        tier=2,
-        release_notes="docs/docs/community/release_notes/jac-super.md",
-        notes_display="jac-super",
-        submodules=True,
-        precompile=True
-    ),
-    "jac-mcp": PackageInfo(
-        dir="jac-mcp",
-        pypi="jac-mcp",
-        tier=2,
-        release_notes="docs/docs/community/release_notes/jac-mcp.md",
-        notes_display="jac-mcp",
-        submodules=True,
-        precompile=True,
-        extra_build_cmd="jac run scripts/bundle_docs.jac"
-    ),
-    # Tier 3: depends on a tier-2 plugin (jac-client), so it must publish AFTER
-    # tier 2 is on PyPI, not alongside it.
-    "jac-desktop": PackageInfo(
-        dir="jac-desktop",
-        pypi="jac-desktop",
-        tier=3,
-        release_notes="docs/docs/community/release_notes/jac-desktop.md",
-        notes_display="jac-desktop",
-        submodules=True,
-        precompile=True,
-        extra_build_deps="jac-client"
-    ),
-    # Tier 4: the meta-package depends on everything above (incl. jac-desktop).
-    "jaseci": PackageInfo(
-        dir="jaseci-package",
-        pypi="jaseci",
-        tier=4,
-        release_notes="",
-        notes_display="jaseci"
-    )
-},
+         # Anchor: not published to PyPI; its version tags the GitHub Release.
+         "jaclang": PackageInfo(
+             dir="jac",
+             pypi="jaclang",
+             tier=0,
+             release_notes="docs/docs/community/release_notes/jaclang.md",
+             notes_display="jaclang",
+             submodules=True,
+             publish_pypi=False,
+             is_anchor=True
+         ),
+         "jac-byllm": PackageInfo(
+             dir="jac-byllm",
+             pypi="byllm",
+             tier=2,
+             release_notes="docs/docs/community/release_notes/byllm.md",
+             notes_display="byllm",
+             submodules=True
+         ),
+         "jac-scale": PackageInfo(
+             dir="jac-scale",
+             pypi="jac-scale",
+             tier=2,
+             release_notes="docs/docs/community/release_notes/jac-scale.md",
+             notes_display="jac-scale",
+             submodules=True,
+             extra_build_cmd="jac run scripts/build_admin_ui.jac",
+             needs_nodejs=True
+         ),
+         "jac-mcp": PackageInfo(
+             dir="jac-mcp",
+             pypi="jac-mcp",
+             tier=2,
+             release_notes="docs/docs/community/release_notes/jac-mcp.md",
+             notes_display="jac-mcp",
+             submodules=True,
+             extra_build_cmd="jac run scripts/bundle_docs.jac"
+         )
+     },
+     # Internal version pins between released packages. Plugins consume jaclang
+     # as a host dependency (provided by the binary), not a PyPI pin, and no
+     # longer depend on each other now that the jaseci meta-package is gone, so
+     # there are no cross-package version pins to sync.
      INTERNAL_DEPS: dict[(str, list[str])] = {
-    "jaclang": [],
-    "byllm": ["jaclang"],
-    "jac-client": ["jaclang"],
-    "jac-scale": ["jaclang"],
-    "jac-super": ["jaclang"],
-    "jac-mcp": ["jaclang"],
-    "jac-desktop": ["jaclang", "jac-client"],
-    "jaseci": [
-        "jaclang",
-        "byllm",
-        "jac-client",
-        "jac-scale",
-        "jac-super",
-        "jac-mcp",
-        "jac-desktop"
-    ]
-},
+         "jaclang": [],
+         "byllm": [],
+         "jac-scale": [],
+         "jac-mcp": []
+     },
      DEPENDENTS: dict[(str, list[str])] = {};
+
 with entry {
     for (_pkg_key, _pkg_info) in PACKAGES.items() {
         for _dep in INTERNAL_DEPS.get(_pkg_info.pypi, []) {
@@ -131,6 +90,7 @@ with entry {
         }
     }
 }
+
 """Read the current version from a package's manifest.
 
     Prefers jac.toml; falls back to pyproject.toml for packages (e.g. jac/)

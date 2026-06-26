@@ -10,7 +10,7 @@ impl NaIRGenPass.postinit -> None {
     _ni_src: str = self.ir_in.loc.mod_path if self.ir_in.loc else "";
     _ni_mod_name: str = _ni_os.path.basename(_ni_src) if _ni_src else "jac_native";
     self.llvm_module = ir.Module(name=_ni_mod_name, context=ir.Context());
-    import llvmlite.binding as _llvm_bind;
+    import jaclang.compiler.passes.native.llvm.binding as _llvm_bind;
     # JAC_NATIVE_TARGET cross-compiles for another triple (e.g.
     # aarch64-unknown-linux-gnu). The triple drives both the data layout and
     # the platform ABI classification, so it must be set on the module here;
@@ -24,7 +24,16 @@ impl NaIRGenPass.postinit -> None {
         _llvm_bind.initialize_native_target();
         _target = _llvm_bind.Target.from_default_triple();
     }
-    _tm = _target.create_target_machine();
+    # codemodel="large" (not the default "jitdefault"): llvmlite appends
+    # "-elf" to the triple when os.name == "nt" and codemodel == "jitdefault",
+    # which would stamp a bogus "...-windows-msvc-elf" triple onto the module
+    # on a Windows host. This site only reads the triple/data layout, so any
+    # non-"jitdefault" model keeps the triple intact (the code model does not
+    # otherwise affect it here). "large" mirrors nacompile's executable branch;
+    # its shared branch uses "small", but the data layout is identical across
+    # code models on x86_64, so the stamped module metadata stays valid for
+    # either emit path. The relocation-model coupling lives at that emit site.
+    _tm = _target.create_target_machine(codemodel="large");
     self.llvm_module.data_layout = str(_tm.target_data);
     self.llvm_module.triple = _tm.triple;
     # DWARF debug metadata — populated below when JAC_NATIVE_DEBUG=1
@@ -107,11 +116,11 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     if (self.prog._auto_promote_native and self.ir_in.gen.native_compat) {
         mod_path = self.ir_in.loc.mod_path if self.ir_in.loc else "";
         main_target = self.prog._auto_promote_target;
+        import from jaclang.jac0core.ext_registry { is_native_module, is_annex }
         if (
             mod_path == main_target
-            and not mod_path.endswith('.na.jac')
-            and not mod_path.endswith('.impl.jac')
-            and not mod_path.endswith('.test.jac')
+            and not is_native_module(mod_path)
+            and not is_annex(mod_path)
         ) {
             import from jaclang.jac0core.compiler { _coerce_native_module }
             _coerce_native_module(self.ir_in);
@@ -153,6 +162,11 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
     # lowering inside abilities can reference the runtime (issue #6146).
     self._register_archetypes(self.ir_in);
     # Phase 1: Codegen native abilities and entry blocks
+    # Collect every module-level `with entry { ... }` block (in source order)
+    # so they can be concatenated into a single jac_entry function below,
+    # mirroring the Python target (issue #6660). Emitting one jac_entry per
+    # ModuleCode would re-register the function name and crash llvmlite.
+    _entry_nodes: list = [];
     for stmt in ModuleCodegenPass.iter_context_stmts(self.ir_in, CodeContext.NATIVE) {
         if (
             isinstance(stmt, uni.Ability)
@@ -161,11 +175,12 @@ impl NaIRGenPass.transform(ir_in: uni.Module) -> uni.Module {
         ) {
             self._codegen_ability(stmt);
         } elif isinstance(stmt, uni.ModuleCode) {
-            self._codegen_entry(stmt);
+            _entry_nodes.append(stmt);
         } elif isinstance(stmt, uni.Test) {
             self._codegen_test(stmt);
         }
     }
+    self._codegen_entry(_entry_nodes);
     # Store LLVM module on AST
     if self.has_native_code {
         # Ensure __jac_glob_init is always defined, even for modules that have

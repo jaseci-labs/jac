@@ -12,7 +12,7 @@ def _get_or_create_cart -> Cart {
     if carts {
         return carts[0];
     }
-    return (root() ++> Cart())[0];
+    return root() ++> Cart();
 }
 
 to sv:

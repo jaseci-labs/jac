@@ -205,7 +205,7 @@ walker:priv CreateItem {
 
     can create with Root entry {
         new_item = here ++> Item(name=self.name);
-        report new_item[0];  # Report the created item
+        report new_item;  # Report the created item
     }
 }
 
@@ -361,7 +361,7 @@ walker:priv BadCreate {
 
     can create with Root entry {
         item = here ++> Item(name=self.name);
-        report {"name": item[0].name, "data": item[0].data};  # Don't do this
+        report {"name": item.name, "data": item.data};  # Don't do this
     }
 }
 
@@ -371,7 +371,7 @@ walker:priv GoodCreate {
 
     can create with Root entry {
         item = here ++> Item(name=self.name);
-        report item[0];  # The runtime handles serialization automatically
+        report item;  # The runtime handles serialization automatically
     }
 }
 ```

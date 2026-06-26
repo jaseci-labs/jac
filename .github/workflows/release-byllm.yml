@@ -16,20 +16,18 @@ jobs:
         with:
           submodules: true
 
-      - name: Set up Python 3.12, 3.13, 3.14
+      - name: Set up Python 3.12 (for twine upload)
         uses: actions/setup-python@v5
         with:
-          python-version: |
-            3.12
-            3.13
-            3.14
+          python-version: '3.12'
 
-      - name: Install jaclang and twine
-        run: |
-          pip install -e ../jac
-          pip install twine
+      - name: Set up jac (build the binary)
+        uses: ./.github/actions/setup-jac
+
+      - name: Install twine
+        run: pip install twine
 
       - name: Build and publish
         run: |
-          jac bundle --precompile
+          jac bundle
           twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}

@@ -55,9 +55,9 @@ def _convert_transport_response_to_json_response(
     return JSONResponse(status_code=status, content=response_body);
 }
 
-"""Custom logging handler that routes logs to jac-super console."""
+"""Custom logging handler that routes logs to the jac console."""
 class ConsoleLogHandler(logging.Handler) {
-    """A logging handler that forwards log messages to jac-super's console."""
+    """A logging handler that forwards log messages to the jac console."""
     def emit(self: ConsoleLogHandler, record: logging.LogRecord) {
         import from jaclang.cli.console { console }
         message = self.format(record);
@@ -103,7 +103,7 @@ impl JFastApiServer.run_server(
     if server_cfg.get('suppress_health_check_logs', False) {
         console_handler.addFilter(HealthCheckFilter());
     }
-    # Suppress startup logs but route access logs through jac-super console
+    # Suppress startup logs but route access logs through the jac console
     log_config = {
         "version": 1,
         "disable_existing_loggers": False,
@@ -577,7 +577,8 @@ impl JFastApiServer._create_endpoint_function(
     callback: Callable[(..., Any)],
     parameters: list[APIParameter],
     dependencies: list[any],
-    request_model: (type[BaseModel] | None) = None
+    request_model: (type[BaseModel] | None) = None,
+    forward_undeclared_query_params: bool = True
 ) -> Callable[..., any] {
     sig = inspect.signature(callback);
     accepts_kwargs = any(
@@ -592,7 +593,9 @@ impl JFastApiServer._create_endpoint_function(
                 ) -> EndpointResponse {
                     import from jaclang.runtimelib.transport { TransportResponse }
                     try {
-                        query_params = dict(__jac_request__.query_params);
+                        query_params = dict(__jac_request__.query_params)
+                            if forward_undeclared_query_params
+                            else {};
                         if needs_request_no_params {
                             result = await callback(
                                 **{'request': __jac_request__, ** query_params}
@@ -616,7 +619,9 @@ impl JFastApiServer._create_endpoint_function(
                 ) -> EndpointResponse {
                     import from jaclang.runtimelib.transport { TransportResponse }
                     try {
-                        query_params = dict(__jac_request__.query_params);
+                        query_params = dict(__jac_request__.query_params)
+                            if forward_undeclared_query_params
+                            else {};
                         if needs_request_no_params {
                             result = callback(
                                 **{'request': __jac_request__, ** query_params}
@@ -846,7 +851,7 @@ impl JFastApiServer._create_endpoint_function(
     }
     callback_args_str = '\n'.join(callback_args_lines);
     extra_query_params_code = '';
-    if accepts_kwargs {
+    if accepts_kwargs and forward_undeclared_query_params {
         declared_params = [
             p.name
             for p in parameters
@@ -953,7 +958,8 @@ impl JFastApiServer._create_fastapi_route(
         endpoint.callback,
         (endpoint.parameters or []),
         [],
-        request_model=endpoint.request_model
+        request_model=endpoint.request_model,
+        forward_undeclared_query_params=endpoint.forward_undeclared_query_params
     );
     route_kwargs: dict[(str, Any)] = {
         'response_model': endpoint.response_model,

@@ -11,7 +11,8 @@ import from typing { Any, TypeVar }
 
 glob _F = TypeVar('_F', bound=Callable[(..., object)]),
      _IMPL_ATTR = '_jac_hookimpl',
-     _SPEC_ATTR = '_jac_hookspec';
+     _SPEC_ATTR = '_jac_hookspec',
+     _HOOKABLE_ATTR = '_jac_hookable';
 
 """Marks a function as a hook implementation."""
 obj HookimplMarker {
@@ -26,6 +27,22 @@ obj HookspecMarker {
 
     def __call__(
         function: (_F | None) = None, *, firstresult: bool = False
+    ) -> (_F | Callable[([_F], _F)]);
+}
+
+"""Marks an interface method as a plugin extension point (a hook).
+
+Applied at the method's declaration in its domain class so hook-ness is
+local and self-documenting. `build_plugin_hook_layer` reflects over the
+runtime interface, collects every method carrying `_HOOKABLE_ATTR`, and
+turns those (and only those) into dispatchable `plugin_manager` hooks --
+everything else stays a plain inherited direct method. `firstresult` defaults
+to True (a plugin override wins, core default falls through); set it False for
+aggregating hooks where every plugin contributes (e.g. register_project_template).
+"""
+obj HookableMarker {
+    def __call__(
+        function: (_F | None) = None, *, firstresult: bool = True
     ) -> (_F | Callable[([_F], _F)]);
 }
 

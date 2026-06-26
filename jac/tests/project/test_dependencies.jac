@@ -1716,113 +1716,32 @@ test "DependencyInstaller install_flags passed to pip" {
     }
 }
 
-# ===== uv backend tests =====
-test "pip_command uses uv when uv is on PATH" {
-    with patch("shutil.which") as mock_which {
-        mock_which.return_value = "/usr/bin/uv";
-        cmd = pip_command("/path/to/python", ["install", "requests"], use_uv=True);
-        assert cmd[0] == "/usr/bin/uv";
-        assert cmd[1] == "pip";
-        assert cmd[2] == "install";
-        assert "--python" in cmd;
-        assert "/path/to/python" in cmd;
-        assert "requests" in cmd;
-    }
+# ===== pip_command (bundled pip only) =====
+# The single binary bundles pip/ensurepip; every install runs the project venv's
+# own python against bundled pip. No external package manager (uv) and no host
+# python are ever consulted, so the command is identical regardless of host state.
+test "pip_command always uses the venv python's bundled pip" {
+    cmd = pip_command("/path/to/python", ["install", "requests"]);
+    assert cmd[0] == "/path/to/python";
+    assert cmd[1] == "-m";
+    assert cmd[2] == "pip";
+    assert cmd[3] == "install";
+    assert "requests" in cmd;
 }
 
-test "pip_command falls back to pip when uv is not on PATH" {
-    with patch("shutil.which") as mock_which {
-        mock_which.return_value = None;
-        cmd = pip_command("/path/to/python", ["install", "requests"], use_uv=True);
-        assert cmd[0] == "/path/to/python";
-        assert cmd[1] == "-m";
-        assert cmd[2] == "pip";
-        assert "requests" in cmd;
-    }
-}
-
-test "pip_command uses pip when use_uv is False even if uv is on PATH" {
-    with patch("shutil.which") as mock_which {
-        mock_which.return_value = "/usr/bin/uv";
-        cmd = pip_command("/path/to/python", ["install", "requests"], use_uv=False);
-        assert cmd[0] == "/path/to/python";
-        assert cmd[1] == "-m";
-        assert cmd[2] == "pip";
-        assert "uv" not in cmd[0];
-    }
-}
-
-test "DependencyInstaller JAC_NO_UV env var disables uv" {
-    reset_config();
-    (tmp, project_dir) = make_temp_project();
-    try {
-        config = JacConfig.load(project_dir / "jac.toml");
-        with patch.dict(os.environ, {"JAC_NO_UV": "1"}) {
-            installer = DependencyInstaller(config=config);
-            assert installer.use_uv is False;
-        }
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-        reset_config();
-    }
-}
-
-test "DependencyInstaller JAC_NO_UV unset leaves use_uv True" {
-    reset_config();
-    (tmp, project_dir) = make_temp_project();
-    try {
-        config = JacConfig.load(project_dir / "jac.toml");
-        env_without_no_uv = {
-            k: v
-            for (k, v) in os.environ.items()
-            if k != "JAC_NO_UV"
-        };
-        with patch.dict(os.environ, env_without_no_uv, clear=True) {
-            installer = DependencyInstaller(config=config);
-            assert installer.use_uv is True;
-        }
-    } finally {
-        shutil.rmtree(tmp, ignore_errors=True);
-        reset_config();
-    }
-}
-
-test "pip_command translates and drops flags correctly for uv" {
-    with patch("shutil.which") as mock_which {
-        mock_which.return_value = "/usr/bin/uv";
-        cmd = pip_command(
-            "/path/to/python",
-            [
-                "install",
-                "--force-reinstall",
-                "--no-cache-dir",
-                "--pre",
-                "--prefer-binary",
-                "--some-unknown",
-                "pkg"
-            ],
-            use_uv=True
-        );
-        assert "--reinstall" in cmd;
-        assert "--no-cache" in cmd;
-        assert "--prerelease=allow" in cmd;
-        assert "--some-unknown" in cmd;
-        assert "pkg" in cmd;
-        assert "--force-reinstall" not in cmd;
-        assert "--no-cache-dir" not in cmd;
-        assert "--pre" not in cmd;
-        assert "--prefer-binary" not in cmd;
-        # -y dropped (uv uninstall is non-interactive by default)
-        cmd2 = pip_command("/path/to/python", ["uninstall", "-y", "pkg"], use_uv=True);
-        assert "-y" not in cmd2;
-        assert "pkg" in cmd2;
-        # no translation when use_uv is False
-        cmd3 = pip_command(
-            "/path/to/python", ["install", "--force-reinstall", "pkg"], use_uv=False
-        );
-        assert "--force-reinstall" in cmd3;
-        assert "--reinstall" not in cmd3;
-    }
+test "pip_command passes flags through unchanged" {
+    cmd = pip_command(
+        "/path/to/python", ["install", "--force-reinstall", "--prefer-binary", "pkg"]
+    );
+    assert cmd == [
+        "/path/to/python",
+        "-m",
+        "pip",
+        "install",
+        "--force-reinstall",
+        "--prefer-binary",
+        "pkg"
+    ];
 }
 
 test "update always uses upgrade flag" {
@@ -1863,45 +1782,47 @@ test "update always uses upgrade flag" {
 }
 
 # ===== TestInstallPackageIntoActivatedEnv =====
-test "jac install <pkg> works outside a project directory" {
-    # Core contract: packages path bypasses jac.toml requirement entirely.
-    import from jaclang.cli.commands { project as proj_cmds }
-    tmp = tempfile.mkdtemp(prefix="jac_test_");
-    original_cwd = os.getcwd();
-    try {
-        os.chdir(tmp);
-        mock_result = MagicMock();
-        mock_result.returncode = 0;
-        mock_result.stdout = "Successfully installed pip-24.0";
-        mock_result.stderr = "";
-        with patch("subprocess.run", return_value=mock_result) {
-            result = proj_cmds.install(packages=["pip"], no_deps=True);
-        }
-        assert result == 0;
-    } finally {
-        os.chdir(original_cwd);
-        shutil.rmtree(tmp, ignore_errors=True);
-    }
-}
-
-test "install package failure returns error code" {
-    # Error path: pip failure propagates as exit 1.
+test "jac install <pkg> outside a project errors" {
+    # New contract: `jac install <pkg>` installs into the project venv, so it
+    # requires a project. Outside one it errors instead of installing globally.
     reset_config();
     import from jaclang.cli.commands { project as proj_cmds }
     tmp = tempfile.mkdtemp(prefix="jac_test_");
     original_cwd = os.getcwd();
     try {
         os.chdir(tmp);
-        mock_result = MagicMock();
-        mock_result.returncode = 1;
-        mock_result.stderr = "ERROR: Could not find a version that satisfies the requirement badpkg";
-        mock_result.stdout = "";
-        with patch("subprocess.run", return_value=mock_result) {
+        reset_config();
+        result = proj_cmds.install(packages=["pip"], no_deps=True);
+        assert result == 1;
+    } finally {
+        os.chdir(original_cwd);
+        reset_config();
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "install package failure returns error code" {
+    # Error path: a failed install into the project venv propagates as exit 1.
+    reset_config();
+    import from jaclang.cli.commands { project as proj_cmds }
+    (tmp, project_dir) = make_temp_project();
+    original_cwd = os.getcwd();
+    try {
+        os.chdir(project_dir);
+        reset_config();
+        def fail_install(self: object, specs: object) -> bool {
+            return False;
+        }
+        with patch(
+            "jaclang.project.dependencies.DependencyInstaller.install_package",
+            fail_install
+        ) {
             result = proj_cmds.install(packages=["badpkg"]);
         }
         assert result == 1;
     } finally {
         os.chdir(original_cwd);
+        reset_config();
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
     }

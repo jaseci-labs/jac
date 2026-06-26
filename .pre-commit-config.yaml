@@ -1,9 +1,12 @@
 ci:
-  skip: [jac-format]
+  # These hooks shell out to the `jac` binary, which the hosted pre-commit.ci
+  # runner does not have; they run locally and in the Contribution Checks CI.
+  skip: [jac-format, validate-fragments]
 
 exclude: |
     (?x)(
         ^jac/jaclang/vendor/|
+        ^jac/jaclang/compiler/passes/native/llvm/|
         ^$
     )
 
@@ -39,7 +42,6 @@ repos:
         types: [binary]
         exclude: |
           (?x)(
-              ^jac-client/jac_client/examples/all-in-one/assets/burger.png$|
               ^docs/docs/assets/logo\.png$|
               ^docs/docs/assets/org1_logo\.png$|
               ^docs/docs/assets/org2_logo\.png$|
@@ -53,16 +55,13 @@ repos:
               ^jac-byllm/tests/fixtures/image\.jpg$|
               ^jac-byllm/tests/fixtures/math_question\.jpg$|
               ^jac-byllm/tests/fixtures/webp_image_of_person\.webp$|
-              ^jac-client/jac_client/examples/asset-serving/css-with-image/assets/burger\.png$|
-              ^jac-client/jac_client/examples/asset-serving/image-asset/assets/burger\.png$|
-              ^jac-client/jac_client/examples/asset-serving/import-alias/assets/burger\.png$|
               ^jac/examples/littleX/assets/littlex-logo\.png$
           )
 
       - id: validate-fragments
         name: Validate release note fragment filenames
-        entry: env PYTHONPATH=jac python3 -m jaclang run scripts/validate_fragments.jac
-        language: python
+        entry: jac run scripts/validate_fragments.jac
+        language: system
         files: ^docs/docs/community/release_notes/unreleased/.*\.md$
         exclude: README\.md
         require_serial: true
@@ -97,11 +96,10 @@ repos:
       - id: jac-format
         name: jac-format
         description: Format and lint-fix Jac files
-        entry: env PYTHONPATH=jac python3 -m jaclang format
-        language: python
+        entry: jac format
+        language: system
         types: [file]
         args: [--lintfix]
         files: \.jac$
         require_serial: true
         exclude: (/fixtures/|_err\.jac$|_syntax_err\.jac$|^scripts/)
-        additional_dependencies: [llvmlite>=0.43.0]

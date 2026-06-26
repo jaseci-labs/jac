@@ -7,7 +7,6 @@ import from jaclang.cli.console { console }
 # ===============================================================================
 impl DependencyInstaller.postinit -> None {
     import from jaclang.project.config { get_config }
-    import os;
     if self.config is None {
         self.config = get_config();
     }
@@ -19,11 +18,6 @@ impl DependencyInstaller.postinit -> None {
     self.venv_dir = self.config.get_venv_dir();
     if self.install_flags is None {
         self.install_flags = [];
-    }
-    # JAC_NO_UV=1 provides a system-wide opt-out covering all commands
-    # (add, remove, update, watchdog) not just `jac install --no-uv`.
-    if os.environ.get("JAC_NO_UV") {
-        self.use_uv = False;
     }
 }
 
@@ -78,42 +72,10 @@ impl DependencyInstaller.ensure_venv -> None {
     }
 }
 
-"""Translate pip-only flags to their `uv pip` equivalents, dropping any without a counterpart."""
-def _pip_flags_for_uv(args: list[str]) -> list[str] {
-    rename: dict[str, str | None] = {
-        "-y": None,
-        "--force-reinstall": "--reinstall",
-        "--no-cache-dir": "--no-cache",
-        "--pre": "--prerelease=allow",
-        "--prefer-binary": None,
-
-    };
-    translated: list[str] = [];
-    for arg in args {
-        if arg in rename {
-            mapped = rename[arg];
-            if mapped is not None {
-                translated.append(mapped);
-            }
-        } else {
-            translated.append(arg);
-        }
-    }
-    return translated;
-}
-
-impl pip_command(python: str, args: list[str], use_uv: bool = True) -> list[str] {
-    import shutil;
-    # Prefer uv's pip-compatible interface (much faster resolver/installer);
-    # fall back to the interpreter's own pip when uv isn't on PATH or disabled.
-    uv_path = shutil.which("uv") if use_uv else None;
-    # `and args` guards against an empty args list to avoid IndexError on args[0].
-    if uv_path and args {
-        subcommand = args[0];
-        return [uv_path, "pip", subcommand, "--python", python] + _pip_flags_for_uv(
-            args[1:]
-        );
-    }
+impl pip_command(python: str, args: list[str]) -> list[str] {
+    # The single binary bundles pip/ensurepip; every install runs the project
+    # venv's own python against bundled pip. No external package manager (uv) and
+    # no host python are consulted -- behaviour is identical regardless of host.
     return [python, "-m", "pip"] + args;
 }
 
@@ -126,17 +88,7 @@ impl DependencyInstaller._run_pip(args: list[str]) -> tuple[int, str, str] {
     } else {
         venv_python = str(self.venv_dir / "bin" / "python");
     }
-    # Warn once when --prefer-binary is requested but uv has no equivalent,
-    # so users know their flag was silently dropped rather than honoured.
-    if self.use_uv and "--prefer-binary" in args and not self._warned_prefer_binary {
-        self._warned_prefer_binary = True;
-        console.print(
-            "  note: --prefer-binary has no uv equivalent and will be ignored"
-            " (pass --no-uv or set JAC_NO_UV=1 to keep it)",
-            style="muted"
-        );
-    }
-    cmd = pip_command(venv_python, args, use_uv=self.use_uv);
+    cmd = pip_command(venv_python, args);
     if self.verbose {
         console.print(f"Running: {' '.join(cmd)}");
     }

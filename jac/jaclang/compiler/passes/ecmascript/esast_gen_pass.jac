@@ -36,6 +36,7 @@ import from jaclang.compiler.passes.ecmascript.scoped_styles {
     ScopedStyleSheet,
     load_style_annex
 }
+import from jaclang.compiler.passes.ecmascript.framework_backend { FrameworkBackend }
 import from jaclang.jac0core.modresolver {
     convert_to_js_import_path,
     resolve_relative_path
@@ -49,7 +50,8 @@ import from jaclang.jac0core.diagnostics {
     W5013,
     W5014,
     W5015,
-    E5080
+    E5080,
+    E5081
 }
 
 glob _T = TypeVar('_T', bound=es.Node),
@@ -196,13 +198,14 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         exports: list[es.ExportNamedDeclaration] = [],
         scope_stack: list[ScopeInfo] = [],
         scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {},
+        backend: (FrameworkBackend | None) = None,
         client_manifest: (ClientManifest | None) = None,
         jsx_processor: (EsJsxProcessor | None) = None,
         scoped_styles: (ScopedStyleSheet | None) = None,
-        # Reactive state variables: var_name -> setter_name (e.g., "count" -> "setCount")
-        reactive_vars: dict[str, str] = {},
+        # Reactive state variables (which vars are reactive; setter naming is backend-specific)
+        reactive_vars: set[str] = set(),
         # Stack to save/restore reactive_vars per function boundary
-        reactive_vars_stack: list[dict[str, str]] = [],
+        reactive_vars_stack: list[set[str]] = [],
         # Runtime imports auto-injected by the codegen; tracked to avoid duplicates
         injected_imports: set[str] = set(),
         # JSX `{...}` slot view-lowering state. Holds the accumulator name of each
@@ -334,10 +337,10 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
 
     def exit_module(nd: uni.Module) -> None;
     def populate_client_manifest(nd: uni.Module) -> None;
-    def _populate_client_manifest(nd: uni.Module) -> None;
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
     def exit_import(nd: uni.Import) -> None;
     def _generate_sv_import_stubs(nd: uni.Import) -> None;
+    def _sv_import_item_is_type(nd: uni.Import, item: uni.ModuleItem) -> bool;
     def _record_sv_backend(nd: uni.Import) -> None;
     def _emit_boundary_type_stubs(nd: uni.Module) -> list;
     def exit_type_alias(nd: uni.TypeAlias) -> None;
@@ -354,12 +357,12 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_param_var(nd: uni.ParamVar) -> None;
     def exit_arch_has(nd: uni.ArchHas) -> None;
     def exit_has_var(nd: uni.HasVar) -> None;
-    def _get_setter_name(var_name: str) -> str;
     def _has_import(name: str) -> bool;
     def _inject_runtime_import(name: str, nd: uni.UniNode) -> None;
     def _ref_head_name(expr: (uni.UniNode | None)) -> (str | None);
     def _ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None);
     def _register_jac_runtime_import -> None;
+    def _ensure_backend -> None;
     def _transform_to_useeffect(nd: uni.Ability) -> None;
     def exit_jsx_element(nd: uni.JsxElement) -> None;
     def exit_jsx_element_name(nd: uni.JsxElementName) -> None;
@@ -387,7 +390,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         acc_name: str, value: es.Expression, anchor: uni.UniNode
     ) -> es.ExpressionStatement;
 
-    """Build `<>{children...}</>` as a `__jacJsx(null, {}, [children])` call."""
+    """Build `<>{children...}</>` as a backend JSX-factory fragment call."""
     def _jsx_fragment(
         children: list[es.Expression], anchor: uni.UniNode
     ) -> es.CallExpression;
@@ -401,10 +404,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _build_view_iife(
         body_nodes: (Sequence[uni.UniNode] | None), acc_name: str, anchor: uni.UniNode
     ) -> es.CallExpression;
-
-    """Assemble the `<JacAwaiting>`/`<JacClientErrorBoundary>` wrapper for a
-    slot `try { ... } awaiting { ... } except { ... }` on the cl target."""
-    def _build_awaiting_wrapper(nd: uni.TryStmt, try_acc: str) -> None;
 
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def exit_else_if(nd: uni.ElseIf) -> None;

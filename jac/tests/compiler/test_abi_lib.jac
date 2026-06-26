@@ -4,7 +4,7 @@ Hand-computed System V AMD64 and AArch64 AAPCS expectations: scalars are
 (byte_offset, is_float, bit_width) leaves as produced by the native
 pass's struct flattening.
 """
-import from llvmlite { ir }
+import from jaclang.compiler.passes.native.llvm { ir }
 import from jaclang.compiler.targets.abi {
     classify_struct,
     classify_struct_sysv,

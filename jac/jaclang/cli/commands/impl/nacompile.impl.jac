@@ -3,7 +3,7 @@
 Compiles a .na.jac file to a standalone native binary:
 1. Compile .na.jac through Jac pipeline to get LLVM IR
 2. Inject main() (+ _start on Linux, _jac_win_start on Windows) as pure LLVM IR
-3. Emit object code via llvmlite
+3. Emit object code via the LLVMPY_* shim
 4. Link into executable via pure Python linker (ELF on Linux, Mach-O on macOS,
    PE/COFF .exe on Windows)
 """
@@ -96,31 +96,34 @@ Returns (new_ir, extra_export_names).
 def _inject_shared_init(
     llvm_ir_str: str, transitive_sources: list[str]
 ) -> tuple[str, list[str]] {
-    import re;
     init_calls: list[str] = [];
     # This module's own glob-init (NaIRGenPass always emits it when present).
-    if ('@"__jac_glob_init"' in llvm_ir_str)
-    or ("@__jac_glob_init(" in llvm_ir_str)
-    or ("define void @__jac_glob_init(" in llvm_ir_str) {
+    # LLVM quotes the symbol ("define void @\"__jac_glob_init\"()") because the
+    # name is not a bare IR identifier, so check both the quoted and unquoted
+    # forms -- matching the transitive-source branch below. Checking only the
+    # unquoted form let `__jac_shared_init` be emitted empty, leaving global
+    # clib structs uninitialized (NULL) and segfaulting on first field access.
+    if ('@"__jac_glob_init"' in llvm_ir_str) or ("@__jac_glob_init(" in llvm_ir_str) {
         init_calls.append("  call void @__jac_glob_init()");
     }
+    import from jaclang.jac0core.codeinfo { native_safe_sym }
     _seen: set = set();
     for _src in transitive_sources {
         if _src is None or _src in _seen {
             continue;
         }
         _seen.add(_src);
-        _safe = re.sub(r'[^a-zA-Z0-9_]', '_', _src);
+        # Unique per-module suffix; centralized in codeinfo.native_safe_sym so
+        # the emit side, this AOT shared-init emitter, and the JIT runtime
+        # lookup (native_marshal.init_native_globals) all agree on the name.
+        _safe = native_safe_sym(_src);
         _nm = f"__jac_glob_init_{_safe}";
         if (f'@"{_nm}"' in llvm_ir_str) or (f"@{_nm}(" in llvm_ir_str) {
             init_calls.append(f"  call void @{_nm}()");
         }
     }
     parts: list[str] = ["\n; --- injected shared-library init + RC wrappers ---"];
-    _body = "\n".join(init_calls);
-    if _body {
-        _body = _body + "\n";
-    }
+    _body = ("\n".join(init_calls) + "\n") if init_calls else "";
     parts.append(
         "define void @__jac_shared_init() {\nentry:\n" + _body + "  ret void\n}"
     );
@@ -153,8 +156,9 @@ impl nacompile(
     shared: bool = False,
     debug: bool = False
 ) -> int {
+    import from jaclang.jac0core.ext_registry { is_jac, is_native_module, base_stem }
     # Validate input
-    if not filename.endswith(".na.jac") and not filename.endswith(".jac") {
+    if not is_jac(filename) {
         console.error("Input must be a .jac or .na.jac file.");
         return 1;
     }
@@ -189,7 +193,9 @@ impl nacompile(
     # then link the COFF object with the pure-Jac PE linker. Mirrors is_wasm.
     # A bare alias ("windows"/"win64") maps to the msvc triple; a full triple
     # the user passed ("x86_64-pc-windows-gnu") is used verbatim.
-    is_windows = ("windows" in target) or (target in ["win", "win64", "mingw"]);
+    is_windows = (sys.platform == "win32")
+    or ("windows" in target)
+    or (target in ["win", "win64", "mingw"]);
     if is_windows {
         os.environ["JAC_NATIVE_TARGET"] = (
             target if "-" in target else "x86_64-pc-windows-msvc"
@@ -219,19 +225,14 @@ impl nacompile(
         }
     }
 
-    auto_promote = filename.endswith(".jac") and not filename.endswith(".na.jac");
+    auto_promote = is_jac(filename) and not is_native_module(filename);
 
     # Detect platform (host darwin, or an explicit macOS cross-target)
     is_macos = (sys.platform == "darwin") or is_macos_target;
 
     # Determine output path
     if not output {
-        output = os.path.basename(filename);
-        if output.endswith(".na.jac") {
-            output = output[:-7];
-        } elif output.endswith(".jac") {
-            output = output[:-4];
-        }
+        output = base_stem(filename);
         if shared {
             # Conventional shared-library name: lib<stem>.<ext> per platform.
             _so_ext = ".dll" if is_windows else (".dylib" if is_macos else ".so");
@@ -381,7 +382,7 @@ impl nacompile(
     console.print("  LLVM IR generated successfully.");
 
     # Step 3: Initialize llvmlite
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
 
@@ -442,10 +443,12 @@ impl nacompile(
         # libm is part of libSystem on macOS.
         needed_libs: list[str] = ["/usr/lib/libSystem.B.dylib"];
     } else {
-        # libm.so.6 supplies math-module symbols (e.g. hypot) that are not all
-        # re-exported from libc; the loader only binds referenced symbols, so
-        # linking it unconditionally is harmless (issue #6404).
-        needed_libs: list[str] = ["libc.so.6", "libm.so.6"];
+        # User-specified libraries are appended below; libc/libm are added last
+        # so they appear AFTER user imports in NEEDED. This matters for libraries
+        # like libcef.so whose .init_array calls dlsym(RTLD_NEXT, "close") etc.:
+        # RTLD_NEXT searches the link map AFTER the calling library, so libc must
+        # be after libcef.so in the map for those lookups to resolve (issue #6572).
+        needed_libs: list[str] = [];
     }
 
     # Add C shared libraries discovered during compilation (e.g. libuv.so.1)
@@ -480,6 +483,18 @@ impl nacompile(
                 needed_libs.append(_needed);
             }
             _lib_norm[lib_path] = _needed;
+        }
+    }
+
+    # Append libc/libm after all user-specified libraries so the dynamic
+    # linker's link map puts libc AFTER any user library that needs RTLD_NEXT
+    # to resolve libc symbols from its .init_array (issue #6572).
+    if not is_macos and not is_windows {
+        if "libc.so.6" not in needed_libs {
+            needed_libs.append("libc.so.6");
+        }
+        if "libm.so.6" not in needed_libs {
+            needed_libs.append("libm.so.6");
         }
     }
 
@@ -519,7 +534,15 @@ impl nacompile(
             opt=2, reloc="pic", codemodel="small"
         );
     } else {
-        target_machine = target.create_target_machine(opt=2);
+        # codemodel="large" (not the default "jitdefault"): llvmlite appends
+        # "-elf" to the triple when os.name == "nt" and codemodel ==
+        # "jitdefault", making a Windows host emit an ELF object for a COFF
+        # target (the format guard below then trips). Pass an explicit code
+        # model so the requested triple stays intact. "large" is used (not
+        # "small") because "jitdefault" resolves to the large model on x86_64,
+        # which emits the absolute relocations the pure-Jac ELF linker handles;
+        # the small/medium models emit R_X86_64_32 absolutes it cannot resolve.
+        target_machine = target.create_target_machine(opt=2, codemodel="large");
     }
 
     # Read native build settings from jac.toml [build.native] (env vars as fallback)
@@ -538,7 +561,7 @@ impl nacompile(
     # In --shared mode we must NOT internalize: the exported `:pub` symbols and
     # the RC wrappers have to survive as externally-visible definitions.
     if _opt_level > 0 {
-        pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level, size_level=0);
+        pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level);
         pb = llvm.create_pass_builder(target_machine, pto);
         opt_mpm = pb.getModulePassManager();
         if not shared {

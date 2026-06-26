@@ -24,9 +24,8 @@ glob CORE_RUNTIME_DEPS: dict[str, str] = {
      },
      # Optional runtime dependencies (injected by default, separable later)
      OPTIONAL_RUNTIME_DEPS: dict[str, str] = {
-         "react-hook-form": "^7.71.0",
-         "zod": "^4.3.6",
-         "@hookform/resolvers": "^5.2.2"
+         "@tanstack/react-form": "^1.33.0",
+         "zod": "^4.3.6"
      },
      # Dev/build dependencies (always injected)
      CORE_DEV_DEPS: dict[str, str] = {
@@ -154,6 +153,7 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, any]
         'ts': {'compilerOptions': {}, 'include': [], 'exclude': []},
         'configs': {},  # Generic config file generation: { "postcss": {...}, "tailwind": {...} }
         'paths': {},  # Import path aliases: { "@components/*": "./components/*" }
+        'routing': {'auth_redirect': '/login'},  # File-based routing config
         'npm': {},  # NPM registry config: { "scoped_registries": {...}, "auth": {...} }
         'package': {
             'name': '',
@@ -233,6 +233,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
         'ts': client_config.get('ts', {}),
         'configs': client_config.get('configs', {}),
         'paths': client_config.get('paths', {}),
+        'routing': client_config.get('routing', {}),
         'npm': client_config.get('npm', {}),
         'pwa': client_config.get('pwa', {}),
         'package': {

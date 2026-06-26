@@ -1315,6 +1315,30 @@ impl TypeEvaluator._get_type_of_expression_core(
                 } elif isinstance(
                     base_type, (types.FunctionType, types.OverloadedType)
                 ) {
+                    # `@<prop>.setter` / `.getter` / `.deleter`: the property
+                    # descriptor's accessor-registration decorators. A @property
+                    # getter resolves to its FunctionType (or an OverloadedType
+                    # when the getter itself is overloaded), so the decorator
+                    # access `<prop>.setter` lands in this function branch rather
+                    # than on a property object. Model it as the same callable:
+                    # the decorator returns the property, and the decorated
+                    # symbol's writability is classified from its decorators
+                    # separately (_classify_property_symbol), so the exact type
+                    # here is immaterial -- what matters is not raising a bogus
+                    # E1031 on the canonical setter pattern (incl. typeshed's
+                    # `object.__class__`, which A2's `self.__class__.__name__`
+                    # forces the checker to evaluate). Gated on the target
+                    # actually being a property so non-property `.setter` reads
+                    # still surface as errors.
+                    import from jaclang.compiler.type_system.type_utils {
+                        PropertyWriteKind
+                    }
+                    if expr.right.value in ("setter", "getter", "deleter")
+                    and isinstance(expr.target, uni.Name)
+                    and (expr.target.sym is not None)
+                    and self._classify_property_symbol(expr.target.sym) != PropertyWriteKind.NOT_PROPERTY {
+                        return base_type;
+                    }
                     # All functions are instances of types.FunctionType at runtime.
                     # Delegate attribute lookup to the prefetched FunctionType class.
                     # TODO: Add is_method_type() check and use method_class for bound methods.
@@ -3109,6 +3133,7 @@ Native code reinterprets `int`, `str`, function refs and `obj` instances
 as 64-bit pointers, so a handful of cross-type assignments are sound there
 but not in regular Jac. Determined from the pass's current node."""
 impl TypeEvaluator._in_native_context -> bool {
+    import from jaclang.jac0core.ext_registry { is_native_module }
     if self._pass is None {
         return False;
     }
@@ -3126,7 +3151,7 @@ impl TypeEvaluator._in_native_context -> bool {
     if mod is None or mod.loc is None {
         return False;
     }
-    return mod.loc.mod_path.endswith(".na.jac");
+    return is_native_module(mod.loc.mod_path);
 }
 
 """Match a typing special form loaded from any stdlib typing stub.
@@ -4528,6 +4553,21 @@ impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str
     and pred.else_body.body
     and succ is pred.else_body.body[0] {
         return "false";
+    }
+    # Synthetic in-body predecessor (e.g. a comprehension's InnerCompr wired
+    # as a flow predecessor of the if-stmt): `succ` lexically nests inside the
+    # if-stmt rather than being a post-if sibling. Classify by which branch
+    # subtree contains it so head narrowing inside the body uses the true edge.
+    cur: uni.UniNode | None = succ;
+    while cur is not None and cur is not pred {
+        if pred.else_body is not None and cur is pred.else_body {
+            return "false";
+        }
+        cur = cur.parent;
+    }
+    if cur is pred {
+        # Nested under pred but not under else_body -> true branch body.
+        return "true";
     }
     # Fall-through to next sibling: which branch is the empty one?
     body_empty = not pred.body;

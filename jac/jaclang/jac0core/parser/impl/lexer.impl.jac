@@ -1947,9 +1947,3 @@ impl Lexer.tokenize -> list[Token] {
 impl Lexer.has_errors -> bool {
     return self.error_count > 0;
 }
-
-impl tokenize(source: str, file_path: str = "<input>") -> tuple[list[Token], int] {
-    lexer = Lexer(source=source, file_path=file_path);
-    tokens = lexer.tokenize();
-    return (tokens, lexer.error_count);
-}

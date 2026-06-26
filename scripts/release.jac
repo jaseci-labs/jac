@@ -4,8 +4,8 @@ Bumps package versions, syncs internal dependencies, updates release notes,
 and outputs metadata for the GitHub Actions workflow to create a release PR.
 
 Usage:
-    jac run scripts/release.jac --jaclang patch --jac-client minor
-    jac run scripts/release.jac --jaclang patch --dry-run
+    jac run scripts/release.jac --jac-byllm patch --jac-scale minor
+    jac run scripts/release.jac --jac-mcp patch --dry-run
 
 Each package flag accepts: skip (default), patch, minor, major.
 """
@@ -28,13 +28,6 @@ def update_jac_toml_version(jac_toml_path: Path, new_version: str) {
     jac_toml_path.write_text(tomlkit.dumps(data));
 }
 
-"""Update the version field in a pyproject.toml file."""
-def update_pyproject_version(pyproject_path: Path, new_version: str) {
-    data = tomlkit.loads(pyproject_path.read_text());
-    data["project"]["version"] = new_version;
-    pyproject_path.write_text(tomlkit.dumps(data));
-}
-
 """Update an internal dependency version in a jac.toml file.
 
     Returns True if a change was made, False otherwise.
@@ -51,35 +44,6 @@ def update_dependency_version(
     }
     if modified {
         jac_toml_path.write_text(tomlkit.dumps(data));
-    }
-    return modified;
-}
-
-"""Update an internal dependency version in a pyproject.toml file.
-
-    `[project].dependencies` is a list of pip specifier strings like
-    "jaclang>=0.14.1"; this rewrites the entry for dep_pypi_name to pin
-    >=new_version. Returns True if a change was made, False otherwise.
-    """
-def update_pyproject_dependency_version(
-    pyproject_path: Path, dep_pypi_name: str, new_version: str
-) -> bool {
-    data = tomlkit.loads(pyproject_path.read_text());
-    if "project" not in data or "dependencies" not in data["project"] {
-        return False;
-    }
-    dependencies = data["project"]["dependencies"];
-    modified = False;
-    for (i, dep) in enumerate(dependencies) {
-        dep_str = str(dep);
-        if dep_str.startswith(f"{dep_pypi_name}>=") {
-            dependencies[i] = f"{dep_pypi_name}>={new_version}";
-            modified = True;
-            break;
-        }
-    }
-    if modified {
-        pyproject_path.write_text(tomlkit.dumps(data));
     }
     return modified;
 }
@@ -109,16 +73,6 @@ def sync_dependents(
         and update_dependency_version(dep_jac_toml, pkg_pypi_name, new_version) {
             modified.append(jac_toml_rel);
             print(f"  Updated {pkg_pypi_name}>={new_version} in {jac_toml_rel}");
-        }
-        # Keep pyproject.toml in sync so it can't drift from jac.toml.
-        pyproject_rel = f"{dep_info.dir}/pyproject.toml";
-        dep_pyproject = repo_root / pyproject_rel;
-        if dep_pyproject.exists()
-        and update_pyproject_dependency_version(
-            dep_pyproject, pkg_pypi_name, new_version
-        ) {
-            modified.append(pyproject_rel);
-            print(f"  Updated {pkg_pypi_name}>={new_version} in {pyproject_rel}");
         }
     }
     return modified;
@@ -171,7 +125,6 @@ def main -> None {
                     "bump": bump_type,
                     "dir": pkg_info.dir,
                     "jac_toml": f"{pkg_info.dir}/jac.toml",
-                    "pyproject": f"{pkg_info.dir}/pyproject.toml",
                     "release_notes": pkg_info.release_notes,
                     "pypi_name": pkg_info.pypi,
                     "notes_display": pkg_info.notes_display
@@ -195,14 +148,7 @@ def main -> None {
         pkg_name = rel["name"];
         bump_type = rel["bump"];
         jac_toml_path = repo_root / rel["jac_toml"];
-        pyproject_path = repo_root / rel["pyproject"];
-        # Prefer jac.toml as the source of truth for the current version; fall
-        # back to pyproject.toml for packages (e.g. jac/) that haven't migrated.
-        if jac_toml_path.exists() {
-            current_version = read_version(jac_toml_path);
-        } else {
-            current_version = read_version(pyproject_path);
-        }
+        current_version = read_version(jac_toml_path);
         new_version = bump_version(current_version, bump_type);
         version_updates.append((pkg_name, current_version, new_version));
         print(f"Package:  {pkg_name}");
@@ -216,26 +162,13 @@ def main -> None {
                     f"[dry-run] Would update {rel['jac_toml']} -> version {new_version}"
                 );
             }
-            if pyproject_path.exists() {
-                print(
-                    f"[dry-run] Would update {rel['pyproject']} -> version {new_version}"
-                );
-            }
             for dep_key in DEPENDENTS.get(rel["pypi_name"], []) {
                 if (dep_key in releasing_packages) {
                     dep_info = PACKAGES[dep_key];
                     dep_jac_toml = f"{dep_info.dir}/jac.toml";
-                    dep_pyproject = f"{dep_info.dir}/pyproject.toml";
                     if (repo_root / dep_jac_toml).exists() {
                         print(
                             f"[dry-run] Would update {dep_jac_toml} -> {rel[
-                                'pypi_name'
-                            ]}>={new_version}"
-                        );
-                    }
-                    if (repo_root / dep_pyproject).exists() {
-                        print(
-                            f"[dry-run] Would update {dep_pyproject} -> {rel[
                                 'pypi_name'
                             ]}>={new_version}"
                         );
@@ -254,12 +187,6 @@ def main -> None {
             update_jac_toml_version(jac_toml_path, new_version);
             if (rel["jac_toml"] not in modified_files) {
                 modified_files.append(rel["jac_toml"]);
-            }
-        }
-        if pyproject_path.exists() {
-            update_pyproject_version(pyproject_path, new_version);
-            if (rel["pyproject"] not in modified_files) {
-                modified_files.append(rel["pyproject"]);
             }
         }
         print("Syncing dependents...");

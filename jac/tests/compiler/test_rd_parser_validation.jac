@@ -7,6 +7,7 @@ constructs.
 
 import os;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.jac0core.unitree { Module }
 import from jaclang.jac0core.unitree { Test as JacTest }
@@ -16,8 +17,7 @@ import from tests.fixtures_list { MICRO_JAC_FILES }
 import from jaclang.jac0core.passes.ast_validation_pass { ASTValidationPass }
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     GAP_DIR = os.path.join(
+glob GAP_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "fixtures", "rd_parser_gaps"
      );
 

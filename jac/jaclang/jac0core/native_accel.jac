@@ -10,13 +10,30 @@ Gated by [run] autonative = true in jac.toml.
 import logging;
 import os;
 import sys;
+import threading;
 import from pathlib { Path }
 import from threading { Event }
 import from concurrent.futures { Future }
+import from jaclang.jac0core.ext_registry { NATIVE_SUFFIX }
 
 glob _logger = logging.getLogger(__name__),
      _acceleration_complete: Event = Event(),
-     _acceleration_future: (Future | None) = None;
+     _acceleration_future: (Future | None) = None,
+     # Thread-local "we are inside the best-effort background self-acceleration
+     # compile" flag. The native codegen routes jaclang.* modules through the
+     # compiler's internal_program (not the JacProgram we hold here), so a
+     # program-instance flag can't reach the demotion site; a thread-local does,
+     # because accelerate_module and the demotion run on the same worker thread.
+     # NaIRGenPass._demote_method_if_unlowerable reads it via
+     # native_accel_warnings_suppressed() to stay quiet. JAC_NATIVE_DEBUG overrides.
+     _quiet_tls = threading.local();
+
+"""True while a background native self-acceleration compile is running on this
+thread, signalling NaIRGenPass to suppress its per-method "native seam --
+demoting ..." stderr warnings (they are best-effort and not user-actionable)."""
+def native_accel_warnings_suppressed -> bool {
+    return getattr(_quiet_tls, "active", False);
+}
 
 """Find all .na.jac files in jac0core/ that have loaded Python modules."""
 def discover_bootstrap_na_modules -> dict[str, str] {
@@ -26,7 +43,7 @@ def discover_bootstrap_na_modules -> dict[str, str] {
         # Derive module name from file path relative to jaclang/
         rel = na_file.relative_to(jac0core_dir.parent);
         # Strip .na.jac suffix (two suffixes)
-        stem = str(rel).replace(os.sep, ".").removesuffix(".na.jac");
+        stem = str(rel).replace(os.sep, ".").removesuffix(NATIVE_SUFFIX);
         mod_name = "jaclang." + stem;
         if mod_name in sys.modules {
             result[mod_name] = str(na_file);
@@ -59,7 +76,18 @@ def accelerate_module(mod_name: str, na_file: str) -> int {
     _na_debug = bool(os.environ.get("JAC_NATIVE_DEBUG"));
     try {
         prog = JacProgram();
-        ir = prog.compile(file_path=na_file);
+        # Quiet the per-method "native seam -- demoting ..." warnings for the
+        # duration of this best-effort compile: its demotions are not
+        # user-actionable, so they must not spam stderr on every import when
+        # autonative is enabled. Scoped via a thread-local (see _quiet_tls)
+        # because the codegen runs on the compiler's internal_program, not this
+        # JacProgram. JAC_NATIVE_DEBUG still forces the warnings on.
+        _quiet_tls.active = True;
+        try {
+            ir = prog.compile(file_path=na_file);
+        } finally {
+            _quiet_tls.active = False;
+        }
         if prog.errors_had {
             _msg = f"Native compilation errors for {mod_name}: {prog.errors_had}";
             _logger.debug(_msg);

@@ -46,6 +46,8 @@ impl ViteCompiler.compile(
     if pwa_config.is_pwa_enabled() {
         self.compile_pwa_runtime();
     }
+    # Compile desktop SDK if @jac/desktop is resolvable (via jac.modules entry point)
+    self.compile_desktop_sdk();
     self.copy_root_assets();
     self.create_entry_file(module_path);
     # Return exports and globals without bundling
@@ -76,6 +78,7 @@ impl ViteCompiler.compile_and_bundle(
 `/static/<stem>.wasm`. No-op when the module has no native code."""
 impl ViteCompiler._emit_na_wasm(self: ViteCompiler, module_path: Path) -> None {
     import re;
+    import from jaclang.jac0core.ext_registry { is_native_module }
     try {
         src = module_path.read_text(encoding='utf-8');
     } except (FileNotFoundError, OSError) {
@@ -87,7 +90,7 @@ impl ViteCompiler._emit_na_wasm(self: ViteCompiler, module_path: Path) -> None {
         or re.search(
             r'(^|[\s;])na\s+(def|can|impl|obj|node|walker|glob|class|enum)\b', src
         )
-        or module_path.name.endswith('.na.jac')
+        or is_native_module(module_path.name)
     );
     if not has_na {
         return;
@@ -113,7 +116,10 @@ impl ViteCompiler._emit_na_wasm(self: ViteCompiler, module_path: Path) -> None {
 
 """Create the main entry file for Vite bundling."""
 impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> None {
-    import from jaclang.runtimelib.react_entry { build_simple_react_entry_script }
+    import from jaclang.compiler.passes.ecmascript.backends.registry {
+        resolve_active_backend
+    }
+    backend = resolve_active_backend();
     # Use _entry.js to avoid conflict with compiled modules that may be named main.js
     entry_file = self.compiled_dir / '_entry.js';
     if self._has_pages {
@@ -121,7 +127,7 @@ impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> No
         entry_content = self._create_pages_entry_content(module_path);
     } else {
         # Explicit routing mode: import app from entry module (original behavior)
-        entry_content = build_simple_react_entry_script(module_path.stem);
+        entry_content = backend.build_entry_script(module_path.stem);
     }
     entry_file.write_text(entry_content, encoding='utf-8');
 }
@@ -129,100 +135,33 @@ impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> No
 impl ViteCompiler._create_pages_entry_content(
     self: ViteCompiler, module_path: Path
 ) -> str {
-    lines: list[str] = [];
+    import from jaclang.compiler.passes.ecmascript.backends.registry {
+        resolve_active_backend
+    }
     auth_redirect = "/login";
     try {
-        import from jaclang.runtimelib.client.config_loader { PluginConfig }
-        config = PluginConfig.load(self.project_dir);
-        if config and config?.routing and config.routing {
-            auth_redirect = config.routing.get('auth_redirect', '/login');
+        import from jaclang.runtimelib.client.config_loader { JacClientConfig }
+        config = JacClientConfig(project_dir=self.project_dir);
+        routing = config.get_section('routing');
+        if routing {
+            auth_redirect = routing.get('auth_redirect', '/login');
         }
     } except Exception as e {
         console.warning(
             f"Failed to load routing config, using default auth_redirect='/login': {e}"
         );
     }
-    # Check if main.jac exists and exports app (used as wrapper)
+    # Check if the entry module (e.g. main.jac) exists and exports `app` (wrapper).
     app_module = self.compiled_dir / f"{module_path.stem}.js";
     has_app_wrapper = app_module.exists();
-    # --- Imports ---
-    lines.append('import React from "react";');
-    lines.append('import { createRoot } from "react-dom/client";');
-    lines.append('import { BrowserRouter, Routes, Route } from "react-router-dom";');
-    lines.append(
-        'import { JacClientErrorBoundary, ErrorFallback, AuthGuard, __jacInstallErrorHandlers, __jacReactErrorHandler } from "@jac/runtime";'
+    # The JS body is framework-specific (React's `react-dom/client` route tree vs
+    # Solid's `solid-js/web` render via the `@solidjs/router` shim adapters), so
+    # delegate to the active backend. Both consume the same framework-neutral
+    # `_routes.js` manifest (`routes`/`layouts`).
+    backend = resolve_active_backend();
+    return backend.build_pages_entry_script(
+        module_path.stem, auth_redirect, has_app_wrapper
     );
-    lines.append('import { routes, layouts } from "./_routes.js";');
-    lines.append('');
-    lines.append('__jacInstallErrorHandlers();');
-    if has_app_wrapper {
-        lines.append(f'import {{ app as AppWrapper }} from "./{module_path.stem}.js";');
-    }
-    lines.append('');
-    # --- Route helpers ---
-    lines.append('const publicRoutes = routes.filter(r => !r.auth);');
-    lines.append('const authRoutes = routes.filter(r => r.auth);');
-    lines.append('const RootLayout = layouts["/"] || null;');
-    lines.append('');
-    lines.append('function renderRoutes(routeList) {');
-    lines.append('\treturn routeList.map(r =>');
-    lines.append(
-        '\t\tReact.createElement(Route, { key: r.path, path: r.path, element: React.createElement(r.element, null) })'
-    );
-    lines.append('\t);');
-    lines.append('}');
-    lines.append('');
-    # --- Auth guard routes (reused in both layout and non-layout paths) ---
-    # AuthGuard is a runtime function compiled with plain parameters (not React props
-    # destructuring), so we wrap it in a component that passes the redirect string directly.
-    lines.append(
-        f'function _AuthGuardRoute() {{ return AuthGuard("{auth_redirect}"); }}'
-    );
-    lines.append(
-        'const authGuardElement = React.createElement(_AuthGuardRoute, null);'
-    );
-    lines.append('');
-    # --- Single App component with one BrowserRouter ---
-    lines.append('function App() {');
-    lines.append('\tconst routeChildren = [');
-    lines.append('\t\t...renderRoutes(publicRoutes),');
-    lines.append(
-        '\t\tReact.createElement(Route, { key: "__auth", element: authGuardElement },'
-    );
-    lines.append('\t\t\t...renderRoutes(authRoutes)');
-    lines.append('\t\t),');
-    lines.append('\t];');
-    lines.append('');
-    lines.append('\tconst routeTree = RootLayout');
-    lines.append(
-        '\t\t? React.createElement(Route, { element: React.createElement(RootLayout, null) }, ...routeChildren)'
-    );
-    lines.append('\t\t: routeChildren;');
-    lines.append('');
-    lines.append('\treturn React.createElement(BrowserRouter, null,');
-    lines.append('\t\tReact.createElement(Routes, null,');
-    lines.append('\t\t\t...(Array.isArray(routeTree) ? routeTree : [routeTree])');
-    lines.append('\t\t)');
-    lines.append('\t);');
-    lines.append('}');
-    lines.append('');
-    # --- Root render ---
-    if has_app_wrapper {
-        lines.append(
-            'const appElement = React.createElement(AppWrapper, null, React.createElement(App, null));'
-        );
-    } else {
-        lines.append('const appElement = React.createElement(App, null);');
-    }
-    lines.append('');
-    lines.append('const root = createRoot(document.getElementById("root"));');
-    lines.append('root.render(');
-    lines.append(
-        '\tReact.createElement(JacClientErrorBoundary, { FallbackComponent: ErrorFallback, onError: __jacReactErrorHandler }, appElement)'
-    );
-    lines.append(');');
-    lines.append('');
-    return "\n".join(lines);
 }
 
 """Copy assets from root assets/ folder to compiled/assets/ for @jac-client/assets alias."""
@@ -380,7 +319,8 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
     if not self.runtime_path {
         raise ClientBundleError('Runtime path not set');
     }
-    runtime_utils_path = self.runtime_path.parent / 'client_runtime.cl.jac';
+    import from jaclang.runtimelib.runtime_source { resolve_client_runtime_cl_path }
+    runtime_utils_path = Path(resolve_client_runtime_cl_path());
     (runtimeutils_js, mod, runtimeutils_manifest) = self.jac_compiler.compile_module(
         runtime_utils_path
     );
@@ -392,6 +332,26 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
         set(runtimeutils_exports_list + self.ROUTER_EXPORTS + glob_names)
     );
     self.compiled_dir.mkdir(parents=True, exist_ok=True);
+    # The per-framework runtime shim re-exports the framework-agnostic surface
+    # from `client_runtime_core.cl.jac` (so `@jac/runtime` stays one module). The
+    # shim's compiled import resolves the core by its dotted module path
+    # (`./jaclang/runtimelib/client_runtime_core.js`); compile that sibling and
+    # emit it flat alongside the shim, then rewrite the import to the sibling path
+    # so Vite resolves it. Core symbols are already re-exported by the shim, so
+    # `all_exports` needs no addition.
+    core_path = runtime_utils_path.parent / 'client_runtime_core.cl.jac';
+    if core_path.exists() {
+        core_specifier = './jaclang/runtimelib/client_runtime_core.js';
+        if core_specifier in runtimeutils_js {
+            (core_js, core_mod, _) = self.jac_compiler.compile_module(core_path);
+            runtimeutils_js = runtimeutils_js.replace(
+                core_specifier, './client_runtime_core.js'
+            );
+            core_out = self.compiled_dir / 'client_runtime_core.js';
+            core_out.write_text(core_js, encoding='utf-8');
+            self._write_source_map(core_mod, str(core_path), core_out, core_js);
+        }
+    }
     runtime_out = self.compiled_dir / 'client_runtime.js';
     runtime_out.write_text(runtimeutils_js, encoding='utf-8');
     self._write_source_map(mod, str(runtime_utils_path), runtime_out, runtimeutils_js);
@@ -417,6 +377,48 @@ impl ViteCompiler.compile_pwa_runtime(self: ViteCompiler) -> tuple[str, list[str
     pwa_out.write_text(pwa_js, encoding='utf-8');
     self._write_source_map(mod, str(pwa_runtime_path), pwa_out, pwa_js);
     return (pwa_js, all_exports);
+}
+
+"""Compile @jac/desktop SDK if it is resolvable.
+
+Uses the modresolver's jac.modules entry point mechanism to find the
+SDK source, compiles it to JS, and writes it into the compiled dir.
+Returns silently if @jac/desktop is not installed (no entry point registered)."""
+impl ViteCompiler.compile_desktop_sdk(self: ViteCompiler) {
+    import from jaclang.jac0core.modresolver { resolve_jac_virtual_module_path }
+    desktop_src = resolve_jac_virtual_module_path('@jac/desktop');
+    if not desktop_src {
+        return;
+    }
+    desktop_path = Path(desktop_src);
+    if not desktop_path.exists() {
+        return;
+    }
+    (desktop_js, mod, desktop_manifest) = self.jac_compiler.compile_module(
+        desktop_path
+    );
+    if not desktop_js or not desktop_js.strip() {
+        return;
+    }
+    # The desktop SDK uses obj types, not def:pub, so extract_exports may be empty.
+    # Append an ES module export for all known SDK symbols.
+    desktop_exports = self.jac_compiler.extract_exports(desktop_manifest);
+    desktop_globals = self.jac_compiler.extract_globals(desktop_manifest, mod);
+    all_names = sorted(set(desktop_exports + list(desktop_globals.keys())));
+    # Fallback: the SDK is built from `obj` types, which the extractors above
+    # don't surface. Ask the package that owns @jac/desktop for its export list
+    # via the jac.module_exports entry point — the names live there, not here.
+    if not all_names {
+        import from jaclang.jac0core.modresolver { resolve_jac_virtual_module_exports }
+        all_names = sorted(resolve_jac_virtual_module_exports('@jac/desktop'));
+    }
+    if all_names {
+        export_line = 'export {' + ', '.join(all_names) + '};';
+        desktop_js = desktop_js + '\n' + export_line + '\n';
+    }
+    desktop_out = self.compiled_dir / 'desktop_api.js';
+    desktop_out.write_text(desktop_js, encoding='utf-8');
+    self._write_source_map(mod, str(desktop_path), desktop_out, desktop_js);
 }
 
 """Write the per-file source map for a freshly compiled module and chain the

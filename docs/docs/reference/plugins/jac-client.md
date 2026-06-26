@@ -8,8 +8,10 @@ You also get project scaffolding (`jac create --use client`), npm dependency man
 
 ## Installation
 
+jac-client ships with `jaclang` core -- there is nothing extra to install. Just install the `jac` binary:
+
 ```bash
-pip install jac-client
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
 ---
@@ -172,7 +174,7 @@ def:pub get_tasks -> list[Task] {
 
 def:pub create_task(title: str) -> Task {
     task = root ++> Task(title=title);
-    return task[0];
+    return task;
 }
 
 # Client: receives hydrated Task instances
@@ -1522,7 +1524,7 @@ This generates `.jac/client/configs/postcss.config.js` and `.jac/client/configs/
 
 ### shadcn/ui Configuration
 
-The `[jac-shadcn]` section configures the shadcn/ui component system, provided by the [`jac-super`](https://pypi.org/project/jac-super/) plugin. It controls the visual style, color theme, font, and border radius used by shadcn components in your project. Everything is resolved **offline** from data bundled with `jac-super`:
+The `[jac-shadcn]` section configures the shadcn/ui component system, provided as a built-in feature of jaclang core. It controls the visual style, color theme, font, and border radius used by shadcn components in your project. Everything is resolved **offline** from data bundled with `jaclang`:
 
 - `jac create --use jac-shadcn [--style … --theme … --font … --radius … --baseColor … --menuAccent …]` scaffolds a themed starter and writes these fields here.
 - `jac retheme [--theme … --font … --style …]` regenerates `global.css` from this section (and re-resolves installed components when `style` changes).
@@ -1628,12 +1630,14 @@ Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if nee
 | `jac start` | Start dev server |
 | `jac start --dev` | Dev server with HMR |
 | `jac start --client pwa` | Start PWA (builds then serves) |
-| `jac start --client desktop` | Start desktop app (requires [jac-desktop](jac-desktop.md)) |
+| `jac start --client desktop` | Start desktop app (see [jac-desktop](jac-desktop.md)) |
 | `jac start --client mobile` | Start mobile app on device/simulator |
 | `jac build` | Build for production (web) |
-| `jac build --client desktop` | Build desktop app (requires [jac-desktop](jac-desktop.md)) |
+| `jac build --client desktop` | Build desktop app (see [jac-desktop](jac-desktop.md)) |
 | `jac build --client mobile` | Build mobile app (Android/iOS) |
 | `jac build --client pwa` | Build PWA with offline support |
+| `jac build --client static` | Build client-only app as a portable, self-contained page (opens from `file://`) |
+| `jac start --client static` | Serve a client-only app with a minimal static server |
 | `jac setup pwa` | One-time PWA setup (icons directory) |
 | `jac add --npm <pkg>` | Add npm package |
 | `jac add --npm --dev <pkg>` | Add npm dev dependency |
@@ -1663,8 +1667,11 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `filename` | Path to .jac file | `main.jac` |
-| `--client` | Build target (`web`, `desktop`, `pwa`, `mobile`) | `web` |
+| `--client` | Build target (`web`, `pwa`, `static`, `desktop`, `mobile`) | `web` |
 | `-p, --platform` | Platform for **mobile** (`android`, `ios`) or **desktop sidecar naming** (`windows` selects `.exe`; no cross-compilation yet) | Current platform |
+
+A project whose `jac.toml` declares `kind = "client"` is built with the
+`static` target automatically -- no `--client` flag needed (see [Client-only apps](#client-only-apps)).
 
 For desktop builds, see the [jac-desktop Reference](jac-desktop.md): the desktop target compiles your `cl` UI into a single native binary that embeds the OS webview. In all desktop builds the build environment sets `JAC_BUILD=1` so import-time server starts stay inert.
 
@@ -1692,6 +1699,65 @@ jac build --client mobile --platform android
 # Build mobile app for iOS
 jac build --client mobile --platform ios
 ```
+
+### Client-only apps
+
+A **client-only** app runs entirely in the browser with no backend -- all of
+its code lives in `cl { }` blocks (optionally with an `na { }` block compiled
+to in-browser WebAssembly). Declare it once in `jac.toml`:
+
+```toml
+[project]
+name = "browser-app"
+entry-point = "main.jac"
+kind = "client"
+
+[plugins.client]
+```
+
+With `kind = "client"` set, `jac build` and `jac start` auto-detect the
+client-only project and take the portable path -- no `--client static` flag
+required. An explicit non-web `--client <target>` (e.g. `--client pwa`)
+overrides the auto-detection.
+
+**`jac build` produces a portable dist.** After the normal Vite build, the
+generated `index.html` has its JS bundle and CSS **inlined**, making it fully
+self-contained:
+
+```bash
+jac build                      # auto-detected from kind = "client"
+# -> .jac/client/dist/index.html  (open directly from disk)
+```
+
+Inlining is what makes disk-open work: a browser refuses to load an external
+`<script type="module" src=...>` over the `file://` protocol (it is treated as
+a cross-origin request), so a dist that references its bundle by URL renders a
+blank page when double-clicked. The inlined `index.html` carries the bundle in
+the document itself, so it runs straight off disk -- e.g. attach it to an email
+or drop it on a USB stick.
+
+**`jac start` serves it with a minimal static server.** Because there is no
+backend, the `static` target skips the full API server (no walkers, auth,
+database, or scheduler) and serves the dist with a tiny stdlib HTTP server:
+
+```bash
+jac start                      # builds, then serves on http://localhost:8000/
+jac start -p 3000              # choose the port
+```
+
+The static server also maps the conventional `/static/<name>.wasm` mount onto
+the dist, so an `na { }` block compiled to WebAssembly (fetched client-side at
+runtime) is served correctly.
+
+!!! note "file:// vs. served"
+    A pure `cl` app opens straight from disk. An app that fetches a resource at
+    runtime -- e.g. an `na`->wasm module at `/static/main.wasm` -- must be
+    *served* (`jac start` or any static host), because the browser cannot fetch
+    that resource over `file://`. `jac build` warns when code-splitting leaves
+    chunks that the inlined page would need to fetch.
+
+For dev work, `jac start --dev` runs the Vite dev server with HMR exactly as for
+the web target (no API server).
 
 ### jac setup
 
@@ -1741,7 +1807,8 @@ jac-client supports building for multiple deployment targets from a single codeb
 | Target | Command | Output | Setup Required |
 |--------|---------|--------|----------------|
 | **Web** (default) | `jac build` | `.jac/client/dist/` | No |
-| **Desktop** (native webview) | `jac build --client desktop` | Single binary under `.jac/client/desktop/` | No (`jac-desktop`) |
+| **Desktop** (native webview) | `jac build --client desktop` | Single binary under `.jac/client/desktop/` | No |
+| **CEF** (Chromium) | `jac build --client cef` | CEF bundle under `.jac/client/cef/` | No |
 | **Mobile** (Capacitor) | `jac build --client mobile --platform android` | Android APK / iOS build products | Yes |
 | **PWA** | `jac build --client pwa` | Installable web app | No |
 
@@ -1756,17 +1823,28 @@ jac start --dev              # Dev server with HMR
 
 **Output:** `.jac/client/dist/` with `index.html`, bundled JS, and CSS.
 
-### Desktop Target (native webview)
+### Desktop Targets
 
-The desktop target is provided by the optional **[jac-desktop](jac-desktop.md)** plugin. It reuses jac-client's Vite frontend pipeline and compiles a native host (`jac nacompile`) that embeds the OS webview to render your `cl` UI - one self-contained binary, no Rust toolchain, no PyInstaller, no setup step.
+The desktop targets ship with `jaclang` core (documented in the **[jac-desktop Reference](jac-desktop.md)**). They reuse jac-client's Vite frontend pipeline and compile a native host (`jac nacompile`) that renders your `cl` UI - one self-contained binary, no Rust toolchain, no PyInstaller, no setup step.
 
 ```bash
-pip install jac-client jac-desktop
 jac build --client desktop
 jac start --client desktop
+
+jac build --client cef
+jac start --client cef
 ```
 
-See the **[jac-desktop Reference](jac-desktop.md)** for architecture and `[plugins.desktop]` configuration.
+Use `desktop` for the OS-native webview. Use `cef` for a bundled
+Chromium Embedded Framework renderer:
+
+```toml
+[plugins.desktop]
+engine = "cef"
+```
+
+See the **[jac-desktop Reference](jac-desktop.md)** for architecture,
+`[plugins.desktop]` configuration, and CEF runtime flags.
 
 Tutorial: [Building a Desktop App](../../tutorials/fullstack/desktop.md).
 

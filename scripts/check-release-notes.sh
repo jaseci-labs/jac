@@ -10,9 +10,7 @@ set -euo pipefail
 declare -A FOLDER_TO_FRAGMENTS=(
     ["jac/jaclang/"]="docs/docs/community/release_notes/unreleased/jaclang/"
     ["jac-scale/jac_scale/"]="docs/docs/community/release_notes/unreleased/jac-scale/"
-    ["jac-client/jac_client/"]="docs/docs/community/release_notes/unreleased/jac-client/"
     ["jac-byllm/byllm/"]="docs/docs/community/release_notes/unreleased/byllm/"
-    ["jac-super/jac_super/"]="docs/docs/community/release_notes/unreleased/jac-super/"
     ["jac-mcp/jac_mcp/"]="docs/docs/community/release_notes/unreleased/jac-mcp/"
 )
 
@@ -49,7 +47,6 @@ PROTECTED_FILES=(
     "docs/docs/community/release_notes/byllm.md"
     "docs/docs/community/release_notes/jac-client.md"
     "docs/docs/community/release_notes/jac-scale.md"
-    "docs/docs/community/release_notes/jac-super.md"
     "docs/docs/community/release_notes/jac-mcp.md"
 )
 
@@ -81,6 +78,50 @@ if [ ${#DIRECTLY_MODIFIED[@]} -gt 0 ]; then
     exit 1
 fi
 
+# Fragment path with the PR number captured in group 1.
+FRAGMENT_REGEX='docs/docs/community/release_notes/unreleased/[^/]+/([0-9]+)\.(feature|bugfix|breaking|refactor|docs)\.md$'
+
+CHANGED_FRAGMENTS=()
+while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    [[ "$file" =~ $FRAGMENT_REGEX ]] && CHANGED_FRAGMENTS+=("$file")
+done <<< "$CHANGED_FILES"
+
+# A PR may only add/edit a fragment named after its own number; skipped locally
+# where PR_NUMBER is unknown.
+PR_NUMBER="${PR_NUMBER:-}"
+if [ -n "$PR_NUMBER" ]; then
+    WRONG_NUMBER_FRAGMENTS=()
+    for file in "${CHANGED_FRAGMENTS[@]}"; do
+        [[ "$file" =~ $FRAGMENT_REGEX ]] || continue
+        if [ "${BASH_REMATCH[1]}" != "$PR_NUMBER" ]; then
+            WRONG_NUMBER_FRAGMENTS+=("$file")
+        fi
+    done
+
+    if [ ${#WRONG_NUMBER_FRAGMENTS[@]} -gt 0 ]; then
+        echo ""
+        echo "=========================================="
+        echo "ERROR: Release note fragment does not belong to this PR!"
+        echo "=========================================="
+        echo ""
+        echo "This PR (#${PR_NUMBER}) changes fragment files whose number is not ${PR_NUMBER}:"
+        echo ""
+        for item in "${WRONG_NUMBER_FRAGMENTS[@]}"; do
+            echo "  - $item"
+        done
+        echo ""
+        echo "You may only add or edit a fragment named after your own PR number:"
+        echo "  docs/docs/community/release_notes/unreleased/<package>/${PR_NUMBER}.<category>.md"
+        echo ""
+        echo "Do not reuse a different number and do not modify other contributors' fragments."
+        echo ""
+        echo "To skip this check, add the 'skip-release-notes-check' label to your PR."
+        echo ""
+        exit 1
+    fi
+fi
+
 MISSING_NOTES=()
 
 for folder in "${!FOLDER_TO_FRAGMENTS[@]}"; do
@@ -93,8 +134,10 @@ for folder in "${!FOLDER_TO_FRAGMENTS[@]}"; do
         if [[ "$file" == "${folder}"* ]] && [[ "$file" != */tests/* ]]; then
             folder_changed=true
         fi
-        if [[ "$file" == "${fragments_dir}"* ]] && [[ "$file" =~ /[0-9]+\.(feature|bugfix|breaking|refactor|docs)\.md$ ]]; then
-            fragment_added=true
+        if [[ "$file" == "${fragments_dir}"* ]] && [[ "$file" =~ /([0-9]+)\.(feature|bugfix|breaking|refactor|docs)\.md$ ]]; then
+            if [ -z "$PR_NUMBER" ] || [ "${BASH_REMATCH[1]}" == "$PR_NUMBER" ]; then
+                fragment_added=true
+            fi
         fi
     done <<< "$CHANGED_FILES"
 
@@ -130,12 +173,12 @@ fi
 # Validate content format of newly added/modified fragment files
 MALFORMED_FRAGMENTS=()
 
-while IFS= read -r file; do
-    [[ -z "$file" || ! "$file" =~ /[0-9]+\.(feature|bugfix|breaking|refactor|docs)\.md$ || ! -f "$file" ]] && continue
-    # Every non-empty line must start with '- ' or be indented; heading inside a bullet is also rejected
+for file in "${CHANGED_FRAGMENTS[@]}"; do
+    [ -f "$file" ] || continue
+    # Reject plain paragraphs and headings; entries must be bullet points.
     grep -qE '^[^[:space:]-]|^-[[:space:]]+#{1,6}[[:space:]]' "$file" 2>/dev/null && \
         MALFORMED_FRAGMENTS+=("$file: all entries must be bullet points starting with '- ' (no headings or plain paragraphs)")
-done <<< "$CHANGED_FILES"
+done
 
 if [ ${#MALFORMED_FRAGMENTS[@]} -gt 0 ]; then
     echo ""

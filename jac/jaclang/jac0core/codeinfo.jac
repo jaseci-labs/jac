@@ -1,5 +1,7 @@
 """Code location info for AST nodes."""
 import ast as ast3;
+import hashlib;
+import re;
 import from collections.abc { Sequence }
 import from dataclasses { field }
 import from typing { Any }
@@ -8,7 +10,10 @@ import type from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
 import type from jaclang.compiler.passes.tool.doc_ir { Doc }
 import type from jaclang.jac0core.unitree { Source, Token }
 import type from jaclang.jac0core.osp_model { OspModel }
-import type from llvmlite.binding { ModuleRef, ExecutionEngine }
+import type from jaclang.compiler.passes.native.llvm.binding {
+    ModuleRef,
+    ExecutionEngine
+}
 
 """Client-side rendering manifest metadata."""
 obj ClientManifest {
@@ -121,10 +126,74 @@ def native_test_symbol(name: str, line: int) -> str {
     return f"__jac_test_{name}_{line}";
 }
 
+"""Unique LLVM-safe suffix for a native module's per-module symbols.
+
+`source_module_str` is the value stored in `InteropBinding.source_module`
+and `InteropManifest.native_transitive_sources` (e.g. `math_utils.na` for a
+flat import or `math/utils.na` for a dotted `math.utils` import — see
+`resolve_native_module`). The legacy transform `re.sub(r'[^a-zA-Z0-9_]',
+'_', src)` collapses both spellings to `math_utils_na`, so two distinct
+transitive native deps can collide on `__jac_glob_init_<safe>` /
+`__jac_entry_<safe>`, and LLVM's first-seen-wins silently drops the second
+module's initializer/entry. We keep the human-readable slug (so `nm`/crash
+traces stay legible) and append a short sha1 of the *original* string —
+which differs between `math_utils.na` and `math/utils.na` — to guarantee
+uniqueness without dragging absolute paths (which the runtime/JIT call
+sites in nacompile.impl/native_marshal.jac do not have) into the contract.
+
+Single naming contract shared by NaIRGenPass (defines the renamed
+`__jac_glob_init_<safe>` / `__jac_entry_<safe>`), NativeCompilePass (renames
+imported IR), nacompile (emits `__jac_shared_init` calls), and
+native_marshal.init_native_globals (looks the address up by name). All four
+must agree or the JIT lookup silently no-ops.
+
+`osp_kernel` is a singleton SENTINEL (not a real per-module source path): the
+portable OSP kernel is linked under a fixed, hash-free symbol by
+`_link_osp_kernel` / `_emit_osp_setup` and probed by name in
+`_references_undefined_osp_kernel`, so it must map to the bare `osp_kernel`
+slug. Appending the disambiguating hash here would leave the entry's
+`__jac_glob_init_osp_kernel_<hash>` call dangling against the kernel's
+hash-free definition (undefined symbol at load — issue #6669).
+"""
+def native_safe_sym(src: str) -> str {
+    if src == "osp_kernel" {
+        return "osp_kernel";
+    }
+    safe = re.sub(r'[^a-zA-Z0-9_]', '_', src);
+    return f"{safe}_{hashlib.sha1(src.encode()).hexdigest()[:8]}";
+}
+
+"""Absolute path to the bundled native standard library root
+(`jaclang/runtimelib/na_stdlib`), or None if it cannot be located.
+
+The pure-Jac `.na.jac` modules shipped under this root are the Mechanism-B
+delivery vehicle for the Python-congruent native standard library (issues
+#6404 / #6940): a bundled `<name>.na.jac` is reachable by `resolve_native_module`
+so `import from <name> { fn }` resolves and links through the SAME cross-module
+machinery as any user `.na.jac`, with zero per-module backend work. Resolved
+relative to the installed `jaclang` package so it works both from the editable
+source tree and a packaged binary.
+"""
+def native_stdlib_root -> (str | None) {
+    import os;
+    import jaclang;
+    if not jaclang?.__file__ {
+        return None;
+    }
+    root = os.path.join(os.path.dirname(jaclang.__file__), "runtimelib", "na_stdlib");
+    return root if os.path.isdir(root) else None;
+}
+
 """Resolve a module name to a .na.jac file path.
 
 Shared resolver used by both BoundaryAnalysisPass and NaIRGenPass to
 ensure consistent native module path resolution across the compiler.
+
+Resolution precedence is nearest-wins: the importing project's own tree is
+searched first (a flat sibling, then the dotted hierarchy walked up to the
+filesystem root), and only if that misses do we fall back to the bundled
+native standard library (`native_stdlib_root`). A user module therefore
+always shadows a bundled module of the same name.
 
 Returns (source_module_str, full_path) or (None, None) if not found.
 source_module_str mirrors the value stored in InteropBinding.source_module.
@@ -154,6 +223,21 @@ def resolve_native_module(
                 break;
             }
             search = parent;
+        }
+    }
+    # Bundled native standard library fallback (nearest-wins: only consulted
+    # after the user tree misses). A bundled `<name>.na.jac` is keyed on its
+    # dotted import name (`json` → json.na, `os.path` → os/path.na.jac on disk)
+    # and returns a stable `<name>.na` source string for the symbol-naming
+    # contract (native_safe_sym).
+    bundled_root = native_stdlib_root();
+    if bundled_root is not None {
+        bundled = os.path.join(bundled_root, f"{path_name}.na.jac");
+        if os.path.exists(bundled) {
+            # `path_name` carries os.sep, mirroring the dotted user relpath form
+            # (`os/path.na`), so NativeCompilePass can re-root the same suffix at
+            # the bundled stdlib dir to find the module's object code to link.
+            return (f"{path_name}.na", bundled);
         }
     }
     return (None, None);

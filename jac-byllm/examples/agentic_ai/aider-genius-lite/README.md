@@ -28,23 +28,13 @@ A simple Jac-based Streamlit application for AI-powered code generation with tas
 
    ```bash
    # Navigate to the jac-byllm directory
-   cd /home/udith/jaseci/jac-byllm
+   cd <repo>/jac-byllm
 
    # Start the backend API server
    jac start genius_lite.jac
    ```
 
-3. **Run the frontend:**
-
-   ```bash
-   # In a new terminal, navigate to the genius lite directory
-   cd /home/udith/jaseci/jac-byllm/examples/agentic_ai/aider-genius-lite
-
-   # Start the Jac Streamlit frontend
-   jac streamlit frontend.jac
-   ```
-
-4. **Open your browser** to `http://localhost:8501`
+3. **Open your browser** to `http://localhost:8501`
 
 ## Usage
 

@@ -84,6 +84,11 @@ impl BoundaryAnalysisPass._resolve_native_module(
 impl BoundaryAnalysisPass.enter_import(
     self: BoundaryAnalysisPass, nd: uni.Import
 ) -> None {
+    import from jaclang.jac0core.ext_registry {
+        is_server_module,
+        is_client_module,
+        is_native_module
+    }
     import_context = self._get_context(nd);
     if (nd.from_loc and isinstance(nd.from_loc, uni.ModulePath)) {
         module_name = nd.from_loc?.dot_path_str;
@@ -100,18 +105,13 @@ impl BoundaryAnalysisPass.enter_import(
             mod_path_str = self.ir_in.loc.mod_path
                 if (self.ir_in and self.ir_in.loc)
                 else '';
-            in_server_module = (
-                mod_path_str.endswith('.jac')
-                and not mod_path_str.endswith('.cl.jac')
-                and not mod_path_str.endswith('.na.jac')
-                and not mod_path_str.endswith('.impl.jac')
-            );
+            in_server_module = is_server_module(mod_path_str);
             # A `sv import` inside a client module is the client->server RPC
             # edge (the #6221 case). Because this pass now runs in the shared
             # front-end on .cl.jac modules too, we record that binding here from
             # resolved symbols instead of leaving EsastGen to re-resolve it.
             in_client_module = (
-                mod_path_str.endswith('.cl.jac')
+                is_client_module(mod_path_str)
                 or (nd?.in_client_context and nd.in_client_context())
             );
             sv_token = nd._source_context_token()
@@ -148,7 +148,7 @@ impl BoundaryAnalysisPass.enter_import(
                             or (
                                 self.ir_in
                                 and self.ir_in.loc
-                                and self.ir_in.loc.mod_path.endswith('.na.jac')
+                                and is_native_module(self.ir_in.loc.mod_path)
                             )
                         );
                         if (is_native_ctx and func_name not in manifest.bindings) {
@@ -474,6 +474,18 @@ impl BoundaryAnalysisPass.enter_func_call(
         func_name = nd.target.value;
     } elif isinstance(nd.target, uni.NameAtom) {
         func_name = nd.target.sym_name;
+    } elif isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
+        # Static-method call on an imported class: `Class.method(...)` (#6951).
+        # Bind on the base class name so a bundled/cross-module class used only
+        # via its statics still pulls its defining module into the native link
+        # set (instance calls on locals miss the `_imported_native_funcs` gate
+        # below, so this never disturbs ordinary `obj.method()` dispatch).
+        base = nd.target.target;
+        if isinstance(base, uni.Name) {
+            func_name = base.value;
+        } elif isinstance(base, uni.NameAtom) {
+            func_name = base.sym_name;
+        }
     }
     if not func_name {
         return;

@@ -10,11 +10,11 @@ import sys;
 import os;
 import json;
 import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.jac0core.runtime { JacRuntime }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
+glob FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
      EXAMPLES = os.path.join(JAC_ROOT, "examples"),
      COMPILER_FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "fixtures");
 
@@ -324,7 +324,9 @@ test "hash init check" {
 
 test "edge expr not type" {
     output = run_jac(os.path.join(FIXTURES, "edgetypeissue.jac"));
-    assert "[x()]" in output;
+    # A single-node connect returns the node itself, not a list.
+    assert "x()" in output;
+    assert "[x()]" not in output;
 }
 
 test "blank with entry" {
