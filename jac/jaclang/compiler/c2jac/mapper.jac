@@ -117,6 +117,9 @@ obj CMapper {
     def c_DoWhile(nd: object) -> object;
     def _has_loop_continue(nd: object) -> bool;
     def c_Switch(nd: object) -> object;
+    def _switch_is_safe(items: list, cond: object) -> bool;
+    def _section_terminates(stmts: list | None) -> bool;
+    def _expr_reeval_safe(nd: object) -> bool;
     def _switch_test(cond_cnode: object, vals: list, line: int, col: int) -> object;
     def _switch_branch_body(stmts: list | None) -> list[object];
     def c_TernaryOp(nd: object) -> object;

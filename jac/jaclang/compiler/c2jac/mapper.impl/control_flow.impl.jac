@@ -137,12 +137,26 @@ impl CMapper.c_Switch(nd: object) -> object {
             default_stmts = it.stmts or [];
         }
     }
-    self._mark_tier_b(
-        nd,
-        "switch lowered to an if/elif chain: case fall-through is not modelled, "
-        "`break` is dropped as the switch terminator, and the selector is "
-        "re-evaluated per branch — verify (faithful when every case ends in break)",
-    );
+    # The if/elif lowering is *exact* for the clean, common shape (every
+    # non-final case ends in break, pure selector). Only the lossy shapes —
+    # fall-through between non-empty cases, or a side-effecting selector that
+    # would run more than once — are flagged Tier-B (§5.3). A direct `break`
+    # always binds to the switch (never an enclosing loop), so dropping it as
+    # the terminator is never itself a hazard.
+    if self._switch_is_safe(items, nd.cond) {
+        self._mark_tier_a(
+            nd,
+            Idiom.SWITCH_CLEAN,
+            "clean switch (no fall-through, pure selector) → exact if/elif chain",
+        );
+    } else {
+        self._mark_tier_b(
+            nd,
+            "switch lowered to an if/elif chain: case fall-through is not modelled "
+            "and/or the selector has side effects but is re-evaluated per branch "
+            "— verify (faithful when every case ends in break and the selector is pure)",
+        );
+    }
     # Each case body is a distinct path; walk it from a copy of the pre-switch
     # state and merge at the end so list-bound status leaving the switch is
     # what holds on every path, not whatever the last-walked case left (§9.5).
@@ -223,6 +237,84 @@ impl CMapper._switch_branch_body(stmts: list | None) -> list[object] {
         out = [self._stamp_manual(ast3.Pass(), 1, 0)];
     }
     return out;
+}
+
+impl CMapper._switch_is_safe(items: list, cond: object) -> bool {
+    # A switch lowers to an EXACT if/elif/else chain iff neither lossy shape is
+    # present (§5.3):
+    #   1. No fall-through: every body-bearing case/default section except the
+    #      last one in source order must end in a control transfer (break /
+    #      return / continue). Empty label-only cases (`case 1: case 2:`) carry
+    #      no body and are faithfully OR-folded, so they never fall through.
+    #   2. Pure selector: it is re-emitted once per `==` comparison, so it must
+    #      be free of side effects to be safe to evaluate more than once.
+    # Conservative on both counts — any shape we can't prove clean stays Tier-B.
+    if not self._expr_reeval_safe(cond) {
+        return False;
+    }
+    # Indices of the sections that actually carry a body (the OR-fold closes a
+    # group at each Case/Default whose stmts are non-empty).
+    body_idxs: list[int] = [];
+    for (i, it) in enumerate(items) {
+        if (
+            (isinstance(it, c_ast.Case) or isinstance(it, c_ast.Default)) and it.stmts
+        ) {
+            body_idxs.append(i);
+        }
+    }
+    if not body_idxs {
+        return True;
+    }
+    last = body_idxs[-1];
+    for i in body_idxs {
+        # The final section has nothing to fall into, so its terminator is moot.
+        if i != last and not self._section_terminates(items[i].stmts) {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl CMapper._section_terminates(stmts: list | None) -> bool {
+    # True when the case body's last *direct* statement transfers control out of
+    # the section, so execution can't fall into the next case. A bare break is
+    # the switch terminator; return leaves the function; continue jumps to the
+    # enclosing loop — all three are emitted faithfully and stop fall-through.
+    # Anything else (incl. a break nested inside an `if`) is treated as
+    # potential fall-through and keeps the switch Tier-B.
+    if not stmts {
+        return False;
+    }
+    last = stmts[-1];
+    return (
+        isinstance(last, c_ast.Break)
+        or isinstance(last, c_ast.Return)
+        or isinstance(last, c_ast.Continue)
+    );
+}
+
+impl CMapper._expr_reeval_safe(nd: object) -> bool {
+    # True when re-evaluating `nd` has no observable effect — no call, no
+    # assignment, no pre/post inc-dec anywhere in the subtree. Pure lvalues
+    # (`x`, `a[i]`, `s->f`) qualify: nothing runs between the per-branch
+    # comparisons, so re-reading them yields the same value. (A `volatile`
+    # selector would still be re-read; pycparser exposes no type qualifier here,
+    # so that rare case is not separately detected.)
+    if nd is None {
+        return True;
+    }
+    if isinstance(nd, c_ast.FuncCall) or isinstance(nd, c_ast.Assignment) {
+        return False;
+    }
+    if isinstance(nd, c_ast.UnaryOp) and nd.op in ("++", "--", "p++", "p--") {
+        return False;
+    }
+    for (_, child) in nd.children() {
+        if not self._expr_reeval_safe(child) {
+            return False;
+        }
+    }
+    return True;
 }
 
 impl CMapper.c_TernaryOp(nd: object) -> object {

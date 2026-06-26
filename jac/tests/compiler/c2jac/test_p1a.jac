@@ -3,6 +3,7 @@
 import os;
 import from tests.support { JAC_ROOT }
 import from jaclang.compiler.c2jac.driver { transpile_c_str }
+import from jaclang.compiler.c2jac.tags { Idiom }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "c2jac", "fixtures");
 
@@ -110,10 +111,39 @@ test "switch_basic.c: switch lowers to an if/elif chain with OR-folded case labe
     assert "break;" not in jac_str , f"switch breaks should be dropped, not emitted:\n{jac_str}";
 }
 
-test "switch_basic.c: switch is recorded as a Tier-B site" {
+test "switch_basic.c: a clean switch is faithful (Tier-A), not flagged Tier-B" {
+    # Every non-final case ends in break and the selector `x` is a pure read, so
+    # the if/elif/else chain is exact — it must promote to Tier-A.
     (jac_str, tags) = transpile_c_str(_read("switch_basic.c"), "switch_basic.c");
     reasons = [nt.reason for nt in tags.tier_b_entries()];
-    assert any("switch lowered" in r for r in reasons) , f"Expected a Tier-B switch flag, got {reasons}";
+    assert not any("switch lowered" in r for r in reasons) , f"clean switch must stay faithful, got {reasons}";
+    assert len(tags.by_idiom(Idiom.SWITCH_CLEAN)) == 1 , "Expected the clean switch recorded as a SWITCH_CLEAN idiom";
+}
+
+test "switch_fallthrough.c: a fall-through case keeps the switch Tier-B" {
+    # case 1 has a body but no break, so it falls into case 2 — the if/elif chain
+    # cannot model that, so the switch must be flagged for verification.
+    (jac_str, tags) = transpile_c_str(
+        _read("switch_fallthrough.c"), "switch_fallthrough.c"
+    );
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert any("switch lowered" in r for r in reasons) , f"fall-through switch must be Tier-B, got {reasons}";
+    assert len(tags.by_idiom(Idiom.SWITCH_CLEAN)) == 0 , "A fall-through switch must not be tagged SWITCH_CLEAN";
+}
+
+test "switch with a side-effecting selector stays Tier-B" {
+    # The selector is re-emitted per `==`; a call would run once per branch in
+    # the lowering but exactly once in C, so it cannot be promoted.
+    c_src = "int g(void); int f(void) { int r = 0; switch (g()) { case 1: r = 1; break; default: r = 0; } return r; }";
+    (jac_str, tags) = transpile_c_str(c_src, "switch_call_sel.c");
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert any("switch lowered" in r for r in reasons) , f"side-effecting selector must be Tier-B, got {reasons}";
+}
+
+test "switch_fallthrough.c emitted Jac recompiles cleanly" {
+    jac_str = _transpile("switch_fallthrough.c");
+    errs = _recompile_errors(jac_str, "switch_fallthrough.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
 }
 
 test "switch_basic.c emitted Jac recompiles cleanly" {
