@@ -162,6 +162,7 @@ pub fn main(init: std.process.Init) !void {
             if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--link-source=PATH]", .{});
             // Trailing flags (after the positional pbs/root/out, see build.zig):
             var shim_so: ?[]const u8 = null;
+            var pyembed_so: ?[]const u8 = null;
             var skip_precompile = false;
             var link_source: ?[]const u8 = null;
             var i: usize = 5;
@@ -169,13 +170,15 @@ pub fn main(init: std.process.Init) !void {
                 const arg = argv[i];
                 if (std.mem.startsWith(u8, arg, "--shim=")) {
                     shim_so = arg["--shim=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--pyembed=")) {
+                    pyembed_so = arg["--pyembed=".len..];
                 } else if (std.mem.eql(u8, arg, "--skip-precompile")) {
                     skip_precompile = true;
                 } else if (std.mem.startsWith(u8, arg, "--link-source=")) {
                     link_source = arg["--link-source=".len..];
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, skip_precompile, link_source);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, skip_precompile, link_source);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -681,6 +684,11 @@ fn mkPayload(
     repo_root: []const u8,
     out: []const u8,
     shim_so: ?[]const u8,
+    // The Zig-built libjacpyembed shim (launcher/pyembed.zig): the na desktop
+    // host DT_NEEDEDs it to bring up THIS fused runtime instead of the build
+    // machine's libpython. Bundled beside the desktop native assets so the host
+    // build can stage it $ORIGIN-adjacent. Null only in unusual standalone packs.
+    pyembed_so: ?[]const u8,
     skip_precompile: bool,
     // Editable dev binary: an absolute path to the dir CONTAINING jaclang/. When
     // set, the compiler is NOT bundled -- the payload ships only CPython + the
@@ -778,6 +786,23 @@ fn mkPayload(
         const shim_base = std.fs.path.basename(so);
         log("==> bundling Zig-built LLVMPY_* shim ({s})", .{so});
         try Dir.cwd().copyFile(so, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst_dir, shim_base }), io, .{});
+    }
+
+    // Native desktop: bundle the Zig-built libjacpyembed shim next to the desktop
+    // native assets. The na desktop host DT_NEEDEDs it (logical name `jacpyembed`)
+    // and the desktop build copies it $ORIGIN-adjacent; jac_engine_boot() then
+    // brings up THIS fused runtime in the app process. Platform-correct basename
+    // (libjacpyembed.so / .dylib / jacpyembed.dll) is preserved -- build.zig emits
+    // the right one per OS. Skipped in linked-source mode (build.zig's `place`
+    // step writes it into the linked source tree instead, mirroring the LLVM shim).
+    if (link_source == null) {
+        if (pyembed_so) |pso| {
+            const dst_dir = try std.fmt.allocPrint(a, "{s}/jaclang/runtimelib/client/targets/desktop/native", .{site});
+            try Dir.cwd().createDirPath(io, dst_dir);
+            const pso_base = std.fs.path.basename(pso);
+            log("==> bundling libjacpyembed shim ({s})", .{pso});
+            try Dir.cwd().copyFile(pso, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst_dir, pso_base }), io, .{});
+        }
     }
 
     // Linked-source mode implies skip-precompile: the compiler lives in the
@@ -1095,6 +1120,9 @@ fn skipJaclang(p: []const u8) bool {
         // The LLVMPY_* shim is placed fresh via --shim, not copied from the
         // (gitignored, build-placed) source-tree artifact -- skip it here.
         std.mem.indexOf(u8, p, "libjacllvm.") != null or
+        // Same for the libjacpyembed desktop shim (placed via --pyembed).
+        std.mem.indexOf(u8, p, "libjacpyembed.") != null or
+        std.mem.indexOf(u8, p, "jacpyembed.dll") != null or
         std.mem.endsWith(u8, p, ".pyc");
 }
 

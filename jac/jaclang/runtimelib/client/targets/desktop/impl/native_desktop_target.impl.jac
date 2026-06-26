@@ -2,7 +2,6 @@
 import os;
 import shutil;
 import subprocess;
-import sysconfig;
 import from pathlib { Path }
 import from typing { Optional }
 import from jaclang.cli.console { console }
@@ -16,6 +15,8 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     _stage_oauth_broker,
     _stage_inprocess_dispatch,
     _stage_plugins,
+    _stage_pyembed_shim,
+    _bundle_runtime,
 }
 import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
     _generate_host_source
@@ -111,10 +112,11 @@ impl NativeDesktopTarget.build(
     # 7. Transpile plugin .jac -> .py for embedded CPython IPC.
     _stage_plugins(out_dir, project_dir);
 
-    # 8. Generate + compile the native host into the output dir.
-    libpy = str(sysconfig.get_config_var("INSTSONAME") or "libpython3.12.so.1.0");
+    # 8. Stage the fused-runtime bridge shim ($ORIGIN-adjacent) so the host's
+    #    `import from jacpyembed` resolves a sibling libjacpyembed at load, then
+    #    generate + compile the native host. No build-machine libpython anymore.
+    _stage_pyembed_shim(out_dir);
     host_src = _generate_host_source(
-        libpy,
         win.title or app_name,
         win.width,
         win.height,
@@ -137,6 +139,11 @@ impl NativeDesktopTarget.build(
     if res.returncode != 0 or not binary.exists() {
         raise RuntimeError("Native host compilation failed.");
     }
+    # 9. Append THIS jac binary's fused-runtime trailer payload to the host so it
+    #    carries the same bundled CPython + jaclang the CLI ships; jac_engine_boot()
+    #    materializes it from /proc/self/exe at first launch (shared rt/<hash> cache,
+    #    auto-deduped with the CLI's).
+    _bundle_runtime(binary);
     stray = project_dir / app_name;
     if stray.exists() and stray.resolve() != binary.resolve() {
         stray.unlink();

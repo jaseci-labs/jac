@@ -1,18 +1,17 @@
 """Dev launch helpers for the Jac-native desktop target.
 
-When jaclang / jac-scale are editable-linked (``jac install -e``),
-``jac build --client desktop`` and ``jac start --client desktop`` auto-wire the
-embedded host: worktree pins (JAC_DESKTOP_*), builder site-packages at build time,
-and ``LD_LIBRARY_PATH`` for the linked ``libpython`` at launch. Release / PyPI
-installs with no editable roots are left untouched.
+The desktop host now runs on the fused runtime (libjacpyembed -> the bundled
+CPython + jaclang the CLI ships), so there is no build-machine ``libpython`` to
+locate and no builder site-packages to bake in. These helpers only surface the
+editable worktree roots (``JAC_DESKTOP_*``) for the dev loop: which jaclang the
+desktop *assets* (oauth_broker, the shim, webview) are served from, and -- until
+jac-scale is bundled into the fused runtime -- where an editable jac-scale lives.
+Release / PyPI installs with no editable roots are left untouched.
 """
 import os;
 import sysconfig;
 import site;
 import from pathlib { Path }
-import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
-    _builder_dep_site_dirs
-}
 
 
 """Derive JAC_DESKTOP_* roots from JAC_DEV_SOURCE set by the launcher.
@@ -105,27 +104,10 @@ def _editable_roots_from_site -> dict[str, str] {
 }
 
 
-"""Prepend ``libdir`` to ``LD_LIBRARY_PATH`` when not already present."""
-def _prepend_libdir(env: dict[str, str], libdir: str) {
-    if not libdir {
-        return;
-    }
-    prev = env.get("LD_LIBRARY_PATH", "");
-    parts = [
-        p
-        for p in prev.split(os.pathsep)
-        if p
-    ];
-    if libdir not in parts {
-        env["LD_LIBRARY_PATH"] = libdir + (os.pathsep + prev if prev else "");
-    }
-}
-
-
 """Set ``JAC_DESKTOP_*`` in ``os.environ`` when editable worktrees are detected.
 
-Called during ``build()`` so the generated host embeds the dev pin (with baked
-builder site-packages). Existing env values win (``setdefault``)."""
+Called during ``build()`` so the desktop build locates its assets (and an
+editable jac-scale) from the worktree. Existing env values win (``setdefault``)."""
 def ensure_dev_build_env {
     for (key, val) in _editable_roots_from_site().items() {
         os.environ.setdefault(key, val);
@@ -136,31 +118,11 @@ def ensure_dev_build_env {
 }
 
 
-"""Append builder interpreter site dirs so embedded boot can import jac-scale deps."""
-def _merge_desktop_deps(env: dict[str, str]) {
-    if not (env.get("JAC_DESKTOP_JAC_SRC") or env.get("JAC_DESKTOP_SCALE_SRC")) {
-        return;
-    }
-    parts = [
-        p
-        for p in (env.get("JAC_DESKTOP_DEPS", "") or "").split(os.pathsep)
-        if p
-    ];
-    for d in _builder_dep_site_dirs() {
-        if d not in parts {
-            parts.append(d);
-        }
-    }
-    if parts {
-        env["JAC_DESKTOP_DEPS"] = os.pathsep.join(parts);
-    }
-}
+"""Env for launching the native desktop binary (the fused runtime is hermetic).
 
-
-"""Env for launching the native desktop binary (embedded CPython is hermetic).
-
-The jac CLI sets PYTHONHOME/PYTHONPATH for its own interpreter; inheriting
-those breaks the binary's embedded CPython (e.g. ``_socket`` import failures)."""
+The host's jac_engine_boot() sets its own PYTHONHOME/PYTHONPATH/JAC_EXECUTABLE
+for the materialized runtime, so any of the launching jac CLI's interpreter env
+inherited here would only confuse a stale read before boot -- drop them."""
 def desktop_app_runtime_env(base: any = None) -> dict[str, str] {
     env = desktop_launch_env(base);
     for key in [
@@ -180,7 +142,11 @@ def desktop_app_runtime_env(base: any = None) -> dict[str, str] {
 }
 
 
-"""Merge auto-detected dev launch settings into ``base`` (for ``subprocess``)."""
+"""Merge auto-detected dev launch settings into ``base`` (for ``subprocess``).
+
+Only the editable worktree roots (JAC_DESKTOP_*) -- no LD_LIBRARY_PATH for a
+build-machine libpython (the shim dlopens the bundled one), no baked dep dirs
+(JAC_DESKTOP_DEPS, if needed for an editable jac-scale, is set by the user)."""
 def desktop_launch_env(base: any = None) -> dict[str, str] {
     env = dict(base) if base is not None else dict(os.environ);
     for (key, val) in _editable_roots_from_site().items() {
@@ -188,11 +154,6 @@ def desktop_launch_env(base: any = None) -> dict[str, str] {
     }
     for (key, val) in _dev_roots_from_env().items() {
         env.setdefault(key, val);
-    }
-    _merge_desktop_deps(env);
-    libdir = sysconfig.get_config_var("LIBDIR");
-    if libdir {
-        _prepend_libdir(env, str(libdir));
     }
     return env;
 }

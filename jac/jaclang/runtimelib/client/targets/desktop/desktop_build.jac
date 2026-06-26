@@ -5,7 +5,6 @@ import shutil;
 import hashlib;
 import subprocess;
 import sys;
-import sysconfig;
 import tarfile;
 import platform;
 import from urllib.request { urlopen, urlretrieve }
@@ -143,13 +142,77 @@ def _patchelf_rpath(binary: Path, rpath: str) -> bool {
     return True;
 }
 
-"""Add $ORIGIN + libpython LIBDIR to the host ELF RUNPATH."""
+"""Add $ORIGIN to the host ELF RUNPATH so it finds sibling shared libraries.
+
+Used by the CEF host, whose cef.na.jac binds `"libcef.so"` by an explicit path
+(no emitted $ORIGIN). The webview host and both hosts' `import from jacpyembed`
+use logical names, which the native backend already resolves with a $ORIGIN
+runpath -- so the libpython LIBDIR the old build appended here is gone: the shim
+dlopens the bundled CPython from the cache, nothing links libpython by soname."""
 def _patch_host_rpath(binary: Path) -> None {
-    libdir = sysconfig.get_config_var("LIBDIR") or "";
-    if not libdir {
-        return;
+    _patchelf_rpath(binary, "$ORIGIN");
+}
+
+
+"""Platform filename of the libjacpyembed shim (logical name `jacpyembed`)."""
+def _pyembed_shim_name -> str {
+    if sys.platform == "darwin" {
+        return "libjacpyembed.dylib";
     }
-    _patchelf_rpath(binary, f"$ORIGIN:{libdir}");
+    if sys.platform.startswith("win") {
+        return "jacpyembed.dll";
+    }
+    return "libjacpyembed.so";
+}
+
+
+"""Copy the libjacpyembed shim out of the fused runtime, $ORIGIN-adjacent.
+
+The shim ships inside the payload beside the desktop native assets (see
+launcher/payload.zig --pyembed), so the bundled jaclang tree this jac runs from
+carries the platform-matched build. The host's `import from jacpyembed` then
+binds it as a sibling DT_NEEDED at load. Fails loudly if absent -- that means the
+running jac binary predates the shim (rebuild it)."""
+def _stage_pyembed_shim(out_dir: Path) {
+    name = _pyembed_shim_name();
+    src = _find_desktop_native_dir() / name;
+    if not src.exists() {
+        raise RuntimeError(
+            f"jac-desktop: {name} not found in the fused runtime ({src}). "
+            "Rebuild the jac binary (zig build) so the payload carries the "
+            "libjacpyembed shim."
+        );
+    }
+    shutil.copy2(src, out_dir / name);
+}
+
+
+"""Append this jac binary's fused-runtime trailer payload onto `host_binary`.
+
+The CLI `jac` carries `[stub][payload.tar.gz][trailer]` (launcher/runtime.zig);
+the launcher pins `sys.executable` to it, so it is the one true source of the
+fused runtime at desktop-build time. We slice its `[payload][trailer]` suffix
+verbatim (the trailer's hash is over the unchanged payload, so a verbatim copy
+stays valid) and append it to the nacompiled host. At first launch the host's
+jac_engine_boot() reads its own /proc/self/exe trailer and materializes into the
+shared rt/<hash> cache -- the SAME tree the CLI uses (identical payload hash)."""
+def _bundle_runtime(host_binary: Path) {
+    jac_bin = Path(os.path.realpath(os.sys.executable));
+    data = jac_bin.read_bytes();
+    magic = b"JACBIN01";
+    trailer_len = 8 + 8 + 64;  # magic | payload_len(u64 LE) | sha256 hex
+    if len(data) < trailer_len or data[-trailer_len:-trailer_len + 8] != magic {
+        raise RuntimeError(
+            "jac-desktop: the running jac binary carries no fused-runtime trailer "
+            f"({jac_bin}); a desktop app needs a fused `jac` built via `zig build`. "
+            "(A bare pip/source jaclang install has no embeddable runtime.)"
+        );
+    }
+    payload_len = int.from_bytes(data[-trailer_len + 8:-trailer_len + 16], "little");
+    suffix = data[-(trailer_len + payload_len):];
+    with open(str(host_binary), "ab") as f {
+        f.write(suffix);
+    }
 }
 
 """Resolve the jac CLI for nacompile."""
@@ -163,14 +226,6 @@ def _jac_bin -> str {
         return found;
     }
     raise RuntimeError("jac CLI not found on PATH.");
-}
-
-"""Libpython soname for clib import in generated host.na.jac."""
-def _libpython_soname -> str {
-    return str(
-        sysconfig.get_config_var("INSTSONAME")
-        or f"libpython{sys.version_info.major}.{sys.version_info.minor}.so.1.0"
-    );
 }
 
 """Embedded-Python loopback server source (oauth_broker + stable origin port).

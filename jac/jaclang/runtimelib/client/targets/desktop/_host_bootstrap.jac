@@ -3,94 +3,39 @@
 Separated from native_desktop_target so tests can import these functions
 without pulling in jac_client (which the target interface requires for
 WebTarget / TargetType).  No jac_client or jac_desktop dependencies here --
-only os, json, hashlib, site, and sysconfig.
+only os, json, and hashlib.
 """
 import os;
 import json;
 import hashlib;
-import site;
-import sysconfig;
 
 
-"""Site-package dirs from the interpreter running `jac build` (dev-only).
+"""Runtime-only sys.path hook for the in-process `sv` (jac-scale) backend.
 
-The desktop binary embeds a stock CPython whose own site-packages are usually
-empty. jac-scale runtime deps (fastapi, starlette, ...) live in the *builder*
-interpreter (uv tool install, venv, etc.). Those paths are baked into the dev
-pin at build time so the embedded boot can import them without user-site hacks."""
-def _builder_dep_site_dirs -> list[str] {
-    dirs: list[str] = [];
-    usp = site.getusersitepackages();
-    if usp {
-        dirs.append(usp);
-    }
-    plib = sysconfig.get_path("purelib");
-    if plib and plib not in dirs {
-        dirs.append(plib);
-    }
-    return dirs;
-}
+The fused runtime the host now boots (libjacpyembed -> the bundled CPython +
+jaclang) is self-contained for `cl` serving and the plugin host. `sv` dispatch
+additionally needs jac-scale; until jac-scale is bundled into the fused runtime
+(the immediate follow-up to this clean break), the host picks it up at RUNTIME
+from two portable env seams -- nothing about the build machine is baked in:
 
+  * JAC_DESKTOP_SCALE_SRC -- an editable jac-scale checkout (dev), prepended so
+    it wins over any pip copy;
+  * JAC_DESKTOP_DEPS -- os.pathsep-separated dirs holding jac-scale's third-party
+    deps (fastapi, starlette, ...), appended.
 
-"""The dev-only runtime pin for this repo's multi-worktree box, or "" otherwise.
-
-A normal/release build emits NOTHING here: the staged host uses the embedded
-interpreter's own jaclang/jac-scale untouched, so no dev scaffolding ships in the
-binary. Only when the BUILD environment carries JAC_DESKTOP_JAC_SRC / JAC_DESKTOP_SCALE_SRC
-(i.e. a developer building on the worktree box) is the pin emitted -- and even
-then it is read again at RUNTIME, so the one binary stays portable across
-worktrees. The emitted block prepends the pinned tree, drops stale editable
-finders, and evicts any pre-imported copy so the pin wins; absent the runtime
-vars it self-disables.
-
-Third-party jac-scale runtime deps (fastapi, starlette, ...) are appended from
-(1) the builder interpreter's site dirs, baked in at `jac build` time,
-(2) the embedded interpreter's user-site / site-packages, and
-(3) optional runtime `JAC_DESKTOP_DEPS` (os.pathsep-separated). All are appended
-(not prepended) so the pinned editable jac_scale tree keeps winning over the
-pip-installed copy that also lives in site-packages. Release builds must not
-depend on ambient site state, so this lives inside the dev-only branch."""
-def _dev_runtime_pin_py -> str {
-    if not (
-        os.environ.get("JAC_DESKTOP_JAC_SRC") or os.environ.get("JAC_DESKTOP_SCALE_SRC")
-    ) {
-        return "";
-    }
-    baked_deps = json.dumps(_builder_dep_site_dirs(), ensure_ascii=False);
+Absent both, the block is inert and `sv` dispatch surfaces a clean boot error
+(the documented "jac-scale not yet in the fused runtime" state) rather than a
+hang. This deliberately replaces the old build-time `_builder_dep_site_dirs`
+baking, which pinned non-portable builder paths into every binary."""
+def _scale_runtime_hook_py -> str {
     return (
-        f"_baked_dep_sites = {baked_deps}\n"
-        "_dev = [p for p in (os.environ.get('JAC_DESKTOP_SCALE_SRC'),\n"
-        "                    os.environ.get('JAC_DESKTOP_JAC_SRC')) if p]\n"
-        "if _dev:\n"
-        "    for _r in _dev:\n"
-        "        if _r not in sys.path:\n"
-        "            sys.path.insert(0, _r)\n"
-        # Drop only the stale editable finder; keep JacMetaImporter so the pinned
-        # .jac trees (jac_scale.inprocess, etc.) remain importable.
-        "    sys.meta_path[:] = [f for f in sys.meta_path\n"
-        "        if type(f).__name__ != '_EditableFinder']\n"
-        "    for _k in [k for k in list(sys.modules)\n"
-        "        if k.split('.')[0] in ('jaclang', 'jac_scale')]:\n"
-        "        del sys.modules[_k]\n"
-        # Append dep dirs for third-party packages. Prepending would let the pip
-        # jac_scale copy shadow the pinned editable tree.
-        "    import site\n"
-        "    _dep_dirs = list(_baked_dep_sites)\n"
-        "    _extra = os.environ.get('JAC_DESKTOP_DEPS', '')\n"
-        "    if _extra:\n"
-        "        for _d in _extra.split(os.pathsep):\n"
-        "            if _d and _d not in _dep_dirs:\n"
-        "                _dep_dirs.append(_d)\n"
-        "    _usp = site.getusersitepackages()\n"
-        "    if _usp and _usp not in _dep_dirs:\n"
-        "        _dep_dirs.append(_usp)\n"
-        "    _gs = getattr(site, 'getsitepackages', None)\n"
-        "    if _gs:\n"
-        "        for _sp in _gs():\n"
-        "            if _sp and _sp not in _dep_dirs:\n"
-        "                _dep_dirs.append(_sp)\n"
-        "    for _d in _dep_dirs:\n"
-        "        if _d not in sys.path:\n"
+        "_scale = os.environ.get('JAC_DESKTOP_SCALE_SRC')\n"
+        "if _scale and _scale not in sys.path:\n"
+        "    sys.path.insert(0, _scale)\n"
+        "_extra = os.environ.get('JAC_DESKTOP_DEPS', '')\n"
+        "if _extra:\n"
+        "    for _d in _extra.split(os.pathsep):\n"
+        "        if _d and _d not in sys.path:\n"
         "            sys.path.append(_d)\n"
     );
 }
@@ -159,9 +104,9 @@ CEF host splices it after its loopback server starts. The in-process backend boo
 the jac-scale ASGI app over a Starlette TestClient (no socket, no remote server)
 and replays the frozen {kind,name,node,fields,token} contract against it.
 
-Built as: a fixed head (the entry-file constant) + the dev-only runtime pin (empty
-in release builds; includes sys.path fixup + user-site for dev installs -- see
-_dev_runtime_pin_py) + a fixed tail that imports the staged inprocess_dispatch
+Built as: a fixed head (the entry-file constant) + the runtime jac-scale hook
+(inert unless JAC_DESKTOP_SCALE_SRC / JAC_DESKTOP_DEPS are set -- see
+_scale_runtime_hook_py) + a fixed tail that imports the staged inprocess_dispatch
 module and boots it against a graph/persistence dir under the user data dir.
 
 `_ENTRY_FILE` is resolved at RUNTIME relative to `_root` (the binary dir, set by
@@ -185,7 +130,7 @@ def _dispatch_boot_py(
         "import sys, os\n"
         f"_ENTRY_REL = {json.dumps(entry_rel, ensure_ascii=False)}\n"
         "_ENTRY_FILE = os.path.join(_root, 'sv', _ENTRY_REL)\n"
-    ) + _dev_runtime_pin_py() + (
+    ) + _scale_runtime_hook_py() + (
         "if _root not in sys.path:\n"
         "    sys.path.insert(0, _root)\n"
         # inprocess_dispatch is a pre-transpiled .py file staged beside the binary;
@@ -223,7 +168,6 @@ so a stable origin makes login (and all other client state) survive a restart
 without any token re-injection. A document-start bootstrap only flags desktop
 mode + the broker prefix for the SPA."""
 def _generate_host_source(
-    libpy: str,
     title: str,
     width: int,
     height: int,
@@ -323,8 +267,15 @@ def _generate_host_source(
         '"""Generated native desktop host - do not edit (jac-desktop)."""\n'
         "import from webview { def webview_create(debug: i32, window: int) -> int; }\n"
         "import from webview { Webview, respond, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n"
-        f'import from "{libpy}" {{\n'
-        "    def Py_Initialize() -> None;\n"
+        # The fused-runtime bridge. Imported by LOGICAL name so the native backend
+        # resolves the platform file (libjacpyembed.so/.dylib/.dll) AND emits a
+        # $ORIGIN runpath -- the host finds the sibling shim with no patchelf, the
+        # same way it binds webview. jac_engine_boot() materializes the trailer
+        # payload, dlopens THIS binary's bundled CPython, and Py_Initialize()s it;
+        # the rest are forwarders onto that interpreter (see launcher/pyembed.zig).
+        # No build-machine libpython, no INSTSONAME, no LD_LIBRARY_PATH.
+        "import from jacpyembed {\n"
+        "    def jac_engine_boot() -> i32;\n"
         "    def Py_Finalize() -> None;\n"
         "    def PyRun_SimpleString(cmd: str) -> i32;\n"
         "    def PyImport_AddModule(name: str) -> int;\n"
@@ -377,21 +328,33 @@ def _generate_host_source(
         "    PyRun_SimpleString(\"_host.setup(_wv_handle)\");\n"
         "}\n"
         "with entry {\n"
-        "    Py_Initialize();\n"
-        "    serve_rc = PyRun_SimpleString(SERVE_PY);\n"
-        "    plugin_rc = PyRun_SimpleString(PLUGIN_PY);\n"
+        # Bring up the fused runtime in-process: materialize this binary's trailer
+        # payload, dlopen the bundled CPython, Py_Initialize(). Non-zero means the
+        # runtime failed to come up, so NO Py_* call below is safe -- show the
+        # native error page and run a bare window loop instead of faulting on an
+        # uninitialized interpreter.
+        "    engine_rc: i32 = jac_engine_boot();\n"
+        "    serve_rc: i32 = -1;\n"
+        "    plugin_rc: i32 = -1;\n"
+        "    boot_rc: i32 = -1;\n"
+        "    main_mod: int = 0;\n"
+        "    d: int = 0;\n"
+        "    if engine_rc == 0 {\n"
+        "        serve_rc = PyRun_SimpleString(SERVE_PY);\n"
+        "        plugin_rc = PyRun_SimpleString(PLUGIN_PY);\n"
         # P1-B: capture the boot return code. Non-zero means the in-process
         # backend raised during boot (import/syntax/boot() failure) -- show the
         # native error page below instead of navigating to a broken app.
-        "    boot_rc = PyRun_SimpleString(DISPATCH_PY);\n"
-        "    main_mod = PyImport_AddModule(\"__main__\");\n"
-        "    d = PyModule_GetDict(main_mod);\n"
+        "        boot_rc = PyRun_SimpleString(DISPATCH_PY);\n"
+        "        main_mod = PyImport_AddModule(\"__main__\");\n"
+        "        d = PyModule_GetDict(main_mod);\n"
+        "    }\n"
         # Guard port extraction: when serve_rc != 0, `_port` is undefined in __main__
         # so PyRun_String returns NULL (0). PyLong_AsLong(0) sets a CPython error that
         # survives into PyRun_SimpleString("...shutdown()"), causing it to return -1
         # without executing shutdown. Only evaluate _port when SERVE_PY succeeded.
         "    url = \"\";\n"
-        "    if serve_rc == 0 {\n"
+        "    if engine_rc == 0 and serve_rc == 0 {\n"
         "        port = PyLong_AsLong(PyRun_String(\"_port\", PY_EVAL, d, d));\n"
         "        url = f\"http://127.0.0.1:{port}/\";\n"
         "    }\n"
@@ -402,18 +365,26 @@ def _generate_host_source(
         f"    wv.size({width}, {height}, HINT_NONE);\n"
         "    wv.on_load(BOOTSTRAP_JS);\n"
         "    wv.bind(\"__jac_invoke\", _jac_invoke_handler);\n"
-        "    if serve_rc == 0 and plugin_rc == 0 and boot_rc == 0 {\n"
+        "    healthy: bool = engine_rc == 0 and serve_rc == 0 and plugin_rc == 0 and boot_rc == 0;\n"
+        "    if healthy {\n"
         "        _stash_wv_in_python(_wv_raw);\n"
         "        wv.navigate(url);\n"
         "    } else {\n"
         "        wv.html(BOOT_ERROR_HTML);\n"
         "    }\n"
-        "    ts = PyEval_SaveThread();\n"
-        "    run_main_loop();\n"
-        "    PyEval_RestoreThread(ts);\n"
+        # The GIL save/restore + shutdown + finalize are only valid on an
+        # initialized interpreter; when the engine never booted, just run the
+        # window loop so the error page is visible, then exit.
+        "    if engine_rc == 0 {\n"
+        "        ts = PyEval_SaveThread();\n"
+        "        run_main_loop();\n"
+        "        PyEval_RestoreThread(ts);\n"
         # GIL must be held for shutdown (drain queue, join worker, close transport).
-        "    PyRun_SimpleString(\"import inprocess_dispatch; inprocess_dispatch.shutdown()\");\n"
-        "    Py_Finalize();\n"
+        "        PyRun_SimpleString(\"import inprocess_dispatch; inprocess_dispatch.shutdown()\");\n"
+        "        Py_Finalize();\n"
+        "    } else {\n"
+        "        run_main_loop();\n"
+        "    }\n"
         "}\n"
     );
 }

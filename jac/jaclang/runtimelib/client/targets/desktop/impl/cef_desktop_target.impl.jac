@@ -10,7 +10,6 @@ import shutil;
 import json;
 import subprocess;
 import stat;
-import sysconfig;
 import from pathlib { Path }
 import from typing { Optional }
 import from jaclang.cli.console { console }
@@ -18,13 +17,14 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     _find_cef_dir,
     _jac_bin,
     _jac_subprocess_env,
-    _libpython_soname,
     _loopback_serve_py,
     _patch_host_rpath,
     _plugin_bootstrap_py,
     _stage_inprocess_dispatch,
     _stage_oauth_broker,
     _stage_plugins,
+    _stage_pyembed_shim,
+    _bundle_runtime,
     build_cef_dispatch,
     build_cef_subprocess,
     fetch_cef_dist,
@@ -106,7 +106,6 @@ Bootstrap JS (window.__JAC_DESKTOP__, window.__JAC_BROKER__) is injected in
 cef_dispatch.na.jac's on_context_created handler, not in this host.
 """
 def _generate_host_source(
-    libpy: str,
     title: str,
     width: int,
     height: int,
@@ -155,8 +154,11 @@ def _generate_host_source(
         "    cef_run_loop,\n"
         "    cef_cleanup,\n"
         "}\n"
-        f'import from "{libpy}" {{\n'
-        "    def Py_Initialize() -> None;\n"
+        # Fused-runtime bridge by logical name (libjacpyembed.so sibling, $ORIGIN).
+        # jac_engine_boot() materializes this binary's trailer payload + dlopens the
+        # bundled CPython; the rest forward onto it. See launcher/pyembed.zig.
+        "import from jacpyembed {\n"
+        "    def jac_engine_boot() -> i32;\n"
         "    def Py_Finalize() -> None;\n"
         "    def PyRun_SimpleString(cmd: str) -> i32;\n"
         "    def PyImport_AddModule(name: str) -> int;\n"
@@ -177,7 +179,12 @@ def _generate_host_source(
         "    if rc != 1 {\n"
         "        sys.exit(1);\n"
         "    }\n"
-        "    Py_Initialize();\n"
+        # Bring up the fused runtime (materialize + dlopen the bundled CPython +
+        # Py_Initialize) before any Py_* call. Non-zero -> bail, like cef_startup.
+        "    engine_rc: i32 = jac_engine_boot();\n"
+        "    if engine_rc != 0 {\n"
+        "        sys.exit(1);\n"
+        "    }\n"
         "    rc_py: i32 = PyRun_SimpleString(SERVE_PY);\n"
         "    if rc_py != 0 {\n"
         "        sys.exit(1);\n"
@@ -308,9 +315,10 @@ impl CefDesktopTarget.build(
     shutil.copytree(sv_root, out_dir / "sv", ignore=sv_ignore);
     sv_entry_rel = str(entry_file.name);
 
+    # Stage the fused-runtime bridge shim ($ORIGIN-adjacent) before compiling.
+    _stage_pyembed_shim(out_dir);
     cache_path = str(project_dir / ".jac" / "desktop" / "cef-cache" / str(app_name));
     host_src = _generate_host_source(
-        _libpython_soname(),
         win.title or app_name,
         win.width,
         win.height,
@@ -334,7 +342,11 @@ impl CefDesktopTarget.build(
         raise RuntimeError("CEF native host compilation failed.");
     }
     binary = out_dir / app_name;
+    # $ORIGIN runpath for the sibling libcef.so (bound by explicit path in
+    # cef.na.jac), then append this jac's fused-runtime trailer payload so the host
+    # carries the bundled CPython + jaclang (jac_engine_boot materializes it).
     _patch_host_rpath(binary);
+    _bundle_runtime(binary);
     console.print(f"\n✅ CEF desktop app built: {binary}", style="bold green");
     console.print(f"   run: (cd {out_dir} && ./{app_name})", style="muted");
     return binary;

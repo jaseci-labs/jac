@@ -83,3 +83,7 @@ jaclang/vendor/typeshed/stdlib/
 libjacllvm.so
 libjacllvm.dylib
 jacllvm.dll
+# Zig-built libjacpyembed desktop shim, placed in-tree per host platform.
+libjacpyembed.so
+libjacpyembed.dylib
+jacpyembed.dll
