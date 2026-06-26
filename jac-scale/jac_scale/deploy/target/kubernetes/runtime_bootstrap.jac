@@ -143,6 +143,20 @@ def build_runtime_install_commands(
         }
         commands.append(install_jac);
         commands.append('export PATH="$HOME/.local/bin:$PATH"');
+        # Fail loud + actionable if `jac` did not land. install.sh delegates the
+        # `latest` lookup to GitHub Releases; when that cannot resolve (e.g. a new
+        # tag scheme) or `curl | bash` silently no-ops on a fetch error, the next
+        # `jac` call would otherwise die as a bare 127 deep in the pod and the
+        # deploy would only report "fleet did not become ready". Surface the real
+        # cause and the fix in the pod log instead of crash-looping blind.
+        commands.append(
+            f'if ! command -v jac >/dev/null 2>&1; then '
+            f'echo "[jac-scale] FATAL: jac was not installed (requested '
+            f'jaclang={jaclang_v}). The GitHub release lookup did not resolve. '
+            f'Pin [plugins.scale.kubernetes].plugin_versions.jaclang to a '
+            f'published release, or deploy with --experimental to build jac from '
+            f'source in-pod." >&2; exit 1; fi'
+        );
         # Plugins install --global (into the binary's own site, honoring any pins
         # in config.plugin_versions) so `jac start` finds them: these run before
         # `cd {app_mount_path}`, so a bare `jac install` would have no project
