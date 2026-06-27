@@ -44,6 +44,12 @@ import from jaclang.compiler.c2jac.c_common {
     classify_c_constant,
     c_char_text,
     c_string_inner,
+    expr_reeval_safe,
+    has_loop_continue,
+    switch_is_safe,
+    section_terminates,
+    is_simple_ref,
+    cast_scalar_target,
     CLIT_INT,
     CLIT_FLOAT,
     CLIT_CHAR,
@@ -115,11 +121,7 @@ obj CMapper {
     def c_If(nd: object) -> object;
     def c_While(nd: object) -> object;
     def c_DoWhile(nd: object) -> object;
-    def _has_loop_continue(nd: object) -> bool;
     def c_Switch(nd: object) -> object;
-    def _switch_is_safe(items: list, cond: object) -> bool;
-    def _section_terminates(stmts: list | None) -> bool;
-    def _expr_reeval_safe(nd: object) -> bool;
     def _switch_test(cond_cnode: object, vals: list, line: int, col: int) -> object;
     def _switch_branch_body(stmts: list | None) -> list[object];
     def c_TernaryOp(nd: object) -> object;
@@ -127,6 +129,7 @@ obj CMapper {
     def c_Return(nd: object) -> object;
     def c_Break(nd: object) -> object;
     def c_Continue(nd: object) -> object;
+    def c_EmptyStatement(nd: object) -> object;
     def c_For(nd: object) -> object;
     # ------------------------------------------------------------------ #
     # Declarations & types  → mapper.impl/declarations.impl.jac
@@ -156,7 +159,6 @@ obj CMapper {
     # ------------------------------------------------------------------ #
     def c_BinaryOp(nd: object) -> object;
     def c_UnaryOp(nd: object) -> object;
-    def _is_simple_ref(c_node: object) -> bool;
     def c_ID(nd: object) -> object;
     def c_Constant(nd: object) -> object;
     def c_StructRef(nd: object) -> object;
@@ -166,7 +168,6 @@ obj CMapper {
     def _desig_name(d: object) -> str;
     def c_ExprList(nd: object) -> object;
     def c_Cast(nd: object) -> object;
-    def _cast_scalar_target(nd: object) -> str | None;
     def c_FuncCall(nd: object) -> object;
     def _realloc_elide(nd: object) -> object | None;
     def _elem_default(tname: str) -> object;
