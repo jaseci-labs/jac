@@ -7,7 +7,7 @@ import from jaclang.compiler.c2jac.driver { transpile_c_str }
 import from jaclang.compiler.c2jac.enum_prepass { build_enum_map }
 import from jaclang.compiler.c2jac.tags { Idiom, Tier }
 import from jaclang.jac0core.program { JacProgram }
-import from pycparser { c_parser }
+import from jaclang.vendor.pycparser { c_parser }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "c2jac", "fixtures");
 

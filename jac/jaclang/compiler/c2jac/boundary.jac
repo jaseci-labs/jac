@@ -6,7 +6,7 @@ Enum tier is always TIER_A; enum_prepass (P1d) sets the ENUM_AS_ENUM/ENUM_AS_CON
 """
 
 import from jaclang.compiler.c2jac.tags { Tier, Mechanism }
-import from pycparser { c_ast }
+import from jaclang.vendor.pycparser { c_ast }
 
 # Class refs (not string names) so a pycparser rename fails loudly at import.
 glob _TIER_A_TYPES: tuple = (

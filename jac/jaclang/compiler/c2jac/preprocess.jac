@@ -20,7 +20,7 @@ Entry point: preprocess_c(c_src, filename, ...) -> str
 
 import io;
 import os;
-import pycparser;
+import jaclang.vendor.pycparser as pycparser;
 import from pcpp { Preprocessor, OutputDirective, Action }
 
 
@@ -57,11 +57,11 @@ class _C2JacPreprocessor(Preprocessor) {
 
 
 def _fake_libc_dir -> str | None {
-    # pycparser bundles fake system headers (stdio.h, stddef.h, …) under
-    # utils/fake_libc_include. Wheels do NOT ship `utils/`, only the git source
-    # does, so this is best-effort: present → standard includes resolve without
-    # a real libc; absent → a file that includes system headers hard-fails with
-    # the on_include_not_found guidance above.
+    # pycparser ships fake system headers (stdio.h, stddef.h, …) under
+    # utils/fake_libc_include. Our vendored copy (jaclang.vendor.pycparser) does
+    # NOT include `utils/`, so this is best-effort: present → standard includes
+    # resolve without a real libc; absent → a file that includes system headers
+    # hard-fails with the on_include_not_found guidance above.
     base = os.path.dirname(pycparser.__file__);
     cand = os.path.join(base, "utils", "fake_libc_include");
     return cand if os.path.isdir(cand) else None;

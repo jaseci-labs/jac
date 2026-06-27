@@ -329,7 +329,8 @@ obj Module(AstDocNode, UniScopeNode) {
         terminals: list[Token],
         stub_only: bool = False,
         src_terminals: list[Token] = [],
-        is_raised_from_py: bool = False;
+        is_raised_from_py: bool = False,
+        has_synthesized_tokens: bool = False;
 
     def postinit -> None;
 
