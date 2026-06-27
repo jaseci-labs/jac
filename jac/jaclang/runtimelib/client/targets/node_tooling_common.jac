@@ -36,10 +36,12 @@ def resolve_npx_or_bunx -> str {
     );
 }
 
-"""Resolve the package manager command name, preferring npm and falling back to bun.
+"""Resolve the package manager command, preferring npm and falling back to bun.
 
-When bun is selected, get_bun() ensures the binary exists and prepends its
-parent directory to PATH, so subprocesses can invoke it as plain `bun`.
+Returns the command to invoke as argv[0]: the literal "npm" (resolved via PATH,
+the user's own Node toolchain) or, for bun, get_bun()'s ABSOLUTE path -- bun is
+contained in the jac ecosystem and never placed on PATH, so it must be invoked
+by its full path.
 """
 def resolve_package_manager -> str {
     (npm_ok, _) = check_command_available(["npm", "--version"]);
@@ -48,7 +50,7 @@ def resolve_package_manager -> str {
     }
     bun_path = get_bun();
     if bun_path is not None {
-        return "bun";
+        return bun_path;
     }
     raise RuntimeError(
         "npm or bun not found. Install Node.js (https://nodejs.org) "
@@ -93,7 +95,8 @@ def run_install_cmd(
             cmd.append("--save-dev");
         }
     } else {
-        cmd = ["bun", "add"];
+        # pkg_mgr is bun's absolute path (never plain "bun" -- not on PATH).
+        cmd = [pkg_mgr, "add"];
         if dev {
             cmd.append("--dev");
         }

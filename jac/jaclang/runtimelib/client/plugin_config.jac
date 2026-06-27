@@ -239,7 +239,8 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
             return;
         }
 
-        # Resolve bun binary (system PATH → .jac/bin/ → auto-download)
+        # Resolve bun (bundled in the runtime; dev falls back to a contained
+        # .jac/bin copy). Absolute path, never placed on PATH.
         bun = get_bun();
         if not bun {
             console.warning("Bun is required but could not be found or installed.");

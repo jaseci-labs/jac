@@ -55,9 +55,16 @@ const PBS_WINDOW = 1 << 27; // 128 MiB
 const TYPESHED_TARBALL_BASE = "https://codeload.github.com/python/typeshed/tar.gz";
 const TYPESHED_VENDOR = "jaclang/vendor/typeshed";
 
+// Pinned bun version -- keep in lockstep with bun_installer.jac `BUN_VERSION`
+// (the Jac-side single source of truth for the resolver/dev-download). bun is
+// bundled, contained, inside the client package (see mkpayload's --bun staging)
+// and resolved by absolute path at runtime -- never placed on the user's PATH.
+const BUN_VERSION = "1.3.11";
+const BUN_BASE = "https://github.com/oven-sh/bun/releases/download";
+
 const MAX_PATH = Dir.max_path_bytes;
 
-const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", mkpayload, @"typeshed-sha" };
+const Cmd = enum { @"fetch-pbs", @"fetch-typeshed", @"fetch-llvm", @"fetch-bun", mkpayload, @"typeshed-sha" };
 
 // LLVM release whose static archives the LLVMPY_* shim (jac/native) links
 // against. Must match the version the shim source (llvmlite 0.48.0rc1) targets.
@@ -145,6 +152,10 @@ pub fn main(init: std.process.Init) !void {
             if (n < 3) die("usage: payload fetch-llvm <dest-dir>", .{});
             try fetchLlvm(io, gpa, a, argv[2]);
         },
+        .@"fetch-bun" => {
+            if (n < 4) die("usage: payload fetch-bun <os-arch> <dest-dir>", .{});
+            try fetchBun(io, gpa, a, argv[2], argv[3]);
+        },
         .@"fetch-typeshed" => {
             if (n < 3) die("usage: payload fetch-typeshed <repo-root>", .{});
             try fetchTypeshed(io, gpa, a, argv[2]);
@@ -154,6 +165,7 @@ pub fn main(init: std.process.Init) !void {
             // Trailing flags (after the positional pbs/root/out, see build.zig):
             var shim_so: ?[]const u8 = null;
             var pyembed_so: ?[]const u8 = null;
+            var bun_bin: ?[]const u8 = null;
             var skip_precompile = false;
             var link_source: ?[]const u8 = null;
             var i: usize = 5;
@@ -163,13 +175,15 @@ pub fn main(init: std.process.Init) !void {
                     shim_so = arg["--shim=".len..];
                 } else if (std.mem.startsWith(u8, arg, "--pyembed=")) {
                     pyembed_so = arg["--pyembed=".len..];
+                } else if (std.mem.startsWith(u8, arg, "--bun=")) {
+                    bun_bin = arg["--bun=".len..];
                 } else if (std.mem.eql(u8, arg, "--skip-precompile")) {
                     skip_precompile = true;
                 } else if (std.mem.startsWith(u8, arg, "--link-source=")) {
                     link_source = arg["--link-source=".len..];
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, skip_precompile, link_source);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -481,6 +495,107 @@ fn fetchLlvmSlice(io: Io, gpa: Allocator, a: Allocator, dest: []const u8, rel: L
     log("fetch-llvm: slice extracted {d} members", .{written});
 }
 
+// ================================================================ fetch-bun ===
+
+/// Map a build `<os>-<arch>` key (the fetch-pbs / osArchString form) to bun's
+/// release asset basename. Mirrors bun_installer.jac's _PLATFORM_MAP.
+fn bunAssetName(osarch: []const u8) ?[]const u8 {
+    const m = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "macos-aarch64", "bun-darwin-aarch64" },
+        .{ "macos-x86_64", "bun-darwin-x64" },
+        .{ "linux-x86_64", "bun-linux-x64" },
+        .{ "linux-aarch64", "bun-linux-aarch64" },
+        .{ "windows-x86_64", "bun-windows-x64" },
+    });
+    return m.get(osarch);
+}
+
+/// fetch-bun: download + sha256-verify + extract the pinned bun binary for
+/// `osarch` into `<dest>/bun` (or bun.exe). Idempotent (no-op if already
+/// present). The binary is bundled into every distributed jac, so the asset is
+/// verified against the release SHASUMS256.txt before it is trusted. The exec
+/// bit is (re)applied at runtime by get_bun() -- the materialized payload tar is
+/// extracted mode-agnostically -- so this just writes the bytes.
+fn fetchBun(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []const u8) !void {
+    const is_windows = std.mem.startsWith(u8, osarch, "windows");
+    const bun_name = if (is_windows) "bun.exe" else "bun";
+    const out_path = try std.fmt.allocPrint(a, "{s}/{s}", .{ dest, bun_name });
+    if (fileExists(io, out_path)) {
+        log("fetch-bun: already present at {s}", .{out_path});
+        return;
+    }
+
+    const asset = bunAssetName(osarch) orelse die("fetch-bun: unsupported platform '{s}'", .{osarch});
+    const zip_name = try std.fmt.allocPrint(a, "{s}.zip", .{asset});
+    const url = try std.fmt.allocPrint(a, "{s}/bun-v{s}/{s}", .{ BUN_BASE, BUN_VERSION, zip_name });
+
+    log("fetch-bun: downloading {s}", .{zip_name});
+    const zip = try httpGetAlloc(io, gpa, url);
+    defer gpa.free(zip);
+
+    // Verify against the release SHASUMS256.txt (`<hex>  <filename>` lines, the
+    // same format as pbs's SHA256SUMS). A swapped/MITM'd asset must not slip
+    // into the binary shipped to every user.
+    const sums_url = try std.fmt.allocPrint(a, "{s}/bun-v{s}/SHASUMS256.txt", .{ BUN_BASE, BUN_VERSION });
+    const sums = try httpGetAlloc(io, gpa, sums_url);
+    defer gpa.free(sums);
+    const expected = findSumLine(sums, zip_name) orelse die("fetch-bun: no checksum for {s} in SHASUMS256.txt", .{zip_name});
+    const actual = sha256Hex(zip);
+    if (!std.mem.eql(u8, &actual, expected))
+        die("fetch-bun: checksum mismatch for {s}\n  expected {s}\n  actual   {s}", .{ zip_name, expected, &actual });
+
+    // bun zips store the binary at `bun-<platform>/<bun_name>`.
+    const suffix = try std.fmt.allocPrint(a, "/{s}", .{bun_name});
+    const bun_bytes = try unzipMemberBySuffix(gpa, zip, suffix);
+    defer gpa.free(bun_bytes);
+
+    try Dir.cwd().createDirPath(io, dest);
+    {
+        var fh = try Dir.cwd().createFile(io, out_path, .{ .truncate = true });
+        defer fh.close(io);
+        var wbuf: [64 * 1024]u8 = undefined;
+        var fw = fh.writer(io, &wbuf);
+        try fw.interface.writeAll(bun_bytes);
+        try fw.interface.flush();
+    }
+    if (!fileExists(io, out_path)) die("fetch-bun: extract produced no {s}", .{bun_name});
+    log("fetch-bun: ready at {s} ({d} MiB)", .{ out_path, bun_bytes.len >> 20 });
+}
+
+/// Extract the single zip member whose name ends with `suffix` from an in-memory
+/// zip, returning its decompressed bytes (caller frees). Reuses the central-
+/// directory parsing helpers from the llvm-slice path; bun's zips are small so
+/// the whole archive is already in memory (no range fetch needed).
+fn unzipMemberBySuffix(gpa: Allocator, zip: []const u8, suffix: []const u8) ![]u8 {
+    if (zip.len < 22) die("fetch-bun: zip too small", .{});
+    const eocd = std.mem.lastIndexOf(u8, zip, "PK\x05\x06") orelse die("fetch-bun: no zip EOCD found", .{});
+    const cd_size = rdU32(zip, eocd + 12);
+    const cd_off = rdU32(zip, eocd + 16);
+    if (@as(usize, cd_off) + cd_size > zip.len) die("fetch-bun: central directory out of range", .{});
+    const cd_end: usize = @as(usize, cd_off) + cd_size;
+    var p: usize = cd_off;
+    while (p + 46 <= cd_end and std.mem.eql(u8, zip[p..][0..4], "PK\x01\x02")) {
+        const method = rdU16(zip, p + 10);
+        const csize = rdU32(zip, p + 20);
+        const nlen = rdU16(zip, p + 28);
+        const elen = rdU16(zip, p + 30);
+        const clen = rdU16(zip, p + 32);
+        const lho = rdU32(zip, p + 42);
+        const name = zip[p + 46 ..][0..nlen];
+        if (std.mem.endsWith(u8, name, suffix)) {
+            if (@as(usize, lho) + 30 > zip.len or !std.mem.eql(u8, zip[lho..][0..4], "PK\x03\x04"))
+                die("fetch-bun: bad local header for {s}", .{name});
+            const l_nlen = rdU16(zip, lho + 26);
+            const l_elen = rdU16(zip, lho + 28);
+            const data_off: usize = @as(usize, lho) + 30 + l_nlen + l_elen;
+            if (data_off + csize > zip.len) die("fetch-bun: member data out of range for {s}", .{name});
+            return inflateMember(gpa, method, zip[data_off..][0..csize]);
+        }
+        p += 46 + nlen + elen + clen;
+    }
+    die("fetch-bun: no member ending in '{s}' found in zip", .{suffix});
+}
+
 fn pbsPlatform(osarch: []const u8) ?[]const u8 {
     const m = std.StaticStringMap([]const u8).initComptime(.{
         .{ "macos-aarch64", "aarch64-apple-darwin" },
@@ -594,6 +709,11 @@ fn mkPayload(
     // machine's libpython. Bundled beside the desktop native assets so the host
     // build can stage it $ORIGIN-adjacent. Null only in unusual standalone packs.
     pyembed_so: ?[]const u8,
+    // The pinned bun binary (fetch-bun output) to bundle inside the client
+    // package at jaclang/runtimelib/client/_bun/<bun>. get_bun() resolves it
+    // there by absolute path -- contained in the jac ecosystem, never on PATH.
+    // Null in linked-source / standalone packs (dev uses an on-demand copy).
+    bun_bin: ?[]const u8,
     skip_precompile: bool,
     // Editable dev binary: an absolute path to the dir CONTAINING jaclang/. When
     // set, the compiler is NOT bundled -- the payload ships only CPython + the
@@ -707,6 +827,22 @@ fn mkPayload(
             const pso_base = std.fs.path.basename(pso);
             log("==> bundling libjacpyembed shim ({s})", .{pso});
             try Dir.cwd().copyFile(pso, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst_dir, pso_base }), io, .{});
+        }
+    }
+
+    // Contained bun runtime: bundle the fetched bun inside the client package at
+    // jaclang/runtimelib/client/_bun/<bun>. get_bun() resolves it relative to
+    // the package (mirroring the native shims) and always invokes it by absolute
+    // path -- it is never placed on the user's PATH. Skipped in linked-source
+    // mode (dev resolves an on-demand .jac/bin copy instead). skipJaclang drops
+    // any source-tree `_bun/`, so this staged copy is the only one shipped.
+    if (link_source == null) {
+        if (bun_bin) |bb| {
+            const bun_base = std.fs.path.basename(bb);
+            const dst_dir = try std.fmt.allocPrint(a, "{s}/jaclang/runtimelib/client/_bun", .{site});
+            try Dir.cwd().createDirPath(io, dst_dir);
+            log("==> bundling contained bun runtime ({s})", .{bb});
+            try Dir.cwd().copyFile(bb, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst_dir, bun_base }), io, .{});
         }
     }
 
@@ -1111,6 +1247,9 @@ fn skipJaclang(p: []const u8) bool {
         // Same for the libjacpyembed desktop shim (placed via --pyembed).
         std.mem.indexOf(u8, p, "libjacpyembed.") != null or
         std.mem.indexOf(u8, p, "jacpyembed.dll") != null or
+        // The contained bun runtime is staged fresh via --bun, not copied from
+        // any (gitignored) source-tree placement -- skip it here.
+        std.mem.indexOf(u8, p, "client/_bun") != null or
         std.mem.endsWith(u8, p, ".pyc");
 }
 

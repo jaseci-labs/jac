@@ -64,6 +64,17 @@ runs:
         path: jac/.llvm-build
         key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
 
+    # The contained bun runtime is fetched + sha256-verified and bundled into the
+    # payload during `zig build`. Cache the extracted tree (~58 MB) so a binary
+    # miss does not re-download it, keyed on payload.zig (BUN_VERSION lives there).
+    # Only engaged on a binary miss; a payload.zig edit re-fetches.
+    - name: Restore cached bun runtime
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache@v4
+      with:
+        path: jac/.bun-build
+        key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
+
     - name: Set up Zig 0.16.0
       if: steps.cache.outputs.cache-hit != 'true'
       uses: mlugg/setup-zig@v2

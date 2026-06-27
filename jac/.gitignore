@@ -73,6 +73,10 @@ out.txt
 zig-out/
 dist/
 .pbs-build/
+# Pinned bun fetched per target by the fetch-bun step of launcher/payload.zig
+# and bundled into the payload (never committed). See build.zig.
+.bun-build/
+jaclang/runtimelib/client/_bun/
 
 # Vendored typeshed stdlib stubs are fetched at the pinned commit by the
 # fetch-typeshed step of launcher/payload.zig, not committed -- only the PIN /
