@@ -28,7 +28,7 @@ Writes `<pkg>/__init__.py` (whose `main` is `body`) plus a `.dist-info` with
 METADATA and entry_points.txt, so importlib.metadata finds the entry point and
 `ep.load()` can import it once `site_dir` is on sys.path.
 """
-def make_fake_tool(site_dir: Path, script: str, pkg: str, body: str) -> None {
+def make_fake_tool(site_dir: Path, script: str, pkg: str, body: str) {
     pkg_dir = site_dir / pkg;
     pkg_dir.mkdir(parents=True, exist_ok=True);
     (pkg_dir / "__init__.py").write_text(body);
@@ -58,7 +58,7 @@ def find_ep(site_dir: Path, script: str) -> object {
 }
 
 """Drop a fabricated package from sys.path / sys.modules so tests don't leak."""
-def cleanup_site(site_dir: Path, pkgs: list) -> None {
+def cleanup_site(site_dir: Path, pkgs: list) {
     site_str = str(site_dir);
     if site_str in sys.path {
         sys.path.remove(site_str);
@@ -103,9 +103,7 @@ test "_run_entry_point runs the tool, forwards argv, returns its exit code" {
     try {
         site = Path(tmp) / "site";
         argv_file = str(Path(tmp) / "argv.txt");
-        body = "import sys\ndef main():\n    open(" + repr(
-            argv_file
-        ) + ", 'w').write(repr(sys.argv))\n    sys.exit(7)\n";
+        body = "import sys\ndef main():\n    open(" + repr(argv_file) + ", 'w').write(repr(sys.argv))\n    sys.exit(7)\n";
         make_fake_tool(site, "demo", "demo_run_pkg", body);
 
         ep = find_ep(site, "demo");
@@ -135,9 +133,7 @@ test "_run_entry_point treats a clean (None) exit as success" {
     try {
         site = Path(tmp) / "site";
         # main returns normally -> no SystemExit -> rc 0.
-        make_fake_tool(
-            site, "demo", "demo_none_pkg", "def main():\n    return None\n"
-        );
+        make_fake_tool(site, "demo", "demo_none_pkg", "def main():\n    return None\n");
         ep = find_ep(site, "demo");
         rc = exec_cmds._run_entry_point("demo", ep, site, []);
         assert rc == 0;

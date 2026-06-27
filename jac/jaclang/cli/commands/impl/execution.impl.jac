@@ -997,10 +997,7 @@ def _list_tools(sites: list) -> int {
 
 """Run an installed package's console-script entry point under the Jac runtime."""
 impl x(
-    name: str = "",
-    use_global: bool = False,
-    list_tools: bool = False,
-    args: list = []
+    name: str = "", use_global: bool = False, list_tools: bool = False, args: list = []
 ) -> int {
     sites = _tool_site_dirs(use_global);
 

@@ -235,13 +235,14 @@ def debug(filename: str, main: bool = True, cache: bool = False) -> int;
             help="List the CLI tools available to run here",
             short="l"
         ),
-        Arg.create(
-            "args", kind=ArgKind.REMAINDER, help="Arguments passed to the tool"
-        ),
+        Arg.create("args", kind=ArgKind.REMAINDER, help="Arguments passed to the tool"),
 
     ],
     examples=[
-        ("jac x hf download gpt2", "Run the 'hf' tool (project venv first, else global)"),
+        (
+            "jac x hf download gpt2",
+            "Run the 'hf' tool (project venv first, else global)"
+        ),
         ("jac x black .", "Run an installed formatter on the current directory"),
         ("jac x --global hf whoami", "Force the global-site copy of a tool"),
         ("jac x --list", "List the CLI tools available here"),
@@ -250,8 +251,5 @@ def debug(filename: str, main: bool = True, cache: bool = False) -> int;
     group="execution"
 )
 def x(
-    name: str = "",
-    use_global: bool = False,
-    list_tools: bool = False,
-    args: list = []
+    name: str = "", use_global: bool = False, list_tools: bool = False, args: list = []
 ) -> int;
