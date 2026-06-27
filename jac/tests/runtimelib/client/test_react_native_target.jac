@@ -1242,10 +1242,16 @@ test "strip_css_imports removes CSS import lines and deletes CSS files" {
 
     with tempfile.TemporaryDirectory() as tmp {
         compiled = Path(tmp);
-        # User JS with CSS imports.
+        # User JS with CSS imports. Covers every form a bundler emits:
+        # side-effect (``import "./x.css"``), default (``import s from``),
+        # and named (``import { a } from``). All three must be stripped or
+        # Metro chokes on the unresolvable .css module; the bare side-effect
+        # form alone is not representative of real CSS-module usage.
         (compiled / "app.js").write_text(
             'import "./styles.css";\n'
             'import "./theme.scss";\n'
+            'import buttons from "./buttons.css";\n'
+            'import { card } from "./card.sass";\n'
             'import { useState } from "react";\n'
             'import "./other.js";\n'
             'console.log("hello");\n',
@@ -1254,6 +1260,10 @@ test "strip_css_imports removes CSS import lines and deletes CSS files" {
         # A CSS file that should be deleted.
         (compiled / "styles.css").write_text(".foo { color: red; }", encoding="utf-8");
         (compiled / "theme.scss").write_text("$bg: blue;", encoding="utf-8");
+        (compiled / "buttons.css").write_text(
+            ".btn { padding: 4px; }", encoding="utf-8"
+        );
+        (compiled / "card.sass").write_text(".card\n  margin: 0", encoding="utf-8");
         # A non-CSS file that should survive.
         (compiled / "other.js").write_text("export const x = 1;", encoding="utf-8");
         # Runtime file should be ignored.
@@ -1261,16 +1271,22 @@ test "strip_css_imports removes CSS import lines and deletes CSS files" {
             'import "./ignored.css";\n', encoding="utf-8"
         );
         count = strip_css_imports(compiled);
-        assert count >= 2 , f"Expected at least 2 stripped lines, got {count}";
+        assert count >= 4 , f"Expected at least 4 stripped lines, got {count}";
         app_js = (compiled / "app.js").read_text(encoding="utf-8");
         assert "styles.css" not in app_js;
         assert "theme.scss" not in app_js;
+        # Named/default CSS imports must be stripped too, not just side-effect
+        # ones — these were previously linted but left in the bundle.
+        assert "buttons.css" not in app_js;
+        assert "card.sass" not in app_js;
         # Non-CSS imports must be preserved.
         assert "from \"react\"" in app_js;
         assert "other.js" in app_js;
         # CSS files deleted.
         assert not (compiled / "styles.css").exists();
         assert not (compiled / "theme.scss").exists();
+        assert not (compiled / "buttons.css").exists();
+        assert not (compiled / "card.sass").exists();
         # Non-CSS files survive.
         assert (compiled / "other.js").exists();
         # Runtime file untouched.

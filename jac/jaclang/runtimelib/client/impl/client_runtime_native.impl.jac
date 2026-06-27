@@ -134,7 +134,13 @@ impl _adaptProps(tag: str, props: dict) -> dict {
         } elif key == "onClick" {
             out["onPress"] = value;
         } elif key == "onChange" {
-            out["onChangeText"] = value;
+            # RN's ``onChangeText`` passes a bare string; web-style handlers
+            # expect an event shape ``{ target: { value } }``. Wrap the user
+            # handler so ``(e) => setState(e.target.value)`` works on native.
+            user_on_change = value;
+            out["onChangeText"] = lambda text: any { user_on_change(
+                {"target": {"value": text}}
+            ); };
         } elif key == "value"
         or key == "placeholder"
         or key == "editable"
@@ -587,6 +593,31 @@ impl __nativeRoutes(props: dict = {}) -> JsxElement {
         },
         []
     );
+    # ``_makeNativeRouteScreen`` returns a fresh component ref each call, so
+    # building ``screens`` inline on every render would hand React Navigation
+    # a new ``component`` identity for the active screen and force a remount
+    # (resetting its local state). Memoize on the stable ``routes`` array so
+    # each Screen's component is created exactly once. Both ``useMemo`` calls
+    # stay above the early return below to keep hook order consistent.
+    screens = React.useMemo(
+        lambda -> list {
+            out = [];
+            for route in routes {
+                out.append(
+                    React.createElement(
+                        _JAC_NATIVE_STACK.Screen,
+                        {
+                            "key": route["name"],
+                            "name": route["name"],
+                            "component": _makeNativeRouteScreen(route)
+                        }
+                    )
+                );
+            }
+            return out;
+        },
+        [routes]
+    );
     if len(routes) == 0 {
         return React.createElement(
             RNView,
@@ -595,19 +626,6 @@ impl __nativeRoutes(props: dict = {}) -> JsxElement {
                 RNText,
                 {"style": {"color": "#dc2626"}},
                 "No native routes found. Add <Route path=... element=.../>."
-            )
-        );
-    }
-    screens = [];
-    for route in routes {
-        screens.append(
-            React.createElement(
-                _JAC_NATIVE_STACK.Screen,
-                {
-                    "key": route["name"],
-                    "name": route["name"],
-                    "component": _makeNativeRouteScreen(route)
-                }
             )
         );
     }
@@ -827,9 +845,44 @@ impl __primeNativeTokenCache -> None {
     } except Exception as e {
         console.warn("[jac-native-runtime] __primeNativeTokenCache failed", e);
     }
+    # Mark priming complete (even on failure — a missing token is a valid
+    # "logged out" answer) so gated callers like AuthGuard stop waiting.
+    globalThis.__jacNativeTokenPrimed__ = True;
+}
+
+impl __ensureNativeTokenPrimed -> any {
+    # Return a single shared promise for the in-flight prime so concurrent
+    # callers (AuthGuard mounts, error-handler install) all await the same
+    # SecureStore read instead of racing independent ones.
+    if not globalThis.__jacNativeTokenPrimePromise__ {
+        globalThis.__jacNativeTokenPrimePromise__ = __primeNativeTokenCache();
+    }
+    return globalThis.__jacNativeTokenPrimePromise__;
 }
 
 impl AuthGuard(redirect: str = "/login") -> JsxElement {
+    # The token cache is primed asynchronously from SecureStore. A synchronous
+    # ``jacIsLoggedIn()`` on the first cold-start render would see an empty
+    # cache and bounce an already-authenticated user to ``/login``. Gate the
+    # auth decision on the shared prime promise: render nothing until it
+    # resolves, then decide against a populated cache.
+    [ready, setReady] = useState(globalThis.__jacNativeTokenPrimed__ == True);
+    React.useEffect(
+        lambda {
+            if ready {
+                return None;
+            }
+            mounted = {"v": True};
+            __ensureNativeTokenPrimed().then(
+                lambda _: any { if mounted["v"] { setReady(True); }}
+            );
+            return lambda { mounted["v"] = False; };
+        },
+        []
+    );
+    if not ready {
+        return None;
+    }
     if jacIsLoggedIn() {
         return React.createElement(__nativeOutlet, None);
     }
@@ -1121,9 +1174,14 @@ impl JacForm(props: dict) -> JsxElement {
             toggle = React.createElement(
                 RNPressable,
                 {
-                    "onPress": lambda { setPasswordVisible(
-                        Object.assign({}, passwordVisible, {fieldName: not is_visible})
-                    ); },
+                    "onPress": lambda {
+                        # Computed key: ``{fieldName: ...}`` would store the
+                        # literal key ``"fieldName"``; assign via subscript so
+                        # the variable's value (this field's name) is used.
+                        next_visible = Object.assign({}, passwordVisible);
+                        next_visible[fieldName] = not is_visible;
+                        setPasswordVisible(next_visible);
+                    },
                     "style": {
                         "marginLeft": 8,
                         "paddingVertical": 8,
@@ -1206,7 +1264,7 @@ impl __jacInstallErrorHandlers -> None {
     }
     globalThis.__jacErrorHandlersInstalled = True;
     try {
-        __primeNativeTokenCache();
+        __ensureNativeTokenPrimed();
     } except Exception { }
     try {
         prev = globalThis.ErrorUtils.getGlobalHandler();

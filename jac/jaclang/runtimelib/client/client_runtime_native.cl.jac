@@ -106,6 +106,7 @@ async def:pub __getLocalStorageAsync(key: str) -> str;
 async def:pub __setLocalStorageAsync(key: str, value: str) -> None;
 async def:pub __removeLocalStorageAsync(key: str) -> None;
 async def:pub __primeNativeTokenCache -> None;
+def:pub __ensureNativeTokenPrimed -> any;
 def:pub AuthGuard(redirect: str = "/login") -> JsxElement;
 def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement;
 def:pub JacAwaiting(props: dict) -> JsxElement;
