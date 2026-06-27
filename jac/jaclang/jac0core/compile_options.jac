@@ -16,12 +16,4 @@ obj CompileOptions {
         aot_mode: bool = False,
         suppress_codes: list[str] = field(default_factory=`list),
         cancel_token: any = None;
-
-    """Return a copy with skip_native_engine set."""
-    def with_skip_native_engine(`skip: bool = True) -> CompileOptions;
-
-    """Return a copy with aot_mode set."""
-    def with_aot_mode(mode: bool = True) -> CompileOptions;
 }
-
-glob DEFAULT_OPTIONS = CompileOptions();

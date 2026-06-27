@@ -238,13 +238,6 @@ def get_jir_cache_dir -> Path {
     return _root();
 }
 
-"""Compute CRC32 of file content for fast-reject validation."""
-def compute_content_crc32(file_path: str) -> int {
-    with open(file_path, 'rb') as f {
-        return zlib.crc32(f.read()) & 0xFFFFFFFF;
-    }
-}
-
 """Compute SHA-256 hex digest of file content."""
 def compute_content_sha256(file_path: str) -> str {
     h = hashlib.sha256();
@@ -358,14 +351,6 @@ def cache_mode -> tuple[bool, bool] {
     rebuild = os.environ.get('JAC_REBUILD', '') in truthy;
     no_precompile = os.environ.get('JAC_NO_PRECOMPILE', '') in truthy;
     return (rebuild, no_precompile);
-}
-
-"""Get the cache path for a stub file."""
-def get_stub_cache_path(stub_path: str, content_hash: str) -> Path {
-    cache_dir = get_jir_cache_dir() / 'stubs';
-    name = Path(stub_path).stem;
-    (major, minor) = (sys.version_info.major, sys.version_info.minor);
-    return cache_dir / f"{name}.{content_hash[:16]}.cpython-{major}{minor}.jir";
 }
 
 """Get the cache directory for a module based on its origin.

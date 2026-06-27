@@ -19,43 +19,10 @@ def pascal_to_snake(pascal_string: str) -> str {
     return snake_string;
 }
 
-"""Convert string to snakecase including replacing(/ ,- )."""
-def heading_to_snake(heading: str) -> str {
-    return heading.strip().replace('-', '_').replace('/', '_').replace(
-        ' ', '_'
-    ).lower();
-}
-
 """Add line numbers to a string."""
 def add_line_numbers(s: str) -> str {
     lines = s.split('\n');
     return '\n'.join(f"{(i + 1)}:       {line}" for (i, line) in enumerate(lines));
-}
-
-"""Get all AST nodes as snake case."""
-def get_uni_nodes_as_snake_case -> list {
-    import inspect;
-    import sys;
-    import jaclang.jac0core.unitree as uni;
-    module_name = uni.__name__;
-    module = sys.modules[module_name];
-    source_code = inspect.getsource(module);
-    classes = inspect.getmembers(module, inspect.isclass);
-    uni_node_classes = [
-        cls
-        for (_, cls) in classes
-        if issubclass(cls, uni.UniNode)
-    ];
-    ordered_classes = sorted(
-        uni_node_classes,
-        key=lambda cls: any : source_code.find(f"class {cls.__name__}")
-    );
-    snake_names = [];
-    for cls in ordered_classes {
-        class_name = cls.__name__;
-        snake_names.append(pascal_to_snake(class_name));
-    }
-    return snake_names;
 }
 
 """Dump the stack frames of the exception."""
