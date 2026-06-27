@@ -74,6 +74,13 @@ fn fail(comptime msg: []const u8) c_int {
     return 1;
 }
 
+/// Unbuffered breadcrumb to stderr via raw libc write -- survives a SIGSEGV and
+/// needs no Zig runtime/Io, so it localizes a hard crash in the boot sequence.
+/// TEMPORARY: remove once the Linux boot path is proven.
+fn crumb(comptime s: []const u8) void {
+    _ = std.c.write(2, s.ptr, s.len);
+}
+
 /// Bring up the embedded interpreter on the fused runtime and resolve the C-API
 /// the host calls. Idempotent. Returns 0 on success, non-zero on failure (the
 /// host shows its native boot-error page when this is non-zero -- it must never
@@ -86,9 +93,11 @@ export fn jac_engine_boot() c_int {
     // real Threaded instance (cpu-count + signal handlers + worker pool). The
     // static `init_single_threaded` const skips that setup and segfaults blocking
     // file I/O (materialize/executablePath) on Linux -- works on macOS by luck.
+    crumb("[pyembed] c:enter\n");
     const gpa = std.heap.c_allocator;
     var threaded = std.Io.Threaded.init(gpa, .{});
     const io = threaded.io();
+    crumb("[pyembed] c:io\n");
 
     // The shim runs inside the host process, so its own image IS the host binary
     // (which carries the trailer payload). Resolve it for materialize + getpath.
@@ -97,6 +106,7 @@ export fn jac_engine_boot() c_int {
     const exe_path = exe_buf[0..exe_len];
     var exe_zbuf: [MAX_PATH]u8 = undefined;
     const exe_z = std.fmt.bufPrintZ(&exe_zbuf, "{s}", .{exe_path}) catch return fail("executable path too long");
+    crumb("[pyembed] c:exepath\n");
 
     const emb = embed.open(
         io,
@@ -110,12 +120,15 @@ export fn jac_engine_boot() c_int {
         @intCast(std.c.getpid()),
         &rt_buf,
     ) catch return fail("runtime bring-up failed (trailer payload not materialized?)");
+    crumb("[pyembed] c:open\n");
 
     // Pin program name, then initialize. embed owns env/dlopen; the host owns
     // what runs after init (SERVE/PLUGIN/DISPATCH), via the forwarders below.
     emb.setProgramName(exe_z) catch return fail("failed to pin program name");
+    crumb("[pyembed] c:progname\n");
     const py_init = emb.symOrErr(embed.Py_Initialize_t, "Py_Initialize") catch return fail("libpython missing symbol: Py_Initialize");
     py_init();
+    crumb("[pyembed] c:pyinit\n");
 
     // Resolve the host-facing C-API once. A missing symbol here is a packaging
     // bug; surface it cleanly rather than faulting on first forwarded call.
@@ -134,6 +147,7 @@ export fn jac_engine_boot() c_int {
     p_uni_utf8 = emb.symOrErr(PyUnicodeAsUTF8_t, "PyUnicode_AsUTF8") catch return fail("missing PyUnicode_AsUTF8");
     p_decref = emb.symOrErr(PyDecRef_t, "Py_DecRef") catch return fail("missing Py_DecRef");
 
+    crumb("[pyembed] c:done\n");
     booted = true;
     return 0;
 }
