@@ -125,8 +125,6 @@ glob METHOD_TABLE: dict[str, MethodSemantics] = {
          "at_end": MethodSemantics(kind="lookahead", token_args=False),
          # No grammar effect
          "error": MethodSemantics(kind="ignore", token_args=False),
-         "error_at": MethodSemantics(kind="ignore", token_args=False),
-         "warn_at": MethodSemantics(kind="ignore", token_args=False),
          "make_uni_token": MethodSemantics(kind="ignore", token_args=False),
          "make_name": MethodSemantics(kind="ignore", token_args=False),
          "make_special_name": MethodSemantics(kind="ignore", token_args=False),
@@ -144,7 +142,6 @@ glob METHOD_TABLE: dict[str, MethodSemantics] = {
          "peek": MethodSemantics(kind="ignore", token_args=False),
          "get_source": MethodSemantics(kind="ignore", token_args=False),
          "synchronize": MethodSemantics(kind="ignore", token_args=False),
-         "gen_token": MethodSemantics(kind="ignore", token_args=False),
          "prune": MethodSemantics(kind="ignore", token_args=False)
      },
      SPECIAL_LOOKAHEAD_TOKENS: dict[str, list] = {

@@ -287,21 +287,6 @@ impl Parser.error(message: str) {
     }
 }
 
-impl Parser.error_at(message: str, loc: SourceLoc) {
-    self.error_count += 1;
-    if self.prog is not None {
-        alrt = self._make_alert(message, loc);
-        self.prog.errors_had.append(alrt);
-    }
-}
-
-impl Parser.warn_at(message: str, loc: SourceLoc) {
-    if self.prog is not None {
-        alrt = self._make_alert(message, loc);
-        self.prog.warnings_had.append(alrt);
-    }
-}
-
 impl Parser.emit_diag(
     diag: DiagnosticInfo, loc: SourceLoc | None = None, **kwargs: object
 ) {
@@ -661,40 +646,6 @@ impl Parser.make_ellipsis(tok: Token) -> EllipsisLit {
         pos_start=tok.loc.pos_start,
         pos_end=tok.loc.pos_end
     );
-}
-
-impl Parser.gen_token(tok_type: str, value: str | None = None) -> UniToken {
-    # Generate a synthetic token for kid list construction.
-    # Uses previous token position as approximation. Marks as synthetic
-    # via _is_synthetic flag so downstream passes can distinguish from real tokens.
-    cur = self.current();
-    actual_value = value;
-    if actual_value is None {
-        # Look up actual symbol from TOKEN_KIND_TO_TOK reverse mapping
-        # e.g., "LBRACE" -> "{", "KW_GLOBAL" -> "glob", "EQ" -> "="
-        for (kind, tok_name) in TOKEN_KIND_TO_TOK.items() {
-            if tok_name == tok_type {
-                actual_value = kind.value;
-                break;
-            }
-        }
-        if actual_value is None {
-            actual_value = tok_type;
-        }
-    }
-    tok = UniToken(
-        orig_src=self.get_source(),
-        name=tok_type,
-        value=actual_value,
-        line=cur.loc.line,
-        end_line=cur.loc.end_line,
-        col_start=cur.loc.col_start,
-        col_end=cur.loc.col_end,
-        pos_start=cur.loc.pos_start,
-        pos_end=cur.loc.pos_end
-    );
-    tok._is_synthetic = True;
-    return tok;
 }
 
 impl Parser.make_semi -> Semi {
@@ -3347,20 +3298,6 @@ impl Parser._consume_jsx_dynamic_close(close_kid: list) {
         close_kid.append(self.make_uni_token(self.previous()));
         close_kid.append(self.make_name(self.expect(TokenKind.JSX_NAME)));
     }
-}
-
-"""Parse JSX opening element and return (name, attrs, is_self_closing)."""
-impl Parser.parse_jsx_opening_element -> tuple {
-    self.expect(TokenKind.JSX_OPEN_START);
-    name_tok = self.expect(TokenKind.JSX_NAME);
-    name = self.make_name(name_tok);
-    attrs = self.parse_jsx_attributes();
-    if self.check(TokenKind.JSX_SELF_CLOSE) {
-        self.advance();
-        return (name, attrs, True);
-    }
-    self.expect(TokenKind.JSX_TAG_END);
-    return (name, attrs, False);
 }
 
 """Parse JSX attributes: attr="value" or attr={expr}"""
@@ -7494,21 +7431,6 @@ impl Parser.parse_type_params -> tuple {
     return (params, comma_unis);
 }
 
-impl Parser.parse_dotted_name -> Expr {
-    name_tok = self.expect(TokenKind.NAME);
-    result: Expr = self.make_name(name_tok);
-    while self.match_tok(TokenKind.DOT) {
-        dot_uni = self.make_uni_token(self.previous());
-        next_name_tok = self.expect(TokenKind.NAME);
-        next_name = self.make_name(next_name_tok);
-        kid: list = [result, dot_uni, next_name];
-        result = AtomTrailer(
-            target=result, right=next_name, is_attr=True, is_null_ok=False, kid=kid
-        );
-    }
-    return result;
-}
-
 impl Parser.parse_visit_stmt -> VisitStmt {
     visit_uni = self.consume_uni(TokenKind.KW_VISIT);
     # Check for optional insert location: visit :SomeExpr: target
@@ -7551,16 +7473,4 @@ impl Parser.parse_report_stmt -> ReportStmt {
     self.expect(TokenKind.SEMI);
     kid: list = [report_uni, expr, self.make_semi()];
     return ReportStmt(expr=expr, kid=kid);
-}
-
-impl parse(
-    source: str, file_path: str = "<input>", prog: object | None = None
-) -> tuple[Module, bool] {
-    lexer = Lexer(source=source, file_path=file_path);
-    lexer.prog = prog;
-    tokens = lexer.tokenize();
-    parser = Parser(tokens=tokens, file_path=file_path, source_code=source, prog=prog);
-    module = parser.parse();
-    had_error = parser.error_count > 0 or lexer.error_count > 0;
-    return (module, had_error);
 }

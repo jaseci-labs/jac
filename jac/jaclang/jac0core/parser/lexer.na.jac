@@ -70,7 +70,6 @@ obj Lexer {
     def push_mode(mode: LexerMode);
     def pop_mode -> LexerMode | None;
     def current_mode -> LexerMode;
-    def in_fstring -> bool;
     def in_jsx -> bool;
     def prev_is_value -> bool;
     def in_view_body -> bool;
@@ -135,14 +134,12 @@ obj Lexer {
     def scan_jsx_open_start -> Token;
     def scan_jsx_tag_token -> Token;
     def scan_jsx_content -> Token;
-    def scan_jsx_expr_token -> Token;
     def scan_regular_token -> Token;
     def scan_pynline -> Token;
     def scan_operator -> Token;
     # Main tokenization
     def next_token -> Token;
     def tokenize -> list[Token];
-    def has_errors -> bool;
 }
 
 def tokenize(source: str, file_path: str = "<input>") -> tuple[list[Token], int] {

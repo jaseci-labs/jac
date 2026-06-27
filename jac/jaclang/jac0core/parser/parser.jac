@@ -443,8 +443,6 @@ obj Parser {
     ) -> Alert;
 
     def error(message: str);
-    def error_at(message: str, loc: SourceLoc);
-    def warn_at(message: str, loc: SourceLoc);
     def emit_diag(
         diag: DiagnosticInfo, loc: SourceLoc | None = None, **kwargs: object
     );
@@ -465,7 +463,6 @@ obj Parser {
     def make_bool(tok: Token) -> Bool;
     def make_null(tok: Token) -> Null;
     def make_ellipsis(tok: Token) -> EllipsisLit;
-    def gen_token(tok_type: str, value: str | None = None) -> UniToken;
     def make_semi -> Semi;
     def synchronize;
     def parse -> Module;
@@ -537,7 +534,6 @@ obj Parser {
     def parse_jsx_element -> Expr;
     def _parse_jsx_dynamic_tag(open_kid: list) -> Expr;
     def _consume_jsx_dynamic_close(close_kid: list);
-    def parse_jsx_opening_element -> tuple;
     def parse_jsx_attributes -> list;
     def parse_jsx_children -> list;
     def parse_jsx_child -> Expr;
@@ -619,7 +615,6 @@ obj Parser {
     def parse_sem_def -> SemDef;
     def parse_type_alias -> TypeAlias;
     def parse_type_params -> tuple;
-    def parse_dotted_name -> Expr;
 }
 
 def parse(
