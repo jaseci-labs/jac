@@ -45,7 +45,7 @@ impl CMapper.c_UnaryOp(nd: object) -> object {
         # PTR_REF (§7.4): dereferencing a plain pointer-as-reference is
         # identity in Jac — `*p`/`(*p).f` → `p`/`p.f`. Only when the operand
         # is a simple lvalue (no pointer arithmetic); `*(p+1)` stays Tier-B.
-        if self._is_simple_ref(nd.expr) {
+        if is_simple_ref(nd.expr) {
             self._mark_tier_a(nd, Idiom.PTR_REF, "pointer dereference → Jac reference");
             return self.conv_expr(nd.expr);
         }
@@ -54,7 +54,7 @@ impl CMapper.c_UnaryOp(nd: object) -> object {
     if nd.op == "&" {
         # PTR_REF (§7.4): address-of a simple lvalue → pass the object by
         # reference, i.e. identity. `&(p+1)`/computed addresses stay Tier-B.
-        if self._is_simple_ref(nd.expr) {
+        if is_simple_ref(nd.expr) {
             self._mark_tier_a(nd, Idiom.PTR_REF, "address-of → Jac reference");
             return self.conv_expr(nd.expr);
         }
@@ -64,17 +64,6 @@ impl CMapper.c_UnaryOp(nd: object) -> object {
         return self._surrogate_expr(nd);
     }
     return self._surrogate_expr(nd);
-}
-
-impl CMapper._is_simple_ref(c_node: object) -> bool {
-    # A reference-shaped operand: names a storage location without pointer
-    # arithmetic or reinterpretation. ID / s.f / s->f / a[i] qualify; a
-    # BinaryOp (`p+1`), Cast, or nested `*`/`&` does not (those are Tier-B).
-    return (
-        isinstance(c_node, c_ast.ID)
-        or isinstance(c_node, c_ast.StructRef)
-        or isinstance(c_node, c_ast.ArrayRef)
-    );
 }
 
 impl CMapper.c_ID(nd: object) -> object {
@@ -223,7 +212,7 @@ impl CMapper.c_ExprList(nd: object) -> object {
         impure = [
             e
             for e in nd.exprs[:-1]
-            if not self._expr_reeval_safe(e)
+            if not expr_reeval_safe(e)
         ];
         if impure {
             self._mark_tier_b(
@@ -243,7 +232,7 @@ impl CMapper.c_Cast(nd: object) -> object {
     # changing ((int)f truncates, (char)x narrows, (void)e discards); we drop
     # it, so flag those (§5.3 Tier-B). Pointer/struct casts don't change the
     # emitted value, so they stay at the optimistic Tier-A default.
-    target = self._cast_scalar_target(nd);
+    target = cast_scalar_target(nd);
     if target is not None {
         self._mark_tier_b(
             nd,
@@ -252,23 +241,6 @@ impl CMapper.c_Cast(nd: object) -> object {
         );
     }
     return self.conv_expr(nd.expr);
-}
-
-impl CMapper._cast_scalar_target(nd: object) -> str | None {
-    # Return the C scalar type name a Cast targets when it is a value cast
-    # (Typename → TypeDecl → IdentifierType), else None (pointer/array/struct
-    # casts, which don't change the emitted value).
-    to_type = nd?.to_type;
-    if to_type is None {
-        return None;
-    }
-    inner = to_type?.type;
-    if isinstance(inner, c_ast.TypeDecl)
-    and isinstance(inner.type, c_ast.IdentifierType) {
-        names = inner.type.names;
-        return names[-1] if names else None;
-    }
-    return None;
 }
 
 impl CMapper.c_FuncCall(nd: object) -> object {

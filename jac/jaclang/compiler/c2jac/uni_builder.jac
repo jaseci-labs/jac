@@ -18,6 +18,12 @@ import from jaclang.compiler.c2jac.c_common {
     classify_c_constant,
     c_char_ord,
     c_string_inner,
+    expr_reeval_safe,
+    has_loop_continue,
+    switch_is_safe,
+    section_terminates,
+    is_simple_ref,
+    cast_scalar_target,
     CLIT_INT,
     CLIT_FLOAT,
     CLIT_CHAR,
@@ -162,12 +168,23 @@ obj CUniBuilder {
         # always overwrote that with _mark_tier_b; re-stamp Tier-A explicitly so
         # the verdict is queryable (TagTable.by_idiom) and the reason records
         # *why* the desugar is faithful rather than leaving a stale Tier-B tag.
+        self._mark_tier_a_idiom(c_node, line, Idiom.C_FOR, reason);
+    }
+
+    def _mark_tier_a_idiom(c_node: object, line: int, idiom: Idiom, reason: str) {
+        # Stamp a faithfully-lowered direct-IR construct Tier-A with a specific
+        # idiom. A nested DoWhile/Switch is NOT on the boundary Tier-A allowlist
+        # (the py-ast path's handler decides their verdict), so without this
+        # re-stamp a clean nested do-while/switch would keep its default Tier-B
+        # tag (empty reason) and show as a phantom best-effort site even though it
+        # lowered exactly — the same hazard the EmptyStatement/Ternary allowlist
+        # entries fix on the py-ast side.
         self.tags.tag(
             c_node,
             NodeTag(
                 tier=Tier.TIER_A,
                 mechanism=Mechanism.DIRECT_IR,
-                idiom=Idiom.C_FOR,
+                idiom=idiom,
                 reason=reason,
                 c_line=line,
                 snippet=reason,
@@ -180,11 +197,16 @@ obj CUniBuilder {
     # ------------------------------------------------------------------ #
     def _build_for(nd: object) -> list[uni.UniNode] {
         (line, col) = self._coord(nd);
+        # Reset the loss accumulator up front, BEFORE the init/cond/step builds,
+        # so a representation-changing scalar cast in any clause (e.g.
+        # `for (; i < (int)n; )`) counts toward the Tier-B verdict — not just one
+        # in the body. (It used to reset after, wiping clause-level cast marks
+        # and presenting a narrowed loop as faithful Tier-A.)
+        self._loop_lossy = [];
         # Parse the init, cond, and step from the C-for node.
         init_nodes = self._for_init(getattr(nd, "init"), line, col);
         cond_expr = self._for_cond(nd.cond, line, col);
         step_assign = self._for_step(nd.next, line, col);
-        self._loop_lossy = [];
         body_stmts = self._for_body(nd.stmt, line, col);
 
         if init_nodes is None or cond_expr is None or step_assign is None {
@@ -249,6 +271,77 @@ obj CUniBuilder {
         }
         if isinstance(init_node, c_ast.Decl) {
             return self._decl_to_assign(init_node, line, col);
+        }
+        return None;
+    }
+
+    def _for_init_list(
+        init_node: object, line: int, col: int
+    ) -> list[uni.UniNode] | None {
+        # The while-desugar can emit several statements before the loop, so a
+        # multi-clause init lowers to one assignment per clause — unlike the
+        # IterForStmt path, whose single `iter=` slot holds only one (which is
+        # why _for_init returns None for these shapes and routes the loop here).
+        # Two C forms reach this helper:
+        #   • `for (int i = 0, j = 0; ...)` — a DeclList of initialized decls
+        #   • `for (i = 0, j = 10; ...)`     — an ExprList (comma) of assignments
+        # Each clause is lowered independently; if ANY clause can't be lowered
+        # faithfully the whole init is abandoned (return None) so the caller
+        # flags init-loss and keeps the loop out of Tier-A rather than emitting a
+        # partial initializer that leaves some loop variable unset.
+        if isinstance(init_node, c_ast.DeclList) {
+            out: list[uni.UniNode] = [];
+            for d in init_node.decls {
+                a = self._decl_to_assign(d, line, col);
+                if a is None {
+                    return None;
+                }
+                out.append(a);
+            }
+            return out;
+        }
+        if isinstance(init_node, c_ast.ExprList) {
+            # A comma init `for (i = 0, j = 10; ...)` evaluates each operand
+            # left-to-right before the loop, so each lowers to its own pre-loop
+            # statement. Beyond plain assignments, an operand may be an `i++`/`i--`
+            # (→ augmented assignment) or a bare call `init_things()` (→ expression
+            # statement) — all faithful as pre-loop statements. Any other operand
+            # (or one whose sub-lowering fails) has no pre-loop analog, so bail to
+            # keep the init from being partially emitted (loop vars left unset).
+            out2: list[uni.UniNode] = [];
+            for e in init_node.exprs {
+                s2 = self._comma_init_stmt(e, line, col);
+                if s2 is None {
+                    return None;
+                }
+                out2.append(s2);
+            }
+            return out2;
+        }
+        single = self._for_init(init_node, line, col);
+        if single is None {
+            return None;
+        }
+        return [single];
+    }
+
+    def _comma_init_stmt(e: object, line: int, col: int) -> uni.UniNode | None {
+        # One operand of a comma init `for (a = 0, b(), c++; ...)` as a pre-loop
+        # statement. Assignment → assignment; `c++`/`c--` → augmented assignment
+        # (via the step lowering); a bare call → an expression statement. Anything
+        # else returns None so _for_init_list abandons the whole init rather than
+        # emitting a partial one.
+        if isinstance(e, c_ast.Assignment) {
+            return self._assign_to_uni_assign(e, line, col);
+        }
+        if isinstance(e, c_ast.UnaryOp) and e.op in ("p++", "++", "p--", "--") {
+            return self._step_as_stmt(e, line, col);
+        }
+        if isinstance(e, c_ast.FuncCall) {
+            call = self._funccall_to_uni(e, line, col);
+            if call is not None {
+                return uni.ExprStmt(expr=call, in_fstring=False, kid=[call]);
+            }
         }
         return None;
     }
@@ -458,8 +551,70 @@ obj CUniBuilder {
             return inner;
         }
 
-        # Any other statement (switch, goto, do-while, ...) has no direct-IR
-        # lowering yet. Record it so the enclosing loop is Tier-B.
+        if isinstance(stmt, c_ast.Cast) {
+            # A bare `(int)i;` cast-expression statement: lower the inner expr
+            # (the result is discarded, but a side-effecting operand must still
+            # run). _expr_to_uni records the scalar-cast loss itself, so a clean
+            # pointer cast stays Tier-A and a scalar cast demotes the loop.
+            cast_expr = self._expr_to_uni(stmt, sline, scol);
+            if cast_expr is not None {
+                return [
+                    uni.ExprStmt(expr=cast_expr, in_fstring=False, kid=[cast_expr])
+                ];
+            }
+            self._loop_lossy.append("cast expression");
+            return [];
+        }
+
+        if isinstance(stmt, c_ast.EmptyStatement) {
+            # A stray `;` carries no semantics — drop it silently. Routing it
+            # through the generic fallback below would flag a no-op as a Tier-B
+            # body loss, demoting an otherwise-faithful loop over nothing.
+            return [];
+        }
+
+        if isinstance(stmt, c_ast.UnaryOp) {
+            # A bare `i++;` / `i--;` increment statement → augmented assignment
+            # (the same lowering as a for-step). Other unary expression
+            # statements (`!x;`, `~x;`, a simple `*p;`) lower as a discarded
+            # expression statement; an unmappable form flags the loss so the
+            # enclosing loop demotes rather than silently dropping it.
+            if stmt.op in ("p++", "++", "p--", "--") {
+                inc = self._step_as_stmt(stmt, sline, scol);
+                if inc is not None {
+                    return [inc];
+                }
+                self._loop_lossy.append("increment/decrement statement");
+                return [];
+            }
+            ue = self._expr_to_uni(stmt, sline, scol);
+            if ue is not None {
+                return [uni.ExprStmt(expr=ue, in_fstring=False, kid=[ue])];
+            }
+            self._loop_lossy.append("unary expression statement");
+            return [];
+        }
+
+        if isinstance(stmt, c_ast.DoWhile) {
+            # A nested `do { body } while (cond);` desugars to the faithful
+            # `while True { body; if not cond break }` (mirrors mapper.c_DoWhile).
+            # _dowhile_to_uni flags the one hazard — a loop-level `continue` that
+            # would skip the post-body condition test — so a clean nested
+            # do-while stays Tier-A and a continue-bearing one demotes the loop.
+            return self._dowhile_to_uni(stmt, sline, scol);
+        }
+
+        if isinstance(stmt, c_ast.Switch) {
+            # A nested `switch` lowers to an if/elif/else chain (mirrors
+            # mapper.c_Switch). _switch_to_uni flags the lossy shapes
+            # (case fall-through between body-bearing sections, a side-effecting
+            # selector re-evaluated per branch), so a clean nested switch stays
+            # Tier-A and a lossy one demotes the enclosing loop.
+            return self._switch_to_uni(stmt, sline, scol);
+        }
+
+        # Any other statement (goto, labels, ...) has no direct-IR lowering yet.
+        # Record it so the enclosing loop is Tier-B.
         self._loop_lossy.append(type(stmt).__name__);
         return [];
     }
@@ -486,6 +641,271 @@ obj CUniBuilder {
             );
         }
         return uni.ElseStmt(body=else_stmts, kid=[*else_stmts]);
+    }
+
+    def _dowhile_to_uni(stmt: object, line: int, col: int) -> list[uni.UniNode] {
+        # `do { body } while (cond);` has no Jac analog. Desugar to the faithful
+        # `while True { body; if not cond { break } }` — body runs once before the
+        # test, exactly like do-while (mirrors mapper.c_DoWhile). The one semantic
+        # gap is a loop-level `continue`: in C it jumps to the post-body condition
+        # test, but here it re-enters the loop top and skips the `if not cond`
+        # guard, so the loop would spin without re-checking cond. Flag that case
+        # (demoting the enclosing loop); the common continue-free do-while stays
+        # faithful and keeps the loop Tier-A.
+        cond = self._expr_to_uni(stmt.cond, line, col);
+        if cond is None {
+            self._loop_lossy.append("do-while condition");
+            self._mark_tier_b(
+                stmt,
+                line,
+                "do-while condition not faithfully lowered; the loop was dropped "
+                "— verify",
+            );
+            return [];
+        }
+        # A `continue` inside this do-while binds to IT, not the enclosing for —
+        # snapshot/restore the outer flag around the body scan so it isn't
+        # mis-attributed to the for's continue-faithfulness verdict.
+        saved_cont = self._loop_has_continue;
+        body = self._c_stmt_to_uni(stmt.stmt, line, col);
+        self._loop_has_continue = saved_cont;
+        if has_loop_continue(stmt.stmt) {
+            # Unfaithful: the desugared `continue` skips the post-body cond test.
+            # Flag the do-while node precisely AND demote the enclosing loop (its
+            # body now contains an unfaithfully-lowered construct).
+            self._loop_lossy.append(
+                "do-while with a loop-level continue (C runs the post-body "
+                "condition test; the desugared continue skips it)"
+            );
+            self._mark_tier_b(
+                stmt,
+                line,
+                "do-while desugared to `while True`/break; a loop-level `continue` "
+                "skips the post-body condition test (C runs it) — verify",
+            );
+        } else {
+            self._mark_tier_a_idiom(
+                stmt,
+                line,
+                Idiom.DO_WHILE,
+                "do-while desugared to `while True { body; if not cond break }` — "
+                "faithful: body runs once before the test and no loop-level "
+                "`continue` skips the post-body condition check",
+            );
+        }
+        not_tok = self._tok(Tok.NOT, "not", line, col);
+        not_cond = uni.UnaryExpr(kid=[not_tok, cond], operand=cond, op=not_tok);
+        brk_tok = self._tok(Tok.KW_BREAK, "break", line, col);
+        brk = uni.CtrlStmt(kid=[brk_tok], ctrl=brk_tok);
+        guard = uni.IfStmt(
+            kid=[not_cond, brk], condition=not_cond, body=[brk], else_body=None
+        );
+        full_body: list[uni.UniNode] = [*body, guard];
+        true_c = uni.Bool(
+            orig_src=self.src,
+            name="BOOL",
+            value="True",
+            line=line,
+            end_line=line,
+            col_start=col,
+            col_end=col + 4,
+            pos_start=0,
+            pos_end=4,
+        );
+        return [
+            uni.WhileStmt(
+                kid=[true_c, *full_body],
+                condition=true_c,
+                body=full_body,
+                else_body=None,
+            )
+        ];
+    }
+
+    def _switch_to_uni(nd: object, line: int, col: int) -> list[uni.UniNode] {
+        # C `switch` → nested if/elif/else (mirrors mapper.c_Switch). pycparser
+        # nests each Case/Default as a block_item carrying its own statement list;
+        # empty-statement cases (`case 1: case 2: ...`) fold their labels onto the
+        # next body-bearing case, modelling `selector == 1 or selector == 2`. The
+        # clean, common shape (every body-bearing case ends in break/return/
+        # continue, pure selector) lowers exactly and keeps the loop Tier-A; only
+        # the lossy shapes (case fall-through between body-bearing sections — which
+        # if/elif cannot model — or a side-effecting selector re-evaluated per
+        # branch) flag a loss and demote the enclosing loop.
+        groups: list[tuple] = [];  # (list[c_value_node], list[c_stmt_node])
+        pending: list[object] = [];
+        default_stmts: list | None = None;
+        items: list = [];
+        if isinstance(nd.stmt, c_ast.Compound) and nd.stmt.block_items {
+            items = nd.stmt.block_items;
+        }
+        for it in items {
+            if isinstance(it, c_ast.Case) {
+                pending.append(it.expr);
+                if it.stmts {
+                    groups.append((pending, it.stmts));
+                    pending = [];
+                }
+            } elif isinstance(it, c_ast.Default) {
+                # Empty `case` labels just before a `default` fall INTO it (an
+                # empty case has no break), so they belong to the default
+                # catch-all, not the next body-bearing case — drop them from
+                # `pending` so their selector values don't leak onto a later
+                # case's `==` test.
+                pending = [];
+                default_stmts = it.stmts or [];
+            }
+        }
+        if not switch_is_safe(items, nd.cond) {
+            # Lossy shape: flag the switch node precisely AND demote the enclosing
+            # loop (its body now contains an unfaithfully-lowered construct).
+            self._loop_lossy.append(
+                "switch with case fall-through and/or a side-effecting selector "
+                "re-evaluated per branch (if/elif models neither)"
+            );
+            self._mark_tier_b(
+                nd,
+                line,
+                "switch lowered to an if/elif chain: case fall-through is not "
+                "modelled and/or the selector has side effects but is re-evaluated "
+                "per branch — verify (faithful when every case ends in break and "
+                "the selector is pure)",
+            );
+        } else {
+            self._mark_tier_a_idiom(
+                nd,
+                line,
+                Idiom.SWITCH_CLEAN,
+                "clean switch (no fall-through, pure selector) → exact if/elif chain",
+            );
+        }
+        # Build each case's test + body; a sub-lowering that fails (an unmappable
+        # selector / case value) demotes the whole loop rather than emitting a
+        # partial chain that silently mismatches.
+        built: list[tuple] = [];  # (test_expr, body_stmts)
+        for grp in groups {
+            (vals, stmts) = grp;
+            test = self._switch_test_uni(nd.cond, vals, line, col);
+            if test is None {
+                self._loop_lossy.append("switch selector/case value");
+                self._mark_tier_b(
+                    nd,
+                    line,
+                    "switch selector/case value not faithfully lowered; the switch "
+                    "was dropped — verify",
+                );
+                return [];
+            }
+            body = self._switch_branch_body_uni(stmts, line, col);
+            built.append((test, body));
+        }
+        default_body: list[uni.UniNode] | None = None;
+        if default_stmts is not None {
+            default_body = self._switch_branch_body_uni(default_stmts, line, col);
+        }
+        return self._switch_chain(built, default_body, line, col);
+    }
+
+    def _switch_chain(
+        built: list, default_body: list | None, line: int, col: int
+    ) -> list[uni.UniNode] {
+        # Fold (test, body) arms into an if/elif/else chain: the first arm is the
+        # head IfStmt, each subsequent arm an ElseIf nested in the prior else, and
+        # a `default` becomes the trailing ElseStmt. A switch with only a default
+        # always runs it (emit its body bare); one with neither is a no-op.
+        if not built {
+            if default_body is not None {
+                return default_body;
+            }
+            return [];
+        }
+        acc_else: uni.UniNode | None = None;
+        if default_body is not None {
+            acc_else = uni.ElseStmt(body=default_body, kid=[*default_body]);
+        }
+        head: uni.UniNode | None = None;
+        idx = len(built) - 1;
+        while idx >= 0 {
+            (test, body) = built[idx];
+            kid_nodes: list[uni.UniNode] = [test, *body];
+            if acc_else is not None {
+                kid_nodes.append(acc_else);
+            }
+            if idx == 0 {
+                head = uni.IfStmt(
+                    kid=kid_nodes, condition=test, body=body, else_body=acc_else
+                );
+            } else {
+                acc_else = uni.ElseIf(
+                    kid=kid_nodes, condition=test, body=body, else_body=acc_else
+                );
+            }
+            idx -= 1;
+        }
+        return [head];
+    }
+
+    def _switch_test_uni(
+        cond_cnode: object, vals: list, line: int, col: int
+    ) -> uni.UniNode | None {
+        # `selector == v1 [or selector == v2 ...]`. The selector is re-lowered per
+        # comparison so no uni node is shared across the tree; an unmappable
+        # selector or case value yields None so the caller flags the loss.
+        cmps: list[uni.UniNode] = [];
+        for v in vals {
+            sel = self._expr_to_uni(cond_cnode, line, col);
+            val = self._expr_to_uni(v, line, col);
+            if sel is None or val is None {
+                return None;
+            }
+            eq_tok = self._binop_tok("==", line, col);
+            if eq_tok is None {
+                return None;
+            }
+            cmps.append(
+                uni.BinaryExpr(kid=[sel, eq_tok, val], left=sel, right=val, op=eq_tok)
+            );
+        }
+        if not cmps {
+            return None;
+        }
+        acc = cmps[0];
+        i = 1;
+        while i < len(cmps) {
+            or_tok = self._binop_tok("||", line, col);
+            if or_tok is None {
+                return None;
+            }
+            acc = uni.BinaryExpr(
+                kid=[acc, or_tok, cmps[i]], left=acc, right=cmps[i], op=or_tok
+            );
+            i += 1;
+        }
+        return acc;
+    }
+
+    def _switch_branch_body_uni(
+        stmts: list | None, line: int, col: int
+    ) -> list[uni.UniNode] {
+        # Convert one case's direct statements, dropping the switch-terminating
+        # `break` (a direct break only — a break inside a nested loop lives in
+        # that loop's converted body). A braced case body `case N: { ... }`
+        # arrives as a single Compound; unwrap it so its terminating break is
+        # dropped exactly like an unbraced one. An empty result is fine — Jac
+        # allows an empty `if { }` block, so a do-nothing case still gates its
+        # selector match.
+        items: list = stmts or [];
+        if len(items) == 1 and isinstance(items[0], c_ast.Compound) {
+            items = items[0].block_items or [];
+        }
+        out: list[uni.UniNode] = [];
+        for s in items {
+            if isinstance(s, c_ast.Break) {
+                continue;
+            }
+            out.extend(self._c_stmt_to_uni(s, line, col));
+        }
+        return out;
     }
 
     def _return_to_uni(stmt: object, line: int, col: int) -> list[uni.UniNode] {
@@ -516,20 +936,30 @@ obj CUniBuilder {
         # C's step-then-retest diverges from `body; step` (§5.3). Any of those
         # losses demotes the loop to Tier-B; the verdict is decided below.
         result: list[uni.UniNode] = [];
+        # Reset the loss accumulator up front (this path rebuilds and re-scans
+        # the whole loop, so the list `_build_for` collected before falling back
+        # here is discarded). Resetting BEFORE the init/cond builds — not after —
+        # lets a scalar cast in those clauses accumulate toward the Tier-B
+        # verdict alongside body-construct losses.
+        self._loop_lossy = [];
         # init statement before the loop (skip the IterForStmt dummy for for(;;)).
         # NB: read the field via getattr — bare `nd.init` resolves to a bound
         # method on the c_ast node (Jac treats `.init` as the constructor slot),
         # which silently dropped the initializer (e.g. `i = n`) before this fix.
         init_node = getattr(nd, "init");
         # init_lossy: a real `for (init; ...)` initializer was present but couldn't
-        # be lowered (e.g. a comma-expr / multi-decl init). _for_init returns None
-        # and we'd otherwise drop it silently, leaving loop vars uninitialized — so
-        # record the loss to keep the desugar out of Tier-A.
+        # be lowered. The while-desugar emits init statements before the loop, so
+        # _for_init_list handles the multi-clause forms a single IterForStmt slot
+        # can't — `for (i = 0, j = 10; ...)` (comma) and `for (int i = 0, j = 0;
+        # ...)` (multi-decl) each lower to one assignment per clause. It returns
+        # None only when some clause can't be lowered faithfully; we'd otherwise
+        # drop the init silently, leaving loop vars uninitialized — so record the
+        # loss to keep the desugar out of Tier-A.
         init_lossy = False;
         if init_node is not None {
-            init_stmt = self._for_init(init_node, line, col);
-            if init_stmt is not None {
-                result.append(init_stmt);
+            init_stmts = self._for_init_list(init_node, line, col);
+            if init_stmts is not None {
+                result.extend(init_stmts);
             } else {
                 init_lossy = True;
             }
@@ -542,16 +972,16 @@ obj CUniBuilder {
         # self._cond_lossy after _for_body would report the inner loop's verdict,
         # silently dropping this loop's own condition-loss clause.
         cond_lossy = self._cond_lossy;
-        self._loop_lossy = [];
         self._loop_has_continue = False;
         body_stmts = self._for_body(nd.stmt, line, col);
         next_node = getattr(nd, "next");
-        step_stmt = self._step_as_stmt(next_node, line, col);
+        step_stmts = self._step_as_stmts(next_node, line, col);
         # step_lossy: a real `for (...; ...; step)` step was present but couldn't be
-        # lowered (e.g. a bare function-call step like `tick()`). _step_as_stmt
-        # returns None and the step vanishes from the loop — the body no longer
-        # advances as written, so this is unfaithful and must not reach Tier-A.
-        step_lossy = next_node is not None and step_stmt is None;
+        # lowered (e.g. a bare function-call step like `tick()`, or a comma step
+        # with an unmappable operand). _step_as_stmts returns None and the step
+        # vanishes from the loop — the body no longer advances as written, so this
+        # is unfaithful and must not reach Tier-A.
+        step_lossy = next_node is not None and step_stmts is None;
         # A loop-level `continue` only makes the desugar unfaithful when a step
         # exists: C's `continue` jumps to the for-step then retests, but the
         # desugared `body; step` runs `continue` *before* the step, skipping it.
@@ -622,8 +1052,8 @@ obj CUniBuilder {
             self._mark_tier_b(nd, line, reason);
         }
         full_body: list[uni.UniNode] = [*body_stmts];
-        if step_stmt is not None {
-            full_body.append(step_stmt);
+        if step_stmts is not None {
+            full_body.extend(step_stmts);
         }
         result.append(
             uni.WhileStmt(
@@ -687,7 +1117,53 @@ obj CUniBuilder {
         if isinstance(step_node, c_ast.Assignment) {
             return self._assign_to_uni_assign(step_node, sline, scol);
         }
+        if isinstance(step_node, c_ast.FuncCall) {
+            # A bare call step `for (...; tick())`: append it as an expression
+            # statement to the desugared body. Faithful — C runs the call after
+            # each body pass, exactly where the desugar's `body; step` places it.
+            # (The IterForStmt path rejects this via _for_step, whose count_by
+            # must be an augmented assignment, so a call step always routes
+            # through the while-desugar where a plain statement step is legal.)
+            call = self._funccall_to_uni(step_node, sline, scol);
+            if call is not None {
+                return uni.ExprStmt(expr=call, in_fstring=False, kid=[call]);
+            }
+            return None;
+        }
         return None;
+    }
+
+    def _step_as_stmts(
+        step_node: object, line: int, col: int
+    ) -> list[uni.UniNode] | None {
+        # The for-step lowered to one-or-more statements appended after the body.
+        # A comma step `for (...; ...; i++, j++)` is an ExprList: C evaluates every
+        # operand left-to-right at the bottom of each iteration, exactly where the
+        # desugar's appended steps run, so each operand becomes its own step
+        # statement. (IterForStmt's single count_by slot can't hold a comma, so a
+        # comma step always routes here via _for_step returning None.) A single
+        # step defers to _step_as_stmt. Returns None — not [] — when a real step
+        # was present but some operand couldn't be lowered, so the caller flags the
+        # dropped step; a missing step (None node) returns [].
+        if step_node is None {
+            return [];
+        }
+        if isinstance(step_node, c_ast.ExprList) {
+            out: list[uni.UniNode] = [];
+            for e in step_node.exprs {
+                s = self._step_as_stmt(e, line, col);
+                if s is None {
+                    return None;
+                }
+                out.append(s);
+            }
+            return out;
+        }
+        single = self._step_as_stmt(step_node, line, col);
+        if single is None {
+            return None;
+        }
+        return [single];
     }
 
     # ------------------------------------------------------------------ #
@@ -873,8 +1349,44 @@ obj CUniBuilder {
                 op_tok = self._tok(tok_name, tok_val, nline, ncol);
                 return uni.UnaryExpr(kid=[op_tok, operand], operand=operand, op=op_tok);
             }
-            # `*p`, `&p`, `sizeof`, `p++`/`p--` have no faithful direct-IR analog.
+            if nd.op == "*" or nd.op == "&" {
+                # PTR_REF identity (mirrors mapper.c_UnaryOp §7.4): dereferencing
+                # or taking the address of a *simple* lvalue is a no-op in Jac, so
+                # `*p`/`&x`/`*s.f`/`&a[i]` → the operand itself. This keeps
+                # `*p += i` / `s += *p` in a for-body instead of returning None and
+                # dropping the whole statement. Only ID / s.f / s->f / a[i] qualify;
+                # a computed deref like `*(p + 1)` has a BinaryOp operand and falls
+                # through to None (Tier-B), since the arithmetic can't be elided.
+                if is_simple_ref(nd.expr) {
+                    return self._expr_to_uni(nd.expr, nline, ncol);
+                }
+                return None;
+            }
+            # `sizeof`, `p++`/`p--`, and computed `*`/`&` have no faithful
+            # direct-IR analog.
             return None;
+        }
+        if isinstance(nd, c_ast.TernaryOp) {
+            # `cond ? a : b` → uni.IfElseExpr, the same shape
+            # PyastBuildPass.proc_if_exp builds for Python's `a if cond else b`.
+            # Each arm recurses through _expr_to_uni; an arm that can't lower
+            # faithfully yields None so the caller demotes the enclosing
+            # statement to Tier-B rather than dropping it silently.
+            cond = self._expr_to_uni(nd.cond, nline, ncol);
+            iftrue = self._expr_to_uni(nd.iftrue, nline, ncol);
+            iffalse = self._expr_to_uni(nd.iffalse, nline, ncol);
+            if cond is None or iftrue is None or iffalse is None {
+                return None;
+            }
+            cond_cfg = uni.CfgExpr(expr=cond, kid=[cond]);
+            val_cfg = uni.CfgExpr(expr=iftrue, kid=[iftrue]);
+            else_cfg = uni.CfgExpr(expr=iffalse, kid=[iffalse]);
+            return uni.IfElseExpr(
+                value=val_cfg,
+                condition=cond_cfg,
+                else_value=else_cfg,
+                kid=[val_cfg, cond_cfg, else_cfg],
+            );
         }
         if isinstance(nd, c_ast.FuncCall) {
             return self._funccall_to_uni(nd, nline, ncol);
@@ -884,6 +1396,67 @@ obj CUniBuilder {
         }
         if isinstance(nd, c_ast.StructRef) {
             return self._structref_to_uni(nd, nline, ncol);
+        }
+        if isinstance(nd, c_ast.Cast) {
+            # C cast — lower the inner expression; the cast itself has no Jac
+            # analog. Mirror the top-level mapper.c_Cast (§5.3): a pointer /
+            # struct / array cast doesn't change the emitted value, so it stays
+            # at the optimistic Tier-A default; a scalar/numeric cast is
+            # representation-changing ((int)f truncates, (char)x narrows) and we
+            # drop the conversion, so record the loss to demote the enclosing
+            # loop to Tier-B rather than presenting a narrowed value as faithful.
+            inner = self._expr_to_uni(nd.expr, nline, ncol);
+            if inner is None {
+                return None;
+            }
+            target = cast_scalar_target(nd);
+            if target is not None {
+                self._loop_lossy.append(
+                    f"scalar cast to `{target}` elided "
+                    "(truncation/narrowing not applied)"
+                );
+            }
+            return inner;
+        }
+        if isinstance(nd, c_ast.ExprList) {
+            # Comma expression `(a, b, … , z)`: C evaluates every operand
+            # left-to-right but yields only the last. Lowering just the final
+            # operand is faithful exactly when the leading operands are
+            # side-effect-free — then dropping their evaluation changes nothing
+            # (mirrors mapper.c_ExprList). When a leading operand has a side
+            # effect (call / assignment / ++/--) dropping it loses semantics, so
+            # return None: the caller records the loss and demotes the enclosing
+            # loop to Tier-B rather than silently emitting a partial result.
+            if not nd.exprs {
+                return None;
+            }
+            for e in nd.exprs[:-1] {
+                if not expr_reeval_safe(e) {
+                    return None;
+                }
+            }
+            return self._expr_to_uni(nd.exprs[-1], nline, ncol);
+        }
+        if isinstance(nd, c_ast.InitList) {
+            # Brace initializer `{a, b, c}` → a Jac list literal (mirrors
+            # mapper.c_InitList). Faithful for a plain positional initializer:
+            # array element / struct field order is preserved. A designated
+            # initializer (`{.x = 1}` / `[2] = 3`) arrives as a NamedInitializer
+            # operand whose target name has no positional analog here, so bail
+            # (the caller flags the loss) rather than silently misplacing a value.
+            # An operand that can't lower likewise bails.
+            elts: list[uni.UniNode] = [];
+            for e in nd.exprs {
+                if isinstance(e, c_ast.NamedInitializer) {
+                    return None;
+                }
+                ev = self._expr_to_uni(e, nline, ncol);
+                if ev is None {
+                    return None;
+                }
+                elts.append(ev);
+            }
+            return uni.ListVal(kid=[*elts], values=elts);
         }
         return None;
     }
@@ -981,8 +1554,19 @@ obj CUniBuilder {
             (nline, ncol) = self._coord(nd);
             return self._structref_to_uni(nd, nline, ncol);
         }
-        # A `*p = …` deref or otherwise computed lvalue has no faithful direct-IR
-        # analog yet; return None so the caller records the loss (Tier-B).
+        # `*p = …` / `*s.f = …`: dereferencing a *simple* pointer lvalue is the
+        # PTR_REF identity (mirrors the rvalue side in _expr_to_uni), so the
+        # target is just the operand. Keeps `*p += i` in a for-body instead of
+        # dropping it. A computed deref (`*(p + 1) = …`) has a BinaryOp operand
+        # and falls through to None (Tier-B).
+        if isinstance(nd, c_ast.UnaryOp) and (nd.op == "*" or nd.op == "&") {
+            if is_simple_ref(nd.expr) {
+                (nline, ncol) = self._coord(nd.expr);
+                return self._expr_to_uni(nd.expr, nline, ncol);
+            }
+        }
+        # An otherwise computed lvalue has no faithful direct-IR analog yet;
+        # return None so the caller records the loss (Tier-B).
         return None;
     }
 

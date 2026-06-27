@@ -74,6 +74,71 @@ test "cfor.c count_odds function present" {
     assert "count_odds" in jac_str;
 }
 
+# --- ternary inside a direct-IR for-body ---
+test "for_ternary.c: ?: in a for-body lowers to a Jac conditional expression" {
+    (jac_str, tags) = _transpile("for_ternary.c");
+    # The augmented assignment `s += i > hi ? hi : i` must survive: a ternary RHS
+    # used to make _expr_to_uni return None, dropping the whole assignment and
+    # demoting the loop. The arm/cond order is `value if condition else other`.
+    assert "s += hi if i > hi else i" in jac_str , f"Expected conditional expression in for-body:\n{jac_str}";
+}
+
+test "for_ternary.c: faithful for-body is fully Tier-A (no phantom best-effort site)" {
+    (jac_str, tags) = _transpile("for_ternary.c");
+    # With the ternary lowered, no body construct is lost, so the loop stays a
+    # full ascending IterForStmt rather than the while-desugar fallback.
+    assert "for i = 0 to i < n by i += 1" in jac_str , f"Expected full IterForStmt in:\n{jac_str}";
+    # The whole function is faithful: the ternary is on the Tier-A allowlist, so
+    # there must be no Tier-B sites at all (a missing allowlist entry used to
+    # default-stamp the ?: node Tier-B with an empty reason).
+    entries = tags.tier_b_entries();
+    assert len(entries) == 0 , f"ternary for-body should be fully Tier-A, got {[
+        (nt.c_line, nt.reason) for nt in entries
+    ]}";
+}
+
+test "for_ternary.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_ternary.c");
+    errs = _recompile_errors(jac_str, "for_ternary.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- comma (ExprList) inside a direct-IR for-body ---
+# C `(a, … , z)` evaluates every operand but yields only `z`. The direct-IR
+# `_expr_to_uni` had no ExprList case, so any comma RHS returned None and the
+# whole statement was dropped. Now it lowers to just the final operand when the
+# leading operands are side-effect-free (faithful, Tier-A); an impure leading
+# operand still bails so the loss is flagged honestly (Tier-B).
+test "for_comma.c: a pure comma in a for-body lowers to its final operand" {
+    (jac_str, tags) = _transpile("for_comma.c");
+    # `s += (0, i)` — the pure leading `0` drops, only `i` is emitted.
+    assert "s += i" in jac_str , f"Expected the pure comma lowered to its final operand in:\n{jac_str}";
+}
+
+test "for_comma.c: the pure-comma loop stays a full Tier-A IterForStmt" {
+    (jac_str, tags) = _transpile("for_comma.c");
+    # With the comma lowered, the pure_comma body loses nothing, so its loop is a
+    # full ascending IterForStmt — and carries no Tier-B flag of its own.
+    assert "for i = 0 to i < n by i += 1" in jac_str , f"Expected full IterForStmt in:\n{jac_str}";
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert not any("0, i" in r for r in reasons) , f"A pure comma must not demote its loop, got {reasons}";
+}
+
+test "for_comma.c: an impure comma is dropped and demotes its loop to Tier-B" {
+    (jac_str, tags) = _transpile("for_comma.c");
+    # `s += (touch(i), i)` — the leading `touch(i)` call is side-effecting, so the
+    # whole assignment can't be lowered faithfully; the loop demotes to Tier-B
+    # with the body-construct loss flagged rather than silently dropping the call.
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert any("not faithfully lowered" in r and "assignment" in r for r in reasons) , f"Expected the impure-comma loop flagged Tier-B, got {reasons}";
+}
+
+test "for_comma.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_comma.c");
+    errs = _recompile_errors(jac_str, "for_comma.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
 # --- Enum tests ---
 test "enum_prepass: Color gets ENUM_AS_ENUM verdict" {
     src = _read("enum_simple.c");
@@ -268,39 +333,135 @@ test "for_infinite_continue.c emitted Jac recompiles cleanly" {
     assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
 }
 
-# --- Review finding: the Tier-A promotion must also guard the init and step
-# clauses, not just cond/body/continue. A present-but-unmappable init or step is
-# silently dropped by _for_init / _step_as_stmt (they return None), so without an
-# explicit lossy flag the desugar would look faithful and wrongly reach Tier-A
-# while the emitted Jac no longer initializes / advances the loop. ---
-test "for_funcall_step.c: a dropped function-call step keeps the desugar Tier-B" {
+# --- A bare function-call step `for (...; tick())` has no augmented-assignment
+# analog, so IterForStmt can't model it (count_by must be `x += …`). The
+# while-desugar appends the call as an ExprStmt step after the body — exactly
+# where C runs it — so with init/cond/body all faithful and no loop-level
+# continue to skip the step, the loop now promotes to Tier-A. ---
+test "for_funcall_step.c: a function-call step lowers faithfully and promotes to Tier-A" {
     (jac_str, tags) = _transpile("for_funcall_step.c");
-    # `for (i = 0; i < n; tick())` — the bare call step has no step-stmt analog
-    # and vanishes; cond/init/body all lower, so the *only* loss is the step.
+    # `for (i = 0; i < n; tick())` — every clause lowers, so no while-desugar
+    # Tier-B loss reasons should remain (in particular no dropped-step flag).
     reasons = [nt.reason for nt in tags.tier_b_entries()];
-    step_flagged = [
-        r
-        for r in reasons
-        if "step not faithfully lowered" in r and "desugared to while" in r
-    ];
-    assert len(step_flagged) >= 1 , f"Expected a Tier-B dropped-step flag, got {reasons}";
-    # A dropped step is unfaithful, so no Tier-A C_FOR promotion may exist.
-    assert len(tags.by_idiom(Idiom.C_FOR)) == 0 , f"A dropped-step desugar must not promote to Tier-A C_FOR";
+    assert not any("step not faithfully lowered" in r for r in reasons) , f"The call step lowers now; no dropped-step flag expected, got {reasons}";
+    assert not any("desugared to while" in r for r in reasons) , f"The desugar is faithful; no while-desugar Tier-B reason expected, got {reasons}";
+    # The promotion is recorded with the C_FOR idiom and must be Tier-A.
+    c_for = tags.by_idiom(Idiom.C_FOR);
+    assert len(c_for) >= 1 , f"Expected a Tier-A C_FOR desugar for the call-step loop, got {len(
+        c_for
+    )}";
+    for nt in c_for {
+        assert nt.tier == Tier.TIER_A , f"C_FOR idiom must be Tier-A, got {nt.tier}";
+    }
 }
 
-test "for_comma_init.c: a dropped comma/multi-decl init keeps the desugar Tier-B" {
+test "for_funcall_step.c: the call step survives the desugar after the body" {
+    (jac_str, tags) = _transpile("for_funcall_step.c");
+    # The init, body, and the appended call step must all be present verbatim.
+    assert "i = 0" in jac_str , f"Expected preserved initializer 'i = 0' in:\n{jac_str}";
+    assert "tick()" in jac_str , f"Expected the appended call step 'tick()' in:\n{jac_str}";
+    assert "i = i + 1" in jac_str or "i += 1" in jac_str , f"Expected the body advance in:\n{jac_str}";
+}
+
+test "for_funcall_step.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_funcall_step.c");
+    errs = _recompile_errors(jac_str, "for_funcall_step.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- A multi-clause init `for (i = 0, j = 10; ...)` is an ExprList (comma) of
+# assignments — `for (int i = 0, j = 0; ...)` would be a DeclList. A single
+# IterForStmt `iter=` slot can hold only one, so these route to the while-desugar
+# which emits one assignment per clause before the loop. With every clause
+# faithful, the loop promotes to Tier-A. ---
+test "for_comma_init.c: a comma init lowers to per-clause assignments and promotes to Tier-A" {
     (jac_str, tags) = _transpile("for_comma_init.c");
-    # `for (i = 0, j = 10; ...)` — the comma init isn't a single Assignment/Decl,
-    # so _for_init returns None and the initializer is dropped; cond/body/step are
-    # all faithful, isolating the init as the sole loss.
+    # `for (i = 0, j = 10; ...)` — both init clauses lower, so no while-desugar
+    # Tier-B loss reasons should remain (in particular no dropped-init flag).
     reasons = [nt.reason for nt in tags.tier_b_entries()];
-    init_flagged = [
-        r
-        for r in reasons
-        if "init not faithfully lowered" in r and "desugared to while" in r
-    ];
-    assert len(init_flagged) >= 1 , f"Expected a Tier-B dropped-init flag, got {reasons}";
-    assert len(tags.by_idiom(Idiom.C_FOR)) == 0 , f"A dropped-init desugar must not promote to Tier-A C_FOR";
+    assert not any("init not faithfully lowered" in r for r in reasons) , f"Both init clauses lower now; no dropped-init flag expected, got {reasons}";
+    assert not any("desugared to while" in r for r in reasons) , f"The desugar is faithful; no while-desugar Tier-B reason expected, got {reasons}";
+    c_for = tags.by_idiom(Idiom.C_FOR);
+    assert len(c_for) >= 1 , f"Expected a Tier-A C_FOR desugar for the comma-init loop, got {len(
+        c_for
+    )}";
+    for nt in c_for {
+        assert nt.tier == Tier.TIER_A , f"C_FOR idiom must be Tier-A, got {nt.tier}";
+    }
+}
+
+test "for_comma_init.c: both init clauses survive the desugar before the loop" {
+    (jac_str, tags) = _transpile("for_comma_init.c");
+    # Each comma operand becomes its own pre-loop assignment.
+    assert "i = 0" in jac_str , f"Expected preserved initializer 'i = 0' in:\n{jac_str}";
+    assert "j = 10" in jac_str , f"Expected preserved initializer 'j = 10' in:\n{jac_str}";
+    assert "j = j - 1" in jac_str , f"Expected the body in:\n{jac_str}";
+}
+
+test "for_comma_init.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_comma_init.c");
+    errs = _recompile_errors(jac_str, "for_comma_init.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- The DeclList init form `for (int i = 0, j = 0; ...)` is the sibling of the
+# comma (ExprList) init: both hold more clauses than IterForStmt's single `iter=`
+# slot, so both route to the while-desugar which emits one assignment per decl
+# before the loop. With every clause faithful, the loop promotes to Tier-A. The
+# comma fixture only exercises the ExprList path; this guards the DeclList one. ---
+test "for_multidecl_init.c: a multi-decl init lowers to per-decl assignments and promotes to Tier-A" {
+    (jac_str, tags) = _transpile("for_multidecl_init.c");
+    # `for (int i = 0, j = 0; ...)` — both decls lower, so no while-desugar Tier-B
+    # loss reasons should remain (in particular no dropped-init flag).
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert not any("init not faithfully lowered" in r for r in reasons) , f"Both init decls lower now; no dropped-init flag expected, got {reasons}";
+    assert not any("desugared to while" in r for r in reasons) , f"The desugar is faithful; no while-desugar Tier-B reason expected, got {reasons}";
+    c_for = tags.by_idiom(Idiom.C_FOR);
+    assert len(c_for) >= 1 , f"Expected a Tier-A C_FOR desugar for the multi-decl-init loop, got {len(
+        c_for
+    )}";
+    for nt in c_for {
+        assert nt.tier == Tier.TIER_A , f"C_FOR idiom must be Tier-A, got {nt.tier}";
+    }
+}
+
+test "for_multidecl_init.c: both decl initializers survive before the loop" {
+    (jac_str, tags) = _transpile("for_multidecl_init.c");
+    # Each decl becomes its own pre-loop assignment (the C scope/type is dropped,
+    # but the initialized value is preserved, like the single-decl init path).
+    assert "i = 0" in jac_str , f"Expected preserved initializer 'i = 0' in:\n{jac_str}";
+    assert "j = 0" in jac_str , f"Expected preserved initializer 'j = 0' in:\n{jac_str}";
+    assert "j = j + 2" in jac_str , f"Expected the body in:\n{jac_str}";
+}
+
+test "for_multidecl_init.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_multidecl_init.c");
+    errs = _recompile_errors(jac_str, "for_multidecl_init.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- The call-step lowering must still compose with the continue gate: C's
+# `continue` jumps to the for-step (running the call), but the desugared
+# `body; tick()` runs `continue` *before* the appended call, skipping it. So a
+# call step PLUS a loop-level `continue` is unfaithful and must stay Tier-B —
+# even though the step itself now lowers. This guards against the call-step path
+# accidentally bypassing the continue_unfaithful demotion. ---
+test "for_funcall_step_continue.c: a call step with a loop-level continue stays Tier-B" {
+    (jac_str, tags) = _transpile("for_funcall_step_continue.c");
+    # The call step is still emitted (it lowers fine)...
+    assert "tick()" in jac_str , f"Expected the call step 'tick()' in:\n{jac_str}";
+    assert "continue" in jac_str , f"Expected the loop-level continue in:\n{jac_str}";
+    # ...but the continue would skip it, so no Tier-A promotion and the reason
+    # must call out the continue/step divergence.
+    assert len(tags.by_idiom(Idiom.C_FOR)) == 0 , f"A continue-skips-step desugar must not promote to Tier-A C_FOR";
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert any("continue" in r and "skips it" in r for r in reasons) , f"Expected the continue-skips-step Tier-B reason, got {reasons}";
+}
+
+test "for_funcall_step_continue.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_funcall_step_continue.c");
+    errs = _recompile_errors(jac_str, "for_funcall_step_continue.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
 }
 
 # --- Review finding: an unmappable for-condition that becomes `while True`
@@ -334,7 +495,7 @@ test "for_unmappable_cond.c: the dropped condition is flagged with its own Tier-
 # verdict is now captured locally right after _while_cond, before the body. ---
 test "for_nested_cond_clobber.c: outer dropped condition stays flagged despite a nested fallback loop" {
     (jac_str, tags) = _transpile("for_nested_cond_clobber.c");
-    # The outer `*p` condition has no analog and became `while True`...
+    # The outer `*(p + 1)` condition has no analog and became `while True`...
     assert "while True" in jac_str , f"Expected `while True` for the outer unmappable condition in:\n{jac_str}";
     reasons = [nt.reason for nt in tags.tier_b_entries()];
     # ...so SOME loop must carry the explicit condition-loss clause. Before the
@@ -354,6 +515,88 @@ test "for_nested_cond_clobber.c: outer dropped condition stays flagged despite a
 test "for_nested_cond_clobber.c emitted Jac recompiles cleanly" {
     (jac_str, tags) = _transpile("for_nested_cond_clobber.c");
     errs = _recompile_errors(jac_str, "for_nested_cond_clobber.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- Review finding: a cast inside a direct-IR (C-for) body expression must be
+# lowered (not dropped), mirroring the top-level mapper.c_Cast. A scalar cast is
+# representation-changing and demotes the loop to Tier-B; a pointer cast doesn't
+# change the emitted value and stays Tier-A. Before the fix, _expr_to_uni had no
+# Cast case, so `total + (int)(i/2)` returned None and the WHOLE assignment was
+# silently dropped from the loop body. ---
+test "for_cast.c: a scalar cast in the body lowers its inner expr (statement not dropped)" {
+    (jac_str, tags) = _transpile("for_cast.c");
+    # The assignment must survive with the cast elided to its operand — not vanish.
+    assert "total = total + i / 2" in jac_str , f"Expected the scalar-cast statement preserved with the cast elided in:\n{jac_str}";
+}
+
+test "for_cast.c: a scalar cast demotes its loop to Tier-B with a cast-specific reason" {
+    (jac_str, tags) = _transpile("for_cast.c");
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    cast_flagged = [
+        r
+        for r in reasons
+        if "scalar cast to `int` elided" in r
+    ];
+    assert len(cast_flagged) >= 1 , f"Expected a Tier-B scalar-cast flag, got {reasons}";
+}
+
+test "for_cast.c: a pointer cast in the body lowers cleanly and stays Tier-A" {
+    (jac_str, tags) = _transpile("for_cast.c");
+    # `((int *)a)[i]` → `a[i]`: the pointer cast doesn't change the emitted value,
+    # so the deref_sum loop must NOT carry any Tier-B cast flag.
+    assert "total = total + a[i]" in jac_str , f"Expected the pointer-cast arrayref lowered to `a[i]` in:\n{jac_str}";
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert not any("pointer" in r.lower() and "cast" in r.lower() for r in reasons) , f"A pointer cast must not demote the loop, got {reasons}";
+}
+
+test "for_cast.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_cast.c");
+    errs = _recompile_errors(jac_str, "for_cast.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- Tier-A finding: a simple `*p` / `&x` deref in a direct-IR (C-for) body is
+# the PTR_REF identity — `*p`/`&x`/`*s.f`/`&a[i]` → the operand itself, matching
+# the top-level mapper.c_UnaryOp. Before the fix, _expr_to_uni returned None for
+# any `*`/`&` operand, so `s += *p` and `*p += i` dropped from the loop body and
+# demoted the whole loop. Only ID / s.f / s->f / a[i] qualify; a computed deref
+# like `*(p + 1)` keeps a BinaryOp operand and stays Tier-B. ---
+test "for_deref.c: `s += *p` (deref on the RHS) lowers to the bare reference" {
+    (jac_str, tags) = _transpile("for_deref.c");
+    # The augmented assignment must survive with the deref elided to its operand.
+    assert "s += p;" in jac_str , f"Expected `*p` RHS lowered to `p` in:\n{jac_str}";
+}
+
+test "for_deref.c: `*p += i` (deref on the LHS) lowers to the bare reference" {
+    (jac_str, tags) = _transpile("for_deref.c");
+    # The deref target must lower too, not just the RHS — `_lvalue_to_uni` used to
+    # return None for `*p`, dropping the whole statement.
+    assert "p += i;" in jac_str , f"Expected `*p` LHS lowered to `p` in:\n{jac_str}";
+}
+
+test "for_deref.c: simple-deref loops stay fully Tier-A (full IterForStmt, no loss)" {
+    (jac_str, tags) = _transpile("for_deref.c");
+    # Both deref bodies lower faithfully, so the loops keep the ascending
+    # IterForStmt shape rather than falling back to the while-desugar.
+    assert "for i = 0 to i < n by i += 1" in jac_str , f"Expected full IterForStmt in:\n{jac_str}";
+    # The only Tier-B site is the computed-deref function below; the two simple
+    # ones must contribute no losses.
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert len(reasons) == 1 , f"Only the computed-deref loop should be Tier-B, got {reasons}";
+}
+
+test "for_deref.c: a computed deref `*(p + 1)` keeps the loop Tier-B (arithmetic not elidable)" {
+    (jac_str, tags) = _transpile("for_deref.c");
+    # `*(p + 1)` has a BinaryOp operand — not a simple ref — so the assignment is
+    # dropped and the enclosing loop is honestly demoted with a body-loss reason.
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert any("not faithfully lowered" in r for r in reasons) , f"Expected a Tier-B body-loss flag for the computed deref, got {reasons}";
+}
+
+test "for_deref.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_deref.c");
+    errs = _recompile_errors(jac_str, "for_deref.c");
     assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
 }
 
@@ -548,5 +791,217 @@ test "for_array_body.c: faithfully-lowered bodies do NOT demote any loop to Tier
 test "for_array_body.c emitted Jac recompiles cleanly" {
     (jac_str, tags) = _transpile("for_array_body.c");
     errs = _recompile_errors(jac_str, "for_array_body.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- Tier-A promotion: a bare `i++;` / `i--;` increment STATEMENT inside a
+# direct-IR for-body. _c_stmt_to_uni had no UnaryOp case, so a stand-alone
+# increment fell through to the generic fallback and demoted the loop. It now
+# lowers to the same augmented assignment a for-step does (`s++` → `s += 1`). ---
+test "for_incdec_body.c: a bare increment statement lowers to an augmented assignment" {
+    (jac_str, tags) = _transpile("for_incdec_body.c");
+    assert "s += 1;" in jac_str , f"Expected `s++` → `s += 1` in:\n{jac_str}";
+    assert "s -= 1;" in jac_str , f"Expected `s--` → `s -= 1` in:\n{jac_str}";
+}
+
+test "for_incdec_body.c: the increment-body loop stays a full Tier-A IterForStmt" {
+    (jac_str, tags) = _transpile("for_incdec_body.c");
+    assert "for i = 0 to i < n by i += 1 {" in jac_str , f"Expected full IterForStmt in:\n{jac_str}";
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert len(reasons) == 0 , f"increment-body loop should be fully Tier-A, got {reasons}";
+}
+
+test "for_incdec_body.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_incdec_body.c");
+    errs = _recompile_errors(jac_str, "for_incdec_body.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- Tier-A promotion: a comma STEP `for (...; ...; i++, j++)` is an ExprList.
+# IterForStmt's single count_by slot can't hold a comma, so it routes to the
+# while-desugar, which now appends ONE step statement per operand after the body
+# (where C runs them). Every clause faithful → Tier-A. ---
+test "for_comma_step.c: a comma step lowers to one appended step per operand and promotes to Tier-A" {
+    (jac_str, tags) = _transpile("for_comma_step.c");
+    # Each comma-step operand becomes its own appended step in the desugared body.
+    assert "i += 1;" in jac_str , f"Expected the first comma-step `i++` appended in:\n{jac_str}";
+    assert "j += 1;" in jac_str , f"Expected the second comma-step `j++` appended in:\n{jac_str}";
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert not any("step not faithfully lowered" in r for r in reasons) , f"Both comma-step operands lower; no dropped-step flag expected, got {reasons}";
+    assert not any("desugared to while" in r for r in reasons) , f"The desugar is faithful; no while-desugar Tier-B reason expected, got {reasons}";
+    c_for = tags.by_idiom(Idiom.C_FOR);
+    assert len(c_for) >= 1 , f"Expected a Tier-A C_FOR desugar for the comma-step loop, got {len(
+        c_for
+    )}";
+    for nt in c_for {
+        assert nt.tier == Tier.TIER_A , f"C_FOR idiom must be Tier-A, got {nt.tier}";
+    }
+}
+
+test "for_comma_step.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_comma_step.c");
+    errs = _recompile_errors(jac_str, "for_comma_step.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- Tier-A promotion: a richer comma INIT `for (i = 0, seed(); ...)` mixes an
+# assignment with a side-effecting call. _for_init_list used to bail on any
+# non-assignment operand; it now lowers `i++`/`i--` (→ aug-assign) and bare calls
+# (→ expression statement) too, so each operand becomes a faithful pre-loop
+# statement and the loop promotes to Tier-A. ---
+test "for_comma_init_rich.c: a call operand in a comma init lowers to a pre-loop statement" {
+    (jac_str, tags) = _transpile("for_comma_init_rich.c");
+    assert "i = 0;" in jac_str , f"Expected the assignment init clause in:\n{jac_str}";
+    assert "seed();" in jac_str , f"Expected the call init clause lowered to a pre-loop statement in:\n{jac_str}";
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert not any("init not faithfully lowered" in r for r in reasons) , f"Both init clauses lower now; no dropped-init flag expected, got {reasons}";
+    assert not any("desugared to while" in r for r in reasons) , f"The desugar is faithful; no while-desugar Tier-B reason expected, got {reasons}";
+    c_for = tags.by_idiom(Idiom.C_FOR);
+    assert len(c_for) >= 1 , f"Expected a Tier-A C_FOR desugar for the rich-comma-init loop, got {len(
+        c_for
+    )}";
+}
+
+test "for_comma_init_rich.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_comma_init_rich.c");
+    errs = _recompile_errors(jac_str, "for_comma_init_rich.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- Tier-A promotion: a nested `do { } while` inside a direct-IR for-body.
+# _c_stmt_to_uni had no DoWhile case, so it fell to the generic fallback and
+# demoted the loop. It now desugars to `while True { body; if not cond break }`
+# (mirrors mapper.c_DoWhile): a continue-free do-while is faithful (Tier-A,
+# DO_WHILE idiom), and a loop-level continue — which would skip the post-body
+# condition test — demotes both the do-while node and the enclosing loop. ---
+test "for_nested_dowhile.c: a clean nested do-while desugars faithfully and is Tier-A" {
+    (jac_str, tags) = _transpile("for_nested_dowhile.c");
+    # The `do { body } while (k < i)` desugars to `while True { body; if not k < i break }`.
+    assert "while True {" in jac_str , f"Expected the do-while desugar `while True` in:\n{jac_str}";
+    assert "if not k < i {" in jac_str , f"Expected the post-body condition guard in:\n{jac_str}";
+    # The clean do-while is stamped Tier-A with the DO_WHILE idiom (queryable).
+    do_while = tags.by_idiom(Idiom.DO_WHILE);
+    assert len(do_while) == 1 , f"Expected exactly one Tier-A DO_WHILE (the clean nested do-while), got {len(
+        do_while
+    )}";
+    for nt in do_while {
+        assert nt.tier == Tier.TIER_A , f"DO_WHILE idiom must be Tier-A, got {nt.tier}";
+    }
+}
+
+test "for_nested_dowhile.c: a do-while with a loop-level continue stays Tier-B" {
+    (jac_str, tags) = _transpile("for_nested_dowhile.c");
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    # The continue would skip the post-body condition test, so the do-while node
+    # is flagged precisely AND the enclosing loop is demoted.
+    assert any(
+        "skips the post-body condition test" in r and "while True" in r for r in reasons
+    ) , f"Expected the precise do-while continue-skips-cond flag, got {reasons}";
+    assert any("not faithfully lowered" in r and "do-while" in r for r in reasons) , f"Expected the enclosing loop demoted by the lossy do-while, got {reasons}";
+}
+
+test "for_nested_dowhile.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_nested_dowhile.c");
+    errs = _recompile_errors(jac_str, "for_nested_dowhile.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- Tier-A promotion: a nested `switch` inside a direct-IR for-body. _c_stmt_to_uni
+# had no Switch case, so it fell to the generic fallback and demoted the loop. It
+# now lowers to a nested if/elif/else chain (mirrors mapper.c_Switch): a clean
+# switch (no fall-through, pure selector) is faithful (Tier-A, SWITCH_CLEAN idiom),
+# and a lossy one (case fall-through) demotes both the switch node and the loop. ---
+test "for_nested_switch.c: a clean nested switch lowers to an if/elif/else chain and is Tier-A" {
+    (jac_str, tags) = _transpile("for_nested_switch.c");
+    # `switch (i) { case 0: ...; case 1: ...; default: ... }` → if/elif/else.
+    assert "if i == 0 {" in jac_str , f"Expected the head `if i == 0` arm in:\n{jac_str}";
+    assert "elif i == 1 {" in jac_str , f"Expected the `elif i == 1` arm in:\n{jac_str}";
+    assert "} else {" in jac_str , f"Expected the default → `else` arm in:\n{jac_str}";
+    # The clean switch is stamped Tier-A with the SWITCH_CLEAN idiom (queryable).
+    clean = tags.by_idiom(Idiom.SWITCH_CLEAN);
+    assert len(clean) == 1 , f"Expected exactly one Tier-A SWITCH_CLEAN (the clean nested switch), got {len(
+        clean
+    )}";
+    for nt in clean {
+        assert nt.tier == Tier.TIER_A , f"SWITCH_CLEAN idiom must be Tier-A, got {nt.tier}";
+    }
+}
+
+test "for_nested_switch.c: a switch with case fall-through stays Tier-B" {
+    (jac_str, tags) = _transpile("for_nested_switch.c");
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    # The fall-through (case 0 has no break) can't be modelled by if/elif, so the
+    # switch node is flagged precisely AND the enclosing loop is demoted.
+    assert any("fall-through is not" in r for r in reasons) , f"Expected the precise switch fall-through flag, got {reasons}";
+    assert any("not faithfully lowered" in r and "switch" in r for r in reasons) , f"Expected the enclosing loop demoted by the lossy switch, got {reasons}";
+}
+
+test "for_nested_switch.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_nested_switch.c");
+    errs = _recompile_errors(jac_str, "for_nested_switch.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- Tier-A promotion: a brace initializer `int a[3] = {1, 2, 3};` in a for-body
+# local decl. _expr_to_uni had no InitList case, so the decl-init returned None
+# and the whole declaration was dropped (demoting the loop). It now lowers to a
+# Jac list literal, preserving element order. ---
+test "for_initlist.c: a brace initializer lowers to a Jac list literal" {
+    (jac_str, tags) = _transpile("for_initlist.c");
+    assert "a = [1, 2, 3];" in jac_str , f"Expected the InitList lowered to a list literal in:\n{jac_str}";
+}
+
+test "for_initlist.c: the initializer-list loop stays a full Tier-A IterForStmt" {
+    (jac_str, tags) = _transpile("for_initlist.c");
+    assert "for i = 0 to i < n by i += 1 {" in jac_str , f"Expected full IterForStmt in:\n{jac_str}";
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert len(reasons) == 0 , f"initializer-list loop should be fully Tier-A, got {reasons}";
+}
+
+test "for_initlist.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_initlist.c");
+    errs = _recompile_errors(jac_str, "for_initlist.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- A stray `;` in a for-body is a no-op. _populate_default_tags stamped the
+# EmptyStatement node Tier-B (empty reason) and the direct-IR fallback flagged it
+# as a dropped body construct — a do-nothing statement presenting as a phantom
+# best-effort site. It is now on the boundary Tier-A allowlist and the direct-IR
+# builder drops it outright, so it contributes no loss. ---
+test "for_empty_stmt.c: an empty statement is a no-op and demotes nothing" {
+    (jac_str, tags) = _transpile("for_empty_stmt.c");
+    assert "for i = 0 to i < n by i += 1 {" in jac_str , f"Expected full IterForStmt in:\n{jac_str}";
+    # The stray `;` must contribute NO Tier-B site at all (not even an empty-reason one).
+    entries = tags.tier_b_entries();
+    assert len(entries) == 0 , f"empty statement should be a no-op Tier-A, got {[
+        (nt.c_line, nt.reason) for nt in entries
+    ]}";
+}
+
+test "for_empty_stmt.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_empty_stmt.c");
+    errs = _recompile_errors(jac_str, "for_empty_stmt.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- A top-level `;` (py-ast path, not a for-body) also lowers to a no-op rather
+# than the dispatch-miss `__c2jac_unsupported__` surrogate, and is Tier-A. The
+# Jac no-op renders as a bare `;`; the point is that it is faithful, not a
+# flagged best-effort surrogate. ---
+test "top-level empty statement is a no-op (no surrogate, Tier-A)" {
+    (jac_str, tags) = transpile_c_str("int f(int n) { ; return n; }", "empty_top.c");
+    # The function body survives and carries no dispatch-miss surrogate.
+    assert "return n;" in jac_str , f"Expected the function body preserved in:\n{jac_str}";
+    assert "__c2jac_unsupported" not in jac_str , f"Empty statement must not emit a surrogate in:\n{jac_str}";
+    entries = tags.tier_b_entries();
+    assert len(entries) == 0 , f"top-level empty statement should be Tier-A, got {[
+        (nt.c_line, nt.reason) for nt in entries
+    ]}";
+}
+
+test "top-level empty statement output recompiles cleanly" {
+    (jac_str, tags) = transpile_c_str("int f(int n) { ; return n; }", "empty_top.c");
+    errs = _recompile_errors(jac_str, "empty_top.c");
     assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
 }
