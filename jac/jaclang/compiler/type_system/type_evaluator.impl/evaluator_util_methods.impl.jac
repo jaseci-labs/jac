@@ -420,24 +420,6 @@ impl TypeEvaluator._get_type_for_member_lookup(
     return object_type;
 }
 
-"""Get bound member from a class type. Handles type[T] by looking up on T."""
-impl TypeEvaluator.get_type_of_bound_member(
-    object_type: types.ClassType, member_name: str
-) -> type_utils.ClassMember | None {
-    # TODO: Handle type[Any]/type[Unknown] - should return Any for member access
-    # TODO: Handle metaclass member lookups
-    # TODO: Handle descriptor protocol (__get__, __set__)
-    # TODO: Handle __getattr__ fallback when member not found
-    object_type_is_instantiable = object_type.is_instantiable();
-
-    if object_type_is_instantiable {
-        lookup_type = self._get_type_for_member_lookup(object_type);
-        return self._lookup_class_member(lookup_type, member_name);
-    } else {
-        return self._lookup_object_member(object_type, member_name);
-    }
-}
-
 """
 Get member type and specialize it with class type_args. (Pyright: getTypeOfMember)
 
@@ -1502,35 +1484,6 @@ impl TypeEvaluator._get_special_form_type(
         # case "Union": return self.prefetch.union_class;
         # case "Optional": return self.prefetch.optional_class;
 
-    }
-    return None;
-}
-
-"""
-Create Self type if symbol is typing.Self. (Pyright: createSelfType)
-
-Self is a special TypeVar that represents the current class type.
-Returns TypeVarType("Self") if the symbol type is _SpecialForm, None otherwise.
-
-NOTE: This function is now largely handled by _get_special_form_type which
-checks if the type is _SpecialForm and switches on the name.
-"""
-impl TypeEvaluator.create_self_type(
-    symbol_type: types.TypeBase
-) -> types.TypeVarType | None {
-    if not self.prefetch {
-        return None;
-    }
-    # Pyright: Check if symbol_type is _SpecialForm (same shared as Callable)
-    if not isinstance(symbol_type, types.ClassType) {
-        return None;
-    }
-    if not self.prefetch.callable_class {
-        return None;
-    }
-    # Check if it's a _SpecialForm
-    if symbol_type.shared == self.prefetch.callable_class.shared {
-        return type_utils.synthesize_self_type_var();
     }
     return None;
 }
