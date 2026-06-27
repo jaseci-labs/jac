@@ -9,11 +9,17 @@ Entry point: inject_tier_b_comments(jac_str, tags) -> str
 
 import re;
 import from jaclang.compiler.c2jac.tags { TagTable, NodeTag }
+import from jaclang.compiler.c2jac.c_common { UNSUPPORTED_STMT, UNSUPPORTED_EXPR }
 
-# Coupling: surrogate name is a literal here AND in mapper.jac
-# (_UNSUPPORTED_STMT/_UNSUPPORTED_EXPR) — rename either side and inline notes
-# vanish silently. CI backstop: 'surrogate lines get an inline BEST-EFFORT note'.
-glob _MARKER_RE = re.compile(r"__c2jac_unsupported(?:_expr)?__\((\d+)\)"),
+# The surrogate names this matcher keys on are owned by c2jac.c_common (the
+# emitter, mapper.impl/core.impl.jac, imports the same two globs). Building the
+# regex from those constants — rather than re-typing the literal — keeps the
+# matcher and the emitter on one source of truth: rename the sentinel in c_common
+# and both move together. The _expr alternative comes first so the longer name
+# wins. CI backstop: 'surrogate lines get an inline BEST-EFFORT note'.
+glob _MARKER_RE = re.compile(
+         r"(?:" + re.escape(UNSUPPORTED_EXPR) + r"|" + re.escape(UNSUPPORTED_STMT) + r")\((\d+)\)"
+     ),
      _NOTE_PREFIX = "# c2jac: BEST-EFFORT — ";
 
 def inject_tier_b_comments(jac_str: str, tags: TagTable) -> str {

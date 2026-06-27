@@ -5,7 +5,6 @@ transpile_c_str  — lower-level entry for already-preprocessed C; pcpp not requ
 """
 
 import ast as ast3;
-import from pycparser { c_parser }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.program { JacProgram }
@@ -50,6 +49,8 @@ def transpile_c_file(
 }
 
 def transpile_c_str(c_src: str, filename: str) -> tuple[str, TagTable] {
+    # pycparser imported lazily so importing c2jac has no dep cost unless you use it.
+    import from pycparser { c_parser }
     parser = c_parser.CParser();
     try {
         file_ast = parser.parse(c_src, filename);

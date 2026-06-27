@@ -103,6 +103,15 @@ glob CLIT_INT: str = "int",
      CLIT_STRING: str = "string",
      CLIT_UNKNOWN: str = "unknown";
 
+# --- Dispatch-miss surrogate sentinels ----------------------------------- #
+# Single source of truth for the surrogate call names a dispatch miss emits.
+# The mapper builds these as `ast` Name nodes (mapper.impl/core.impl.jac) and the
+# post-format comment injector (comments.jac) matches them by regex to attach the
+# BEST-EFFORT note. Both sides import from here so the name lives in exactly one
+# place — change it and both the emitter and the matcher move together.
+glob UNSUPPORTED_STMT: str = "__c2jac_unsupported__",
+     UNSUPPORTED_EXPR: str = "__c2jac_unsupported_expr__";
+
 def classify_c_constant(c_type: str) -> str {
     # Map pycparser's *widened* Constant type to a c2jac literal family. The
     # type is reported as the C family ("unsigned int" / "long double" / ...),

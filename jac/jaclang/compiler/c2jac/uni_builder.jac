@@ -260,7 +260,7 @@ obj CUniBuilder {
 
         # DeclList or Assignment?
         if isinstance(init_node, c_ast.DeclList) {
-            # Multiple init decls — only handle single for now.
+            # DeclList with one decl — multi-decl is handled upstream by _for_init_list.
             if len(init_node.decls) == 1 {
                 return self._decl_to_assign(init_node.decls[0], line, col);
             }
