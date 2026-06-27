@@ -997,20 +997,12 @@ obj NaIRGenPass(ModuleCodegenPass) {
     # no RC header/destructor/type tag (#6571).
     def _clib_alloc_vtable(name: str) -> ir.Value;
     # ─── System V AMD64 ABI lowering for foreign structs (Phase 1) ───
-    # Compute the C in-memory layout of a clib struct: (size, align, scalars)
-    # where scalars is a list of (byte_offset, is_sse, bits). Nested clib
-    # structs are flattened (inlined) recursively to match the C ABI.
-    def _clib_struct_layout(name: str) -> tuple;
     # Memoized foreign declaration model over this pass's module universe.
     def _foreign_model -> dict;
     # Memoized foreign function declarations (name -> {"params", "ret"}).
     def _foreign_fns -> dict;
     # Ordered (field_name, nested_struct_name | None) pairs for a clib struct.
     def _foreign_fields_of(name: str) -> list;
-    # Classify a clib struct for the active target's C ABI (dispatches to the
-    # System V or AAPCS variant) into either MEMORY (indirect) or register
-    # coerce types.
-    def _classify_clib_struct(name: str) -> dict;
     # True if the clib struct has a field that is itself a clib struct.
     def _clib_has_nested(name: str) -> bool;
     # C-laid-out LLVM type for a clib struct (nested clib structs inlined).
