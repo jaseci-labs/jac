@@ -66,42 +66,6 @@ impl NaIRGenPass._foreign_fields_of(name: str) -> list {
     return out;
 }
 
-"""Compute the C in-memory layout of a clib struct.
-
-Returns (size, align, scalars) where scalars is a flat list of
-(byte_offset, is_sse, bits). Nested clib structs are inlined recursively so the
-layout matches the C ABI rather than the Jac pointer-nested representation.
-"""
-impl NaIRGenPass._clib_struct_layout(name: str) -> tuple {
-    # The C layout is the foreign declaration model's job (Phase 8); the
-    # pass only supplies its module universe (entry + transitive native
-    # imports, assembled in _register_imported_struct_types).
-    import from jaclang.compiler.targets.foreign { foreign_struct_layout }
-    return foreign_struct_layout(self._foreign_model(), name);
-}
-
-"""Classify a clib struct for the active target's C ABI.
-
-Dispatches to the System V AMD64 or AArch64 AAPCS classifier based on the
-module triple. Returns a dict with:
-  - "memory": passed indirectly (byval pointer / caller copy / sret)
-  - "coerce": list[ir.Type] register pieces when not memory
-  - "byval": for memory args, whether the indirect pointer carries `byval`
-    (System V: backend copies) vs a caller-made copy passed as a plain pointer
-    (AAPCS)
-  - "safe": for register structs, whether the coerce pieces must be loaded via
-    an over-read-safe buffer (AAPCS coerces a partial struct up to a full
-    register) vs loaded in place (System V sizes each eightbyte exactly)
-  - "size", "align"
-"""
-impl NaIRGenPass._classify_clib_struct(name: str) -> dict {
-    # Classification is the pure target-ABI library's job (Phase 8); the
-    # pass only flattens its struct state into the layout description.
-    import from jaclang.compiler.targets.abi { classify_struct }
-    (size, align, scalars) = self._clib_struct_layout(name);
-    return classify_struct(size, align, scalars, str(self.llvm_module.triple or ""));
-}
-
 """True if a clib struct has a field whose type is itself a clib struct."""
 impl NaIRGenPass._clib_has_nested(name: str) -> bool {
     for (_fn, nested) in self._foreign_fields_of(name) {

@@ -1175,10 +1175,6 @@ class NativeSetEmitter(SetEmitter[(ir.Value, NativeEmitCtx)]) {
     ) -> (ir.Value | None);
 
     # Set algebra
-    def _emit_set_iterate(
-        self: NativeSetEmitter, ctx: NativeEmitCtx, source: ir.Value, prefix: str
-    ) -> tuple;
-
     def emit_union(
         self: NativeSetEmitter,
         ctx: NativeEmitCtx,
