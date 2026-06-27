@@ -82,7 +82,7 @@ test "control_flow.c headers are not split across lines" {
 }
 
 test "for_block_spacing.c: multi-line loop body has no spurious blank line" {
-    # Regression guard for the zero-line token fix-up (driver._fix_zero_toks_in_subtree):
+    # Regression guard for the zero-line token fix-up (NormalizePass, via _stamp_zero_toks):
     # synthesized structural tokens (`{`/`}`) carry line=0. Stamping every zero
     # token with the block's FIRST descendant line compressed the block's apparent
     # span, and the formatter's blank-line gap logic (keyed off last_line) then

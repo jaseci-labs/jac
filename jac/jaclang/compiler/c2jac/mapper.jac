@@ -53,7 +53,9 @@ import from jaclang.compiler.c2jac.c_common {
     CLIT_INT,
     CLIT_FLOAT,
     CLIT_CHAR,
-    CLIT_STRING
+    CLIT_STRING,
+    UNSUPPORTED_STMT,
+    UNSUPPORTED_EXPR
 }
 import from jaclang.compiler.c2jac.c_types {
     C_PRIM_MAP,
@@ -73,9 +75,6 @@ import from jaclang.compiler.c2jac.c_dataflow { lb_merge, collect_lb_kills }
 # c2jac.directir — see that module for why the py-ast round-trip is safe and how
 # leaks are made impossible. We only need the sentinel name to emit a placeholder.
 import from jaclang.compiler.c2jac.directir { SLOT_SENTINEL }
-
-glob _UNSUPPORTED_STMT: str = "__c2jac_unsupported__",
-     _UNSUPPORTED_EXPR: str = "__c2jac_unsupported_expr__";
 
 obj CMapper {
     has tags: TagTable,

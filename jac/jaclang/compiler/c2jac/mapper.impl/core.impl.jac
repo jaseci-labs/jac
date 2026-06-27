@@ -55,10 +55,10 @@ impl CMapper._surrogate_stmt(c_node: object) -> object {
         )
     );
     name_n = self._stamp_manual(
-        ast3.Name(id=_UNSUPPORTED_STMT, ctx=ast3.Load()),
+        ast3.Name(id=UNSUPPORTED_STMT, ctx=ast3.Load()),
         line,
         col,
-        text=_UNSUPPORTED_STMT
+        text=UNSUPPORTED_STMT
     );
     # Anchor arg is the C-source line as an INT, not the reason string. A
     # string Constant here would be re-sliced from orig_src (the C source) by
@@ -88,10 +88,10 @@ impl CMapper._surrogate_expr(c_node: object) -> object {
         )
     );
     name_n = self._stamp_manual(
-        ast3.Name(id=_UNSUPPORTED_EXPR, ctx=ast3.Load()),
+        ast3.Name(id=UNSUPPORTED_EXPR, ctx=ast3.Load()),
         line,
         col,
-        text=_UNSUPPORTED_EXPR
+        text=UNSUPPORTED_EXPR
     );
     # Int line anchor, not the reason string — see _surrogate_stmt for why a
     # string Constant would re-slice the C source into invalid Jac.
