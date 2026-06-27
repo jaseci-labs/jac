@@ -810,13 +810,6 @@ impl JacLangServer.update_modules(
     }
 }
 
-"""Get IR for a file path."""
-impl JacLangServer.get_ir(file_path: str) -> Optional[uni.Module] {
-    with self._state_lock.read_lock() {
-        return self.mod.hub.get(file_path);
-    }
-}
-
 """Remove errors and warnings for a specific file from the lists."""
 impl JacLangServer._clear_alerts_for_file(file_path: str) -> None {
     with self._state_lock.write_lock() {

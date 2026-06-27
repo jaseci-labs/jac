@@ -65,7 +65,6 @@ obj JacLangServer(JacProgram, LanguageServer) {
     has diagnostics: dict[str, list] { getter; }
 
     def _clear_alerts_for_file(file_path: str) -> None;
-    def get_ir(file_path: str) -> Optional[uni.Module];
     def update_modules(
         file_path: str,
         build: uni.Module,

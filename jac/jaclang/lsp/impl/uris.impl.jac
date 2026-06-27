@@ -55,14 +55,6 @@ impl to_fs_path(uri: str) -> Optional[str] {
     }
 }
 
-impl uri_scheme(uri: str) -> Optional[str] {
-    try {
-        return _urlparse(uri)[0];
-    } except (TypeError, IndexError) {
-        return None;
-    }
-}
-
 impl _urlparse(uri: str) -> tuple[str, str, str, str, str, str] {
     (scheme, netloc, path, params, query, fragment) = parse.urlparse(uri);
     return (

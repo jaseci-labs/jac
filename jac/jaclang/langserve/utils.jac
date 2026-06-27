@@ -2,7 +2,6 @@
 
 import asyncio;
 import builtins;
-import re;
 import from functools { wraps }
 import from typing { Any, Awaitable, Callable, Coroutine, Optional, ParamSpec, TypeVar }
 
@@ -25,12 +24,6 @@ def gen_diagnostics(
 
 def debounce(`wait: float) -> Callable[[T], Callable[(..., Awaitable[None])]];
 
-def sym_tab_list(sym_tab: UniScopeNode, file_path: str) -> list[UniScopeNode];
-
-def find_deepest_symbol_node_at_pos(
-    nd: uni.UniNode, line: int, character: int
-) -> Optional[uni.AstSymbolNode];
-
 def position_within_node(n: uni.UniNode, line: int, character: int) -> bool;
 
 def find_index(sem_tokens: list[int], line: int, char: int) -> Optional[int];
@@ -42,16 +35,6 @@ def owner_sym(table: UniScopeNode) -> Optional[Symbol];
 def create_range(loc: CodeLocInfo) -> lspt.Range;
 
 def kind_map(sub_tab: uni.UniNode) -> lspt.SymbolKind;
-
-def label_map(sub_tab: SymbolType) -> lspt.CompletionItemKind;
-
-def collect_all_symbols_in_scope(
-    sym_tab: UniScopeNode, up_tree: bool = True
-) -> list[lspt.CompletionItem];
-
-def collect_child_tabs(sym_tab: UniScopeNode) -> list[lspt.CompletionItem];
-
-def parse_symbol_path(text: str, dot_position: int) -> list[str];
 
 def get_token_start(
     token_index: (int | None), sem_tokens: list[int]

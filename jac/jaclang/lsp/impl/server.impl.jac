@@ -193,28 +193,10 @@ impl PositionCodec.position_from_client_units(
     return Position(line=position.line, character=utf32_index);
 }
 
-impl PositionCodec.position_to_client_units(
-    lines: list[str], position: Position
-) -> Position {
-    try {
-        character = self.client_num_units(lines[position.line][:position.character]);
-        return Position(line=position.line, character=character);
-    } except IndexError {
-        return Position(line=len(lines), character=0);
-    }
-}
-
 impl PositionCodec.range_from_client_units(lines: list[str], range: Range) -> Range {
     return Range(
         start=self.position_from_client_units(lines, range.start),
         end=self.position_from_client_units(lines, range.end)
-    );
-}
-
-impl PositionCodec.range_to_client_units(lines: list[str], range: Range) -> Range {
-    return Range(
-        start=self.position_to_client_units(lines, range.start),
-        end=self.position_to_client_units(lines, range.end)
     );
 }
 
