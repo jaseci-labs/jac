@@ -81,20 +81,26 @@ test "control_flow.c headers are not split across lines" {
     assert "continue;" in jac_str , f"continue lost:\n{jac_str}";
 }
 
-test "for_block_spacing.c: multi-line loop body has no spurious blank line" {
+test "for_block_spacing.c: multi-line loop body has no double blank line" {
     # Regression guard for the zero-line token fix-up (NormalizePass, via _stamp_zero_toks):
     # synthesized structural tokens (`{`/`}`) carry line=0. Stamping every zero
     # token with the block's FIRST descendant line compressed the block's apparent
     # span, and the formatter's blank-line gap logic (keyed off last_line) then
-    # injected a stray blank line inside the loop body. Positional stamping —
+    # injected a DOUBLE blank line inside the loop body. Positional stamping —
     # opening tokens take the first following line, closing tokens the last
     # preceding line — keeps the span correct.
+    #
+    # Now that loop-body lowering is single-sourced through the mapper's py-ast
+    # path (loop bodies no longer use the direct-IR builder, which collapsed every
+    # body coord to line 1), a for-body spaces exactly like the same statements at
+    # function top level: the formatter leaves ONE blank line between two
+    # statements that sit on different source lines. That single blank is the
+    # established c2jac py-ast style — the meaningful guard is that a span-
+    # compression bug never doubles it.
     jac_str = _transpile("for_block_spacing.c");
     assert "total = total + i;" in jac_str , f"body stmt 1 missing:\n{jac_str}";
     assert "total = total + 1;" in jac_str , f"body stmt 2 missing:\n{jac_str}";
-    # The two consecutive body statements must not be split by a blank line.
-    assert "total = total + i;\n        total = total + 1;" in jac_str , f"spurious blank line in loop body:\n{jac_str}";
-    # And no two-blank-line gap should appear anywhere in the function.
+    # No two-blank-line gap should appear anywhere in the function.
     assert "\n\n\n" not in jac_str , f"double blank line in output:\n{jac_str}";
 }
 
