@@ -1807,6 +1807,9 @@ Assigns each zero-line token the nearest real sibling line (leading → next,
 trailing → prev). No-op for normally-parsed source.
 """
 impl NormalizePass.after_pass -> None {
+    if isinstance(self.ir_in, uni.Module) and not self.ir_in.has_synthesized_tokens {
+        return;
+    }
     NormalizePass._fix_zero_toks_in_subtree(self.ir_in);
 }
 
@@ -1834,7 +1837,17 @@ impl NormalizePass._fix_zero_toks_in_subtree(nd: uni.UniNode) -> None {
     for kid in kids {
         NormalizePass._fix_zero_toks_in_subtree(kid);
     }
-    has_zero = any(isinstance(k, uni.Token) and k.line_no == 0 for k in kids);
+    # A token needs repair when EITHER coordinate is zero. `line_no == 0` is the
+    # fully-synthesized case (gen_token with no source). `end_line == 0` while
+    # `line_no > 0` is the *half-stamped* case: gen_token copies the parent's
+    # last_line into the new token's end_line, so a token synthesized onto a node
+    # whose own last_line is still 0 (e.g. an Assignment whose RHS is an AtomUnit
+    # built from line-0 paren tokens) gets a real line_no but a zero end_line.
+    # Left unrepaired, CodeLocInfo.last_line (which reads last_tok.end_line) stays
+    # 0 and DocIRGenPass.has_gap then emits a spurious blank line.
+    has_zero = any(
+        isinstance(k, uni.Token) and (k.line_no == 0 or k.end_line == 0) for k in kids
+    );
     if not has_zero {
         return;
     }
@@ -1850,7 +1863,7 @@ impl NormalizePass._fix_zero_toks_in_subtree(nd: uni.UniNode) -> None {
     n = len(kids);
     for i in range(n) {
         k = kids[i];
-        if not (isinstance(k, uni.Token) and k.line_no == 0) {
+        if not (isinstance(k, uni.Token) and (k.line_no == 0 or k.end_line == 0)) {
             continue;
         }
         # Nearest real line AFTER this token (opening tokens), else BEFORE it.
@@ -1869,9 +1882,34 @@ impl NormalizePass._fix_zero_toks_in_subtree(nd: uni.UniNode) -> None {
                 }
             }
         }
-        if chosen is not None {
+        # A block's closing brace sits one line PAST its last body statement (the
+        # standard own-line `}`), not on the header line gen_token copied from the
+        # node's first_line. Without this its under-stamped line makes
+        # DocIRGenPass.has_gap see a phantom gap and emit a spurious blank line
+        # after every synthesized block (if/for/while). Only bump upward, so a
+        # correctly-placed brace from real source is never moved.
+        if k.name == Tok.RBRACE {
+            body_max: int | None = None;
+            for j in range(i) {
+                if kid_last[j] is not None
+                and (body_max is None or kid_last[j] > body_max) {
+                    body_max = kid_last[j];
+                }
+            }
+            if body_max is not None and (body_max + 1) > k.line_no {
+                k.line_no = body_max + 1;
+                k.end_line = body_max + 1;
+                continue;
+            }
+        }
+        if k.line_no == 0 and chosen is not None {
             k.line_no = chosen;
-            k.end_line = chosen;
+        }
+        # A token sits on a single line: once its line_no is known, its end_line
+        # is the same. Fall back to the nearest sibling line only when line_no is
+        # itself unknown.
+        if k.end_line == 0 {
+            k.end_line = k.line_no if k.line_no > 0 else (chosen or 0);
         }
     }
 }
