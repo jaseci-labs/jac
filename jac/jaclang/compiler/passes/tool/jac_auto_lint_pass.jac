@@ -168,9 +168,7 @@ obj JacAutoLintPass(UniPass) {
     def exit_func_signature(nd: uni.FuncSignature) -> None;
     def enter_param_var(nd: uni.ParamVar) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;
-    def exit_ability(ability_node: uni.Ability) -> None;
     def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
-    def _body_to_key(body: list) -> str;
     # useState-to-has conversion (W3038)
     def _is_usestate_assignment(
         stmt: uni.UniNode

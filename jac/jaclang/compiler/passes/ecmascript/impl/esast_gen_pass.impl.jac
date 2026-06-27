@@ -4622,18 +4622,6 @@ impl EsastGenPass._osp_arch_set -> set[str] {
     return set(self._osp_arch_kinds().keys());
 }
 
-"""Names of local walker archetypes (declared with abilities in this unit), the
-candidates for in-process kernel spawn rather than `__jacSpawn` RPC."""
-impl EsastGenPass._local_walker_names -> set[str] {
-    names: set[str] = set();
-    for slot in self._osp_model().local_slots() {
-        if slot.kind == "walker" {
-            names.add(slot.owner);
-        }
-    }
-    return names;
-}
-
 """Memoized {variable name -> local archetype name} for `x = Arch(...)` bindings
 in a local-OSP module. Lets a spawn whose walker is held in a variable
 (`w spawn n`) identify the walker side without type inference (which cl skips)."""
@@ -6681,15 +6669,6 @@ impl EsastGenPass.get_main_mod -> uni.Module {
         self.emit(E5012);
     }
     return mod;
-}
-
-"""Search for a symbol in the main module."""
-impl EsastGenPass.search_sym_in_main_mod(expr: uni.Expr) -> (uni.Symbol | None) {
-    if not isinstance(expr, uni.Name) {
-        return None;
-    }
-    main_mod = self.get_main_mod();
-    return main_mod and main_mod.lookup(expr.sym_name);
 }
 
 """Remove Jac/ES await wrappers for spawn analysis."""

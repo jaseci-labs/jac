@@ -2880,11 +2880,6 @@ impl DocIRGenPass._assign_group_concat(nd: uni.UniNode) -> None {
     );
 }
 
-"""Assign a simple Concat of child documents."""
-impl DocIRGenPass._assign_concat(nd: uni.UniNode) -> None {
-    nd.gen.doc_ir = self.concat(self._child_docs(nd), ast_node=nd);
-}
-
 """Return generated DocIR for each child."""
 impl DocIRGenPass._child_docs(nd: uni.UniNode) -> list[doc.DocType] {
     docs: list[doc.DocType] = [];
@@ -2892,11 +2887,6 @@ impl DocIRGenPass._child_docs(nd: uni.UniNode) -> list[doc.DocType] {
         docs.append(kid.gen.doc_ir);
     }
     return docs;
-}
-
-"""Join parts with line separator."""
-impl DocIRGenPass.join_with_line(parts: list[doc.DocType]) -> doc.DocType {
-    return self.join(self.line(), parts);
 }
 
 """Join parts with space separator."""
@@ -2959,11 +2949,6 @@ impl DocIRGenPass.group(
     ast_node: (uni.UniNode | None) = None
 ) -> doc.Group {
     return doc.Group(contents, break_contiguous, ast_node=ast_node);
-}
-
-"""Create a literal line break."""
-impl DocIRGenPass.literal_line -> doc.Line {
-    return doc.Line(literal=True);
 }
 
 """Create a tight line break."""

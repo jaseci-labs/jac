@@ -87,7 +87,6 @@ obj GrammarRule {
         body: GExpr;
 
     def to_ebnf -> str;
-    def to_lark -> str;
     def __repr__ -> str;
 }
 
@@ -182,7 +181,6 @@ obj GrammarExtractPass(UniPass) {
     def after_pass -> None;
     # Formatting (static-like helpers, called with self)
     def format_ebnf(expr: GExpr) -> str;
-    def format_lark(expr: GExpr) -> str;
     def simplify_expr(expr: GExpr) -> GExpr;
     # Phase 1: Interpretation
     def interpret_stmts(stmts: list) -> GExpr | None;

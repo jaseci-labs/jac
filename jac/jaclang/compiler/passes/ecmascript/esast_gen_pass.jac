@@ -272,7 +272,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         node_expr: uni.Expr, es_expr: es.Expression
     ) -> tuple[uni.Expr, es.Expression];
 
-    def search_sym_in_main_mod(expr: uni.Expr) -> (uni.Symbol | None);
     def get_main_mod -> uni.Module;
     def _expr_from_node(
         nd: (uni.UniNode | None), `default: LiteralValue = None
@@ -310,7 +309,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None;
     def _build_osp_setup_js -> str;
     def _osp_slots_js(slots: list, tags: dict) -> str;
-    def _local_walker_names -> set[str];
     def _osp_arch_kinds -> dict[str, str];
     def _osp_arch_set -> set[str];
     def _osp_var_arch -> dict[str, str];

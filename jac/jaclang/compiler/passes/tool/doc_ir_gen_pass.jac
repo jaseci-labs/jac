@@ -15,7 +15,6 @@ obj DocIRGenPass(UniPass) {
     def line(hard: bool = False, literal: bool = False) -> doc.Line;
     def hard_line -> doc.Line;
     def tight_line -> doc.Line;
-    def literal_line -> doc.Line;
     def group(
         contents: doc.DocType,
         break_contiguous: bool = False,
@@ -37,9 +36,7 @@ obj DocIRGenPass(UniPass) {
     def align(contents: doc.DocType, n: (int | None) = None) -> doc.Align;
     def join(separator: doc.DocType, parts: list[doc.DocType]) -> doc.DocType;
     def join_with_space(parts: list[doc.DocType]) -> doc.DocType;
-    def join_with_line(parts: list[doc.DocType]) -> doc.DocType;
     def _child_docs(nd: uni.UniNode) -> list[doc.DocType];
-    def _assign_concat(nd: uni.UniNode) -> None;
     def _assign_group_concat(nd: uni.UniNode) -> None;
     def _assign_space_group(nd: uni.UniNode) -> None;
     def intersperse(
