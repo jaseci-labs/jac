@@ -329,6 +329,31 @@ jac build --client react-native --platform ios
 
 Android produces an APK via `gradlew assembleDebug`. iOS produces an `.ipa` via `xcodebuild` on macOS; on other platforms the build errors out and points you at EAS Build. Release variants via `[plugins.client.react_native].release = true`.
 
+### EAS Update (OTA)
+
+`jac setup react-native` scaffolds a baseline `eas.json` (with `preview` and `production` profiles). To push OTA updates after each build:
+
+1. **One-time** (inside `mobile-rn/`): install the updates module and link your EAS project:
+
+   ```bash
+   npx expo install expo-updates
+   eas update:configure      # writes expo.updates.url into app.json
+   ```
+
+   `expo-updates` is not pinned in the scaffold -- `npx expo install` resolves the SDK-matched version.
+
+2. **Opt in** via `jac.toml`:
+
+   ```toml
+   [plugins.client.react_native]
+   eas_update = true
+   eas_update_branch = "production"   # "" -> "production" (release) / "preview" (debug)
+   ```
+
+3. **Build** as usual -- a successful `jac build --client react-native` then runs `eas update --branch <branch>` automatically. Set `eas_update_message` to pin a message; leave it empty to let EAS derive one.
+
+See the [jac-client Reference -> EAS Update (OTA)](../../reference/plugins/jac-client.md#eas-update-ota) for the full field list.
+
 ### Platform-specific files
 
 When you need platform-exclusive native modules, add a `.native.cl.jac` variant alongside a `.cl.jac` module. The compiler picks up the `.native.cl.jac` file when `--client react-native` is selected and falls back to `.cl.jac` otherwise. This is a last resort -- prefer the `@jac/ui` vocabulary and `Platform.select` for divergence.

@@ -1956,7 +1956,10 @@ jac build --client react-native --platform ios
 [plugins.client.react_native]
 project_dir = "mobile-rn"        # Expo project location
 release = false                  # true for release variants
-# EAS Update (OTA) is opt-in via config
+# EAS Update (OTA) -- opt-in, see "EAS Update (OTA)" below
+eas_update = false               # true to publish an update after each build
+eas_update_branch = ""           # "" -> "production" (release) / "preview" (debug)
+eas_update_message = ""          # "" -> pass --auto to `eas update`
 ```
 
 **Opting in:** set `kind = "universal"` under `[project]` in `jac.toml` to mark the project as targeting React Native as well as the web:
@@ -1974,7 +1977,40 @@ kind = "universal"
 - Dev networking is auto-resolved (LAN IPv4 > `127.0.0.1`); `adb reverse` is auto-attempted for Android. The dev API base URL is injected into `app.json` and restored on exit.
 - iOS device builds and App Store archives require Xcode signing. On non-macOS hosts, `--platform ios` errors out and points at EAS Build.
 - Release/debug variants via `[plugins.client.react_native].release = true`.
-- EAS Update integration for OTA updates is opt-in via config.
+- EAS Update integration for OTA updates is opt-in via config -- see [EAS Update (OTA)](#eas-update-ota) below.
+
+#### EAS Update (OTA)
+
+`jac setup react-native` scaffolds a baseline `eas.json` with `preview` and `production` build profiles, so `eas build` and `eas update` work once the project is linked. OTA publishing is wired into the `jac build` flow: when `eas_update = true`, a successful build runs `eas update --branch <branch> --platform <plat>` against the scaffolded Expo project.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `eas_update` | bool | `false` | Run `eas update` after a successful build. Also accepts the legacy alias `ota_update`. |
+| `eas_update_branch` | str | `""` | Update branch name. Empty falls back to `production` for release builds, `preview` for debug. Legacy alias: `ota_update_branch`. |
+| `eas_update_message` | str | `""` | Commit message for the update. Empty passes `--auto` (EAS derives one from the git log). |
+
+**One-time setup** (run inside `mobile-rn/`):
+
+```bash
+# 1. Install expo-updates (resolves the SDK-matched version automatically).
+npx expo install expo-updates
+
+# 2. Link an EAS project and write expo.updates.url into app.json.
+#    `eas update:configure` adds the updates block pointing at u.expo.dev.
+eas update:configure
+```
+
+`expo-updates` is intentionally **not** pinned in the scaffold's `package.json` -- `npx expo install expo-updates` resolves the version matched to your Expo SDK, which is more reliable than a hand-pinned pin that drifts. Without `expo-updates` installed and `expo.updates.url` set, `eas update` publishes but the app never checks for updates.
+
+**Then opt in via `jac.toml`:**
+
+```toml
+[plugins.client.react_native]
+eas_update = true
+eas_update_branch = "production"   # or leave "" for the release/debug default
+```
+
+Every subsequent `jac build --client react-native` publishes an OTA update to the configured branch after the native artifact is produced. `eas_update_message` lets you pin a fixed message; leave it empty to let EAS derive one (`--auto`).
 
 #### Capacitor vs React Native
 
