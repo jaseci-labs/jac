@@ -43,6 +43,7 @@ import from jaclang.compiler.c2jac.c_common {
     coord_of,
     classify_c_constant,
     c_char_text,
+    c_char_ord,
     c_string_inner,
     expr_reeval_safe,
     has_loop_continue,
@@ -82,6 +83,8 @@ obj CMapper {
         _next_slot: int,
         _lineno: int,
         _list_bound: set[str],  # names known to back a Jac list (§7.5 realloc-elide)
+        _var_types:
+            dict[str, str],  # scalar var name -> jac prim, for char-literal promotion
         _func_depth: int;  # >0 while building a function body (function-local scope)
 
     def init(tags: TagTable) {
@@ -90,6 +93,7 @@ obj CMapper {
         self._next_slot = 0;
         self._lineno = 1;
         self._list_bound = set();
+        self._var_types = {};
         self._func_depth = 0;
     }
 
@@ -161,6 +165,10 @@ obj CMapper {
     # Expression handlers   → mapper.impl/expressions.impl.jac
     # ------------------------------------------------------------------ #
     def c_BinaryOp(nd: object) -> object;
+    def _record_scalar_type(name: str, type_node: object);
+    def _scalar_prim(type_node: object) -> str | None;
+    def _expr_prim(c_node: object) -> str | None;
+    def _binop_operand(operand: object, sibling: object) -> object;
     def c_UnaryOp(nd: object) -> object;
     def c_ID(nd: object) -> object;
     def c_Constant(nd: object) -> object;

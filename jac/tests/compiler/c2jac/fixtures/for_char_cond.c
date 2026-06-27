@@ -5,3 +5,10 @@ int scan_chars(void) {
     }
     return total;
 }
+
+int match_char(char c) {
+    if (c == 'a') {
+        return 1;
+    }
+    return 0;
+}

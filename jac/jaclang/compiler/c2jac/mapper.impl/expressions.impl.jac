@@ -8,8 +8,8 @@ impl CMapper.c_BinaryOp(nd: object) -> object {
         return self._surrogate_expr(nd);
     }
     (kind, ast_cls, _, _) = entry;
-    left = self.conv_expr(nd.left);
-    right = self.conv_expr(nd.right);
+    left = self._binop_operand(nd.left, nd.right);
+    right = self._binop_operand(nd.right, nd.left);
     op_obj = getattr(ast3, ast_cls)();
     if kind == "arith" {
         expr_node = ast3.BinOp(left=left, op=op_obj, right=right);
@@ -20,6 +20,72 @@ impl CMapper.c_BinaryOp(nd: object) -> object {
         expr_node = ast3.BoolOp(op=op_obj, values=[left, right]);
     }
     return self._stamp(expr_node, nd, text=nd.op);
+}
+
+impl CMapper._binop_operand(operand: object, sibling: object) -> object {
+    # A C character constant is an integer. Under c2jac's char→str model it
+    # normally renders as the one-char string `'a'` so a char-to-char comparison
+    # (`c == 'a'`, where the char variable `c` is itself a str) stays faithful.
+    # But when the char literal is combined with a NUMERIC operand — `i < 'z'`,
+    # `total + 'a'`, where the sibling resolves to int/float — the str form is a
+    # type-mismatched comparison/arithmetic in Jac (int vs str). Emit the char's
+    # integer ordinal instead (`i < 122`), matching C's value semantics. The
+    # sibling type is resolved from the running scalar-var map; when it is
+    # unknown (or itself char/str) the readable str form is kept.
+    if isinstance(operand, c_ast.Constant)
+    and classify_c_constant(operand.type) == CLIT_CHAR
+    and self._expr_prim(sibling) in ("int", "float", "bool") {
+        ov = c_char_ord(operand.value);
+        if ov is not None {
+            (line, col) = self._loc(operand);
+            return self._stamp_manual(ast3.Constant(value=ov), line, col, text=str(ov));
+        }
+    }
+    return self.conv_expr(operand);
+}
+
+impl CMapper._expr_prim(c_node: object) -> str | None {
+    # Best-effort Jac-primitive of an expression operand, for char-literal
+    # promotion. Resolves literals by family and identifiers via the scalar-var
+    # map; anything else (calls, refs, nested exprs) is unknown → None.
+    if isinstance(c_node, c_ast.Constant) {
+        fam = classify_c_constant(c_node.type);
+        if fam == CLIT_INT {
+            return "int";
+        }
+        if fam == CLIT_FLOAT {
+            return "float";
+        }
+        # char / string literals are text under the char→str model.
+        return "str";
+    }
+    if isinstance(c_node, c_ast.ID) {
+        return self._var_types.get(c_node.name);
+    }
+    return None;
+}
+
+impl CMapper._scalar_prim(type_node: object) -> str | None {
+    # The Jac primitive of a plain scalar declarator (TypeDecl → IdentifierType),
+    # or None for pointers/arrays/structs/functions — which are not scalars we
+    # track for char-literal promotion.
+    if isinstance(type_node, c_ast.TypeDecl)
+    and isinstance(type_node.type, c_ast.IdentifierType) {
+        return jac_prim(type_node.type.names);
+    }
+    return None;
+}
+
+impl CMapper._record_scalar_type(name: str, type_node: object) {
+    # Remember a scalar variable's Jac primitive so a later binary op can decide
+    # whether a char-literal sibling should promote to its ordinal. A non-scalar
+    # (re)declaration of the same name clears any stale entry.
+    prim = self._scalar_prim(type_node);
+    if prim is not None {
+        self._var_types[name] = prim;
+    } elif name in self._var_types {
+        del self._var_types[name];
+    }
 }
 
 impl CMapper.c_UnaryOp(nd: object) -> object {
