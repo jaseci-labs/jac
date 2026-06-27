@@ -229,6 +229,14 @@ def debug(filename: str, main: bool = True, cache: bool = False) -> int;
             dest="use_global"
         ),
         Arg.create(
+            "node",
+            typ=bool,
+            default=False,
+            help="Resolve from the project's npm tools (node_modules/.bin) only",
+            short="n",
+            dest="use_node"
+        ),
+        Arg.create(
             "list_tools",
             typ=bool,
             default=False,
@@ -244,12 +252,18 @@ def debug(filename: str, main: bool = True, cache: bool = False) -> int;
             "Run the 'hf' tool (project venv first, else global)"
         ),
         ("jac x black .", "Run an installed formatter on the current directory"),
+        ("jac x eslint .", "Run a project npm tool (node_modules/.bin) via bun"),
         ("jac x --global hf whoami", "Force the global-site copy of a tool"),
+        ("jac x --node vite build", "Force the project's npm tool"),
         ("jac x --list", "List the CLI tools available here"),
 
     ],
     group="execution"
 )
 def x(
-    name: str = "", use_global: bool = False, list_tools: bool = False, args: list = []
+    name: str = "",
+    use_global: bool = False,
+    use_node: bool = False,
+    list_tools: bool = False,
+    args: list = []
 ) -> int;

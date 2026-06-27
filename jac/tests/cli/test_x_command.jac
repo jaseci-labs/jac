@@ -11,7 +11,7 @@ import sys;
 import tempfile;
 import shutil;
 import from pathlib { Path }
-import from unittest.mock { patch }
+import from unittest.mock { patch, MagicMock }
 
 import from jaclang.cli.commands { execution as exec_cmds }
 
@@ -160,10 +160,8 @@ test "x runs the project-tier tool when it shadows a global one" {
         make_fake_tool(proj_site, "demo", "demo_proj_pkg", exit_body(11));
         make_fake_tool(glob_site, "demo", "demo_glob_pkg", exit_body(22));
 
-        sites = [("project", proj_site), ("global", glob_site)];
-        with patch(
-            "jaclang.cli.commands.execution._tool_site_dirs", return_value=sites
-        ) {
+        tiers = [("project", "py", proj_site), ("global", "py", glob_site)];
+        with patch("jaclang.cli.commands.execution._tool_tiers", return_value=tiers) {
             rc = exec_cmds.x(name="demo");
         }
         # Project tier wins -> its exit code (11), not the global one (22).
@@ -190,10 +188,8 @@ test "x falls back to the global tier when the project lacks the tool" {
         make_fake_tool(proj_site, "other", "demo_other_pkg", exit_body(5));
         make_fake_tool(glob_site, "demo", "demo_fallback_pkg", exit_body(22));
 
-        sites = [("project", proj_site), ("global", glob_site)];
-        with patch(
-            "jaclang.cli.commands.execution._tool_site_dirs", return_value=sites
-        ) {
+        tiers = [("project", "py", proj_site), ("global", "py", glob_site)];
+        with patch("jaclang.cli.commands.execution._tool_tiers", return_value=tiers) {
             rc = exec_cmds.x(name="demo");
         }
         assert rc == 22;
@@ -213,10 +209,8 @@ test "x returns 1 when no tier provides the tool" {
     try {
         glob_site = Path(tmp) / "glob";
         make_fake_tool(glob_site, "demo", "demo_missing_pkg", exit_body(0));
-        sites = [("global", glob_site)];
-        with patch(
-            "jaclang.cli.commands.execution._tool_site_dirs", return_value=sites
-        ) {
+        tiers = [("global", "py", glob_site)];
+        with patch("jaclang.cli.commands.execution._tool_tiers", return_value=tiers) {
             rc = exec_cmds.x(name="not-installed");
         }
         assert rc == 1;
@@ -231,10 +225,8 @@ test "x with no name (or --list) lists tools and returns 0" {
     try {
         glob_site = Path(tmp) / "glob";
         make_fake_tool(glob_site, "demo", "demo_list_pkg", exit_body(0));
-        sites = [("global", glob_site)];
-        with patch(
-            "jaclang.cli.commands.execution._tool_site_dirs", return_value=sites
-        ) {
+        tiers = [("global", "py", glob_site)];
+        with patch("jaclang.cli.commands.execution._tool_tiers", return_value=tiers) {
             assert exec_cmds.x(list_tools=True) == 0;
             assert exec_cmds.x(name="") == 0;
         }
@@ -294,5 +286,188 @@ test "_tool_site_dirs with use_global skips the project tier" {
         os.chdir(old_cwd);
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
+    }
+}
+
+
+# ===== npm tier: discovery, tier ordering, routing, and bun exec =====
+"""Create a node_modules/.bin shim named `tool` in `bin_dir`."""
+def make_fake_node_bin(bin_dir: Path, tool: str) -> Path {
+    bin_dir.mkdir(parents=True, exist_ok=True);
+    shim = bin_dir / tool;
+    shim.write_text("#!/usr/bin/env node\nconsole.log('hi');\n");
+    return shim;
+}
+
+test "_node_tools_in lists bins and returns empty for a missing dir" {
+    tmp = tempfile.mkdtemp(prefix="jac_x_test_");
+    try {
+        bin_dir = Path(tmp) / "bin";
+        make_fake_node_bin(bin_dir, "eslint");
+        make_fake_node_bin(bin_dir, "vite");
+        names = exec_cmds._node_tools_in(bin_dir);
+        assert "eslint" in names;
+        assert "vite" in names;
+        assert exec_cmds._node_tools_in(Path(tmp) / "nope") == [];
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "_find_node_tool resolves a present shim and None otherwise" {
+    tmp = tempfile.mkdtemp(prefix="jac_x_test_");
+    try {
+        bin_dir = Path(tmp) / "bin";
+        make_fake_node_bin(bin_dir, "vite");
+        found = exec_cmds._find_node_tool(bin_dir, "vite");
+        assert found is not None;
+        assert found.name == "vite";
+        assert exec_cmds._find_node_tool(bin_dir, "absent") is None;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "_tool_tiers orders project python, project npm, then global" {
+    reset_config();
+    tmp = tempfile.mkdtemp(prefix="jac_x_test_");
+    old_cwd = os.getcwd();
+    try {
+        project_dir = Path(tmp) / "proj";
+        project_dir.mkdir();
+        (project_dir / "jac.toml").write_text(
+            '[project]\nname = "xproj"\nversion = "0.1.0"\n'
+        );
+        os.chdir(project_dir);
+        reset_config();
+
+        kinds = [
+            (label, kind) for (label, kind, loc) in exec_cmds._tool_tiers(False, False)
+        ];
+        assert ("project", "py") in kinds;
+        assert ("node", "node") in kinds;
+        assert ("global", "py") in kinds;
+        # Locality-first: project venv, then project npm, then global site.
+        assert kinds.index(("project", "py")) < kinds.index(("node", "node"));
+        assert kinds.index(("node", "node")) < kinds.index(("global", "py"));
+    } finally {
+        os.chdir(old_cwd);
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "_tool_tiers with use_node yields only the npm tier" {
+    reset_config();
+    tmp = tempfile.mkdtemp(prefix="jac_x_test_");
+    old_cwd = os.getcwd();
+    try {
+        project_dir = Path(tmp) / "proj";
+        project_dir.mkdir();
+        (project_dir / "jac.toml").write_text(
+            '[project]\nname = "xproj"\nversion = "0.1.0"\n'
+        );
+        os.chdir(project_dir);
+        reset_config();
+
+        tiers = exec_cmds._tool_tiers(False, True);
+        kinds = {kind for (label, kind, loc) in tiers};
+        assert kinds == {"node"};
+    } finally {
+        os.chdir(old_cwd);
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "_tool_tiers with use_global has no npm or project tier" {
+    reset_config();
+    tmp = tempfile.mkdtemp(prefix="jac_x_test_");
+    old_cwd = os.getcwd();
+    try {
+        project_dir = Path(tmp) / "proj";
+        project_dir.mkdir();
+        (project_dir / "jac.toml").write_text(
+            '[project]\nname = "xproj"\nversion = "0.1.0"\n'
+        );
+        os.chdir(project_dir);
+        reset_config();
+
+        labels = [label for (label, kind, loc) in exec_cmds._tool_tiers(True, False)];
+        kinds = [kind for (label, kind, loc) in exec_cmds._tool_tiers(True, False)];
+        assert "node" not in kinds;
+        assert "project" not in labels;
+    } finally {
+        os.chdir(old_cwd);
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "x routes an npm-tier match to the node runner" {
+    tmp = tempfile.mkdtemp(prefix="jac_x_test_");
+    try {
+        bin_dir = Path(tmp) / "bin";
+        make_fake_node_bin(bin_dir, "demo");
+        tiers = [("node", "node", bin_dir)];
+        with patch("jaclang.cli.commands.execution._tool_tiers", return_value=tiers), patch(
+            "jaclang.cli.commands.execution._run_node_tool", return_value=42
+        ) as mock_node {
+            rc = exec_cmds.x(name="demo", args=["build"]);
+        }
+        assert rc == 42;
+        assert mock_node.called;
+        # Called as _run_node_tool(name, shim_path, args).
+        assert mock_node.call_args[0][0] == "demo";
+        assert mock_node.call_args[0][1].name == "demo";
+        assert mock_node.call_args[0][2] == ["build"];
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "_run_node_tool invokes bun with the shim and forwards args" {
+    tmp = tempfile.mkdtemp(prefix="jac_x_test_");
+    try {
+        bin_dir = Path(tmp) / "bin";
+        shim = make_fake_node_bin(bin_dir, "demo");
+        with patch(
+            "jaclang.runtimelib.client.bun_installer.get_bun", return_value="/fake/bun"
+        ), patch("subprocess.run") as mock_run {
+            mock_run.return_value = MagicMock(returncode=3);
+            rc = exec_cmds._run_node_tool("demo", shim, ["a", "b"]);
+        }
+        assert rc == 3;
+        assert mock_run.call_args[0][0] == ["/fake/bun", str(shim), "a", "b"];
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "_run_node_tool errors cleanly when bun is unavailable" {
+    tmp = tempfile.mkdtemp(prefix="jac_x_test_");
+    try {
+        shim = make_fake_node_bin(Path(tmp) / "bin", "demo");
+        with patch(
+            "jaclang.runtimelib.client.bun_installer.get_bun", return_value=None
+        ) {
+            assert exec_cmds._run_node_tool("demo", shim, []) == 1;
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "x --list includes npm tools" {
+    tmp = tempfile.mkdtemp(prefix="jac_x_test_");
+    try {
+        bin_dir = Path(tmp) / "bin";
+        make_fake_node_bin(bin_dir, "vite");
+        tiers = [("node", "node", bin_dir)];
+        with patch("jaclang.cli.commands.execution._tool_tiers", return_value=tiers) {
+            assert exec_cmds.x(list_tools=True) == 0;
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
     }
 }
