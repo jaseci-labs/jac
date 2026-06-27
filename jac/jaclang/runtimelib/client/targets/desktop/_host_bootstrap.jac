@@ -41,6 +41,39 @@ def _scale_runtime_hook_py -> str {
 }
 
 
+"""The `import from jacpyembed` clib block, shared by the native + CEF host gens.
+
+Imported by LOGICAL name so the native backend resolves the platform file
+(libjacpyembed.so/.dylib/.dll) AND emits a $ORIGIN runpath -- the host finds the
+sibling shim with no patchelf, the same way it binds webview. jac_engine_boot()
+materializes the trailer payload, dlopens THIS binary's bundled CPython, and
+Py_Initialize()s it; the rest are forwarders onto that interpreter (see
+launcher/pyembed.zig). No build-machine libpython, no INSTSONAME, no
+LD_LIBRARY_PATH. The CEF host uses only a subset of the calls; the extra
+declarations are harmless unused externs resolved by the same shim."""
+def _jacpyembed_import_block -> str {
+    return (
+        "import from jacpyembed {\n"
+        "    def jac_engine_boot() -> i32;\n"
+        "    def Py_Finalize() -> None;\n"
+        "    def PyRun_SimpleString(cmd: str) -> i32;\n"
+        "    def PyImport_AddModule(name: str) -> int;\n"
+        "    def PyModule_GetDict(module: int) -> int;\n"
+        "    def PyRun_String(s: str, start: i32, g: int, l: int) -> int;\n"
+        "    def PyLong_AsLong(o: int) -> int;\n"
+        "    def PyEval_SaveThread() -> int;\n"
+        "    def PyEval_RestoreThread(s: int) -> None;\n"
+        "    def PyGILState_Ensure() -> int;\n"
+        "    def PyGILState_Release(state: int) -> None;\n"
+        "    def PyObject_CallOneArg(fn: int, arg: int) -> int;\n"
+        "    def PyUnicode_FromString(s: str) -> int;\n"
+        "    def PyUnicode_AsUTF8(pyobj: int) -> str;\n"
+        "    def Py_DecRef(pyobj: int) -> None;\n"
+        "}\n"
+    );
+}
+
+
 """Generate the embedded CPython plugin bootstrap for the native desktop host.
 
 Imports the desktop plugin modules straight from the fused runtime's jaclang
@@ -106,9 +139,6 @@ def _dispatch_boot_py(
         f"_ENTRY_REL = {json.dumps(entry_rel, ensure_ascii=False)}\n"
         "_ENTRY_FILE = os.path.join(_root, 'sv', _ENTRY_REL)\n"
     ) + _scale_runtime_hook_py() + (
-        # inprocess_dispatch ships in the fused runtime's jaclang tree (precompiled
-        # to JIR); import it straight from there -- no staged .py beside the binary.
-        # boot()/_boot_impl() handle jac_scale loading for the sv app at runtime.
         "from jaclang.runtimelib.client.targets.desktop.native import inprocess_dispatch\n"
         "inprocess_dispatch.boot(_ENTRY_FILE,\n"
         "    os.path.join(_data, '.jac', 'desktop', 'graph'),\n"
@@ -162,8 +192,6 @@ def _generate_host_source(
         "_data = os.environ.get('JAC_DATA_PATH', _root)\n"
         "import socketserver, threading\n"
         "_dir = os.path.join(_root, 'dist')\n"
-        # oauth_broker ships in the fused runtime's jaclang tree -- import it from
-        # there (no transpiled oauth_broker.py staged beside the binary).
         "from jaclang.runtimelib.client.targets.desktop.native import oauth_broker as _broker\n"
         # Persist the session under the user data dir (JAC_DATA_PATH honored),
         # never inside the web-served dist/ tree.
@@ -238,32 +266,7 @@ def _generate_host_source(
     return (
         '"""Generated native desktop host - do not edit (jac-desktop)."""\n'
         "import from webview { def webview_create(debug: i32, window: int) -> int; }\n"
-        "import from webview { Webview, respond, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n"
-        # The fused-runtime bridge. Imported by LOGICAL name so the native backend
-        # resolves the platform file (libjacpyembed.so/.dylib/.dll) AND emits a
-        # $ORIGIN runpath -- the host finds the sibling shim with no patchelf, the
-        # same way it binds webview. jac_engine_boot() materializes the trailer
-        # payload, dlopens THIS binary's bundled CPython, and Py_Initialize()s it;
-        # the rest are forwarders onto that interpreter (see launcher/pyembed.zig).
-        # No build-machine libpython, no INSTSONAME, no LD_LIBRARY_PATH.
-        "import from jacpyembed {\n"
-        "    def jac_engine_boot() -> i32;\n"
-        "    def Py_Finalize() -> None;\n"
-        "    def PyRun_SimpleString(cmd: str) -> i32;\n"
-        "    def PyImport_AddModule(name: str) -> int;\n"
-        "    def PyModule_GetDict(module: int) -> int;\n"
-        "    def PyRun_String(s: str, start: i32, g: int, l: int) -> int;\n"
-        "    def PyLong_AsLong(o: int) -> int;\n"
-        "    def PyEval_SaveThread() -> int;\n"
-        "    def PyEval_RestoreThread(s: int) -> None;\n"
-        "    def PyGILState_Ensure() -> int;\n"
-        "    def PyGILState_Release(state: int) -> None;\n"
-        "    def PyObject_CallOneArg(fn: int, arg: int) -> int;\n"
-        "    def PyUnicode_FromString(s: str) -> int;\n"
-        "    def PyUnicode_AsUTF8(pyobj: int) -> str;\n"
-        "    def Py_DecRef(pyobj: int) -> None;\n"
-        "}\n"
-        "glob PY_EVAL: i32 = 258;\n"
+        "import from webview { Webview, respond, HINT_NONE, LAST_WEBVIEW_HANDLE, run_main_loop }\n" + _jacpyembed_import_block() + "glob PY_EVAL: i32 = 258;\n"
         f"glob SERVE_PY: str = {json.dumps(serve_py, ensure_ascii=False)};\n"
         f"glob PLUGIN_PY: str = {json.dumps(plugin_py, ensure_ascii=False)};\n"
         f"glob DISPATCH_PY: str = {json.dumps(dispatch_py, ensure_ascii=False)};\n"
@@ -300,11 +303,6 @@ def _generate_host_source(
         "    PyRun_SimpleString(\"_host.setup(_wv_handle)\");\n"
         "}\n"
         "with entry {\n"
-        # Bring up the fused runtime in-process: materialize this binary's trailer
-        # payload, dlopen the bundled CPython, Py_Initialize(). Non-zero means the
-        # runtime failed to come up, so NO Py_* call below is safe -- show the
-        # native error page and run a bare window loop instead of faulting on an
-        # uninitialized interpreter.
         "    engine_rc: i32 = jac_engine_boot();\n"
         "    serve_rc: i32 = -1;\n"
         "    plugin_rc: i32 = -1;\n"
@@ -344,9 +342,6 @@ def _generate_host_source(
         "    } else {\n"
         "        wv.html(BOOT_ERROR_HTML);\n"
         "    }\n"
-        # The GIL save/restore + shutdown + finalize are only valid on an
-        # initialized interpreter; when the engine never booted, just run the
-        # window loop so the error page is visible, then exit.
         "    if engine_rc == 0 {\n"
         "        ts = PyEval_SaveThread();\n"
         "        run_main_loop();\n"

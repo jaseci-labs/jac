@@ -19,7 +19,6 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     _jac_subprocess_env,
     _loopback_serve_py,
     _patch_host_rpath,
-    _plugin_bootstrap_py,
     _stage_pyembed_shim,
     _bundle_runtime,
     build_cef_dispatch,
@@ -27,7 +26,9 @@ import from jaclang.runtimelib.client.targets.desktop.desktop_build {
     fetch_cef_dist,
 }
 import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
-    _dispatch_boot_py
+    _dispatch_boot_py,
+    _jacpyembed_import_block,
+    _make_plugin_bootstrap_py
 }
 import from jaclang.runtimelib.client.targets.desktop._dev_launch {
     ensure_dev_build_env,
@@ -134,7 +135,7 @@ def _generate_host_source(
     # functionally identical to the webview target for the end user.
     serve_py = _loopback_serve_py(
         app_name,
-        _plugin_bootstrap_py(plugin_configs) + "_host.setup_cef()\n" + "_data = os.environ.get('JAC_DATA_PATH', _root)\n" + _dispatch_boot_py(
+        _make_plugin_bootstrap_py(plugin_configs) + "_host.setup_cef()\n" + "_data = os.environ.get('JAC_DATA_PATH', _root)\n" + _dispatch_boot_py(
             entry_rel, dispatch_timeout_s, dispatch_max_queue, dispatch_debug
         ),
         ", dispatch=_dispatch_fn, events=_host",
@@ -150,22 +151,7 @@ def _generate_host_source(
         "    cef_open_browser,\n"
         "    cef_run_loop,\n"
         "    cef_cleanup,\n"
-        "}\n"
-        # Fused-runtime bridge by logical name (libjacpyembed.so sibling, $ORIGIN).
-        # jac_engine_boot() materializes this binary's trailer payload + dlopens the
-        # bundled CPython; the rest forward onto it. See launcher/pyembed.zig.
-        "import from jacpyembed {\n"
-        "    def jac_engine_boot() -> i32;\n"
-        "    def Py_Finalize() -> None;\n"
-        "    def PyRun_SimpleString(cmd: str) -> i32;\n"
-        "    def PyImport_AddModule(name: str) -> int;\n"
-        "    def PyModule_GetDict(module: int) -> int;\n"
-        "    def PyRun_String(s: str, start: i32, g: int, l: int) -> int;\n"
-        "    def PyLong_AsLong(o: int) -> int;\n"
-        "    def PyEval_SaveThread() -> int;\n"
-        "    def PyEval_RestoreThread(s: int) -> None;\n"
-        "}\n"
-        "glob PY_EVAL: i32 = 258;\n"
+        "}\n" + _jacpyembed_import_block() + "glob PY_EVAL: i32 = 258;\n"
         f"glob SERVE_PY: str = {json.dumps(serve_py, ensure_ascii=False)};\n"
         "with entry {\n"
         "    code: i32 = cef_execute_subprocess();\n"

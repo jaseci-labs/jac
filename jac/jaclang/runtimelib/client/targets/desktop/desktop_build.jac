@@ -287,32 +287,6 @@ def _loopback_serve_py(
     );
 }
 
-"""Build the embedded-CPython plugin bootstrap source.
-
-Imports the desktop plugin modules straight from the fused runtime's jaclang
-tree (no transpiled .py staged beside the binary): puts the plugin dir on
-sys.path so their bare cross-imports (`import from manifest`, `built_in.*`)
-resolve and the jac meta-importer compiles them, then calls
-`registry.bootstrap_plugins(...)` to produce `_host` and `_dispatch_fn`.
-`import registry` cascades to every built_in.* plugin via its module-scope
-imports. Shared by both desktop targets (mirrors `_make_plugin_bootstrap_py`)."""
-def _plugin_bootstrap_py(plugin_configs: dict = {}) -> str {
-    plugin_py = (
-        "import jaclang, os, sys\n"
-        "_pdir = os.path.join(os.path.dirname(jaclang.__file__),\n"
-        "    'runtimelib', 'client', 'targets', 'desktop', 'plugin')\n"
-        "if _pdir not in sys.path:\n"
-        "    sys.path.insert(0, _pdir)\n"
-        "import manifest, desktop_plugin, webview_lib, plugin_host, registry\n"
-    );
-    _pc = plugin_configs;  # baked at build time
-    plugin_py += f"_pc = {repr(_pc)}\n";
-    plugin_py += (
-        "_host = registry.bootstrap_plugins(_pc, sys.modules)\n"
-        "_dispatch_fn = _host.dispatch\n"
-    );
-    return plugin_py;
-}
 
 """Read the canonical BOOTSTRAP_JS glob value out of cef_dispatch.na.jac.
 
