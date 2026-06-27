@@ -1,22 +1,8 @@
-"""Interactive CLI for configuring microservice mode.
-
-Commands:
-  jac setup microservice          - interactive setup
-  jac setup microservice --list   - show current config
-  jac setup microservice --add <file>    - add a service
-  jac setup microservice --remove <name> - remove a service
-
-Writes a v2 [plugins.scale.microservices.routes] table that maps module
-names to gateway prefixes. Services are discovered automatically via
-`sv import`; the routes table only controls public URL routing.
-"""
-
 import os;
 import tomllib;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 
-"""Scan the project for .jac files, excluding build artifacts."""
 def scan_jac_files(project_root: str = ".") -> list[str] {
     base_dir = Path(project_root);
     exclude_dirs: set[str] = {
@@ -46,18 +32,12 @@ def scan_jac_files(project_root: str = ".") -> list[str] {
     return jac_files;
 }
 
-"""Derive the module name from a file path - matches sv_import resolution.
 
-Returns the file stem: orders_app.jac -> orders_app, services/cart.jac -> cart.
-"""
 def derive_module_name(file_path: str) -> str {
     return Path(file_path).stem;
 }
 
-"""Derive a gateway route prefix from a module name.
 
-Strips the conventional _app suffix so orders_app -> /api/orders.
-"""
 def derive_prefix(module_name: str) -> str {
     name = module_name;
     if name.endswith("_app") {
@@ -66,7 +46,6 @@ def derive_prefix(module_name: str) -> str {
     return f"/api/{name}";
 }
 
-"""Run the interactive setup flow - scan project, prompt user, write TOML."""
 def run_setup(project_root: str = ".") -> None {
     toml_path = Path(project_root) / "jac.toml";
 
@@ -111,7 +90,6 @@ def run_setup(project_root: str = ".") -> None {
 
     client_entry = input("\nClient UI entry point (leave blank for none): ").strip();
 
-    # Preserve existing jac.toml content, strip old microservices section
     lines: list[str] = [];
     if toml_path.exists() {
         existing = toml_path.read_text();
@@ -134,7 +112,6 @@ def run_setup(project_root: str = ".") -> None {
         lines.append("");
     }
 
-    # Write microservices config
     lines.append("[plugins.scale.microservices]");
     lines.append("enabled = true");
     lines.append("gateway_port = 8000");
@@ -157,7 +134,6 @@ def run_setup(project_root: str = ".") -> None {
         lines.append("");
     }
 
-    # Reference blocks (commented; default stance is safe).
     lines.extend(
         [
             "# Graceful drain window (default 10s).",
@@ -241,7 +217,6 @@ def run_setup(project_root: str = ".") -> None {
     );
 }
 
-"""Add a single service to existing config."""
 def add_service(project_root: str, file_path: str) -> None {
     toml_path = Path(project_root) / "jac.toml";
     if not toml_path.exists() {
@@ -265,10 +240,8 @@ def add_service(project_root: str, file_path: str) -> None {
     }
 
     content = toml_path.read_text();
-    # If [routes] table exists, append to it; otherwise create it.
     header = "[plugins.scale.microservices.routes]";
     if header in content {
-        # Insert after the header line
         new_lines: list[str] = [];
         inserted = False;
         for line in content.split("\n") {
@@ -287,7 +260,6 @@ def add_service(project_root: str, file_path: str) -> None {
     console.print(f"Added route: {module} -> {prefix} ({file_path})");
 }
 
-"""Remove a route from config by module name."""
 def remove_service(project_root: str, module_name: str) -> None {
     toml_path = Path(project_root) / "jac.toml";
     if not toml_path.exists() {
@@ -326,7 +298,6 @@ def remove_service(project_root: str, module_name: str) -> None {
     console.print(f"Removed route: {module_name}");
 }
 
-"""List currently configured routes."""
 def list_services(project_root: str) -> None {
     toml_path = Path(project_root) / "jac.toml";
     if not toml_path.exists() {

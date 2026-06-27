@@ -1,12 +1,3 @@
-"""Lightweight HTTP client for querying the in-cluster Prometheus instance.
-
-Constructs the Prometheus service URL from the K8S_APP_NAME / K8S_NAMESPACE
-env vars injected by jac-scale at deploy time and exposes thin wrappers over
-Prometheus' /api/v1/query and /api/v1/query_range endpoints.
-
-Returns parsed result lists (or None on failure) so callers don't have to deal
-with the Prometheus response envelope or HTTP error handling.
-"""
 import os;
 import math;
 import logging;
@@ -15,11 +6,7 @@ import from requests.exceptions { RequestException }
 
 glob logger = logging.getLogger(__name__);
 
-"""Resolve the in-cluster Prometheus base URL.
 
-Honors PROMETHEUS_URL when set so deployments running outside the standard
-monitoring stack (or local dev with port-forward) can point elsewhere.
-"""
 def resolve_prometheus_url -> str | None {
     override_url: str | None = os.environ.get("PROMETHEUS_URL");
     if override_url {
@@ -32,12 +19,7 @@ def resolve_prometheus_url -> str | None {
     return f"http://{app_name}-prometheus-service:9090";
 }
 
-"""Run an instant PromQL query.
 
-Returns the parsed `data.result` list, or None if Prometheus is unreachable
-or returns a non-success status. Logs the failure so callers can show a
-'metrics unavailable' state without surfacing the underlying error to users.
-"""
 def query(promql: str, timeout: float = 3.0) -> list[any] | None {
     base = resolve_prometheus_url();
     if not base {
@@ -66,7 +48,6 @@ def query(promql: str, timeout: float = 3.0) -> list[any] | None {
     }
 }
 
-"""Pull `data.result` from a parsed Prometheus response JSON."""
 def _extract_result(body: any) -> list[any] {
     try {
         data = body["data"];
@@ -83,11 +64,7 @@ def _extract_result(body: any) -> list[any] {
     }
 }
 
-"""Run a PromQL range query for time-series charts.
 
-`start` and `end` are unix timestamps (seconds), `step` is the resolution
-(e.g. '15s', '1m'). Returns the parsed `data.result` list or None on failure.
-"""
 def query_range(
     promql: str, start: float, end: float, step: str = "15s", timeout: float = 5.0
 ) -> list[any] | None {
@@ -122,14 +99,7 @@ def query_range(
     }
 }
 
-"""Extract the scalar numeric value from a single-vector Prometheus result.
 
-Prometheus returns values as ['<timestamp>', '<value as string>']. This helper
-parses the string into a float, returning the supplied fallback on missing
-data or parse failures. Non-finite values (NaN/+Inf/-Inf) also fall back:
-Prometheus emits "NaN" for empty histogram_quantile and "+Inf" for cAdvisor
-buckets, and those are not JSON-serialisable.
-"""
 def scalar(result: any, fallback: float = 0.0) -> float {
     if not result {
         return fallback;

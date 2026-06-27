@@ -1,4 +1,3 @@
-"""Shared build helpers for native and CEF desktop targets."""
 import os;
 import json;
 import shutil;
@@ -12,12 +11,7 @@ import from pathlib { Path }
 import from jaclang.cli.console { console }
 import from jaclang.runtimelib.client.targets.desktop._dev_launch { desktop_launch_env }
 
-"""Candidate jaclang source roots (env pin then installed package fallback).
 
-JAC_DESKTOP_JAC_SRC is set by ensure_dev_build_env() before any caller runs
-(derived from editable-install .pth files or JAC_DEV_SOURCE set by the
-launcher's apply_dev_source_override()).  Reading jac.toml here would duplicate
-what the launcher already did and requires project_dir threading everywhere."""
 def _jaclang_src_roots -> list[Path] {
     roots: list[Path] = [];
     jac_src = os.environ.get("JAC_DESKTOP_JAC_SRC");
@@ -36,10 +30,7 @@ def _jaclang_src_roots -> list[Path] {
     return roots;
 }
 
-"""Locate desktop/native/ with oauth_broker, inprocess_dispatch, and webview.
 
-Skips incomplete trees (e.g. a stale bundled payload that has webview/ but
-predates oauth_broker.jac). Prefers JAC_DESKTOP_JAC_SRC / installed package."""
 def _find_desktop_native_dir -> Path {
     for src in _jaclang_src_roots() {
         native = (
@@ -71,12 +62,10 @@ def _find_desktop_native_dir -> Path {
     }
     raise RuntimeError(
         "jac-desktop: desktop/native assets incomplete -- need "
-        "oauth_broker.jac, inprocess_dispatch.jac, and webview/webview.na.jac. "
         "Rebuild the jac binary (zig build) or set JAC_DESKTOP_JAC_SRC."
     );
 }
 
-"""Locate a shipped native/ asset dir (webview, cef, …) beside this target."""
 def _find_native_asset_dir(subdir: str, marker: str) -> Path {
     if subdir == "webview" and marker == "webview.na.jac" {
         return _find_desktop_native_dir() / "webview";
@@ -114,16 +103,11 @@ def _find_cef_dir -> Path {
     return _find_native_asset_dir("cef", "cef.na.jac");
 }
 
-"""Environment for child ``jac jac2py`` / ``jac nacompile`` subprocesses."""
 def _jac_subprocess_env -> dict[str, str] {
     return desktop_launch_env();
 }
 
-"""Set an ELF RUNPATH on a binary via patchelf; warn (don't fail) if absent.
 
-Single place that shells out to patchelf for every desktop artifact -- the host
-binary (`$ORIGIN:LIBDIR` for libpython) and the CEF native pieces (`$ORIGIN` for
-the sibling libcef.so). Returns whether the rpath was set."""
 def _patchelf_rpath(binary: Path, rpath: str) -> bool {
     patchelf = shutil.which("patchelf");
     if not patchelf {
@@ -142,19 +126,12 @@ def _patchelf_rpath(binary: Path, rpath: str) -> bool {
     return True;
 }
 
-"""Add $ORIGIN to the host ELF RUNPATH so it finds sibling shared libraries.
 
-Used by the CEF host, whose cef.na.jac binds `"libcef.so"` by an explicit path
-(no emitted $ORIGIN). The webview host and both hosts' `import from jacpyembed`
-use logical names, which the native backend already resolves with a $ORIGIN
-runpath -- so the libpython LIBDIR the old build appended here is gone: the shim
-dlopens the bundled CPython from the cache, nothing links libpython by soname."""
 def _patch_host_rpath(binary: Path) {
     _patchelf_rpath(binary, "$ORIGIN");
 }
 
 
-"""Platform filename of the libjacpyembed shim (logical name `jacpyembed`)."""
 def _pyembed_shim_name -> str {
     if sys.platform == "darwin" {
         return "libjacpyembed.dylib";
@@ -166,13 +143,6 @@ def _pyembed_shim_name -> str {
 }
 
 
-"""Copy the libjacpyembed shim out of the fused runtime, $ORIGIN-adjacent.
-
-The shim ships inside the payload beside the desktop native assets (see
-launcher/payload.zig --pyembed), so the bundled jaclang tree this jac runs from
-carries the platform-matched build. The host's `import from jacpyembed` then
-binds it as a sibling DT_NEEDED at load. Fails loudly if absent -- that means the
-running jac binary predates the shim (rebuild it)."""
 def _stage_pyembed_shim(out_dir: Path) {
     name = _pyembed_shim_name();
     src = _find_desktop_native_dir() / name;
@@ -187,20 +157,11 @@ def _stage_pyembed_shim(out_dir: Path) {
 }
 
 
-"""Append this jac binary's fused-runtime trailer payload onto `host_binary`.
-
-The CLI `jac` carries `[stub][payload.tar.gz][trailer]` (launcher/runtime.zig);
-the launcher pins `sys.executable` to it, so it is the one true source of the
-fused runtime at desktop-build time. We slice its `[payload][trailer]` suffix
-verbatim (the trailer's hash is over the unchanged payload, so a verbatim copy
-stays valid) and append it to the nacompiled host. At first launch the host's
-jac_engine_boot() reads its own /proc/self/exe trailer and materializes into the
-shared rt/<hash> cache -- the SAME tree the CLI uses (identical payload hash)."""
 def _bundle_runtime(host_binary: Path) {
     jac_bin = Path(os.path.realpath(os.sys.executable));
     data = jac_bin.read_bytes();
     magic = b"JACBIN01";
-    trailer_len = 8 + 8 + 64;  # magic | payload_len(u64 LE) | sha256 hex
+    trailer_len = 8 + 8 + 64;
     if len(data) < trailer_len or data[-trailer_len:-trailer_len + 8] != magic {
         raise RuntimeError(
             "jac-desktop: the running jac binary carries no fused-runtime trailer "
@@ -215,7 +176,6 @@ def _bundle_runtime(host_binary: Path) {
     }
 }
 
-"""Resolve the jac CLI for nacompile."""
 def _jac_bin -> str {
     cand = Path(os.path.dirname(os.sys.executable)) / "jac";
     if cand.exists() {
@@ -228,21 +188,7 @@ def _jac_bin -> str {
     raise RuntimeError("jac CLI not found on PATH.");
 }
 
-"""Embedded-Python loopback server source (oauth_broker + stable origin port).
 
-`plugin_bootstrap` (from `_plugin_bootstrap_py`) is spliced in after the broker
-module loads but before `make_handler`, so it can define `_host`/`_dispatch_fn`.
-When `dispatch_arg` is set (e.g. ", dispatch=_dispatch_fn") the broker server
-routes `POST /__jac/invoke` straight into the plugin host -- the CEF target's
-JS->plugin bridge, since CEF's render process cannot bind into the host
-in-process the way the single-process webview target does.
-
-`sv_arg` (e.g. ", sv_bridge=inprocess_dispatch.forward") wires the broker's
-`POST /walker/*` + `/function/*` routes into the in-process sv backend -- the CEF
-target's JS->sv bridge. The `inprocess_dispatch` module it names must be imported
-+ booted by `plugin_bootstrap` (which runs before `make_handler`); the CEF caller
-defines `_data` at the head of its `plugin_bootstrap` so the boot snippet can use
-it (`_root` is already defined by the time `plugin_bootstrap` runs)."""
 def _loopback_serve_py(
     app_name: str,
     plugin_bootstrap: str = "",
@@ -251,9 +197,6 @@ def _loopback_serve_py(
     sv_arg: str = ""
 ) -> str {
     pref_port = 49152 + (int(hashlib.sha1(app_name.encode()).hexdigest(), 16) % 16000);
-    # The CEF target needs a threaded server: /__jac/events holds the SSE
-    # connection open for its lifetime, which would otherwise block every other
-    # request (including /__jac/invoke) on a single-threaded TCPServer.
     srv_setup = (
         "_S = socketserver.ThreadingTCPServer\n_S.daemon_threads = True\n"
             if threaded
@@ -261,38 +204,15 @@ def _loopback_serve_py(
     );
     return (
         "import os, sys, socketserver, threading\n" + srv_setup + "if os.path.isfile('/proc/self/exe'):\n"
-        "    _exe = os.path.realpath('/proc/self/exe')\n"
-        "else:\n"
-        "    _exe = os.path.abspath(sys.argv[0])\n"
-        "_root = os.path.dirname(_exe)\n"
-        "_dir = os.path.join(_root, 'dist')\n"
-        # oauth_broker ships in the fused runtime's jaclang tree -- import from
-        # there (no transpiled oauth_broker.py staged beside the binary).
         "from jaclang.runtimelib.client.targets.desktop.native import oauth_broker as _broker\n" + plugin_bootstrap + "_data = os.environ.get('JAC_DATA_PATH', _root)\n"
-        "_store = _broker.SessionStore("
         "os.path.join(_data, '.jac', 'desktop', 'session.json'))\n" + "_H = _broker.make_handler(_dir, _store" + dispatch_arg + sv_arg + ")\n" + "_S.allow_reuse_address = True\n"
         f"_pref = {pref_port}\n"
         "_srv = None; _port = None\n"
-        "for _i in range(64):\n"
-        "    try:\n"
-        "        _srv = _S(('127.0.0.1', _pref + _i), _H)\n"
-        "        _port = _pref + _i; break\n"
-        "    except OSError:\n"
-        "        continue\n"
-        "if _srv is None:\n"
-        "    _srv = _S(('127.0.0.1', 0), _H)\n"
-        "    _port = _srv.server_address[1]\n"
-        "threading.Thread(target=_srv.serve_forever, daemon=True).start()\n"
         "print('JAC_DESKTOP_SERVING http://127.0.0.1:' + str(_port) + '/', flush=True)\n"
     );
 }
 
 
-"""Read the canonical BOOTSTRAP_JS glob value out of cef_dispatch.na.jac.
-
-That glob is the single source of truth for the desktop JS bootstrap. It is a
-one-line native string literal with no embedded double-quotes, so the value is
-everything between the first `"` after the assignment and the closing `";`."""
 def _cef_bootstrap_js -> str {
     src = (_find_cef_dir() / "cef_dispatch.na.jac").read_text();
     anchor = "glob BOOTSTRAP_JS: str = \"";
@@ -308,18 +228,7 @@ def _cef_bootstrap_js -> str {
     return src[start:end];
 }
 
-"""JS SDK injected at document start: window.__jac.invoke()/on()/__emit__().
 
-`invoke` delegates to the native `window.__jac_invoke(p,c,a)` primitive, which
-each target provides differently (webview bind vs. CEF fetch shim) but with the
-same contract: returns a promise of the dispatch JSON (string or object).
-
-Single-sourced from `cef_dispatch.na.jac`'s BOOTSTRAP_JS glob, which is
-[CEF fetch shim] + [this SDK] + [EventSource pump]; we slice out the shared SDK
-between its IIFE boundary and the EventSource pump. The native target relies on
-the same extraction (see native_desktop_target's plugin-bridge `_read_between`),
-so the webview bind and the CEF fetch transport can never drift. A boundary that
-moves fails loudly here at build time rather than silently shipping two SDKs."""
 def _jac_sdk_js -> str {
     boot = _cef_bootstrap_js();
     start = boot.find("(function(){var _l={}");
@@ -333,19 +242,8 @@ def _jac_sdk_js -> str {
     return boot[start:end];
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CEF native build (in-Jac replacement for the retired build_cef_*.sh /
-# fetch_libcef.sh scripts; see native/cef/build.jac for the runnable entry).
-# ─────────────────────────────────────────────────────────────────────────────
-"""Splice the shared cef_platform fragment into a host source at `# PLATFORM`.
 
-Faithful in-Jac replacement for the awk splice the build_cef_*.sh scripts ran: a
-line that is exactly `# PLATFORM` is replaced by the full cef_platform.na.jac
-text, and (when drop_entry is set, for the subprocess build) a line that is
-exactly `# ENTRY` is dropped. Output is byte-identical to the old awk pass."""
 def _splice_platform(host_src: str, platform_src: str, drop_entry: bool) -> str {
-    # awk re-adds one newline per spliced line via print; the fragment text
-    # already ends in one, so drop a single trailing newline to avoid a blank.
     plat = platform_src[:-1] if platform_src.endswith("\n") else platform_src;
     out: list[str] = [];
     for line in host_src.split("\n") {
@@ -361,11 +259,7 @@ def _splice_platform(host_src: str, platform_src: str, drop_entry: bool) -> str 
     return "\n".join(out);
 }
 
-"""Splice + `jac nacompile` a CEF source, then set its $ORIGIN rpath.
 
-Shared by the dispatch shared-library build and the subprocess binary build:
-writes the spliced source under cef_dir/.build/ (gitignored), compiles it, and
-fails loudly if the expected artifact is missing."""
 def _nacompile_cef(
     cef_dir: Path,
     source_name: str,
@@ -395,7 +289,6 @@ def _nacompile_cef(
     return output;
 }
 
-"""Build libcef_dispatch.so (vtables/callbacks/lifecycle) from cef_dispatch.na.jac."""
 def build_cef_dispatch(cef_dir: Path) -> Path {
     return _nacompile_cef(
         cef_dir,
@@ -407,7 +300,6 @@ def build_cef_dispatch(cef_dir: Path) -> Path {
     );
 }
 
-"""Build the cef-subprocess helper binary from cef_subprocess.na.jac."""
 def build_cef_subprocess(cef_dir: Path) -> Path {
     return _nacompile_cef(
         cef_dir,
@@ -419,7 +311,6 @@ def build_cef_subprocess(cef_dir: Path) -> Path {
     );
 }
 
-"""Pinned CEF version from the `# version:` directive in cef_sums.lock."""
 def _cef_locked_version(sums_lock: Path) -> str {
     for line in sums_lock.read_text().split("\n") {
         s = line.strip();
@@ -430,7 +321,6 @@ def _cef_locked_version(sums_lock: Path) -> str {
     return "";
 }
 
-"""SHA-1 the cef_sums.lock pins for an archive filename (empty if unpinned)."""
 def _cef_expected_sha1(sums_lock: Path, archive: str) -> str {
     for line in sums_lock.read_text().split("\n") {
         s = line.strip();
@@ -445,7 +335,6 @@ def _cef_expected_sha1(sums_lock: Path, archive: str) -> str {
     return "";
 }
 
-"""CEF CDN platform tag for the current machine (linux64 / linuxarm64)."""
 def _cef_plat_tag -> str {
     arch = platform.machine();
     if arch == "x86_64" {
@@ -457,10 +346,7 @@ def _cef_plat_tag -> str {
     raise RuntimeError(f"unsupported architecture for CEF: {arch}");
 }
 
-"""Best-effort SHA-1 the live Spotify index advertises for an archive.
 
-A secondary cross-check against the in-tree pin; returns "" on any failure so a
-missing index never blocks a build whose bytes already match the pinned digest."""
 def _cef_index_sha1(plat_tag: str, archive: str) -> str {
     try {
         with urlopen(
@@ -482,7 +368,6 @@ def _cef_index_sha1(plat_tag: str, archive: str) -> str {
     return "";
 }
 
-"""Streaming SHA-1 of a (large) file."""
 def _sha1_file(path: Path) -> str {
     h = hashlib.sha1();
     with open(str(path), "rb") as f {
@@ -497,7 +382,6 @@ def _sha1_file(path: Path) -> str {
     return h.hexdigest();
 }
 
-"""Extract the CEF SDK headers (include/** subtree) into headers_dir."""
 def _extract_cef_headers(tarball: Path, headers_dir: Path) {
     if headers_dir.exists() {
         shutil.rmtree(headers_dir);
@@ -527,10 +411,7 @@ def _extract_cef_headers(tarball: Path, headers_dir: Path) {
     }
 }
 
-"""Extract the CEF runtime files flat into dist_dir.
 
-Mirrors fetch_libcef.sh: pulls the libs, ICU data, V8 snapshots, every .pak, and
-the locales/ tree, flattening the Release/ and Resources/ tarball prefixes."""
 def _extract_cef_runtime(tarball: Path, dist_dir: Path) {
     need = {
         "libcef.so",
@@ -581,14 +462,7 @@ def _extract_cef_runtime(tarball: Path, dist_dir: Path) {
     }
 }
 
-"""Download + stage the pinned CEF prebuilt distribution into cef_dir.
 
-In-Jac replacement for fetch_libcef.sh. cef_sums.lock is the trust anchor: the
-exact version is read from its `# version:` directive and the archive bytes are
-verified against the pinned SHA-1 (fail closed). The live Spotify index is a
-secondary cross-check that surfaces a stale/tampered pin. Idempotent: reuses a
-cached tarball and skips extraction when the staged version already matches. Set
-headers_only to stage just the SDK headers."""
 def fetch_cef_dist(cef_dir: Path, headers_only: bool = False) -> Path {
     sums_lock = cef_dir / "cef_sums.lock";
     if not sums_lock.exists() {

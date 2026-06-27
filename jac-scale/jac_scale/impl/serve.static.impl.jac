@@ -1,4 +1,3 @@
-"""Static files, pages, client JS, graph visualization implementations."""
 import mimetypes;
 import from collections.abc { Callable }
 import from pathlib { Path }
@@ -13,14 +12,8 @@ import from jaclang.jac0core.runtime { JacRuntime as Jac }
 import from jaclang.runtimelib.server { JsonValue }
 import from jaclang.cli.console { console }
 
-# ============================================================================
-# Static File Serving
-# ============================================================================
-"""Serve a static file given its path."""
 impl JacAPIServerStatic.serve_static_file(file_path: str) -> Response {
     try {
-        # Find project root (where jac.toml is) instead of using base_path_dir
-        # base_path_dir might be src/ when serving src/app.jac, but we need project root
         import from jaclang.project.config { find_project_root }
         base_path_dir = Path(bp_dir)
             if (bp_dir := Jac.get_context().base_path_dir or Jac.get_base_path_dir())
@@ -29,26 +22,16 @@ impl JacAPIServerStatic.serve_static_file(file_path: str) -> Response {
         if project_root_result {
             (base_path, _) = project_root_result;
         } else {
-            # Fallback to base_path_dir if no project root found
             base_path = base_path_dir;
         }
         file_name = Path(file_path).name;
-        # Check multiple locations for files
-        # 1. .jac/client/dist/ — jac-client's Vite build output directory.
-        #    Checked first because font packages (e.g. @fontsource-variable/outfit) installed
-        #    via jac-client emit .woff2/.ttf files here, and CSS @font-face rules reference
-        #    them with root-relative URLs (e.g. /assets/outfit.woff2). Without this candidate
-        #    those requests return 404 even though the file exists on disk.
         client_build_dist_file = base_path / '.jac' / 'client' / 'dist' / file_path;
         client_build_dist_file_simple = base_path / '.jac' / 'client' / 'dist' / file_name;
-        # 2. dist/ (jac core build output)
         dist_file = base_path / 'dist' / file_path;
         dist_file_simple = base_path / 'dist' / file_name;
-        # 3. assets/ (static assets)
         assets_file = base_path / 'assets' / file_path;
         assets_file_simple = base_path / 'assets' / file_name;
         if file_name.endswith('.css') {
-            # Check .jac/client/dist/ first (jac-client)
             if client_build_dist_file.exists() {
                 css_content = client_build_dist_file.read_text(encoding='utf-8');
                 return Response(content=css_content, media_type='text/css');
@@ -100,7 +83,6 @@ impl JacAPIServerStatic.serve_static_file(file_path: str) -> Response {
     }
 }
 
-"""Register the static file serving endpoint using JEndPoint."""
 impl JacAPIServerStatic.register_static_file_endpoint -> None {
     self.server.add_endpoint(
         JEndPoint(
@@ -125,7 +107,6 @@ impl JacAPIServerStatic.register_static_file_endpoint -> None {
     );
 }
 
-"""Register the client.js serving endpoint using JEndPoint."""
 impl JacAPIServerStatic.register_client_js_endpoint -> None {
     self.server.add_endpoint(
         JEndPoint(
@@ -141,7 +122,6 @@ impl JacAPIServerStatic.register_client_js_endpoint -> None {
     );
 }
 
-"""Create callback to serve the client.js file."""
 impl JacAPIServerStatic.serve_client_js_callback -> Callable[..., Response] {
     def callback -> Response {
         try {
@@ -156,17 +136,12 @@ impl JacAPIServerStatic.serve_client_js_callback -> Callable[..., Response] {
     return callback;
 }
 
-# ============================================================================
-# Page Rendering
-# ============================================================================
-"""Register the page rendering endpoint using JEndPoint."""
 impl JacAPIServerStatic.register_page_endpoint -> None {
     import from jaclang.project.config { get_config }
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
     configured_root = config.serve.base_route_app if config else "";
     base_route_app = self.introspector.resolve_root_app(configured_root);
-    # Register the configurable cl route (e.g., /cl/{page_name})
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
@@ -188,7 +163,6 @@ impl JacAPIServerStatic.register_page_endpoint -> None {
             description=f'Endpoint to render and retrieve a specific page by name at /{cl_route_prefix}/{{name}}.'
         )
     );
-    # If base_route_app is configured, register it at /
     if base_route_app {
         self.server.add_endpoint(
             JEndPoint(
@@ -205,9 +179,8 @@ impl JacAPIServerStatic.register_page_endpoint -> None {
     }
 }
 
-"""Create callback that extracts all query parameters from FastAPI Request."""
 impl JacAPIServerStatic.render_page_callback -> Callable[..., HTMLResponse] {
-    """Render a page by name with all query parameters.""";
+    ;
     def callback(page_name: str, **kwargs: JsonValue) -> HTMLResponse {
         try {
             render_payload = self.introspector.render_page(
@@ -226,11 +199,10 @@ impl JacAPIServerStatic.render_page_callback -> Callable[..., HTMLResponse] {
     return callback;
 }
 
-"""Create callback for base route app rendering."""
 impl JacAPIServerStatic.render_base_route_callback(
     app_name: str
 ) -> Callable[..., HTMLResponse] {
-    """Render the base route app.""";
+    ;
     def callback(**kwargs: JsonValue) -> HTMLResponse {
         try {
             render_payload = self.introspector.render_page(
@@ -249,11 +221,6 @@ impl JacAPIServerStatic.render_base_route_callback(
     return callback;
 }
 
-# ============================================================================
-# Root Asset Serving
-# ============================================================================
-"""Serve root-level assets like /img.png, /icons/logo.svg, etc.
-Falls back to SPA HTML for extensionless paths when base_route_app is configured."""
 impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
     allowed_extensions = {
         '.png',
@@ -285,7 +252,6 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
     api_prefixes = (f'{cl_route_prefix}/', 'walker/', 'function/', 'user/', 'static/');
     if (not file_ext or (file_ext not in allowed_extensions)) {
-        # SPA catch-all: serve base_route_app for extensionless paths
         configured_root = config.serve.base_route_app if config else "";
         base_route_app = self.introspector.resolve_root_app(configured_root);
         if (
@@ -309,8 +275,6 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
     if file_path.startswith(api_prefixes) {
         return Response(status_code=404, content='Not found', media_type='text/plain');
     }
-    # Find project root (where jac.toml is) instead of using base_path_dir
-    # base_path_dir might be src/ when serving src/app.jac, but we need project root
     import from jaclang.project.config { find_project_root }
     base_path_dir = Path(bp_dir)
         if (bp_dir := Jac.get_context().base_path_dir or Jac.get_base_path_dir())
@@ -319,12 +283,10 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
     if project_root_result {
         (base_path, _) = project_root_result;
     } else {
-        # Fallback to base_path_dir if no project root found
         base_path = base_path_dir;
     }
     file_name = Path(file_path).name;
 
-    # Project-level folders take priority to avoid shadowing user files
     candidates = [
         base_path / 'dist' / file_path,
         base_path / 'dist' / file_name,
@@ -337,11 +299,6 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
         base_path / '.jac' / 'client' / 'dist' / file_path,
         base_path / '.jac' / 'client' / 'dist' / file_name
     ];
-    # The above last two lines
-    # .jac/client/dist/ — jac-client's Vite build output.
-    # Font packages (e.g. @fontsource-variable/outfit) emit .woff2/.ttf files here.
-    # CSS @font-face rules reference them with root-relative URLs (e.g. /assets/outfit.woff2),
-    # so serve_root_asset must include this path or those requests return 404.
     for candidate_file in candidates {
         if (candidate_file.exists() and candidate_file.is_file()) {
             file_content = candidate_file.read_bytes();
@@ -362,7 +319,6 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
     );
 }
 
-"""Register root-level asset serving endpoint for files like /img.png, /logo.svg"""
 impl JacAPIServerStatic.register_root_asset_endpoint -> None {
     self.server.add_endpoint(
         JEndPoint(
@@ -387,10 +343,6 @@ impl JacAPIServerStatic.register_root_asset_endpoint -> None {
     );
 }
 
-# ============================================================================
-# Graph Visualization
-# ============================================================================
-"""Register the /graph visualization endpoint and /graph/data API endpoint."""
 impl JacAPIServerStatic.register_graph_endpoint -> None {
     self.server.add_endpoint(
         JEndPoint(
@@ -427,7 +379,6 @@ impl JacAPIServerStatic.register_graph_endpoint -> None {
     );
 }
 
-"""Serve the graph visualization HTML page."""
 impl JacAPIServerStatic.serve_graph_page -> HTMLResponse {
     import from importlib.resources { files }
     html_content = files('jac_scale').joinpath('templates/graph.html').read_text(
@@ -437,10 +388,8 @@ impl JacAPIServerStatic.serve_graph_page -> HTMLResponse {
 }
 
 
-"""Return graph data as JSON. Uses authenticated user's root if token provided, otherwise falls back to __guest__ (super root)."""
 impl JacAPIServerStatic.graph_data(Authorization: (str | None) = None) -> JSONResponse {
     import from jaclang.runtimelib.utils { collect_node_connections }
-    # Try to validate JWT token; fall back to __guest__ if not provided
     token: (str | None) = None;
     if (
         Authorization
@@ -450,9 +399,7 @@ impl JacAPIServerStatic.graph_data(Authorization: (str | None) = None) -> JSONRe
         token = Authorization[7:];
     }
     username = self.user_manager.validate_jwt_token(token) if token else None;
-    # Fall back to __guest__ (super root) when no auth provided
     username = username or Con.GUEST.value;
-    # Get user's root node and collect graph data
     root_id = self.user_manager.get_root_id(username);
     if not root_id {
         return JSONResponse(

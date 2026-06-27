@@ -9,18 +9,12 @@ glob SYSTEM_PERSONA = """\
     output. Only use tools.
     """;
 
-"""Create an MTRuntime instance from a callable and its arguments.
 
-Builds the message history with system persona, user input, and any media.
-Prepares tools including the finish_tool for ReAct-style interactions.
-"""
 impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
-    # Prepare the tools for the LLM call.
     caller = mtir.caller;
     args = mtir.args;
     call_params = mtir.call_params;
     ir_info = mtir.ir_info;
-    # Warn and remove deprecated 'method' parameter.
     if "method" in call_params {
         import warnings;
         warnings.warn(
@@ -31,14 +25,11 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         );
         del call_params["method"];
     }
-    # Check if we have MTIR info (Jac mode) or need runtime introspection (Python lib mode)
     has_mtir = ir_info is not None;
-    # Prepare tools with or without MTIR info
     raw_tools = call_params.get("tools", []);
     tools = [];
     local_idx = 0;
     for func in raw_tools {
-        # Already tool-like (e.g., McpTool) — pass through unchanged.
         if func?.get_json_schema and func?.get_name and func?.is_finish_tool {
             tools.append(func);
             continue;
@@ -51,11 +42,9 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         }
         local_idx += 1;
     }
-    # Construct the input information from the arguments.
     inputs_detail: list[str] = [];
-    media_inputs: list = [];  # Can be list[Media] or list[tuple[Media, str]] depending on mode
+    media_inputs: list = [];
     if has_mtir {
-        # MTIR mode: use compile-time extracted param info with semantic strings
         params = [param for param in ir_info.params];
         for (key, value) in args.items() {
             idx = list(args.keys()).index(key);
@@ -67,7 +56,6 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             if isinstance(key, str) {
                 inputs_detail.append(f"{key} = {(value, params[idx].semstr or "")}");
             } else {
-                # TODO: Handle *args, **kwargs properly.
                 if key < len(params) {
                     inputs_detail.append(
                         f"{params[key].name} = {(value, params[idx].semstr or "")}"
@@ -78,11 +66,9 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             }
         }
     } else {
-        # Python library mode: use runtime introspection (old behavior)
         param_names = list(inspect.signature(caller).parameters.keys());
         for (key, value) in args.items() {
             if isinstance(value, Media) {
-                # Use tuple format for consistency, but without semantic strings
                 media_inputs.append((value, ""));
                 continue;
             }
@@ -90,7 +76,6 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             if isinstance(key, str) {
                 inputs_detail.append(f"{key} = {value}");
             } else {
-                # TODO: Handle *args, **kwargs properly.
                 if key < len(param_names) {
                     inputs_detail.append(f"{param_names[key]} = {value}");
                 } else {
@@ -103,7 +88,6 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     if incl_info and isinstance(incl_info, dict) {
         for (key, value) in incl_info.items() {
             if isinstance(value, Media) {
-                # Always use tuple format for consistency
                 media_inputs.append((value, ""));
             } else {
                 if has_mtir {
@@ -127,13 +111,11 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             inputs_detail.insert(0, f"self = {caller.__self__}");
         }
     }
-    # System prompt: Config from jac.toml or default SYSTEM_PERSONA
     system_content = SYSTEM_PERSONA;
     try {
         import from jaclang.project.config { find_project_root }
         import from pathlib { Path }
 
-        # Get the file path of the caller's module
         caller_file = inspect.getfile(caller);
         project_root_result = find_project_root(Path(caller_file).parent);
         project_dir = project_root_result[0] if project_root_result else None;
@@ -144,7 +126,6 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         }
     } except Exception { }
 
-    # `by llm(system_prompt=...)` extends base. Accepts str or zero-arg callable.
     call_system_prompt = call_params.get("system_prompt");
     if callable(call_system_prompt) {
         try {
@@ -157,9 +138,6 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         system_content += "\n\n" + str(call_system_prompt);
     }
 
-    # Conversational mode: `by llm(conversation=<list>)` splices the
-    # caller's prior conversation between SYSTEM and USER. Entries on input
-    # may be Messages or dicts; write-back always emits dicts.
     conv_arg = call_params.get("conversation");
     conv_msgs: list[MessageType] = [];
     conv_list_ref: object = None;
@@ -178,7 +156,6 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         }
     }
 
-    # Prepare the messages for the LLM call.
     sys_msg = Message(
         role=MessageRole.SYSTEM,
         content=system_content + (INSTRUCTION_TOOL if tools else ""),
@@ -193,7 +170,6 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     );
     messages: list[MessageType] = [sys_msg, *conv_msgs, user_msg];
 
-    # Prepare return type.
     return_type = get_type_hints(caller).get("return");
     is_streaming = bool(call_params.get("stream", False));
     if is_streaming
@@ -201,8 +177,6 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     and call_params.get("stream_handler") is None {
         raise ConfigurationError(
             "Streaming responses are only supported for str return types. "
-            "Pass a stream_handler to receive stream events for a structured "
-            "return type (e.g. `visit [-->] by model(stream=True, "
             "stream_handler=fn)`)."
         );
     }
@@ -219,9 +193,6 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         mtir=mtir
     );
 
-    # In conversational mode, the auto-SYSTEM is regenerated from sem each
-    # turn — exclude it from persistence and bind the caller's list for
-    # write-back.
     if conv_list_ref is not None {
         mt_run._scaffolding_ids.append(id(sys_msg));
         mt_run._conversation_list = conv_list_ref;
@@ -230,21 +201,17 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     return mt_run;
 }
 
-"""Build the parameter dict for the LLM API call."""
 impl MTRuntime.dispatch_params -> dict[str, object] {
     params = {
         "messages": self.get_msg_list(),
         "tools": self.get_tool_list() or None,
         "response_format": self.get_output_schema(),
         "temperature": self.call_params.get("temperature", 0.7),
-        # "max_tokens": self.call_params.get("max_tokens", 100),
-        # "top_k": self.call_params.get("top_k", 50),
-        # "top_p": self.call_params.get("top_p", 0.9),
+
     };
     return params;
 }
 
-"""Add a message to the conversation history."""
 impl MTRuntime.add_message(message: MessageType) -> None {
     self.messages.append(message);
 }
@@ -255,7 +222,6 @@ impl MTRuntime.add_scaffolding_message(message: MessageType) -> None {
     self._scaffolding_ids.append(id(message));
 }
 
-"""Return the messages in a format suitable for LLM API."""
 impl MTRuntime.get_msg_list -> list[dict[str, object] | LiteLLMMessage] {
     return [
         msg.to_dict() if isinstance(msg, Message) else msg for msg in self.messages
@@ -286,7 +252,6 @@ impl MTRuntime.write_back_conversation -> None {
 }
 
 
-# Test against finish_tool both at object level and dict level.
 def _is_finish_tool_call(tc: any) -> bool {
     if tc?.function and hasattr(tc.function, "name") {
         return tc.function.name == "finish_tool";
@@ -305,7 +270,6 @@ impl MTRuntime.get_history_for_persist -> list[MessageType] {
         if id(msg) in scaff_ids {
             continue;
         }
-        # Skip non-Message artifacts (e.g. MockLLM raw strings).
         if not (
             isinstance(msg, Message)
             or isinstance(msg, dict)
@@ -329,12 +293,7 @@ impl MTRuntime.get_history_for_persist -> list[MessageType] {
     return out;
 }
 
-"""Parse the LLM response string into the expected return type."""
 impl MTRuntime.parse_response(response: str) -> object {
-    # To use validate_json the string should contains quotes.
-    #     example: '"The weather at New York is sunny."'
-    # but the response from LLM will not have quotes, so
-    # we need to check if it's string and return early.
     if self.resp_type is None or self.resp_type is str or response.strip() == "" {
         return response;
     }
@@ -355,7 +314,6 @@ impl MTRuntime.parse_response(response: str) -> object {
     return response;
 }
 
-"""Get a tool by name. Works for both Tool and McpTool."""
 impl MTRuntime.get_tool(tool_name: str) -> Tool | McpTool | None {
     for tool in self.tools {
         if tool.get_name() == tool_name {
@@ -365,34 +323,23 @@ impl MTRuntime.get_tool(tool_name: str) -> Tool | McpTool | None {
     return None;
 }
 
-"""Return the tools as JSON schemas for the LLM API."""
 impl MTRuntime.get_tool_list -> list[dict] {
     return [tool.get_json_schema() for tool in self.tools];
 }
 
-"""Return the JSON schema for the response type, if applicable."""
 impl MTRuntime.get_output_schema -> dict | None {
-    assert (
-        len(self.tools) == 0 or self.get_tool("finish_tool") is not None
-    );  #Finish tool should be present in the tools list.
+    assert (len(self.tools) == 0 or self.get_tool("finish_tool") is not None);
     if len(self.tools) == 0 {
         return self.get_typed_output_schema();
     }
-    # If the are tools, the final output will be sent to the finish_tool
-    # thus there is no output schema.
     return None;
 }
 
-"""Return the JSON schema for the structured return type, even with tools present.
 
-Unlike get_output_schema, not suppressed when tools exist (used for retry feedback).
-"""
 impl MTRuntime.get_typed_output_schema -> dict | None {
     if self.resp_type is None or self.resp_type is str {
-        # No structured schema: str is the default and not schema-driven.
         return None;
     }
-    # Use MTIR info if available, otherwise None (Python library mode)
     return_type_info = self.mtir.ir_info.return_type
         if (self.mtir and self.mtir.ir_info)
         else None;

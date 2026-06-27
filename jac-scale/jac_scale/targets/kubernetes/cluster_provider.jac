@@ -1,40 +1,20 @@
-"""Cloud-provider strategy for Kubernetes deployment decisions."""
 import from jac_scale._optdeps.kubernetes { client }
 import from jac_scale.abstractions.logger { Logger }
 
-"""Abstract base class for cloud-provider-specific deployment behaviour.
 
-Subclass for each new provider (e.g. GCP, DigitalOcean). Return the
-appropriate instance from get_cluster_provider(). Callers never branch on
-provider type — all conditional logic lives in the subclass.
-"""
 obj ClusterProvider {
-    """Return the Kubernetes service type for the NGINX ingress controller."""
     def service_type -> str;
-
-    """Raise ValueError if the requested NodePort conflicts with another namespace.
-
-    No-op for providers that do not use NodePorts (e.g. AWS NLB).
-    """
     def validate_ports(node_port: int, current_namespace: str) -> None;
-
-    """Return the public URL for the application, or None if not yet available."""
     def service_url(lb_endpoint: (str | None), ingress_node_port: int) -> (str | None);
-
-    """Return the port Prometheus should scrape on the application service."""
     def prometheus_scrape_port(container_port: int) -> int;
-
-    """Return the Kubernetes Service manifest for the NGINX ingress controller."""
     def ingress_controller_service(
         service_name: str, namespace: str, controller_name: str, ingress_node_port: int
     ) -> dict;
 
-    """Log a human-readable message after the ingress controller is deployed."""
     def log_ingress_deployed(
         logger: (Logger | None), app_name: str, ingress_node_port: int
     ) -> None;
 
-    """Return True if the deploy step should wait for an NLB to provision."""
     def needs_nlb_wait -> bool;
 }
 
@@ -43,10 +23,7 @@ obj AWSProvider(ClusterProvider) {
         return 'LoadBalancer';
     }
 
-    def validate_ports(node_port: int, current_namespace: str) {
-    # AWS NLB does not use NodePorts — nothing to validate.
-    }
-
+    def validate_ports(node_port: int, current_namespace: str) { }
     def service_url(lb_endpoint: (str | None), ingress_node_port: int) -> (str | None) {
         if lb_endpoint {
             return f"http://{lb_endpoint}";
@@ -55,9 +32,6 @@ obj AWSProvider(ClusterProvider) {
     }
 
     def prometheus_scrape_port(container_port: int) -> int {
-        # Prometheus scrapes the in-cluster `{app_name}-service` ClusterIP, which
-        # is always created on the container port (the external LoadBalancer's
-        # port 80 is irrelevant for in-cluster scraping).
         return container_port;
     }
 

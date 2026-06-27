@@ -1,15 +1,9 @@
-"""CLI command registration for jac-mcp.
-
-This module registers the `jac mcp` CLI command that starts the MCP server.
-"""
-
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg }
 import from jaclang.jac0core.runtime { hookimpl }
 
 glob registry = get_registry();
 
-"""Register 'mcp' command at module level."""
 @registry.command(
     name="mcp",
     help="Start the MCP (Model Context Protocol) server for AI-assisted Jac development",
@@ -70,12 +64,10 @@ def mcp_cmd(
     return 0;
 }
 
-"""Jac CLI extensions for MCP server."""
 class JacCmd {
-    """Create Jac CLI cmds."""
     @hookimpl
     static def create_cmd {
-        """Register mcp command pre-hook.""";
+        ;
         registry = get_registry();
         registry.extend_command(
             command_name="mcp", pre_hook=_handle_mcp_cmd, source="jac-mcp"
@@ -83,7 +75,6 @@ class JacCmd {
     }
 }
 
-"""Pre-hook to handle mcp command."""
 def _handle_mcp_cmd(ctx: object) -> None {
     transport = ctx.get_arg("transport", "stdio");
     port = ctx.get_arg("port", 3001);
@@ -91,7 +82,6 @@ def _handle_mcp_cmd(ctx: object) -> None {
     mode: str = str(ctx.get_arg("mode", ""));
     inspect_mode = ctx.get_arg("inspect", False);
 
-    # Load [plugins.mcp] from jac.toml as fallback defaults
     import from jaclang.project.config { get_config }
     jac_cfg = get_config();
     mcp_cfg: dict[str, object] = {};
@@ -99,14 +89,12 @@ def _handle_mcp_cmd(ctx: object) -> None {
         mcp_cfg = jac_cfg.get_plugin_config("mcp");
     }
 
-    # Priority: CLI arg (if explicitly set) > jac.toml > CLI default
     transport = transport
         if transport != "stdio"
         else mcp_cfg.get("transport", transport);
     port = port if port != 3001 else mcp_cfg.get("port", port);
     host = host if host != "127.0.0.1" else mcp_cfg.get("host", host);
 
-    # CLI --mode overrides jac.toml by writing into the in-memory plugin config.
     if mode {
         import from jac_mcp.mode { set_mcp_mode }
         set_mcp_mode(mode);
@@ -119,7 +107,6 @@ def _handle_mcp_cmd(ctx: object) -> None {
         return;
     }
 
-    # Start the server
     import from jac_mcp.server { JacMcpServer }
     server = JacMcpServer(transport=transport, port=port, host=host);
     server.start();
@@ -127,7 +114,6 @@ def _handle_mcp_cmd(ctx: object) -> None {
     ctx.set_data("cancel_return_code", 0);
 }
 
-"""Print inventory of available resources, tools, and prompts."""
 def _print_inspect {
     import from jac_mcp.resources { ResourceProvider }
     import from jac_mcp.tools { ToolProvider }

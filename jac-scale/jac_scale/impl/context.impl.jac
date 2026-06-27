@@ -1,9 +1,3 @@
-"""Initialize JScaleExecutionContext.
-
-Storage backend is configured via environment variables (e.g., MONGODB_URI),
-not per-context parameters.
-"""
-
 impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
     import from jac_scale.memory_hierarchy { ScaleTieredMemory, _process_cache }
     import from jaclang.jac0core.constructs {
@@ -12,7 +6,6 @@ impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
         PermissionDenied,
         Root
     }
-    # ScaleTieredMemory gets storage config from environment variables
     self.mem = ScaleTieredMemory();
     self.reports: list[any] = [];
     self.diagnostics: list[PermissionDenied] = [];
@@ -31,7 +24,6 @@ impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
     }
     _process_cache['system_root'] = system_root_anchor;
     self.system_root = system_root_anchor;
-    # Default user_root and entry_node to system_root
     self.user_root = self.system_root;
     self.entry_node = self.system_root;
     self.call_state: ContextVar[CallState] = ContextVar('call_state');

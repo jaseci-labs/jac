@@ -1,4 +1,3 @@
-"""Build HPA manifest dict from spec fields; no string manipulation on names."""
 impl HPAAutoscaler._build_manifests{
     hpa_name = spec.autoscaler_name or f"{spec.scale_target_name}-hpa";
     cpu_target = int(
@@ -40,7 +39,6 @@ impl HPAAutoscaler._build_manifests{
     };
 }
 
-"""Validate all triggers are cpu/memory, then patch or create the HPA on the cluster."""
 impl HPAAutoscaler.apply{
     for trigger in spec.triggers {
         if trigger.type not in ["cpu", "memory"] {
@@ -53,9 +51,6 @@ impl HPAAutoscaler.apply{
     manifest = self._build_manifests(spec);
     name = manifest["metadata"]["name"];
     namespace = manifest["metadata"]["namespace"];
-    # Engine-switch: remove any competing ScaledObject left from a prior keda-engine deploy.
-    # An active ScaledObject and a new HPA both drive spec.replicas on the same
-    # Deployment, producing non-deterministic scaling behaviour.
     try {
         client.CustomObjectsApi().delete_namespaced_custom_object(
             group="keda.sh",
@@ -89,7 +84,6 @@ impl HPAAutoscaler.apply{
     return True;
 }
 
-"""Delete the HPA resource; no-op if already absent."""
 impl HPAAutoscaler.destroy{
     autoscaling_v2 = AutoscalingV2Api();
     delete_if_exists(
@@ -100,12 +94,10 @@ impl HPAAutoscaler.destroy{
     );
 }
 
-"""Delete all HPAs in namespace matching label_selector."""
 impl HPAAutoscaler.destroy_collection{
     AutoscalingV2Api().delete_collection_namespaced_horizontal_pod_autoscaler(
         namespace=namespace, label_selector=label_selector
     );
-    # Also sweep any KEDA resources left from a keda-engine deploy of the same app
     custom_api = client.CustomObjectsApi();
     for plural in ["scaledobjects", "triggerauthentications"] {
         try {
@@ -140,7 +132,6 @@ impl HPAAutoscaler.destroy_collection{
     }
 }
 
-"""Return the HPA resource name for a scale target."""
 impl HPAAutoscaler.resource_name_for{
     return f"{target}-hpa";
 }

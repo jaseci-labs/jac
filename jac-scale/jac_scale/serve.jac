@@ -34,7 +34,7 @@ import from inspect { isgenerator }
 import from fastapi.responses { StreamingResponse }
 import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }
-import from fastapi { WebSocket, WebSocketDisconnect }  # jac:runtime
+import from fastapi { WebSocket, WebSocketDisconnect }
 import from jac_scale.admin.admin_portal { JacAPIServerAdmin }
 import from jac_scale.admin.llm_telemetry { JacAPIServerLLMTelemetry }
 import from jac_scale.admin.workloads { JacAPIServerWorkloads }
@@ -67,7 +67,6 @@ import from jac_scale.auth_models {
 import from jac_scale.scheduler.scheduler_models { CreateJobRequest, UpdateJobRequest }
 import from jac_scale.abstractions.emailer { Emailer }
 
-# Load configuration from jac.toml with env var overrides
 glob _jwt_config = get_scale_config().get_jwt_config(),
      _sso_config = get_scale_config().get_sso_config(),
      JWT_SECRET = _jwt_config['secret'],
@@ -79,46 +78,28 @@ glob _jwt_config = get_scale_config().get_jwt_config(),
      ERRNO_ADDR_IN_USE_LINUX: int = 98,
      ERRNO_ADDR_IN_USE_WINDOWS: int = 10048;
 
-"""Find an available port starting from the given port."""
 def _find_available_port(start_port: int, max_retries: int = PORT_RETRY_LIMIT) -> int;
 
-"""Get local network IP addresses (non-localhost)."""
 def _get_network_ips -> list[str];
 
-"""Pick where the SSO callback should redirect the token.
 
-`requested` is the client-supplied loopback callback that round-tripped through
-the OAuth `state` parameter (a desktop app's own 127.0.0.1 origin). It is only
-honored when it passes is_safe_loopback_redirect; otherwise we fall back to the
-server-configured `client_auth_callback_url`. Returns '' when neither is usable,
-signalling the caller to return the raw API response instead of redirecting.
-"""
 def _resolve_sso_client_redirect(requested: str | None, configured: str) -> str;
 
-"""Auth endpoints: register, login, token refresh, update password, SSO, API keys."""
 obj JacAPIServerAuth {
     def register_auth_endpoints -> None;
-    # Registration & Login
     def register_register_endpoint -> None;
     def register_login_endpoint -> None;
-    # Token
     def register_refresh_token_endpoint -> None;
-    # Update password
     def register_update_password_endpoint -> None;
-    # Identity management
     def register_add_identity_endpoint -> None;
     def register_send_verification_endpoint -> None;
     def register_verify_identity_endpoint -> None;
-    # Password reset
     def register_forgot_password_endpoint -> None;
     def register_reset_password_endpoint -> None;
-    # Current user
     def register_me_endpoint -> None;
     def register_update_me_endpoint -> None;
-    # SSO
     def register_sso_endpoints -> None;
     def _create_sso_callback_wrapper -> Callable[..., (Response | TransportResponse)];
-    # API key management
     def get_api_key_manager -> ApiKeyManager;
     def create_api_key(
         name: str,
@@ -135,13 +116,11 @@ obj JacAPIServerAuth {
     def register_api_key_endpoints -> None;
 }
 
-"""Emailer mixin: lazy singleton initialised at startup from jac.toml config."""
 obj JacAPIServerEmailer {
     def setup_emailer -> Emailer | None;
     def get_emailer -> Emailer | None;
 }
 
-"""Core server lifecycle: start/postinit, health, HMR, scheduler, metrics."""
 obj JacAPIServerCore {
     def postinit -> None;
     def start(
@@ -152,27 +131,20 @@ obj JacAPIServerCore {
 
     def _configure_openapi_security -> None;
     def _print_startup_banner(dev: bool, no_client: bool) -> None;
-    # Health check
     def register_health_endpoint -> None;
-    # Dev-mode build health (HMR compile status)
     def register_build_status_endpoint -> None;
-    # Client error reporting
     def _register_client_error_endpoint -> None;
-    # HMR support
     def enable_hmr(hot_reloader: any) -> None;
     def _register_endpoints -> None;
     def _refresh_dev_endpoints -> None;
     def _setup_scheduler -> None;
     def _setup_events -> None;
-    # Metrics endpoint wrapper for admin-only access
     def _create_admin_metrics_handler(
         original_handler: Callable[..., any]
     ) -> Callable[..., any];
 }
 
-"""Walker, function, webhook, WebSocket endpoint registration and callbacks."""
 obj JacAPIServerEndpoints {
-    # Walker endpoints
     def register_walkers_endpoints -> None;
     def create_walker_callback(
         walker_name: str, has_node_param: bool = False
@@ -182,7 +154,6 @@ obj JacAPIServerEndpoints {
         walker_name: str, invoke_on_root: bool, method: HTTPMethod = HTTPMethod.POST
     ) -> list[APIParameter];
 
-    # Function endpoints
     def register_functions_endpoints -> None;
     def create_function_callback(
         func_name: str
@@ -192,18 +163,15 @@ obj JacAPIServerEndpoints {
         func_name: str, method: HTTPMethod = HTTPMethod.POST
     ) -> list[APIParameter];
 
-    # Webhook endpoints
     def get_walker_protocol(walker_name: str) -> str;
     def register_webhook_endpoints -> None;
     def create_webhook_callback(walker_name: str) -> Callable[..., TransportResponse];
     def create_webhook_parameters(walker_name: str) -> list[APIParameter];
-    # WebSocket endpoints
     def get_ws_manager -> WebSocketConnectionManager;
     def create_websocket_handler(walker_name: str) -> Callable;
     def register_websocket_endpoints -> None;
 }
 
-"""Scheduler job management REST API endpoints."""
 obj JacAPIServerScheduler {
     def register_scheduler_endpoints -> None;
     def create_job_callback -> Callable[..., TransportResponse];
@@ -213,29 +181,22 @@ obj JacAPIServerScheduler {
     def delete_job_callback -> Callable[..., TransportResponse];
 }
 
-"""Static files, pages, client JS, graph visualization."""
 obj JacAPIServerStatic {
-    # Static file serving
     def serve_static_file(file_path: str) -> Response;
     def register_static_file_endpoint -> None;
     def serve_client_js_callback -> Callable[..., Response];
     def register_client_js_endpoint -> None;
-    # Page rendering
     def render_page_callback -> Callable[..., HTMLResponse];
     def render_base_route_callback(app_name: str) -> Callable[..., HTMLResponse];
     def register_page_endpoint -> None;
-    # Root asset serving
     def serve_root_asset(file_path: str) -> Response;
     def register_root_asset_endpoint -> None;
-    # Graph visualization
     def register_graph_endpoint -> None;
     def serve_graph_page -> HTMLResponse;
     def graph_data(Authorization: (str | None) = None) -> JSONResponse;
 }
 
-"""Composed JacAPIServer class combining all mixins with JServer base."""
 obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerWorkloads, JacAPIServerLogs, JacAPIServerTraces, JacAPIServerOps, JacAPIServerDeployHealth, JacAPIServerNetwork, JacAPIServerPodEnv, JacAPIServerScheduler, JacAPIServerEmailer, JServer) {
-    # HMR (Hot Module Replacement) support fields
     has _hmr_pending: bool = False,
         _hot_reloader: any | None = None,
         _api_key_manager: ApiKeyManager | None = None,

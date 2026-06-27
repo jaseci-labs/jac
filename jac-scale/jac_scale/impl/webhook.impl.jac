@@ -1,18 +1,14 @@
-"""Generate HMAC-SHA256 signature for webhook payload."""
 impl WebhookUtils.generate_signature(payload: bytes, secret: str) -> str {
     return hmac.new(secret.encode('utf-8'), payload, hashlib.sha256).hexdigest();
 }
 
-"""Verify HMAC-SHA256 signature for webhook payload."""
 impl WebhookUtils.verify_signature(
     payload: bytes, signature: str, secret: str
 ) -> bool {
     expected_signature = WebhookUtils.generate_signature(payload, secret);
-    # Use constant-time comparison to prevent timing attacks
     return hmac.compare_digest(signature.lower(), expected_signature.lower());
 }
 
-"""Generate a cryptographically secure API key."""
 impl WebhookUtils.generate_api_key -> str {
     return secrets.token_hex(32);
 }
@@ -21,8 +17,6 @@ impl WebhookUtils.generate_api_key -> str {
 impl WebhookUtils.create_api_key_token(
     api_key_id: str, user_id: str, name: str, expiry_days: int | None = None
 ) -> str {
-    # Read config at call time so secret/expiry rotation does not require
-    # a process restart.
     jwt_config = get_scale_config().get_jwt_config();
     default_expiry = int(
         get_scale_config().get_webhook_config()['api_key_expiry_days']
@@ -34,18 +28,15 @@ impl WebhookUtils.create_api_key_token(
         'name': name,
         'iat': datetime.now(UTC)
     };
-    # Add expiry if specified
     current_time = datetime.now(UTC);
     if expiry_days is not None {
         payload['exp'] = current_time + timedelta(days=int(expiry_days));
     } elif default_expiry > 0 {
         payload['exp'] = current_time + timedelta(days=int(default_expiry));
     }
-    # If expiry_days is 0 or negative, no expiry is set (permanent key)
     return jwt.encode(payload, jwt_config['secret'], algorithm=jwt_config['algorithm']);
 }
 
-"""Validate an API key token and extract user information."""
 impl WebhookUtils.validate_api_key(api_key: str) -> dict[str, str] | None {
     try {
         jwt_config = get_scale_config().get_jwt_config();
@@ -53,7 +44,6 @@ impl WebhookUtils.validate_api_key(api_key: str) -> dict[str, str] | None {
             api_key, jwt_config['secret'], algorithms=[jwt_config['algorithm']]
         );
 
-        # Verify this is an API key token
         if payload.get('type') != 'api_key' {
             return None;
         }
@@ -70,7 +60,6 @@ impl WebhookUtils.validate_api_key(api_key: str) -> dict[str, str] | None {
     }
 }
 
-"""Extract the hex signature from a request header value."""
 impl WebhookUtils.extract_signature(header_value: str) -> str {
     value = header_value.strip();
     if value.lower().startswith('sha256=') {
@@ -79,7 +68,6 @@ impl WebhookUtils.extract_signature(header_value: str) -> str {
     return value;
 }
 
-"""Ensure indexes (MongoDB only)."""
 impl ApiKeyManager.postinit -> None {
     if self._db is not None {
         try {
@@ -90,28 +78,23 @@ impl ApiKeyManager.postinit -> None {
     } else {
         logger.warning(
             "Webhook API keys are stored in memory (no MongoDB configured). "
-            "Keys and revocations are NOT durable: every restart invalidates "
             "all keys. Configure MongoDB for production webhook use."
         );
     }
 }
 
-"""Index user_id for the per-user key lookups. Safe to run repeatedly."""
 impl ApiKeyManager._ensure_indexes -> None {
     col = self._db._get_mongo_collection(self._collection);
     col.create_index('user_id');
 }
 
-"""Create a new API key for a user."""
 impl ApiKeyManager.create_api_key(
     user_id: str,
     name: str,
     expiry_days: int | None = None,
     allowed_walkers: list[str] | None = None
 ) -> TransportResponse {
-    # Generate unique API key ID
     api_key_id = secrets.token_hex(16);
-    # Create the JWT-wrapped API key
     api_key = WebhookUtils.create_api_key_token(
         api_key_id=api_key_id, user_id=user_id, name=name, expiry_days=expiry_days
     );
@@ -154,7 +137,6 @@ impl ApiKeyManager.create_api_key(
     );
 }
 
-"""List all API keys for a user (metadata only, not the keys)."""
 impl ApiKeyManager.list_api_keys(user_id: str) -> TransportResponse {
     keys: list[dict[str, any]] = [];
     if self._db is not None {
@@ -192,9 +174,7 @@ impl ApiKeyManager.list_api_keys(user_id: str) -> TransportResponse {
     );
 }
 
-"""Revoke an API key."""
 impl ApiKeyManager.revoke_api_key(user_id: str, api_key_id: str) -> TransportResponse {
-    # Check if key exists
     key_info: dict | None = None;
     if self._db is not None {
         key_info = self._db.find_one(self._collection, {'_id': api_key_id});
@@ -208,7 +188,6 @@ impl ApiKeyManager.revoke_api_key(user_id: str, api_key_id: str) -> TransportRes
             meta=Meta(extra={'http_status': 404})
         );
     }
-    # Check if key belongs to user
     if key_info.get('user_id') != user_id {
         return TransportResponse.fail(
             code='FORBIDDEN',
@@ -216,7 +195,6 @@ impl ApiKeyManager.revoke_api_key(user_id: str, api_key_id: str) -> TransportRes
             meta=Meta(extra={'http_status': 403})
         );
     }
-    # Mark as revoked
     if self._db is not None {
         self._db.update_one(
             self._collection, {'_id': api_key_id}, {'$set': {'revoked': True}}
@@ -230,7 +208,6 @@ impl ApiKeyManager.revoke_api_key(user_id: str, api_key_id: str) -> TransportRes
     );
 }
 
-"""Look up a stored key document by id (MongoDB or in-memory)."""
 impl ApiKeyManager._get_key_doc(api_key_id: str) -> dict | None {
     if self._db is not None {
         return self._db.find_one(self._collection, {'_id': api_key_id});
@@ -238,7 +215,6 @@ impl ApiKeyManager._get_key_doc(api_key_id: str) -> dict | None {
     return self._inmemory_store.get(api_key_id);
 }
 
-"""Resolve a valid, active api_key to its stored document."""
 impl ApiKeyManager.resolve_key(api_key: str) -> dict | None {
     key_info = WebhookUtils.validate_api_key(api_key);
     if not key_info {
@@ -251,7 +227,6 @@ impl ApiKeyManager.resolve_key(api_key: str) -> dict | None {
     return key_doc;
 }
 
-"""Per-key fixed-window rate check. True if the call is allowed."""
 impl ApiKeyManager.check_rate_limit(api_key_id: str, limit_per_minute: int) -> bool {
     if limit_per_minute <= 0 {
         return True;

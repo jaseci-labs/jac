@@ -1,8 +1,5 @@
-"""Implementation of MCP tools."""
-
 import re;
 
-"""Return list of available tools with schemas, filtered by active mode."""
 impl ToolProvider.list_tools -> list[dict[str, any]] {
     all_tools: list[dict[str, any]] = [
         {
@@ -333,7 +330,6 @@ impl ToolProvider.list_tools -> list[dict[str, any]] {
     ];
 }
 
-"""Call a tool by name with arguments."""
 impl ToolProvider.call_tool(name: str, arguments: dict[str, any]) -> dict[str, any] {
     import from jac_mcp.compiler_bridge { CompilerBridge }
     try {
@@ -461,7 +457,6 @@ impl ToolProvider.call_tool(name: str, arguments: dict[str, any]) -> dict[str, a
     }
 }
 
-"""Explain a compiler error with suggestions and examples."""
 impl explain_error(error_message: str) -> dict[str, any] {
     msg_lower = error_message.lower();
     error_patterns: list[tuple] = [
@@ -523,7 +518,6 @@ impl explain_error(error_message: str) -> dict[str, any] {
     };
 }
 
-"""List available example categories."""
 impl list_examples(category: str | None = None) -> dict[str, any] {
     import from jac_mcp.resources { ResourceProvider }
     rp = ResourceProvider();
@@ -543,7 +537,6 @@ impl list_examples(category: str | None = None) -> dict[str, any] {
             }
         }
     }
-    # If no individual examples found, try lazy GitHub fetch (PyPI install)
     if not examples and "jac://examples/index" in rp._resources {
         categories = rp._fetch_github_categories();
         for cat_name in categories {
@@ -561,7 +554,6 @@ impl list_examples(category: str | None = None) -> dict[str, any] {
     return {"examples": sorted(examples, key=lambda x : x["name"])};
 }
 
-"""Get all files from an example category."""
 impl get_example(name: str) -> dict[str, any] {
     import from jac_mcp.resources { ResourceProvider }
     rp = ResourceProvider();
@@ -574,7 +566,6 @@ impl get_example(name: str) -> dict[str, any] {
     return {"name": name, "content": content};
 }
 
-"""Search documentation by keywords."""
 impl search_docs(query: str, limit: int = 5) -> dict[str, any] {
     import from jac_mcp.resources { ResourceProvider }
     rp = ResourceProvider();
@@ -644,37 +635,31 @@ impl search_docs(query: str, limit: int = 5) -> dict[str, any] {
     return {"results": results};
 }
 
-"""Parse code and return AST info."""
 impl get_ast(code: str, fmt: str = "tree") -> dict[str, any] {
     import from jac_mcp.compiler_bridge { CompilerBridge }
     return CompilerBridge.get_ast_snippet(code, fmt);
 }
 
-"""Lint Jac code with optional auto-fix."""
 impl lint_jac(code: str, auto_fix: bool = False) -> dict[str, any] {
     import from jac_mcp.compiler_bridge { CompilerBridge }
     return CompilerBridge.lint_snippet(code, auto_fix);
 }
 
-"""Convert Jac code to Python."""
 impl jac_to_py(code: str) -> dict[str, any] {
     import from jac_mcp.compiler_bridge { CompilerBridge }
     return CompilerBridge.jac_to_py(code);
 }
 
-"""Convert Jac code to JavaScript."""
 impl jac_to_js(code: str) -> dict[str, any] {
     import from jac_mcp.compiler_bridge { CompilerBridge }
     return CompilerBridge.jac_to_js(code);
 }
 
-"""Execute Jac code and return output."""
 impl run_jac(code: str, entrypoint: str = "", timeout: int = 10) -> dict[str, any] {
     import from jac_mcp.compiler_bridge { CompilerBridge }
     return CompilerBridge.run_snippet(code, entrypoint, timeout);
 }
 
-"""Generate graph visualization from Jac code."""
 impl graph_visualize(
     code: str,
     format: str = "dot",
@@ -689,14 +674,12 @@ impl graph_visualize(
     );
 }
 
-"""List all available jac CLI commands including those from installed plugins."""
 impl list_commands -> dict[str, any] {
     try {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
         import from jaclang.cli.registry { get_registry }
         import jaclang.cli.commands;
 
-        # Trigger plugin command registrations, same hook the CLI calls at startup
         Jac.create_cmd();
 
         registry = get_registry();
@@ -706,7 +689,6 @@ impl list_commands -> dict[str, any] {
 
         commands: list[dict[str, any]] = [];
         for spec in registry.get_all() {
-            # Collect unique plugin sources that extend this command
             extensions: list[str] = [];
             seen_ext: set = set();
             for arg in spec.extra_args {
@@ -740,7 +722,6 @@ impl list_commands -> dict[str, any] {
     }
 }
 
-"""Get full argument details for a specific jac CLI command."""
 impl get_command(name: str) -> dict[str, any] {
     try {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
@@ -814,7 +795,6 @@ impl get_command(name: str) -> dict[str, any] {
     }
 }
 
-"""Execute a jac CLI command by name with optional arguments."""
 impl execute_command(
     command: str, args: list[str] | None = None, timeout: int = 30
 ) -> dict[str, any] {
@@ -850,7 +830,6 @@ impl execute_command(
     }
 }
 
-"""Get the Jac & Jaseci knowledge map with resource URIs for any task."""
 impl understand_jac_and_jaseci -> dict[str, any] {
     import from jac_mcp.resources { ResourceProvider }
     rp = ResourceProvider();
@@ -862,7 +841,6 @@ impl understand_jac_and_jaseci -> dict[str, any] {
     return {"knowledge_map": content};
 }
 
-"""Fetch a Jac/Jaseci doc resource by URI."""
 impl get_resource(uri: str) -> dict[str, any] {
     import from jac_mcp.resources { ResourceProvider }
     rp = ResourceProvider();

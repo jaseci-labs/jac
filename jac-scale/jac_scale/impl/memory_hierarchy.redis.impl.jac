@@ -1,14 +1,8 @@
-"""Redis CacheBackend Implementation."""
-
 import from jac_scale.microservices.runtime.tracing {
     start_memory_span,
     end_memory_span
 }
 
-"""Deserialize a cached doc and stamp the per-field hash snapshot, exactly
-like L3 loads do. An anchor entering L1 from L2 must be diffable by
-derive_dirty_fields(); without the snapshot the collect pass is blind to
-its field mutations for the rest of the request."""
 def _deserialize_cached(data: dict) -> (Anchor | None) {
     anchor = Serializer.deserialize(data);
     if anchor is not None {
@@ -17,7 +11,6 @@ def _deserialize_cached(data: dict) -> (Anchor | None) {
     return anchor;
 }
 
-"""Post-initialization: connect to Redis using a process-level shared client."""
 impl RedisBackend.postinit -> None {
     if self.redis_url is None {
         self.redis_url = _get_db_config().get('redis_url');
@@ -39,7 +32,6 @@ impl RedisBackend.postinit -> None {
     self.redis_client = _process_cache.get('redis_client');
 }
 
-"""Check if Redis is available and connected."""
 impl RedisBackend.is_available -> bool {
     if _process_cache.get('redis_available') is True {
         return True;
@@ -57,7 +49,6 @@ impl RedisBackend.is_available -> bool {
     }
 }
 
-"""Get anchor by UUID from Redis cache."""
 impl RedisBackend.get(id: UUID) -> (Anchor | None) {
     if self.redis_client is None {
         return None;
@@ -82,13 +73,11 @@ impl RedisBackend.get(id: UUID) -> (Anchor | None) {
     }
 }
 
-"""Reset get/put counters (for instrumentation/tests)."""
 impl RedisBackend.reset_counters -> None {
     self.fetch_count = 0;
     self.put_count = 0;
 }
 
-"""Store anchor in Redis cache."""
 impl RedisBackend.put(anchor: Anchor) -> None {
     if self.redis_client is None {
         return;
@@ -101,11 +90,9 @@ impl RedisBackend.put(anchor: Anchor) -> None {
         data = Serializer.serialize(anchor, include_type=True);
         key = storage_key(anchor.id);
 
-        # Get TTL from config
         db_config = _get_db_config();
         ttl = db_config.get('redis_default_ttl', 0);
 
-        # Apply TTL if configured (ttl > 0)
         if ttl > 0 {
             self.redis_client.setex(key, ttl, json.dumps(data));
             logger.debug(f"Stored anchor {anchor.id} in Redis with TTL={ttl}s");
@@ -119,7 +106,6 @@ impl RedisBackend.put(anchor: Anchor) -> None {
     }
 }
 
-"""Delete anchor from Redis cache."""
 impl RedisBackend.delete(id: UUID) -> None {
     if self.redis_client is None {
         return;
@@ -132,32 +118,26 @@ impl RedisBackend.delete(id: UUID) -> None {
     }
 }
 
-"""Close Redis connection (drops local reference; shared client stays open)."""
 impl RedisBackend.close -> None {
     self.redis_client = None;
 }
 
-"""Check if an anchor is in the cache."""
 impl RedisBackend.`has(id: UUID) -> bool {
     return self.exists(id);
 }
 
-"""Query all anchors - not supported for distributed cache."""
 impl RedisBackend.query(
     filter: (Callable[[Anchor], bool] | None) = None
 ) -> Generator[Anchor, None, None] {
-    # Redis doesn't support iteration efficiently
     return;
     yield ;
 }
 
-"""Get all root anchors - not supported for distributed cache."""
 impl RedisBackend.get_roots -> Generator[Root, None, None] {
     return;
     yield ;
 }
 
-"""Find anchors by IDs with optional filter."""
 impl RedisBackend.find(
     ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
 ) -> Generator[Anchor, None, None] {
@@ -171,7 +151,6 @@ impl RedisBackend.find(
     }
 }
 
-"""Find one anchor by ID(s) with optional filter."""
 impl RedisBackend.find_one(
     ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
 ) -> (Anchor | None) {
@@ -186,12 +165,8 @@ impl RedisBackend.find_one(
     return None;
 }
 
-"""Commit - no-op for cache."""
-impl RedisBackend.commit(anchor: (Anchor | None) = None) -> None {
-# No-op: cache doesn't need commit
-}
+impl RedisBackend.commit(anchor: (Anchor | None) = None) -> None { }
 
-"""Batch get from Redis cache using a single MGET pipeline call."""
 impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     result: dict[UUID, Anchor] = {};
     if not ids or self.redis_client is None {
@@ -231,15 +206,12 @@ impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     return result;
 }
 
-"""Batch write anchors to Redis cache."""
 impl RedisBackend.batch_put(anchors: list[Anchor]) -> None {
     for anchor in anchors {
         self.put(anchor);
     }
 }
 
-# CacheMemory-specific methods
-"""Check if key exists in cache."""
 impl RedisBackend.exists(id: UUID) -> bool {
     if self.redis_client is None {
         return False;
@@ -252,7 +224,6 @@ impl RedisBackend.exists(id: UUID) -> bool {
     }
 }
 
-"""Store anchor only if it already exists in cache."""
 impl RedisBackend.put_if_exists(anchor: Anchor) -> bool {
     if self.redis_client is None {
         return False;
@@ -264,12 +235,10 @@ impl RedisBackend.put_if_exists(anchor: Anchor) -> bool {
     return True;
 }
 
-"""Remove an entry from cache."""
 impl RedisBackend.invalidate(id: UUID) -> None {
     self.delete(id);
 }
 
-"""Best-effort PUBLISH of a cross-pod L1 eviction; gated by config."""
 impl RedisBackend.publish_invalidation(
     anchor_id: str, origin_l1_id: (str | None) = None
 ) -> None {
@@ -291,7 +260,6 @@ impl RedisBackend.publish_invalidation(
     }
 }
 
-"""Get anchor by UUID using native redis.asyncio (no asyncio.to_thread)."""
 impl RedisBackend.aget(id: UUID) -> (Anchor | None) {
     import from jac_scale._optdeps.redis { AsyncRedis, HAS_REDIS }
     if not HAS_REDIS or AsyncRedis is None {
@@ -322,7 +290,6 @@ impl RedisBackend.aget(id: UUID) -> (Anchor | None) {
     }
 }
 
-"""Store anchor using native redis.asyncio (no asyncio.to_thread)."""
 impl RedisBackend.aput(anchor: Anchor) -> None {
     import from jac_scale._optdeps.redis { AsyncRedis, HAS_REDIS }
     if not HAS_REDIS or AsyncRedis is None {

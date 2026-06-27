@@ -1,10 +1,3 @@
-"""Lint validation for `jac start --scale --dry-run`.
-
-Resource checks read effective post-fallback values from the rendered
-Deployment manifest (so cluster defaults are honored). HPA bound
-checks read raw TOML so authored bad bounds are caught before the
-manifest builder masks them with defaults."""
-
 import from typing { Any }
 import from jac_scale.targets.kubernetes.microservice.manifest_builder { GATEWAY_NAME }
 import from jac_scale.microservices.cli._narrow {
@@ -79,12 +72,6 @@ def _mem_to_bytes(val: Any) -> int | None {
 }
 
 
-"""Runs the lint catalog against a manifest bundle + microservices config.
-
-  bundle      - dict returned by target.generate_manifests()
-  ms_cfg      - the [plugins.scale.microservices] block from jac.toml
-  svc_configs - per-service blocks (for authored HPA/PDB toggles)
-"""
 obj PlanValidator {
     has bundle: Any,
         ms_cfg: Any,
@@ -106,9 +93,6 @@ obj PlanValidator {
             svc_cfg = cfgs.get(svc_name, {});
             deployment = deployments.get(svc_name);
             if deployment is None {
-                # No deployment generated for this route - downstream checks
-                # would chain false positives (cpu_request unset, no image,
-                # etc.). Report once and skip.
                 out.append(
                     Diagnostic(
                         severity="error",
@@ -200,8 +184,6 @@ obj PlanValidator {
                 )
             );
         }
-        # HPA % is computed against the container's cpu.requests baseline;
-        # with no request set, the autoscaler can't measure utilization.
         (cpu_req, _, _, _) = effective_resources(deployment);
         if cpu_req is None {
             out.append(
@@ -224,10 +206,6 @@ obj PlanValidator {
         if not bget(pdb_cfg, "enabled", True) {
             return;
         }
-        # Drains deadlock when no pods are allowed to go away. With jac-scale's
-        # default max_unavailable=1 + replicas=1, drain still proceeds (the one
-        # pod is allowed unavailable). The deadlock only happens when the user
-        # sets max_unavailable=0 explicitly.
         max_un = iget(pdb_cfg, "max_unavailable", 1);
         replicas = iget(dget(deployment, "spec"), "replicas", 1);
         if max_un < 1 and replicas <= 1 {

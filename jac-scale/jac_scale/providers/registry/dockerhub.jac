@@ -1,8 +1,6 @@
-"""DockerHub registry implementation."""
 import from jac_scale._optdeps.docker { docker_module as docker, APIError, BuildError }
 import from jac_scale.abstractions.image_registry { ImageRegistry }
 
-"""DockerHub image registry implementation."""
 obj DockerHubRegistry(ImageRegistry) {
     has config: dict[str, any] = {},
         docker_username: str by postinit,
@@ -20,7 +18,6 @@ obj DockerHubRegistry(ImageRegistry) {
         }
         repository_name = f"{self.docker_username}/{image_name}";
 
-        # Build Docker image using Docker client
         docker_client = docker.from_env();
         try {
             docker_client.images.build(
@@ -34,7 +31,6 @@ obj DockerHubRegistry(ImageRegistry) {
     }
 
     def push_image(image_name: str) {
-        # Push Docker image to DockerHub
         docker_client = docker.from_env();
         try {
             docker_client.login(
@@ -47,7 +43,6 @@ obj DockerHubRegistry(ImageRegistry) {
     }
 
     def get_image_url(image_name: str) -> str {
-        # If image_name doesn't include username, add it
         if '/' not in image_name {
             return f"{self.docker_username}/{image_name}";
         }

@@ -1,26 +1,16 @@
-"""Implementation of ServiceProcessManager methods."""
-
 import from pathlib { Path as _Path }
 
-"""Path to the pidfile for a service.
 
-We use `.jac/run/{name}.pid` so `jac scale stop/restart/destroy` can
-find running processes from a fresh CLI invocation, where
-`self.processes` is always empty (each `jac` command runs in its own
-Python process).
-"""
 def _pidfile_path(name: str) -> _Path {
     return _Path(".jac/run") / f"{name}.pid";
 }
 
-"""Write a service's pid to its pidfile."""
 def _write_pidfile(name: str, pid: int) {
     run_dir = _Path(".jac/run");
     run_dir.mkdir(parents=True, exist_ok=True);
     _pidfile_path(name).write_text(str(pid));
 }
 
-"""Read a service's recorded pid, or None if no pidfile or unreadable."""
 def _read_pidfile(name: str) -> int | None {
     path = _pidfile_path(name);
     try {
@@ -37,7 +27,6 @@ def _read_pidfile(name: str) -> int | None {
     }
 }
 
-"""Remove a service's pidfile (idempotent)."""
 def _remove_pidfile(name: str) {
     path = _pidfile_path(name);
     try {
@@ -49,13 +38,7 @@ def _remove_pidfile(name: str) {
     }
 }
 
-"""Check whether a pid refers to a live process.
 
-Uses `os.kill(pid, 0)`, which delivers no signal but raises
-ProcessLookupError if the pid doesn't exist. Returns False for
-invalid pids or permission errors (both indicate "can't signal it,
-treat as dead from our point of view").
-"""
 def _pid_alive(pid: int) -> bool {
     import os;
     if pid <= 0 {
@@ -71,17 +54,9 @@ def _pid_alive(pid: int) -> bool {
     }
 }
 
-"""Resolve a service's base URL via the owning deployer.
 
-Falls back to the loopback shape used by LocalDeployer so tests that
-instantiate ServiceProcessManager directly (without a deployer wired
-in) keep working without a mock. K8sDeployer callers will always go
-through the deployer branch.
-"""
 impl ServiceProcessManager._url_for(service_entry: ServiceEntry) -> str {
     if self.deployer is not None {
-        # `deployer` is typed `Any | None` to avoid a circular import with
-        # deployer.jac; getattr dispatches to the concrete url_for impl.
         url_fn = self.deployer?.url_for;
         if url_fn is not None {
             result: str = url_fn(service_entry);
@@ -91,12 +66,7 @@ impl ServiceProcessManager._url_for(service_entry: ServiceEntry) -> str {
     return f"http://127.0.0.1:{service_entry.port}";
 }
 
-"""Assign a port to a service.
 
-Delegates to `_util.pick_free_port` so our deployer URLs stay consistent
-with core's `ensure_sv_service` port strategy and with the plugin's own
-hookimpl. Respects a pre-assigned `service_entry.port` if > 0.
-"""
 impl ServiceProcessManager._assign_port(service_entry: ServiceEntry) -> int {
     if service_entry.port > 0 {
         return service_entry.port;
@@ -105,7 +75,6 @@ impl ServiceProcessManager._assign_port(service_entry: ServiceEntry) -> int {
     return pick_free_port(service_entry.name);
 }
 
-"""Start a single service subprocess. Returns True on success."""
 impl ServiceProcessManager.start_service(name: str) -> bool {
     if name not in self.registry.entries {
         logger.error(f"Service '{name}' not found in registry");
@@ -125,14 +94,8 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
         import os;
         import from pathlib { Path }
         child_env = dict(os.environ);
-        # Prevent child process from re-triggering the orchestrator
         child_env["JAC_SV_SIBLING"] = "1";
 
-        # Inject peer URLs so children resolve sv-imported siblings via
-        # sv_client._ensure_available's JAC_SV_{NAME}_URL fast-path
-        # instead of falling through to ensure_sv_service and spawning
-        # duplicate grandchildren. Peer URLs come from the deployer so
-        # K8s siblings will get DNS names automatically.
         for (peer_name, peer_entry) in self.registry.entries.items() {
             if peer_name != name and peer_entry.port > 0 {
                 peer_url: str = peer_entry.url or self._url_for(peer_entry);
@@ -140,7 +103,6 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
             }
         }
 
-        # Write service logs to .jac/logs/{name}.log
         log_dir = Path(".jac/logs");
         log_dir.mkdir(parents=True, exist_ok=True);
         log_path = str(log_dir / f"{name}.log");
@@ -157,12 +119,8 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
         entry.status = ServiceStatus.STARTING;
         self._failure_counts[name] = 0;
 
-        # Persist the pid so future `jac scale stop/restart/destroy`
-        # invocations (each of which runs in a separate Python process
-        # with an empty self.processes) can still signal the service.
         _write_pidfile(name, proc.pid);
 
-        # Register URL in sv_client so sv import calls can resolve it
         import from jaclang.runtimelib { sv_client }
         sv_client.register(name, entry.url);
 
@@ -175,21 +133,7 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
     }
 }
 
-"""Start all registered services.
 
-Two passes:
-
-  1. Pre-assign a port + URL to every service so the peer-URL env-var
-     loop in start_service sees a complete picture. Without this, the
-     first service would spawn with no peer URLs, and its own sv
-     imports would fall through to ensure_sv_service and spawn
-     grandchildren.
-
-  2. Spawn each service sequentially and wait for /healthz before the
-     next. Serializing startup avoids CREATE TABLE races on the shared
-     identity_users sqlite table when every service's SQLAlchemy
-     engine calls create_all() simultaneously.
-"""
 impl ServiceProcessManager.start_all -> None {
     import from jac_scale.microservices.runtime.util { wait_for_health }
 
@@ -218,18 +162,7 @@ impl ServiceProcessManager.start_all -> None {
     }
 }
 
-"""Stop a single service (graceful SIGTERM, then SIGKILL).
 
-Works in two modes:
-
-  In-process (orchestrator called us): we have the Popen handle in
-  `self.processes`, use it directly. subprocess.Popen.terminate() +
-  wait() is cleaner than raw os.kill because it reaps the child.
-
-  Cross-process (`jac scale stop <name>` in a separate shell): no
-  Popen handle; read the pidfile and os.kill the recorded pid. Clean
-  up the pidfile either way so stale state doesn't accumulate.
-"""
 impl ServiceProcessManager.stop_service(name: str) -> bool {
     import os;
     import time;
@@ -239,7 +172,6 @@ impl ServiceProcessManager.stop_service(name: str) -> bool {
     proc = self.processes.get(name);
 
     if proc {
-        # In-process: use the Popen handle (reaps the zombie too).
         logger.info(f"Stopping {name} (pid={proc.pid})...");
         proc.terminate();
         try {
@@ -251,7 +183,6 @@ impl ServiceProcessManager.stop_service(name: str) -> bool {
         }
         del self.processes[name];
     } else {
-        # Cross-process: read pidfile and signal by pid.
         pid = _read_pidfile(name);
         if pid is None {
             logger.warning(f"Cannot stop {name}: no pidfile at .jac/run/{name}.pid");
@@ -272,7 +203,7 @@ impl ServiceProcessManager.stop_service(name: str) -> bool {
         try {
             os.kill(pid, int(signal.SIGTERM));
         } except ProcessLookupError {
-            ;  # already dead between the alive check and now
+            ;
         }
         deadline = time.time() + 10.0;
         while time.time() < deadline and _pid_alive(pid) {
@@ -295,7 +226,6 @@ impl ServiceProcessManager.stop_service(name: str) -> bool {
         entry.pid = None;
     }
 
-    # Unregister from sv_client so sv import calls get fresh resolution
     import from jaclang.runtimelib { sv_client }
     sv_client.unregister(name);
 
@@ -303,9 +233,7 @@ impl ServiceProcessManager.stop_service(name: str) -> bool {
     return True;
 }
 
-"""Stop all running services."""
 impl ServiceProcessManager.stop_all -> None {
-    # Stop the monitor first so it doesn't race with stop_service.
     self.stop_health_monitor();
     names = list(self.processes.keys());
     for name in names {
@@ -313,13 +241,11 @@ impl ServiceProcessManager.stop_all -> None {
     }
 }
 
-"""Restart a service (stop + start)."""
 impl ServiceProcessManager.restart_service(name: str) -> bool {
     self.stop_service(name);
     return self.start_service(name);
 }
 
-"""Check /health on a single service. Returns True if healthy."""
 impl ServiceProcessManager.check_health(name: str) -> bool {
     entry = self.registry.entries.get(name);
     if not entry or not entry.url {
@@ -337,7 +263,6 @@ impl ServiceProcessManager.check_health(name: str) -> bool {
     }
 }
 
-"""Run health checks on all services. Returns per-service results."""
 impl ServiceProcessManager.check_all_health -> dict[str, bool] {
     results: dict[str, bool] = {};
 
@@ -365,9 +290,6 @@ impl ServiceProcessManager.check_all_health -> dict[str, bool] {
 }
 
 
-"""Background recovery loop; module-scope so the thread target is
-picklable. Swallows per-iteration exceptions so a transient socket
-error doesn't kill the loop."""
 def _health_monitor_loop(pm: any, stop_event: any, interval: float) -> None {
     while not stop_event.is_set() {
         try {

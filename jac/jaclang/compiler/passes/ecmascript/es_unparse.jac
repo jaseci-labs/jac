@@ -1,15 +1,7 @@
-"""
-ECMAScript/JavaScript code generation from ESTree AST.
-
-This module provides functionality to convert ESTree AST nodes back to
-JavaScript source code (unparsing).
-"""
-
 import from jaclang.compiler.passes.ecmascript { estree as es }
-"""Generate JavaScript code from ESTree AST."""
 obj JSCodeGenerator {
     def init(indent: str = '  ') -> None;
-    # Source mapping: maps output line -> (source_line, source_col)
+
     has line_map: list[tuple[int, int, int]] = [],
         _current_line: int = 1,
         _line_to_src: dict[int, tuple[int, int]] = {};
@@ -84,7 +76,6 @@ obj JSCodeGenerator {
     def gen_export_specifier(nd: es.ExportSpecifier) -> str;
     def gen_export_default_declaration(nd: es.ExportDefaultDeclaration) -> str;
     def gen_export_all_declaration(nd: es.ExportAllDeclaration) -> str;
-    # JSX emission (ESTree-JSX) — prints the View IR's Solid lowering as JSX text.
     def gen_jsx_element(nd: es.JsxElement) -> str;
     def gen_jsx_fragment(nd: es.JsxFragment) -> str;
     def gen_jsx_opening_element(nd: es.JsxOpeningElement) -> str;

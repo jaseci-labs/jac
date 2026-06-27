@@ -1,13 +1,5 @@
-# cef_subprocess -- imports + entry; cef_platform.na.jac is spliced in at # PLATFORM by desktop_build._splice_platform (the # ENTRY marker is dropped)
 import sys;
 
-# Import order is load-order sensitive: libcef.so MUST be NEEDED before
-# libc.so.6. libcef.so's internal `close` wrapper resolves the real libc
-# close via dlsym(RTLD_NEXT, "close"), which only finds libc's close when
-# libc loads AFTER libcef. If libc is NEEDED first, RTLD_NEXT from libcef
-# walks past it and finds nothing -> "close symbol missing" -> ImmediateCrash
-# in every child process (zygote/renderer/utility/gpu). This matches the
-# working libcef_dispatch.so NEEDED order (libcef.so before libc.so.6).
 import from "libcef.so" {
     def cef_execute_process(args: int, app: int, sandbox: int) -> i32;  def cef_version_info(
         which: i32
@@ -53,11 +45,8 @@ import from "libc.so.6" {
     ) -> int;  def abort -> None;
 }
 
-# PLATFORM
 
-# ENTRY
 def _subprocess_bootstrap {
-    # Match main-process bootstrap (nacompile cannot share setenv/getenv cross-module yet).
     setenv("NO_AT_BRIDGE", "1", 0);
     buf: int = calloc(1, 4096);
     n: int = readlink("/proc/self/exe", buf, 4095);
@@ -76,7 +65,7 @@ def _subprocess_bootstrap {
     strcpy(fc_buf, buf);
     strcat(fc_buf, "/minimal-fonts.conf");
     if access(fc_buf, 4) == 0 {
-        setenv("FONTCONFIG_FILE", fc_buf, 0);  # no-op if already set (overwrite=0)
+        setenv("FONTCONFIG_FILE", fc_buf, 0);
     }
     free(fc_buf);
     free(buf);

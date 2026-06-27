@@ -1,19 +1,9 @@
-"""Notification plugin for the Jac desktop IPC system.
-
-Sends desktop notifications via platform-native tools:
-  Linux:   notify-send
-  macOS:   osascript
-  Windows: PowerShell toast
-
-Transpiled to dependency-free Python at build time.
-"""
 import os;
 import subprocess;
 import from desktop_plugin { PluginError, ErrorCode, OsPlugin, DesktopPlugin }
 import from manifest { PluginManifest, PluginContext }
 
 
-"""Desktop notification capability via platform tools."""
 obj NotificationPlugin(OsPlugin) {
     has _enabled: bool = True;
 
@@ -33,10 +23,6 @@ obj NotificationPlugin(OsPlugin) {
 
     def init(config: dict) {
         self.plugin_name = "jac.notification";
-        # If this plugin is instantiated at all, it's enabled.
-        # config may be True (from `notification = true` in TOML),
-        # {} (from empty `[plugins.desktop.plugins.notification]`),
-        # or a dict with sub-settings.
         self._enabled = DesktopPlugin._config_enabled(config);
     }
 
@@ -79,8 +65,6 @@ obj NotificationPlugin(OsPlugin) {
                 escaped_body = self._escape_powershell(body);
                 ps_script = (
                     "[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');"
-                    "$n = New-Object System.Windows.Forms.NotifyIcon;"
-                    "$n.Icon = [System.Drawing.SystemIcons]::Information;"
                     "$n.Visible = $true;"
                     f"$n.ShowBalloonTip(5000, '{escaped_title}', '{escaped_body}', 'Info')"
                 );

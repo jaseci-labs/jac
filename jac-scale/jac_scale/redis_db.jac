@@ -1,13 +1,10 @@
-"""Redis-backed database implementation."""
 import from jac_scale.db { Db, DeleteResult }
 import from jac_scale._optdeps.redis { Redis }
 
 obj RedisDb(Db) {
     has client: Redis;
 
-    """Get namespaced Redis key."""
     def _get_redis_key(col_name: str, key: str) -> str;
-
     def get(key: str, col_name: str = 'default') -> dict | None;
     def set(key: str, value: dict, col_name: str = 'default') -> str;
     def delete(key: str, col_name: str = 'default') -> int;

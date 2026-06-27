@@ -1,8 +1,3 @@
-"""Prometheus metrics implementation for jac_scale.
-
-Provides HTTP request metrics, active request tracking, and optional
-walker execution timing using the prometheus-client library.
-"""
 import from typing { Callable }
 import from jac_scale.abstractions.metrics { MetricsCollector }
 import from jac_scale._optdeps.prometheus {
@@ -15,7 +10,6 @@ import from jac_scale._optdeps.prometheus {
 }
 import from fastapi.responses { Response }
 
-# Default histogram buckets (in seconds) - optimized for typical web latencies
 glob DEFAULT_BUCKETS: tuple = (
          0.005,
          0.01,
@@ -32,14 +26,7 @@ glob DEFAULT_BUCKETS: tuple = (
          10.0
      );
 
-"""Prometheus-based metrics collector.
 
-Exposes standard HTTP metrics that can be scraped by Prometheus:
-- Request count by method, path, and status code
-- Request latency histogram
-- Active requests gauge
-- Optional walker execution timing
-"""
 obj PrometheusMetricsCollector(MetricsCollector) {
     has config: dict[str, any] = {},
         _enabled: bool by postinit,
@@ -60,9 +47,6 @@ obj PrometheusMetricsCollector(MetricsCollector) {
             return;
         }
 
-        # Own an isolated registry so multiple collectors (several apps in one
-        # process, or repeated test setup) never collide on metric names. Honour
-        # an explicitly injected registry; otherwise create a fresh one.
         if self._registry is None {
             self._registry = CollectorRegistry();
         }
@@ -74,7 +58,6 @@ obj PrometheusMetricsCollector(MetricsCollector) {
             buckets = DEFAULT_BUCKETS;
         }
 
-        # HTTP request counter
         self._request_count = Counter(
             f"{self._namespace}_http_requests_total",
             "Total HTTP requests processed",
@@ -82,7 +65,6 @@ obj PrometheusMetricsCollector(MetricsCollector) {
             registry=self._registry
         );
 
-        # HTTP request latency histogram
         self._request_latency = Histogram(
             f"{self._namespace}_http_request_duration_seconds",
             "HTTP request latency in seconds",
@@ -91,14 +73,12 @@ obj PrometheusMetricsCollector(MetricsCollector) {
             registry=self._registry
         );
 
-        # Active requests gauge
         self._active_requests = Gauge(
             f"{self._namespace}_http_requests_in_progress",
             "Number of HTTP requests currently being processed",
             registry=self._registry
         );
 
-        # Optional walker metrics
         if self._include_walker_metrics {
             self._walker_latency = Histogram(
                 f"{self._namespace}_walker_duration_seconds",

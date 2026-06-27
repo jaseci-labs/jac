@@ -14,6 +14,7 @@ class Module(object) {
         self.namedmetadata = {};
         self._metadatacache = {};
     }
+
     def _fix_metadata_operands(self: Module, operands: Any) -> object {
         fixed_ops = [];
         for op in operands {
@@ -28,6 +29,7 @@ class Module(object) {
         }
         return fixed_ops;
     }
+
     def _fix_di_operands(self: Module, operands: Any) -> object {
         fixed_ops = [];
         for (name, op) in operands {
@@ -38,6 +40,7 @@ class Module(object) {
         }
         return fixed_ops;
     }
+
     def str_ditok_operands(self: Module, operands: Any) -> object {
         str_ops = [];
         for (name, op) in operands {
@@ -48,12 +51,7 @@ class Module(object) {
         }
         return str_ops;
     }
-    """
-        Add an unnamed metadata to the module with the given *operands*
-        (a sequence of values) or return a previous equivalent metadata.
-        A MDValue instance is returned, it can then be associated to
-        e.g. an instruction.
-        """
+
     def add_metadata(self: Module, operands: Any) -> object {
         if not isinstance(operands, (`list, `tuple)) {
             raise TypeError(
@@ -77,15 +75,6 @@ class Module(object) {
         return md;
     }
 
-    """
-        Add debug information metadata to the module with the given
-        *operands* (a dict of values with string keys) or return
-        a previous equivalent metadata.  *kind* is a string of the
-        debug information kind (e.g. "DICompileUnit").
-
-        A DIValue instance is returned, it can then be associated to e.g.
-        an instruction.
-        """
     def add_debug_info(
         self: Module, kind: Any, operands: Any, is_distinct: Any = False
     ) -> object {
@@ -102,17 +91,6 @@ class Module(object) {
         return di;
     }
 
-    """
-        Add a named metadata node to the module, if it doesn't exist,
-        or return the existing node.
-        If *element* is given, it will append a new element to
-        the named metadata node.  If *element* is a sequence of values
-        (rather than a metadata value), a new unnamed node will first be
-        created.
-
-        Example::
-            module.add_named_metadata("llvm.ident", ["jaclang.compiler.passes.native.llvm/1.0"])
-        """
     def add_named_metadata(self: Module, name: Any, element: Any = None) -> object {
         if (name in self.namedmetadata) {
             nmd = self.namedmetadata[name];
@@ -133,17 +111,10 @@ class Module(object) {
         return nmd;
     }
 
-    """
-        Return the metadata node with the given *name*.  KeyError is raised
-        if no such node exists (contrast with add_named_metadata()).
-        """
     def get_named_metadata(self: Module, name: Any) -> object {
         return self.namedmetadata[name];
     }
 
-    """
-        A list of functions declared or defined in this module.
-        """
     @property
     def functions(self: Module) -> object {
         return [
@@ -153,32 +124,20 @@ class Module(object) {
         ];
     }
 
-    """
-        An iterable of global values in this module.
-        """
     @property
     def global_values(self: Module) -> object {
         return self.globals.values();
     }
 
-    """
-        Get a global value by name.
-        """
     def get_global(self: Module, name: Any) -> object {
         return self.globals[name];
     }
 
-    """
-        Add a new global value.
-        """
     def add_global(self: Module, globalvalue: Any) -> object {
         assert (globalvalue.name not in self.globals);
         self.globals[globalvalue.name] = globalvalue;
     }
 
-    """
-        Get a unique global name with the following *name* hint.
-        """
     def get_unique_name(self: Module, name: Any = '') -> object {
         return self.scope.deduplicate(name);
     }
@@ -241,14 +200,17 @@ class Module(object) {
         }
         return values.Function(self, fnty, name=name);
     }
+
     def get_identified_types(self: Module) -> object {
         return self.context.identified_types;
     }
+
     def _get_body_lines(self: Module) -> object {
         lines = [it.get_declaration() for it in self.get_identified_types().values()];
         lines += [str(v) for v in self.globals.values()];
         return lines;
     }
+
     def _get_metadata_lines(self: Module) -> object {
         mdbuf = [];
         for (k, v) in self.namedmetadata.items() {
@@ -263,12 +225,15 @@ class Module(object) {
         }
         return mdbuf;
     }
+
     def _stringify_body(self: Module) -> object {
         return "\n".join(self._get_body_lines());
     }
+
     def _stringify_metadata(self: Module) -> object {
         return "\n".join(self._get_metadata_lines());
     }
+
     def __repr__(self: Module) -> object {
         lines = [];
         lines += [
@@ -282,4 +247,3 @@ class Module(object) {
         return "\n".join(lines);
     }
 }
-

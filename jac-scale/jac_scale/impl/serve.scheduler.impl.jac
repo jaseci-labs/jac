@@ -1,11 +1,7 @@
 import from jac_scale.utils { authenticate_or_fail }
 import from jac_scale._optdeps.pymongo { PyMongoError }
 
-"""Map an exception to the caller-facing TransportResponse.
 
-PyMongoError → 503 STORAGE_UNAVAILABLE; anything else → 500 SCHEDULER_ERROR.
-Single call site for the catch-block in every /jobs endpoint.
-"""
 def _err_response(e: Exception) -> TransportResponse {
     if isinstance(e, PyMongoError) {
         logger.error(f"Storage failure on /jobs: {type(e).__name__}: {e}");
@@ -23,21 +19,14 @@ def _err_response(e: Exception) -> TransportResponse {
     );
 }
 
-"""Authenticate the Authorization header and return (user_id, err).
 
-Thin wrapper so every /jobs callback can do a one-line auth + early-return
-instead of repeating header extraction + fail-shape assembly.
-"""
 def _require_auth(
     request: Any, user_manager: Any
 ) -> tuple[str | None, TransportResponse | None] {
     return authenticate_or_fail(request.headers.get('Authorization'), user_manager);
 }
 
-"""Return a 404 response if `job` is None or caller is neither creator nor admin.
 
-Uses 404 for unauthorized access so existence of another user's job is not leaked.
-"""
 def _ensure_authorized(
     job: dict | None, user_id: str, user_manager: Any
 ) -> TransportResponse | None {
@@ -56,7 +45,6 @@ def _ensure_authorized(
     return not_found;
 }
 
-"""Build a TriggerSpec from the request body. Returns (spec, None) or (None, err)."""
 def _build_spec(body: dict) -> tuple[TriggerSpec | None, TransportResponse | None] {
     trigger = body.get('trigger', '');
     if not trigger {
@@ -90,9 +78,7 @@ def _build_spec(body: dict) -> tuple[TriggerSpec | None, TransportResponse | Non
     }
 }
 
-"""Register all /jobs REST endpoints on the server."""
 impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
-    # POST /jobs — create a new dynamic scheduled job
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
@@ -105,13 +91,11 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
             summary='Create scheduled job',
             description=(
                 'Schedule a walker or function decorated with '
-                '@schedule(trigger=ScheduleTrigger.DYNAMIC). '
                 'Requires Authorization header.'
             )
         )
     );
 
-    # GET /jobs — list all dynamic scheduled jobs
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
@@ -125,7 +109,6 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
         )
     );
 
-    # GET /jobs/{job_id} — get a single job
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
@@ -148,7 +131,6 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
         )
     );
 
-    # PUT /jobs/{job_id} — update an existing job's schedule
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.PUT,
@@ -172,7 +154,6 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
         )
     );
 
-    # DELETE /jobs/{job_id} — delete a job
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.DELETE,
@@ -196,7 +177,6 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
     );
 }
 
-"""Build POST /jobs callback — creates a new dynamic scheduled job."""
 impl JacAPIServerScheduler.create_job_callback -> Callable[..., TransportResponse] {
     async def callback(
         request: Request, body_data: CreateJobRequest
@@ -206,8 +186,6 @@ impl JacAPIServerScheduler.create_job_callback -> Callable[..., TransportRespons
             return auth_err;
         }
 
-        # body_data is already validated by Pydantic — required fields are
-        # guaranteed present, types are coerced.
         body = body_data.model_dump(mode='python');
         walker_or_function = body.get('walker_or_function', '');
 
@@ -216,7 +194,6 @@ impl JacAPIServerScheduler.create_job_callback -> Callable[..., TransportRespons
             return spec_err;
         }
 
-        # Verify the walker/function exists and has @schedule(trigger=DYNAMIC)
         introspector = self.introspector;
         target_obj = (introspector._walkers or {}).get(walker_or_function)
         or (introspector._functions or {}).get(walker_or_function);
@@ -268,14 +245,7 @@ impl JacAPIServerScheduler.create_job_callback -> Callable[..., TransportRespons
     return callback;
 }
 
-"""Build GET /jobs callback — lists dynamic scheduled jobs with pagination + filters.
 
-Query parameters:
-  limit       - max items per page (default 50, max 500)
-  offset      - items to skip (default 0)
-  trigger     - filter by trigger type ('interval' | 'cron' | 'date')
-  created_by  - filter by creator user_id (admin only; ignored for non-admins)
-"""
 impl JacAPIServerScheduler.list_jobs_callback -> Callable[..., TransportResponse] {
     async def callback(request: Request) -> TransportResponse {
         (user_id, auth_err) = _require_auth(request, self.user_manager);
@@ -299,7 +269,6 @@ impl JacAPIServerScheduler.list_jobs_callback -> Callable[..., TransportResponse
 
         try {
             is_admin = self.user_manager.get_user_role(user_id) == 'admin';
-            # Non-admins only see their own jobs; creator_filter is admin-only.
             effective_creator = user_id if not is_admin else creator_filter;
             scheduler = JacScaleScheduler.instance();
             (page, total) = scheduler.list_jobs(
@@ -325,7 +294,6 @@ impl JacAPIServerScheduler.list_jobs_callback -> Callable[..., TransportResponse
     return callback;
 }
 
-"""Build GET /jobs/{job_id} callback — retrieves a single dynamic job."""
 impl JacAPIServerScheduler.get_job_callback -> Callable[..., TransportResponse] {
     async def callback(request: Request, job_id: str) -> TransportResponse {
         (user_id, auth_err) = _require_auth(request, self.user_manager);
@@ -350,7 +318,6 @@ impl JacAPIServerScheduler.get_job_callback -> Callable[..., TransportResponse] 
     return callback;
 }
 
-"""Build PUT /jobs/{job_id} callback — updates an existing dynamic job's schedule."""
 impl JacAPIServerScheduler.update_job_callback -> Callable[..., TransportResponse] {
     async def callback(
         request: Request, job_id: str, body_data: UpdateJobRequest
@@ -360,8 +327,6 @@ impl JacAPIServerScheduler.update_job_callback -> Callable[..., TransportRespons
             return auth_err;
         }
 
-        # Pydantic has already validated the body — _build_spec runs the
-        # trigger-specific field checks and the CronTrigger structural parse.
         (spec, spec_err) = _build_spec(body_data.model_dump(mode='python'));
         if spec_err or spec is None {
             return spec_err;
@@ -391,7 +356,6 @@ impl JacAPIServerScheduler.update_job_callback -> Callable[..., TransportRespons
     return callback;
 }
 
-"""Build DELETE /jobs/{job_id} callback — deletes a dynamic scheduled job."""
 impl JacAPIServerScheduler.delete_job_callback -> Callable[..., TransportResponse] {
     async def callback(request: Request, job_id: str) -> TransportResponse {
         (user_id, auth_err) = _require_auth(request, self.user_manager);

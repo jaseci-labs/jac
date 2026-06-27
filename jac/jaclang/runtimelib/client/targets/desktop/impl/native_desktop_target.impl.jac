@@ -1,4 +1,3 @@
-"""Implementation of the Jac-native desktop target."""
 import os;
 import shutil;
 import subprocess;
@@ -23,16 +22,7 @@ import from jaclang.runtimelib.client.targets.desktop._dev_launch {
     desktop_app_runtime_env
 }
 
-"""Ensure the platform webview shared library exists beside the binding (build it on first use).
 
-Deliberately NOT bundled into the fused payload like the libjacpyembed shim.
-The pyembed shim is pure Zig with no system deps, so a single prebuilt is
-portable; libwebview instead wraps the host's OS web engine (WebKitGTK on Linux)
-and DYNAMICALLY links it, with an ABI that varies by distro (webkit2gtk-4.1 vs
-4.0 -- build_libwebview.sh picks at build time). A payload-bundled prebuilt would
-pin one WebKitGTK ABI and fail on a target with the other, so it stays an
-on-demand build that adapts to the target's WebKitGTK. It builds once into the
-runtime's webview dir (under the materialized rt) and is reused across apps."""
 def _ensure_libwebview(webview_dir: Path) -> Path {
     lib = webview_dir / libwebview_name();
     if lib.exists() {
@@ -58,12 +48,10 @@ impl NativeDesktopTarget.build(
 
     ensure_dev_build_env();
 
-    # 1. Build the cl bundle with the standard Vite pipeline (WebTarget).
     console.print("\n🖥️  Building desktop app (Jac-native webview)", style="bold");
     web_bundle = super.build(entry_file, project_dir, platform);
-    dist_dir = web_bundle.parent;  # .jac/client/dist
+    dist_dir = web_bundle.parent;
 
-    # 2. Desktop window config from [plugins.desktop].
     cfg = get_desktop_config(project_dir);
     cfg.validate();
     ident = cfg.get_identity();
@@ -72,14 +60,12 @@ impl NativeDesktopTarget.build(
     plugin_configs = cfg.get_plugin_configs();
     app_name = ident.name or "app";
 
-    # 3. Prepare a clean output dir beside the dist.
     out_dir = project_dir / self.output_dir;
     if out_dir.exists() {
         shutil.rmtree(out_dir);
     }
     out_dir.mkdir(parents=True, exist_ok=True);
 
-    # 4. Stage the served bundle + the native engine wrapper.
     shutil.copytree(dist_dir, out_dir / "dist");
     webview_dir = _find_webview_dir();
     lib = _ensure_libwebview(webview_dir);
@@ -87,9 +73,6 @@ impl NativeDesktopTarget.build(
     shutil.copy2(lib, out_dir / out_lib_name);
     shutil.copy2(webview_dir / "webview.na.jac", out_dir / "webview.na.jac");
 
-    # 5. Stage sv source beside the binary for runtime boot(). oauth_broker,
-    #    inprocess_dispatch, and the plugins are no longer transpiled + staged --
-    #    the host imports them from the fused runtime's jaclang tree at boot.
     sv_root = entry_file.parent;
     sv_stage = out_dir / "sv";
     sv_ignore = shutil.ignore_patterns(
@@ -113,9 +96,6 @@ impl NativeDesktopTarget.build(
     shutil.copytree(sv_root, sv_stage, ignore=sv_ignore);
     sv_entry_rel = str(entry_file.name);
 
-    # 8. Stage the fused-runtime bridge shim ($ORIGIN-adjacent) so the host's
-    #    `import from jacpyembed` resolves a sibling libjacpyembed at load, then
-    #    generate + compile the native host. No build-machine libpython anymore.
     _stage_pyembed_shim(out_dir);
     host_src = _generate_host_source(
         win.title or app_name,
@@ -140,10 +120,6 @@ impl NativeDesktopTarget.build(
     if res.returncode != 0 or not binary.exists() {
         raise RuntimeError("Native host compilation failed.");
     }
-    # 9. Append THIS jac binary's fused-runtime trailer payload to the host so it
-    #    carries the same bundled CPython + jaclang the CLI ships; jac_engine_boot()
-    #    materializes it from /proc/self/exe at first launch (shared rt/<hash> cache,
-    #    auto-deduped with the CLI's).
     _bundle_runtime(binary);
     stray = project_dir / app_name;
     if stray.exists() and stray.resolve() != binary.resolve() {
@@ -152,9 +128,6 @@ impl NativeDesktopTarget.build(
     launcher = out_dir / f"{app_name}-launch.sh";
     launcher.write_text(
         "#!/bin/sh\n"
-        "cd \"$(dirname \"$0\")\" || exit 1\n"
-        "export GDK_BACKEND=\"${GDK_BACKEND:-x11}\"\n"
-        "export WEBKIT_DISABLE_DMABUF_RENDERER=\"${WEBKIT_DISABLE_DMABUF_RENDERER:-1}\"\n"
         "export WEBKIT_DISABLE_COMPOSITING_MODE=\"${WEBKIT_DISABLE_COMPOSITING_MODE:-1}\"\n"
         f"exec ./{app_name} \"$@\"\n"
     );

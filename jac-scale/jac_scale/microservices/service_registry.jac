@@ -1,5 +1,3 @@
-"""Service registry — tracks declared microservices and their runtime state."""
-
 import from datetime { datetime }
 
 enum ServiceStatus {
@@ -10,7 +8,6 @@ enum ServiceStatus {
     STOPPED = "stopped"
 }
 
-"""Represents a single declared microservice."""
 obj ServiceEntry {
     has name: str,
         file: str,
@@ -24,23 +21,13 @@ obj ServiceEntry {
         last_health_check: datetime | None = None;
 }
 
-"""Registry that maps service prefixes to entries with longest-prefix matching."""
 obj ServiceRegistry {
     has entries: dict[str, ServiceEntry] = {},
         _sorted_prefixes: list[tuple[str, str]] = [];
 
-    """Register a service entry. Rebuilds prefix index."""
     def register(service_entry: ServiceEntry) -> None;
-
-    """Remove a service by name. Returns True if found."""
     def deregister(name: str) -> bool;
-
-    """Find the service matching a request path (longest-prefix match)."""
     def match_route(path: str) -> ServiceEntry | None;
-
-    """Get all entries as a health summary dict."""
     def health_summary -> dict[str, dict];
-
-    """Rebuild the sorted prefix list after register/deregister."""
     def _rebuild_prefix_index -> None;
 }

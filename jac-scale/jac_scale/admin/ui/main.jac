@@ -15,8 +15,6 @@ cl {
     def AppContent -> JsxElement {
         auth = useAuth();
 
-        # Restore the saved theme app-wide (before any conditional return,
-        # per hook rules) so login/reset honor it too, not just the shell.
         useEffect(
             lambda { if getStorage("jac-admin-theme") == "light" {
                 globalThis.document.documentElement.classList.add("light");

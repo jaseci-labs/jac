@@ -1,5 +1,3 @@
-"""Implementation of resource providers."""
-
 import from pathlib { Path }
 import json;
 import from urllib.request { urlopen, Request }
@@ -8,16 +6,7 @@ import from urllib.error { URLError }
 glob GITHUB_API_BASE: str = "https://api.github.com/repos/jaseci-labs/jaseci",
      _github_cache: dict[str, str] = {};
 
-"""Find the repo root by walking up from jaclang package location."""
 impl find_repo_root -> str | None {
-    # Locate the jaseci monorepo root by its docs tree, used to validate/serve
-    # the live docs. We must NOT key off `jaclang.__file__`: under the sealed
-    # single-binary, jaclang (and its `jac.spec`) live in an extracted runtime
-    # payload, not the checkout -- trusting that copy yields a bogus temp dir.
-    # Instead walk up from the cwd (and the jac_mcp package) looking for the
-    # monorepo markers `docs/docs` + `jac/jaclang`. In a standalone (PyPI)
-    # install neither marker exists, so this returns None and callers fall back
-    # to the bundled docs content.
     starts: list[Path] = [Path.cwd(), Path(__file__).parent];
     for start in starts {
         chain = [start] + list(start.parents);
@@ -31,9 +20,7 @@ impl find_repo_root -> str | None {
     return None;
 }
 
-"""Mapping from URI to (relative doc path, bundled filename, description)."""
 glob DOC_MAPPINGS: dict[str, tuple] = {
-         # --- Get Started ---
          "jac://docs/welcome": (
              "quick-guide/index.md",
              "quick-guide-index.md",
@@ -69,7 +56,6 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "faq.md",
              "FAQ - Frequently asked questions"
          ),
-         # --- Language Specification ---
          "jac://docs/reference-overview": (
              "reference/index.md",
              "reference-index.md",
@@ -105,7 +91,6 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "advanced.md",
              "Comprehensions & Filters"
          ),
-         # --- Learn by Doing: Language ---
          "jac://docs/tutorial-coding-primer": (
              "tutorials/language/coding_primer.md",
              "coding_primer.md",
@@ -121,7 +106,6 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "tutorial-osp.md",
              "Graphs & Walkers - OSP tutorial"
          ),
-         # --- Native Compilation ---
          "jac://docs/native-pathway": (
              "reference/language/native-pathway.md",
              "native-pathway.md",
@@ -132,7 +116,6 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "native-chess.md",
              "Build a Chess Engine - Native compilation tutorial"
          ),
-         # --- AI Integration ---
          "jac://docs/byllm": (
              "reference/plugins/byllm.md",
              "byllm.md",
@@ -158,7 +141,6 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "ai-multimodal.md",
              "Multimodal - Multimodal AI tutorial"
          ),
-         # --- Full-Stack Development ---
          "jac://docs/jac-client": (
              "reference/plugins/jac-client.md",
              "jac-client.md",
@@ -204,7 +186,6 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "fullstack-advanced-patterns.md",
              "Advanced Patterns - Advanced full-stack patterns"
          ),
-         # --- Deployment & Scaling ---
          "jac://docs/jac-scale": (
              "reference/plugins/jac-scale.md",
              "jac-scale.md",
@@ -220,7 +201,6 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "production-kubernetes.md",
              "Kubernetes - Kubernetes deployment tutorial"
          ),
-         # --- Developer Workflow ---
          "jac://docs/cli": (
              "reference/cli/index.md",
              "cli-index.md",
@@ -256,7 +236,6 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "diagnostics.md",
              "Diagnostics - Compiler diagnostics and error reference"
          ),
-         # --- Python Integration ---
          "jac://docs/python-integration": (
              "reference/language/python-integration.md",
              "python-integration.md",
@@ -267,7 +246,6 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "library-mode.md",
              "Library Mode - Using Jac as a library"
          ),
-         # --- Quick Reference ---
          "jac://docs/walker-responses": (
              "reference/language/walker-responses.md",
              "walker-responses.md",
@@ -281,17 +259,14 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
 
      };
 
-"""Scan paths and build URI to filepath mapping."""
 impl ResourceProvider.index_resources -> None {
     self._package_dir = str(Path(__file__).parent);
     self._repo_root = find_repo_root();
     self._resources = {};
     if self._repo_root is None {
-        # PyPI install — bundled content + bundled docs
         self._index_bundled();
         self._index_shared_guides();
         self._index_bundled_docs();
-        # Examples fetched lazily from GitHub on first access
         self._resources["jac://examples/index"] = {
             "uri": "jac://examples/index",
             "name": "Examples Index",
@@ -302,7 +277,6 @@ impl ResourceProvider.index_resources -> None {
         return;
     }
     repo_root = Path(self._repo_root);
-    # Grammar resources
     spec_path = repo_root / "jac" / "jaclang" / "jac.spec";
     if spec_path.exists() {
         self._resources["jac://grammar/spec"] = {
@@ -323,7 +297,6 @@ impl ResourceProvider.index_resources -> None {
             "path": str(tokens_path)
         };
     }
-    # Documentation resources (from repo docs/)
     for (uri, mapping) in DOC_MAPPINGS.items() {
         (rel_path, _, desc) = mapping;
         full_path = repo_root / "docs" / "docs" / rel_path;
@@ -338,10 +311,8 @@ impl ResourceProvider.index_resources -> None {
             };
         }
     }
-    # Bundled content (always available)
     self._index_bundled();
     self._index_shared_guides();
-    # Examples — prefer local repo, fall back to lazy GitHub
     examples_dir = repo_root / "jac" / "examples";
     if examples_dir.exists() {
         self._index_examples_local(examples_dir);
@@ -356,7 +327,6 @@ impl ResourceProvider.index_resources -> None {
     }
 }
 
-"""Index bundled content (pitfalls, patterns)."""
 impl ResourceProvider._index_bundled -> None {
     pkg = Path(self._package_dir);
     content_dir = pkg / "content";
@@ -392,17 +362,12 @@ impl ResourceProvider._index_bundled -> None {
     }
 }
 
-"""Index the curated guides from the jaclang compiler's shared guide store.
 
-These are the same Agent Skill guides served by the `jac guide` CLI command;
-reading them through `jaclang.cli.guide_store` keeps a single source of truth
-instead of vendoring a second copy into jac-mcp.
-"""
 impl ResourceProvider._index_shared_guides -> None {
     try {
         import from jaclang.cli.guide_store { list_guides }
     } except ImportError {
-        return;  # Older jaclang without the shared guide store
+        return;
     }
     for g in list_guides() {
         uri = f"jac://guide/{g.name}";
@@ -416,13 +381,11 @@ impl ResourceProvider._index_shared_guides -> None {
     }
 }
 
-"""Index bundled docs copied at release time."""
 impl ResourceProvider._index_bundled_docs -> None {
     docs_dir = Path(self._package_dir) / "content" / "docs";
     if not docs_dir.exists() {
         return;
     }
-    # Grammar spec
     spec_path = docs_dir / "jac-grammar.spec";
     if spec_path.exists() {
         self._resources["jac://grammar/spec"] = {
@@ -433,7 +396,6 @@ impl ResourceProvider._index_bundled_docs -> None {
             "path": str(spec_path)
         };
     }
-    # Token definitions
     tokens_path = docs_dir / "tokens.na.jac";
     if tokens_path.exists() {
         self._resources["jac://grammar/tokens"] = {
@@ -444,7 +406,6 @@ impl ResourceProvider._index_bundled_docs -> None {
             "path": str(tokens_path)
         };
     }
-    # Documentation markdown files
     for (uri, mapping) in DOC_MAPPINGS.items() {
         (_, bundled_name, desc) = mapping;
         full_path = docs_dir / bundled_name;
@@ -461,7 +422,6 @@ impl ResourceProvider._index_bundled_docs -> None {
     }
 }
 
-"""Return list of available resources."""
 impl ResourceProvider.list_resources -> list[dict[str, str]] {
     result: list[dict[str, str]] = [];
     for uri in sorted(self._resources) {
@@ -478,9 +438,7 @@ impl ResourceProvider.list_resources -> list[dict[str, str]] {
     return result;
 }
 
-"""Read resource content by URI."""
 impl ResourceProvider.read_resource(uri: str) -> str {
-    # Handle lazy GitHub examples (registered or on-demand)
     if uri.startswith("jac://examples/") {
         return self._read_example(uri);
     }
@@ -488,7 +446,6 @@ impl ResourceProvider.read_resource(uri: str) -> str {
         return f"Error: Resource not found: {uri}";
     }
     info = self._resources[uri];
-    # Handle regular files
     file_path = info.get("path");
     if not file_path {
         return "Error: No file path for resource";
@@ -504,20 +461,15 @@ impl ResourceProvider.read_resource(uri: str) -> str {
     }
 }
 
-"""Read example resource — handles local dirs, lazy GitHub index, and on-demand GitHub fetch."""
 impl ResourceProvider._read_example(uri: str) -> str {
     info = self._resources.get(uri);
-    # Local directory example
     if info and info.get("_is_dir", False) {
         return _read_example_dir(info["path"]);
     }
-    # Lazy GitHub index — fetch categories on first access
     if uri == "jac://examples/index" {
         if info and "_categories" in info {
-            # Already populated
             categories = info["_categories"];
         } else {
-            # Fetch from GitHub
             categories = self._fetch_github_categories();
         }
         lines: list[str] = ["# Jac Examples Index\n"];
@@ -526,8 +478,6 @@ impl ResourceProvider._read_example(uri: str) -> str {
         }
         return "\n".join(lines);
     }
-    # Specific example — local info exists with categories but not this one,
-    # or it's a GitHub-sourced example
     example_name = uri.replace("jac://examples/", "");
     if not example_name {
         return "Error: Invalid example URI";
@@ -535,7 +485,6 @@ impl ResourceProvider._read_example(uri: str) -> str {
     return _fetch_example_github(f"jac/examples/{example_name}");
 }
 
-"""Read all .jac files from an example directory."""
 def _read_example_dir(dir_path: str) -> str {
     result_parts: list[str] = [];
     p = Path(dir_path);
@@ -554,7 +503,6 @@ def _read_example_dir(dir_path: str) -> str {
     return "\n\n".join(result_parts);
 }
 
-"""Fetch JSON from a URL, returns parsed dict/list or None on failure."""
 def _github_api_get(url: str) -> any {
     try {
         req = Request(
@@ -572,9 +520,7 @@ def _github_api_get(url: str) -> any {
     }
 }
 
-"""Index examples by listing local directories."""
 impl ResourceProvider._index_examples_local(examples_dir: Path) -> None {
-    # Rich descriptions so AI can quickly identify the right example
     EXAMPLE_DESCRIPTIONS: dict[str, str] = {
         "chess": "Native chess engine, backend-only, no graph traversal. Demonstrates declaration/impl separation, enums, obj inheritance, and the Jac type system.",
         "littleX": "Full-stack social app (Twitter-like), OSP graph with user profiles and NLP-based search (sklearn/TF-IDF). Real-world object-spatial design."
@@ -607,7 +553,6 @@ impl ResourceProvider._index_examples_local(examples_dir: Path) -> None {
     };
 }
 
-"""Fetch example categories from GitHub and cache them."""
 impl ResourceProvider._fetch_github_categories -> list[str] {
     data = _github_api_get(f"{GITHUB_API_BASE}/contents/jac/examples");
     if data is None or not isinstance(data, list) {
@@ -620,12 +565,10 @@ impl ResourceProvider._fetch_github_categories -> list[str] {
         and not item["name"].startswith(".")
         and not item["name"].startswith("_")
     ];
-    # Cache on the index resource so we don't re-fetch
     self._resources["jac://examples/index"]["_categories"] = categories;
     return categories;
 }
 
-"""Fetch all .jac files from a GitHub directory using contents API."""
 def _fetch_example_github(github_path: str) -> str {
     if github_path in _github_cache {
         return _github_cache[github_path];
@@ -651,8 +594,6 @@ def _fetch_example_github(github_path: str) -> str {
     return result;
 }
 
-"""Recursively list .jac files in a GitHub directory via contents API.
-Returns list of (relative_path, download_url) tuples."""
 def _list_jac_files_recursive(github_path: str, base_path: str = "") -> list[tuple] {
     data = _github_api_get(f"{GITHUB_API_BASE}/contents/{github_path}");
     if data is None or not isinstance(data, list) {

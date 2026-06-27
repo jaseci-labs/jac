@@ -1,8 +1,3 @@
-"""Request/response models for the /jobs scheduler endpoints.
-
-These power the auto-generated OpenAPI / Swagger schema — giving users a
-concrete body example instead of an empty schema placeholder.
-"""
 import from typing { Literal }
 import from pydantic { BaseModel, ConfigDict, Field }
 
@@ -17,7 +12,6 @@ class CreateJobRequest(BaseModel) {
         trigger: Literal['interval', 'cron', 'date'] = Field(
             ...,
             description='How the job is triggered: '
-            "'interval' (every N seconds), 'cron' (5-field crontab, UTC), "
             "or 'date' (single fire at an ISO-8601 UTC datetime)."
         ),
         interval: float | None = Field(

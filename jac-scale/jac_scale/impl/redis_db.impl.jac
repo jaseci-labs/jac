@@ -1,14 +1,10 @@
-"""Redis implementation for RedisDb."""
 import json;
 import from jac_scale._db_helpers { _validate_not_read_only }
 
-"""Generate Redis key in format: {db_name}:{col_name}:{key}."""
 def _redis_key(db_name: str, col_name: str, key: str) -> str {
     return f"{db_name}:{col_name}:{key}";
 }
 
-# Lua script kept at module scope so redis-py can cache its SHA after the first
-# EVAL; subsequent calls send EVALSHA, avoiding round-trips of the script body.
 glob _DELETE_IF_EQUALS_LUA: str = '''
 if redis.call('GET', KEYS[1]) == ARGV[1] then
     return redis.call('DEL', KEYS[1])
@@ -85,11 +81,6 @@ impl RedisDb.delete_if_equals(
     return int(result) == 1;
 }
 
-# Redis stores keys as "{db_name}:{col_name}:{original_key}" — exactly two prefix
-# segments — so split on at most two colons and keep the remainder. Using
-# split(':', 2)[2] (rather than split(':')[-1]) preserves original keys that
-# themselves contain ':', e.g. "session:user1" stays "session:user1" instead of
-# being silently truncated to "user1".
 impl RedisDb.scan_keys(pattern: str, col_name: str = 'default') -> list[str] {
     full_pattern = self._get_redis_key(col_name, pattern);
     keys = [];

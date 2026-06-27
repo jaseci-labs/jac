@@ -1,4 +1,3 @@
-"""Kubernetes utility functions for deployment operations."""
 import base64;
 import os;
 import tarfile;
@@ -17,9 +16,6 @@ import from jac_scale._optdeps.kubernetes {
 import from jac_scale.targets.kubernetes.cluster_provider { ClusterProvider }
 import from requests.exceptions { RequestException }
 
-"""Each companion component: (suffix, display_name, is_statefulset).
-Adding a new companion here automatically updates both check_pods_restarted
-and get_full_status component_defs."""
 glob COMPANION_DEFS: list = [
          ("", "Jaseci App", False),
          ("-redis", "Redis", False),

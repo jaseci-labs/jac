@@ -1,17 +1,3 @@
-"""Token-bucket rate limiter for the microservice gateway (ROADMAP P17).
-
-Two optional buckets per request:
-  per-IP  keyed on X-Forwarded-For / request.client.host
-  per-user keyed on SHA256(Authorization) (unauthenticated requests
-          skip this bucket)
-
-Both buckets must have a token for the request to proceed. 429 with
-`Retry-After` + standard error envelope otherwise.
-
-In-process dict backend only. A Redis-backed `RateLimiterBackend` can
-slot in behind the same interface for K8s horizontal scaling.
-"""
-
 import logging;
 import threading;
 import time;
@@ -30,14 +16,11 @@ obj TokenBucket {
 }
 
 
-"""In-process rate limiter. Buckets share a module-level lock - contention
-is negligible because state per bucket is tiny (two floats)."""
 obj InProcessRateLimiter {
     has rate_per_sec: float,
         capacity: float,
         buckets: dict[str, TokenBucket] = {};
 
-    """Try to consume one token for `key`. Returns (allowed, retry_after_s)."""
     def consume(key: str) -> tuple[bool, float];
 }
 
@@ -66,7 +49,6 @@ impl InProcessRateLimiter.consume(key: str) -> tuple[bool, float] {
             bucket.tokens -= 1.0;
             return (True, 0.0);
         }
-        # Seconds until a full token is available again.
         retry = (1.0 - bucket.tokens) / bucket.rate_per_sec;
         return (False, retry);
     }
@@ -92,8 +74,6 @@ def _resolve_user_key(request: any) -> str | None {
 }
 
 
-"""Build the rate-limit middleware from a config dict. Returns None when
-disabled so the caller can skip registration entirely."""
 def build_rate_limit_middleware(cfg: dict[str, any]) -> any {
     if not cfg.get("enabled") {
         return None;

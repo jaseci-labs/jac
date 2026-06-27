@@ -1,5 +1,3 @@
-"""Implementations for the {{name}} frontend component."""
-
 impl app.loadMessages -> None {
     result = root spawn ListMessages();
     messages = result.reports;

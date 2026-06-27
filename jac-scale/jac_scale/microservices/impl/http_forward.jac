@@ -1,10 +1,3 @@
-"""HTTP forwarding for the microservice gateway.
-
-`raw_forward` buffers (for the 404-try-next passthrough path).
-`stream_forward` returns a ForwardResult the caller can stream
-(SSE / chunked) or abort via `cleanup()`. P15.
-"""
-
 import logging;
 import aiohttp;
 import from fastapi.responses { Response, StreamingResponse }
@@ -13,7 +6,6 @@ glob _logger = logging.getLogger(__name__),
      _HOP_BY_HOP: set[str] = {"host", "transfer-encoding", "connection", "keep-alive"};
 
 
-"""Buffered forward. Returns (status, headers, body) or None on transport error."""
 async def raw_forward(
     method: str, url: str, headers: dict[str, str], body: bytes, timeout: int = 30
 ) -> tuple[int, dict[str, str], bytes] | None {
@@ -39,18 +31,12 @@ async def raw_forward(
             }
         }
     } except (aiohttp.ClientError, OSError) as e {
-        # Include the exception type because some aiohttp errors
-        # (notably ServerDisconnectedError) have an empty __str__,
-        # which produces a useless `HTTP forward error: ` log line.
         _logger.error(f"HTTP forward error: {type(e).__name__}: {e}");
         return None;
     }
 }
 
 
-"""Handle for an open upstream response. Caller must call either
-`to_response()` or `cleanup()`; otherwise the session leaks a
-connection pool slot."""
 obj ForwardResult {
     has status: int,
         headers: dict[str, str],
@@ -105,8 +91,6 @@ impl ForwardResult.cleanup -> None {
 }
 
 
-"""Open the upstream request; return None on transport failure so the
-caller can emit a 502."""
 async def stream_forward(
     method: str, url: str, headers: dict[str, str], body: bytes, timeout: int = 30
 ) -> ForwardResult | None {

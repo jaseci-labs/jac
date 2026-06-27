@@ -1,8 +1,5 @@
-"""Symbol table testing helpers for Jaseci."""
-
 import from jaclang.jac0core.unitree { Symbol, UniScopeNode }
 
-"""Lookup a variable in the symbol table."""
 def look_down(tab: UniScopeNode, name: str, deep: bool = True) -> Symbol | None {
     if name in tab.names_in_scope {
         if not tab.names_in_scope[name].imported {
@@ -23,7 +20,6 @@ def look_down(tab: UniScopeNode, name: str, deep: bool = True) -> Symbol | None 
     return None;
 }
 
-"""Assert that a symbol exists in the symbol table."""
 def assert_symbol_exists(
     sym_table: UniScopeNode, symbol_name: str, symbol_type: str | None = None
 ) -> Symbol {
@@ -37,7 +33,6 @@ def assert_symbol_exists(
     return symbol;
 }
 
-"""Assert that a symbol is declared at specific line and column."""
 def assert_symbol_decl_at(symbol: Symbol, line: int, col: int) {
     decl_info = str(symbol);
     expected_decl = f"{line}:{col}";
@@ -46,7 +41,6 @@ def assert_symbol_decl_at(symbol: Symbol, line: int, col: int) {
     );
 }
 
-"""Assert that a symbol has definitions at specific locations."""
 def assert_symbol_defns_at(symbol: Symbol, expected_defns: list[tuple[int, int]]) {
     symbol_str = str(symbol);
     for (line, col) in expected_defns {
@@ -57,7 +51,6 @@ def assert_symbol_defns_at(symbol: Symbol, expected_defns: list[tuple[int, int]]
     }
 }
 
-"""Assert that a symbol has uses at specific locations."""
 def assert_symbol_uses_at(symbol: Symbol, expected_uses: list[tuple[int, int]]) {
     symbol_uses_str = str(symbol.uses);
     for (line, col) in expected_uses {
@@ -68,7 +61,6 @@ def assert_symbol_uses_at(symbol: Symbol, expected_uses: list[tuple[int, int]]) 
     }
 }
 
-"""Assert complete symbol information (declaration, definitions, uses)."""
 def assert_symbol_complete(
     sym_table: UniScopeNode,
     symbol_name: str,
@@ -89,7 +81,6 @@ def assert_symbol_complete(
     }
 }
 
-"""Assert that a sub-table exists in the symbol table."""
 def assert_sub_table_exists(
     sym_table: UniScopeNode, table_name: str, tab_type: str
 ) -> UniScopeNode {

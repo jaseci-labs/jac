@@ -1,43 +1,9 @@
-//! libjacpyembed -- the C-ABI bridge that lets the `na` desktop host run on the
-//! SAME fused runtime the `jac` CLI ships, instead of binding the build machine's
-//! libpython by soname.
-//!
-//! The `na` native compiler links foreign symbols as link-time DT_NEEDED and
-//! cannot cast a dlsym'd pointer to a callable, so the dlopen/dlsym/forwarding
-//! that bringing up the bundled CPython requires can't live in `na`. It lives
-//! here, in one shared library the host DT_NEEDEDs:
-//!
-//!   * `jac_engine_boot()` runs the shared bring-up (embed.zig: materialize the
-//!     trailer payload -> hermetic env -> dlopen the bundled libpython -> pin the
-//!     program name -> Py_Initialize), then resolves the CPython C-API the host
-//!     calls into module globals. No path args: the shim resolves its own process
-//!     image (/proc/self/exe), which is the host binary carrying the trailer.
-//!   * `jpy_`-PREFIXED thin forwarders (`jpy_PyRun_SimpleString`, ...) re-export
-//!     the surface `_host_bootstrap.jac` declares; the host DT_NEEDEDs libjacpyembed
-//!     (never libpython) and binds these at load, each calling the real symbol
-//!     through the pointer resolved at boot. The prefix is LOAD-BEARING: a
-//!     same-named export (`PyRun_SimpleString`) would, under Linux's flat namespace
-//!     + the RTLD_GLOBAL libpython dlopen, INTERPOSE libpython's own symbol -- so
-//!     libpython's internal calls (e.g. PyUnicode_FromString during Py_Initialize)
-//!     would route through this shim's forwarder before its pointer is resolved and
-//!     segfault on a null call. macOS's two-level namespace hid this; the prefix
-//!     makes the shim's symbols never collide with libpython's on any platform.
-//!
-//! This is the desktop half of the "one source of responsibility" split: the
-//! interpreter bring-up is embed.zig (shared with launcher.zig); the bundling is
-//! the trailer payload (shared with pack.zig); this file only adapts that core to
-//! the na host's C-ABI calling convention.
-
 const std = @import("std");
 const builtin = @import("builtin");
 const embed = @import("embed.zig");
 
 const MAX_PATH = std.Io.Dir.max_path_bytes;
 
-// ── CPython C-API typedefs (the surface _host_bootstrap.jac imports) ─────────
-// `na` passes its `int` (i64) for every PyObject*/handle and its `str` for char*;
-// on 64-bit those share the SysV integer-class ABI with the pointer types below,
-// so the forwarder signatures are call-compatible with the host's declarations.
 const PyFinalize_t = *const fn () callconv(.c) void;
 const PyRunSimpleString_t = *const fn (cmd: [*:0]const u8) callconv(.c) c_int;
 const PyImportAddModule_t = *const fn (name: [*:0]const u8) callconv(.c) ?*anyopaque;
@@ -53,9 +19,6 @@ const PyUnicodeFromString_t = *const fn (s: [*:0]const u8) callconv(.c) ?*anyopa
 const PyUnicodeAsUTF8_t = *const fn (o: ?*anyopaque) callconv(.c) ?[*:0]const u8;
 const PyDecRef_t = *const fn (o: ?*anyopaque) callconv(.c) void;
 
-// ── Boot state ──────────────────────────────────────────────────────────────
-// `rt_buf` backs the materialized-tree slice and must outlive boot (the
-// interpreter runs for the process lifetime), so it is a module global.
 var rt_buf: [MAX_PATH]u8 = undefined;
 var booted: bool = false;
 
@@ -79,24 +42,13 @@ fn fail(comptime msg: []const u8) c_int {
     return 1;
 }
 
-/// Bring up the embedded interpreter on the fused runtime and resolve the C-API
-/// the host calls. Idempotent. Returns 0 on success, non-zero on failure (the
-/// host shows its native boot-error page when this is non-zero -- it must never
-/// crash the process).
 export fn jac_engine_boot() c_int {
     if (booted) return 0;
 
-    // A properly-initialized blocking Io. The launcher gets its `io` from the Zig
-    // runtime's std.process.Init; this shim has no such entry point, so build a
-    // real Threaded instance (cpu-count + signal handlers + worker pool). The
-    // static `init_single_threaded` const skips that setup and segfaults blocking
-    // file I/O (materialize/executablePath) on Linux -- works on macOS by luck.
     const gpa = std.heap.c_allocator;
     var threaded = std.Io.Threaded.init(gpa, .{});
     const io = threaded.io();
 
-    // The shim runs inside the host process, so its own image IS the host binary
-    // (which carries the trailer payload). Resolve it for materialize + getpath.
     var exe_buf: [MAX_PATH]u8 = undefined;
     const exe_len = std.process.executablePath(io, &exe_buf) catch return fail("cannot resolve executable path");
     const exe_path = exe_buf[0..exe_len];
@@ -116,14 +68,10 @@ export fn jac_engine_boot() c_int {
         &rt_buf,
     ) catch return fail("runtime bring-up failed (trailer payload not materialized?)");
 
-    // Pin program name, then initialize. embed owns env/dlopen; the host owns
-    // what runs after init (SERVE/PLUGIN/DISPATCH), via the forwarders below.
     emb.setProgramName(exe_z) catch return fail("failed to pin program name");
     const py_init = emb.symOrErr(embed.Py_Initialize_t, "Py_Initialize") catch return fail("libpython missing symbol: Py_Initialize");
     py_init();
 
-    // Resolve the host-facing C-API once. A missing symbol here is a packaging
-    // bug; surface it cleanly rather than faulting on first forwarded call.
     p_finalize = emb.symOrErr(PyFinalize_t, "Py_Finalize") catch return fail("missing Py_Finalize");
     p_run_simple = emb.symOrErr(PyRunSimpleString_t, "PyRun_SimpleString") catch return fail("missing PyRun_SimpleString");
     p_add_module = emb.symOrErr(PyImportAddModule_t, "PyImport_AddModule") catch return fail("missing PyImport_AddModule");
@@ -143,13 +91,11 @@ export fn jac_engine_boot() c_int {
     return 0;
 }
 
-/// `std.posix.getenv`-style lookup returning an optional slice for embed.open.
 fn envOpt(name: [:0]const u8) ?[]const u8 {
     const v = std.c.getenv(name.ptr) orelse return null;
     return std.mem.span(v);
 }
 
-// ── Forwarders: same names the host DT_NEEDEDs; call the resolved real symbol ─
 export fn jpy_Py_Finalize() void {
     p_finalize();
 }

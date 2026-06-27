@@ -1,17 +1,8 @@
-"""Apple SSO Provider implementation for jac-scale.
-
-This module implements the SSOProvider interface for Apple Sign In authentication.
-"""
-
 import from fastapi { Request, Response }
 import from fastapi_sso.sso.apple { AppleSSO }
 import from jac_scale.sso.provider { SSOProvider, SSOUserInfo }
 
-"""Apple Sign In SSO Provider.
 
-This class wraps the fastapi_sso AppleSSO implementation to conform to
-our SSOProvider interface, enabling consistent handling across all SSO vendors.
-"""
 obj AppleSSOProvider(SSOProvider) {
     has client_id: str,
         client_secret: str,
@@ -19,7 +10,6 @@ obj AppleSSOProvider(SSOProvider) {
         allow_insecure_http: bool = True,
         _apple_sso: (AppleSSO | None) = None;
 
-    """Initialize the Apple SSO provider."""
     def postinit {
         self._apple_sso = AppleSSO(
             client_id=self.client_id,
@@ -29,11 +19,6 @@ obj AppleSSOProvider(SSOProvider) {
         );
     }
 
-    """Initiate Apple Sign In authentication flow.
-
-    Returns:
-        RedirectResponse to Apple's OAuth authorization page
-    """
     async def initiate_auth(state: str | None = None) -> Response {
         if not self._apple_sso {
             raise RuntimeError("AppleSSO not initialized");
@@ -44,17 +29,6 @@ obj AppleSSOProvider(SSOProvider) {
         }
     }
 
-    """Handle the OAuth callback from Apple.
-
-    Args:
-        request: The FastAPI request object containing OAuth callback data
-
-    Returns:
-        SSOUserInfo: Standardized user information from Apple
-
-    Raises:
-        Exception: If authentication fails or user info cannot be retrieved
-    """
     async def handle_callback(request: Request) -> SSOUserInfo {
         if not self._apple_sso {
             raise RuntimeError("AppleSSO not initialized");

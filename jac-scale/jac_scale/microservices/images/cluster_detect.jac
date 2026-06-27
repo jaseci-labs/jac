@@ -1,10 +1,3 @@
-"""K8s cluster type detection for the auto-build pipeline.
-
-Reads the active kubeconfig context name and classifies it as minikube
-/ k3d / kind / remote / unknown so the distributors module can pick
-the right image-distribution strategy.
-"""
-
 import subprocess;
 import from jac_scale._optdeps.kubernetes { config as k8s_config_lib, ConfigException }
 
@@ -16,7 +9,6 @@ glob CLUSTER_MINIKUBE: str = "minikube",
      CLUSTER_UNKNOWN: str = "unknown";
 
 
-"""Active kubeconfig context name (lowercased), '' on failure."""
 def _active_context_name -> str {
     try {
         (contexts, active_context) = k8s_config_lib.list_kube_config_contexts();
@@ -32,8 +24,6 @@ def _active_context_name -> str {
 }
 
 
-"""Classify kubeconfig context: minikube / k3d-* / kind-* / other.
-Caller handles CLUSTER_UNKNOWN (no kubeconfig / no active context)."""
 def detect_cluster_type -> str {
     name = _active_context_name();
     if not name {
@@ -52,7 +42,6 @@ def detect_cluster_type -> str {
 }
 
 
-"""`k3d-mycluster` -> `mycluster` (k3d image import takes the bare name)."""
 def k3d_cluster_name(ctx_name: str) -> str {
     lower = ctx_name.lower();
     if lower.startswith("k3d-") {
@@ -62,7 +51,6 @@ def k3d_cluster_name(ctx_name: str) -> str {
 }
 
 
-"""`kind-mycluster` -> `mycluster` (kind load takes the bare name)."""
 def kind_cluster_name(ctx_name: str) -> str {
     lower = ctx_name.lower();
     if lower.startswith("kind-") {
@@ -72,8 +60,6 @@ def kind_cluster_name(ctx_name: str) -> str {
 }
 
 
-"""Parse `minikube docker-env --shell=bash` output into an env dict for
-`subprocess.run(..., env=...)` so docker build lands in minikube's daemon."""
 def get_minikube_docker_env -> dict[str, str] {
     try {
         result = subprocess.run(
@@ -110,7 +96,6 @@ def get_minikube_docker_env -> dict[str, str] {
         eq_idx = rest.find("=");
         key = rest[:eq_idx].strip();
         value = rest[eq_idx + 1:].strip();
-        # Strip surrounding double-quotes that minikube emits.
         if len(value) >= 2 and value[0] == '"' and value[-1] == '"' {
             value = value[1:-1];
         }

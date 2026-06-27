@@ -1,11 +1,3 @@
-"""Lower-level helpers for the image build pipeline.
-
-Functions that wrap subprocess calls (docker build / push / tag / inspect,
-k3d image import, kind load docker-image) and Dockerfile / .dockerignore /
-client-bundle preparation. The Strategy distributors in `distributors.jac`
-and the entry point in `auto_build.jac` call into here.
-"""
-
 import logging;
 import os;
 import shutil;
@@ -15,8 +7,6 @@ import from pathlib { Path }
 
 glob _logger = logging.getLogger(__name__);
 
-# Subprocess timeouts (seconds). Largest is docker build because first
-# minikube builds download apt + pip from scratch.
 glob _DOCKER_BUILD_TIMEOUT_S: int = 1800,
      _DOCKER_PUSH_TIMEOUT_S: int = 600,
      _DOCKER_PROBE_TIMEOUT_S: int = 5,
@@ -24,65 +14,10 @@ glob _DOCKER_BUILD_TIMEOUT_S: int = 1800,
      _CLUSTER_IMAGE_LOAD_TIMEOUT_S: int = 180,
      _JAC_BUILD_TIMEOUT_S: int = 300;
 
-# Embedded fallback Dockerfile, used when neither developer-checkout
-# nor shipped Dockerfile.microservice is available.
-glob _EMBEDDED_DOCKERFILE: str = "FROM python:3.12-slim\n\n"
-     "RUN apt-get update \\\n"
-     "    && apt-get install -y --no-install-recommends git curl \\\n"
-     "    && rm -rf /var/lib/apt/lists/*\n\n"
-     "RUN git config --system --add safe.directory '*'\n\n"
-     # jaclang ships as the self-contained `jac` binary (bundled CPython; not
-     # on PyPI). Fetch it from GitHub Releases via the official installer, then
-     # add plugins with the binary's own resolver. The client framework now
-     # lives in jaclang core, so there is no separate jac-client to install.
-     "RUN curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci"
-     "/main/scripts/install.sh | bash \\\n"
-     "    && cp \"$HOME/.local/bin/jac\" /usr/local/bin/jac\n\n"
-     "RUN jac install \"jac-scale[deploy,data]\" --global\n\n"
-     "WORKDIR /app\n"
-     "COPY . /app\n\n"
-     "RUN if [ -f jac.toml ]; then jac install || true; fi\n\n"
-     "RUN jac --version\n\n"
-     # Build identity (B-01). Stamped LAST so a changing SHA only rebuilds
-     # this tiny layer, never the expensive install/COPY layers above.
-     "ARG JAC_BUILD_SHA=unknown\n"
-     "ENV JAC_BUILD_SHA=${JAC_BUILD_SHA}\n\n"
-     "EXPOSE 8000\n",
-     # Embedded .dockerignore. Without one, docker build sends GB of
-     # .git + caches to the daemon and times out.
-     _EMBEDDED_DOCKERIGNORE: str = "# Auto-generated .dockerignore.\n"
-     ".git\n"
-     ".gitignore\n"
-     ".github\n"
-     ".vscode\n"
-     ".idea\n"
-     ".DS_Store\n"
-     "**/__pycache__\n"
-     "**/*.pyc\n"
-     "**/*.egg-info\n"
-     "**/.pytest_cache\n"
-     "**/.mypy_cache\n"
-     "**/.ruff_cache\n"
-     "**/.venv\n"
-     "**/venv\n"
-     # Anchored - **/dist would also drop .jac/client/dist (FE bundle).
-     "/dist\n"
-     "/build\n"
-     # Keep .jac/client/dist (FE bundle); drop caches + per-pod state.
-     "**/.jac/cache\n"
-     "**/.jac/data\n"
-     "**/.jac/logs\n"
-     "**/.jac/run\n"
-     "**/.jac/__pycache__\n"
-     "**/node_modules\n"
-     "**/.vite\n"
-     "**/.next\n"
-     ".env\n"
-     ".env.*\n";
+glob _EMBEDDED_DOCKERFILE: str = "FROM python:3.12-slim\n\n" "EXPOSE 8000\n",
+     _EMBEDDED_DOCKERIGNORE: str = "# Auto-generated .dockerignore.\n";
 
 
-"""Walk up looking for jac/ + jac-scale/ siblings (developer checkout
-detection). Returns the repo root or None."""
 def find_jaseci_repo_root(start: Path, max_levels: int = 8) -> Path | None {
     current = start.resolve();
     for _ in range(max_levels) {
@@ -98,8 +33,6 @@ def find_jaseci_repo_root(start: Path, max_levels: int = 8) -> Path | None {
 }
 
 
-"""Locate the shipped Dockerfile.microservice (PyPI install path).
-Returns Path or None. Extracted so tests can mock it."""
 def find_shipped_dockerfile -> Path | None {
     try {
         import jac_scale;
@@ -119,11 +52,6 @@ def find_shipped_dockerfile -> Path | None {
 }
 
 
-"""Pick (dockerfile, context, build_args) in priority order:
-  1. <project>/Dockerfile.microservice (user override)
-  2. Developer-checkout -> repo-root Dockerfile.microservice.exp (PR testing)
-  3. Shipped <pkg>/scripts/Dockerfile.microservice (PyPI install)
-  4. Embedded fallback at <project>/.jac/Dockerfile.gen"""
 def resolve_dockerfile(project_dir: Path) -> tuple[Path, Path, dict[str, str]] {
     user_dockerfile = project_dir / "Dockerfile.microservice";
     if user_dockerfile.is_file() {
@@ -162,8 +90,6 @@ def resolve_dockerfile(project_dir: Path) -> tuple[Path, Path, dict[str, str]] {
 }
 
 
-"""Write the embedded .dockerignore if the context doesn't have one.
-Never overwrites. Returns True if written."""
 def ensure_dockerignore(context_dir: Path) -> bool {
     target = context_dir / ".dockerignore";
     if target.exists() {
@@ -178,8 +104,6 @@ def ensure_dockerignore(context_dir: Path) -> bool {
 }
 
 
-"""Warn when build identity can't be derived, so a non-git deploy doesn't
-silently ship JAC_BUILD_SHA=unknown."""
 def _warn_build_sha_unavailable(reason: str) {
     _logger.warning(
         f"JAC_BUILD_SHA unavailable ({reason}); stamping 'unknown'. "
@@ -188,9 +112,6 @@ def _warn_build_sha_unavailable(reason: str) {
 }
 
 
-"""Warn when the tree's dirty state can't be checked, so a silent
-fall-through doesn't stamp a clean SHA over a dirty build - the exact
-failure the `-dirty` suffix exists to prevent."""
 def _warn_dirty_check_failed(context_dir: Path) {
     _logger.warning(
         f"Could not verify git tree state in {context_dir}; "
@@ -199,10 +120,6 @@ def _warn_dirty_check_failed(context_dir: Path) {
 }
 
 
-"""True if the git tree at `context_dir` has staged, unstaged, or
-untracked changes. Untracked counts: `COPY . /app` pulls them into the
-image, so the build doesn't match HEAD. Best-effort - warns and returns
-False on error (can't prove dirty, so don't claim it)."""
 def _git_tree_dirty(context_dir: Path) -> bool {
     try {
         result = subprocess.run(
@@ -223,14 +140,6 @@ def _git_tree_dirty(context_dir: Path) -> bool {
 }
 
 
-"""Best-effort build identifier for stamping into the image as
-JAC_BUILD_SHA (B-01): the 12-char git commit SHA of the build context,
-suffixed `-dirty` when the tree has uncommitted/untracked changes so the
-stamp never claims a clean commit that doesn't match what was COPY'd in.
-Falls back to "unknown" (with a warning) when the context isn't a git
-repo or git is absent. Stable per clean commit, so rebuilds of the same
-commit reuse the cached ENV layer; an in-pod self-check can read
-JAC_BUILD_SHA to report "running build X" with zero RBAC."""
 def _compute_build_sha(context_dir: Path) -> str {
     if shutil.which("git") is None {
         _warn_build_sha_unavailable("git CLI not found");
@@ -263,8 +172,6 @@ def _compute_build_sha(context_dir: Path) -> str {
 }
 
 
-"""Run `docker build` with optional env override (e.g. minikube's daemon).
-Streams output. Raises RuntimeError on failure."""
 def run_docker_build(
     context_dir: Path,
     image_tag: str,
@@ -286,7 +193,6 @@ def run_docker_build(
         env.update(env_overrides);
     }
 
-    # --progress=plain is BuildKit-only; legacy builder rejects it.
     buildkit_ok: bool = False;
     try {
         probe = subprocess.run(
@@ -310,17 +216,12 @@ def run_docker_build(
         cmd.append("--build-arg");
         cmd.append(f"{key}={value}");
     }
-    # Stamp build identity (B-01) unless the caller already supplied one.
-    # This ENV feeds the image digest K-29's content tag derives from, so a
-    # new commit forces a rollout even on byte-identical content (intended:
-    # rollouts couple to commit identity, not just content).
     if "JAC_BUILD_SHA" not in build_args {
         cmd.append("--build-arg");
         cmd.append(f"JAC_BUILD_SHA={_compute_build_sha(context_dir)}");
     }
     cmd.append(str(context_dir));
 
-    # Stream output (no capture) so first-time multi-minute builds show signs of life.
     try {
         result = subprocess.run(cmd, env=env, timeout=_DOCKER_BUILD_TIMEOUT_S);
     } except subprocess.TimeoutExpired {
@@ -341,7 +242,6 @@ def run_docker_build(
 }
 
 
-"""Run `k3d image import <tag> -c <cluster>`."""
 def run_k3d_image_import(image_tag: str, cluster: str) {
     if shutil.which("k3d") is None {
         raise RuntimeError(
@@ -361,7 +261,6 @@ def run_k3d_image_import(image_tag: str, cluster: str) {
 }
 
 
-"""Run `kind load docker-image <tag> --name <cluster>`."""
 def run_kind_image_load(image_tag: str, cluster: str) {
     if shutil.which("kind") is None {
         raise RuntimeError(
@@ -381,7 +280,6 @@ def run_kind_image_load(image_tag: str, cluster: str) {
 }
 
 
-"""Read locally-stored image ID for a tag. Returns "sha256:..." or None."""
 def _docker_image_id(
     image_tag: str, env_overrides: dict[str, str] | None = None
 ) -> str | None {
@@ -411,14 +309,6 @@ def _docker_image_id(
 }
 
 
-"""Retag `<app>:dev` with a content-derived suffix `<app>:dev-<id12>`.
-
-K8s skips rollouts when the pod spec doesn't change; a fixed `:dev` tag
-would mask new builds. Content-addressed tag forces auto-rollout on
-real content change, no churn when nothing changed.
-
-Returns new tag on success, original on docker failure (degrades to
-no-auto-rollout but doesn't break deploy)."""
 def _retag_with_content_id(
     base_tag: str, env_overrides: dict[str, str] | None = None
 ) -> str {
@@ -451,7 +341,6 @@ def _retag_with_content_id(
 }
 
 
-"""Run `docker push <tag>` for remote-cluster deploys."""
 def run_docker_push(image_tag: str) {
     cmd: list[str] = ["docker", "push", image_tag];
     result = subprocess.run(
@@ -469,8 +358,6 @@ def run_docker_push(image_tag: str) {
 }
 
 
-"""True if the built-in client framework is importable. `jac build` ships with
-jaclang core now; we still verify it loads so we can error early."""
 def _jac_client_installed -> bool {
     try {
         import importlib;
@@ -482,9 +369,6 @@ def _jac_client_installed -> bool {
 }
 
 
-"""Build the frontend bundle on the host (`jac build <entry>`) so docker
-build can COPY .jac/client/dist/ into the gateway image. No-op if no
-client.entry. Raises on actual build failure."""
 def build_client_bundle(project_dir: Path, client_entry: str) -> None {
     if not client_entry {
         return;
@@ -525,8 +409,6 @@ def build_client_bundle(project_dir: Path, client_entry: str) -> None {
             f"  last 20 lines:\n{tail}"
         );
     }
-    # `jac build` can exit 0 without producing a bundle in some failure
-    # modes - guard against silently shipping an image with no FE.
     dist_index = project_dir / ".jac" / "client" / "dist" / "index.html";
     if not dist_index.is_file() {
         raise RuntimeError(
@@ -538,7 +420,6 @@ def build_client_bundle(project_dir: Path, client_entry: str) -> None {
 }
 
 
-"""Read [plugins.scale.microservices.client].entry from jac.toml; '' if absent."""
 def _read_client_entry -> str {
     try {
         import from jac_scale.config_loader { get_scale_config }

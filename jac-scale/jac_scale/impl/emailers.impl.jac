@@ -1,5 +1,3 @@
-"""SMTP emailer implementation."""
-
 impl SMTPEmailer.postinit -> None {
     smtp_cfg = self.config.get('smtp', {});
     self.host = smtp_cfg.get('host', self.host);

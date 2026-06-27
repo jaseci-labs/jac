@@ -1,10 +1,3 @@
-"""`jac start --scale --dry-run` plan view.
-
-The heterogeneous K8s manifest bundle is narrowed once by Plan.from_target
-into typed view objects (HPAView, PDBView, ServiceView, etc.) which own
-their .from_*() factories and .render() methods. Renderers never touch
-raw bundle dicts."""
-
 import yaml;
 import from typing { Any }
 import from jaclang.cli.console { console }
@@ -174,9 +167,6 @@ obj ServiceView {
     def render(diagnostics: list[Diagnostic]) {
         if self.hpa is not None {
             h = self.hpa;
-            # cpu_target==0 is the "no Resource:cpu metric found" sentinel from
-            # HPAView.from_manifest. Don't render it as "0% CPU" - that's a
-            # valid (if silly) target and would mislead.
             target_str = (
                 f"@ {h.cpu_target}% CPU" if h.cpu_target > 0 else "(no CPU target)"
             );
@@ -342,11 +332,6 @@ def _render_totals(bundle: Any) {
 }
 
 
-"""Top-level plan composition root.
-
-Owns the bundle + ms_cfg + extracted views, and renders the whole
-plan to console. validate() returns diagnostics; print_plan() is
-the convenience entry point used by plugin.jac."""
 obj Plan {
     has bundle: dict,
         ms_cfg: dict,
@@ -370,8 +355,6 @@ obj Plan {
         autoscalers = dget(bundle, "autoscalers");
         pdbs = dget(bundle, "pdbs");
 
-        # User-declared first (in [routes] order), gateway last, defensive
-        # leftovers (a deployment with no matching route) after that.
         user_routes: list[str] = [
             str(r)
             for r in routes
@@ -417,8 +400,6 @@ obj Plan {
         );
     }
 
-    """Best-effort load of [plugins.scale.microservices]. Returns ({}, {})
-    on any failure so the plan still renders."""
     static def _load_ms_cfg -> tuple[dict, dict] {
         try {
             import from jac_scale.config_loader { get_scale_config }
@@ -541,8 +522,6 @@ obj Plan {
         }
     }
 
-    """Apply-order manifest list (PVCs first so they exist before any pod
-    mount references them). Only consumed by --show-yaml."""
     def _flatten_manifests -> list {
         out: list = [];
         if self.bundle.get("user_secret") {
@@ -561,8 +540,6 @@ obj Plan {
 }
 
 
-"""Entry point used by plugin.jac. Returns (bundle, diagnostics) so the
-caller can map errors -> exit code 2."""
 def print_plan(
     target: Any, app_config: AppConfig, show_yaml: bool = False
 ) -> tuple[dict, list[Diagnostic]] {

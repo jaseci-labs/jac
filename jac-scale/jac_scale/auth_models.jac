@@ -1,4 +1,3 @@
-"""Auth request/response models for the identity-based auth system."""
 import json;
 import re;
 import from typing { Annotated, Literal, Union }
@@ -13,8 +12,6 @@ glob PROFILE_MAX_KEYS: int = 20,
      PROFILE_RESERVED_KEYS: set[str] = {'sso'};
 
 
-"""Validate a profile dict. Returns the dict unchanged or raises ValueError.
-Reused by /user/register and PATCH /user/me."""
 def validate_profile(profile: dict[str, any] | None) -> dict[str, any] | None {
     if profile is None {
         return None;
@@ -36,7 +33,6 @@ def validate_profile(profile: dict[str, any] | None) -> dict[str, any] | None {
                 f"profile['{key}'] is reserved for server use and cannot be set by clients"
             );
         }
-        # bool is a subclass of int in Python, so this allows str/int/float/bool only.
         if not isinstance(value, (str, int, float)) {
             raise ValueError(f"profile['{key}'] must be a string, number, or boolean");
         }

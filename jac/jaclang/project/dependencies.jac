@@ -1,16 +1,8 @@
-"""Dependency management for Jac projects.
-
-This module handles installation, removal, and resolution of dependencies
-for Jac projects, including Python/Jac packages, git dependencies, and
-plugin-provided dependency types (npm, etc.).
-"""
-
 import subprocess;
 import sys;
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
 
-"""Represents a resolved dependency with version info."""
 obj ResolvedDependency {
     has name: str,
         version: str,
@@ -19,7 +11,6 @@ obj ResolvedDependency {
         dependencies: list[str] = [];
 }
 
-"""Manages installation of dependencies for Jac projects."""
 obj DependencyInstaller {
     has config: JacConfig | None = None,
         venv_dir: Path | None = None,
@@ -43,7 +34,6 @@ obj DependencyInstaller {
     def get_installed_version(name: str) -> str | None;
 }
 
-"""Resolves dependencies and their transitive dependencies."""
 obj DependencyResolver {
     has config: JacConfig | None = None;
 
@@ -52,7 +42,6 @@ obj DependencyResolver {
     def resolve(include_dev: bool = False) -> list[ResolvedDependency];
 }
 
-"""Build a pip command for the given interpreter (the project venv's bundled pip)."""
 def pip_command(python: str, args: list[str]) -> list[str];
 
 def get_venv_site_packages(venv_dir: Path) -> Path;

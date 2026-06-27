@@ -1,7 +1,5 @@
-"""Resource status model."""
 import from enum { Enum }
 
-"""Status of a deployed resource."""
 class ResourceStatus(Enum) {
     has UNKNOWN: str = 'unknown',
         PENDING: str = 'pending',
@@ -10,7 +8,6 @@ class ResourceStatus(Enum) {
         STOPPED: str = 'stopped';
 }
 
-"""Detailed resource status information."""
 obj ResourceStatusInfo {
     has status: ResourceStatus,
         replicas: int = 0,

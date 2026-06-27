@@ -1,5 +1,3 @@
-"""Check if all classes is subclass of target type."""
-
 impl all_issubclass(
     classes: type | UnionType | tuple[((type | UnionType), ...)], target: type
 ) -> bool {
@@ -19,7 +17,6 @@ impl all_issubclass(
     }
 }
 
-"""Check if object is instance of target type."""
 impl is_instance(
     `obj: object, target: type | UnionType | tuple[((type | UnionType), ...)]
 ) -> bool {
@@ -39,7 +36,6 @@ impl is_instance(
     }
 }
 
-"""Extract model parameters, include and exclude information."""
 impl extract_params(
     body: uni.FuncCall
 ) -> tuple[
@@ -108,7 +104,6 @@ impl extract_params(
     return (model_params, include_info, exclude_info);
 }
 
-"""Collect type information in assignment using bfs."""
 impl extract_type(nd: uni.UniNode) -> list[str] {
     extracted_type = [];
     if isinstance(nd, (uni.BuiltinType, uni.Token)) {
@@ -120,7 +115,6 @@ impl extract_type(nd: uni.UniNode) -> list[str] {
     return extracted_type;
 }
 
-"""Traverse the graph using Breadth-First Search (BFS) or Depth-First Search (DFS)."""
 impl traverse_graph(
     nd: NodeArchetype,
     cur_depth: int,
@@ -191,7 +185,6 @@ impl traverse_graph(
     }
 }
 
-"""Nodes and edges representing the graph are collected in visited_nodes and connections."""
 impl collect_node_connections(
     current_node: NodeArchetype, visited_nodes: set, connections: set, edge_ids: set
 ) -> None {
@@ -221,7 +214,6 @@ impl collect_node_connections(
     }
 }
 
-"""Add a path to sys.path temporarily."""
 impl sys_path_context(path: str) -> Iterator[None] {
     novel_path = path not in sys.path;
     try {
@@ -237,14 +229,11 @@ impl sys_path_context(path: str) -> Iterator[None] {
     }
 }
 
-"""Get project name from jac.toml if exists, None otherwise."""
 impl get_name(target_path: (str | None) = None) -> str | None {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
     import from jaclang.jac0core.runtime { JacRuntime }
 
-    # Per-context target wins; fall back to the bootstrap seed only when
-    # no caller-supplied identity is available.
     effective_target = target_path or JacRuntime.get_full_target_path();
     if not effective_target {
         return None;
@@ -252,43 +241,31 @@ impl get_name(target_path: (str | None) = None) -> str | None {
     file_path = Path(effective_target);
 
     try {
-        # Check ONLY the same directory as the entry file (not parent directories)
         cfg = get_config(start_path=file_path.parent, force_discover=False);
         if cfg and cfg.toml_path and cfg.project.name {
-            # Verify the config is from the SAME directory, not a parent
             if cfg.toml_path.parent == file_path.parent {
                 return cfg.project.name;
             }
         }
     } except Exception {
-        ;  # No config found or error
+        ;
     }
-    # No project found → use filename stem for standalone files
     stem = file_path.stem;
     return stem if stem not in ['jac', '__main__'] else None;
 }
 
-"""Get database path:
-- Projects (jac.toml in same dir) → .jac/data/project-name.db
-- Standalone files (no jac.toml) → .jac/data/filename.db
-- Override via JAC_DATA_PATH env var (for AppImage/sidecar mode)
-"""
 impl get_db_path(base_path: str, target_path: (str | None) = None) -> (str | None) {
     import os;
     import from pathlib { Path }
-    # Check for data path override (used in AppImage/sidecar mode where base_path is read-only)
-    # Path structure must match UserManager.postinit in server.impl.jac: JAC_DATA_PATH/.jac/data/
     data_path_override = os.environ.get('JAC_DATA_PATH');
     if data_path_override {
         data_dir = Path(data_path_override) / ".jac" / "data";
     } else {
         data_dir = Path(base_path) / ".jac" / "data";
     }
-    # Get project name (either from jac.toml in same dir, or filename stem)
     if (project_name := get_name(target_path=target_path)) {
         return str(data_dir / f"{project_name}.db");
     }
 
-    # Fallback for files like __main__.jac
     return str(data_dir / "main.db");
 }

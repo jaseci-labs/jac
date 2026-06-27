@@ -1,10 +1,6 @@
-"""Core auth, user management, JWT, API keys, server start/postinit implementations."""
 import socket;
 
-"""Find an available port starting from the given port.
 
-Returns the first available port, or raises OSError if none found within max_retries.
-"""
 impl _find_available_port(start_port: int, max_retries: int = PORT_RETRY_LIMIT) -> int {
     current_port = start_port;
     for _ in range(max_retries) {
@@ -28,30 +24,24 @@ impl _find_available_port(start_port: int, max_retries: int = PORT_RETRY_LIMIT) 
     );
 }
 
-"""Get local network IP addresses (non-localhost)."""
 impl _get_network_ips -> list[str] {
     ips: list[str] = [];
     try {
         hostname = socket.gethostname();
         for addr in socket.getaddrinfo(hostname, None) {
             ip = addr[4][0];
-            # Filter out localhost and IPv6
             if not ip.startswith('127.') and ':' not in ip {
                 if ip not in ips {
                     ips.append(ip);
                 }
             }
         }
-    } except Exception {
-    # Silently ignore network interface errors
-    }
+    } except Exception { }
     return ips;
 }
 
 impl JacAPIServerCore.postinit -> None {
     super.postinit();
-    # Support test mode (port=0): base postinit sets self.server = None,
-    # but jac-scale needs a JFastApiServer for middleware/endpoint registration.
     if self.server is None {
         import from jac_scale.jserver.jfast_api { JFastApiServer }
         self.server = JFastApiServer();
@@ -65,11 +55,9 @@ impl JacAPIServerCore.postinit -> None {
         allow_methods=['*'],
         allow_headers=['*']
     );
-    # Add custom response headers from jac.toml [environments.response.headers]
     import from jaclang.project.config { JacConfig }
     import from starlette.middleware.base { BaseHTTPMiddleware }
     import from pathlib { Path }
-    # Use base_path to find the correct jac.toml for this project
     start_path = Path(self.base_path) if self.base_path else None;
     config = JacConfig.discover(start_path);
     custom_headers: dict = {};
@@ -93,19 +81,16 @@ impl JacAPIServerCore.postinit -> None {
         }
         self.server.app.add_middleware(CustomHeadersMiddleware);
     }
-    # Initialize Prometheus metrics if enabled
     import from jac_scale.factories.utility_factory { UtilityFactory }
     metrics_config = get_scale_config().get_monitoring_config();
     self._metrics = UtilityFactory.create_metrics('prometheus', metrics_config);
     if self._metrics.is_enabled() {
         metrics_collector = self._metrics;
         metrics_endpoint = metrics_config.get('endpoint', '/metrics');
-        # Add metrics middleware to track request timing
         class MetricsMiddleware(BaseHTTPMiddleware) {
             async def dispatch(
                 self: MetricsMiddleware, request: any, call_next: any
             ) -> any {
-                # Skip metrics endpoint itself
                 if request.url.path == metrics_endpoint {
                     return await call_next(request);
                 }
@@ -132,7 +117,6 @@ impl JacAPIServerCore.postinit -> None {
             }
         }
         self.server.app.add_middleware(MetricsMiddleware);
-        # Register /metrics endpoint (admin-only)
         metrics_handler = self._create_admin_metrics_handler(
             self._metrics.get_endpoint_handler()
         );
@@ -152,9 +136,6 @@ impl JacAPIServerCore.postinit -> None {
     }
 }
 
-"""Initialize the event-streaming broker.
-RedisEventStream if a redis URL resolves and the redis extra is installed, else LocalEventStream. When events.enabled is false the broker stays unset and publish()/@subscribe no-op via the facade.
-"""
 impl JacAPIServerCore._setup_events -> None {
     import from jac_scale.events.publisher { set_broker }
     import from jac_scale.events.subscriber { get_subscriptions }
@@ -166,8 +147,6 @@ impl JacAPIServerCore._setup_events -> None {
         return;
     }
 
-    # Resolve the redis URL: events.url first, then fall back to database.redis_url
-    # so apps don't have to repeat the same URL twice.
     db_cfg = get_scale_config().get_database_config();
     url = cfg.get('url') or db_cfg.get('redis_url');
 
@@ -184,7 +163,6 @@ impl JacAPIServerCore._setup_events -> None {
         if url is None {
             logger.warning(
                 "events enabled with no redis url; using LocalEventStream "
-                "(in-memory, single-pod). Set events.url or database.redis_url "
                 "for cross-pod streaming via Redis."
             );
         } else {
@@ -226,7 +204,6 @@ impl JacAPIServerCore.start(
 ) -> None {
     self.introspector.load();
     self._ensure_sv_siblings();
-    # Eagerly build client bundle if there are client exports (skip in dev, no_client, or PWA mode)
     if not dev and not no_client {
         client_exports = self.introspector._client_manifest.get('exports', []);
         if client_exports {
@@ -250,7 +227,6 @@ impl JacAPIServerCore.start(
                         f"  ✔ Client bundle ready ({elapsed:.1f}s)", style="success"
                     );
                 } except Exception as e {
-                    # Format error with diagnostics
                     error_output = str(e);
                     project_dir = config.project_root if config else Path.cwd();
                     formatted_error = Jac.format_build_error(
@@ -285,7 +261,6 @@ impl JacAPIServerCore.start(
     }
     self._register_endpoints();
     if dev {
-        # Add middleware to refresh endpoints on HMR file changes
         import from starlette.requests { Request as StarletteRequest }
         import from starlette.responses { Response as StarletteResponse }
         _self = self;
@@ -300,7 +275,6 @@ impl JacAPIServerCore.start(
         }
     }
     self.user_manager.create_internal_user(Con.GUEST.value, '__no_password__');
-    # Back `root.shared`: map the guest user (created above) to its root id.
     _um = self.user_manager;
     def _shared_root_id -> (str | None) {
         return _um.get_root_id(Con.GUEST.value);
@@ -309,8 +283,6 @@ impl JacAPIServerCore.start(
     self.setup_emailer();
     self._setup_scheduler();
     self._setup_events();
-    # Find an available port (may differ from requested if port is in use).
-    # Skip when sidecar already bound the listen socket.
     if self.server?._prebound_listen_socket is None {
         original_port = self.port;
         self.port = _find_available_port(self.port);
@@ -321,25 +293,20 @@ impl JacAPIServerCore.start(
             );
         }
     }
-    # Print startup banner with correct port
     self._print_startup_banner(dev, no_client);
-    # Call the ready callback with the actual port (e.g., to print startup banner)
     if on_ready {
         on_ready(self.port);
     }
     self.server.run_server(port=self.port);
 }
 
-"""Print startup banner with correct port."""
 impl JacAPIServerCore._print_startup_banner(dev: bool, no_client: bool) -> None {
     import from importlib.metadata { version as pkg_version }
 
-    # Dev+client: skip — self.port is the API; the on_ready banner has the real URLs.
     if dev and not no_client {
         return;
     }
 
-    # Print header
     try {
         version = pkg_version('jaclang');
         console.print(f"\n  JAC DEV SERVER v{version}\n", style="bold cyan");
@@ -347,20 +314,17 @@ impl JacAPIServerCore._print_startup_banner(dev: bool, no_client: bool) -> None 
         console.print(f"\n  JAC DEV SERVER\n", style="bold cyan");
     }
 
-    # Build URLs list (consistent with existing _print_startup_message pattern)
     urls: list[tuple[str, str]] = [];
     urls.append(("Local", f"http://localhost:{self.port}/"));
     for ip in _get_network_ips() {
         urls.append(("Network", f"http://{ip}:{self.port}/"));
     }
 
-    # Print URLs with arrows (uses console.print_urls for consistency)
     console.print_urls(urls);
     console.print();
     console.print("  🚀 Server ready", style="bold green");
 }
 
-"""Configure OpenAPI security scheme to only apply to walker endpoints that require auth."""
 impl JacAPIServerCore._configure_openapi_security -> None {
     import from fastapi.openapi.utils { get_openapi }
     def custom_openapi -> dict[str, any] {
@@ -421,7 +385,6 @@ impl JacAPIServerCore._configure_openapi_security -> None {
             } elif path == '/graph/data' {
                 for method in path_item {
                     if (method in ['get', 'post', 'put', 'patch', 'delete']) {
-                        # Optional auth - show lock icon but allow without token (falls back to __guest__)
                         path_item[method]['security'] = [{'BearerAuth': []}, {}];
                     }
                 }
@@ -433,18 +396,7 @@ impl JacAPIServerCore._configure_openapi_security -> None {
     self.server.app.openapi = custom_openapi;
 }
 
-# ============================================================================
-# HMR (Hot Module Replacement) Support
-# ============================================================================
-"""Register health endpoints: /healthz/live (liveness, restart-gating)
-and /healthz/ready (readiness, traffic-gating), plus the legacy /healthz
-as a back-compat alias for /healthz/live.
 
-Liveness deliberately does NOT check dependencies (DB, peer services) -
-a transient downstream blip would otherwise restart the pod, which can
-cascade. Readiness flips to 503 once `is_draining()` is true so kube-proxy
-removes us from Endpoints during graceful shutdown.
-"""
 impl JacAPIServerCore.register_health_endpoint -> None {
     import from fastapi.responses { JSONResponse }
     import from jac_scale.microservices.gateway_internals.drain { is_draining }
@@ -460,9 +412,6 @@ impl JacAPIServerCore.register_health_endpoint -> None {
         }
         return JSONResponse(status_code=200, content={"status": "ready"});
     }
-    # Legacy alias - same shape as live (an earlier revision used a
-    # single /healthz for both probes; users hitting /healthz manually
-    # still get 200).
     async def health_legacy -> dict {
         return {"status": "ok"};
     }
@@ -493,7 +442,6 @@ impl JacAPIServerCore.register_health_endpoint -> None {
             summary='Readiness check',
             description=(
                 'Returns 200 when ready to serve traffic, 503 during '
-                'graceful shutdown drain. Used by Kubernetes readinessProbe '
                 'to gate Endpoints membership.'
             )
         )
@@ -512,9 +460,6 @@ impl JacAPIServerCore.register_health_endpoint -> None {
     );
 }
 
-"""Register /__build_status: dev-mode build health from the hot reloader.
-HTTP 200 alone can't tell a clean build from a broken one (compile errors
-still serve the error-overlay page); "unavailable" outside dev mode."""
 impl JacAPIServerCore.register_build_status_endpoint -> None {
     async def build_status -> dict {
         import from jaclang.runtimelib.hmr { get_build_status }
@@ -532,14 +477,12 @@ impl JacAPIServerCore.register_build_status_endpoint -> None {
             summary='Dev build health',
             description=(
                 'Hot-reload build status: "ok", "compiling", or "error" '
-                '(with the failing file and message); "unavailable" when '
                 'not running in dev mode.'
             )
         )
     );
 }
 
-"""Register the /cl/__error__ endpoint for client-side error reporting."""
 impl JacAPIServerCore._register_client_error_endpoint -> None {
     import from fastapi { Request }
     import from fastapi.responses { JSONResponse }
@@ -555,7 +498,6 @@ impl JacAPIServerCore._register_client_error_endpoint -> None {
                 status_code=400, content={"error": "Missing required field: message"}
             );
         }
-        # Rate limit and deduplicate
         import from jaclang.runtimelib.source_mapping {
             _error_rate_limiter,
             resolve_client_error_stacks,
@@ -612,22 +554,17 @@ impl JacAPIServerCore._register_client_error_endpoint -> None {
     );
 }
 
-"""Enable HMR mode - file changes trigger reload on next request."""
 impl JacAPIServerCore.enable_hmr(hot_reloader: any) -> None {
     self._hot_reloader = hot_reloader;
-    # Callback when file changes - sets pending flag
     def on_change(event: any) {
         self._hmr_pending = True;
         logger.debug(f"Change detected: {event.path}");
     }
-    # Register callback with the watcher
     hot_reloader.watcher.add_callback(on_change);
     logger.debug("Dynamic routing enabled for jac-scale");
 }
 
-"""Register all endpoints (core + user-defined). Called at startup and on HMR refresh."""
 impl JacAPIServerCore._register_endpoints -> None {
-    # Core endpoints
     self.register_health_endpoint();
     self.register_build_status_endpoint();
     self.register_auth_endpoints();
@@ -644,23 +581,19 @@ impl JacAPIServerCore._register_endpoints -> None {
     self.register_deploy_health_endpoints();
     self.register_network_endpoints();
     self.register_podenv_endpoints();
-    # User-defined endpoints (walkers, functions, webhooks)
     self.register_walkers_endpoints();
     self.register_functions_endpoints();
     self.register_webhook_endpoints();
     self.register_websocket_endpoints();
-    # Post-registration
     self.register_scheduler_endpoints();
     self.register_root_asset_endpoint();
     self._register_client_error_endpoint();
     self._configure_openapi_security();
 }
 
-"""Refresh all endpoints after HMR reload - clears routes and re-registers from scratch."""
 impl JacAPIServerCore._refresh_dev_endpoints -> None {
     self._hmr_pending = False;
     self.introspector.load(force_reload=True);
-    # Clear all routes and endpoints, then re-setup docs and re-register
     self.server._endpoints[:] = [];
     self.server.app.routes.clear();
     self.server.app.setup();
@@ -669,7 +602,6 @@ impl JacAPIServerCore._refresh_dev_endpoints -> None {
     self.server.app.openapi_schema = None;
 }
 
-"""Create the __system__ user, initialise JacScaleScheduler, and register /jobs endpoints."""
 impl JacAPIServerCore._setup_scheduler -> None {
     logger.info("Initializing scheduler subsystem");
     scheduler_cfg = get_scale_config().get_scheduler_config();
@@ -688,24 +620,18 @@ impl JacAPIServerCore._setup_scheduler -> None {
         if system_user
         else '__system__';
 
-    # Initialise JacScaleScheduler singleton
     jac_scheduler = JacScaleScheduler.instance();
     jac_scheduler.setup(system_user_id=system_user_id, server=self);
 
-    # Register static tasks (walkers/functions with STATIC trigger)
     jac_scheduler.register_static_tasks(
         self.introspector._walkers or {}, self.introspector._functions or {}, self
     );
 
-    # Reload persisted dynamic jobs from DB
     jac_scheduler.register_dynamic_tasks_from_db();
 
-    # Start APScheduler background thread
     jac_scheduler.start();
     logger.info("Scheduler subsystem ready");
 
-    # Drain scheduled jobs on SIGTERM/graceful shutdown. Timeout is configurable
-    # via [plugins.scale.scheduler] shutdown_timeout in jac.toml (default 10s).
     timeout_sec = int(scheduler_cfg.get('shutdown_timeout', 10));
     async def _shutdown_scheduler {
         import asyncio;
@@ -724,7 +650,6 @@ impl JacAPIServerCore._setup_scheduler -> None {
     self.server.app.add_event_handler('shutdown', _shutdown_scheduler);
 }
 
-"""Create a wrapper around the metrics endpoint that requires admin authentication."""
 impl JacAPIServerCore._create_admin_metrics_handler(
     original_handler: Callable[..., any]
 ) -> Callable[..., any] {
@@ -741,7 +666,6 @@ impl JacAPIServerCore._create_admin_metrics_handler(
 
     async def admin_metrics_handler(request: Request) -> Response {
         authorization = request.headers.get('Authorization');
-        # Accept Bearer JWT token (admin portal) or Basic Auth (Prometheus scraping)
         authed = False;
         if authorization {
             if authorization.startswith('Bearer ') {

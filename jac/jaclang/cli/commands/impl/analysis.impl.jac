@@ -1,8 +1,3 @@
-"""Implementation of analysis commands (check, lint, format, test, gen_parser).
-
-Direct implementations - no delegation to cli.jac.
-"""
-
 import from pathlib { Path }
 import from fnmatch { fnmatch }
 import from jaclang.cli.console { console }
@@ -13,7 +8,6 @@ import from jaclang.cli.check_report {
     print_final_summary
 }
 
-"""Run type checker for specified .jac files."""
 impl check(
     paths: list,
     print_errs: bool = True,
@@ -40,7 +34,6 @@ impl check(
             )
         );
     }
-    # Helper to process and store single file result
     def process_file_result(file_path: str, idx: int, total: int) {
         nonlocal total_files , total_errors , total_warnings , failed_files;
         total_files += 1;
@@ -50,7 +43,6 @@ impl check(
         total_errors += errs;
         total_warnings += warns;
 
-        # Print progress line
         print_file_progress(file_path, success, idx, total);
 
         if not success {
@@ -62,7 +54,6 @@ impl check(
             );
         }
     }
-    # Store failed file results for later detailed output
     failed_results: list[dict] = [];
     def check_single_file(
         prog: JacProgram, file_path: str
@@ -74,9 +65,6 @@ impl check(
             console.error(f"File '{file_path}' does not exist.");
             return (False, 1, 0, [], []);
         }
-        # If the file is an annex (.impl.jac or .test.jac), compile the base
-        # file instead so the full annex pipeline runs (DeclImplMatchPass, etc.).
-        # Then filter errors/warnings to only those originating from the annex file.
         annex_filter_path: (str | None) = None;
         base_path = discover_base_file(file_path);
         if base_path is not None {
@@ -98,10 +86,6 @@ impl check(
             );
             new_errors = prog.errors_had[err_start:];
             new_warnings = prog.warnings_had[warn_start:];
-            # Filter out errors/warnings from ignored files and non-.jac files
-            # By default, only show errors from .jac files (not from Python stdlib, stubs, etc.)
-            # TODO: This is ad-hoc, need proper error handling across
-            # different file types; will be addressed in future refactor.
             def filter_issues(issues: list) -> list {
                 return [
                     i
@@ -114,7 +98,6 @@ impl check(
             }
             filtered_errors = filter_issues(new_errors);
             filtered_warnings = filter_issues(new_warnings);
-            # If checking an annex file, further filter to only errors from that file
             if annex_filter_path is not None {
                 filtered_errors = [
                     e
@@ -149,20 +132,17 @@ impl check(
     for (idx, jac_file_path) in enumerate(all_files, 1) {
         process_file_result(jac_file_path, idx, total_to_check);
     }
-    # Print FAILURES section and summary
     if print_errs and len(failed_results) > 0 {
         print_failures(failed_results, nowarn);
     }
     if failed_files > 0 {
         print_failed_summary(failed_results);
     }
-    # Print final summary line
     elapsed = time() - start_time;
     print_final_summary(total_files - failed_files, failed_files, elapsed);
     return 1 if (total_errors > 0 or had_path_errors) else 0;
 }
 
-"""Lint .jac files and report violations."""
 impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
     import from jaclang.jac0core.program { JacProgram }
     if isinstance(paths, str) {
@@ -170,7 +150,6 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
     }
     ignore_list = _normalize_ignore_patterns(ignore or []);
     def lint_report_file(file_path: str) -> tuple[bool, int] {
-        # Lint-only: report errors without formatting or writing files
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
@@ -194,7 +173,6 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
         }
     }
     def lint_fix_file(file_path: str) -> tuple[bool, int, int] {
-        # Lint+fix: apply fixes and write files back
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
@@ -213,7 +191,6 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
                 err_count = len(prog.errors_had) or 1;
                 return (False, err_count, err_count);
             }
-            # Block on comment displacement errors (formatter bug)
             has_format_error = any(
                 e.code is not None and e.code.code == "E5051" for e in prog.errors_had
             );
@@ -224,7 +201,6 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
                 err_count = len(prog.errors_had);
                 return (False, err_count, err_count);
             }
-            # Count fixed warnings and unfixable errors
             fixed_count = 0;
             unfixable_count = 0;
             for warning in prog.warnings_had {
@@ -236,7 +212,6 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
                 unfixable_count += 1;
             }
             error_count = fixed_count + unfixable_count;
-            # Write the head back if it had lint violations that were fixed.
             if fixed_count > 0 {
                 changed = formatted_code != original_code;
                 if changed {
@@ -245,10 +220,6 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
                     }
                 }
             }
-            # Annex files (.impl.jac/.test.jac) are formatted as their own tool
-            # programs and written back independently. This runs regardless of
-            # the head's fixed_count: a fixable violation (e.g. a signature
-            # mismatch) can live entirely in the annex while the head is clean.
             import from jaclang.jac0core.bccache { discover_annex_files }
             annex_paths = (
                 discover_annex_files(str(path_obj), '.impl.jac') + discover_annex_files(
@@ -327,11 +298,7 @@ impl lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int {
     return 0;
 }
 
-"""Format a single .jac file (standalone for parallel execution).
 
-Returns dict with: path, success, changed, errors, syntax_errors, warnings_strs, errors_strs,
-and optionally formatted_code/impl_results for deferred writes.
-"""
 def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> dict {
     import from jaclang.jac0core.program { JacProgram }
     path_obj = Path(file_path);
@@ -372,12 +339,9 @@ def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> di
             }
             changed = formatted_code != original_code;
             result['changed'] = changed;
-            # Store formatted code for writing later (if not check mode)
             if changed and not check {
                 result['formatted_code'] = formatted_code;
             }
-            # Annex files (.impl.jac/.test.jac) are formatted as their own tool
-            # programs when lint-fixing a head file directly.
             if lintfix {
                 import from jaclang.jac0core.bccache { discover_annex_files }
                 annex_paths = (
@@ -409,7 +373,6 @@ def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> di
             result['syntax_errors'] = [str(e) for e in prog.errors_had];
             return result;
         }
-        # Collect warnings/errors as strings for later printing
         lint_errors = 0;
         if lintfix {
             for warning in prog.warnings_had {
@@ -429,7 +392,6 @@ def _format_single_file_worker(file_path: str, lintfix: bool, check: bool) -> di
     }
 }
 
-"""Format .jac files with improved code style."""
 impl format(
     paths: list, to_screen: bool = False, lintfix: bool = False, check: bool = False
 ) -> int {
@@ -438,7 +400,6 @@ impl format(
     if isinstance(paths, str) {
         paths = [paths];
     }
-    # Track unformatted files for check mode
     unformatted_files: list[str] = [];
     failed_results: list = [];
 
@@ -449,7 +410,6 @@ impl format(
         return 1 if had_path_errors else 0;
     }
 
-    # Use parallel processing for multiple files (unless outputting to screen)
     use_parallel = total_files > 1 and not to_screen;
     max_workers = min(os.cpu_count() or 4, total_files, 8);
 
@@ -496,25 +456,21 @@ impl format(
                 }
             }
         } except Exception {
-            # Fall back to sequential processing if multiprocessing fails
             use_parallel = False;
         }
     }
     if not use_parallel {
-        # Single file: show filename
         for fp in all_files {
             console.print(f"Formatting {fp}...");
             results.append(_format_single_file_worker(fp, lintfix, check));
         }
     }
 
-    # Process results: write files, print messages, aggregate stats
     failed_files = 0;
     changed_files = 0;
     total_errors = 0;
 
     for res in results {
-        # Print warnings/errors from this file
         for w in res['warnings_strs'] {
             console.warning(w);
         }
@@ -534,13 +490,9 @@ impl format(
             if check {
                 unformatted_files.append(res['path']);
             } else {
-                # Write formatted code
                 if res['formatted_code'] is not None {
                     try {
                         if to_screen {
-                            # markup=False, highlight=False: prevent Rich from
-                            # interpreting Jac syntax like [root()-->], [?:Todo],
-                            # or [todo] as markup tags and silently stripping them.
                             console.print(
                                 res['formatted_code'], markup=False, highlight=False
                             );
@@ -553,7 +505,6 @@ impl format(
                         console.error(f"Error writing to '{res['path']}': {e}");
                     }
                 }
-                # Write impl files
                 for (impl_path, impl_code) in res['impl_results'] {
                     try {
                         if to_screen {
@@ -570,8 +521,6 @@ impl format(
             }
         }
     }
-    # Print syntax error summary grouped by file
-    # Note: errors are strings (for multiprocessing), not Alert objects
     if failed_results {
         import from jaclang.cli.check_report { separator }
         console.print("");
@@ -579,13 +528,12 @@ impl format(
         for r in failed_results {
             console.print(separator(str(r['path']), char='_'));
             for e in r['errors'] {
-                console.error(e);  # Already a string
+                console.error(e);
             }
             console.print("");
         }
         print_failed_summary(failed_results);
     }
-    # In check mode, report all issues together
     if check {
         has_errors = False;
         if len(unformatted_files) > 0 {
@@ -614,7 +562,6 @@ impl format(
         }
         return 0;
     }
-    # Non-check mode summary
     if (((len(paths) == 1) and Path(paths[0]).is_dir()) or (failed_files > 0)) {
         summary_msg = f"Formatted {(total_files - failed_files)}/{total_files} '.jac' files ({changed_files} changed).";
         if failed_files > 0 {
@@ -635,7 +582,6 @@ impl format(
     return 0;
 }
 
-"""Run the test suite in the specified .jac file or directory."""
 impl `test(
     paths: list = [],
     test_name: str = "",
@@ -648,19 +594,9 @@ impl `test(
 ) -> int {
     import os;
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
-    # Accept a single path string as well as a list (matches `check`/`lint`):
-    # programmatic callers pass `test("file.jac")` positionally, which would
-    # otherwise iterate the string character-by-character as if each char were a
-    # path.
     if isinstance(paths, str) {
         paths = [paths];
     }
-    # With neither an explicit file nor --directory, scope discovery to the
-    # project's `[test] directory` (jac.toml) when configured -- pytest's
-    # `testpaths`. This keeps `jac test` from walking the whole project and
-    # importing app modules whose top-level `with entry` would execute (and
-    # crash collection) as a side effect of being imported. The directory is
-    # resolved against the project root so it holds from any working directory.
     if (not paths and not directory) {
         import from jaclang.project.config { get_config }
         cfg = get_config();
@@ -678,16 +614,13 @@ impl `test(
             }
         }
     }
-    # e.g. jac test --test_name "typevar7 constrained operations"  (no path given)
     if (test_name and not paths) {
         console.error(
             "Error: --test_name requires a filepath. "
-            "Running by name across all files is ambiguous.\n"
             "Usage: jac test <file.jac> --test_name <name>"
         );
         return 1;
     }
-    # e.g. jac test test_typevar.jac  (run from wrong directory)
     for fp in paths {
         if not Path(fp).exists() {
             console.error(
@@ -698,11 +631,6 @@ impl `test(
             return 1;
         }
     }
-    # Route `jac test` through the bundled pytest (+ xdist for `-n auto`) when it
-    # is available -- the single-binary build ships it, so the suite runs with
-    # pytest collection and parallelism and no system Python. Falls back to the
-    # native runner when pytest is absent or `JAC_TEST_NATIVE=1` is set.
-    #   JAC_TEST_JOBS=auto (default) -> -n auto;  JAC_TEST_JOBS=0 -> serial
     run_pytest = not os.environ.get('JAC_TEST_NATIVE', '');
     if run_pytest {
         try {
@@ -712,27 +640,19 @@ impl `test(
         }
         if run_pytest {
             pargs: list[str] = [];
-            # One or more explicit paths, else the resolved directory (if any).
             targets = paths or ([directory] if directory else []);
             for target in targets {
                 pargs.append(target);
             }
-            # Skip a subtree during collection (pytest `--ignore`). Lets the suite
-            # be split across jobs, e.g. `jac test tests/ --ignore tests/compiler`
-            # runs everything the dedicated compiler job does not.
             if ignore {
                 pargs.append('--ignore=' + ignore);
             }
-            # Worker count precedence: the JAC_TEST_JOBS env var wins, else the
-            # `[dev] test_jobs` setting in jac.toml, else 'auto'. '0' (from either)
-            # forces serial -- handled by the guard below.
             jobs = os.environ.get('JAC_TEST_JOBS', '');
             if not jobs {
                 import from jaclang.project.config { get_config }
                 jobs_cfg = get_config();
                 jobs = jobs_cfg.dev.test_jobs if jobs_cfg else 'auto';
             }
-            # No worker pool for a single named test (overhead > benefit).
             if jobs and jobs != '0' and not test_name {
                 pargs.append('-n');
                 pargs.append(jobs);
@@ -745,15 +665,9 @@ impl `test(
                 pargs.append(str(maxfail));
             }
             if test_name {
-                # pytest `-k` is a boolean expression over name substrings, and
-                # each bare word must be a single identifier. A Jac test's
-                # display name can contain spaces (e.g. "early exit"), which `-k`
-                # rejects as two adjacent identifiers. AND the whitespace-split
-                # words so `--test_name "early exit"` selects that one test.
                 pargs.append('-k');
                 pargs.append(' and '.join(test_name.split()) or test_name);
             } elif filter {
-                # `filter` is passed through verbatim as a pytest `-k` expression.
                 pargs.append('-k');
                 pargs.append(filter);
             }
@@ -765,8 +679,6 @@ impl `test(
     }
     normalized_name = test_name.strip().replace(' ', '_') if test_name else '';
     func_name = ('test_' + normalized_name) if normalized_name else None;
-    # Native runner fallback (no pytest / JAC_TEST_NATIVE=1): run each path in
-    # turn, or a single directory-scoped pass when no explicit paths were given.
     run_targets = paths or [""];
     failcount = 0;
     for fp in run_targets {
@@ -779,7 +691,6 @@ impl `test(
             directory=directory,
             verbose=verbose
         );
-        # Honor --xit across files too: stop at the first file with failures.
         if xit and failcount > 0 {
             break;
         }
@@ -791,7 +702,6 @@ impl `test(
     return 0;
 }
 
-"""Generate static parser."""
 impl gen_parser -> int {
     import from jaclang.compiler { gen_all_parsers }
     gen_all_parsers();
@@ -799,7 +709,6 @@ impl gen_parser -> int {
     return 0;
 }
 
-"""Extract grammar from the Jac parser."""
 impl grammar(lark: bool = False, output: str = "") -> int {
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.compiler.passes.tool.grammar_extract_pass { GrammarExtractPass }
@@ -837,11 +746,7 @@ impl grammar(lark: bool = False, output: str = "") -> int {
     return 0;
 }
 
-"""Iterate over .jac files from a list of paths (files or directories).
 
-Expands directories recursively, filters by ignore patterns.
-Returns (file_list, had_errors) where had_errors is True if any path was invalid.
-"""
 def _iter_jac_files(
     paths: list, ignore_list: (list | None) = None
 ) -> tuple[list[str], bool] {
@@ -871,7 +776,6 @@ def _iter_jac_files(
     return (result, had_errors);
 }
 
-"""Normalize ignore patterns by stripping whitespace and trailing slashes."""
 def _normalize_ignore_patterns(ignore: list) -> list {
     normalized = [];
     for p in (ignore or []) {
@@ -883,34 +787,20 @@ def _normalize_ignore_patterns(ignore: list) -> list {
     return normalized;
 }
 
-"""Check if a file path should be ignored based on patterns.
-Supports exact matches, wildcard patterns (e.g., 'jac-*'), and
-path patterns containing '/' (e.g., 'jac-client/*/config_loader.impl.jac').
 
-Path patterns (containing '/') are matched against the full file path using
-fnmatch, so they can target specific files in specific packages. Simple
-patterns (no '/') are matched against each individual path component, which
-preserves the existing behavior of matching bare filenames.
-"""
 def _should_ignore(file_path: str, ignore_patterns: list) -> bool {
     if not ignore_patterns {
         return False;
     }
     path_parts = Path(file_path).parts;
-    # Normalize file path to use forward slashes for consistent matching
     normalized_path = '/'.join(path_parts);
-    # Patterns are already normalized in ignore_list
     for pattern in ignore_patterns {
         if '/' in pattern {
-            # Path pattern: match against the full normalized path.
-            # This allows patterns like 'jac-client/*/config_loader.impl.jac'
-            # to target specific files in specific packages.
             if fnmatch(normalized_path, '*/' + pattern)
             or fnmatch(normalized_path, pattern) {
                 return True;
             }
         } else {
-            # Simple pattern: match against each path component (existing behavior)
             for part in path_parts {
                 if fnmatch(part, pattern) {
                     return True;

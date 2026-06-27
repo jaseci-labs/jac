@@ -9,12 +9,12 @@ import from ctypes {
 }
 import from jaclang.compiler.passes.native.llvm.binding { ffi }
 import from jaclang.compiler.passes.native.llvm.binding.linker { link_modules }
-import from jaclang.compiler.passes.native.llvm.binding.common { _decode_string, _encode_string }
+import from jaclang.compiler.passes.native.llvm.binding.common {
+    _decode_string,
+    _encode_string
+}
 import from jaclang.compiler.passes.native.llvm.binding.value { ValueRef, TypeRef }
 import from jaclang.compiler.passes.native.llvm.binding.context { get_global_context }
-"""
-    Create Module from a LLVM IR string
-    """
 def parse_assembly(llvmir: Any, context: Any = None) -> object {
     if (context is None) {
         context = get_global_context();
@@ -31,9 +31,6 @@ def parse_assembly(llvmir: Any, context: Any = None) -> object {
     return mod;
 }
 
-"""
-    Create Module from a LLVM *bitcode* (a bytes object).
-    """
 def parse_bitcode(bitcode: Any, context: Any = None) -> object {
     if (context is None) {
         context = get_global_context();
@@ -52,23 +49,19 @@ def parse_bitcode(bitcode: Any, context: Any = None) -> object {
     return mod;
 }
 
-"""
-    A reference to a LLVM module.
-    """
 class ModuleRef(ffi.ObjectRef) {
     def init(self: ModuleRef, module_ptr: Any, context: Any) -> object {
         super.init(module_ptr);
         self._context = context;
     }
+
     def __str__(self: ModuleRef) -> object {
         with ffi.OutputString() as outstr {
             ffi.lib.LLVMPY_PrintModuleToString(self, outstr);
             return str(outstr);
         }
     }
-    """
-        Return the module's LLVM bitcode, as a bytes object.
-        """
+
     def as_bitcode(self: ModuleRef) -> object {
         ptr = c_char_p(None);
         size = c_size_t(-1);
@@ -87,10 +80,7 @@ class ModuleRef(ffi.ObjectRef) {
     def _dispose(self: ModuleRef) -> object {
         self._capi.LLVMPY_DisposeModule(self);
     }
-    """
-        Get a ValueRef pointing to the function named *name*.
-        NameError is raised if the symbol isn't found.
-        """
+
     def get_function(self: ModuleRef, name: Any) -> object {
         p = ffi.lib.LLVMPY_GetNamedFunction(self, _encode_string(name));
         if not p {
@@ -99,10 +89,6 @@ class ModuleRef(ffi.ObjectRef) {
         return ValueRef(p, 'function', `dict(module=self));
     }
 
-    """
-        Get a ValueRef pointing to the global variable named *name*.
-        NameError is raised if the symbol isn't found.
-        """
     def get_global_variable(self: ModuleRef, name: Any) -> object {
         p = ffi.lib.LLVMPY_GetNamedGlobalVariable(self, _encode_string(name));
         if not p {
@@ -111,10 +97,6 @@ class ModuleRef(ffi.ObjectRef) {
         return ValueRef(p, 'global', `dict(module=self));
     }
 
-    """
-        Get a TypeRef pointing to a structure type named *name*.
-        NameError is raised if the struct type isn't found.
-        """
     def get_struct_type(self: ModuleRef, name: Any) -> object {
         p = ffi.lib.LLVMPY_GetNamedStructType(self, _encode_string(name));
         if not p {
@@ -123,9 +105,6 @@ class ModuleRef(ffi.ObjectRef) {
         return TypeRef(p);
     }
 
-    """
-        Verify the module IR's correctness.  RuntimeError is raised on error.
-        """
     def verify(self: ModuleRef) -> object {
         with ffi.OutputString() as outmsg {
             if ffi.lib.LLVMPY_VerifyModule(self, outmsg) {
@@ -134,9 +113,6 @@ class ModuleRef(ffi.ObjectRef) {
         }
     }
 
-    """
-        The module's identifier.
-        """
     @property
     def name(self: ModuleRef) -> object {
         return _decode_string(ffi.lib.LLVMPY_GetModuleName(self));
@@ -146,17 +122,12 @@ class ModuleRef(ffi.ObjectRef) {
     def name(self: ModuleRef, value: Any) -> object {
         ffi.lib.LLVMPY_SetModuleName(self, _encode_string(value));
     }
-    """
-        The module's original source file name
-        """
+
     @property
     def source_file(self: ModuleRef) -> object {
         return _decode_string(ffi.lib.LLVMPY_GetModuleSourceFileName(self));
     }
 
-    """
-        This module's data layout specification, as a string.
-        """
     @property
     def data_layout(self: ModuleRef) -> object {
         with ffi.OutputString(owned=False) as outmsg {
@@ -169,9 +140,7 @@ class ModuleRef(ffi.ObjectRef) {
     def data_layout(self: ModuleRef, strrep: Any) -> object {
         ffi.lib.LLVMPY_SetDataLayout(self, create_string_buffer(strrep.encode('utf8')));
     }
-    """
-        This module's target "triple" specification, as a string.
-        """
+
     @property
     def triple(self: ModuleRef) -> object {
         with ffi.OutputString(owned=False) as outmsg {
@@ -184,10 +153,7 @@ class ModuleRef(ffi.ObjectRef) {
     def triple(self: ModuleRef, strrep: Any) -> object {
         ffi.lib.LLVMPY_SetTarget(self, create_string_buffer(strrep.encode('utf8')));
     }
-    """
-        Link the *other* module into this one.  The *other* module will
-        be destroyed unless *preserve* is true.
-        """
+
     def link_in(self: ModuleRef, other: Any, preserve: Any = False) -> object {
         if preserve {
             other = other.clone();
@@ -195,34 +161,18 @@ class ModuleRef(ffi.ObjectRef) {
         link_modules(self, other);
     }
 
-    """
-        Return an iterator over this module's global variables.
-        The iterator will yield a ValueRef for each global variable.
-
-        Note that global variables don't include functions
-        (a function is a "global value" but not a "global variable" in
-         LLVM parlance)
-        """
     @property
     def global_variables(self: ModuleRef) -> object {
         it = ffi.lib.LLVMPY_ModuleGlobalsIter(self);
         return _GlobalsIterator(it, `dict(module=self));
     }
 
-    """
-        Return an iterator over this module's functions.
-        The iterator will yield a ValueRef for each function.
-        """
     @property
     def functions(self: ModuleRef) -> object {
         it = ffi.lib.LLVMPY_ModuleFunctionsIter(self);
         return _FunctionsIterator(it, `dict(module=self));
     }
 
-    """
-        Return an iterator over the struct types defined in
-        the module. The iterator will yield a TypeRef.
-        """
     @property
     def struct_types(self: ModuleRef) -> object {
         it = ffi.lib.LLVMPY_ModuleTypesIter(self);
@@ -244,6 +194,7 @@ class _Iterator(ffi.ObjectRef) {
         self._parents = parents;
         assert (self.kind is not None);
     }
+
     def __next__(self: _Iterator) -> object {
         vp = self._next();
         if vp {
@@ -261,6 +212,7 @@ class _Iterator(ffi.ObjectRef) {
         return self;
     }
 }
+
 class _GlobalsIterator(_Iterator) {
     with entry {
         kind = 'global';
@@ -269,10 +221,12 @@ class _GlobalsIterator(_Iterator) {
     def _dispose(self: _GlobalsIterator) -> object {
         self._capi.LLVMPY_DisposeGlobalsIter(self);
     }
+
     def _next(self: _GlobalsIterator) -> object {
         return ffi.lib.LLVMPY_GlobalsIterNext(self);
     }
 }
+
 class _FunctionsIterator(_Iterator) {
     with entry {
         kind = 'function';
@@ -281,10 +235,12 @@ class _FunctionsIterator(_Iterator) {
     def _dispose(self: _FunctionsIterator) -> object {
         self._capi.LLVMPY_DisposeFunctionsIter(self);
     }
+
     def _next(self: _FunctionsIterator) -> object {
         return ffi.lib.LLVMPY_FunctionsIterNext(self);
     }
 }
+
 class _TypesIterator(_Iterator) {
     with entry {
         kind = 'type';
@@ -293,6 +249,7 @@ class _TypesIterator(_Iterator) {
     def _dispose(self: _TypesIterator) -> object {
         self._capi.LLVMPY_DisposeTypesIter(self);
     }
+
     def __next__(self: _TypesIterator) -> object {
         vp = self._next();
         if vp {
@@ -301,6 +258,7 @@ class _TypesIterator(_Iterator) {
             raise StopIteration;
         }
     }
+
     def _next(self: _TypesIterator) -> object {
         return ffi.lib.LLVMPY_TypesIterNext(self);
     }
@@ -309,6 +267,7 @@ class _TypesIterator(_Iterator) {
         next = __next__;
     }
 }
+
 with entry {
     ffi.lib.LLVMPY_ParseAssembly.argtypes = [
         ffi.LLVMContextRef,
@@ -368,4 +327,3 @@ with entry {
     ffi.lib.LLVMPY_GetModuleSourceFileName.argtypes = [ffi.LLVMModuleRef];
     ffi.lib.LLVMPY_GetModuleSourceFileName.restype = c_char_p;
 }
-

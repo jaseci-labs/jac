@@ -1,23 +1,8 @@
-"""Package a project's local source for no-image microservice deploys.
-
-The no-image deploy path (jac start --scale --no-image) skips docker build +
-push entirely. Instead the project's source tree is tar+gzipped, carried into
-the cluster as a ConfigMap, extracted into an emptyDir by an initContainer, and
-run on a generic Python base image with jac installed at pod startup. This is a
-dev / preview convenience; production should build and push a real image.
-
-ConfigMaps are capped at etcd's ~1 MiB object size, so this is only viable for
-small source trees (the .jac files + shared modules). Build artifacts
-(node_modules, dist, .jac cache, __pycache__) are excluded from the archive.
-"""
-
 import io;
 import base64;
 import tarfile;
 import from pathlib { Path }
 
-# Directories never shipped into the cluster: build output, caches, vendored
-# deps, VCS metadata. Matches setup.jac's scan exclusions plus virtualenvs.
 glob _EXCLUDE_DIRS: set[str] = {
          ".jac",
          "__pycache__",
@@ -30,14 +15,6 @@ glob _EXCLUDE_DIRS: set[str] = {
          ".mypy_cache",
          ".pytest_cache"
      };
-# Secret-bearing files are NEVER packed into the ConfigMap (it's stored
-# unencrypted in etcd and readable by anyone with `kubectl get configmap`).
-# .env / key / cert files are excluded outright. The raw jac.toml is excluded
-# too (it can hold registry + DB creds under `[plugins.scale]`), but a
-# `[plugins.scale]`-stripped copy is added back by `pack_source` (see
-# `_sanitized_jac_toml`) so pods still get the app + client-build config they
-# need. Keep app-level secrets out of jac.toml; use [plugins.scale.secrets]
-# (-> K8s Secret) or env.
 glob _EXCLUDE_FILES: set[str] = {
          ".env",
          "jac.toml",
@@ -57,45 +34,23 @@ glob _EXCLUDE_SUFFIXES: tuple = (
          ".keystore"
      );
 
-# etcd caps a single object at ~1 MiB; the base64-encoded archive must fit
-# under that with headroom for the rest of the ConfigMap manifest.
 glob _CONFIGMAP_MAX_BYTES: int = 900000;
 
-# Pod-side contract shared with manifest_builder._build_pod_spec.
 glob SOURCE_ARCHIVE_KEY: str = "source.tar.gz",
      SOURCE_VOLUME_NAME: str = "jac-source",
      SOURCE_MOUNT_PATH: str = "/jac-src",
      APP_VOLUME_NAME: str = "jac-app",
      APP_MOUNT_PATH: str = "/app",
      PYDEPS_DIR: str = "/app/.pydeps",
-     # Experimental mode builds the `jac` binary from a cloned checkout onto the
-     # shared app volume (jaclang is the self-contained Zig binary, not a
-     # pip/editable package); the main container runs that binary instead. Zig
-     # version tracks jac/build.zig.zon's minimum_zig_version.
      JAC_BIN_DIR: str = "/app/.jacbin",
      JAC_ZIG_VERSION: str = "0.16.0";
 
 
-"""ConfigMap name holding a service app's packed source (caller pre-sanitizes
-app_name to a DNS-1123 value)."""
 def source_configmap_name(app_name: str) -> str {
     return f"{app_name}-source";
 }
 
 
-"""Whether `jac start --scale` is a zero-config deploy (no image path set).
-
-Pure so it is unit-testable. True when the user has NOT configured any way to
-get a real image - no explicit `docker_image_name` (i.e. it's still the
-`<app>:latest` default), no `image_registry`, and no `--build`. In that case the
-plugin does NOT immediately copy source; it asks `decide_zeroconfig_image_strategy`
-whether a real image can still be built locally (preferred) and only falls back
-to the no-image source bundle when it cannot. An explicit image/registry or
-`--build` returns False (use the normal image pipeline); `--no-image` is handled
-separately as a forced override.
-
-(The name is retained for back-compat; read it as "no image path configured".)
-"""
 def auto_no_image_fallback(
     build: bool, docker_image_name: str, default_image: str, image_registry: str
 ) -> bool {
@@ -113,40 +68,16 @@ def auto_no_image_fallback(
 }
 
 
-# Image-strategy modes returned by decide_zeroconfig_image_strategy.
 glob IMAGE_STRATEGY_IMAGE: str = "image",
      IMAGE_STRATEGY_NO_IMAGE: str = "no_image";
 
 
-"""The deploy image strategy chosen for a zero-config microservice `--scale`.
-
-`mode` is `IMAGE_STRATEGY_IMAGE` (build a real image) or
-`IMAGE_STRATEGY_NO_IMAGE` (copy source into a ConfigMap + install jac at pod
-startup). `reason` is a human-readable explanation surfaced to the user so the
-chosen path - and how to change it - is never a surprise.
-"""
 obj ImageStrategy {
     has mode: str,
         reason: str;
 }
 
 
-"""Decide how a zero-config `jac start --scale` should get its image. Pure.
-
-Only consulted when no image path is configured (auto_no_image_fallback True).
-The key correctness point: copying source into a ConfigMap is a last resort, not
-the default. Whenever a real image can be produced for free it wins, because the
-local-cluster pipeline already builds and loads images with NO external registry
-(`kind load` / `k3d image import` / `minikube docker-env`).
-
-  - docker usable AND a local dev cluster (kind/k3d/minikube)
-        -> build a real image and load it into the cluster (no registry needed).
-  - docker not usable (no daemon)
-        -> no-image: source ConfigMap + install at startup is the only option.
-  - docker usable but a remote/unknown cluster with no registry configured
-        -> no-image: there is nowhere to push a real image; fall back (and tell
-           the user to set image_registry for a production deploy).
-"""
 def decide_zeroconfig_image_strategy(
     docker_usable: bool, cluster_is_local: bool
 ) -> ImageStrategy {
@@ -161,26 +92,17 @@ def decide_zeroconfig_image_strategy(
         return ImageStrategy(
             mode=IMAGE_STRATEGY_NO_IMAGE,
             reason="docker is not available: falling back to no-image (source "
-            "ConfigMap + install jac at pod startup). Install Docker, or "
-            "configure [plugins.scale.kubernetes].image_registry, for a "
             "production image deploy."
         );
     }
     return ImageStrategy(
         mode=IMAGE_STRATEGY_NO_IMAGE,
         reason="remote/unknown cluster with no image registry configured: "
-        "falling back to no-image. Set "
-        "[plugins.scale.kubernetes].image_registry (or use a local "
         "kind/k3d/minikube cluster) for a production image deploy."
     );
 }
 
 
-"""True when a local docker daemon is reachable (a zero-config image build is
-possible). Probes `docker info` with a short timeout; a missing CLI or any
-non-zero/raised result -> False, so the caller cleanly falls back to no-image.
-Side-effecting (subprocess), kept thin so the decision logic above stays pure.
-"""
 def docker_usable -> bool {
     import shutil;
     import subprocess;
@@ -196,10 +118,6 @@ def docker_usable -> bool {
 }
 
 
-"""True when the active kubectl context targets a local dev cluster
-(minikube/k3d/kind) that can load images without an external registry. Any
-detection failure -> False (treated as remote), so we never wrongly assume a
-registry-free path. Thin I/O wrapper over detect_cluster_type."""
 def cluster_is_local -> bool {
     try {
         import from jac_scale.microservices.images.cluster_detect {
@@ -215,8 +133,6 @@ def cluster_is_local -> bool {
 }
 
 
-"""True if `rel` (a project-relative Path) is a build artifact or secret file
-that must not be packed into the ConfigMap."""
 def _is_excluded(rel: any) -> bool {
     for part in rel.parts {
         if part in _EXCLUDE_DIRS {
@@ -227,7 +143,6 @@ def _is_excluded(rel: any) -> bool {
     if name in _EXCLUDE_FILES {
         return True;
     }
-    # .env, .env.local, .env.production, ... (dotenv family)
     if name == ".env" or name.startswith(".env.") {
         return True;
     }
@@ -238,8 +153,6 @@ def _is_excluded(rel: any) -> bool {
 }
 
 
-"""The project's jac.toml with the `[plugins.scale...]` tables (deploy creds)
-removed, or None when there's no jac.toml."""
 def _sanitized_jac_toml(base: any) -> (str | None) {
     src = base / "jac.toml";
     if not src.is_file() {
@@ -256,7 +169,6 @@ def _sanitized_jac_toml(base: any) -> (str | None) {
                 continue;
             }
         } elif stripped == "plugins.scale" or stripped.startswith("plugins.scale.") {
-            # Dotted-key form of a jac-scale setting; drop it defensively.
             continue;
         }
         if not skipping {
@@ -267,8 +179,6 @@ def _sanitized_jac_toml(base: any) -> (str | None) {
 }
 
 
-"""Tar+gzip the project dir (excluding build artifacts + secret files) into
-raw bytes."""
 def pack_source(project_dir: str) -> bytes {
     base = Path(project_dir).resolve();
     buf = io.BytesIO();
@@ -295,12 +205,6 @@ def pack_source(project_dir: str) -> bytes {
 }
 
 
-"""ConfigMap manifest carrying the base64 source archive in binaryData.
-
-K8s base64-decodes binaryData when mounting, so the in-pod file is the raw
-.tar.gz. Raises ValueError when the archive exceeds the ConfigMap size limit
-so the user gets an actionable message instead of an opaque apply failure.
-"""
 def build_source_configmap(
     app_name: str, namespace: str, project_dir: str
 ) -> dict[str, any] {
@@ -327,17 +231,6 @@ def build_source_configmap(
 }
 
 
-"""Plugin install commands for the non-experimental in-pod bootstrap, run against
-the copied `jac` binary (`jac_bin`). jaclang ships as the binary itself (fetched
-by install.sh), so it isn't listed here. `--global` is required: it installs into
-the binary's own site (which travels with the binary on the shared volume) rather
-than a project `.jac/venv` that lives in the init container's ephemeral $HOME and
-vanishes before the main container starts. Extras ride in the package spec as
-PEP 508 brackets (`jac-scale[all]`): `jac install`'s `--extras` flag is only
-honored for editable (`-e`) targets and is silently dropped for named packages.
-`requests` is a scale-plugin runtime dep that jac-scale ships only in the `test`
-extra (not `all`), so it must be installed explicitly or the plugin fails to load
-in every pod."""
 def pinned_install_commands(jac_bin: str) -> list[str] {
     return [
         f"{jac_bin} install 'jac-scale[all]' --global",
@@ -346,10 +239,6 @@ def pinned_install_commands(jac_bin: str) -> list[str] {
 }
 
 
-"""Shell command that writes a minimal jac.toml into the extracted source if
-one isn't there. The real jac.toml is excluded from the bundle (it can hold
-credentials), but `jac start <svc>.jac` requires a project jac.toml to exist,
-so the service pods need at least a stub."""
 def _ensure_jac_toml_cmd -> str {
     return (
         f"[ -f {APP_MOUNT_PATH}/jac.toml ] || "
@@ -358,8 +247,6 @@ def _ensure_jac_toml_cmd -> str {
 }
 
 
-"""Normalize an SCP-style or `ssh://` GitHub URL to anonymous HTTPS; init pods
-have no SSH key. Other URLs pass through unchanged."""
 def _https_clone_url(repo_url: str) -> str {
     if repo_url.startswith("git@") and ":" in repo_url {
         (host, path) = repo_url[4:].split(":", 1);
@@ -372,48 +259,27 @@ def _https_clone_url(repo_url: str) -> str {
 }
 
 
-"""Bootstrap script for experimental mode: clone the jaseci repo/branch and build
-the `jac` binary from that source onto the shared volume, so the pod runs the
-checkout's own jaclang (the whole point of experimental mode is testing
-uncommitted core changes). jaclang is the self-contained Zig binary, not a
-pip/editable package, so the checkout is compiled with `zig build` rather than
-`pip install -e`. repo/branch/commit arrive as `JACX_*` env vars (data, never
-spliced into shell code), so a value with a space or `$(...)` can't break or
-inject the clone."""
 def experimental_bootstrap_script -> str {
     jac_bin: str = f"{JAC_BIN_DIR}/jac";
     steps: list[str] = [
         "set -eu",
-        # Build deps via whichever package manager the base image ships (Debian
-        # slim -> apt, Alpine -> apk); skip when already present. zstd is needed
-        # by build.zig's python-build-standalone payload step.
         "command -v git >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 && command -v zstd >/dev/null 2>&1 || { apt-get update && apt-get install -y --no-install-recommends git curl xz-utils zstd || apk add --no-cache git curl xz zstd; }",
         f"tar xzf {SOURCE_MOUNT_PATH}/{SOURCE_ARCHIVE_KEY} -C {APP_MOUNT_PATH}",
         _ensure_jac_toml_cmd(),
         f"rm -rf {APP_MOUNT_PATH}/jaseci",
         f'git clone --branch "$JACX_BRANCH" --single-branch "$JACX_REPO_URL" {APP_MOUNT_PATH}/jaseci',
         f"cd {APP_MOUNT_PATH}/jaseci",
-        # Optional pin: skip when unset, but surface a real checkout failure.
         '[ -z "$JACX_COMMIT" ] || git checkout "$JACX_COMMIT"',
         "git submodule update --init --recursive",
-        # Fetch the pinned Zig toolchain for the pod's arch (build.zig.zon sets
-        # the minimum; JAC_ZIG_VERSION tracks it). uname -m -> ziglang's arch.
         'ZARCH="$(uname -m)"; [ "$ZARCH" = "arm64" ] && ZARCH="aarch64"',
         f'ZDIR="zig-${{ZARCH}}-linux-{JAC_ZIG_VERSION}"',
         f'curl -fsSL "https://ziglang.org/download/{JAC_ZIG_VERSION}/${{ZDIR}}.tar.xz" | tar -xJ -C /tmp',
         'export PATH="/tmp/${ZDIR}:$PATH"',
-        # Build the binary from this checkout's jac/ and drop it on PATH for the
-        # main container.
         f"mkdir -p {JAC_BIN_DIR}",
         "( cd jac && zig build )",
         f"cp jac/zig-out/bin/jac {jac_bin}",
         f'export PATH="{JAC_BIN_DIR}:$PATH"',
-        # Plugins install --global (into the built binary's own site on the
-        # shared volume, not an ephemeral project venv) from this same checkout
-        # so PR changes to the plugins are tested too.
         f"{jac_bin} install -e ./jac-scale --extras all --global",
-        # Skip-when-absent (core-only forks may omit these) but let a genuine
-        # install failure propagate rather than swallowing it with `|| true`.
         f"[ ! -d ./jac-byllm ] || {jac_bin} install -e ./jac-byllm --global",
         f"[ ! -d ./jac-mcp ] || {jac_bin} install -e ./jac-mcp --global"
     ];
@@ -421,11 +287,6 @@ def experimental_bootstrap_script -> str {
 }
 
 
-"""initContainer that extracts the packed source into the shared app volume and
-installs jac onto that same volume (so the main container starts fast against a
-ready tree). By default it fetches the released `jac` binary and installs the
-plugins; in experimental mode it git-clones the jaseci repo/branch and builds the
-binary from that checkout instead."""
 def build_bootstrap_init_container(
     base_image: str,
     experimental: bool = False,
@@ -444,8 +305,6 @@ def build_bootstrap_init_container(
     };
     if experimental {
         container["args"] = [experimental_bootstrap_script()];
-        # Untrusted repo/branch/commit ride as env data, not shell code, so they
-        # can't break or inject the clone (see experimental_bootstrap_script).
         container["env"] = [
             {"name": "JACX_REPO_URL", "value": _https_clone_url(repo_url)},
             {"name": "JACX_BRANCH", "value": branch},
@@ -455,19 +314,13 @@ def build_bootstrap_init_container(
         jac_bin: str = f"{PYDEPS_DIR}/bin/jac";
         steps: list[str] = [
             "set -eu",
-            # curl drives the installer; skip when the base image already has it.
             "command -v curl >/dev/null 2>&1 || { apt-get update && apt-get install -y --no-install-recommends curl || apk add --no-cache curl; }",
             f"tar xzf {SOURCE_MOUNT_PATH}/{SOURCE_ARCHIVE_KEY} -C {APP_MOUNT_PATH}",
             _ensure_jac_toml_cmd(),
-            # jaclang ships as the self-contained `jac` binary (not on PyPI). The
-            # official installer fetches it from GitHub Releases; drop it under
-            # PYDEPS_DIR/bin so it's on the main container's PATH.
             f"mkdir -p {PYDEPS_DIR}/bin",
             "curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash",
             f'cp "$HOME/.local/bin/jac" {jac_bin}'
         ];
-        # Plugins install --global so they land in the binary's own site (on the
-        # shared volume), not an ephemeral project venv the main container can't see.
         steps.extend(pinned_install_commands(jac_bin));
         container["args"] = [" && ".join(steps)];
     }

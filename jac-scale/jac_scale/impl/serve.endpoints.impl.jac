@@ -1,13 +1,10 @@
-"""Walker, function, webhook, WebSocket endpoint implementations."""
 impl JacAPIServerEndpoints.register_walkers_endpoints -> None {
     for walker_name in self.get_walkers() {
-        # Skip walkers configured for webhook or websocket transport
         protocol = self.get_walker_protocol(walker_name);
         if protocol == APIProtocol.WEBHOOK or protocol == APIProtocol.WEBSOCKET {
             continue;
         }
         walker_cls = self.get_walkers()[walker_name];
-        # Skip walkers with a schedule_spec (they run on a schedule, not as HTTP endpoints)
         if walker_cls?.schedule_spec {
             continue;
         }
@@ -53,7 +50,6 @@ impl JacAPIServerEndpoints.create_walker_parameters(
 ) -> list[APIParameter] {
     import from typing { get_type_hints }
     parameters: list[APIParameter] = [];
-    # Extract path parameter names from restspec path (e.g. /items/{item_id} -> {"item_id"})
     walker_cls = self.get_walkers()[walker_name];
     restspec = walker_cls.restspec if walker_cls?.restspec else None;
     spec_path = restspec.path if restspec else None;
@@ -61,9 +57,6 @@ impl JacAPIServerEndpoints.create_walker_parameters(
     walker_fields = self.introspector.introspect_walker(self.get_walkers()[walker_name])[
         'fields'
     ];
-    # Resolve actual type objects for custom-obj support. The jaclang
-    # introspector stringifies types, which is insufficient for generating
-    # nested Pydantic body models.
     try {
         walker_type_hints = get_type_hints(walker_cls.init);
     } except Exception {
@@ -74,11 +67,9 @@ impl JacAPIServerEndpoints.create_walker_parameters(
             continue;
         }
         field_type = walker_fields[field_name]['type'];
-        # Determine parameter type: path params first, then file, then query/body by method
         if field_name == '_jac_spawn_node' or field_name in path_param_names {
             param_type = ParameterType.PATH;
         } elif ('UploadFile' in field_type or 'uploadfile' in field_type.lower()) {
-            # Support UploadFile type for file uploads
             param_type = ParameterType.FILE;
         } elif method == HTTPMethod.GET {
             param_type = ParameterType.QUERY;
@@ -158,13 +149,9 @@ impl JacAPIServerEndpoints.create_walker_callback(
     return callback;
 }
 
-# ============================================================================
-# Function Endpoints
-# ============================================================================
 impl JacAPIServerEndpoints.register_functions_endpoints -> None {
     for func_name in self.get_functions() {
         func_obj = self.get_functions()[func_name];
-        # Skip functions with a schedule_spec (they run on a schedule, not as HTTP endpoints)
         if func_obj?.schedule_spec {
             continue;
         }
@@ -197,7 +184,6 @@ impl JacAPIServerEndpoints.create_function_parameters(
 ) -> list[APIParameter] {
     import from typing { get_type_hints }
     parameters: list[APIParameter] = [];
-    # Extract path parameter names from restspec path
     func_obj = self.get_functions()[func_name];
     restspec = func_obj.restspec if func_obj?.restspec else None;
     spec_path = restspec.path if restspec else None;
@@ -261,10 +247,6 @@ impl JacAPIServerEndpoints.create_function_callback(
         result = await self.execution_manager.execute_function(
             self.get_functions()[func_name], kwargs, (username or Con.GUEST.value)
         );
-        # Handle streaming responses (generators/async generators).
-        # Wrap in sse_frame_stream so each yield becomes a properly
-        # framed `data: {json}\n\n` chunk (raw StreamingResponse would
-        # emit dict reprs, which is invalid SSE).
         if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
             import from jac_scale.microservices.gateway_internals.middleware.sse {
                 sse_frame_stream
@@ -294,10 +276,6 @@ impl JacAPIServerEndpoints.create_function_callback(
     return callback;
 }
 
-# ============================================================================
-# Webhook Endpoints
-# ============================================================================
-"""Get the API protocol for a walker by checking its restspec."""
 impl JacAPIServerEndpoints.get_walker_protocol(walker_name: str) -> str {
     walkers = self.get_walkers();
     if walker_name not in walkers {
@@ -311,7 +289,6 @@ impl JacAPIServerEndpoints.get_walker_protocol(walker_name: str) -> str {
     return APIProtocol.HTTP;
 }
 
-"""Create webhook callback for a walker with HMAC-SHA256 signature verification."""
 impl JacAPIServerEndpoints.create_webhook_callback(
     walker_name: str
 ) -> Callable[..., TransportResponse] {
@@ -330,7 +307,6 @@ impl JacAPIServerEndpoints.create_webhook_callback(
         max_body_bytes = int(webhook_config.get('max_body_bytes', 1048576));
         rate_limit = int(webhook_config.get('rate_limit_per_minute', 0));
 
-        # Get API key from header
         api_key = request.headers.get('X-API-Key');
         if not api_key {
             return TransportResponse.fail(
@@ -342,7 +318,6 @@ impl JacAPIServerEndpoints.create_webhook_callback(
 
         key_doc = self.get_api_key_manager().resolve_key(api_key);
         user_id = key_doc.get('user_id') if key_doc else None;
-        # Invalid/inactive key, or its owning user no longer exists.
         if not user_id or not self.user_manager.user_exists(user_id) {
             return TransportResponse.fail(
                 code='UNAUTHORIZED',
@@ -350,7 +325,6 @@ impl JacAPIServerEndpoints.create_webhook_callback(
                 meta=Meta(extra={'http_status': 401})
             );
         }
-        # Enforce per-key walker scoping (empty allow-list = unscoped)
         allowed_walkers = key_doc.get('allowed_walkers') or [];
         if allowed_walkers and walker_name not in allowed_walkers {
             return TransportResponse.fail(
@@ -359,7 +333,6 @@ impl JacAPIServerEndpoints.create_webhook_callback(
                 meta=Meta(extra={'http_status': 403})
             );
         }
-        # Per-key rate limit (best-effort, per-process; off when <= 0)
         if not self.get_api_key_manager().check_rate_limit(
             key_doc.get('_id', ''), rate_limit
         ) {
@@ -369,8 +342,6 @@ impl JacAPIServerEndpoints.create_webhook_callback(
                 meta=Meta(extra={'http_status': 429})
             );
         }
-        # Reject oversized payloads. Check the declared length first so a
-        # huge body is refused before it is buffered into memory.
         def _too_large -> TransportResponse {
             return TransportResponse.fail(
                 code='PAYLOAD_TOO_LARGE',
@@ -384,19 +355,14 @@ impl JacAPIServerEndpoints.create_webhook_callback(
                 if int(content_length) > max_body_bytes {
                     return _too_large();
                 }
-            } except Exception {
-            # Malformed Content-Length: fall through to the post-read cap
-            }
+            } except Exception { }
         }
 
-        # Read the raw request body once and reuse it for both signature
-        # verification and field parsing.
         raw_body = await request.body();
         if len(raw_body) > max_body_bytes {
             return _too_large();
         }
 
-        # Verify HMAC-SHA256 signature if enabled
         if verify_signature {
             signature = request.headers.get(signature_header);
             if not signature {
@@ -406,8 +372,6 @@ impl JacAPIServerEndpoints.create_webhook_callback(
                     meta=Meta(extra={'http_status': 401})
                 );
             }
-            # Replay protection: require a fresh timestamp and bind it into
-            # the signature so a captured request cannot be replayed later.
             timestamp = request.headers.get(timestamp_header);
             if not timestamp {
                 return TransportResponse.fail(
@@ -440,8 +404,6 @@ impl JacAPIServerEndpoints.create_webhook_callback(
                     meta=Meta(extra={'http_status': 401})
                 );
             }
-            # The signature covers "<timestamp>." + raw body, so the
-            # timestamp cannot be altered independently of the signature.
             signed_payload = f"{timestamp}.".encode('utf-8') + raw_body;
             extracted_signature = WebhookUtils.extract_signature(signature);
             if not WebhookUtils.verify_signature(
@@ -455,7 +417,6 @@ impl JacAPIServerEndpoints.create_webhook_callback(
             }
         }
 
-        # Parse body for walker fields
         try {
             body_data = json.loads(raw_body) if raw_body else {};
         } except Exception {
@@ -474,15 +435,11 @@ impl JacAPIServerEndpoints.create_webhook_callback(
             }
         }
 
-        # Execute the walker
         result = await self.execution_manager.spawn_walker(
             self.get_walkers()[walker_name], walker_kwargs, user_id
         );
 
         if 'error' in result {
-            # Webhooks are called by external services. Log the detailed
-            # error and traceback server-side, but return only a generic
-            # message so internal state is not disclosed to the caller.
             logger.error(
                 f"Webhook walker '{walker_name}' failed: "
                 f"{result.get('error')} {result.get('traceback', '')}"
@@ -517,7 +474,6 @@ impl JacAPIServerEndpoints.create_webhook_callback(
     return callback;
 }
 
-"""Create parameters for webhook endpoint."""
 impl JacAPIServerEndpoints.create_webhook_parameters(
     walker_name: str
 ) -> list[APIParameter] {
@@ -532,8 +488,6 @@ impl JacAPIServerEndpoints.create_webhook_parameters(
             type=ParameterType.HEADER
         )
     );
-    # Signature header (for HMAC verification)
-    # Use underscore naming for valid Python identifiers
     parameters.append(
         APIParameter(
             name='x_webhook_signature',
@@ -544,7 +498,6 @@ impl JacAPIServerEndpoints.create_webhook_parameters(
             type=ParameterType.HEADER
         )
     );
-    # Timestamp header (for replay protection)
     parameters.append(
         APIParameter(
             name='x_webhook_timestamp',
@@ -555,7 +508,6 @@ impl JacAPIServerEndpoints.create_webhook_parameters(
             type=ParameterType.HEADER
         )
     );
-    # Add walker fields as body parameters (excluding protocol)
     walker_fields = self.introspector.introspect_walker(self.get_walkers()[walker_name])[
         'fields'
     ];
@@ -578,7 +530,6 @@ impl JacAPIServerEndpoints.create_webhook_parameters(
     return parameters;
 }
 
-"""Register webhook endpoints for walkers with protocol=WEBHOOK."""
 impl JacAPIServerEndpoints.register_webhook_endpoints -> None {
     for walker_name in self.get_walkers() {
         protocol = self.get_walker_protocol(walker_name);
@@ -600,10 +551,6 @@ impl JacAPIServerEndpoints.register_webhook_endpoints -> None {
     }
 }
 
-# ============================================================================
-# WebSocket Endpoints
-# ============================================================================
-"""Get or lazily initialize the WebSocket connection manager."""
 impl JacAPIServerEndpoints.get_ws_manager -> WebSocketConnectionManager {
     if not self._ws_manager {
         self._ws_manager = WebSocketConnectionManager();
@@ -611,11 +558,9 @@ impl JacAPIServerEndpoints.get_ws_manager -> WebSocketConnectionManager {
     return self._ws_manager;
 }
 
-"""Create a WebSocket handler for a specific walker."""
 impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callable {
     ws_manager = self.get_ws_manager();
     requires_auth = self.introspector.is_auth_required_for_walker(walker_name);
-    # Check if this walker has broadcast enabled
     walker_cls = self.get_walkers()[walker_name];
     restspec = walker_cls.restspec
         if walker_cls?.restspec and walker_cls.restspec
@@ -627,7 +572,6 @@ impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callabl
             while True {
                 data = await websocket.receive_json();
 
-                # Handle authentication if required
                 username: (str | None) = None;
                 if requires_auth {
                     token = data.pop('token', None)
@@ -649,7 +593,6 @@ impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callabl
                     }
                 }
 
-                # Spawn the walker with received fields
                 try {
                     result = await self.execution_manager.spawn_walker(
                         self.get_walkers()[walker_name],
@@ -657,7 +600,6 @@ impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callabl
                         (username or Con.GUEST.value)
                     );
                     if isinstance(result, dict) and 'error' in result {
-                        # Errors always go only to sender
                         await websocket.send_json(
                             {
                                 'ok': False,
@@ -672,10 +614,8 @@ impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callabl
                     } else {
                         response = {'ok': True, 'data': result};
                         if is_broadcast {
-                            # Broadcast to ALL connections of this walker
                             await ws_manager.broadcast(walker_name, response);
                         } else {
-                            # Send only to sender
                             await websocket.send_json(response);
                         }
                     }
@@ -683,7 +623,6 @@ impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callabl
                     logger.error(
                         f"WebSocket walker execution error for '{walker_name}': {e}"
                     );
-                    # Errors always go only to sender
                     await websocket.send_json(
                         {
                             'ok': False,
@@ -702,7 +641,6 @@ impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callabl
     return websocket_handler;
 }
 
-"""Register WebSocket endpoints for walkers with protocol=WEBSOCKET (production mode)."""
 impl JacAPIServerEndpoints.register_websocket_endpoints -> None {
     for walker_name in self.get_walkers() {
         protocol = self.get_walker_protocol(walker_name);

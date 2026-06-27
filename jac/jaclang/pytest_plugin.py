@@ -1,16 +1,3 @@
-"""Pytest plugin for collecting and running Jac test files.
-
-This plugin teaches pytest how to discover and execute tests defined with
-Jac's native ``test`` keyword.  It supports two naming conventions:
-
-- ``test_*.jac``  -- standalone test files (pytest naming convention)
-- ``*.test.jac``  -- annex test files attached to a base module (Jac convention)
-
-When *jaclang* is installed the plugin is automatically registered via the
-``pytest11`` entry point so ``pytest`` discovers Jac tests alongside Python
-tests with zero configuration.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -27,9 +14,6 @@ from unittest import FunctionTestCase
 
 import pytest
 
-# The canonical suffix knowledge lives in the plain-Python extension registry.
-# Load it by path so importing this pytest plugin never triggers the heavy
-# ``jaclang`` bootstrap when a project has no Jac tests (issue #6858).
 _registry: types.ModuleType | None = None
 
 
@@ -45,11 +29,6 @@ def _ext_registry() -> types.ModuleType:
         spec.loader.exec_module(module)
         _registry = module
     return _registry
-
-
-# ---------------------------------------------------------------------------
-# Hook -- file collection
-# ---------------------------------------------------------------------------
 
 
 def _explicit_targets(config: pytest.Config) -> set[str]:
@@ -79,36 +58,24 @@ def pytest_collect_file(
     name = file_path.name
     reg = _ext_registry()
 
-    # Never collect implementation annexes.
     if reg.is_impl(name):
         return None
 
-    # A file named directly on the command line is always collected -- even a
-    # fixtures/ input or a non-`test_` name -- so `jac test <file>` runs it.
     explicit = str(file_path.resolve()) in _explicit_targets(parent.config)
 
-    # Otherwise skip .jac files inside fixtures/ directories: during directory
-    # recursion those are test inputs, not test suites.
     if not explicit and any(p.name == "fixtures" for p in file_path.parents):
         return None
 
-    # Client (cl) test files run their `test` blocks under bun, not Python.
-    # test_*.cl.jac / *.test.cl.jac -> dedicated client collector.
     if reg.is_client_module(name):
         if explicit or name.startswith("test_") or reg.is_client_test(name):
             return ClJacFile.from_parent(parent, path=file_path)
         return None
 
-    # Collect test_*.jac (pytest convention) and *.test.jac (Jac convention).
     if explicit or (name.startswith("test_") and reg.is_jac(name)) or reg.is_test(name):
         return JacFile.from_parent(parent, path=file_path)
 
     return None
 
-
-# ---------------------------------------------------------------------------
-# Session-level Jac runtime bootstrap
-# ---------------------------------------------------------------------------
 
 _jac_runtime_ready = False
 
@@ -147,22 +114,15 @@ def _fresh_jac_state(*, clear_modules: bool = True):
     from jaclang.jac0core.program import JacProgram
     from jaclang.jac0core.runtime import JacRuntime, JacRuntimeInterface
 
-    # Close any existing execution context
     if JacRuntime.exec_ctx is not None:
         JacRuntime.exec_ctx.mem.close()
 
     if clear_modules:
-        # Remove previously-loaded user .jac modules from sys.modules.
         for mod in list(JacRuntime.loaded_modules.values()):
             if not mod.__name__.startswith("jaclang.") and mod.__name__ != "__main__":
                 sys.modules.pop(mod.__name__, None)
         JacRuntime.loaded_modules.clear()
 
-    # Set up fresh state with isolated storage (temp directory avoids
-    # stale SQLite data from previous tests). Seed the bootstrap default
-    # so any subsequent `ExecutionContext()` without explicit args picks
-    # it up. The session-wide exec_ctx is constructed with the seed
-    # passed explicitly so its L3 path is locked in at construction.
     fresh_base = tempfile.mkdtemp()
     JacRuntime.set_base_path(fresh_base)
     JacRuntime.set_full_target_path(None)
@@ -172,10 +132,6 @@ def _fresh_jac_state(*, clear_modules: bool = True):
         user_root=None, base_path_dir=fresh_base, full_target_path=None
     )
 
-
-# ---------------------------------------------------------------------------
-# Synthetic namespace packages for relative import support
-# ---------------------------------------------------------------------------
 
 _test_packages: dict[str, str] = {}
 _test_pkg_counter = 0
@@ -196,7 +152,6 @@ def _ensure_test_package(base_dir: str) -> str:
     global _test_pkg_counter
     real_dir = os.path.realpath(base_dir)
 
-    # Reuse existing package name if we've seen this directory before.
     pkg_name = _test_packages.get(real_dir)
     if pkg_name and pkg_name in sys.modules:
         return pkg_name
@@ -240,11 +195,6 @@ def _scoped_syspath(directory: str):
                 sys.path.remove(real_dir)
 
 
-# ---------------------------------------------------------------------------
-# Collector
-# ---------------------------------------------------------------------------
-
-
 class JacFile(pytest.File):
     """Collector that imports a ``.jac`` file and yields its ``test`` blocks."""
 
@@ -255,18 +205,13 @@ class JacFile(pytest.File):
         _fresh_jac_state()
         JacTestCheck.reset()
 
-        # Snapshot sys.modules so we can clean up Jac-imported modules after
-        # collection.  This prevents collisions with .py files that share the
-        # same stem (e.g. test_language.py + test_language.jac).
         modules_before = set(sys.modules.keys())
 
-        # Suppress stdout during collection (entry blocks, prints, etc.)
         old_stdout = sys.stdout
         sys.stdout = open(os.devnull, "w")  # noqa: SIM115
         try:
             filepath = str(self.path)
 
-            # For .test.jac annexes, find and import the base module instead.
             if filepath.endswith(".test.jac"):
                 try:
                     from jaclang.jac0core.bccache import discover_base_file
@@ -280,9 +225,6 @@ class JacFile(pytest.File):
             base_dir = str(Path(filepath).parent)
             mod_name = Path(filepath).stem
 
-            # Import the test module under a synthetic namespace package so
-            # that relative imports (``from .sibling import ...``) resolve
-            # against sibling .jac files in the same directory.
             pkg_name = _ensure_test_package(base_dir)
             qualified_name = f"{pkg_name}.{mod_name}"
 
@@ -290,13 +232,11 @@ class JacFile(pytest.File):
                 with _scoped_syspath(base_dir):
                     importlib.import_module(qualified_name)
             except Exception:
-                # Import failure -- nothing to collect from this file.
                 return []
         finally:
             sys.stdout.close()
             sys.stdout = old_stdout
 
-        # Collect test items into a list.
         items: list[JacTestItem] = []
         for _key, tests in JacTestCheck.test_suite_path.items():
             for test_info in tests:
@@ -308,11 +248,6 @@ class JacFile(pytest.File):
                     )
                 )
 
-        # Remove the test module itself from sys.modules to avoid collisions
-        # with Python test files that share the same basename (e.g.
-        # test_server.py vs test_server.jac).  We intentionally keep other
-        # modules (vendored libs, compiler internals) so that class identity
-        # (isinstance checks) and forward-reference resolution remain intact.
         test_mod_name = Path(self.path).stem
         for name in list(sys.modules.keys()):
             if name not in modules_before and (
@@ -321,11 +256,6 @@ class JacFile(pytest.File):
                 sys.modules.pop(name, None)
 
         return items
-
-
-# ---------------------------------------------------------------------------
-# Item
-# ---------------------------------------------------------------------------
 
 
 class JacTestItem(pytest.Item):
@@ -355,14 +285,10 @@ class JacTestItem(pytest.Item):
             self._test_case.runTest()
 
     def repr_failure(self, excinfo: pytest.ExceptionInfo[BaseException]) -> str:
-        # Build a concise traceback showing only test-relevant frames
-        # (the test file itself) plus the final error, filtering out
-        # pytest/pluggy/venv internals AND jaclang compiler internals.
         import linecache
 
         lines: list[str] = []
         tb = excinfo.tb
-        # Collect frames from the test file and immediate test code only.
         test_entries: list[tuple[str, int, str, str]] = []
         last_entry: tuple[str, int, str, str] | None = None
         while tb is not None:
@@ -376,10 +302,8 @@ class JacTestItem(pytest.Item):
                 src_line = linecache.getline(filename, lineno).strip()
             entry = (filename, lineno, funcname, src_line)
             last_entry = entry
-            # Skip non-project frames.
             if any(s in filename for s in (".venv/", "site-packages/", "/unittest/")):
                 continue
-            # Keep frames from test files, skip jaclang internals.
             if "/jaclang/" in filename and "/tests/" not in filename:
                 continue
             test_entries.append(entry)
@@ -389,24 +313,17 @@ class JacTestItem(pytest.Item):
             if src_line:
                 lines.append(f"    {src_line}")
 
-        # Show where the error actually occurred if it's not already shown.
         if last_entry and (not test_entries or last_entry != test_entries[-1]):
             filename, lineno, funcname, src_line = last_entry
             lines.append(f"  {filename}:{lineno} in {funcname}")
             if src_line:
                 lines.append(f"    {src_line}")
 
-        # Append the exception message.
         lines.append(f"E   {excinfo.typename}: {excinfo.value}")
         return "\n".join(lines)
 
     def reportinfo(self) -> tuple[Path, None, str]:
         return self.path, None, self.name
-
-
-# ---------------------------------------------------------------------------
-# Client (cl) test collection -- runs `test` blocks under bun
-# ---------------------------------------------------------------------------
 
 
 class ClJacFile(pytest.File):
@@ -420,14 +337,12 @@ class ClJacFile(pytest.File):
     def collect(self) -> list[ClJacTestItem]:
         from jaclang.runtimelib.cl_test_runner import run_cl_test_file
 
-        # bun is auto-installed on demand by the runner (jaclang's bun_installer),
-        # so these run anywhere pytest collects them -- no toolchain gating needed.
         _ensure_jac_runtime()
         _fresh_jac_state()
 
         try:
             results = run_cl_test_file(str(self.path))
-        except Exception as exc:  # surface compile/bun errors as one failing item
+        except Exception as exc:
             return [
                 ClJacTestItem.from_parent(
                     self,

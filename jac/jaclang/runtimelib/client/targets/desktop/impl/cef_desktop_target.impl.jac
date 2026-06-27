@@ -1,10 +1,3 @@
-"""Implementation of the CEF-based desktop target.
-
-Mirrors the pipeline in native_desktop_target.impl.jac with two divergences:
-  - The host uses cef.na.jac (CEF Chromium) instead of webview.na.jac
-  - The CEF runtime bundle is staged alongside dist/
-Shared build steps live in desktop_build.jac.
-"""
 import os;
 import shutil;
 import json;
@@ -35,7 +28,6 @@ import from jaclang.runtimelib.client.targets.desktop._dev_launch {
     desktop_app_runtime_env
 }
 
-"""Ensure the CEF binary distribution is staged (fetch it on first use)."""
 def _ensure_cef_dist(cef_dir: Path) -> Path {
     dist = cef_dir / "cef_dist";
     headers = cef_dir / "cef_headers" / "include" / "capi" / "cef_app_capi.h";
@@ -58,7 +50,6 @@ def _ensure_cef_dist(cef_dir: Path) -> Path {
     return dist;
 }
 
-"""Return true when an output is missing or older than any source input."""
 def _is_stale(output: Path, inputs: list[Path]) -> bool {
     if not output.exists() {
         return True;
@@ -72,7 +63,6 @@ def _is_stale(output: Path, inputs: list[Path]) -> bool {
     return False;
 }
 
-"""Ensure libcef_dispatch.so exists beside the binding (build it on first use)."""
 def _ensure_libcef_dispatch(cef_dir: Path) -> Path {
     lib = cef_dir / "libcef_dispatch.so";
     src = cef_dir / "cef_dispatch.na.jac";
@@ -86,7 +76,6 @@ def _ensure_libcef_dispatch(cef_dir: Path) -> Path {
     return build_cef_dispatch(cef_dir);
 }
 
-"""Ensure cef-subprocess helper exists (jac nacompile binary for CEF browser subprocesses)."""
 def _ensure_cef_subprocess(cef_dir: Path) -> Path {
     helper = cef_dir / "cef-subprocess";
     src = cef_dir / "cef_subprocess.na.jac";
@@ -98,11 +87,7 @@ def _ensure_cef_subprocess(cef_dir: Path) -> Path {
     return build_cef_subprocess(cef_dir);
 }
 
-"""Generate the CEF native host source (`host.na.jac`).
 
-Bootstrap JS (window.__JAC_DESKTOP__, window.__JAC_BROKER__) is injected in
-cef_dispatch.na.jac's on_context_created handler, not in this host.
-"""
 def _generate_host_source(
     title: str,
     width: int,
@@ -115,24 +100,6 @@ def _generate_host_source(
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
 ) -> str {
-    # Splice the plugin host into the loopback server: it builds _host/_dispatch_fn,
-    # switches the host to the SSE push transport (setup_cef), routes POST
-    # /__jac/invoke into dispatch, and exposes the host on GET /__jac/events for
-    # emit()/eval_js(). JS reaches invoke via the fetch shim and on()/__emit__ via
-    # the EventSource in cef_dispatch.na.jac's BOOTSTRAP_JS (CEF's render process
-    # can't bind into the host in-process the way the single-process webview
-    # target does). Threaded server: the SSE stream blocks for its lifetime.
-    #
-    # Phase J4 (#6596) for CEF: after the plugin host, also import + boot
-    # inprocess_dispatch (the SAME shared boot snippet the webview host uses) so
-    # the loopback's POST /walker/* + /function/* routes (sv_bridge=inprocess_
-    # dispatch.forward) replay sv calls against the in-process jac-scale app. The
-    # boot must run before make_handler so the sv_bridge= reference resolves, so it
-    # rides in the plugin_bootstrap slot (which runs first); we define `_data`
-    # there too (`_root` is already set) since the loopback's own `_data` is only
-    # assigned later. CEF leaves __JAC_NATIVE__ unset, so the page reaches these
-    # routes through its normal same-origin web fetch path -- no frontend change,
-    # functionally identical to the webview target for the end user.
     serve_py = _loopback_serve_py(
         app_name,
         _make_plugin_bootstrap_py(plugin_configs) + "_host.setup_cef()\n" + "_data = os.environ.get('JAC_DATA_PATH', _root)\n" + _dispatch_boot_py(
@@ -143,58 +110,20 @@ def _generate_host_source(
         ", sv_bridge=inprocess_dispatch.forward"
     );
     return (
-        '"""Generated CEF desktop host - do not edit (jac-desktop)."""\n'
-        "import sys;\n"
-        "import from cef {\n"
-        "    cef_execute_subprocess,\n"
-        "    cef_startup,\n"
-        "    cef_open_browser,\n"
-        "    cef_run_loop,\n"
-        "    cef_cleanup,\n"
-        "}\n" + _jacpyembed_import_block() + "glob PY_EVAL: i32 = 258;\n"
+        '"""Generated CEF desktop host - do not edit (jac-desktop)."""\n' "}\n" + _jacpyembed_import_block() + "glob PY_EVAL: i32 = 258;\n"
         f"glob SERVE_PY: str = {json.dumps(serve_py, ensure_ascii=False)};\n"
         "with entry {\n"
-        "    code: i32 = cef_execute_subprocess();\n"
-        "    if code >= 0 {\n"
-        "        sys.exit(code);\n"
         "    }\n"
         f"    rc: i32 = cef_startup({json.dumps(cache_path, ensure_ascii=False)}, 1);\n"
         "    if rc != 1 {\n"
-        "        sys.exit(1);\n"
-        "    }\n"
-        # Bring up the fused runtime (materialize + dlopen the bundled CPython +
-        # Py_Initialize) before any Py_* call. Non-zero -> bail, like cef_startup.
-        "    engine_rc: i32 = jac_engine_boot();\n"
-        "    if engine_rc != 0 {\n"
-        "        sys.exit(1);\n"
-        "    }\n"
-        "    rc_py: i32 = jpy_PyRun_SimpleString(SERVE_PY);\n"
-        "    if rc_py != 0 {\n"
-        "        sys.exit(1);\n"
-        "    }\n"
-        '    main_mod = jpy_PyImport_AddModule("__main__");\n'
-        "    d = jpy_PyModule_GetDict(main_mod);\n"
-        '    port_obj: int = jpy_PyRun_String("_port", PY_EVAL, d, d);\n'
-        "    if port_obj == 0 {\n"
-        "        sys.exit(1);\n"
-        "    }\n"
-        "    port = jpy_PyLong_AsLong(port_obj);\n"
-        "    url = f\"http://127.0.0.1:{port}/\";\n"
-        "    cef_open_browser(\n"
         "        url,\n"
         f"        {json.dumps(title, ensure_ascii=False)},\n"
         f"        {width}, {height}\n"
         "    );\n"
-        "    ts = jpy_PyEval_SaveThread();\n"
-        "    cef_run_loop();\n"
-        "    jpy_PyEval_RestoreThread(ts);\n"
-        "    jpy_Py_Finalize();\n"
-        "    cef_cleanup();\n"
         "}\n"
     );
 }
 
-"""Stage the CEF runtime bundle alongside dist/ in the output directory."""
 def _stage_cef_runtime(cef_dist: Path, out_dir: Path) {
     shutil.copy2(cef_dist / "libcef.so", out_dir / "libcef.so");
     for name in [
@@ -253,8 +182,6 @@ impl CefDesktopTarget.build(
     dist_dir = web_bundle.parent;
 
     cfg = get_desktop_config(project_dir);
-    # Fail the build on a bad config instead of silently shipping it (mirrors
-    # the native target).
     cfg.validate();
     ident = cfg.get_identity();
     win = cfg.get_window_config();
@@ -284,10 +211,6 @@ impl CefDesktopTarget.build(
     shutil.copy2(cef_dir / "cef.na.jac", out_dir / "cef.na.jac");
     _stage_cef_runtime(cef_dist, out_dir);
 
-    # Phase J4 (#6596): stage only the sv source tree beside the binary. oauth_
-    # broker, inprocess_dispatch, and the plugins are imported from the fused
-    # runtime's jaclang tree at boot (no transpiled .py staging). The loopback
-    # boots inprocess_dispatch and bridges /walker/* + /function/* into it.
     sv_root = entry_file.parent;
     sv_ignore = shutil.ignore_patterns(
         ".jac", ".git", "node_modules", ".venv*", "__pycache__", "*.pyc"
@@ -295,7 +218,6 @@ impl CefDesktopTarget.build(
     shutil.copytree(sv_root, out_dir / "sv", ignore=sv_ignore);
     sv_entry_rel = str(entry_file.name);
 
-    # Stage the fused-runtime bridge shim ($ORIGIN-adjacent) before compiling.
     _stage_pyembed_shim(out_dir);
     cache_path = str(project_dir / ".jac" / "desktop" / "cef-cache" / str(app_name));
     host_src = _generate_host_source(
@@ -322,9 +244,6 @@ impl CefDesktopTarget.build(
         raise RuntimeError("CEF native host compilation failed.");
     }
     binary = out_dir / app_name;
-    # $ORIGIN runpath for the sibling libcef.so (bound by explicit path in
-    # cef.na.jac), then append this jac's fused-runtime trailer payload so the host
-    # carries the bundled CPython + jaclang (jac_engine_boot materializes it).
     _patch_host_rpath(binary);
     _bundle_runtime(binary);
     console.print(f"\n✅ CEF desktop app built: {binary}", style="bold green");

@@ -1,25 +1,7 @@
-"""Common enums for jac-scale."""
+enum Platforms { GOOGLE = 'google', APPLE = 'apple', GITHUB = 'github', }
 
-"""Supported SSO platforms."""
-enum Platforms {
-    GOOGLE = 'google',
-    APPLE = 'apple',
-    GITHUB = 'github',
-}
+enum Operations { LOGIN = 'login', REGISTER = 'register', }
 
-"""SSO operations."""
-enum Operations {
-    LOGIN = 'login',
-    REGISTER = 'register',
-}
+enum IdentityType { USERNAME = 'username', EMAIL = 'email', }
 
-"""Supported identity types for user registration."""
-enum IdentityType {
-    USERNAME = 'username',
-    EMAIL = 'email',
-}
-
-"""Supported credential types for user authentication."""
-enum CredentialType {
-    PASSWORD = 'password',
-}
+enum CredentialType { PASSWORD = 'password', }

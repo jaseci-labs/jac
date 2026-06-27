@@ -1,4 +1,3 @@
-"""MongoDB-backed database implementation."""
 import from jac_scale.db {
     Db,
     InsertResult,
@@ -21,9 +20,7 @@ import from jaclang.runtimelib.serializer { Serializer }
 obj MongoDb(Db) {
     has client: MongoClient;
 
-    """Get MongoDB collection reference."""
     def _get_mongo_collection(col_name: str) -> Collection;
-
     def get(key: str, col_name: str = 'default') -> dict | None;
     def set(key: str, value: dict, col_name: str = 'default') -> str;
     def delete(key: str, col_name: str = 'default') -> int;

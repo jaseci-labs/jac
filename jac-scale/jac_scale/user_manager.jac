@@ -16,7 +16,6 @@ import from jac_scale.identity_storage {
 }
 import from jaclang.jac0core.constant { Constants as Con }
 
-# Load configuration
 glob _jwt_config = get_scale_config().get_jwt_config(),
      _sso_config = get_scale_config().get_sso_config(),
      JWT_SECRET = _jwt_config['secret'],
@@ -28,12 +27,7 @@ glob _jwt_config = get_scale_config().get_jwt_config(),
          '_jac_scale_root_id_cache', default=None
      );
 
-"""User roles enum."""
-enum UserRole {
-    ADMIN = 'admin',
-    SYSTEM = 'system',
-    USER = 'user',
-}
+enum UserRole { ADMIN = 'admin', SYSTEM = 'system', USER = 'user', }
 
 obj JacScaleUserManager(UserManager) {
     has SUPPORTED_PLATFORMS: dict = {},
@@ -41,9 +35,6 @@ obj JacScaleUserManager(UserManager) {
         _identity_storage: IdentityStorage by postinit;
 
     def postinit -> None;
-    # User creation: `create_user` honours the `UserManager` interface
-    # (username/password); `create_user_with_identities` is the richer
-    # identity-based form used by the `/register` endpoint and SSO.
     def create_user(username: str, password: str) -> dict[str, any];
     def create_user_with_identities(
         identities: list[dict[str, any]],
@@ -73,19 +64,16 @@ obj JacScaleUserManager(UserManager) {
     ) -> dict[str, any];
 
     def close -> None;
-    # JWT methods (use user_id as claim)
     def create_jwt_token(user_id: str, include_role: bool = True) -> str;
     def validate_jwt_token(token: str) -> str | None;
     def refresh_jwt_token(token: str) -> str | None;
     def get_jwt_claims(token: str) -> dict | None;
-    # SSO methods
     def get_sso(platform: str) -> SSOProvider | None;
     async def sso_initiate(
         platform: str, operation: str, client_callback: str | None = None
     ) -> Response | TransportResponse;
 
     async def sso_callback(request: Request, platform: str) -> TransportResponse;
-    # SSO Account Linking
     def link_sso_account(
         user_id: str, platform: str, external_id: str
     ) -> dict[str, str];
@@ -93,9 +81,7 @@ obj JacScaleUserManager(UserManager) {
     def unlink_sso_account(user_id: str, platform: str) -> dict[str, str];
     def get_sso_accounts(user_id: str) -> list[dict[str, str]];
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, str] | None;
-    # Override validate_token to use JWT
     def validate_token(token: str) -> str | None;
-    # User role and admin management
     def get_user_role(user_id: str) -> str | None;
     def set_user_role(user_id: str, role: str) -> dict[str, str];
     def is_admin(user_id: str) -> bool;
@@ -115,6 +101,5 @@ obj JacScaleUserManager(UserManager) {
         requires_password_reset: bool = True
     ) -> dict[str, any];
 
-    # Backward compat helpers
     def get_username(user_id: str) -> str | None;
 }

@@ -1,8 +1,6 @@
-"""Standard logger implementation using jac console."""
 import from jac_scale.abstractions.logger { Logger }
 import from jaclang.cli.console { console }
 
-"""Standard logger using jac console for Rich-styled output."""
 class StandardLogger(Logger) {
     def init(self: StandardLogger, config: dict[str, any] = {}) { }
     def info(self: StandardLogger, message: str, context: dict[str, any] = {}) {

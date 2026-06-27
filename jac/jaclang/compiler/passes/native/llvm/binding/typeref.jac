@@ -26,6 +26,7 @@ class TypeKind(`enum.IntEnum) {
         x86_amx = 19;
     }
 }
+
 with entry {
     _TypeKindToIRType = {
         TypeKind.void: ir.VoidType,
@@ -40,61 +41,38 @@ with entry {
         TypeKind.struct: ir.LiteralStructType
     };
 }
-"""A weak reference to a LLVM type
-    """
+
 class TypeRef(ffi.ObjectRef) {
-    """
-        Get type name
-        """
     @property
     def name(self: TypeRef) -> object {
         return ffi.ret_string(ffi.lib.LLVMPY_GetTypeName(self));
     }
 
-    """
-        Returns true if the type is a struct type.
-        """
     @property
     def is_struct(self: TypeRef) -> object {
         return ffi.lib.LLVMPY_TypeIsStruct(self);
     }
 
-    """
-        Returns true if the type is a pointer type.
-        """
     @property
     def is_pointer(self: TypeRef) -> object {
         return ffi.lib.LLVMPY_TypeIsPointer(self);
     }
 
-    """
-        Returns true if the type is an array type.
-        """
     @property
     def is_array(self: TypeRef) -> object {
         return ffi.lib.LLVMPY_TypeIsArray(self);
     }
 
-    """
-        Returns true if the type is a vector type.
-        """
     @property
     def is_vector(self: TypeRef) -> object {
         return ffi.lib.LLVMPY_TypeIsVector(self);
     }
 
-    """
-        Returns true if the type is a function type.
-        """
     @property
     def is_function(self: TypeRef) -> object {
         return ffi.lib.LLVMPY_TypeIsFunction(self);
     }
 
-    """
-        Returns true if a function type accepts a variable number of arguments.
-        When the type is not a function, raises exception.
-        """
     @property
     def is_function_vararg(self: TypeRef) -> object {
         if (self.type_kind != TypeKind.function) {
@@ -103,9 +81,6 @@ class TypeRef(ffi.ObjectRef) {
         return ffi.lib.LLVMPY_IsFunctionVararg(self);
     }
 
-    """
-        Returns iterator over enclosing types
-        """
     @property
     def elements(self: TypeRef) -> object {
         if self.is_pointer {
@@ -114,11 +89,6 @@ class TypeRef(ffi.ObjectRef) {
         return _TypeListIterator(ffi.lib.LLVMPY_ElementIter(self));
     }
 
-    """
-        Returns the number of elements in an array or a vector. For scalable
-        vectors, returns minimum number of elements. When the type is neither
-        an array nor a vector, raises exception.
-        """
     @property
     def element_count(self: TypeRef) -> object {
         if (not self.is_array and not self.is_vector) {
@@ -127,27 +97,11 @@ class TypeRef(ffi.ObjectRef) {
         return ffi.lib.LLVMPY_GetTypeElementCount(self);
     }
 
-    """
-        Return the basic size of this type if it is a primitive type. These are
-        fixed by LLVM and are not target-dependent.
-        This will return zero if the type does not have a size or is not a
-        primitive type.
-
-        If this is a scalable vector type, the scalable property will be set and
-        the runtime size will be a positive integer multiple of the base size.
-
-        Note that this may not reflect the size of memory allocated for an
-        instance of the type or the number of bytes that are written when an
-        instance of the type is stored to memory.
-        """
     @property
     def type_width(self: TypeRef) -> object {
         return ffi.lib.LLVMPY_GetTypeBitWidth(self);
     }
 
-    """
-        Returns the LLVMTypeKind enumeration of this type.
-        """
     @property
     def type_kind(self: TypeRef) -> object {
         return TypeKind(ffi.lib.LLVMPY_GetTypeKind(self));
@@ -157,14 +111,17 @@ class TypeRef(ffi.ObjectRef) {
     def is_packed_struct(self: TypeRef) -> object {
         return ffi.lib.LLVMPY_IsPackedStruct(self);
     }
+
     @property
     def is_literal_struct(self: TypeRef) -> object {
         return ffi.lib.LLVMPY_IsLiteralStruct(self);
     }
+
     @property
     def is_opaque_struct(self: TypeRef) -> object {
         return ffi.lib.LLVMPY_IsOpaqueStruct(self);
     }
+
     def get_function_parameters(self: TypeRef) -> tuple["TypeRef"] {
         nparams = ffi.lib.LLVMPY_CountParamTypes(self);
         if (nparams > 0) {
@@ -175,11 +132,11 @@ class TypeRef(ffi.ObjectRef) {
             return ();
         }
     }
+
     def get_function_return(self: TypeRef) -> "TypeRef" {
         return TypeRef(ffi.lib.LLVMPY_GetReturnType(self));
     }
-    """Convert into a ``jaclang.compiler.passes.native.llvm.ir.Type``.
-        """
+
     def as_ir(self: TypeRef, ir_ctx: ir.Context) -> ir.Type {
         try {
             cls = _TypeKindToIRType[self.type_kind];
@@ -214,14 +171,17 @@ class _TypeIterator(ffi.ObjectRef) {
         return self;
     }
 }
+
 class _TypeListIterator(_TypeIterator) {
     def _dispose(self: _TypeListIterator) -> object {
         self._capi.LLVMPY_DisposeElementIter(self);
     }
+
     def _next(self: _TypeListIterator) -> object {
         return ffi.lib.LLVMPY_ElementIterNext(self);
     }
 }
+
 with entry {
     ffi.lib.LLVMPY_PrintType.argtypes = [ffi.LLVMTypeRef];
     ffi.lib.LLVMPY_PrintType.restype = c_void_p;
@@ -261,4 +221,3 @@ with entry {
     ffi.lib.LLVMPY_ElementIterNext.restype = ffi.LLVMTypeRef;
     ffi.lib.LLVMPY_DisposeElementIter.argtypes = [ffi.LLVMElementIterator];
 }
-

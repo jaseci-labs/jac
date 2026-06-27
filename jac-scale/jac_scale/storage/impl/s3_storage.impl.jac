@@ -1,4 +1,3 @@
-"""Implementation of S3 storage."""
 import boto3;
 import from botocore.exceptions { ClientError }
 import from botocore.config { Config }
@@ -19,7 +18,6 @@ impl S3Storage.init(
     self.endpoint_url = endpoint_url;
     self.public_read = public_read;
 
-    # Initialize boto3 client
     self._client = boto3.client(
         "s3",
         region_name=self.region,
@@ -27,7 +25,6 @@ impl S3Storage.init(
         config=Config(signature_version="s3v4")
     );
 
-    # Unsigned client for generating public, correctly-encoded URLs
     self._public_client = boto3.client(
         "s3",
         region_name=self.region,
@@ -171,9 +168,6 @@ impl S3Storage.get_url(
 ) -> str {
     key = self._resolve_key(path);
 
-    # Use the appropriate client based on public/private access
-    # Boto3's generate_presigned_url handles URL encoding (spaces, +, etc.)
-    # and "dot in bucket name" issues automatically.
     client = self._public_client if self.public_read else self._client;
 
     return client.generate_presigned_url(

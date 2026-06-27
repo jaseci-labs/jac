@@ -1,37 +1,3 @@
-"""Prometheus metrics for the microservice gateway.
-
-Gateway-level metrics are collected in a dedicated registry (not the
-default one) so spawning multiple gateways in-process during tests
-doesn't get "duplicated timeseries in CollectorRegistry" errors.
-
-Metrics exposed at `/metrics` on the gateway:
-
-  jac_scale_gateway_requests_total{service, method, outcome}  Counter
-  jac_scale_gateway_request_duration_seconds{service, method}  Histogram
-
-The `service` label is the microservice name matched by prefix routing,
-or one of these special values:
-  "__builtin__"  -> /user, /walker, /function, /sso, etc. passthrough
-  "__health__"   -> /health
-  "__admin__"    -> /admin/*
-  "__static__"   -> SPA or static files
-  "__unmatched__"-> 404 (no route)
-
-`outcome` is "2xx" / "3xx" / "4xx" / "5xx" / "err" (connection/proxy
-failure with no HTTP response).
-
-K8s parallel: Prometheus scrapes http://{gateway-pod}:8000/metrics.
-Local: curl http://localhost:8000/metrics. Same exposition, same
-metric names, so dashboards written for local work in K8s unchanged.
-"""
-
-# Factories return None when prometheus_client isn't installed. Callers
-# no-op in that case (gateway still works, metrics just aren't emitted).
-"""Build the gateway's Counter + Histogram on a fresh CollectorRegistry.
-
-Returns (registry, requests_counter, duration_histogram) or (None, None, None)
-if prometheus_client isn't available.
-"""
 def build_gateway_metrics(
     namespace: str = "jac_scale", histogram_buckets: list[float] | None = None
 ) -> tuple[any, any, any] {
@@ -64,7 +30,6 @@ def build_gateway_metrics(
     return (registry, requests, duration);
 }
 
-"""Classify an HTTP status code into an 'outcome' label value."""
 def classify_outcome(status_code: int) -> str {
     if status_code <= 0 {
         return "err";
@@ -81,11 +46,7 @@ def classify_outcome(status_code: int) -> str {
     return "5xx";
 }
 
-"""Render the Prometheus exposition text for a registry.
 
-Returns (body: bytes, content_type: str). Returns (b"", "text/plain")
-if prometheus_client isn't installed - caller should 503 in that case.
-"""
 def render_metrics(registry: any) -> tuple[bytes, str] {
     if registry is None {
         return (b"", "text/plain");

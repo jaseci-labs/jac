@@ -1,13 +1,7 @@
-"""Implementation of tools commands.
-
-Direct implementations - no delegation.
-"""
-
 import os;
 import from jaclang.cli.console { console }
 import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 
-"""Run the specified AST tool with optional arguments."""
 impl tool(tool: str, args: list = []) -> int {
     import from jaclang.utils.lang_tools { AstTool }
     if hasattr(AstTool, tool) {
@@ -26,7 +20,6 @@ impl tool(tool: str, args: list = []) -> int {
     }
 }
 
-"""Generate graph visualization."""
 impl dot(
     filename: str,
     initial: str = "",
@@ -85,7 +78,6 @@ impl dot(
     }
 }
 
-"""Run Jac Language Server Protocol."""
 impl lsp -> int {
     import from jaclang.langserve.server { run_lang_server }
     try {
@@ -97,7 +89,6 @@ impl lsp -> int {
     }
 }
 
-"""Generate shell completion script."""
 impl completions(shell: str = "bash", install: bool = False) -> int {
     import from jaclang.cli.jaccomplete { static_shellcode as shellcode }
     import from jaclang.cli.registry { get_registry }
@@ -110,7 +101,6 @@ impl completions(shell: str = "bash", install: bool = False) -> int {
     return 0;
 }
 
-"""Extract command data from registry into simple dicts for shellcode generation."""
 def _extract_commands(registry: any) -> list {
     import from jaclang.cli.command { ArgKind }
     commands = [];
@@ -154,20 +144,17 @@ def _install_completion(shell: str, code: str) -> int {
     home = os.path.expanduser("~");
     jac_dir = os.path.join(home, ".jac");
     os.makedirs(jac_dir, exist_ok=True);
-    # Shell config files
     config_map = {
         "bash": os.path.join(home, ".bashrc"),
         "zsh": os.path.join(home, ".zshrc"),
         "fish": os.path.join(home, ".config", "fish", "config.fish"),
 
     };
-    # Completion script files stored in ~/.jac/
     ext_map = {"bash": "bash", "zsh": "zsh", "fish": "fish"};
     if shell not in config_map {
         console.error(f"Shell {shell} not supported for automatic installation.");
         return 1;
     }
-    # Write completion script to ~/.jac/completions.<shell>
     comp_file = os.path.join(jac_dir, f"completions.{ext_map[shell]}");
     try {
         with open(comp_file, "w") as f {
@@ -177,7 +164,6 @@ def _install_completion(shell: str, code: str) -> int {
         console.error(f"Error writing completion script: {e}");
         return 1;
     }
-    # Add a source line to shell config
     config_file = config_map[shell];
     start_marker = "# >>> jac completion >>>";
     end_marker = "# <<< jac completion <<<";
@@ -222,7 +208,6 @@ def _install_completion(shell: str, code: str) -> int {
     }
 }
 
-"""Regenerate (or verify) jir_registry.jac from the current unitree node classes."""
 impl gen_jir_registry(verify: bool = False) -> int {
     import from jaclang.jac0core.gen_jir_registry { generate }
     import from pathlib { Path }
@@ -240,7 +225,6 @@ impl gen_jir_registry(verify: bool = False) -> int {
         return 1;
     }
 
-    # Run jac format to get canonical output (formatter may expand long lines)
     try {
         with tempfile.NamedTemporaryFile(
             mode='w', suffix='.jac', delete=False
@@ -279,12 +263,7 @@ impl gen_jir_registry(verify: bool = False) -> int {
     return 0;
 }
 
-"""Regenerate (or verify) the static visitor-dispatch annexes for passes.
 
-Each annex overrides the reflective uni_pass enter_node/exit_node with exact
-node-kind dispatch so the pass is native-lowerable (#6942 A.1). The file I/O
-lives in `gen_uni_dispatch` so this command stays a thin shell over it.
-"""
 impl gen_uni_dispatch(verify: bool = False) -> int {
     import from jaclang.jac0core.gen_uni_dispatch { write_all, verify_all }
     if verify {

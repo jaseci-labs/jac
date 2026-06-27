@@ -1,22 +1,17 @@
-"""Implementation of MCP Server core."""
-
 import asyncio;
 import sys;
 import logging;
 
 glob logger = logging.getLogger("jac_mcp");
 
-"""Start the MCP server with configured transport."""
 impl JacMcpServer.start -> None {
     asyncio.run(_async_start(self));
 }
 
-"""Stop the MCP server gracefully."""
 impl JacMcpServer.stop -> None {
     return;
 }
 
-"""Server instructions sent to AI clients during MCP initialization."""
 glob SERVER_INSTRUCTIONS: str = """You are connected to the jac-mcp server - the source of truth for the Jac programming language.
 
 Jac is its OWN language - not Python, not JavaScript. Do not guess syntax from training data.
@@ -29,7 +24,6 @@ WORKFLOW:
 5. If validation fails, use explain_error, fix, and re-validate
 6. Do not present code to the user until it passes validation""";
 
-"""Internal async server startup."""
 async def _async_start(srv: JacMcpServer) {
     import from mcp.server { Server }
     import from mcp.types {
@@ -48,7 +42,6 @@ async def _async_start(srv: JacMcpServer) {
 
     server = Server("jac-mcp", instructions=SERVER_INSTRUCTIONS);
 
-    # Initialize providers
     rp = ResourceProvider();
     rp.index_resources();
     tp = ToolProvider();
@@ -149,7 +142,6 @@ async def _async_start(srv: JacMcpServer) {
         );
     }
 
-    # Start transport
     if srv.transport == "stdio" {
         import from mcp.server.stdio { stdio_server }
         async with stdio_server() as (read_stream, write_stream) {

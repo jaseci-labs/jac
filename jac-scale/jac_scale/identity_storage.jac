@@ -1,16 +1,3 @@
-"""Identity-based user storage.
-
-Users are stored with an array of identities (username, email, phone, SSO, etc.)
-and an array of credentials (password, TOTP, etc.), enabling flexible
-authentication without schema changes when new identity/credential types
-are added. SSO accounts are stored as identities with type matching the
-platform (google, apple, github).
-
-Architecture:
-- IdentityStorage: Abstract base with shared business logic
-- MongoIdentityStorage: MongoDB-backed (uses users_col pymongo collection)
-- SqliteIdentityStorage: SQLite-backed (uses db_path file path)
-"""
 import bcrypt;
 import hashlib;
 import uuid;
@@ -38,19 +25,12 @@ import from jaclang.jac0core.constant { Constants as Con }
 
 glob logger = logging.getLogger(__name__);
 
-"""Raised by storage backends when an identity uniqueness constraint fires."""
 obj IdentityTakenError(Exception) {}
 
-"""Abstract base for identity storage backends.
 
-Subclasses implement storage primitives (_store_user, _update_fields, etc.).
-Shared business logic (create_user, authenticate, etc.) lives here.
-"""
 obj IdentityStorage {
-    # Password helpers
     static def hash_password(password: str) -> str;
     static def verify_password(password: str, password_hash: str) -> bool;
-    # Abstract storage primitives (subclasses must implement)
     def _store_user(user_doc: dict[str, any]) -> None;
     def _update_fields(user_id: str, fields: dict[str, any]) -> bool;
     def _get_credentials(user_id: str) -> list[dict[str, any]];
@@ -61,14 +41,12 @@ obj IdentityStorage {
     def _find_sso_link(platform: str, external_id: str) -> dict[str, any] | None;
     def _set_identity_verified(user_id: str, value_normalized: str) -> bool;
     def ensure_indexes -> None;
-    # Public methods implemented by subclasses directly
     def get_user_by_id(user_id: str) -> dict[str, any] | None;
     def delete_user(user_id: str) -> bool;
     def find_user_by_identity(value: str) -> dict[str, any] | None;
     def identity_taken(value: str) -> bool;
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, any] | None;
-    # Concrete public methods (shared business logic in base impl)
     def create_user(
         identities: list[dict[str, any]],
         credential: dict[str, any],
@@ -95,11 +73,9 @@ obj IdentityStorage {
     def get_sso_accounts(user_id: str) -> list[dict[str, str]];
 }
 
-"""MongoDB-backed identity storage."""
 obj MongoIdentityStorage(IdentityStorage) {
     has users_col: Collection[dict[str, any]];
 
-    # Abstract primitives
     def _store_user(user_doc: dict[str, any]) -> None;
     def _update_fields(user_id: str, fields: dict[str, any]) -> bool;
     def _get_credentials(user_id: str) -> list[dict[str, any]];
@@ -110,18 +86,15 @@ obj MongoIdentityStorage(IdentityStorage) {
     def _find_sso_link(platform: str, external_id: str) -> dict[str, any] | None;
     def _set_identity_verified(user_id: str, value_normalized: str) -> bool;
     def ensure_indexes -> None;
-    # Public methods implemented directly
     def get_user_by_id(user_id: str) -> dict[str, any] | None;
     def delete_user(user_id: str) -> bool;
     def find_user_by_identity(value: str) -> dict[str, any] | None;
     def identity_taken(value: str) -> bool;
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, any] | None;
-    # Migration
     def migrate_legacy_users -> None;
 }
 
-"""SQLite-backed identity storage."""
 obj SqliteIdentityStorage(IdentityStorage) {
     has db_path: str,
         _engine: Engine by postinit,
@@ -130,7 +103,6 @@ obj SqliteIdentityStorage(IdentityStorage) {
         _sso_lookups: Table by postinit;
 
     def postinit -> None;
-    # Abstract primitives
     def _store_user(user_doc: dict[str, any]) -> None;
     def _update_fields(user_id: str, fields: dict[str, any]) -> bool;
     def _get_credentials(user_id: str) -> list[dict[str, any]];
@@ -141,7 +113,6 @@ obj SqliteIdentityStorage(IdentityStorage) {
     def _find_sso_link(platform: str, external_id: str) -> dict[str, any] | None;
     def _set_identity_verified(user_id: str, value_normalized: str) -> bool;
     def ensure_indexes -> None;
-    # Public methods implemented directly
     def get_user_by_id(user_id: str) -> dict[str, any] | None;
     def delete_user(user_id: str) -> bool;
     def find_user_by_identity(value: str) -> dict[str, any] | None;

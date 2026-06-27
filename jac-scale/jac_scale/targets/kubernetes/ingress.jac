@@ -1,4 +1,3 @@
-"""NGINX Ingress controller and Ingress resource deployer."""
 import time;
 import subprocess;
 import bcrypt;
@@ -8,22 +7,11 @@ import from jac_scale.abstractions.logger { Logger }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils { delete_if_exists }
 import from jac_scale.targets.kubernetes.cluster_provider { ClusterProvider }
 
-"""Deploys and manages an app-scoped NGINX Ingress controller plus Ingress routing rules.
 
-One controller per app, identified by ingress class '{app_name}-nginx'.
-
-Routes (local: http://<node-ip>:30080, AWS: NLB port 80):
-  /               -> {app_name}-service
-  /grafana        -> {app_name}-grafana-service   (Grafana handles subpath via GF_SERVER env)
-  /db-dashboard  -> {app_name}-mongo-express-service  (MongoExpress handles subpath via ME_CONFIG_SITE_BASEURL)
-  /cache-dashboard  -> {app_name}-redis-insight-service  (separate Ingress with rewrite-target)
-"""
 obj IngressDeployer {
     has k8s_config: KubernetesConfig,
         logger: (Logger | None) = None;
 
-    """Deploy the NGINX Ingress controller: ServiceAccount, ClusterRole, ClusterRoleBinding,
-    ConfigMap, IngressClass, Deployment, and Service (NodePort locally / NLB on AWS)."""
     def _deploy_nginx_controller(
         app_name: str,
         namespace: str,
@@ -39,7 +27,6 @@ obj IngressDeployer {
         ingress_class_name = f"{namespace}-{app_name}-nginx";
         service_name = f"{controller_name}-service";
 
-        # --- ServiceAccount ---
         sa = {
             'apiVersion': 'v1',
             'kind': 'ServiceAccount',
@@ -61,7 +48,6 @@ obj IngressDeployer {
             }
         }
 
-        # --- ClusterRole ---
         cluster_role = {
             'apiVersion': 'rbac.authorization.k8s.io/v1',
             'kind': 'ClusterRole',
@@ -70,7 +56,6 @@ obj IngressDeployer {
                 'labels': {'app': controller_name, 'managed': 'jac-scale'}
             },
             'rules': [
-                # Core reads (cluster-wide)
                 {
                     'apiGroups': [''],
                     'resources': [
@@ -83,7 +68,6 @@ obj IngressDeployer {
                     ],
                     'verbs': ['get', 'list', 'watch']
                 },
-                # ConfigMap writes (leader-election lock)
                 {
                     'apiGroups': [''],
                     'resources': ['configmaps'],
@@ -99,7 +83,6 @@ obj IngressDeployer {
                     'resources': ['events'],
                     'verbs': ['create', 'patch']
                 },
-                # Leader-election leases
                 {
                     'apiGroups': ['coordination.k8s.io'],
                     'resources': ['leases'],
@@ -138,7 +121,6 @@ obj IngressDeployer {
             }
         }
 
-        # --- ClusterRoleBinding ---
         crb = {
             'apiVersion': 'rbac.authorization.k8s.io/v1',
             'kind': 'ClusterRoleBinding',
@@ -170,14 +152,6 @@ obj IngressDeployer {
             }
         }
 
-        # --- ConfigMap ---
-        # allow-snippet-annotations + annotations-risk-level: Critical are required
-        # so that configuration-snippet annotations on Ingress resources (e.g.
-        # sub_filter for RedisInsight asset path rewriting) are accepted by the
-        # controller. Disabled by default in nginx-ingress >= v1.9.0; enabling it
-        # allows any principal with Ingress write access in this namespace to inject
-        # arbitrary NGINX config snippets. Avoid in multi-tenant clusters where
-        # untrusted users can create Ingress resources.
         cm = {
             'apiVersion': 'v1',
             'kind': 'ConfigMap',
@@ -205,7 +179,6 @@ obj IngressDeployer {
             }
         }
 
-        # --- IngressClass ---
         ingress_class = {
             'apiVersion': 'networking.k8s.io/v1',
             'kind': 'IngressClass',
@@ -225,7 +198,6 @@ obj IngressDeployer {
             }
         }
 
-        # --- Controller Deployment ---
         controller_deployment = {
             'apiVersion': 'apps/v1',
             'kind': 'Deployment',
@@ -357,12 +329,6 @@ obj IngressDeployer {
         );
     }
 
-    """Return the IngressClass name to use for this deployment.
-
-    In dedicated mode each app owns its own controller, so the class name is
-    scoped to the namespace and app.  In shared mode the class name comes from
-    KubernetesConfig and refers to the pre-existing cluster-wide controller.
-    """
     def _resolve_ingress_class(app_name: str, namespace: str) -> str {
         if self.k8s_config.shared_ingress {
             return self.k8s_config.shared_ingress_class;
@@ -370,12 +336,6 @@ obj IngressDeployer {
         return f"{namespace}-{app_name}-nginx";
     }
 
-    """Wait for the NGINX controller Deployment to have at least one ready replica.
-
-    Polls every 5 seconds for up to max_wait seconds. This avoids burning the
-    longer app health-check intervals (15 s each) while NGINX is still starting.
-    No-op when shared_ingress=True (controller is externally managed).
-    """
     def _wait_for_nginx_ready(
         app_name: str, namespace: str, apps_v1: any, max_wait: int = 180
     ) -> None {
@@ -414,12 +374,6 @@ obj IngressDeployer {
         }
     }
 
-    """Deploy Ingress routing rules.
-
-    Main Ingress: routes /, /grafana (if enabled), /db-dashboard (if enabled).
-    RedisInsight Ingress (separate): routes /cache-dashboard with rewrite-target so the
-    prefix is stripped before hitting the service.
-    """
     def _deploy_ingress_resource(
         app_name: str,
         namespace: str,
@@ -434,7 +388,6 @@ obj IngressDeployer {
         ingress_name = f"{app_name}-ingress";
         redis_ingress_name = f"{app_name}-redis-insight-ingress";
 
-        # --- Build main ingress paths ---
         paths = [
             {
                 'path': '/',
@@ -478,14 +431,6 @@ obj IngressDeployer {
             );
         }
 
-        # Dedicated ingress: wildcard rule (no host). Domain is stored in the
-        # jac-scale/domain annotation so --enable-tls can add host + TLS together.
-        # Setting host without TLS would make the app unreachable via IP/NLB.
-        #
-        # Shared ingress: host is set immediately. The shared controller sees
-        # Ingress resources from many namespaces; without a host field it cannot
-        # differentiate two apps that both claim path '/'. Domain is mandatory
-        # when shared_ingress=True (validated in start_controller).
         if self.k8s_config.shared_ingress {
             main_rule: dict = {
                 'host': self.k8s_config.domain,
@@ -495,10 +440,6 @@ obj IngressDeployer {
             main_rule: dict = {'http': {'paths': paths}};
         }
 
-        # nginx-specific tuning (proxy timeouts, rate limiting, session
-        # affinity) is only meaningful for an nginx controller. In shared mode
-        # with a non-nginx controller (AWS ALB, Traefik, GKE, ...) we emit only
-        # the caller-supplied annotations so jac-scale stays controller-agnostic.
         uses_nginx: bool = (not self.k8s_config.shared_ingress)
         or (self.k8s_config.shared_ingress_class == 'nginx');
         ingress_annotations: dict = {};
@@ -540,29 +481,14 @@ obj IngressDeployer {
         if self.k8s_config.cert_manager_email {
             ingress_annotations['jac-scale/cert-email'] = self.k8s_config.cert_manager_email;
         }
-        # Caller-supplied annotations (e.g. AWS ALB group.name / certificate-arn
-        # / scheme) take precedence; this is how non-nginx shared controllers
-        # are configured.
         for (k, v) in self.k8s_config.shared_ingress_annotations.items() {
             ingress_annotations[str(k)] = str(v);
         }
         main_spec: dict = {'ingressClassName': ingress_class, 'rules': [main_rule]};
-        # cert-manager's ingress-shim issues a per-domain cert only when the
-        # Ingress carries BOTH a cert-manager issuer annotation AND a spec.tls
-        # block. The annotation comes from the caller (shared_ingress_annotations);
-        # add the matching spec.tls here whenever cert-manager is the issuer.
-        # Keyed off the annotation, not the class name, so any nginx class works
-        # (e.g. a per-platform 'jb-custom' class, not just literally 'nginx').
-        # ALB + ACM shared controllers have no cert-manager annotation and
-        # terminate TLS at the load balancer, so they correctly get no spec.tls.
         cert_manager_managed = (
             'cert-manager.io/cluster-issuer' in self.k8s_config.shared_ingress_annotations
             or 'cert-manager.io/issuer' in self.k8s_config.shared_ingress_annotations
         );
-        # Only the shared-ingress path manages spec.tls here. The dedicated
-        # (non-shared) path's TLS is owned by enable_tls, so we must not touch
-        # the key at all for it — setting it (even to None) would clobber that
-        # cert on every redeploy via the strategic-merge patch.
         if self.k8s_config.shared_ingress {
             if (
                 self.k8s_config.shared_ingress_tls
@@ -573,9 +499,6 @@ obj IngressDeployer {
                     {'hosts': [self.k8s_config.domain], 'secretName': f"{app_name}-tls"}
                 ];
             } else {
-                # Strategic-merge leaves absent fields untouched, so null tls to
-                # remove a stale block when a shared redeploy turns cert-manager
-                # TLS off (or switches to a non-cert-manager class).
                 main_spec['tls'] = None;
             }
         }
@@ -604,18 +527,11 @@ obj IngressDeployer {
             }
         }
 
-        # --- RedisInsight Ingress ---
-        # Auth is enforced by NGINX Ingress basic-auth annotations — no sidecar needed.
-        # RIPROXYPATH=/cache-dashboard is set on the container so the ingress passes
-        # the full /cache-dashboard/... path unchanged (no rewrite-target).
         if redis_dashboard {
             ri_username = self.k8s_config.redis_insight_username;
             ri_password = self.k8s_config.redis_insight_password;
             ri_auth_secret_name = f"{app_name}-redis-insight-auth";
 
-            # Create/update the NGINX Ingress basic-auth secret.
-            # The secret must have key 'auth' containing an htpasswd-formatted string.
-            # Format: username:<bcrypt-hash>  ($2y$ prefix required by NGINX Ingress)
             pw_hash = bcrypt.hashpw(
                 ri_password.encode('utf-8'), bcrypt.gensalt()
             ).decode(
@@ -651,18 +567,6 @@ obj IngressDeployer {
                 }
             }
 
-            # RedisInsight v3 (Vite build) emits root-relative asset URLs (/assets/...)
-            # regardless of RIPROXYPATH. The ingress uses rewrite-target=/$2 to strip the
-            # /cache-dashboard prefix before forwarding to the backend, so /assets/... is
-            # served correctly. sub_filter rewrites asset URLs in the HTML so the browser
-            # requests /cache-dashboard/assets/... (which nginx then rewrites back to
-            # /assets/... for the backend). RIPROXYPATH is also rewritten so the JS
-            # frontend sets window.__RI_PROXY_PATH__ = 'cache-dashboard' and prefixes all
-            # API/socket calls with /cache-dashboard (which nginx strips via rewrite-target).
-            # Accept-Encoding "" lets sub_filter work on raw HTML from the upstream.
-            # Compression is handled at the server level via the nginx ConfigMap
-            # (use-gzip: true), NOT in the snippet — gzip directives in location
-            # snippets can crash the ingress controller.
             redis_ingress_annotations: dict = {
                 'nginx.ingress.kubernetes.io/proxy-body-size': '0',
                 'nginx.ingress.kubernetes.io/proxy-read-timeout': '3600',
@@ -671,12 +575,7 @@ obj IngressDeployer {
                 'nginx.ingress.kubernetes.io/use-regex': 'true',
                 'nginx.ingress.kubernetes.io/rewrite-target': '/$2',
                 'nginx.ingress.kubernetes.io/configuration-snippet': (
-                    'proxy_set_header Accept-Encoding "";\n'
-                    'sub_filter_types text/html;\n'
-                    'sub_filter \'src="/assets/\' \'src="/cache-dashboard/assets/\';\n'
-                    'sub_filter \'href="/assets/\' \'href="/cache-dashboard/assets/\';\n'
-                    'sub_filter "var RIPROXYPATH = \'\';" "var RIPROXYPATH = \'/cache-dashboard\';";\n'
-                    'sub_filter_once off;'
+                    'proxy_set_header Accept-Encoding "";\n' 'sub_filter_once off;'
                 )
             };
             redis_ingress_annotations['nginx.ingress.kubernetes.io/auth-type'] = 'basic';
@@ -695,7 +594,6 @@ obj IngressDeployer {
                     }
                 }
             ];
-            # Same host logic as main ingress: set immediately for shared, wildcard for dedicated.
             if self.k8s_config.shared_ingress {
                 redis_rule: dict = {
                     'host': self.k8s_config.domain,
@@ -749,11 +647,6 @@ obj IngressDeployer {
         }
     }
 
-    """Start the NGINX controller (non-blocking). Call finish_ingress() later once other
-    deployment steps are done to minimise wall-clock wait time.
-
-    When shared_ingress=True the dedicated controller is skipped; the app's
-    Ingress resources will reference the pre-existing shared controller instead."""
     def start_controller(
         app_name: str,
         namespace: str,
@@ -768,11 +661,6 @@ obj IngressDeployer {
                 app_name, namespace, provider, apps_v1, core_v1, rbac_v1, networking_v1
             );
         } else {
-            # Shared mode: verify the IngressClass exists up front so we fail
-            # with a clear, actionable error instead of a cryptic
-            # admission-webhook 403 later. The AWS LB Controller's vingress
-            # webhook rejects any Ingress whose ingressClassName has no matching
-            # IngressClass (e.g. the default 'nginx' on an ALB-only cluster).
             cls = self.k8s_config.shared_ingress_class;
             try {
                 networking_v1.read_ingress_class(name=cls);
@@ -781,7 +669,6 @@ obj IngressDeployer {
                     raise ValueError(
                         f"shared_ingress_class '{cls}' has no matching IngressClass "
                         "in the cluster. Install that ingress controller, or set "
-                        "shared_ingress_class to one that exists (e.g. 'alb' on AWS "
                         "EKS, or 'nginx' where ingress-nginx is installed)."
                     );
                 } else {
@@ -797,8 +684,6 @@ obj IngressDeployer {
         }
     }
 
-    """Wait for the NGINX controller to be ready and then deploy routing rules.
-    Must be called after start_controller()."""
     def finish_ingress(
         app_name: str,
         namespace: str,
@@ -825,7 +710,6 @@ obj IngressDeployer {
         );
     }
 
-    """Deploy the full ingress stack: NGINX controller, wait for readiness, then routing rules."""
     def deploy(
         app_name: str,
         namespace: str,
@@ -855,12 +739,6 @@ obj IngressDeployer {
         );
     }
 
-    """Install cert-manager and create a namespace-scoped letsencrypt-prod Issuer.
-
-    Idempotent: returns immediately if the Issuer already exists.
-    Uses kubectl apply for the cert-manager manifests (CRD-safe) and the
-    Kubernetes Python client for the Issuer resource.
-    """
     def _install_cert_manager(
         app_name: str,
         namespace: str,
@@ -869,7 +747,6 @@ obj IngressDeployer {
         apps_v1: any,
         custom_api: any
     ) -> None {
-        # Idempotency: if Issuer already exists, nothing to do
         try {
             custom_api.get_namespaced_custom_object(
                 group='cert-manager.io',
@@ -890,7 +767,6 @@ obj IngressDeployer {
             }
         }
 
-        # Install cert-manager manifests if namespace not present
         try {
             core_v1.read_namespace(name='cert-manager');
             if self.logger {
@@ -923,7 +799,6 @@ obj IngressDeployer {
             }
         }
 
-        # Wait for cert-manager webhook to be ready (up to 120 s)
         if self.logger {
             self.logger.info(
                 "Waiting for cert-manager webhook to be ready (up to 120s)..."
@@ -950,7 +825,6 @@ obj IngressDeployer {
             elapsed = elapsed + 5;
         }
 
-        # Create namespace-scoped Issuer
         ingress_class_name = self._resolve_ingress_class(app_name, namespace);
         issuer_body = {
             'apiVersion': 'cert-manager.io/v1',
@@ -995,10 +869,6 @@ obj IngressDeployer {
         }
     }
 
-    """Patch the existing Ingress(es) with TLS annotations and wait for the certificate.
-
-    Must be called after _install_cert_manager(). Does not redeploy the application.
-    """
     def enable_tls(
         app_name: str,
         namespace: str,
@@ -1011,7 +881,6 @@ obj IngressDeployer {
         redis_ingress_name = f"{app_name}-redis-insight-ingress";
         tls_secret_name = f"{app_name}-tls";
 
-        # Read domain / email from Ingress annotations (written during deploy)
         ingress = networking_v1.read_namespaced_ingress(
             name=ingress_name, namespace=namespace
         );
@@ -1031,12 +900,10 @@ obj IngressDeployer {
             );
         }
 
-        # Install cert-manager + create Issuer
         self._install_cert_manager(
             app_name, namespace, cert_email, core_v1, apps_v1, custom_api
         );
 
-        # TLS patch applied to both Ingress resources
         tls_annotations = {
             'cert-manager.io/issuer': 'letsencrypt-prod',
             'nginx.ingress.kubernetes.io/ssl-redirect': 'true',
@@ -1045,7 +912,6 @@ obj IngressDeployer {
         };
         tls_spec = {'tls': [{'hosts': [domain], 'secretName': tls_secret_name}]};
 
-        # Patch main Ingress: add TLS + set host on existing rules
         api_client = client.ApiClient();
         current_ingress = networking_v1.read_namespaced_ingress(
             name=ingress_name, namespace=namespace
@@ -1067,7 +933,6 @@ obj IngressDeployer {
             self.logger.info(f"Patched '{ingress_name}' with TLS configuration");
         }
 
-        # Patch RedisInsight Ingress if it exists (update its own rules with host)
         try {
             current_redis_ingress = networking_v1.read_namespaced_ingress(
                 name=redis_ingress_name, namespace=namespace
@@ -1104,7 +969,6 @@ obj IngressDeployer {
             }
         }
 
-        # Poll Certificate CRD until Ready=True (up to 300 s)
         if self.logger {
             self.logger.info(
                 f"Waiting for TLS certificate '{tls_secret_name}' to be issued (up to 300s)..."
@@ -1147,7 +1011,6 @@ obj IngressDeployer {
         }
     }
 
-    """Tear down all ingress resources created by this deployer."""
     def destroy(
         app_name: str,
         namespace: str,
@@ -1164,7 +1027,6 @@ obj IngressDeployer {
         service_name = f"{controller_name}-service";
         configmap_name = f"{app_name}-nginx-configuration";
 
-        # Delete namespaced Ingress resources
         delete_if_exists(
             networking_v1.delete_namespaced_ingress, ingress_name, namespace, 'Ingress'
         );
@@ -1181,7 +1043,6 @@ obj IngressDeployer {
             'Secret'
         );
 
-        # Delete TLS secret, ACME private key, Certificate CRD, and Issuer
         delete_if_exists(
             core_v1.delete_namespaced_secret, f"{app_name}-tls", namespace, 'Secret'
         );
@@ -1219,9 +1080,6 @@ obj IngressDeployer {
             }
         }
 
-        # Delete controller namespaced resources and cluster-scoped RBAC/IngressClass.
-        # Skipped when shared_ingress=True — those resources belong to the shared
-        # controller and must not be torn down by an individual app.
         if not self.k8s_config.shared_ingress {
             delete_if_exists(
                 apps_v1.delete_namespaced_deployment,

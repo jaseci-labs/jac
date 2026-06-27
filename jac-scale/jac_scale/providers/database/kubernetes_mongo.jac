@@ -1,10 +1,8 @@
-"""Kubernetes MongoDB provider implementation."""
 import from typing { Any }
 import from jac_scale.abstractions.database_provider { DatabaseProvider }
 import from jac_scale.abstractions.deployment_target { DeploymentTarget }
 import from jac_scale.config_loader { get_scale_config }
 
-"""MongoDB provider for Kubernetes deployments."""
 obj KubernetesMongoProvider(DatabaseProvider) {
     has target: (DeploymentTarget | None) = None,
         config: dict[str, any] = {},
@@ -182,14 +180,10 @@ obj KubernetesMongoProvider(DatabaseProvider) {
     }
 
     def is_available -> bool {
-        # TODO: Implement actual check
         return True;
     }
 
-    def cleanup {
-    # Cleanup is handled by the deployment target
-    }
-
+    def cleanup { }
     override def get_init_container(
         app_name: str, wait_image: str
     ) -> (dict[(str, Any)] | None) {
@@ -211,11 +205,6 @@ obj KubernetesMongoProvider(DatabaseProvider) {
         };
     }
 
-    """Return mongo-express dashboard resource specs.
-
-    Returns deployment and service specs for the caller to apply via the K8s API.
-    Follows the same pattern as deploy(): pure spec construction, no API calls.
-    """
     def deploy_dashboard(
         username: str = 'admin', password: str = 'admin'
     ) -> dict[str, any] {
@@ -319,7 +308,6 @@ obj KubernetesMongoProvider(DatabaseProvider) {
             }
         };
 
-        # Service: always ClusterIP — exposed via NGINX Ingress at /db-dashboard
         express_service = {
             'apiVersion': 'v1',
             'kind': 'Service',

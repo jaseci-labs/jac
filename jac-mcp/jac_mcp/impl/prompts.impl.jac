@@ -1,6 +1,3 @@
-"""Implementation of MCP prompt templates."""
-
-"""Load a resource's content, returning empty string if unavailable."""
 impl load_resource_content(uri: str) -> str {
     import from jac_mcp.resources { ResourceProvider }
     rp = ResourceProvider();
@@ -12,7 +9,6 @@ impl load_resource_content(uri: str) -> str {
     return content;
 }
 
-"""Build system prompt with pitfalls and optional extra resources."""
 impl build_system_prompt(extra_uris: list[str] = []) -> str {
     parts: list[str] = [
         "You are an expert Jac programmer. You MUST follow the syntax rules and patterns provided below EXACTLY.",
@@ -36,7 +32,6 @@ impl build_system_prompt(extra_uris: list[str] = []) -> str {
     return "\n".join(parts);
 }
 
-"""Return list of available prompts, filtered by active mode."""
 impl PromptProvider.list_prompts -> list[dict[str, any]] {
     all_prompts: list[dict[str, any]] = [
         {
@@ -192,7 +187,6 @@ impl PromptProvider.list_prompts -> list[dict[str, any]] {
     ];
 }
 
-"""Get a prompt by name with arguments."""
 impl PromptProvider.get_prompt(name: str, arguments: dict[str, str]) -> dict[str, any] {
     if name == "write_module" {
         return _prompt_write_module(arguments);
@@ -222,7 +216,6 @@ impl PromptProvider.get_prompt(name: str, arguments: dict[str, str]) -> dict[str
     }
 }
 
-"""Helper to build a prompt result with proper system/user role separation."""
 def _make_prompt(description: str, system: str, user_msg: str) -> dict[str, any] {
     return {
         "description": description,

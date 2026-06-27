@@ -1,7 +1,5 @@
-"""Kubernetes-specific configuration."""
 import from jac_scale.abstractions.config.base_config { BaseConfig }
 
-"""Configuration for Kubernetes deployments."""
 obj KubernetesConfig(BaseConfig) {
     has docker_image_name: str = '',
         docker_username: str = '',
@@ -13,14 +11,6 @@ obj KubernetesConfig(BaseConfig) {
         cpu_limit: (str | None) = None,
         memory_request: (str | None) = None,
         memory_limit: (str | None) = None,
-        # Probe defaults match upstream's pre-microservice baseline so the
-        # monolith all-in-one path keeps the rollout-grace window it
-        # expected (slow first-boot apps with multiple init containers
-        # need ~13min of liveness grace before restart-looping).
-        # Microservice-mode apps that want tighter drain semantics set
-        # `[plugins.scale.kubernetes].liveness_failure_threshold` etc.
-        # in jac.toml explicitly; we don't tighten the defaults globally
-        # because the parent KubernetesTarget shares this config object.
         readiness_initial_delay: int = 10,
         readiness_period: int = 20,
         liveness_initial_delay: int = 10,
@@ -28,8 +18,7 @@ obj KubernetesConfig(BaseConfig) {
         liveness_failure_threshold: int = 80,
         min_replicas: int = 1,
         max_replicas: int = 3,
-        cpu_utilization_target:
-            int = 50,  # matches DEFAULT_CPU_UTILIZATION_TARGET in autoscaler.jac
+        cpu_utilization_target: int = 50,
         autoscaler_engine: str = "hpa",
         idle_replicas: (int | None) = None,
         autoscaler_polling_interval: int = 30,
@@ -37,17 +26,13 @@ obj KubernetesConfig(BaseConfig) {
         autoscaler_initial_cooldown: int = 0,
         extra_triggers: list[dict] = [],
         health_check_path: str = '/docs',
-        # Runtime configuration
         python_image: str = 'python:3.12-slim',
         busybox_image: str = 'busybox:1.36',
         wait_image: str = 'busybox',
-        # Storage configuration
         pvc_size: str = '5Gi',
         mongodb_storage_size: str = '1Gi',
-        # Timing configuration
         resource_deletion_wait: int = 5,
         aws_nlb_wait: int = 60,
-        # Paths
         app_mount_path: str = '/app',
         code_mount_path: str = '/code',
         workspace_path: str = '/code/workspace',
@@ -60,14 +45,9 @@ obj KubernetesConfig(BaseConfig) {
         monitoring_enabled: bool = False,
         k8s_metrics_enabled: bool = True,
         loki_enabled: bool = False,
-        # Deploy Tempo + the Alloy OTLP-receiver lane for distributed
-        # traces. Set from `[plugins.scale.microservices.tracing].enabled`.
         tracing_enabled: bool = False,
         prometheus_admin_password: str = 'Adminpassword123',
-        # Admin username, used by Prometheus to Basic-Auth scrape the app's
-        # admin-protected /metrics endpoint.
         admin_username: str = 'admin',
-        # Dashboard configuration
         redis_dashboard: bool = False,
         mongodb_dashboard: bool = False,
         mongo_express_username: str = 'admin',
@@ -78,57 +58,19 @@ obj KubernetesConfig(BaseConfig) {
         mongodb_root_password: str = 'password',
         redis_username: str = 'admin',
         redis_password: str = 'password',
-        # Ingress configuration
         ingress_node_port: int = 30080,
-        # When True, skip deploying a dedicated NGINX controller and instead
-        # attach Ingress resources to an existing shared controller identified
-        # by shared_ingress_class (default 'nginx').
         shared_ingress: bool = False,
         shared_ingress_class: str = 'nginx',
-        # Extra annotations merged onto the Ingress metadata in shared mode.
-        # These drive non-nginx controllers (e.g. AWS ALB group / ACM cert /
-        # scheme, Traefik, GKE) without baking any cloud-specific values into
-        # jac-scale; the caller supplies them. nginx-specific tuning is only
-        # emitted when the controller class is 'nginx'.
         shared_ingress_annotations: dict[str, str] = {},
-        # Whether the shared controller terminates TLS for `domain` (so the
-        # reported service URL uses https). nginx+cert-manager sets spec.tls and
-        # is detected automatically; controllers that terminate TLS out-of-band
-        # (e.g. ALB via an ACM certificate-arn annotation) set this explicitly.
         shared_ingress_tls: bool = False,
-        # Skip the post-deploy reachability probe against `domain` in shared
-        # ingress mode. The probe verifies external DNS resolves to the shared
-        # controller, which is correct for a domain the platform owns (wildcard
-        # DNS). For a user's custom domain they point at the controller AFTER
-        # the deploy, the probe can never pass at deploy time and would block
-        # the deploy for the full retry budget; setting this lets the deploy
-        # finish on app readiness alone and DNS/cert resolve asynchronously.
         shared_ingress_skip_reachability: bool = False,
-        # Rate limiting (DDoS protection) — applied as NGINX Ingress annotations.
-        # limit_rps: sustained requests/sec per client IP.
-        # limit_burst_multiplier: burst headroom (burst = limit_rps * multiplier).
-        # limit_connections: max concurrent open connections per client IP.
         ingress_limit_rps: int = 20,
         ingress_limit_burst_multiplier: int = 5,
         ingress_limit_connections: int = 20,
         ingress_session_affinity: bool = True,
-        # Domain / TLS configuration
         domain: str = "",
         cert_manager_email: str = "",
-        # Microservice deployments default to the namespace `default`
-        # ServiceAccount (no RBAC). Apps that need cluster API access
-        # (e.g. sandbox-spawning apps that watch pods, create namespaces)
-        # point this at a pre-bound SA. The microservice target does
-        # not create the SA - it must already exist in the namespace,
-        # with whatever RoleBindings / ClusterRoleBindings the app needs.
         service_account_name: str = "",
-        # Ops Console RBAC. `ops_console` provisions a read-only
-        # namespace Role + RoleBinding on the gateway SA so the in-admin
-        # deploy-health / endpoints / events / image-freshness pages can
-        # read the K8s API (namespace-scoped, no ClusterRole).
-        # `ops_console_mutations` additionally grants the V-10 patch/delete/
-        # scale verbs (rollout restart, redeploy, ingress flip, PVC unstick).
-        # Both off by default - opt in per deploy.
         ops_console: bool = False,
         ops_console_mutations: bool = False;
 
@@ -161,35 +103,28 @@ obj KubernetesConfig(BaseConfig) {
                 'autoscaler_initial_cooldown': self.autoscaler_initial_cooldown,
                 'extra_triggers': self.extra_triggers,
                 'health_check_path': self.health_check_path,
-                # Runtime configuration
                 'python_image': self.python_image,
                 'busybox_image': self.busybox_image,
                 'wait_image': self.wait_image,
-                # Storage configuration
                 'pvc_size': self.pvc_size,
                 'mongodb_storage_size': self.mongodb_storage_size,
-                # Timing configuration
                 'resource_deletion_wait': self.resource_deletion_wait,
                 'aws_nlb_wait': self.aws_nlb_wait,
-                # Paths
                 'app_mount_path': self.app_mount_path,
                 'code_mount_path': self.code_mount_path,
                 'workspace_path': self.workspace_path,
-                # Runtime environment
                 'jaseci_repo_url': self.jaseci_repo_url,
                 'jaseci_branch': self.jaseci_branch,
                 'jaseci_commit': self.jaseci_commit,
                 'install_jaseci': self.install_jaseci,
                 'additional_packages': self.additional_packages,
                 'plugin_versions': self.plugin_versions,
-                # Monitoring configuration
                 'monitoring_enabled': self.monitoring_enabled,
                 'k8s_metrics_enabled': self.k8s_metrics_enabled,
                 'loki_enabled': self.loki_enabled,
                 'tracing_enabled': self.tracing_enabled,
                 'prometheus_admin_password': self.prometheus_admin_password,
                 'admin_username': self.admin_username,
-                # Dashboard configuration
                 'redis_dashboard': self.redis_dashboard,
                 'mongodb_dashboard': self.mongodb_dashboard,
                 'mongo_express_username': self.mongo_express_username,
@@ -200,7 +135,6 @@ obj KubernetesConfig(BaseConfig) {
                 'mongodb_root_password': self.mongodb_root_password,
                 'redis_username': self.redis_username,
                 'redis_password': self.redis_password,
-                # Ingress configuration
                 'ingress_node_port': self.ingress_node_port,
                 'shared_ingress': self.shared_ingress,
                 'shared_ingress_class': self.shared_ingress_class,
@@ -211,7 +145,6 @@ obj KubernetesConfig(BaseConfig) {
                 'ingress_limit_burst_multiplier': self.ingress_limit_burst_multiplier,
                 'ingress_limit_connections': self.ingress_limit_connections,
                 'ingress_session_affinity': self.ingress_session_affinity,
-                # Domain / TLS configuration
                 'domain': self.domain,
                 'cert_manager_email': self.cert_manager_email,
                 'service_account_name': self.service_account_name,

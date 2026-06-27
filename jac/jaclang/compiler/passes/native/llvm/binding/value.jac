@@ -13,7 +13,10 @@ import from ctypes {
 }
 import enum;
 import from jaclang.compiler.passes.native.llvm.binding { ffi }
-import from jaclang.compiler.passes.native.llvm.binding.common { _decode_string, _encode_string }
+import from jaclang.compiler.passes.native.llvm.binding.common {
+    _decode_string,
+    _encode_string
+}
 import from jaclang.compiler.passes.native.llvm.binding.typeref { TypeRef }
 class Linkage(`enum.IntEnum) {
     with entry {
@@ -36,6 +39,7 @@ class Linkage(`enum.IntEnum) {
         linker_private_weak = 16;
     }
 }
+
 class Visibility(`enum.IntEnum) {
     with entry {
         `default = 0;
@@ -43,6 +47,7 @@ class Visibility(`enum.IntEnum) {
         protected = 2;
     }
 }
+
 class StorageClass(`enum.IntEnum) {
     with entry {
         `default = 0;
@@ -50,6 +55,7 @@ class StorageClass(`enum.IntEnum) {
         dllexport = 2;
     }
 }
+
 class ValueKind(`enum.IntEnum) {
     with entry {
         argument = 0;
@@ -80,47 +86,36 @@ class ValueKind(`enum.IntEnum) {
         poison_value = 25;
     }
 }
-"""A weak reference to a LLVM value.
-    """
+
 class ValueRef(ffi.ObjectRef) {
     def init(self: ValueRef, ptr: Any, kind: Any, parents: Any) -> object {
         self._kind = kind;
         self._parents = parents;
         ffi.ObjectRef.init(self, ptr);
     }
+
     def __str__(self: ValueRef) -> object {
         with ffi.OutputString() as outstr {
             ffi.lib.LLVMPY_PrintValueToString(self, outstr);
             return str(outstr);
         }
     }
-    """
-        The module this function or global variable value was obtained from.
-        """
+
     @property
     def module(self: ValueRef) -> object {
         return self._parents.get('module');
     }
 
-    """
-        The function this argument or basic block value was obtained from.
-        """
     @property
     def function(self: ValueRef) -> object {
         return self._parents.get('function');
     }
 
-    """
-        The block this instruction value was obtained from.
-        """
     @property
     def block(self: ValueRef) -> object {
         return self._parents.get('block');
     }
 
-    """
-        The instruction this operand value was obtained from.
-        """
     @property
     def instruction(self: ValueRef) -> object {
         return self._parents.get('instruction');
@@ -130,46 +125,57 @@ class ValueRef(ffi.ObjectRef) {
     def is_global(self: ValueRef) -> object {
         return (self._kind == 'global');
     }
+
     @property
     def is_function(self: ValueRef) -> object {
         return (self._kind == 'function');
     }
+
     @property
     def is_block(self: ValueRef) -> object {
         return (self._kind == 'block');
     }
+
     @property
     def is_argument(self: ValueRef) -> object {
         return (self._kind == 'argument');
     }
+
     @property
     def is_instruction(self: ValueRef) -> object {
         return (self._kind == 'instruction');
     }
+
     @property
     def is_operand(self: ValueRef) -> object {
         return (self._kind == 'operand');
     }
+
     @property
     def is_constant(self: ValueRef) -> object {
         return bool(ffi.lib.LLVMPY_IsConstant(self));
     }
+
     @property
     def value_kind(self: ValueRef) -> object {
         return ValueKind(ffi.lib.LLVMPY_GetValueKind(self));
     }
+
     @property
     def name(self: ValueRef) -> object {
         return _decode_string(ffi.lib.LLVMPY_GetValueName(self));
     }
+
     @name.setter
     def name(self: ValueRef, val: Any) -> object {
         ffi.lib.LLVMPY_SetValueName(self, _encode_string(val));
     }
+
     @property
     def linkage(self: ValueRef) -> object {
         return Linkage(ffi.lib.LLVMPY_GetLinkage(self));
     }
+
     @linkage.setter
     def linkage(self: ValueRef, value: Any) -> object {
         if not isinstance(value, Linkage) {
@@ -177,10 +183,12 @@ class ValueRef(ffi.ObjectRef) {
         }
         ffi.lib.LLVMPY_SetLinkage(self, value);
     }
+
     @property
     def visibility(self: ValueRef) -> object {
         return Visibility(ffi.lib.LLVMPY_GetVisibility(self));
     }
+
     @visibility.setter
     def visibility(self: ValueRef, value: Any) -> object {
         if not isinstance(value, Visibility) {
@@ -188,10 +196,12 @@ class ValueRef(ffi.ObjectRef) {
         }
         ffi.lib.LLVMPY_SetVisibility(self, value);
     }
+
     @property
     def storage_class(self: ValueRef) -> object {
         return StorageClass(ffi.lib.LLVMPY_GetDLLStorageClass(self));
     }
+
     @storage_class.setter
     def storage_class(self: ValueRef, value: Any) -> object {
         if not isinstance(value, StorageClass) {
@@ -199,13 +209,7 @@ class ValueRef(ffi.ObjectRef) {
         }
         ffi.lib.LLVMPY_SetDLLStorageClass(self, value);
     }
-    """Only works on function value
 
-        Parameters
-        -----------
-        attr : str
-            attribute name
-        """
     def add_function_attribute(self: ValueRef, attr: Any) -> object {
         if not self.is_function {
             raise ValueError(('expected function value, got %s' % (self._kind, )));
@@ -220,30 +224,17 @@ class ValueRef(ffi.ObjectRef) {
         ffi.lib.LLVMPY_AddFunctionAttr(self, attrval);
     }
 
-    """
-        This value's LLVM type.
-        """
     @property
     def `type(self: ValueRef) -> object {
         return TypeRef(ffi.lib.LLVMPY_TypeOf(self));
     }
 
-    """
-        Uses ``LLVMGlobalGetValueType()``.
-        Needed for opaque pointers in globals.
-        > For globals, use getValueType().
-        See https://llvm.org/docs/OpaquePointers.html#migration-instructions
-        """
     @property
     def global_value_type(self: ValueRef) -> object {
         assert (self.is_global or self.is_function);
         return TypeRef(ffi.lib.LLVMPY_GlobalGetValueType(self));
     }
 
-    """
-        Whether this value (presumably global) is defined in the current
-        module.
-        """
     @property
     def is_declaration(self: ValueRef) -> object {
         if not (self.is_global or self.is_function) {
@@ -254,10 +245,6 @@ class ValueRef(ffi.ObjectRef) {
         return ffi.lib.LLVMPY_IsDeclaration(self);
     }
 
-    """
-        Return an iterator over this value's attributes.
-        The iterator will yield a string for each attribute.
-        """
     @property
     def attributes(self: ValueRef) -> object {
         itr = iter(());
@@ -282,10 +269,6 @@ class ValueRef(ffi.ObjectRef) {
         return itr;
     }
 
-    """
-        Return an iterator over this function's blocks.
-        The iterator will yield a ValueRef for each block.
-        """
     @property
     def blocks(self: ValueRef) -> object {
         if not self.is_function {
@@ -297,10 +280,6 @@ class ValueRef(ffi.ObjectRef) {
         return _BlocksIterator(it, parents);
     }
 
-    """
-        Return an iterator over this function's arguments.
-        The iterator will yield a ValueRef for each argument.
-        """
     @property
     def arguments(self: ValueRef) -> object {
         if not self.is_function {
@@ -312,10 +291,6 @@ class ValueRef(ffi.ObjectRef) {
         return _ArgumentsIterator(it, parents);
     }
 
-    """
-        Return an iterator over this block's instructions.
-        The iterator will yield a ValueRef for each instruction.
-        """
     @property
     def instructions(self: ValueRef) -> object {
         if not self.is_block {
@@ -327,10 +302,6 @@ class ValueRef(ffi.ObjectRef) {
         return _InstructionsIterator(it, parents);
     }
 
-    """
-        Return an iterator over this instruction's operands.
-        The iterator will yield a ValueRef for each operand.
-        """
     @property
     def operands(self: ValueRef) -> object {
         if not self.is_instruction {
@@ -349,10 +320,7 @@ class ValueRef(ffi.ObjectRef) {
         }
         return ffi.ret_string(ffi.lib.LLVMPY_GetOpcodeName(self));
     }
-    """
-        Return an iterator over this phi instruction's incoming blocks.
-        The iterator will yield a ValueRef for each block.
-        """
+
     @property
     def incoming_blocks(self: ValueRef) -> object {
         if (not self.is_instruction or (self.opcode != 'phi')) {
@@ -366,19 +334,6 @@ class ValueRef(ffi.ObjectRef) {
         return _IncomingBlocksIterator(it, parents);
     }
 
-    """
-        Return the constant value, either as a literal (when supported)
-        or as a string.
-
-        Parameters
-        -----------
-        signed_int : bool
-            if True and the constant is an integer, returns a signed version
-        round_fp : bool
-            if True and the constant is a floating point value, rounds the
-            result upon accuracy loss (e.g., when querying an fp128 value).
-            By default, raises an exception on accuracy loss
-        """
     def get_constant_value(
         self: ValueRef, signed_int: Any = False, round_fp: Any = False
     ) -> object {
@@ -423,6 +378,7 @@ class _ValueIterator(ffi.ObjectRef) {
             );
         }
     }
+
     def __next__(self: _ValueIterator) -> object {
         vp = self._next();
         if vp {
@@ -440,6 +396,7 @@ class _ValueIterator(ffi.ObjectRef) {
         return self;
     }
 }
+
 class _AttributeIterator(ffi.ObjectRef) {
     def __next__(self: _AttributeIterator) -> object {
         vp = self._next();
@@ -458,22 +415,27 @@ class _AttributeIterator(ffi.ObjectRef) {
         return self;
     }
 }
+
 class _AttributeListIterator(_AttributeIterator) {
     def _dispose(self: _AttributeListIterator) -> object {
         self._capi.LLVMPY_DisposeAttributeListIter(self);
     }
+
     def _next(self: _AttributeListIterator) -> object {
         return ffi.ret_bytes(ffi.lib.LLVMPY_AttributeListIterNext(self));
     }
 }
+
 class _AttributeSetIterator(_AttributeIterator) {
     def _dispose(self: _AttributeSetIterator) -> object {
         self._capi.LLVMPY_DisposeAttributeSetIter(self);
     }
+
     def _next(self: _AttributeSetIterator) -> object {
         return ffi.ret_bytes(ffi.lib.LLVMPY_AttributeSetIterNext(self));
     }
 }
+
 class _BlocksIterator(_ValueIterator) {
     with entry {
         kind = 'block';
@@ -482,10 +444,12 @@ class _BlocksIterator(_ValueIterator) {
     def _dispose(self: _BlocksIterator) -> object {
         self._capi.LLVMPY_DisposeBlocksIter(self);
     }
+
     def _next(self: _BlocksIterator) -> object {
         return ffi.lib.LLVMPY_BlocksIterNext(self);
     }
 }
+
 class _ArgumentsIterator(_ValueIterator) {
     with entry {
         kind = 'argument';
@@ -494,10 +458,12 @@ class _ArgumentsIterator(_ValueIterator) {
     def _dispose(self: _ArgumentsIterator) -> object {
         self._capi.LLVMPY_DisposeArgumentsIter(self);
     }
+
     def _next(self: _ArgumentsIterator) -> object {
         return ffi.lib.LLVMPY_ArgumentsIterNext(self);
     }
 }
+
 class _InstructionsIterator(_ValueIterator) {
     with entry {
         kind = 'instruction';
@@ -506,10 +472,12 @@ class _InstructionsIterator(_ValueIterator) {
     def _dispose(self: _InstructionsIterator) -> object {
         self._capi.LLVMPY_DisposeInstructionsIter(self);
     }
+
     def _next(self: _InstructionsIterator) -> object {
         return ffi.lib.LLVMPY_InstructionsIterNext(self);
     }
 }
+
 class _OperandsIterator(_ValueIterator) {
     with entry {
         kind = 'operand';
@@ -518,10 +486,12 @@ class _OperandsIterator(_ValueIterator) {
     def _dispose(self: _OperandsIterator) -> object {
         self._capi.LLVMPY_DisposeOperandsIter(self);
     }
+
     def _next(self: _OperandsIterator) -> object {
         return ffi.lib.LLVMPY_OperandsIterNext(self);
     }
 }
+
 class _IncomingBlocksIterator(_ValueIterator) {
     with entry {
         kind = 'block';
@@ -530,10 +500,12 @@ class _IncomingBlocksIterator(_ValueIterator) {
     def _dispose(self: _IncomingBlocksIterator) -> object {
         self._capi.LLVMPY_DisposeIncomingBlocksIter(self);
     }
+
     def _next(self: _IncomingBlocksIterator) -> object {
         return ffi.lib.LLVMPY_IncomingBlocksIterNext(self);
     }
 }
+
 with entry {
     ffi.lib.LLVMPY_PrintValueToString.argtypes = [ffi.LLVMValueRef, POINTER(c_char_p)];
     ffi.lib.LLVMPY_GetGlobalParent.argtypes = [ffi.LLVMValueRef];
@@ -619,4 +591,3 @@ with entry {
     ffi.lib.LLVMPY_GetConstantFPValue.argtypes = [ffi.LLVMValueRef, POINTER(c_bool)];
     ffi.lib.LLVMPY_GetConstantFPValue.restype = c_double;
 }
-

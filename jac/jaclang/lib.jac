@@ -1,5 +1,3 @@
-"""Jac Library - User-friendly interface for library mode."""
-
 import jaclang.jac0core.jaclib as _jaclib;
 include jaclang.jac0core.jaclib;
 

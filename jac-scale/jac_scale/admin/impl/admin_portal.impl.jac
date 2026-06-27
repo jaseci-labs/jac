@@ -1,4 +1,3 @@
-"""Admin Portal Implementation for JAC-Scale."""
 import logging;
 import from collections.abc { Callable }
 import from fastapi { Request }
@@ -27,16 +26,13 @@ import from jaclang.jac0core.constant { Constants as Con }
 
 glob logger = logging.getLogger(__name__);
 
-"""Register all admin endpoints."""
 impl JacAPIServerAdmin.register_admin_endpoints -> None {
     admin_config = get_scale_config().get_admin_config();
     if not admin_config.get('enabled', True) {
         logger.info("Admin portal is disabled");
         return;
     }
-    # Bootstrap admin user
     self.bootstrap_admin();
-    # Admin login endpoint
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.POST,
@@ -66,7 +62,6 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             description='Authenticate as admin user'
         )
     );
-    # Password reset endpoint (for users who require password reset)
     import from fastapi { Request }
     async def reset_password_handler(
         request: Request, current_password: str, new_password: str
@@ -103,7 +98,6 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             description='Reset password for users requiring password change'
         )
     );
-    # User management endpoints
     async def list_users_handler(
         request: Request, limit: int = 100, offset: int = 0
     ) -> TransportResponse {
@@ -282,7 +276,6 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             description='Delete a user (admin only)'
         )
     );
-    # SSO management endpoints
     async def list_sso_providers_handler(request: Request) -> TransportResponse {
         authorization = request.headers.get('Authorization');
         return self.admin_list_sso_providers(authorization);
@@ -326,7 +319,6 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             description='Get SSO accounts linked to a user (admin only)'
         )
     );
-    # Configuration endpoints
     async def get_config_handler(
         request: Request, profile: str = "default"
     ) -> TransportResponse {
@@ -389,7 +381,6 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             description='Update jac.toml configuration content (admin only)'
         )
     );
-    # Admin graph visualization
     async def admin_graph_handler(
         request: Request, username: str | None = None
     ) -> JSONResponse {
@@ -417,7 +408,6 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             description='Get graph data for any user (admin only)'
         )
     );
-    # Metrics endpoint for dashboard
     async def get_metrics_handler(request: Request) -> TransportResponse {
         authorization = request.headers.get('Authorization');
         return self.admin_get_metrics(authorization);
@@ -434,7 +424,6 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             description='Get parsed Prometheus metrics as JSON (admin only)'
         )
     );
-    # Admin UI - redirect /admin to /admin/
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
@@ -447,7 +436,6 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             description='Redirect to /admin/'
         )
     );
-    # Admin UI - serve index.html at /admin/
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
@@ -460,7 +448,6 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             description='Admin portal UI'
         )
     );
-    # Admin static assets
     async def serve_admin_catchall_handler(request: Request, path: str) -> Response {
         return self.serve_admin_asset(path);
     }
@@ -488,7 +475,6 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
     logger.info("Admin portal endpoints registered at /admin");
 }
 
-"""Bootstrap admin user on server start."""
 impl JacAPIServerAdmin.bootstrap_admin -> None {
     result = self.user_manager.bootstrap_admin_user();
     if 'error' not in result {
@@ -501,7 +487,6 @@ impl JacAPIServerAdmin.bootstrap_admin -> None {
     }
 }
 
-"""Validate admin token and return user_id if valid admin."""
 impl JacAPIServerAdmin.validate_admin_token(Authorization: str | None) -> (str | None) {
     if not Authorization or not Authorization.startswith('Bearer ') {
         return None;
@@ -517,7 +502,6 @@ impl JacAPIServerAdmin.validate_admin_token(Authorization: str | None) -> (str |
     return user_id;
 }
 
-"""Check if request is from admin, return error response if not."""
 impl JacAPIServerAdmin.require_admin(
     Authorization: str | None
 ) -> TransportResponse | None {
@@ -532,7 +516,6 @@ impl JacAPIServerAdmin.require_admin(
     return None;
 }
 
-"""Admin login endpoint."""
 impl JacAPIServerAdmin.admin_login(username: str, password: str) -> TransportResponse {
     if not username or not password {
         return TransportResponse.fail(
@@ -550,7 +533,6 @@ impl JacAPIServerAdmin.admin_login(username: str, password: str) -> TransportRes
         );
     }
     user_id = result.get('user_id', '');
-    # Check if user is admin
     if not self.user_manager.is_admin(user_id) {
         return TransportResponse.fail(
             code='FORBIDDEN',
@@ -573,11 +555,9 @@ impl JacAPIServerAdmin.admin_login(username: str, password: str) -> TransportRes
     );
 }
 
-"""Reset password endpoint."""
 impl JacAPIServerAdmin.reset_password(
     current_password: str, new_password: str, Authorization: str | None = None
 ) -> TransportResponse {
-    # Validate token
     if not Authorization or not Authorization.startswith('Bearer ') {
         return TransportResponse.fail(
             code='UNAUTHORIZED',
@@ -608,7 +588,6 @@ impl JacAPIServerAdmin.reset_password(
             meta=Meta(extra={'http_status': 400})
         );
     }
-    # Update password
     result = self.user_manager.update_password(user_id, current_password, new_password);
     if 'error' in result {
         return TransportResponse.fail(
@@ -617,9 +596,7 @@ impl JacAPIServerAdmin.reset_password(
             meta=Meta(extra={'http_status': 400})
         );
     }
-    # Clear password reset requirement
     self.user_manager.set_requires_password_reset(user_id, False);
-    # Generate new token
     new_token = self.user_manager.create_jwt_token(user_id);
     return TransportResponse.success(
         data={'message': 'Password updated successfully', 'token': new_token},
@@ -627,7 +604,6 @@ impl JacAPIServerAdmin.reset_password(
     );
 }
 
-"""List all users (admin only)."""
 impl JacAPIServerAdmin.admin_list_users(
     limit: int = 100, offset: int = 0, Authorization: str | None = None
 ) -> TransportResponse {
@@ -636,7 +612,6 @@ impl JacAPIServerAdmin.admin_list_users(
         return error;
     }
     users = self.user_manager.list_all_users(limit, offset);
-    # Add top-level username for admin UI compatibility
     for user in users {
         identities = user.get('identities', []);
         username = next(
@@ -655,7 +630,6 @@ impl JacAPIServerAdmin.admin_list_users(
     );
 }
 
-"""Get user details (admin only)."""
 impl JacAPIServerAdmin.admin_get_user(
     username: str, Authorization: str | None = None
 ) -> TransportResponse {
@@ -672,7 +646,6 @@ impl JacAPIServerAdmin.admin_get_user(
         );
     }
     user_id = user.get('user_id', username);
-    # Get additional user info
     role = self.user_manager.get_user_role(user_id);
     requires_reset = self.user_manager.requires_password_reset(user_id);
     is_pwd_required = self.user_manager.is_password_required(user_id);
@@ -690,7 +663,6 @@ impl JacAPIServerAdmin.admin_get_user(
     );
 }
 
-"""Create user (admin only)."""
 impl JacAPIServerAdmin.admin_create_user(
     username: str, password: str, role: str = 'user', Authorization: str | None = None
 ) -> TransportResponse {
@@ -720,7 +692,6 @@ impl JacAPIServerAdmin.admin_create_user(
     );
 }
 
-"""Update user (admin only)."""
 impl JacAPIServerAdmin.admin_update_user(
     username: str,
     role: str | None = None,
@@ -778,7 +749,6 @@ impl JacAPIServerAdmin.admin_update_user(
     );
 }
 
-"""Delete user (admin only)."""
 impl JacAPIServerAdmin.admin_delete_user(
     username: str, Authorization: str | None = None
 ) -> TransportResponse {
@@ -801,7 +771,6 @@ impl JacAPIServerAdmin.admin_delete_user(
     );
 }
 
-"""List SSO providers (admin only)."""
 impl JacAPIServerAdmin.admin_list_sso_providers(
     Authorization: str | None = None
 ) -> TransportResponse {
@@ -811,7 +780,6 @@ impl JacAPIServerAdmin.admin_list_sso_providers(
     }
     sso_config = get_scale_config().get_sso_config();
     providers = [];
-    # Check each platform
     for platform in ['google'] {
         platform_config = sso_config.get(platform, {});
         client_id = platform_config.get('client_id', '');
@@ -835,7 +803,6 @@ impl JacAPIServerAdmin.admin_list_sso_providers(
     );
 }
 
-"""Get user's SSO accounts (admin only)."""
 impl JacAPIServerAdmin.admin_get_user_sso_accounts(
     username: str, Authorization: str | None = None
 ) -> TransportResponse {
@@ -859,7 +826,6 @@ impl JacAPIServerAdmin.admin_get_user_sso_accounts(
     );
 }
 
-"""Get configuration content (admin only)."""
 impl JacAPIServerAdmin.admin_get_config(
     profile: str = "default", Authorization: str | None = None
 ) -> TransportResponse {
@@ -869,14 +835,12 @@ impl JacAPIServerAdmin.admin_get_config(
     }
     import os;
     cwd = Path(os.getcwd());
-    # Determine config file path based on profile
     if profile == "default" {
         config_path = cwd / "jac.toml";
     } else {
         config_path = cwd / f"jac.{profile}.toml";
     }
     if not config_path.exists() {
-        # Return empty content if file doesn't exist
         return TransportResponse.success(
             data={
                 'profile': profile,
@@ -901,7 +865,6 @@ impl JacAPIServerAdmin.admin_get_config(
     }
 }
 
-"""Update configuration content (admin only)."""
 impl JacAPIServerAdmin.admin_update_config(
     content: str, profile: str = "default", Authorization: str | None = None
 ) -> TransportResponse {
@@ -912,13 +875,11 @@ impl JacAPIServerAdmin.admin_update_config(
     import os;
     import toml;
     cwd = Path(os.getcwd());
-    # Determine config file path based on profile
     if profile == "default" {
         config_path = cwd / "jac.toml";
     } else {
         config_path = cwd / f"jac.{profile}.toml";
     }
-    # Validate TOML syntax before saving
     try {
         toml.loads(content);
     } except Exception as e {
@@ -943,7 +904,6 @@ impl JacAPIServerAdmin.admin_update_config(
     }
 }
 
-"""Get graph data for admin visualization."""
 impl JacAPIServerAdmin.admin_graph_data(
     username: str | None = None, Authorization: str | None = None
 ) -> JSONResponse {
@@ -1011,7 +971,6 @@ impl JacAPIServerAdmin.admin_graph_data(
     }
 }
 
-"""Get parsed Prometheus metrics as JSON for admin dashboard."""
 impl JacAPIServerAdmin.admin_get_metrics(
     Authorization: str | None = None
 ) -> TransportResponse {
@@ -1054,7 +1013,6 @@ impl JacAPIServerAdmin.admin_get_metrics(
     }
 }
 
-"""Parse Prometheus text format into structured metric data."""
 def _parse_prometheus_text(raw_metrics: str) -> list[dict] {
     import re;
 
@@ -1138,7 +1096,6 @@ def _parse_prometheus_text(raw_metrics: str) -> list[dict] {
     return metrics_data;
 }
 
-"""Calculate summary statistics from parsed metrics."""
 def _calculate_metrics_summary(metrics_data: list[dict]) -> dict {
     summary: dict = {
         'total_requests': 0,
@@ -1183,15 +1140,12 @@ def _calculate_metrics_summary(metrics_data: list[dict]) -> dict {
     return summary;
 }
 
-"""Get the admin dist directory path - in the running app's .jac folder."""
 impl JacAPIServerAdmin.get_admin_dist_dir -> Path {
     import os;
-    # Use the current working directory (where the app is being run from)
     cwd = Path(os.getcwd());
     return cwd / ".jac" / "admin";
 }
 
-"""Copy pre-built admin assets from the installed package to the dist directory."""
 def _copy_dir_contents(src: Path, dst: Path) {
     import shutil;
     dst.mkdir(parents=True, exist_ok=True);
@@ -1208,11 +1162,9 @@ def _copy_dir_contents(src: Path, dst: Path) {
     }
 }
 
-"""Build the admin client from admin/ui source."""
 impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
     dist_dir = self.get_admin_dist_dir();
     index_file = dist_dir / "index.html";
-    # Check if already built/deployed
     if not force and index_file.exists() {
         logger.debug("Admin client already built");
         return True;
@@ -1221,7 +1173,6 @@ impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
     import from jac_scale.admin { admin_portal }
     admin_dir = Path(admin_portal.__file__).parent;
 
-    # Check for pre-built assets bundled with the package
     bundled_dist = admin_dir / "_dist";
     if bundled_dist.exists() and (bundled_dist / "index.html").exists() {
         logger.info("Using pre-built admin client from package");
@@ -1235,7 +1186,6 @@ impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
         }
     }
 
-    # Fall back to building from source (dev mode)
     ui_dir = admin_dir / "ui";
     if not (ui_dir / "main.jac").exists() {
         logger.error(f"Admin UI source not found at {ui_dir}");
@@ -1243,7 +1193,6 @@ impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
     }
     logger.info("Building admin client from source...");
     try {
-        # Run jac build in the UI directory
         result = subprocess.run(
             ["jac", "build", "main.jac"],
             cwd=str(ui_dir),
@@ -1257,7 +1206,6 @@ impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
             return False;
         }
 
-        # Copy built files to .jac/admin
         ui_dist = ui_dir / ".jac" / "client" / "dist";
         if ui_dist.exists() {
             _copy_dir_contents(ui_dist, dist_dir);
@@ -1274,16 +1222,13 @@ impl JacAPIServerAdmin.build_admin_client(force: bool = False) -> bool {
     }
 }
 
-"""Redirect /admin to /admin/."""
 impl JacAPIServerAdmin.serve_admin_page -> Response {
     return RedirectResponse(url="/admin/", status_code=302);
 }
 
-"""Serve the admin portal index.html."""
 impl JacAPIServerAdmin.serve_admin_index -> Response {
     dist_dir = self.get_admin_dist_dir();
     index_file = dist_dir / "index.html";
-    # Build if not available
     if not index_file.exists() {
         if not self.build_admin_client() {
             return HTMLResponse(
@@ -1304,14 +1249,11 @@ impl JacAPIServerAdmin.serve_admin_index -> Response {
     return FileResponse(path=str(index_file), media_type="text/html");
 }
 
-"""Serve admin portal static assets."""
 impl JacAPIServerAdmin.serve_admin_asset(path: str) -> Response {
     dist_dir = self.get_admin_dist_dir();
-    # Check if this is a static asset request
     has_extension = '.' in path.split('/')[-1] if path else False;
     if has_extension {
         asset_path = dist_dir / path;
-        # Security: ensure path doesn't escape dist directory
         try {
             asset_path = asset_path.resolve();
             dist_resolved = dist_dir.resolve();
@@ -1329,7 +1271,6 @@ impl JacAPIServerAdmin.serve_admin_asset(path: str) -> Response {
             return FileResponse(path=str(asset_path), media_type=content_type);
         }
     }
-    # For non-asset paths (SPA routes), serve index.html
     index_file = dist_dir / "index.html";
     if not index_file.exists() {
         if not self.build_admin_client() {

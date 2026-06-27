@@ -1,9 +1,3 @@
-"""K8s in-cluster URL resolver. Implements `url_for` (DNS hostname
-instead of loopback) so the gateway forwards via K8s DNS. Selected by
-the get_sv_registry @hookimpl when `KUBERNETES_SERVICE_HOST` is set.
-Lifecycle methods are no-op stubs; deploy is owned by
-KubernetesMicroserviceTarget, runtime by K8s itself."""
-
 import logging;
 import from jac_scale.abstractions.service_deployer { ServiceDeployer }
 import from jac_scale.microservices.service_registry { ServiceRegistry, ServiceEntry }
@@ -29,7 +23,6 @@ obj K8sRuntimeServiceResolver(ServiceDeployer) {
         );
     }
 
-    # Lifecycle stubs: pod lifecycle is K8s controller's job.
     def deploy_service(name: str) -> bool {
         logger.warning(
             f"K8sRuntimeServiceResolver.deploy_service({name}): admin op "
@@ -85,8 +78,6 @@ obj K8sRuntimeServiceResolver(ServiceDeployer) {
 }
 
 
-"""Build `{module_name: dns_url}` registry map for the get_sv_registry
-hookimpl."""
 def build_k8s_registry(
     routes: dict[str, str], port: int = DEFAULT_GATEWAY_PORT
 ) -> dict[str, str] {

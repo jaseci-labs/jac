@@ -1,14 +1,8 @@
-"""Execution commands: run, enter, serve, debug.
-
-Commands for running and debugging Jac programs.
-"""
-
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Run the specified .jac or .py file."""
 @registry.command(
     name="run",
     help="Run a Jac program",
@@ -80,7 +74,6 @@ def run(
     args: list = []
 ) -> int;
 
-"""Run the specified entrypoint function in the given .jac file."""
 @registry.command(
     name="enter",
     help="Run a specific entrypoint in a Jac program",
@@ -117,7 +110,6 @@ def enter(
     nd: str = ""
 ) -> int;
 
-"""Start REST API server."""
 @registry.command(
     name="start",
     help="Start REST API server for a Jac program",
@@ -186,7 +178,6 @@ def start(
     no_client: bool = False
 ) -> int;
 
-"""Debug a Jac program using Python debugger."""
 @registry.command(
     name="debug",
     help="Debug a Jac program with Python debugger",
@@ -209,7 +200,6 @@ def start(
 )
 def debug(filename: str, main: bool = True, cache: bool = False) -> int;
 
-"""Run a CLI tool from an installed package's console-script entry point."""
 @registry.command(
     name="x",
     help="Run an installed CLI tool (console-script) under the Jac runtime",

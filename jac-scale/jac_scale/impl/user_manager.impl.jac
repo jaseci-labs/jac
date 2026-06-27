@@ -22,15 +22,10 @@ impl JacScaleUserManager.postinit -> None {
         client = get_mongo_client();
         db = client['jac_db'];
         self._identity_storage = MongoIdentityStorage(users_col=db['users']);
-        # LEGACY MIGRATION (removable) - must run before ensure_indexes (old docs have user_id: null)
         self._identity_storage.migrate_legacy_users();
         self._identity_storage.ensure_indexes();
     } else {
         import os;
-        # Honor JAC_DATA_PATH so frozen sidecars on read-only system paths
-        # (e.g. /usr/lib/<app>/jac for a .deb) write the SQLite store under
-        # the user's data dir instead of base_path. Falls back to base_path
-        # for dev/source-tree runs where the env var isn't set.
         base_for_data = os.environ.get('JAC_DATA_PATH', self.base_path);
         data_dir = os.path.join(base_for_data, '.jac', 'data');
         os.makedirs(data_dir, exist_ok=True);
@@ -39,10 +34,6 @@ impl JacScaleUserManager.postinit -> None {
     }
 }
 
-# ============================================================================
-# Identity-based User CRUD
-# ============================================================================
-"""Create a user from a username/password (the `UserManager` contract)."""
 impl JacScaleUserManager.create_user(username: str, password: str) -> dict[str, any] {
     return self.create_user_with_identities(
         identities=[{'type': 'username', 'value': username}],
@@ -50,7 +41,6 @@ impl JacScaleUserManager.create_user(username: str, password: str) -> dict[str, 
     );
 }
 
-"""Create a user from explicit identities (username / email / SSO)."""
 impl JacScaleUserManager.create_user_with_identities(
     identities: list[dict[str, any]],
     credential: dict[str, any],
@@ -59,7 +49,6 @@ impl JacScaleUserManager.create_user_with_identities(
     return self._identity_storage.create_user(identities, credential, profile);
 }
 
-"""Convenience method for creating internal users (guest, system, admin)."""
 impl JacScaleUserManager.create_internal_user(
     username: str, password: str, role: str = 'user'
 ) -> dict[str, any] {
@@ -70,12 +59,7 @@ impl JacScaleUserManager.create_internal_user(
     return result;
 }
 
-"""Authenticate by any identity value (username or email) + password.
 
-The `UserManager` contract (jaclang's `AuthHandler.login`) expects the
-authenticated result to carry a `token`. Identity storage only verifies the
-credential, so the JWT is minted here before the result is returned.
-"""
 impl JacScaleUserManager.authenticate(
     identifier: str, password: str
 ) -> dict[str, any] | None {
@@ -86,12 +70,10 @@ impl JacScaleUserManager.authenticate(
     return result;
 }
 
-"""Find a user by any identity value."""
 impl JacScaleUserManager.find_user_by_identity(value: str) -> dict[str, any] | None {
     return self._identity_storage.find_user_by_identity(value);
 }
 
-"""Check if a user exists by user_id or identity value."""
 impl JacScaleUserManager.user_exists(user_id: str) -> bool {
     if self._identity_storage.user_exists_by_id(user_id) {
         return True;
@@ -99,7 +81,6 @@ impl JacScaleUserManager.user_exists(user_id: str) -> bool {
     return self._identity_storage.find_user_by_identity(user_id) is not None;
 }
 
-"""Get user by user_id or identity value."""
 impl JacScaleUserManager.get_user(user_id: str) -> dict[str, any] | None {
     user = self._identity_storage.get_user_by_id(user_id);
     if not user {
@@ -108,9 +89,7 @@ impl JacScaleUserManager.get_user(user_id: str) -> dict[str, any] | None {
     return user;
 }
 
-"""Get root_id by user_id or identity value (for guest/system user fallback)."""
 impl JacScaleUserManager.get_root_id(user_id: str) -> str | None {
-    # __system__ user gets the super root (full write access to all nodes)
     if user_id == '__system__' {
         return Con.SUPER_ROOT_UUID;
     }
@@ -120,7 +99,6 @@ impl JacScaleUserManager.get_root_id(user_id: str) -> str | None {
     }
     result = self._identity_storage.get_root_id(user_id);
     if not result {
-        # Fallback: look up by identity value (handles __guest__, etc.)
         user = self._identity_storage.find_user_by_identity(user_id);
         if user {
             result = user.get('root_id');
@@ -134,7 +112,6 @@ impl JacScaleUserManager.get_root_id(user_id: str) -> str | None {
     return result;
 }
 
-"""Update password by user_id."""
 impl JacScaleUserManager.update_password(
     user_id: str, current_password: str, new_password: str
 ) -> dict[str, str] {
@@ -143,29 +120,21 @@ impl JacScaleUserManager.update_password(
     );
 }
 
-"""Set a new password without verifying the current one.
 
-Intended for password-reset flows where the caller has already authenticated
-the user via a single-use reset token (see auth_tokens.AuthTokenStore).
-Replaces the existing password credential, or creates one if none exists.
-"""
 impl JacScaleUserManager.reset_password_by_user_id(
     user_id: str, new_password: str
 ) -> dict[str, str] {
     return self._identity_storage.reset_password(user_id, new_password);
 }
 
-"""Append an identity (email, username, etc.) to an existing user."""
 impl JacScaleUserManager.add_identity(user_id: str, identity: dict[str, Any]) -> bool {
     return self._identity_storage._add_identity(user_id, identity);
 }
 
-"""Check whether the given normalized identity value is already taken."""
 impl JacScaleUserManager.is_identity_taken(value: str) -> bool {
     return self._identity_storage.identity_taken(value);
 }
 
-"""Mark an identity (matched by value_normalized) as verified for a user."""
 impl JacScaleUserManager.set_identity_verified(
     user_id: str, value_normalized: str
 ) -> bool {
@@ -200,14 +169,10 @@ impl JacScaleUserManager.validate_token(token: str) -> str | None {
 
 impl JacScaleUserManager.close -> None { }
 
-"""Get username from user_id."""
 impl JacScaleUserManager.get_username(user_id: str) -> str | None {
     return self._identity_storage.get_username(user_id);
 }
 
-# ============================================================================
-# JWT Methods - now use user_id as the primary claim
-# ============================================================================
 impl JacScaleUserManager.create_jwt_token(
     user_id: str, include_role: bool = True
 ) -> str {
@@ -235,11 +200,7 @@ impl JacScaleUserManager.get_jwt_claims(token: str) -> dict | None {
     }
 }
 
-"""Validate JWT and return user_id if valid.
 
-JWT signature and expiry are verified by jwt.decode() — an extra DB round-trip
-to confirm user existence on every request is unnecessary and costly.
-"""
 impl JacScaleUserManager.validate_jwt_token(token: str) -> str | None {
     try {
         decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]);
@@ -266,9 +227,6 @@ impl JacScaleUserManager.refresh_jwt_token(token: str) -> str | None {
     }
 }
 
-# ============================================================================
-# SSO Methods
-# ============================================================================
 impl JacScaleUserManager.get_sso(platform: str) -> SSOProvider | None {
     if platform not in self.SUPPORTED_PLATFORMS {
         return None;
@@ -339,10 +297,6 @@ impl JacScaleUserManager.sso_initiate(
             meta=Meta(extra={'http_status': 500})
         );
     }
-    # Carry a native/desktop client's loopback callback through the OAuth `state`
-    # so the callback can redirect the token to the origin that started the flow
-    # (RFC 8252). Only forward it when it is a safe loopback URL — an untrusted
-    # value is dropped here and re-validated on the callback side.
     state = client_callback if is_safe_loopback_redirect(client_callback) else None;
     return await sso.initiate_auth(state=state);
 }
@@ -390,19 +344,12 @@ impl JacScaleUserManager.sso_callback(
         existing = self.find_user_by_identity(email);
         if existing {
             user_id = existing.get('user_id', '');
-            # Link SSO identity if not already linked
             self.link_sso_account(user_id, platform, external_id);
-            # Refresh profile.sso.<platform> from the latest provider data so
-            # display_name/picture stay current. Only the SSO namespace is
-            # touched — developer-set profile fields are untouched.
             if sso_fields {
                 raw_profile = existing.get('profile') if existing else None;
                 current_profile: dict[str, any] = (
                     raw_profile if isinstance(raw_profile, dict) else {}
                 );
-                # Defensive: legacy users from before reserved-key enforcement
-                # may have a non-dict at profile.sso. Treat as empty rather
-                # than crashing on dict-style assignment below.
                 raw_sso = current_profile.get('sso');
                 current_sso: dict[str, any] = (
                     raw_sso if isinstance(raw_sso, dict) else {}
@@ -425,7 +372,6 @@ impl JacScaleUserManager.sso_callback(
                 meta=Meta(extra={'http_status': 200})
             );
         }
-        # Create user with verified email identity (provider already verified it)
         sso_profile = {'sso': {platform: sso_fields}} if sso_fields else None;
         result = self.create_user_with_identities(
             identities=[{'type': 'email', 'value': email, 'verified': True}],
@@ -440,7 +386,6 @@ impl JacScaleUserManager.sso_callback(
             );
         }
         user_id = result.get('user_id', '');
-        # Link SSO identity to the new user
         self.link_sso_account(user_id, platform, external_id);
         result['token'] = self.create_jwt_token(user_id);
         result['platform'] = platform;
@@ -456,9 +401,6 @@ impl JacScaleUserManager.sso_callback(
     }
 }
 
-# ============================================================================
-# SSO Account Linking
-# ============================================================================
 impl JacScaleUserManager.link_sso_account(
     user_id: str, platform: str, external_id: str
 ) -> dict[str, str] {
@@ -481,13 +423,9 @@ impl JacScaleUserManager.get_user_by_sso(
     return self._identity_storage.get_user_by_sso(platform, external_id);
 }
 
-# ============================================================================
-# User Role and Admin Management
-# ============================================================================
 impl JacScaleUserManager.get_user_role(user_id: str) -> str | None {
     role = self._identity_storage.get_user_role(user_id);
     if role is None {
-        # Fallback: resolve by identity value (admin portal passes username)
         user = self._identity_storage.find_user_by_identity(user_id);
         if user {
             return user.get('role', 'user');
@@ -512,7 +450,6 @@ impl JacScaleUserManager.is_admin(user_id: str) -> bool {
     return self.get_user_role(user_id) == 'admin';
 }
 
-"""Check if user needs to reset password."""
 impl JacScaleUserManager.requires_password_reset(user_id: str) -> bool {
     user = self._identity_storage.get_user_by_id(user_id);
     if not user {
@@ -521,7 +458,6 @@ impl JacScaleUserManager.requires_password_reset(user_id: str) -> bool {
     return bool(user.get('requires_password_reset', False)) if user else False;
 }
 
-"""Set requires_password_reset flag."""
 impl JacScaleUserManager.set_requires_password_reset(
     user_id: str, requires_reset: bool
 ) -> dict[str, str] {
@@ -534,7 +470,6 @@ impl JacScaleUserManager.set_requires_password_reset(
     return {'message': 'Password reset requirement updated', 'user_id': user_id};
 }
 
-"""Check if password is required for user."""
 impl JacScaleUserManager.is_password_required(user_id: str) -> bool {
     user = self._identity_storage.get_user_by_id(user_id);
     if not user {

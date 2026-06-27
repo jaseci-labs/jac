@@ -1,9 +1,3 @@
-"""Shared business logic for IdentityStorage base class.
-
-Concrete public methods live here. They call abstract primitives and
-public methods implemented by MongoIdentityStorage / SqliteIdentityStorage.
-"""
-
 impl IdentityStorage.hash_password(password: str) -> str {
     return str(
         bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -16,7 +10,6 @@ impl IdentityStorage.verify_password(password: str, password_hash: str) -> bool 
     );
 }
 
-"""Create a new user with identities and a credential."""
 impl IdentityStorage.create_user(
     identities: list[dict[str, any]],
     credential: dict[str, any],
@@ -25,7 +18,6 @@ impl IdentityStorage.create_user(
     import from jaclang.jac0core.constructs { Root }
     import from jaclang { JacRuntime as Jac }
 
-    # Validate identity types: only username, email allowed; max one of each
     type_counts: dict[str, int] = {};
     for identity in identities {
         id_type = identity.get('type', '');
@@ -47,7 +39,6 @@ impl IdentityStorage.create_user(
     user_id = str(uuid.uuid4());
     now = datetime.now(UTC).isoformat();
 
-    # Normalize identities and check uniqueness
     normalized_identities: list[dict[str, any]] = [];
     for identity in identities {
         id_type = identity.get('type', '');
@@ -73,14 +64,12 @@ impl IdentityStorage.create_user(
         );
     }
 
-    # Hash credential
     credentials: list[dict[str, any]] = [];
     if credential.get('type') == 'password' {
         password_hash = IdentityStorage.hash_password(credential['password']);
         credentials.append({'type': 'password', 'password_hash': password_hash});
     }
 
-    # Create Jac root node
     user_root = Root();
     Jac.save(user_root);
     Jac.commit(user_root);
@@ -102,12 +91,10 @@ impl IdentityStorage.create_user(
     return {'user_id': user_id, 'message': 'User registered successfully'};
 }
 
-"""Check if a user exists by user_id."""
 impl IdentityStorage.user_exists_by_id(user_id: str) -> bool {
     return self.get_user_by_id(user_id) is not None;
 }
 
-"""Authenticate by looking up any identity matching identifier, then checking password."""
 impl IdentityStorage.authenticate(
     identifier: str, password: str
 ) -> dict[str, any] | None {
@@ -124,7 +111,6 @@ impl IdentityStorage.authenticate(
         }
         pw_hash = cred.get('password_hash', '');
 
-        # --- LEGACY SHA256 MIGRATION (removable) ---
         if cred.get('algorithm') == 'sha256' {
             if hashlib.sha256(password.encode()).hexdigest() == pw_hash {
                 cred['password_hash'] = IdentityStorage.hash_password(password);
@@ -138,7 +124,6 @@ impl IdentityStorage.authenticate(
             }
             continue;
         }
-        # --- END LEGACY SHA256 MIGRATION ---
         if IdentityStorage.verify_password(password, pw_hash) {
             return {
                 'user_id': user_id,
@@ -150,14 +135,12 @@ impl IdentityStorage.authenticate(
     return None;
 }
 
-"""Set user role."""
 impl IdentityStorage.set_user_role(user_id: str, role: str) -> bool {
     return self._update_fields(
         user_id, {'role': role, 'updated_at': datetime.now(UTC).isoformat()}
     );
 }
 
-"""Get user role by user_id."""
 impl IdentityStorage.get_user_role(user_id: str) -> str | None {
     user = self.get_user_by_id(user_id);
     if not user {
@@ -166,7 +149,6 @@ impl IdentityStorage.get_user_role(user_id: str) -> str | None {
     return user.get('role', 'user') or 'user';
 }
 
-"""Update password for a user (requires current password)."""
 impl IdentityStorage.update_password(
     user_id: str, current_password: str, new_password: str
 ) -> dict[str, str] {
@@ -199,12 +181,7 @@ impl IdentityStorage.update_password(
     return {'user_id': user_id, 'message': 'Password updated successfully'};
 }
 
-"""Set a new password without verifying the current one.
 
-For password-reset flows where the caller has already authenticated the user
-via a single-use reset token. Replaces the existing password credential or
-creates one if none exists.
-"""
 impl IdentityStorage.reset_password(user_id: str, new_password: str) -> dict[str, str] {
     if not self.user_exists_by_id(user_id) {
         return {'error': 'User not found'};
@@ -226,13 +203,11 @@ impl IdentityStorage.reset_password(user_id: str, new_password: str) -> dict[str
     return {'user_id': user_id, 'message': 'Password updated successfully'};
 }
 
-"""Get root_id for a user."""
 impl IdentityStorage.get_root_id(user_id: str) -> str | None {
     user = self.get_user_by_id(user_id);
     return (user.get('root_id') or None) if user else None;
 }
 
-"""Get the username identity for a user (first username type, or first identity value)."""
 impl IdentityStorage.get_username(user_id: str) -> str | None {
     identities = self._get_identities(user_id);
     for identity in identities {
@@ -246,13 +221,11 @@ impl IdentityStorage.get_username(user_id: str) -> str | None {
     return None;
 }
 
-"""Generic field updater."""
 impl IdentityStorage.update_user_fields(user_id: str, fields: dict[str, any]) -> bool {
     fields['updated_at'] = datetime.now(UTC).isoformat();
     return self._update_fields(user_id, fields);
 }
 
-"""Link an SSO account by adding an identity with type=sso and provider field."""
 impl IdentityStorage.link_sso_account(
     user_id: str, platform: str, external_id: str
 ) -> dict[str, str] {
@@ -276,7 +249,6 @@ impl IdentityStorage.link_sso_account(
     try {
         added = self._add_identity(user_id, identity_doc);
     } except IdentityTakenError {
-        # Lost a race with another linker for the same SSO account.
         return {'error': 'This SSO account is already linked to another user'};
     }
     if not added {
@@ -289,7 +261,6 @@ impl IdentityStorage.link_sso_account(
     };
 }
 
-"""Unlink an SSO account by removing the sso identity matching the provider."""
 impl IdentityStorage.unlink_sso_account(user_id: str, platform: str) -> dict[str, str] {
     if not self.user_exists_by_id(user_id) {
         return {'error': 'User not found'};
@@ -304,7 +275,6 @@ impl IdentityStorage.unlink_sso_account(user_id: str, platform: str) -> dict[str
     };
 }
 
-"""Get all SSO identities for a user."""
 impl IdentityStorage.get_sso_accounts(user_id: str) -> list[dict[str, str]] {
     identities = self._get_identities(user_id);
     accounts: list[dict[str, str]] = [];

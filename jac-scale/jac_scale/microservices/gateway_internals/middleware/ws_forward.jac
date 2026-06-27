@@ -1,9 +1,3 @@
-"""WebSocket bidirectional proxy for the gateway (ROADMAP P15).
-
-Upstream handshake forwards Authorization + X-Trace-Id + X-Forwarded-For
-only; aiohttp manages its own WS handshake headers (Upgrade, Sec-*).
-"""
-
 import logging;
 import aiohttp;
 import asyncio;
@@ -34,8 +28,6 @@ def _to_ws_scheme(url: str) -> str {
 }
 
 
-"""Only forward auth + trace + XFF; drop cookies and hop-by-hops so
-we don't leak client-hop state into the service."""
 def _select_handshake_headers(client_headers: dict[str, str]) -> dict[str, str] {
     out: dict[str, str] = {};
     for (k, v) in client_headers.items() {
@@ -94,8 +86,6 @@ async def _pump_upstream_to_client(upstream_ws: any, client_ws: any) {
 }
 
 
-"""Caller must have called `client_ws.accept()` already. Closes both
-sockets when either side ends."""
 async def websocket_forward(
     client_ws: any,
     upstream_url: str,

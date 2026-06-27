@@ -15,9 +15,7 @@ with entry {
     ffi.lib.LLVMPY_LlvmAssertionsState.argtypes = ();
     ffi.lib.LLVMPY_LlvmAssertionsState.restype = c_char_p;
 }
-"""
-    Returns True if SVML was enabled at FFI support compile time.
-    """
+
 def _has_svml() -> object {
     if (ffi.lib.LLVMPY_HasSVMLSupport() == 0) {
         return False;
@@ -29,10 +27,7 @@ def _has_svml() -> object {
 with entry {
     has_svml = _has_svml();
 }
-"""
-    Returns "static" if the FFI support is statically linked against LLVM,
-    returns "dynamic" otherwise.
-    """
+
 def _build_llvm_linkage_type() -> object {
     if (ffi.lib.LLVMPY_IsDynamicLLVMLinkageBuild() == 0) {
         return "static";
@@ -44,10 +39,7 @@ def _build_llvm_linkage_type() -> object {
 with entry {
     build_llvm_linkage_type = _build_llvm_linkage_type();
 }
-"""
-    Returns "static" if the FFI support is statically linked against libstdc++,
-    returns "dynamic" otherwise.
-    """
+
 def _build_libstdcxx_linkage_type() -> object {
     if (ffi.lib.LLVMPY_IsStaticLibstdcxxLinkageBuild() == 1) {
         return "static";
@@ -59,9 +51,7 @@ def _build_libstdcxx_linkage_type() -> object {
 with entry {
     build_libstdcxx_linkage_type = _build_libstdcxx_linkage_type();
 }
-"""
-    Returns "wheel", "conda" or "unspecified"
-    """
+
 def _package_format() -> object {
     return ffi.lib.LLVMPY_PackageFormat().decode();
 }
@@ -69,12 +59,7 @@ def _package_format() -> object {
 with entry {
     package_format = _package_format();
 }
-"""
-    Returns one of "on", "off" or "unknown". Depending on whether it is
-    determined that LLVM was build with assertions on, off, or is not known.
-    "Is not known" is typically from a dynamic linkage against LLVM in which
-    case it's not easily identified whether LLVM was built with assertions.
-    """
+
 def _llvm_assertions_state() -> object {
     return ffi.lib.LLVMPY_LlvmAssertionsState().decode();
 }
@@ -82,6 +67,7 @@ def _llvm_assertions_state() -> object {
 with entry {
     llvm_assertions_state = _llvm_assertions_state();
 }
+
 @cache
 def get_sysinfo() -> object {
     d = `dict();
@@ -101,8 +87,7 @@ def get_sysinfo() -> object {
     d["lief_probe_status"] = HAVE_LIEF;
     d["linked_libraries"] = None;
     d["canonicalised_linked_libraries"] = None;
-    """Canonicalises the representation of the binary::libraries as a
-        sequence of strings""";
+    ;
     def canonicalise_library_type(dso: Any) -> object {
         return [getattr(x, "name", x) for x in dso.libraries];
     }
@@ -125,4 +110,3 @@ def get_sysinfo() -> object {
     }
     return d;
 }
-

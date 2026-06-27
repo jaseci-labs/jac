@@ -1,21 +1,3 @@
-"""User identity & password-reset endpoints.
-
-- POST /user/add-identity      (auth) - attach a new identity (e.g. email) to
-                               the calling user. No email is sent; email
-                               identities are stored as verified=False.
-- POST /user/send-verification (auth) - issue a verification token for an
-                               unverified email identity on the current user
-                               and deliver it. Idempotent: returns
-                               'already_verified' if the identity is verified.
-- POST /user/verify-identity          - consume a verification token and flip
-                               the matching identity to verified=True.
-- POST /user/forgot-password          - issue a one-time reset token to the
-                               email address tied to the identity, if any.
-                               Always returns 200 (never leaks existence).
-- POST /user/reset-password           - consume a reset token and set a new
-                               password.
-"""
-
 import from jac_scale.audit { client_ip, emit as _audit_emit }
 import from jac_scale.auth_tokens { AuthTokenStore }
 import from jac_scale.identity_storage { IdentityTakenError }
@@ -27,13 +9,7 @@ import from jac_scale.utils { authenticate_or_fail }
 glob _forgot_password_limiter: InProcessRateLimiter | None = None,
      _send_verification_limiter: InProcessRateLimiter | None = None;
 
-"""Lazily build the per-endpoint token-bucket limiters.
 
-forgot-password is keyed on the normalized recipient email so that
-rotating IPs cannot email-bomb a victim. send-verification is keyed on
-the authenticated user_id since the caller is already authenticated and
-existence leakage is not a concern there.
-"""
 def _get_identity_limiters -> tuple[InProcessRateLimiter, InProcessRateLimiter] {
     global _forgot_password_limiter,_send_verification_limiter;
     if _forgot_password_limiter is None or _send_verification_limiter is None {
@@ -54,10 +30,6 @@ def _get_identity_limiters -> tuple[InProcessRateLimiter, InProcessRateLimiter] 
     return (_forgot_password_limiter, _send_verification_limiter);
 }
 
-# ============================================================================
-# Private helpers shared by the identity / password-reset endpoints
-# ============================================================================
-"""Normalize an `IdentityInput`-shaped dict into (type, raw_value, normalized)."""
 def _normalize_identity(identity_input: Any) -> tuple[str, str, str] {
     identity = identity_input.model_dump(mode='json');
     id_type = identity.get('type', '');
@@ -66,12 +38,7 @@ def _normalize_identity(identity_input: Any) -> tuple[str, str, str] {
     return (id_type, raw_value, normalized);
 }
 
-"""Build the plain-text body for an action-link email (verify / reset).
 
-`action` is the verb shown to the user (e.g. 'verify your email address',
-'reset your password'). `extra_footer` is appended after the standard
-"ignore this message" line; pass an empty string when nothing extra applies.
-"""
 def _build_link_email(
     action: str, link: str, ttl_seconds: int, extra_footer: str = ''
 ) -> str {
@@ -83,13 +50,7 @@ def _build_link_email(
     return body;
 }
 
-"""Issue a fresh action token and materialise the click-through URL.
 
-Revokes any prior outstanding tokens of the same purpose for this user, then
-creates a new one and substitutes it into the configured URL template. If no
-template is set, the raw token is returned as the link so it remains usable
-in dev / test setups.
-"""
 def _issue_link_token(
     user_id: str, purpose: str, identity_value: str, ttl_seconds: int, url_template: str
 ) -> str {
@@ -104,8 +65,6 @@ def _issue_link_token(
     return url_template.replace('{token}', token) if url_template else token;
 }
 
-"""Build a TransportResponse.fail with an http_status meta extra and
-optional additional `extra` keys (e.g. retry_after_seconds on 429)."""
 def _fail(
     code: str, message: str, status: int, extra: dict[str, Any] | None = None
 ) -> TransportResponse {
@@ -118,8 +77,6 @@ def _fail(
     );
 }
 
-"""Build a TransportResponse.success with an http_status meta extra
-and optional additional `extra` keys."""
 def _ok(
     data: dict[str, Any], status: int = 200, extra: dict[str, Any] | None = None
 ) -> TransportResponse {
@@ -130,9 +87,6 @@ def _ok(
     return TransportResponse.success(data=data, meta=Meta(extra=meta_extra));
 }
 
-# ============================================================================
-# /user/add-identity  (requires Bearer token)
-# ============================================================================
 impl JacAPIServerAuth.register_add_identity_endpoint -> None {
     async def add_identity_handler(
         request: Request, body_data: AddIdentityRequest
@@ -149,8 +103,6 @@ impl JacAPIServerAuth.register_add_identity_endpoint -> None {
             return _fail('VALIDATION_ERROR', 'Identity value is required', 400);
         }
         taken_msg = f"This {id_type} is already registered";
-        # Fast-path rejection. Storage uniqueness is the source of truth;
-        # the IdentityTakenError catch below closes the TOCTOU race.
         if self.user_manager.is_identity_taken(normalized) {
             return _fail('IDENTITY_TAKEN', taken_msg, 409);
         }
@@ -185,9 +137,6 @@ impl JacAPIServerAuth.register_add_identity_endpoint -> None {
     );
 }
 
-# ============================================================================
-# /user/send-verification  (requires Bearer token)
-# ============================================================================
 impl JacAPIServerAuth.register_send_verification_endpoint -> None {
     async def send_verification_handler(
         request: Request, body_data: SendVerificationRequest
@@ -212,7 +161,6 @@ impl JacAPIServerAuth.register_send_verification_endpoint -> None {
         if user is None {
             return _fail('NOT_FOUND', 'User not found', 404);
         }
-        # Find the requested identity on this user.
         target: dict[str, Any] | None = None;
         for ident in user.get('identities', []) {
             if ident.get('type') != 'email' {
@@ -229,8 +177,6 @@ impl JacAPIServerAuth.register_send_verification_endpoint -> None {
         if target.get('verified') {
             return _ok(data={'status': 'already_verified'});
         }
-        # Per-user throttle so an authenticated caller cannot spam verification
-        # emails to themselves or others on their account.
         (_, sv_limiter) = _get_identity_limiters();
         (allowed, retry_after) = sv_limiter.consume(user_id);
         if not allowed {
@@ -290,9 +236,6 @@ impl JacAPIServerAuth.register_send_verification_endpoint -> None {
     );
 }
 
-# ============================================================================
-# /user/verify-identity  (no auth - token is the credential)
-# ============================================================================
 impl JacAPIServerAuth.register_verify_identity_endpoint -> None {
     async def verify_identity_handler(
         request: Request, body_data: VerifyIdentityRequest
@@ -321,7 +264,6 @@ impl JacAPIServerAuth.register_verify_identity_endpoint -> None {
         }
         flipped = self.user_manager.set_identity_verified(user_id, identity_value);
         if not flipped {
-            # Distinguish "already verified" (legit retry) from "identity gone".
             user = self.user_manager.get_user(user_id);
             if user is not None {
                 for ident in user.get('identities', []) {
@@ -373,9 +315,6 @@ impl JacAPIServerAuth.register_verify_identity_endpoint -> None {
     );
 }
 
-# ============================================================================
-# /user/forgot-password  (always returns 200 - never leaks account existence)
-# ============================================================================
 impl JacAPIServerAuth.register_forgot_password_endpoint -> None {
     async def forgot_password_handler(
         request: Request, body_data: ForgotPasswordRequest
@@ -402,8 +341,6 @@ impl JacAPIServerAuth.register_forgot_password_endpoint -> None {
         if user is None {
             return ok_response;
         }
-        # Pick the recipient email: prefer a verified is_recovery identity, else
-        # any verified email, else nothing (we still return ok_response).
         recipient_raw: (str | None) = None;
         recipient_normalized: (str | None) = None;
         for ident in user.get('identities', []) {
@@ -426,10 +363,6 @@ impl JacAPIServerAuth.register_forgot_password_endpoint -> None {
         if not recipient_raw {
             return ok_response;
         }
-        # Per-recipient throttle. The 200 envelope already hides whether the
-        # account exists, and we keep that promise on rate-limit too instead
-        # of returning 429 (which would leak the existence signal). The audit
-        # log is server-internal so we still emit a structured event for ops.
         (fp_limiter, _) = _get_identity_limiters();
         (allowed, retry_after) = fp_limiter.consume(recipient_normalized or '');
         if not allowed {
@@ -484,9 +417,6 @@ impl JacAPIServerAuth.register_forgot_password_endpoint -> None {
     );
 }
 
-# ============================================================================
-# /user/reset-password  (token-authenticated)
-# ============================================================================
 impl JacAPIServerAuth.register_reset_password_endpoint -> None {
     async def reset_password_handler(
         request: Request, body_data: ResetPasswordRequest
@@ -524,7 +454,6 @@ impl JacAPIServerAuth.register_reset_password_endpoint -> None {
             );
             return _fail('NOT_FOUND', result.get('error', 'User not found'), 404);
         }
-        # Drop any other outstanding reset tokens for this user.
         AuthTokenStore.instance().revoke_user_tokens(user_id, 'reset');
         _audit_emit(
             'password_reset.completed',

@@ -1,9 +1,7 @@
-"""Get the plugin section name for scale."""
 impl JacScaleConfig.get_plugin_name(self: JacScaleConfig) -> str {
     return "scale";
 }
 
-"""Get default configuration structure for scale."""
 impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
     return {
         'jwt': {
@@ -13,7 +11,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
         },
         'sso': {
             'host': 'http://localhost:8000',
-            'client_auth_callback_url': '',  # If set, redirects to this URL with token/error
+            'client_auth_callback_url': '',
             'google': {'client_id': '', 'client_secret': ''},
             'apple': {'client_id': '', 'client_secret': ''},
             'github': {'client_id': '', 'client_secret': ''}
@@ -28,7 +26,6 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'redis_default_ttl': 3600,
             'redis_max_connections': 20,
             'redis_enable_keyspace_notifications': False,
-            # Cross-pod L1 cache invalidation.
             'redis_l1_invalidation_enabled': True,
             'redis_l1_invalidation_channel': 'jac:anchor:invalidate'
         },
@@ -51,21 +48,15 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'mongodb_root_password': 'password',
             'redis_username': 'admin',
             'redis_password': 'password',
-            # Ingress configuration
             'ingress_node_port': 30080,
-            # Rate limiting (DDoS protection)
             'ingress_limit_rps': 20,
             'ingress_limit_burst_multiplier': 5,
             'ingress_limit_connections': 20,
-            # Sticky sessions (cookie-based affinity, disabled by default)
             'ingress_session_affinity': True,
-            # Resource requests/limits
             'cpu_request': None,
             'cpu_limit': None,
             'memory_request': None,
             'memory_limit': None,
-            # Probe timings (aligned with microservice drain semantics;
-            # see kubernetes_config.jac probe-default comment).
             'readiness_initial_delay': 5,
             'readiness_period': 5,
             'liveness_initial_delay': 15,
@@ -130,7 +121,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
         },
         'telemetry': {'max_traces': 1000},
         'emailer': {
-            'provider': '',  # 'smtp', a registered name, or 'pkg.module:ClassName'
+            'provider': '',
             'enabled': True,
             'from_address': '',
             'smtp': {
@@ -150,11 +141,6 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'token_collection': 'auth_tokens'
         },
         'microservices': {
-            # `enabled` is intentionally NOT defaulted here. Its absence is
-            # meaningful: get_microservices_config returns None when the key
-            # is unset so _scale_pre_hook can tell "auto-detect" (None) from
-            # an explicit opt-out (False). A default of False here would be
-            # merged in by load() and erase that distinction.
             'gateway_port': 8000,
             'gateway_host': '0.0.0.0',
             'routes': {},
@@ -163,7 +149,6 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
-"""Get JWT configuration from jac.toml."""
 impl JacScaleConfig.get_jwt_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     jwt_config = config.get('jwt', {});
@@ -174,7 +159,6 @@ impl JacScaleConfig.get_jwt_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
-"""Get SSO configuration from jac.toml."""
 impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     sso_config = config.get('sso', {});
@@ -199,7 +183,6 @@ impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
-"""Get database configuration from jac.toml."""
 impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     db_config = config.get('database', {});
@@ -224,30 +207,23 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] 
     };
 }
 
-"""Get Kubernetes configuration from jac.toml."""
 impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     k8s_config = config.get('kubernetes', {});
-    # Handle docker_image_name default (needs app_name)
     if not k8s_config.get('docker_image_name') {
         app_name = k8s_config.get('app_name', 'jaseci');
         k8s_config['docker_image_name'] = f"{app_name}:latest";
     }
-    # Merge monitoring config into kubernetes config
     monitoring = self.get_monitoring_config();
     k8s_config['monitoring_enabled'] = monitoring['enabled'];
     k8s_config['k8s_metrics_enabled'] = monitoring['k8s_metrics_enabled'];
     k8s_config['prometheus_admin_password'] = monitoring['prometheus_admin_password'];
-    # Admin username so Prometheus can Basic-Auth scrape the admin-protected
-    # /metrics endpoint (must match what the metrics handler validates).
     k8s_config['admin_username'] = self.get_admin_config().get('username', 'admin');
-    # Convert to dict using KubernetesConfig.from_dict() which handles all defaults
     import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
     k8s_config_obj = KubernetesConfig.from_dict(KubernetesConfig, k8s_config);
     return k8s_config_obj.to_dict();
 }
 
-"""Get server configuration from jac.toml."""
 impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     server_config = config.get('server', {});
@@ -261,7 +237,6 @@ impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
-"""Get webhook configuration from jac.toml."""
 impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     webhook_config = config.get('webhook', {});
@@ -282,40 +257,25 @@ impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
-"""Get secrets from [plugins.scale.secrets] section.
 
-Values using ${ENV_VAR} syntax are auto-resolved by core's interpolate_env_vars.
-"""
 impl JacScaleConfig.get_secrets_config(self: JacScaleConfig) -> dict[str, str] {
     config = self.load();
     return config.get('secrets', {});
 }
 
-"""Sanitize a string to be a valid Prometheus metric namespace.
 
-Prometheus metric names must match [a-zA-Z_:][a-zA-Z0-9_:]*.
-This converts any invalid characters and ensures a valid prefix.
-"""
 impl sanitize_prometheus_namespace(name: str) -> str {
     import re;
-    # Replace any non-alphanumeric characters with underscores
     sanitized = re.sub(r'[^a-zA-Z0-9]', '_', name);
-    # Collapse multiple consecutive underscores
     sanitized = re.sub(r'_+', '_', sanitized);
-    # Strip leading/trailing underscores
     sanitized = sanitized.strip('_');
-    # Prefix with underscore if starts with digit
     if sanitized and sanitized[0].isdigit() {
         sanitized = f"_{sanitized}";
     }
     return sanitized or 'jac_scale';
 }
 
-"""Get monitoring configuration from jac.toml.
 
-Combines HTTP metrics endpoint settings and Kubernetes monitoring stack settings.
-'enabled' controls both the /metrics endpoint and Prometheus + Grafana deployment.
-"""
 impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     monitoring_config = config.get('monitoring', {});
@@ -334,7 +294,6 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, any
         5.0,
         10.0
     ];
-    # Derive namespace from kubernetes config if not explicitly set
     namespace = monitoring_config.get('namespace');
     if not namespace {
         k8s_config = config.get('kubernetes', {});
@@ -356,9 +315,6 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, any
     };
 }
 
-"""Get event-streaming config from jac.toml.
-Reads `[plugins.scale.events]`. `enabled` is the master switch; `url` defaults to None so the caller can fall back to `database.redis_url`.
-"""
 impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, any] {
     import from jac_scale.events.broker { RetryPolicy }
     config = self.load();
@@ -384,7 +340,6 @@ impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, any] {
     };
 }
 
-"""Get or create the global JacScaleConfig instance."""
 impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
     global _scale_config_instance;
     if _scale_config_instance is not None {
@@ -395,20 +350,17 @@ impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
     return new_instance;
 }
 
-"""Reset the global config instance (useful for testing)."""
 impl reset_scale_config -> None {
     global _scale_config_instance;
     _scale_config_instance = None;
 }
 
-"""Get telemetry configuration from jac.toml."""
 impl JacScaleConfig.get_telemetry_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     telemetry_config = config.get('telemetry', {});
     return {'max_traces': int(telemetry_config.get('max_traces', 1000))};
 }
 
-"""Get scheduler configuration from jac.toml."""
 impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     scheduler_config = config.get('scheduler', {});
@@ -424,12 +376,7 @@ impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any]
     };
 }
 
-"""Get emailer configuration from jac.toml.
 
-Returns the full [plugins.scale.emailer] section so EmailerFactory.create()
-can pass it through to whichever provider is configured. SMTP password may
-be supplied via env var override (EMAILER_SMTP_PASSWORD).
-"""
 impl JacScaleConfig.get_emailer_config(self: JacScaleConfig) -> dict[str, Any] {
     config = self.load();
     emailer_config = config.get('emailer', {}) or {};
@@ -453,7 +400,6 @@ impl JacScaleConfig.get_emailer_config(self: JacScaleConfig) -> dict[str, Any] {
     };
 }
 
-"""Get auth flow configuration (password-reset + email-verify)."""
 impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, Any] {
     config = self.load();
     auth_config = config.get('auth', {}) or {};
@@ -478,12 +424,7 @@ impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, Any] {
     };
 }
 
-"""Get microservices configuration from jac.toml.
 
-Schema: `routes: {module_name: prefix}` - services are discovered via
-`sv import`; the routes table only controls public URL routing on the
-gateway.
-"""
 impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     ms_config = config.get('microservices', {});
@@ -491,11 +432,6 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
     cors_config = ms_config.get('cors', {});
     rl_config = ms_config.get('rate_limit', {});
 
-    # Routes fall back to the JAC_SV_ROUTES env var (JSON) when the jac.toml
-    # has none. In zero-config `--scale` deploys the in-cluster jac.toml has no
-    # [routes] table, so the manifest builder injects the auto-detected routes
-    # into every pod via this env var; the gateway + get_sv_registry then read
-    # them here uniformly with the explicit-config path.
     routes: dict[str, any] = dict(ms_config.get('routes', {}));
     if not routes {
         import json;
@@ -504,9 +440,6 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
             try {
                 routes = dict(json.loads(env_routes));
             } except Exception as e {
-                # Malformed injection: warn so an empty in-pod route table is
-                # observable in logs instead of the gateway silently dropping
-                # every peer request.
                 import logging;
                 logging.getLogger(__name__).warning(
                     f"Ignoring malformed JAC_SV_ROUTES env var ({e}); "
@@ -518,7 +451,6 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
     }
 
     return {
-        # Tri-state: None = unset (auto-detect), True/False = explicit choice.
         'enabled': ms_config.get('enabled', None),
         'gateway_port': int(ms_config.get('gateway_port', 8000)),
         'gateway_host': ms_config.get('gateway_host', '0.0.0.0'),
@@ -536,11 +468,6 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
             )
         },
         'cors': {
-            # Open-by-default so local dev (SPA on :5173 etc.) works
-            # out of the box. `allow_credentials=True` with `*` origin
-            # is spec-forbidden, hence the safe default of False; tight
-            # deployments override allow_origins to a concrete list
-            # and set allow_credentials=True.
             'allow_origins': list(cors_config.get('allow_origins', ["*"])),
             'allow_methods': list(cors_config.get('allow_methods', ["*"])),
             'allow_headers': list(cors_config.get('allow_headers', ["*"])),
@@ -553,32 +480,13 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
             'dist_dir': client_config.get('dist_dir', '.jac/client/dist'),
             'base_route': client_config.get('base_route', '/')
         },
-        # Ingress block. Pass through opaquely so K8s target sees
-        # whatever the user wrote (host / ingress_class_name / annotations).
         'ingress': dict(ms_config.get('ingress', {})),
-        # Cross-service shared volumes. Array-of-tables in jac.toml
-        # ([[plugins.scale.microservices.shared_volumes]]) decoded as a
-        # list of dicts. Pass through opaquely so the K8s microservice
-        # target validates each entry (name/mount_path/services/...) at
-        # manifest-build time. Empty list when the user hasn't declared
-        # any - existing microservice apps without shared FS state get
-        # an empty list and the same pod specs they had before.
         'shared_volumes': list(ms_config.get('shared_volumes', [])),
-        # M-14.a: centralised logs (Loki + Alloy). Opaque pass-through
-        # so KubernetesMicroserviceTarget can read `enabled` and (in
-        # M-14.c) nested storage / retention knobs without revisiting
-        # this loader on every new key.
         'logs': dict(ms_config.get('logs', {})),
-        # O-02: distributed tracing (OpenTelemetry -> Alloy/Tempo).
-        # Opaque pass-through, same shape as `logs`: `enabled` toggles
-        # the app-side SDK + Tempo deploy; `endpoint` overrides the OTLP
-        # collector URL; `sample_ratio` sets head sampling. Read by the
-        # gateway/service setup (install_tracing) and the K8s target.
         'tracing': dict(ms_config.get('tracing', {}))
     };
 }
 
-"""Get admin configuration from jac.toml."""
 impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     admin_config = config.get('admin', {});

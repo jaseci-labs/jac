@@ -1,18 +1,12 @@
-"""Graceful drain coordinator (ROADMAP P13). One uvicorn per service /
-gateway means one DrainCoordinator per process; the module-level
-singleton + wrapper functions preserve the prior function-call API."""
-
 import logging;
 import threading;
 import time;
 import from threading { Lock as _DrainLock }
 
 glob logger = logging.getLogger(__name__),
-     # Liveness must stay 200 mid-drain; readiness has its own draining handler.
      _DRAIN_EXEMPT_PATHS: set[str] = {"/healthz/live", "/healthz/ready"};
 
 
-# Pre-set: inflight=0 so wait_for_zero returns True immediately.
 def _make_preset_event -> threading.Event {
     ev = threading.Event();
     ev.set();
@@ -54,7 +48,6 @@ obj DrainCoordinator {
         }
     }
 
-    """Idempotent so re-entrant signal handlers are safe."""
     def start_drain(timeout_s: float | None = None) -> None {
         self._lock.acquire();
         try {
@@ -102,13 +95,11 @@ obj DrainCoordinator {
         }
     }
 
-    """Returns True if drained, False on timeout."""
     def wait_for_zero(timeout_s: float | None = None) -> bool {
         t = timeout_s if timeout_s is not None else self._drain_timeout_s;
         return bool(self._zero_event.wait(timeout=t));
     }
 
-    """Reset for tests; never call from production paths."""
     def reset {
         self._lock.acquire();
         try {
@@ -123,7 +114,6 @@ obj DrainCoordinator {
 }
 
 
-# Process-singleton coordinator backing the function-call API.
 glob _default_coordinator: DrainCoordinator = DrainCoordinator();
 
 
@@ -164,8 +154,6 @@ def build_drain_middleware(service_label: str = "service") -> any {
     import from jac_scale.microservices.runtime.errors { service_unavailable }
 
     async def drain_middleware(request: any, call_next: any) -> any {
-        # `getattr` (vs attr access) keeps the unit-test bare-`object()`
-        # request shape working alongside production Starlette Requests.
         url = request?.url;
         path = getattr(url, "path", "") if url is not None else "";
         if path in _DRAIN_EXEMPT_PATHS {
@@ -186,9 +174,6 @@ def build_drain_middleware(service_label: str = "service") -> any {
 }
 
 
-"""Wrap uvicorn.Server.handle_exit so SIGTERM/SIGINT flips the drain
-flag before uvicorn's own exit handler runs. Call after constructing
-the Server, before `server.run()`."""
 def install_signal_drain(server: any, timeout_s: float = 10.0) {
     _default_coordinator.set_timeout(timeout_s);
     orig_handle_exit = server.handle_exit;

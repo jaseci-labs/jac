@@ -1,13 +1,10 @@
-"""Implementation of jac-desktop configuration loader."""
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 
-"""Plugin section name for [plugins.desktop]."""
 impl JacDesktopConfig.get_plugin_name(self: JacDesktopConfig) -> str {
     return "desktop";
 }
 
-"""Default [plugins.desktop] configuration."""
 impl JacDesktopConfig.get_default_config(self: JacDesktopConfig) -> dict[str, any] {
     project_name = "my-jac-app";
     project_version = "1.0.0";
@@ -127,16 +124,7 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
     }
 }
 
-"""Reject unknown plugin names and unknown plugin sub-keys at build time.
 
-Without this, a typo under [plugins.desktop.plugins.*] is silently ignored:
-a misspelled `allow_read` leaves the fs allow-list empty (no file access),
-and a misspelled plugin name disables the capability -- both with no warning.
-Valid keys are derived from the declared config schema (the single source of
-truth), so this never drifts from what the plugins actually accept. Only
-sub-keys for plugins that declare structured config (fs, shell, clipboard) are
-checked; bool-toggle plugins accept any value form.
-"""
 def _validate_plugin_keys(plugins: dict[str, any]) -> None {
     import from jaclang.runtimelib.client.desktop_plugin_config {
         _desktop_config_schema
@@ -171,7 +159,6 @@ def _validate_plugin_keys(plugins: dict[str, any]) -> None {
 }
 
 impl get_desktop_config(project_dir: Path | None = None) -> JacDesktopConfig {
-    # Module-level singleton mirrors jac-client/jac-scale; not thread-safe.
     global _desktop_config_instance;
     if (
         _desktop_config_instance is not None

@@ -1,5 +1,3 @@
-"""Guarded re-exports for docker (install group: [deploy])."""
-
 with entry {
     try {
         import docker as docker_module;

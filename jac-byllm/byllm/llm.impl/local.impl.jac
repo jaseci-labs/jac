@@ -1,10 +1,3 @@
-"""LocalLLM impl — runs `local:<alias>` models in-process via llama.cpp.
-
-Mirrors the OpenAI/LiteLLM response shape so the rest of byllm's
-ReAct loop (BaseLLM.dispatch_no_streaming) doesn't care that the
-inference is local.
-"""
-
 import from byllm.local_runtime {
     LOCAL_MODELS,
     parse_alias,
@@ -30,12 +23,9 @@ impl LocalLLM.postinit -> None {
         );
     }
     self.spec = s;
-    # llama.cpp has no reliable server-side tool calling: byllm renders the
-    # tool protocol into the prompt and recovers tool calls from the reply.
     self.supports_native_tools = False;
 }
 
-"""Build (or return cached) underlying llama.cpp instance."""
 impl LocalLLM._ensure_llama -> object {
     if self._llama is not None {
         return self._llama;
@@ -45,9 +35,6 @@ impl LocalLLM._ensure_llama -> object {
     } except ImportError {
         raise ImportError(
             "llama-cpp-python is required for `local:` models. "
-            "Install with: pip install 'byllm[local]'  "
-            "(use --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu "
-            "to skip the source build). For most local-inference use cases, "
             "consider Ollama instead: `default_model = \"ollama/<model>\"`."
         );
     }
@@ -79,8 +66,6 @@ impl LocalLLM.model_call_no_stream(params: dict) -> dict {
     engine = self._ensure_llama();
     call_params = filter_params(params);
     resp = engine.create_chat_completion(**call_params);
-    # llama-cpp returns OpenAI-shaped dict; coerce tool_calls so attribute
-    # access on `.function.name` works downstream (see BaseLLM dispatch).
     if isinstance(resp, dict) {
         choices = resp.get("choices", []);
         for choice in choices {

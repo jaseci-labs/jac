@@ -94,7 +94,6 @@ impl validate_resource_limits(
     }
 }
 
-"""Stage the application code inside the PVC using a transient helper pod."""
 impl sync_code_to_pvc(
     core_v1: client.CoreV1Api,
     namespace: str,
@@ -210,8 +209,6 @@ impl sync_code_to_pvc(
                 'tar -xzf /tmp/jaseci-code.tar.gz -C /data/workspace && chmod -R a+rX /data/workspace && rm -f /tmp/jaseci-code.tar.gz'
             ]
         );
-        # Remove jac.local.toml which is meant for local dev overrides only
-        # and could override deployment settings like the serve port.
         run_kubectl_command(
             [
                 'exec',
@@ -252,7 +249,6 @@ impl sync_code_to_pvc(
     }
 }
 
-"""Execute a kubectl command and surface useful error details."""
 impl run_kubectl_command(args: list[str], cwd: str | Path | None = None) -> None {
     import shutil;
     import subprocess;
@@ -270,7 +266,6 @@ impl run_kubectl_command(args: list[str], cwd: str | Path | None = None) -> None
     }
 }
 
-"""Block until the pod disappears from the API."""
 impl wait_for_pod_deletion(
     core_v1: client.CoreV1Api, namespace: str, pod_name: str, timeout: int = 120
 ) -> None {
@@ -289,7 +284,6 @@ impl wait_for_pod_deletion(
     raise TimeoutError(f"Timed out waiting for pod '{pod_name}' deletion.");
 }
 
-"""Poll the pod until it reaches one of the desired phases."""
 impl wait_for_pod_phase(
     core_v1: client.CoreV1Api,
     namespace: str,
@@ -322,11 +316,7 @@ impl wait_for_pod_phase(
     );
 }
 
-"""Parse a Kubernetes storage quantity string into bytes (int).
 
-Supports binary suffixes (Ki, Mi, Gi, Ti, Pi, Ei) and decimal suffixes
-(k, M, G, T, P, E) as well as plain byte values.
-"""
 impl parse_storage_quantity(quantity: str) -> int {
     q = quantity.strip();
     if q == '' {
@@ -380,13 +370,7 @@ impl parse_storage_quantity(quantity: str) -> int {
     }
 }
 
-"""Resize a PVC to the desired size if it is larger than the current size.
 
-Raises ValueError if the desired size is smaller than the current size,
-since shrinking a PVC is not supported. Does nothing if the sizes are equal.
-Data is preserved because only the PVC capacity request is patched; the
-underlying volume and its contents are untouched.
-"""
 impl resize_pvc_if_needed(
     core_v1: client.CoreV1Api, namespace: str, pvc_name: str, desired_size: str
 ) -> None {
@@ -416,7 +400,6 @@ impl resize_pvc_if_needed(
     core_v1.patch_namespaced_persistent_volume_claim(pvc_name, namespace, patch);
 }
 
-"""Create a PersistentVolumeClaim if it does not already exist."""
 impl ensure_pvc_exists(
     core_v1: client.CoreV1Api,
     namespace: str,
@@ -449,11 +432,7 @@ impl ensure_pvc_exists(
     core_v1.create_namespaced_persistent_volume_claim(namespace, pvc_body);
 }
 
-"""Detect if the current connected cluster is AWS or local.
 
-Returns:
-    'aws' for AWS EKS clusters, 'local' for local/other clusters.
-"""
 impl cluster_type -> str {
     try {
         v1 = client.CoreV1Api();
@@ -516,10 +495,6 @@ impl check_pods_restarted(namespace: str, app_name: str) -> bool {
         }
 
         for container in statuses {
-            # Fast-exit: restarted AND not currently running means it crashed
-            # and hasn't recovered. A pod that restarts once then stabilises
-            # (e.g. MongoDB with readOnlyRootFilesystem) will have restart_count>0
-            # but state.running set, so it passes this check.
             if container.restart_count > 0 {
                 is_running = container.state and container.state.running;
                 if not is_running {
@@ -528,11 +503,6 @@ impl check_pods_restarted(namespace: str, app_name: str) -> bool {
                             if (container.state and container.state.waiting)
                             else "unknown"
                     );
-                    # Surface the K8s-level exit reason from the previous
-                    # termination if the kubelet recorded one. OOMKilled
-                    # / Error / Completed all show up here, separately
-                    # from `state.waiting.reason` which is the *current*
-                    # waiting reason (CrashLoopBackOff etc.).
                     last_state = container.last_state;
                     term_reason = "n/a";
                     term_exit_code = "n/a";
@@ -550,13 +520,6 @@ impl check_pods_restarted(namespace: str, app_name: str) -> bool {
                         f"(waiting={reason}, last_terminated={term_reason}, "
                         f"exit_code={term_exit_code})"
                     );
-                    # Dump the previous-instance logs so CI failure output
-                    # shows the actual crash cause instead of just the K8s-
-                    # level CrashLoopBackOff reason. tail_lines=500 keeps
-                    # the dump bounded but generous enough to capture the
-                    # error message even when the install/compile chain is
-                    # noisy; previous=True targets the crashed instance
-                    # rather than the (possibly-restarting) current one.
                     try {
                         prev_logs = v1.read_namespaced_pod_log(
                             name=pod.metadata.name,
@@ -575,10 +538,6 @@ impl check_pods_restarted(namespace: str, app_name: str) -> bool {
                             f"(could not fetch previous logs for {pod.metadata.name}: {log_err})"
                         );
                     }
-                    # Also dump pod-level Events so we see OOMKilled,
-                    # liveness-probe-killed, FailedScheduling, etc. The
-                    # logs above only show what the process printed; the
-                    # events show what the kubelet did *to* the process.
                     try {
                         field_sel = (
                             f"involvedObject.name={pod.metadata.name}"
@@ -609,12 +568,7 @@ impl check_pods_restarted(namespace: str, app_name: str) -> bool {
     return False;
 }
 
-"""
-    Wait for a service to become available.
 
-    Can work with either NodePort (localhost:node_port) or NLB (AWS Load Balancer URL).
-    If nlb_url is provided, it will be used. Otherwise, localhost:node_port will be used.
-"""
 impl check_deployment_status(
     node_port: int,
     path: str = '/docs',
@@ -635,7 +589,6 @@ impl check_deployment_status(
             if (response.status_code == 200) {
                 return (True, "Successful");
             }
-            # Non-200 (e.g. 503 from NGINX when app pod is down) — check for restarts
             if check_pods_restarted(namespace, app_name) {
                 return (False, "Containers restarted");
             }
@@ -655,7 +608,6 @@ impl check_deployment_status(
     return (False, "Timeout reached");
 }
 
-"""Create or update ConfigMap with binary tar.gz using Kubernetes API."""
 impl create_or_update_configmap(
     namespace: str, configmap_name: str, tar_path: str
 ) -> None {
@@ -697,9 +649,6 @@ impl exclude_folders(tarinfo: tarfile.TarInfo) -> Optional[tarfile.TarInfo] {
     return tarinfo;
 }
 
-"""
-    Create a tar.gz file from the source directory using only os module.
-"""
 impl create_tarball(source_dir: str, tar_path: str) -> None {
     if not os.path.exists(source_dir) {
         raise FileNotFoundError(f"Source directory not found: {source_dir}");
@@ -710,7 +659,6 @@ impl create_tarball(source_dir: str, tar_path: str) -> None {
     }
 }
 
-"""Delete a namespace from the Kubernetes cluster if it exists and is not 'default'."""
 impl delete_namespace(namespace: str) -> None {
     if (namespace == 'default') {
         return;
@@ -733,10 +681,6 @@ impl delete_namespace(namespace: str) -> None {
     }
 }
 
-"""
-    Ensure that a given namespace exists in the Kubernetes cluster.
-    If it doesn't exist and is not 'default', it will be created.
-"""
 impl ensure_namespace_exists(namespace: str) -> None {
     if (namespace == 'default') {
         return;
@@ -750,13 +694,6 @@ impl ensure_namespace_exists(namespace: str) -> None {
         core_v1 = client.CoreV1Api();
         existing_ns = core_v1.read_namespace(name=namespace);
         console.print(f"Namespace '{namespace}' already exists.");
-        # Only stamp the PSS labels when they're MISSING. Overwriting
-        # existing labels would either downgrade a stricter policy
-        # (e.g. enforce=restricted set by an operator for compliance)
-        # or upgrade a looser one (e.g. enforce=privileged set by an
-        # earlier deploy that needs hostPath DaemonSets like
-        # M-14.a's Alloy + node-exporter). Either direction is the
-        # wrong default - leave operator + caller intent intact.
         existing_labels: dict = dict(getattr(existing_ns.metadata, "labels", {}) or {});
         patch_labels: dict = {};
         if not existing_labels.get("pod-security.kubernetes.io/enforce") {
@@ -799,7 +736,6 @@ impl ensure_namespace_exists(namespace: str) -> None {
     }
 }
 
-"""Deploy example."""
 impl delete_if_exists(
     delete_func: Callable, name: str, namespace: str, kind: str
 ) -> None {
@@ -814,9 +750,6 @@ impl delete_if_exists(
     }
 }
 
-"""
-    Checks if Kubernetes config is configured and the K8s API server is reachable.
-"""
 impl check_K8s_status -> None {
     try {
         config.load_kube_config();
@@ -837,7 +770,6 @@ impl check_K8s_status -> None {
     }
 }
 
-"""Load env variables in .env to aws beanstalk environment."""
 impl load_env_variables(code_folder: str) -> list {
     env_file = os.path.join(code_folder, '.env');
     env_vars = dotenv_values(env_file);
@@ -850,7 +782,6 @@ impl load_env_variables(code_folder: str) -> list {
     return env_list;
 }
 
-"""Create a Kubernetes Secret from resolved secret data. Returns True if created."""
 impl create_k8s_secret(
     core_v1: client.CoreV1Api,
     namespace: str,
@@ -885,7 +816,6 @@ impl create_k8s_secret(
     return True;
 }
 
-"""Delete a Kubernetes Secret if it exists."""
 impl delete_k8s_secret(
     core_v1: client.CoreV1Api, namespace: str, secret_name: str
 ) -> None {
@@ -898,13 +828,7 @@ impl delete_k8s_secret(
     }
 }
 
-"""
-    Print a statement only if debug_only is True.
 
-    Args:
-        statement (str): The message to print.
-        debug_only (bool): If True, print the statement; otherwise, do nothing.
-"""
 impl debug_print(statement: str, debug_only: bool = False) -> None {
     if debug_only {
         console.print(statement);

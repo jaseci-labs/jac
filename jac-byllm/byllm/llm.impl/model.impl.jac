@@ -1,29 +1,16 @@
-"""Post-initialization hook for Model.
-
-Sets up proxy mode and mock delegation based on config.
-Configures logging when using real LLM backends.
-"""
 impl Model.postinit -> None {
-    # Check instance config first, then fall back to global config
     self.proxy = bool(self.config.get("proxy", _model_config.get("proxy", False)));
     self.http_client = bool(
         self.config.get("http_client", _model_config.get("http_client", False))
     );
-    # Resolve api_key: constructor > instance config > global config
     if not self.api_key {
         self.api_key = self.config.get("api_key", "")
         or _model_config.get("api_key", "");
     }
-    # When model_name is 'mockllm', delegate to MockLLM behavior
     if self.model_name == MODEL_MOCK {
         self._mock_delegate = MockLLM(model_name=self.model_name, config=self.config);
     }
-    # When model_name starts with 'local:', delegate to in-process llama.cpp.
-    # LocalLLM lives alongside MockLLM in byllm.llm so both delegates share
-    # the same module and avoid a circular import via local_runtime.jac.
     if self.model_name.startswith("local:") {
-        # Forward ctx_window so user overrides on the outer Model reach the
-        # compaction layer running inside the delegate.
         self._local_delegate = LocalLLM(
             model_name=self.model_name,
             ctx_window=self.ctx_window,
@@ -37,12 +24,6 @@ impl Model.postinit -> None {
             _disable_debugging();
         }
         litellm.drop_params = _litellm_config.get("drop_params", True);
-        # Some served models emit tool calls natively but cannot consume tool
-        # *results*: their chat template has no `tool` role, so a `role:"tool"`
-        # message is silently dropped and the model re-issues the same call
-        # forever. Route them through byLLM's text tool protocol instead, where
-        # results come back as readable `<tool_response>` text. An explicit
-        # `config["native_tools"]` overrides the heuristic either way.
         native_override = self.config.get(
             "native_tools", _model_config.get("native_tools")
         );
@@ -55,12 +36,8 @@ impl Model.postinit -> None {
 }
 
 
-# Model families whose chat template has no `tool` role, so tool *results* must
-# be fed back as ordinary text. Matched case-insensitively as a substring of the
-# model name, so it covers every provider/tag (ollama/gemma4:31b, gemma-2-9b, ...).
 glob _NO_TOOL_ROLE_FAMILIES: list[str] = ["gemma"];
 
-"""Whether a model's chat template lacks a usable `tool` role for results."""
 def _model_lacks_tool_role(model_name: str) -> bool {
     lowered = model_name.lower();
     for fam in _NO_TOOL_ROLE_FAMILIES {
@@ -71,17 +48,12 @@ def _model_lacks_tool_role(model_name: str) -> bool {
     return False;
 }
 
-"""Invoke the LLM, delegating to MockLLM if applicable.
 
-Wraps the full invocation with telemetry. Sets a unique invocation_id
-on mt_run, then delegates all telemetry extraction to _emit_agent_telemetry.
-"""
 impl Model.invoke(mt_run: MTRuntime) -> object {
     import uuid;
     import time;
     import types as _types_mod;
 
-    # Capture parent invocation if we're inside a nested by llm() call
     _parent = _current_invocation_id.get(None);
     mt_run._parent_invocation_id = _parent;
     mt_run._invocation_id = str(uuid.uuid4());
@@ -97,9 +69,6 @@ impl Model.invoke(mt_run: MTRuntime) -> object {
             result = super.invoke(mt_run);
         }
 
-        # Streaming: reset the Token now, in the Context that created it. The
-        # wrapper carries its own Context, so it never resets a Token from a
-        # foreign one — safe to iterate on jac-scale's SSE thread-pool worker.
         if isinstance(result, _types_mod.GeneratorType) {
             _current_invocation_id.reset(_ctx_token);
             return _stream_with_telemetry(result, mt_run, self.model_name, _start);
@@ -124,13 +93,7 @@ impl Model.invoke(mt_run: MTRuntime) -> object {
     }
 }
 
-"""Stream a generator with the invocation_id pinned in its own Context.
 
-Captures a copy_context, sets mt._invocation_id in it, and drives each step via
-ctx.run(next, gen) — so nested by llm() calls still see the right parent and no
-ContextVar Token is reset across Contexts. This keeps the stream safe to consume
-from a foreign Context (e.g. jac-scale's SSE thread-pool worker).
-"""
 def _stream_with_telemetry(
     gen: object, mt: object, model_name: str, start: float
 ) -> object {
@@ -173,11 +136,7 @@ def _stream_with_telemetry(
     }
 }
 
-"""Make a direct model call without streaming.
 
-Uses OpenAI client if proxy mode is enabled, otherwise uses LiteLLM.
-If _http_client is provided in config, uses direct HTTP requests.
-"""
 impl Model.model_call_no_stream(params: dict) -> dict {
     try {
         if self.http_client {
@@ -218,13 +177,8 @@ impl Model.model_call_no_stream(params: dict) -> dict {
     return response;
 }
 
-"""Make a direct model call with streaming.
 
-Uses OpenAI client if proxy mode is enabled, otherwise uses LiteLLM.
-Returns a generator that yields response chunks.
-"""
 impl Model.model_call_with_stream(params: dict) {
-    # Ask the provider to include token usage in the final streamed chunk.
     params["stream_options"] = (params.get("stream_options") or {}) | {
         "include_usage": True
     };
@@ -253,10 +207,7 @@ impl Model.model_call_with_stream(params: dict) {
     return response;
 }
 
-"""Make a direct HTTP request to LLM endpoint.
 
-Useful for custom endpoints with specific SSL/mTLS requirements.
-"""
 impl Model.model_call_http(
     url: str, token: str, payload: dict, ca_bundle: str
 ) -> object {
@@ -268,7 +219,6 @@ impl Model.model_call_http(
     return response.json();
 }
 
-"""Async non-streaming call: litellm.acompletion or AsyncOpenAI — never blocks the loop."""
 impl Model.model_call_no_stream_async(params: dict) -> dict {
     try {
         if self.http_client {
@@ -315,7 +265,6 @@ impl Model.model_call_no_stream_async(params: dict) -> dict {
     return response;
 }
 
-"""Async streaming call: litellm.acompletion(stream=True), AsyncOpenAI, or custom endpoint."""
 impl Model.model_call_with_stream_async(params: dict) {
     params["stream_options"] = (params.get("stream_options") or {}) | {
         "include_usage": True
@@ -367,7 +316,6 @@ impl Model.model_call_with_stream_async(params: dict) {
     return response;
 }
 
-"""Async HTTP call to a custom LLM endpoint via httpx.AsyncClient."""
 impl Model.model_call_http_async(
     url: str, token: str, payload: dict, ca_bundle: str
 ) -> object {

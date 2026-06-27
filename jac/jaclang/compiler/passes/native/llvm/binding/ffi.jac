@@ -1,19 +1,10 @@
-"""FFI loader for the in-tree LLVM binding (Jac port, #6925).
-
-Hand-authored (the original llvmlite/binding/ffi.py uses __slots__/__getattr__
-dynamic dispatch and a thread-lock wrapper). Loads the Zig-built LLVMPY_* shim
-(libjacllvm.so, jac/native statically linked against LLVM) via ctypes -- no
-llvmlite wheel involved.
-
-The na compile path is single-threaded, so the per-call lock wrapper is
-dropped: a plain ctypes.CDLL caches its function pointers, so
-`lib.LLVMPY_X.argtypes = [...]` then `lib.LLVMPY_X(...)` works directly.
-"""
-
 import sys;
 import os;
 import ctypes;
-import from jaclang.compiler.passes.native.llvm.binding.common { _decode_string, _is_shutting_down }
+import from jaclang.compiler.passes.native.llvm.binding.common {
+    _decode_string,
+    _is_shutting_down
+}
 
 
 def _shim_name() -> str {
@@ -27,28 +18,17 @@ def _shim_name() -> str {
 }
 
 
-"""Locate the Zig-built LLVMPY_* shim (libjacllvm.so) to ctypes-load.
-
-Resolution order: (1) JAC_LLVM_SHIM override (set by dev/CI to the build
-artifact, e.g. jac/zig-out/lib/libjacllvm.so); (2) the shim shipped next to this
-package at jaclang/compiler/passes/native/llvm/, located relative to
-`jaclang.__file__` -- works both in the editable source tree (where the dir is
-not on sys.path) and in the packed payload. No llvmlite wheel fallback: the
-package is fully decoupled (#6925)."""
 def _find_shim() -> str {
     override = os.environ.get('JAC_LLVM_SHIM', None);
     if override and os.path.isfile(override) {
         return override;
     }
     shim = _shim_name();
-    # The shim sits one dir up from this binding/ module, at native/llvm/<shim>.
-    # __file__-relative works in the editable tree (its dir is not on sys.path).
     here = os.path.dirname(os.path.abspath(__file__));
     cand = os.path.join(os.path.dirname(here), shim);
     if os.path.isfile(cand) {
         return cand;
     }
-    # Payload fallback: the bundled site/ is on sys.path.
     for p in sys.path {
         if not p {
             continue;
@@ -59,18 +39,11 @@ def _find_shim() -> str {
         }
     }
     raise OSError(
-        f"Could not locate the LLVM shim '{shim}'. Build it with "
-        + "`zig build jacllvm` (artifact in jac/zig-out/lib/) and copy it next to "
-        + "this package or set JAC_LLVM_SHIM; shipped binaries bundle it."
+        f"Could not locate the LLVM shim '{shim}'. Build it with " + "`zig build jacllvm` (artifact in jac/zig-out/lib/) and copy it next to " + "this package or set JAC_LLVM_SHIM; shipped binaries bundle it."
     );
 }
 
 
-"""Lazy CDLL proxy: loads libjacllvm.so (~130 MB) on first symbol access, not
-at import. Mirrors a lazy lib wrapper so processes that merely
-type-import the binding (e.g. codeinfo's ModuleRef/ExecutionEngine) never map
-the shared object. ctypes caches function pointers on the handle, so
-`lib.LLVMPY_X.argtypes = [...]` then `lib.LLVMPY_X(...)` still works."""
 class _LazyLib {
     def init(self: _LazyLib) {
         self._handle = None;
@@ -131,9 +104,7 @@ glob LLVMPassBuilderRef = _opaque("LLVMPassBuilder");
 class _DeadPointer {}
 
 
-"""Object for managing the char* output of LLVM APIs (out-param error strings)."""
 class OutputString {
-
     @classmethod
     def from_return(cls: Any, ptr: Any) -> Any {
         return cls(initval=ctypes.cast(ptr, ctypes.c_char_p));
@@ -186,7 +157,6 @@ class OutputString {
         return bool(self._ptr);
     }
 
-    # Raw bytes of the char pointer content.
     @property
     def bytes(self: OutputString) -> Any {
         return self._ptr.value;
@@ -210,9 +180,7 @@ def ret_bytes(ptr: Any) -> Any {
 }
 
 
-"""A wrapper around a ctypes pointer to an LLVM object ('resource')."""
 class ObjectRef {
-
     def init(self: ObjectRef, ptr: Any) {
         if ptr is None {
             raise ValueError("NULL pointer");

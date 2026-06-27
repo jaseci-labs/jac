@@ -1,8 +1,3 @@
-"""Microservice mode lifecycle orchestrator. Public entry points:
-.start_local() (subprocess fan-out + gateway) and .start_gateway_only()
-(K8s pod context, no spawning). Module-level wrappers preserve the
-prior function-call API for plugin.jac + tests."""
-
 import time;
 import atexit;
 import logging;
@@ -24,23 +19,13 @@ import from jac_scale.microservices.runtime.util {
 glob logger = logging.getLogger(__name__);
 
 
-"""Lifecycle methods block on gateway.start()."""
 obj MicroserviceOrchestrator {
     has ms_config: dict[str, any];
 
-    """Build client bundle -> registry -> spawn deployers -> wait for
-    health -> print banner -> start gateway -> stop all on shutdown."""
     def start_local -> None {
-        # Discovery belongs to the start pre-hook: it scans the entry file's
-        # own directory and populates `routes` before invoking us, so by the
-        # time start_local runs the table is already filled for every real
-        # entry path. We only guard the empty case (e.g. `enabled = true` on an
-        # app whose service files are missing) so the user gets a clear message
-        # instead of a silently-empty gateway.
         if not self.ms_config.get("routes", {}) {
             logger.warning(
                 "No microservices to run: no routes were declared or discovered "
-                "(no `sv import` / `to sv:` markers next to the entry file). "
                 "Run `jac setup microservice` to configure explicitly."
             );
             return;
@@ -58,7 +43,6 @@ obj MicroserviceOrchestrator {
         deployer.deploy_all();
         pm = deployer._ensure_pm();
 
-        # jac.toml overrides for boot + recovery cadences (defaults 60/90/10s).
         pm._boot_health_timeout = float(
             self.ms_config.get("boot_health_timeout", pm._boot_health_timeout)
         );
@@ -71,10 +55,6 @@ obj MicroserviceOrchestrator {
 
         self._wait_for_health(pm, registry, max_wait);
 
-        # Background recovery loop: services that miss the boot bar by a
-        # few seconds flip back to HEALTHY automatically via
-        # check_all_health. destroy_all -> stop_all -> stop_health_monitor
-        # handles teardown.
         pm.start_health_monitor();
 
         gateway_port: int = int(
@@ -103,12 +83,9 @@ obj MicroserviceOrchestrator {
         );
         gateway.start();
 
-        # Cleanup (runs when gateway shuts down)
         deployer.destroy_all();
     }
 
-    """K8s gateway pod entry point. K8s owns pod lifecycle; peer URLs
-    come via get_sv_registry() hookimpl returning DNS."""
     def start_gateway_only -> None {
         if not self.ms_config.get("routes", {}) {
             logger.error("No routes declared in [plugins.scale.microservices.routes]");
@@ -117,7 +94,6 @@ obj MicroserviceOrchestrator {
 
         registry = self._build_registry();
         _mark_all_healthy_k8s(registry);
-        # Built-in passthrough reads svc_entry.url directly (not the hookspec).
         _populate_k8s_urls(registry);
 
         gateway_port = int(self.ms_config.get("gateway_port", DEFAULT_GATEWAY_PORT));
@@ -142,8 +118,6 @@ obj MicroserviceOrchestrator {
         gateway.start();
     }
 
-    """Routes map: {module_name: prefix}. Entries have `file = {name}.jac`
-    matching what `sv import` resolves on cold start."""
     def _build_registry -> ServiceRegistry {
         registry = ServiceRegistry();
         routes = self.ms_config.get("routes", {});
@@ -158,7 +132,6 @@ obj MicroserviceOrchestrator {
         return registry;
     }
 
-    """Read client.dist_dir; defaults to `.jac/client/dist`."""
     def _client_dist_dir(client_config: dict[str, any]) -> str {
         if not client_config {
             return DEFAULT_CLIENT_DIST_DIR;
@@ -166,8 +139,6 @@ obj MicroserviceOrchestrator {
         return str(dict(client_config).get("dist_dir", DEFAULT_CLIENT_DIST_DIR));
     }
 
-    """Parse static_mounts entries into {url_prefix, local_path} dicts;
-    skips malformed entries."""
     def _parse_static_mounts(client_config: dict[str, any]) -> list[dict[str, str]] {
         out: list[dict[str, str]] = [];
         if not client_config {
@@ -188,7 +159,6 @@ obj MicroserviceOrchestrator {
         return out;
     }
 
-    """Build FE bundle on the host if configured + not already built."""
     def _build_client_bundle_if_needed(
         client_config: dict[str, any], client_dist: str
     ) -> None {
@@ -225,7 +195,6 @@ obj MicroserviceOrchestrator {
         }
     }
 
-    """Logs progress every 2s; warns and proceeds if not all healthy."""
     def _wait_for_health(
         pm: ServiceProcessManager, registry: ServiceRegistry, max_wait: int
     ) {
@@ -262,7 +231,6 @@ obj MicroserviceOrchestrator {
         }
     }
 
-    """Gateway URL, per-service status icons, optional client + mount lines."""
     def _print_startup_banner(
         registry: ServiceRegistry,
         client_config: dict[str, any],
@@ -316,12 +284,6 @@ obj MicroserviceOrchestrator {
 }
 
 
-# ---------------------------------------------------------------------------
-# Module-level wrappers for back-compat with plugin.jac + tests.
-# Each instantiates a fresh MicroserviceOrchestrator and delegates.
-# ---------------------------------------------------------------------------
-
-# Module-level wrappers preserve the legacy function-call API.
 def build_registry(ms_config: dict[str, any]) -> ServiceRegistry {
     return MicroserviceOrchestrator(ms_config=ms_config)._build_registry();
 }
@@ -335,8 +297,6 @@ def start_gateway_only(ms_config: dict[str, any]) {
 }
 
 
-"""Pre-mark every entry HEALTHY for K8s gateway mode (K8s gates routing
-on real readinessProbes; gateway's status check would otherwise 503)."""
 def _mark_all_healthy_k8s(registry: ServiceRegistry) {
     for (_name, _entry) in registry.entries.items() {
         _entry.status = ServiceStatus.HEALTHY;
@@ -344,8 +304,6 @@ def _mark_all_healthy_k8s(registry: ServiceRegistry) {
 }
 
 
-"""Write get_sv_registry()'s DNS URLs onto registry entries so the
-gateway's built-in passthrough loop finds K8s peers."""
 def _populate_k8s_urls(registry: ServiceRegistry) {
     try {
         import jaclang;

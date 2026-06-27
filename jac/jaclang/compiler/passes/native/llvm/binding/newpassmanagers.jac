@@ -5,20 +5,23 @@ import from jaclang.compiler.passes.native.llvm.binding { ffi }
 def create_new_module_pass_manager() -> object {
     return ModulePassManager();
 }
+
 def create_new_function_pass_manager() -> object {
     return FunctionPassManager();
 }
+
 def create_pass_builder(tm: Any, pto: Any) -> object {
     return PassBuilder(tm, pto);
 }
+
 def create_pipeline_tuning_options(speed_level: Any = 2) -> object {
     return PipelineTuningOptions(speed_level);
 }
+
 with entry {
     _prunestats = namedtuple('PruneStats', 'basicblock diamond fanout fanout_raise');
 }
-""" Holds statistics from reference count pruning.
-    """
+
 class PruneStats(_prunestats) {
     def __add__(self: PruneStats, other: Any) -> object {
         if not isinstance(other, PruneStats) {
@@ -32,10 +35,10 @@ class PruneStats(_prunestats) {
             (self.fanout_raise + other.fanout_raise)
         );
     }
+
     def __sub__(self: PruneStats, other: Any) -> object {
         if not isinstance(other, PruneStats) {
-            msg = 'PruneStats can only be subtracted from another PruneStats, '
-            'got {}.';
+            msg = 'PruneStats can only be subtracted from another PruneStats, ';
             raise TypeError(msg.format(`type(other)));
         }
         return PruneStats(
@@ -57,10 +60,7 @@ class _c_PruneStats(Structure) {
         ];
     }
 }
-""" Returns a namedtuple containing the current values for the refop pruning
-    statistics. If kwarg `printout` is True the stats are printed to stderr,
-    default is False.
-    """
+
 def dump_refprune_stats(printout: Any = False) -> object {
     stats = _c_PruneStats(0, 0, 0, 0);
     do_print = c_bool(printout);
@@ -70,28 +70,12 @@ def dump_refprune_stats(printout: Any = False) -> object {
     );
 }
 
-"""Enable or disable the pass timers.
 
-    Parameters
-    ----------
-    enable : bool
-        Set to True to enable the pass timers.
-        Set to False to disable the pass timers.
-    """
 def set_time_passes(enable: Any) -> object {
     ffi.lib.LLVMPY_SetTimePasses(c_bool(enable));
 }
 
-"""Returns the pass timings report and resets the LLVM internal timers.
 
-    Pass timers are enabled by ``set_time_passes()``. If the timers are not
-    enabled, this function will return an empty string.
-
-    Returns
-    -------
-    res : str
-        LLVM generated timing report.
-    """
 def report_and_reset_timings() -> object {
     with ffi.OutputString() as buf {
         ffi.lib.LLVMPY_ReportAndResetTimings(buf);
@@ -108,12 +92,14 @@ class RefPruneSubpasses(IntFlag) {
         ALL = PER_BB | DIAMOND | FANOUT | FANOUT_RAISE;
     }
 }
+
 class NewPassManager {
     def init(self: NewPassManager) -> object {
         if (`type(self) is NewPassManager) {
             raise TypeError("Cannot instantiate NewPassManager directly");
         }
     }
+
     def run(self: NewPassManager, IR: Any, pb: Any) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_RunNewModulePassManager(self, IR, pb);
@@ -121,6 +107,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_RunNewFunctionPassManager(self, IR, pb);
         }
     }
+
     def add_aa_eval_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddAAEvaluator(self);
@@ -128,6 +115,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddAAEvaluator(self);
         }
     }
+
     def add_simplify_cfg_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddSimplifyCFGPass(self);
@@ -135,6 +123,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddSimplifyCFGPass(self);
         }
     }
+
     def add_loop_unroll_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddLoopUnrollPass(self);
@@ -142,6 +131,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddLoopUnrollPass(self);
         }
     }
+
     def add_instruction_combine_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddInstCombinePass(self);
@@ -149,6 +139,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddInstCombinePass(self);
         }
     }
+
     def add_jump_threading_pass(self: NewPassManager, threshold: Any = -1) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_AddJumpThreadingPass_module(self, threshold);
@@ -156,6 +147,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_AddJumpThreadingPass_function(self, threshold);
         }
     }
+
     def add_cfg_printer_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddCFGPrinterPass(self);
@@ -163,6 +155,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddCFGPrinterPass(self);
         }
     }
+
     def add_cfg_only_printer_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddCFGOnlyPrinterPass(self);
@@ -170,6 +163,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddCFGOnlyPrinterPass(self);
         }
     }
+
     def add_dom_printer_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddDomPrinter(self);
@@ -177,6 +171,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddDomPrinter(self);
         }
     }
+
     def add_dom_only_printer_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddDomOnlyPrinter(self);
@@ -184,6 +179,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddDomOnlyPrinter(self);
         }
     }
+
     def add_post_dom_printer_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddPostDomPrinter(self);
@@ -191,6 +187,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddPostDomPrinter(self);
         }
     }
+
     def add_post_dom_only_printer_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddPostDomOnlyPrinter(self);
@@ -198,6 +195,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddPostDomOnlyPrinter(self);
         }
     }
+
     def add_dom_viewer_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddDomViewer(self);
@@ -205,6 +203,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddDomViewer(self);
         }
     }
+
     def add_dom_only_viewer_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddDomOnlyViewer(self);
@@ -212,6 +211,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddDomOnlyViewer(self);
         }
     }
+
     def add_post_dom_viewer_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddPostDomViewer(self);
@@ -219,6 +219,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddPostDomViewer(self);
         }
     }
+
     def add_post_dom_only_viewer_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddPostDomOnlyViewer(self);
@@ -226,6 +227,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddPostDomOnlyViewer(self);
         }
     }
+
     def add_aggressive_dce_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddADCEPass(self);
@@ -233,6 +235,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddADCEPass(self);
         }
     }
+
     def add_break_critical_edges_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddBreakCriticalEdgesPass(self);
@@ -240,6 +243,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddBreakCriticalEdgesPass(self);
         }
     }
+
     def add_dead_store_elimination_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddDSEPass(self);
@@ -247,6 +251,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddDSEPass(self);
         }
     }
+
     def add_dead_code_elimination_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddDCEPass(self);
@@ -254,6 +259,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddDCEPass(self);
         }
     }
+
     def add_aggressive_instcombine_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddAggressiveInstCombinePass(self);
@@ -261,6 +267,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddAggressiveInstCombinePass(self);
         }
     }
+
     def add_lcssa_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddLCSSAPass(self);
@@ -268,6 +275,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddLCSSAPass(self);
         }
     }
+
     def add_new_gvn_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddNewGVNPass(self);
@@ -275,6 +283,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddNewGVNPass(self);
         }
     }
+
     def add_loop_simplify_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddLoopSimplifyPass(self);
@@ -282,6 +291,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddLoopSimplifyPass(self);
         }
     }
+
     def add_loop_unroll_and_jam_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddLoopUnrollAndJamPass(self);
@@ -289,6 +299,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddLoopUnrollAndJamPass(self);
         }
     }
+
     def add_sccp_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddSCCPPass(self);
@@ -296,6 +307,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddSCCPPass(self);
         }
     }
+
     def add_lower_atomic_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddLowerAtomicPass(self);
@@ -303,6 +315,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddLowerAtomicPass(self);
         }
     }
+
     def add_lower_invoke_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddLowerInvokePass(self);
@@ -310,6 +323,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddLowerInvokePass(self);
         }
     }
+
     def add_lower_switch_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddLowerSwitchPass(self);
@@ -317,6 +331,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddLowerSwitchPass(self);
         }
     }
+
     def add_mem_copy_opt_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddMemCpyOptPass(self);
@@ -324,6 +339,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddMemCpyOptPass(self);
         }
     }
+
     def add_unify_function_exit_nodes_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddUnifyFunctionExitNodesPass(self);
@@ -331,6 +347,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddUnifyFunctionExitNodesPass(self);
         }
     }
+
     def add_reassociate_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddReassociatePass(self);
@@ -338,6 +355,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddReassociatePass(self);
         }
     }
+
     def add_register_to_memory_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddRegToMemPass(self);
@@ -345,6 +363,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddRegToMemPass(self);
         }
     }
+
     def add_sroa_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddSROAPass(self);
@@ -352,6 +371,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddSROAPass(self);
         }
     }
+
     def add_sinking_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddSinkingPass(self);
@@ -359,6 +379,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddSinkingPass(self);
         }
     }
+
     def add_tail_call_elimination_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddTailCallElimPass(self);
@@ -366,6 +387,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddTailCallElimPass(self);
         }
     }
+
     def add_instruction_namer_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddInstructionNamerPass(self);
@@ -373,6 +395,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddInstructionNamerPass(self);
         }
     }
+
     def add_loop_deletion_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddLoopDeletionPass(self);
@@ -380,6 +403,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddLoopDeletionPass(self);
         }
     }
+
     def add_loop_strength_reduce_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddLoopStrengthReducePass(self);
@@ -387,6 +411,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddLoopStrengthReducePass(self);
         }
     }
+
     def add_loop_rotate_pass(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_module_AddLoopRotatePass(self);
@@ -394,6 +419,7 @@ class NewPassManager {
             ffi.lib.LLVMPY_function_AddLoopRotatePass(self);
         }
     }
+
     def _dispose(self: NewPassManager) -> object {
         if isinstance(self, ModulePassManager) {
             ffi.lib.LLVMPY_DisposeNewModulePassManger(self);
@@ -402,6 +428,7 @@ class NewPassManager {
         }
     }
 }
+
 class ModulePassManager(ffi.ObjectRef, NewPassManager) {
     def init(self: ModulePassManager, ptr: Any = None) -> object {
         if (ptr is None) {
@@ -409,81 +436,91 @@ class ModulePassManager(ffi.ObjectRef, NewPassManager) {
         }
         super.init(ptr);
     }
+
     def add_verifier(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddVerifierPass(self);
     }
+
     def add_constant_merge_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddConstantMergePass(self);
     }
+
     def add_dead_arg_elimination_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddDeadArgumentEliminationPass(self);
     }
+
     def add_dot_call_graph_printer_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddCallGraphDOTPrinterPass(self);
     }
+
     def add_module_debug_info_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddModuleDebugInfoPrinterPass(self);
     }
+
     def add_always_inliner_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddAlwaysInlinerPass(self);
     }
+
     def add_rpo_function_attrs_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddReversePostOrderFunctionAttrsPass(self);
     }
+
     def add_global_dead_code_eliminate_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddGlobalDCEPass(self);
     }
+
     def add_global_opt_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddGlobalOptPass(self);
     }
+
     def add_ipsccp_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddIPSCCPPass(self);
     }
+
     def add_internalize_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddInternalizePass(self);
     }
+
     def add_loop_extract_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddLoopExtractorPass(self);
     }
+
     def add_merge_functions_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddMergeFunctionsPass(self);
     }
+
     def add_partial_inliner_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddPartialInlinerPass(self);
     }
+
     def add_strip_symbols_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddStripSymbolsPass(self);
     }
+
     def add_strip_dead_debug_info_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddStripDeadDebugInfoPass(self);
     }
+
     def add_strip_dead_prototype_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddStripDeadPrototypesPass(self);
     }
+
     def add_strip_debug_declare_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddStripDebugDeclarePass(self);
     }
+
     def add_strip_non_debug_symbols_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddStripNonDebugSymbolsPass(self);
     }
+
     def add_argument_promotion_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddArgumentPromotionPass(self);
     }
+
     def add_post_order_function_attributes_pass(self: ModulePassManager) -> object {
         ffi.lib.LLVMPY_module_AddPostOrderFunctionAttrsPass(self);
     }
-    """Add Numba specific Reference count pruning pass.
 
-        Parameters
-        ----------
-        subpasses_flags : RefPruneSubpasses
-            A bitmask to control the subpasses to be enabled.
-        subgraph_limit : int
-            Limit the fanout pruners to working on a subgraph no bigger than
-            this number of basic-blocks to avoid spending too much time in very
-            large graphs. Default is 1000. Subject to change in future
-            versions.
-        """
     def add_refprune_pass(
         self: ModulePassManager,
         subpasses_flags: Any = RefPruneSubpasses.ALL,
@@ -501,18 +538,7 @@ class FunctionPassManager(ffi.ObjectRef, NewPassManager) {
         }
         super.init(ptr);
     }
-    """Add Numba specific Reference count pruning pass.
 
-        Parameters
-        ----------
-        subpasses_flags : RefPruneSubpasses
-            A bitmask to control the subpasses to be enabled.
-        subgraph_limit : int
-            Limit the fanout pruners to working on a subgraph no bigger than
-            this number of basic-blocks to avoid spending too much time in very
-            large graphs. Default is 1000. Subject to change in future
-            versions.
-        """
     def add_refprune_pass(
         self: FunctionPassManager,
         subpasses_flags: Any = RefPruneSubpasses.ALL,
@@ -529,10 +555,12 @@ class PipelineTuningOptions(ffi.ObjectRef) {
         self.speed_level = speed_level;
         super.init(ffi.lib.LLVMPY_CreatePipelineTuningOptions());
     }
+
     @property
     def speed_level(self: PipelineTuningOptions) -> object {
         return self._speed_level;
     }
+
     @speed_level.setter
     def speed_level(self: PipelineTuningOptions, value: Any) -> object {
         if not (0 <= value <= 3) {
@@ -540,58 +568,72 @@ class PipelineTuningOptions(ffi.ObjectRef) {
         }
         self._speed_level = value;
     }
+
     @property
     def loop_interleaving(self: PipelineTuningOptions) -> object {
         return ffi.lib.LLVMPY_PTOGetLoopInterleaving(self);
     }
+
     @loop_interleaving.setter
     def loop_interleaving(self: PipelineTuningOptions, value: Any) -> object {
         ffi.lib.LLVMPY_PTOSetLoopInterleaving(self, value);
     }
+
     @property
     def loop_vectorization(self: PipelineTuningOptions) -> object {
         return ffi.lib.LLVMPY_PTOGetLoopVectorization(self);
     }
+
     @loop_vectorization.setter
     def loop_vectorization(self: PipelineTuningOptions, value: Any) -> object {
         ffi.lib.LLVMPY_PTOSetLoopVectorization(self, value);
     }
+
     @property
     def slp_vectorization(self: PipelineTuningOptions) -> object {
         return ffi.lib.LLVMPY_PTOGetSLPVectorization(self);
     }
+
     @slp_vectorization.setter
     def slp_vectorization(self: PipelineTuningOptions, value: Any) -> object {
         ffi.lib.LLVMPY_PTOSetSLPVectorization(self, value);
     }
+
     @property
     def loop_unrolling(self: PipelineTuningOptions) -> object {
         return ffi.lib.LLVMPY_PTOGetLoopUnrolling(self);
     }
+
     @loop_unrolling.setter
     def loop_unrolling(self: PipelineTuningOptions, value: Any) -> object {
         ffi.lib.LLVMPY_PTOSetLoopUnrolling(self, value);
     }
+
     @property
     def inlining_threshold(self: PipelineTuningOptions) -> object {
         return ffi.lib.LLVMPY_PTOGetInlinerThreshold(self);
     }
+
     @inlining_threshold.setter
     def inlining_threshold(self: PipelineTuningOptions, value: Any) -> object {
         ffi.lib.LLVMPY_PTOSetInlinerThreshold(self, value);
     }
+
     def _dispose(self: PipelineTuningOptions) -> object {
         ffi.lib.LLVMPY_DisposePipelineTuningOptions(self);
     }
 }
+
 class TimePassesHandler(ffi.ObjectRef) {
     def init(self: TimePassesHandler) -> object {
         super.init(ffi.lib.LLVMPY_CreateTimePassesHandler());
     }
+
     def _dispose(self: TimePassesHandler) -> object {
         ffi.lib.LLVMPY_DisposeTimePassesHandler(self);
     }
 }
+
 class PassBuilder(ffi.ObjectRef) {
     def init(self: PassBuilder, tm: Any, pto: Any) -> object {
         super.init(ffi.lib.LLVMPY_CreatePassBuilder(tm, pto));
@@ -599,13 +641,13 @@ class PassBuilder(ffi.ObjectRef) {
         self._tm = tm;
         self._time_passes_handler = None;
     }
+
     def getModulePassManager(self: PassBuilder) -> object {
         return ModulePassManager(
-            ffi.lib.LLVMPY_buildPerModuleDefaultPipeline(
-                self, self._pto.speed_level
-            )
+            ffi.lib.LLVMPY_buildPerModuleDefaultPipeline(self, self._pto.speed_level)
         );
     }
+
     def getFunctionPassManager(self: PassBuilder) -> object {
         return FunctionPassManager(
             ffi.lib.LLVMPY_buildFunctionSimplificationPipeline(
@@ -613,13 +655,7 @@ class PassBuilder(ffi.ObjectRef) {
             )
         );
     }
-    """Enable the pass timers.
 
-        Raises
-        ------
-        RuntimeError
-            If pass timing is already enabled.
-        """
     def start_pass_timing(self: PassBuilder) -> object {
         if self._time_passes_handler {
             raise RuntimeError("Pass timing can only be done once");
@@ -628,15 +664,6 @@ class PassBuilder(ffi.ObjectRef) {
         ffi.lib.LLVMPY_EnableTimePasses(self, self._time_passes_handler);
     }
 
-    """Returns the pass timings report and disables the LLVM internal
-        timers. Pass timers are enabled by ``start_pass_timing()``. If the
-        timers are not enabled, this function will return an empty string.
-
-        Returns
-        -------
-        res : str
-            LLVM generated timing report.
-        """
     def finish_pass_timing(self: PassBuilder) -> object {
         if not self._time_passes_handler {
             raise RuntimeError("Pass timing is not enabled");
@@ -948,4 +975,3 @@ with entry {
         c_int
     ];
 }
-

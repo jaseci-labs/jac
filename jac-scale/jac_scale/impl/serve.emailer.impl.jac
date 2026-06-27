@@ -1,5 +1,3 @@
-"""Emailer mixin implementation: build the emailer once at server startup."""
-
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.factories.emailer_factory { create as create_emailer }
 

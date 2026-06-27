@@ -1,4 +1,3 @@
-"""Factory for creating database providers."""
 import from typing { Any, Optional, Dict, cast }
 import from jac_scale.abstractions.database_provider { DatabaseProvider }
 import from jac_scale.abstractions.deployment_target { DeploymentTarget }
@@ -8,7 +7,6 @@ import from enum { StrEnum }
 
 enum DatabaseType(StrEnum) { MONGODB = 'mongodb', REDIS = 'redis' }
 
-"""Resolve database URI from parameter or configuration."""
 def _resolve_uri(uri: (str | None), db_type: DatabaseType) -> str {
     if uri is not None {
         return uri;
@@ -33,9 +31,7 @@ def _resolve_uri(uri: (str | None), db_type: DatabaseType) -> str {
     }
 }
 
-"""Factory for creating database provider instances."""
 class DatabaseProviderFactory {
-    """Create a database provider based on type."""
     static def create(
         provider_type: str,
         target: (DeploymentTarget | None) = None,
@@ -63,7 +59,6 @@ class DatabaseProviderFactory {
         uri: Optional[str] = None,
         config: Optional[Dict[(str, Any)]] = None
     ) -> any {
-        # Convert string to DatabaseType enum
         db_type_enum: DatabaseType;
         if (isinstance(db_type, str)) {
             try {
@@ -75,10 +70,8 @@ class DatabaseProviderFactory {
             db_type_enum = cast(DatabaseType, db_type);
         }
 
-        # Resolve URI from config if not provided
         resolved_uri = _resolve_uri(uri, db_type_enum);
 
-        # Create appropriate client
         if (db_type_enum == DatabaseType.MONGODB) {
             require_optional("pymongo", "data");
             import from pymongo { MongoClient }

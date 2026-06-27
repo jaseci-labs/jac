@@ -33,21 +33,7 @@ obj APIParameter {
         description: str = '';
 }
 
-"""
-Data class representing a single API endpoint.
-This class provides a clean representation of an endpoint configuration,
-including its method, path, callback function, parameters, and response model.
 
-Attributes:
-    method (HTTPMethod): The HTTP method for the endpoint (GET, POST, etc.)
-    path (str): The URL path for the endpoint
-    callback (Callable): The function to be called when the endpoint is accessed
-    parameters (list[APIParameter] | None): List of parameters for the endpoint
-    response_model (type[BaseModel] | None): Pydantic model for the response
-    tags (list[str] | None): Tags for categorizing the endpoint
-    summary (str | None): Short summary of the endpoint
-    description (str | None): Detailed description of the endpoint
-"""
 obj JEndPoint {
     has method: HTTPMethod,
         path: str,
@@ -61,7 +47,6 @@ obj JEndPoint {
         forward_undeclared_query_params: bool = True;
 }
 
-"""Abstract base class for server implementations."""
 class JServer(ABC, Generic[T]) {
     def init(self: JServer, end_points: list[JEndPoint]) -> None;
     def get_endpoints(self: JServer) -> list[JEndPoint];
@@ -82,26 +67,9 @@ class JServer(ABC, Generic[T]) {
     @abstractmethod
     def _delete(self: JServer, endpoint: JEndPoint) -> 'JServer[T]';
 
-    """
-    Create a complete server with all endpoints registered.
-
-    This is a convenience method that gets all endpoints and executes them
-    to create a fully configured server. The return type depends on the
-    concrete implementation.
-
-    Args:
-        app (Optional[FastAPI]): Optional FastAPI instance to use (ignored in base implementation)
-
-    Returns:
-        Any: Implementation-specific configured server
-    """
     @abstractmethod
     def create_server(self: JServer) -> T { }
 
-    """Run the server on the specified host and port.
-
-    If the port is in use, tries subsequent ports up to max_retries times.
-    """
     @abstractmethod
     def run_server(
         self: JServer, host: str = 'localhost', port: int = 8000, max_retries: int = 10
