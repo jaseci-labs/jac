@@ -144,19 +144,39 @@ def:pub block_size_for(name: str) -> int {
 A fresh `EVP_MD_CTX` is created, fed each chunk in order, finalized into a
 `digest_size`-byte buffer, and freed — so no C context outlives the call. The
 output buffer is a zero-filled `bytes` the C side writes into (the libz floor's
-scratch-buffer convention); `outlen` is the required-but-ignored length scratch."""
+scratch-buffer convention); `outlen` is the required-but-ignored length scratch.
+
+OpenSSL failures are not silent: `EVP_MD_CTX_new` returning NULL (`0`) would be
+dereferenced by the next call (segfault), and the digest primitives return `1`
+on success / `0` on failure (FIPS restrictions, engine errors, ...) — ignoring
+them would hand back the zero-filled buffer as a "digest" for security-critical
+data. Each is checked and surfaced as a `ValueError`, mirroring CPython's
+`_hashlib`; the live context is freed before raising so a failure never leaks
+it."""
 def:pub evp_digest(md: int, chunks: list[bytes], digest_size: int) -> bytes {
     ctx: int = EVP_MD_CTX_new();
-    EVP_DigestInit_ex(ctx, md, 0);
+    if ctx == 0 {
+        raise ValueError("EVP_MD_CTX_new failed (out of memory)");
+    }
+    if EVP_DigestInit_ex(ctx, md, 0) != 1 {
+        EVP_MD_CTX_free(ctx);
+        raise ValueError("EVP_DigestInit_ex failed");
+    }
     for c in chunks {
-        EVP_DigestUpdate(ctx, c, len(c));
+        if EVP_DigestUpdate(ctx, c, len(c)) != 1 {
+            EVP_MD_CTX_free(ctx);
+            raise ValueError("EVP_DigestUpdate failed");
+        }
     }
     out = b"\x00" * digest_size;
     # A repeat (`b"\x00" * 4`) is a runtime-allocated, WRITABLE buffer; a bytes
     # LITERAL would land in read-only .rodata and segfault when the C side writes
     # the digest length back through this `unsigned int *` out-param.
     outlen = b"\x00" * 4;
-    EVP_DigestFinal_ex(ctx, out, outlen);
+    if EVP_DigestFinal_ex(ctx, out, outlen) != 1 {
+        EVP_MD_CTX_free(ctx);
+        raise ValueError("EVP_DigestFinal_ex failed");
+    }
     EVP_MD_CTX_free(ctx);
     return out;
 }
@@ -165,21 +185,36 @@ def:pub evp_digest(md: int, chunks: list[bytes], digest_size: int) -> bytes {
 """One-shot HMAC of the concatenation of `chunks` under key `key`, selector `md`.
 
 Same lifecycle as `evp_digest` over the legacy `HMAC_CTX` API: create, init with
-the key + digest, update per chunk, finalize, free."""
+the key + digest, update per chunk, finalize, free. NULL-ctx and `0` return
+codes are checked and raised as `ValueError` (freeing the live context first),
+exactly as in `evp_digest` — an unchecked HMAC failure would silently return a
+zero buffer as an authentication tag."""
 def:pub hmac_digest(
     md: int, key: bytes, chunks: list[bytes], digest_size: int
 ) -> bytes {
     ctx: int = HMAC_CTX_new();
-    HMAC_Init_ex(ctx, key, len(key), md, 0);
+    if ctx == 0 {
+        raise ValueError("HMAC_CTX_new failed (out of memory)");
+    }
+    if HMAC_Init_ex(ctx, key, len(key), md, 0) != 1 {
+        HMAC_CTX_free(ctx);
+        raise ValueError("HMAC_Init_ex failed");
+    }
     for c in chunks {
-        HMAC_Update(ctx, c, len(c));
+        if HMAC_Update(ctx, c, len(c)) != 1 {
+            HMAC_CTX_free(ctx);
+            raise ValueError("HMAC_Update failed");
+        }
     }
     out = b"\x00" * digest_size;
     # A repeat (`b"\x00" * 4`) is a runtime-allocated, WRITABLE buffer; a bytes
     # LITERAL would land in read-only .rodata and segfault when the C side writes
     # the digest length back through this `unsigned int *` out-param.
     outlen = b"\x00" * 4;
-    HMAC_Final(ctx, out, outlen);
+    if HMAC_Final(ctx, out, outlen) != 1 {
+        HMAC_CTX_free(ctx);
+        raise ValueError("HMAC_Final failed");
+    }
     HMAC_CTX_free(ctx);
     return out;
 }
