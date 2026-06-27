@@ -825,36 +825,6 @@ obj IngressDeployer {
         );
     }
 
-    """Deploy the full ingress stack: NGINX controller, wait for readiness, then routing rules."""
-    def deploy(
-        app_name: str,
-        namespace: str,
-        provider: ClusterProvider,
-        service_port: int,
-        grafana_enabled: bool,
-        redis_dashboard: bool,
-        mongo_dashboard: bool,
-        apps_v1: any,
-        core_v1: any,
-        rbac_v1: any,
-        networking_v1: any
-    ) {
-        self.start_controller(
-            app_name, namespace, provider, apps_v1, core_v1, rbac_v1, networking_v1
-        );
-        self.finish_ingress(
-            app_name,
-            namespace,
-            service_port,
-            grafana_enabled,
-            redis_dashboard,
-            mongo_dashboard,
-            apps_v1,
-            core_v1,
-            networking_v1
-        );
-    }
-
     """Install cert-manager and create a namespace-scoped letsencrypt-prod Issuer.
 
     Idempotent: returns immediately if the Issuer already exists.

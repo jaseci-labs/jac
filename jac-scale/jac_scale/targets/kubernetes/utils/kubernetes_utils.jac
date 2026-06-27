@@ -74,10 +74,6 @@ def exclude_folders(tarinfo: tarfile.TarInfo) -> Optional[tarfile.TarInfo];
 
 def create_tarball(source_dir: str, tar_path: str) -> None;
 
-def create_or_update_configmap(
-    namespace: str, configmap_name: str, tar_path: str
-) -> None;
-
 def check_deployment_status(
     node_port: int,
     path: str = '/docs',
