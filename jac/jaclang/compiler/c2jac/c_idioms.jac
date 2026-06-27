@@ -11,7 +11,7 @@ Keeping the recognition logic separate from the emission/tagging logic means the
 "what shape is this" rules can be read, tested, and extended on their own.
 """
 
-import from pycparser { c_ast }
+import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.compiler.c2jac.c_types { C_PRIM_MAP, user_type_name }
 
 def flatten_mult(nd: object, acc: list) {

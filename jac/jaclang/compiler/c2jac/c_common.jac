@@ -9,7 +9,7 @@ encodings (its `ast` class name AND its Jac token), and the literal/coordinate
 helpers are shared functions. A new operator or literal form is added here once.
 """
 
-import from pycparser { c_ast }
+import from jaclang.vendor.pycparser { c_ast }
 
 # --- C binary operators -------------------------------------------------- #
 # c_op → (kind, ast3_class, jac_tok_name, jac_tok_val)
@@ -351,4 +351,20 @@ def cast_scalar_target(nd: object) -> str | None {
         return names[-1] if names else None;
     }
     return None;
+}
+
+# --- Jac scalar zero defaults -------------------------------------------- #
+def jac_prim_zero(jac: str) -> tuple {
+    # Zero literal (value, display text) for a Jac scalar primitive.
+    # Covers int / float / bool — the three numerics whose zero is unambiguous.
+    # Callers that need a context-specific str zero ("" vs 0) branch on "str"
+    # before calling here (e.g. _zero_default uses "" for static char;
+    # _elem_default lets str fall through to (0, "0") for list element fill).
+    if jac == "float" {
+        return (0.0, "0.0");
+    }
+    if jac == "bool" {
+        return (False, "False");
+    }
+    return (0, "0");
 }

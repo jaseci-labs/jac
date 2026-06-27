@@ -24,7 +24,7 @@ order-independent, so an enum constant clashing with a function declared later s
 demotes instead of silently shadowing it at module scope.
 """
 
-import from pycparser { c_ast }
+import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.compiler.c2jac.tags { Idiom, Tier, Mechanism, NodeTag, TagTable }
 import from jaclang.compiler.c2jac.c_common { parse_c_int }
 

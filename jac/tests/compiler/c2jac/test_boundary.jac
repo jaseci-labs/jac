@@ -1,7 +1,7 @@
 """P0.5 phase-exit: assert the 2×2 (tier, mechanism) boundary table for one
 representative node of each §5.3 cell."""
 
-import from pycparser { c_ast }
+import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.compiler.c2jac.tags { Tier, Mechanism, Idiom }
 import from jaclang.compiler.c2jac.boundary { default_tier, default_mechanism }
 

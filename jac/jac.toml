@@ -10,7 +10,8 @@ requires_python = ">=3.14"
 # Native LLVM is the in-tree LLVMPY_* shim, statically linked by Zig
 # (jac/native + `zig build fetch-llvm`), not the llvmlite wheel — no llvmlite dep.
 dependencies = [
-    "pycparser>=2.22",  # c2jac C-source front-end parser
+    # c2jac's C parser (pycparser) is vendored in-tree at jaclang/vendor/pycparser
+    # to keep the core install dependency-free; see that dir's README.vendor.md.
     "pcpp>=1.30",  # c2jac C preprocessor (pure-Python; no system toolchain needed)
 ]
 
