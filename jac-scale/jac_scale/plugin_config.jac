@@ -152,11 +152,6 @@ class JacScalePluginConfig {
                                     "default": "latest",
                                     "description": "jac-scale package version"
                                 },
-                                "jac_client": {
-                                    "type": "string",
-                                    "default": "latest",
-                                    "description": "jac-client package version"
-                                },
                                 "jac_byllm": {
                                     "type": "string",
                                     "default": "latest",
