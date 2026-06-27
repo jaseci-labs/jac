@@ -42,20 +42,6 @@ glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] 
      ],
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
 
-"""Base response container (HTTP-specific, kept for backward compatibility)."""
-obj Response {
-    has status: StatusCode,
-        body: JsonValue,
-        content_type: str = 'application/json';
-}
-
-"""User authentication data."""
-obj UserData {
-    has username: str,
-        token: str,
-        root_id: str;
-}
-
 """Manage users and their persistent roots (SQLite-backed).
 
 The `_lock` serializes access to `_conn`. Under the async server we now
@@ -179,7 +165,6 @@ obj ModuleIntrospector {
 
     def is_auth_required_for_function(func_name: str) -> bool;
     def is_auth_required_for_walker(walker_name: str) -> bool;
-    def _collect_client_globals -> dict[str, any];
 }
 
 """Build and send HTTP responses."""
@@ -290,13 +275,6 @@ obj JacAPIServer {
 
     def get_functions -> dict[str, Callable[(..., Any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
-    def introspect_callable(func: Callable[(..., Any)]) -> dict[str, any];
-    def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, any];
-    def render_client_page(
-        function_name: str, args: dict[(str, Any)], username: str
-    ) -> dict[str, any];
-
-    def get_client_bundle_code -> str;
     def print_endpoint_docs -> None;
     def _ensure_sv_siblings -> None;
     def start(

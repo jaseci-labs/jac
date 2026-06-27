@@ -1443,26 +1443,6 @@ impl ModuleIntrospector.is_auth_required_for_walker(walker_name: str) -> bool {
     return self._walker_access.get(walker_name, True);
 }
 
-"""Collect client-exposed global values."""
-impl ModuleIntrospector._collect_client_globals -> dict[str, any] {
-    if not self._module {
-        return {};
-    }
-    result: dict[(str, Any)] = {};
-    names = self._client_manifest.get('globals', []);
-    values_map = self._client_manifest.get('globals_values', {});
-    for name in names {
-        if (name in values_map) {
-            result[name] = values_map[name];
-        } elif hasattr(self._module, name) {
-            result[name] = getattr(self._module, name);
-        } else {
-            result[name] = None;
-        }
-    }
-    return result;
-}
-
 """Send JSON response with CORS headers."""
 impl ResponseBuilder.send_json(
     handler: BaseHTTPRequestHandler, status: StatusCode, data: dict[(str, JsonValue)]
@@ -1888,13 +1868,8 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
 
         Uses HTTPTransport to demonstrate transport abstraction layer.
         """
-        def _send_response(
-            self: JacRequestHandler, response: (Response | TransportResponse)
-        ) {
-            # Handle legacy Response objects for backward compatibility
-            if isinstance(response, Response) {
-                Jac.send_json(self, response.status, response.body);
-            } elif isinstance(response, TransportResponse)
+        def _send_response(self: JacRequestHandler, response: TransportResponse) {
+            if isinstance(response, TransportResponse)
             and (
                 isgenerator(response.data) or isinstance(response.data, AsyncGenerator)
             ) {
@@ -2507,32 +2482,6 @@ impl JacAPIServer.get_functions -> dict[str, Callable[(..., Any)]] {
 """Get all walkers (backward compatibility)."""
 impl JacAPIServer.get_walkers -> dict[str, type[WalkerArchetype]] {
     return self.introspector.get_walkers();
-}
-
-"""Introspect callable (backward compatibility)."""
-impl JacAPIServer.introspect_callable(func: Callable[(..., Any)]) -> dict[str, any] {
-    return self.introspector.introspect_callable(func);
-}
-
-"""Introspect walker (backward compatibility)."""
-impl JacAPIServer.introspect_walker(
-    walker_cls: type[WalkerArchetype]
-) -> dict[str, any] {
-    return self.introspector.introspect_walker(walker_cls);
-}
-
-"""Render client page (backward compatibility)."""
-impl JacAPIServer.render_client_page(
-    function_name: str, args: dict[(str, Any)], username: str
-) -> dict[str, any] {
-    return self.introspector.render_page(function_name, args, username);
-}
-
-"""Get client bundle code (backward compatibility)."""
-impl JacAPIServer.get_client_bundle_code -> str {
-    self.introspector.load();
-    self.introspector.ensure_bundle();
-    return self.introspector._bundle.code;
 }
 
 """Print comprehensive documentation for all endpoints that would be generated."""
