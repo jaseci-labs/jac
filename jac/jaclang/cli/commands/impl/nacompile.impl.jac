@@ -721,15 +721,68 @@ impl nacompile(
 }
 
 
-# ─── Static C-floor archive resolution (#6978 Phase 0.1a) ─────────────────────
-"""Locate the bundled pbs C-archive lib dir for `triple`, or None.
+# ─── Static C-floor archive resolution (#6978 Phase 0.1a + 0.2) ───────────────
+"""Resolve the floor-archive lib dir for `triple` under `pkg_root`, or None.
 
-Dev/CI builds keep the floor archives under
-`<repo>/jac/.pbs-build/<osarch>/python/build/lib`, found relative to the jaclang
-package. An installed/payload build has no such tree, so this returns None and
-the caller falls back to a dynamic dylib dependency (production staging of these
-archives into the payload is #6978 Phase 0.2). `JAC_NATIVE_FLOOR_DIR` overrides
-the lookup."""
+Two shipping shapes carry the archives, tried in order:
+
+* **Dev/CI** keep the full pbs tree under
+  `<pkg_root>/.pbs-build/<osarch>/python/build/lib`.
+* **Installed/payload** builds materialize a curated subset into the runtime
+  cache at `<rt>/python/floor/<osarch>`; `jaclang.__file__` resolves to
+  `<rt>/site/jaclang`, so `pkg_root` is `<rt>/site` and the floor sits one level
+  up at `../python/floor` (staged by `mkpayload`, #6978 0.2).
+
+Both roots are arch-keyed so a cross-`--target` build only matches its own
+target's archives -- a host-arch floor must never be linked into a different-arch
+binary. The dev branch keeps its historical first-dir fallback; the installed
+branch is strict (no fallback) so a single-arch payload can't mis-serve a cross
+target. Split out from _floor_lib_dir so the resolution is unit-testable with a
+synthetic root (the real lookup keys off jaclang.__file__)."""
+def _resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
+    import os;
+    want = "aarch64" if ("aarch64" in triple or "arm64" in triple) else "x86_64";
+
+    # Dev/CI: <pkg_root>/.pbs-build/<osarch>/python/build/lib (full pbs tree).
+    pbs = os.path.join(pkg_root, ".pbs-build");
+    if os.path.isdir(pbs) {
+        fallback: (str | None) = None;
+        for d in sorted(os.listdir(pbs)) {
+            libdir = os.path.join(pbs, d, "python", "build", "lib");
+            if os.path.isdir(libdir) {
+                if fallback is None {
+                    fallback = libdir;
+                }
+                if want in d {
+                    return libdir;
+                }
+            }
+        }
+        if fallback is not None {
+            return fallback;
+        }
+    }
+
+    # Installed: <rt>/python/floor/<osarch> (curated subset in the payload).
+    floor = os.path.join(os.path.dirname(pkg_root), "python", "floor");
+    if os.path.isdir(floor) {
+        for d in sorted(os.listdir(floor)) {
+            cand = os.path.join(floor, d);
+            if os.path.isdir(cand) and (want in d) {
+                return cand;
+            }
+        }
+    }
+    return None;
+}
+
+
+"""Locate the bundled C-archive floor lib dir for `triple`, or None.
+
+`JAC_NATIVE_FLOOR_DIR` overrides everything; otherwise resolves against the
+jaclang package root via _resolve_floor_dir (dev `.pbs-build` or the installed
+`python/floor` payload, #6978 0.2). None -> the caller leaves the import as a
+dynamic dylib dependency instead of static-linking the floor."""
 def _floor_lib_dir(triple: str) -> (str | None) {
     import os;
     env = os.environ.get("JAC_NATIVE_FLOOR_DIR", "");
@@ -737,25 +790,62 @@ def _floor_lib_dir(triple: str) -> (str | None) {
         return env;
     }
     import jaclang;
-    jac_dir = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
-    pbs = os.path.join(jac_dir, ".pbs-build");
-    if not os.path.isdir(pbs) {
-        return None;
+    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
+    return _resolve_floor_dir(pkg_root, triple);
+}
+
+
+"""Resolve the bundled CA certificate bundle under `pkg_root`, or None.
+
+Installed builds materialize it at `<rt>/python/floor/cacert.pem` (pkg_root is
+`<rt>/site`); dev builds fall back to pbs's vendored certifi copy under
+`.pbs-build`. Split from _floor_ca_bundle for the same unit-test reason as
+_resolve_floor_dir. Staged by `mkpayload` (#6978 0.2); the ssl floor (Phase 1)
+is its consumer."""
+def _resolve_ca_bundle(pkg_root: str) -> (str | None) {
+    import os;
+    # Installed: <rt>/python/floor/cacert.pem.
+    cand = os.path.join(os.path.dirname(pkg_root), "python", "floor", "cacert.pem");
+    if os.path.isfile(cand) {
+        return cand;
     }
-    want = "aarch64" if ("aarch64" in triple or "arm64" in triple) else "x86_64";
-    fallback: (str | None) = None;
-    for d in sorted(os.listdir(pbs)) {
-        libdir = os.path.join(pbs, d, "python", "build", "lib");
-        if os.path.isdir(libdir) {
-            if fallback is None {
-                fallback = libdir;
-            }
-            if want in d {
-                return libdir;
-            }
-        }
+    # Dev/CI: pbs's vendored certifi bundle.
+    import glob;
+    hits = sorted(
+        glob.glob(
+            os.path.join(
+                pkg_root,
+                ".pbs-build",
+                "*",
+                "python",
+                "install",
+                "lib",
+                "python*",
+                "site-packages",
+                "pip",
+                "_vendor",
+                "certifi",
+                "cacert.pem"
+            )
+        )
+    );
+    return hits[0] if hits else None;
+}
+
+
+"""Locate the bundled CA certificate bundle for the ssl floor, or None.
+
+`JAC_NATIVE_CA_BUNDLE` overrides; otherwise resolves against the jaclang package
+root via _resolve_ca_bundle (#6978 0.2)."""
+def _floor_ca_bundle -> (str | None) {
+    import os;
+    env = os.environ.get("JAC_NATIVE_CA_BUNDLE", "");
+    if env and os.path.isfile(env) {
+        return env;
     }
-    return fallback;
+    import jaclang;
+    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
+    return _resolve_ca_bundle(pkg_root);
 }
 
 

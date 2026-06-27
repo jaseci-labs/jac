@@ -832,6 +832,89 @@ fn stageTree(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, site:
     }
     // The LLVMPY_* shim statically links LLVM (~130 MiB); strip it (best-effort).
     stripBestEffort(io, try std.fmt.allocPrint(a, "{s}/site/jaclang/compiler/passes/native/llvm/{s}", .{ stage, shimFileName() }));
+
+    // Static C-floor archives + CA bundle so an installed binary can static-link
+    // a bundled C floor at `nacompile` time, not just dev builds (#6978 0.2).
+    try stageFloor(io, gpa, a, pbs_py_dir, stage);
+}
+
+/// The build host's `<os>-<arch>` key, matching the fetch-pbs osarch dir names
+/// (`linux-x86_64`, `macos-aarch64`, ...). The payload tool builds for and runs
+/// on the host, so `builtin` is the source of truth. Used to arch-key the staged
+/// floor archives so a cross-`--target` nacompile never links the wrong arch.
+fn hostOsArch() []const u8 {
+    const os_name = switch (builtin.os.tag) {
+        .linux => "linux",
+        .macos => "macos",
+        .windows => "windows",
+        else => @compileError("floor staging: unsupported host OS"),
+    };
+    const arch_name = switch (builtin.cpu.arch) {
+        .x86_64 => "x86_64",
+        .aarch64 => "aarch64",
+        else => @compileError("floor staging: unsupported host arch"),
+    };
+    return os_name ++ "-" ++ arch_name;
+}
+
+/// Stage the static C-floor archives + a CA bundle into the payload so an
+/// installed (non-dev) binary can static-link a bundled C floor at `nacompile`
+/// time -- the dev path reads the same archives straight from `.pbs-build`, this
+/// is the shipped-binary counterpart (#6978 Phase 0.2). Archives land arch-keyed
+/// under `python/floor/<osarch>/` (so a cross-`--target` build never grabs the
+/// host's wrong-arch archives) and the CA bundle at `python/floor/cacert.pem`
+/// (arch-independent). Best-effort per file: pbs's `build/lib/` set differs by
+/// platform (no `libz.a` on macOS, which uses the system zlib), so a missing
+/// member is skipped rather than fatal.
+fn stageFloor(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8, stage: []const u8) !void {
+    const osarch = hostOsArch();
+    const floor_dst = try std.fmt.allocPrint(a, "{s}/python/floor/{s}", .{ stage, osarch });
+    try Dir.cwd().createDirPath(io, floor_dst);
+    const src_lib = try std.fmt.allocPrint(a, "{s}/build/lib", .{pbs_py_dir});
+
+    // The bundled-C floor set the na stdlib roadmap (#6978 §12) targets -- the
+    // exact archives CPython's own C extensions link. Everything else in
+    // build/lib/ (libX11, libedit, libncursesw, tcl/tk stubs, ...) is not a floor
+    // target and stays out, to bound the binary size.
+    const FLOOR = [_][]const u8{
+        "libssl.a", "libcrypto.a", "libsqlite3.a", "libmpdec.a", "liblzma.a",
+        "libbz2.a", "libexpat.a",  "libz.a",       "libzstd.a",
+    };
+    var staged: usize = 0;
+    for (FLOOR) |name| {
+        const src = try std.fmt.allocPrint(a, "{s}/{s}", .{ src_lib, name });
+        if (!fileExists(io, src)) continue; // not present for this platform
+        try Dir.cwd().copyFile(src, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ floor_dst, name }), io, .{});
+        staged += 1;
+    }
+    log("==> staged {d} C-floor archive(s) -> python/floor/{s}", .{ staged, osarch });
+
+    // CA bundle (certifi's cacert.pem, vendored in pbs's pip) -> a stable,
+    // pip-layout-independent path the ssl floor (Phase 1) reads.
+    if (try findCaBundle(io, gpa, a, pbs_py_dir)) |ca| {
+        try Dir.cwd().copyFile(ca, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/python/floor/cacert.pem", .{stage}), io, .{});
+        log("==> staged CA bundle -> python/floor/cacert.pem", .{});
+    } else {
+        log("   no CA bundle found under pbs site-packages; ssl floor will fall back to a system bundle", .{});
+    }
+}
+
+/// Locate certifi's `cacert.pem` in the pbs tree (pip vendors it). Tries the
+/// canonical pip path first, then a bounded walk of site-packages for any
+/// `certifi/cacert.pem` (so a pip layout shift still resolves). Null if absent.
+fn findCaBundle(io: Io, gpa: Allocator, a: Allocator, pbs_py_dir: []const u8) !?[]const u8 {
+    const direct = try std.fmt.allocPrint(a, "{s}/install/lib/python{s}/site-packages/pip/_vendor/certifi/cacert.pem", .{ pbs_py_dir, py_ver });
+    if (fileExists(io, direct)) return direct;
+    const sp = try std.fmt.allocPrint(a, "{s}/install/lib/python{s}/site-packages", .{ pbs_py_dir, py_ver });
+    var dir = Dir.cwd().openDir(io, sp, .{ .iterate = true }) catch return null;
+    defer dir.close(io);
+    var walker = dir.walk(gpa) catch return null;
+    defer walker.deinit();
+    while (walker.next(io) catch null) |entry| {
+        if (entry.kind == .file and std.mem.endsWith(u8, entry.path, "certifi/cacert.pem"))
+            return try std.fmt.allocPrint(a, "{s}/{s}", .{ sp, entry.path });
+    }
+    return null;
 }
 
 /// The host's LLVMPY_* shim filename, matching build.zig's emitted name and
@@ -1086,4 +1169,54 @@ fn tarGzDir(io: Io, gpa: Allocator, a: Allocator, stage: []const u8, out: []cons
 
     try comp.finish();
     try fw.interface.flush();
+}
+
+// ----------------------------------------------------------------- tests
+
+const testing = std.testing;
+
+test "stageFloor stages the floor allow-list + CA bundle, skips non-floor archives" {
+    const io = testing.io;
+    const gpa = testing.allocator;
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var base_buf: [MAX_PATH]u8 = undefined;
+    const base = base_buf[0..try tmp.dir.realPath(io, &base_buf)];
+
+    // A fake pbs tree: two floor archives, one NON-floor archive (must be left
+    // behind), and certifi's CA bundle at the canonical pip path.
+    const pbs = try std.fmt.allocPrint(a, "{s}/pbs", .{base});
+    const lib = try std.fmt.allocPrint(a, "{s}/build/lib", .{pbs});
+    try Dir.cwd().createDirPath(io, lib);
+    for ([_][]const u8{ "libz.a", "libssl.a", "libX11.a" }) |n| {
+        try Dir.cwd().writeFile(io, .{
+            .sub_path = try std.fmt.allocPrint(a, "{s}/{s}", .{ lib, n }),
+            .data = "!<arch>\n",
+        });
+    }
+    const certdir = try std.fmt.allocPrint(a, "{s}/install/lib/python{s}/site-packages/pip/_vendor/certifi", .{ pbs, py_ver });
+    try Dir.cwd().createDirPath(io, certdir);
+    try Dir.cwd().writeFile(io, .{
+        .sub_path = try std.fmt.allocPrint(a, "{s}/cacert.pem", .{certdir}),
+        .data = "# ca\n",
+    });
+
+    const stage = try std.fmt.allocPrint(a, "{s}/stage", .{base});
+    try stageFloor(io, gpa, a, pbs, stage);
+
+    const osarch = hostOsArch();
+    const exp = struct {
+        fn p(al: Allocator, st: []const u8, rest: []const u8) []const u8 {
+            return std.fmt.allocPrint(al, "{s}/python/floor/{s}", .{ st, rest }) catch unreachable;
+        }
+    }.p;
+    try testing.expect(fileExists(io, exp(a, stage, try std.fmt.allocPrint(a, "{s}/libz.a", .{osarch}))));
+    try testing.expect(fileExists(io, exp(a, stage, try std.fmt.allocPrint(a, "{s}/libssl.a", .{osarch}))));
+    try testing.expect(fileExists(io, exp(a, stage, "cacert.pem")));
+    // The non-floor archive present in build/lib must NOT be staged.
+    try testing.expect(!fileExists(io, exp(a, stage, try std.fmt.allocPrint(a, "{s}/libX11.a", .{osarch}))));
 }

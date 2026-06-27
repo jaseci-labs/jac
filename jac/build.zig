@@ -466,14 +466,27 @@ fn macosShim(
 }
 
 fn addTests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
+    const test_step = b.step("test", "Run launcher unit tests (no libpython/pbs needed)");
+
     const runtime_mod = b.createModule(.{
         .root_source_file = b.path("launcher/runtime.zig"),
         .target = target,
         .optimize = optimize,
     });
-    const unit_tests = b.addTest(.{ .name = "runtime-tests", .root_module = runtime_mod });
-    b.step("test", "Run launcher runtime unit tests (no libpython needed)")
-        .dependOn(&b.addRunArtifact(unit_tests).step);
+    const runtime_tests = b.addTest(.{ .name = "runtime-tests", .root_module = runtime_mod });
+    test_step.dependOn(&b.addRunArtifact(runtime_tests).step);
+
+    // payload.zig's staging/floor tests (filesystem-only; no network or pbs
+    // tree). Rooted at a tiny aggregator -- payload.zig has its own `pub fn main`
+    // (the build CLI), which collides with the `--listen=-` test runner if used
+    // as the test root directly.
+    const payload_mod = b.createModule(.{
+        .root_source_file = b.path("launcher/payload_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const payload_tests = b.addTest(.{ .name = "payload-tests", .root_module = payload_mod });
+    test_step.dependOn(&b.addRunArtifact(payload_tests).step);
 }
 
 /// Map a target to the pbs platform token the fetch-pbs subcommand understands,
