@@ -1097,30 +1097,102 @@ def build_plugin_hook_layer(iface: type[any]) -> tuple[(type[any], type[any])] {
         impl_methods[name] = hookimpl(wrapped_impl);
         """Create a proxy method that dispatches through plugin_manager.""";
         def make_proxy(name: str, sig: inspect.Signature, is_coro: bool) -> Callable {
-            if is_coro {
-                async def async_proxy(*args: object, **kwargs: object) -> object {
+            # Phase 1: emit a real-signature function so CPython binds call
+            # args natively, instead of paying inspect.Signature.bind +
+            # apply_defaults on every hooked call (~73% of per-call cost).
+            # Signatures with *args/**kwargs/positional-only keep the
+            # reflective path below.
+            params = list(sig.parameters.values());
+            simple = True;
+            for p in params {
+                if p.kind in (
+                    inspect.Parameter.VAR_POSITIONAL,
+                    inspect.Parameter.VAR_KEYWORD,
+                    inspect.Parameter.POSITIONAL_ONLY
+                )
+                or p.name.startswith('__jac') {
+                    simple = False;
+                }
+            }
+            # Ablation flag: JAC_HOOK_CODEGEN=0 forces the reflective proxy
+            # (Phase-1 disabled / baseline dispatch).
+            codegen_off = os.environ.get('JAC_HOOK_CODEGEN', '1').strip().lower() in (
+                '0',
+                'false',
+                'no',
+                'off'
+            );
+            if (not simple) or codegen_off {
+                if is_coro {
+                    async def async_proxy(*args: object, **kwargs: object) -> object {
+                        bound = sig.bind_partial(*args, **kwargs);
+                        bound.apply_defaults();
+                        hookcaller = getattr(plugin_manager.hook, name);
+                        result = hookcaller(**bound.arguments);
+                        if inspect.iscoroutine(result) {
+                            return await result;
+                        }
+                        return result;
+                    }
+                    async_proxy.__name__ = name;
+                    async_proxy.__signature__ = sig;
+                    return async_proxy;
+                }
+                def proxy(*args: object, **kwargs: object) -> object {
                     bound = sig.bind_partial(*args, **kwargs);
                     bound.apply_defaults();
                     hookcaller = getattr(plugin_manager.hook, name);
-                    result = hookcaller(**bound.arguments);
-                    if inspect.iscoroutine(result) {
-                        return await result;
-                    }
-                    return result;
+                    return hookcaller(**bound.arguments);
                 }
-                async_proxy.__name__ = name;
-                async_proxy.__signature__ = sig;
-                return async_proxy;
+                proxy.__name__ = name;
+                proxy.__signature__ = sig;
+                return proxy;
             }
-            def proxy(*args: object, **kwargs: object) -> object {
-                bound = sig.bind_partial(*args, **kwargs);
-                bound.apply_defaults();
-                hookcaller = getattr(plugin_manager.hook, name);
-                return hookcaller(**bound.arguments);
+            # Fast path: codegen `def name(<params>): dispatch(<fwd>)`. The
+            # HookCaller is created later (by add_hookspecs), so resolve it
+            # lazily once and memoize in a one-element cell.
+            ns = {
+                '__jac_pm': plugin_manager,
+                '__jac_inspect': inspect,
+                '__jac_name': name,
+                '__jac_cell': [None]
+            };
+            src_params = [];
+            fwd = [];
+            seen_kwonly = False;
+            for (i, p) in enumerate(params) {
+                if (p.kind == inspect.Parameter.KEYWORD_ONLY) and (not seen_kwonly) {
+                    src_params.append('*');
+                    seen_kwonly = True;
+                }
+                if p.default is inspect.Parameter.empty {
+                    src_params.append(p.name);
+                } else {
+                    ns['__jac_d' + str(i)] = p.default;
+                    src_params.append(p.name + '=__jac_d' + str(i));
+                }
+                fwd.append(p.name + '=' + p.name);
             }
-            proxy.__name__ = name;
-            proxy.__signature__ = sig;
-            return proxy;
+            kw = 'async def ' if is_coro else 'def ';
+            lines = [
+                kw + name + '(' + ', '.join(src_params) + '):',
+                '    __jac_c = __jac_cell[0]',
+                '    if __jac_c is None:',
+                '        __jac_c = __jac_cell[0] = getattr(__jac_pm.hook, __jac_name)'
+            ];
+            if is_coro {
+                lines.append('    __jac_result = __jac_c(' + ', '.join(fwd) + ')');
+                lines.append('    if __jac_inspect.iscoroutine(__jac_result):');
+                lines.append('        return await __jac_result');
+                lines.append('    return __jac_result');
+            } else {
+                lines.append('    return __jac_c(' + ', '.join(fwd) + ')');
+            }
+            exec('\n'.join(lines) + '\n', ns);
+            fn = ns[name];
+            fn.__name__ = name;
+            fn.__signature__ = sig;
+            return fn;
         }
         proxy_methods[name] = make_proxy(
             name, sig, inspect.iscoroutinefunction(method)
@@ -1146,6 +1218,14 @@ with entry {
     plugin_manager.add_hookspecs(JacRuntimeSpec);
 }
 
+# NOTE: Phase-2 devirtualization (plugin_manager.seal) is intentionally
+# NOT called here. Sealing at import is unsafe: external plugins (byllm,
+# scale) have not registered yet, and the compiler's `without_plugins`
+# churn would transiently devirtualize their hooks to core stubs. Seal
+# fires instead at the first `ExecutionContext` (see
+# runtimelib/impl/context.impl.jac, and the `--scale` override in
+# jac-scale's context.impl.jac) -- contexts are only built at run time,
+# after the plugin set is fully loaded and stable.
 """Jac Machine State.
 
 App identity (`base_path_dir`, `full_target_path`) lives on

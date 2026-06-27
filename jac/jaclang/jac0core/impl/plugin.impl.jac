@@ -88,6 +88,76 @@ impl HookCaller.__repr__ -> str {
     return f"<HookCaller {self.name!r}>";
 }
 
+"""Freeze the resolved hook table: replace single-impl, simple-signature
+facade methods with direct-call specializations. Safe to call before plugins
+load -- register/unregister re-specialize affected hooks afterward."""
+impl PluginManager.seal(facade: type) -> None {
+    if self._sealed {
+        return;
+    }
+    import os;
+    # Ablation flag: JAC_HOOK_SEAL=0 keeps hooks on the Phase-1 dispatcher
+    # (Phase-2 devirtualization disabled). Marked sealed so we skip re-checking.
+    if os.environ.get('JAC_HOOK_SEAL', '1').strip().lower() in (
+        '0',
+        'false',
+        'no',
+        'off'
+    ) {
+        self._sealed = True;
+        return;
+    }
+    self._facade = facade;
+    for hook_name in `list(vars(self.hook).keys()) {
+        m = getattr(facade, hook_name, None);
+        if (m is not None) and callable(m) {
+            self._phase1[hook_name] = m;
+        }
+    }
+    self._sealed = True;
+    for hook_name in `list(self._phase1.keys()) {
+        self._specialize_hook(hook_name);
+    }
+}
+
+"""(Re)install the fastest correct facade method for one hook: a direct-call
+devirtualization when exactly one simple-signature impl is registered, else
+the Phase-1 dynamic dispatcher captured at seal time."""
+impl PluginManager._specialize_hook(hook_name: str) -> None {
+    if (not self._sealed) or (self._facade is None) {
+        return;
+    }
+    base = self._phase1.get(hook_name);
+    if base is None {
+        base = getattr(self._facade, hook_name, None);
+        if (base is None) or (not callable(base)) {
+            return;
+        }
+        self._phase1[hook_name] = base;
+    }
+    hook = getattr(self.hook, hook_name, None);
+    impls = hook.get_hookimpls() if hook is not None else [];
+    sig = inspect.signature(base);
+    # non-firstresult hooks return a list; a direct call would change that
+    is_firstresult = (hook is not None) and hook._firstresult;
+    if (len(impls) == 1) and is_firstresult and _is_simple_sig(sig) {
+        hi = impls[0];
+        setattr(
+            self._facade,
+            hook_name,
+            _build_devirt(
+                hook_name,
+                sig,
+                hi.function,
+                hi.argnames,
+                inspect.iscoroutinefunction(base)
+            )
+        );
+    } else {
+        setattr(self._facade, hook_name, base);
+    }
+}
+
 impl PluginManager.register(plugin: object, name: (str | None) = None) -> (str | None) {
     plugin_name = name or _canonical_name(plugin);
     if id(plugin) in self._plugin2name {
@@ -96,6 +166,7 @@ impl PluginManager.register(plugin: object, name: (str | None) = None) -> (str |
     self._name2plugin[plugin_name] = plugin;
     self._plugin2name[id(plugin)] = plugin_name;
     seen: set[str] = `set();
+    touched: list[str] = [];
     for klass in inspect.getmro(
         `type(plugin) if not isinstance(plugin, type) else plugin
     ) {
@@ -131,6 +202,12 @@ impl PluginManager.register(plugin: object, name: (str | None) = None) -> (str |
                 setattr(self.hook, attr_name, hook);
             }
             hook._add_hookimpl(hi);
+            touched.append(attr_name);
+        }
+    }
+    if self._sealed {
+        for an in touched {
+            self._specialize_hook(an);
         }
     }
     return plugin_name;
@@ -152,6 +229,12 @@ impl PluginManager.unregister(
     if name is not None and name != plugin_name {
         self._name2plugin.pop(name, None);
     }
+    # NOTE: we deliberately do NOT re-specialize on unregister. Devirtualized
+    # hooks are core-only (single-impl); `without_plugins` only unregisters
+    # *external* plugins, so it never touches them. Multi-impl hooks stay on
+    # the dynamic Phase-1 dispatcher, which correctly follows the live impl
+    # set as plugins drop out. Re-specializing here would transiently
+    # devirtualize a multi-impl hook down to its core stub mid-`without_plugins`.
     for attr_name in `list(vars(self.hook)) {
         hook = getattr(self.hook, attr_name, None);
         if isinstance(hook, HookCaller) {

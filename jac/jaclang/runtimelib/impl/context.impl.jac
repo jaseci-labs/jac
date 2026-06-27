@@ -12,6 +12,16 @@ import from jaclang.runtimelib.memory { TieredMemory }
 """Initialize ExecutionContext."""
 impl ExecutionContext.postinit -> None {
     import from jaclang.jac0core.runtime { JacRuntime }
+    import from jaclang.jac0core.runtime { plugin_manager, JacRuntimeInterface }
+    # Phase-2 seal at the universal runtime seam: the first ExecutionContext
+    # is the single chokepoint every Python-runtime launcher passes through
+    # (jac run/start, library import, desktop/mobile hosts). seal() is
+    # idempotent, so this is a cheap no-op after the first context. Safe here
+    # because contexts are only built at run time -- never during compilation
+    # or inside `without_plugins` -- so the plugin set is fully loaded and
+    # stable. (Native/JS emit targets bypass this runtime path and require
+    # compile-time devirtualization instead.)
+    plugin_manager.seal(JacRuntimeInterface);
     if self._parent is not None {
         # Per-request fork: share the parent's Memory backend and system
         # root. Only user_root / entry_node / call_state / reports become

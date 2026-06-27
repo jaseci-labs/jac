@@ -7,7 +7,7 @@ that supports only the features used by the Jac ecosystem.
 import inspect;
 import importlib.metadata;
 import from collections.abc { Callable }
-import from typing { Any, TypeVar }
+import from typing { Any, TypeVar, cast }
 
 glob _F = TypeVar('_F', bound=Callable[(..., object)]),
      _IMPL_ATTR = '_jac_hookimpl',
@@ -72,6 +72,69 @@ def _get_argnames(func: Callable[(..., Any)]) -> (tuple[(str, ...)] | None) {
     return None;
 }
 
+"""True when every parameter is positional-or-keyword or keyword-only, so a
+real-signature wrapper can forward them by name safely. Params named `__jac*`
+are rejected too: they would collide with the codegen'd internals."""
+def _is_simple_sig(sig: inspect.Signature) -> bool {
+    for p in sig.parameters.values() {
+        if p.kind in (
+            inspect.Parameter.VAR_POSITIONAL,
+            inspect.Parameter.VAR_KEYWORD,
+            inspect.Parameter.POSITIONAL_ONLY
+        )
+        or p.name.startswith('__jac') {
+            return False;
+        }
+    }
+    return True;
+}
+
+"""Codegen a real-signature facade method that calls one resolved hook impl
+directly -- no HookCaller dispatch and no inspect at call time (Phase 2
+devirtualization for single-impl hooks)."""
+def _build_devirt(
+    name: str,
+    sig: inspect.Signature,
+    impl_fn: Callable[(..., Any)],
+    argnames: (tuple[(str, ...)] | None),
+    is_coro: bool
+) -> Callable[(..., Any)] {
+    ns: dict[(str, Any)] = {'__jac_impl': impl_fn, '__jac_inspect': inspect};
+    src_params = [];
+    fwd = [];
+    seen_kwonly = False;
+    for (i, p) in enumerate(sig.parameters.values()) {
+        if (p.kind == inspect.Parameter.KEYWORD_ONLY) and (not seen_kwonly) {
+            src_params.append('*');
+            seen_kwonly = True;
+        }
+        if p.default is inspect.Parameter.empty {
+            src_params.append(p.name);
+        } else {
+            ns['__jac_d' + str(i)] = p.default;
+            src_params.append(p.name + '=__jac_d' + str(i));
+        }
+        if (argnames is None) or (p.name in argnames) {
+            fwd.append(p.name + '=' + p.name);
+        }
+    }
+    kw = 'async def ' if is_coro else 'def ';
+    lines = [kw + name + '(' + ', '.join(src_params) + '):'];
+    if is_coro {
+        lines.append('    __jac_result = __jac_impl(' + ', '.join(fwd) + ')');
+        lines.append('    if __jac_inspect.iscoroutine(__jac_result):');
+        lines.append('        return await __jac_result');
+        lines.append('    return __jac_result');
+    } else {
+        lines.append('    return __jac_impl(' + ', '.join(fwd) + ')');
+    }
+    exec('\n'.join(lines) + '\n', ns);
+    fn = ns[name];
+    fn.__name__ = name;
+    fn.__signature__ = sig;
+    return cast(Callable[(..., Any)], fn);
+}
+
 """Represents a single hook implementation."""
 obj HookImpl {
     has function: Callable[(..., Any)],
@@ -109,15 +172,21 @@ obj PluginManager {
         _name2plugin: dict[(str, object)] by postinit,
         _plugin2name: dict[(int, str)] by postinit,
         _plugin_distinfo: list[tuple[(object, Any)]] by postinit,
-        hook: HookRelay by postinit;
+        hook: HookRelay by postinit,
+        _sealed: bool = False,
+        _facade: (type | None) = None,
+        _phase1: dict[(str, Callable[(..., Any)])] by postinit;
 
     def postinit {
         self._name2plugin = {};
         self._plugin2name = {};
         self._plugin_distinfo = [];
         self.hook = HookRelay();
+        self._phase1 = {};
     }
 
+    def seal(facade: type) -> None;
+    def _specialize_hook(hook_name: str) -> None;
     def register(plugin: object, name: (str | None) = None) -> (str | None);
     def unregister(
         plugin: (object | None) = None, name: (str | None) = None
