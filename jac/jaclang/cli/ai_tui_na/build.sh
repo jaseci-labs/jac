@@ -34,6 +34,13 @@ REPO_VENV="$REPO_ROOT/.venv"
 if [ -n "${JAC_BIN:-}" ]; then
     JAC=("$JAC_BIN")
     echo "==> Using \$JAC_BIN: $JAC_BIN"
+elif [ -n "${JAC_PY:-}" ]; then
+    # A python interpreter to drive `-m jaclang` (no single `jac` binary). Used by
+    # the launcher payload build (jac/launcher/payload.zig buildTui), which runs
+    # the bundled pbs python against the staged jaclang tree -- there is no
+    # $JAC_BIN, repo zig-out, or .venv in that ephemeral staging dir.
+    JAC=("$JAC_PY" -m jaclang)
+    echo "==> Using \$JAC_PY: $JAC_PY -m jaclang"
 elif [ -x "$REPO_JAC" ]; then
     JAC=("$REPO_JAC")
     echo "==> Using repo-built jac binary: $REPO_JAC"

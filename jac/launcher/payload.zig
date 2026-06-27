@@ -123,10 +123,11 @@ pub fn main(init: std.process.Init) !void {
             try fetchTypeshed(io, gpa, a, argv[2]);
         },
         .mkpayload => {
-            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--link-source=PATH]", .{});
+            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--skip-tui] [--link-source=PATH]", .{});
             // Trailing flags (after the positional pbs/root/out, see build.zig):
             var shim_so: ?[]const u8 = null;
             var skip_precompile = false;
+            var skip_tui = false;
             var link_source: ?[]const u8 = null;
             var i: usize = 5;
             while (i < n) : (i += 1) {
@@ -135,11 +136,13 @@ pub fn main(init: std.process.Init) !void {
                     shim_so = arg["--shim=".len..];
                 } else if (std.mem.eql(u8, arg, "--skip-precompile")) {
                     skip_precompile = true;
+                } else if (std.mem.eql(u8, arg, "--skip-tui")) {
+                    skip_tui = true;
                 } else if (std.mem.startsWith(u8, arg, "--link-source=")) {
                     link_source = arg["--link-source=".len..];
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, skip_precompile, link_source);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, skip_precompile, skip_tui, link_source);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -431,6 +434,10 @@ fn mkPayload(
     out: []const u8,
     shim_so: ?[]const u8,
     skip_precompile: bool,
+    // Skip building the embedded NA TUI renderer (libtui + jac-na-tui). The TUI
+    // then nacompiles on first `jac ai --tui` run using the bundled toolchain --
+    // for faster iteration when the TUI is not under test.
+    skip_tui: bool,
     // Editable dev binary: an absolute path to the dir CONTAINING jaclang/. When
     // set, the compiler is NOT bundled -- the payload ships only CPython + the
     // bootstrap shims + the test runner, and a baked `site/jac_linked_source`
@@ -529,6 +536,16 @@ fn mkPayload(
         try Dir.cwd().copyFile(so, Dir.cwd(), try std.fmt.allocPrint(a, "{s}/{s}", .{ dst_dir, shim_base }), io, .{});
     }
 
+    // Embed the NA TUI renderer (libtui + jac-na-tui) so `jac ai --tui` runs
+    // offline with no first-run nacompile. Reuses the package build.sh against the
+    // staged jaclang + the LLVM shim placed just above; nacompile's pure-Jac
+    // linkers (ELF/Mach-O) need no system clang/ld. Skipped in linked-source mode
+    // (no bundled site/jaclang to build into -- the live tree compiles on first
+    // run) and under --skip-tui.
+    if (link_source == null and !skip_tui) {
+        try buildTui(io, gpa, a, parent_env, py, pbs_py_dir, site, work);
+    }
+
     // Linked-source mode implies skip-precompile: the compiler lives in the
     // linked tree and the dev override sets JAC_NO_PRECOMPILE, so a bundled JIR
     // cache would never be consulted anyway.
@@ -551,6 +568,62 @@ fn mkPayload(
     log("==> packing tar | gzip", .{});
     try tarGzDir(io, gpa, a, stage, out);
     log("==> payload: {s}", .{out});
+}
+
+/// Build the embedded NA TUI renderer artifacts into the staged site by reusing
+/// the package's build.sh. nacompile needs only the staged jaclang + the LLVM
+/// shim (both placed above); its pure-Jac linkers emit the ELF/Mach-O directly,
+/// so no system clang/ld is required. build.sh --quick produces both backends --
+/// libtui.so (in-process, ctypes) and jac-na-tui (subprocess fallback) -- into
+/// site/jaclang/cli/ai_tui_na/bin/, which stageTree then packs with the rest of
+/// `site`. At runtime _ensure_na_artifact (tui_shared.jac) finds the prebuilt
+/// artifact and short-circuits the first-run compile.
+fn buildTui(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Environ.Map, py: []const u8, pbs_py_dir: []const u8, site: []const u8, work: []const u8) !void {
+    const buildsh = try std.fmt.allocPrint(a, "{s}/jaclang/cli/ai_tui_na/build.sh", .{site});
+    if (!fileExists(io, buildsh)) {
+        log("==> ai_tui_na/build.sh not present; skipping embedded TUI build", .{});
+        return;
+    }
+    // build.sh maps this to libtui.so / libtui.dylib (artifact name) and the
+    // matching tty backend. The payload tool builds for -- and runs on -- the
+    // host, so builtin.os.tag is the target OS.
+    const tui_target = switch (builtin.os.tag) {
+        .linux => "linux",
+        .macos => "darwin",
+        else => {
+            log("==> host OS unsupported for the embedded TUI build; skipping", .{});
+            return;
+        },
+    };
+    log("==> building embedded NA TUI renderer (libtui + jac-na-tui) via build.sh", .{});
+
+    // Run `<pbs python> -m jaclang nacompile` against the staged site. Keep ALL
+    // scratch OUT of `site`: HOME -> a throwaway dir so nacompile's ~/.cache/jac
+    // never lands in the payload, and DONTWRITEBYTECODE so importing jaclang
+    // doesn't litter site/__pycache__ (which the later `pip install --target`
+    // would refuse). Mirrors the hermetic env precompile() uses.
+    const tui_home = try std.fmt.allocPrint(a, "{s}/tuihome", .{work});
+    try Dir.cwd().createDirPath(io, tui_home);
+
+    var env = try cloneEnv(gpa, parent_env);
+    defer env.deinit();
+    try env.put("PYTHONHOME", try std.fmt.allocPrint(a, "{s}/install", .{pbs_py_dir}));
+    try env.put("PYTHONPATH", site);
+    try env.put("PYTHONUTF8", "1");
+    try env.put("PYTHONDONTWRITEBYTECODE", "1");
+    try env.put("HOME", tui_home);
+    try env.put("PATH", "/usr/bin:/bin");
+    // build.sh toolchain resolution: JAC_PY -> `<py> -m jaclang` (the staged tree
+    // has no $JAC_BIN binary, repo zig-out, or .venv to fall back on).
+    try env.put("JAC_PY", py);
+    // Pin the TTY backend so the artifact name is deterministic (build.sh would
+    // otherwise re-derive it from uname -- same here, but explicit is safer).
+    try env.put("JAC_AI_TUI_TARGET", tui_target);
+
+    // bash via env so PATH resolves it (build.sh's shebang exec-bit may not
+    // survive copyTree). Dies on failure -- a broken TUI build fails the binary.
+    _ = runChild(io, &.{ "/usr/bin/env", "bash", buildsh, "--quick" }, &env, false);
+    log("==> embedded TUI renderer built", .{});
 }
 
 /// `<pbs>/install/bin/python3.14`, falling back to `python3`.
@@ -844,6 +917,10 @@ fn skipJaclang(p: []const u8) bool {
         // The LLVMPY_* shim is placed fresh via --shim, not copied from the
         // (gitignored, build-placed) source-tree artifact -- skip it here.
         std.mem.indexOf(u8, p, "libjacllvm.") != null or
+        // The NA TUI artifacts (libtui.so / jac-na-tui, + the dev tree's bulky
+        // libopentui.so and stale per-OS builds) are gitignored and rebuilt fresh
+        // into the staged bin/ by buildTui -- skip the source-tree copies here.
+        std.mem.indexOf(u8, p, "cli/ai_tui_na/bin") != null or
         std.mem.endsWith(u8, p, ".pyc");
 }
 

@@ -177,6 +177,13 @@ pub fn build(b: *std.Build) void {
         if (b.option(bool, "skip-precompile", "mkpayload: skip the JIR precompile (faster link validation)") orelse false) {
             mk.addArg("--skip-precompile");
         }
+        // The embedded NA TUI renderer (libtui + jac-na-tui) is built into the
+        // payload via the package build.sh so `jac ai --tui` runs offline with no
+        // first-run nacompile. -Dskip-tui drops it for faster iteration (the TUI
+        // then compiles on first run using the bundled toolchain).
+        if (b.option(bool, "skip-tui", "mkpayload: skip building the embedded NA TUI renderer (compiles on first run)") orelse false) {
+            mk.addArg("--skip-tui");
+        }
         // Editable dev binary: ship a payload WITHOUT the bundled compiler and
         // reroute `import jaclang` to a live source dir at startup (see
         // _jac_finder.py apply_dev_source_override). This skips the ~100 MB tree
