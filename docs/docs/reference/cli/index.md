@@ -2108,10 +2108,13 @@ an internal detail) and **Tier**, which is what you read in the output:
   ordinary Jac with no marker. Covers the recognized core: functions, control flow
   (incl. `switch` / `do-while` / ternary), structs, enums, basic typedefs, 1-D
   arrays, and common `malloc` pointer idioms.
-- **Tier-B - best-effort.** Emits valid Jac but drops or approximates real
-  semantics (e.g. a function-local `static` that loses cross-call persistence, or a
-  variadic signature whose body semantics aren't modelled). **Every Tier-B site is
-  flagged** - never silently lost.
+- **Tier-B - best-effort.** Emits *syntactically* valid Jac but drops or
+  approximates real semantics (e.g. a function-local `static` that loses
+  cross-call persistence, or a variadic signature whose body semantics aren't
+  modelled). **Every Tier-B site is flagged** - never silently lost. Tier-B output
+  is a review scaffold for a human to port against, not input to feed straight back
+  into `jac`: the skeletal sites build but carry wrong semantics, and the surrogate
+  sites (below) don't build at all.
 
 Tier-B is reported in two places so the loss is never hidden:
 
@@ -2124,8 +2127,11 @@ Tier-B is reported in two places so the loss is never hidden:
 After transpiling, the CLI also prints a one-line count of Tier-B sites to stderr.
 
 Constructs with no sensible best-effort lowering at all are replaced by a
-`__c2jac_unsupported__(<c_line>)` surrogate call, which is likewise annotated
-inline so it is obvious in the output.
+`__c2jac_unsupported__(<c_line>)` surrogate call. This is a deliberate *marker*,
+not a real call: the name is never defined anywhere, so a file that still contains
+any surrogate will not build under `jac` - it fails at name lookup. It is
+annotated inline so the gap is obvious in the output; the point is to surface
+exactly what a human must port by hand, not to produce directly-runnable Jac.
 
 **Example.** Given this C:
 
@@ -2176,10 +2182,11 @@ became a plain local, so `next_id()` no longer counts across calls - review and 
 those sites by hand. Everything else here is Tier-A and faithful.
 
 > **Coverage.** The set of C forms classified as faithful, best-effort, or
-> unsupported is tracked in `jaclang/compiler/c2jac/COVERAGE_ROADMAP.md` and pinned
-> by the characterization tests in `tests/compiler/c2jac/test_compat_matrix.jac`.
+> unsupported is pinned by the characterization tests in
+> `tests/compiler/c2jac/test_compat_matrix.jac`.
 > Treat `c2jac` as a porting aid that does the mechanical 80% and tells you exactly
-> where to look, not a drop-in C compiler.
+> where to look, not a drop-in C compiler: the faithful (Tier-A) output builds, but
+> any Tier-B or surrogate site is a to-do for a human, not something `jac` can run.
 
 ---
 

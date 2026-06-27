@@ -37,7 +37,17 @@ obj CUniBuilder {
         # not be lowered and was replaced by a bare `True`. Tracked separately
         # from _loop_lossy because the condition is built before that list is
         # reset, and its Tier-B reason is distinct from a dropped body construct.
-        _cond_lossy: bool = False;
+        _cond_lossy: bool = False,
+        # Set when the loop body being scanned contains a `continue` that binds
+        # to *this* loop (not a nested loop — those are snapshot/restored around
+        # the nested-loop recursion). Load-bearing for the while-desugar Tier-A
+        # promotion: C `continue` jumps to the for-step, but the desugared
+        # `body; step` runs `continue` *before* the step, so a loop-level
+        # `continue` makes the desugar unfaithful — *but only when a step exists*.
+        # With no step (e.g. `for (;;)` / `for (; cond; )`) there is nothing for
+        # `continue` to skip, so it stays faithful; the Tier-A gate therefore
+        # pairs this flag with step presence (see _for_as_while).
+        _loop_has_continue: bool = False;
 
     def init(src: uni.Source, tags: TagTable, enum_verdicts: EnumVerdicts) {
         self.src = src;
@@ -45,6 +55,7 @@ obj CUniBuilder {
         self.enum_verdicts = enum_verdicts;
         self._loop_lossy = [];
         self._cond_lossy = False;
+        self._loop_has_continue = False;
     }
 
     # ------------------------------------------------------------------ #
@@ -138,6 +149,25 @@ obj CUniBuilder {
                 tier=Tier.TIER_B,
                 mechanism=Mechanism.DIRECT_IR,
                 idiom=Idiom.TIER_B,
+                reason=reason,
+                c_line=line,
+                snippet=reason,
+            )
+        );
+    }
+
+    def _mark_tier_a(c_node: object, line: int, reason: str) {
+        # Stamp a faithfully-lowered C-for as Tier-A with the C_FOR idiom. The
+        # default_tier table already maps For → Tier-A, but the while-desugar
+        # always overwrote that with _mark_tier_b; re-stamp Tier-A explicitly so
+        # the verdict is queryable (TagTable.by_idiom) and the reason records
+        # *why* the desugar is faithful rather than leaving a stale Tier-B tag.
+        self.tags.tag(
+            c_node,
+            NodeTag(
+                tier=Tier.TIER_A,
+                mechanism=Mechanism.DIRECT_IR,
+                idiom=Idiom.C_FOR,
                 reason=reason,
                 c_line=line,
                 snippet=reason,
@@ -327,6 +357,11 @@ obj CUniBuilder {
         }
 
         if isinstance(stmt, c_ast.Continue) {
+            # This `continue` binds to the loop currently being scanned (nested
+            # loops snapshot/restore this flag around their recursion). Record it
+            # so a while-desugar of that loop can't be promoted to Tier-A — the
+            # desugared `continue` skips the step that C `continue` would run.
+            self._loop_has_continue = True;
             cont_tok = self._tok(Tok.KW_CONTINUE, "continue", sline, scol);
             return [uni.CtrlStmt(kid=[cont_tok], ctrl=cont_tok)];
         }
@@ -395,7 +430,12 @@ obj CUniBuilder {
                 self._loop_lossy.append("while condition");
                 return [];
             }
+            # A `continue` inside this nested while binds to the *while*, not the
+            # enclosing for. Snapshot/restore _loop_has_continue so it isn't
+            # mis-attributed to the outer loop's continue-faithfulness verdict.
+            saved_cont = self._loop_has_continue;
             wbody = self._c_stmt_to_uni(stmt.stmt, sline, scol);
+            self._loop_has_continue = saved_cont;
             return [
                 uni.WhileStmt(
                     kid=[wcond, *wbody], condition=wcond, body=wbody, else_body=None,
@@ -406,12 +446,15 @@ obj CUniBuilder {
         if isinstance(stmt, c_ast.For) {
             # Recurse through the full for-builder so a nested loop gets the same
             # IterForStmt-or-while-desugar treatment (and its own Tier-B marking).
-            # _build_for resets self._loop_lossy, so snapshot and restore the
-            # outer accumulator around the call to avoid cross-contaminating which
-            # loop is flagged.
+            # _build_for resets self._loop_lossy (and the nested loop's own body
+            # scan drives _loop_has_continue), so snapshot and restore both outer
+            # accumulators around the call to avoid cross-contaminating which loop
+            # is flagged or whose `continue` is counted.
             saved = self._loop_lossy;
+            saved_cont = self._loop_has_continue;
             inner = self._build_for(stmt);
             self._loop_lossy = saved;
+            self._loop_has_continue = saved_cont;
             return inner;
         }
 
@@ -468,18 +511,27 @@ obj CUniBuilder {
 
     def _for_as_while(nd: object, line: int, col: int) -> list[uni.UniNode] {
         # Fallback: can't build IterForStmt. Desugar to `init; while (cond) {
-        # body; step }` — faithful except that C `continue` jumps to the step
-        # whereas here it skips it, so the loop is marked Tier-B (§5.3).
+        # body; step }`. This is faithful (→ Tier-A) when the condition and body
+        # lower cleanly and the body has no loop-level `continue` — the one place
+        # C's step-then-retest diverges from `body; step` (§5.3). Any of those
+        # losses demotes the loop to Tier-B; the verdict is decided below.
         result: list[uni.UniNode] = [];
         # init statement before the loop (skip the IterForStmt dummy for for(;;)).
         # NB: read the field via getattr — bare `nd.init` resolves to a bound
         # method on the c_ast node (Jac treats `.init` as the constructor slot),
         # which silently dropped the initializer (e.g. `i = n`) before this fix.
         init_node = getattr(nd, "init");
+        # init_lossy: a real `for (init; ...)` initializer was present but couldn't
+        # be lowered (e.g. a comma-expr / multi-decl init). _for_init returns None
+        # and we'd otherwise drop it silently, leaving loop vars uninitialized — so
+        # record the loss to keep the desugar out of Tier-A.
+        init_lossy = False;
         if init_node is not None {
             init_stmt = self._for_init(init_node, line, col);
             if init_stmt is not None {
                 result.append(init_stmt);
+            } else {
+                init_lossy = True;
             }
         }
         self._cond_lossy = False;
@@ -491,27 +543,84 @@ obj CUniBuilder {
         # silently dropping this loop's own condition-loss clause.
         cond_lossy = self._cond_lossy;
         self._loop_lossy = [];
+        self._loop_has_continue = False;
         body_stmts = self._for_body(nd.stmt, line, col);
-        step_stmt = self._step_as_stmt(nd.next, line, col);
-        reason = (
-            "C-for loop not expressible as IterForStmt; desugared to while "
-            "(C `continue` runs the step, the desugared `continue` skips it — verify)"
-        );
-        if cond_lossy {
-            reason += (
-                " | loop condition not faithfully lowered: real `for (...; cond; ...)` "
-                "test replaced by `while True` (the loop no longer terminates on the "
-                "original condition — verify)"
+        next_node = getattr(nd, "next");
+        step_stmt = self._step_as_stmt(next_node, line, col);
+        # step_lossy: a real `for (...; ...; step)` step was present but couldn't be
+        # lowered (e.g. a bare function-call step like `tick()`). _step_as_stmt
+        # returns None and the step vanishes from the loop — the body no longer
+        # advances as written, so this is unfaithful and must not reach Tier-A.
+        step_lossy = next_node is not None and step_stmt is None;
+        # A loop-level `continue` only makes the desugar unfaithful when a step
+        # exists: C's `continue` jumps to the for-step then retests, but the
+        # desugared `body; step` runs `continue` *before* the step, skipping it.
+        # With no step (e.g. `for (;;)` / `for (; cond; )`) there is nothing for
+        # `continue` to skip — it retests the condition in both C and the desugar
+        # — so the loop stays faithful and can still reach Tier-A (§5.3).
+        continue_unfaithful = self._loop_has_continue and next_node is not None;
+        # The desugar `init; while cond { body; step }` is *faithful* only when
+        # every clause survived lowering: the init emitted (loop vars initialized),
+        # the condition lowered cleanly (cond is the real test, not a bare `True`),
+        # every body construct lowered, the step emitted (the loop still advances),
+        # and no loop-level `continue` skips a step (the one place C's
+        # step-then-retest diverges from `body; step`). When all hold, promote to
+        # Tier-A — e.g. a clean descending loop `for (i = n; i > 0; i--)` that
+        # IterForStmt can't model, or a `for (;;)` with a `continue` (no step to
+        # skip). A dropped init or step is just as unfaithful as a dropped body
+        # statement, so both gate Tier-A here.
+        if (
+            not cond_lossy
+            and not self._loop_lossy
+            and not continue_unfaithful
+            and not init_lossy
+            and not step_lossy
+        ) {
+            self._mark_tier_a(
+                nd,
+                line,
+                "C-for not expressible as IterForStmt (e.g. descending step); "
+                "desugared to `init; while cond { body; step }` — faithful: every "
+                "clause lowered exactly and no loop-level `continue` skips a step",
             );
+        } else {
+            reason = "C-for loop not expressible as IterForStmt; desugared to while";
+            if init_lossy {
+                reason += (
+                    " | loop init not faithfully lowered: the `for (init; ...)` "
+                    "initializer (e.g. a comma/multi-decl init) was dropped — loop "
+                    "variables may be left uninitialized (verify)"
+                );
+            }
+            if step_lossy {
+                reason += (
+                    " | loop step not faithfully lowered: the `for (...; ...; step)` "
+                    "step (e.g. a bare function-call step) was dropped — the loop body "
+                    "no longer advances/updates as written (verify)"
+                );
+            }
+            if continue_unfaithful {
+                reason += (
+                    " (C `continue` runs the step, the desugared `continue` skips "
+                    "it — verify)"
+                );
+            }
+            if cond_lossy {
+                reason += (
+                    " | loop condition not faithfully lowered: real `for (...; cond; ...)` "
+                    "test replaced by `while True` (the loop no longer terminates on the "
+                    "original condition — verify)"
+                );
+            }
+            if self._loop_lossy {
+                reason += (
+                    " | body constructs not faithfully lowered: " + ", ".join(
+                        sorted(set(self._loop_lossy))
+                    )
+                );
+            }
+            self._mark_tier_b(nd, line, reason);
         }
-        if self._loop_lossy {
-            reason += (
-                " | body constructs not faithfully lowered: " + ", ".join(
-                    sorted(set(self._loop_lossy))
-                )
-            );
-        }
-        self._mark_tier_b(nd, line, reason);
         full_body: list[uni.UniNode] = [*body_stmts];
         if step_stmt is not None {
             full_body.append(step_stmt);
