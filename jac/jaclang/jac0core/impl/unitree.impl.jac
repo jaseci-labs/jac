@@ -453,20 +453,6 @@ impl UniScopeNode._init_scope(
     self.names_in_scope_overload: dict[(str, list[Symbol])] = {};
 }
 
-
-"""Get type."""
-impl UniScopeNode.get_type -> SymbolType {
-    if isinstance(self, AstSymbolNode) {
-        return self.sym_category;
-    }
-    return SymbolType.VAR;
-}
-
-"""Get parent."""
-impl UniScopeNode.get_parent -> (UniScopeNode | None) {
-    return self.parent_scope;
-}
-
 """Lookup a variable in the symbol table."""
 impl UniScopeNode.lookup(
     name: str, deep: bool = True, incl_inner_scope: bool = False
@@ -1628,28 +1614,6 @@ impl Ability.method_owner.getter -> Archetype | Enum | None {
 
 impl Ability.is_genai_ability.getter -> bool {
     return isinstance(self.body, Expr);
-}
-
-"""Get the range of positional arguments for this ability.
-
-        Returns -1 for maximum number of arguments if there is an unpacked
-parameter (e.g., *args).
-        """
-impl Ability.get_pos_argc_range -> tuple[(int, int)] {
-    (mn, mx) = (0, 0);
-    if isinstance(self.signature, FuncSignature) {
-        for param in self.signature.params {
-            if param.unpack {
-                if (param.unpack == Tok.STAR_MUL) {
-                    mx = -1;
-                }
-                break;
-            }
-            mn += 1;
-            mx += 1;
-        }
-    }
-    return (mn, mx);
 }
 
 impl Ability.py_resolve_name -> str {

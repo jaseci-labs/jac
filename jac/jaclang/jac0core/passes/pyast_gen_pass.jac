@@ -284,14 +284,6 @@ variables
         doc: (uni.String | None) = None
     ) -> list[ast3.AST];
 
-    """Sync ast locations."""
-    def sync_many(py_nodes: list[T], jac_node: uni.UniNode) -> list[T];
-
-    """Convert list to attribute."""
-    def list_to_attrib(
-        attribute_list: list[str], sync_node_list: Sequence[uni.UniNode]
-    ) -> ast3.AST;
-
     """Resolve Self to the appropriate Python construct based on context."""
     def _resolve_self_type(nd: uni.Name) -> (ast3.expr | None);
 

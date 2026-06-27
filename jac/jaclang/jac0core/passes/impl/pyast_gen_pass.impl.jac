@@ -832,31 +832,6 @@ impl PyastGenPass.resolve_stmt_block(
     return ret;
 }
 
-"""Sync ast locations."""
-impl PyastGenPass.sync_many(py_nodes: list[T], jac_node: uni.UniNode) -> list[T] {
-    for py_node in py_nodes {
-        self.sync(py_node, jac_node);
-    }
-    return py_nodes;
-}
-
-"""Convert list to attribute."""
-impl PyastGenPass.list_to_attrib(
-    attribute_list: list[str], sync_node_list: Sequence[uni.UniNode]
-) -> ast3.AST {
-    attr_node: (ast3.Name | ast3.Attribute) = self.sync(
-        ast3.Name(id=attribute_list[0], ctx=ast3.Load()), sync_node_list[0]
-    );
-    for (attr, sync_node) in zip(
-        attribute_list[1:], sync_node_list[1:], strict=False
-    ) {
-        attr_node = self.sync(
-            ast3.Attribute(value=attr_node, attr=attr, ctx=ast3.Load()), sync_node
-        );
-    }
-    return attr_node;
-}
-
 impl PyastGenPass.exit_sub_tag(nd: uni.SubTag[uni.T]) -> None {
     nd.gen.py_ast = nd.tag.gen.py_ast;
 }

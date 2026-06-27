@@ -71,17 +71,6 @@ obj UniPass(ModuleCodegenPass) {
         return None;
     }
 
-    """Check if node has parent of type."""
-    static def has_parent_of_node(nd: uni.UniNode, parent: uni.UniNode) -> bool {
-        while nd.parent {
-            if (nd.parent == parent) {
-                return True;
-            }
-            nd = nd.parent;
-        }
-        return False;
-    }
-
     """Recalculate parents."""
     def recalculate_parents(nd: uni.UniNode) -> None;
 

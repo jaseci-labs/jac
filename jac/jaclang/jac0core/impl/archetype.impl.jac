@@ -100,12 +100,6 @@ impl ObjectSpatialPath.edge_any(
     return self.append(EdgeDir.ANY, `edge, nd);
 }
 
-"""Set edge only."""
-impl ObjectSpatialPath.set_edge_only -> ObjectSpatialPath {
-    self.edge_only = True;
-    return self;
-}
-
 """Repr builder."""
 impl ObjectSpatialPath.repr_builder(
     repr_str: str, dest: ObjectSpatialDestination, mark: str

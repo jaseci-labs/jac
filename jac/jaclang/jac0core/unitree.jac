@@ -137,8 +137,6 @@ obj UniScopeNode(UniNode) {
         names_in_scope_overload: dict[(str, list[Symbol])] by postinit;
 
     def _init_scope(name: str, parent_scope: (UniScopeNode | None) = None) -> None;
-    def get_type -> SymbolType;
-    def get_parent -> (UniScopeNode | None);
     static def get_python_scoping_nodes -> tuple[(type[UniScopeNode], ...)] {
         return (Module, Enum, Archetype, Ability, ImplDef, Test);
     }
@@ -719,7 +717,6 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
     has method_owner: Archetype | Enum | None { getter; }
     has is_genai_ability: bool { getter; }
 
-    def get_pos_argc_range -> tuple[(int, int)];
     def py_resolve_name -> str;
     # Checker-resolved trigger type names as canonical mangled keys; None
     # when unresolved (callers fall back to flattening the trigger AST).

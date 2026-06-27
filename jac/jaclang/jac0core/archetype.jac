@@ -323,7 +323,6 @@ obj ObjectSpatialPath {
         `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
     ) -> ObjectSpatialPath;
 
-    def set_edge_only -> ObjectSpatialPath;
     def `edge -> ObjectSpatialPath {
         self.edge_only = True;
         return self;
