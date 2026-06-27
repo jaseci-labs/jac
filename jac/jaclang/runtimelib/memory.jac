@@ -112,13 +112,6 @@ obj Memory {
     # mean a backend that does nothing extra still gets the floor for free.
     def capabilities -> set[str];
     def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
-    # Convenience surface that delegates to execute_plan. Lifted here from
-    # the Mongo-only API so every backend with `type_pushdown` capability
-    # gets ergonomic type+field queries for free; backends without it return
-    # an empty result (callers should fall back to `query()` + Python filter).
-    def query_by_type(
-        arch_type_name: str, field_filter: (dict | None) = None
-    ) -> Generator[Anchor, None, None];
     # ---- Async hot-path mirrors ----
     # Non-abstract: default implementations delegate to the sync variant via
     # asyncio.to_thread so every existing backend (SQLite, Volatile, Tiered)

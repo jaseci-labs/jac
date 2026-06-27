@@ -209,12 +209,6 @@ needs_enum)
     """Append an import statement to the preamble once."""
     def _add_preamble_once(key: str, nd: ast3.AST) -> None;
 
-    """Ensure typing is imported only once."""
-    def needs_typing -> None;
-
-    """Ensure Enum utilities are imported only once."""
-    def needs_enum -> None;
-
     """Ensure a specific enum kind (IntEnum, StrEnum, ...) is imported once."""
     def needs_enum_kind(kind: str) -> None;
 

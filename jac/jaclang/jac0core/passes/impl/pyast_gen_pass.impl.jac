@@ -478,20 +478,6 @@ impl PyastGenPass._add_preamble_once(key: str, nd: ast3.AST) -> None {
     self.already_added.append(key);
 }
 
-"""Ensure typing is imported only once."""
-impl PyastGenPass.needs_typing -> None {
-    self._add_preamble_once(
-        self.needs_typing.__name__,
-        ast3.Import(names=[self.sync(ast3.alias(name='typing'), jac_node=self.ir_out)])
-    );
-}
-
-"""Ensure plain `Enum` and `auto` are imported (compat shim for callers
-predating typed-base enums; new callers should use needs_enum_kind)."""
-impl PyastGenPass.needs_enum -> None {
-    self.needs_enum_kind("Enum");
-}
-
 """Ensure a specific enum kind (Enum, IntEnum, StrEnum, ...) is imported once.
 
 Each kind is imported under its own dedup key so a module that uses both

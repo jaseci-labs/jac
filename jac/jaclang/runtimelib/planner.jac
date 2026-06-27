@@ -38,30 +38,6 @@ glob logger = logging.getLogger(__name__),
      __all__ = ['execute_plan', 'execute_path'];
 
 
-"""Inspect a Jac-emitted filter lambda for archetype-type identity.
-
-Returns the archetype class name if the lambda is a pure `isinstance(i, T)`
-check (or an Archetype instance acting as an identity filter). Returns None
-when the filter is None or non-trivial.
-
-Memoized by `filt.__code__`. Jac emits filter lambdas inline
-at the path-construction call site, so two walker spawns produce two
-distinct function objects that share the same code — keying on identity
-would never hit; keying on the code does."""
-def _filter_type_name(filt: any) -> (str | None);
-
-
-"""Detect whether a filter lambda contains predicate ops beyond type checks.
-
-Pure `isinstance(i, T)` checks compile to LOAD_GLOBAL + CALL_FUNCTION +
-RETURN; predicates introduce LOAD_ATTR / COMPARE_OP / CONTAINS_OP / IS_OP.
-Conservative on inspection failure — assume predicates present so we never
-silently skip filtering.
-
-Memoized by `filt.__code__`; see `_filter_type_name` for the why."""
-def _filter_has_predicates(filt: any) -> bool;
-
-
 """Top-level entry point: execute a QueryPlan against a memory.
 
 Returns an iterable of NodeAnchor results. Applies `plan.post_filter` if set.
