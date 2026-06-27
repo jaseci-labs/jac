@@ -145,11 +145,6 @@ def tracing_installed -> bool {
     return _tracing_installed;
 }
 
-"""Process tracer, or None when tracing is inactive."""
-def get_tracer -> any {
-    return _tracer;
-}
-
 """Id generator that forces a root span's trace id to the UUID stashed in
 `_pending_trace_id` (the SDK calls generate_trace_id only for parentless
 spans). Subclasses `IdGenerator` for the full interface OTel 1.4x calls;
@@ -247,20 +242,6 @@ def install_tracing(
         _tracing_active = False;
         return False;
     }
-}
-
-"""Flush buffered spans and tear down the provider (best-effort). Called
-on graceful drain; no-op when tracing is inactive."""
-def shutdown_tracing {
-    global _tracing_active;
-    if _provider is not None {
-        try {
-            _provider.shutdown();
-        } except Exception as e {
-            _logger.debug(f"Tracing shutdown error (ignored): {e}");
-        }
-    }
-    _tracing_active = False;
 }
 
 
