@@ -99,61 +99,6 @@ glob PRECOMPILE_SENTINEL: str = "__PKG_ROOT__";
 """Header flag: JIR is a bootstrap-only artifact (no AST payload, bytecode only)."""
 glob FLAG_BOOTSTRAP: int = 0x04;
 
-# --- Varint (LEB128) ---
-"""Encode an unsigned integer as LEB128 varint, appending to buf."""
-def write_varint(buf: bytearray, value: int) {
-    while value >= 0x80 {
-        buf.append((value & 0x7F) | 0x80);
-        value >>= 7;
-    }
-    buf.append(value & 0x7F);
-}
-
-"""Decode an unsigned LEB128 varint from data at pos. Returns (value, new_pos)."""
-def read_varint(data: (bytes | memoryview), pos: int) -> tuple[int, int] {
-    result = 0;
-    shift = 0;
-    byte = data[pos];
-    while (byte & 0x80) != 0 {
-        result |= (byte & 0x7F) << shift;
-        shift += 7;
-        pos += 1;
-        byte = data[pos];
-    }
-    result |= (byte & 0x7F) << shift;
-    pos += 1;
-    return (result, pos);
-}
-
-# --- String Pool ---
-"""Deduplicated string table for identifiers, paths, and token values.
-
-Strings are assigned sequential indices. The pool is serialized as:
-  count: varint, then for each string: [length: varint, UTF-8 bytes].
-"""
-class StringPool {
-    def init(self: StringPool) -> None;
-    def intern(self: StringPool, s: str) -> int;
-    def get(self: StringPool, idx: int) -> str;
-    def __len__(self: StringPool) -> int;
-    def serialize(self: StringPool) -> bytes;
-}
-
-"""Deserialize a string pool from data at pos. Returns (pool, new_pos)."""
-def deserialize_string_pool(
-    data: (bytes | memoryview), pos: int
-) -> tuple[StringPool, int] {
-    pool = StringPool();
-    (count, pos) = read_varint(data, pos);
-    for _ in range(count) {
-        (length, pos) = read_varint(data, pos);
-        s = bytes(data[pos:pos + length]).decode('utf-8');
-        pool.intern(s);
-        pos += length;
-    }
-    return (pool, pos);
-}
-
 # --- Header ---
 """JIR file header (32 bytes fixed size)."""
 obj JirHeader {
