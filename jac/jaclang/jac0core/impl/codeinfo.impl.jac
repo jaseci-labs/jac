@@ -120,15 +120,3 @@ impl CodeLocInfo.pos_start.getter -> int {
 impl CodeLocInfo.pos_end.getter -> int {
     return self.last_tok.pos_end;
 }
-
-impl CodeLocInfo.tok_range.getter -> tuple[(Token, Token)] {
-    return (self.first_tok, self.last_tok);
-}
-
-impl CodeLocInfo.first_token.getter -> Token {
-    return self.first_tok;
-}
-
-impl CodeLocInfo.last_token.getter -> Token {
-    return self.last_tok;
-}

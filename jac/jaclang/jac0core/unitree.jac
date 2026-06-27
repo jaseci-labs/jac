@@ -426,22 +426,6 @@ obj Module(AstDocNode, UniScopeNode) {
             kid=[EmptyToken()]
         );
     }
-
-    static def get_href_path(nd: UniNode) -> str {
-        parent = nd.find_parent_of_type(Module);
-        mod_list: list[(Module | Archetype)] = [];
-        if isinstance(nd, (Module, Archetype)) {
-            mod_list.append(nd);
-        }
-        while (parent is not None) {
-            mod_list.append(parent);
-            parent = parent.find_parent_of_type(Module);
-        }
-        mod_list.reverse();
-        return '.'.join(
-            p.name if isinstance(p, Module) else p.name.sym_name for p in mod_list
-        );
-    }
 }
 
 """Whole Program node type for Jac Ast."""

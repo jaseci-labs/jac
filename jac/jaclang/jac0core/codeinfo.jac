@@ -387,9 +387,6 @@ obj CodeLocInfo {
     has col_end: int { getter; }
     has pos_start: int { getter; }
     has pos_end: int { getter; }
-    has tok_range: tuple[(Token, Token)] { getter; }
-    has first_token: Token { getter; }
-    has last_token: Token { getter; }
 
     def update_token_range(first_tok: Token, last_tok: Token) {
         self.first_tok = first_tok;

@@ -84,25 +84,6 @@ impl Memory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
     yield ;
 }
 
-"""Convenience wrapper: build a QueryPlan from a type name + optional field
-predicates and delegate to `execute_plan`. Returns empty when the backend
-doesn't declare the needed capabilities. Backends without native pushdown
-should keep using `query()` with a Python-side filter for type-based scans
--- this method exists specifically to make the pushdown path ergonomic."""
-impl Memory.query_by_type(
-    arch_type_name: str, field_filter: (dict | None) = None
-) -> Generator[Anchor, None, None] {
-    plan = QueryPlan(
-        node_type_final=arch_type_name, field_predicates=field_filter or {}
-    );
-    if not (plan.needs() <= self.capabilities()) {
-        return;
-    }
-    for anchor in self.execute_plan(plan) {
-        yield anchor;
-    }
-}
-
 """Serialize an anchor to the tuple of columns stored in the anchors table."""
 def _anchor_to_row(anchor: Anchor) -> tuple {
     data = Serializer.serialize(anchor, include_type=True);
