@@ -86,6 +86,7 @@ obj JacAutoLintPass(UniPass) {
     def can_combine_glob(glob1: uni.GlobalVars, glob2: uni.GlobalVars) -> bool;
     def combine_consecutive_has(body: list) -> list;
     def combine_consecutive_glob(body: list) -> list;
+    def _combine_has_in_node(nd: uni.Archetype | uni.Enum | uni.Ability) -> None;
     def enter_archetype(nd: uni.Archetype) -> None;
     def enter_enum(nd: uni.Enum) -> None;
     def enter_impl_def(nd: uni.ImplDef) -> None;
@@ -99,6 +100,10 @@ obj JacAutoLintPass(UniPass) {
     def exit_func_call(nd: uni.FuncCall) -> None;
     def _convert_hasattr_to_null_ok(nd: uni.FuncCall) -> (uni.AtomTrailer | None);
     def _convert_getattr_to_null_ok(nd: uni.FuncCall) -> (uni.AtomTrailer | None);
+    def _funccall_to_null_safe(
+        fc: uni.FuncCall, require_valid_identifier: bool
+    ) -> (uni.AtomTrailer | None);
+
     def _replace_child_in_parent(
         parent: uni.UniNode, old: uni.UniNode, new: uni.Expr
     ) -> None;

@@ -1,3 +1,39 @@
+"""Type-walk the clauses of a comprehension (collection, target, filters).
+
+Shared by the Set/Gen/List comprehension cases: visits each clause's
+collection and (Name) target, plus every `if` filter, so their types are
+resolved and narrowing flows through the CFG. (DictCompr does extra
+tuple/list target handling and keeps its own loop.)
+"""
+impl TypeEvaluator._walk_compr_clauses(comprs: list[uni.InnerCompr]) -> None {
+    for compr in comprs {
+        self.get_type_of_expression(compr.collection);
+        if isinstance(compr.target, uni.Name) {
+            self.get_type_of_expression(compr.target);
+        }
+        if compr.conditional {
+            for cond in compr.conditional {
+                self.get_type_of_expression(cond);
+            }
+        }
+    }
+}
+
+"""Resolve the result type of an optional-chaining (?.) attribute miss.
+
+The ?. operator returns None when the attribute doesn't exist (or the base
+is None), so this records NoneType on `expr.right` and returns it (falling
+back to UnknownType when the NoneType class isn't prefetched).
+"""
+impl TypeEvaluator._null_ok_attr_type(expr: uni.AtomTrailer) -> TypeBase {
+    none_type = self.prefetch.none_type_class;
+    if none_type is not None {
+        expr.right.type = self._convert_to_instance(none_type);
+        return expr.right.type;
+    }
+    return types.UnknownType();
+}
+
 """Core function to get the type of the expression."""
 impl TypeEvaluator._get_type_of_expression_core(
     expr: uni.Expr, expected_type: TypeBase | None = None
@@ -423,17 +459,7 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.SetCompr():
             if self.prefetch and self.prefetch.set_class {
                 set_inst = self._convert_to_instance(self.prefetch.set_class);
-                for compr in expr.compr {
-                    self.get_type_of_expression(compr.collection);
-                    if isinstance(compr.target, uni.Name) {
-                        self.get_type_of_expression(compr.target);
-                    }
-                    if compr.conditional {
-                        for cond in compr.conditional {
-                            self.get_type_of_expression(cond);
-                        }
-                    }
-                }
+                self._walk_compr_clauses(expr.compr);
                 elem_type = self.get_type_of_expression(expr.out_expr);
                 if isinstance(set_inst, types.ClassType)
                 and not isinstance(elem_type, types.UnknownType) {
@@ -445,17 +471,7 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.GenCompr():
             if self.prefetch and self.prefetch.list_class {
                 list_inst = self._convert_to_instance(self.prefetch.list_class);
-                for compr in expr.compr {
-                    self.get_type_of_expression(compr.collection);
-                    if isinstance(compr.target, uni.Name) {
-                        self.get_type_of_expression(compr.target);
-                    }
-                    if compr.conditional {
-                        for cond in compr.conditional {
-                            self.get_type_of_expression(cond);
-                        }
-                    }
-                }
+                self._walk_compr_clauses(expr.compr);
                 elem_type = self.get_type_of_expression(expr.out_expr);
                 if isinstance(list_inst, types.ClassType)
                 and not isinstance(elem_type, types.UnknownType) {
@@ -467,17 +483,7 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.ListCompr():
             if self.prefetch and self.prefetch.list_class {
                 list_inst = self._convert_to_instance(self.prefetch.list_class);
-                for compr in expr.compr {
-                    self.get_type_of_expression(compr.collection);
-                    if isinstance(compr.target, uni.Name) {
-                        self.get_type_of_expression(compr.target);
-                    }
-                    if compr.conditional {
-                        for cond in compr.conditional {
-                            self.get_type_of_expression(cond);
-                        }
-                    }
-                }
+                self._walk_compr_clauses(expr.compr);
                 # Bidirectional: flow the expected element type into the
                 # output expression (so nested comprehensions and literals
                 # adopt it too) and adopt it as this comprehension's element
@@ -804,12 +810,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # Optional chaining (?.): attribute not found is not an error —
                     # the ?. operator returns None when the attribute doesn't exist.
                     if expr.is_null_ok {
-                        none_type = self.prefetch.none_type_class;
-                        if none_type is not None {
-                            expr.right.type = self._convert_to_instance(none_type);
-                            return expr.right.type;
-                        }
-                        return types.UnknownType();
+                        return self._null_ok_attr_type(expr);
                     }
                     # Suppress diagnostic for any-like types (Any, object, Unknown,
                     # TypeVar) and for types with unresolved TypeVars in type_args
@@ -1052,12 +1053,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # Optional chaining (?.): attribute not found is not an error —
                     # the ?. operator returns None when the attribute doesn't exist.
                     if expr.is_null_ok {
-                        none_type = self.prefetch.none_type_class;
-                        if none_type is not None {
-                            expr.right.type = self._convert_to_instance(none_type);
-                            return expr.right.type;
-                        }
-                        return types.UnknownType();
+                        return self._null_ok_attr_type(expr);
                     }
                     # Suppress diagnostic for any-like types (Any, object, Unknown,
                     # TypeVar) and for types with unresolved TypeVars in type_args.
@@ -1164,12 +1160,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     # Member not found on all union variants.
                     # Optional chaining (?.): not an error — return NoneType.
                     if expr.is_null_ok {
-                        none_type = self.prefetch.none_type_class;
-                        if none_type is not None {
-                            expr.right.type = self._convert_to_instance(none_type);
-                            return expr.right.type;
-                        }
-                        return types.UnknownType();
+                        return self._null_ok_attr_type(expr);
                     }
                     missing_types: list[str] = [];
                     for union_member in base_type.types {
@@ -1362,12 +1353,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                 # The ?. operator safely returns None when the base is None or
                 # the attribute doesn't exist. Handled inside the class branches
                 # above; this fallback covers remaining base_type categories.
-                none_type = self.prefetch.none_type_class;
-                if none_type is not None {
-                    expr.right.type = self._convert_to_instance(none_type);
-                    return expr.right.type;
-                }
-                return types.UnknownType();
+                return self._null_ok_attr_type(expr);
             } elif isinstance(expr.right, uni.AssignCompr) {
                 # base_type should be a sequence of [T].
                 if not isinstance(base_type, types.ClassType) {

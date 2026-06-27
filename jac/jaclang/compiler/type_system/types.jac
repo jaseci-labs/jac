@@ -298,6 +298,8 @@ obj Parameter {
         is_self: bool = False,
         is_cls: bool = False,
         param_kind: ParamKind = ParamKind.NORMAL;
+
+    def clone -> Parameter;
 }
 
 """

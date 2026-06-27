@@ -455,6 +455,9 @@ obj TypeEvaluator {
     def _get_type_of_expression_core(
         expr: uni.Expr, expected_type: TypeBase | None = None
     ) -> TypeBase;
+
+    def _walk_compr_clauses(comprs: list[uni.InnerCompr]) -> None;
+    def _null_ok_attr_type(expr: uni.AtomTrailer) -> TypeBase;
     # -----------------------------------------------------------------------------
     # Helper functions
     # -----------------------------------------------------------------------------

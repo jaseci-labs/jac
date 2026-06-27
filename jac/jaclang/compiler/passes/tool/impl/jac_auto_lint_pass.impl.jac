@@ -151,24 +151,7 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
     if not self._is_suppressed(W3038) {
         self._convert_usestate_vars(ability_node);
     }
-    if ability_node.body is not None and isinstance(ability_node.body, list) {
-        old_body = list(ability_node.body);
-        new_body = self.combine_consecutive_has(old_body);
-        if len(new_body) != len(old_body)
-        and self.emit(W3002, node_override=ability_node) {
-            ability_node.body = new_body;
-            self.recalculate_parents(ability_node);
-            new_body_set = set(id(s) for s in new_body);
-            new_kid: list[uni.UniNode] = [];
-            for kid in ability_node.kid {
-                if not isinstance(kid, uni.ArchHas) or id(kid) in new_body_set {
-                    new_kid.append(kid);
-                }
-            }
-            ability_node.kid = new_kid;
-            ability_node._invalidate_sub_node_tab();
-        }
-    }
+    self._combine_has_in_node(ability_node);
     if not ability_node.is_method {
         return;
     }
@@ -249,24 +232,7 @@ impl JacAutoLintPass.enter_enum(nd: uni.Enum) -> None {
         return;
     }
     enum_node = nd;
-    if enum_node.body is not None and isinstance(enum_node.body, list) {
-        old_body = list(enum_node.body);
-        new_body = self.combine_consecutive_has(old_body);
-        if len(new_body) != len(old_body)
-        and self.emit(W3002, node_override=enum_node) {
-            enum_node.body = new_body;
-            self.recalculate_parents(enum_node);
-            new_body_set = set(id(s) for s in new_body);
-            new_kid: list[uni.UniNode] = [];
-            for kid in enum_node.kid {
-                if not isinstance(kid, uni.ArchHas) or id(kid) in new_body_set {
-                    new_kid.append(kid);
-                }
-            }
-            enum_node.kid = new_kid;
-            enum_node._invalidate_sub_node_tab();
-        }
-    }
+    self._combine_has_in_node(enum_node);
 }
 
 """Process Archetype to combine consecutive has statements.
@@ -286,23 +252,7 @@ impl JacAutoLintPass.enter_archetype(nd: uni.Archetype) -> None {
     and isinstance(arch.body, list) {
         self._convert_properties(arch);
     }
-    if arch.body is not None and isinstance(arch.body, list) {
-        old_body = list(arch.body);
-        new_body = self.combine_consecutive_has(old_body);
-        if len(new_body) != len(old_body) and self.emit(W3002, node_override=arch) {
-            arch.body = new_body;
-            self.recalculate_parents(arch);
-            new_body_set = set(id(s) for s in new_body);
-            new_kid: list[uni.UniNode] = [];
-            for kid in arch.kid {
-                if not isinstance(kid, uni.ArchHas) or id(kid) in new_body_set {
-                    new_kid.append(kid);
-                }
-            }
-            arch.kid = new_kid;
-            arch._invalidate_sub_node_tab();
-        }
-    }
+    self._combine_has_in_node(arch);
 }
 
 """Combine consecutive glob statements in a body list.
@@ -441,6 +391,35 @@ impl JacAutoLintPass.combine_consecutive_has(body: list) -> list {
         }
     }
     return new_body;
+}
+
+"""Run W3002 has-combining over a node body and rebuild its kids.
+
+Shared archetype/enum/ability handling: runs combine_consecutive_has and,
+when it merges has-statements (and the warning is emitted), installs the new
+body, recalculates parents, and rebuilds the kid list to drop the merged
+ArchHas children that are no longer in the body.
+"""
+impl JacAutoLintPass._combine_has_in_node(
+    nd: uni.Archetype | uni.Enum | uni.Ability
+) -> None {
+    if nd.body is not None and isinstance(nd.body, list) {
+        old_body = list(nd.body);
+        new_body = self.combine_consecutive_has(old_body);
+        if len(new_body) != len(old_body) and self.emit(W3002, node_override=nd) {
+            nd.body = new_body;
+            self.recalculate_parents(nd);
+            new_body_set = set(id(s) for s in new_body);
+            new_kid: list[uni.UniNode] = [];
+            for kid in nd.kid {
+                if not isinstance(kid, uni.ArchHas) or id(kid) in new_body_set {
+                    new_kid.append(kid);
+                }
+            }
+            nd.kid = new_kid;
+            nd._invalidate_sub_node_tab();
+        }
+    }
 }
 
 """Check if two GlobalVars nodes can be combined (same access, frozen, no docstrings)."""
@@ -703,54 +682,7 @@ impl JacAutoLintPass._convert_hasattr_to_null_ok(
     if len(nd.params) != 2 {
         return None;
     }
-    obj_expr = nd.params[0];
-    attr_expr = nd.params[1];
-    attr_value: str | None = None;
-    string_node: uni.String | None = None;
-    if isinstance(attr_expr, uni.String) {
-        attr_value = attr_expr.value;
-        string_node = attr_expr;
-    } elif isinstance(attr_expr, uni.MultiString) {
-        if len(attr_expr.strings) == 1
-        and isinstance(attr_expr.strings[0], uni.String) {
-            attr_value = attr_expr.strings[0].value;
-            string_node = attr_expr.strings[0];
-        }
-    }
-    if attr_value is None or string_node is None {
-        return None;
-    }
-    if (attr_value.startswith('"') and attr_value.endswith('"'))
-    or (attr_value.startswith("'") and attr_value.endswith("'")) {
-        attr_name = attr_value[1:-1];
-    } else {
-        return None;
-    }
-    attr_name_node = uni.Name(
-        orig_src=string_node.loc.orig_src,
-        name=Tok.NAME.name,
-        value=attr_name,
-        line=string_node.loc.first_line,
-        end_line=string_node.loc.last_line,
-        col_start=string_node.loc.col_start,
-        col_end=string_node.loc.col_end,
-        pos_start=string_node.loc.pos_start,
-        pos_end=string_node.loc.pos_end,
-        is_kwesc=False
-    );
-    null_ok_access = uni.AtomTrailer(
-        target=obj_expr,
-        right=attr_name_node,
-        is_attr=True,
-        is_null_ok=True,
-        kid=[obj_expr, attr_name_node]
-    );
-    new_kid: list[uni.UniNode] = [obj_expr];
-    new_kid.append(null_ok_access.gen_token(Tok.NULL_OK));
-    new_kid.append(null_ok_access.gen_token(Tok.DOT));
-    new_kid.append(attr_name_node);
-    null_ok_access.set_kids(nodes=new_kid);
-    return null_ok_access;
+    return self._funccall_to_null_safe(nd, False);
 }
 
 """Check if an AtomTrailer matches an object and attribute name.
@@ -858,6 +790,22 @@ impl JacAutoLintPass._convert_getattr_to_null_ok(
     if not isinstance(default_expr, uni.Null) {
         return None;
     }
+    return self._funccall_to_null_safe(nd, True);
+}
+
+"""Build an obj?.attr null-safe AtomTrailer from a hasattr/getattr FuncCall.
+
+Shared tail of the hasattr/getattr -> obj?.attr converters: extracts the
+string attribute name from params[1], optionally validates it is a real
+non-keyword identifier, and builds the null-safe AtomTrailer over params[0].
+Returns None when params[1] is not a usable string literal (or, when
+require_valid_identifier is set, not a valid non-keyword identifier).
+"""
+impl JacAutoLintPass._funccall_to_null_safe(
+    fc: uni.FuncCall, require_valid_identifier: bool
+) -> (uni.AtomTrailer | None) {
+    obj_expr = fc.params[0];
+    attr_expr = fc.params[1];
     attr_value: str | None = None;
     string_node: uni.String | None = None;
     if isinstance(attr_expr, uni.String) {
@@ -879,7 +827,8 @@ impl JacAutoLintPass._convert_getattr_to_null_ok(
     } else {
         return None;
     }
-    if not attr_name.isidentifier() or keyword.iskeyword(attr_name) {
+    if require_valid_identifier
+    and (not attr_name.isidentifier() or keyword.iskeyword(attr_name)) {
         return None;
     }
     attr_name_node = uni.Name(

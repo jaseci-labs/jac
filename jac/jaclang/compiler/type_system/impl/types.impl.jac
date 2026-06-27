@@ -59,6 +59,19 @@ impl TypeVarType.__str__ -> str {
     return "<TypeVar>";
 }
 
+"""Return a shallow copy of this parameter (all seven fields)."""
+impl Parameter.clone -> Parameter {
+    return Parameter(
+        name=self.name,
+        category=self.category,
+        param_type=self.param_type,
+        default_value=self.default_value,
+        is_self=self.is_self,
+        is_cls=self.is_cls,
+        param_kind=self.param_kind
+    );
+}
+
 """Specialize the function type based on the given class type. (Pyright: applySolvedTypeVars)
 
 Uses the unified apply_solved_type_vars from type_utils.
@@ -77,17 +90,7 @@ impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
     clone = FunctionType(
         func_name=self.func_name,
         return_type=self.return_type,
-        parameters=[
-            Parameter(
-                name=param.name,
-                category=param.category,
-                param_type=param.param_type,
-                default_value=param.default_value,
-                is_self=param.is_self,
-                is_cls=param.is_cls,
-                param_kind=param.param_kind
-            ) for param in self.parameters
-        ],
+        parameters=[param.clone() for param in self.parameters],
         type_params=self.type_params,
         is_async=self.is_async,
     );
@@ -124,17 +127,7 @@ impl FunctionType.specialize_func_type_vars(
     clone = FunctionType(
         func_name=self.func_name,
         return_type=self.return_type,
-        parameters=[
-            Parameter(
-                name=param.name,
-                category=param.category,
-                param_type=param.param_type,
-                default_value=param.default_value,
-                is_self=param.is_self,
-                is_cls=param.is_cls,
-                param_kind=param.param_kind
-            ) for param in self.parameters
-        ],
+        parameters=[param.clone() for param in self.parameters],
         function_flags=self.function_flags,
         type_params=self.type_params,
         is_async=self.is_async,

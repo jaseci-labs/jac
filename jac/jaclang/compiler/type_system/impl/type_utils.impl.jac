@@ -973,17 +973,7 @@ def _apply_to_function(
     clone = types.FunctionType(
         func_name=func.func_name,
         return_type=func.return_type,
-        parameters=[
-            types.Parameter(
-                name=param.name,
-                category=param.category,
-                param_type=param.param_type,
-                default_value=param.default_value,
-                is_self=param.is_self,
-                is_cls=param.is_cls,
-                param_kind=param.param_kind
-            ) for param in func.parameters
-        ],
+        parameters=[param.clone() for param in func.parameters],
         function_flags=func.function_flags,
         type_params=func.type_params,
     );
