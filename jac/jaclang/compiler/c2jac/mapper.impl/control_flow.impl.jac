@@ -81,7 +81,7 @@ impl CMapper.c_DoWhile(nd: object) -> object {
     # its default Tier-B tag (idiom NONE, no reason) and be undercounted as
     # unfaithful; stamp it Tier-A explicitly so the faithful verdict is queryable
     # (TagTable.by_idiom) and the reason records *why* the desugar is exact.
-    if self._has_loop_continue(nd.stmt) {
+    if has_loop_continue(nd.stmt) {
         self._mark_tier_b(
             nd,
             "do-while desugared to `while True`/break; a loop-level `continue` "
@@ -97,31 +97,6 @@ impl CMapper.c_DoWhile(nd: object) -> object {
         );
     }
     return self._stamp(w, nd, text="do");
-}
-
-impl CMapper._has_loop_continue(nd: object) -> bool {
-    # True if a `continue` belonging to THIS loop appears in nd. Nested loops
-    # and switch bodies own their own continue/break, so descent stops at them.
-    if nd is None {
-        return False;
-    }
-    if (
-        isinstance(nd, c_ast.For)
-        or isinstance(nd, c_ast.While)
-        or isinstance(nd, c_ast.DoWhile)
-        or isinstance(nd, c_ast.Switch)
-    ) {
-        return False;
-    }
-    if isinstance(nd, c_ast.Continue) {
-        return True;
-    }
-    for (_, child) in nd.children() {
-        if self._has_loop_continue(child) {
-            return True;
-        }
-    }
-    return False;
 }
 
 impl CMapper.c_Switch(nd: object) -> object {
@@ -166,7 +141,7 @@ impl CMapper.c_Switch(nd: object) -> object {
     # would run more than once — are flagged Tier-B (§5.3). A direct `break`
     # always binds to the switch (never an enclosing loop), so dropping it as
     # the terminator is never itself a hazard.
-    if self._switch_is_safe(items, nd.cond) {
+    if switch_is_safe(items, nd.cond) {
         self._mark_tier_a(
             nd,
             Idiom.SWITCH_CLEAN,
@@ -269,103 +244,6 @@ impl CMapper._switch_branch_body(stmts: list | None) -> list[object] {
     return out;
 }
 
-impl CMapper._switch_is_safe(items: list, cond: object) -> bool {
-    # A switch lowers to an EXACT if/elif/else chain iff neither lossy shape is
-    # present (§5.3):
-    #   1. No fall-through: every section except the last in source order must
-    #      end in a control transfer (break / return / continue). The one
-    #      exception is an empty label-only `case` (`case 1: case 2:`): it carries
-    #      no body and is faithfully OR-folded onto the next body-bearing section,
-    #      so it never falls through. This does NOT extend to an empty `default`
-    #      — a default is never OR-folded, so an empty default that is not the
-    #      last section falls straight into the following case, which if/elif
-    #      cannot model.
-    #   2. Pure selector: it is re-emitted once per `==` comparison, so it must
-    #      be free of side effects to be safe to evaluate more than once.
-    # Conservative on both counts — any shape we can't prove clean stays Tier-B.
-    if not self._expr_reeval_safe(cond) {
-        return False;
-    }
-    # Source-order indices of every case/default label (a body may be empty).
-    sec_idxs: list[int] = [];
-    for (i, it) in enumerate(items) {
-        if isinstance(it, c_ast.Case) or isinstance(it, c_ast.Default) {
-            sec_idxs.append(i);
-        }
-    }
-    if not sec_idxs {
-        return True;
-    }
-    last = sec_idxs[-1];
-    for i in sec_idxs {
-        # The final section has nothing to fall into, so its terminator is moot.
-        if i == last {
-            continue;
-        }
-        it = items[i];
-        # An empty `case` label OR-folds onto the next section (faithful); every
-        # other non-final section — a body-bearing case, or ANY default — must
-        # transfer control or it falls into the next case.
-        if isinstance(it, c_ast.Case) and not it.stmts {
-            continue;
-        }
-        if not self._section_terminates(it.stmts) {
-            return False;
-        }
-    }
-    return True;
-}
-
-impl CMapper._section_terminates(stmts: list | None) -> bool {
-    # True when the case body's last *direct* statement transfers control out of
-    # the section, so execution can't fall into the next case. A bare break is
-    # the switch terminator; return leaves the function; continue jumps to the
-    # enclosing loop — all three are emitted faithfully and stop fall-through.
-    # A braced body `case N: { ...; break; }` nests its terminator inside a
-    # trailing Compound, so descend through it to find the real last statement.
-    # Anything else (incl. a break nested inside an `if`) is treated as potential
-    # fall-through and keeps the switch Tier-B.
-    if not stmts {
-        return False;
-    }
-    last = stmts[-1];
-    while isinstance(last, c_ast.Compound) {
-        if not last.block_items {
-            return False;
-        }
-        last = last.block_items[-1];
-    }
-    return (
-        isinstance(last, c_ast.Break)
-        or isinstance(last, c_ast.Return)
-        or isinstance(last, c_ast.Continue)
-    );
-}
-
-impl CMapper._expr_reeval_safe(nd: object) -> bool {
-    # True when re-evaluating `nd` has no observable effect — no call, no
-    # assignment, no pre/post inc-dec anywhere in the subtree. Pure lvalues
-    # (`x`, `a[i]`, `s->f`) qualify: nothing runs between the per-branch
-    # comparisons, so re-reading them yields the same value. (A `volatile`
-    # selector would still be re-read; pycparser exposes no type qualifier here,
-    # so that rare case is not separately detected.)
-    if nd is None {
-        return True;
-    }
-    if isinstance(nd, c_ast.FuncCall) or isinstance(nd, c_ast.Assignment) {
-        return False;
-    }
-    if isinstance(nd, c_ast.UnaryOp) and nd.op in ("++", "--", "p++", "p--") {
-        return False;
-    }
-    for (_, child) in nd.children() {
-        if not self._expr_reeval_safe(child) {
-            return False;
-        }
-    }
-    return True;
-}
-
 impl CMapper.c_TernaryOp(nd: object) -> object {
     # `cond ? a : b` → Python conditional expression `a if cond else b`
     # (PyastBuildPass.proc_if_exp → uni.IfElseExpr). Faithful (Tier-A).
@@ -401,6 +279,16 @@ impl CMapper.c_Break(nd: object) -> object {
 impl CMapper.c_Continue(nd: object) -> object {
     c = ast3.Continue();
     return self._stamp(c, nd, text="continue");
+}
+
+impl CMapper.c_EmptyStatement(nd: object) -> object {
+    # A bare `;` is a no-op. Lower it to a Jac `pass` rather than the
+    # dispatch-miss surrogate (which would emit a __c2jac_unsupported__ marker
+    # and flag a do-nothing statement Tier-B). Faithful — `pass` runs nothing,
+    # exactly like the empty statement. (In a direct-IR for-body the uni builder
+    # drops it outright; this covers a top-level `;` on the py-ast path.)
+    p = ast3.Pass();
+    return self._stamp(p, nd, text="pass");
 }
 
 impl CMapper.c_For(nd: object) -> object {

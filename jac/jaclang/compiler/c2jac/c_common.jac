@@ -9,6 +9,8 @@ encodings (its `ast` class name AND its Jac token), and the literal/coordinate
 helpers are shared functions. A new operator or literal form is added here once.
 """
 
+import from pycparser { c_ast }
+
 # --- C binary operators -------------------------------------------------- #
 # c_op → (kind, ast3_class, jac_tok_name, jac_tok_val)
 #   kind        — "arith" | "compare" | "bool"; picks the CPython-ast wrapper
@@ -176,4 +178,168 @@ def coord_of(c_node: object, default_line: int) -> tuple[int, int] {
         return (line, col);
     }
     return (default_line, 0);
+}
+
+# --- side-effect analysis ------------------------------------------------ #
+def expr_reeval_safe(nd: object) -> bool {
+    # True when (re-)evaluating `nd` has no observable effect — no call, no
+    # assignment, no pre/post inc-dec anywhere in the subtree. Pure lvalues
+    # (`x`, `a[i]`, `s->f`) qualify: re-reading them yields the same value.
+    # (A `volatile` selector would still be re-read on each access; pycparser
+    # exposes no type qualifier here, so that rare case is not separately
+    # detected.)
+    #
+    # Two callers rely on this. The mapper's switch lowering re-emits a pure
+    # selector once per `==` comparison, so it must be safe to evaluate more
+    # than once. Both backends' comma-expression lowering drop the leading
+    # operands of `(a, b, … , z)` and emit only `z`; that is faithful exactly
+    # when those leading operands are side-effect-free.
+    if nd is None {
+        return True;
+    }
+    if isinstance(nd, c_ast.FuncCall) or isinstance(nd, c_ast.Assignment) {
+        return False;
+    }
+    if isinstance(nd, c_ast.UnaryOp) and nd.op in ("++", "--", "p++", "p--") {
+        return False;
+    }
+    for (_, child) in nd.children() {
+        if not expr_reeval_safe(child) {
+            return False;
+        }
+    }
+    return True;
+}
+
+# --- control-flow shape predicates --------------------------------------- #
+# Pure analyses over pycparser nodes — independent of the output IR — so both
+# the py-ast mapper and the direct-IR uni builder share them. Keeping a single
+# copy is load-bearing: each backend's Tier-A/Tier-B verdict for a switch,
+# do-while, or pointer idiom is decided by these, and two copies could drift
+# into disagreeing verdicts for the same construct.
+def has_loop_continue(nd: object) -> bool {
+    # True if a `continue` belonging to THIS loop appears in nd. Nested loops
+    # and switch bodies own their own continue/break, so descent stops at them.
+    if nd is None {
+        return False;
+    }
+    if (
+        isinstance(nd, c_ast.For)
+        or isinstance(nd, c_ast.While)
+        or isinstance(nd, c_ast.DoWhile)
+        or isinstance(nd, c_ast.Switch)
+    ) {
+        return False;
+    }
+    if isinstance(nd, c_ast.Continue) {
+        return True;
+    }
+    for (_, child) in nd.children() {
+        if has_loop_continue(child) {
+            return True;
+        }
+    }
+    return False;
+}
+
+def section_terminates(stmts: list | None) -> bool {
+    # True when the case body's last *direct* statement transfers control out of
+    # the section (break / return / continue), so execution can't fall into the
+    # next case. A bare break is the switch terminator; return leaves the
+    # function; continue jumps to the enclosing loop — all three are emitted
+    # faithfully and stop fall-through. A braced body `case N: { ...; break; }`
+    # nests its terminator inside a trailing Compound, so descend through it to
+    # find the real last statement. Anything else (incl. a break nested inside an
+    # `if`) is treated as potential fall-through and keeps the switch Tier-B.
+    if not stmts {
+        return False;
+    }
+    last = stmts[-1];
+    while isinstance(last, c_ast.Compound) {
+        if not last.block_items {
+            return False;
+        }
+        last = last.block_items[-1];
+    }
+    return (
+        isinstance(last, c_ast.Break)
+        or isinstance(last, c_ast.Return)
+        or isinstance(last, c_ast.Continue)
+    );
+}
+
+def switch_is_safe(items: list, cond: object) -> bool {
+    # A switch lowers to an EXACT if/elif/else chain iff neither lossy shape is
+    # present (§5.3):
+    #   1. No fall-through: every section except the last in source order must
+    #      end in a control transfer (break / return / continue). The one
+    #      exception is an empty label-only `case` (`case 1: case 2:`): it carries
+    #      no body and is faithfully OR-folded onto the next body-bearing section,
+    #      so it never falls through. This does NOT extend to an empty `default`
+    #      — a default is never OR-folded, so an empty default that is not the
+    #      last section falls straight into the following case, which if/elif
+    #      cannot model.
+    #   2. Pure selector: it is re-emitted once per `==` comparison, so it must
+    #      be free of side effects to be safe to evaluate more than once.
+    # Conservative on both counts — any shape we can't prove clean stays Tier-B.
+    if not expr_reeval_safe(cond) {
+        return False;
+    }
+    # Source-order indices of every case/default label (a body may be empty).
+    sec_idxs: list[int] = [];
+    for (i, it) in enumerate(items) {
+        if isinstance(it, c_ast.Case) or isinstance(it, c_ast.Default) {
+            sec_idxs.append(i);
+        }
+    }
+    if not sec_idxs {
+        return True;
+    }
+    last = sec_idxs[-1];
+    for i in sec_idxs {
+        # The final section has nothing to fall into, so its terminator is moot.
+        if i == last {
+            continue;
+        }
+        it = items[i];
+        # An empty `case` label OR-folds onto the next section (faithful); every
+        # other non-final section — a body-bearing case, or ANY default — must
+        # transfer control or it falls into the next case.
+        if isinstance(it, c_ast.Case) and not it.stmts {
+            continue;
+        }
+        if not section_terminates(it.stmts) {
+            return False;
+        }
+    }
+    return True;
+}
+
+# --- pointer / cast shape predicates ------------------------------------- #
+def is_simple_ref(c_node: object) -> bool {
+    # A reference-shaped operand: names a storage location without pointer
+    # arithmetic or reinterpretation. ID / s.f / s->f / a[i] qualify; a
+    # BinaryOp (`p+1`), Cast, or nested `*`/`&` does not (those stay Tier-B).
+    return (
+        isinstance(c_node, c_ast.ID)
+        or isinstance(c_node, c_ast.StructRef)
+        or isinstance(c_node, c_ast.ArrayRef)
+    );
+}
+
+def cast_scalar_target(nd: object) -> str | None {
+    # The C scalar type name a Cast targets when it is a value cast
+    # (Typename → TypeDecl → IdentifierType); None for pointer/array/struct
+    # casts, which don't change the emitted value.
+    to_type = nd?.to_type;
+    if to_type is None {
+        return None;
+    }
+    inner = to_type?.type;
+    if isinstance(inner, c_ast.TypeDecl)
+    and isinstance(inner.type, c_ast.IdentifierType) {
+        names = inner.type.names;
+        return names[-1] if names else None;
+    }
+    return None;
 }

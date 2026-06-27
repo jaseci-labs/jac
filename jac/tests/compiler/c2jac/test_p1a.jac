@@ -243,9 +243,14 @@ test "do_while_continue.c emitted Jac recompiles cleanly" {
 test "ternary.c: ?: lowers to a Jac conditional expression (faithful)" {
     (jac_str, tags) = transpile_c_str(_read("ternary.c"), "ternary.c");
     assert "a if (a > 0) else -a" in jac_str , f"Expected conditional expression in:\n{jac_str}";
-    # A plain ternary is a faithful mapping — it must not be flagged Tier-B.
-    reasons = [nt.reason for nt in tags.tier_b_entries()];
-    assert not any("?:" in r or "ternary" in r.lower() for r in reasons) , f"ternary should be faithful, got {reasons}";
+    # A plain ternary is a faithful mapping — the whole function must be Tier-A.
+    # The ?: node sits on the boundary allowlist; before that it default-stamped
+    # Tier-B with an empty reason, so a reason-substring check alone passed while
+    # a phantom best-effort site lingered. Pin the count to catch a regression.
+    entries = tags.tier_b_entries();
+    assert len(entries) == 0 , f"ternary should be fully Tier-A, got {[
+        (nt.c_line, nt.reason) for nt in entries
+    ]}";
 }
 
 test "ternary.c emitted Jac recompiles cleanly" {

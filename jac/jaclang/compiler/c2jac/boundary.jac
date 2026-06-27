@@ -48,9 +48,21 @@ glob _TIER_A_TYPES: tuple = (
          c_ast.Typename,
          c_ast.Compound,
          c_ast.UnaryOp,
+         # `cond ? a : b` lowers faithfully to a Jac conditional expression —
+         # via the mapper (c_TernaryOp → uni.IfElseExpr) and the direct-IR
+         # for-body path (_expr_to_uni). Without it on the allowlist the node
+         # default-stamps Tier-B with an empty reason, presenting a faithful
+         # ternary as a phantom best-effort site.
+         c_ast.TernaryOp,
          c_ast.Cast,
          c_ast.ExprList,
          c_ast.NamedInitializer,
+         # A bare `;` is a no-op with no lost semantics — the mapper lowers it to
+         # a Jac `pass` (c_EmptyStatement) and the direct-IR for-body drops it
+         # outright. Without it on the allowlist the node would default-stamp
+         # Tier-B with an empty reason, presenting a do-nothing statement as a
+         # phantom best-effort site (mirrors the TernaryOp note above).
+         c_ast.EmptyStatement,
 
      ),
      # Node classes routed to the direct-IR builder (no faithful Python-AST analog).
