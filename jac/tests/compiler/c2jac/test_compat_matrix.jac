@@ -3,7 +3,7 @@
 A characterization suite: each row pins how one C form is currently transpiled
 (the substrings that must / must not appear) and its tier (Tier-A rows must
 produce no Tier-B tag and no `__c2jac_unsupported` surrogate). It keeps every
-COVERAGE_ROADMAP item honest — a row's expectation flips the moment the matching
+covered C form honest — a row's expectation flips the moment the matching
 fix lands, so behavior changes can never slip in silently.
 
 Packaging: the rows live in the `_MATRIX` table (keyed by label), but each row is

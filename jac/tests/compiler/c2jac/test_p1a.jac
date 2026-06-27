@@ -3,7 +3,7 @@
 import os;
 import from tests.support { JAC_ROOT }
 import from jaclang.compiler.c2jac.driver { transpile_c_str }
-import from jaclang.compiler.c2jac.tags { Idiom }
+import from jaclang.compiler.c2jac.tags { Idiom, Tier }
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "c2jac", "fixtures");
 
@@ -202,11 +202,41 @@ test "do_while.c: do-while desugars to a faithful while-True/break" {
     # No loop-level `continue` → the desugar is faithful, so no Tier-B flag.
     reasons = [nt.reason for nt in tags.tier_b_entries()];
     assert not any("do-while" in r for r in reasons) , f"continue-free do-while must stay faithful, got {reasons}";
+    # Faithful is not enough: the verdict must be stamped Tier-A explicitly with
+    # the DO_WHILE idiom (DoWhile is off the boundary allowlist, so without the
+    # stamp it would silently keep its default Tier-B tag and be undercounted).
+    do_while = tags.by_idiom(Idiom.DO_WHILE);
+    assert len(do_while) == 1 , f"Expected one Tier-A DO_WHILE promotion, got {len(
+        do_while
+    )}";
+    assert do_while[0].tier == Tier.TIER_A , f"DO_WHILE idiom must be Tier-A, got {do_while[
+        0
+    ].tier}";
 }
 
 test "do_while.c emitted Jac recompiles cleanly" {
     jac_str = _transpile("do_while.c");
     errs = _recompile_errors(jac_str, "do_while.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- A loop-level `continue` is the one hazard: in C it jumps to the post-body
+# condition test, but the `while True { body; if not cond break }` desugar's
+# `continue` re-enters the loop top and skips that guard. So a continue-bearing
+# do-while must stay Tier-B and must NOT get the Tier-A DO_WHILE promotion. ---
+test "do_while_continue.c: a loop-level continue keeps the do-while Tier-B" {
+    (jac_str, tags) = transpile_c_str(
+        _read("do_while_continue.c"), "do_while_continue.c"
+    );
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert any("do-while" in r and "continue" in r for r in reasons) , f"Expected a Tier-B continue-semantics flag, got {reasons}";
+    # The hazard is present, so no faithful DO_WHILE promotion may exist.
+    assert len(tags.by_idiom(Idiom.DO_WHILE)) == 0 , f"A continue-bearing do-while must not promote to Tier-A DO_WHILE";
+}
+
+test "do_while_continue.c emitted Jac recompiles cleanly" {
+    jac_str = _transpile("do_while_continue.c");
+    errs = _recompile_errors(jac_str, "do_while_continue.c");
     assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
 }
 

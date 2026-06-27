@@ -74,11 +74,26 @@ impl CMapper.c_DoWhile(nd: object) -> object {
     full_body: list[object] = [*body, guard];
     true_c = self._stamp_manual(ast3.Constant(value=True), line, col, text="True");
     w = ast3.While(test=true_c, body=full_body, orelse=[]);
+    # Prove the one semantic hazard (a loop-level `continue` that skips the
+    # post-body condition test) absent, else stay Tier-B — the same gate
+    # for-fallback (C_FOR) and switch (SWITCH_CLEAN) use. DoWhile is NOT on the
+    # boundary Tier-A allowlist, so a continue-free do-while would otherwise keep
+    # its default Tier-B tag (idiom NONE, no reason) and be undercounted as
+    # unfaithful; stamp it Tier-A explicitly so the faithful verdict is queryable
+    # (TagTable.by_idiom) and the reason records *why* the desugar is exact.
     if self._has_loop_continue(nd.stmt) {
         self._mark_tier_b(
             nd,
             "do-while desugared to `while True`/break; a loop-level `continue` "
             "skips the post-body condition test (C runs it) — verify",
+        );
+    } else {
+        self._mark_tier_a(
+            nd,
+            Idiom.DO_WHILE,
+            "do-while desugared to `while True { body; if not cond break }` — "
+            "faithful: body runs once before the test and no loop-level `continue` "
+            "skips the post-body condition check",
         );
     }
     return self._stamp(w, nd, text="do");
