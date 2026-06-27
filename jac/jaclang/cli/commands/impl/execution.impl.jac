@@ -874,3 +874,156 @@ impl debug(filename: str, main: bool = True, cache: bool = False) -> int {
     }
     return 0;
 }
+
+"""Resolve the ordered (tier_label, site_packages_dir) list to search for CLI tools.
+
+The project venv (.jac/venv) is searched before the jac-owned global site, mirroring
+how `jac install` targets the project venv by default and `--global` the shared site.
+When use_global is set, only the global site is searched.
+"""
+def _tool_site_dirs(use_global: bool) -> list {
+    import site;
+    import from pathlib { Path }
+    import from jaclang.project.config { get_config }
+    import from jaclang.project.dependencies { get_venv_site_packages }
+
+    sites: list = [];
+    if not use_global {
+        config = get_config();
+        if config is not None {
+            sites.append(("project", get_venv_site_packages(config.get_venv_dir())));
+        }
+    }
+    try {
+        global_sites = site.getsitepackages();
+    } except (AttributeError, IndexError, OSError) {
+        global_sites = [];
+    }
+    if global_sites {
+        sites.append(("global", Path(global_sites[0])));
+    }
+    return sites;
+}
+
+"""List (script_name, dist_name, entry_point) for every console-script in site_dir."""
+def _console_scripts_in(site_dir: object) -> list {
+    import from importlib.metadata { distributions }
+
+    found: list = [];
+    if not site_dir.exists() {
+        return found;
+    }
+    for dist in distributions(path=[str(site_dir)]) {
+        dist_name = dist.metadata["Name"] if dist.metadata else None;
+        dist_name = dist_name or "?";
+        for ep in dist.entry_points {
+            if ep.group == "console_scripts" {
+                found.append((ep.name, dist_name, ep));
+            }
+        }
+    }
+    return found;
+}
+
+"""Load a console-script entry point under the Jac runtime and invoke it.
+
+The chosen site-packages dir is moved to the front of sys.path so the tool and its
+dependencies resolve from the selected tier, and sys.argv is rewritten so the tool
+sees itself as argv[0]. A SystemExit raised by the tool is captured into a return
+code rather than terminating jac, so post-hooks still run.
+"""
+def _run_entry_point(name: str, ep: object, site_dir: object, args: list) -> int {
+    site_str = str(site_dir);
+    if site_str in sys.path {
+        sys.path.remove(site_str);
+    }
+    sys.path.insert(0, site_str);
+    try {
+        func = ep.load();
+    } except Exception as e {
+        console.error(f"Failed to load tool '{name}': {e}");
+        return 1;
+    }
+    saved_argv = sys.argv;
+    sys.argv = [name] + list(args);
+    try {
+        result = func();
+        return result if isinstance(result, int) else 0;
+    } except SystemExit as se {
+        if se.code is None {
+            return 0;
+        }
+        if isinstance(se.code, int) {
+            return se.code;
+        }
+        console.error(str(se.code));
+        return 1;
+    } finally {
+        sys.argv = saved_argv;
+    }
+}
+
+"""Print the console-script tools available across the resolved sites.
+
+Names are deduplicated in precedence order, so a tool shadowed by a higher-precedence
+tier is listed only once, against the tier that would actually run.
+"""
+def _list_tools(sites: list) -> int {
+    seen: set = set();
+    rows: list = [];
+    for (label, site_dir) in sites {
+        for (script_name, dist_name, _ep) in _console_scripts_in(site_dir) {
+            if script_name in seen {
+                continue;
+            }
+            seen.add(script_name);
+            rows.append((script_name, dist_name, label));
+        }
+    }
+    if not rows {
+        console.info(
+            "No CLI tools available. Install one with 'jac install <package>' "
+            "or 'jac install --global <package>'."
+        );
+        return 0;
+    }
+    console.print("\nAvailable CLI tools (run with 'jac x <name>'):\n", style="info");
+    width = max([len(r[0]) for r in rows]);
+    for (script_name, dist_name, label) in sorted(rows) {
+        console.print(f"  {script_name.ljust(width)}  {dist_name} [{label}]");
+    }
+    return 0;
+}
+
+"""Run an installed package's console-script entry point under the Jac runtime."""
+impl x(
+    name: str = "",
+    use_global: bool = False,
+    list_tools: bool = False,
+    args: list = []
+) -> int {
+    sites = _tool_site_dirs(use_global);
+
+    # No tool name given → behave like --list and show what's runnable here.
+    if list_tools or not name {
+        return _list_tools(sites);
+    }
+
+    # First matching tier wins (project venv before global site).
+    for (label, site_dir) in sites {
+        for (script_name, _dist_name, ep) in _console_scripts_in(site_dir) {
+            if script_name == name {
+                return _run_entry_point(name, ep, site_dir, args);
+            }
+        }
+    }
+
+    searched = ", ".join([f"{label} ({d})" for (label, d) in sites]) or "no sites";
+    console.error(
+        f"No CLI tool named '{name}' found.",
+        hint=f"Install the package that provides it — 'jac install <package>' "
+        f"(project) or 'jac install --global <package>' — then 'jac x {name}'. "
+        f"Searched: {searched}."
+    );
+    return 1;
+}

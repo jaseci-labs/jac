@@ -208,3 +208,50 @@ def start(
     group="execution"
 )
 def debug(filename: str, main: bool = True, cache: bool = False) -> int;
+
+"""Run a CLI tool from an installed package's console-script entry point."""
+@registry.command(
+    name="x",
+    help="Run an installed CLI tool (console-script) under the Jac runtime",
+    args=[
+        Arg.create(
+            "name",
+            kind=ArgKind.POSITIONAL,
+            default="",
+            help="Tool/command name to run (omit to list available tools)"
+        ),
+        Arg.create(
+            "global",
+            typ=bool,
+            default=False,
+            help="Resolve from the jac-owned global site only, ignoring the project venv",
+            short="g",
+            dest="use_global"
+        ),
+        Arg.create(
+            "list_tools",
+            typ=bool,
+            default=False,
+            help="List the CLI tools available to run here",
+            short="l"
+        ),
+        Arg.create(
+            "args", kind=ArgKind.REMAINDER, help="Arguments passed to the tool"
+        ),
+
+    ],
+    examples=[
+        ("jac x hf download gpt2", "Run the 'hf' tool (project venv first, else global)"),
+        ("jac x black .", "Run an installed formatter on the current directory"),
+        ("jac x --global hf whoami", "Force the global-site copy of a tool"),
+        ("jac x --list", "List the CLI tools available here"),
+
+    ],
+    group="execution"
+)
+def x(
+    name: str = "",
+    use_global: bool = False,
+    list_tools: bool = False,
+    args: list = []
+) -> int;
