@@ -47,28 +47,29 @@ Imported by LOGICAL name so the native backend resolves the platform file
 (libjacpyembed.so/.dylib/.dll) AND emits a $ORIGIN runpath -- the host finds the
 sibling shim with no patchelf, the same way it binds webview. jac_engine_boot()
 materializes the trailer payload, dlopens THIS binary's bundled CPython, and
-Py_Initialize()s it; the rest are forwarders onto that interpreter (see
-launcher/pyembed.zig). No build-machine libpython, no INSTSONAME, no
-LD_LIBRARY_PATH. The CEF host uses only a subset of the calls; the extra
-declarations are harmless unused externs resolved by the same shim."""
+Py_Initialize()s it; the rest are `jpy_`-prefixed forwarders onto that interpreter
+(the prefix keeps the shim's exports from interposing libpython's own symbols
+under Linux's flat namespace -- see launcher/pyembed.zig). No build-machine
+libpython, no INSTSONAME, no LD_LIBRARY_PATH. The CEF host uses only a subset of
+the calls; the extra declarations are harmless unused externs on the same shim."""
 def _jacpyembed_import_block -> str {
     return (
         "import from jacpyembed {\n"
         "    def jac_engine_boot() -> i32;\n"
-        "    def Py_Finalize() -> None;\n"
-        "    def PyRun_SimpleString(cmd: str) -> i32;\n"
-        "    def PyImport_AddModule(name: str) -> int;\n"
-        "    def PyModule_GetDict(module: int) -> int;\n"
-        "    def PyRun_String(s: str, start: i32, g: int, l: int) -> int;\n"
-        "    def PyLong_AsLong(o: int) -> int;\n"
-        "    def PyEval_SaveThread() -> int;\n"
-        "    def PyEval_RestoreThread(s: int) -> None;\n"
-        "    def PyGILState_Ensure() -> int;\n"
-        "    def PyGILState_Release(state: int) -> None;\n"
-        "    def PyObject_CallOneArg(fn: int, arg: int) -> int;\n"
-        "    def PyUnicode_FromString(s: str) -> int;\n"
-        "    def PyUnicode_AsUTF8(pyobj: int) -> str;\n"
-        "    def Py_DecRef(pyobj: int) -> None;\n"
+        "    def jpy_Py_Finalize() -> None;\n"
+        "    def jpy_PyRun_SimpleString(cmd: str) -> i32;\n"
+        "    def jpy_PyImport_AddModule(name: str) -> int;\n"
+        "    def jpy_PyModule_GetDict(module: int) -> int;\n"
+        "    def jpy_PyRun_String(s: str, start: i32, g: int, l: int) -> int;\n"
+        "    def jpy_PyLong_AsLong(o: int) -> int;\n"
+        "    def jpy_PyEval_SaveThread() -> int;\n"
+        "    def jpy_PyEval_RestoreThread(s: int) -> None;\n"
+        "    def jpy_PyGILState_Ensure() -> int;\n"
+        "    def jpy_PyGILState_Release(state: int) -> None;\n"
+        "    def jpy_PyObject_CallOneArg(fn: int, arg: int) -> int;\n"
+        "    def jpy_PyUnicode_FromString(s: str) -> int;\n"
+        "    def jpy_PyUnicode_AsUTF8(pyobj: int) -> str;\n"
+        "    def jpy_Py_DecRef(pyobj: int) -> None;\n"
         "}\n"
     );
 }
@@ -145,7 +146,7 @@ def _dispatch_boot_py(
         f"    timeout_s={dispatch_timeout_s}, max_queue={dispatch_max_queue},\n"
         f"    debug={dispatch_debug})\n"
         # Bind a stable per-process alias for the hot dispatch callable. The per-call
-        # PyRun_SimpleString then references only `_jac_dispatch` -- a name under this
+        # jpy_PyRun_SimpleString then references only `_jac_dispatch` -- a name under this
         # codebase's control -- instead of `inprocess_dispatch.handle` (two coupled
         # string literals). A rename/move of the module or function now breaks loudly
         # at boot (DISPATCH_PY returns != 0 -> error page) rather than silently on
@@ -222,7 +223,7 @@ def _generate_host_source(
     #
     # COUPLING: DISPATCH_PY references `_root` and `_data` by bare name. Both are
     # defined in SERVE_PY (lines `_root = os.path.dirname(_exe)` and
-    # `_data = os.environ.get('JAC_DATA_PATH', _root)`). PyRun_SimpleString runs
+    # `_data = os.environ.get('JAC_DATA_PATH', _root)`). jpy_PyRun_SimpleString runs
     # each string in the same `__main__` scope, so the names resolve -- but a
     # rename in SERVE_PY breaks boot silently at runtime (NameError swallowed as
     # boot_rc != 0). Keep these names in sync or hoist them to shared constants.
@@ -242,10 +243,10 @@ def _generate_host_source(
         "}catch(e){}})();"
     );
     # P1-B: deterministic native error page shown (via wv.html) when the
-    # in-process backend fails to boot -- i.e. PyRun_SimpleString(DISPATCH_PY)
+    # in-process backend fails to boot -- i.e. jpy_PyRun_SimpleString(DISPATCH_PY)
     # returns != 0 -- instead of navigating to a silently-broken app whose first
     # __jac_invoke would hang forever. The full traceback is on stderr/the log
-    # (boot() writes it and PyRun_SimpleString prints the unhandled exception).
+    # (boot() writes it and jpy_PyRun_SimpleString prints the unhandled exception).
     boot_error_html = (
         "<!doctype html><html><head><meta charset=\"utf-8\">"
         "<title>Backend failed to start</title><style>"
@@ -275,32 +276,32 @@ def _generate_host_source(
             boot_error_html, ensure_ascii=False
         )};\n"
         # Plugin bridge inlined from plugin_bridge.na.jac (BRIDGE START/END).
-        # Wires window.__jac_invoke → the Python plugin host via PyObject_CallOneArg
+        # Wires window.__jac_invoke → the Python plugin host via jpy_PyObject_CallOneArg
         # (_PH_DISPATCH is set by registry.bootstrap_plugins via _host.setup()).
         "glob _PH_DISPATCH: int = 0;\n"
         "def _jac_invoke_handler(id: int, req: int, wv_handle: int) {\n"
-        "    gstate = PyGILState_Ensure();\n"
-        "    py_req = PyUnicode_FromString(req as str);\n"
-        "    py_result = PyObject_CallOneArg(_PH_DISPATCH, py_req);\n"
+        "    gstate = jpy_PyGILState_Ensure();\n"
+        "    py_req = jpy_PyUnicode_FromString(req as str);\n"
+        "    py_result = jpy_PyObject_CallOneArg(_PH_DISPATCH, py_req);\n"
         "    if py_result == 0 {\n"
-        "        Py_DecRef(py_req);\n"
-        "        PyGILState_Release(gstate);\n"
+        "        jpy_Py_DecRef(py_req);\n"
+        "        jpy_PyGILState_Release(gstate);\n"
         "        respond(\n"
         "            wv_handle, id, \"{\\\"ok\\\":false,\\\"error\\\":{\\\"code\\\":\\\"DISPATCH_CRASHED\\\"}}\"\n"
         "        );\n"
         "        return;\n"
         "    }\n"
-        "    result_str = PyUnicode_AsUTF8(py_result);\n"
-        "    Py_DecRef(py_req);\n"
+        "    result_str = jpy_PyUnicode_AsUTF8(py_result);\n"
+        "    jpy_Py_DecRef(py_req);\n"
         "    respond(wv_handle, id, result_str);\n"
-        "    Py_DecRef(py_result);\n"
-        "    PyGILState_Release(gstate);\n"
+        "    jpy_Py_DecRef(py_result);\n"
+        "    jpy_PyGILState_Release(gstate);\n"
         "}\n"
         # nacompile cannot lower wv.get_handle() inside an f-string;
         # passing the int through a native helper works.
         "def _stash_wv_in_python(h: int) {\n"
-        "    PyRun_SimpleString(f\"_wv_handle = {h}\");\n"
-        "    PyRun_SimpleString(\"_host.setup(_wv_handle)\");\n"
+        "    jpy_PyRun_SimpleString(f\"_wv_handle = {h}\");\n"
+        "    jpy_PyRun_SimpleString(\"_host.setup(_wv_handle)\");\n"
         "}\n"
         "with entry {\n"
         "    engine_rc: i32 = jac_engine_boot();\n"
@@ -310,22 +311,22 @@ def _generate_host_source(
         "    main_mod: int = 0;\n"
         "    d: int = 0;\n"
         "    if engine_rc == 0 {\n"
-        "        serve_rc = PyRun_SimpleString(SERVE_PY);\n"
-        "        plugin_rc = PyRun_SimpleString(PLUGIN_PY);\n"
+        "        serve_rc = jpy_PyRun_SimpleString(SERVE_PY);\n"
+        "        plugin_rc = jpy_PyRun_SimpleString(PLUGIN_PY);\n"
         # P1-B: capture the boot return code. Non-zero means the in-process
         # backend raised during boot (import/syntax/boot() failure) -- show the
         # native error page below instead of navigating to a broken app.
-        "        boot_rc = PyRun_SimpleString(DISPATCH_PY);\n"
-        "        main_mod = PyImport_AddModule(\"__main__\");\n"
-        "        d = PyModule_GetDict(main_mod);\n"
+        "        boot_rc = jpy_PyRun_SimpleString(DISPATCH_PY);\n"
+        "        main_mod = jpy_PyImport_AddModule(\"__main__\");\n"
+        "        d = jpy_PyModule_GetDict(main_mod);\n"
         "    }\n"
         # Guard port extraction: when serve_rc != 0, `_port` is undefined in __main__
-        # so PyRun_String returns NULL (0). PyLong_AsLong(0) sets a CPython error that
-        # survives into PyRun_SimpleString("...shutdown()"), causing it to return -1
+        # so jpy_PyRun_String returns NULL (0). jpy_PyLong_AsLong(0) sets a CPython error that
+        # survives into jpy_PyRun_SimpleString("...shutdown()"), causing it to return -1
         # without executing shutdown. Only evaluate _port when SERVE_PY succeeded.
         "    url = \"\";\n"
         "    if engine_rc == 0 and serve_rc == 0 {\n"
-        "        port = PyLong_AsLong(PyRun_String(\"_port\", PY_EVAL, d, d));\n"
+        "        port = jpy_PyLong_AsLong(jpy_PyRun_String(\"_port\", PY_EVAL, d, d));\n"
         "        url = f\"http://127.0.0.1:{port}/\";\n"
         "    }\n"
         "    _wv_raw = webview_create(0, 0);\n"
@@ -343,12 +344,12 @@ def _generate_host_source(
         "        wv.html(BOOT_ERROR_HTML);\n"
         "    }\n"
         "    if engine_rc == 0 {\n"
-        "        ts = PyEval_SaveThread();\n"
+        "        ts = jpy_PyEval_SaveThread();\n"
         "        run_main_loop();\n"
-        "        PyEval_RestoreThread(ts);\n"
+        "        jpy_PyEval_RestoreThread(ts);\n"
         # GIL must be held for shutdown (drain queue, join worker, close transport).
-        "        PyRun_SimpleString(\"from jaclang.runtimelib.client.targets.desktop.native import inprocess_dispatch; inprocess_dispatch.shutdown()\");\n"
-        "        Py_Finalize();\n"
+        "        jpy_PyRun_SimpleString(\"from jaclang.runtimelib.client.targets.desktop.native import inprocess_dispatch; inprocess_dispatch.shutdown()\");\n"
+        "        jpy_Py_Finalize();\n"
         "    } else {\n"
         "        run_main_loop();\n"
         "    }\n"

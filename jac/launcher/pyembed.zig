@@ -12,11 +12,16 @@
 //!     program name -> Py_Initialize), then resolves the CPython C-API the host
 //!     calls into module globals. No path args: the shim resolves its own process
 //!     image (/proc/self/exe), which is the host binary carrying the trailer.
-//!   * Same-named thin forwarders (`PyRun_SimpleString`, `PyGILState_Ensure`, ...)
-//!     re-export exactly the surface `_host_bootstrap.jac` declares. The host
-//!     DT_NEEDEDs libjacpyembed (never libpython), so its undefined Py_* bind to
-//!     these forwarders at load time; each calls the real symbol through the
-//!     pointer resolved at boot -- no per-call dlsym, no recursion, no collision.
+//!   * `jpy_`-PREFIXED thin forwarders (`jpy_PyRun_SimpleString`, ...) re-export
+//!     the surface `_host_bootstrap.jac` declares; the host DT_NEEDEDs libjacpyembed
+//!     (never libpython) and binds these at load, each calling the real symbol
+//!     through the pointer resolved at boot. The prefix is LOAD-BEARING: a
+//!     same-named export (`PyRun_SimpleString`) would, under Linux's flat namespace
+//!     + the RTLD_GLOBAL libpython dlopen, INTERPOSE libpython's own symbol -- so
+//!     libpython's internal calls (e.g. PyUnicode_FromString during Py_Initialize)
+//!     would route through this shim's forwarder before its pointer is resolved and
+//!     segfault on a null call. macOS's two-level namespace hid this; the prefix
+//!     makes the shim's symbols never collide with libpython's on any platform.
 //!
 //! This is the desktop half of the "one source of responsibility" split: the
 //! interpreter bring-up is embed.zig (shared with launcher.zig); the bundling is
@@ -74,13 +79,6 @@ fn fail(comptime msg: []const u8) c_int {
     return 1;
 }
 
-/// Unbuffered breadcrumb to stderr via raw libc write -- survives a SIGSEGV and
-/// needs no Zig runtime/Io, so it localizes a hard crash in the boot sequence.
-/// TEMPORARY: remove once the Linux boot path is proven.
-fn crumb(comptime s: []const u8) void {
-    _ = std.c.write(2, s.ptr, s.len);
-}
-
 /// Bring up the embedded interpreter on the fused runtime and resolve the C-API
 /// the host calls. Idempotent. Returns 0 on success, non-zero on failure (the
 /// host shows its native boot-error page when this is non-zero -- it must never
@@ -93,11 +91,9 @@ export fn jac_engine_boot() c_int {
     // real Threaded instance (cpu-count + signal handlers + worker pool). The
     // static `init_single_threaded` const skips that setup and segfaults blocking
     // file I/O (materialize/executablePath) on Linux -- works on macOS by luck.
-    crumb("[pyembed] c:enter\n");
     const gpa = std.heap.c_allocator;
     var threaded = std.Io.Threaded.init(gpa, .{});
     const io = threaded.io();
-    crumb("[pyembed] c:io\n");
 
     // The shim runs inside the host process, so its own image IS the host binary
     // (which carries the trailer payload). Resolve it for materialize + getpath.
@@ -106,7 +102,6 @@ export fn jac_engine_boot() c_int {
     const exe_path = exe_buf[0..exe_len];
     var exe_zbuf: [MAX_PATH]u8 = undefined;
     const exe_z = std.fmt.bufPrintZ(&exe_zbuf, "{s}", .{exe_path}) catch return fail("executable path too long");
-    crumb("[pyembed] c:exepath\n");
 
     const emb = embed.open(
         io,
@@ -120,15 +115,12 @@ export fn jac_engine_boot() c_int {
         @intCast(std.c.getpid()),
         &rt_buf,
     ) catch return fail("runtime bring-up failed (trailer payload not materialized?)");
-    crumb("[pyembed] c:open\n");
 
     // Pin program name, then initialize. embed owns env/dlopen; the host owns
     // what runs after init (SERVE/PLUGIN/DISPATCH), via the forwarders below.
     emb.setProgramName(exe_z) catch return fail("failed to pin program name");
-    crumb("[pyembed] c:progname\n");
     const py_init = emb.symOrErr(embed.Py_Initialize_t, "Py_Initialize") catch return fail("libpython missing symbol: Py_Initialize");
     py_init();
-    crumb("[pyembed] c:pyinit\n");
 
     // Resolve the host-facing C-API once. A missing symbol here is a packaging
     // bug; surface it cleanly rather than faulting on first forwarded call.
@@ -147,7 +139,6 @@ export fn jac_engine_boot() c_int {
     p_uni_utf8 = emb.symOrErr(PyUnicodeAsUTF8_t, "PyUnicode_AsUTF8") catch return fail("missing PyUnicode_AsUTF8");
     p_decref = emb.symOrErr(PyDecRef_t, "Py_DecRef") catch return fail("missing Py_DecRef");
 
-    crumb("[pyembed] c:done\n");
     booted = true;
     return 0;
 }
@@ -159,45 +150,45 @@ fn envOpt(name: [:0]const u8) ?[]const u8 {
 }
 
 // ── Forwarders: same names the host DT_NEEDEDs; call the resolved real symbol ─
-export fn Py_Finalize() void {
+export fn jpy_Py_Finalize() void {
     p_finalize();
 }
-export fn PyRun_SimpleString(cmd: [*:0]const u8) c_int {
+export fn jpy_PyRun_SimpleString(cmd: [*:0]const u8) c_int {
     return p_run_simple(cmd);
 }
-export fn PyImport_AddModule(name: [*:0]const u8) ?*anyopaque {
+export fn jpy_PyImport_AddModule(name: [*:0]const u8) ?*anyopaque {
     return p_add_module(name);
 }
-export fn PyModule_GetDict(m: ?*anyopaque) ?*anyopaque {
+export fn jpy_PyModule_GetDict(m: ?*anyopaque) ?*anyopaque {
     return p_get_dict(m);
 }
-export fn PyRun_String(s: [*:0]const u8, start: c_int, g: ?*anyopaque, l: ?*anyopaque) ?*anyopaque {
+export fn jpy_PyRun_String(s: [*:0]const u8, start: c_int, g: ?*anyopaque, l: ?*anyopaque) ?*anyopaque {
     return p_run_string(s, start, g, l);
 }
-export fn PyLong_AsLong(o: ?*anyopaque) c_long {
+export fn jpy_PyLong_AsLong(o: ?*anyopaque) c_long {
     return p_long_aslong(o);
 }
-export fn PyEval_SaveThread() ?*anyopaque {
+export fn jpy_PyEval_SaveThread() ?*anyopaque {
     return p_save_thread();
 }
-export fn PyEval_RestoreThread(s: ?*anyopaque) void {
+export fn jpy_PyEval_RestoreThread(s: ?*anyopaque) void {
     p_restore_thread(s);
 }
-export fn PyGILState_Ensure() c_int {
+export fn jpy_PyGILState_Ensure() c_int {
     return p_gil_ensure();
 }
-export fn PyGILState_Release(s: c_int) void {
+export fn jpy_PyGILState_Release(s: c_int) void {
     p_gil_release(s);
 }
-export fn PyObject_CallOneArg(callable: ?*anyopaque, arg: ?*anyopaque) ?*anyopaque {
+export fn jpy_PyObject_CallOneArg(callable: ?*anyopaque, arg: ?*anyopaque) ?*anyopaque {
     return p_call_one(callable, arg);
 }
-export fn PyUnicode_FromString(s: [*:0]const u8) ?*anyopaque {
+export fn jpy_PyUnicode_FromString(s: [*:0]const u8) ?*anyopaque {
     return p_uni_from(s);
 }
-export fn PyUnicode_AsUTF8(o: ?*anyopaque) ?[*:0]const u8 {
+export fn jpy_PyUnicode_AsUTF8(o: ?*anyopaque) ?[*:0]const u8 {
     return p_uni_utf8(o);
 }
-export fn Py_DecRef(o: ?*anyopaque) void {
+export fn jpy_Py_DecRef(o: ?*anyopaque) void {
     p_decref(o);
 }

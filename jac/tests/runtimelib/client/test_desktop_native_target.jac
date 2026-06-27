@@ -206,16 +206,32 @@ test "host bootstrap modules import + run from the fused runtime" {
         inprocess_dispatch
     }
 
-    # The plugin bootstrap loads the plugins from the runtime + wires the dispatch
-    # host (registry.bootstrap_plugins) when run in the fused runtime.
-    _pp = _make_plugin_bootstrap_py({"path": True});
-    _ns = {};
-    exec(_pp, _ns);
-    assert callable(_ns.get("_dispatch_fn")) , "plugin bootstrap must yield a dispatch callable from the runtime";
-    # oauth_broker + inprocess_dispatch resolve from the runtime too (no staging).
-    assert hasattr(oauth_broker, "make_handler") , "oauth_broker must import from the runtime";
-    assert hasattr(inprocess_dispatch, "boot")
-    and hasattr(inprocess_dispatch, "forward") , "inprocess_dispatch must import from the runtime";
+    # The bootstrap inserts the runtime plugin dir on sys.path and imports the
+    # plugins as TOP-LEVEL modules (manifest, registry, built_in.*). Snapshot +
+    # restore import state so it can't shadow other suites' staged plugin copies
+    # in a shared xdist worker (the integration suite stages its own to a tmp dir).
+    import sys;
+    _saved_path = list(sys.path);
+    _saved_mods = set(sys.modules.keys());
+    try {
+        # The plugin bootstrap loads the plugins from the runtime + wires the
+        # dispatch host (registry.bootstrap_plugins) in the fused runtime.
+        _pp = _make_plugin_bootstrap_py({"path": True});
+        _ns = {};
+        exec(_pp, _ns);
+        assert callable(_ns.get("_dispatch_fn")) , "plugin bootstrap must yield a dispatch callable from the runtime";
+        # oauth_broker + inprocess_dispatch resolve from the runtime too (no staging).
+        assert hasattr(oauth_broker, "make_handler") , "oauth_broker must import from the runtime";
+        assert hasattr(inprocess_dispatch, "boot")
+        and hasattr(inprocess_dispatch, "forward") , "inprocess_dispatch must import from the runtime";
+    } finally {
+        sys.path[:] = _saved_path;
+        for _k in list(sys.modules.keys()) {
+            if _k not in _saved_mods {
+                del sys.modules[_k];
+            }
+        }
+    }
 }
 
 """Editable worktree roots are auto-detected from __editable__.*.pth links."""
