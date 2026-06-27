@@ -28,12 +28,26 @@ def _inject_entry_elf(llvm_ir_str: str, triple: str = "") -> str {
     globals_ir = ""
         if has_jac_argc
         else ('@__jac_argc = global i32 0\n' + '@__jac_argv = global ptr null\n\n');
+    # Init-array bridge (#6978 0.1a): the bespoke _start bypasses libc startup,
+    # so the executable's own DT_INIT_ARRAY (which __libc_start_main would run) is
+    # never processed. A static-archive floor member may ship a load-time
+    # constructor (e.g. liblzma crc32 sets its .bss dispatch pointer there). The
+    # ELF linker writes the merged .init_array's base + entry count into these two
+    # globals; main loops over them and calls each constructor before jac_entry.
+    # Count defaults to 0, so a binary with no constructors runs nothing extra.
+    # Guard the globals like __jac_argc so a module that already declares them
+    # (or a re-injection) does not produce a duplicate-global IR error.
+    initarr_ir = ""
+        if "__jac_init_array" in llvm_ir_str
+        else (
+            '@__jac_init_array = global ptr null\n' + '@__jac_init_count = global i64 0\n\n'
+        );
     # Only declare exit() if sys.exit() didn't already declare it
     # llvmlite quotes the name as @"exit", so check both forms
     has_exit = "@exit" in llvm_ir_str or '@"exit"' in llvm_ir_str;
     exit_decl = "" if has_exit else 'declare void @exit(i32) noreturn\n\n';
     ir = (
-        '\n; --- injected entry point ---\n' + globals_ir + exit_decl + 'declare ptr @llvm.stacksave()\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n\n' + 'define void @_start() naked noreturn {\n' + 'entry:\n' + '    %sp = call ptr @llvm.stacksave()\n' + '    %argc = load i32, ptr %sp\n' + '    %argv = getelementptr i8, ptr %sp, i64 8\n' + '    %ret = call i32 @main(i32 %argc, ptr %argv)\n' + '    call void @exit(i32 %ret)\n' + '    unreachable\n' + '}\n'
+        '\n; --- injected entry point ---\n' + globals_ir + initarr_ir + exit_decl + 'declare ptr @llvm.stacksave()\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    %ia = load ptr, ptr @__jac_init_array\n' + '    %ic = load i64, ptr @__jac_init_count\n' + '    br label %ia.cond\n' + 'ia.cond:\n' + '    %i = phi i64 [ 0, %entry ], [ %inext, %ia.body ]\n' + '    %more = icmp ult i64 %i, %ic\n' + '    br i1 %more, label %ia.body, label %ia.done\n' + 'ia.body:\n' + '    %slot = getelementptr ptr, ptr %ia, i64 %i\n' + '    %fn = load ptr, ptr %slot\n' + '    call void %fn()\n' + '    %inext = add i64 %i, 1\n' + '    br label %ia.cond\n' + 'ia.done:\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n\n' + 'define void @_start() naked noreturn {\n' + 'entry:\n' + '    %sp = call ptr @llvm.stacksave()\n' + '    %argc = load i32, ptr %sp\n' + '    %argv = getelementptr i8, ptr %sp, i64 8\n' + '    %ret = call i32 @main(i32 %argc, ptr %argv)\n' + '    call void @exit(i32 %ret)\n' + '    unreachable\n' + '}\n'
     );
     return llvm_ir_str + ir;
 }
@@ -215,6 +229,21 @@ impl nacompile(
         );
     }
 
+    # linux/elf target: emit an ELF binary via the pure-Jac ELF linker, letting a
+    # macOS (or any) host cross-build for Linux. A bare alias maps to
+    # x86_64-unknown-linux-gnu; a full triple is used verbatim.
+    # Bare aliases or a GNU/musl Linux triple. Suffix-match `linux-gnu`/
+    # `linux-musl` rather than a bare `linux` substring so kernel-but-not-ELF-libc
+    # triples like `*-linux-android` do not accidentally route here.
+    is_linux_target = (target in ["linux", "elf"])
+    or ("linux-gnu" in target)
+    or ("linux-musl" in target);
+    if is_linux_target {
+        os.environ["JAC_NATIVE_TARGET"] = (
+            target if "-" in target else "x86_64-unknown-linux-gnu"
+        );
+    }
+
     # Scrub: wipe cached compilation artifacts under the source tree
     if scrub {
         import from jaclang.jac0core.jir { scrub_cache_dirs }
@@ -227,8 +256,10 @@ impl nacompile(
 
     auto_promote = is_jac(filename) and not is_native_module(filename);
 
-    # Detect platform (host darwin, or an explicit macOS cross-target)
-    is_macos = (sys.platform == "darwin") or is_macos_target;
+    # Detect platform. The host default is overridden by an explicit cross-target
+    # so a macOS host can emit ELF (linux) / PE (windows), not just Mach-O.
+    is_macos = ((sys.platform == "darwin") and not is_windows and not is_linux_target)
+    or is_macos_target;
 
     # Determine output path
     if not output {
@@ -742,8 +773,9 @@ def _clib_to_archive_name(clib_path: str) -> str {
 that satisfy the symbols imported from it and return (member_object_bytes,
 handled_clib_paths). The caller drops handled paths from needed_libs /
 symbol_lib_map so the floor links in statically instead of as a dylib. Mach-O
-only for now (#6978 Phase 0.1a); ELF/PE keep the dylib path until their linkers
-gain archive-member merge. Cross-archive floors (e.g. ssl -> crypto) are a
+and ELF are supported (both linkers merge archive members); PE keeps the dylib
+path. The bundled floor is TLS-free on both targets (#6978 0.0), so no TLS
+relocation work is involved. Cross-archive floors (e.g. ssl -> crypto) are a
 follow-up: only symbols defined in the directly-imported archive are pulled."""
 def _collect_floor_archives(
     clib_paths: list, clib_symbol_lib: dict, triple: str, is_macos: bool
@@ -752,7 +784,12 @@ def _collect_floor_archives(
     import from jaclang.compiler.passes.native.linker_common { select_ar_members }
     member_bytes: list = [];
     handled: set = set();
-    if not is_macos or not clib_paths {
+    # PE/COFF has no archive-member merge yet; Mach-O and ELF do. Derive the
+    # PE check from the triple rather than a parameter (keeps the signature
+    # stable for the single call site).
+    tl = triple.lower();
+    is_pe = ("windows" in tl) or ("win32" in tl) or ("msvc" in tl) or ("mingw" in tl);
+    if is_pe or not clib_paths {
         return (member_bytes, handled);
     }
     lib_dir = _floor_lib_dir(triple);
@@ -779,8 +816,10 @@ def _collect_floor_archives(
         }
         paths_by_archive.setdefault(arch_file, []).append(clib_path);
         for s in syms_by_lib.get(clib_path, []) {
-            # Mach-O symbols carry a leading underscore.
-            roots_by_archive.setdefault(arch_file, []).append("_" + s);
+            # Mach-O mangles a leading underscore onto C names; ELF does not.
+            roots_by_archive.setdefault(arch_file, []).append(
+                ("_" + s) if is_macos else s
+            );
         }
     }
     for (arch_file, roots) in roots_by_archive.items() {
