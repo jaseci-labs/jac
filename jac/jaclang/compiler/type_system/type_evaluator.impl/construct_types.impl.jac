@@ -256,19 +256,6 @@ impl TypeEvaluator.get_type_of_int(nd: uni.Int) -> TypeBase {
     return self.prefetch.int_class;
 }
 
-"""Return the effective type of the string."""
-impl TypeEvaluator.get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase {
-    # FIXME: Strings are a type of LiteralString type:
-    # "foo" is not `str` but Literal["foo"], however for now we'll
-    # not considering that and make it work and will implement that
-    # later.
-    #
-    # see: getTypeOfString() in pyright (it requires parsing the sub
-    # file of the typing module).
-    assert self.prefetch.str_class is not None;
-    return self.prefetch.str_class;
-}
-
 """Return the effective type of an ability."""
 impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
     if node_.name_spec.type is not None {

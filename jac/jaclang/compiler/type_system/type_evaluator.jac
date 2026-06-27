@@ -360,7 +360,6 @@ obj TypeEvaluator {
         node_: uni.Ability, func_type: types.FunctionType
     ) -> types.FunctionType;
 
-    def get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase;
     def get_type_of_int(nd: uni.Int) -> TypeBase;
     def get_type_of_float(nd: uni.Float) -> TypeBase;
     def get_type_of_expression(
@@ -524,8 +523,6 @@ obj TypeEvaluator {
     def _get_special_form_type(
         name: str, symbol_type: types.TypeBase
     ) -> types.TypeBase | None;
-    # creates Self TypeVar if symbol is typing.Self
-    def create_self_type(symbol_type: types.TypeBase) -> types.TypeVarType | None;
     # --- Callable type handling (similar to Pyright's createCallableType) ---
     def _create_callable_type(
         type_args_expr: uni.Expr | None, error_node: uni.Expr
@@ -537,11 +534,6 @@ obj TypeEvaluator {
 
     def _lookup_object_member(
         base_type: types.ClassType, member: str
-    ) -> type_utils.ClassMember | None;
-
-    # Get bound member from a class type, handling type[T] subscripts.
-    def get_type_of_bound_member(
-        object_type: types.ClassType, member_name: str
     ) -> type_utils.ClassMember | None;
 
     # Check if ClassType is type[T] (builtin type with type args).
@@ -628,10 +620,6 @@ obj TypeEvaluator {
         param_type: TypeBase, arg_type: TypeBase, bindings: dict[str, TypeBase]
     ) -> bool;
 
-    def infer_type_args(
-        caller_type: types.ClassType, expr: uni.FuncCall
-    ) -> list[TypeBase];
-
     def _infer_type_args_from_method(
         caller_type: types.ClassType,
         expr: uni.FuncCall,
@@ -652,11 +640,6 @@ obj TypeEvaluator {
         typ: types.TypeBase, bindings: dict[str, types.TypeBase]
     ) -> types.TypeBase;
 
-    def _get_constructor_for_inference(
-        caller_type: types.ClassType
-    ) -> types.FunctionType | None;
-
-    def _has_meaningful_params(method: types.FunctionType) -> bool;
     def _collect_type_var_bindings(
         method: types.FunctionType,
         expr: uni.FuncCall,
@@ -688,10 +671,6 @@ obj TypeEvaluator {
     def validate_typevar_in_type_expr(expr: uni.Expr) -> None;
     def validate_typevar_scope(expr: uni.Expr, type_var: types.TypeVarType) -> None;
     def validate_typevar_variance(func: uni.Ability) -> None;
-    def validate_typevar_operation(
-        expr: uni.Expr, operand_type: types.TypeBase, operation: str
-    ) -> None;
-
     def _get_enclosing_class_type_params(
         node_: uni.UniNode
     ) -> list[types.TypeVarType];
@@ -734,10 +713,6 @@ obj TypeEvaluator {
         target: NarrowingTarget
     ) -> TypeBase | None;
 
-    def _refine_isinstance_type(
-        narrowing_key: str, isinstance_type: TypeBase, condition: uni.Expr
-    ) -> TypeBase;
-
     def _filter_union_for_isinstance(
         base_type: TypeBase, target_type: TypeBase
     ) -> TypeBase | None;
@@ -757,7 +732,6 @@ obj TypeEvaluator {
 
     def _is_callable_type(t: TypeBase) -> bool;
     def _filter_union_to_callables(union_type: TypeBase) -> TypeBase;
-    def _filter_union_to_non_callables(union_type: TypeBase) -> TypeBase;
     def _is_ellipsis_only_body(body: list[uni.CodeBlockStmt]) -> bool;
     def _is_type_alias_annotation(
         annotation_type: TypeBase, tag_expr: uni.Expr

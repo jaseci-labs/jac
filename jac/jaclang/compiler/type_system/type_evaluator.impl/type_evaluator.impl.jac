@@ -5039,28 +5039,6 @@ impl TypeEvaluator._apply_narrowing(
     }
 }
 
-"""Refine an isinstance narrowed type by filtering the variable's declared type.
-
-When isinstance(x, list) narrows x: list[int] | str, using bare `list` loses
-the generic params. Instead, filter the declared union to keep only members
-that are instances of the isinstance class, preserving their type arguments.
-Falls back to the raw isinstance type if no union filtering is possible
-(e.g., the variable's type is not a union, or no members match).
-"""
-impl TypeEvaluator._refine_isinstance_type(
-    narrowing_key: str, isinstance_type: types.TypeBase, condition: uni.Expr
-) -> types.TypeBase {
-    sym = self._find_symbol_by_key(narrowing_key, condition);
-    if sym is not None {
-        base_type = self.get_type_of_symbol(sym);
-        filtered = self._filter_union_for_isinstance(base_type, isinstance_type);
-        if filtered is not None {
-            return filtered;
-        }
-    }
-    return isinstance_type;
-}
-
 """Filter a union type to only include types that pass isinstance(x, target_type).
 
 Returns types from the union that are:
@@ -5488,35 +5466,6 @@ impl TypeEvaluator._filter_union_to_callables(
         }
     }
     if self._is_callable_type(union_type) {
-        return union_type;
-    }
-    return types.NeverType();
-}
-
-"""Filter a union type to only its non-callable members.
-
-Given a union like `Callable[[int], str] | str | None`, returns
-`str | None`. For non-union types, returns the type unchanged if it
-is not callable, or NeverType if it is callable.
-"""
-impl TypeEvaluator._filter_union_to_non_callables(
-    union_type: types.TypeBase
-) -> types.TypeBase {
-    if isinstance(union_type, types.UnionType) and union_type.types {
-        non_callables: list[types.TypeBase] = [
-            t
-            for t in union_type.types
-            if not self._is_callable_type(t)
-        ];
-        if len(non_callables) == 0 {
-            return types.NeverType();
-        } elif len(non_callables) == 1 {
-            return non_callables[0];
-        } else {
-            return types.UnionType(types=non_callables);
-        }
-    }
-    if not self._is_callable_type(union_type) {
         return union_type;
     }
     return types.NeverType();
