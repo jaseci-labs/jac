@@ -37,6 +37,10 @@ impl CMapper.c_FuncDef(nd: object) -> object {
     # function must not license a Tier-A realloc-elide on a same-named param in
     # another (§7.5).
     self._list_bound = set();
+    # Reset scalar-var type tracking per function (used for char-literal
+    # promotion in binary ops) — a name's type in one function must not leak
+    # into another.
+    self._var_types = {};
     name = nd.decl.name;
     params: list[object] = [];
     vararg = None;
@@ -63,6 +67,8 @@ impl CMapper.c_FuncDef(nd: object) -> object {
             arg_n = ast3.arg(arg=p.name, annotation=ann);
             self._stamp(arg_n, p, text=p.name);
             params.append(arg_n);
+            # Track the param's scalar type for char-literal promotion (§ binop).
+            self._record_scalar_type(p.name, p.type);
         }
     }
     args = ast3.arguments(
@@ -159,6 +165,9 @@ impl CMapper.c_Decl(nd: object) -> object {
     and inner.type.values is not None {
         return self._directir_placeholder(inner.type);
     }
+    # Record this scalar's type so a later binary op can decide whether a
+    # char-literal sibling should promote to its ordinal (e.g. `i < 'z'`).
+    self._record_scalar_type(nd.name, inner);
     target = ast3.Name(id=nd.name, ctx=ast3.Store());
     self._stamp(target, nd, text=nd.name);
     nd_init = getattr(nd, "init");

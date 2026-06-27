@@ -740,21 +740,26 @@ test "enum_tu_collision.c: no duplicate module global shadows the function" {
     assert any("collides" in r for r in reasons) , f"Expected a collision reason, got {reasons}";
 }
 
-# --- Greptile finding (original): the direct-IR `_expr_to_uni` silently
-# substituted int `0` for char literals, so `i < 'z'` lowered to `i < 0`. That
-# path is gone: loop-conditions now lower through the SAME mapper.c_Constant the
-# function top level uses, which renders a char constant under c2jac's char→str
-# model as the string `'z'` (never `0`). The condition therefore reads identically
-# whether the loop is at top level or nested — the point of single-sourcing it. ---
-test "for_char_cond.c: char literal in a for-condition lowers consistently (never the silent 0)" {
+# --- A C char constant is an integer. When it is compared/combined with a
+# NUMERIC operand (`i < 'z'`, where `i` is int) the faithful Jac is its ordinal
+# `i < 122`, never a string comparison (int vs str) nor the silent `0` the old
+# direct-IR `_expr_to_uni` substituted. c_BinaryOp promotes a char-literal
+# operand to its ordinal when the sibling resolves to int/float (via the scalar-
+# var type map), while a char-to-char compare (`c == 'a'`, char→str var) keeps
+# the readable string form. ---
+test "for_char_cond.c: char literal in a for-condition lowers to its ordinal (not 0, not a str compare)" {
     (jac_str, tags) = _transpile("for_char_cond.c");
-    # Under the char→str model the loop compares against the char literal `'z'`,
-    # exactly as `i < 'z'` lowers at function top level — and never the silent `0`
-    # the old direct-IR substitution produced.
-    assert "i < 'z'" in jac_str , f"Expected `i < 'z'` (char→str model) in:\n{jac_str}";
+    # 'z' is 122; the int loop variable must compare against the ordinal 122.
+    assert "i < 122" in jac_str , f"Expected `i < 122` (ord('z')) in:\n{jac_str}";
     assert "i < 0" not in jac_str , f"char literal must not collapse to 0 in:\n{jac_str}";
-    # The char constant carries no per-node loss, so the loop stays a clean
-    # IterForStmt with no Tier-B demotion.
+    assert "i < 'z'" not in jac_str , f"int-vs-char compare must promote to the ordinal, not a str compare:\n{jac_str}";
+    # The flip side: a char-to-char compare (`c == 'a'`, where `c` is a char→str
+    # variable) must KEEP the readable string form — promoting it to `c == 97`
+    # would compare a str to an int (always false). The promotion is type-aware,
+    # not blanket.
+    assert "c == 'a'" in jac_str , f"char-var vs char-literal compare must stay a str compare:\n{jac_str}";
+    assert "c == 97" not in jac_str , f"char-var compare must not be promoted to an ordinal:\n{jac_str}";
+    # Faithful → clean IterForStmt, no Tier-B demotion for this loop.
     reasons = [nt.reason for nt in tags.tier_b_entries()];
     assert not any("not faithfully lowered" in r for r in reasons) , f"Unexpected Tier-B: {reasons}";
 }
