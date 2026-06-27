@@ -353,12 +353,9 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
     # filter. Reads [plugins.scale.microservices.routes]; never touches
     # the cluster. Cheap, no auth deferral on startup races.
     async def services_handler(request: Request) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get("http_status", 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         return JSONResponse(
             content={"ok": True, "data": {"services": _microservice_services()}}
@@ -384,12 +381,9 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
     # hood). Query params: service, level, search, trace, since
     # (default 15m), limit (default 200, max 1000).
     async def query_handler(request: Request) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get("http_status", 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         qp = request.query_params;
         service = (qp.get("service") or "").strip();
@@ -510,12 +504,9 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
     # Uses a wider time window (24h) because trace_ids often surface
     # in incident reports hours after the request.
     async def trace_handler(request: Request, trace_id: str) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get("http_status", 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
 
         now_ns = int(time.time() * 1_000_000_000);

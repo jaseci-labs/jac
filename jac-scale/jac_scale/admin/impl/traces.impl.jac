@@ -224,12 +224,9 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
     # GET /admin/traces/services - dropdown options for the UI service
     # filter. Reads [plugins.scale.microservices.routes]; no cluster call.
     async def services_handler(request: Request) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get("http_status", 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         return JSONResponse(
             content={"ok": True, "data": {"services": _trace_services()}}
@@ -254,12 +251,9 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
     # GET /admin/traces - TraceQL search. Query params: service, status
     # (error), min_duration_ms, since (default 1h), limit (default 20).
     async def search_handler(request: Request) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get("http_status", 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         qp = request.query_params;
         service = (qp.get("service") or "").strip();
@@ -357,12 +351,9 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
 
     # GET /admin/traces/{trace_id} - one trace's spans for the waterfall.
     async def trace_handler(request: Request, trace_id: str) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get("http_status", 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         norm = _normalize_trace_id(trace_id);
         if not norm {
