@@ -167,10 +167,3 @@ impl ExecutionContext.aset_user_root(root_id: str) -> None {
     self.user_root = await self._aget_anchor(root_id);
     self.entry_node = self.user_root;
 }
-
-"""Async mirror of set_entry_node — resolves entry node via async Memory."""
-impl ExecutionContext.aset_entry_node(entry_node: (str | None)) -> None {
-    self.entry_node = (await self._aget_anchor(entry_node))
-        if entry_node
-        else self.user_root;
-}

@@ -82,21 +82,3 @@ obj HTTPTransport(BaseTransport) {
     def send(data: any) -> None;
     def close -> None;
 }
-
-"""Stream Transport for Server-Sent Events (SSE)."""
-obj StreamTransport(BaseTransport) {
-    has queue: any = None;
-
-    async def connect -> None;
-    async def send(data: any) -> None;
-    async def close -> None;
-}
-
-"""WebSocket Transport for bidirectional communication."""
-obj WebSocketTransport(BaseTransport) {
-    has websocket: any = None;
-
-    async def connect -> None;
-    async def send(data: any) -> None;
-    async def close -> None;
-}
