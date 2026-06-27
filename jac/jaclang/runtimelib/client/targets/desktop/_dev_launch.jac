@@ -76,7 +76,7 @@ def _editable_roots_from_site -> dict[str, str] {
         }
     }
     # Import fallback for finder-style editable installs (e.g. `jac install -e`,
-    # which registers a meta-path finder instead of a path line — its .pth carries
+    # which registers a meta-path finder instead of a path line -- its .pth carries
     # code, not a directory). Resolve the worktree root from the imported package's
     # __file__: the dir that *contains* the package dir is the editable root.
     _wanted = {"JAC_DESKTOP_JAC_SRC": "jaclang", "JAC_DESKTOP_SCALE_SRC": "jac_scale"};

@@ -5,7 +5,7 @@ native_desktop_target.impl.jac with the `BUILTIN_PLUGINS` list and
 `bootstrap_plugins()`.
 
 `bootstrap_plugins()` runs in the embedded CPython at startup. It is ordinary
-Jac (transpiled like the other plugin modules), so it is unit-testable — unlike
+Jac (transpiled like the other plugin modules), so it is unit-testable -- unlike
 the generated source strings it replaces.
 
 Transpiled to dependency-free Python at build time.

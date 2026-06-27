@@ -268,13 +268,13 @@ jobs:
       working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
       run: |
         # The Jac native linker emits DT_RUNPATH (readelf prints "RUNPATH"),
-        # not the legacy DT_RPATH — so match either.
+        # not the legacy DT_RPATH -- so match either.
         readelf -d libcef_dispatch.so | grep -qE '(RUN)?PATH.*\$ORIGIN'
 
     - name: ldd audit (no missing deps against libc + libcef stub)
       working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
       run: |
-        # With libcef.so absent, ldd will report it missing — that is expected.
+        # With libcef.so absent, ldd will report it missing -- that is expected.
         # The audit checks that no *other* unexpected dep is missing.
         # grep exits non-zero when it matches nothing (the expected/good case);
         # the trailing `|| true` keeps `set -e` from aborting the step there.

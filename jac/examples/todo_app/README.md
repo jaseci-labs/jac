@@ -26,7 +26,7 @@ toggle walkers the same way the embedded host does.
 
 ## Desktop plugin capabilities (least privilege)
 
-Desktop SDK capabilities are off by default — enable only what the app uses
+Desktop SDK capabilities are off by default -- enable only what the app uses
 under `[plugins.desktop.plugins]` in `jac.toml`. For example, an app that only
 sends an OS notification turns on just that one:
 
@@ -39,7 +39,7 @@ notification = true
 ```
 
 Call capabilities through the typed `@jac/desktop` SDK rather than hand-writing
-`window.__jac.invoke()` strings — SDK calls take positional args and return a
+`window.__jac.invoke()` strings -- SDK calls take positional args and return a
 promise that rejects with an `Error` carrying the host's `.code`:
 
 ```jac

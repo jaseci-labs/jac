@@ -1,4 +1,4 @@
-"""Todo desktop example — adapted from jac-client basic-full-stack.
+"""Todo desktop example -- adapted from jac-client basic-full-stack.
 
 Full `sv` + `cl` app runnable as a native desktop binary:
 

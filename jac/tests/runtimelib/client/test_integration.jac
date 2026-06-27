@@ -1031,7 +1031,7 @@ test "generated host source contains required elements" {
     # Bridge must be inlined (not imported from separate file)
     assert "PyGILState_Ensure" in src;
     assert "respond" in src;
-    # Plugin bootstrap must use os.path.join(_root, ...) — Jac f-strings with
+    # Plugin bootstrap must use os.path.join(_root, ...) -- Jac f-strings with
     # nested quotes produced spec_from_file_location('mod, mod.py') (null loader).
     assert "os.path.join(_root," in src;
     assert "desktop_plugin, desktop_plugin.py" not in src;
@@ -1152,7 +1152,7 @@ test "js sdk snippet matches generated host source" {
 A text-level contract between desktop_api.cl.jac (the hand-written typed SDK)
 and the built-in plugins' dispatch. Catches the drift a hand-written SDK is
 prone to: a method calling a renamed/removed plugin or command. (The host may
-expose more commands than the SDK surfaces — that direction is allowed.)"""
+expose more commands than the SDK surfaces -- that direction is allowed.)"""
 test "client SDK commands map to host plugin commands" {
     import re;
     plugin_dir = _plugin_src_dir();
@@ -1180,7 +1180,7 @@ test "client SDK commands map to host plugin commands" {
 in desktop_api.cl.jac.
 
 `desktop_sdk_exports` (in plugin_config.jac) is the authoritative export list
-the `@jac/desktop` module entry point hands to jaclang's client compiler —
+the `@jac/desktop` module entry point hands to jaclang's client compiler --
 `obj` types that the generic export extractor misses. It is hand-maintained, so
 adding an `obj foo {}` to the SDK without listing `'foo'` here silently breaks
 the import. This test pins the two together so that drift fails in CI rather

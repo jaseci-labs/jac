@@ -2,7 +2,7 @@
 
 
 Moved verbatim from client_runtime.impl.jac. Uses only ambient JS globals
-(window, globalThis, fetch, JSON, Date, Reflect, ...) — no framework imports.
+(window, globalThis, fetch, JSON, Date, Reflect, ...) -- no framework imports.
 """
 
 impl navigate(path: str) -> None {
@@ -165,7 +165,7 @@ impl __invalidateEndpoint(endpoint_key: str) -> None {
 # RAW FETCH HELPERS (no caching, just HTTP)
 # ============================================================================
 
-# Native bridge helpers (desktop only — only reachable when __JAC_NATIVE__ is set).
+# Native bridge helpers (desktop only -- only reachable when __JAC_NATIVE__ is set).
 async def __nativeInvoke(kind: str, name: str, `node: str, fields: dict) -> any {
     token = __getLocalStorage("jac_token") or "";
     payload = {

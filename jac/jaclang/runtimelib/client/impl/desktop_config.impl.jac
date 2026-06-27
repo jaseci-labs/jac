@@ -131,7 +131,7 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
 
 Without this, a typo under [plugins.desktop.plugins.*] is silently ignored:
 a misspelled `allow_read` leaves the fs allow-list empty (no file access),
-and a misspelled plugin name disables the capability — both with no warning.
+and a misspelled plugin name disables the capability -- both with no warning.
 Valid keys are derived from the declared config schema (the single source of
 truth), so this never drifts from what the plugins actually accept. Only
 sub-keys for plugins that declare structured config (fs, shell, clipboard) are
