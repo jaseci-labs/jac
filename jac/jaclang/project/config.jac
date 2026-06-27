@@ -296,7 +296,6 @@ obj JacConfig {
     ) -> JacConfig;
 
     def apply_env_interpolation -> None;
-    def apply_cli_overrides(args: dict[(str, Any)]) -> None;
     def apply_profile(profile_name: str, _visited: set | None = None) -> None;
     def apply_profile_overlay(profile_name: str | None = None) -> None;
     def get_plugin_deps(dep_type: str) -> dict[str, any];

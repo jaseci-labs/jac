@@ -138,33 +138,6 @@ impl JacConfig.apply_env_interpolation -> None {
     self.environments = _interpolate_recursive(self.environments);
 }
 
-impl JacConfig.apply_cli_overrides(args: dict[(str, Any)]) -> None {
-    if args.get("session") {
-        self.run.session = args["session"];
-    }
-    if "main" in args {
-        self.run.main = args["main"];
-    }
-    if "cache" in args {
-        self.run.cache = args["cache"];
-    }
-    if args.get("port") {
-        self.serve.port = args["port"];
-    }
-    if args.get("directory") {
-        self.test.directory = args["directory"];
-    }
-    if "verbose" in args {
-        self.test.verbose = args["verbose"];
-    }
-    if args.get("xit") {
-        self.test.fail_fast = args["xit"];
-    }
-    if args.get("maxfail") {
-        self.test.max_failures = args["maxfail"];
-    }
-}
-
 """Deep merge two dicts: recursively merges nested dicts, overwrites scalars."""
 def _deep_merge(base: dict, `override: dict) -> dict {
     result = base.copy();
