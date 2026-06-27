@@ -32,7 +32,7 @@ it dispatches to:
 """
 
 import ast as ast3;
-import from pycparser { c_ast }
+import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.compiler.c2jac.tags { Tier, Mechanism, Idiom, NodeTag, TagTable }
 import from jaclang.compiler.c2jac.boundary { default_tier, default_mechanism }
 import from jaclang.compiler.c2jac.c_common {
@@ -56,7 +56,8 @@ import from jaclang.compiler.c2jac.c_common {
     CLIT_CHAR,
     CLIT_STRING,
     UNSUPPORTED_STMT,
-    UNSUPPORTED_EXPR
+    UNSUPPORTED_EXPR,
+    jac_prim_zero
 }
 import from jaclang.compiler.c2jac.c_types {
     C_PRIM_MAP,

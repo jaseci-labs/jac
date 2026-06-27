@@ -49,8 +49,8 @@ def transpile_c_file(
 }
 
 def transpile_c_str(c_src: str, filename: str) -> tuple[str, TagTable] {
-    # pycparser imported lazily so importing c2jac has no dep cost unless you use it.
-    import from pycparser { c_parser }
+    # pycparser is vendored in-tree (jaclang.vendor.pycparser) — no third-party dep.
+    import from jaclang.vendor.pycparser { c_parser }
     parser = c_parser.CParser();
     try {
         file_ast = parser.parse(c_src, filename);
@@ -92,6 +92,7 @@ def _transpile_ast(
     # --- Step 5: splice DIRECT_IR nodes in place of sentinels ---
     builder = CUniBuilder(src=orig_src, tags=tags, enum_verdicts=enum_verdicts);
     _splice_directir(uni_mod, mapper.slot_map, builder);
+    uni_mod.has_synthesized_tokens = True;
 
     # --- Step 6: unparse + format ---
     # requires_format=True: UnparsePass omits "to"/"by" keywords for IterForStmt.

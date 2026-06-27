@@ -243,18 +243,14 @@ impl CMapper._zero_default(inner: object) -> object {
         names = inner.type?.names or [];
     }
     jac = jac_prim(names);
-    if jac == "float" {
-        (d, t) = (ast3.Constant(value=0.0), "0.0");
-    } elif jac == "bool" {
-        (d, t) = (ast3.Constant(value=False), "False");
-    } elif jac == "str" {
+    if jac == "str" {
         # A zero `char` is the NUL byte; modelled as "" (empty string) rather
         # than embedding a literal NUL into the generated Jac source.
-        (d, t) = (ast3.Constant(value=""), '""');
+        (val, t) = ("", '""');
     } else {
-        (d, t) = (ast3.Constant(value=0), "0");
+        (val, t) = jac_prim_zero(jac);
     }
-    return self._stamp_manual(d, line, col, text=t);
+    return self._stamp_manual(ast3.Constant(value=val), line, col, text=t);
 }
 
 impl CMapper.c_Assignment(nd: object) -> object {

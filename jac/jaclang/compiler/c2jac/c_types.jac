@@ -10,7 +10,7 @@ This is the seed of roadmap #15 (a canonical internal C type model): centralizin
 name resolution here is the first step toward replacing the ad-hoc scatter.
 """
 
-import from pycparser { c_ast }
+import from jaclang.vendor.pycparser { c_ast }
 
 # C primitive/builtin type names that must NOT be treated as struct/typedef
 # names when resolving a pointer or sizeof target to a Jac type reference.

@@ -14,7 +14,7 @@ Pulling the analysis out keeps the gen/kill/merge rules legible as a unit,
 separate from the node-emission they guard.
 """
 
-import from pycparser { c_ast }
+import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.compiler.c2jac.c_idioms { malloc_array_match }
 
 def lb_merge(states: list) -> set {

@@ -382,14 +382,8 @@ impl CMapper._elem_default(tname: str) -> object {
     # Default-element Jac node for a list-of-objects of C type tname.
     if tname in C_PRIM_MAP {
         jac = C_PRIM_MAP.get(tname, "int");
-        if jac == "float" {
-            d = ast3.Constant(value=0.0);
-        } elif jac == "bool" {
-            d = ast3.Constant(value=False);
-        } else {
-            d = ast3.Constant(value=0);
-        }
-        return self._stamp_manual(d, self._lineno, 0);
+        (val, _text) = jac_prim_zero(jac);
+        return self._stamp_manual(ast3.Constant(value=val), self._lineno, 0);
     }
     fn = ast3.Name(id=tname, ctx=ast3.Load());
     self._stamp_manual(fn, self._lineno, 0, text=tname);
