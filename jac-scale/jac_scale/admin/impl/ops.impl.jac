@@ -564,12 +564,9 @@ impl JacAPIServerOps.register_ops_endpoints -> None {
     # {status, chain[]} with short-circuit diagnosis. Every probe is
     # best-effort; a dead backend renders a red row, never a 500.
     async def health_handler(request: Request) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get("http_status", 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
 
         signals: dict = {};

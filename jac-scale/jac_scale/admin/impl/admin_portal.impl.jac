@@ -532,6 +532,20 @@ impl JacAPIServerAdmin.require_admin(
     return None;
 }
 
+"""Admin gate returning a JSON 403 (ops-console style) instead of a TransportResponse."""
+impl JacAPIServerAdmin.require_admin_json(
+    Authorization: str | None
+) -> JSONResponse | None {
+    auth_error = self.require_admin(Authorization);
+    if auth_error {
+        return JSONResponse(
+            status_code=auth_error.meta.extra.get("http_status", 403),
+            content={"ok": False, "error": {"message": "Unauthorized"}}
+        );
+    }
+    return None;
+}
+
 """Admin login endpoint."""
 impl JacAPIServerAdmin.admin_login(username: str, password: str) -> TransportResponse {
     if not username or not password {
