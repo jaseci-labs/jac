@@ -1814,18 +1814,10 @@ impl NormalizePass.enter_string(nd: uni.String) -> None {
 
 """Stamp real source lines on synthesized zero-line tokens.
 
-gen_token stamps every structural token (braces, parens, operators, keywords)
-it synthesizes with the *node's* first_line/last_line. When a node carries no
-real position -- as happens for IR spliced in without source coordinates (e.g.
-the c2jac C->Jac path) -- those tokens inherit line=0. A zero-line closing `}`
-then mis-computes a block's last line, and the formatter's blank-line gap logic
-(DocIRGenPass.has_gap) keys off that, emitting spurious blank lines.
-
-This post-traversal walk gives any token still at line=0 a real line based on
-its POSITION among its siblings: an opening/leading token takes the first real
-line that follows it; a closing/trailing token takes the last real line that
-precedes it. Gated on line_no==0, so it is a no-op for normally-parsed source
-where every token already carries its own line.
+IR spliced without source coordinates (e.g. c2jac) inherits line=0 from
+gen_token, causing DocIRGenPass.has_gap to emit spurious blank lines.
+Assigns each zero-line token the nearest real sibling line (leading → next,
+trailing → prev). No-op for normally-parsed source.
 """
 impl NormalizePass.after_pass -> None {
     NormalizePass._fix_zero_toks_in_subtree(self.ir_in);

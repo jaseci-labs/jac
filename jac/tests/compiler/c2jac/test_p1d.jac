@@ -189,12 +189,118 @@ test "for_unsupported.c: infinite for(;;) preserves body" {
     assert "x = x + 1" in jac_str or "x += 1" in jac_str , f"Expected for(;;) body in:\n{jac_str}";
 }
 
-test "for_unsupported.c: unsupported for is marked Tier-B" {
+# --- The while-desugar is faithful — and so Tier-A — when the body has no
+# loop-level `continue`, the condition lowered cleanly, and every body construct
+# lowered. A descending `for (i = n; i > 0; i--)` (no IterForStmt) and an
+# infinite `for(;;)` both satisfy this: `init; while cond { body; step }` runs
+# exactly as the C loop. The desugar diverges from C only when a loop-level
+# `continue` skips a step (covered by for_continue.c below); a `continue` with
+# no step to skip stays faithful (covered by for_infinite_continue.c). ---
+test "for_unsupported.c: faithful descending/infinite desugars promote to Tier-A" {
     (jac_str, tags) = _transpile("for_unsupported.c");
-    tier_b = tags.tier_b_entries();
-    reasons = [nt.reason for nt in tier_b];
-    has_for = any("IterForStmt" in r for r in reasons);
-    assert has_for , f"Expected a Tier-B entry for the unsupported for-loop, got {reasons}";
+    # Neither loop has a continue / lossy condition / lossy body, so NO Tier-B
+    # tag should mention the while-desugar (both are now Tier-A C_FOR idioms).
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert not any("desugared to while" in r for r in reasons) , f"Faithful desugars must not be Tier-B, got {reasons}";
+    # The promotion is recorded with the C_FOR idiom (queryable via by_idiom),
+    # so metrics can tell a faithful while-desugar from a default-tagged node.
+    c_for = tags.by_idiom(Idiom.C_FOR);
+    assert len(c_for) >= 2 , f"Expected >=2 Tier-A C_FOR desugars (descending + infinite), got {len(
+        c_for
+    )}";
+    for nt in c_for {
+        assert nt.tier == Tier.TIER_A , f"C_FOR idiom must be Tier-A, got {nt.tier}";
+    }
+}
+
+test "for_continue.c: a loop-level continue keeps the while-desugar Tier-B" {
+    (jac_str, tags) = _transpile("for_continue.c");
+    # Body lowers fine (if/continue/assignment all have analogs) but the
+    # loop-level `continue` makes `body; step` unfaithful to C's step-then-retest.
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    cont_flagged = [
+        r
+        for r in reasons
+        if "continue" in r and "desugared to while" in r
+    ];
+    assert len(cont_flagged) >= 1 , f"Expected a Tier-B continue-semantics flag, got {reasons}";
+    # The sole loop is Tier-B, so no C_FOR (Tier-A) promotion may exist for it.
+    assert len(tags.by_idiom(Idiom.C_FOR)) == 0 , f"A continue-bearing desugar must not promote to Tier-A C_FOR";
+}
+
+test "for_continue.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_continue.c");
+    errs = _recompile_errors(jac_str, "for_continue.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- A `for(;;)` has no step, so a loop-level `continue` has nothing to skip:
+# C's `continue` retests the (absent → always-true) condition, exactly as the
+# desugared `while True { body }` does. The continue gate is paired with step
+# presence, so this infinite loop promotes to Tier-A *despite* its continue —
+# unlike the descending for_continue.c whose `i--` step the continue would skip. ---
+test "for_infinite_continue.c: a continue with no step still promotes to Tier-A" {
+    (jac_str, tags) = _transpile("for_infinite_continue.c");
+    # The lone loop is a faithful `while True` desugar, so nothing about it may be
+    # flagged Tier-B — in particular no continue-semantics reason.
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert not any("desugared to while" in r for r in reasons) , f"Step-free continue desugar must not be Tier-B, got {reasons}";
+    # The promotion is recorded with the C_FOR idiom and must be Tier-A.
+    c_for = tags.by_idiom(Idiom.C_FOR);
+    assert len(c_for) >= 1 , f"Expected a Tier-A C_FOR desugar for the for(;;)+continue loop, got {len(
+        c_for
+    )}";
+    for nt in c_for {
+        assert nt.tier == Tier.TIER_A , f"C_FOR idiom must be Tier-A, got {nt.tier}";
+    }
+}
+
+test "for_infinite_continue.c: the continue and body survive the desugar" {
+    (jac_str, tags) = _transpile("for_infinite_continue.c");
+    # The desugar keeps the `continue` and the post-continue accumulation verbatim.
+    assert "continue" in jac_str , f"Expected the loop-level continue in:\n{jac_str}";
+    assert "sum = sum + i" in jac_str or "sum += i" in jac_str , f"Expected the body accumulation in:\n{jac_str}";
+}
+
+test "for_infinite_continue.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_infinite_continue.c");
+    errs = _recompile_errors(jac_str, "for_infinite_continue.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
+# --- Review finding: the Tier-A promotion must also guard the init and step
+# clauses, not just cond/body/continue. A present-but-unmappable init or step is
+# silently dropped by _for_init / _step_as_stmt (they return None), so without an
+# explicit lossy flag the desugar would look faithful and wrongly reach Tier-A
+# while the emitted Jac no longer initializes / advances the loop. ---
+test "for_funcall_step.c: a dropped function-call step keeps the desugar Tier-B" {
+    (jac_str, tags) = _transpile("for_funcall_step.c");
+    # `for (i = 0; i < n; tick())` — the bare call step has no step-stmt analog
+    # and vanishes; cond/init/body all lower, so the *only* loss is the step.
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    step_flagged = [
+        r
+        for r in reasons
+        if "step not faithfully lowered" in r and "desugared to while" in r
+    ];
+    assert len(step_flagged) >= 1 , f"Expected a Tier-B dropped-step flag, got {reasons}";
+    # A dropped step is unfaithful, so no Tier-A C_FOR promotion may exist.
+    assert len(tags.by_idiom(Idiom.C_FOR)) == 0 , f"A dropped-step desugar must not promote to Tier-A C_FOR";
+}
+
+test "for_comma_init.c: a dropped comma/multi-decl init keeps the desugar Tier-B" {
+    (jac_str, tags) = _transpile("for_comma_init.c");
+    # `for (i = 0, j = 10; ...)` — the comma init isn't a single Assignment/Decl,
+    # so _for_init returns None and the initializer is dropped; cond/body/step are
+    # all faithful, isolating the init as the sole loss.
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    init_flagged = [
+        r
+        for r in reasons
+        if "init not faithfully lowered" in r and "desugared to while" in r
+    ];
+    assert len(init_flagged) >= 1 , f"Expected a Tier-B dropped-init flag, got {reasons}";
+    assert len(tags.by_idiom(Idiom.C_FOR)) == 0 , f"A dropped-init desugar must not promote to Tier-A C_FOR";
 }
 
 # --- Review finding: an unmappable for-condition that becomes `while True`

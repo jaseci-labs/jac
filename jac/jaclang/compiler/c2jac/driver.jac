@@ -1,19 +1,7 @@
 """c2jac orchestrator: preprocess → parse → prepass → map → PyastBuildPass → splice → unparse → format.
 
-Entry points:
-  transpile_c_file(filename, ...) -> (jac_str, TagTable)
-      File-level driver used by the CLI. Reads `filename`, preprocesses a `.c`
-      with pcpp (§8.1) — expanding #include/#define/#pragma/#if — passes an
-      already-preprocessed `.i` straight through, then transpiles. This is the
-      path callers should normally use; preprocessing is automatic.
-  transpile_c_str(c_src, filename) -> (jac_str, TagTable)
-      Lower-level entry for callers that already hold *preprocessed* C (a
-      translation unit with no surviving preprocessor directives). pycparser does
-      not run the C preprocessor, so directives reaching this path are an error.
-
-Dependency separation: only transpile_c_file's raw-`.c` branch needs pcpp, so it
-imports `preprocess_c` lazily. transpile_c_str / _transpile_ast (and the `.i`
-branch) run with pycparser alone — pcpp need not be installed to use them.
+transpile_c_file — CLI entry; preprocesses .c via pcpp (§8.1), passes .i straight through.
+transpile_c_str  — lower-level entry for already-preprocessed C; pcpp not required.
 """
 
 import ast as ast3;
@@ -32,10 +20,7 @@ import from jaclang.compiler.c2jac.directir {
 import from jaclang.compiler.c2jac.enum_prepass { build_enum_map }
 import from jaclang.compiler.c2jac.uni_builder { CUniBuilder }
 import from jaclang.compiler.c2jac.comments { inject_tier_b_comments }
-# NOTE: `preprocess_c` (pcpp) is imported lazily inside transpile_c_file — the
-# only path that preprocesses. transpile_c_str and _transpile_ast stay usable
-# with pycparser alone, so callers holding already-preprocessed C (and tests)
-# don't pull in the pcpp dependency. See the module docstring.
+
 def transpile_c_file(
     filename: str,
     include_dirs: (list[str] | None) = None,
@@ -44,20 +29,13 @@ def transpile_c_file(
     force_includes: (list[str] | None) = None,
     nostdinc: bool = False
 ) -> tuple[str, TagTable] {
-    # File-level entry: read `filename`, preprocess if it's a `.c` (pcpp, §8.1),
-    # pass an already-preprocessed `.i` straight through, then transpile. The
-    # CLI uses this; tests that already hold preprocessed C call transpile_c_str.
     with open(filename) as f {
         c_src = f.read();
     }
     if filename.endswith(".i") {
-        # Already preprocessed — running the preprocessor again is wrong (its
-        # output may carry #line markers / be re-tokenized). Parse as-is. No pcpp
-        # import on this path either.
         return transpile_c_str(c_src, filename);
     }
-    # Lazy import: pcpp is only needed to preprocess a raw `.c`. Keeping it here
-    # (not at module load) lets the pycparser-only entry points run without it.
+    # pcpp imported lazily so pycparser-only paths work without it installed.
     import from jaclang.compiler.c2jac.preprocess { preprocess_c }
     pre = preprocess_c(
         c_src,
@@ -72,12 +50,6 @@ def transpile_c_file(
 }
 
 def transpile_c_str(c_src: str, filename: str) -> tuple[str, TagTable] {
-    # pycparser does NOT run the C preprocessor: it expects an already-
-    # preprocessed translation unit. #include / #define / #pragma / #if reach
-    # the parser verbatim and fail with a cryptic "Directives not supported
-    # yet". transpile_c_file/the `jac c2jac` CLI preprocess .c with pcpp before
-    # getting here, so directives at this point mean a raw .c reached the
-    # low-level entry directly — surface actionable guidance instead.
     parser = c_parser.CParser();
     try {
         file_ast = parser.parse(c_src, filename);
@@ -121,18 +93,10 @@ def _transpile_ast(
     _splice_directir(uni_mod, mapper.slot_map, builder);
 
     # --- Step 6: unparse + format ---
-    # requires_format=True runs NormalizePass → DocIRGenPass → JacFormatPass which
-    # correctly emits "to" and "by" keywords for IterForStmt (the False path uses
-    # UnparsePass which omits those structural keywords, breaking the formatter).
-    # NormalizePass.after_pass stamps real source lines on the zero-line structural
-    # tokens it synthesizes for the spliced DIRECT_IR nodes, so no coordinate
-    # fix-up is needed here (this retired the former Step 5b _propagate_source_lines).
+    # requires_format=True: UnparsePass omits "to"/"by" keywords for IterForStmt.
     jac_str = uni_mod.unparse(requires_format=True);
 
     # --- Step 7: post-format Tier-B comment injection (§7, §9.2a) ---
-    # The single authoritative Tier-B record: a header summary of every Tier-B
-    # site plus inline notes on surrogate-marker lines. No-op for Tier-A-only
-    # output.
     jac_str = inject_tier_b_comments(jac_str, tags);
     return (jac_str, tags);
 }
@@ -154,12 +118,6 @@ def _populate_default_tags(nd: object, tags: TagTable) {
 def _splice_directir(
     mod_root: uni.Module, slot_map: dict[int, object], builder: CUniBuilder
 ) {
-    # Replace every direct-IR placeholder (see c2jac.directir) with the real uni
-    # nodes for its slot. Recognition and slot-decode live in `directir` — the one
-    # owner of the placeholder shape; this driver only walks, resolves, splices.
-    #
-    # Every failure mode is a hard error, never a silent skip: a leaked
-    # `__c2jac_directir__(N)` call reaching emitted Jac is far worse than a crash.
     sentinels = mod_root.get_all_sub_nodes(uni.ExprStmt);
     to_replace: list[tuple[uni.ExprStmt, int]] = [];
     for s in sentinels {
@@ -186,10 +144,7 @@ def _splice_directir(
         replacements = builder.build(c_node);
         _do_splice(sentinel, replacements);
     }
-    # Post-condition: no placeholder may survive into the tree we are about to
-    # unparse. If one does, the splice silently failed to find it (e.g. it sat in
-    # a parent collection _do_splice does not patch) and would leak into output —
-    # surface it now instead. The `directir_no_leak` test locks this end to end.
+    # Post-condition: surviving placeholders leak into emitted Jac (`directir_no_leak` test).
     leaked = [
         s
         for s in mod_root.get_all_sub_nodes(uni.ExprStmt)
@@ -208,32 +163,24 @@ def _do_splice(sentinel: uni.ExprStmt, replacements: list[uni.UniNode]) -> None 
     if parent is None {
         return;
     }
-    # Find and replace in parent.kid.
-    try {
-        kid_idx = parent.kid.index(sentinel);
-        new_kid = [*parent.kid[:kid_idx], *replacements, *parent.kid[kid_idx + 1:]];
-        for r in replacements {
-            r.parent = parent;
-        }
-        parent.kid = new_kid;
-        parent._invalidate_sub_node_tab();
-    } except ValueError {
-    # skip
+    if sentinel not in parent.kid {
+        raise ValueError(
+            f"c2jac: direct-IR sentinel is not in its parent's kid list — the uni "
+            f"tree's parent/kid pointers disagree; splice cannot proceed"
+        );
     }
-    # Also replace in parent's semantic 'body' attribute if it exists.
+    kid_idx = parent.kid.index(sentinel);
+    new_kid = [*parent.kid[:kid_idx], *replacements, *parent.kid[kid_idx + 1:]];
+    for r in replacements {
+        r.parent = parent;
+    }
+    parent.kid = new_kid;
+    parent._invalidate_sub_node_tab();
     body = parent?.body;
-    if body is not None and isinstance(body, list) {
-        try {
-            body_idx = body.index(sentinel);
-            body[body_idx:body_idx + 1] = replacements;
-        } except ValueError {
-        # skip
-        }
+    if body is not None and isinstance(body, list) and sentinel in body {
+        body_idx = body.index(sentinel);
+        body[body_idx:body_idx + 1] = replacements;
     }
-    # For GlobalVars replacements (from ENUM_AS_CONSTS), they need to go
-    # to the Module-level body, not a code block body. The parent of a
-    # sentinel inside a ModuleCode's body IS the ModuleCode; we need to
-    # move GlobalVars up to Module.body. Handled by checking the replacement type.
     if any(
         isinstance(r, uni.GlobalVars) or isinstance(r, uni.Enum) for r in replacements
     ) {
@@ -246,7 +193,6 @@ def _hoist_to_module_body(
     immediate_parent: uni.UniNode,
     replacements: list[uni.UniNode]
 ) -> None {
-    # Find the Module ancestor.
     nd: uni.UniNode | None = immediate_parent;
     while nd is not None and not isinstance(nd, uni.Module) {
         nd = nd.parent;
@@ -255,12 +201,9 @@ def _hoist_to_module_body(
         return;
     }
     mod = nd;
-    # If immediate_parent IS the module, _do_splice already put replacements
-    # in Module.body — nothing more to do.
     if immediate_parent is mod {
         return;
     }
-    # Find the direct module-level child that is an ancestor of immediate_parent.
     cur: uni.UniNode = immediate_parent;
     while cur.parent is not None and cur.parent is not mod {
         cur = cur.parent;
@@ -269,41 +212,35 @@ def _hoist_to_module_body(
         return;
     }
     containing_child = cur;
-    # _do_splice already inserted replacements into immediate_parent.body and .kid.
-    # Remove them from there so they only appear at module level.
     for r in replacements {
-        try {
+        if r in immediate_parent.kid {
             immediate_parent.kid.remove(r);
-        } except ValueError {
-            pass;
         }
     }
     local_body = immediate_parent?.body;
     if local_body is not None and isinstance(local_body, list) {
         for r in replacements {
-            try {
+            if r in local_body {
                 local_body.remove(r);
-            } except ValueError {
-                pass;
             }
         }
     }
     immediate_parent._invalidate_sub_node_tab();
-    # Insert replacements just before the containing_child in Module.body and .kid.
-    try {
-        mc_idx = mod.body.index(containing_child);
-        try {
-            kid_idx = mod.kid.index(containing_child);
-        } except ValueError {
-            kid_idx = mc_idx;
-        }
-        for (i, r) in enumerate(replacements) {
-            mod.body.insert(mc_idx + i, r);
-            mod.kid.insert(kid_idx + i, r);
-            r.parent = mod;
-        }
-        mod._invalidate_sub_node_tab();
-    } except ValueError {
-    # skip
+    # raise: containing_child must be in Module.body; a miss silently drops constants.
+    if containing_child not in mod.body {
+        raise ValueError(
+            f"c2jac: ENUM_AS_CONSTS hoist target is not in Module.body — enum "
+            f"constants would be silently dropped from the emitted Jac"
+        );
     }
+    mc_idx = mod.body.index(containing_child);
+    kid_idx = mod.kid.index(containing_child)
+        if containing_child in mod.kid
+        else mc_idx;
+    for (i, r) in enumerate(replacements) {
+        mod.body.insert(mc_idx + i, r);
+        mod.kid.insert(kid_idx + i, r);
+        r.parent = mod;
+    }
+    mod._invalidate_sub_node_tab();
 }

@@ -1,23 +1,8 @@
 """Post-format Tier-B comment injection (derived from the TagTable).
 
-Inline comments cannot ride the AST: CPython drops comments at the tokenizer
-before the AST exists, and Jac's own comment handling is token/source-based —
-a synthetically built c2jac module has no `src_terminals` for the formatter's
-CommentInjectionPass to anchor against. So Tier-B annotations are injected as a
-*post-format text pass* over the already-formatted Jac (§7, resolving §9.2a).
-
-These comments are the single authoritative record of every best-effort
-(Tier-B) translation. Two outputs:
-
-- A compact **header block** listing every Tier-B site by C-source line + reason.
-  This is the only visibility the *faithful* Tier-B sites get (cast-elision,
-  C-for desugaring, comma-expression) — their emitted Jac is deliberately
-  indistinguishable from Tier-A and carries no inline marker.
-- An **inline** `# c2jac: BEST-EFFORT — <reason>` on each surrogate-marker line
-  (`__c2jac_unsupported__(<c_line>)` / `__c2jac_unsupported_expr__(<c_line>)`).
-  The surrogate emits its C-source line as the call argument; matching on that
-  line is the §9.2a coordinate-space resolution (anchor in C-source space, which
-  both the tag's `c_line` and the emitted marker share).
+Tier-B annotations are injected as a text pass over the already-formatted Jac:
+CPython discards comments before the AST exists and Jac's CommentInjectionPass
+requires src_terminals not present in a synthetically built module (§7, §9.2a).
 
 Entry point: inject_tier_b_comments(jac_str, tags) -> str
 """
@@ -25,8 +10,9 @@ Entry point: inject_tier_b_comments(jac_str, tags) -> str
 import re;
 import from jaclang.compiler.c2jac.tags { TagTable, NodeTag }
 
-# Matches both __c2jac_unsupported__(N) and __c2jac_unsupported_expr__(N); the
-# captured group is the C-source line the surrogate carries as its anchor.
+# Coupling: surrogate name is a literal here AND in mapper.jac
+# (_UNSUPPORTED_STMT/_UNSUPPORTED_EXPR) — rename either side and inline notes
+# vanish silently. CI backstop: 'surrogate lines get an inline BEST-EFFORT note'.
 glob _MARKER_RE = re.compile(r"__c2jac_unsupported(?:_expr)?__\((\d+)\)"),
      _NOTE_PREFIX = "# c2jac: BEST-EFFORT — ";
 

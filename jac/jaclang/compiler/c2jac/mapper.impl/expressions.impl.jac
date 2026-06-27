@@ -213,14 +213,23 @@ impl CMapper._desig_name(d: object) -> str {
 
 impl CMapper.c_ExprList(nd: object) -> object {
     # Comma-expression: emit last element (common C idiom, conservative).
-    # Earlier operands are evaluated for their side effects in C; dropping
-    # them is lossy whenever any precedes the last, so flag that case.
+    # The C comma evaluates every operand left-to-right but yields only the
+    # last, so we drop the leading operands. That's faithful when they're
+    # side-effect-free (pure constants / IDs / reads): their evaluation has no
+    # observable effect, so dropping them changes nothing and the result stays
+    # Tier-A. Only when a leading operand has a side effect (call, assignment,
+    # ++/--) does dropping it lose semantics — flag those Tier-B.
     if nd.exprs {
-        if len(nd.exprs) > 1 {
+        impure = [
+            e
+            for e in nd.exprs[:-1]
+            if not self._expr_reeval_safe(e)
+        ];
+        if impure {
             self._mark_tier_b(
                 nd,
-                f"comma expression — side effects of {len(nd.exprs) - 1} "
-                f"leading operand(s) dropped, only the final value emitted; verify",
+                f"comma expression — side effects of {len(impure)} leading "
+                f"operand(s) dropped, only the final value emitted; verify",
             );
         }
         return self.conv_expr(nd.exprs[-1]);

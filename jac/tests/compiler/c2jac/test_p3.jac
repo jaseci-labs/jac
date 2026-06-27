@@ -57,6 +57,35 @@ test "comma expression drops side effects → Tier-B" {
     assert "comma" in sites[0].reason.lower();
 }
 
+test "comma expression with pure leading operand stays Tier-A" {
+    # `(a, b)` — the leading operand `a` is a side-effect-free read, so dropping
+    # it changes nothing; only the final value matters. Must not be over-flagged.
+    (jac_str, tags) = _transpile("int comma(int a, int b) { return (a, b); }");
+    sites = tags.tier_b_entries();
+    assert [
+        s.reason
+        for s in sites
+        if "comma" in s.reason.lower()
+    ] == [] , f"Pure comma operand should stay Tier-A, got {[s.reason for s in sites]}";
+}
+
+test "comma expression flags only the impure leading operand" {
+    # `(a, f(), b)` — `a` is pure (droppable), `f()` has a side effect (not). The
+    # count in the verdict must reflect only the impure operand.
+    (jac_str, tags) = _transpile(
+        "int f(void); int comma(int a, int b) { return (a, f(), b); }"
+    );
+    sites = [
+        s
+        for s in tags.tier_b_entries()
+        if "comma" in s.reason.lower()
+    ];
+    assert len(sites) == 1 , f"Expected one comma flag, got {len(sites)}";
+    assert "1 leading" in sites[0].reason , f"Expected count of 1, got: {sites[
+        0
+    ].reason}";
+}
+
 test "designated initializer drops field name → Tier-B" {
     src = "struct P { int x; int y; }; struct P mk(void) { struct P p = {.y = 4, .x = 3}; return p; }";
     (jac_str, tags) = _transpile(src);
