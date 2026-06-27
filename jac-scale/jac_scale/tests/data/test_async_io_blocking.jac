@@ -26,16 +26,10 @@ import from pathlib { Path }
 import from concurrent.futures { ThreadPoolExecutor, as_completed }
 
 import requests;
+import from jac_scale.tests.server_support { get_free_port }
 
 glob FIXTURES_DIR = Path(__file__).parent.parent / "fixtures",
      JAC_FILE = FIXTURES_DIR / "race_app.jac";
-
-def get_free_port -> int {
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
-        s.bind(("", 0));
-        return s.getsockname()[1];
-    }
-}
 
 def register_user(base_url: str, username: str) -> str {
     res = requests.post(

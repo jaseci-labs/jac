@@ -11,18 +11,9 @@ import requests;
 import from pathlib { Path }
 
 import from jaclang.project.config { find_project_root }
+import from jac_scale.tests.server_support { get_free_port }
 
 glob JacScaleFixtures: Path = Path(__file__).parent.parent / "fixtures";
-
-"""Get a free port by binding to port 0 and releasing it."""
-def get_free_port -> int {
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
-        s.bind(("", 0));
-        s.listen(1);
-        port = s.getsockname()[1];
-    }
-    return port;
-}
 
 obj JacScaleTestRunner {
     """Helper class to run jac-scale examples and test their APIs."""
