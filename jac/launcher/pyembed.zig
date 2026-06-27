@@ -81,9 +81,14 @@ fn fail(comptime msg: []const u8) c_int {
 export fn jac_engine_boot() c_int {
     if (booted) return 0;
 
-    var threaded: std.Io.Threaded = .init_single_threaded;
-    const io = threaded.io();
+    // A properly-initialized blocking Io. The launcher gets its `io` from the Zig
+    // runtime's std.process.Init; this shim has no such entry point, so build a
+    // real Threaded instance (cpu-count + signal handlers + worker pool). The
+    // static `init_single_threaded` const skips that setup and segfaults blocking
+    // file I/O (materialize/executablePath) on Linux -- works on macOS by luck.
     const gpa = std.heap.c_allocator;
+    var threaded = std.Io.Threaded.init(gpa, .{});
+    const io = threaded.io();
 
     // The shim runs inside the host process, so its own image IS the host binary
     // (which carries the trailer payload). Resolve it for materialize + getpath.
