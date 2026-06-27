@@ -9,6 +9,7 @@ import from jac_scale.events.broker {
     RetryPolicy,
     HealthStatus
 }
+import from jac_scale.events.streams._stream_common { consumer_loop, wait_or_stop }
 import from jac_scale._optdeps.redis { Redis }
 import from jac_scale.db { get_redis_client }
 import logging;
@@ -244,19 +245,6 @@ obj RedisEventStream(EventStreamBroker) {
         }
     }
 
-    def _wait_or_stop(seconds: float) -> bool {
-        # Wait up to `seconds`, polling _stop_event in <=1s chunks so a SIGTERM
-        # during a long backoff doesn't block shutdown for the full delay.
-        deadline = time.time() + seconds;
-        while time.time() < deadline {
-            chunk = min(deadline - time.time(), 1.0);
-            if self._stop_event.wait(timeout=chunk) {
-                return True;
-            }
-        }
-        return False;
-    }
-
     def _handle_with_retry(
         topic: str,
         group: str,
@@ -288,7 +276,7 @@ obj RedisEventStream(EventStreamBroker) {
                 );
                 if attempt + 1 < retry.max_attempts {
                     delay = backoff[min(attempt, len(backoff) - 1)];
-                    if self._wait_or_stop(delay) {
+                    if wait_or_stop(self, delay) {
                         return;
                     }
                 }
@@ -299,22 +287,6 @@ obj RedisEventStream(EventStreamBroker) {
         # whole cycle (preserves at-least-once during a DLQ outage).
         if self._send_to_dlq(topic, event, retry) {
             self.ack(event);
-        }
-    }
-
-    def _consumer_loop(
-        topic: str, group: str, handler: Callable[[Event], any], retry: RetryPolicy
-    ) -> None {
-        while not self._stop_event.is_set() {
-            events = self.consume(
-                topic, group=group, max_messages=10, timeout_seconds=5.0
-            );
-            for event in events {
-                if self._stop_event.is_set() {
-                    return;
-                }
-                self._handle_with_retry(topic, group, event, handler, retry);
-            }
         }
     }
 
@@ -331,7 +303,7 @@ obj RedisEventStream(EventStreamBroker) {
 
         broker = self;
         def _loop {
-            broker._consumer_loop(topic, grp, handler, retry_policy);
+            consumer_loop(broker, topic, grp, handler, retry_policy);
         }
 
         thread = Thread(
