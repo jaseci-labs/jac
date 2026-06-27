@@ -655,38 +655,6 @@ impl check_deployment_status(
     return (False, "Timeout reached");
 }
 
-"""Create or update ConfigMap with binary tar.gz using Kubernetes API."""
-impl create_or_update_configmap(
-    namespace: str, configmap_name: str, tar_path: str
-) -> None {
-    try {
-        config.load_kube_config();
-    } except ConfigException {
-        config.load_incluster_config();
-    }
-    v1 = client.CoreV1Api();
-    with open(tar_path, 'rb') as f {
-        encoded_data = base64.b64encode(f.read()).decode('utf-8');
-    }
-    body = client.V1ConfigMap(
-        metadata=client.V1ObjectMeta(name=configmap_name),
-        binary_data={'jaseci-code.tar.gz': encoded_data}
-    );
-    try {
-        existing = v1.read_namespaced_config_map(configmap_name, namespace);
-        body.metadata.resource_version = existing.metadata.resource_version;
-        v1.patch_namespaced_config_map(
-            name=configmap_name, namespace=namespace, body=body
-        );
-    } except ApiException as e {
-        if (e.status == 404) {
-            v1.create_namespaced_config_map(namespace, body);
-        } else {
-            raise;
-        }
-    }
-}
-
 impl exclude_folders(tarinfo: tarfile.TarInfo) -> Optional[tarfile.TarInfo] {
     if tarinfo.isdir() and tarinfo.name.endswith("/.jac") {
         return None;
