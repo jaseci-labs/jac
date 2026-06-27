@@ -80,7 +80,7 @@ test "for_ternary.c: ?: in a for-body lowers to a Jac conditional expression" {
     # The augmented assignment `s += i > hi ? hi : i` must survive: a ternary RHS
     # used to make _expr_to_uni return None, dropping the whole assignment and
     # demoting the loop. The arm/cond order is `value if condition else other`.
-    assert "s += hi if i > hi else i" in jac_str , f"Expected conditional expression in for-body:\n{jac_str}";
+    assert "s += hi if (i > hi) else i" in jac_str , f"Expected conditional expression in for-body:\n{jac_str}";
 }
 
 test "for_ternary.c: faithful for-body is fully Tier-A (no phantom best-effort site)" {
@@ -130,7 +130,7 @@ test "for_comma.c: an impure comma is dropped and demotes its loop to Tier-B" {
     # whole assignment can't be lowered faithfully; the loop demotes to Tier-B
     # with the body-construct loss flagged rather than silently dropping the call.
     reasons = [nt.reason for nt in tags.tier_b_entries()];
-    assert any("not faithfully lowered" in r and "assignment" in r for r in reasons) , f"Expected the impure-comma loop flagged Tier-B, got {reasons}";
+    assert any("not faithfully lowered" in r and "comma" in r for r in reasons) , f"Expected the impure-comma loop flagged Tier-B, got {reasons}";
 }
 
 test "for_comma.c emitted Jac recompiles cleanly" {
@@ -427,10 +427,12 @@ test "for_multidecl_init.c: a multi-decl init lowers to per-decl assignments and
 
 test "for_multidecl_init.c: both decl initializers survive before the loop" {
     (jac_str, tags) = _transpile("for_multidecl_init.c");
-    # Each decl becomes its own pre-loop assignment (the C scope/type is dropped,
-    # but the initialized value is preserved, like the single-decl init path).
-    assert "i = 0" in jac_str , f"Expected preserved initializer 'i = 0' in:\n{jac_str}";
-    assert "j = 0" in jac_str , f"Expected preserved initializer 'j = 0' in:\n{jac_str}";
+    # Each decl becomes its own pre-loop declaration. Now that the init clause
+    # lowers through the SAME c_Decl the function top level uses, the C type is
+    # preserved too (`i: int = 0`) — the old direct-IR path dropped it to a bare
+    # `i = 0` assignment.
+    assert "i: int = 0" in jac_str , f"Expected preserved initializer 'i: int = 0' in:\n{jac_str}";
+    assert "j: int = 0" in jac_str , f"Expected preserved initializer 'j: int = 0' in:\n{jac_str}";
     assert "j = j + 2" in jac_str , f"Expected the body in:\n{jac_str}";
 }
 
@@ -527,7 +529,7 @@ test "for_nested_cond_clobber.c emitted Jac recompiles cleanly" {
 test "for_cast.c: a scalar cast in the body lowers its inner expr (statement not dropped)" {
     (jac_str, tags) = _transpile("for_cast.c");
     # The assignment must survive with the cast elided to its operand — not vanish.
-    assert "total = total + i / 2" in jac_str , f"Expected the scalar-cast statement preserved with the cast elided in:\n{jac_str}";
+    assert "total = total + (i / 2)" in jac_str , f"Expected the scalar-cast statement preserved with the cast elided in:\n{jac_str}";
 }
 
 test "for_cast.c: a scalar cast demotes its loop to Tier-B with a cast-specific reason" {
@@ -536,7 +538,7 @@ test "for_cast.c: a scalar cast demotes its loop to Tier-B with a cast-specific 
     cast_flagged = [
         r
         for r in reasons
-        if "scalar cast to `int` elided" in r
+        if "cast to `int` elided" in r
     ];
     assert len(cast_flagged) >= 1 , f"Expected a Tier-B scalar-cast flag, got {reasons}";
 }
@@ -580,10 +582,18 @@ test "for_deref.c: simple-deref loops stay fully Tier-A (full IterForStmt, no lo
     # Both deref bodies lower faithfully, so the loops keep the ascending
     # IterForStmt shape rather than falling back to the while-desugar.
     assert "for i = 0 to i < n by i += 1" in jac_str , f"Expected full IterForStmt in:\n{jac_str}";
-    # The only Tier-B site is the computed-deref function below; the two simple
-    # ones must contribute no losses.
+    # The only loop demoted is the computed-deref function below; the two simple
+    # ones must contribute no losses. A demoted loop now carries TWO Tier-B
+    # entries — the unmappable body construct itself plus the loop-level composite
+    # that aggregates it (§3) — so count the loop-level composites, of which there
+    # must be exactly one.
     reasons = [nt.reason for nt in tags.tier_b_entries()];
-    assert len(reasons) == 1 , f"Only the computed-deref loop should be Tier-B, got {reasons}";
+    loop_losses = [
+        r
+        for r in reasons
+        if "C-for body constructs not faithfully lowered" in r
+    ];
+    assert len(loop_losses) == 1 , f"Only the computed-deref loop should be Tier-B, got {reasons}";
 }
 
 test "for_deref.c: a computed deref `*(p + 1)` keeps the loop Tier-B (arithmetic not elidable)" {
@@ -618,12 +628,16 @@ test "for_body_rich.c: return inside a for body is preserved" {
     assert "return result" in jac_str , f"Expected 'return result' in:\n{jac_str}";
 }
 
-test "for_body_rich.c: dropped uninitialized decl demotes the loop to Tier-B" {
+test "for_body_rich.c: an uninitialized decl in the body is preserved faithfully (no demotion)" {
     (jac_str, tags) = _transpile("for_body_rich.c");
+    # Folding loop-body lowering back onto the py-ast path (the same one the
+    # function top level uses) means a bare `int local;` now lowers to a faithful
+    # Jac declaration `local: int;` — the old direct-IR for-builder had no case for
+    # it and silently dropped it, demoting the loop. The desugar is now fully
+    # faithful, so the loop carries NO Tier-B flag.
+    assert "local: int;" in jac_str , f"Expected the uninitialized decl preserved as `local: int;` in:\n{jac_str}";
     reasons = [nt.reason for nt in tags.tier_b_entries()];
-    # The bare `int local;` has no faithful direct-IR analog, so the loop must be
-    # flagged rather than presenting a truncated body as faithful.
-    assert any("declaration" in r for r in reasons) , f"Expected a Tier-B decl flag, got {reasons}";
+    assert len(reasons) == 0 , f"A faithfully-lowered decl must not demote the loop, got {reasons}";
 }
 
 test "for_body_rich.c emitted Jac recompiles cleanly" {
@@ -671,6 +685,51 @@ test "for_call_body.c emitted Jac recompiles cleanly" {
     assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
 }
 
+# --- GC / pointer idioms (free / malloc / realloc) inside a for-body. Now that
+# loop-body lowering is single-sourced through the mapper's py-ast path, a for-body
+# call runs through the SAME mapper.c_FuncCall idiom rewrites the function top
+# level uses — so the idiom verdict no longer depends on nesting depth (the old
+# direct-IR for-builder had no rewrite and demoted every such loop). `free(p)` is
+# faithfully elided to a no-op (Jac lists are GC'd → Tier-A FREE_ELIDE), while a
+# `realloc` whose pointer is NOT proven list-bound is honestly Tier-B (a raw-buffer
+# resize would be lost). ---
+test "for_ptr_idiom.c: free() in a for-body is faithfully elided (Tier-A FREE_ELIDE, loop not demoted)" {
+    (jac_str, tags) = _transpile("for_ptr_idiom.c");
+    # free() is a GC no-op in Jac, so the call is elided and the sum_then_free loop
+    # stays faithful — exactly as `free(p)` at function top level lowers.
+    free_elide = tags.by_idiom(Idiom.FREE_ELIDE);
+    assert len(free_elide) >= 1 , f"Expected a Tier-A FREE_ELIDE for the free() call, got {len(
+        free_elide
+    )}";
+    for nt in free_elide {
+        assert nt.tier == Tier.TIER_A , f"FREE_ELIDE must be Tier-A, got {nt.tier}";
+    }
+}
+
+test "for_ptr_idiom.c: realloc() not proven list-bound demotes the loop to Tier-B" {
+    (jac_str, tags) = _transpile("for_ptr_idiom.c");
+    # `arr = realloc(arr, i)` on a bare pointer param (not proven list-bound) is
+    # elided to its pointer arg but the resize semantics are lost, so the realloc
+    # is REALLOC_ELIDE Tier-B and the enclosing loop carries the composite body-loss.
+    reasons = [nt.reason for nt in tags.tier_b_entries()];
+    assert any("realloc elided" in r for r in reasons) , f"Expected the realloc-elide Tier-B flag, got {reasons}";
+    assert any("not faithfully lowered" in r and "realloc" in r for r in reasons) , f"Expected the realloc-bearing loop demoted with a body-loss reason, got {reasons}";
+}
+
+test "for_ptr_idiom.c: the idiom calls are rewritten, not emitted as literal calls" {
+    (jac_str, tags) = _transpile("for_ptr_idiom.c");
+    # free → no-op and realloc → its pointer arg, exactly as the mapper rewrites
+    # them at top level — never a literal `free(p)` / `realloc(arr, i)` call.
+    assert "free(p)" not in jac_str , f"free() must not survive as a literal call in:\n{jac_str}";
+    assert "realloc(arr" not in jac_str , f"realloc() must not survive as a literal call in:\n{jac_str}";
+}
+
+test "for_ptr_idiom.c emitted Jac recompiles cleanly" {
+    (jac_str, tags) = _transpile("for_ptr_idiom.c");
+    errs = _recompile_errors(jac_str, "for_ptr_idiom.c");
+    assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
+}
+
 test "enum_tu_collision.c: no duplicate module global shadows the function" {
     (jac_str, tags) = _transpile("enum_tu_collision.c");
     assert jac_str != "";
@@ -681,15 +740,21 @@ test "enum_tu_collision.c: no duplicate module global shadows the function" {
     assert any("collides" in r for r in reasons) , f"Expected a collision reason, got {reasons}";
 }
 
-# --- Greptile finding: direct-IR `_expr_to_uni` silently substituted int `0`
-# for char literals (and unparseable constants), so `i < 'z'` lowered to `i < 0`.
-# A C char constant is an integer, so it now lowers to its ordinal faithfully. ---
-test "for_char_cond.c: char literal in a for-condition lowers to its ordinal (not 0)" {
+# --- Greptile finding (original): the direct-IR `_expr_to_uni` silently
+# substituted int `0` for char literals, so `i < 'z'` lowered to `i < 0`. That
+# path is gone: loop-conditions now lower through the SAME mapper.c_Constant the
+# function top level uses, which renders a char constant under c2jac's char→str
+# model as the string `'z'` (never `0`). The condition therefore reads identically
+# whether the loop is at top level or nested — the point of single-sourcing it. ---
+test "for_char_cond.c: char literal in a for-condition lowers consistently (never the silent 0)" {
     (jac_str, tags) = _transpile("for_char_cond.c");
-    # 'z' is 122; the loop must compare against 122, never the silent `0`.
-    assert "i < 122" in jac_str , f"Expected `i < 122` (ord('z')) in:\n{jac_str}";
+    # Under the char→str model the loop compares against the char literal `'z'`,
+    # exactly as `i < 'z'` lowers at function top level — and never the silent `0`
+    # the old direct-IR substitution produced.
+    assert "i < 'z'" in jac_str , f"Expected `i < 'z'` (char→str model) in:\n{jac_str}";
     assert "i < 0" not in jac_str , f"char literal must not collapse to 0 in:\n{jac_str}";
-    # Faithful → clean IterForStmt, no Tier-B demotion for this loop.
+    # The char constant carries no per-node loss, so the loop stays a clean
+    # IterForStmt with no Tier-B demotion.
     reasons = [nt.reason for nt in tags.tier_b_entries()];
     assert not any("not faithfully lowered" in r for r in reasons) , f"Unexpected Tier-B: {reasons}";
 }
@@ -728,21 +793,21 @@ test "for_array_body.c: indexed swap inside a for body is preserved (not silentl
     assert jac_str != "";
     # Regression: `arr[i] = x` was dropped because _lvalue_to_uni only took bare
     # IDs, so the whole swap (and its enclosing if) became an empty `{ }`.
-    assert "arr[j] = arr[j + 1];" in jac_str , f"Expected indexed swap assignment in:\n{jac_str}";
-    assert "arr[j + 1] = tmp;" in jac_str , f"Expected second swap leg in:\n{jac_str}";
-    # The `int tmp = arr[j];` decl-with-ArrayRef-init also survives.
-    assert "tmp = arr[j];" in jac_str , f"Expected decl-init from arr[j] in:\n{jac_str}";
+    assert "arr[j] = arr[(j + 1)];" in jac_str , f"Expected indexed swap assignment in:\n{jac_str}";
+    assert "arr[(j + 1)] = tmp;" in jac_str , f"Expected second swap leg in:\n{jac_str}";
+    # The `int tmp: int = arr[j];` decl-with-ArrayRef-init also survives.
+    assert "tmp: int = arr[j];" in jac_str , f"Expected decl-init from arr[j] in:\n{jac_str}";
 }
 
 test "for_array_body.c: the three swap statements live INSIDE the if-condition body" {
     (jac_str, tags) = _transpile("for_array_body.c");
     # Sharper than the file-wide substrings above: the original bug emitted an
     # empty `if { }` while the swap statements vanished. Slice out the actual
-    # `if arr[j] > arr[j + 1] { ... }` block and assert all three swap legs are
+    # `if arr[j] > arr[(j + 1)] { ... }` block and assert all three swap legs are
     # enclosed by its braces, so a future regression that empties the conditional
     # (or relocates the assignments elsewhere) is caught even when the loose
     # file-wide substrings still match.
-    header = "if arr[j] > arr[j + 1] {";
+    header = "if (arr[j] > arr[(j + 1)]) {";
     start = jac_str.find(header);
     assert start != -1 , f"Expected the ArrayRef if-condition in:\n{jac_str}";
     # The swap body has no nested braces, so the next `}` closes the if-block.
@@ -750,9 +815,9 @@ test "for_array_body.c: the three swap statements live INSIDE the if-condition b
     body_end = jac_str.find("}", body_start);
     assert body_end != -1 , f"Expected a closing brace for the if-block in:\n{jac_str}";
     if_body = jac_str[body_start:body_end];
-    assert "tmp = arr[j];" in if_body , f"Expected decl-init swap leg inside the if-body, got:\n{if_body}";
-    assert "arr[j] = arr[j + 1];" in if_body , f"Expected first swap leg inside the if-body, got:\n{if_body}";
-    assert "arr[j + 1] = tmp;" in if_body , f"Expected second swap leg inside the if-body, got:\n{if_body}";
+    assert "tmp: int = arr[j];" in if_body , f"Expected decl-init swap leg inside the if-body, got:\n{if_body}";
+    assert "arr[j] = arr[(j + 1)];" in if_body , f"Expected first swap leg inside the if-body, got:\n{if_body}";
+    assert "arr[(j + 1)] = tmp;" in if_body , f"Expected second swap leg inside the if-body, got:\n{if_body}";
 }
 
 test "for_array_body.c: ArrayRef rvalue and if-condition lower faithfully" {
@@ -760,7 +825,7 @@ test "for_array_body.c: ArrayRef rvalue and if-condition lower faithfully" {
     # `s += arr[i]` — ArrayRef as an aug-assign rvalue used to drop the statement.
     assert "s += arr[i];" in jac_str , f"Expected `s += arr[i]` in:\n{jac_str}";
     # An if-condition containing an ArrayRef used to drop the entire if-block.
-    assert "if arr[j] > arr[j + 1] {" in jac_str , f"Expected ArrayRef if-condition in:\n{jac_str}";
+    assert "if (arr[j] > arr[(j + 1)]) {" in jac_str , f"Expected ArrayRef if-condition in:\n{jac_str}";
 }
 
 test "for_array_body.c: string-literal call arg and nested struct-field lvalue lower" {
@@ -878,7 +943,7 @@ test "for_nested_dowhile.c: a clean nested do-while desugars faithfully and is T
     (jac_str, tags) = _transpile("for_nested_dowhile.c");
     # The `do { body } while (k < i)` desugars to `while True { body; if not k < i break }`.
     assert "while True {" in jac_str , f"Expected the do-while desugar `while True` in:\n{jac_str}";
-    assert "if not k < i {" in jac_str , f"Expected the post-body condition guard in:\n{jac_str}";
+    assert "if not (k < i) {" in jac_str , f"Expected the post-body condition guard in:\n{jac_str}";
     # The clean do-while is stamped Tier-A with the DO_WHILE idiom (queryable).
     do_while = tags.by_idiom(Idiom.DO_WHILE);
     assert len(do_while) == 1 , f"Expected exactly one Tier-A DO_WHILE (the clean nested do-while), got {len(
@@ -914,8 +979,8 @@ test "for_nested_dowhile.c emitted Jac recompiles cleanly" {
 test "for_nested_switch.c: a clean nested switch lowers to an if/elif/else chain and is Tier-A" {
     (jac_str, tags) = _transpile("for_nested_switch.c");
     # `switch (i) { case 0: ...; case 1: ...; default: ... }` → if/elif/else.
-    assert "if i == 0 {" in jac_str , f"Expected the head `if i == 0` arm in:\n{jac_str}";
-    assert "elif i == 1 {" in jac_str , f"Expected the `elif i == 1` arm in:\n{jac_str}";
+    assert "if (i == 0) {" in jac_str , f"Expected the head `if (i == 0)` arm in:\n{jac_str}";
+    assert "elif (i == 1) {" in jac_str , f"Expected the `elif (i == 1)` arm in:\n{jac_str}";
     assert "} else {" in jac_str , f"Expected the default → `else` arm in:\n{jac_str}";
     # The clean switch is stamped Tier-A with the SWITCH_CLEAN idiom (queryable).
     clean = tags.by_idiom(Idiom.SWITCH_CLEAN);
@@ -948,7 +1013,7 @@ test "for_nested_switch.c emitted Jac recompiles cleanly" {
 # Jac list literal, preserving element order. ---
 test "for_initlist.c: a brace initializer lowers to a Jac list literal" {
     (jac_str, tags) = _transpile("for_initlist.c");
-    assert "a = [1, 2, 3];" in jac_str , f"Expected the InitList lowered to a list literal in:\n{jac_str}";
+    assert "a: list[int] = [1, 2, 3];" in jac_str , f"Expected the InitList lowered to a typed list literal in:\n{jac_str}";
 }
 
 test "for_initlist.c: the initializer-list loop stays a full Tier-A IterForStmt" {

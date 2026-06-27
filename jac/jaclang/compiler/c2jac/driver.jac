@@ -142,8 +142,16 @@ def _splice_directir(
                 f"out of sync"
             );
         }
-        replacements = builder.build(c_node);
-        _do_splice(sentinel, replacements);
+        # A promotable C-for is emitted by the mapper as `iter; while cond {
+        # sentinel; body; step }`; rewrite that spliced WhileStmt in place into a
+        # native IterForStmt. Everything else (enums) is built by CUniBuilder and
+        # replaces its sentinel directly.
+        if type(c_node).__name__ == "For" {
+            _promote_for(sentinel);
+        } else {
+            replacements = builder.build(c_node);
+            _do_splice(sentinel, replacements);
+        }
     }
     # Post-condition: surviving placeholders leak into emitted Jac (`directir_no_leak` test).
     leaked = [
@@ -157,6 +165,130 @@ def _splice_directir(
             f"would leak {SLOT_SENTINEL} into emitted Jac"
         );
     }
+}
+
+def _promote_for(sentinel: uni.ExprStmt) {
+    # Rewrite a promotable C-for's spliced desugar into a native IterForStmt.
+    # The mapper emitted `iter; while cond { sentinel; body...; step }`, so:
+    #   • the sentinel's parent IS the while to promote,
+    #   • the while's preceding sibling is the `iter` (init) assignment,
+    #   • the while-body's last statement is the `count_by` step,
+    #   • everything between the sentinel and the step is the loop body.
+    # This keeps loop-body lowering single-sourced in the mapper (the spliced
+    # children are reused verbatim) — only the loop *shape* is rebuilt here,
+    # where no CPython `ast` analog for IterForStmt exists.
+    while_stmt = sentinel.parent;
+    if while_stmt is None or not isinstance(while_stmt, uni.WhileStmt) {
+        raise ValueError(
+            f"c2jac: for-promotion sentinel is not inside a WhileStmt — the "
+            f"desugar/splice protocol is broken"
+        );
+    }
+    wbody = while_stmt.body;
+    if sentinel not in wbody {
+        raise ValueError(
+            f"c2jac: for-promotion sentinel is not in its while-body — cannot "
+            f"locate the loop body to promote"
+        );
+    }
+    m_idx = wbody.index(sentinel);
+    if (len(wbody) - m_idx) < 2 {
+        raise ValueError(
+            f"c2jac: promotable C-for while-body has no count_by step after the "
+            f"sentinel — the IterForStmt would be malformed"
+        );
+    }
+    count_by = wbody[-1];
+    body_mid = wbody[m_idx + 1:len(wbody) - 1];
+    gp = while_stmt.parent;
+    gbody = gp?.body;
+    if gp is None
+    or gbody is None
+    or not isinstance(gbody, list)
+    or while_stmt not in gbody {
+        raise ValueError(
+            f"c2jac: promotable C-for while is not in its parent's body list — "
+            f"cannot locate the iter (preceding sibling) to promote"
+        );
+    }
+    g_idx = gbody.index(while_stmt);
+    if g_idx < 1 {
+        raise ValueError(
+            f"c2jac: promotable C-for has no iter statement before the while — "
+            f"the desugar must emit `iter; while ...`"
+        );
+    }
+    iter_old = gbody[g_idx - 1];
+    if not isinstance(iter_old, uni.Assignment) {
+        raise ValueError(
+            f"c2jac: promotable C-for iter is not an Assignment — cannot build "
+            f"the IterForStmt `iter=` clause"
+        );
+    }
+    # Rebuild the iter without its type annotation: IterForStmt renders `for i =
+    # 0 ...`, never `for i: int = 0 ...`. The target/value uni nodes are reused.
+    tgt = iter_old.target[0];
+    val = iter_old.value;
+    new_iter = uni.Assignment(
+        kid=[tgt, val],
+        target=[tgt],
+        value=val,
+        type_tag=None,
+        mutable=True,
+        aug_op=None,
+        is_enum_stmt=False,
+    );
+    cond = while_stmt.condition;
+    # The py-ast path wraps a comparison/bool condition in a parenthesizing
+    # AtomUnit (proc_compare → `(i < n)`); IterForStmt's `to` clause reads cleaner
+    # unparenthesized (`for i = 0 to i < n …`) and the unwrap is semantics-neutral
+    # for a single wrapped expression. (The while-desugar keeps its parens, the
+    # established py-ast style for if/while conditions.)
+    if isinstance(cond, uni.AtomUnit) {
+        cond = cond.value;
+    }
+    iterfor = uni.IterForStmt(
+        kid=[new_iter, cond, count_by, *body_mid],
+        iter=new_iter,
+        condition=cond,
+        count_by=count_by,
+        body=body_mid,
+        else_body=None,
+        is_async=False,
+    );
+    for child in [new_iter, cond, count_by, *body_mid] {
+        child.parent = iterfor;
+    }
+    iterfor.parent = gp;
+    # Replace [iter_old, while_stmt] with [iterfor] in both body and kid, robust
+    # to ordering: drop both wherever they appear, inserting iterfor once.
+    new_body: list[uni.UniNode] = [];
+    inserted_b = False;
+    for b in gbody {
+        if b is iter_old or b is while_stmt {
+            if not inserted_b {
+                new_body.append(iterfor);
+                inserted_b = True;
+            }
+        } else {
+            new_body.append(b);
+        }
+    }
+    gp.body = new_body;
+    new_kid: list[uni.UniNode] = [];
+    inserted_k = False;
+    for k in gp.kid {
+        if k is iter_old or k is while_stmt {
+            if not inserted_k {
+                new_kid.append(iterfor);
+                inserted_k = True;
+            }
+        } else {
+            new_kid.append(k);
+        }
+    }
+    gp.kid = new_kid;
+    gp._invalidate_sub_node_tab();
 }
 
 def _do_splice(sentinel: uni.ExprStmt, replacements: list[uni.UniNode]) -> None {
