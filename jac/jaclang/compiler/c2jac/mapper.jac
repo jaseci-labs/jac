@@ -130,6 +130,10 @@ obj CMapper {
     def c_Continue(nd: object) -> object;
     def c_EmptyStatement(nd: object) -> object;
     def c_For(nd: object) -> object;
+    def _for_promotable(nd: object) -> bool;
+    def _for_init_stmts(init_node: object) -> list[object];
+    def _for_step_stmts(step_node: object) -> list[object];
+    def _is_surrogate_expr(n: object) -> bool;
     # ------------------------------------------------------------------ #
     # Declarations & types  → mapper.impl/declarations.impl.jac
     # ------------------------------------------------------------------ #

@@ -292,5 +292,266 @@ impl CMapper.c_EmptyStatement(nd: object) -> object {
 }
 
 impl CMapper.c_For(nd: object) -> object {
-    return self._directir_placeholder(nd);
+    # Single-source loop-body lowering: a C-for is desugared to ordinary `ast`
+    # statements (`init; while cond { body; step }`) using the SAME handlers
+    # every other statement goes through — no parallel direct-IR mirror. The one
+    # form with no `ast` analog, Jac's native `IterForStmt` (`for i = 0 to i < n
+    # by i += 1`), can't be built from `ast`, so a *promotable* loop drops an
+    # in-body direct-IR sentinel and the driver rewrites the spliced WhileStmt
+    # into an IterForStmt (see driver._promote_for). Everything else — clause
+    # lowering, idiom rewrites (free/malloc/realloc), casts, comma, nested
+    # do-while/switch — is the mapper's existing behavior, so a for-body now
+    # lowers identically to the same C at function top-level.
+    (line, col) = self._loc(nd);
+    init_node = getattr(nd, "init");
+    cond_node = nd.cond;
+    step_node = getattr(nd, "next");
+    body_node = nd.stmt;
+
+    # §3 honest-report: snapshot the Tier-B set so ANY construct the mapper has
+    # to surrogate/flag while lowering this loop's clauses or body forces the
+    # loop's own verdict to Tier-B. This one generic gate replaces the
+    # per-construct loss bookkeeping the old direct-IR for-builder hand-rolled.
+    before_ids: set = {id(nt) for nt in self.tags.tier_b_entries()};
+
+    promotable = self._for_promotable(nd);
+
+    # --- init: zero or more pre-loop statements (runs once) ---
+    init_stmts = self._for_init_stmts(init_node);
+
+    # --- list-bound discipline around the loop body (mirror c_While §9.5): drop
+    # names the body/step may rebind to a non-list before walking, so a realloc
+    # in the body is judged against every back-edge, not just the first. ---
+    base: set = set(self._list_bound);
+    killed: set = set();
+    if body_node is not None {
+        collect_lb_kills(body_node, killed);
+    }
+    if step_node is not None {
+        collect_lb_kills(step_node, killed);
+    }
+    self._list_bound = base - killed;
+
+    # --- condition ---
+    cond_lossy = False;
+    if cond_node is None {
+        cond_ast = self._stamp_manual(
+            ast3.Constant(value=True), line, col, text="True"
+        );
+    } else {
+        cond_ast = self.conv_expr(cond_node);
+        if self._is_surrogate_expr(cond_ast) {
+            # The whole condition is unmappable: fall back to faithful `while
+            # True` semantics plus an explicit loss flag (like for(;;)). The
+            # surrogate would otherwise emit an orphan __c2jac_unsupported_expr__
+            # marker with no anchor in the output, so neutralize its Tier-B tag —
+            # the loop carries the condition-loss reason itself.
+            self._mark_tier_a(cond_node, Idiom.NONE, "");
+            cond_lossy = True;
+            cond_ast = self._stamp_manual(
+                ast3.Constant(value=True), line, col, text="True"
+            );
+        }
+    }
+
+    # --- body + step (the step runs after the body, where C runs it) ---
+    body_stmts = self._stmts_from(body_node) if body_node is not None else [];
+    step_stmts = self._for_step_stmts(step_node);
+
+    # The loop may run zero times: keep only names list-bound on both the skip
+    # path (base) and the body-exit path.
+    self._list_bound = lb_merge([base, self._list_bound]);
+
+    # --- faithfulness verdict (BEFORE stamping the loop's own tag, so the loop
+    # verdict is not mistaken for one of its own body losses) ---
+    body_losses = [
+        nt.reason
+        for nt in self.tags.tier_b_entries()
+        if id(nt) not in before_ids
+    ];
+    # A loop-level `continue` diverges from C only in the while-desugar: C jumps
+    # to the step then retests, but `body; step` runs `continue` BEFORE the
+    # appended step. With no step there is nothing to skip. An IterForStmt runs
+    # its count_by after `continue` exactly like C, so a promotable loop is never
+    # at risk (§5.3).
+    continue_unfaithful = (
+        (not promotable) and step_node is not None and has_loop_continue(body_node)
+    );
+    faithful = (not body_losses) and (not cond_lossy) and (not continue_unfaithful);
+
+    # --- assemble the desugared while (the splice rewrites a promotable one into
+    # an IterForStmt) ---
+    while_body: list[object] = [*body_stmts, *step_stmts];
+    if promotable {
+        # An in-body sentinel whose parent IS this while, so the splice can find
+        # the loop to promote; it carries the For c_node's slot id.
+        while_body = [self._directir_placeholder(nd), *while_body];
+    }
+    if not while_body {
+        while_body = [self._stamp_manual(ast3.Pass(), line, col)];
+    }
+    while_ast = ast3.While(test=cond_ast, body=while_body, orelse=[]);
+    self._stamp_manual(while_ast, line, col, text="for");
+
+    # --- stamp the loop verdict ---
+    if faithful {
+        if promotable {
+            self._mark_tier_a(
+                nd,
+                Idiom.C_FOR,
+                "C-for promotable to IterForStmt (`for i = … to cond by step`) — "
+                "faithful: single valued init, a `<`/`<=`/`!=` condition, an "
+                "increment/decrement (or augmented) step, and every body construct "
+                "lowered exactly",
+            );
+        } else {
+            self._mark_tier_a(
+                nd,
+                Idiom.C_FOR,
+                "C-for not expressible as IterForStmt (e.g. descending step, "
+                "compound/comma clause, `for(;;)`); desugared to `init; while cond "
+                "{ body; step }` — faithful: every clause lowered exactly and no "
+                "loop-level `continue` skips a step",
+            );
+        }
+    } else {
+        body_clause = "; ".join(body_losses);
+        if promotable {
+            # The shape still promotes to IterForStmt (the driver rewrites it);
+            # the only loss is in the body, so the verdict names that — not the
+            # while-desugar (which this loop is not).
+            self._mark_tier_b(
+                nd, "C-for body constructs not faithfully lowered: " + body_clause,
+            );
+        } else {
+            reason = "C-for loop not expressible as IterForStmt; desugared to while";
+            if continue_unfaithful {
+                reason += (
+                    " (C `continue` runs the step, the desugared `continue` skips "
+                    "it — verify)"
+                );
+            }
+            if cond_lossy {
+                reason += (
+                    " | loop condition not faithfully lowered: real "
+                    "`for (...; cond; ...)` test replaced by `while True` (the loop "
+                    "no longer terminates on the original condition — verify)"
+                );
+            }
+            if body_losses {
+                reason += " | body constructs not faithfully lowered: " + body_clause;
+            }
+            self._mark_tier_b(nd, reason);
+        }
+    }
+    return [*init_stmts, while_ast];
+}
+
+impl CMapper._for_promotable(nd: object) -> bool {
+    # A C-for is promotable to Jac's native IterForStmt only in the canonical
+    # ascending shape: a single init clause that yields one valued assignment, a
+    # `<` / `<=` / `!=` comparison condition, and an increment/decrement or
+    # augmented-assignment step (IterForStmt's `by` clause must be an augmented
+    # assignment). Every other shape — descending, multi-clause, compound or
+    # call condition, plain `i = i + 1` step, for(;;) — stays a while-desugar.
+    init_node = getattr(nd, "init");
+    cond_node = nd.cond;
+    step_node = getattr(nd, "next");
+    ok_init = False;
+    if isinstance(init_node, c_ast.DeclList) {
+        if len(init_node.decls) == 1
+        and getattr(init_node.decls[0], "init") is not None {
+            ok_init = True;
+        }
+    } elif isinstance(init_node, c_ast.Decl) {
+        if getattr(init_node, "init") is not None {
+            ok_init = True;
+        }
+    } elif isinstance(init_node, c_ast.Assignment) {
+        if init_node.op == "=" {
+            ok_init = True;
+        }
+    }
+    if not ok_init {
+        return False;
+    }
+    if not (
+        isinstance(cond_node, c_ast.BinaryOp) and cond_node.op in ("<", "<=", "!=")
+    ) {
+        return False;
+    }
+    if isinstance(step_node, c_ast.UnaryOp)
+    and step_node.op in ("p++", "++", "p--", "--") {
+        return True;
+    }
+    if isinstance(step_node, c_ast.Assignment) and step_node.op != "=" {
+        return True;
+    }
+    return False;
+}
+
+impl CMapper._for_init_stmts(init_node: object) -> list[object] {
+    # The C-for initializer as zero or more pre-loop statements. A multi-clause
+    # init — `for (int i = 0, j = 0; ...)` (DeclList) or `for (i = 0, seed();
+    # ...)` (ExprList comma) — emits one statement per clause; each clause goes
+    # through the ordinary statement handlers (c_Decl / c_Assignment / call /
+    # i++), so it lowers exactly as the same statement would anywhere else.
+    if init_node is None {
+        return [];
+    }
+    clauses: list = [];
+    if isinstance(init_node, c_ast.DeclList) {
+        clauses = init_node.decls;
+    } elif isinstance(init_node, c_ast.ExprList) {
+        clauses = init_node.exprs;
+    } else {
+        clauses = [init_node];
+    }
+    out: list[object] = [];
+    for cl in clauses {
+        n = self.conv_stmt(cl);
+        if isinstance(n, list) {
+            out += n;
+        } else {
+            out.append(n);
+        }
+    }
+    return out;
+}
+
+impl CMapper._for_step_stmts(step_node: object) -> list[object] {
+    # The C-for step as zero or more statements appended after the body, where C
+    # runs it. A comma step `for (...; ...; i++, j++)` (ExprList) appends one
+    # statement per operand; each lowers through conv_stmt (i++ → `i += 1`, a
+    # bare call → an expression statement), matching where C evaluates them.
+    if step_node is None {
+        return [];
+    }
+    clauses: list = [];
+    if isinstance(step_node, c_ast.ExprList) {
+        clauses = step_node.exprs;
+    } else {
+        clauses = [step_node];
+    }
+    out: list[object] = [];
+    for cl in clauses {
+        n = self.conv_stmt(cl);
+        if isinstance(n, list) {
+            out += n;
+        } else {
+            out.append(n);
+        }
+    }
+    return out;
+}
+
+impl CMapper._is_surrogate_expr(n: object) -> bool {
+    # True when `n` is a top-level dispatch-miss expression surrogate
+    # (`__c2jac_unsupported_expr__(line)`), i.e. the whole expression had no Jac
+    # analog. Used to detect an entirely-unmappable for-condition.
+    return (
+        isinstance(n, ast3.Call)
+        and isinstance(n.func, ast3.Name)
+        and n.func.id == UNSUPPORTED_EXPR
+    );
 }
