@@ -1,7 +1,7 @@
 """Enum pre-pass: Q6 verdict (ENUM_AS_ENUM vs ENUM_AS_CONSTS) for all enums.
 
 Single AST walk over file_ast produces:
-  EnumVerdicts.verdicts: dict[int, str]  — id(c_enum) → "enum_as_enum" | "enum_as_consts" | "tier_b"
+  EnumVerdicts.verdicts: dict[int, Idiom]  — id(c_enum) → Idiom.ENUM_AS_ENUM | ENUM_AS_CONSTS | TIER_B
   EnumVerdicts.name_map: dict[int, dict[str, int]]  — id(c_enum) → {enumerator_name: value}
 
 v1 heuristic for ENUM_AS_ENUM:
@@ -45,7 +45,7 @@ glob _INT_USE_BINOPS: set[str] = {
      };
 
 obj EnumVerdicts {
-    has verdicts: dict[int, str],  # id(c_enum) → verdict string
+    has verdicts: dict[int, Idiom],  # id(c_enum) → verdict idiom
         name_map: dict[int, dict[str, int]],  # id(c_enum) → {name: value}
         reasons: dict[int, str];  # id(c_enum) → Tier-B reason (for the Tier-B comments)
 
@@ -184,7 +184,7 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
         and any(nm in int_use_names for nm in name_map);
         if en.name is not None and name_map is not None and not used_as_int {
             # Candidate for ENUM_AS_ENUM.
-            ev.verdicts[id(en)] = Idiom.ENUM_AS_ENUM.value;
+            ev.verdicts[id(en)] = Idiom.ENUM_AS_ENUM;
             ev.name_map[id(en)] = name_map;
         } elif name_map is not None {
             # Anonymous, or a named enum whose members are used as integers
@@ -197,10 +197,10 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
                 }
             }
             if collision {
-                ev.verdicts[id(en)] = "tier_b";
+                ev.verdicts[id(en)] = Idiom.TIER_B;
                 ev.reasons[id(en)] = "enumerator name collides with an existing module global";
             } else {
-                ev.verdicts[id(en)] = Idiom.ENUM_AS_CONSTS.value;
+                ev.verdicts[id(en)] = Idiom.ENUM_AS_CONSTS;
                 for nm in name_map {
                     seen_glob_names.add(nm);
                 }
@@ -224,12 +224,12 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
             }
             collision = any(nm in seen_glob_names for nm in best_map);
             if not ok or collision {
-                ev.verdicts[id(en)] = "tier_b";
+                ev.verdicts[id(en)] = Idiom.TIER_B;
                 ev.reasons[id(en)] = "enumerator name collides with an existing module global"
                     if collision
                     else "enum has non-constant enumerator values";
             } else {
-                ev.verdicts[id(en)] = Idiom.ENUM_AS_CONSTS.value;
+                ev.verdicts[id(en)] = Idiom.ENUM_AS_CONSTS;
                 for nm in best_map {
                     seen_glob_names.add(nm);
                 }
@@ -249,7 +249,7 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
             }
             coord = en?.coord;
             line = coord.line if coord and coord.line else 0;
-            if verdict == "tier_b" {
+            if verdict == Idiom.TIER_B {
                 reason = ev.reasons.get(
                     id(en), "enum not expressible as a Jac enum or consts"
                 );
@@ -270,7 +270,7 @@ def build_enum_map(file_ast: object, tags: TagTable | None = None) -> EnumVerdic
                     NodeTag(
                         tier=Tier.TIER_A,
                         mechanism=Mechanism.DIRECT_IR,
-                        idiom=Idiom(verdict),
+                        idiom=verdict,
                         reason="",
                         c_line=line,
                         snippet=""
