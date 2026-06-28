@@ -912,6 +912,15 @@ fn precompile(io: Io, gpa: Allocator, a: Allocator, parent_env: *std.process.Env
     try env.put("PYTHONDONTWRITEBYTECODE", "1");
     try env.put("HOME", site);
     try env.put("PATH", "/usr/bin:/bin");
+    // Pin the precompiler to the bundled (staged-site) jaclang, NOT a dev-source
+    // tree. The build runs inside the repo whose jac.toml carries
+    // [dev] jaclang_source, so _jac_finder's apply_dev_source_override would
+    // otherwise reroute `import jaclang` to the source tree and stamp every JIR's
+    // module key with the source's (often stale) egg-info version. The shipped
+    // binary reports jac.toml's version, so a dev-source stamp makes the whole
+    // bundle fail validation at runtime and every module recompiles on first run.
+    // JAC_NO_DEV_SOURCE keeps pkg_version reading the staged dist-info we ship.
+    try env.put("JAC_NO_DEV_SOURCE", "1");
 
     _ = runChild(io, &.{ py, "-S", boot }, &env, true); // non-zero exit is by design
 
