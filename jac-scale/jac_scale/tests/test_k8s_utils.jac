@@ -196,6 +196,7 @@ test "check pods restarted selector and return values" {
 
     pod_clean = unittest.mock.MagicMock();
     pod_clean.status.container_statuses = [clean_container];
+    pod_clean.status.init_container_statuses = None;
 
     resp_clean = unittest.mock.MagicMock();
     resp_clean.items = [pod_clean];
@@ -226,6 +227,7 @@ test "check pods restarted selector and return values" {
 
     pod_crash = unittest.mock.MagicMock();
     pod_crash.status.container_statuses = [crash_container];
+    pod_crash.status.init_container_statuses = None;
 
     resp_restarted = unittest.mock.MagicMock();
     resp_restarted.items = [pod_crash];
@@ -248,6 +250,7 @@ test "check pods restarted selector and return values" {
 
     pod_stabilised = unittest.mock.MagicMock();
     pod_stabilised.status.container_statuses = [stabilised_container];
+    pod_stabilised.status.init_container_statuses = None;
 
     resp_stabilised = unittest.mock.MagicMock();
     resp_stabilised.items = [pod_stabilised];
