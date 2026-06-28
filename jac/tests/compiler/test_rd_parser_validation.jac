@@ -183,7 +183,13 @@ glob GAP_FILES = [
          "keyword_param_obj": "def foo(obj: int) { }",
          "keyword_param_node": "def foo(node: int) { }",
          "keyword_param_override": "def foo(override: bool) { }",
+         # root/super are reserved refs that lower to calls (Jac.root()/super()),
+         # so they cannot name a parameter -- reject like any other keyword (#7010).
+         "keyword_param_root": "def foo(root: int) { }",
+         "keyword_param_super": "def foo(super: int) { }",
          "keyword_param_in_lambda": "with entry { x = lambda if: int : if; }",
+         "keyword_param_root_in_lambda": "with entry { x = lambda root: int : root; }",
+         "keyword_param_super_in_lambda": "with entry { x = lambda super: int : super; }",
          # --- Strictness gaps: enum in code blocks (not allowed at stmt level in Lark) ---
          "enum_inside_if": "with entry { if true { enum Color { RED } } }",
          "enum_inside_function": "def foo() { enum Color { RED } }"

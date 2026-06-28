@@ -3095,13 +3095,12 @@ impl Parser.parse_lambda_param -> ParamVar | None {
         name_tok = self.expect_name();
         name = self.make_name_or_special(name_tok);
     } elif self.check_any(
-        TokenKind.KW_SELF,
-        TokenKind.KW_PROPS,
-        TokenKind.KW_SUPER,
-        TokenKind.KW_ROOT,
-        TokenKind.KW_HERE,
-        TokenKind.KW_VISITOR
+        TokenKind.KW_SELF, TokenKind.KW_PROPS, TokenKind.KW_HERE, TokenKind.KW_VISITOR
     ) {
+        # self/props/here/visitor lower to a plain name, so they are valid
+        # parameter names. root/super are intentionally absent: they lower to
+        # calls (Jac.root()/super()), have no valid `arg` form, and fall through
+        # to the E0013 keyword branch below (#7010).
         name_tok = self.advance();
         name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
     } elif self.is_builtin_type_token() {
@@ -6604,12 +6603,12 @@ impl Parser.parse_param_var -> ParamVar | None {
         name_tok = self.advance();
         name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
     } elif self.check_any(
-        TokenKind.KW_PROPS,
-        TokenKind.KW_SUPER,
-        TokenKind.KW_ROOT,
-        TokenKind.KW_HERE,
-        TokenKind.KW_VISITOR
+        TokenKind.KW_PROPS, TokenKind.KW_HERE, TokenKind.KW_VISITOR
     ) {
+        # props/here/visitor are contextual refs that lower to a plain name, so
+        # they are fine as parameter names. root/super are intentionally absent:
+        # they lower to calls (Jac.root()/super()), have no valid `arg` form, and
+        # fall through to the E0013 keyword branch below (#7010).
         name_tok = self.advance();
         name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
     } elif self.is_builtin_type_token() {

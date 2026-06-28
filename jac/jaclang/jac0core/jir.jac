@@ -427,18 +427,18 @@ def get_native_cache_dir(source_path: str) -> Path {
 
 """Wipe project-local cache directories under a source tree (best-effort).
 
-Removes every `.jac/cache/` directory found beneath ``root`` (holding both the
-`.jir` module caches and native IR/object artifacts), plus any legacy
+Removes every `.jac/cache/` directory found beneath ``root_dir`` (holding both
+the `.jir` module caches and native IR/object artifacts), plus any legacy
 `.jac_ir/` directories left by older builds. Returns the number of directories
 removed. Shared by `jac run --no-cache`, `jac nacompile --scrub`, and the
 clean command so they stay in lock-step.
 """
-def scrub_cache_dirs(root: str) -> int {
+def scrub_cache_dirs(root_dir: str) -> int {
     import glob as _glob;
     import shutil as _shutil;
     patterns = [
-        os.path.join(root, "**", ".jac", "cache"),
-        os.path.join(root, "**", ".jac_ir")
+        os.path.join(root_dir, "**", ".jac", "cache"),
+        os.path.join(root_dir, "**", ".jac_ir")
     ];
     removed = 0;
     seen: set[str] = set();
