@@ -99,8 +99,13 @@ def tier_b_site_count(tags: TagTable) -> int {
 }
 
 def _build_header(by_line: dict[int, list[str]]) -> str {
-    # One row per (C line, reason), counting distinct explained sites. The header
-    # plus the inline per-site notes are the authoritative Tier-B record.
+    # One row per (C line, reason), counting distinct explained sites. This header
+    # is the authoritative, complete Tier-B record: it lists EVERY best-effort
+    # site. Inline per-site notes are an additional convenience, but only
+    # surrogate-backed sites (a __c2jac_unsupported marker) carry one — a faithful
+    # best-effort site (e.g. static-local, volatile, variadic) emits normal-looking
+    # Jac with no marker to attach to, so it appears here only. The header wording
+    # below must not promise an inline note for every site (§3 honest report).
     rows: list[tuple[int, str]] = [];
     for (c_line, reasons) in by_line.items() {
         for r in reasons {
@@ -111,7 +116,7 @@ def _build_header(by_line: dict[int, list[str]]) -> str {
     n = len(rows);
     sites = "site" if n == 1 else "sites";
     hdr: list[str] = [
-        f"# c2jac: {n} best-effort (Tier-B) {sites} — each is listed below and marked inline at its site"
+        f"# c2jac: {n} best-effort (Tier-B) {sites} — full list below; surrogate sites are also flagged inline"
     ];
     for (c_line, r) in rows {
         hdr.append(f"#   L{c_line}  {r}");

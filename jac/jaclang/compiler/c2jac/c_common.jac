@@ -1,56 +1,58 @@
-"""Shared C-semantics knowledge for both c2jac lowering backends.
+"""Shared C-semantics knowledge for the c2jac lowering backends.
 
-mapper.jac (Python-AST path → CPython `ast` nodes) and uni_builder.jac
-(direct-IR path → `uni` Tokens) each translate C operators and parse C literals.
-That knowledge used to live twice — classify a C operator, or parse `int(v, 0)`,
-in one backend and you had to remember the other. This module is the single
-source of truth: each operator is listed once with *all* the per-backend
-encodings (its `ast` class name AND its Jac token), and the literal/coordinate
-helpers are shared functions. A new operator or literal form is added here once.
+The literal parsers, constant classifier, coordinate helper, and control-flow /
+pointer predicates below are genuinely shared: both the Python-AST mapper
+(mapper.jac → CPython `ast`) and the direct-IR builder (uni_builder.jac → `uni`
+nodes) reach for them, so each C-semantics rule lives once instead of being
+mirrored (and drifting) per backend.
+
+The operator tables (C_BINOPS / C_AUGOPS) are consumed only by the Python-AST
+mapper — the direct-IR path lowers no expressions of its own (it builds enum
+nodes and reuses the mapper's single-sourced for-body), so it never translates a
+C operator. Each operator therefore carries only its CPython `ast` encoding.
 """
 
 import from jaclang.vendor.pycparser { c_ast }
 
 # --- C binary operators -------------------------------------------------- #
-# c_op → (kind, ast3_class, jac_tok_name, jac_tok_val)
+# c_op → (kind, ast3_class)
 #   kind        — "arith" | "compare" | "bool"; picks the CPython-ast wrapper
-#                 (BinOp / Compare / BoolOp) on the Python-AST path.
+#                 (BinOp / Compare / BoolOp).
 #   ast3_class  — the operator class under the `ast` module (getattr(ast3, …)).
-#   jac_tok_*   — the uni.Token name/value for the direct-IR path.
-glob C_BINOPS: dict[str, tuple[str, str, str, str]] = {
-         "+": ("arith", "Add", "PLUS", "+"),
-         "-": ("arith", "Sub", "MINUS", "-"),
-         "*": ("arith", "Mult", "STAR_MUL", "*"),
-         "/": ("arith", "Div", "DIV", "/"),
-         "%": ("arith", "Mod", "MOD", "%"),
-         "&": ("arith", "BitAnd", "BW_AND", "&"),
-         "|": ("arith", "BitOr", "BW_OR", "|"),
-         "^": ("arith", "BitXor", "BW_XOR", "^"),
-         "<<": ("arith", "LShift", "LSHIFT", "<<"),
-         ">>": ("arith", "RShift", "RSHIFT", ">>"),
-         "==": ("compare", "Eq", "EE", "=="),
-         "!=": ("compare", "NotEq", "NE", "!="),
-         "<": ("compare", "Lt", "LT", "<"),
-         "<=": ("compare", "LtE", "LTE", "<="),
-         ">": ("compare", "Gt", "GT", ">"),
-         ">=": ("compare", "GtE", "GTE", ">="),
-         "&&": ("bool", "And", "KW_AND", "and"),
-         "||": ("bool", "Or", "KW_OR", "or"),
+glob C_BINOPS: dict[str, tuple[str, str]] = {
+         "+": ("arith", "Add"),
+         "-": ("arith", "Sub"),
+         "*": ("arith", "Mult"),
+         "/": ("arith", "Div"),
+         "%": ("arith", "Mod"),
+         "&": ("arith", "BitAnd"),
+         "|": ("arith", "BitOr"),
+         "^": ("arith", "BitXor"),
+         "<<": ("arith", "LShift"),
+         ">>": ("arith", "RShift"),
+         "==": ("compare", "Eq"),
+         "!=": ("compare", "NotEq"),
+         "<": ("compare", "Lt"),
+         "<=": ("compare", "LtE"),
+         ">": ("compare", "Gt"),
+         ">=": ("compare", "GtE"),
+         "&&": ("bool", "And"),
+         "||": ("bool", "Or"),
 
      },
      # --- C augmented-assignment operators ------------------------------------ #
-     # c_op → (ast3_class, jac_tok_name, jac_tok_val)
-     C_AUGOPS: dict[str, tuple[str, str, str]] = {
-         "+=": ("Add", "ADD_EQ", "+="),
-         "-=": ("Sub", "SUB_EQ", "-="),
-         "*=": ("Mult", "MUL_EQ", "*="),
-         "/=": ("Div", "DIV_EQ", "/="),
-         "%=": ("Mod", "MOD_EQ", "%="),
-         "&=": ("BitAnd", "BW_AND_EQ", "&="),
-         "|=": ("BitOr", "BW_OR_EQ", "|="),
-         "^=": ("BitXor", "BW_XOR_EQ", "^="),
-         "<<=": ("LShift", "LSHIFT_EQ", "<<="),
-         ">>=": ("RShift", "RSHIFT_EQ", ">>="),
+     # c_op → ast3_class (the operator class under the `ast` module).
+     C_AUGOPS: dict[str, str] = {
+         "+=": "Add",
+         "-=": "Sub",
+         "*=": "Mult",
+         "/=": "Div",
+         "%=": "Mod",
+         "&=": "BitAnd",
+         "|=": "BitOr",
+         "^=": "BitXor",
+         "<<=": "LShift",
+         ">>=": "RShift",
 
      };
 
