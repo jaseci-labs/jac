@@ -1,18 +1,3 @@
-"""Token-bucket rate limiter for the microservice gateway (ROADMAP P17).
-
-Two optional buckets per request:
-  per-IP  keyed on X-Forwarded-For / request.client.host
-  per-user keyed on SHA256(Authorization) (unauthenticated requests
-          skip this bucket)
-
-Both buckets must have a token for the request to proceed. 429 with
-`Retry-After` + standard error envelope otherwise.
-
-Buckets are stored through the `StateBackend` port: the in-process backend keeps
-behavior identical to a single process, while the Redis backend makes the same
-token bucket correct across replicas under `--scale`.
-"""
-
 import logging;
 import threading;
 import time;
@@ -22,8 +7,6 @@ import from threading { Lock as _RLLock }
 import from jac_scale.state.state_backend { StateBackend }
 import from jac_scale.state.factory { get_state_backend }
 
-# Monotonic counter giving each built middleware its own bucket namespace so
-# distinct gateways sharing the process-wide backend never collide.
 glob _mw_seq = itertools.count();
 
 glob logger = logging.getLogger(__name__),
@@ -38,14 +21,11 @@ obj TokenBucket {
 }
 
 
-"""In-process rate limiter. Buckets share a module-level lock - contention
-is negligible because state per bucket is tiny (two floats)."""
 obj InProcessRateLimiter {
     has rate_per_sec: float,
         capacity: float,
         buckets: dict[str, TokenBucket] = {};
 
-    """Try to consume one token for `key`. Returns (allowed, retry_after_s)."""
     def consume(key: str) -> tuple[bool, float];
 }
 
@@ -74,32 +54,19 @@ impl InProcessRateLimiter.consume(key: str) -> tuple[bool, float] {
             bucket.tokens -= 1.0;
             return (True, 0.0);
         }
-        # Seconds until a full token is available again.
         retry = (1.0 - bucket.tokens) / bucket.rate_per_sec;
         return (False, retry);
     }
 }
 
 
-"""Token-bucket rate limiter persisted through a StateBackend.
-
-The per-key bucket state is stored as a single "tokens:last_refill" string under
-`rl:{key}`. Each consume takes the backend lock `rl:lock:{key}` for the
-read-modify-write so concurrent refills do not race; with InProcessStateBackend
-this is single-process-correct (identical to InProcessRateLimiter) and with
-RedisStateBackend it is correct across replicas.
-"""
 obj StateBackendRateLimiter {
     has backend: StateBackend,
         rate_per_sec: float,
         capacity: float,
-        # How long a bucket's serialized state survives without traffic. A few
-        # minutes is ample: an idle bucket simply re-initializes to full.
         state_ttl_seconds: int = 300,
-        # Lock hold budget for the read-modify-write critical section.
         lock_ttl_seconds: int = 5;
 
-    """Try to consume one token for `key`. Returns (allowed, retry_after_s)."""
     def consume(key: str) -> tuple[bool, float];
 }
 
@@ -108,7 +75,7 @@ impl StateBackendRateLimiter.consume(key: str) -> tuple[bool, float] {
     now: float = time.time();
     state_key: str = f"rl:{key}";
     lock_key: str = f"rl:lock:{key}";
-    # Best-effort spin for the bucket lock; the critical section is microscopic.
+
     acquired: bool = False;
     for _ in range(50) {
         if self.backend.acquire_lock(lock_key, self.lock_ttl_seconds) {
@@ -138,7 +105,6 @@ impl StateBackendRateLimiter.consume(key: str) -> tuple[bool, float] {
             retry: float = 0.0;
         } else {
             allowed = False;
-            # Seconds until a full token is available again.
             retry = (1.0 - tokens) / self.rate_per_sec;
         }
         self.backend.set(
@@ -172,8 +138,6 @@ def _resolve_user_key(request: any) -> str | None {
 }
 
 
-"""Build the rate-limit middleware from a config dict. Returns None when
-disabled so the caller can skip registration entirely."""
 def build_rate_limit_middleware(cfg: dict[str, any]) -> any {
     if not cfg.get("enabled") {
         return None;
@@ -183,11 +147,8 @@ def build_rate_limit_middleware(cfg: dict[str, any]) -> any {
     burst: float = float(cfg.get("burst_multiplier", 2.0));
     exempt: set[str] = set(cfg.get("exempt_paths", []));
 
-    # Shared-state backend: in-process locally, Redis under --scale so buckets
-    # span replicas. When cfg carries no scale signal, default to in-process.
     backend: StateBackend = get_state_backend(bool(cfg.get("scale_enabled", False)));
-    # Per-build namespace: isolates this middleware's buckets within the shared
-    # backend, matching the old "fresh limiter per build" semantics.
+
     ns: str = f"mw{next(_mw_seq)}";
 
     ip_limiter: StateBackendRateLimiter | None = None;

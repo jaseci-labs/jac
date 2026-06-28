@@ -1,16 +1,3 @@
-"""Implementation of MCP client and tool wrapper.
-
-Architecture: MCP transports are stateful — they run background tasks
-(stdio reader/writer, SSE listener) that must stay alive between
-connect() and call_tool(). We run one persistent event loop in a
-daemon thread per McpClient. Sync methods post coroutines to it
-via asyncio.run_coroutine_threadsafe() and block on the result.
-
-This will simplify when byllm adds native async support.
-"""
-
-# ─── Background event loop ──────────────────────────────────────────────────
-"""Shared state for one McpClient's background loop + session."""
 obj _McpState {
     has loop: object = None,
         thread: object = None,
@@ -45,7 +32,6 @@ impl _McpState.run(coro: object) -> str {
 }
 
 impl _McpState.stop -> None {
-    # Clean shutdown: exit contexts before stopping loop to avoid killing MCP subprocess.
     if self.loop and self.loop.is_running() {
         try {
             self.run(_async_cleanup(self));
@@ -99,7 +85,6 @@ def _get_state(client: McpClient) -> _McpState {
     return _states[client._id];
 }
 
-# ─── Async internals ────────────────────────────────────────────────────────
 async def _do_connect(client: McpClient, transport_type: str) {
     import from mcp.client.session { ClientSession }
     import from datetime { timedelta }
@@ -179,7 +164,6 @@ async def _open_transport(client: McpClient, transport_type: str) -> tuple {
     return (streams[0], streams[1]);
 }
 
-# ─── McpClient ──────────────────────────────────────────────────────────────
 impl McpClient.connect -> None {
     state = _get_state(self);
     if state.connected {
@@ -260,7 +244,6 @@ impl McpClient.close -> None {
     _states.pop(self._id, None);
 }
 
-# ─── McpTool ────────────────────────────────────────────────────────────────
 impl McpTool.__call__(**kwargs: any) -> str {
     try {
         return self._client.call_tool(self.name, kwargs);

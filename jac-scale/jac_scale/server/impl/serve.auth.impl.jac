@@ -1,6 +1,3 @@
-# ============================================================================
-# Entry point — registers all auth endpoints
-# ============================================================================
 impl JacAPIServerAuth.register_auth_endpoints -> None {
     self.register_register_endpoint();
     self.register_login_endpoint();
@@ -18,9 +15,6 @@ impl JacAPIServerAuth.register_auth_endpoints -> None {
     self.register_api_key_endpoints();
 }
 
-# ============================================================================
-# Register (identity-based)
-# ============================================================================
 impl JacAPIServerAuth.register_register_endpoint -> None {
     def register_handler(body_data: RegisterRequest) -> TransportResponse {
         identities = [i.model_dump(mode='json') for i in body_data.identities];
@@ -63,9 +57,6 @@ impl JacAPIServerAuth.register_register_endpoint -> None {
     );
 }
 
-# ============================================================================
-# Login (identity-based)
-# ============================================================================
 impl JacAPIServerAuth.register_login_endpoint -> None {
     def login_handler(body_data: LoginRequest) -> TransportResponse {
         identifier = body_data.identity.value;
@@ -80,8 +71,7 @@ impl JacAPIServerAuth.register_login_endpoint -> None {
             );
         }
         user_id = result.get('user_id', '');
-        # System-role accounts are not loginable over HTTP — return the same
-        # error as bad credentials to avoid account enumeration.
+
         if self.user_manager.get_user_role(user_id) == 'system' {
             return TransportResponse.fail(
                 code='UNAUTHORIZED',
@@ -108,9 +98,6 @@ impl JacAPIServerAuth.register_login_endpoint -> None {
     );
 }
 
-# ============================================================================
-# Refresh Token
-# ============================================================================
 impl JacAPIServerAuth.register_refresh_token_endpoint -> None {
     def refresh_token_handler(token: str | None = None) -> TransportResponse {
         if not token {
@@ -123,7 +110,7 @@ impl JacAPIServerAuth.register_refresh_token_endpoint -> None {
         if token.startswith('Bearer ') {
             token = token[7:];
         }
-        # System-role tokens are not refreshable — they are issued only internally.
+
         claims = self.user_manager.get_jwt_claims(token);
         if claims and claims.get('role') == 'system' {
             return TransportResponse.fail(
@@ -168,9 +155,6 @@ impl JacAPIServerAuth.register_refresh_token_endpoint -> None {
     );
 }
 
-# ============================================================================
-# Update Password (uses JWT user_id, no username param needed)
-# ============================================================================
 impl JacAPIServerAuth.register_update_password_endpoint -> None {
     async def update_password_handler(
         request: Request, body_data: UpdatePasswordRequest
@@ -211,9 +195,6 @@ impl JacAPIServerAuth.register_update_password_endpoint -> None {
     );
 }
 
-# ============================================================================
-# Current user (/user/me) — returns the authenticated user's profile
-# ============================================================================
 impl JacAPIServerAuth.register_me_endpoint -> None {
     async def me_handler(request: Request) -> TransportResponse {
         (user_id, error) = authenticate_or_fail(
@@ -232,9 +213,7 @@ impl JacAPIServerAuth.register_me_endpoint -> None {
                 meta=Meta(extra={'http_status': 404})
             );
         }
-        # Strip credentials and other internal fields. Identities are
-        # returned without value_normalized or external_id to keep the
-        # response clean.
+
         identities_out = [];
         for ident in user.get('identities', []) {
             identity_out: dict[str, any] = {
@@ -277,9 +256,6 @@ impl JacAPIServerAuth.register_me_endpoint -> None {
     );
 }
 
-# ============================================================================
-# Update current user (/user/me) — partial update of profile fields
-# ============================================================================
 impl JacAPIServerAuth.register_update_me_endpoint -> None {
     async def update_me_handler(
         request: Request, body_data: UpdateProfileRequest
@@ -322,9 +298,6 @@ impl JacAPIServerAuth.register_update_me_endpoint -> None {
     );
 }
 
-# ============================================================================
-# SSO
-# ============================================================================
 impl _resolve_sso_client_redirect(requested: str | None, configured: str) -> str {
     if requested and is_safe_loopback_redirect(requested) {
         return requested;
@@ -342,11 +315,7 @@ impl JacAPIServerAuth._create_sso_callback_wrapper -> Callable[
         result = await self.user_manager.sso_callback(request, platform);
         sso_config = get_scale_config().get_sso_config();
         configured_url = str(sso_config.get('client_auth_callback_url', ''));
-        # A desktop / loopback client passes its own 127.0.0.1 callback through
-        # the OAuth `state` parameter (RFC 8252) so the token lands on its own
-        # origin. Honor it only when it is a safe loopback URL; otherwise fall
-        # back to the server-configured remote callback. This guards against an
-        # attacker using `state` as an open redirect to steal the token.
+
         requested_url = request.query_params.get('state') or '';
         frontend_url = _resolve_sso_client_redirect(requested_url, configured_url);
         if not frontend_url {
@@ -448,9 +417,6 @@ impl JacAPIServerAuth.register_sso_endpoints -> None {
     );
 }
 
-# ============================================================================
-# Firebase Token-based Auth Endpoint
-# ============================================================================
 impl JacAPIServerAuth.register_firebase_token_endpoint -> None {
     async def firebase_token_handler(
         body_data: FirebaseTokenRequest
@@ -479,9 +445,6 @@ impl JacAPIServerAuth.register_firebase_token_endpoint -> None {
     );
 }
 
-# ============================================================================
-# API Key Management
-# ============================================================================
 impl JacAPIServerAuth.get_api_key_manager -> ApiKeyManager {
     if self._api_key_manager is None {
         self._api_key_manager = ApiKeyManager();
@@ -547,7 +510,7 @@ impl JacAPIServerAuth.register_api_key_endpoints -> None {
         allowed_walkers: str | None = None
     ) -> TransportResponse {
         authorization = request.headers.get('Authorization');
-        # Accept a comma-separated list; empty means unscoped (any walker)
+
         scoped: list[str] | None = None;
         if allowed_walkers {
             scoped = [

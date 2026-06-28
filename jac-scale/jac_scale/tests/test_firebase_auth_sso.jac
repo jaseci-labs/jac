@@ -1,5 +1,3 @@
-"""Tests for Firebase Auth SSO support."""
-
 import os;
 import shutil;
 import asyncio;
@@ -97,12 +95,6 @@ def _make_request(body: dict) -> Request {
 }
 
 
-"""Build a MagicMock that quacks like firebase_admin.
-
-All Firebase SSO code imports firebase_admin, auth, and credentials
-from jac_scale._optdeps.firebase_auth (not directly), so patching
-that single module covers every code path.
-"""
 def _mock_firebase_admin -> unittest.mock.MagicMock {
     mock = unittest.mock.MagicMock();
     mock.get_app.side_effect = ValueError('no app');
@@ -111,9 +103,6 @@ def _mock_firebase_admin -> unittest.mock.MagicMock {
 }
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
 test 'platforms enum includes firebase' {
     assert Platforms.FIREBASE.value == 'firebase';
 }

@@ -1,12 +1,3 @@
-"""KubernetesRealizer: deploy an app to a cluster per the RealizationPlan.
-
-The `--scale` path hands control here. The realizer owns target selection (zero-
-config auto-detect of the microservice topology), config load, --enable-tls,
---dry-run, and the deploy itself, setting the hook's cancel/return data. This is
-the cluster sibling of LocalRealizer, so the pre-hook never branches on the deploy
-details itself.
-"""
-
 import os;
 import pathlib;
 import from dotenv { load_dotenv }
@@ -18,33 +9,19 @@ import from jac_scale.deploy.target.factory { DeploymentTargetFactory }
 import from jac_scale.config.app_config { AppConfig }
 
 
-"""Serves the `--scale` deploy. `ms_config` is the resolved
-[plugins.scale.microservices] table (routes may be pre-declared)."""
 obj KubernetesRealizer {
     has ms_config: dict[str, any];
 
-    """Run the deploy. Reads args off `context` and sets cancel/return data on it
-    exactly as the deploy flow requires."""
     def realize(context: HookContext) -> None {
-        # The jac binary exports PYTHONHOME/PYTHONPATH for its bundled CPython.
-        # The kubernetes client's exec-credential (`aws eks get-token`, `gcloud`,
-        # `kubelogin`) and our kubectl bundle seed are host Python tools; if they
-        # inherit those vars they cannot import their own stdlib and emit no token
-        # (a spurious 401 at the API server). Drop them from this process env so
-        # every child the deploy spawns resolves its own interpreter. Safe: the
-        # running interpreter already bound its stdlib at startup; os.environ only
-        # affects children, and the host deploy never re-execs the jac binary.
         for _embedded_python_var in ["PYTHONHOME", "PYTHONPATH"] {
             os.environ.pop(_embedded_python_var, None);
         }
         enabled = self.ms_config.get("enabled", None);
         filename = context.get_arg("filename");
         target = context.get_arg("target", "kubernetes");
-        # --experimental: build the pod's `jac` from a cloned jaseci checkout
-        # (branch's own jaclang) instead of the released installer.
+
         experimental = context.get_arg("experimental", False);
-        # Zero-config: pick the microservice target when opted in (enabled=true)
-        # or auto-detected sv services. enabled=false stays a monolith deploy.
+
         if target == "kubernetes" and enabled is not False {
             scale_discovered: dict[str, str] = {};
             needs_discovery = (enabled is None)
@@ -82,8 +59,7 @@ obj KubernetesRealizer {
         load_dotenv(dotenv_path);
         scale_config = get_scale_config();
         logger = UtilityFactory.create_logger('standard');
-        # kubernetes-microservice shares the [plugins.scale.kubernetes] config
-        # shape with the monolith target (same knobs, different deploy strategy).
+
         if target in ('kubernetes', 'kubernetes-microservice') {
             target_config = scale_config.get_kubernetes_config();
         } else {
@@ -93,7 +69,6 @@ obj KubernetesRealizer {
             target, target_config, logger
         );
 
-        # --enable-tls: patch TLS on the live deployment (no redeploy).
         enable_tls = context.get_arg("enable_tls", False);
         if enable_tls {
             if not target_config.get('domain', '') {
@@ -117,7 +92,7 @@ obj KubernetesRealizer {
         code_folder = pathlib.Path(code_folder).as_posix();
         base_file_path = os.path.basename(filename);
         deployment_target.secrets = scale_config.get_secrets_config();
-        # PVC injection is the only code-shipping path; always enabled.
+
         no_image = target == "kubernetes-microservice";
         app_config = AppConfig(
             code_folder=code_folder,
@@ -142,7 +117,7 @@ obj KubernetesRealizer {
         } else {
             console.print("Installing Jaseci packages from PyPI...");
         }
-        # --dry-run cancels execution before the deploy.
+
         dry_run = context.get_arg("dry_run", False);
         if dry_run {
             if target != "kubernetes-microservice" {
@@ -172,8 +147,6 @@ obj KubernetesRealizer {
             return;
         }
 
-        # Deploy. Cancel execution on failure so we don't fall through to the
-        # local-mode dev server (which would mask the K8s deploy error).
         try {
             result = deployment_target.deploy(app_config);
         } except Exception as e {

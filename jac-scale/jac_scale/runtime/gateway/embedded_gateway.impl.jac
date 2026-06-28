@@ -1,5 +1,3 @@
-"""EmbeddedGateway implementations."""
-
 import uvicorn;
 
 
@@ -36,8 +34,6 @@ impl EmbeddedGateway._call_member(
             return None;
         }
     } except KeyError as e {
-        # No in-process handler registered for this member -> 404 envelope,
-        # matching how the process gateway surfaces an unknown member.
         return JSONResponse(
             status_code=404,
             content={
@@ -72,8 +68,7 @@ impl EmbeddedGateway._serve_static(path: str, accept: str) -> Response {
         candidate = dist / rel;
         try {
             resolved = candidate.resolve();
-            # Path-containment (not string-prefix) so a sibling dir whose name
-            # starts with the dist path can't be reached.
+
             if resolved.is_relative_to(dist.resolve()) and resolved.is_file() {
                 ctype: str = mimetypes.guess_type(str(resolved))[0]
                 or "application/octet-stream";
@@ -83,8 +78,7 @@ impl EmbeddedGateway._serve_static(path: str, accept: str) -> Response {
             ;
         }
     }
-    # SPA fallback: serve index.html for the root or any browser navigation so
-    # client-side routes (and same-named-as-a-service routes) render the SPA.
+
     index_file = dist / "index.html";
     if (rel == "" or "text/html" in accept) and index_file.is_file() {
         return Response(
@@ -133,17 +127,11 @@ impl EmbeddedGateway.setup -> None {
     app = FastAPI(title="Jac Embedded Gateway");
     gw = self;
 
-    # The dispatcher is the terminal handler (it produces the response and never
-    # calls call_next), so it must be registered FIRST - FastAPI runs the
-    # last-added middleware outermost, and installing the shared chain after this
-    # makes that chain wrap the dispatcher instead of being short-circuited by it.
     @app.middleware("http")
     async def dispatcher(request: Request, call_next: object) -> Response {
         return await gw.dispatch(request);
     }
 
-    # Wire the shared middleware chain (rate-limit, metrics, drain, ...) so the
-    # embedded gateway runs the same cross-cutting concerns as the process one.
     self.middleware.install(app);
 
     self.app = app;

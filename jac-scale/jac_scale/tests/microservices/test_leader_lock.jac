@@ -1,5 +1,3 @@
-"""Test the scheduler leader lock: the run-once-across-replicas behavior."""
-
 import from jac_scale.state.state_backend { InProcessStateBackend }
 import from jac_scale.runtime.lifecycle.leader_lock { run_once }
 

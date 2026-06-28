@@ -1,4 +1,3 @@
-"""Prometheus and Grafana monitoring stack deployer for Kubernetes."""
 import re;
 import hashlib;
 import from jac_scale._optdeps.kubernetes { client, ApiException }
@@ -10,28 +9,10 @@ import from jac_scale.deploy.target.kubernetes.utils.kubernetes_utils {
 }
 import from jac_scale.deploy.target.kubernetes.cluster_provider { ClusterProvider }
 
-"""Deploys and destroys a Prometheus + Grafana monitoring stack scoped to an app namespace.
-
-Prometheus is always exposed as ClusterIP (internal, scraped by Grafana).
-Grafana is exposed as ClusterIP, routed via NGINX Ingress at /grafana.
-
-Admin credentials for Grafana use the 'prometheus_admin_password' config value.
-
-Kubernetes metrics are collected via:
-  - kube-state-metrics: exposes K8s object state (pods, deployments, replicas, restarts)
-  - node-exporter:      exposes host-level metrics (CPU, memory, disk, network)
-"""
 obj MonitoringDeployer {
     has k8s_config: KubernetesConfig,
         logger: (Logger | None) = None;
 
-    """Deploy Prometheus ConfigMap with scrape config + Deployment + ClusterIP Service.
-
-    Scrape targets include:
-      - Jaseci application metrics at /metrics
-      - kube-state-metrics for K8s object state (pods, deployments, replicas, restarts)
-      - node-exporter for host-level node metrics (CPU, memory, disk, network)
-    """
     def _deploy_prometheus(
         app_name: str,
         namespace: str,
@@ -44,9 +25,6 @@ obj MonitoringDeployer {
         ne_name = f"{app_name}-node-exporter";
         service_port = provider.prometheus_scrape_port(self.k8s_config.container_port);
 
-        # The app's /metrics endpoint is admin-protected and also accepts Basic
-        # Auth (admin username + prometheus_admin_password). Send those creds so
-        # Prometheus can scrape without exposing /metrics unauthenticated.
         scrape_config = (
             "global:\n"
             "  scrape_interval: 15s\n"
@@ -58,8 +36,6 @@ obj MonitoringDeployer {
             "    metrics_path: '/metrics'\n"
             "    basic_auth:\n"
             f"      username: '{self.k8s_config.admin_username}'\n"
-            # Read from a mounted Secret (see prometheus_scrape_secret below)
-            # so the password stays out of the ConfigMap.
             "      password_file: /etc/prometheus/scrape-secret/password\n"
         );
         if self.k8s_config.k8s_metrics_enabled {
@@ -73,10 +49,7 @@ obj MonitoringDeployer {
                 f"      - targets: ['{ne_name}-service:9100']\n"
                 "    metrics_path: '/metrics'\n"
             );
-            # cAdvisor (per-container CPU/memory) is exposed by the kubelet, not a
-            # standalone exporter. Scrape it through the API-server node proxy so we
-            # don't need host-network access. Requires the prometheus ServiceAccount
-            # to have nodes/proxy RBAC (granted below) and its token mounted.
+
             scrape_config = scrape_config + (
                 "  - job_name: 'kubernetes-cadvisor'\n"
                 "    scheme: https\n"
@@ -98,8 +71,6 @@ obj MonitoringDeployer {
             );
         }
 
-        # Hash the scrape config so a pod-template annotation change triggers a rollout
-        # whenever the scrape targets change (Kubernetes only rolls pods on spec changes).
         config_hash = hashlib.md5(scrape_config.encode()).hexdigest()[:12];
 
         prometheus_configmap = {
@@ -131,8 +102,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # Secret holding the scrape password, mounted into the pod and referenced
-        # by basic_auth.password_file - keeps the credential out of the ConfigMap.
         scrape_secret_name = f"{prometheus_name}-scrape-secret";
         scrape_secret = {
             'apiVersion': 'v1',
@@ -163,8 +132,7 @@ obj MonitoringDeployer {
         }
 
         prometheus_sa_name = f"{prometheus_name}-sa";
-        # Token is automounted so Prometheus can authenticate to the API-server
-        # node proxy when scraping cAdvisor (see scrape_config above).
+
         prometheus_sa = {
             'apiVersion': 'v1',
             'kind': 'ServiceAccount',
@@ -189,9 +157,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # ClusterRole granting read access to node metrics + the cAdvisor proxy
-        # path. Cluster-scoped because nodes are not namespaced. Prefixed with the
-        # namespace so multiple deployments don't collide.
         prometheus_cluster_role_name = f"{namespace}-{prometheus_name}";
         prometheus_rbac_v1 = client.RbacAuthorizationV1Api();
         prometheus_cluster_role = {
@@ -278,8 +243,6 @@ obj MonitoringDeployer {
                 'template': {
                     'metadata': {
                         'labels': {'app': prometheus_name},
-                        # Changing this annotation forces Kubernetes to roll new pods,
-                        # which ensures Prometheus always loads the latest scrape config.
                         'annotations': {'checksum/config': config_hash}
                     },
                     'spec': {
@@ -304,7 +267,6 @@ obj MonitoringDeployer {
                                     '--storage.tsdb.path=/prometheus',
                                     '--web.console.libraries=/usr/share/prometheus/console_libraries',
                                     '--web.console.templates=/usr/share/prometheus/consoles',
-                                    # Enables POST /-/reload for hot config reload without restart
                                     '--web.enable-lifecycle'
                                 ],
                                 'ports': [{'containerPort': 9090}],
@@ -342,8 +304,7 @@ obj MonitoringDeployer {
                 }
             }
         };
-        # Always patch so the config-hash annotation propagates and triggers a rollout
-        # when the scrape config changes. Fall back to create on first deploy.
+
         try {
             apps_v1.patch_namespaced_deployment(
                 name=prometheus_name, namespace=namespace, body=prometheus_deployment
@@ -358,7 +319,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # Prometheus is ClusterIP  Grafana scrapes it internally at prometheus-service:9090
         prometheus_service = {
             'apiVersion': 'v1',
             'kind': 'Service',
@@ -392,23 +352,16 @@ obj MonitoringDeployer {
         }
     }
 
-    """Deploy kube-state-metrics: ServiceAccount, ClusterRole, ClusterRoleBinding, Deployment, Service.
-
-    kube-state-metrics exposes K8s object state metrics (pod phases, deployment replicas,
-    container restarts, resource requests/limits, etc.) at port 8080.
-    A ClusterRole is required so it can list/watch cluster-wide resources.
-    """
     def _deploy_kube_state_metrics(
         app_name: str, namespace: str, apps_v1: any, core_v1: any
     ) {
         ksm_name = f"{app_name}-kube-state-metrics";
         ksm_sa_name = f"{ksm_name}-sa";
-        # Prefix with namespace to avoid conflicts across multiple deployments
+
         cluster_role_name = f"{namespace}-{ksm_name}";
         cluster_role_binding_name = f"{namespace}-{ksm_name}";
         rbac_v1 = client.RbacAuthorizationV1Api();
 
-        # ServiceAccount
         sa_body = {
             'apiVersion': 'v1',
             'kind': 'ServiceAccount',
@@ -432,7 +385,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # ClusterRole (cluster-scoped - grants read access to K8s resources)
         cluster_role_body = {
             'apiVersion': 'rbac.authorization.k8s.io/v1',
             'kind': 'ClusterRole',
@@ -501,7 +453,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # ClusterRoleBinding (cluster-scoped - binds ServiceAccount to ClusterRole)
         crb_body = {
             'apiVersion': 'rbac.authorization.k8s.io/v1',
             'kind': 'ClusterRoleBinding',
@@ -528,7 +479,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # Deployment
         ksm_deployment = {
             'apiVersion': 'apps/v1',
             'kind': 'Deployment',
@@ -591,7 +541,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # Service (ClusterIP) - Prometheus scrapes this at port 8080
         ksm_service = {
             'apiVersion': 'v1',
             'kind': 'Service',
@@ -632,14 +581,6 @@ obj MonitoringDeployer {
         }
     }
 
-    """Deploy node-exporter as a DaemonSet + ClusterIP Service.
-
-    node-exporter runs on every cluster node and exposes host-level metrics
-    (CPU, memory, disk I/O, network) at port 9100. Host paths /proc, /sys, and /
-    are volume-mounted so node-exporter can read them without hostNetwork - this
-    ensures the pod gets a normal overlay IP and the ClusterIP service can route
-    to it correctly.
-    """
     def _deploy_node_exporter(
         app_name: str, namespace: str, apps_v1: any, core_v1: any
     ) {
@@ -667,9 +608,6 @@ obj MonitoringDeployer {
                             {
                                 'name': 'node-exporter',
                                 'image': 'prom/node-exporter:v1.10.2',
-                                # node-exporter reads host proc/sys paths - readOnlyRootFilesystem
-                                # and allowPrivilegeEscalation are still hardened; capabilities
-                                # are kept minimal (only SYS_TIME omitted as not needed).
                                 'securityContext': {
                                     'runAsNonRoot': True,
                                     'runAsUser': 65534,
@@ -716,7 +654,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # Service (ClusterIP) - Prometheus scrapes this at port 9100
         ne_service = {
             'apiVersion': 'v1',
             'kind': 'Service',
@@ -755,21 +692,11 @@ obj MonitoringDeployer {
         }
     }
 
-    """Deploy Grafana admin Secret, datasource ConfigMap, Deployment and Service.
-
-    On AWS a dedicated LoadBalancer (NLB) is created on port 80.
-    On non-AWS a NodePort is used.
-
-    Two dashboards are provisioned:
-      - jac-scale.json: Jaseci app HTTP metrics (requests, latency, errors)
-      - k8s-metrics.json: Kubernetes cluster metrics (nodes, pods, deployments)
-    """
     def _deploy_grafana(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         grafana_name = f"{app_name}-grafana";
         prometheus_name = f"{app_name}-prometheus";
         grafana_secret_name = f"{grafana_name}-secret";
 
-        # Admin credentials password sourced from prometheus_admin_password config field
         grafana_secret = {
             'apiVersion': 'v1',
             'kind': 'Secret',
@@ -798,7 +725,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # Datasource ConfigMap Prometheus is always ClusterIP at port 9090
         prometheus_url = f"http://{prometheus_name}-service:9090";
         loki_name = f"{app_name}-loki";
         loki_url = f"http://{loki_name}-service:3100";
@@ -823,8 +749,7 @@ obj MonitoringDeployer {
                 "    editable: true\n"
             );
         }
-        # Tempo trace datasource. `tracesToLogsV2` (added when Loki is
-        # present) enables the span -> logs pivot by trace_id.
+
         if self.k8s_config.tracing_enabled {
             tempo_name = f"{app_name}-tempo";
             tempo_url = f"http://{tempo_name}-service:3200";
@@ -879,7 +804,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # Dashboard provider ConfigMap tells Grafana where to find dashboards
         dashboard_provider_yaml = (
             "apiVersion: 1\n"
             "providers:\n"
@@ -921,9 +845,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # Dashboard JSON ConfigMap pre-built panels matching the app's metrics.
-        # The metric prefix is derived from the K8s namespace (same logic as
-        # config_loader's sanitize_prometheus_namespace).
         pfx = re.sub(r'[^a-zA-Z0-9]', '_', namespace);
         pfx = re.sub(r'_+', '_', pfx).strip('_');
         if pfx and pfx[0].isdigit() {
@@ -931,7 +852,6 @@ obj MonitoringDeployer {
         }
         ds = '{"type":"prometheus","uid":"prometheus"}';
 
-        # --- Jaseci app metrics dashboard ---
         app_dashboard_json = (
             '{"title":"Jac Scale - App Metrics","uid":"jac-scale-app",'
             '"schemaVersion":36,"refresh":"10s","time":{"from":"now-1h","to":"now"},'
@@ -1020,12 +940,10 @@ obj MonitoringDeployer {
             f'"legendFormat":"{{{{le}}}}","datasource":{ds}' + '}]}' ']}'
         );
 
-        # --- Kubernetes cluster metrics dashboard ---
         k8s_dashboard_json = (
             '{"title":"Kubernetes Cluster Metrics","uid":"k8s-cluster",'
             '"schemaVersion":36,"refresh":"30s","time":{"from":"now-1h","to":"now"},'
             '"panels":['
-            # Node CPU Usage (node-exporter)
             '{"id":1,"type":"timeseries","title":"Node CPU Usage (%)",'
             '"gridPos":{"x":0,"y":0,"w":12,"h":8},'
             '"fieldConfig":{"defaults":{"unit":"percent","min":0,"max":100}},'
@@ -1033,7 +951,6 @@ obj MonitoringDeployer {
             '"targets":[{"refId":"A",'
             '"expr":"(1 - avg(rate(node_cpu_seconds_total' + '{mode=\\"idle\\"}[5m])) by (instance)) * 100",'
             f'"legendFormat":"{{{{instance}}}}","datasource":{ds}' + '}]},'
-            # Node Memory Usage (node-exporter)
             '{"id":2,"type":"timeseries","title":"Node Memory Usage (%)",'
             '"gridPos":{"x":12,"y":0,"w":12,"h":8},'
             '"fieldConfig":{"defaults":{"unit":"percent","min":0,"max":100}},'
@@ -1041,7 +958,6 @@ obj MonitoringDeployer {
             '"targets":[{"refId":"A",'
             '"expr":"(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100",'
             f'"legendFormat":"{{{{instance}}}}","datasource":{ds}' + '}]},'
-            # Pod counts by phase (kube-state-metrics)
             '{"id":3,"type":"stat","title":"Running Pods",'
             '"gridPos":{"x":0,"y":8,"w":6,"h":4},'
             f'"datasource":{ds},'
@@ -1060,21 +976,18 @@ obj MonitoringDeployer {
             '"targets":[{"refId":"A",'
             '"expr":"count(kube_pod_status_phase' + '{phase=\\"Failed\\"} == 1) or vector(0)",'
             f'"legendFormat":"Failed","datasource":{ds}' + '}]},'
-            # Deployment replica status (kube-state-metrics)
             '{"id":6,"type":"timeseries","title":"Deployment Available Replicas",'
             '"gridPos":{"x":0,"y":12,"w":12,"h":8},'
             f'"datasource":{ds},'
             '"targets":[{"refId":"A",'
             '"expr":"kube_deployment_status_replicas_available",'
             f'"legendFormat":"{{{{deployment}}}}","datasource":{ds}' + '}]},'
-            # Pod container restarts (kube-state-metrics)
             '{"id":7,"type":"timeseries","title":"Pod Container Restarts (last 1h)",'
             '"gridPos":{"x":12,"y":12,"w":12,"h":8},'
             f'"datasource":{ds},'
             '"targets":[{"refId":"A",'
             '"expr":"sum(increase(kube_pod_container_status_restarts_total[1h])) by (pod) > 0",'
             f'"legendFormat":"{{{{pod}}}}","datasource":{ds}' + '}]},'
-            # Node Disk I/O (node-exporter)
             '{"id":8,"type":"timeseries","title":"Node Disk Read/Write (Bps)",'
             '"gridPos":{"x":0,"y":20,"w":12,"h":8},'
             '"fieldConfig":{"defaults":{"unit":"Bps"}},'
@@ -1086,7 +999,6 @@ obj MonitoringDeployer {
             '{"refId":"B",'
             '"expr":"sum(rate(node_disk_written_bytes_total[5m])) by (instance)",'
             f'"legendFormat":"{{{{instance}}}} write","datasource":{ds}' + '}]},'
-            # Node Network I/O (node-exporter)
             '{"id":9,"type":"timeseries","title":"Node Network Receive/Transmit (Bps)",'
             '"gridPos":{"x":12,"y":20,"w":12,"h":8},'
             '"fieldConfig":{"defaults":{"unit":"Bps"}},'
@@ -1098,7 +1010,6 @@ obj MonitoringDeployer {
             '{"refId":"B",'
             '"expr":"sum(rate(node_network_transmit_bytes_total[5m])) by (instance)",'
             f'"legendFormat":"{{{{instance}}}} tx","datasource":{ds}' + '}]},'
-            # Pod CPU resource requests (kube-state-metrics)
             '{"id":10,"type":"timeseries","title":"Pod CPU Requests (cores)",'
             '"gridPos":{"x":0,"y":28,"w":12,"h":8},'
             '"fieldConfig":{"defaults":{"unit":"short"}},'
@@ -1106,7 +1017,6 @@ obj MonitoringDeployer {
             '"targets":[{"refId":"A",'
             '"expr":"sum(kube_pod_container_resource_requests' + '{resource=\\"cpu\\"}) by (pod)",'
             f'"legendFormat":"{{{{pod}}}}","datasource":{ds}' + '}]},'
-            # Pod Memory resource requests (kube-state-metrics)
             '{"id":11,"type":"timeseries","title":"Pod Memory Requests (bytes)",'
             '"gridPos":{"x":12,"y":28,"w":12,"h":8},'
             '"fieldConfig":{"defaults":{"unit":"bytes"}},'
@@ -1114,15 +1024,12 @@ obj MonitoringDeployer {
             '"targets":[{"refId":"A",'
             '"expr":"sum(kube_pod_container_resource_requests' + '{resource=\\"memory\\"}) by (pod)",'
             f'"legendFormat":"{{{{pod}}}}","datasource":{ds}' + '}]},'
-            # ── Node-level statistics ──────────────────────────────────────────
-            # Total node count (kube-state-metrics)
             '{"id":12,"type":"stat","title":"Total Nodes",'
             '"gridPos":{"x":0,"y":36,"w":6,"h":4},'
             f'"datasource":{ds},'
             '"targets":[{"refId":"A",'
             '"expr":"count(kube_node_info) or vector(0)",'
             f'"legendFormat":"nodes","datasource":{ds}' + '}]},'
-            # Ready node count (kube-state-metrics)
             '{"id":13,"type":"stat","title":"Ready Nodes",'
             '"gridPos":{"x":6,"y":36,"w":6,"h":4},'
             '"fieldConfig":{"defaults":{"color":{"mode":"thresholds"},'
@@ -1131,7 +1038,6 @@ obj MonitoringDeployer {
             '"targets":[{"refId":"A",'
             '"expr":"count(kube_node_status_condition' + '{condition=\\"Ready\\",status=\\"true\\"} == 1) or vector(0)",'
             f'"legendFormat":"ready","datasource":{ds}' + '}]},'
-            # Not-ready nodes alert stat
             '{"id":14,"type":"stat","title":"Not-Ready Nodes",'
             '"gridPos":{"x":12,"y":36,"w":6,"h":4},'
             '"fieldConfig":{"defaults":{"color":{"mode":"thresholds"},'
@@ -1140,7 +1046,6 @@ obj MonitoringDeployer {
             '"targets":[{"refId":"A",'
             '"expr":"count(kube_node_status_condition' + '{condition=\\"Ready\\",status=\\"false\\"} == 1) or vector(0)",'
             f'"legendFormat":"not-ready","datasource":{ds}' + '}]},'
-            # Pods scheduled per node (kube-state-metrics)
             '{"id":15,"type":"timeseries","title":"Pods per Node",'
             '"gridPos":{"x":0,"y":40,"w":24,"h":8},'
             '"fieldConfig":{"defaults":{"unit":"short"}},'
@@ -1148,7 +1053,6 @@ obj MonitoringDeployer {
             '"targets":[{"refId":"A",'
             '"expr":"count(kube_pod_info' + '{node!=\\"\\"}) by (node)",'
             f'"legendFormat":"{{{{node}}}}","datasource":{ds}' + '}]},'
-            # Node CPU usage % (node-exporter - per node)
             '{"id":16,"type":"timeseries","title":"Node CPU Usage (%) per Node",'
             '"gridPos":{"x":0,"y":48,"w":12,"h":8},'
             '"fieldConfig":{"defaults":{"unit":"percent","min":0,"max":100}},'
@@ -1156,7 +1060,6 @@ obj MonitoringDeployer {
             '"targets":[{"refId":"A",'
             '"expr":"(1 - avg(rate(node_cpu_seconds_total' + '{mode=\\"idle\\"}[5m])) by (instance)) * 100",'
             f'"legendFormat":"{{{{instance}}}}","datasource":{ds}' + '}]},'
-            # Node memory usage % (node-exporter - per node)
             '{"id":17,"type":"timeseries","title":"Node Memory Usage (%) per Node",'
             '"gridPos":{"x":12,"y":48,"w":12,"h":8},'
             '"fieldConfig":{"defaults":{"unit":"percent","min":0,"max":100}},'
@@ -1164,7 +1067,6 @@ obj MonitoringDeployer {
             '"targets":[{"refId":"A",'
             '"expr":"(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100",'
             f'"legendFormat":"{{{{instance}}}}","datasource":{ds}' + '}]},'
-            # CPU requests per node summed across all pods (kube-state-metrics)
             '{"id":18,"type":"timeseries","title":"CPU Requests per Node (cores)",'
             '"gridPos":{"x":0,"y":56,"w":12,"h":8},'
             '"fieldConfig":{"defaults":{"unit":"short"}},'
@@ -1172,7 +1074,6 @@ obj MonitoringDeployer {
             '"targets":[{"refId":"A",'
             '"expr":"sum(kube_pod_container_resource_requests' + '{resource=\\"cpu\\"}) by (node)",'
             f'"legendFormat":"{{{{node}}}}","datasource":{ds}' + '}]},'
-            # Memory requests per node summed across all pods (kube-state-metrics)
             '{"id":19,"type":"timeseries","title":"Memory Requests per Node (bytes)",'
             '"gridPos":{"x":12,"y":56,"w":12,"h":8},'
             '"fieldConfig":{"defaults":{"unit":"bytes"}},'
@@ -1369,7 +1270,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # Service: always ClusterIP - exposed via NGINX Ingress at /grafana
         grafana_service = {
             'apiVersion': 'v1',
             'kind': 'Service',
@@ -1406,12 +1306,6 @@ obj MonitoringDeployer {
         }
     }
 
-    """Deploy Tempo as a single-binary trace store.
-
-    OTLP receivers on 4317/4318 (the Alloy collector exports spans here)
-    and an HTTP API on 3200 for TraceQL search. emptyDir storage, so
-    traces are ephemeral (suitable for dev/staging).
-    """
     def _deploy_tempo(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         tempo_name = f"{app_name}-tempo";
         tempo_sa_name = f"{tempo_name}-sa";
@@ -1628,11 +1522,6 @@ obj MonitoringDeployer {
         }
     }
 
-    """Deploy Loki as a single-process log store.
-
-    Loki is always ClusterIP - Grafana and Alloy talk to it internally.
-    Data is stored in emptyDir so it is ephemeral (suitable for dev/staging).
-    """
     def _deploy_loki(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         loki_name = f"{app_name}-loki";
         loki_sa_name = f"{loki_name}-sa";
@@ -1828,11 +1717,6 @@ obj MonitoringDeployer {
         }
     }
 
-    """Deploy Grafana Alloy as a DaemonSet for logs and/or traces.
-
-    Tails pod logs to Loki and/or receives OTLP spans and forwards them
-    to Tempo, depending on which signals are enabled. River-syntax config.
-    """
     def _deploy_alloy(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         loki_name = f"{app_name}-loki";
         alloy_name = f"{app_name}-alloy";
@@ -1844,14 +1728,10 @@ obj MonitoringDeployer {
         tempo_name = f"{app_name}-tempo";
         tempo_otlp_endpoint = f"{tempo_name}-service:4317";
 
-        # River pipeline: a header plus two optional lanes - the logs lane
-        # (loki_enabled) and the OTLP traces lane (tracing_enabled).
         alloy_header = (
             "logging {\n" "  level  = \"info\"\n" "  format = \"logfmt\"\n" "}\n" "\n"
         );
 
-        # Logs lane: discover pods, relabel to per-container log paths under
-        # /var/log/pods, tail them, parse the CRI wrapper, push to Loki.
         alloy_logs_lane = (
             "discovery.kubernetes \"pods\" {\n"
             "  role = \"pod\"\n"
@@ -1950,13 +1830,11 @@ obj MonitoringDeployer {
             "  }\n"
             "}\n"
         );
-        # Drop the logs lane entirely when Loki is off (tracing-only
-        # deploy): no point tailing pods if there's nowhere to ship them.
+
         if not self.k8s_config.loki_enabled {
             alloy_logs_lane = "";
         }
 
-        # Traces lane: receive OTLP from app pods, batch, export to Tempo.
         alloy_otel_lane = "";
         if self.k8s_config.tracing_enabled {
             alloy_otel_lane = (
@@ -2097,8 +1975,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # Base agent port; add the OTLP receiver ports when tracing is on
-        # so app pods can send spans to this Alloy via the Alloy Service.
         alloy_ports = [{'containerPort': 12345, 'name': 'http'}];
         if self.k8s_config.tracing_enabled {
             alloy_ports.append({'containerPort': 4317, 'name': 'otlp-grpc'});
@@ -2129,10 +2005,6 @@ obj MonitoringDeployer {
                                 'name': 'alloy',
                                 'image': 'grafana/alloy:v1.6.0',
                                 'securityContext': {
-                                    # /var/log/pods is root-owned on the
-                                    # node so the agent runs as root with
-                                    # all capabilities dropped. Same
-                                    # hardening Promtail used in #5731.
                                     'runAsUser': 0,
                                     'allowPrivilegeEscalation': False,
                                     'capabilities': {'drop': ['ALL']}
@@ -2140,16 +2012,6 @@ obj MonitoringDeployer {
                                 'args': [
                                     'run',
                                     '--server.http.listen-addr=0.0.0.0:12345',
-                                    # Use container /tmp as the WAL + remotecfg
-                                    # scratch path instead of a mounted volume.
-                                    # /tmp is always tmpfs-writable for any UID,
-                                    # which sidesteps an Alloy v1.6 startup quirk
-                                    # where the remotecfg service mkdir under a
-                                    # mounted emptyDir fails with EACCES even
-                                    # when the container runs as root with the
-                                    # dir mode 0777. Validated on EKS m14a
-                                    # deploy 2026-05-20 (13/13 pods Ready after
-                                    # this swap).
                                     '--storage.path=/tmp/alloy',
                                     '/etc/alloy/config.alloy'
                                 ],
@@ -2165,18 +2027,6 @@ obj MonitoringDeployer {
                                         'readOnly': True
                                     },
                                     {
-                                        # `/var/log/pods/<...>/<container>/<N>.log`
-                                        # is a symlink chain pointing into the
-                                        # container runtime's data dir (docker:
-                                        # /var/lib/docker/containers, also where
-                                        # minikube + EKS docker-shim land). Without
-                                        # this mount the symlink follow fails with
-                                        # ENOENT and Alloy logs
-                                        # `error getting os stat ... no such file
-                                        # or directory` every scrape interval. On
-                                        # pure-containerd clusters the dir does
-                                        # not exist; hostPath silently no-ops.
-                                        # Validated on EKS 2026-05-20 + minikube.
                                         'name': 'varlogcontainers',
                                         'mountPath': '/var/lib/docker/containers',
                                         'readOnly': True
@@ -2214,9 +2064,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # ClusterIP Service in front of the Alloy DaemonSet so app pods
-        # have a stable OTLP target (`<app>-alloy-service:4318`). Only the
-        # traces leg needs an inbound Service (logs push outbound to Loki).
         if self.k8s_config.tracing_enabled {
             alloy_service = {
                 'apiVersion': 'v1',
@@ -2265,7 +2112,6 @@ obj MonitoringDeployer {
         }
     }
 
-    """Deploy the full monitoring stack (Prometheus, kube-state-metrics, node-exporter, Grafana) for an app namespace."""
     def deploy(
         app_name: str,
         namespace: str,
@@ -2288,15 +2134,13 @@ obj MonitoringDeployer {
         if self.k8s_config.loki_enabled {
             self._deploy_loki(app_name, namespace, apps_v1, core_v1);
         }
-        # Alloy serves both legs (logs to Loki, traces to Tempo); deploy it
-        # when either is on - its River config is built from both flags.
+
         if self.k8s_config.loki_enabled or self.k8s_config.tracing_enabled {
             self._deploy_alloy(app_name, namespace, apps_v1, core_v1);
         }
         self._deploy_grafana(app_name, namespace, apps_v1, core_v1);
     }
 
-    """Destroy all monitoring resources: Prometheus, Grafana, kube-state-metrics, node-exporter, Loki, Alloy."""
     def destroy(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         prometheus_name = f"{app_name}-prometheus";
         grafana_name = f"{app_name}-grafana";
@@ -2308,7 +2152,6 @@ obj MonitoringDeployer {
         cluster_role_binding_name = f"{namespace}-{ksm_name}";
         prometheus_cluster_role_name = f"{namespace}-{prometheus_name}";
 
-        # Prometheus resources
         delete_if_exists(
             apps_v1.delete_namespaced_deployment,
             prometheus_name,
@@ -2341,7 +2184,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # kube-state-metrics resources
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, ksm_name, namespace, 'Deployment'
         );
@@ -2360,7 +2202,7 @@ obj MonitoringDeployer {
                 raise;
             }
         }
-        # ClusterRole and ClusterRoleBinding are cluster-scoped (no namespace param)
+
         rbac_v1 = client.RbacAuthorizationV1Api();
         try {
             rbac_v1.delete_cluster_role(name=cluster_role_name);
@@ -2376,7 +2218,7 @@ obj MonitoringDeployer {
                 raise;
             }
         }
-        # Prometheus cAdvisor RBAC (cluster-scoped)
+
         try {
             rbac_v1.delete_cluster_role(name=prometheus_cluster_role_name);
         } except ApiException as e {
@@ -2391,7 +2233,7 @@ obj MonitoringDeployer {
                 raise;
             }
         }
-        # node-exporter resources (DaemonSet)
+
         try {
             apps_v1.delete_namespaced_daemon_set(name=ne_name, namespace=namespace);
         } except ApiException as e {
@@ -2406,7 +2248,6 @@ obj MonitoringDeployer {
             'Service'
         );
 
-        # Loki resources
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, loki_name, namespace, 'Deployment'
         );
@@ -2435,7 +2276,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # Alloy resources
         try {
             apps_v1.delete_namespaced_daemon_set(name=alloy_name, namespace=namespace);
         } except ApiException as e {
@@ -2461,7 +2301,7 @@ obj MonitoringDeployer {
                 raise;
             }
         }
-        # The Alloy OTLP Service (only present in traces deploys).
+
         delete_if_exists(
             core_v1.delete_namespaced_service,
             f"{alloy_name}-service",
@@ -2484,8 +2324,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # Tempo resources. Deleted by name unconditionally so teardown is
-        # idempotent regardless of the tracing toggle state.
         tempo_name = f"{app_name}-tempo";
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, tempo_name, namespace, 'Deployment'
@@ -2515,7 +2353,6 @@ obj MonitoringDeployer {
             }
         }
 
-        # Grafana resources
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, grafana_name, namespace, 'Deployment'
         );

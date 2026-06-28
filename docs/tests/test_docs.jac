@@ -1,10 +1,7 @@
-"""Unit tests for documentation build infrastructure."""
-
 import os;
 
 import from pathlib { Path }
 
-"""Retrieve all Markdown files in the docs directory."""
 def get_md_files -> list[str] {
     docs_dir = Path(os.path.dirname(__file__)).parent / "docs";
     return [str(f) for f in sorted(docs_dir.rglob("*.md"))];

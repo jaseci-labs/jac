@@ -1,5 +1,3 @@
-"""Tests for Kubernetes utility functions."""
-
 import from pathlib { Path }
 import from tempfile { mkdtemp }
 import from types { SimpleNamespace }
@@ -18,7 +16,6 @@ import from jac_scale.deploy.target.kubernetes.utils.kubernetes_utils {
     validate_resource_limits
 }
 
-# --- parse_cpu_quantity valid ---
 def _test_parse_cpu_valid(pair: tuple) {
     raw = pair[0];
     expected = pair[1];
@@ -34,7 +31,6 @@ with entry {
     );
 }
 
-# --- parse_cpu_quantity invalid ---
 def _test_parse_cpu_invalid(raw: str) {
     raised = False;
     try {
@@ -51,7 +47,6 @@ with entry {
     );
 }
 
-# --- parse_memory_quantity valid ---
 def _test_parse_memory_valid(pair: tuple) {
     raw = pair[0];
     expected = pair[1];
@@ -67,7 +62,6 @@ with entry {
     );
 }
 
-# --- parse_memory_quantity invalid ---
 def _test_parse_memory_invalid(raw: str) {
     raised = False;
     try {
@@ -84,7 +78,6 @@ with entry {
     );
 }
 
-# --- validate_resource_limits ---
 test "validate resource limits accepts valid pairs" {
     validate_resource_limits("250m", "500m", "256Mi", "512Mi");
 }
@@ -109,7 +102,6 @@ test "validate resource limits rejects invalid quantity" {
     assert raised , "Expected ValueError for invalid quantity";
 }
 
-# --- load_env_variables ---
 test "load env variables reads env file" {
     tmp = Path(mkdtemp());
     env_dir = tmp / "app";
@@ -123,7 +115,6 @@ test "load env variables reads env file" {
     assert {"name": "VAR2", "value": "two"} in env_vars;
 }
 
-# --- ensure_pvc_exists ---
 test "ensure pvc exists skips when present" {
     core_v1 = unittest.mock.MagicMock();
     core_v1.read_namespaced_persistent_volume_claim.return_value = object();
@@ -159,7 +150,6 @@ test "ensure pvc exists creates when missing" {
     assert body["spec"]["storageClassName"] == "fast";
 }
 
-# --- cluster_type detection ---
 test "cluster type detects aws by provider" {
     class Node {
         def init(self, provider_id: str) {
@@ -186,7 +176,6 @@ test "cluster type detects aws by provider" {
     }
 }
 
-# --- check_pods_restarted ---
 test "check pods restarted selector and return values" {
     app_name = "myapp";
     namespace = "test-ns";
@@ -200,11 +189,10 @@ test "check pods restarted selector and return values" {
         f"{app_name}-redis-insight"
     ];
 
-    # --- Case 1: pod running stable (no crash loop) → False, single API call with correct selector ---
     clean_container = unittest.mock.MagicMock();
-    clean_container.state = unittest.mock.MagicMock();  # FIX: assign state as MagicMock
-    clean_container.state.waiting = None;  # pod not waiting
-    clean_container.restart_count = 0;  # no restarts
+    clean_container.state = unittest.mock.MagicMock();
+    clean_container.state.waiting = None;
+    clean_container.restart_count = 0;
 
     pod_clean = unittest.mock.MagicMock();
     pod_clean.status.container_statuses = [clean_container];
@@ -228,13 +216,12 @@ test "check pods restarted selector and return values" {
         assert label in selector , f"Label '{label}' missing from selector '{selector}'";
     }
 
-    # --- Case 2: one pod in CrashLoopBackOff → True ---
     crash_container = unittest.mock.MagicMock();
     crash_state = unittest.mock.MagicMock();
     crash_state.reason = "CrashLoopBackOff";
-    crash_container.state = unittest.mock.MagicMock();  # FIX: assign state as MagicMock
+    crash_container.state = unittest.mock.MagicMock();
     crash_container.state.waiting = crash_state;
-    crash_container.state.running = None;  # ensure not running so selector returns True
+    crash_container.state.running = None;
     crash_container.restart_count = 1;
 
     pod_crash = unittest.mock.MagicMock();
@@ -253,12 +240,10 @@ test "check pods restarted selector and return values" {
 
     assert result_true is True;
 
-    # --- Case 3: restart_count=1 but pod is currently running (e.g. MongoDB/Redis
-    #             readOnlyRootFilesystem restart-then-stabilise) → False ---
     stabilised_container = unittest.mock.MagicMock();
     stabilised_container.state = unittest.mock.MagicMock();
     stabilised_container.state.waiting = None;
-    stabilised_container.state.running = unittest.mock.MagicMock();  # currently running
+    stabilised_container.state.running = unittest.mock.MagicMock();
     stabilised_container.restart_count = 1;
 
     pod_stabilised = unittest.mock.MagicMock();
@@ -278,16 +263,13 @@ test "check pods restarted selector and return values" {
     assert result_stabilised is False , "pod that restarted once but is now running should not be flagged as crashed";
 }
 
-# --- resize_pvc_if_needed ---
 test "resize pvc if needed: increase patches, no-op skips, decrease raises" {
-    # Helper that returns a fake PVC whose storage request is `size`.
     def make_pvc(size: str) -> object {
         pvc = unittest.mock.MagicMock();
         pvc.spec.resources.requests = {"storage": size};
         return pvc;
     }
 
-    # Case 1 - increase: patch must be called with the larger size.
     core_v1 = unittest.mock.MagicMock();
     core_v1.read_namespaced_persistent_volume_claim.return_value = make_pvc("1Gi");
     resize_pvc_if_needed(core_v1, "ns", "mongo-pvc", "10Gi");
@@ -295,7 +277,6 @@ test "resize pvc if needed: increase patches, no-op skips, decrease raises" {
         "mongo-pvc", "ns", {"spec": {"resources": {"requests": {"storage": "10Gi"}}}}
     );
 
-    # Case 2 - same size: patch must NOT be called.
     core_v1_noop = unittest.mock.MagicMock();
     core_v1_noop.read_namespaced_persistent_volume_claim.return_value = make_pvc(
         "10Gi"
@@ -303,7 +284,6 @@ test "resize pvc if needed: increase patches, no-op skips, decrease raises" {
     resize_pvc_if_needed(core_v1_noop, "ns", "mongo-pvc", "10Gi");
     core_v1_noop.patch_namespaced_persistent_volume_claim.assert_not_called();
 
-    # Case 3 - decrease: must raise ValueError.
     core_v1_shrink = unittest.mock.MagicMock();
     core_v1_shrink.read_namespaced_persistent_volume_claim.return_value = make_pvc(
         "10Gi"
@@ -316,7 +296,6 @@ test "resize pvc if needed: increase patches, no-op skips, decrease raises" {
     }
     assert raised , "Expected ValueError when trying to shrink PVC";
 
-    # Case 4 - PVC not yet provisioned (first deploy): 404 must return silently.
     core_v1_new = unittest.mock.MagicMock();
     core_v1_new.read_namespaced_persistent_volume_claim.side_effect = ApiException(
         status=404
@@ -325,7 +304,6 @@ test "resize pvc if needed: increase patches, no-op skips, decrease raises" {
     core_v1_new.patch_namespaced_persistent_volume_claim.assert_not_called();
 }
 
-# --- parse_storage_quantity valid ---
 def _test_parse_storage_valid(pair: tuple) {
     raw = pair[0];
     expected = pair[1];
@@ -351,7 +329,6 @@ with entry {
     );
 }
 
-# --- parse_storage_quantity invalid ---
 def _test_parse_storage_invalid(raw: str) {
     raised = False;
     try {

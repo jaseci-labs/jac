@@ -1,15 +1,3 @@
-"""E2E tests for interactive Jac code blocks.
-
-Uses a self-contained test HTML fixture with known code blocks.
-No dependency  on docs .md content.
-
-Run:
-    pytest docs/tests/e2e/test_code_blocks.jac -v
-    pytest docs/tests/e2e/test_code_blocks.jac -v -k rendering
-    pytest docs/tests/e2e/test_code_blocks.jac -v -k execution
-    HEADED=1 pytest docs/tests/e2e/test_code_blocks.jac -v   # visible browser
-"""
-
 import os;
 import socket;
 import tempfile;
@@ -89,7 +77,6 @@ class H(http.server.SimpleHTTPRequestHandler):
 http.server.ThreadingHTTPServer(('127.0.0.1', int(sys.argv[2])), H).serve_forever()
 """;
 
-# -- Helpers -------------------------------------------------------------------
 def _get_free_port -> int {
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
     s.bind(("127.0.0.1", 0));
@@ -116,17 +103,11 @@ def _start_server -> tuple {
     if not os.path.isdir(SITE_DIR) {
         run(["mkdocs", "build"], cwd=DOCS_DIR, check=True);
     }
-    # mkstemp gives an atomic, unique file within SITE_DIR so concurrent xdist
-    # workers never collide on the same path (fixes the shared _test.html race).
+
     (fd, abs_path) = tempfile.mkstemp(
         dir=SITE_DIR, suffix=".html", prefix="_jac_test_"
     );
-    # os.fdopen only adopts the raw mkstemp fd on success; if it itself raises
-    # (rare), we must close fd ourselves or the OS descriptor leaks until the
-    # worker process exits. Keep fd adoption separate from the `with` so a
-    # failure here can't leave fd half-open. On any later failure (port/Popen/
-    # _wait_for_port) _with_page's finally never runs, so clean up abs_path in
-    # the except below before re-raising so it isn't leaked in SITE_DIR.
+
     try {
         fh = os.fdopen(fd, "w");
     } except Exception {
@@ -170,16 +151,6 @@ def _stop_server(server: any, abs_path: str) {
     }
 }
 
-"""Start server, launch browser, navigate to test page, run callback(page, resp).
-
-Navigation waits for `domcontentloaded`, not `networkidle`. The fixture's
-`run-code.js` spawns the Pyodide web worker on `DOMContentLoaded`, so the page
-keeps pulling bytes from the CDN long after the DOM is ready and `networkidle`
-(500ms of zero network activity) is never reached within the `goto` timeout —
-flaking the fast rendering tests that don't even need Pyodide. Each test already
-waits on the specific element/condition it depends on (Monaco, Pyodide output,
-Viz SVG, response headers), so none relies on the network going idle.
-"""
 def _with_page(callback: any, wait_until: str = "domcontentloaded") {
     (server, base_url, page_path, abs_path) = _start_server();
     try {
@@ -199,10 +170,6 @@ def _with_page(callback: any, wait_until: str = "domcontentloaded") {
 }
 
 def _scroll_to(page: any, block_id: str) {
-    # Wait for the block to attach before scrolling. Otherwise, when the page is
-    # still settling, `querySelector` returns null and `.scrollIntoView()` throws
-    # "Cannot read properties of null", flaking the test instead of giving a
-    # clear timeout. The `?.` is a belt-and-suspenders no-op if it races away.
     page.wait_for_selector(block_id, state="attached", timeout=MONACO_TIMEOUT);
     page.evaluate(f"document.querySelector('{block_id}')?.scrollIntoView()");
 }
@@ -221,8 +188,6 @@ def _click_graph(page: any, block_id: str) {
     page.locator(selector).click();
 }
 
-# -- Rendering tests (fast, no Pyodide) ----------------------------------------
-"""Plain block should show run button only, no graph button."""
 test "rendering: plain block buttons" {
     def check(page: any, resp: any) {
         _scroll_to(page, "#block-plain");
@@ -234,7 +199,6 @@ test "rendering: plain block buttons" {
     _with_page(check);
 }
 
-"""Run-dot block should show both run and graph buttons."""
 test "rendering: run-dot block buttons" {
     def check(page: any, resp: any) {
         _scroll_to(page, "#block-run-dot");
@@ -246,7 +210,6 @@ test "rendering: run-dot block buttons" {
     _with_page(check);
 }
 
-"""Monaco editor should load and contain the source code."""
 test "rendering: monaco editor with code" {
     def check(page: any, resp: any) {
         _scroll_to(page, "#block-plain");
@@ -263,8 +226,6 @@ test "rendering: monaco editor with code" {
     _with_page(check);
 }
 
-# -- Header tests (SharedArrayBuffer) -----------------------------------------
-"""Server must send COOP/COEP headers for SharedArrayBuffer support."""
 test "headers: cross-origin isolation" {
     def check(page: any, resp: any) {
         assert resp.headers.get("cross-origin-opener-policy") == "same-origin";
@@ -274,15 +235,13 @@ test "headers: cross-origin isolation" {
     _with_page(check);
 }
 
-# -- Execution tests (slow, needs Pyodide CDN) --------------------------------
-"""Clicking run should execute code and show correct output."""
 test "execution: run produces output" {
     def check(page: any, resp: any) {
         _click_run(page, "#block-plain");
         page.wait_for_selector(
             "#block-plain .jcb-output-wrap", state="visible", timeout=PYODIDE_TIMEOUT
         );
-        # jcb-running clears when run-code.js finishes; non-empty output races the warm-up banner.
+
         page.wait_for_function(
             "!document.querySelector('#block-plain').classList.contains('jcb-running')",
             timeout=PYODIDE_TIMEOUT
@@ -293,7 +252,6 @@ test "execution: run produces output" {
     _with_page(check);
 }
 
-"""Run button should be disabled while code is executing."""
 test "execution: button disabled during run" {
     def check(page: any, resp: any) {
         _click_run(page, "#block-plain");
@@ -305,7 +263,6 @@ test "execution: button disabled during run" {
     _with_page(check);
 }
 
-"""Invalid code should produce an error message in output."""
 test "execution: syntax error shows error" {
     def check(page: any, resp: any) {
         _click_run(page, "#block-error");
@@ -319,7 +276,6 @@ test "execution: syntax error shows error" {
     _with_page(check);
 }
 
-"""Graph button should render an SVG visualization."""
 test "execution: graph renders svg" {
     def check(page: any, resp: any) {
         _click_graph(page, "#block-run-dot");
@@ -335,7 +291,6 @@ test "execution: graph renders svg" {
     _with_page(check);
 }
 
-"""Graph output should contain valid DOT with expected node data."""
 test "execution: graph dot format" {
     def check(page: any, resp: any) {
         page.evaluate(

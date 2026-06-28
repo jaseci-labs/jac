@@ -1,5 +1,3 @@
-"""Tests for Kubernetes deployment using new factory-based architecture."""
-
 import base64;
 import json;
 import os;
@@ -27,11 +25,6 @@ import from jac_scale.deploy.target.kubernetes.ingress { IngressDeployer }
 import from jac_scale.deploy.autoscale.factory { AutoscalerFactory }
 import from jac_scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
 
-"""Get current git repository URL, branch, and commit hash.
-
-Returns:
-    Tuple of (repo_url, branch, commit_hash)
-"""
 def _get_git_config -> tuple[str, str, str] {
     try {
         current_dir = os.path.dirname(os.path.abspath(__file__));
@@ -46,7 +39,6 @@ def _get_git_config -> tuple[str, str, str] {
         branch = None;
         commit = None;
 
-        # Check if this is a Pull Request with event data available
         if (
             "GITHUB_HEAD_REF" in os.environ
             and os.environ["GITHUB_HEAD_REF"]
@@ -166,7 +158,6 @@ def _get_git_config -> tuple[str, str, str] {
     }
 }
 
-"""Make an HTTP request with retry logic for 503 responses."""
 def _request_with_retry(
     method: str,
     url: str,
@@ -194,7 +185,6 @@ def _request_with_retry(
     return response;
 }
 
-"""Test deployment early exit on failure."""
 test "early exit" {
     config.load_kube_config();
 
@@ -230,7 +220,6 @@ test "early exit" {
     assert failure_message is not None and "Containers restarted" in failure_message;
 }
 
-"""Test individual methods of KubernetesTarget."""
 test "deployment target methods" {
     config.load_kube_config();
 
@@ -247,11 +236,9 @@ test "deployment target methods" {
         "kubernetes", target_config, logger
     );
 
-    # Test get_service_url (before deployment, should return None or handle gracefully)
     service_url = deployment_target.get_service_url(app_name);
     assert service_url is None or isinstance(service_url, str);
 
-    # Test get_status (before deployment, should handle gracefully)
     try {
         status = deployment_target.get_status(app_name);
         assert status is not None;
@@ -260,7 +247,6 @@ test "deployment target methods" {
     }
 }
 
-"""Test that redis.conf.template is included in package distribution."""
 test "redis template file in package" {
     try {
         ref = importlib.resources.files("jac_scale") / "deploy" / "database" / "redis.conf.template";
@@ -269,7 +255,6 @@ test "redis template file in package" {
             "Ensure it's included via pyproject.toml package-data"
         );
 
-        # Verify it's readable and has content
         content = ref.read_text(encoding='utf-8');
         assert len(content) > 0 , "redis.conf.template should not be empty";
         assert 'maxmemory-policy' in content , (
@@ -284,10 +269,6 @@ test "redis template file in package" {
 }
 
 
-# Unit tests for security hardening patterns (dict construction)
-# These tests do not require a live Kubernetes cluster.
-
-# Verify database provider manifests include secure container security contexts.
 test "kubernetes database provider security context" {
     mongo_provider = DatabaseProviderFactory.create(
         'kubernetes_mongo', None, {'app_name': 'test-app'}
@@ -317,12 +298,10 @@ test "kubernetes database provider security context" {
     assert redis_sc['capabilities']['drop'] == ['ALL'];
     assert redis_sc['seccompProfile']['type'] == 'RuntimeDefault';
 
-    # ServiceAccounts should not auto-mount tokens
     assert mongo_deploy['service_account']['automountServiceAccountToken'] is False;
     assert redis_deploy['service_account']['automountServiceAccountToken'] is False;
 }
 
-# Fake networking client for use in kubernetes target security policy dicts test.
 obj FakeNetworkingV1 {
     has created_policies: list = [];
 
@@ -339,14 +318,11 @@ obj FakeNetworkingV1 {
     def replace_namespaced_network_policy(
         name: str, namespace: str, body: dict[(str, Any)]
     ) {
-        # Not used in this test
         self.created_policies.append(body);
     }
 }
 
-# Verify KubernetesTarget container/security settings and NetworkPolicy structure.
 test "kubernetes target security policy dicts" {
-    # Build a target with default config
     scale_config = get_scale_config();
     target_config = scale_config.get_kubernetes_config();
     target_config['app_name'] = 'test-app';
@@ -356,7 +332,6 @@ test "kubernetes target security policy dicts" {
         'kubernetes', target_config, logger
     );
 
-    # Verify container security context produced by _build_container_config
     probe_configs = deployment_target._build_probe_config('/health');
     resources = deployment_target._build_resource_config();
     container = deployment_target._build_container_config(
@@ -373,14 +348,12 @@ test "kubernetes target security policy dicts" {
     assert sc['capabilities']['drop'] == ['ALL'];
     assert sc['seccompProfile']['type'] == 'RuntimeDefault';
 
-    # Verify NetworkPolicy dict structure via deploy function (using fake client)
     app_name = 'test-app';
     namespace = 'test-ns';
 
     fake_net = FakeNetworkingV1();
     deployment_target._deploy_network_policy(app_name, namespace, fake_net);
 
-    # Should have created all component policies
     expected_policy_names = [
         f"{app_name}-network-policy",
         f"{app_name}-mongodb-network-policy",
@@ -396,13 +369,12 @@ test "kubernetes target security policy dicts" {
         assert name in created_names;
     }
 
-    # Verify common metadata/structure for all policies
     for p in fake_net.created_policies {
         assert p['metadata']['labels']['app'] == app_name;
         assert p['metadata']['labels']['managed'] == 'jac-scale';
         assert p['spec']['policyTypes'] == ['Ingress', 'Egress'];
         assert p['spec']['podSelector']['matchLabels']['app'] is not None;
-        # Egress should include DNS access to kube-system
+
         egress_rules = p['spec']['egress'];
         assert any(
             rule.get('to', [])[0].get('namespaceSelector', {}).get(
@@ -415,7 +387,6 @@ test "kubernetes target security policy dicts" {
         );
     }
 
-    # Verify app policy allows inbound traffic on correct container port
     app_policy = next(
         (
             p
@@ -428,7 +399,6 @@ test "kubernetes target security policy dicts" {
     app_ports = app_policy['spec']['ingress'][0]['ports'];
     assert app_ports[0]['port'] == deployment_target.k8s_config.container_port;
 
-    # Verify MongoDB and Redis policies allow traffic from both app and dashboard pods.
     mongo_policy = next(
         (
             p
@@ -461,9 +431,7 @@ test "kubernetes target security policy dicts" {
     } in redis_from;
     assert redis_policy['spec']['ingress'][0]['ports'][0]['port'] == 6379;
 }
-# ---------------------------------------------------------------------------
-# Domain / TLS configuration tests (mocked - no live cluster required)
-# ---------------------------------------------------------------------------
+
 test "get service url switches between http and https based on tls state" {
     scale_config = get_scale_config();
     target_config = scale_config.get_kubernetes_config();
@@ -477,7 +445,6 @@ test "get service url switches between http and https based on tls state" {
 
     mock_networking_v1 = unittest.mock.MagicMock();
 
-    # Case 1: TLS active -> https
     tls_entry = SimpleNamespace(hosts=["app.example.com"], secret_name="myapp-tls");
     mock_networking_v1.read_namespaced_ingress.return_value = SimpleNamespace(
         spec=SimpleNamespace(tls=[tls_entry])
@@ -493,7 +460,6 @@ test "get service url switches between http and https based on tls state" {
         }
     }
 
-    # Case 2: no TLS yet -> http
     mock_networking_v1.read_namespaced_ingress.return_value = SimpleNamespace(
         spec=SimpleNamespace(tls=[])
     );
@@ -520,8 +486,6 @@ test "enable tls raises when no domain configured" {
         "kubernetes", target_config, logger
     );
 
-    # Return an ingress with no annotations so domain falls back to the empty
-    # config value, causing IngressDeployer.enable_tls to raise "No domain found"
     mock_networking_v1 = unittest.mock.MagicMock();
     mock_networking_v1.read_namespaced_ingress.return_value = SimpleNamespace(
         metadata=SimpleNamespace(annotations=None)
@@ -558,23 +522,17 @@ test "enable tls raises when no domain configured" {
 }
 
 test "deploy with domain set stores domain in annotation not ingress host rule" {
-    # Regression test: setting domain in jac.toml before the first deployment
-    # must NOT add a host field to the ingress rule.  Adding a host before TLS
-    # exists causes nginx to reject traffic from the raw NLB hostname, making
-    # the app unreachable.  The fix stores the domain in a jac-scale/domain
-    # annotation so --enable-tls can read it later and add the host + TLS
-    # together in one atomic step.
     k8s_config = KubernetesConfig(
         domain="app.example.com", cert_manager_email="user@example.com"
     );
     ingress_deployer = IngressDeployer(k8s_config, None);
 
     mock_networking_v1 = unittest.mock.MagicMock();
-    # Simulate ingress not yet existing (first deploy) so create path is taken
+
     mock_networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=404);
 
     mock_core_v1 = unittest.mock.MagicMock();
-    # Simulate basic-auth secret not yet existing (replace returns 404, so create path is taken)
+
     mock_core_v1.replace_namespaced_secret.side_effect = ApiException(status=404);
 
     ingress_deployer._deploy_ingress_resource(
@@ -592,33 +550,26 @@ test "deploy with domain set stores domain in annotation not ingress host rule" 
     assert mock_networking_v1.create_namespaced_ingress.called , "ingress should be created on first deploy";
     created_body = mock_networking_v1.create_namespaced_ingress.call_args[1]["body"];
 
-    # Rule must NOT have a host - wildcard routing keeps the app reachable via
-    # IP/NLB before TLS is enabled (the original bug: host set here caused nginx
-    # to reject requests arriving via the raw NLB address)
     rule = created_body["spec"]["rules"][0];
     assert "host" not in rule , "ingress rule must not set host before TLS is enabled";
 
-    # Domain must be persisted in the annotation so --enable-tls can read it later
     annotations = created_body["metadata"]["annotations"];
     assert annotations.get("jac-scale/domain") == "app.example.com" , "domain must be stored in jac-scale/domain annotation for --enable-tls";
     assert annotations.get("jac-scale/cert-email") == "user@example.com" , "cert_manager_email must be stored in jac-scale/cert-email annotation for --enable-tls";
 }
 
 test "redis ingress rule must not set host before TLS is enabled" {
-    # Regression test: the Redis ingress had the same if self.k8s_config.domain →
-    # host-in-rule bug as the main ingress.  Ensure the Redis rule is also
-    # wildcard (no host) when domain is set but --enable-tls has not run yet.
     k8s_config = KubernetesConfig(
         domain="app.example.com", cert_manager_email="user@example.com"
     );
     ingress_deployer = IngressDeployer(k8s_config, None);
 
     mock_networking_v1 = unittest.mock.MagicMock();
-    # Simulate ingress not yet existing for both main and Redis ingresses
+
     mock_networking_v1.patch_namespaced_ingress.side_effect = ApiException(status=404);
 
     mock_core_v1 = unittest.mock.MagicMock();
-    # Simulate basic-auth secret not yet existing (replace returns 404, so create path is taken)
+
     mock_core_v1.replace_namespaced_secret.side_effect = ApiException(status=404);
 
     ingress_deployer._deploy_ingress_resource(
@@ -633,21 +584,15 @@ test "redis ingress rule must not set host before TLS is enabled" {
         core_v1=mock_core_v1
     );
 
-    # Two ingresses should be created: main (index 0) and Redis (index 1)
     assert mock_networking_v1.create_namespaced_ingress.call_count == 2 , "both main and Redis ingresses should be created on first deploy";
     redis_created_body = mock_networking_v1.create_namespaced_ingress.call_args_list[1][
         1
     ]["body"];
 
-    # Redis rule must NOT have a host - same requirement as the main ingress
     redis_rule = redis_created_body["spec"]["rules"][0];
     assert "host" not in redis_rule , "Redis ingress rule must not set host before TLS is enabled";
 }
-# ---------------------------------------------------------------------------
-# RedisInsight (cache-dashboard) spec construction (no live cluster)
-# Covers the PR's EULA auto-accept + encryption key, the sub-path proxy
-# config, and secret-backed (never inlined) Redis credentials.
-# ---------------------------------------------------------------------------
+
 test "redis insight cache dashboard spec is correctly built" {
     provider = DatabaseProviderFactory.create(
         'kubernetes_redis', None, {'app_name': 'test-app'}
@@ -666,15 +611,14 @@ test "redis insight cache dashboard spec is correctly built" {
     assert sc['capabilities']['drop'] == ['ALL'];
 
     env = {e['name']: e for e in container['env']};
-    # EULA auto-accept + explicit encryption key (container has no OS keyring)
+
     assert env['RI_ACCEPT_TERMS_AND_CONDITIONS']['value'] == 'true';
     assert env['RI_ENCRYPTION_KEY']['value'] , "RI_ENCRYPTION_KEY must be set";
-    # Pre-seeded connection to the in-cluster Redis service, served under the
-    # ingress sub-path
+
     assert env['RI_REDIS_HOST']['value'] == 'test-app-redis-service';
     assert env['RI_REDIS_PORT']['value'] == '6379';
     assert env['RIPROXYPATH']['value'] == '/cache-dashboard';
-    # Credentials come from the redis secret, never inlined as plaintext
+
     u = env['RI_REDIS_USERNAME']['valueFrom']['secretKeyRef'];
     p = env['RI_REDIS_PASSWORD']['valueFrom']['secretKeyRef'];
     assert u['name'] == 'test-app-redis-secret' and u['key'] == 'username';
@@ -698,7 +642,6 @@ test "redis ACL is secret mounted not in configmap and creds validated" {
     assert 'users.acl' in secret_sd , "ACL file must be in the Secret";
     assert secret_sd['users.acl'].startswith('user default on >password');
 
-    # ACL is mounted from the Secret on its own path, read-only
     pod = dep['deployment']['spec']['template']['spec'];
     acl_vol = next(
         (
@@ -737,14 +680,7 @@ test "redis ACL is secret mounted not in configmap and creds validated" {
     assert secret_sd['connection-string'] == provider.get_connection_string();
 }
 
-# ---------------------------------------------------------------------------
-# Shared ingress mode unit tests (no live cluster)
-# Covers: controller skip, immediate host rule, destroy guard, domain
-# validation, and NodePort validation skip.
-# ---------------------------------------------------------------------------
 test "shared ingress skips deploying dedicated nginx controller" {
-    # start_controller must be a no-op for _deploy_nginx_controller when
-    # shared_ingress=True - a pre-existing cluster-wide controller is used.
     k8s_config = KubernetesConfig(shared_ingress=True, domain="myapp.example.com");
     ingress_deployer = IngressDeployer(k8s_config, None);
 
@@ -766,10 +702,6 @@ test "shared ingress skips deploying dedicated nginx controller" {
 }
 
 test "shared ingress rule sets host immediately without waiting for tls" {
-    # Dedicated mode keeps the rule wildcard (no host) until --enable-tls.
-    # Shared mode must set the host immediately because the shared controller
-    # routes across many namespaces by hostname; without a host two apps would
-    # both claim '/' and collide.  Mirror of the L2009 dedicated-mode test.
     k8s_config = KubernetesConfig(shared_ingress=True, domain="myapp.example.com");
     ingress_deployer = IngressDeployer(k8s_config, None);
 
@@ -798,10 +730,6 @@ test "shared ingress rule sets host immediately without waiting for tls" {
 }
 
 test "shared ingress destroy skips controller resource teardown" {
-    # App-level Ingress objects are always cleaned up.  The NGINX controller
-    # Deployment, Service, ServiceAccount, ConfigMap, ClusterRole,
-    # ClusterRoleBinding, and IngressClass must NOT be deleted - those belong
-    # to the shared controller and are managed externally.
     k8s_config = KubernetesConfig(shared_ingress=True, domain="myapp.example.com");
     ingress_deployer = IngressDeployer(k8s_config, None);
 
@@ -809,8 +737,7 @@ test "shared ingress destroy skips controller resource teardown" {
     mock_core_v1 = unittest.mock.MagicMock();
     mock_rbac_v1 = unittest.mock.MagicMock();
     mock_networking_v1 = unittest.mock.MagicMock();
-    # delete_if_exists swallows 404; let all deletes appear as 404 so the
-    # function stays a no-op while still recording the call.
+
     not_found = ApiException();
     not_found.status = 404;
     mock_networking_v1.delete_namespaced_ingress.side_effect = not_found;
@@ -833,10 +760,8 @@ test "shared ingress destroy skips controller resource teardown" {
         );
     }
 
-    # App ingress objects must always be cleaned up
     assert mock_networking_v1.delete_namespaced_ingress.called , "app Ingress resource must be deleted regardless of shared_ingress mode";
 
-    # Controller resources must be left untouched
     assert not mock_apps_v1.delete_namespaced_deployment.called , "controller Deployment must not be deleted in shared ingress mode";
     assert not mock_core_v1.delete_namespaced_service_account.called , "controller ServiceAccount must not be deleted in shared ingress mode";
     assert not mock_rbac_v1.delete_cluster_role.called , "ClusterRole must not be deleted in shared ingress mode";
@@ -845,15 +770,12 @@ test "shared ingress destroy skips controller resource teardown" {
 }
 
 test "shared ingress deploy fails fast when domain is not set" {
-    # The domain is mandatory in shared mode because the shared controller
-    # routes by Host header; without it two apps cannot be told apart.
-    # The check must fire before any Kubernetes API call is made.
     scale_config = get_scale_config();
     target_config = scale_config.get_kubernetes_config();
     target_config['app_name'] = 'test-app';
     target_config['namespace'] = 'test-ns';
     target_config['shared_ingress'] = True;
-    target_config['domain'] = '';  # explicitly empty - the invalid state
+    target_config['domain'] = '';
 
     logger = UtilityFactory.create_logger('standard');
     deployment_target = DeploymentTargetFactory.create(
@@ -866,16 +788,11 @@ test "shared ingress deploy fails fast when domain is not set" {
 
     assert result.success is False , "deploy must fail when shared_ingress=True but domain is empty";
     assert "domain" in result.message.lower() , "error message must mention domain requirement";
-    # validate_shared_ingress must NOT be present - the exception fires before
-    # details['validate_shared_ingress'] is written
+
     assert "validate_shared_ingress" not in result.details , "deploy must abort before recording validate_shared_ingress";
 }
 
 test "shared ingress deploy skips nodeport validation" {
-    # validate_ports is the mechanism that rejects a conflicting NodePort on
-    # local clusters.  In shared ingress mode no NodePort is created, so
-    # calling validate_ports would be incorrect (it may also reject valid ports
-    # that the shared controller already owns).
     scale_config = get_scale_config();
     target_config = scale_config.get_kubernetes_config();
     target_config['app_name'] = 'test-app';
@@ -914,10 +831,6 @@ test "shared ingress deploy skips nodeport validation" {
                         with unittest.mock.patch(
                             "jac_scale.deploy.target.kubernetes.kubernetes_target.client"
                         ) {
-                            # deploy() may fail at a later step once mocked K8s
-                            # APIs return generic MagicMocks - that is expected.
-                            # We only care that the provider was obtained and
-                            # validate_ports was never invoked on it.
                             deployment_target.deploy(app_config);
                         }
                     }
@@ -930,10 +843,6 @@ test "shared ingress deploy skips nodeport validation" {
 }
 
 test "shared ingress merges caller-supplied annotations for non-nginx controllers" {
-    # A non-nginx shared controller (e.g. AWS ALB) is driven entirely by the
-    # annotations the caller supplies. They must land on the Ingress metadata,
-    # ingressClassName must be the shared class, and nginx-specific tuning must
-    # NOT be emitted (it is meaningless to a non-nginx controller).
     custom = {
         "alb.ingress.kubernetes.io/group.name": "shared-alb",
         "alb.ingress.kubernetes.io/scheme": "internet-facing",

@@ -1,5 +1,3 @@
-"""Tests for jac_scale.server.inprocess helpers (no socket, backend-free where possible)."""
-
 import from jaclang.jac0core.ext_registry { base_stem }
 
 

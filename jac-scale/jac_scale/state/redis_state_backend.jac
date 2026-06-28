@@ -1,19 +1,7 @@
-"""Redis-backed StateBackend for multi-replica deployments.
-
-Implements the same `StateBackend` port as `InProcessStateBackend` over a Redis
-client, so rate-limit buckets, scheduler leader locks, and the token store stay
-coherent across pods. The redis client is reused from `jac_scale.persistence.db`
-(`get_redis_client`, which reads `[plugins.scale.database].redis_url`); redis is
-an optional dependency, so the import is guarded and a missing/unreachable redis
-surfaces as a clear error in postinit rather than an obscure failure later.
-"""
-
 import from jac_scale.state.state_backend { StateBackend }
 
 
-"""StateBackend over a Redis client. Network adapter for the --scale path."""
 obj RedisStateBackend(StateBackend) {
-    # Concrete redis.Redis client; resolved in postinit when not injected.
     has client: any = None,
         url: (str | None) = None;
 
@@ -23,17 +11,15 @@ obj RedisStateBackend(StateBackend) {
                 import from jac_scale.persistence.db { get_redis_client }
             } except ImportError as e {
                 raise RuntimeError(
-                    "RedisStateBackend requires the redis client helper "
-                    + "(jac_scale.persistence.db.get_redis_client); install the optional "
-                    + "'data' dependency group. Original error: "
-                    + str(e)
+                    "RedisStateBackend requires the redis client helper " + "(jac_scale.persistence.db.get_redis_client); install the optional " + "'data' dependency group. Original error: " + str(
+                        e
+                    )
                 );
             }
             self.client = get_redis_client(self.url);
         }
     }
 
-    """Decode a redis GET result (bytes|str|None) to str|None."""
     def _decode(raw: any) -> (str | None) {
         if raw is None {
             return None;
@@ -48,26 +34,23 @@ obj RedisStateBackend(StateBackend) {
         return self._decode(self.client.get(key));
     }
 
-    def set(key: str, value: str, ttl_seconds: (int | None) = None) -> None {
+    def set(key: str, value: str, ttl_seconds: (int | None) = None) {
         if ttl_seconds is None {
             self.client.set(key, value);
         } elif ttl_seconds <= 0 {
-            # Parity with InProcessStateBackend: a non-positive TTL is immediate
-            # expiry, so the key must not persist. Redis rejects `ex <= 0`, so
-            # drop the key instead of writing an un-expirable value or erroring.
             self.client.delete(key);
         } else {
             self.client.set(key, value, ex=ttl_seconds);
         }
     }
 
-    def delete(key: str) -> None {
+    def delete(key: str) {
         self.client.delete(key);
     }
 
-    def increment(key: str, amount: float = 1.0, ttl_seconds: (int | None) = None) -> float {
-        # INCRBYFLOAT creates the key at 0 on first use; set the expiry only then
-        # so a TTL is not refreshed on every increment.
+    def increment(
+        key: str, amount: float = 1.0, ttl_seconds: (int | None) = None
+    ) -> float {
         existed = self.client.exists(key);
         updated = float(self.client.incrbyfloat(key, amount));
         if ttl_seconds is not None and not existed {
@@ -77,16 +60,12 @@ obj RedisStateBackend(StateBackend) {
     }
 
     def acquire_lock(key: str, ttl_seconds: int) -> bool {
-        # SET key 1 NX PX ttl: atomic test-and-set with auto-expiry. Clamp to
-        # >= 1ms: redis rejects `px <= 0`, and InProcessStateBackend treats a
-        # non-positive ttl as an immediately-stale lock, which a 1ms expiry
-        # approximates without erroring.
         px_ms = max(1, ttl_seconds * 1000);
         result = self.client.set(key, "1", nx=True, px=px_ms);
         return bool(result);
     }
 
-    def release_lock(key: str) -> None {
+    def release_lock(key: str) {
         self.client.delete(key);
     }
 }

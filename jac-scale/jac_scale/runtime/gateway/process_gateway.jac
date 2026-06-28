@@ -1,19 +1,3 @@
-"""ProcessGateway: the Gateway port adapter for the out-of-process (microservice)
-realization.
-
-This is the gateway that runs in its own process or pod and fronts a fleet of
-service processes, reaching each over the network. It is the planner's choice for
-the `process` gateway_mode. The actual request handling (admin endpoints, the
-classify_route dispatcher, the reverse proxy, static/SPA fallback) lives in
-MicroserviceGateway, which this adapter owns and drives; ProcessGateway exists so
-the realizer constructs and serves every cell through the one Gateway port rather
-than reaching for a concrete gateway by name.
-
-A process gateway's proxy hop is a raw HTTP forward (arbitrary path/method/body to
-the matched service), not a semantic sv-call, so it does not carry a
-ServiceTransport - that port is the EmbeddedGateway's, whose hops are in-process.
-"""
-
 import from jac_scale.runtime.gateway.gateway { Gateway }
 import from jac_scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
 import from jac_scale.runtime.gateway.service_registry { ServiceRegistry }
@@ -24,8 +8,6 @@ import from jac_scale.runtime.context.util {
 }
 
 
-"""Out-of-process gateway: owns a MicroserviceGateway and serves it. `registry`
-carries the service routing table the planner/orchestrator built."""
 obj ProcessGateway(Gateway) {
     has registry: ServiceRegistry,
         port: int = DEFAULT_GATEWAY_PORT,
@@ -34,8 +16,7 @@ obj ProcessGateway(Gateway) {
         static_mounts: list[dict[str, str]] = [],
         _gateway: MicroserviceGateway | None = None;
 
-    """Build the underlying MicroserviceGateway and its FastAPI app."""
-    def setup -> None {
+    def setup {
         gw = MicroserviceGateway(
             registry=self.registry,
             port=self.port,
@@ -47,8 +28,7 @@ obj ProcessGateway(Gateway) {
         self._gateway = gw;
     }
 
-    """Start serving (blocks on uvicorn). Sets up lazily if not already."""
-    def serve -> None {
+    def serve {
         if self._gateway is None {
             self.setup();
         }

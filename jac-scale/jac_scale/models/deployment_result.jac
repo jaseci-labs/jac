@@ -1,6 +1,3 @@
-"""Deployment result model."""
-
-"""Result of a deployment operation."""
 obj DeploymentResult {
     has success: bool,
         service_url: (str | None) = None,

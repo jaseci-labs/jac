@@ -1,8 +1,3 @@
-"""Tests for binary-shipping code injection: the parts that break in non-obvious
-ways - the ship_binary bootstrap command (must NOT build in-pod), the toolchain
-packing layout, and the BinaryInjector pod-spec wiring. The host release build
-(zig) and cluster seed are exercised end-to-end by the k8s e2e, not here."""
-
 import os;
 import io;
 import tarfile;
@@ -20,13 +15,11 @@ import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesCon
 test "ship_binary bootstrap installs the shipped binary, never builds in-pod" {
     cmds = build_runtime_install_commands(KubernetesConfig(), False, True);
     joined = " && ".join(cmds);
-    # Uses the shipped toolchain: drops the binary on PATH, installs plugins
-    # editable from the shipped source.
+
     assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in joined;
     assert "jac install -e" in joined;
     assert "jac-scale" in joined;
-    # The whole point: NONE of the in-pod build path. A regression that lets any
-    # of these back in resurrects the multi-minute, OOM-prone per-pod compile.
+
     assert "zig build" not in joined;
     assert "git clone" not in joined;
     assert "build-essential" not in joined;
@@ -55,13 +48,9 @@ test "pack_toolchain ships the binary + plugin source, drops build artifacts" {
         ) as handle {
             handle.write("x = 1");
         }
-        # The plugin's package-metadata jac.toml: is_excluded normally drops
-        # jac.toml, but the toolchain MUST ship it or `jac install -e` cannot
-        # resolve the package name + extras and mis-installs the app instead.
         with open(os.path.join(repo, "jac-scale", "jac.toml"), "w") as handle {
             handle.write("[project]\nname = \"jac-scale\"\n");
         }
-        # A build artifact that must be excluded (same rules as the source bundle).
         os.makedirs(os.path.join(repo, "jac-scale", "node_modules"));
         with open(
             os.path.join(repo, "jac-scale", "node_modules", "junk.js"), "w"
@@ -73,13 +62,9 @@ test "pack_toolchain ships the binary + plugin source, drops build artifacts" {
         with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as tar {
             names = tar.getnames();
         }
-        # Binary + plugin source land under the toolchain dir.
         assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in names;
         assert f"{TOOLCHAIN_SUBDIR}/jac-scale/jac_scale/x.py" in names;
-        # The plugin's jac.toml ships (regression guard: without it the in-pod
-        # `jac install -e` mis-identifies the package as the app).
         assert f"{TOOLCHAIN_SUBDIR}/jac-scale/jac.toml" in names;
-        # Build artifacts never shipped.
         assert not any(["node_modules" in name for name in names]);
     }
 }

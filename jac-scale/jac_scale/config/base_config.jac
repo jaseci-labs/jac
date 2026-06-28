@@ -1,6 +1,3 @@
-"""Base configuration class for jac_scale."""
-
-"""Base configuration class that all target-specific configs should inherit from."""
 obj BaseConfig {
     has app_name: str = 'jaseci',
         namespace: str = 'default';

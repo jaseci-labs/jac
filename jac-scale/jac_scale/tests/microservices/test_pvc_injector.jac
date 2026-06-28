@@ -1,6 +1,3 @@
-"""Tests for PVC code injection: the security-sensitive packing and the
-pod-spec/manifest wiring (the parts that break in non-obvious ways)."""
-
 import os;
 import io;
 import tarfile;
@@ -21,13 +18,8 @@ test "pack_source keeps app files but drops secrets and strips plugins.scale" {
             handle.write("PRIVATE");
         }
         with open(os.path.join(project, "jac.toml"), "w") as handle {
-            # Includes an inline-comment header and a top-level dotted-key form -
-            # both must be stripped (regression guards for the credential leak).
             handle.write(
-                "plugins.scale.jwt.secret = \"topsecret\"\n"
-                + "[project]\nname = \"x\"\n"
-                + "[plugins.scale] # deploy creds\nimage_registry = \"creds\"\n"
-                + "[plugins.scale.kubernetes]\nmongodb_uri = \"mongodb://u:p@h\"\n"
+                "plugins.scale.jwt.secret = \"topsecret\"\n" + "[project]\nname = \"x\"\n" + "[plugins.scale] # deploy creds\nimage_registry = \"creds\"\n" + "[plugins.scale.kubernetes]\nmongodb_uri = \"mongodb://u:p@h\"\n"
             );
         }
         raw = pack_source(project);
@@ -42,11 +34,9 @@ test "pack_source keeps app files but drops secrets and strips plugins.scale" {
         assert "tls.key" not in names;
         assert "[project]" in toml_text;
         assert "plugins.scale" not in toml_text;
-        # No credential value survives, regardless of how it was declared.
-        assert "topsecret" not in toml_text;   # top-level dotted key
-        assert "creds" not in toml_text;        # inline-comment header section
-        assert "mongodb" not in toml_text;      # normal scale section
-        # Non-scale config is preserved.
+        assert "topsecret" not in toml_text;
+        assert "creds" not in toml_text;
+        assert "mongodb" not in toml_text;
         assert "name = \"x\"" in toml_text;
     }
 }
@@ -76,7 +66,9 @@ test "prepare + mutate_pod_spec wires the pvc, an init container, and the app mo
         assert "jac-app" in volume_names;
         assert "jac-bundles" in volume_names;
         assert len(result["initContainers"]) == 1;
-        mount_names = [mount["name"] for mount in result["containers"][0]["volumeMounts"]];
+        mount_names = [
+            mount["name"] for mount in result["containers"][0]["volumeMounts"]
+        ];
         assert "jac-app" in mount_names;
     }
 }

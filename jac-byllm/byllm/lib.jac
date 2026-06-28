@@ -1,4 +1,3 @@
-"""byLLM Package."""
 import from byllm.llm { MockLLM, Model, ModelPool }
 import from byllm.mtir { MTIR, MTRuntime }
 import from byllm.plugin { JacRuntime }

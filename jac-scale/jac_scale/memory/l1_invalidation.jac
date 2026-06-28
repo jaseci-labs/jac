@@ -1,9 +1,3 @@
-"""Cross-pod L1 cache invalidation over Redis pub/sub.
-
-A writer broadcasts an eviction; one process-wide listener drops that anchor
-from every other active L1 so siblings reload from L3 instead of serving stale.
-"""
-
 import json;
 import logging;
 import threading;
@@ -15,21 +9,16 @@ import from jaclang.runtimelib.memory { VolatileMemory }
 
 glob logger = logging.getLogger(__name__),
      DEFAULT_INVALIDATION_CHANNEL = "jac:anchor:invalidate",
-     # l1_id -> owning ScaleTieredMemory, held weakly; RLock guards it.
      _l1_registry = weakref.WeakValueDictionary(),
-     # l1_id -> anchor ids a sibling write invalidated, consumed by the owner on get.
      _stale_marks: dict[str, set[UUID]] = {},
      _l1_lock = threading.RLock();
 
 
-"""Mint a process-unique L1 id."""
 def new_l1_id -> str {
     return uuid4().hex;
 }
 
 
-"""Register an active L1 under its id. The finalizer clears its marks if it is
-GC'd without close() (the weak registry only auto-reclaims _l1_registry itself)."""
 def register_l1(l1_id: str, mem: VolatileMemory) {
     with _l1_lock {
         _l1_registry[l1_id] = mem;
@@ -38,7 +27,6 @@ def register_l1(l1_id: str, mem: VolatileMemory) {
 }
 
 
-"""Deregister an L1 and drop its stale marks (GC also reclaims it via the weak ref)."""
 def deregister_l1(l1_id: str) {
     with _l1_lock {
         _l1_registry.pop(l1_id, None);
@@ -47,10 +35,6 @@ def deregister_l1(l1_id: str) {
 }
 
 
-"""Mark `anchor_id` stale in every active L1 except the origin; return count marked.
-
-Marks rather than pops: popping a sibling's `__mem__` off the listener thread
-would strand that request's uncommitted write. The owner drops it on next read."""
 def evict_local_l1(anchor_id: str, origin_l1_id: (str | None) = None) -> int {
     try {
         key = UUID(anchor_id);
@@ -89,9 +73,6 @@ def evict_local_l1(anchor_id: str, origin_l1_id: (str | None) = None) -> int {
 }
 
 
-"""Consume the stale mark for (l1_id, anchor id); True if it was marked (one-shot).
-
-Lock-free when there's no mark (the common case); locks only to clear a real one."""
 def consume_stale(l1_id: str, id: UUID) -> bool {
     marks = _stale_marks.get(l1_id);
     if marks is None or id not in marks {
@@ -111,7 +92,6 @@ def consume_stale(l1_id: str, id: UUID) -> bool {
 }
 
 
-"""Decode a pub/sub payload and evict the named anchor."""
 def _handle_message(data: (bytes | str)) {
     try {
         text = data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else data;
@@ -127,13 +107,11 @@ def _handle_message(data: (bytes | str)) {
 }
 
 
-"""Serialize an invalidation message (anchor id + origin L1 id)."""
 def build_message(anchor_id: str, origin_l1_id: (str | None)) -> str {
     return json.dumps({"a": anchor_id, "o": origin_l1_id});
 }
 
 
-"""Daemon listener that evicts named anchors, self-healing across Redis drops."""
 obj L1InvalidationListener {
     has redis_url: str,
         channel: str,
@@ -182,7 +160,6 @@ obj L1InvalidationListener {
                     }
                 }
             } except Exception as e {
-                # Back off on the stop Event (prompt shutdown, no busy-spin).
                 logger.debug(f"L1 invalidation listener reconnecting: {e}");
                 self._stop.wait(backoff);
                 backoff = min(backoff * 2, max_backoff);
@@ -203,7 +180,6 @@ obj L1InvalidationListener {
 }
 
 
-"""Start the one process-wide listener (idempotent); replace a dead handle."""
 def ensure_listener(
     process_cache: dict[str, any], redis_url: (str | None), channel: str
 ) -> None {
@@ -222,7 +198,6 @@ def ensure_listener(
 }
 
 
-"""Stop the process-wide listener."""
 def stop_listener(process_cache: dict[str, any]) {
     with _l1_lock {
         listener = process_cache.pop("l1_listener", None);

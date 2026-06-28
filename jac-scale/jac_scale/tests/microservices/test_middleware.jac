@@ -1,13 +1,10 @@
-"""Test the Middleware registry's composition behavior (onion order and
-short-circuit) - the non-trivial parts; basic registration is covered by the
-runtime integration test."""
-
 import asyncio;
 import from jac_scale.runtime.middleware.middleware { Middleware, MiddlewareRegistry }
 
 
 obj RecordingMiddleware(Middleware) {
     has recorder: list[str] = [];
+
     async def handle(request: any, call_next: any) -> any {
         self.recorder.append(f"enter:{self.name}");
         result = await call_next(request);
@@ -19,6 +16,7 @@ obj RecordingMiddleware(Middleware) {
 
 obj ShortCircuitMiddleware(Middleware) {
     has response: str = "blocked";
+
     async def handle(request: any, call_next: any) -> any {
         return self.response;
     }

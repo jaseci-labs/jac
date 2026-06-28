@@ -1,5 +1,3 @@
-"""Tests for the streaming + WebSocket proxy modules (ROADMAP P15)."""
-
 import asyncio;
 import from jac_scale.runtime.middleware.ws_forward {
     _to_ws_scheme,
@@ -46,7 +44,7 @@ test "handshake headers keep auth + trace + xff and drop the rest" {
     assert out["Authorization"] == "Bearer abc";
     assert "X-Trace-Id" in out;
     assert "X-Forwarded-For" in out;
-    # Everything else stripped
+
     assert "Cookie" not in out;
     assert "User-Agent" not in out;
     assert "Host" not in out;
@@ -70,8 +68,6 @@ test "handshake headers are case-insensitive on the filter" {
 }
 
 
-"""aiohttp test server with echo/sse/big/fourofour routes. Caller
-must await runner.cleanup()."""
 async def _spawn_upstream -> tuple[object, object, str] {
     import aiohttp;
     import from aiohttp { web }
@@ -275,10 +271,7 @@ test "ws route rejects with 1012 during drain" {
         ServiceStatus
     }
     import from jac_scale.runtime.gateway.microservice_gateway { MicroserviceGateway }
-    import from jac_scale.runtime.lifecycle.drain {
-        reset_drain,
-        start_drain
-    }
+    import from jac_scale.runtime.lifecycle.drain { reset_drain, start_drain }
     import from fastapi.testclient { TestClient }
 
     reset_drain();

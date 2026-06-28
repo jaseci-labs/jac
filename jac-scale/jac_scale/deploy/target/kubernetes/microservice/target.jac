@@ -1,9 +1,3 @@
-"""K8s deployment target for microservice mode. Thin orchestrator over
-MicroserviceManifestBuilder + MicroserviceDatabaseProvisioner. Ships the
-project's local source into the cluster (no-image path) and runs it on a
-generic Python base image. Registered as `kubernetes-microservice` in
-DeploymentTargetFactory."""
-
 import logging;
 import from jac_scale.deploy.target.kubernetes.kubernetes_target { KubernetesTarget }
 import from jac_scale.config.app_config { AppConfig }
@@ -42,27 +36,11 @@ import from jac_scale.config.config_loader { get_scale_config }
 glob logger = logging.getLogger(__name__);
 
 
-"""Fans one image out to one pod per microservice. Routes table is the
-source of truth for which services exist; each gets a pod-spec
-differentiated by `JAC_SV_NAME`. Selected by _scale_pre_hook when
-`[plugins.scale.microservices].enabled=true` + `--scale`."""
 obj KubernetesMicroserviceTarget(KubernetesTarget) {
-    # Populated by MicroserviceDatabaseProvisioner in deploy(); threaded
-    # into MicroserviceManifestBuilder. Default empty so direct
-    # generate_manifests() callers (tests) work without prior provision.
     has _deploy_context: DeployContext = DeployContext(),
-        # no-image mode is the only code-shipping path: copy local source into
-        # the cluster + install jac at pod startup on a generic Python base
-        # image (no docker build/push). Retained as a field so direct callers
-        # (tests) can construct the target; always treated as no-image.
         no_image: bool = True,
-        # The app's [plugins.scale.microservices] config. When set (a platform
-        # deploying a different app's fleet), it's used and threaded into the
-        # manifest builder instead of the running process's own jac.toml.
         microservices_config: dict[str, any] = {};
 
-    """The app's microservices config: injected when provided, else read from
-    the running process's jac.toml."""
     def _ms_cfg -> dict[str, any] {
         if self.microservices_config {
             return self.microservices_config;
@@ -75,9 +53,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Ship source -> generate manifests -> apply via kubernetes Python
-    client. Kubeconfig from outside, in-cluster SA from inside.
-    `DeploymentResult.details` keeps the manifest bundle."""
     def deploy(app_config: AppConfig) -> DeploymentResult {
         app_name = app_config.app_name or self.k8s_config.app_name;
         if self.logger {
@@ -87,11 +62,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
         }
 
-        # provision MongoDB + Redis BEFORE generate_manifests so
-        # the DeployContext (with MONGODB_URI/REDIS_URL secretKeyRef entries
-        # and wait-for-DB init containers) populates every microservice
-        # pod-spec. Skipped silently in tests (no kube config / not on a
-        # real cluster); the provisioning helper is idempotent for re-deploys.
         try {
             self._deploy_context = MicroserviceDatabaseProvisioner(
                 k8s_target=self, logger=self.logger, enabled=self.no_image
@@ -120,9 +90,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
         }
 
-        # Observability stack (logs and/or traces). Surfaces a failure in
-        # `details` but does not fail the deploy - the app is healthy
-        # without it; the operator can re-run once it settles.
         observability_err: str = "";
         try {
             self._deploy_observability(app_name);
@@ -137,9 +104,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # Block until the fleet actually rolls out, so callers don't surface a
-        # live link at a not-yet-ready (or crash-looping) fleet - matching the
-        # monolith path, which waits via _wait_for_deployment.
         try {
             self._wait_for_fleet_rollout(bundle);
         } except Exception as e {
@@ -155,10 +119,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             f"Applied {svc_count} service Deployment+Service pair(s) "
             f"plus 1 gateway in namespace '{self.k8s_config.namespace}'."
         );
-        # Append the observability error to the message so a user
-        # watching stdout sees the failure instead of assuming
-        # everything worked. The deploy is still success=True because
-        # the app pods are healthy without logs.
+
         if observability_err {
             success_msg = (
                 f"{success_msg} "
@@ -171,10 +132,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return DeploymentResult(success=True, message=success_msg, details=bundle);
     }
 
-    """Block until every fleet Deployment has a ready replica (or `timeout`
-    elapses). Raises on a crash-looping pod so a broken fleet fails fast
-    instead of timing out. No-image pods build jac in-pod, hence the long
-    default timeout."""
     def _wait_for_fleet_rollout(bundle: dict[str, any], timeout: int = 1200) -> None {
         import time;
         import from kubernetes { client }
@@ -193,9 +150,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         total = len(names);
         elapsed = 0;
         ready = 0;
-        # A live spinner with per-pod status: this wait can run minutes (pods pull
-        # the image, run init containers, install jac, start the app), and a silent
-        # block reads as a hang. status() updates in place so the user sees motion.
+
         with console.status(f"Rolling out fleet: 0/{total} services ready...") as st {
             while elapsed < timeout {
                 ready = 0;
@@ -217,7 +172,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     }
                     return;
                 }
-                # Crash detection + a per-pod phase summary in one pass over pods.
+
                 crash = "";
                 phases: list[str] = [];
                 try {
@@ -256,11 +211,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         );
     }
 
-    """Deploy the observability stack (Loki/Tempo + Grafana Alloy + the
-    surrounding Prometheus/Grafana stack) when logs and/or tracing is
-    enabled. No-op otherwise. Reuses the monolith target's
-    `MonitoringDeployer` with a `KubernetesConfig` clone carrying the
-    relevant flags; teardown deletes by name so it stays idempotent."""
     def _deploy_observability(app_name: str) -> None {
         logs_cfg = self._read_microservices_logs_config();
         tracing_cfg = self._read_microservices_tracing_config();
@@ -272,24 +222,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         self._load_kube_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
-        # MonitoringDeployer.deploy expects a ClusterProvider object
-        # (Strategy refactor in 5840.feature.md), not the legacy
-        # `cluster_type()` string. Use the factory so prometheus /
-        # grafana can read provider.prometheus_scrape_port,
-        # provider.service_type, etc.
+
         provider = get_cluster_provider();
 
         obs_config = self._build_observability_config();
-        # node-exporter + Alloy DaemonSets need hostPath volumes
-        # (`/proc`, `/sys`, `/var/log/pods`). Pod Security Admission
-        # `baseline` enforcement blocks hostPath, so namespaces that
-        # default to baseline (vanilla minikube, fresh EKS, etc.) reject
-        # the DaemonSet pods and the deploy stalls with `FailedCreate`.
-        # Stamp the `privileged` label when the namespace has no policy
-        # set yet so common-case deploys just work. Existing policy
-        # values (restricted / baseline / privileged / etc.) are left
-        # untouched - downgrading them would be a security regression;
-        # we warn instead and let the operator relabel by hand.
+
         self._ensure_privileged_namespace(core_v1, obs_config.namespace);
         if self.logger {
             self.logger.info(
@@ -302,16 +239,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         monitoring.deploy(app_name, obs_config.namespace, apps_v1, core_v1, provider);
     }
 
-    """Label namespace `pod-security.kubernetes.io/enforce=privileged` so
-    hostPath-using DaemonSets (node-exporter, Alloy) can schedule. Only
-    stamps the label when it's MISSING - any existing value (including
-    `restricted` / `baseline` set by a compliance policy) is left alone
-    and surfaces as a warning telling the operator the manual relabel
-    command. Never downgrade a stricter policy silently.
-
-    API errors are also non-fatal and warn-only so a sealed-namespace
-    cluster doesn't break the deploy - the operator will see the
-    FailedCreate event anyway and can label the namespace by hand."""
     def _ensure_privileged_namespace(core_v1: any, namespace: str) -> None {
         try {
             ns = core_v1.read_namespace(name=namespace);
@@ -357,18 +284,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Clone `self.k8s_config` with `monitoring_enabled` and `loki_enabled`
-    forced to True. logs.enabled implies the full monitoring stack so
-    Grafana can host the Pod Logs dashboard; cloning preserves user-set
-    knobs (probes, replicas, dashboard creds, ...) without mutating the
-    shared config object for the rest of the deploy() call path."""
     def _build_observability_config -> KubernetesConfig {
         overrides: dict[str, Any] = dict(self.k8s_config.to_dict());
         overrides["monitoring_enabled"] = True;
-        # loki_enabled / tracing_enabled track the per-leg toggles so a
-        # logs-only, traces-only, or both deploy each builds the right
-        # subset (MonitoringDeployer.deploy gates Loki/Tempo/Alloy on
-        # these). The Prometheus + Grafana base always comes up.
+
         overrides["loki_enabled"] = self._read_microservices_logs_config().get(
             "enabled", False
         );
@@ -378,8 +297,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return KubernetesConfig.from_dict(KubernetesConfig, overrides);
     }
 
-    """Read `[plugins.scale.microservices.logs]`. Empty dict on any
-    failure (missing block, malformed TOML, loader exception)."""
     def _read_microservices_logs_config -> dict[str, Any] {
         try {
             ms_cfg = self._ms_cfg();
@@ -395,8 +312,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Read `[plugins.scale.microservices.tracing]`. Empty dict on any
-    failure (missing block, malformed TOML, loader exception)."""
     def _read_microservices_tracing_config -> dict[str, Any] {
         try {
             ms_cfg = self._ms_cfg();
@@ -412,9 +327,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Delegates to MicroserviceManifestBuilder. deploy() populates
-    _deploy_context first; direct callers (tests) get an empty context
-    which produces pod specs without DB env / init containers."""
     def generate_manifests(app_config: AppConfig) -> dict[str, any] {
         builder = MicroserviceManifestBuilder(
             k8s_config=self.k8s_config,
@@ -429,9 +341,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return builder.generate_manifests(app_config, self.k8s_config.python_image);
     }
 
-    """Load kubeconfig, fall back to in-cluster, re-raise with actionable
-    instructions if both fail (default ConfigException message is
-    unhelpful)."""
     def _load_kube_config {
         kubeconfig_failed: bool = False;
         try {
@@ -461,11 +370,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Apply order: PVCs -> Secrets -> Services -> Deployments -> HPAs ->
-    PDBs -> Ingress. Services first so DNS resolves before pods boot
-    (cross-service `sv import` calls need it at startup); HPAs/PDBs after
-    Deployments so the targetRef isn't transiently unresolved; Ingress
-    last to avoid a transient `no backend` event."""
     def apply_manifests(bundle: dict[str, any]) {
         self._load_kube_config();
         apps_v1 = client.AppsV1Api();
@@ -474,8 +378,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         networking_v1 = client.NetworkingV1Api();
         namespace: str = self.k8s_config.namespace;
 
-        # Probe API server early so an unreachable cluster surfaces a clean
-        # error here rather than mid-apply with a half-baked manifest set.
         try {
             core_v1.list_namespace(_request_timeout=5);
         } except Exception as e {
@@ -491,10 +393,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
         ensure_namespace_exists(namespace);
 
-        # Ops Console RBAC (opt-in). Applied right after the
-        # namespace so the read-only Role + RoleBinding exist before the
-        # gateway pod (which uses them) rolls. Best-effort: an RBAC failure
-        # must not abort the app deploy, so it logs and continues.
         ops_rbac = bundle.get("ops_rbac");
         if ops_rbac {
             self._apply_ops_rbac(namespace, ops_rbac);
@@ -510,11 +408,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # Publish the source bundle onto the now-applied bundle PVC, BEFORE the
-        # deployments roll: the service pods' init containers unpack it, so it has
-        # to be on the PVC first or they CrashLoop on a missing archive. The
-        # injector owns the loader-pod + kubectl-cp mechanics; the PVC it targets
-        # was just applied in the loop above.
         injector = bundle.get("injector");
         if injector is not None {
             injector.seed(k8s_safe_name(self.k8s_config.app_name), namespace);
@@ -572,10 +465,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 self.logger
             );
             triggers = [];
-            # extra_triggers from [plugins.scale.kubernetes] targets the
-            # gateway only - it is the microservice-mode equivalent of the
-            # monolith ScaledObject.  Per-service triggers belong under
-            # [[plugins.scale.microservices.services.{name}.triggers]].
+
             is_gateway = svc_name == GATEWAY_NAME;
             effective_extra = self.k8s_config.extra_triggers if is_gateway else [];
             if not cfg.get("triggers", []) and not effective_extra {
@@ -634,8 +524,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     triggers=triggers
                 )
             );
-            # Only log success when apply() confirms it wrote the resource;
-            # a False return means preflight bailed silently (engine not available).
+
             if self.logger and autoscaler_applied {
                 self.logger.info(
                     f"Applied autoscaler for '{svc_name}'", {"name": autoscaler_name}
@@ -665,11 +554,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    # Ops Console RBAC: namespace-scoped Role + RoleBinding bound to
-    # the gateway SA. Idempotent read-then-replace/create, mirroring the
-    # ingress/monitoring RBAC pattern. Best-effort - a failure here (e.g. the
-    # deployer lacks rbac create perms) logs a warning and continues; the
-    # app still deploys, the Ops Console pages just render a 403 detail.
     def _apply_ops_rbac(namespace: str, ops_rbac: dict[str, any]) {
         try {
             rbac_v1 = client.RbacAuthorizationV1Api();
@@ -726,9 +610,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    # _apply_or_replace_* family: idempotent read-then-patch-or-create on 404.
-    # PVC is the exception: create-on-404, otherwise no-op (PVCs are mostly
-    # immutable post-bind; patch would error or orphan the PV).
     def _apply_or_replace_service(
         core_v1: any, namespace: str, manifest: dict[str, any]
     ) {
@@ -853,8 +734,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Tear down by label selector so renamed services still get cleaned
-    up. app_name/component are signature-only (whole topology torn down)."""
     def destroy(app_name: str, component: str = "") {
         if self.logger {
             self.logger.info(
@@ -918,10 +797,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # Services use the role-LESS selector since Service manifests
-        # only carry `app=<name>` + `managed=jac-scale`, not the role
-        # label (CI-found bug: strict selector left Services orphaned).
-        # No batched delete_collection for v1.Service - list-then-delete.
         try {
             services = core_v1.list_namespaced_service(
                 namespace=namespace, label_selector=ms_selector
@@ -943,7 +818,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # no-image source ConfigMap(s), labeled managed=jac-scale.
         try {
             core_v1.delete_collection_namespaced_config_map(
                 namespace=namespace,
@@ -955,9 +829,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # Tear down the observability stack. Unconditional: MonitoringDeployer
-        # treats every API not-found as a no-op, so calling it on a stack that
-        # was never deployed is harmless.
         try {
             monitoring = MonitoringDeployer(self.k8s_config, self.logger);
             monitoring.destroy(app_name, namespace, apps_v1, core_v1);

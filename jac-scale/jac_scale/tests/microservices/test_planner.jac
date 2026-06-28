@@ -1,5 +1,3 @@
-"""Tests for the RealizationPlanner: the 4-cell assembly table as code."""
-
 import from jac_scale.runtime.planner.planner { plan_realization }
 
 
@@ -40,7 +38,7 @@ test "the gateway_embedded flag collapses the gateway for a k8s monolith" {
     plan = plan_realization(True, 1, gateway_embedded=True);
     assert plan.gateway_mode == "embedded";
     assert plan.transport == "in_process";
-    # state still spans replicas under --scale
+
     assert plan.state_backend == "redis";
 }
 

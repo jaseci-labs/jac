@@ -1,4 +1,3 @@
-"""Helper function to convert TransportResponse to dict for JSONResponse."""
 def _transport_response_to_dict(
     transport_response: TransportResponse
 ) -> dict[str, any] {
@@ -36,7 +35,6 @@ def _transport_response_to_dict(
     return result;
 }
 
-"""Helper function to get HTTP status code from TransportResponse."""
 def _get_http_status(transport_response: TransportResponse) -> int {
     if transport_response.meta and transport_response.meta.extra {
         return transport_response.meta.extra.get(
@@ -46,7 +44,6 @@ def _get_http_status(transport_response: TransportResponse) -> int {
     return 200 if transport_response.ok else 500;
 }
 
-"""Helper function to convert TransportResponse directly to JSONResponse."""
 def _transport_response_to_json_response(
     transport_response: TransportResponse
 ) -> JSONResponse {

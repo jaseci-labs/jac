@@ -1,4 +1,3 @@
-"""File covering plugin implementation."""
 import os;
 import pathlib;
 import from dotenv { load_dotenv }
@@ -19,7 +18,6 @@ import from .identity.user_manager { JacScaleUserManager }
 import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.storage { Storage }
 
-"""Print the zero-config auto-detect info line on local microservice startup."""
 def _print_autodetect_banner(routes: dict[str, str]) {
     names = sorted(routes.keys());
     plural = "s" if len(names) != 1 else "";
@@ -37,36 +35,23 @@ def _print_autodetect_banner(routes: dict[str, str]) {
     );
 }
 
-"""Pre-hook for jac start command to handle microservice mode and --scale flag."""
 def _scale_pre_hook(context: HookContext) -> None {
-    # Microservice mode: services are spawned on-demand by core's BFS
-    # discovery + our ensure_sv_service hookimpl. The pre-hook only
-    # bootstraps the gateway for client-facing routing when enabled
-    # and we're NOT already running as an sv sibling child.
     scale_config = get_scale_config();
     ms_config = scale_config.get_microservices_config();
     is_sv_sibling = os.environ.get("JAC_SV_SIBLING") == "1";
     scale_flag = context.get_arg("scale", False);
 
-    # LOCAL microservice mode gate. `enabled` is tri-state:
-    #   True  -> explicit opt-in (config wins; routes auto-filled if absent)
-    #   False -> explicit opt-out (always stay a monolith)
-    #   None  -> unset: auto-detect from `sv import` / `to sv:` source markers
-    # Children (JAC_SV_SIBLING=1) never enter (re-orchestration would fork
-    # infinitely); --scale is the remote deploy path handled below.
     enabled = ms_config.get("enabled", None);
     if (not is_sv_sibling) and (not scale_flag) and (enabled is not False) {
         filename = context.get_arg("filename");
-        # Discover when unset (to decide whether to enter) or when enabled
-        # but no routes were declared (to fill defaults). Explicit routes win.
+
         if filename and ((enabled is None) or (not ms_config.get("routes", {}))) {
             import from jac_scale.runtime.discovery.discovery { discover_sv_services }
             if not ms_config.get("routes", {}) {
                 ms_config["routes"] = discover_sv_services(filename);
             }
         }
-        # The LocalRealizer owns the decide-and-dispatch (via the planner): it
-        # serves a microservice fleet or declines so core serves the monolith.
+
         import from jac_scale.runtime.realizer.local_realizer { LocalRealizer }
         realizer = LocalRealizer(ms_config=ms_config);
         if realizer.should_serve(enabled) {
@@ -80,8 +65,6 @@ def _scale_pre_hook(context: HookContext) -> None {
         }
     }
 
-    # --scale: the KubernetesRealizer owns target selection, config, dry-run,
-    # TLS, and the deploy, setting the hook's cancel/return data.
     if scale_flag {
         import from jac_scale.runtime.realizer.kubernetes_realizer {
             KubernetesRealizer
@@ -89,11 +72,6 @@ def _scale_pre_hook(context: HookContext) -> None {
         try {
             KubernetesRealizer(ms_config=ms_config).realize(context);
         } except Exception as e {
-            # A --scale failure (missing deploy deps, bad config, no cluster,
-            # ...) must NOT fall through to local serving - the user asked to
-            # deploy. Abort the command cleanly with the error instead of letting
-            # the pre-hook exception surface as a non-fatal warning that then
-            # boots a local server.
             console.error(f"Deploy failed: {e}", emoji=False);
             context.set_data("cancel_execution", True);
             context.set_data("cancel_return_code", 1);
@@ -101,7 +79,6 @@ def _scale_pre_hook(context: HookContext) -> None {
     }
 }
 
-"""Print deployment status as a formatted table."""
 def _print_deployment_status(status_data: dict) -> None {
     app_name = status_data.get('app_name', 'unknown');
     namespace = status_data.get('namespace', 'default');
@@ -179,15 +156,12 @@ def _print_deployment_status(status_data: dict) -> None {
     }
 }
 
-"""Jac CLI."""
 class JacCmd {
-    """Create Jac CLI cmds."""
     @hookimpl
     static def create_cmd {
         """Jac Scale functionality.""";
         registry = get_registry();
 
-        # Extend jac start with --scale and related flags
         registry.extend_command(
             "start",
             args=[
@@ -196,7 +170,7 @@ class JacCmd {
                     typ=bool,
                     default=False,
                     help="Deploy to a target platform instead of running locally",
-                    short=""  # Disable auto-generated -s (conflicts with --session)
+                    short=""
                 ),
                 Arg.create(
                     "target",
@@ -316,24 +290,19 @@ class JacCmd {
             dotenv_path = os.path.join(code_folder, '.env');
             load_dotenv(dotenv_path);
 
-            # Get configuration
             scale_config = get_scale_config();
 
-            # Create logger
             logger = UtilityFactory.create_logger('standard');
 
-            # Same target-specific config dispatch as the deploy path.
             if target in ('kubernetes', 'kubernetes-microservice') {
                 target_config = scale_config.get_kubernetes_config();
             } else {
-                # Custom targets load config from [plugins.scale.<target>]
                 target_config = scale_config.get_section(target);
             }
 
             app_name = target_config.get('app_name', 'jaseci');
             namespace = target_config.get('namespace', 'default');
 
-            # Warn user and require confirmation before proceeding
             if component {
                 console.print(
                     f"WARNING: You are about to delete component '{component}' from deployment '{app_name}'.",
@@ -353,7 +322,6 @@ class JacCmd {
                 return 1;
             }
 
-            # Create deployment target and destroy
             deployment_target = DeploymentTargetFactory.create(
                 target, target_config, logger
             );
@@ -399,27 +367,21 @@ class JacCmd {
             dotenv_path = os.path.join(code_folder, '.env');
             load_dotenv(dotenv_path);
 
-            # Get configuration
             scale_config = get_scale_config();
 
-            # Create logger
             logger = UtilityFactory.create_logger('standard');
 
-            # Get target-specific config
             if target == 'kubernetes' {
                 target_config = scale_config.get_kubernetes_config();
             } else {
-                # Custom targets load config from [plugins.scale.<target>]
                 target_config = scale_config.get_section(target);
             }
 
-            # Create deployment target
             deployment_target = DeploymentTargetFactory.create(
                 target, target_config, logger
             );
             app_name = target_config.get('app_name', 'jaseci');
 
-            # Get and display status
             status_data = deployment_target.get_full_status(app_name);
             _print_deployment_status(status_data);
             return 0;
@@ -467,10 +429,6 @@ class JacCmd {
             scale_config = get_scale_config();
             ms_config = scale_config.get_microservices_config();
 
-            # Mirror _scale_pre_hook's tri-state semantics so these management
-            # commands work in zero-config auto-detect mode too. Only an
-            # explicit `enabled = false` is an opt-out; unset (None) and true
-            # both proceed.
             if ms_config.get("enabled", None) is False {
                 console.print(
                     "Microservice mode is disabled (enabled = false in jac.toml).",
@@ -479,8 +437,6 @@ class JacCmd {
                 return 1;
             }
 
-            # Fill routes from auto-discovery (scanning the working directory)
-            # when none are declared, matching what `jac start` does on launch.
             if not ms_config.get("routes", {}) {
                 import from jac_scale.runtime.discovery.discovery {
                     discover_sv_services
@@ -565,8 +521,6 @@ class JacCmd {
                 deployer.destroy_all();
                 console.success("All services stopped", emoji=False);
             } elif action == "gateway" {
-                # K8s gateway-only mode: no local service spawning, peer
-                # resolution via DNS through get_sv_registry.
                 import from jac_scale.runtime.orchestrator.orchestrator {
                     start_gateway_only
                 }
@@ -583,7 +537,6 @@ class JacCmd {
     }
 }
 
-"""Jac Scale Plugin Implementation."""
 class JacScalePlugin {
     @hookimpl
     static def create_j_context(
@@ -591,9 +544,6 @@ class JacScalePlugin {
         base_path_dir: (str | None) = None,
         full_target_path: (str | None) = None
     ) -> ExecutionContext {
-        # Storage backend configured via environment (MONGODB_URI, etc.) -
-        # base_path_dir / full_target_path are SQLite-backend artifacts that
-        # don't apply here, but the spec carries them so we accept the kwargs.
         ctx = JScaleExecutionContext();
         if user_root is not None {
             ctx.set_user_root(user_root);
@@ -601,11 +551,6 @@ class JacScalePlugin {
         return ctx;
     }
 
-    """Create the API server instance.
-
-    Note: jac-scale doesn't bind the port until run_server is called.
-    Port fallback is handled in run_server.
-    """
     @hookimpl
     static def create_server(
         jac_server: JacServer, host: str, port: int
@@ -613,23 +558,16 @@ class JacScalePlugin {
         return JFastApiServer([]);
     }
 
-    """Provide jac-scale's enhanced JacAPIServer class."""
     @hookimpl
     static def get_api_server_class -> type {
         return JacAPIServer;
     }
 
-    """Provide jac-scale's UserManager."""
     @hookimpl
     static def get_user_manager(base_path: str) -> UserManager {
         return JacScaleUserManager(base_path=base_path);
     }
 
-    """Provide jac-scale's storage backend.
-
-    This overrides the core store() to use jac-scale's StorageFactory,
-    which supports cloud backends (S3, GCS, Azure) via configuration.
-    """
     @hookimpl
     static def store(
         base_path: str = "./storage", create_dirs: bool = True
@@ -638,15 +576,6 @@ class JacScalePlugin {
         return StorageFactory.get_default(base_path, create_dirs);
     }
 
-    """Spawn a sibling sv-service as a subprocess via LocalDeployer.
-
-    Overrides core's default (which spawns an in-process thread). We spawn
-    as a subprocess so each service has its own ModuleIntrospector, graph,
-    and lifecycle - matching K8s pod semantics in production.
-
-    Called by sv_client._ensure_available when a consumer does
-    sv import from X and X is not yet registered.
-    """
     @hookimpl
     static def ensure_sv_service(module_name: str, base_path: str) -> None {
         import os;
@@ -660,7 +589,6 @@ class JacScalePlugin {
             wait_for_health
         }
 
-        # Idempotent: skip if already registered
         if module_name in sv_client._registry {
             return;
         }
@@ -668,10 +596,6 @@ class JacScalePlugin {
             return;
         }
 
-        # K8s mode: register peer's DNS URL instead of spawning a
-        # subprocess (K8s controller owns peer pods). Detected via
-        # KUBERNETES_SERVICE_HOST. Falls through to local spawn on
-        # config-read failure so the local path stays unaffected.
         if "KUBERNETES_SERVICE_HOST" in os.environ {
             try {
                 import from jac_scale.config.config_loader { get_scale_config }
@@ -690,8 +614,6 @@ class JacScalePlugin {
                 sv_client.register(module_name, dns_url);
                 return;
             } except Exception {
-                # Defensive: fall through to local-mode spawn on config
-                # error so we don't hard-fail on a transient issue.
                 ;
             }
         }
@@ -707,8 +629,6 @@ class JacScalePlugin {
         port: int = pick_free_port(module_name);
         base_url: str = f"http://127.0.0.1:{port}";
 
-        # JAC_SV_SIBLING prevents the child's _scale_pre_hook from re-entering
-        # microservice orchestration (it would try to spawn peers again).
         child_env = dict(os.environ);
         child_env["JAC_SV_SIBLING"] = "1";
 
@@ -746,31 +666,15 @@ class JacScalePlugin {
         atexit.register(_cleanup);
     }
 
-    """Override core's get_sv_registry to return DNS-based URLs in K8s.
-
-    Detects K8s-in-cluster via the `KUBERNETES_SERVICE_HOST` env var
-    (set in every pod by K8s automatically). When set, builds a DNS map
-    `{module_name: http://{name}-service.{namespace}.svc.cluster.local:{port}}`
-    from the configured routes table. When NOT set, falls back to core's
-    default behavior (`dict(sv_client._registry)`), which has localhost
-    URLs from local-mode subprocess spawning.
-
-    This is the single swap point that makes the gateway work unchanged
-    in both local and K8s modes - `gateway.resolve_target_url` calls
-    `JacRuntime.get_sv_registry()`, plugin precedence picks this impl,
-    DNS resolution does the rest.
-    """
     @hookimpl
     static def get_sv_registry -> dict[str, str] {
         import os;
         import from jaclang.runtimelib { sv_client }
 
         if "KUBERNETES_SERVICE_HOST" not in os.environ {
-            # Local mode (or any non-K8s runtime): use the default.
             return dict(sv_client._registry);
         }
 
-        # K8s mode: build DNS map from configured routes.
         try {
             import from jac_scale.config.config_loader { get_scale_config }
             import from jac_scale.deploy.target.kubernetes.microservice.runtime_resolver {
@@ -781,7 +685,6 @@ class JacScalePlugin {
             port: int = int(ms_cfg.get("gateway_port", 8000));
             return build_k8s_registry(routes, port);
         } except Exception as e {
-            # Defensive: fall back to default on config-read failure.
             import logging;
             logging.getLogger(__name__).warning(
                 f"K8s get_sv_registry fell back to local registry: {e}"
@@ -790,61 +693,12 @@ class JacScalePlugin {
         }
     }
 
-    """Override core's sv_service_call with auth forwarding + retry + circuit breaker.
-
-    Reads the auth token from _auth_ctx (set by the FastAPI middleware in
-    jfast_api.impl.jac at the start of each inbound request) and attaches
-    it to the outgoing httpx.post.
-
-    Retries transport-level failures (connect errors, timeouts) with
-    exponential backoff: 0.1s, 0.2s, 0.4s (3 attempts total). Does NOT
-    retry on successful HTTP responses that carry application errors in
-    the envelope (ok=false) - those are deterministic and a retry won't
-    change them. 4xx/5xx HTTP statuses surface as envelope errors in
-    jac-scale's server, so they also don't retry.
-
-    Per-provider circuit breaker wraps the retry loop. After
-    _BREAKER_TRIP_THRESHOLD consecutive transport-failure cycles the
-    breaker opens and subsequent calls fail fast (no httpx.post) until
-    _BREAKER_COOLDOWN_SECONDS elapses; the first call after cooldown
-    becomes a probe that either closes the breaker on success or
-    re-opens it on failure.
-
-    In K8s, this covers the common transient failures: pod restarts
-    mid-request, DNS propagation lag, brief network blips. The breaker
-    also prevents a bad downstream pod from exhausting calling threads
-    while waiting on long timeouts.
-
-    Streaming returns: when the downstream function returns a generator,
-    serve.endpoints emits an `text/event-stream` body framed by
-    sse_frame_stream. We detect that via Content-Type and return a
-    Python generator (consume_sse_stream) that yields parsed event
-    dicts. Retries only cover connect-time failures - once a stream is
-    open, an in-flight error surfaces to the caller's iterator as a
-    RuntimeError (we cannot replay events that were already consumed).
-    """
     @hookimpl
     static def sv_service_call(module_name: str, func_name: str, args: dict) -> any {
         import from jac_scale.runtime.transport.transport { http_transport }
         return http_transport().call_function(module_name, func_name, args);
     }
 
-    """Override core's sv_walker_call with auth forwarding, retry, and breaker.
-
-    Mirrors `sv_service_call` for the walker-spawn flavour of sv-to-sv:
-    POST to `/walker/<name>` rather than `/function/<name>`, decode the
-    TransportResponse envelope, and rehydrate `data.result` into an
-    instance of the consumer-side stub class via `stub_cls._from_wire`.
-    The walker's `data.reports` list is attached to the rehydrated
-    instance so call sites read `walker_inst.reports[0]` directly.
-
-    Walker calls share the per-provider circuit breaker with function
-    calls - both express the same liveness signal for the provider, so
-    a breaker trip from either RPC kind protects the other. Auth and
-    trace headers are forwarded the same way. SSE streaming is not
-    plumbed for walkers (walker endpoints don't return generators); the
-    Content-Type pivot from sv_service_call is intentionally absent.
-    """
     @hookimpl
     static def sv_walker_call(
         module_name: str, walker_name: str, args: dict, stub_cls: any
@@ -855,9 +709,6 @@ class JacScalePlugin {
 }
 
 
-# Pluggy's varnames() puts parameters with defaults into kwargnames, not argnames.
-# But _multicall only passes argnames to hook implementations.
-# JacRuntimeImpl strips defaults via build_plugin_hook_layer, so we must too.
 import inspect;
 glob func = JacScalePlugin.create_j_context,
      sig = inspect.signature(func),

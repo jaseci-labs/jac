@@ -1,23 +1,13 @@
-"""Manifest builder for K8s microservice mode. Produces the bundle
-{deployments, services, autoscalers, pdbs, pod_specs, [pvcs, user_secret,
-ingress]} that KubernetesMicroserviceTarget hands to apply_manifests."""
-
 import from jac_scale.config.app_config { AppConfig }
 import from jac_scale.models.deploy_context { DeployContext }
 import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.deploy.autoscale.autoscaler { DEFAULT_CPU_UTILIZATION_TARGET }
 
 
-# Sentinel for the gateway pod-spec entry; reserved to avoid collision
-# with user-defined service modules.
 glob GATEWAY_NAME: str = "__gateway__",
-     # +5s cushion lets uvicorn finish exiting AFTER our drain middleware
-     # completes; without it, SIGKILL can arrive mid-drain.
      _UVICORN_EXIT_CUSHION_S: int = 5;
 
 
-"""DNS-1123-valid K8s resource name. Module level so
-K8sRuntimeServiceResolver.url_for + plugin.jac can reuse it."""
 def k8s_safe_name(svc_name: str) -> str {
     if svc_name == GATEWAY_NAME {
         return "gateway";
@@ -31,29 +21,14 @@ obj MicroserviceManifestBuilder {
         secrets: dict[str, str] = {},
         deploy_context: DeployContext = DeployContext(),
         logger: any = None,
-        # no-image is the only code-shipping path: the PvcInjector ships source
-        # into the cluster and the shared runtime bootstrap installs jac at pod
-        # startup on a generic Python base image (no docker build/push). Retained
-        # as a field for callers/tests; always treated as true.
         no_image: bool = True,
-        # --experimental: the shared runtime bootstrap builds the pod's `jac`
-        # binary from a cloned jaseci checkout (zig build) instead of fetching the
-        # released binary; PATH is exported inline by the bootstrap either way.
         experimental: bool = False,
         project_dir: str = "",
         _bundle_object_key: str = "",
-        # Set by _prepare_injector when binary-shipping is selected: the toolchain
-        # bundle's object key (for mutate's BinaryInjector reconstruction) and the
-        # flag that switches the jac-bootstrap init container to ship_binary mode.
         _toolchain_object_key: str = "",
         _ship_binary: bool = False,
-        # The app's [plugins.scale.microservices] config. When set (e.g. a
-        # platform deploying a different app's fleet), it's used instead of the
-        # deploying process's own jac.toml via get_scale_config().
         microservices_config: dict[str, any] = {};
 
-    """The app's microservices config: injected when provided, else read from
-    the running process's jac.toml."""
     def _ms_cfg -> dict[str, any] {
         if self.microservices_config {
             return self.microservices_config;
@@ -66,16 +41,10 @@ obj MicroserviceManifestBuilder {
         }
     }
 
-    """Return the bundle object key recorded by prepare(); empty before first call."""
     def _injector_object_key -> str {
         return self._bundle_object_key;
     }
 
-    """Select + prepare the code injector via the unified select_injector (shared
-    with the monolith cell). Default = release (published jac + jac-scale from
-    PyPI); --experimental = ship the host-built binary (or fail loud). Records the
-    ship_binary flag + toolchain key so mutate_pod_spec and the jac-bootstrap init
-    container pick binary mode."""
     def _prepare_injector(app_config: AppConfig) -> PvcInjector {
         import from jac_scale.injector.binary_injector { select_injector }
         import from jac_scale.injector.pvc_injector { PvcInjector }
@@ -92,16 +61,7 @@ obj MicroserviceManifestBuilder {
         return injector;
     }
 
-    """Lift pod-specs into full Deployment + Service + HPA + PDB
-    bundle. Returns `{deployments, services, autoscalers, pdbs, pod_specs}`,
-    plus optional `pvcs`, `user_secret`, `ingress`."""
     def generate_manifests(app_config: AppConfig, image: str) -> dict[str, any] {
-        # Pack the bundle FIRST: each service pod-spec embeds an init container
-        # whose unpack path is derived from self._bundle_object_key (via
-        # _injector_object_key). prepare() is what sets that key, so it must run
-        # before generate_service_pod_specs() below - otherwise pods unpack an
-        # empty path and CrashLoop. seed() (the deploy-time publish) happens later
-        # in apply_manifests, once the PVC from extra_manifests() exists.
         injector = self._prepare_injector(app_config);
         self._bundle_object_key = injector._object_key;
 
@@ -110,8 +70,7 @@ obj MicroserviceManifestBuilder {
         services: dict[str, dict[str, any]] = {};
         autoscalers: dict[str, dict[str, any]] = {};
         pdbs: dict[str, dict[str, any]] = {};
-        # Autoscaler / PDB / PVC / Secret / Ingress builders return None when
-        # disabled or unconfigured; bundle only carries non-None entries.
+
         for (svc_name, pod_spec) in pod_specs.items() {
             deployments[svc_name] = self._build_deployment_manifest(svc_name, pod_spec);
             services[svc_name] = self._build_service_manifest(svc_name);
@@ -132,8 +91,7 @@ obj MicroserviceManifestBuilder {
             "pdbs": pdbs,
             "pod_specs": pod_specs
         };
-        # Record the prepared injector (for the deploy-time seed) and its
-        # cluster manifests (the bundle PVC) so the deploy path can apply them.
+
         bundle["injector"] = injector;
         for manifest in injector.extra_manifests(
             k8s_safe_name(self.k8s_config.app_name), self.k8s_config.namespace
@@ -144,9 +102,7 @@ obj MicroserviceManifestBuilder {
                 bundle["pvcs"] = pvcs_from_injector;
             }
         }
-        # Merge shared-volume PVCs INTO the injector's bundle PVC, never replace:
-        # an overwrite here would drop the `<app>-bundles` claim the pods mount,
-        # so they would reference a PVC that was never created.
+
         shared_pvcs = self._build_shared_pvc_manifests();
         if shared_pvcs {
             merged_pvcs = bundle.get("pvcs", {});
@@ -167,8 +123,7 @@ obj MicroserviceManifestBuilder {
         if ingress is not None {
             bundle["ingress"] = ingress;
         }
-        # Ops Console: read-only namespace Role + RoleBinding on the
-        # gateway SA (opt-in). Mutation verbs only when ops_console_mutations.
+
         if getattr(self.k8s_config, "ops_console", False) {
             import from jac_scale.deploy.target.kubernetes.microservice.ops_rbac {
                 build_ops_rbac
@@ -180,7 +135,6 @@ obj MicroserviceManifestBuilder {
                 bool(getattr(self.k8s_config, "ops_console_mutations", False))
             );
         } elif getattr(self.k8s_config, "ops_console_mutations", False) {
-            # Mutations need the parent flag; warn instead of shipping no Role.
             if self.logger {
                 self.logger.warning(
                     "[plugins.scale.kubernetes].ops_console_mutations is set but "
@@ -192,7 +146,6 @@ obj MicroserviceManifestBuilder {
         return bundle;
     }
 
-    """Per-service pod-spec stubs keyed by service name (+ GATEWAY_NAME)."""
     def generate_service_pod_specs(
         app_config: AppConfig, image: str
     ) -> dict[str, dict[str, any]] {
@@ -230,7 +183,6 @@ obj MicroserviceManifestBuilder {
         return specs;
     }
 
-    """drain_timeout_seconds (default 10s); sizes terminationGracePeriodSeconds."""
     def _drain_timeout -> int {
         try {
             ms_cfg = self._ms_cfg();
@@ -240,7 +192,6 @@ obj MicroserviceManifestBuilder {
         }
     }
 
-    """Per-service config from [...services.NAME]; {} on read failure."""
     def _service_config(svc_name: str) -> dict[str, any] {
         try {
             ms_cfg = self._ms_cfg();
@@ -250,8 +201,6 @@ obj MicroserviceManifestBuilder {
         }
     }
 
-    """[...microservices.client].entry, else 'main.jac' when the project ships
-    a client (fullstack), else '' (the gateway skips the client build)."""
     def _client_entry -> str {
         try {
             ms_cfg = self._ms_cfg();
@@ -268,8 +217,6 @@ obj MicroserviceManifestBuilder {
         }
     }
 
-    """True when project_dir ships a `.cl.jac` client - a fullstack app whose
-    gateway must build + serve the SPA even if [...client].entry is unset."""
     def _has_client_source -> bool {
         root_dir = self.project_dir;
         if not root_dir {
@@ -284,8 +231,6 @@ obj MicroserviceManifestBuilder {
         return len(matches) > 0;
     }
 
-    """[[shared_volumes]] entries. PVC mode for cloud K8s, hostPath mode
-    for single-node dev. `services` may include `__gateway__`."""
     def _shared_volumes_config -> list[dict[str, any]] {
         try {
             ms_cfg = self._ms_cfg();
@@ -305,7 +250,6 @@ obj MicroserviceManifestBuilder {
         }
     }
 
-    """(volumes, volumeMounts) for svc_name from shared_volumes config."""
     def _shared_volumes_for_service(
         svc_name: str
     ) -> tuple[list[dict[str, any]], list[dict[str, any]]] {
@@ -327,8 +271,6 @@ obj MicroserviceManifestBuilder {
             vol_name = k8s_safe_name(name);
             host_path = str(vol.get("host_path", "")).strip();
             if host_path {
-                # hostPath mode (dev clusters only - all pods must land
-                # on the same node for actual file sharing).
                 volumes.append(
                     {
                         "name": vol_name,
@@ -336,9 +278,6 @@ obj MicroserviceManifestBuilder {
                     }
                 );
             } else {
-                # PVC mode (production). PVC manifest emitted separately
-                # by _build_shared_pvc_manifests; here we just reference
-                # it by name.
                 volumes.append(
                     {"name": vol_name, "persistentVolumeClaim": {"claimName": vol_name}}
                 );
@@ -353,8 +292,6 @@ obj MicroserviceManifestBuilder {
         return (volumes, mounts);
     }
 
-    """PVC manifests for PVC-mode shared volumes. Default access_mode
-    ReadWriteOnce; multi-node clusters set ReadWriteMany."""
     def _build_shared_pvc_manifests -> dict[str, dict[str, any]] {
         pvcs: dict[str, dict[str, any]] = {};
         for vol in self._shared_volumes_config() {
@@ -362,9 +299,7 @@ obj MicroserviceManifestBuilder {
             if not name {
                 continue;
             }
-            # Mirror the validation _shared_volumes_for_service does -
-            # an entry the pod-spec helper would skip should NOT result
-            # in an orphan PVC nobody mounts.
+
             mount_path = str(vol.get("mount_path", "")).strip();
             if not mount_path {
                 continue;
@@ -373,7 +308,7 @@ obj MicroserviceManifestBuilder {
             if not isinstance(services, list) or not services {
                 continue;
             }
-            # hostPath mode skips PVC creation entirely.
+
             if str(vol.get("host_path", "")).strip() {
                 continue;
             }
@@ -408,8 +343,6 @@ obj MicroserviceManifestBuilder {
         return pvcs;
     }
 
-    """Secret manifest for [plugins.scale.secrets] (pre-interpolated).
-    Returns None if no secrets."""
     def _build_user_secret_manifest -> dict[str, any] | None {
         if not self.secrets {
             return None;
@@ -427,27 +360,18 @@ obj MicroserviceManifestBuilder {
                 }
             },
             "type": "Opaque",
-            # stringData (vs data) avoids client-side base64. Coerce values
-            # to str: K8s rejects non-strings with HTTP 422 mid-apply,
-            # leaving the bundle half-applied with pods crash-looping on
-            # missing secret. TOML scalars (int/float/bool) get coerced.
             "stringData": {k: str(v) for (k, v) in self.secrets.items()}
         };
     }
 
-    """Name of the Secret holding user `[plugins.scale.secrets]`."""
     def _user_secret_name -> str {
         return f"{self.k8s_config.app_name}-secrets";
     }
 
-    """ServiceAccount; empty -> namespace default SA. Microservice mode
-    does NOT auto-provision SA - apps point this at a pre-bound one."""
     def _service_account_name -> str {
         return str(getattr(self.k8s_config, "service_account_name", "") or "").strip();
     }
 
-    """Routes table from [plugins.scale.microservices.routes]; used by
-    _build_env for `JAC_SV_<PEER>_URL` injection. Returns {} on read failure."""
     def _microservice_routes -> dict[str, str] {
         try {
             ms_cfg = self._ms_cfg();
@@ -457,8 +381,6 @@ obj MicroserviceManifestBuilder {
         }
     }
 
-    """In-cluster DNS URL for a peer microservice (mirrors LocalDeployer
-    via the headless Service)."""
     def _peer_dns_url(peer_name: str) -> str {
         import from jac_scale.runtime.context.util { k8s_service_dns_url }
         return k8s_service_dns_url(
@@ -468,24 +390,13 @@ obj MicroserviceManifestBuilder {
         );
     }
 
-    """Env list: JAC_SV_NAME (sentinel), peer URLs (JAC_SV_<PEER>_URL),
-    DB env from DeployContext, user env. sv_client._ensure_available
-    checks JAC_SV_<PEER>_URL BEFORE invoking ensure_sv_service so sv-to-sv
-    dispatch resolves via this fast-path; without it, sv calls silently
-    fall back to local module imports inside the image."""
     def _build_env(svc_name: str, svc_cfg: dict[str, any]) -> list[dict[str, any]] {
-        # K8S_APP_NAME / K8S_NAMESPACE: surfaced as ordinary env vars so
-        # in-pod code (Loki URL builder, log shippers, etc.) can read them
-        # without having to parse jac.toml templates. K-track is the source
-        # of truth for both at deploy time.
         env: list[dict[str, any]] = [
             {"name": "JAC_SV_NAME", "value": svc_name},
             {"name": "K8S_APP_NAME", "value": self.k8s_config.app_name},
             {"name": "K8S_NAMESPACE", "value": self.k8s_config.namespace}
         ];
 
-        # When tracing is enabled, point pods at the in-cluster Alloy OTLP
-        # receiver. Added before user env so a per-service override wins.
         ms_trace_cfg: dict = dict(self._ms_cfg().get("tracing", {}));
         if ms_trace_cfg.get("enabled", False) {
             env.append(
@@ -497,10 +408,7 @@ obj MicroserviceManifestBuilder {
         }
 
         routes: dict[str, str] = self._microservice_routes();
-        # Propagate the full routes table to every pod as JSON so the gateway
-        # + get_sv_registry resolve prefixes/peers even when the in-cluster
-        # jac.toml has no [routes] table (zero-config `--scale` deploys). The
-        # config loader reads JAC_SV_ROUTES when its own routes are empty.
+
         if routes {
             import json;
             env.append({"name": "JAC_SV_ROUTES", "value": json.dumps(dict(routes))});
@@ -525,9 +433,6 @@ obj MicroserviceManifestBuilder {
             env.append(entry);
         }
 
-        # JAC_SV_NAME and JAC_SV_*_URL are protected - users can't shadow
-        # the sentinel or override peer URLs via the per-service env table
-        # (a stale override would silently route sv calls to the wrong place).
         extra: dict[str, any] = svc_cfg.get("env", {});
         for (k, v) in extra.items() {
             if k == "JAC_SV_NAME" {
@@ -541,15 +446,6 @@ obj MicroserviceManifestBuilder {
         return env;
     }
 
-    """Container resources with Burstable-QoS defaults (128Mi req / 1Gi
-    limit / 50m cpu req). BestEffort pods get evicted first under memory
-    pressure, so tiny defaults bump QoS without constraining real
-    workloads. The gateway defaults to a 2Gi limit instead: it loads the
-    admin portal, LLM-telemetry, log wiring and runtime OpenAPI
-    aggregation that service pods don't, so its startup working set rides
-    right at 1Gi and OOM-kills there. Priority: per-service >
-    [plugins.scale.kubernetes] > defaults. Empty string opts back to
-    BestEffort."""
     def _build_resources(
         svc_cfg: dict[str, any], is_gateway: bool = False
     ) -> dict[str, any] {
@@ -580,7 +476,7 @@ obj MicroserviceManifestBuilder {
         if cpu_limit_val is None {
             cpu_limit_val = cfg.cpu_limit;
         }
-        # cpu_limit: still omitted by default if also unset on cfg.
+
         requests: dict[str, str] = {};
         limits: dict[str, str] = {};
         if cpu_request_val {
@@ -605,8 +501,6 @@ obj MicroserviceManifestBuilder {
         return out;
     }
 
-    """/healthz/ready; gates Endpoints. Tight cadence so pod drops out
-    of rotation within ~15s of drain start."""
     def _build_readiness_probe -> dict[str, any] {
         cfg = self.k8s_config;
         return {
@@ -618,7 +512,6 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """/healthz/live; gates pod restart. More lenient than readiness."""
     def _build_liveness_probe -> dict[str, any] {
         cfg = self.k8s_config;
         return {
@@ -630,11 +523,6 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """Startup probe for pods: they install jac at startup from the PVC bundle
-    mode, git-clone + compile it) and run a first jaclang compile AT STARTUP,
-    which easily exceeds the liveness grace. The startup probe suppresses
-    liveness/readiness until the app first answers (~15min budget) so the slow
-    first boot isn't SIGKILLed; once it passes, liveness governs."""
     def _build_startup_probe -> dict[str, any] {
         cfg = self.k8s_config;
         return {
@@ -645,18 +533,14 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """PreStop sleep bridges the kube-proxy endpoint-propagation gap so
-    the pod doesn't stop accepting work before remote nodes stop sending."""
     def _build_prestop_hook -> dict[str, any] {
         return {"exec": {"command": ["sh", "-c", "sleep 5"]}};
     }
 
-    # Thin delegator to module-level k8s_safe_name (test ergonomics).
     def _k8s_safe_name(svc_name: str) -> str {
         return k8s_safe_name(svc_name);
     }
 
-    """Deployment manifest. Replicas from [...services.NAME].replicas."""
     def _build_deployment_manifest(
         svc_name: str, pod_spec: dict[str, any]
     ) -> dict[str, any] {
@@ -679,8 +563,6 @@ obj MicroserviceManifestBuilder {
             },
             "spec": {
                 "replicas": replicas,
-                # surge=1, maxUnavailable=0 + drain + preStop on the pod
-                # side gives no-downtime rolling updates.
                 "strategy": {
                     "type": "RollingUpdate",
                     "rollingUpdate": {"maxSurge": 1, "maxUnavailable": 0}
@@ -691,7 +573,6 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """ClusterIP Service. External traffic comes via the optional Ingress."""
     def _build_service_manifest(svc_name: str) -> dict[str, any] {
         k8s_name = self._k8s_safe_name(svc_name);
         port: int = self.k8s_config.container_port;
@@ -700,7 +581,7 @@ obj MicroserviceManifestBuilder {
             "selector": {"app": k8s_name},
             "ports": [{"protocol": "TCP", "port": port, "targetPort": port}]
         };
-        # Gateway-only ClientIP stickiness so WS reconnects land on the same pod.
+
         if svc_name == GATEWAY_NAME {
             spec["sessionAffinity"] = "ClientIP";
             spec["sessionAffinityConfig"] = {"clientIP": {"timeoutSeconds": 10800}};
@@ -717,10 +598,9 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """Autoscaler config for a service; None if autoscaling is disabled."""
     def _get_autoscaler_config(svc_name: str) -> dict[str, any] | None {
         svc: dict[str, any] = self._service_config(svc_name);
-        # 'hpa' block name is historical - applies to whichever autoscaler_engine is active
+
         hpa: dict[str, any] = svc.get("hpa", {});
         if not hpa.get("enabled", True) {
             return None;
@@ -739,11 +619,6 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """Single Ingress -> gateway Service; controller-agnostic. Built from
-    `[...ingress]`, or the deploy-wide `shared_ingress` (host=domain) when that
-    table is unset. Returns None if neither is configured. Backend always points
-    at gateway-service path "/" Prefix - the gateway owns /<svc>/* dispatch
-    (member-subpath; the /api prefix was dropped)."""
     def _build_ingress_manifest(ingress_cfg: dict[str, any]) -> dict[str, any] | None {
         cfg = self.k8s_config;
         enabled: bool = bool(ingress_cfg.get("enabled", False));
@@ -753,9 +628,7 @@ obj MicroserviceManifestBuilder {
         for (k, v) in ingress_cfg.get("annotations", {}).items() {
             annotations[str(k)] = str(v);
         }
-        # Fall back to the deploy-wide shared ingress when [...ingress] is unset,
-        # so a host-routed shared controller (an ALB/nginx PaaS subdomain) still
-        # reaches the gateway. Caller annotations carry the ALB cert/group/scheme.
+
         use_shared: bool = (not enabled) and cfg.shared_ingress and bool(cfg.domain);
         if use_shared {
             enabled = True;
@@ -809,9 +682,7 @@ obj MicroserviceManifestBuilder {
         if ingress_class {
             spec["ingressClassName"] = ingress_class;
         }
-        # cert-manager (nginx) needs a spec.tls block to mint a per-host cert; an
-        # ALB/ACM controller terminates TLS at the LB via its annotations and
-        # gets none. Mirrors the monolith IngressDeployer.
+
         cert_manager_managed: bool = (
             "cert-manager.io/cluster-issuer" in cfg.shared_ingress_annotations
             or "cert-manager.io/issuer" in cfg.shared_ingress_annotations
@@ -828,8 +699,6 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """PDB matching the Deployment; overrides at [...services.NAME.pdb].
-    Returns None on `pdb.enabled=false`."""
     def _build_pdb_manifest(svc_name: str) -> dict[str, any] | None {
         cfg: dict[str, any] = self._service_config(svc_name).get("pdb", {});
         if not cfg.get("enabled", True) {
@@ -852,20 +721,11 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """Pod entrypoint: the RUN step only. The jac-bootstrap init container has
-    already installed jac + deps onto the shared volume (HOME/PATH point there via
-    runtime_container_env), so this just reads JAC_SV_NAME and runs `jac scale
-    gateway` (gateway) or `jac start <name>.jac` (service). JAC_SV_SIBLING=1 is
-    exported so the pre-hook skips local-mode orchestration. Keeping the heavy
-    install out of here is what lets the app answer the startup probe in time."""
     def _pod_entrypoint -> dict[str, any] {
         import from jac_scale.injector.bundle { APP_MOUNT_PATH }
         gw_prefix = "";
         client_entry = self._client_entry();
         if client_entry {
-            # Build the fullstack client in-pod so the gateway serves it at
-            # `/`. Non-fatal: the API + admin still come up if the FE build
-            # fails (the SPA route just 404s, as it did before).
             gw_prefix = (
                 f'jac build "{client_entry}" '
                 f'|| echo "[jac-scale] client build failed; / will 404"; '
@@ -887,18 +747,14 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """Pod-spec for a service or the gateway (svc_name=GATEWAY_NAME).
-    Includes probes, preStop, grace, SA, init containers, secrets."""
     def _build_pod_spec(svc_name: str, image: str) -> dict[str, any] {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
-        # no-image runs on the generic Python base image; the per-service
-        # image_tag override is meaningless without a built image.
+
         resolved_image: str = self.k8s_config.python_image;
         env_list = self._build_env(svc_name, svc_cfg);
-        # Container name must be DNS-1123 (no underscores); JAC_SV_NAME
-        # env carries the raw name.
+
         container: dict[str, any] = {
             "name": k8s_safe_name(svc_name),
             "image": resolved_image,
@@ -910,19 +766,14 @@ obj MicroserviceManifestBuilder {
             "livenessProbe": self._build_liveness_probe(),
             "lifecycle": {"preStop": self._build_prestop_hook()}
         };
-        # no-image pods install + compile jac at startup (minutes), which the
-        # liveness probe would SIGKILL; a startup probe holds it off until the
-        # app first answers.
+
         container["startupProbe"] = self._build_startup_probe();
         resources = self._build_resources(svc_cfg, svc_name == GATEWAY_NAME);
         if resources {
             container["resources"] = resources;
         }
         (shared_vols, shared_mounts) = self._shared_volumes_for_service(svc_name);
-        # The injector init container unpacks the source onto the shared emptyDir
-        # at APP_MOUNT_PATH and the jac-bootstrap init container installs jac under
-        # JAC_HOME on it; HOME/PATH (runtime_container_env) point the app container
-        # at that toolchain, so this container only runs - it never installs.
+
         import from jac_scale.injector.bundle { APP_MOUNT_PATH }
         import from jac_scale.deploy.target.kubernetes.runtime_bootstrap {
             runtime_container_env
@@ -932,8 +783,7 @@ obj MicroserviceManifestBuilder {
         if shared_mounts {
             container["volumeMounts"] = shared_mounts;
         }
-        # envFrom for the user secret: created BEFORE Deployments in
-        # apply_manifests so the secretRef resolves at pod startup.
+
         if self.secrets {
             container["envFrom"] = [{"secretRef": {"name": self._user_secret_name()}}];
         }
@@ -947,12 +797,7 @@ obj MicroserviceManifestBuilder {
         }
         spec["volumes"] = list(shared_vols);
         spec["initContainers"] = list(self.deploy_context.init_containers);
-        # Delegate volume + unpack-init-container wiring to the injector so the
-        # source is mounted at APP_MOUNT_PATH before anything runs. Reconstruct the
-        # injector that prepare() selected: BinaryInjector (with the toolchain key,
-        # so its unpack container also drops the shipped binary) when shipping a
-        # binary, else the source-only PvcInjector. Typed as the PvcInjector base
-        # so the BinaryInjector subtype assigns cleanly.
+
         import from jac_scale.injector.pvc_injector { PvcInjector }
         injector: PvcInjector = PvcInjector(
             storage_class=self.k8s_config.bundle_storage_class
@@ -972,10 +817,7 @@ obj MicroserviceManifestBuilder {
         };
         spec = injector.mutate_pod_spec(spec, self.k8s_config.python_image);
         spec.pop("_jac_meta", None);
-        # The jac-bootstrap init container runs AFTER the injector's unpack init
-        # container (init containers run in order), so the source exists before it
-        # installs jac + project deps. Doing the build here, not in the app
-        # container, keeps it off the startup-probe budget.
+
         import from jac_scale.deploy.target.kubernetes.runtime_bootstrap {
             build_bootstrap_init_container
         }

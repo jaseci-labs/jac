@@ -1,4 +1,3 @@
-"""Tests for GCS / Firebase Storage implementation."""
 import io;
 import datetime;
 

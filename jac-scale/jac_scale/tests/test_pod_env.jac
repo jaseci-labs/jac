@@ -1,5 +1,3 @@
-"""Tests for K-track pod env injection (K8S_APP_NAME / K8S_NAMESPACE)."""
-
 import unittest.mock as mock;
 import json;
 import from jac_scale.deploy.target.kubernetes.microservice.manifest_builder {
@@ -9,8 +7,6 @@ import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesCon
 
 
 test "build_env injects JAC_SV_ROUTES so pods get routes without a toml table" {
-    # Zero-config --scale: the in-cluster jac.toml has no [routes] table, so
-    # the builder serializes the routes map into JAC_SV_ROUTES for every pod.
     cfg = KubernetesConfig(app_name="jac-shop", namespace="ns");
     builder = MicroserviceManifestBuilder(k8s_config=cfg);
     routes = {"orders_app": "/api/orders", "cart_app": "/api/cart"};
@@ -52,12 +48,9 @@ test "build_env keeps per-service overrides but never shadows the K8S_* vars" {
         "orders", {"env": {"STRIPE_KEY": "sk_test", "K8S_APP_NAME": "evil"}}
     );
 
-    # The user's STRIPE_KEY entry lands; K8S_APP_NAME injected first wins
-    # because it's already in the list when we walk the user table.
     names = [entry["name"] for entry in env];
     assert "STRIPE_KEY" in names;
-    # The base injection is still there - the user override is appended,
-    # not substituted, so K_APP_NAME appears at least once with our value.
+
     first_app_name = next(
         (
             e["value"]

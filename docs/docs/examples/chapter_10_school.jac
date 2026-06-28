@@ -1,4 +1,3 @@
-# Basic node for representing teachers
 node Teacher {
     has name: str,
         subject: str,
@@ -6,7 +5,6 @@ node Teacher {
         email: str;
 }
 
-# Basic node for representing students
 node Student {
     has name: str,
         age: int,
@@ -20,21 +18,18 @@ node Classroom {
         has_projector: bool = True;
 }
 
-# Edge for student enrollment
 edge EnrolledIn {
     has enrollment_date: str,
         grade: str = "Not Assigned",
         attendance_rate: float = 100.0;
 }
 
-# Edge for teaching assignments
 edge Teaches {
     has start_date: str,
         schedule: str,
         is_primary: bool = True;
 }
 
-# Edge for friendship between students
 edge FriendsWith {
     has since: str,
         closeness: int = 5;
@@ -44,21 +39,18 @@ walker ClassroomExplorer {
     can explore with Classroom entry {
         print(f"=== Exploring {here.room_number} ===");
 
-        # Find all students in this classroom
         students = [<-:EnrolledIn:<-];
         print(f"Students enrolled: {len(students)}");
         for student in students {
             print(f"  - {student.name} (ID: {student.student_id})");
         }
 
-        # Find the teacher
         teachers = [<-:Teaches:<-];
         if teachers {
             teacher = teachers[0];
             print(f"Teacher: {teacher.name} ({teacher.subject})");
         }
 
-        # Find classroom equipment info
         equipment = "Projector" if here.has_projector else "No projector";
         print(f"Equipment: {equipment}");
         print(f"Capacity: {here.capacity} students");
@@ -70,14 +62,12 @@ walker StudentAnalyzer {
         needs_help: list = [];
 
     can analyze with Student entry {
-        # Find enrollment information
         enrollments = [->:EnrolledIn:->];
 
         for enrollment_edge in [->:EnrolledIn:->] {
             grade = enrollment_edge.grade;
             attendance = enrollment_edge.attendance_rate;
 
-            # Categorize students
             if grade in ["A", "A-", "B+"] and attendance >= 90.0 {
                 self.high_performers.append(
                     {"name": here.name, "grade": grade, "attendance": attendance}
@@ -91,8 +81,7 @@ walker StudentAnalyzer {
     }
 
     can report with Student exit {
-        # Only report once at the end
-        if len([-->]) == 0 {  # At the last student
+        if len([-->]) == 0 {
             print("=== Student Analysis Report ===");
             print(f"High Performers ({len(self.high_performers)}):");
             for student in self.high_performers {
@@ -114,7 +103,6 @@ walker StudentAnalyzer {
     }
 }
 
-# Create the main classroom
 glob science_lab = root ++> Classroom(
          room_number="Lab-A", capacity=24, has_projector=True
      ),
@@ -144,7 +132,6 @@ with entry {
     print(f"Created classroom {science_lab[0].room_number} with {dr_smith[0].name}");
 }
 
-# Find all classrooms and explore them
 glob classrooms = [root-->[?:Classroom]];
 
 with entry {
@@ -153,8 +140,7 @@ with entry {
     }
 }
 
-# Analyze all students
-glob students = [root-->-->[?:Student]];  # Find all students in the graph
+glob students = [root-->-->[?:Student]];
 
 with entry {
     if students {
@@ -164,10 +150,3 @@ with entry {
         }
     }
 }
-# "MWF 9:00-10:00"
-
-# 1-10 scale
-
-# Create teacher and connect to classroom
-
-# Create students and enroll them

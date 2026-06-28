@@ -1,5 +1,3 @@
-"""Regression test for #6074: microservice _deploy_databases call site must match the real method's arity."""
-
 import inspect;
 import from types { SimpleNamespace }
 import unittest.mock;

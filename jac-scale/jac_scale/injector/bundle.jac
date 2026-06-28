@@ -1,35 +1,14 @@
-"""Reusable source bundling: pack a project into a tar.gz, content-address it,
-and resolve the in-pod install specs.
-
-Transport-independent: the PvcInjector places the bundle on a shared PVC, but the
-packing rules (exclude build artifacts and secrets, sanitize jac.toml) are the
-same regardless of how the bytes travel. Content-addressing the archive by sha256
-gives immutable, cacheable bundle keys so a pod restart can never read a mutated
-bundle.
-"""
-
 import io;
 import hashlib;
 import tarfile;
 import from pathlib { Path }
 
-# Pod-side contract shared with the injector's init container. The bundle is
-# unpacked onto APP_VOLUME_NAME at APP_MOUNT_PATH; the shared runtime bootstrap
-# (in a dedicated init container) installs jac under JAC_HOME, which lives on the
-# same shared volume so the built/installed toolchain survives into the app
-# container. JAC_ZIG_VERSION tracks jac/build.zig.zon's minimum_zig_version
-# (single source of truth for the experimental zig fetch). TOOLCHAIN_SUBDIR is
-# where the BinaryInjector unpacks the shipped release binary + plugin source
-# (relative to APP_MOUNT_PATH), kept dot-prefixed so it never collides with app
-# source and the binary bootstrap knows where to find the toolchain.
 glob APP_VOLUME_NAME: str = "jac-app",
      APP_MOUNT_PATH: str = "/app",
      JAC_HOME: str = "/app/.jachome",
      TOOLCHAIN_SUBDIR: str = ".jactoolchain",
      JAC_ZIG_VERSION: str = "0.16.0";
 
-# Directories never shipped into the cluster: build output, caches, vendored
-# deps, VCS metadata, virtualenvs.
 glob _EXCLUDE_DIRS: set[str] = {
          ".jac",
          "__pycache__",
@@ -42,9 +21,7 @@ glob _EXCLUDE_DIRS: set[str] = {
          ".mypy_cache",
          ".pytest_cache"
      };
-# Secret-bearing files are never packed. The raw jac.toml is excluded (it can
-# hold creds under [plugins.scale]); a [plugins.scale]-stripped copy is added
-# back by pack_source so pods still get the app + client-build config.
+
 glob _EXCLUDE_FILES: set[str] = {
          ".env",
          "jac.toml",
@@ -65,8 +42,6 @@ glob _EXCLUDE_SUFFIXES: tuple = (
      );
 
 
-"""True if `rel` (a project-relative Path) is a build artifact or secret file
-that must not be packed into the bundle."""
 def is_excluded(rel: Path) -> bool {
     for part in rel.parts {
         if part in _EXCLUDE_DIRS {
@@ -87,8 +62,6 @@ def is_excluded(rel: Path) -> bool {
 }
 
 
-"""The project's jac.toml with the [plugins.scale...] tables (deploy creds)
-removed, or None when there's no jac.toml."""
 def sanitized_jac_toml(base: Path) -> (str | None) {
     src = base / "jac.toml";
     if not src.is_file() {
@@ -100,9 +73,6 @@ def sanitized_jac_toml(base: Path) -> (str | None) {
     for line in src.read_text().splitlines() {
         stripped = line.lstrip();
         if stripped.startswith("[") {
-            # Take the name between the brackets; split on "]" so a trailing
-            # inline comment (e.g. `[plugins.scale] # creds`) cannot smuggle the
-            # section past the credential check.
             header = stripped.lstrip("[").split("]")[0].strip();
             in_scale_section = header == "plugins.scale"
             or header.startswith("plugins.scale.");
@@ -111,9 +81,6 @@ def sanitized_jac_toml(base: Path) -> (str | None) {
                 continue;
             }
         } elif at_top_level and stripped.startswith("plugins.scale.") {
-            # Top-level dotted-key form of a scale setting (creds); drop it.
-            # Only at top level: under another section, `plugins.scale.x` is that
-            # section's subkey, not a jac-scale credential.
             continue;
         }
         if not in_scale_section {
@@ -124,9 +91,6 @@ def sanitized_jac_toml(base: Path) -> (str | None) {
 }
 
 
-"""Tar+gzip the project dir (excluding build artifacts + secret files) into raw
-bytes, appending a sanitized jac.toml. Deterministic for a given tree so the
-content address is stable."""
 def pack_source(project_dir: str) -> bytes {
     base = Path(project_dir).resolve();
     buf = io.BytesIO();
@@ -153,21 +117,16 @@ def pack_source(project_dir: str) -> bytes {
 }
 
 
-"""sha256 hex digest of the bundle bytes; the immutable content address."""
 def content_address(raw: bytes) -> str {
     return hashlib.sha256(raw).hexdigest();
 }
 
 
-"""Object-store key for a bundle: namespaced by app, addressed by digest, so the
-same content reuses the same key and a changed tree gets a new one."""
 def bundle_object_key(app_name: str, digest: str) -> str {
     return f"bundles/{app_name}/{digest}.tar.gz";
 }
 
 
-"""Shell snippet writing a stub jac.toml when the bundle lacks one (the real
-jac.toml is excluded; `jac start <svc>.jac` still requires a project toml)."""
 def ensure_jac_toml_cmd -> str {
     return (
         f"[ -f {APP_MOUNT_PATH}/jac.toml ] || "

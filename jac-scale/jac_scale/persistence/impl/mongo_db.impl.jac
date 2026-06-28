@@ -1,7 +1,5 @@
-"""MongoDB implementation for MongoDb."""
 import from jac_scale.persistence._db_helpers { _validate_not_read_only }
 
-"""Return a parsed ObjectId, or None if key is not valid ObjectId hex."""
 def _as_object_id(key: str) -> ObjectId | None {
     try {
         return ObjectId(key);
@@ -83,8 +81,6 @@ impl MongoDb.count_documents(col_name: str, filter: dict) -> int {
     return col.count_documents(filter);
 }
 
-"""Create an index. Idempotent — pymongo returns the existing index's name
-if one with the same spec already exists."""
 impl MongoDb.create_index(
     col_name: str, keys: dict, unique: bool = False, name: str | None = None
 ) -> str {
@@ -142,9 +138,6 @@ impl MongoDb.delete_many(
     return self._get_mongo_collection(col_name).delete_many(filter);
 }
 
-# A non-ObjectId id (e.g. a UUID or empty string) cannot match an ObjectId
-# _id, so report not-found via the declared return type rather than letting
-# bson's InvalidId escape — mirrors get()/delete()/exists() on this class.
 impl MongoDb.find_by_id(col_name: str, id: str) -> dict | None {
     if (oid := _as_object_id(id)) {
         return self._get_mongo_collection(col_name).find_one({'_id': oid});
@@ -178,9 +171,7 @@ impl MongoDb.find_nodes(
     node_type: str, filter: dict = {}, col_name: str = '_anchors'
 ) -> list {
     mongo_filter: dict = {"data.archetype.__type__": node_type};
-    # The abstract Db.find_nodes declares `filter: dict = None`, so a caller
-    # reaching this through a Db-typed reference can pass None; treat that as
-    # "no extra constraints" rather than crashing on None.items().
+
     for (key, value) in (filter or {}).items() {
         mongo_filter[f"data.archetype.{key}"] = value;
     }

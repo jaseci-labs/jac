@@ -1,15 +1,4 @@
-"""SQLite storage primitives for SqliteIdentityStorage using SQLAlchemy Core.
-
-Uses lookup tables (identity_lookups, sso_lookups) for indexed queries,
-avoiding full table scans on the JSON identities column.
-
-Business logic lives in the base IdentityStorage (identity_storage.impl.jac).
-"""
-
 impl SqliteIdentityStorage.postinit -> None {
-    # busy_timeout: hold off writers for up to 30s instead of raising
-    # "database is locked" under concurrent access to the shared users.db
-    # (e.g. parallel test workers sharing one data dir).
     self._engine = create_engine(
         f"sqlite:///{self.db_path}", echo=False, connect_args={"timeout": 30}
     );
@@ -55,14 +44,6 @@ impl SqliteIdentityStorage.postinit -> None {
     self.ensure_indexes();
 }
 
-"""Create tables (idempotent and race-safe across processes).
-
-create_all already passes checkfirst=True, but the has_table -> CREATE TABLE
-step is a TOCTOU race across processes: pytest-xdist workers (or
-multi-process server boot sharing one SQLite file) can both observe a table
-absent and both issue CREATE TABLE, so the loser raises "already exists".
-That is the desired end state, so swallow it.
-"""
 impl SqliteIdentityStorage.ensure_indexes -> None {
     try {
         self._table.metadata.create_all(self._engine);
@@ -73,7 +54,6 @@ impl SqliteIdentityStorage.ensure_indexes -> None {
     }
 }
 
-"""Convert a row to a dict (excludes credentials)."""
 def _row_to_dict(row: any) -> dict[str, any] {
     return {
         'user_id': row.user_id,
@@ -88,7 +68,6 @@ def _row_to_dict(row: any) -> dict[str, any] {
     };
 }
 
-"""Insert a user document and sync lookup tables."""
 impl SqliteIdentityStorage._store_user(user_doc: dict[str, any]) -> None {
     user_id = user_doc['user_id'];
     id_rows: list[dict[str, str]] = [];
@@ -121,7 +100,6 @@ impl SqliteIdentityStorage._store_user(user_doc: dict[str, any]) -> None {
     }
 }
 
-"""Find a user by user_id (excludes credentials)."""
 impl SqliteIdentityStorage.get_user_by_id(user_id: str) -> dict[str, any] | None {
     t = self._table;
     with self._engine.connect() as conn {
@@ -130,7 +108,6 @@ impl SqliteIdentityStorage.get_user_by_id(user_id: str) -> dict[str, any] | None
     }
 }
 
-"""Find a user by any identity value using indexed lookup."""
 impl SqliteIdentityStorage.find_user_by_identity(value: str) -> dict[str, any] | None {
     normalized = value.lower().strip();
     t = self._table;
@@ -145,7 +122,6 @@ impl SqliteIdentityStorage.find_user_by_identity(value: str) -> dict[str, any] |
     }
 }
 
-"""Check if any active identity with this normalized value exists using indexed lookup."""
 impl SqliteIdentityStorage.identity_taken(value: str) -> bool {
     normalized = value.lower().strip();
     t = self._table;
@@ -160,11 +136,9 @@ impl SqliteIdentityStorage.identity_taken(value: str) -> bool {
     }
 }
 
-"""Delete a user and cascade to lookup tables."""
 impl SqliteIdentityStorage.delete_user(user_id: str) -> bool {
     t = self._table;
     with self._engine.begin() as conn {
-        # Delete lookups first (in case CASCADE isn't enabled)
         conn.execute(
             delete(self._identity_lookups).where(
                 self._identity_lookups.c.user_id == user_id
@@ -178,7 +152,6 @@ impl SqliteIdentityStorage.delete_user(user_id: str) -> bool {
     }
 }
 
-"""Update fields on a user row."""
 impl SqliteIdentityStorage._update_fields(
     user_id: str, fields: dict[str, any]
 ) -> bool {
@@ -205,7 +178,6 @@ impl SqliteIdentityStorage._update_fields(
     }
 }
 
-"""Get the credentials array for a user."""
 impl SqliteIdentityStorage._get_credentials(user_id: str) -> list[dict[str, any]] {
     t = self._table;
     with self._engine.connect() as conn {
@@ -216,7 +188,6 @@ impl SqliteIdentityStorage._get_credentials(user_id: str) -> list[dict[str, any]
     }
 }
 
-"""Replace the entire credentials array for a user."""
 impl SqliteIdentityStorage._update_credentials(
     user_id: str, credentials: list[dict[str, any]]
 ) -> None {
@@ -231,7 +202,6 @@ impl SqliteIdentityStorage._update_credentials(
     }
 }
 
-"""Get the identities array for a user."""
 impl SqliteIdentityStorage._get_identities(user_id: str) -> list[dict[str, any]] {
     t = self._table;
     with self._engine.connect() as conn {
@@ -242,7 +212,6 @@ impl SqliteIdentityStorage._get_identities(user_id: str) -> list[dict[str, any]]
     }
 }
 
-"""Append an identity document and sync lookup tables."""
 impl SqliteIdentityStorage._add_identity(
     user_id: str, identity: dict[str, any]
 ) -> bool {
@@ -255,7 +224,6 @@ impl SqliteIdentityStorage._add_identity(
             if not row {
                 return False;
             }
-            # Claim the lookup row first - PK violation here aborts the txn.
             if identity.get('type') == 'sso' and identity.get('provider') {
                 conn.execute(
                     self._sso_lookups.insert().values(
@@ -286,7 +254,6 @@ impl SqliteIdentityStorage._add_identity(
     }
 }
 
-"""Mark a single identity (matched by value_normalized) as verified."""
 impl SqliteIdentityStorage._set_identity_verified(
     user_id: str, value_normalized: str
 ) -> bool {
@@ -321,7 +288,6 @@ impl SqliteIdentityStorage._set_identity_verified(
     }
 }
 
-"""Remove an SSO identity and sync sso_lookups."""
 impl SqliteIdentityStorage._remove_sso_identity(user_id: str, platform: str) -> bool {
     t = self._table;
     sl = self._sso_lookups;
@@ -347,7 +313,6 @@ impl SqliteIdentityStorage._remove_sso_identity(user_id: str, platform: str) -> 
                 identities=filtered, updated_at=now
             )
         );
-        # Remove from sso_lookups
         conn.execute(
             delete(sl).where(sl.c.user_id == user_id, sl.c.provider == platform)
         );
@@ -355,7 +320,6 @@ impl SqliteIdentityStorage._remove_sso_identity(user_id: str, platform: str) -> 
     }
 }
 
-"""Find which active user has a specific SSO link using indexed lookup."""
 impl SqliteIdentityStorage._find_sso_link(
     platform: str, external_id: str
 ) -> dict[str, any] | None {
@@ -373,7 +337,6 @@ impl SqliteIdentityStorage._find_sso_link(
     }
 }
 
-"""Find a user by SSO provider and external_id using indexed lookup."""
 impl SqliteIdentityStorage.get_user_by_sso(
     platform: str, external_id: str
 ) -> dict[str, any] | None {
@@ -391,14 +354,12 @@ impl SqliteIdentityStorage.get_user_by_sso(
     }
 }
 
-"""List user documents excluding guest users and credentials."""
 impl SqliteIdentityStorage.list_all_users(
     limit: int, offset: int
 ) -> list[dict[str, any]] {
     t = self._table;
     lk = self._identity_lookups;
     with self._engine.connect() as conn {
-        # Exclude guest users via lookup table
         guest_subq = select(lk.c.user_id).where(
             lk.c.value_normalized == Con.GUEST.value
         );
