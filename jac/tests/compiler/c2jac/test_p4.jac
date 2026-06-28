@@ -8,22 +8,14 @@ function-like macros, and `#ifdef` conditional compilation.
 
 import os;
 import from tests.support { JAC_ROOT }
+import from tests.compiler.c2jac.support { parse_errors as _parses }
 import from jaclang.compiler.c2jac.driver { transpile_c_file, transpile_c_str }
 import from jaclang.compiler.c2jac.preprocess { preprocess_c }
-import from jaclang.jac0core.program { JacProgram }
 
 glob MINILIB = os.path.join(
          JAC_ROOT, "tests", "compiler", "c2jac", "fixtures", "minilib"
      ),
      VEC2_C = os.path.join(MINILIB, "vec2.c");
-
-def _parses(jac_str: str) -> list {
-    # Emitted Jac must always recompile (§8.2). Return the error list so a
-    # failure prints what broke.
-    prog = JacProgram();
-    prog.compile(use_str=jac_str, file_path="emitted.jac");
-    return prog.errors_had;
-}
 
 # ---------------------------------------------------------------------------- #
 # preprocess_c (§8.1) — the pcpp front-end in isolation                         #
