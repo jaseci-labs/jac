@@ -251,6 +251,14 @@ test "secrets bundled" {
     );
 }
 
+# --- Bundled native stdlib: uuid (v4) (Mechanism F — CSPRNG over OpenSSL's
+# RAND_bytes, rendered via native str(obj)/__str__ #7003, issue #6978 Phase 1).
+# Output is random, so the harness compares the deterministic v4 structure
+# (hex/str lengths, hyphen layout, version nibble 4, variant, distinctness). ---
+test "uuid bundled" {
+    run_with_both("prim_uuid.jac", "uuid_py", "uuid_cl", "uuid_na", require=["na"]);
+}
+
 # --- Static-method calls + class-attribute reads on user classes (issue #6951).
 # `ClassName.method(args)` on a `static def` and `ClassName.attr` on a
 # `static has`, including inheritance through the MRO; unblocks datetime. ---
