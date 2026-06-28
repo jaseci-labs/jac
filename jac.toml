@@ -12,7 +12,12 @@ name = "jaclang"
 jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to this file
 
 [check.lint]
-select = ["all"]
+# "all" enables every autolint rule; the two strip-* entries are the opt-in
+# "deslop" rules (W3050/W3051) that remove all comments and docstrings. They
+# only activate when named explicitly here, so `jac format --lintfix`,
+# `jac precommit`, and CI's `jac format --check --lintfix` will strip comments
+# and docstrings from every non-excluded .jac file.
+select = ["all", "strip-comments", "strip-docstrings"]
 exclude = [
     "docs/*",
     "*/examples/*",
