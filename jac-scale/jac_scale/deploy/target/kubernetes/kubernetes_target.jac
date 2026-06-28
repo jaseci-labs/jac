@@ -1096,8 +1096,18 @@ obj KubernetesTarget(DeploymentTarget) {
             # mutate_pod_spec (after the Deployment is assembled) adds the unpack
             # init container + bundle mount. app_name is already a DNS-1123 name
             # (it names the Deployment/Service), so it doubles as the bundle key.
-            injector = PvcInjector(storage_class=self.k8s_config.bundle_storage_class);
-            injector.prepare(app_name, namespace, app_config.code_folder);
+            # Unified injector selection (shared with the microservice cell):
+            # default ships source for an in-pod install of the published release;
+            # --experimental ships the host-built binary (or fails loud). One
+            # instance is reused below for seed() + mutate_pod_spec().
+            import from jac_scale.injector.binary_injector { select_injector }
+            (injector, ship_binary, _tc_key) = select_injector(
+                app_config.experimental,
+                self.k8s_config.bundle_storage_class,
+                app_name,
+                namespace,
+                app_config.code_folder
+            );
             ensure_pvc_exists(
                 core_v1,
                 namespace,
@@ -1176,7 +1186,8 @@ obj KubernetesTarget(DeploymentTarget) {
                 build_bootstrap_init_container(
                     self.k8s_config,
                     app_config.experimental,
-                    self.k8s_config.python_image
+                    self.k8s_config.python_image,
+                    ship_binary
                 )
             );
             deployment['spec']['template']['spec'] = template_spec;

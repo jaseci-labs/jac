@@ -34,8 +34,9 @@ obj BinaryInjector(PvcInjector) {
         _toolchain_bytes: bytes = b"";
 
     """Pack the app source (PvcInjector.prepare) AND build + pack the host
-    toolchain. Raises if zig is absent or the release build fails - the manifest
-    builder catches that and falls back to the source-only PvcInjector."""
+    toolchain. Raises if zig is absent or the release build fails - select_injector
+    turns that into a loud, actionable error (it does NOT silently fall back to the
+    in-pod build, which OOMs small nodes)."""
     def prepare(app_name: str, namespace: str, project_dir: str) {
         super.prepare(app_name, namespace, project_dir);
         repo_root = host_repo_root();
@@ -60,4 +61,55 @@ obj BinaryInjector(PvcInjector) {
         paths.append(bundle_pvc_path(self._toolchain_object_key));
         return paths;
     }
+}
+
+
+"""Select + prepare the code injector for a k8s deploy. UNIFIED across the
+monolith and microservice cells so both choose identically. --experimental ships a
+host-built release binary (BinaryInjector: fast, ~no build memory); the default
+ships source for an in-pod install of the PUBLISHED release (PvcInjector). When
+--experimental cannot ship a binary (no zig on PATH, build error) it FAILS LOUD
+(warn + raise) rather than silently degrading to the in-pod clone+build, which
+OOMs small nodes. Returns (prepared injector, ship_binary flag, toolchain key):
+ship_binary feeds build_bootstrap_init_container; the toolchain key lets a
+two-phase caller (microservice) reconstruct the injector for mutate_pod_spec."""
+def select_injector(
+    experimental: bool,
+    storage_class: str,
+    app_name: str,
+    namespace: str,
+    project_dir: str
+) -> tuple[PvcInjector, bool, str] {
+    if experimental {
+        import from jaclang.cli.console { console }
+        import logging;
+        try {
+            console.print(
+                "Building the jac binary on the host to ship into pods "
+                "(--experimental) - one-time (cached after), a few minutes on the "
+                "first run. The faster, OOM-free alternative to the in-pod build."
+            );
+            binary_injector = BinaryInjector(storage_class=storage_class);
+            binary_injector.prepare(app_name, namespace, project_dir);
+            console.print(
+                "Built jac binary; shipping your local code to pods (pods skip "
+                "the in-pod build)."
+            );
+            return (binary_injector, True, binary_injector._toolchain_object_key);
+        } except Exception as exc {
+            logging.getLogger(__name__).warning(
+                f"--experimental binary-ship failed: {exc}"
+            );
+            raise RuntimeError(
+                f"--experimental could not ship a host-built jac binary: {exc}. "
+                "Put zig 0.16.0 on PATH and run 'cd jac && zig build --prefix "
+                ".ship-out', or deploy without --experimental to use the published "
+                "release. (Not silently falling back to the in-pod build - it OOMs "
+                "small nodes.)"
+            );
+        }
+    }
+    source_injector = PvcInjector(storage_class=storage_class);
+    source_injector.prepare(app_name, namespace, project_dir);
+    return (source_injector, False, "");
 }

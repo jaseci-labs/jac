@@ -71,56 +71,24 @@ obj MicroserviceManifestBuilder {
         return self._bundle_object_key;
     }
 
-    """Select + prepare the code injector. The DEFAULT path is release mode -
-    PvcInjector + the released jac from GitHub Releases + jac-scale from PyPI - so
-    a normal `jac start --scale` deploys the PUBLISHED, reproducible toolchain,
-    NOT whatever happens to be built on the deploy host. Shipping local code is
-    opt-in via --experimental, which exists precisely to test unreleased branch
-    changes; there, binary-shipping is just the FAST way to do it (ship a
-    host-built release binary - seconds to start) instead of the slow in-pod
-    clone+build. If the host cannot build a release binary, --experimental falls
-    back to the in-pod build (still local code, just slower), never to release.
-    Records the toolchain key + ship_binary flag so mutate_pod_spec and the
-    jac-bootstrap init container pick binary mode. Build-time, no cluster I/O."""
+    """Select + prepare the code injector via the unified select_injector (shared
+    with the monolith cell). Default = release (published jac + jac-scale from
+    PyPI); --experimental = ship the host-built binary (or fail loud). Records the
+    ship_binary flag + toolchain key so mutate_pod_spec and the jac-bootstrap init
+    container pick binary mode."""
     def _prepare_injector(app_config: AppConfig) -> PvcInjector {
+        import from jac_scale.injector.binary_injector { select_injector }
         import from jac_scale.injector.pvc_injector { PvcInjector }
-        app = k8s_safe_name(self.k8s_config.app_name);
-        project = self.project_dir or app_config.code_folder;
-        storage = self.k8s_config.bundle_storage_class;
-        # Local code is shipped ONLY under --experimental. Default == release.
-        if self.experimental {
-            try {
-                import from jac_scale.injector.binary_injector { BinaryInjector }
-                import from jaclang.cli.console { console }
-                # The host build (zig build) streams its own raw "[N/11] steps"
-                # progress with no context - frame it so a multi-minute first run
-                # does not read as a hang. One-time: the binary is cached on the
-                # host, so later --experimental deploys skip to packing + seeding.
-                console.print(
-                    "Building the jac binary on the host to ship into pods "
-                    "(--experimental) - one-time (cached after), a few minutes on "
-                    "first run. The faster alternative to the in-pod build."
-                );
-                binary_injector = BinaryInjector(storage_class=storage);
-                binary_injector.prepare(app, self.k8s_config.namespace, project);
-                self._ship_binary = True;
-                self._toolchain_object_key = binary_injector._toolchain_object_key;
-                console.print(
-                    "Built jac binary; shipping your local code to pods (pods skip "
-                    "the in-pod build)."
-                );
-                return binary_injector;
-            } except Exception as exc {
-                import logging;
-                logging.getLogger(__name__).warning(
-                    f"binary-ship unavailable ({exc}); falling back to the in-pod "
-                    "clone+build for --experimental (still your local branch, just "
-                    "slower)."
-                );
-            }
-        }
-        injector = PvcInjector(storage_class=storage);
-        injector.prepare(app, self.k8s_config.namespace, project);
+        selection = select_injector(
+            self.experimental,
+            self.k8s_config.bundle_storage_class,
+            k8s_safe_name(self.k8s_config.app_name),
+            self.k8s_config.namespace,
+            self.project_dir or app_config.code_folder
+        );
+        injector: PvcInjector = selection[0];
+        self._ship_binary = bool(selection[1]);
+        self._toolchain_object_key = str(selection[2]);
         return injector;
     }
 
