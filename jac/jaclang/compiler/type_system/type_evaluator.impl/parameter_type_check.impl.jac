@@ -810,7 +810,7 @@ impl TypeEvaluator._infer_type_args_from_method(
     return direct_args;
 }
 
-# Bind class TypeVars from self/cls annotation on the matched constructor overload.
+# Bind class TypeVars from the self annotation on the matched constructor overload.
 # Walks class_params and self's type_args in parallel, skips already-bound TypeVars.
 impl TypeEvaluator._extract_self_annotation_bindings(
     caller_type: types.ClassType,
@@ -821,21 +821,10 @@ impl TypeEvaluator._extract_self_annotation_bindings(
         return;
     }
     first = method.parameters[0];
-    if not (first.is_self or first.is_cls) {
+    if not first.is_self {
         return;
     }
     self_ann = first.param_type;
-    # For `cls: type[Self[...]]` the binding info is one level inside `type[...]`.
-    if (
-        first.is_cls
-        and isinstance(self_ann, types.ClassType)
-        and self_ann.private.type_args
-        and self.prefetch is not None
-        and self.prefetch.type_class is not None
-        and self_ann.shared == self.prefetch.type_class.shared
-    ) {
-        self_ann = self_ann.private.type_args[0];
-    }
     if not isinstance(self_ann, types.ClassType) {
         return;
     }
