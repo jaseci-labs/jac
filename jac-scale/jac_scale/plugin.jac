@@ -45,11 +45,11 @@ def _scale_pre_hook(context: HookContext) -> None {
     if (not is_sv_sibling) and (not scale_flag) and (enabled is not False) {
         filename = context.get_arg("filename");
 
-        if filename and ((enabled is None) or (not ms_config.get("routes", {}))) {
-            import from jac_scale.runtime.discovery.discovery { discover_sv_services }
-            if not ms_config.get("routes", {}) {
-                ms_config["routes"] = discover_sv_services(filename);
-            }
+        if filename {
+            import from jac_scale.runtime.discovery.discovery { resolve_routes }
+            ms_config["routes"] = resolve_routes(
+                filename, dict(ms_config.get("routes", {}))
+            );
         }
 
         import from jac_scale.runtime.realizer.local_realizer { LocalRealizer }
@@ -437,23 +437,19 @@ class JacCmd {
                 return 1;
             }
 
-            if not ms_config.get("routes", {}) {
-                import from jac_scale.runtime.discovery.discovery {
-                    discover_sv_services
-                }
-                discovered = discover_sv_services(".");
-                if discovered {
-                    ms_config["routes"] = discovered;
-                } else {
-                    console.print(
-                        "No microservices found: no routes in "
-                        "[plugins.scale.microservices.routes] and no "
-                        "`sv import` / `to sv:` services detected in the "
-                        "current directory.",
-                        style="error"
-                    );
-                    return 1;
-                }
+            import from jac_scale.runtime.discovery.discovery { resolve_routes }
+            merged_routes = resolve_routes(".", dict(ms_config.get("routes", {})));
+            if merged_routes {
+                ms_config["routes"] = merged_routes;
+            } else {
+                console.print(
+                    "No microservices found: no routes in "
+                    "[plugins.scale.microservices.routes] and no "
+                    "`sv import` / `to sv:` services detected in the "
+                    "current directory.",
+                    style="error"
+                );
+                return 1;
             }
 
             registry = build_registry(ms_config);

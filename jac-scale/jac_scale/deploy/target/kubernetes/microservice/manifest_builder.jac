@@ -741,7 +741,8 @@ obj MicroserviceManifestBuilder {
                 f"  {gw_prefix}"
                 "  exec jac scale gateway; "
                 "else "
-                '  exec jac start "${JAC_SV_NAME}.jac"; '
+                '  SV_FILE="$(find . -name "${JAC_SV_NAME}.jac" -not -path "*/.*" -print 2>/dev/null | head -n1)"; '
+                '  exec jac start "${SV_FILE:-${JAC_SV_NAME}.jac}"; '
                 "fi"
             ]
         };

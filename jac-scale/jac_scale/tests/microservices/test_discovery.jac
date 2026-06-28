@@ -4,6 +4,7 @@ import tomllib;
 import from pathlib { Path }
 import from jac_scale.runtime.discovery.discovery {
     discover_sv_services,
+    resolve_routes,
     should_enter_local_ms,
     scan_markers
 }
@@ -180,4 +181,57 @@ test "discover ignores sv-import text that lives only in docstrings" {
 test "discover returns empty for a missing directory" {
     routes = discover_sv_services("/nonexistent/path/main.jac");
     assert routes == {};
+}
+
+test "discover finds a server module in a subdirectory (embedded sub-app)" {
+    tmp = Path(tempfile.mkdtemp());
+    (tmp / "main.jac").write_text("with entry { print(1); }\n");
+    sub = tmp / "littlex";
+    sub.mkdir();
+    (sub / "social_graph.jac").write_text(
+        "to sv:\ndef:pub setup_profile() -> int { return 1; }\n"
+    );
+    try {
+        discovered = discover_sv_services(str(tmp / "main.jac"));
+        assert "social_graph" in discovered , (
+            f"subdir service not discovered: {discovered}"
+        );
+    } finally {
+        shutil.rmtree(str(tmp), ignore_errors=True);
+    }
+}
+
+test "discover skips services under build/vendor dirs (.jac, node_modules)" {
+    tmp = Path(tempfile.mkdtemp());
+    (tmp / "main.jac").write_text("with entry { print(1); }\n");
+    for d in [".jac", "node_modules"] {
+        sub = tmp / d / "pkg";
+        sub.mkdir(parents=True);
+        (sub / "ghost_app.jac").write_text(
+            "to sv:\ndef:pub g() -> int { return 1; }\n"
+        );
+    }
+    try {
+        discovered = discover_sv_services(str(tmp / "main.jac"));
+        assert "ghost_app" not in discovered , (
+            f"build/vendor service leaked into discovery: {discovered}"
+        );
+    } finally {
+        shutil.rmtree(str(tmp), ignore_errors=True);
+    }
+}
+
+test "resolve_routes merges discovered services with explicit routes" {
+    main = _K8S_E2E_FIXTURE / "main.jac";
+
+    explicit = {"products_app": "/custom-products", "extra": "/extra"};
+    merged = resolve_routes(str(main), explicit);
+
+    assert "cart_app" in merged and "orders_app" in merged , (
+        f"discovered services dropped: {merged}"
+    );
+
+    assert merged["products_app"] == "/custom-products";
+
+    assert merged["extra"] == "/extra";
 }

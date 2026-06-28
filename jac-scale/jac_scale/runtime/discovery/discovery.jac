@@ -6,7 +6,29 @@ import from jac_scale.runtime.discovery.route_policy {
     guard_route_name
 }
 
-glob _SV_PREFIX_TOK: str = "KW_SERVER";
+glob _SV_PREFIX_TOK: str = "KW_SERVER",
+     _DISCOVERY_EXCLUDE_DIRS: set[str] = {
+         ".jac",
+         "__pycache__",
+         "node_modules",
+         ".git",
+         "dist",
+         "build",
+         ".venv",
+         "venv",
+         ".mypy_cache",
+         ".pytest_cache"
+     };
+
+
+def _under_excluded_dir(rel: Path) -> bool {
+    for part in rel.parts[:-1] {
+        if part in _DISCOVERY_EXCLUDE_DIRS {
+            return True;
+        }
+    }
+    return False;
+}
 
 
 obj ModuleMarkers {
@@ -71,7 +93,10 @@ def discover_sv_services(entry_file: str) -> dict[str, str] {
     }
     services: set[str] = set();
 
-    for jac_file in sorted(root_dir.glob("*.jac")) {
+    for jac_file in sorted(root_dir.rglob("*.jac")) {
+        if _under_excluded_dir(jac_file.relative_to(root_dir)) {
+            continue;
+        }
         try {
             text = jac_file.read_text(encoding="utf-8");
         } except Exception {
@@ -98,4 +123,11 @@ def discover_sv_services(entry_file: str) -> dict[str, str] {
         routes[name] = derive_route_prefix(name);
     }
     return routes;
+}
+
+
+def resolve_routes(entry_file: str, explicit_routes: dict[str, str]) -> dict[str, str] {
+    merged: dict[str, str] = dict(discover_sv_services(entry_file));
+    merged.update(explicit_routes);
+    return merged;
 }

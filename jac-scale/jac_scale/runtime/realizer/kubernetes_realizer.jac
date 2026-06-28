@@ -24,26 +24,29 @@ obj KubernetesRealizer {
 
         if target == "kubernetes" and enabled is not False {
             scale_discovered: dict[str, str] = {};
-            needs_discovery = (enabled is None)
-            or (enabled is True and not self.ms_config.get("routes", {}));
-            if needs_discovery and filename and os.path.exists(filename) {
+            if filename and os.path.exists(filename) {
                 import from jac_scale.runtime.discovery.discovery {
                     discover_sv_services
                 }
                 scale_discovered = discover_sv_services(filename);
             }
-            if (enabled is True) or scale_discovered {
+
+            explicit_routes = dict(self.ms_config.get("routes", {}));
+            merged_routes: dict[str, str] = dict(scale_discovered);
+            merged_routes.update(explicit_routes);
+            if (enabled is True) or merged_routes {
                 target = "kubernetes-microservice";
-                if scale_discovered and not self.ms_config.get("routes", {}) {
+                if merged_routes {
                     raw_cfg = get_scale_config().load();
                     raw_ms = raw_cfg.setdefault("microservices", {});
-                    if not raw_ms.get("routes") {
-                        raw_ms["routes"] = scale_discovered;
-                    }
-                    names = ", ".join(sorted(scale_discovered.keys()));
+                    raw_ms["routes"] = merged_routes;
+                    self.ms_config["routes"] = merged_routes;
+                }
+                if scale_discovered {
+                    names = ", ".join(sorted(merged_routes.keys()));
                     label = "auto-detected" if enabled is None else "default routes";
                     console.print(
-                        f"Microservice mode ({label}): {len(scale_discovered)} "
+                        f"Microservice mode ({label}): {len(merged_routes)} "
                         f"services [{names}], routes /<name>. Deploying to "
                         f"kubernetes; set [plugins.scale.microservices] to customize.",
                         style="cyan"
