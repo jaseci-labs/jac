@@ -107,6 +107,10 @@ def wait_for_pod_phase(
     timeout: int = 180
 ) -> None;
 
+def describe_pod_status(
+    core_v1: client.CoreV1Api, namespace: str, pod_name: str, pod: any = None
+) -> str;
+
 def wait_for_pod_deletion(
     core_v1: client.CoreV1Api, namespace: str, pod_name: str, timeout: int = 120
 ) -> None;

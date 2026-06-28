@@ -148,6 +148,7 @@ impl wait_for_pod_phase(
     timeout: int = 180
 ) -> None {
     start_time = time.time();
+    last_pod: any = None;
     while ((time.time() - start_time) < timeout) {
         try {
             pod = core_v1.read_namespaced_pod(pod_name, namespace);
@@ -158,18 +159,73 @@ impl wait_for_pod_phase(
             }
             raise;
         }
+        last_pod = pod;
         phase = (pod.status.phase or '').strip();
         if (phase in target_phases) {
             return;
         }
         if (phase == 'Failed') {
-            raise RuntimeError(f"Sync pod '{pod_name}' entered Failed state.");
+            raise RuntimeError(
+                f"Sync pod '{pod_name}' entered Failed state." + describe_pod_status(
+                    core_v1, namespace, pod_name, pod
+                )
+            );
         }
         time.sleep(2);
     }
     raise TimeoutError(
-        f"Timed out while waiting for pod '{pod_name}' to reach phase {target_phases}."
+        f"Timed out while waiting for pod '{pod_name}' to reach phase {target_phases}." + describe_pod_status(
+            core_v1, namespace, pod_name, last_pod
+        )
     );
+}
+
+impl describe_pod_status(
+    core_v1: client.CoreV1Api, namespace: str, pod_name: str, pod: any = None
+) -> str {
+    lines: list[str] = [];
+    try {
+        if pod is None {
+            pod = core_v1.read_namespaced_pod(pod_name, namespace);
+        }
+        lines.append(f"phase={(pod.status.phase or '?')}");
+        for cond in (pod.status.conditions or []) {
+            if (cond.status or '') != 'True' and cond.reason {
+                lines.append(
+                    f"condition {cond.type}={cond.status} ({cond.reason}: {cond.message
+                    or ''})"
+                );
+            }
+        }
+        container_states = (pod.status.init_container_statuses or []) + (
+            pod.status.container_statuses or []
+        );
+        for cs in container_states {
+            waiting = cs.state.waiting if cs.state else None;
+            if waiting and waiting.reason {
+                lines.append(
+                    f"container '{cs.name}' waiting: {waiting.reason} ({waiting.message
+                    or ''})"
+                );
+            }
+        }
+    } except Exception as exc {
+        lines.append(f"(could not read pod: {exc})");
+    }
+    try {
+        events = core_v1.list_namespaced_event(
+            namespace, field_selector=f"involvedObject.name={pod_name}"
+        );
+        for ev in (events.items or []) {
+            lines.append(f"event [{ev.reason or '?'}] {ev.message or ''}");
+        }
+    } except Exception as exc {
+        lines.append(f"(could not read events: {exc})");
+    }
+    if not lines {
+        return '';
+    }
+    return " Pod diagnostics: " + "; ".join(lines);
 }
 
 impl parse_storage_quantity(quantity: str) -> int {
