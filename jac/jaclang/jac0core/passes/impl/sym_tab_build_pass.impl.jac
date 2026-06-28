@@ -720,10 +720,8 @@ impl bind_assignment_targets(nd: uni.Assignment) -> None {
     import from jaclang.jac0core.constant { SymbolType }
     import from jaclang.jac0core.helpers { evaluate_version_condition }
 
-    # True if any IfStmt/ElseIf/ElseStmt ancestor up to the nearest Python
-    # scope is part of a `sys.version_info` / `TYPE_CHECKING` guard chain.
-    # Such symbols must remain in the inner scope so the type layer's
-    # `collect_member_syms` can filter dead branches at lookup time.
+    # True if any ancestor up to the nearest Python scope is a
+    # sys.version_info / TYPE_CHECKING guard — those stay in the inner scope.
     def inside_version_conditional(start: uni.UniNode) -> bool {
         scope_types = uni.UniScopeNode.get_python_scoping_nodes();
         cur = start.parent;
@@ -770,13 +768,8 @@ impl bind_assignment_targets(nd: uni.Assignment) -> None {
                 i.sym_tab, uni.UniScopeNode.get_python_scoping_nodes()
             )
             and not inside_version_conditional(i) {
-                # Python has no block scope: any assignment inside if/for/
-                # while/try binds in the enclosing function scope, both for
-                # annotated (`x: T = v`) and unannotated (`x = v`) forms.
-                # Exception: `sys.version_info` / `TYPE_CHECKING` guards keep
-                # their declarations in the inner scope so the type layer's
-                # `collect_member_syms` filters dead branches at lookup time
-                # (see PR #6429).
+                # Python has no block scope — hoist to function scope for both
+                # annotated and unannotated forms, except version guards (#6429).
                 py_scope = find_python_scope_node_of(i);
                 if py_scope is not None {
                     if (
