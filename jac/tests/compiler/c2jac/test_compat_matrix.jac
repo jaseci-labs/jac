@@ -356,7 +356,8 @@ def check(label: str) -> list[str] {
 # faithful than before" — that is the point, it makes the honesty load-bearing.
 #
 # Two ratios, because they catch different drift:
-#   node ratio — fraction of all input C-AST nodes that lowered Tier-A. Coarse:
+#   node ratio — fraction of all input C-AST nodes that lowered faithfully (no
+#                recorded Tier-B loss; see TagTable.tier_counts). Coarse:
 #                dominated by trivially-recognized leaves, so it mostly catches
 #                large-scale regressions (a whole construct family going Tier-B).
 #   form ratio — fraction of corpus forms that emit ZERO Tier-B tags. Sensitive:

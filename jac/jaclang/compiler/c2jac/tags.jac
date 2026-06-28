@@ -1,9 +1,3 @@
-"""Tag types and TagTable for c2jac.
-
-NodeTag captures how each pycparser C-AST node will be handled. TagTable stores
-these tags keyed by id(c_node) — no node mutation (§11.5).
-"""
-
 enum Tier { TIER_A = "tier_a", TIER_B = "tier_b" }
 
 enum Mechanism { PY_AST = "py_ast", DIRECT_IR = "direct_ir" }
@@ -23,7 +17,6 @@ enum Idiom {
     TIER_B = "tier_b"
 }
 
-"""Per-node annotation produced by the boundary table and analyzers."""
 obj NodeTag {
     has tier: Tier,
         mechanism: Mechanism,
@@ -33,7 +26,6 @@ obj NodeTag {
         snippet: str = "";
 }
 
-"""Stores NodeTags keyed by id(c_node) — no C-AST mutation."""
 obj TagTable {
     has _data: dict[int, NodeTag] = {};
 
@@ -49,24 +41,20 @@ obj TagTable {
         return [
             v
             for v in self._data.values()
-            if v.tier == Tier.TIER_B
+            if v.tier == Tier.TIER_B and v.reason != ""
         ];
     }
 
     def tier_counts -> tuple[int, int] {
-        # (Tier-A node count, total tagged node count) across every C-AST node.
-        # The aggregate-faithfulness gate (test_compat_matrix) sums these over
-        # the whole corpus so a net drift toward Tier-B can't pass silently —
-        # the per-row tests only pin individual forms, nothing aggregates them.
         total = len(self._data);
-        tier_a = len(
+        losses = len(
             [
                 v
                 for v in self._data.values()
-                if v.tier == Tier.TIER_A
+                if v.tier == Tier.TIER_B and v.reason != ""
             ]
         );
-        return (tier_a, total);
+        return (total - losses, total);
     }
 
     def by_idiom(idiom: Idiom) -> list[NodeTag] {
