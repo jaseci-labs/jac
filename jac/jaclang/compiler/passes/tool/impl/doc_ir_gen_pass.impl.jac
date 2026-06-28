@@ -461,11 +461,7 @@ impl DocIRGenPass.exit_token(nd: uni.Token) -> None {
 
 """Generate DocIR for typed context blocks."""
 impl DocIRGenPass.exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        parts.append(i.gen.doc_ir);
-    }
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._assign_group_concat(nd);
 }
 
 """Generate DocIR for event signatures."""
@@ -1017,16 +1013,7 @@ impl DocIRGenPass.exit_visit_stmt(nd: uni.VisitStmt) -> None {
 
 """Generate DocIR for nonlocal statements."""
 impl DocIRGenPass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.SEMI) and len(parts)) {
-            parts.pop();
-        }
-        parts.append(i.gen.doc_ir);
-        parts.append(self.space());
-    }
-    parts.pop();
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._assign_semi_stmt_doc_ir(nd);
 }
 
 """Generate DocIR for global statements."""
@@ -1115,134 +1102,17 @@ impl DocIRGenPass.emit_section_header_block(nd: uni.UniNode) -> None {
 
 """Generate DocIR for client blocks (cl { ... })."""
 impl DocIRGenPass.exit_client_block(nd: uni.ClientBlock) -> None {
-    if (
-        len(nd.kid) > 0
-        and isinstance(nd.kid[0], uni.Token)
-        and (nd.kid[0].name == Tok.KW_TO)
-    ) {
-        self.emit_section_header_block(nd);
-        return;
-    }
-    parts: list[doc.DocType] = [];
-    body_parts: list[doc.DocType] = [];
-    in_body = False;
-    prev_body_item: (uni.UniNode | None) = None;
-    for i in nd.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.KW_CLIENT)) {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        } elif (isinstance(i, uni.Token) and (i.name == Tok.LBRACE)) {
-            parts.append(i.gen.doc_ir);
-            body_parts.append(self.hard_line());
-            in_body = True;
-        } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
-            in_body = False;
-            self.trim_trailing_line(body_parts);
-            parts.append(self.indent(self.concat(body_parts), ast_node=nd));
-            if len(body_parts) {
-                parts.append(self.hard_line());
-            } else {
-                parts.append(self.line());
-            }
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        } elif in_body {
-            self.add_body_stmt_with_spacing(body_parts, i, prev_body_item);
-            prev_body_item = i;
-        } else {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        }
-    }
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._emit_keyword_block(nd, Tok.KW_CLIENT);
 }
 
 """Generate DocIR for server blocks (sv { ... })."""
 impl DocIRGenPass.exit_server_block(nd: uni.ServerBlock) -> None {
-    if (
-        len(nd.kid) > 0
-        and isinstance(nd.kid[0], uni.Token)
-        and (nd.kid[0].name == Tok.KW_TO)
-    ) {
-        self.emit_section_header_block(nd);
-        return;
-    }
-    parts: list[doc.DocType] = [];
-    body_parts: list[doc.DocType] = [];
-    in_body = False;
-    prev_body_item: (uni.UniNode | None) = None;
-    for i in nd.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.KW_SERVER)) {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        } elif (isinstance(i, uni.Token) and (i.name == Tok.LBRACE)) {
-            parts.append(i.gen.doc_ir);
-            body_parts.append(self.hard_line());
-            in_body = True;
-        } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
-            in_body = False;
-            self.trim_trailing_line(body_parts);
-            parts.append(self.indent(self.concat(body_parts), ast_node=nd));
-            if len(body_parts) {
-                parts.append(self.hard_line());
-            } else {
-                parts.append(self.line());
-            }
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        } elif in_body {
-            self.add_body_stmt_with_spacing(body_parts, i, prev_body_item);
-            prev_body_item = i;
-        } else {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        }
-    }
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._emit_keyword_block(nd, Tok.KW_SERVER);
 }
 
 """Generate DocIR for native blocks (na { ... })."""
 impl DocIRGenPass.exit_native_block(nd: uni.NativeBlock) -> None {
-    if (
-        len(nd.kid) > 0
-        and isinstance(nd.kid[0], uni.Token)
-        and (nd.kid[0].name == Tok.KW_TO)
-    ) {
-        self.emit_section_header_block(nd);
-        return;
-    }
-    parts: list[doc.DocType] = [];
-    body_parts: list[doc.DocType] = [];
-    in_body = False;
-    prev_body_item: (uni.UniNode | None) = None;
-    for i in nd.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.KW_NATIVE)) {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        } elif (isinstance(i, uni.Token) and (i.name == Tok.LBRACE)) {
-            parts.append(i.gen.doc_ir);
-            body_parts.append(self.hard_line());
-            in_body = True;
-        } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
-            in_body = False;
-            self.trim_trailing_line(body_parts);
-            parts.append(self.indent(self.concat(body_parts), ast_node=nd));
-            if len(body_parts) {
-                parts.append(self.hard_line());
-            } else {
-                parts.append(self.line());
-            }
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        } elif in_body {
-            self.add_body_stmt_with_spacing(body_parts, i, prev_body_item);
-            prev_body_item = i;
-        } else {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        }
-    }
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._emit_keyword_block(nd, Tok.KW_NATIVE);
 }
 
 """Generate DocIR for global variables."""
@@ -1292,44 +1162,17 @@ impl DocIRGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
 
 """Generate DocIR for raise statements."""
 impl DocIRGenPass.exit_raise_stmt(nd: uni.RaiseStmt) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.SEMI) and len(parts)) {
-            parts.pop();
-        }
-        parts.append(i.gen.doc_ir);
-        parts.append(self.space());
-    }
-    parts.pop();
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._assign_semi_stmt_doc_ir(nd);
 }
 
 """Generate DocIR for assert statements."""
 impl DocIRGenPass.exit_assert_stmt(nd: uni.AssertStmt) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.SEMI) and len(parts)) {
-            parts.pop();
-        }
-        parts.append(i.gen.doc_ir);
-        parts.append(self.space());
-    }
-    parts.pop();
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._assign_semi_stmt_doc_ir(nd);
 }
 
 """Generate DocIR for report statements."""
 impl DocIRGenPass.exit_report_stmt(nd: uni.ReportStmt) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.SEMI) and len(parts)) {
-            parts.pop();
-        }
-        parts.append(i.gen.doc_ir);
-        parts.append(self.space());
-    }
-    parts.pop();
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._assign_semi_stmt_doc_ir(nd);
 }
 
 """Generate DocIR for disengage statements."""
@@ -1339,16 +1182,7 @@ impl DocIRGenPass.exit_disengage_stmt(nd: uni.DisengageStmt) -> None {
 
 """Generate DocIR for delete statements."""
 impl DocIRGenPass.exit_delete_stmt(nd: uni.DeleteStmt) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        if (isinstance(i, uni.Token) and (i.name == Tok.SEMI) and len(parts)) {
-            parts.pop();
-        }
-        parts.append(i.gen.doc_ir);
-        parts.append(self.space());
-    }
-    parts.pop();
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._assign_semi_stmt_doc_ir(nd);
 }
 
 """Generate DocIR for control statements (break, continue, skip)."""
@@ -1398,57 +1232,27 @@ impl DocIRGenPass.exit_dict_compr(nd: uni.DictCompr) -> None {
 
 """Generate DocIR for set comprehensions."""
 impl DocIRGenPass.exit_set_compr(nd: uni.SetCompr) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        if isinstance(i, uni.InnerCompr) {
-            parts.append(self.group(self.concat([self.tight_line(), i.gen.doc_ir])));
-        } else {
-            parts.append(i.gen.doc_ir);
-        }
-        parts.append(self.space());
-    }
-    nd.gen.doc_ir = self.format_comprehension(parts);
+    self._assign_compr_doc_ir(nd);
 }
 
 """Generate DocIR for generator comprehensions."""
 impl DocIRGenPass.exit_gen_compr(nd: uni.GenCompr) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        if isinstance(i, uni.InnerCompr) {
-            parts.append(self.group(self.concat([self.tight_line(), i.gen.doc_ir])));
-        } else {
-            parts.append(i.gen.doc_ir);
-        }
-        parts.append(self.space());
-    }
-    nd.gen.doc_ir = self.format_comprehension(parts);
+    self._assign_compr_doc_ir(nd);
 }
 
 """Generate DocIR for a single slice item."""
 impl DocIRGenPass.exit_slice(nd: uni.Slice) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        parts.append(i.gen.doc_ir);
-    }
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._assign_group_concat(nd);
 }
 
 """Generate DocIR for index slices."""
 impl DocIRGenPass.exit_index_slice(nd: uni.IndexSlice) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        parts.append(i.gen.doc_ir);
-    }
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._assign_group_concat(nd);
 }
 
 """Generate DocIR for edge operation references."""
 impl DocIRGenPass.exit_edge_op_ref(nd: uni.EdgeOpRef) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        parts.append(i.gen.doc_ir);
-    }
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._assign_group_concat(nd);
 }
 
 """Generate DocIR for edge reference trailers."""
@@ -1644,20 +1448,12 @@ impl DocIRGenPass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {
 
 """Generate DocIR for formatted value expressions."""
 impl DocIRGenPass.exit_formatted_value(nd: uni.FormattedValue) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        parts.append(i.gen.doc_ir);
-    }
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._assign_group_concat(nd);
 }
 
 """Generate DocIR for formatted strings."""
 impl DocIRGenPass.exit_f_string(nd: uni.FString) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        parts.append(i.gen.doc_ir);
-    }
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._assign_group_concat(nd);
 }
 
 """Generate DocIR for inner comprehension clauses."""
@@ -1679,16 +1475,7 @@ impl DocIRGenPass.exit_inner_compr(nd: uni.InnerCompr) -> None {
 
 """Generate DocIR for list comprehensions."""
 impl DocIRGenPass.exit_list_compr(nd: uni.ListCompr) -> None {
-    parts: list[doc.DocType] = [];
-    for i in nd.kid {
-        if isinstance(i, uni.InnerCompr) {
-            parts.append(self.group(self.concat([self.tight_line(), i.gen.doc_ir])));
-        } else {
-            parts.append(i.gen.doc_ir);
-        }
-        parts.append(self.space());
-    }
-    nd.gen.doc_ir = self.format_comprehension(parts);
+    self._assign_compr_doc_ir(nd);
 }
 
 """Generate DocIR for with statements."""
@@ -2106,52 +1893,12 @@ impl DocIRGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
 
 """Generate DocIR for else statements."""
 impl DocIRGenPass.exit_else_stmt(nd: uni.ElseStmt) -> None {
-    parts: list[doc.DocType] = [];
-    body_parts: list[doc.DocType] = [self.hard_line()];
-    for i in nd.kid {
-        if (isinstance(nd.body, Sequence) and self.is_within(i, nd.body)) {
-            if (i == nd.body[0]) {
-                parts.append(self.indent(self.concat(body_parts), ast_node=nd));
-                parts.append(self.hard_line());
-            }
-            body_parts.append(i.gen.doc_ir);
-            body_parts.append(self.hard_line());
-        } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
-            parts.pop();
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        } else {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        }
-    }
-    body_parts.pop();
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._assign_else_doc_ir(nd, nd.body);
 }
 
 """Generate DocIR for else if statements."""
 impl DocIRGenPass.exit_else_if(nd: uni.ElseIf) -> None {
-    parts: list[doc.DocType] = [];
-    body_parts: list[doc.DocType] = [self.hard_line()];
-    for i in nd.kid {
-        if (isinstance(nd.body, Sequence) and self.is_within(i, nd.body)) {
-            if (i == nd.body[0]) {
-                parts.append(self.indent(self.concat(body_parts), ast_node=nd));
-                parts.append(self.hard_line());
-            }
-            body_parts.append(i.gen.doc_ir);
-            body_parts.append(self.hard_line());
-        } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
-            parts.pop();
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        } else {
-            parts.append(i.gen.doc_ir);
-            parts.append(self.space());
-        }
-    }
-    body_parts.pop();
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    self._assign_else_doc_ir(nd, nd.body);
 }
 
 """Generate DocIR for if statements."""
@@ -2878,6 +2625,106 @@ impl DocIRGenPass._assign_group_concat(nd: uni.UniNode) -> None {
     nd.gen.doc_ir = self.group(
         self.concat(self._child_docs(nd), ast_node=nd), ast_node=nd
     );
+}
+
+"""Group a simple statement's children, dropping a trailing SEMI and the final
+separating space."""
+impl DocIRGenPass._assign_semi_stmt_doc_ir(nd: uni.UniNode) -> None {
+    parts: list[doc.DocType] = [];
+    for i in nd.kid {
+        if (isinstance(i, uni.Token) and (i.name == Tok.SEMI) and len(parts)) {
+            parts.pop();
+        }
+        parts.append(i.gen.doc_ir);
+        parts.append(self.space());
+    }
+    parts.pop();
+    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+}
+
+"""Lay out a comprehension (list/set/gen)."""
+impl DocIRGenPass._assign_compr_doc_ir(nd: uni.UniNode) -> None {
+    parts: list[doc.DocType] = [];
+    for i in nd.kid {
+        if isinstance(i, uni.InnerCompr) {
+            parts.append(self.group(self.concat([self.tight_line(), i.gen.doc_ir])));
+        } else {
+            parts.append(i.gen.doc_ir);
+        }
+        parts.append(self.space());
+    }
+    nd.gen.doc_ir = self.format_comprehension(parts);
+}
+
+"""Lay out an else/else-if statement."""
+impl DocIRGenPass._assign_else_doc_ir(
+    nd: uni.UniNode, body: Sequence[uni.UniNode]
+) -> None {
+    parts: list[doc.DocType] = [];
+    body_parts: list[doc.DocType] = [self.hard_line()];
+    for i in nd.kid {
+        if (isinstance(body, Sequence) and self.is_within(i, body)) {
+            if (i == body[0]) {
+                parts.append(self.indent(self.concat(body_parts), ast_node=nd));
+                parts.append(self.hard_line());
+            }
+            body_parts.append(i.gen.doc_ir);
+            body_parts.append(self.hard_line());
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
+            parts.pop();
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        } else {
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        }
+    }
+    body_parts.pop();
+    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+}
+
+"""Lay out a balanced `kw { ... }` block (client/server/native)."""
+impl DocIRGenPass._emit_keyword_block(nd: uni.UniNode, kw: Tok) -> None {
+    if (
+        len(nd.kid) > 0
+        and isinstance(nd.kid[0], uni.Token)
+        and (nd.kid[0].name == Tok.KW_TO)
+    ) {
+        self.emit_section_header_block(nd);
+        return;
+    }
+    parts: list[doc.DocType] = [];
+    body_parts: list[doc.DocType] = [];
+    in_body = False;
+    prev_body_item: (uni.UniNode | None) = None;
+    for i in nd.kid {
+        if (isinstance(i, uni.Token) and (i.name == kw)) {
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.LBRACE)) {
+            parts.append(i.gen.doc_ir);
+            body_parts.append(self.hard_line());
+            in_body = True;
+        } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
+            in_body = False;
+            self.trim_trailing_line(body_parts);
+            parts.append(self.indent(self.concat(body_parts), ast_node=nd));
+            if len(body_parts) {
+                parts.append(self.hard_line());
+            } else {
+                parts.append(self.line());
+            }
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        } elif in_body {
+            self.add_body_stmt_with_spacing(body_parts, i, prev_body_item);
+            prev_body_item = i;
+        } else {
+            parts.append(i.gen.doc_ir);
+            parts.append(self.space());
+        }
+    }
+    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
 }
 
 """Return generated DocIR for each child."""

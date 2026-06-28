@@ -39,6 +39,22 @@ obj DocIRGenPass(UniPass) {
     def _child_docs(nd: uni.UniNode) -> list[doc.DocType];
     def _assign_group_concat(nd: uni.UniNode) -> None;
     def _assign_space_group(nd: uni.UniNode) -> None;
+    """Group a simple statement's children, dropping a trailing SEMI and the
+    final separating space (raise/assert/report/delete/non_local stmt)."""
+    def _assign_semi_stmt_doc_ir(nd: uni.UniNode) -> None;
+
+    """Lay out a comprehension (list/set/gen): each InnerCompr gets a grouped
+    tight-line break, then format via format_comprehension."""
+    def _assign_compr_doc_ir(nd: uni.UniNode) -> None;
+
+    """Lay out an else/else-if statement: indent the body block, keep a trailing
+    SEMI tight against the preceding token."""
+    def _assign_else_doc_ir(nd: uni.UniNode, body: Sequence[uni.UniNode]) -> None;
+
+    """Lay out a balanced `kw { ... }` block (client/server/native), or emit the
+    section-header form when it opens with `to`."""
+    def _emit_keyword_block(nd: uni.UniNode, kw: Tok) -> None;
+
     def intersperse(
         items: list[doc.DocType], separator: doc.DocType
     ) -> list[doc.DocType];
