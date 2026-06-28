@@ -110,6 +110,18 @@ def pack_toolchain(repo_root: Path, binary: Path) -> bytes {
                 }
                 tar.add(str(path), arcname=f"{TOOLCHAIN_SUBDIR}/{rel}");
             }
+            # is_excluded drops jac.toml (it can hold deploy creds in an APP
+            # bundle), but a plugin's OWN jac.toml is package metadata that
+            # `jac install -e` needs to resolve the package name + extras. Without
+            # it the install walks up to /app/jac.toml and mis-installs the app
+            # ("Unknown extras: all. Available: none"). Ship it explicitly - the
+            # plugin's jac.toml is [project] + [optional-dependencies], not creds.
+            plugin_toml = pkg / "jac.toml";
+            if plugin_toml.is_file() {
+                tar.add(
+                    str(plugin_toml), arcname=f"{TOOLCHAIN_SUBDIR}/{name}/jac.toml"
+                );
+            }
         }
     }
     return buf.getvalue();

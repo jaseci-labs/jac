@@ -55,6 +55,12 @@ test "pack_toolchain ships the binary + plugin source, drops build artifacts" {
         ) as handle {
             handle.write("x = 1");
         }
+        # The plugin's package-metadata jac.toml: is_excluded normally drops
+        # jac.toml, but the toolchain MUST ship it or `jac install -e` cannot
+        # resolve the package name + extras and mis-installs the app instead.
+        with open(os.path.join(repo, "jac-scale", "jac.toml"), "w") as handle {
+            handle.write("[project]\nname = \"jac-scale\"\n");
+        }
         # A build artifact that must be excluded (same rules as the source bundle).
         os.makedirs(os.path.join(repo, "jac-scale", "node_modules"));
         with open(
@@ -70,6 +76,9 @@ test "pack_toolchain ships the binary + plugin source, drops build artifacts" {
         # Binary + plugin source land under the toolchain dir.
         assert f"{TOOLCHAIN_SUBDIR}/bin/jac" in names;
         assert f"{TOOLCHAIN_SUBDIR}/jac-scale/jac_scale/x.py" in names;
+        # The plugin's jac.toml ships (regression guard: without it the in-pod
+        # `jac install -e` mis-identifies the package as the app).
+        assert f"{TOOLCHAIN_SUBDIR}/jac-scale/jac.toml" in names;
         # Build artifacts never shipped.
         assert not any(["node_modules" in name for name in names]);
     }
