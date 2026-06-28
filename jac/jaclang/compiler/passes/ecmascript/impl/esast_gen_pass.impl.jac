@@ -1052,26 +1052,9 @@ impl EsastGenPass._record_sv_backend(nd: uni.Import) -> None {
     }
 }
 
-"""Return the ability node represented by a symbol definition."""
-impl EsastGenPass._ability_from_symbol(
-    sym: (uni.Symbol | None)
-) -> (uni.Ability | None) {
-    if not sym or not sym.defn {
-        return None;
-    }
-    defn_node = sym.defn[0];
-    if isinstance(defn_node, uni.Ability) {
-        return defn_node;
-    }
-    if defn_node.parent and isinstance(defn_node.parent, uni.Ability) {
-        return defn_node.parent;
-    }
-    return None;
-}
-
-
 """Resolve the statically known ability targeted by a function call."""
 impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None) {
+    import from jaclang.compiler.symbol_utils { ability_of_symbol }
     # Checker-stamped resolved callee (FuncCall.callee_decl, the Phase 4
     # central fact) is the authoritative answer when present. The
     # symbol/manifest/evaluator paths below remain as fallbacks for
@@ -1083,7 +1066,7 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
         # No re-resolution fallbacks: the checker-stamped callee_decl above
         # and the stored .sym are the facts; a missing stamp means no
         # statically-known ability (the no-fallback contract of #6542).
-        ability_node = self._ability_from_symbol(nd.target.sym);
+        ability_node = ability_of_symbol(nd.target.sym);
         if ability_node {
             return ability_node;
         }
@@ -1099,7 +1082,7 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
     }
     if isinstance(nd.target, uni.AtomTrailer)
     and isinstance(nd.target.right, uni.Name) {
-        return self._ability_from_symbol(nd.target.right.sym);
+        return ability_of_symbol(nd.target.right.sym);
     }
     return None;
 }
@@ -5362,6 +5345,7 @@ functions are def:pub (public HTTP endpoints), we generate async JS function
 stubs that call __jacCallFunction() to invoke the server over HTTP.
 """
 impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
+    import from jaclang.compiler.symbol_utils { ability_of_symbol }
     # Resolve the source module to look up function signatures
     source_mod: uni.Module | None = self._resolve_source_module(nd);
     stubs: list[es.Statement] = [];
@@ -5392,7 +5376,7 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
         ret_type_name: str = '';
         ability_node: uni.Ability | None = None;
         if source_mod {
-            ability_node = self._ability_from_symbol(source_mod.lookup(func_name));
+            ability_node = ability_of_symbol(source_mod.lookup(func_name));
             if ability_node {
                 param_names = self._param_names_from_ability(ability_node);
                 param_type_map = self._param_type_map_from_ability(ability_node);

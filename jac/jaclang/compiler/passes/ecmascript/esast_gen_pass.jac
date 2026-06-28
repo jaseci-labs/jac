@@ -269,7 +269,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> list[es.Statement];
 
     def _collect_body_stmts(body: Sequence[uni.UniNode]) -> list[es.Statement];
-
     def _strip_spawn_await(
         node_expr: uni.Expr, es_expr: es.Expression
     ) -> tuple[uni.Expr, es.Expression];
@@ -467,7 +466,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _collect_pattern_names(target: uni.UniNode) -> list[tuple[(str, uni.Name)]];
     def exit_assignment(nd: uni.Assignment) -> None;
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
-    def _ability_from_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
     def _return_type_includes_jsx_element(rt: uni.Expr) -> bool;
     def _component_call_abi(ability_node: uni.Ability) -> str;

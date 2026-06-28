@@ -121,27 +121,7 @@ type, or None when the expression is not set-typed. Lowering the type
 registers the set struct + helpers as a side effect, so the returned spec is
 always present in `set_types`/`set_helpers`."""
 impl NaIRGenPass._set_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
-    if not isinstance(expr, uni.Expr) or expr.type is None {
-        return None;
-    }
-    tk = expr.type.mangle();
-    if not (
-        tk in ("set", "frozenset")
-        or tk.startswith("set[")
-        or tk.startswith("frozenset[")
-    ) {
-        return None;
-    }
-    lowered = self._lower_type(expr.type);
-    if lowered is None {
-        return None;
-    }
-    for (spec, st) in self.set_types.items() {
-        if lowered == st.as_pointer() {
-            return spec;
-        }
-    }
-    return None;
+    return self._spec_of(expr, ("set", "frozenset"), self.set_types);
 }
 
 """Return the native dict registry key ("k:v" spec) for an expression's
@@ -149,23 +129,7 @@ checked dict type, or None when the expression is not dict-typed. Lowering
 the type registers the dict struct + helpers as a side effect, so the
 returned key is always present in `dict_types`/`dict_helpers`."""
 impl NaIRGenPass._dict_key_of(expr: (uni.UniNode | None)) -> (str | None) {
-    if not isinstance(expr, uni.Expr) or expr.type is None {
-        return None;
-    }
-    tk = expr.type.mangle();
-    if not (tk == "dict" or tk.startswith("dict[")) {
-        return None;
-    }
-    lowered = self._lower_type(expr.type);
-    if lowered is None {
-        return None;
-    }
-    for (dkey, dt) in self.dict_types.items() {
-        if lowered == dt.as_pointer() {
-            return dkey;
-        }
-    }
-    return None;
+    return self._spec_of(expr, ("dict", ), self.dict_types);
 }
 
 """Return the native list spec key for an expression's checked list type, or
@@ -173,19 +137,36 @@ None when the expression is not list-typed. Lowering the type registers the
 list struct + helpers as a side effect, so the returned spec is always
 present in `list_types`/`list_helpers`."""
 impl NaIRGenPass._list_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
+    return self._spec_of(expr, ("list", ), self.list_types);
+}
+
+"""Shared spec-key resolver backing _set_spec_of / _dict_key_of / _list_spec_of.
+Returns None unless the expression's checked type's mangled name is one of
+`names` (exact) or `<name>[...]` (parameterized). Lowering the type registers
+the struct + helpers as a side effect, so the matched key is then guaranteed
+present in `registry` (set_types / dict_types / list_types)."""
+impl NaIRGenPass._spec_of(
+    expr: (uni.UniNode | None), names: tuple, registry: dict
+) -> (str | None) {
     if not isinstance(expr, uni.Expr) or expr.type is None {
         return None;
     }
     tk = expr.type.mangle();
-    if not (tk == "list" or tk.startswith("list[")) {
+    matched = tk in names;
+    for nm in names {
+        if tk.startswith(nm + "[") {
+            matched = True;
+        }
+    }
+    if not matched {
         return None;
     }
     lowered = self._lower_type(expr.type);
     if lowered is None {
         return None;
     }
-    for (spec, lt) in self.list_types.items() {
-        if lowered == lt.as_pointer() {
+    for (spec, st) in registry.items() {
+        if lowered == st.as_pointer() {
             return spec;
         }
     }
@@ -332,27 +313,26 @@ impl NaIRGenPass._struct_name_of(expr: (uni.UniNode | None)) -> (str | None) {
 For `list[Piece | None]` returns `Piece*`; for `list[list[int]]` returns
 `List.i64*`. Lowering registers any needed collection helpers."""
 impl NaIRGenPass._list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
-    if not isinstance(expr, uni.Expr) or expr.type is None {
-        return None;
-    }
-    if not expr.type.mangle().startswith("list[") {
-        return None;
-    }
-    args = expr.type.private.type_args or [];
-    if not args {
-        return None;
-    }
-    return self._lower_type(args[0]);
+    return self._typed_elem_llvm_of(expr, "list[");
 }
 
 """Return the lowered LLVM element type of a checked `Iterator[T]` expression
 (the `T` a `next()` call or for-loop over the iterator yields), or None when
 the expression isn't a typed iterator. Mirrors `_list_elem_llvm_of` (#6403)."""
 impl NaIRGenPass._iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
+    return self._typed_elem_llvm_of(expr, "Iterator[");
+}
+
+"""Shared body for _list_elem_llvm_of / _iter_elem_llvm_of: when `expr` is a
+checked `<prefix>...]` type, lower its first type argument (registering any
+needed collection helpers), else None."""
+impl NaIRGenPass._typed_elem_llvm_of(
+    expr: (uni.UniNode | None), prefix: str
+) -> (ir.Type | None) {
     if not isinstance(expr, uni.Expr) or expr.type is None {
         return None;
     }
-    if not expr.type.mangle().startswith("Iterator[") {
+    if not expr.type.mangle().startswith(prefix) {
         return None;
     }
     args = expr.type.private.type_args or [];

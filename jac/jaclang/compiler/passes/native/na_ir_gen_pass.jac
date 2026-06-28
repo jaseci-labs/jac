@@ -464,12 +464,22 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _dict_key_of(expr: (uni.UniNode | None)) -> (str | None);
     # Native list spec key ("i64"/"f64"/"ptr"/...) from a checked list type.
     def _list_spec_of(expr: (uni.UniNode | None)) -> (str | None);
+    # Shared spec-key resolver for set/dict/list: match the checked type's
+    # mangled name against `names` (exact or `<name>[`), then search `registry`.
+    def _spec_of(
+        expr: (uni.UniNode | None), names: tuple, registry: dict
+    ) -> (str | None);
     # Native struct name from a checked instance type (handles T | None).
     def _struct_name_of(expr: (uni.UniNode | None)) -> (str | None);
     # Lowered LLVM type of a checked list type's element.
     def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     # Lowered LLVM element type of a checked Iterator[T] expression (#6403).
     def _iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
+    # Shared: lowered LLVM type of the first type-arg of a checked `<prefix>...]`
+    # type (backs _list_elem_llvm_of / _iter_elem_llvm_of).
+    def _typed_elem_llvm_of(
+        expr: (uni.UniNode | None), prefix: str
+    ) -> (ir.Type | None);
     # Element spec ("i64"/"f64"/"ptr"/"jacval") of a checked list type.
     def _elem_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     def _resolve_type_str(type_name: str) -> ir.Type;
