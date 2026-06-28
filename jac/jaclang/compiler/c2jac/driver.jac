@@ -1,9 +1,3 @@
-"""c2jac orchestrator: preprocess → parse → prepass → map → PyastBuildPass → splice → unparse → format.
-
-transpile_c_file — CLI entry; preprocesses .c via pcpp (§8.1), passes .i straight through.
-transpile_c_str  — lower-level entry for already-preprocessed C; pcpp not required.
-"""
-
 import ast as ast3;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
@@ -29,14 +23,11 @@ def transpile_c_file(
     force_includes: (list[str] | None) = None,
     nostdinc: bool = False
 ) -> tuple[str, TagTable] {
-    # Read through the repo's shared text helper so .c/.i sources get the same
-    # BOM/UTF-16 encoding detection (and OSError-on-failure contract, which the
-    # CLI already catches) as every other user-authored Jac/text file.
     c_src = read_file_with_encoding(filename);
     if filename.endswith(".i") {
         return transpile_c_str(c_src, filename);
     }
-    # pcpp imported lazily so pycparser-only paths work without it installed.
+
     import from jaclang.compiler.c2jac.preprocess { preprocess_c }
     pre = preprocess_c(
         c_src,
@@ -51,7 +42,6 @@ def transpile_c_file(
 }
 
 def transpile_c_str(c_src: str, filename: str) -> tuple[str, TagTable] {
-    # pycparser is vendored in-tree (jaclang.vendor.pycparser) — no third-party dep.
     import from jaclang.vendor.pycparser { c_parser }
     parser = c_parser.CParser();
     try {
@@ -73,34 +63,26 @@ def transpile_c_str(c_src: str, filename: str) -> tuple[str, TagTable] {
 def _transpile_ast(
     file_ast: object, c_src: str, filename: str
 ) -> tuple[str, TagTable] {
-    # --- Step 1: build default tag table ---
     tags = TagTable();
     _populate_default_tags(file_ast, tags);
 
-    # --- Step 2: enum pre-pass (also stamps enum verdicts into the tag table) ---
     enum_verdicts = build_enum_map(file_ast, tags);
 
-    # --- Step 3: map C-AST → CPython ast (with DIRECT_IR placeholders) ---
     mapper = CMapper(tags=tags);
     py_mod = mapper.conv(file_ast);
     ast3.fix_missing_locations(py_mod);
 
-    # --- Step 4: PyastBuildPass → uni IR ---
     orig_src = uni.Source(c_src, filename);
     uni_mod = PyastBuildPass(
         ir_in=uni.PythonModuleAst(py_mod, orig_src=orig_src), prog=JacProgram(),
     ).ir_out;
 
-    # --- Step 5: splice DIRECT_IR nodes in place of sentinels ---
     builder = CUniBuilder(src=orig_src, tags=tags, enum_verdicts=enum_verdicts);
     _splice_directir(uni_mod, mapper.slot_map, builder);
     uni_mod.has_synthesized_tokens = True;
 
-    # --- Step 6: unparse + format ---
-    # requires_format=True: UnparsePass omits "to"/"by" keywords for IterForStmt.
     jac_str = uni_mod.unparse(requires_format=True);
 
-    # --- Step 7: post-format Tier-B comment injection (§7, §9.2a) ---
     jac_str = inject_tier_b_comments(jac_str, tags);
     return (jac_str, tags);
 }
@@ -145,10 +127,7 @@ def _splice_directir(
                 f"out of sync"
             );
         }
-        # A promotable C-for is emitted by the mapper as `iter; while cond {
-        # sentinel; body; step }`; rewrite that spliced WhileStmt in place into a
-        # native IterForStmt. Everything else (enums) is built by CUniBuilder and
-        # replaces its sentinel directly.
+
         if type(c_node).__name__ == "For" {
             _promote_for(sentinel);
         } else {
@@ -156,7 +135,7 @@ def _splice_directir(
             _do_splice(sentinel, replacements);
         }
     }
-    # Post-condition: surviving placeholders leak into emitted Jac (`directir_no_leak` test).
+
     leaked = [
         s
         for s in mod_root.get_all_sub_nodes(uni.ExprStmt)
@@ -171,15 +150,6 @@ def _splice_directir(
 }
 
 def _promote_for(sentinel: uni.ExprStmt) {
-    # Rewrite a promotable C-for's spliced desugar into a native IterForStmt.
-    # The mapper emitted `iter; while cond { sentinel; body...; step }`, so:
-    #   • the sentinel's parent IS the while to promote,
-    #   • the while's preceding sibling is the `iter` (init) assignment,
-    #   • the while-body's last statement is the `count_by` step,
-    #   • everything between the sentinel and the step is the loop body.
-    # This keeps loop-body lowering single-sourced in the mapper (the spliced
-    # children are reused verbatim) — only the loop *shape* is rebuilt here,
-    # where no CPython `ast` analog for IterForStmt exists.
     while_stmt = sentinel.parent;
     if while_stmt is None or not isinstance(while_stmt, uni.WhileStmt) {
         raise ValueError(
@@ -228,8 +198,7 @@ def _promote_for(sentinel: uni.ExprStmt) {
             f"the IterForStmt `iter=` clause"
         );
     }
-    # Rebuild the iter without its type annotation: IterForStmt renders `for i =
-    # 0 ...`, never `for i: int = 0 ...`. The target/value uni nodes are reused.
+
     tgt = iter_old.target[0];
     val = iter_old.value;
     new_iter = uni.Assignment(
@@ -242,11 +211,7 @@ def _promote_for(sentinel: uni.ExprStmt) {
         is_enum_stmt=False,
     );
     cond = while_stmt.condition;
-    # The py-ast path wraps a comparison/bool condition in a parenthesizing
-    # AtomUnit (proc_compare → `(i < n)`); IterForStmt's `to` clause reads cleaner
-    # unparenthesized (`for i = 0 to i < n …`) and the unwrap is semantics-neutral
-    # for a single wrapped expression. (The while-desugar keeps its parens, the
-    # established py-ast style for if/while conditions.)
+
     if isinstance(cond, uni.AtomUnit) {
         cond = cond.value;
     }
@@ -263,8 +228,7 @@ def _promote_for(sentinel: uni.ExprStmt) {
         child.parent = iterfor;
     }
     iterfor.parent = gp;
-    # Replace [iter_old, while_stmt] with [iterfor] in both body and kid, robust
-    # to ordering: drop both wherever they appear, inserting iterfor once.
+
     new_body: list[uni.UniNode] = [];
     inserted_b = False;
     for b in gbody {
@@ -290,8 +254,7 @@ def _promote_for(sentinel: uni.ExprStmt) {
             new_kid.append(k);
         }
     }
-    # Manual rewire (not set_kids): token ranges are stamped later by NormalizePass
-    # — see the note in _do_splice for why resolve_tok_range can't run here.
+
     gp.kid = new_kid;
     gp._invalidate_sub_node_tab();
 }
@@ -309,12 +272,7 @@ def _do_splice(sentinel: uni.ExprStmt, replacements: list[uni.UniNode]) -> None 
     }
     kid_idx = parent.kid.index(sentinel);
     new_kid = [*parent.kid[:kid_idx], *replacements, *parent.kid[kid_idx + 1:]];
-    # NB: deliberately not unitree's set_kids/insert_kids_at_pos here. Those
-    # refresh the token range via resolve_tok_range, which (a) raises on an empty
-    # kid list — `replacements` is [] for a Tier-B enum, leaving the parent empty
-    # — and (b) reads child token ranges that don't exist yet: this splice runs
-    # BEFORE NormalizePass stamps the synthesized tokens (driver step 5 vs 6). So
-    # the kid pointers are rewired by hand and token resolution is left to step 6.
+
     for r in replacements {
         r.parent = parent;
     }
@@ -370,7 +328,7 @@ def _hoist_to_module_body(
         }
     }
     immediate_parent._invalidate_sub_node_tab();
-    # raise: containing_child must be in Module.body; a miss silently drops constants.
+
     if containing_child not in mod.body {
         raise ValueError(
             f"c2jac: ENUM_AS_CONSTS hoist target is not in Module.body — enum "

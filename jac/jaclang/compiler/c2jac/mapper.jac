@@ -1,35 +1,6 @@
-"""pycparser C-AST → CPython ast mapper (Python-AST path).
-
-Covers P1a (scalar expressions, control flow), P1b (structs), P1c (arrays).
-Dispatch-miss fallback emits __c2jac_unsupported__ / __c2jac_unsupported_expr__
-surrogates that are syntactically valid Jac, satisfying §8.2.
-
-DIRECT_IR nodes (For, Enum, Enumerator, EnumeratorList) are replaced by
-placeholder call expressions keyed on a slot_id; the driver splices in the real
-uni nodes after PyastBuildPass runs.
-
-This module is the node dispatcher + `ast`-node builder. Three cross-cutting
-*analyses* live in focused sibling modules — each pure (no `CMapper` state, no
-node-building): c_types.jac (type-name resolution), c_idioms.jac (malloc/realloc
-pointer idioms, §7), c_dataflow.jac (list-bound dataflow, §9.5). The handlers call
-those to *decide*, then emit the Jac form and stamp the Tier verdict here.
-
-`CMapper` is declared here (state + the method roster as signatures); its bodies
-live in the `mapper.impl/` annex, grouped by construct family:
-  - core.impl.jac         — dispatch, coord/slot/stamp, surrogate & direct-IR
-                            placeholders, Tier-verdict stamping (the machinery)
-  - control_flow.impl.jac — if / while / do-while / switch / ternary / for + the
-                            §9.5 list-bound joins across branches & back-edges
-  - declarations.impl.jac — file/func/var/array decls, assignment, structs,
-                            typedefs, enums, C-type annotation helpers
-  - expressions.impl.jac  — binary/unary ops, ids, constants, refs, init lists,
-                            casts, malloc/realloc idiom recognizers (§7)
-"""
-
 import ast as ast3;
 import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.compiler.c2jac.tags { Tier, Mechanism, Idiom, NodeTag, TagTable }
-import from jaclang.compiler.c2jac.boundary { default_tier, default_mechanism }
 import from jaclang.compiler.c2jac.c_common {
     C_BINOPS,
     C_AUGOPS,
@@ -70,21 +41,18 @@ import from jaclang.compiler.c2jac.c_idioms {
     realloc_of_list_bound
 }
 import from jaclang.compiler.c2jac.c_dataflow { lb_merge, collect_lb_kills }
-# The direct-IR placeholder protocol (emit here, splice in the driver) is owned by
-# c2jac.directir — see that module for why the py-ast round-trip is safe and how
-# leaks are made impossible. We only need the sentinel name to emit a placeholder.
+
 import from jaclang.compiler.c2jac.directir { SLOT_SENTINEL }
 
 obj CMapper {
     has tags: TagTable,
-        slot_map: dict[int, object],  # slot_id -> c_node
+        slot_map: dict[int, object],
         _next_slot: int,
         _lineno: int,
-        _list_bound: set[str],  # names known to back a Jac list (§7.5 realloc-elide)
-        _var_types:
-            dict[str, str],  # scalar var name -> jac prim, for char-literal promotion
-        _func_depth: int,  # >0 while building a function body (function-local scope)
-        _ret_is_ptr: bool;  # current function returns a pointer (NULL → None on return)
+        _list_bound: set[str],
+        _var_types: dict[str, str],
+        _func_depth: int,
+        _ret_is_ptr: bool;
 
     def init(tags: TagTable) {
         self.tags = tags;
@@ -97,9 +65,6 @@ obj CMapper {
         self._ret_is_ptr = False;
     }
 
-    # ------------------------------------------------------------------ #
-    # Core machinery        → mapper.impl/core.impl.jac
-    # ------------------------------------------------------------------ #
     def _loc(c_node: object) -> tuple[int, int];
     def _stamp(py_node: object, c_node: object, *, text: str = "") -> object;
     def _stamp_manual(
@@ -114,15 +79,13 @@ obj CMapper {
     def _mark_tier_b(c_node: object, reason: str);
     def _mark_tier_a(c_node: object, idiom: Idiom, reason: str = "");
     def _mark_tier_b_idiom(c_node: object, idiom: Idiom, reason: str);
+    def _earn_tier_a(c_node: object);
     def _directir_placeholder(c_node: object) -> object;
     def conv(c_node: object, *, stmt: bool = True) -> object;
     def _inc_dec_stmt(nd: object) -> object | None;
     def conv_stmt(c_node: object) -> object;
     def conv_expr(c_node: object) -> object;
     def _to_store(py_node: object) -> object;
-    # ------------------------------------------------------------------ #
-    # Control-flow handlers → mapper.impl/control_flow.impl.jac
-    # ------------------------------------------------------------------ #
     def c_If(nd: object) -> object;
     def c_While(nd: object) -> object;
     def c_DoWhile(nd: object) -> object;
@@ -140,9 +103,6 @@ obj CMapper {
     def _for_init_stmts(init_node: object) -> list[object];
     def _for_step_stmts(step_node: object) -> list[object];
     def _is_surrogate_expr(n: object) -> bool;
-    # ------------------------------------------------------------------ #
-    # Declarations & types  → mapper.impl/declarations.impl.jac
-    # ------------------------------------------------------------------ #
     def c_FileAST(nd: object) -> object;
     def c_Compound(nd: object) -> list[object];
     def c_FuncDef(nd: object) -> object;
@@ -164,9 +124,6 @@ obj CMapper {
     def _type_ann_from_type(t: object) -> object;
     def _ret_ann(funcdecl: object) -> object;
     def _list_ann_of(tname: str) -> object;
-    # ------------------------------------------------------------------ #
-    # Expression handlers   → mapper.impl/expressions.impl.jac
-    # ------------------------------------------------------------------ #
     def c_BinaryOp(nd: object) -> object;
     def _record_scalar_type(name: str, type_node: object);
     def _scalar_prim(type_node: object) -> str | None;

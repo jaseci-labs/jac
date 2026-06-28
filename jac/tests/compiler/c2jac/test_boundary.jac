@@ -1,5 +1,11 @@
-"""P0.5 phase-exit: assert the 2×2 (tier, mechanism) boundary table for one
-representative node of each §5.3 cell."""
+"""P0.5 phase-exit: the default (Tier, Mechanism) boundary routing.
+
+Tier is NOT class-derived: every node defaults to TIER_B (un-earned) and earns
+Tier-A only when the mapper faithfully lowers it (CMapper._earn_tier_a), so these
+pin the uniform default rather than a per-class allowlist. Mechanism IS class-
+routed: For/Enum/Enumerator/EnumeratorList have no faithful Python-AST analog and
+go to the direct-IR builder; everything else is PY_AST.
+"""
 
 import from jaclang.vendor.pycparser { c_ast }
 import from jaclang.compiler.c2jac.tags { Tier, Mechanism, Idiom }
@@ -9,57 +15,38 @@ def _make_node(cls: type) -> object {
     return cls.__new__(cls);
 }
 
-test "For maps to TIER_A DIRECT_IR" {
-    nd = _make_node(c_ast.For);
-    assert default_tier(nd) == Tier.TIER_A;
-    assert default_mechanism(nd) == Mechanism.DIRECT_IR;
+test "every node defaults to TIER_B (Tier-A is earned at lowering, not by class)" {
+    for cls in [
+        c_ast.For,
+        c_ast.Enum,
+        c_ast.Enumerator,
+        c_ast.If,
+        c_ast.While,
+        c_ast.Struct,
+        c_ast.FuncDef,
+        c_ast.Goto,
+        c_ast.Label,
+        c_ast.Constant
+    ] {
+        assert default_tier(_make_node(cls)) == Tier.TIER_B , f"{cls.__name__} should default to TIER_B (Tier-A is earned per lowering, not inherited from the class)";
+    }
 }
 
-test "Enum maps to TIER_A DIRECT_IR idiom deferred" {
-    nd = _make_node(c_ast.Enum);
-    assert default_tier(nd) == Tier.TIER_A;
-    assert default_mechanism(nd) == Mechanism.DIRECT_IR;
-    # Idiom is not set at boundary time — that's enum_prepass.
+test "direct-IR mechanism is class-routed (For/Enum/Enumerator/EnumeratorList)" {
+    for cls in [c_ast.For, c_ast.Enum, c_ast.Enumerator, c_ast.EnumeratorList] {
+        assert default_mechanism(_make_node(cls)) == Mechanism.DIRECT_IR , f"{cls.__name__} should route to the direct-IR builder";
+    }
 }
 
-test "If maps to TIER_A PY_AST" {
-    nd = _make_node(c_ast.If);
-    assert default_tier(nd) == Tier.TIER_A;
-    assert default_mechanism(nd) == Mechanism.PY_AST;
-}
-
-test "While maps to TIER_A PY_AST" {
-    nd = _make_node(c_ast.While);
-    assert default_tier(nd) == Tier.TIER_A;
-    assert default_mechanism(nd) == Mechanism.PY_AST;
-}
-
-test "Struct maps to TIER_A PY_AST" {
-    nd = _make_node(c_ast.Struct);
-    assert default_tier(nd) == Tier.TIER_A;
-    assert default_mechanism(nd) == Mechanism.PY_AST;
-}
-
-test "FuncDef maps to TIER_A PY_AST" {
-    nd = _make_node(c_ast.FuncDef);
-    assert default_tier(nd) == Tier.TIER_A;
-    assert default_mechanism(nd) == Mechanism.PY_AST;
-}
-
-test "Goto maps to TIER_B PY_AST (unsupported)" {
-    nd = _make_node(c_ast.Goto);
-    assert default_tier(nd) == Tier.TIER_B;
-    assert default_mechanism(nd) == Mechanism.PY_AST;
-}
-
-test "Label maps to TIER_B PY_AST (unsupported)" {
-    nd = _make_node(c_ast.Label);
-    assert default_tier(nd) == Tier.TIER_B;
-    assert default_mechanism(nd) == Mechanism.PY_AST;
-}
-
-test "Enumerator maps to TIER_A DIRECT_IR" {
-    nd = _make_node(c_ast.Enumerator);
-    assert default_tier(nd) == Tier.TIER_A;
-    assert default_mechanism(nd) == Mechanism.DIRECT_IR;
+test "py-ast mechanism is the default (If/While/Struct/FuncDef/Goto/Label)" {
+    for cls in [
+        c_ast.If,
+        c_ast.While,
+        c_ast.Struct,
+        c_ast.FuncDef,
+        c_ast.Goto,
+        c_ast.Label
+    ] {
+        assert default_mechanism(_make_node(cls)) == Mechanism.PY_AST , f"{cls.__name__} should route to PY_AST";
+    }
 }
