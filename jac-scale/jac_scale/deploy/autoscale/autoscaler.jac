@@ -1,6 +1,5 @@
-glob DEFAULT_CPU_UTILIZATION_TARGET: int = 50;
-
-glob DEFAULT_MEMORY_UTILIZATION_TARGET: int = 80;
+glob DEFAULT_CPU_UTILIZATION_TARGET: int = 50,
+     DEFAULT_MEMORY_UTILIZATION_TARGET: int = 80;
 
 obj TriggerAuth {
     has secret_refs: dict[str, dict[str, str]] = {};

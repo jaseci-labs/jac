@@ -1,9 +1,8 @@
 import logging;
 import from jac_scale.state.state_backend { StateBackend, InProcessStateBackend }
 
-glob logger = logging.getLogger(__name__);
-
-glob _backend_holder: dict[str, StateBackend] = {};
+glob logger = logging.getLogger(__name__),
+     _backend_holder: dict[str, StateBackend] = {};
 
 
 def get_state_backend(scale_enabled: bool = False) -> StateBackend {

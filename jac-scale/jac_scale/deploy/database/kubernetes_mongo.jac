@@ -184,7 +184,6 @@ obj KubernetesMongoProvider(DatabaseProvider) {
     }
 
     def cleanup { }
-
     override def get_init_container(
         app_name: str, wait_image: str
     ) -> (dict[(str, Any)] | None) {
