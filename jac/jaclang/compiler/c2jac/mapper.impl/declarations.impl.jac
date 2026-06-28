@@ -319,7 +319,7 @@ impl CMapper.c_Assignment(nd: object) -> object {
     }
     aug_entry = C_AUGOPS.get(nd.op);
     if aug_entry is not None {
-        (ast_cls, _, _) = aug_entry;
+        ast_cls = aug_entry;
         lhs_store = self._to_store(lhs);
         aug = ast3.AugAssign(target=lhs_store, op=getattr(ast3, ast_cls)(), value=rhs);
         return self._stamp(aug, nd, text=nd.op);
@@ -435,9 +435,7 @@ impl CMapper._decl_array(nd: object) -> object {
             tgt = self._stamp_manual(
                 ast3.Name(id="_", ctx=ast3.Store()), self._lineno, 0, text="_"
             );
-            gen = ast3.comprehension(
-                target=tgt, iter=range_call, ifs=[], is_async=0
-            );
+            gen = ast3.comprehension(target=tgt, iter=range_call, ifs=[], is_async=0);
             lc = ast3.ListComp(elt=elem_node, generators=[gen]);
             value = self._stamp_manual(lc, self._lineno, 0, text="[]");
         }

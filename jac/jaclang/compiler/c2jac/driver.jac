@@ -8,6 +8,7 @@ import ast as ast3;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.helpers { read_file_with_encoding }
 import from jaclang.compiler.c2jac.tags { Tier, Mechanism, Idiom, NodeTag, TagTable }
 import from jaclang.compiler.c2jac.boundary { default_tier, default_mechanism }
 import from jaclang.compiler.c2jac.mapper { CMapper }
@@ -28,9 +29,10 @@ def transpile_c_file(
     force_includes: (list[str] | None) = None,
     nostdinc: bool = False
 ) -> tuple[str, TagTable] {
-    with open(filename) as f {
-        c_src = f.read();
-    }
+    # Read through the repo's shared text helper so .c/.i sources get the same
+    # BOM/UTF-16 encoding detection (and OSError-on-failure contract, which the
+    # CLI already catches) as every other user-authored Jac/text file.
+    c_src = read_file_with_encoding(filename);
     if filename.endswith(".i") {
         return transpile_c_str(c_src, filename);
     }

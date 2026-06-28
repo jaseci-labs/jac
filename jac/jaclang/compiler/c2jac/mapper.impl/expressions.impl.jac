@@ -7,7 +7,7 @@ impl CMapper.c_BinaryOp(nd: object) -> object {
     if entry is None {
         return self._surrogate_expr(nd);
     }
-    (kind, ast_cls, _, _) = entry;
+    (kind, ast_cls) = entry;
     left = self._binop_operand(nd.left, nd.right);
     right = self._binop_operand(nd.right, nd.left);
     op_obj = getattr(ast3, ast_cls)();
