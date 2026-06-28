@@ -1,43 +1,14 @@
 """P1d phase-exit: C-for and enums via direct-IR path."""
 
-import os;
-import tempfile;
-import from tests.support { JAC_ROOT }
+import from tests.compiler.c2jac.support {
+    read_fixture as _read,
+    transpile_fixture_tags as _transpile,
+    recompile_errors as _recompile_errors
+}
 import from jaclang.compiler.c2jac.driver { transpile_c_str }
 import from jaclang.compiler.c2jac.enum_prepass { build_enum_map }
 import from jaclang.compiler.c2jac.tags { Idiom, Tier }
-import from jaclang.jac0core.program { JacProgram }
 import from jaclang.vendor.pycparser { c_parser }
-
-glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "c2jac", "fixtures");
-
-def _transpile(name: str) -> tuple[str, object] {
-    with open(os.path.join(FIXTURES, name)) as f {
-        src = f.read();
-    }
-    return transpile_c_str(src, name);
-}
-
-def _read(name: str) -> str {
-    with open(os.path.join(FIXTURES, name)) as f {
-        return f.read();
-    }
-}
-
-def _recompile_errors(jac_str: str, name: str) -> list {
-    # Round-trip guard: emitted Jac must be valid *compiler input*, not merely
-    # contain the right substrings. Write it out and recompile it; a non-empty
-    # error list means c2jac produced Jac the compiler rejects.
-    out_dir = tempfile.mkdtemp();
-    stem = name.rsplit(".", 1)[0];
-    path = os.path.join(out_dir, stem + ".jac");
-    with open(path, "w") as f {
-        f.write(jac_str);
-    }
-    prog = JacProgram();
-    prog.compile(file_path=path);
-    return prog.errors_had;
-}
 
 # --- C-for tests ---
 test "cfor.c transpiles without error" {
@@ -808,21 +779,22 @@ test "for_array_body.c: the three swap statements live INSIDE the if-condition b
     (jac_str, tags) = _transpile("for_array_body.c");
     # Sharper than the file-wide substrings above: the original bug emitted an
     # empty `if { }` while the swap statements vanished. Slice out the actual
-    # `if arr[j] > arr[(j + 1)] { ... }` block and assert all three swap legs are
-    # enclosed by its braces, so a future regression that empties the conditional
-    # (or relocates the assignments elsewhere) is caught even when the loose
-    # file-wide substrings still match.
-    header = "if (arr[j] > arr[(j + 1)]) {";
-    start = jac_str.find(header);
+    # if-block and assert all three swap legs are enclosed by its braces, so a
+    # regression that empties the conditional (or relocates the assignments) is
+    # caught even when the loose file-wide substrings still match. Parens are
+    # stripped first so this pins STRUCTURE (swaps inside the braces), not the
+    # formatter's redundant-paren policy (`arr[(j + 1)]` vs `arr[j + 1]`).
+    flat = jac_str.replace("(", "").replace(")", "");
+    header = "if arr[j] > arr[j + 1] {";
+    start = flat.find(header);
     assert start != -1 , f"Expected the ArrayRef if-condition in:\n{jac_str}";
     # The swap body has no nested braces, so the next `}` closes the if-block.
-    body_start = start + len(header);
-    body_end = jac_str.find("}", body_start);
+    body_end = flat.find("}", start + len(header));
     assert body_end != -1 , f"Expected a closing brace for the if-block in:\n{jac_str}";
-    if_body = jac_str[body_start:body_end];
-    assert "tmp: int = arr[j];" in if_body , f"Expected decl-init swap leg inside the if-body, got:\n{if_body}";
-    assert "arr[j] = arr[(j + 1)];" in if_body , f"Expected first swap leg inside the if-body, got:\n{if_body}";
-    assert "arr[(j + 1)] = tmp;" in if_body , f"Expected second swap leg inside the if-body, got:\n{if_body}";
+    if_body = flat[start + len(header):body_end];
+    assert "tmp: int = arr[j];" in if_body , f"decl-init swap leg not inside the if-body:\n{jac_str}";
+    assert "arr[j] = arr[j + 1];" in if_body , f"first swap leg not inside the if-body:\n{jac_str}";
+    assert "arr[j + 1] = tmp;" in if_body , f"second swap leg not inside the if-body:\n{jac_str}";
 }
 
 test "for_array_body.c: ArrayRef rvalue and if-condition lower faithfully" {

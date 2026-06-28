@@ -1,27 +1,12 @@
 """P2 phase-exit: pointer idiom fixture validates free()-elision,
 malloc(sizeof(T))→T() lowering, and T* params typed as T."""
 
-import os;
-import from tests.support { JAC_ROOT }
+import from tests.compiler.c2jac.support {
+    transpile_fixture as _transpile,
+    transpile_fixture_tags as _transpile_tags
+}
 import from jaclang.compiler.c2jac.driver { transpile_c_str }
 import from jaclang.compiler.c2jac.tags { Idiom }
-
-glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "c2jac", "fixtures");
-
-def _transpile(name: str) -> str {
-    with open(os.path.join(FIXTURES, name)) as f {
-        src = f.read();
-    }
-    (jac_str, tags) = transpile_c_str(src, name);
-    return jac_str;
-}
-
-def _transpile_tags(name: str) -> tuple {
-    with open(os.path.join(FIXTURES, name)) as f {
-        src = f.read();
-    }
-    return transpile_c_str(src, name);
-}
 
 test "pointers.c transpiles without error" {
     jac_str = _transpile("pointers.c");
