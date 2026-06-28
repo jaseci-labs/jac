@@ -241,6 +241,16 @@ test "hashlib + hmac bundled" {
     );
 }
 
+# --- Bundled native stdlib: secrets (Mechanism F — CSPRNG over OpenSSL's
+# RAND_bytes on the same bundled libcrypto.a, issue #6978 Phase 1). Output is
+# random, so the equivalence harness compares deterministic properties (token
+# lengths, randbelow bounds, distinctness), not exact bytes. ---
+test "secrets bundled" {
+    run_with_both(
+        "prim_secrets.jac", "secrets_py", "secrets_cl", "secrets_na", require=["na"]
+    );
+}
+
 # --- Static-method calls + class-attribute reads on user classes (issue #6951).
 # `ClassName.method(args)` on a `static def` and `ClassName.attr` on a
 # `static has`, including inheritance through the MRO; unblocks datetime. ---
