@@ -676,7 +676,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
 
         if func_name == "open" {
-            return self._emit_open(nd);
+            _open_result = self._emit_open(nd);
+            if _open_result is not None {
+                return _open_result;
+            }
+            self.emit(E5090, node_override=nd, kind="function", name=func_name);
+            return None;
         }
     }
 
