@@ -16,11 +16,7 @@ impl CMapper._loc(c_node: object) -> tuple[int, int] {
 
 impl CMapper._stamp(py_node: object, c_node: object, *, text: str = "") -> object {
     (line, col) = self._loc(c_node);
-    py_node.lineno = line;
-    py_node.col_offset = col;
-    py_node.end_lineno = line;
-    py_node.end_col_offset = col + max(len(text), 1);
-    return py_node;
+    return self._stamp_manual(py_node, line, col, text=text);
 }
 
 impl CMapper._stamp_manual(
@@ -40,124 +36,78 @@ impl CMapper._alloc_slot(c_node: object) -> int {
     return sid;
 }
 
-impl CMapper._surrogate_stmt(c_node: object) -> object {
-    (line, col) = self._loc(c_node);
-    reason = f"{type(c_node).__name__} @ L{line}";
+impl CMapper._tag(c_node: object, tier: Tier, idiom: Idiom, reason: str) {
+    # Single NodeTag-construction site. Every verdict (surrogate fallback,
+    # Tier-B loss, Tier-A idiom) routes here so the tag schema lives in one
+    # place; only tier/idiom/reason vary across callers.
+    (line, _) = self._loc(c_node);
     self.tags.tag(
         c_node,
         NodeTag(
-            tier=Tier.TIER_B,
+            tier=tier,
             mechanism=Mechanism.PY_AST,
-            idiom=Idiom.TIER_B,
+            idiom=idiom,
             reason=reason,
             c_line=line,
             snippet=reason
         )
     );
+}
+
+impl CMapper._surrogate(c_node: object, name: str) -> object {
+    # Shared body of the §8.2 dispatch-miss fallback: tag Tier-B and build a
+    # `name(<c_line>)` call. The caller wraps it in an Expr for statement
+    # context (_surrogate_stmt) or returns it bare for expression context.
+    (line, col) = self._loc(c_node);
+    reason = f"{type(c_node).__name__} @ L{line}";
+    self._tag(c_node, Tier.TIER_B, Idiom.TIER_B, reason);
     name_n = self._stamp_manual(
-        ast3.Name(id=UNSUPPORTED_STMT, ctx=ast3.Load()),
-        line,
-        col,
-        text=UNSUPPORTED_STMT
+        ast3.Name(id=name, ctx=ast3.Load()), line, col, text=name
     );
     # Anchor arg is the C-source line as an INT, not the reason string. A
     # string Constant here would be re-sliced from orig_src (the C source) by
     # PyastBuildPass._get_source_segment — the manual coords point into the C
-    # text — emitting invalid Jac (e.g. `__c2jac_unsupported__(U { int i; )`).
-    # An int uses str(value) verbatim, so the call stays valid Jac, and the
-    # line doubles as the key the post-format comment injector matches on (§7).
-    line_c = self._stamp_manual(ast3.Constant(value=line), line, col, text=str(line));
-    call_n = self._stamp_manual(
-        ast3.Call(func=name_n, args=[line_c], keywords=[]), line, col
-    );
-    return self._stamp_manual(ast3.Expr(value=call_n), line, col);
-}
-
-impl CMapper._surrogate_expr(c_node: object) -> object {
-    (line, col) = self._loc(c_node);
-    reason = f"{type(c_node).__name__} @ L{line}";
-    self.tags.tag(
-        c_node,
-        NodeTag(
-            tier=Tier.TIER_B,
-            mechanism=Mechanism.PY_AST,
-            idiom=Idiom.TIER_B,
-            reason=reason,
-            c_line=line,
-            snippet=reason
-        )
-    );
-    name_n = self._stamp_manual(
-        ast3.Name(id=UNSUPPORTED_EXPR, ctx=ast3.Load()),
-        line,
-        col,
-        text=UNSUPPORTED_EXPR
-    );
-    # Int line anchor, not the reason string — see _surrogate_stmt for why a
-    # string Constant would re-slice the C source into invalid Jac.
+    # text — emitting invalid Jac. An int uses str(value) verbatim, so the call
+    # stays valid Jac, and the line doubles as the key the post-format comment
+    # injector matches on (§7).
     line_c = self._stamp_manual(ast3.Constant(value=line), line, col, text=str(line));
     return self._stamp_manual(
         ast3.Call(func=name_n, args=[line_c], keywords=[]), line, col
     );
 }
 
+impl CMapper._surrogate_stmt(c_node: object) -> object {
+    (line, col) = self._loc(c_node);
+    call_n = self._surrogate(c_node, UNSUPPORTED_STMT);
+    return self._stamp_manual(ast3.Expr(value=call_n), line, col);
+}
+
+impl CMapper._surrogate_expr(c_node: object) -> object {
+    return self._surrogate(c_node, UNSUPPORTED_EXPR);
+}
+
 impl CMapper._mark_tier_b(c_node: object, reason: str) {
     # Retag a node Tier-B for a lossy-but-best-effort emission. Unlike the
     # surrogate helpers this does NOT replace the emitted Jac — the handler
-    # still emits its best-effort form — it only records the loss so the
-    # node is flagged in the Tier-B comments (§3 honest-report invariant). Used by
+    # still emits its best-effort form — it only records the loss so the node
+    # is flagged in the Tier-B comments (§3 honest-report invariant). Used by
     # representation-changing casts and side-effect-dropping comma/designated
-    # initializers, which would otherwise silently stay at the default
-    # Tier-A from _populate_default_tags.
-    (line, _) = self._loc(c_node);
-    self.tags.tag(
-        c_node,
-        NodeTag(
-            tier=Tier.TIER_B,
-            mechanism=Mechanism.PY_AST,
-            idiom=Idiom.TIER_B,
-            reason=reason,
-            c_line=line,
-            snippet=reason
-        )
-    );
+    # initializers, which would otherwise silently stay at the default Tier-A.
+    self._tag(c_node, Tier.TIER_B, Idiom.TIER_B, reason);
 }
 
 impl CMapper._mark_tier_a(c_node: object, idiom: Idiom, reason: str = "") {
-    # Record a recognized Tier-A pointer idiom (§7). The handler still emits
-    # the faithful Jac form; this only stamps the verdict so the idiom is
-    # queryable (TagTable.by_idiom) for metrics/tests. Tier-A is never
-    # flagged in the Tier-B comments (which surface Tier-B only).
-    (line, _) = self._loc(c_node);
-    self.tags.tag(
-        c_node,
-        NodeTag(
-            tier=Tier.TIER_A,
-            mechanism=Mechanism.PY_AST,
-            idiom=idiom,
-            reason=reason,
-            c_line=line,
-            snippet=reason
-        )
-    );
+    # Record a recognized Tier-A pointer idiom (§7). The handler still emits the
+    # faithful Jac form; this only stamps the verdict so the idiom is queryable
+    # (TagTable.by_idiom). Tier-A is never flagged in the Tier-B comments.
+    self._tag(c_node, Tier.TIER_A, idiom, reason);
 }
 
 impl CMapper._mark_tier_b_idiom(c_node: object, idiom: Idiom, reason: str) {
     # Tier-B emission carrying a *specific* idiom verdict (e.g. a realloc we
     # elided but could not prove list-bound). Like _mark_tier_b but preserves
     # the idiom so the report names what was attempted, not a bare "tier_b".
-    (line, _) = self._loc(c_node);
-    self.tags.tag(
-        c_node,
-        NodeTag(
-            tier=Tier.TIER_B,
-            mechanism=Mechanism.PY_AST,
-            idiom=idiom,
-            reason=reason,
-            c_line=line,
-            snippet=reason
-        )
-    );
+    self._tag(c_node, Tier.TIER_B, idiom, reason);
 }
 
 impl CMapper._directir_placeholder(c_node: object) -> object {
@@ -210,11 +160,7 @@ impl CMapper.conv(c_node: object, *, stmt: bool = True) -> object {
 impl CMapper._inc_dec_stmt(nd: object) -> object | None {
     # `i++` / `++i` / `i--` / `--i` as a statement → `i += 1` / `i -= 1`.
     target = self.conv_expr(nd.expr);
-    if not (
-        isinstance(target, ast3.Name)
-        or isinstance(target, ast3.Attribute)
-        or isinstance(target, ast3.Subscript)
-    ) {
+    if not isinstance(target, (ast3.Name, ast3.Attribute, ast3.Subscript)) {
         return None;
     }
     self._to_store(target);
@@ -234,11 +180,7 @@ impl CMapper.conv_expr(c_node: object) -> object {
 }
 
 impl CMapper._to_store(py_node: object) -> object {
-    if isinstance(py_node, ast3.Name) {
-        py_node.ctx = ast3.Store();
-    } elif isinstance(py_node, ast3.Attribute) {
-        py_node.ctx = ast3.Store();
-    } elif isinstance(py_node, ast3.Subscript) {
+    if isinstance(py_node, (ast3.Name, ast3.Attribute, ast3.Subscript)) {
         py_node.ctx = ast3.Store();
     }
     return py_node;

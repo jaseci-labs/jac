@@ -8,27 +8,22 @@ DIRECT_IR nodes (For, Enum, Enumerator, EnumeratorList) are replaced by
 placeholder call expressions keyed on a slot_id; the driver splices in the real
 uni nodes after PyastBuildPass runs.
 
-This module is the node dispatcher + `ast`-node builder. The three cross-cutting
-*analyses* it used to inline now live in focused sibling modules — each pure (no
-`CMapper` state, no node-building), so they read and test on their own:
-  - c_types.jac    — C type-name resolution (the type model)
-  - c_idioms.jac   — malloc/realloc pointer-idiom structural recognizers (§7)
-  - c_dataflow.jac — list-bound MUST-dataflow across control flow (§9.5)
-The handlers call those to *decide*, then emit the Jac form and stamp the Tier
-verdict here.
+This module is the node dispatcher + `ast`-node builder. Three cross-cutting
+*analyses* live in focused sibling modules — each pure (no `CMapper` state, no
+node-building): c_types.jac (type-name resolution), c_idioms.jac (malloc/realloc
+pointer idioms, §7), c_dataflow.jac (list-bound dataflow, §9.5). The handlers call
+those to *decide*, then emit the Jac form and stamp the Tier verdict here.
 
-`CMapper` itself is declared here (state + the full method roster as signatures)
-and its bodies live in the `mapper.impl/` annex, grouped by the kind of construct
-each handler lowers — so the dispatcher no longer shares a file with every handler
-it dispatches to:
+`CMapper` is declared here (state + the method roster as signatures); its bodies
+live in the `mapper.impl/` annex, grouped by construct family:
   - core.impl.jac         — dispatch, coord/slot/stamp, surrogate & direct-IR
                             placeholders, Tier-verdict stamping (the machinery)
-  - control_flow.impl.jac — if / while / do-while / switch / ternary / for and
-                            the §9.5 list-bound joins across branches & back-edges
+  - control_flow.impl.jac — if / while / do-while / switch / ternary / for + the
+                            §9.5 list-bound joins across branches & back-edges
   - declarations.impl.jac — file/func/var/array decls, assignment, structs,
-                            typedefs, enums, and the C-type annotation helpers
+                            typedefs, enums, C-type annotation helpers
   - expressions.impl.jac  — binary/unary ops, ids, constants, refs, init lists,
-                            casts, and the malloc/realloc idiom recognizers (§7)
+                            casts, malloc/realloc idiom recognizers (§7)
 """
 
 import ast as ast3;
@@ -112,6 +107,8 @@ obj CMapper {
     ) -> object;
 
     def _alloc_slot(c_node: object) -> int;
+    def _tag(c_node: object, tier: Tier, idiom: Idiom, reason: str);
+    def _surrogate(c_node: object, name: str) -> object;
     def _surrogate_stmt(c_node: object) -> object;
     def _surrogate_expr(c_node: object) -> object;
     def _mark_tier_b(c_node: object, reason: str);
