@@ -34,6 +34,7 @@ Bug index:
   #STARGUARD-1 - version-guarded names re-exported via `from M import *` (e.g. Buffer) fail to resolve
   #BYTES-1 - Byte-string literals (b"...") typed as str instead of bytes
   #EVOLVING-NONE - `x = None` then reassign inside `if` lost the new type post-branch
+  #SCOPE-1 - Annotated decl `x: T = v` inside loop/if block created duplicate symbol; broke narrowing
 """
 
 import os;
@@ -981,5 +982,15 @@ test "bug_evolving_none_narrowing" {
         "Bug #EVOLVING-NONE: `x = None; if cond { x = real_value; }; return x;` "
         "must narrow to the assigned type post-branch (Pyright evolving-locals). "
         f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# Bug #SCOPE-1: annotated decl `x: T = v` inside a loop body was placed
+# in the inner block scope while bare reassigns bound to the function
+# scope, splitting the variable into two symbols and breaking narrowing.
+test "bug_scope_1_annotated_decl_in_loop_no_duplicate_symbol" {
+    program = compile_and_check("checker_bug_annotated_decl_in_loop.jac");
+    assert program.errors_had == [] , (
+        f"Bug #SCOPE-1: got errors: {[str(e) for e in program.errors_had]}"
     );
 }

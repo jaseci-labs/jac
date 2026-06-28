@@ -727,6 +727,30 @@ impl def_insert_unpacking(
 
 impl bind_assignment_targets(nd: uni.Assignment) -> None {
     import from jaclang.jac0core.constant { SymbolType }
+    import from jaclang.jac0core.helpers { evaluate_version_condition }
+
+    # True if any ancestor up to the nearest Python scope is a
+    # sys.version_info / TYPE_CHECKING guard — those stay in the inner scope.
+    def inside_version_conditional(start: uni.UniNode) -> bool {
+        scope_types = uni.UniScopeNode.get_python_scoping_nodes();
+        cur = start.parent;
+        while cur and not isinstance(cur, scope_types) {
+            guard: (uni.IfStmt | None) = None;
+            if isinstance(cur, uni.IfStmt) {
+                guard = cur;
+            } elif isinstance(cur, uni.ElseStmt)
+            and isinstance(cur.parent, uni.IfStmt) {
+                guard = cur.parent;
+            }
+            if guard is not None
+            and evaluate_version_condition(guard.condition) is not None {
+                return True;
+            }
+            cur = cur.parent;
+        }
+        return False;
+    }
+
     for i in nd.target {
         if isinstance(i, uni.AstSymbolNode) {
             if isinstance(i, (uni.ListVal, uni.TupleVal)) {
@@ -749,16 +773,12 @@ impl bind_assignment_targets(nd: uni.Assignment) -> None {
                 # the enclosing ability (not an archetype). Assignments to these
                 # names in nested abilities are state mutations, not new locals.
                 outer_has.add_use(i.name_spec);
-            } elif (
-                (nd.type_tag is None)
-                and not isinstance(
-                    i.sym_tab, uni.UniScopeNode.get_python_scoping_nodes()
-                )
-            ) {
-                # Python semantics: an unannotated assignment inside a non-scoping
-                # block (try/except/finally, if/else, for/while, match) binds in
-                # the nearest enclosing Python scope, not in the inner block.
-                # Mirrors the walrus handling in exit_binary_expr.
+            } elif not isinstance(
+                i.sym_tab, uni.UniScopeNode.get_python_scoping_nodes()
+            )
+            and not inside_version_conditional(i) {
+                # Python has no block scope — hoist to function scope for both
+                # annotated and unannotated forms, except version guards (#6429).
                 py_scope = find_python_scope_node_of(i);
                 if py_scope is not None {
                     if (
