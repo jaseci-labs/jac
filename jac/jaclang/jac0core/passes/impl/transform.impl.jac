@@ -211,8 +211,13 @@ impl Transform._is_suppressed(
         }
     }
     try {
-        import from jaclang.project.config { get_config }
-        config = get_config();
+        # Prefer a file-anchored config when the pass set one (lint/format);
+        # otherwise fall back to the ambient cwd-discovered config.
+        config = self._project_config;
+        if config is None {
+            import from jaclang.project.config { get_config }
+            config = get_config();
+        }
         suppress_tokens: list[str] = [];
         check = config.check if (config and config.check) else None;
         if check?.suppress and check.suppress {

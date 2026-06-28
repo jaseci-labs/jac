@@ -493,6 +493,57 @@ def _warn_malformed_jac_toml(exc: MalformedJacTomlError) {
 }
 
 
+"""Return True if `file_path` matches any of the exclude `patterns`.
+
+Single source of truth for lint/format exclusion matching, shared by the CLI
+file walker (`_should_ignore`) and the auto-lint pass (`_is_file_excluded`).
+
+- A pattern containing '/' is a PATH pattern, matched against the forward-slash
+  path. It matches a segment at ANY depth, including the top level, so
+  `*/tests/*` excludes a `tests/` directory whether it sits at the project root
+  or nested under a package.
+- A pattern without '/' matches any single path component (so a bare filename or
+  directory name is excluded wherever it appears).
+
+When `project_root` is given and `file_path` is under it, matching runs on the
+project-relative path so patterns anchor at the project root.
+"""
+def path_matches_exclude(
+    file_path: str, patterns: list, project_root: str = ""
+) -> bool {
+    import from fnmatch { fnmatch }
+    if not patterns {
+        return False;
+    }
+    rel = file_path;
+    if project_root and file_path.startswith(project_root) {
+        rel = file_path[len(project_root):].lstrip(os.sep).lstrip('/');
+    }
+    norm = rel.replace(os.sep, '/');
+    parts = [p for p in norm.split('/') if p];
+    for pattern in patterns {
+        if '/' in pattern {
+            # Path pattern: match the path directly, with a leading-segment
+            # wildcard so `*/x/*`-style patterns also match `x/` at the top
+            # level (depth-agnostic).
+            if fnmatch(norm, pattern)
+            or fnmatch(norm, '*/' + pattern)
+            or fnmatch('_/' + norm, pattern) {
+                return True;
+            }
+        } else {
+            # Simple pattern: match any single path component (bare name).
+            for part in parts {
+                if fnmatch(part, pattern) {
+                    return True;
+                }
+            }
+        }
+    }
+    return False;
+}
+
+
 """Get list of disabled plugins from JAC_DISABLED_PLUGINS env var or jac.toml.
 
     Priority: JAC_DISABLED_PLUGINS env var > jac.toml
@@ -504,7 +555,6 @@ def _warn_malformed_jac_toml(exc: MalformedJacTomlError) {
         List of disabled plugin identifiers.
     """
 def get_disabled_plugins -> list {
-    import from pathlib { Path }
     env_disabled = os.environ.get('JAC_DISABLED_PLUGINS', '').strip();
     if env_disabled {
         return [
@@ -513,34 +563,24 @@ def get_disabled_plugins -> list {
             if d.strip()
         ];
     }
-    current = Path.cwd().resolve();
-    while (current != current.parent) {
-        toml_path = current / 'jac.toml';
-        if toml_path.exists() {
-            try {
-                data = read_toml_with_encoding(str(toml_path));
-                return data.get('plugins', {}).get('disabled', []);
-            } except MalformedJacTomlError as exc {
-                _warn_malformed_jac_toml(exc);
-                return [];
-            } except Exception {
-                return [];
-            }
-        }
-        current = current.parent;
+    # Plugin load happens at `import jaclang` time, before any file is being
+    # processed, so this lookup is legitimately cwd-anchored (via the default
+    # start) -- but it shares the one canonical walk in modresolver.
+    import from jaclang.jac0core.modresolver { find_project_root }
+    result = find_project_root();
+    if result is None {
+        return [];
     }
-    toml_path = current / 'jac.toml';
-    if toml_path.exists() {
-        try {
-            data = read_toml_with_encoding(str(toml_path));
-            return data.get('plugins', {}).get('disabled', []);
-        } except MalformedJacTomlError as exc {
-            _warn_malformed_jac_toml(exc);
-        } except Exception {
-            ;
-        }
+    (_, toml_path) = result;
+    try {
+        data = read_toml_with_encoding(str(toml_path));
+        return data.get('plugins', {}).get('disabled', []);
+    } except MalformedJacTomlError as exc {
+        _warn_malformed_jac_toml(exc);
+        return [];
+    } except Exception {
+        return [];
     }
-    return [];
 }
 
 """Load setuptools entry points while respecting disabled plugin list.

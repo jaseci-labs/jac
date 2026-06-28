@@ -341,6 +341,13 @@ def _parse_include(raw: dict[str, any]) -> PackageIncludeConfig;
 def _interpolate_recursive(`obj: any) -> any;
 
 glob _config: JacConfig | None = None;
+# True only while `_config` is an explicit override set via set_config (vs a
+# lazily-cwd-discovered default). Gates file-anchored resolution in
+# get_config_for_path. See impl notes.
+glob _config_explicit: bool = False;
+# File-anchored config cache, keyed by str(project_root). Lets the formatter
+# resolve each file's nearest jac.toml without re-walking per file.
+glob _config_by_root: dict = {};
 
 # Get the global configuration, discovering it if necessary.
 # If start_path is provided, config will be discovered from that path
@@ -351,3 +358,11 @@ def get_config(
 
 # Set the global configuration
 def set_config(config: JacConfig) -> None;
+
+# Return the ambient config only when explicitly injected via set_config.
+def get_explicit_config -> JacConfig | None;
+
+# Resolve the config for a specific file/dir, anchored on that path (not cwd).
+# An explicit set_config override wins; otherwise the nearest jac.toml to
+# start_path is used (nearest-wins, no ancestor merge).
+def get_config_for_path(start_path: Path) -> JacConfig | None;

@@ -77,6 +77,11 @@ obj BaseTransform[T_in, T_out](ABC) {
     """
 obj Transform[T: UniNode, R: UniNode](BaseTransform[T, R]) {
     has cur_node: UniNode by postinit,
+        # File-anchored project config for diagnostic suppression. When set (the
+        # lint/format pass sets it from the file being processed), _is_suppressed
+        # uses it instead of the ambient cwd-discovered get_config(), so a file's
+        # select/ignore rules are independent of the invocation directory.
+        _project_config: any = None,
         _cached_check_suppress_tokens: list[str] = field(default_factory=`list),
         _cached_check_suppress_codes: list[str] = field(default_factory=`list),
         _cached_inline_suppressions: dict[((str, int), list[str])] = field(

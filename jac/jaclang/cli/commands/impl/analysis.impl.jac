@@ -1029,30 +1029,8 @@ patterns (no '/') are matched against each individual path component, which
 preserves the existing behavior of matching bare filenames.
 """
 def _should_ignore(file_path: str, ignore_patterns: list) -> bool {
-    if not ignore_patterns {
-        return False;
-    }
-    path_parts = Path(file_path).parts;
-    # Normalize file path to use forward slashes for consistent matching
-    normalized_path = '/'.join(path_parts);
-    # Patterns are already normalized in ignore_list
-    for pattern in ignore_patterns {
-        if '/' in pattern {
-            # Path pattern: match against the full normalized path.
-            # This allows patterns like 'jac-client/*/config_loader.impl.jac'
-            # to target specific files in specific packages.
-            if fnmatch(normalized_path, '*/' + pattern)
-            or fnmatch(normalized_path, pattern) {
-                return True;
-            }
-        } else {
-            # Simple pattern: match against each path component (existing behavior)
-            for part in path_parts {
-                if fnmatch(part, pattern) {
-                    return True;
-                }
-            }
-        }
-    }
-    return False;
+    # Shared exclude matching (see jac0core.helpers.path_matches_exclude) so the
+    # CLI walker and the auto-lint pass apply identical pattern semantics.
+    import from jaclang.jac0core.helpers { path_matches_exclude }
+    return path_matches_exclude(file_path, ignore_patterns);
 }

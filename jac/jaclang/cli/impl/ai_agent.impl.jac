@@ -265,17 +265,12 @@ impl Workspace.project_errors -> list {
 
 """The project root for a directory: nearest ancestor with a `jac.toml`, else it."""
 impl _project_root_of(start: str) -> str {
-    cur = os.path.normpath(start);
-    while True {
-        if os.path.isfile(os.path.join(cur, "jac.toml")) {
-            return cur;
-        }
-        parent = os.path.dirname(cur);
-        if parent == cur {
-            return os.path.normpath(start);
-        }
-        cur = parent;
-    }
+    # Delegates to the single canonical jac.toml walk; falls back to the start
+    # dir (normalized) when no project is found, preserving prior behavior.
+    import from jaclang.jac0core.modresolver { find_project_root }
+    import from pathlib { Path }
+    result = find_project_root(Path(start));
+    return str(result[0]) if result else os.path.normpath(start);
 }
 
 """Clip oversized tool output so it does not blow the model's context."""

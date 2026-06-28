@@ -37,23 +37,12 @@ impl interpolate_env_vars(value: str) -> str {
 # Project Discovery Implementation
 # ===============================================================================
 impl find_project_root(start: Path | None = None) -> tuple[Path, Path] | None {
-    import from pathlib { Path }
-    if start is None {
-        start = Path.cwd();
-    }
-    current = start.resolve();
-    while current != current.parent {
-        toml_path = current / "jac.toml";
-        if toml_path.exists() {
-            return (current, toml_path);
-        }
-        current = current.parent;
-    }
-    toml_path = current / "jac.toml";
-    if toml_path.exists() {
-        return (current, toml_path);
-    }
-    return None;
+    # Delegates to the single canonical jac.toml walk in jac0core.helpers so all
+    # of config discovery, import resolution, and plugin lookup share one
+    # implementation. Kept here as the public project-config entry point that
+    # the rest of the codebase imports from jaclang.project.config.
+    import from jaclang.jac0core.modresolver { find_project_root as _find_project_root }
+    return _find_project_root(start);
 }
 
 impl is_in_project -> bool {
@@ -1045,14 +1034,50 @@ impl _interpolate_recursive(`obj: any) -> any {
 impl get_config(
     start_path: Path | None = None, force_discover: bool = False
 ) -> JacConfig | None {
-    global _config;
+    global _config, _config_explicit;
     if _config is None or force_discover {
         _config = JacConfig.discover(start_path=start_path);
+        # A lazily-discovered ambient config is NOT an explicit override, so the
+        # file-anchored formatter path is free to resolve each file's own config.
+        _config_explicit = False;
     }
     return _config;
 }
 
 impl set_config(config: JacConfig) -> None {
-    global _config;
+    global _config, _config_explicit;
     _config = config;
+    # Mark as an explicit override (tests, `jac test`'s pinned config, MCP mode)
+    # so get_config_for_path honors it instead of file-anchored resolution.
+    _config_explicit = config is not None;
+}
+
+impl get_explicit_config -> JacConfig | None {
+    # The ambient config ONLY when it was injected via set_config (an intentional
+    # override); None if it is merely the lazily-cwd-discovered default. The
+    # formatter/lint path uses this to let an explicit override win while
+    # otherwise resolving each file's config from its own location.
+    return _config if _config_explicit else None;
+}
+
+impl get_config_for_path(start_path: Path) -> JacConfig | None {
+    # File-anchored config resolution: an explicit set_config override wins;
+    # otherwise resolve the nearest jac.toml to `start_path` (NOT the process
+    # cwd), so `jac format`/lint behave identically regardless of the directory
+    # the command is run from. Cached per project root.
+    global _config_by_root;
+    explicit = get_explicit_config();
+    if explicit is not None {
+        return explicit;
+    }
+    result = find_project_root(start_path);
+    if result is None {
+        return None;
+    }
+    (project_root, _) = result;
+    key = str(project_root);
+    if key not in _config_by_root {
+        _config_by_root[key] = JacConfig.discover(start_path=project_root);
+    }
+    return _config_by_root[key];
 }

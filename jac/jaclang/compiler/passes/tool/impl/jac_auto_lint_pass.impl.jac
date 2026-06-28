@@ -1,8 +1,22 @@
 """Initialize the JacAutoLintPass."""
 impl JacAutoLintPass.postinit -> None {
-    import from jaclang.project.config { get_config }
-    config = get_config();
-    if config is not None and config.check?.lint {
+    import from jaclang.project.config { JacConfig, get_config_for_path, get_explicit_config }
+    import from pathlib { Path }
+    # File-anchor on the module being formatted so the rules (and excludes) come
+    # from that file's nearest jac.toml regardless of cwd. The deslop rules are
+    # destructive, so this pass NEVER falls back to the ambient cwd config: a
+    # file in no project, or an unlocatable in-memory buffer (empty mod_path, as
+    # langserve produces from use_str), gets the built-in defaults -- unless a
+    # config was pinned explicitly via set_config (tests / `jac test` / MCP).
+    # This keeps an opinionated repo config (e.g. deslop) from leaking onto files
+    # outside any project, matching how ruff/prettier treat such files.
+    # _project_config is consumed by the inherited Transform._is_suppressed.
+    mod_path = self.ir_in.loc.mod_path if self.ir_in?.loc else None;
+    config = (
+        get_config_for_path(Path(mod_path)) if mod_path else get_explicit_config()
+    ) or JacConfig();
+    self._project_config = config;
+    if config.check?.lint {
         self._exclude_patterns = config.check.lint.exclude;
         self._project_root = str(config.project_root) if config.project_root else "";
     }
@@ -11,22 +25,9 @@ impl JacAutoLintPass.postinit -> None {
 
 """Check if a file path matches any exclude pattern."""
 impl JacAutoLintPass._is_file_excluded(file_path: str) -> bool {
-    import fnmatch;
-    import os;
-    if not self._exclude_patterns {
-        return False;
-    }
-    rel_path = file_path;
-    if self._project_root and file_path.startswith(self._project_root) {
-        rel_path = file_path[len(self._project_root):].lstrip(os.sep);
-    }
-    for pattern in self._exclude_patterns {
-        if fnmatch.fnmatch(rel_path, pattern)
-        or fnmatch.fnmatch(os.path.basename(file_path), pattern) {
-            return True;
-        }
-    }
-    return False;
+    # Shared, project-relative exclude matching (see jac0core.helpers).
+    import from jaclang.jac0core.helpers { path_matches_exclude }
+    return path_matches_exclude(file_path, self._exclude_patterns, self._project_root);
 }
 
 """Remove empty parentheses from function signatures with no parameters."""
@@ -2799,6 +2800,13 @@ it only mutates the tree when not report_only.
 """
 impl JacAutoLintPass._strip_noise(nd: uni.Module) -> None {
     if not self.lint_enabled {
+        return;
+    }
+    # The deslop rules are destructive, so honor the project's lint excludes here
+    # (the CLI walker skips excluded files, but direct jac_file_formatter callers
+    # -- e.g. tooling and tests -- reach this pass directly). Excluded files keep
+    # their comments/docstrings even when the project enables strip-* repo-wide.
+    if self._is_file_excluded(nd.loc.mod_path) {
         return;
     }
     # W3050: remove all comments. Comments are stored on the Source object and

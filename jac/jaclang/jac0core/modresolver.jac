@@ -2,6 +2,7 @@
 import importlib.util;
 import os;
 import sys;
+import from pathlib { Path }
 import from jaclang.jac0core.ext_registry { MODULE_SUFFIXES, language_of }
 
 # Cache of resolved project roots, keyed by the directory we started the
@@ -41,6 +42,44 @@ independent of how deep the importing file sits. Kept as a dependency-free
 filesystem walk (no jaclang.project.config import) because it runs on the hot
 import-resolution path; results are memoized in `_project_root_cache`.
 """
+"""Walk up from `start` (a file or dir; default cwd) to the nearest jac.toml.
+
+Returns (project_dir, toml_path) or None. This is the single source of truth for
+jac.toml resolution -- config discovery (jaclang.project.config.find_project_root),
+the import path resolver (find_jac_project_root below), and the plugin-disable
+lookup (jac0core.helpers.get_disabled_plugins) all delegate here. It lives in
+modresolver because that is the lowest-level module the import bootstrap itself
+calls, so it must not import any other .jac module at call time. The standalone
+`_jac_finder.py` keeps a deliberate plain-Python mirror because it runs before
+`import jaclang` is possible.
+
+Semantics follow the prevailing tool convention (ruff / prettier / black):
+NEAREST jac.toml wins; ancestors are NOT merged -- an absent section means "use
+the built-in default", never "inherit from a parent". Anchors on the path passed
+in, never the process cwd, so a file's project is the same from any directory.
+"""
+def find_project_root(start: (Path | None) = None) -> (tuple | None) {
+    if start is None {
+        start = Path.cwd();
+    }
+    current = start.resolve();
+    if current.is_file() {
+        current = current.parent;
+    }
+    while current != current.parent {
+        toml_path = current / 'jac.toml';
+        if toml_path.exists() {
+            return (current, toml_path);
+        }
+        current = current.parent;
+    }
+    toml_path = current / 'jac.toml';
+    if toml_path.exists() {
+        return (current, toml_path);
+    }
+    return None;
+}
+
 def find_jac_project_root(start: (str | None) = None) -> (str | None) {
     if start {
         current = os.path.abspath(start);
@@ -53,19 +92,11 @@ def find_jac_project_root(start: (str | None) = None) -> (str | None) {
     if (current in _project_root_cache) {
         return _project_root_cache[current];
     }
-    found = None;
-    probe = current;
-    while True {
-        if os.path.isfile(os.path.join(probe, 'jac.toml')) {
-            found = probe;
-            break;
-        }
-        parent = os.path.dirname(probe);
-        if (parent == probe) {
-            break;
-        }
-        probe = parent;
-    }
+    # Delegate the actual upward walk to the single canonical resolver above;
+    # keep the per-start-dir memoization here because this sits on the hot
+    # import path.
+    result = find_project_root(Path(current));
+    found = str(result[0]) if result else None;
     _project_root_cache[current] = found;
     return found;
 }
