@@ -16,6 +16,7 @@ import from jac_scale._optdeps.prometheus { HAS_PROMETHEUS, Counter }
 import from jac_scale._optdeps.apscheduler { HAS_APSCHEDULER, BackgroundScheduler }
 import from jac_scale._optdeps.kubernetes { HAS_KUBERNETES, client as k8s_client }
 import from jac_scale._optdeps.docker { HAS_DOCKER, docker_module }
+import from jac_scale._optdeps.gcs { HAS_GCS, StorageClient }
 
 # =============================================================================
 # require_optional — happy path (installed packages)
@@ -78,6 +79,7 @@ test "HAS flags are booleans" {
     assert isinstance(HAS_APSCHEDULER, bool);
     assert isinstance(HAS_KUBERNETES, bool);
     assert isinstance(HAS_DOCKER, bool);
+    assert isinstance(HAS_GCS, bool);
 }
 
 test "HAS flags match is_optional_available" {
@@ -87,6 +89,7 @@ test "HAS flags match is_optional_available" {
     assert HAS_APSCHEDULER == is_optional_available("apscheduler");
     assert HAS_KUBERNETES == is_optional_available("kubernetes");
     assert HAS_DOCKER == is_optional_available("docker");
+    assert HAS_GCS == is_optional_available("google.cloud.storage");
 }
 
 # =============================================================================
@@ -140,6 +143,15 @@ test "docker exports are real when installed" {
         assert docker_module is not None;
     } else {
         assert docker_module is None;
+    }
+}
+
+test "gcs exports are real when installed" {
+    if HAS_GCS {
+        assert StorageClient is not None;
+        assert callable(StorageClient);
+    } else {
+        assert StorageClient is None;
     }
 }
 
@@ -220,6 +232,31 @@ test "database factory requires redis for redis" {
             assert "jac-scale[data]" in str(e);
         }
         assert raised , "Expected ImportError when redis is missing";
+    }
+}
+
+test "database factory requires firestore for firestore" {
+    import from jac_scale.factories.database_factory {
+        DatabaseProviderFactory,
+        DatabaseType
+    }
+
+    with unittest.mock.patch(
+        "jac_scale.factories.database_factory.require_optional",
+        side_effect=ImportError(
+            "'google.cloud.firestore' is required. Install: pip install jac-scale[firebase]"
+        )
+    ) {
+        raised = False;
+        try {
+            DatabaseProviderFactory.create_client(
+                DatabaseType.FIRESTORE, uri="firebase-project"
+            );
+        } except ImportError as e {
+            raised = True;
+            assert "jac-scale[firebase]" in str(e);
+        }
+        assert raised , "Expected ImportError when google-cloud-firestore is missing";
     }
 }
 

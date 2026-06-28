@@ -37,7 +37,13 @@ class Storage {
         self: Storage, source: str, destination: (str | BinaryIO | None) = None
     ) -> (bytes | None) abs;
 
-    """Delete a file or directory from storage."""
+    """Delete a file or directory from storage.
+
+    Returns True if a file was deleted, False if the path did not exist.
+    (Backends that cannot cheaply distinguish a missing object without an
+    extra request — e.g. S3 — may return True unconditionally; see the
+    backend's own docstring.)
+    """
     def delete(self: Storage, path: str) -> bool abs;
 
     """Check if a path exists in storage."""

@@ -7,6 +7,11 @@ Inherits from PluginConfigBase to eliminate boilerplate code.
 """
 import from pathlib { Path }
 import from jaclang.project.plugin_config { PluginConfigBase }
+import from jac_scale.firebase_env {
+    FIREBASE_AUTH_PROJECT_ID_ENV,
+    FIRESTORE_PROJECT_ID_ENV,
+    resolve_firebase_project_id
+}
 import os;
 
 """Scale-specific configuration loader.

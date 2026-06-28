@@ -78,10 +78,28 @@ obj MachOLinker {
         shared: bool = False,
         export_symbols: list[str] = [],
         init_funcs: list[str] = [],
-        soname: str = ""
+        soname: str = "",
+        archive_members: list[bytes] = []
+        # Relocatable objects pulled from a static C floor archive (#6978
+        # Phase 0.1a). Each is merged into the main object before layout, so the
+        # floor links into the binary instead of being a runtime dylib dep. The
+        # caller selects the minimal member set via linker_common.select_ar_members.
     ) -> bool;
 
     def parse_object -> bool;
+    # Merge one extra relocatable object (an archive member) into this linker's
+    # already-parsed state: coalesce same-named sections, adjust symbol values
+    # and relocation sites, and remap symbol/section indices. (#6978 0.1a)
+    def _merge_member(raw: bytes) -> bool;
+    def _consolidate(
+        secs: list[MachOSection], syms: list[MachOSymbol], relocs: list[MachOReloc]
+    ) -> None;
+    # After all members are merged, repoint relocations whose target was
+    # undefined-in-one-object but defined-in-another at the definition, and
+    # neutralize the now-satisfied undefined entries so they are not bound as
+    # external (which would make dyld fail to find a symbol that is actually
+    # present locally). (#6978 0.1a)
+    def _resolve_crossrefs -> None;
     def build_executable -> bytes;
     def build_shared_object -> bytes;
 }

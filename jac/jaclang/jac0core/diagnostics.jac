@@ -1065,6 +1065,23 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "@property '{name}' can be replaced with native property syntax "
          "'has {name}: {type_name} {{ getter; ... }}' [property-to-native]"
      ),
+     # Deslop rules (destructive, opt-in only — never fire under "all"/"default").
+     W3050 = _warn(
+         "W3050",
+         Category.LINT,
+         "Comment can be removed [strip-comments]",
+         help="Opt-in 'deslop' rule. Enable by adding \"strip-comments\" to "
+         "[check.lint] select in jac.toml. `jac format --lintfix` then removes "
+         "all comments; it never fires under select = [\"all\"] or [\"default\"]."
+     ),
+     W3051 = _warn(
+         "W3051",
+         Category.LINT,
+         "Docstring can be removed [strip-docstrings]",
+         help="Opt-in 'deslop' rule. Enable by adding \"strip-docstrings\" to "
+         "[check.lint] select in jac.toml. `jac format --lintfix` then removes "
+         "all docstrings; it never fires under select = [\"all\"] or [\"default\"]."
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -1094,7 +1111,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "filter-compare-tautology": "W3040",
          "stale-has-read": "W3041",
          "map-lambda-to-comprehension": "W3042",
-         "property-to-native": "W3043"
+         "property-to-native": "W3043",
+         "strip-comments": "W3050",
+         "strip-docstrings": "W3051"
      },
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Codegen errors (E5xxx/W5xxx)

@@ -32,10 +32,12 @@ impl UnparsePass.exit_node(nd: uni.UniNode) -> None
             attr.gen.jac = attr.value;
         }
     }
-    method_name = "exit_" + pascal_to_snake(type(nd).__name__);
-    if hasattr(self, method_name) {
-        getattr(self, method_name)(nd);
-    } elif isinstance(nd, uni.Token) {
+    super.exit_node(nd);
+}
+
+"""Render any node with no specific exit_<kind>: raw token value or joined kids."""
+impl UnparsePass.default_exit(nd: uni.UniNode) -> None {
+    if isinstance(nd, uni.Token) {
         nd.gen.jac = nd.value;
     } else {
         nd.gen.jac = " ".join(
@@ -46,7 +48,6 @@ impl UnparsePass.exit_node(nd: uni.UniNode) -> None
             ]
         );
     }
-    # ── Token Types ──────────────────────────────────────────────────────
 }
 
 """Token: return raw value."""
@@ -1275,9 +1276,9 @@ impl UnparsePass.exit_match_mapping(nd: uni.MatchMapping) -> None {
     nd.gen.jac = "{" + self._comma_sep(nd.values) + "}";
 }
 
-"""MatchKVPair: key: value."""
+"""MatchKVPair: key OP value (OP is '=' for class patterns, ':' for mappings)."""
 impl UnparsePass.exit_match_k_v_pair(nd: uni.MatchKVPair) -> None {
-    nd.gen.jac = nd.key.gen.jac + " : " + nd.value.gen.jac;
+    nd.gen.jac = nd.key.gen.jac + " " + nd.kid[1].gen.jac + " " + nd.value.gen.jac;
 }
 
 """MatchStar: *[name]."""

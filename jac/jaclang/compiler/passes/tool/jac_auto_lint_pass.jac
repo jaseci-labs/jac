@@ -52,7 +52,9 @@ import from jaclang.jac0core.diagnostics {
     W3040,
     W3041,
     W3042,
-    W3043
+    W3043,
+    W3050,
+    W3051
 }
 
 # W3043 impl-side coordination: dotted impl target ("Cls.prop" / "Outer.Inner.prop")
@@ -188,6 +190,10 @@ obj JacAutoLintPass(UniPass) {
     def _strip_usestate_imports(nd: uni.Module) -> None;
     def exit_expr_stmt(nd: uni.ExprStmt) -> None;
     def exit_module(nd: uni.Module) -> None;
+    # Deslop rules (W3050 strip-comments, W3051 strip-docstrings)
+    def _strip_noise(nd: uni.Module) -> None;
+    def _strip_docstrings(start: uni.UniNode) -> None;
+    def _collect_doc_nodes(`node: uni.UniNode, results: list) -> None;
     # Stale-`has`-read detection (W3041)
     def _check_stale_has_read(ability_node: uni.Ability) -> None;
     def _collect_reactive_has_names(ability_node: uni.Ability) -> set[str];

@@ -3,7 +3,7 @@
 Compiles a .na.jac file to a standalone native binary:
 1. Compile .na.jac through Jac pipeline to get LLVM IR
 2. Inject main() (+ _start on Linux, _jac_win_start on Windows) as pure LLVM IR
-3. Emit object code via llvmlite
+3. Emit object code via the LLVMPY_* shim
 4. Link into executable via pure Python linker (ELF on Linux, Mach-O on macOS,
    PE/COFF .exe on Windows)
 """
@@ -16,11 +16,27 @@ import from jaclang.cli.console { console }
 
 """Inject main() and _start into the LLVM IR for ELF (Linux).
 
-main() stores argc/argv into globals, calls jac_entry(), and returns 0.
-_start is the ELF entry point. It uses the naked attribute with
-@llvm.stacksave() to read the raw stack pointer without a prologue,
-then loads argc and argv from the kernel-placed stack layout:
-[sp]=argc, [sp+8..]=argv array. No inline assembly needed.
+main() stores argc/argv into globals, runs the merged .init_array constructors
+(the #6978 0.1a bridge), calls jac_entry(), and returns 0.
+
+_start is the ELF entry point. It uses the naked attribute with @llvm.stacksave()
+to read the raw stack pointer without a prologue (no inline assembly), then loads
+argc and argv from the kernel-placed stack layout ([sp]=argc, [sp+8..]=argv) and
+hands off to glibc's `__libc_start_main(main, argc, argv, NULL, NULL, NULL,
+stack_end)`. Routing through `__libc_start_main` (rather than calling main
+directly) is what initialises the main thread's TLS + pthread descriptor before
+any user/library code runs (#6978 Phase 1): a static C floor like OpenSSL's
+libcrypto uses `pthread_once`/`CRYPTO_THREAD_run_once` for lazy init, which
+deadlocks on a futex if the thread runtime was never brought up. TLS-free floors
+(libz, liblzma) ran fine under the old direct-call `_start`; libcrypto is the
+first that needs the real C-runtime bring-up. `__libc_start_main` calls main and
+`exit`s with its return, so _start never returns. The .init_array bridge stays in
+main (run after libc init, so pthread-using constructors work); init/fini are
+NULL because the merged constructors are driven by the bridge, not glibc.
+
+stack_end is the entry %rsp (where argc sits) — what crt1 passes; the ABI
+guarantees that pointer is 16-byte aligned at process entry, so the single `call`
+lands `__libc_start_main` on an ABI-aligned stack with no manual realignment.
 """
 def _inject_entry_elf(llvm_ir_str: str, triple: str = "") -> str {
     # Declare __jac_argc/__jac_argv only if the IR gen pass didn't already
@@ -28,12 +44,46 @@ def _inject_entry_elf(llvm_ir_str: str, triple: str = "") -> str {
     globals_ir = ""
         if has_jac_argc
         else ('@__jac_argc = global i32 0\n' + '@__jac_argv = global ptr null\n\n');
+    # Init-array bridge (#6978 0.1a): the bespoke _start bypasses libc startup,
+    # so the executable's own DT_INIT_ARRAY (which __libc_start_main would run) is
+    # never processed. A static-archive floor member may ship a load-time
+    # constructor (e.g. liblzma crc32 sets its .bss dispatch pointer there). The
+    # ELF linker writes the merged .init_array's base + entry count into these two
+    # globals; main loops over them and calls each constructor before jac_entry.
+    # Count defaults to 0, so a binary with no constructors runs nothing extra.
+    # Guard the globals like __jac_argc so a module that already declares them
+    # (or a re-injection) does not produce a duplicate-global IR error.
+    initarr_ir = ""
+        if "__jac_init_array" in llvm_ir_str
+        else (
+            '@__jac_init_array = global ptr null\n' + '@__jac_init_count = global i64 0\n\n'
+        );
     # Only declare exit() if sys.exit() didn't already declare it
     # llvmlite quotes the name as @"exit", so check both forms
     has_exit = "@exit" in llvm_ir_str or '@"exit"' in llvm_ir_str;
     exit_decl = "" if has_exit else 'declare void @exit(i32) noreturn\n\n';
+    # glibc's process bring-up entry: brings up TLS + the main thread's pthread
+    # descriptor, then calls main and exits with its return. Guarded against a
+    # duplicate declaration like the others.
+    lsm_decl = ""
+        if "@__libc_start_main" in llvm_ir_str
+        else 'declare i32 @__libc_start_main(ptr, i32, ptr, ptr, ptr, ptr, ptr)\n\n';
+    # `atexit` and `__dso_handle` live in glibc's libc_nonshared.a / the CRT, NOT
+    # in libc.so, so a static C floor that registers exit cleanup (e.g. OpenSSL's
+    # OPENSSL_cleanup) would fail to dynamically resolve them. Provide them in the
+    # main object: a real `atexit` forwarding to `__cxa_atexit` (exported by
+    # libc.so; cleanup still runs via __cxa_finalize at exit) and a `__dso_handle`
+    # the floor's own __cxa_atexit calls bind to. (#6978 Phase 1)
+    dso_def = ""
+        if "@__dso_handle" in llvm_ir_str
+        else '@__dso_handle = global i8 0\n\n';
+    atexit_def = ""
+        if ("@atexit(" in llvm_ir_str or '@"atexit"' in llvm_ir_str)
+        else (
+            'declare i32 @__cxa_atexit(ptr, ptr, ptr)\n' + 'define i32 @atexit(ptr %atx_fn) {\nentry:\n' + '    %atx_r = call i32 @__cxa_atexit(ptr %atx_fn, ptr null, ptr @__dso_handle)\n' + '    ret i32 %atx_r\n}\n\n'
+        );
     ir = (
-        '\n; --- injected entry point ---\n' + globals_ir + exit_decl + 'declare ptr @llvm.stacksave()\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n\n' + 'define void @_start() naked noreturn {\n' + 'entry:\n' + '    %sp = call ptr @llvm.stacksave()\n' + '    %argc = load i32, ptr %sp\n' + '    %argv = getelementptr i8, ptr %sp, i64 8\n' + '    %ret = call i32 @main(i32 %argc, ptr %argv)\n' + '    call void @exit(i32 %ret)\n' + '    unreachable\n' + '}\n'
+        '\n; --- injected entry point ---\n' + globals_ir + initarr_ir + exit_decl + lsm_decl + dso_def + atexit_def + 'declare ptr @llvm.stacksave()\n\n' + 'define i32 @main(i32 %argc, ptr %argv) {\n' + 'entry:\n' + '    store i32 %argc, ptr @__jac_argc\n' + '    store ptr %argv, ptr @__jac_argv\n' + '    %ia = load ptr, ptr @__jac_init_array\n' + '    %ic = load i64, ptr @__jac_init_count\n' + '    br label %ia.cond\n' + 'ia.cond:\n' + '    %i = phi i64 [ 0, %entry ], [ %inext, %ia.body ]\n' + '    %more = icmp ult i64 %i, %ic\n' + '    br i1 %more, label %ia.body, label %ia.done\n' + 'ia.body:\n' + '    %slot = getelementptr ptr, ptr %ia, i64 %i\n' + '    %fn = load ptr, ptr %slot\n' + '    call void %fn()\n' + '    %inext = add i64 %i, 1\n' + '    br label %ia.cond\n' + 'ia.done:\n' + '    call void @jac_entry()\n' + '    ret i32 0\n' + '}\n\n' + 'define void @_start() naked noreturn {\n' + 'entry:\n' + '    %sp = call ptr @llvm.stacksave()\n' + '    %argc = load i32, ptr %sp\n' + '    %argv = getelementptr i8, ptr %sp, i64 8\n' + '    call void @_jac_boot(i32 %argc, ptr %argv, ptr %sp)\n' + '    unreachable\n' + '}\n\n' + '; A NORMAL (non-naked) shim makes the hand-off to __libc_start_main. The naked\n' + '; _start cannot align the stack for __libc_start_main\'s 7th argument\n' + '; (stack_end), which x86-64 passes on the stack: a misaligned call leaves the\n' + '; whole program 8 bytes off, faulting any AVX `vmovdqa` (e.g. OpenSSL sha512).\n' + '; Routing through a framed function lets the backend align the call correctly.\n' + '; (#6978 Phase 1)\n' + 'define internal void @_jac_boot(i32 %bargc, ptr %bargv, ptr %bstack) noreturn {\n' + 'entry:\n' + '    %r = call i32 @__libc_start_main(ptr @main, i32 %bargc, ptr %bargv, ptr null, ptr null, ptr null, ptr %bstack)\n' + '    unreachable\n' + '}\n'
     );
     return llvm_ir_str + ir;
 }
@@ -98,7 +148,12 @@ def _inject_shared_init(
 ) -> tuple[str, list[str]] {
     init_calls: list[str] = [];
     # This module's own glob-init (NaIRGenPass always emits it when present).
-    if "@__jac_glob_init(" in llvm_ir_str {
+    # LLVM quotes the symbol ("define void @\"__jac_glob_init\"()") because the
+    # name is not a bare IR identifier, so check both the quoted and unquoted
+    # forms -- matching the transitive-source branch below. Checking only the
+    # unquoted form let `__jac_shared_init` be emitted empty, leaving global
+    # clib structs uninitialized (NULL) and segfaulting on first field access.
+    if ('@"__jac_glob_init"' in llvm_ir_str) or ("@__jac_glob_init(" in llvm_ir_str) {
         init_calls.append("  call void @__jac_glob_init()");
     }
     import from jaclang.jac0core.codeinfo { native_safe_sym }
@@ -210,6 +265,21 @@ impl nacompile(
         );
     }
 
+    # linux/elf target: emit an ELF binary via the pure-Jac ELF linker, letting a
+    # macOS (or any) host cross-build for Linux. A bare alias maps to
+    # x86_64-unknown-linux-gnu; a full triple is used verbatim.
+    # Bare aliases or a GNU/musl Linux triple. Suffix-match `linux-gnu`/
+    # `linux-musl` rather than a bare `linux` substring so kernel-but-not-ELF-libc
+    # triples like `*-linux-android` do not accidentally route here.
+    is_linux_target = (target in ["linux", "elf"])
+    or ("linux-gnu" in target)
+    or ("linux-musl" in target);
+    if is_linux_target {
+        os.environ["JAC_NATIVE_TARGET"] = (
+            target if "-" in target else "x86_64-unknown-linux-gnu"
+        );
+    }
+
     # Scrub: wipe cached compilation artifacts under the source tree
     if scrub {
         import from jaclang.jac0core.jir { scrub_cache_dirs }
@@ -222,8 +292,10 @@ impl nacompile(
 
     auto_promote = is_jac(filename) and not is_native_module(filename);
 
-    # Detect platform (host darwin, or an explicit macOS cross-target)
-    is_macos = (sys.platform == "darwin") or is_macos_target;
+    # Detect platform. The host default is overridden by an explicit cross-target
+    # so a macOS host can emit ELF (linux) / PE (windows), not just Mach-O.
+    is_macos = ((sys.platform == "darwin") and not is_windows and not is_linux_target)
+    or is_macos_target;
 
     # Determine output path
     if not output {
@@ -377,7 +449,7 @@ impl nacompile(
     console.print("  LLVM IR generated successfully.");
 
     # Step 3: Initialize llvmlite
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
 
@@ -451,12 +523,29 @@ impl nacompile(
     # in the compiled module and its transitive dependencies.
     # _clib_paths is accumulated by _compile_and_link_native_imports.
     clib_paths = ir_module.gen._clib_paths;
+    # #6978 Phase 0.1a: a clib import that has a bundled static archive (a C
+    # floor like lzma/bz2/expat) is linked into the binary instead of becoming a
+    # runtime dylib dependency. _collect_floor_archives selects the needed
+    # members and returns the set of clib paths it handled so they are dropped
+    # from needed_libs / symbol_lib_map below. (Mach-O only so far; ELF/PE keep
+    # the dylib path until their linkers gain object merge.)
+    (archive_members, _floor_handled) = _collect_floor_archives(
+        clib_paths or [], ir_module.gen._clib_symbol_lib, triple, is_macos
+    );
+    if archive_members {
+        console.print(
+            f"  Static-linking {len(archive_members)} floor archive member(s)."
+        );
+    }
     # Maps a raw clib path to the soname actually recorded in needed_libs, so
     # the per-symbol library attribution below lines up with the linker's
     # LC_LOAD_DYLIB ordinals.
     _lib_norm: dict[str, str] = {};
     if clib_paths {
         for lib_path in clib_paths {
+            if lib_path in _floor_handled {
+                continue;  # statically linked from its archive, not a dylib dep
+            }
             # A relative path with a directory component (e.g. "./libfoo.so")
             # names a library shipped beside the binary. Record only its soname
             # so the linker's DT_RUNPATH=$ORIGIN entry resolves it relative to
@@ -498,6 +587,9 @@ impl nacompile(
     # unused (the loader searches all DT_NEEDED libs flatly).
     symbol_lib_map: dict[str, str] = {};
     for (_sym, _raw) in ir_module.gen._clib_symbol_lib.items() {
+        if _raw in _floor_handled {
+            continue;  # resolved by a statically-linked archive member
+        }
         symbol_lib_map[_sym] = _lib_norm.get(_raw, _raw);
     }
 
@@ -556,7 +648,7 @@ impl nacompile(
     # In --shared mode we must NOT internalize: the exported `:pub` symbols and
     # the RC wrappers have to survive as externally-visible definitions.
     if _opt_level > 0 {
-        pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level, size_level=0);
+        pto = llvm.create_pipeline_tuning_options(speed_level=_opt_level);
         pb = llvm.create_pass_builder(target_machine, pto);
         opt_mpm = pb.getModulePassManager();
         if not shared {
@@ -612,7 +704,8 @@ impl nacompile(
                 shared=shared,
                 export_symbols=export_symbols,
                 init_funcs=init_funcs,
-                soname=os.path.basename(output)
+                soname=os.path.basename(output),
+                archive_members=archive_members
             );
         } except Exception as e {
             console.error(f"Mach-O linking failed: {e}");
@@ -634,7 +727,8 @@ impl nacompile(
                 shared=shared,
                 export_symbols=export_symbols,
                 init_funcs=init_funcs,
-                soname=os.path.basename(output)
+                soname=os.path.basename(output),
+                archive_members=archive_members
             );
         } except Exception as e {
             console.error(f"ELF linking failed: {e}");
@@ -660,4 +754,217 @@ impl nacompile(
         console.print(f"  Run with: ./{output}");
     }
     return 0;
+}
+
+
+# ─── Static C-floor archive resolution (#6978 Phase 0.1a + 0.2) ───────────────
+"""Resolve the floor-archive lib dir for `triple` under `pkg_root`, or None.
+
+Two shipping shapes carry the archives, tried in order:
+
+* **Dev/CI** keep the full pbs tree under
+  `<pkg_root>/.pbs-build/<osarch>/python/build/lib`.
+* **Installed/payload** builds materialize a curated subset into the runtime
+  cache at `<rt>/python/floor/<osarch>`; `jaclang.__file__` resolves to
+  `<rt>/site/jaclang`, so `pkg_root` is `<rt>/site` and the floor sits one level
+  up at `../python/floor` (staged by `mkpayload`, #6978 0.2).
+
+Both roots are arch-keyed so a cross-`--target` build only matches its own
+target's archives -- a host-arch floor must never be linked into a different-arch
+binary. The dev branch keeps its historical first-dir fallback; the installed
+branch is strict (no fallback) so a single-arch payload can't mis-serve a cross
+target. Split out from _floor_lib_dir so the resolution is unit-testable with a
+synthetic root (the real lookup keys off jaclang.__file__)."""
+def _resolve_floor_dir(pkg_root: str, triple: str) -> (str | None) {
+    import os;
+    want = "aarch64" if ("aarch64" in triple or "arm64" in triple) else "x86_64";
+
+    # Dev/CI: <pkg_root>/.pbs-build/<osarch>/python/build/lib (full pbs tree).
+    pbs = os.path.join(pkg_root, ".pbs-build");
+    if os.path.isdir(pbs) {
+        fallback: (str | None) = None;
+        for d in sorted(os.listdir(pbs)) {
+            libdir = os.path.join(pbs, d, "python", "build", "lib");
+            if os.path.isdir(libdir) {
+                if fallback is None {
+                    fallback = libdir;
+                }
+                if want in d {
+                    return libdir;
+                }
+            }
+        }
+        if fallback is not None {
+            return fallback;
+        }
+    }
+
+    # Installed: <rt>/python/floor/<osarch> (curated subset in the payload).
+    floor = os.path.join(os.path.dirname(pkg_root), "python", "floor");
+    if os.path.isdir(floor) {
+        for d in sorted(os.listdir(floor)) {
+            cand = os.path.join(floor, d);
+            if os.path.isdir(cand) and (want in d) {
+                return cand;
+            }
+        }
+    }
+    return None;
+}
+
+
+"""Locate the bundled C-archive floor lib dir for `triple`, or None.
+
+`JAC_NATIVE_FLOOR_DIR` overrides everything; otherwise resolves against the
+jaclang package root via _resolve_floor_dir (dev `.pbs-build` or the installed
+`python/floor` payload, #6978 0.2). None -> the caller leaves the import as a
+dynamic dylib dependency instead of static-linking the floor."""
+def _floor_lib_dir(triple: str) -> (str | None) {
+    import os;
+    env = os.environ.get("JAC_NATIVE_FLOOR_DIR", "");
+    if env and os.path.isdir(env) {
+        return env;
+    }
+    import jaclang;
+    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
+    return _resolve_floor_dir(pkg_root, triple);
+}
+
+
+"""Resolve the bundled CA certificate bundle under `pkg_root`, or None.
+
+Installed builds materialize it at `<rt>/python/floor/cacert.pem` (pkg_root is
+`<rt>/site`); dev builds fall back to pbs's vendored certifi copy under
+`.pbs-build`. Split from _floor_ca_bundle for the same unit-test reason as
+_resolve_floor_dir. Staged by `mkpayload` (#6978 0.2); the ssl floor (Phase 1)
+is its consumer."""
+def _resolve_ca_bundle(pkg_root: str) -> (str | None) {
+    import os;
+    # Installed: <rt>/python/floor/cacert.pem.
+    cand = os.path.join(os.path.dirname(pkg_root), "python", "floor", "cacert.pem");
+    if os.path.isfile(cand) {
+        return cand;
+    }
+    # Dev/CI: pbs's vendored certifi bundle.
+    import glob;
+    hits = sorted(
+        glob.glob(
+            os.path.join(
+                pkg_root,
+                ".pbs-build",
+                "*",
+                "python",
+                "install",
+                "lib",
+                "python*",
+                "site-packages",
+                "pip",
+                "_vendor",
+                "certifi",
+                "cacert.pem"
+            )
+        )
+    );
+    return hits[0] if hits else None;
+}
+
+
+"""Locate the bundled CA certificate bundle for the ssl floor, or None.
+
+`JAC_NATIVE_CA_BUNDLE` overrides; otherwise resolves against the jaclang package
+root via _resolve_ca_bundle (#6978 0.2)."""
+def _floor_ca_bundle -> (str | None) {
+    import os;
+    env = os.environ.get("JAC_NATIVE_CA_BUNDLE", "");
+    if env and os.path.isfile(env) {
+        return env;
+    }
+    import jaclang;
+    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(jaclang.__file__)));
+    return _resolve_ca_bundle(pkg_root);
+}
+
+
+"""Map a resolved clib soname/path to its static-archive filename. A floor lib
+stem has no internal dots, so everything from the first `.` is extension/version
+noise: `@loader_path/liblzma.dylib`, `liblzma.so.5`, and `liblzma.5.dylib` all
+map to `liblzma.a`."""
+def _clib_to_archive_name(clib_path: str) -> str {
+    import os;
+    return os.path.basename(clib_path).split(".")[0] + ".a";
+}
+
+
+"""For each clib import that has a bundled static archive, select the members
+that satisfy the symbols imported from it and return (member_object_bytes,
+handled_clib_paths). The caller drops handled paths from needed_libs /
+symbol_lib_map so the floor links in statically instead of as a dylib. Mach-O
+and ELF are supported (both linkers merge archive members); PE keeps the dylib
+path. The bundled floor is TLS-free on both targets (#6978 0.0), so no TLS
+relocation work is involved. Cross-archive floors (e.g. ssl -> crypto) are a
+follow-up: only symbols defined in the directly-imported archive are pulled."""
+def _collect_floor_archives(
+    clib_paths: list, clib_symbol_lib: dict, triple: str, is_macos: bool
+) -> tuple {
+    import os;
+    import from jaclang.compiler.passes.native.linker_common { select_ar_members }
+    member_bytes: list = [];
+    handled: set = set();
+    # PE/COFF has no archive-member merge yet; Mach-O and ELF do. Derive the
+    # PE check from the triple rather than a parameter (keeps the signature
+    # stable for the single call site).
+    tl = triple.lower();
+    is_pe = ("windows" in tl) or ("win32" in tl) or ("msvc" in tl) or ("mingw" in tl);
+    if is_pe or not clib_paths {
+        return (member_bytes, handled);
+    }
+    lib_dir = _floor_lib_dir(triple);
+    if lib_dir is None {
+        return (member_bytes, handled);
+    }
+    # Reverse the per-symbol attribution into per-library symbol lists.
+    syms_by_lib: dict = {};
+    for (sym, raw) in clib_symbol_lib.items() {
+        syms_by_lib.setdefault(raw, []).append(sym);
+    }
+    # Group clib paths by their resolved archive, unioning the symbols each
+    # contributes. Several paths can map to one archive (e.g. `liblzma.dylib`
+    # and `@rpath/liblzma.dylib`); resolving them in one pass per archive avoids
+    # dropping a second path's symbols. A path is only marked handled once its
+    # archive actually yields members, so an unused or empty import stays on the
+    # dynamic path instead of vanishing from both.
+    roots_by_archive: dict = {};
+    paths_by_archive: dict = {};
+    for clib_path in clib_paths {
+        arch_file = os.path.join(lib_dir, _clib_to_archive_name(clib_path));
+        if not os.path.isfile(arch_file) {
+            continue;  # not a bundled floor -> leave as a dylib dependency
+        }
+        paths_by_archive.setdefault(arch_file, []).append(clib_path);
+        for s in syms_by_lib.get(clib_path, []) {
+            # Mach-O mangles a leading underscore onto C names; ELF does not.
+            roots_by_archive.setdefault(arch_file, []).append(
+                ("_" + s) if is_macos else s
+            );
+        }
+    }
+    for (arch_file, roots) in roots_by_archive.items() {
+        if not roots {
+            continue;
+        }
+        with open(arch_file, "rb") as _f {
+            data = _f.read();
+        }
+        members = select_ar_members(data, roots);
+        if not members {
+            continue;
+        }
+        for m in members {
+            member_bytes.append(m.data);
+        }
+        for p in paths_by_archive.get(arch_file, []) {
+            handled.add(p);
+        }
+    }
+    return (member_bytes, handled);
 }

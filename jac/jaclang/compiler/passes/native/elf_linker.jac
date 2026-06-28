@@ -119,7 +119,8 @@ obj ElfLinker {
         shared: bool = False,
         export_symbols: list[str] = [],
         init_funcs: list[str] = [],
-        soname: str = ""
+        soname: str = "",
+        archive_members: list[bytes] = []
     ) -> bool;
 
     def parse_object -> bool;

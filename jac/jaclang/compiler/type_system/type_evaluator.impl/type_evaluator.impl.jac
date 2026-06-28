@@ -1315,6 +1315,30 @@ impl TypeEvaluator._get_type_of_expression_core(
                 } elif isinstance(
                     base_type, (types.FunctionType, types.OverloadedType)
                 ) {
+                    # `@<prop>.setter` / `.getter` / `.deleter`: the property
+                    # descriptor's accessor-registration decorators. A @property
+                    # getter resolves to its FunctionType (or an OverloadedType
+                    # when the getter itself is overloaded), so the decorator
+                    # access `<prop>.setter` lands in this function branch rather
+                    # than on a property object. Model it as the same callable:
+                    # the decorator returns the property, and the decorated
+                    # symbol's writability is classified from its decorators
+                    # separately (_classify_property_symbol), so the exact type
+                    # here is immaterial -- what matters is not raising a bogus
+                    # E1031 on the canonical setter pattern (incl. typeshed's
+                    # `object.__class__`, which A2's `self.__class__.__name__`
+                    # forces the checker to evaluate). Gated on the target
+                    # actually being a property so non-property `.setter` reads
+                    # still surface as errors.
+                    import from jaclang.compiler.type_system.type_utils {
+                        PropertyWriteKind
+                    }
+                    if expr.right.value in ("setter", "getter", "deleter")
+                    and isinstance(expr.target, uni.Name)
+                    and (expr.target.sym is not None)
+                    and self._classify_property_symbol(expr.target.sym) != PropertyWriteKind.NOT_PROPERTY {
+                        return base_type;
+                    }
                     # All functions are instances of types.FunctionType at runtime.
                     # Delegate attribute lookup to the prefetched FunctionType class.
                     # TODO: Add is_method_type() check and use method_class for bound methods.
@@ -1643,6 +1667,24 @@ impl TypeEvaluator._get_type_of_expression_core(
                         if self.prefetch and self.prefetch.int_class {
                             return self._convert_to_instance(self.prefetch.int_class);
                         }
+                    }
+                }
+                # Native C array-of-struct idiom (#6707, #6708): a struct-typed
+                # value used as a pointer (`buf: Color`) supports `buf[i]`, which
+                # yields one struct element. A user struct has no __getitem__, so
+                # model it here -- scoped to native context so a normal Jac
+                # `obj[i]` on a non-subscriptable object still errors. Integer
+                # index only (matches the native GEP-by-element lowering).
+                if (
+                    self._in_native_context()
+                    and isinstance(base_type, types.ClassType)
+                    and base_type.is_class_instance()
+                    and not base_type.is_builtin()
+                ) {
+                    idx_type = self.get_type_of_expression(subscript_arg);
+                    if isinstance(idx_type, types.ClassType)
+                    and idx_type.is_builtin("int") {
+                        return base_type;
                     }
                 }
                 return result or types.UnknownType();

@@ -1,6 +1,6 @@
 [project]
 name = "jac-scale"
-version = "0.2.30"
+version = "0.2.31"
 description = "Plugin for Jac enabling fully abstracted and automated deployment and scaling with FastAPI, Redis, MongoDB, and Kubernetes integration."
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
@@ -49,6 +49,11 @@ redis = ">=7.1.0,<8.0.0"
 [optional-dependencies.monitoring]
 prometheus-client = ">=0.21.0,<1.0.0"
 
+[optional-dependencies.firebase]
+google-cloud-firestore = ">=2.21.0,<3.0.0"
+google-cloud-storage = ">=2.19.0,<3.0.0"
+firebase-admin = ">=6.0.0,<8.0.0"
+
 # O-02 distributed tracing. App-side OpenTelemetry SDK + OTLP/HTTP
 # exporter to the Alloy collector (M-14.a DaemonSet doubles as an OTel
 # collector) -> Tempo. Soft dependency: jac-scale runs without it, just
@@ -75,7 +80,7 @@ docker = ">=7.1.0,<8.0.0"
 boto3 = ">=1.40.0"
 
 [optional-dependencies.all]
-"jac-scale[data,monitoring,tracing,scheduler,deploy,aws]" = "*"
+"jac-scale[data,monitoring,tracing,scheduler,deploy,aws,firebase]" = "*"
 
 [optional-dependencies.test]
 "jac-scale[all]" = "*"

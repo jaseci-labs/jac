@@ -65,10 +65,17 @@ impl MongoDb.find_one(
 }
 
 impl MongoDb.find(
-    col_name: str, filter: dict, projection: dict | None = None
+    col_name: str,
+    filter: dict,
+    projection: dict | None = None,
+    limit: int | None = None
 ) -> Cursor | list {
     col: Any = self._get_mongo_collection(col_name);
-    return col.find(filter, projection);
+    cursor = col.find(filter, projection);
+    if limit is not None {
+        cursor = cursor.limit(limit);
+    }
+    return cursor;
 }
 
 impl MongoDb.count_documents(col_name: str, filter: dict) -> int {
@@ -171,7 +178,10 @@ impl MongoDb.find_nodes(
     node_type: str, filter: dict = {}, col_name: str = '_anchors'
 ) -> list {
     mongo_filter: dict = {"data.archetype.__type__": node_type};
-    for (key, value) in filter.items() {
+    # The abstract Db.find_nodes declares `filter: dict = None`, so a caller
+    # reaching this through a Db-typed reference can pass None; treat that as
+    # "no extra constraints" rather than crashing on None.items().
+    for (key, value) in (filter or {}).items() {
         mongo_filter[f"data.archetype.{key}"] = value;
     }
     col = self._get_mongo_collection(col_name);

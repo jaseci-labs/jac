@@ -16,11 +16,14 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
             'client_auth_callback_url': '',  # If set, redirects to this URL with token/error
             'google': {'client_id': '', 'client_secret': ''},
             'apple': {'client_id': '', 'client_secret': ''},
-            'github': {'client_id': '', 'client_secret': ''}
+            'github': {'client_id': '', 'client_secret': ''},
+            'firebase': {'project_id': ''}
         },
         'database': {
+            'type': None,
             'mongodb_uri': None,
             'redis_url': None,
+            'project_id': None,
             'shelf_db_path': '.jac/data/anchor_store.db',
             'redis_max_memory': '200mb',
             'redis_eviction_policy': 'allkeys-lru',
@@ -181,6 +184,7 @@ impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, any] {
     google_config = sso_config.get('google', {});
     apple_config = sso_config.get('apple', {});
     github_config = sso_config.get('github', {});
+    firebase_config = sso_config.get('firebase', {});
     return {
         'host': sso_config.get('host', 'http://localhost:8000'),
         'client_auth_callback_url': sso_config.get('client_auth_callback_url', ''),
@@ -195,6 +199,13 @@ impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, any] {
         'github': {
             'client_id': github_config.get('client_id', ''),
             'client_secret': github_config.get('client_secret', '')
+        },
+        'firebase': {
+            'project_id': resolve_firebase_project_id(
+                FIREBASE_AUTH_PROJECT_ID_ENV,
+                firebase_config.get('project_id', '') or None
+            )
+            or ''
         }
     };
 }
@@ -204,8 +215,12 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] 
     config = self.load();
     db_config = config.get('database', {});
     return {
+        'type': db_config.get('type'),
         'mongodb_uri': os.environ.get('MONGODB_URI') or db_config.get('mongodb_uri'),
         'redis_url': os.environ.get('REDIS_URL') or db_config.get('redis_url'),
+        'project_id': resolve_firebase_project_id(
+            FIRESTORE_PROJECT_ID_ENV, db_config.get('project_id')
+        ),
         'shelf_db_path': db_config.get('shelf_db_path', '.jac/data/anchor_store.db'),
         'redis_max_memory': db_config.get('redis_max_memory', '200mb'),
         'redis_eviction_policy': db_config.get('redis_eviction_policy', 'allkeys-lru'),

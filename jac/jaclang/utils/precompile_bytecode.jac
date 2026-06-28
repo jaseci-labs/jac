@@ -9,7 +9,6 @@ Usage:
 Examples:
     jac run utils/precompile_bytecode.jac./jac
     jac run utils/precompile_bytecode.jac./jac-scale
-    jac run utils/precompile_bytecode.jac./jac-client
     jac run utils/precompile_bytecode.jac./jac-byllm
     jac run utils/precompile_bytecode.jac./jac-mcp
 """
@@ -48,29 +47,14 @@ def find_package_dir(source_dir: str) -> str | None {
         ".github",
         "node_modules"
     ];
-    # First pass: look for directories with __init__.py or __init__.jac
+    # Find the package directory: a child with __init__.py or __init__.jac.
+    # Every package fed to this script (jac -> jaclang, jac-scale -> jac_scale,
+    # jac-byllm -> byllm, and the binary's assembled site dir) ships one.
     for child in sorted(src.iterdir()) {
         if child.is_dir() and child.name not in excluded {
             init_py = child / "__init__.py";
             init_jac = child / "__init__.jac";
             if init_py.is_file() or init_jac.is_file() {
-                return str(child);
-            }
-        }
-    }
-    # Second pass: namespace packages — directory with .jac files in subdirs
-    # Use the source dir name convention: jac-client -> jac_client
-    expected_name = src.name.replace("-", "_");
-    candidate = src / expected_name;
-    if candidate.is_dir() and any(candidate.rglob("*.jac")) {
-        return str(candidate);
-    }
-    # Last resort: any child dir containing .jac files
-    for child in sorted(src.iterdir()) {
-        if child.is_dir()
-        and child.name not in excluded
-        and not child.name.startswith(".") {
-            if any(child.rglob("*.jac")) {
                 return str(child);
             }
         }
@@ -190,6 +174,14 @@ def main {
         jir_rel = rel.with_suffix(".jir");
         jir_path = out_dir / jir_rel;
 
+        # Live, single-line progress (overwrites in place on a tty; harmless
+        # plain lines through a pipe). Use stderr + explicit flush -- stderr is
+        # line-buffered, so a \r without \n would otherwise never appear.
+        done = compiled + failed;
+        label = str(rel)[:60].ljust(60);
+        sys.stderr.write(f"\r  [{done + 1}/{len(jac_files)}] {label}");
+        sys.stderr.flush();
+
         try {
             bytecode = compile_and_extract(jac_path);
             if bytecode is None {
@@ -216,6 +208,10 @@ def main {
             failed += 1;
         }
     }
+
+    # Close off the in-place progress line before the summary.
+    sys.stderr.write("\n");
+    sys.stderr.flush();
 
     console.print(
         f"\nDone! Compiled {compiled}/{len(jac_files)} modules ({failed} failed)"

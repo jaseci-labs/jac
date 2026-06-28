@@ -2,7 +2,7 @@
 
 
 Moved verbatim from client_runtime.impl.jac. Uses only ambient JS globals
-(window, globalThis, fetch, JSON, Date, Reflect, ...) — no framework imports.
+(window, globalThis, fetch, JSON, Date, Reflect, ...) -- no framework imports.
 """
 
 impl navigate(path: str) -> None {
@@ -165,8 +165,40 @@ impl __invalidateEndpoint(endpoint_key: str) -> None {
 # RAW FETCH HELPERS (no caching, just HTTP)
 # ============================================================================
 
+# Native bridge helpers (desktop only -- only reachable when __JAC_NATIVE__ is set).
+async def __nativeInvoke(kind: str, name: str, `node: str, fields: dict) -> any {
+    token = __getLocalStorage("jac_token") or "";
+    payload = {
+        "kind": kind,
+        "name": name,
+        "node": `node,
+        "fields": fields,
+        "token": token
+    };
+    return await globalThis.__jac_invoke(JSON.stringify(payload));
+}
+
+def __nativeErrorMsg(response: any) -> str {
+    try {
+        return response["body"]["error"]["message"];
+    } except Exception { }
+    return "Unknown error";
+}
+
 # Direct walker fetch (POST /walker/<name>[/<nodeId>])
 impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
+    if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
+        response = await __nativeInvoke("walker", `walker, nodeId, fields);
+        if not response["ok"] {
+            if response["status"] == 401 {
+                __removeLocalStorage("jac_token");
+                window.location.reload();
+                return {};
+            }
+            raise Exception(f"Walker {`walker} failed: {__nativeErrorMsg(response)}");
+        }
+        return response["body"]["data"] if response["body"]["data"] else {};
+    }
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
     url = f"{base_url}/walker/{`walker}";
@@ -196,6 +228,24 @@ impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
 
 # Direct function fetch (POST /function/<name>)
 impl __doFuncFetch(function_name: str, args: dict) -> any {
+    if globalThis.__JAC_NATIVE__ and globalThis.__jac_invoke {
+        response = await __nativeInvoke("function", function_name, "", args);
+        if not response["ok"] {
+            raise Exception(
+                f"Function {function_name} failed: {__nativeErrorMsg(response)}"
+            );
+        }
+        result = None;
+        try {
+            data = response["body"]["data"];
+            if data and "result" in data {
+                result = data["result"];
+            }
+        } except Exception as e {
+            console.warn(f"Failed to extract result for {function_name} (native):", e);
+        }
+        return result;
+    }
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
     headers = {"Content-Type": "application/json"};
@@ -217,7 +267,7 @@ impl __doFuncFetch(function_name: str, args: dict) -> any {
     }
     result = None;
     try {
-        if payload["data"] and payload["data"]["result"] {
+        if payload["data"] and "result" in payload["data"] {
             result = payload["data"]["result"];
         }
     } except Exception as e {

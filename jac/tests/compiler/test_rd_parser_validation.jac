@@ -1,10 +1,3 @@
-"""RD parser validation tests – migrated from test_rd_parser_validation.py.
-
-Validates the recursive descent parser on the full micro suite files and
-gap coverage files. Also tests that the parser correctly rejects invalid
-constructs.
-"""
-
 import os;
 import from pathlib { Path }
 import from tests.support { JAC_ROOT }
@@ -21,7 +14,6 @@ glob GAP_DIR = os.path.join(
          JAC_ROOT, "tests", "compiler", "fixtures", "rd_parser_gaps"
      );
 
-"""Parse source with the RD parser, returning a Module or None on error."""
 def parse_with_rd(source: str, file_path: str) -> Module | None {
     try {
         import from jaclang.jac0core.parser.parser { parse }
@@ -35,7 +27,6 @@ def parse_with_rd(source: str, file_path: str) -> Module | None {
     }
 }
 
-"""Verify RD parser can parse a single file without errors."""
 def rd_parser_test(filename: str) {
     source = read_file_with_encoding(filename);
     saved_test_count = JacTest.TEST_COUNT;
@@ -164,14 +155,12 @@ glob GAP_FILES = [
          "double_else_on_if": "with entry { if true { } else { } else { } }",
          "from_import_empty_items": "import from foo { };",
          "bare_semi_at_module_level": ";",
-         # --- Strictness gaps: semicolons optional where they should be required ---
          "assignment_missing_semi": 'with entry { x = 5 }',
          "augmented_assign_missing_semi": 'with entry { x += 1 }',
          "expression_stmt_missing_semi": 'with entry { print("hi") }',
          "report_missing_semi": 'with entry { report 5 }',
          "chained_assign_missing_semi": 'with entry { x = y = 5 }',
          "typed_assign_missing_semi": 'with entry { x: int = 5 }',
-         # --- Strictness gaps: keywords as parameter names ---
          "keyword_param_if": "def foo(if: int) { }",
          "keyword_param_while": "def foo(while: str) { }",
          "keyword_param_for": "def foo(for: int) { }",
@@ -183,13 +172,15 @@ glob GAP_FILES = [
          "keyword_param_obj": "def foo(obj: int) { }",
          "keyword_param_node": "def foo(node: int) { }",
          "keyword_param_override": "def foo(override: bool) { }",
+         "keyword_param_root": "def foo(root: int) { }",
+         "keyword_param_super": "def foo(super: int) { }",
          "keyword_param_in_lambda": "with entry { x = lambda if: int : if; }",
-         # --- Strictness gaps: enum in code blocks (not allowed at stmt level in Lark) ---
+         "keyword_param_root_in_lambda": "with entry { x = lambda root: int : root; }",
+         "keyword_param_super_in_lambda": "with entry { x = lambda super: int : super; }",
          "enum_inside_if": "with entry { if true { enum Color { RED } } }",
          "enum_inside_function": "def foo() { enum Color { RED } }"
      },
      MUST_REJECT_VALIDATION: dict[str, str] = {
-         # These are valid at the parser level but rejected by ASTValidationPass
          "pass_keyword": "with entry { match x { case 1: pass; } }",
          "with_exit_at_module_level": 'with exit { print("bye"); }',
          "empty_match_body": "with entry { match x { } }",
@@ -203,7 +194,6 @@ glob GAP_FILES = [
          "assign_to_super": "with entry { super = 1; }"
      };
 
-"""Parse and run ASTValidationPass, returning True if errors were found."""
 def parse_and_validate(source: str, file_path: str) -> bool {
     try {
         import from jaclang.jac0core.parser.parser { parse }

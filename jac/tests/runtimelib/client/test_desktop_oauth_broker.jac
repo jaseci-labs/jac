@@ -316,6 +316,111 @@ test "broker rejects requests with a non-loopback Host header" {
 }
 
 # ============================================================================
+# Cross-site (CSRF) defense: Origin / Sec-Fetch-Site on state-changing routes
+# ============================================================================
+"""A cross-site page cannot inject a token via POST /session (CSRF defense).
+
+The Host pin alone does not catch this: a remote page's `fetch` reaches us with
+our own loopback host in `Host` (the request target), but the browser also
+stamps the attacker's page in `Origin` / `Sec-Fetch-Site`, which a script cannot
+forge. The broker rejects a state-changing request initiated cross-site.
+"""
+test "broker rejects a cross-site token injection on post session" {
+    (srv, port, store, _opened, _web) = _start_server();
+    try {
+        # Attacker page POSTs a forged token from its own origin.
+        (s, _b) = _req(
+            port,
+            "/__jac/session",
+            "POST",
+            {"token": "tok-evil"},
+            {"Origin": "https://evil.example", "Sec-Fetch-Site": "cross-site"}
+        );
+        assert s == 403 , "a cross-site Origin must be rejected";
+        assert store.read() == "" , "a cross-site POST must not inject a token";
+
+        # Sec-Fetch-Site alone (no Origin header) is enough to reject.
+        (s2, _b2) = _req(
+            port,
+            "/__jac/session",
+            "POST",
+            {"token": "tok-evil2"},
+            {"Sec-Fetch-Site": "cross-site"}
+        );
+        assert s2 == 403;
+        assert store.read() == "";
+
+        # The same-origin UI page still writes the token (loopback Origin +
+        # same-origin Sec-Fetch-Site are accepted).
+        (s3, _b3) = _req(
+            port,
+            "/__jac/session",
+            "POST",
+            {"token": "tok-ok"},
+            {"Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}
+        );
+        assert s3 == 200;
+        assert store.read() == "tok-ok";
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}
+
+"""A cross-site GET cannot drive /oauth/start (forced logout + browser popup)."""
+test "broker rejects a cross-site oauth start" {
+    (srv, port, store, opened, _web) = _start_server();
+    try {
+        store.write("live-token");
+        (s, _b) = _req(
+            port,
+            "/__jac/oauth/start?platform=github&api_base=http://localhost:8000",
+            "GET",
+            None,
+            {"Origin": "https://evil.example", "Sec-Fetch-Site": "cross-site"}
+        );
+        assert s == 403 , "a cross-site oauth/start must be rejected";
+        # The rejected request must not have cleared the token or opened a browser.
+        assert store.read() == "live-token";
+        assert len(opened) == 0;
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}
+
+"""A cross-site DELETE cannot force a logout (clear the token)."""
+test "broker rejects a cross-site session delete" {
+    (srv, port, store, _opened, _web) = _start_server();
+    try {
+        store.write("live-token");
+        (s, _b) = _req(
+            port,
+            "/__jac/session",
+            "DELETE",
+            None,
+            {"Origin": "https://evil.example", "Sec-Fetch-Site": "cross-site"}
+        );
+        assert s == 403 , "a cross-site DELETE must be rejected";
+        assert store.read() == "live-token" , "a cross-site DELETE must not clear the token";
+
+        # The same-origin UI page can still log out.
+        (s2, _b2) = _req(
+            port,
+            "/__jac/session",
+            "DELETE",
+            None,
+            {"Origin": f"http://127.0.0.1:{port}", "Sec-Fetch-Site": "same-origin"}
+        );
+        assert s2 == 200;
+        assert store.read() == "";
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}
+
+# ============================================================================
 # Static passthrough: non-broker paths still serve the app bundle
 # ============================================================================
 """Paths outside the broker prefix serve files from the dist directory."""
@@ -328,6 +433,73 @@ test "broker serves static files for non broker paths" {
         (s, b) = _req(port, "/index.html");
         assert s == 200;
         assert "hello-desktop" in b;
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}
+
+# ============================================================================
+# sv bridge: POST /walker/* + /function/* forward to the in-process backend
+# ============================================================================
+"""With an `sv` callable wired, the broker forwards walker/function POSTs to it
+and echoes its (status, body, content-type) VERBATIM -- the CEF JS->sv bridge.
+Also proves the bearer token is lifted out of the Authorization header."""
+test "broker routes walker + function POSTs to the sv bridge verbatim" {
+    root_dir = tempfile.mkdtemp();
+    web_dir = os.path.join(root_dir, "web");
+    os.makedirs(web_dir, exist_ok=True);
+    store = SessionStore(os.path.join(root_dir, "data", "session.json"));
+    calls: list = [];
+    def fake_sv(method: str, path: str, body: bytes, token: str) -> tuple {
+        calls.append({"method": method, "path": path, "body": body, "token": token});
+        return (
+            201,
+            json.dumps({"ok": True, "data": {"echo": path}}),
+            "application/json"
+        );
+    }
+    handler = make_handler(web_dir, store, sv_bridge=fake_sv);
+    srv = socketserver.TCPServer(("127.0.0.1", 0), handler);
+    port = srv.server_address[1];
+    threading.Thread(target=srv.serve_forever, daemon=True).start();
+    try {
+        (s, b) = _req(
+            port,
+            "/walker/greet",
+            "POST",
+            {"name": "Ada"},
+            {"Authorization": "Bearer tok-123"}
+        );
+        # Raw passthrough: the broker echoes the sv tuple's status + body verbatim
+        # (201, not the always-200 the {status,ok,body} wrapper would force).
+        assert s == 201;
+        assert json.loads(b)["data"]["echo"] == "/walker/greet";
+        # The bridge forwarded method, path, body, and the stripped bearer token.
+        assert len(calls) == 1;
+        assert calls[0]["method"] == "POST";
+        assert calls[0]["path"] == "/walker/greet";
+        assert json.loads(calls[0]["body"]) == {"name": "Ada"};
+        assert calls[0]["token"] == "tok-123";
+        # /function/* routes the same way; no Authorization header -> empty token.
+        (s2, _b2) = _req(port, "/function/add", "POST", {"a": 1});
+        assert s2 == 201;
+        assert calls[1]["path"] == "/function/add";
+        assert calls[1]["token"] == "";
+    } finally {
+        srv.shutdown();
+        srv.server_close();
+    }
+}
+
+"""Without an `sv` callable (the default, e.g. the webview target), walker/function
+POSTs are NOT routed -- they 404 like any other unknown path, so wiring the sv
+bridge stays opt-in and the non-CEF path is unaffected."""
+test "broker 404s walker POSTs when no sv bridge is wired" {
+    (srv, port, _store, _opened, _web) = _start_server();
+    try {
+        (s, _b) = _req(port, "/walker/greet", "POST", {"name": "Ada"});
+        assert s == 404;
     } finally {
         srv.shutdown();
         srv.server_close();

@@ -24,6 +24,12 @@ only - no WebKitGTK/libpython/display): a host that uses the binding compiles an
 links `libwebview.so` with an `$ORIGIN` runpath, and an embedded-CPython host
 links libpython.
 
+The native target AOT-links libpython via Jac `import from "libpython..."` in the
+generated `na` host. The CEF target (`cef`) uses the same embedded-Python
+loopback server with the same AOT-linked libpython pattern; see
+[`../cef/README.md`](../cef/README.md) for how the two FFI layers (libpython vs
+libcef) are split there.
+
 ## Prerequisites (to build a host)
 
 Building links `libwebview.so`, which is compiled on first use, so you need the OS

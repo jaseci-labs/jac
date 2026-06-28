@@ -1083,28 +1083,53 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
     if not self.builder.block.is_terminated {
         self.builder.branch(merge_bb);
     }
-    # Merge with phi
-    self.builder.position_at_end(merge_bb);
+    # Merge with phi.
+    #
+    # Any type coercion needed to give the two branches a common type must be
+    # emitted into the *predecessor* blocks (just before their branch to
+    # merge_bb), never into merge_bb ahead of the phi. LLVM requires every PHI
+    # to be among the first instructions of its block, so a `sitofp`/`zext`
+    # sitting in merge_bb before the phi fails the verifier with "PHI nodes not
+    # grouped at top of basic block" (issue #6987). This mirrors how the binary
+    # op / BoolExpr paths coerce operands before branching. A coercion is only
+    # ever emitted when the branch types differ (int<->float or differing int
+    # widths); same-type branches emit nothing and so were never affected.
     if then_val is not None and else_val is not None {
-        # Coerce both to same type
         if then_val.type != else_val.type {
             if isinstance(then_val.type, ir.DoubleType)
             or isinstance(else_val.type, ir.DoubleType) {
-                (then_val, else_val) = self._promote_to_float(then_val, else_val);
+                # Promote the int side to double in whichever block it came
+                # from, before that block's branch.
+                if isinstance(then_val.type, ir.IntType) {
+                    self.builder.position_before(then_end_bb.terminator);
+                    then_val = self.builder.sitofp(
+                        then_val, ir.DoubleType(), name="ternary.cast"
+                    );
+                }
+                if isinstance(else_val.type, ir.IntType) {
+                    self.builder.position_before(else_end_bb.terminator);
+                    else_val = self.builder.sitofp(
+                        else_val, ir.DoubleType(), name="ternary.cast"
+                    );
+                }
             } elif isinstance(then_val.type, ir.IntType)
             and isinstance(else_val.type, ir.IntType) {
-                # Widen the narrower int to match the wider one
+                # Widen the narrower int to match the wider one, in the
+                # predecessor block that produced it.
                 if then_val.type.width > else_val.type.width {
+                    self.builder.position_before(else_end_bb.terminator);
                     else_val = self.builder.zext(
                         else_val, then_val.type, name="ternary.widen"
                     );
                 } else {
+                    self.builder.position_before(then_end_bb.terminator);
                     then_val = self.builder.zext(
                         then_val, else_val.type, name="ternary.widen"
                     );
                 }
             }
         }
+        self.builder.position_at_end(merge_bb);
         phi = self.builder.phi(then_val.type, name="ternary.result");
         phi.add_incoming(then_val, then_end_bb);
         phi.add_incoming(else_val, else_end_bb);
@@ -1119,6 +1144,13 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
     if nd.is_attr {
         target_name = self._get_name(nd.target);
         right_name = self._get_name(nd.right);
+        # `self.__class__.__name__` / `type(self).__name__` -> the class name
+        # (issue #6930 A2). Must run before generic field access, which has no
+        # field for the synthetic `__class__` / `__name__` attributes.
+        _cls_name = self._codegen_class_name(nd);
+        if _cls_name is not None {
+            return _cls_name;
+        }
         # Check .value / .name on a direct enum member: Priority.HIGH.value.
         # The member access nests as AtomTrailer(AtomTrailer(Enum, MEMBER), attr),
         # and _get_name(nd.target) is None for the inner trailer, so this must run
@@ -1196,6 +1228,22 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             full_name = f"{target_name}.{right_name}";
             if full_name in self.enum_values {
                 return self.enum_values[full_name];
+            }
+            # Static class-attribute read: `Class.attr` on a `static has` (#6951),
+            # resolved through the MRO so a subclass sees an inherited static.
+            # Guarded by `not in local_vars` so a local shadowing a class name
+            # still resolves as instance access below.
+            if (
+                target_name in self.struct_types and target_name not in self.local_vars
+            ) {
+                for _cn in self._mro_of(target_name) {
+                    _sf = f"{_cn}.{right_name}";
+                    if _sf in self.static_fields {
+                        return self.builder.load(
+                            self.static_fields[_sf], name=f"sfld.{right_name}"
+                        );
+                    }
+                }
             }
             # Enum .value / .name attribute: kind.value, self.kind.name —
             # enum-ness comes from the checked type of the target expression
@@ -1362,6 +1410,27 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
             # Chained index: evaluate target expression, infer list type or string
             target_val = self._codegen_expr(nd.target);
             if target_val is not None {
+                # Subscript on an `any` (boxed JacVal): dispatch on the key's
+                # static type to the canonical heterogeneous container layout.
+                # The result is itself an `any`. (#6943 NA-3)
+                if self?.jacval_type and target_val.type == self.jacval_type {
+                    _any_slices = nd.right.slices or [];
+                    if _any_slices {
+                        _any_idx_node = _any_slices[0];
+                        _any_key = self._codegen_expr(_any_idx_node);
+                        if _any_key is None and _any_idx_node?.start {
+                            _any_key = self._codegen_expr(_any_idx_node.start);
+                        }
+                        if _any_key is not None {
+                            _any_res = self._codegen_any_subscript(
+                                target_val, _any_key
+                            );
+                            if _any_res is not None {
+                                return _any_res;
+                            }
+                        }
+                    }
+                }
                 # bytes[i] -> int (length-aware; embedded NULs are reachable).
                 if self._is_bytes_value(target_val) {
                     slices = nd.right.slices or [];
@@ -1423,6 +1492,28 @@ impl NaIRGenPass._codegen_atom_trailer(nd: uni.AtomTrailer) -> (ir.Value | None)
                                 }
                             }
                             return result;
+                        }
+                    }
+                }
+                # Named struct pointer used as a C array: buf[i] (#6708).
+                # A struct-typed param/local (`buf: Color`) lowers to a
+                # StructName* (PointerType(IdentifiedStructType)), so a single
+                # GEP on that pointer -- one index advances a whole struct --
+                # gives true array semantics. The element pointer is returned
+                # as-is (the same StructName* a Color value is represented by),
+                # which aliases the buffer: `c = buf[i]` does not copy the
+                # struct, matching C pointer semantics.
+                _rd_sname: (str | None) = self._struct_ptr_pointee_name(target_val);
+                if _rd_sname is not None {
+                    slices = nd.right.slices or [];
+                    if slices {
+                        idx_node = slices[0];
+                        idx_val = self._codegen_expr(idx_node);
+                        if idx_val is None and idx_node?.start {
+                            idx_val = self._codegen_expr(idx_node.start);
+                        }
+                        if idx_val is not None {
+                            return self._struct_array_elem_ptr(target_val, idx_val);
                         }
                     }
                 }

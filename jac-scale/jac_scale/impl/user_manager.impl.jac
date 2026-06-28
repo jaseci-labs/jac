@@ -3,15 +3,24 @@ impl JacScaleUserManager.postinit -> None {
     for platform in Platforms {
         key = platform.value.lower();
         platform_config = sso_config.get(key, {});
-        client_id = platform_config.get('client_id', '');
-        client_secret = platform_config.get('client_secret', '');
-        if not client_id or not client_secret {
-            continue;
+        # Firebase uses project_id instead of client_id/client_secret.
+        if platform.value == Platforms.FIREBASE.value {
+            project_id = platform_config.get('project_id', '');
+            if not project_id {
+                continue;
+            }
+            self.SUPPORTED_PLATFORMS[platform.value] = {"project_id": project_id};
+        } else {
+            client_id = platform_config.get('client_id', '');
+            client_secret = platform_config.get('client_secret', '');
+            if not client_id or not client_secret {
+                continue;
+            }
+            self.SUPPORTED_PLATFORMS[platform.value] = {
+                "client_id": client_id,
+                "client_secret": client_secret
+            };
         }
-        self.SUPPORTED_PLATFORMS[platform.value] = {
-            "client_id": client_id,
-            "client_secret": client_secret
-        };
     }
 
     db_config = get_scale_config().get_database_config();
@@ -156,7 +165,7 @@ impl JacScaleUserManager.reset_password_by_user_id(
 }
 
 """Append an identity (email, username, etc.) to an existing user."""
-impl JacScaleUserManager.add_identity(user_id: str, identity: dict[str, Any]) -> bool {
+impl JacScaleUserManager.add_identity(user_id: str, identity: dict[str, any]) -> bool {
     return self._identity_storage._add_identity(user_id, identity);
 }
 
@@ -212,7 +221,7 @@ impl JacScaleUserManager.create_jwt_token(
     user_id: str, include_role: bool = True
 ) -> str {
     now = datetime.now(UTC);
-    payload: dict[(str, Any)] = {
+    payload: dict[(str, any)] = {
         'user_id': user_id,
         'exp': (now + timedelta(days=JWT_EXP_DELTA_DAYS)),
         'iat': now.timestamp()
@@ -274,8 +283,11 @@ impl JacScaleUserManager.get_sso(platform: str) -> SSOProvider | None {
         return None;
     }
     credentials = self.SUPPORTED_PLATFORMS[platform];
-    redirect_uri = f"{SSO_HOST}/sso/{platform}/callback";
-    if platform == Platforms.GOOGLE.value {
+    if platform == Platforms.FIREBASE.value {
+        import from jac_scale.sso.firebase { FirebaseSSOProvider }
+        return FirebaseSSOProvider(project_id=credentials['project_id']);
+    } elif platform == Platforms.GOOGLE.value {
+        redirect_uri = f"{SSO_HOST}/sso/{platform}/callback";
         import from jac_scale.sso.google { GoogleSSOProvider }
         return GoogleSSOProvider(
             client_id=credentials['client_id'],
@@ -283,8 +295,8 @@ impl JacScaleUserManager.get_sso(platform: str) -> SSOProvider | None {
             redirect_uri=redirect_uri,
             allow_insecure_http=True
         );
-    }
-    if platform == Platforms.APPLE.value {
+    } elif platform == Platforms.APPLE.value {
+        redirect_uri = f"{SSO_HOST}/sso/{platform}/callback";
         import from jac_scale.sso.apple { AppleSSOProvider }
         return AppleSSOProvider(
             client_id=credentials['client_id'],
@@ -292,8 +304,8 @@ impl JacScaleUserManager.get_sso(platform: str) -> SSOProvider | None {
             redirect_uri=redirect_uri,
             allow_insecure_http=True
         );
-    }
-    if platform == Platforms.GITHUB.value {
+    } elif platform == Platforms.GITHUB.value {
+        redirect_uri = f"{SSO_HOST}/sso/{platform}/callback";
         import from jac_scale.sso.github { GithubSSOProvider }
         return GithubSSOProvider(
             client_id=credentials['client_id'],
@@ -314,6 +326,19 @@ impl JacScaleUserManager.sso_initiate(
             message=f"Invalid platform '{platform}'. Supported platforms: {', '.join(
                 [p.value for p in Platforms]
             )}",
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
+    # Firebase Auth does not use OAuth redirect flows.
+    if platform == Platforms.FIREBASE.value {
+        return TransportResponse.fail(
+            code='INVALID_OPERATION',
+            message=(
+                "Firebase Auth does not use redirect-based SSO flows. "
+                "Send the Firebase ID token directly to "
+                "POST /sso/firebase/token with a JSON body "
+                '{"id_token": "<token>"}.'
+            ),
             meta=Meta(extra={'http_status': 400})
         );
     }
@@ -350,7 +375,6 @@ impl JacScaleUserManager.sso_initiate(
 impl JacScaleUserManager.sso_callback(
     request: Request, platform: str
 ) -> TransportResponse {
-    import from jaclang.runtimelib.server { JsonValue }
     if platform not in [p.value for p in Platforms] {
         return TransportResponse.fail(
             code='INVALID_PLATFORM',
@@ -377,83 +401,145 @@ impl JacScaleUserManager.sso_callback(
     }
     try {
         user_info = await sso.handle_callback(request);
-        email = user_info.email;
-        if not email {
-            return TransportResponse.fail(
-                code='EMAIL_MISSING',
-                message=f"Email not provided by {platform}",
-                meta=Meta(extra={'http_status': 400})
-            );
-        }
-        external_id = user_info.external_id;
-        sso_fields = user_info.profile_fields();
-        existing = self.find_user_by_identity(email);
-        if existing {
-            user_id = existing.get('user_id', '');
-            # Link SSO identity if not already linked
-            self.link_sso_account(user_id, platform, external_id);
-            # Refresh profile.sso.<platform> from the latest provider data so
-            # display_name/picture stay current. Only the SSO namespace is
-            # touched — developer-set profile fields are untouched.
-            if sso_fields {
-                raw_profile = existing.get('profile') if existing else None;
-                current_profile: dict[str, any] = (
-                    raw_profile if isinstance(raw_profile, dict) else {}
-                );
-                # Defensive: legacy users from before reserved-key enforcement
-                # may have a non-dict at profile.sso. Treat as empty rather
-                # than crashing on dict-style assignment below.
-                raw_sso = current_profile.get('sso');
-                current_sso: dict[str, any] = (
-                    raw_sso if isinstance(raw_sso, dict) else {}
-                );
-                current_sso[platform] = sso_fields;
-                current_profile['sso'] = current_sso;
-                self._identity_storage.update_user_fields(
-                    user_id, {'profile': current_profile}
-                );
-            }
-            token = self.create_jwt_token(user_id);
-            return TransportResponse.success(
-                data={
-                    'message': 'Login successful',
-                    'user_id': user_id,
-                    'token': token,
-                    'platform': platform,
-                    'root_id': existing.get('root_id', '')
-                },
-                meta=Meta(extra={'http_status': 200})
-            );
-        }
-        # Create user with verified email identity (provider already verified it)
-        sso_profile = {'sso': {platform: sso_fields}} if sso_fields else None;
-        result = self.create_user_with_identities(
-            identities=[{'type': 'email', 'value': email, 'verified': True}],
-            credential={'type': 'password', 'password': generate_random_password()},
-            profile=sso_profile
-        );
-        if 'error' in result {
-            return TransportResponse.fail(
-                code='USER_CREATION_FAILED',
-                message=result.get('error', 'User creation failed'),
-                meta=Meta(extra={'http_status': 400})
-            );
-        }
-        user_id = result.get('user_id', '');
-        # Link SSO identity to the new user
-        self.link_sso_account(user_id, platform, external_id);
-        result['token'] = self.create_jwt_token(user_id);
-        result['platform'] = platform;
-        return TransportResponse.success(
-            data=result, meta=Meta(extra={'http_status': 201})
-        );
     } except Exception as e {
+        # A failed callback means the provider rejected the credential
+        # (bad/expired token, denied consent) — a client error, not a 500.
         return TransportResponse.fail(
             code='AUTHENTICATION_FAILED',
             message=f"Authentication failed: {str(e)}",
-            meta=Meta(extra={'http_status': 500})
+            meta=Meta(extra={'http_status': 401})
         );
     }
+    # Outside the 401 catch: _complete_sso_login does DB work, and an
+    # infrastructure failure there must surface as a 500, not be misreported
+    # as an authentication (401) failure.
+    return self._complete_sso_login(platform, user_info);
+}
+
+# ============================================================================
+# Firebase Auth: Token-based authentication
+# ============================================================================
+"""Verify a Firebase ID token string and log in or auto-register the user.
+
+Used by POST /sso/firebase/token after FastAPI parses the JSON body into
+FirebaseTokenRequest.
+"""
+impl JacScaleUserManager.firebase_token_auth_with_id_token(
+    id_token: str
+) -> TransportResponse {
+    platform = Platforms.FIREBASE.value;
+    if platform not in self.SUPPORTED_PLATFORMS {
+        return TransportResponse.fail(
+            code='SSO_NOT_CONFIGURED',
+            message=(
+                "Firebase Auth SSO is not configured. Set "
+                "[plugins.scale.sso.firebase] project_id in jac.toml or "
+                f"{firebase_project_id_env_hint()}"
+            ),
+            meta=Meta(extra={'http_status': 501})
+        );
+    }
+    sso = self.get_sso(platform);
+    try {
+        user_info = await sso.handle_id_token(id_token);
+    } except Exception as e {
+        # Token verification failed (bad signature, expired, wrong audience,
+        # missing email claim) — a client error, not a 500.
+        return TransportResponse.fail(
+            code='AUTHENTICATION_FAILED',
+            message=f"Firebase authentication failed: {str(e)}",
+            meta=Meta(extra={'http_status': 401})
+        );
+    }
+    # Outside the 401 catch: _complete_sso_login does DB work, and an
+    # infrastructure failure there must surface as a 500, not be misreported
+    # as an authentication (401) failure.
+    return self._complete_sso_login(platform, user_info);
+}
+
+# ============================================================================
+# Shared SSO login/register logic
+# ============================================================================
+"""Complete an SSO login or auto-register.
+
+Shared by sso_callback (OAuth redirect) and firebase_token_auth_with_id_token
+(direct ID token). Both callers have already verified the platform config and
+obtained user_info from the SSO provider; this method handles the
+find/create user, link SSO identity, refresh profile.sso, and mint JWT.
+"""
+impl JacScaleUserManager._complete_sso_login(
+    platform: str, user_info: SSOUserInfo
+) -> TransportResponse {
+    email = user_info.email;
+    if not email {
+        return TransportResponse.fail(
+            code='EMAIL_MISSING',
+            message=f"Email not provided by {platform}",
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
+    external_id = user_info.external_id;
+    sso_fields = user_info.profile_fields();
+
+    existing = self.find_user_by_identity(email);
+    if existing {
+        user_id = existing.get('user_id', '');
+        # Link SSO identity if not already linked
+        self.link_sso_account(user_id, platform, external_id);
+        # Refresh profile.sso.<platform> from the latest provider data so
+        # display_name/picture stay current. Only the SSO namespace is
+        # touched — developer-set profile fields are untouched.
+        if sso_fields {
+            raw_profile = existing.get('profile') if existing else None;
+            current_profile: dict[str, any] = (
+                raw_profile if isinstance(raw_profile, dict) else {}
+            );
+            # Defensive: legacy users from before reserved-key enforcement
+            # may have a non-dict at profile.sso. Treat as empty rather
+            # than crashing on dict-style assignment below.
+            raw_sso = current_profile.get('sso');
+            current_sso: dict[str, any] = raw_sso if isinstance(raw_sso, dict) else {};
+            current_sso[platform] = sso_fields;
+            current_profile['sso'] = current_sso;
+            self._identity_storage.update_user_fields(
+                user_id, {'profile': current_profile}
+            );
+        }
+        token = self.create_jwt_token(user_id);
+        return TransportResponse.success(
+            data={
+                'message': 'Login successful',
+                'user_id': user_id,
+                'token': token,
+                'platform': platform,
+                'root_id': existing.get('root_id', '')
+            },
+            meta=Meta(extra={'http_status': 200})
+        );
+    }
+
+    # Create user with verified email identity (provider already verified it)
+    sso_profile = {'sso': {platform: sso_fields}} if sso_fields else None;
+    result = self.create_user_with_identities(
+        identities=[{'type': 'email', 'value': email, 'verified': True}],
+        credential={'type': 'password', 'password': generate_random_password()},
+        profile=sso_profile
+    );
+    if 'error' in result {
+        return TransportResponse.fail(
+            code='USER_CREATION_FAILED',
+            message=result.get('error', 'User creation failed'),
+            meta=Meta(extra={'http_status': 400})
+        );
+    }
+    user_id = result.get('user_id', '');
+    # Link SSO identity to the new user
+    self.link_sso_account(user_id, platform, external_id);
+    result['token'] = self.create_jwt_token(user_id);
+    result['platform'] = platform;
+    return TransportResponse.success(
+        data=result, meta=Meta(extra={'http_status': 201})
+    );
 }
 
 # ============================================================================

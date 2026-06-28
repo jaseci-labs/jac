@@ -455,6 +455,121 @@ async walker FetchData {
 }
 ```
 
+## Firestore via `kvstore()`
+
+If you want Firebase-style document CRUD without raw SDK calls, `jac-scale` now supports Firestore through `kvstore()`.
+
+**Install the optional extra:**
+
+```bash
+pip install jac-scale[firebase]
+```
+
+**Configure Firestore:**
+
+```toml
+[plugins.scale.database]
+type = "firestore"
+project_id = "my-firebase-project"
+```
+
+Or with an environment variable:
+
+```bash
+export FIREBASE_PROJECT_ID="my-firebase-project"
+# Subsystem override (optional):
+# export FIRESTORE_PROJECT_ID="my-firebase-project"
+```
+
+**Use it from Jac:**
+
+```jac
+import from jac_scale.lib { kvstore };
+
+glob db = kvstore(db_name='app', db_type='firestore');
+
+walker get_admins {
+    can read with Root entry {
+        admins = list(db.find('users', {'role': 'admin'}));
+        report {"admins": admins};
+    }
+}
+```
+
+**CRUD snippet:**
+
+```jac
+import from jac_scale.lib { kvstore };
+
+with entry {
+    db = kvstore(db_name='app', db_type='firestore');
+
+    todo = db.insert_one('todos', {'title': 'Buy milk', 'done': False});
+    db.update_by_id('todos', todo.inserted_id, {'$set': {'done': True}});
+    done_todos = list(db.find('todos', {'done': True}));
+}
+```
+
+**Notes:**
+
+- Firestore is exposed through the existing document-style `Db` API.
+- Collections are namespaced internally by `db_name`.
+- Jac graph persistence (`PersistentMemory` / `_anchors`) still stays on SQLite or MongoDB; Firestore support here is for `kvstore()` only.
+
+## Firebase Storage via `store()`
+
+You can also point `store()` at Firebase Storage (backed by Google Cloud Storage).
+
+**Install the optional extra:**
+
+```bash
+pip install jac-scale[firebase]
+```
+
+**Configure Firebase Storage:**
+
+```toml
+[storage]
+type = "firebase"
+bucket = "my-firebase-project.appspot.com"
+prefix = "uploads/"
+project_id = "my-firebase-project"
+```
+
+Or with environment variables:
+
+```bash
+export JAC_STORAGE_TYPE="firebase"
+export JAC_STORAGE_FIREBASE_BUCKET="my-firebase-project.appspot.com"
+export FIREBASE_PROJECT_ID="my-firebase-project"
+# Subsystem override (optional):
+# export JAC_STORAGE_FIREBASE_PROJECT_ID="my-firebase-project"
+```
+
+**Use it from Jac:**
+
+```jac
+glob storage = store();
+```
+
+`type = "gcs"` is also supported as an alias.
+
+### Firebase project ID (shared env var)
+
+When using multiple Firebase features together, set one shared project ID:
+
+```bash
+export FIREBASE_PROJECT_ID="my-firebase-project"
+```
+
+Subsystem-specific vars still work and take precedence when you need different values:
+
+| Feature | Subsystem env var |
+|---------|-------------------|
+| Firebase Auth SSO | `FIREBASE_AUTH_PROJECT_ID` |
+| Firestore `kvstore()` | `FIRESTORE_PROJECT_ID` |
+| Firebase / GCS Storage | `JAC_STORAGE_FIREBASE_PROJECT_ID` or `JAC_STORAGE_GCS_PROJECT_ID` |
+
 ## Configuration Options
 
 ### Optional Environment Variables
@@ -479,6 +594,10 @@ async walker FetchData {
 | `K8s_REDIS` | Whether Redis is needed (`True`/`False`) | `True` |
 | `MONGODB_URI` | URL of MongoDB database | - |
 | `REDIS_URL` | URL of Redis database | - |
+| `FIRESTORE_PROJECT_ID` | Firestore / Firebase project ID for `kvstore(db_type="firestore")` (fallback: `FIREBASE_PROJECT_ID`) | - |
+| `JAC_STORAGE_FIREBASE_BUCKET` | Firebase Storage bucket for `store()` when `JAC_STORAGE_TYPE=firebase` | - |
+| `JAC_STORAGE_FIREBASE_PROJECT_ID` | Firebase project ID for Firebase Storage / GCS (fallback: `FIREBASE_PROJECT_ID`) | - |
+| `FIREBASE_PROJECT_ID` | Shared Firebase project ID for Auth SSO, Firestore, and Storage | - |
 | `JWT_EXP_DELTA_DAYS` | Number of days until JWT token expires | `7` |
 | `JWT_SECRET` | Secret key used for JWT token signing and verification | `'supersecretkey_for_testing_only!'` |
 | `JWT_ALGORITHM` | Algorithm used for JWT token encoding/decoding | `'HS256'` |

@@ -6,7 +6,11 @@ import from jac_scale.config_loader { get_scale_config }
 import from jac_scale._optdeps.optional_deps { require_optional }
 import from enum { StrEnum }
 
-enum DatabaseType(StrEnum) { MONGODB = 'mongodb', REDIS = 'redis' }
+enum DatabaseType(StrEnum) {
+    MONGODB = 'mongodb',
+    REDIS = 'redis',
+    FIRESTORE = 'firestore'
+}
 
 """Resolve database URI from parameter or configuration."""
 def _resolve_uri(uri: (str | None), db_type: DatabaseType) -> str {
@@ -26,6 +30,12 @@ def _resolve_uri(uri: (str | None), db_type: DatabaseType) -> str {
         resolved = db_config.get('redis_url');
         if resolved is None {
             raise ValueError('Redis URL not found in configuration');
+        }
+        return cast(str, resolved);
+    } elif db_type == DatabaseType.FIRESTORE {
+        resolved = db_config.get('project_id');
+        if resolved is None {
+            raise ValueError('Firestore project ID not found in configuration');
         }
         return cast(str, resolved);
     } else {
@@ -87,6 +97,10 @@ class DatabaseProviderFactory {
             require_optional("redis", "data");
             import from redis { Redis }
             return Redis.from_url(resolved_uri, **(config or {}));
+        } elif (db_type_enum == DatabaseType.FIRESTORE) {
+            require_optional("google.cloud.firestore", "firebase");
+            import from jac_scale._optdeps.firestore { FirestoreClient }
+            return FirestoreClient(project=resolved_uri, **(config or {}));
         } else {
             raise ValueError(f"Unsupported database type: {db_type_enum}");
         }

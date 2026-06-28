@@ -945,32 +945,56 @@ impl MongoBackend._put_node_atomic(
                 cas_filter = {'_id': _id, 'data.version': cas_version};
             }
         }
+        # CAS update with upsert OFF: a stale read of an EXISTING doc must return
+        # None (-> WriteConflict), never silently insert a duplicate. The blind
+        # no-dependency path (cas_version is None) may upsert freely.
         merged_doc = self.collection.find_one_and_update(
             cas_filter,
             [{'$set': set_doc}],
             projection={'data.edges': 1, 'data.version': 1},
             upsert=(cas_version is None),
             return_document=ReturnDocument.AFTER
-            # upsert only on the no-CAS (blind append) path: a version miss must
-            # NOT mint a spurious duplicate doc.
         );
         if merged_doc is None {
-            # Version-gated path (upsert=False) with no match: the node moved or
-            # vanished since this request read it. Either way the optimistic
-            # assumption failed -> conflict, and the request boundary replays
-            # (re-reading the now-current graph). We do NOT fall back to an
-            # upsert here: that read-then-upsert was a TOCTOU window, and an
-            # EDGE_LIST_DELTA only targets a node the request already loaded, so
-            # a genuinely absent doc is itself a stale-read to converge on.
-            # The find_one is diagnostic only (best-effort actual version).
-            actual = -1;
+            # No match on the version-gated path. Two cases:
+            #   (a) the doc EXISTS but at a different version -> a real concurrent
+            #       change; surface a WriteConflict and let the request replay.
+            #   (b) the doc does NOT exist and we expected v0-or-absent -> this is
+            #       the FIRST persist of a never-written anchor (a read-gated first
+            #       write). "Expected v0" includes "does not exist yet", so insert
+            #       rather than raise a phantom conflict. A racing inserter that
+            #       beats us trips the unique _id index -> DuplicateKeyError, which
+            #       we convert to a WriteConflict so the boundary converges.
+            import from pymongo.errors { DuplicateKeyError }
             existing = self.collection.find_one({'_id': _id}, {'data.version': 1});
-            if existing is not None {
-                actual = existing.get('data', {}).get('version', -1);
+            if existing is None and cas_version is not None and cas_version <= 0 {
+                try {
+                    merged_doc = self.collection.find_one_and_update(
+                        {'_id': _id, 'data.version': {'$exists': False}},
+                        [{'$set': set_doc}],
+                        projection={'data.edges': 1, 'data.version': 1},
+                        upsert=True,
+                        return_document=ReturnDocument.AFTER
+                    );
+                } except DuplicateKeyError {
+                    raise WriteConflict(
+                        anchor_id=anchor.id,
+                        expected_version=cas_version,
+                        actual_version=0
+                    );
+                }
             }
-            raise WriteConflict(
-                anchor_id=anchor.id, expected_version=cas_version, actual_version=actual
-            );
+            if merged_doc is None {
+                actual = -1;
+                if existing is not None {
+                    actual = existing.get('data', {}).get('version', -1);
+                }
+                raise WriteConflict(
+                    anchor_id=anchor.id,
+                    expected_version=cas_version,
+                    actual_version=actual
+                );
+            }
         }
 
         if self._l2_ref {

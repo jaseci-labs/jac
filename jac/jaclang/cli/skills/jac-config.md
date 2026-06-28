@@ -17,13 +17,16 @@ description: The jac.toml control plane - every section ([project], [dependencie
 | `[optional-dependencies.<group>]` | extras: `jac install --extras <group>`, wheel extras on publish |
 | `[serve]` | `jac start` defaults: `port`, `base_route_app` (client app served at `/`), `cl_route_prefix` |
 | `[run]` | `jac run` defaults: `cache`, `session`, `diagnostics` (`"error"`/`"all"`/`"none"`) |
+| `[check]` | type-check behavior: `enforce_access` (promote `:pub`/`:protect`/`:priv` visibility violations from warnings to hard errors), `warn_native_seams` (warn when a native-eligible method falls back to Python) |
 | `[check.lint]` | lint rule selection: `select = ["default"]` / `["all"]`, `ignore = ["combine-has"]`, `exclude = ["legacy/*"]` |
 | `[test]` | `jac test` defaults: `directory`, `filter`, `verbose`, `fail_fast`, `max_failures` |
 | `[build]` | `typecheck`, `dir` (artifact root, default `.jac/` - holds `cache/`, `venv/`, `client/`, `data/`) |
 | `[scripts]` | named command shortcuts run via `jac script <name>` |
 | `[environments]` / `[environment]` | per-profile overrides (below) |
 | `[plugins]` | `enabled` / `disabled` lists; `[plugins.<name>.*]` plugin settings (byllm models, scale server, client paths/vite) |
+| `[plugins.client]` | `framework` = `"react"` (default) / `"preact"` / `"solid"` (experimental) - which JS framework the `cl` target emits; `[plugins.client.routing] auth_redirect = "/path"` for unauthenticated redirects |
 | `[plugins.client.app_meta_data]` | served page's head/SEO config: `title`, `description`, `keywords`, `author`, `theme_color`, `icon` |
+| `[plugins.desktop]` / `[plugins.desktop.plugins]` | desktop app identity + window geometry; per-capability OS-plugin gates (`fs`/`clipboard`/`shell` allow-lists) - see `jac-desktop-app` |
 | `[jac-shadcn]` | theme config (`style`, `baseColor`, `theme`, `font`, `radius`) managed by `jac add --shadcn` / `jac retheme` - don't hand-edit (see `jac-shadcn-components`) |
 | `[npm]` | npm-publish overrides: `name = "@scope/pkg"`, `entry` (see `jac-packaging`) |
 | `[jacpack]` | marks the project as a `jac create` template (see `jac-scaffold`) |

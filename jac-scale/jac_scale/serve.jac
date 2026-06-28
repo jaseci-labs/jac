@@ -54,6 +54,7 @@ import from jac_scale.utils { authenticate_or_fail, is_safe_loopback_redirect }
 import from jac_scale.auth_models {
     RegisterRequest,
     LoginRequest,
+    FirebaseTokenRequest,
     UpdatePasswordRequest,
     AddIdentityRequest,
     VerifyIdentityRequest,
@@ -118,6 +119,8 @@ obj JacAPIServerAuth {
     # SSO
     def register_sso_endpoints -> None;
     def _create_sso_callback_wrapper -> Callable[..., (Response | TransportResponse)];
+    # Firebase token-based auth endpoint
+    def register_firebase_token_endpoint -> None;
     # API key management
     def get_api_key_manager -> ApiKeyManager;
     def create_api_key(

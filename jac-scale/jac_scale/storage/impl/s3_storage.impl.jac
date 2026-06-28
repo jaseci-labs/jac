@@ -36,14 +36,6 @@ impl S3Storage.init(
     );
 }
 
-impl S3Storage._resolve_key(self: S3Storage, path: str) -> str {
-    path = path.lstrip("/");
-    if self.prefix {
-        return f"{self.prefix}/{path}";
-    }
-    return path;
-}
-
 impl S3Storage.upload(
     self: S3Storage,
     source: (str | BinaryIO),
@@ -86,6 +78,9 @@ impl S3Storage.download(
 
 impl S3Storage.delete(self: S3Storage, path: str) -> bool {
     key = self._resolve_key(path);
+    # S3 DeleteObject is idempotent and does not report whether a key existed.
+    # Unlike LocalStorage/GcsStorage, we return True unconditionally rather than
+    # pay for a HEAD request just to distinguish "deleted" from "was absent".
     self._client.delete_object(Bucket=self.bucket, Key=key);
     return True;
 }
@@ -120,12 +115,7 @@ impl S3Storage.list_files(
     for page in paginator.paginate(**kwargs) {
         if "Contents" in page {
             for obj in page["Contents"] {
-                key = obj["Key"];
-                if self.prefix {
-                    yield key.replace(f"{self.prefix}/", "", 1);
-                } else {
-                    yield key;
-                }
+                yield self._strip_key_prefix(obj["Key"]);
             }
         }
     }
@@ -157,13 +147,6 @@ impl S3Storage.copy(self: S3Storage, source: str, destination: str) -> bool {
         }
         raise e;
     }
-}
-
-impl S3Storage.move(self: S3Storage, source: str, destination: str) -> bool {
-    if self.copy(source, destination) {
-        return self.delete(source);
-    }
-    return False;
 }
 
 impl S3Storage.get_url(

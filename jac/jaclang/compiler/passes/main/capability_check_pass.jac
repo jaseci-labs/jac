@@ -84,6 +84,18 @@ in NATIVE_SUPPORTED_STDLIB; a (name, False) result in native context is
 the E5090 rejection case (enforced by native_capability_violations)."""
 def classify_native_import(item: uni.UniNode) -> tuple;
 
+"""Name a plain `import X;` / `import X as Y;` item binds into scope: the
+alias if present, else the top-level module name (`os` for `import os.path`).
+None for non-ModulePath items. Used to decide whether a foreign import is
+referenced as a runtime value or only names a type (issue #6930, A3)."""
+def import_bound_name(item: uni.UniNode) -> (str | None);
+
+"""True if `name_nd` sits in a TYPE-ANNOTATION position: inside a `SubTag`
+(has/param/access annotations) or within a `FuncSignature.return_type`. A
+foreign module name used only here is never lowered to a runtime value, so a
+type-only import of it is harmless on the native pathway (issue #6930, A3)."""
+def name_in_type_position(name_nd: uni.UniNode) -> bool;
+
 """Declarative native-capability violations in `mod`'s native-context
 code: (node, kind, name, help_text | None) tuples ready to emit as
 E5090. Covers structural match patterns, the NATIVE_REJECT_NODES kinds,

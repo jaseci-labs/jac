@@ -3,9 +3,7 @@
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
-glob registry = get_registry(),
-     # Python 3.X minor versions targeted by `jac bundle --precompile`.
-     _PRECOMPILE_MINOR_RANGE: range = range(12, 15);
+glob registry = get_registry();
 
 """Initialize a new Jac project."""
 @registry.command(
@@ -152,11 +150,12 @@ def create(
             short=""
         ),
         Arg.create(
-            "no-uv",
+            "global",
             typ=bool,
             default=False,
-            help="Use pip directly even if uv is available",
-            short=""
+            help="Install into the jac-owned global site (importable from any project), not the project venv",
+            short="",
+            dest="install_global"
         ),
 
     ],
@@ -182,7 +181,10 @@ def create(
         ("jac install --dry-run", "Preview what would be installed without doing it"),
         ("jac install --no-deps", "Install packages without their dependencies"),
         ("jac install --prefer-binary", "Prefer pre-built wheels over source builds"),
-        ("jac install --no-uv", "Use pip directly even if uv is available"),
+        (
+            "jac install -e ./jac-byllm --global",
+            "Install a plugin into the global site so it's importable from any project"
+        ),
 
     ],
     group="project"
@@ -200,7 +202,7 @@ def install(
     no_deps: bool = False,
     quiet: bool = False,
     prefer_binary: bool = False,
-    no_uv: bool = False
+    install_global: bool = False
 ) -> int;
 
 """Add dependencies to the project."""
@@ -424,27 +426,14 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
             help="Build target: 'wheel' (PyPI), 'npm' (npmjs), 'all', or 'npm-runtime'",
             short="t"
         ),
-        Arg.create(
-            "precompile",
-            typ=bool,
-            default=False,
-            help="Precompile .jac → .jir for python3.X versions on PATH; requires python3.X executables (wheel only)",
-            short="p"
-        ),
 
     ],
     examples=[
         ("jac bundle", "Build wheel into dist/"),
         ("jac bundle --target npm", "Build an npm .tgz into dist/"),
-        (
-            "jac bundle --precompile",
-            "Precompile for all Py-versions on PATH then bundle"
-        ),
         ("jac bundle -o /tmp/wheels", "Build to custom output directory"),
 
     ],
     group="project"
 )
-def bundle(
-    output: str = "dist", target: str = "wheel", precompile: bool = False
-) -> int;
+def bundle(output: str = "dist", target: str = "wheel") -> int;

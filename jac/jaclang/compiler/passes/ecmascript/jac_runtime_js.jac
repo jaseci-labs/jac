@@ -341,7 +341,8 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
         let j = s.length;
         while (j > 0 && chars.indexOf(s[j - 1]) !== -1) j--;
         return s.slice(0, j);
-      }
+      },
+      join: (s, parts) => Array.from(parts, x => String(x)).join(s)
     },
     _list: {
       append: (a, x) => { a.push(x); return null; },

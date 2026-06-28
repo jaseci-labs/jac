@@ -104,6 +104,14 @@ class LoginRequest(BaseModel) {
         credential: CredentialInput = Field(..., description='User credential');
 }
 
+class FirebaseTokenRequest(BaseModel) {
+    has id_token: str = Field(
+        ...,
+        min_length=1,
+        description='Firebase ID token obtained from the client-side Firebase SDK'
+    );
+}
+
 class UpdatePasswordRequest(BaseModel) {
     has current_password: str = Field(
         ..., min_length=1, description='Current password'

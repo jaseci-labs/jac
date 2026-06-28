@@ -1,9 +1,7 @@
-"""Implementation of JIR class methods."""
 import struct;
 import sys;
 import zlib;
 
-# --- StringPool methods ---
 impl StringPool.init(self: StringPool) -> None {
     self._strings: list[str] = [];
     self._index: dict[str, int] = {};
@@ -39,7 +37,6 @@ impl StringPool.serialize(self: StringPool) -> bytes {
     return bytes(buf);
 }
 
-# --- JirHeader methods ---
 impl JirHeader.to_bytes -> bytes {
     return struct.pack(
         HEADER_FMT,

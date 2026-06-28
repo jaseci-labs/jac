@@ -591,6 +591,184 @@ impl MachOLinker.parse_object -> bool {
 }
 
 
+impl MachOLinker._merge_member(raw: bytes) -> bool {
+    # Reuse the (already-working) single-object parser via a throwaway linker,
+    # then fold its sections/symbols/relocations into this one.
+    sub = MachOLinker(
+        obj_data=raw, sections=[], symbols=[], relocations=[], needed_libs=[]
+    );
+    if not sub.parse_object() {
+        return False;
+    }
+    self._consolidate(sub.sections, sub.symbols, sub.relocations);
+    return True;
+}
+
+
+impl MachOLinker._consolidate(
+    secs: list[MachOSection], syms: list[MachOSymbol], relocs: list[MachOReloc]
+) -> None {
+    # Index existing merged sections by (segname, name) so same-named member
+    # sections coalesce into one (the layout in build_executable is name-keyed,
+    # so two `__text` sections would otherwise collide).
+    existing: dict[str, int] = {};
+    for (i, s) in enumerate(self.sections) {
+        existing[f"{s.segname}:{s.name}"] = i;
+    }
+    # member section idx -> (merged idx, byte offset of member's bytes in merged
+    # section, member section's own base addr).
+    sec_to_merged: dict[int, int] = {};
+    sec_dataoff: dict[int, int] = {};
+    sec_addrbase: dict[int, int] = {};
+    dataoff_by_name: dict[str, int] = {};
+
+    for (mi, ms) in enumerate(secs) {
+        key = f"{ms.segname}:{ms.name}";
+        if key in existing {
+            ti = existing[key];
+            tgt = self.sections[ti];
+            aligned = _align(len(tgt.data), max(ms.align, 1));
+            new_data = bytearray(tgt.data);
+            new_data.extend(b"\x00" * (aligned - len(tgt.data)));
+            data_off = len(new_data);
+            new_data.extend(ms.data);
+            tgt.data = bytes(new_data);
+            ms_logical = ms.size if ms.size > len(ms.data) else len(ms.data);
+            tgt.size = data_off + ms_logical;
+            sec_to_merged[mi] = ti;
+            sec_dataoff[mi] = data_off;
+        } else {
+            ni = len(self.sections);
+            self.sections.append(
+                MachOSection(
+                    name=ms.name,
+                    segname=ms.segname,
+                    addr=ms.addr,
+                    size=ms.size,
+                    data=ms.data,
+                    align=ms.align,
+                    flags=ms.flags,
+                    reserved1=ms.reserved1,
+                    reserved2=ms.reserved2
+                )
+            );
+            existing[key] = ni;
+            sec_to_merged[mi] = ni;
+            sec_dataoff[mi] = 0;
+        }
+        sec_addrbase[mi] = ms.addr;
+        dataoff_by_name[key] = sec_dataoff[mi];
+    }
+
+    # Append member symbols, rebasing defined values into their merged section,
+    # and record old-index -> new-index so this member's relocations can be
+    # repointed. (Cross-object undef/def resolution is a later global pass.)
+    sym_remap: dict[int, int] = {};
+    for (si, sym) in enumerate(syms) {
+        ttype = sym.n_type & N_TYPE_MASK;
+        if ttype == N_SECT and sym.n_sect > 0 and (sym.n_sect - 1) in sec_to_merged {
+            msi = sym.n_sect - 1;
+            merged_idx = sec_to_merged[msi];
+            base = self.sections[merged_idx].addr;
+            new_val = base + sec_dataoff[msi] + (sym.n_value - sec_addrbase[msi]);
+            ni = len(self.symbols);
+            self.symbols.append(
+                MachOSymbol(
+                    name=sym.name,
+                    n_type=sym.n_type,
+                    n_sect=merged_idx + 1,
+                    n_desc=sym.n_desc,
+                    n_value=new_val
+                )
+            );
+            sym_remap[si] = ni;
+        } else {
+            # N_UNDF carries no value, but N_ABS (0x2) keeps its absolute value
+            # in n_value (e.g. versioning/sentinel constants) -- zeroing it would
+            # silently corrupt relocations that reference an absolute symbol.
+            keep_val = sym.n_value if (sym.n_type & N_TYPE_MASK) == 0x02 else 0;
+            ni = len(self.symbols);
+            self.symbols.append(
+                MachOSymbol(
+                    name=sym.name,
+                    n_type=sym.n_type,
+                    n_sect=0,
+                    n_desc=sym.n_desc,
+                    n_value=keep_val
+                )
+            );
+            sym_remap[si] = ni;
+        }
+    }
+
+    # Append member relocations, shifting patch sites into the coalesced section
+    # and remapping symbol indices (extern) / section ordinals (local).
+    for r in relocs {
+        new_addr = r.address + dataoff_by_name.get(r.target_sec, 0);
+        if r.extern == 1 {
+            new_symnum = sym_remap.get(r.symbolnum, r.symbolnum);
+        } else {
+            msi = r.symbolnum - 1;
+            new_symnum = (sec_to_merged[msi] + 1)
+                if msi in sec_to_merged
+                else r.symbolnum;
+        }
+        self.relocations.append(
+            MachOReloc(
+                address=new_addr,
+                symbolnum=new_symnum,
+                pcrel=r.pcrel,
+                length=r.length,
+                extern=r.extern,
+                rtype=r.rtype,
+                target_sec=r.target_sec,
+                addend=r.addend
+            )
+        );
+    }
+}
+
+
+impl MachOLinker._resolve_crossrefs -> None {
+    # Map every externally-defined symbol name to its (first) defining index.
+    defined: dict[str, int] = {};
+    for (i, s) in enumerate(self.symbols) {
+        if (s.n_type & N_TYPE_MASK) == N_SECT and (s.n_type & N_EXT) != 0 and s.name {
+            if s.name not in defined {
+                defined[s.name] = i;
+            }
+        }
+    }
+    # Any undefined-external whose name is now defined locally is repointed, and
+    # its undef entry is blanked so symbol classification will not bind it from a
+    # dylib (which would fail: the symbol lives in this binary).
+    resolved: dict[int, int] = {};
+    for (i, s) in enumerate(self.symbols) {
+        if (s.n_type & N_TYPE_MASK) == N_UNDF
+        and (s.n_type & N_EXT) != 0
+        and s.name in defined {
+            resolved[i] = defined[s.name];
+        }
+    }
+    if not resolved {
+        return;
+    }
+    for r in self.relocations {
+        if r.extern == 1 and r.symbolnum in resolved {
+            r.symbolnum = resolved[r.symbolnum];
+        }
+    }
+    for i in resolved.keys() {
+        # Neutralize the now-satisfied undefined entry: blank the name AND clear
+        # n_type so it no longer reads as N_UNDF|N_EXT. Symbol classification
+        # already guards on a non-empty name, but making the type explicit keeps
+        # any future pass from treating it as a dylib import.
+        self.symbols[i].name = "";
+        self.symbols[i].n_type = 0;
+    }
+}
+
+
 impl MachOLinker.build_executable -> bytes {
     is_arm64 = self.cpu_type == CPU_TYPE_ARM64;
     page_size = 0x4000 if is_arm64 else 0x1000;
@@ -2536,7 +2714,8 @@ impl MachOLinker.link(
     shared: bool = False,
     export_symbols: list[str] = [],
     init_funcs: list[str] = [],
-    soname: str = ""
+    soname: str = "",
+    archive_members: list[bytes] = []
 ) -> bool {
     linker = MachOLinker(
         obj_data=obj_bytes,
@@ -2552,6 +2731,17 @@ impl MachOLinker.link(
     );
     if not linker.parse_object() {
         return False;
+    }
+    # Merge selected static-archive members, then resolve cross-object refs so a
+    # symbol defined in one member satisfies another object's undefined use
+    # instead of being bound from a dylib. (#6978 Phase 0.1a)
+    for member in archive_members {
+        if not linker._merge_member(member) {
+            return False;
+        }
+    }
+    if archive_members {
+        linker._resolve_crossrefs();
     }
     exe_bytes = linker.build_shared_object() if shared else linker.build_executable();
     if not exe_bytes {

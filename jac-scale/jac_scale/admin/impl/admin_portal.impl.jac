@@ -812,16 +812,29 @@ impl JacAPIServerAdmin.admin_list_sso_providers(
     sso_config = get_scale_config().get_sso_config();
     providers = [];
     # Check each platform
-    for platform in ['google'] {
+    for platform in ['google', 'apple', 'github', 'firebase'] {
         platform_config = sso_config.get(platform, {});
-        client_id = platform_config.get('client_id', '');
-        is_configured = bool(client_id);
+        if platform == 'firebase' {
+            project_id = platform_config.get('project_id', '');
+            is_configured = bool(project_id);
+            project_id_set = is_configured;
+            client_id_set = False;
+            client_secret_set = False;
+        } else {
+            client_id = platform_config.get('client_id', '');
+            client_secret = platform_config.get('client_secret', '');
+            is_configured = bool(client_id and client_secret);
+            client_id_set = bool(client_id);
+            client_secret_set = bool(client_secret);
+            project_id_set = False;
+        }
         providers.append(
             {
                 'platform': platform,
                 'configured': is_configured,
-                'client_id_set': bool(client_id),
-                'client_secret_set': bool(platform_config.get('client_secret', ''))
+                'client_id_set': client_id_set,
+                'client_secret_set': client_secret_set,
+                'project_id_set': project_id_set
             }
         );
     }

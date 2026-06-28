@@ -75,6 +75,11 @@ class JacScalePluginConfig {
                     "default": {},
                     "description": "Database connection configuration",
                     "nested": {
+                        "type": {
+                            "type": "string",
+                            "default": None,
+                            "description": "Optional default database backend metadata (e.g. mongodb, redis, firestore)"
+                        },
                         "mongodb_uri": {
                             "type": "string",
                             "default": None,
@@ -84,6 +89,11 @@ class JacScalePluginConfig {
                             "type": "string",
                             "default": None,
                             "description": "Redis connection URL"
+                        },
+                        "project_id": {
+                            "type": "string",
+                            "default": None,
+                            "description": "Firestore project ID (or set FIRESTORE_PROJECT_ID / FIREBASE_PROJECT_ID)"
                         },
                         "shelf_db_path": {
                             "type": "string",
