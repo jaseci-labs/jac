@@ -1,16 +1,5 @@
-"""Compile Jac native (`na`) code to a browser-loadable WebAssembly module.
-
-Shared by `nacompile --target wasm32` (whole-file) and the client bundler
-(the `na {}` codespace of a full-stack module). Runs the native LLVM backend at
-the `wasm32-unknown-unknown` triple, then links the single relocatable object
-into an instantiable module with the pure-Jac `WasmLinker` -- no wasm-ld /
-emscripten.
-"""
-
 import os;
 
-"""Parse, optimise (opt2, no internalize so every defined fn stays exported),
-emit one relocatable wasm object, and link it into a module."""
 def emit_wasm_from_ir(llvm_ir_str: str, export_funcs: list = []) -> bytes {
     import jaclang.compiler.passes.native.llvm.binding as llvm;
     import from jaclang.compiler.passes.native.wasm_linker { WasmLinker }
@@ -26,11 +15,6 @@ def emit_wasm_from_ir(llvm_ir_str: str, export_funcs: list = []) -> bytes {
     return WasmLinker.link(obj_bytes, export_funcs, 256);
 }
 
-"""Compile a `.jac`/`.na.jac` file's native codespace to a wasm module.
-
-Targets wasm32 (restoring any prior JAC_NATIVE_TARGET), compiles AOT with the
-type checker off (native has its own discipline), and links. Returns the wasm
-bytes, or None when the file has no native code to emit."""
 def compile_to_wasm(file_path: str, export_funcs: list = []) -> (bytes | None) {
     import from jaclang.jac0core.program { JacProgram }
     import from jaclang.jac0core.compile_options { CompileOptions }

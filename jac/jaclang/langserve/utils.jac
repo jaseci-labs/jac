@@ -1,5 +1,3 @@
-"""Utility functions for the language server."""
-
 import asyncio;
 import builtins;
 import re;

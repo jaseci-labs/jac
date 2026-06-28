@@ -1,18 +1,8 @@
-"""Clipboard plugin for the Jac desktop IPC system.
-
-Reads/writes the system clipboard via platform-native tools:
-  Linux:   xclip (xsel as fallback)
-  macOS:   pbcopy / pbpaste
-  Windows: clip.exe / Get-Clipboard
-
-Transpiled to dependency-free Python at build time.
-"""
 import subprocess;
 import from desktop_plugin { PluginError, ErrorCode, DesktopPlugin }
 import from manifest { PluginManifest, PluginContext }
 
 
-"""System clipboard read/write via platform tools."""
 obj ClipboardPlugin(DesktopPlugin) {
     has _allow_read: bool = True,
         _allow_write: bool = True;
@@ -33,7 +23,7 @@ obj ClipboardPlugin(DesktopPlugin) {
 
     def init(config: dict) {
         self.plugin_name = "jac.clipboard";
-        # Normalize non-dict config (e.g. `clipboard = true`) to empty dict.
+
         if not isinstance(config, dict) {
             config = {};
         }
@@ -58,7 +48,6 @@ obj ClipboardPlugin(DesktopPlugin) {
         platform = self._detect_platform();
         try {
             if platform == "linux" {
-                # Try xclip first, fall back to xsel
                 try {
                     result = subprocess.run(
                         ["xclip", "-selection", "clipboard", "-o"],

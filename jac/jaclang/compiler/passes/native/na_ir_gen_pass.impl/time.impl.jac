@@ -1,20 +1,10 @@
-"""time module codegen: lower `time.<fn>(...)` to libc clock_gettime/nanosleep.
-
-Mechanism A (issue #6404). `time.time/monotonic/perf_counter` and their `_ns`
-variants read POSIX clocks; `time.sleep` uses nanosleep. Wall-clock values are
-inherently non-deterministic, so the equivalence fixture checks invariants
-(positivity, monotonicity, sleep-elapsed) rather than exact equality.
-"""
-
-# POSIX clock ids (Linux). CLOCK_REALTIME=0, CLOCK_MONOTONIC=1.
 glob _CLOCK_REALTIME: int = 0,
      _CLOCK_MONOTONIC: int = 1;
 
-"""Emit clock_gettime(clock_id, &ts); return (tv_sec, tv_nsec) as i64 values."""
 impl NaIRGenPass._emit_clock_gettime(clock_id: int) -> tuple {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    # struct timespec { i64 tv_sec; i64 tv_nsec; } on 64-bit Linux.
+
     timespec_ty = ir.LiteralStructType([i64, i64]);
     ts = self.builder.alloca(timespec_ty, name="time.ts");
     fn = self._get_or_declare_extern(
@@ -32,14 +22,12 @@ impl NaIRGenPass._emit_clock_gettime(clock_id: int) -> tuple {
     return (sec, nsec);
 }
 
-"""Lower a `time.<fn>(args)` call. Returns None if unsupported (loud E5090)."""
 impl NaIRGenPass._emit_time_call(name: str, nd: uni.FuncCall) -> (ir.Value | None) {
     f64 = ir.DoubleType();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     billion = ir.Constant(i64, 1000000000);
 
-    # Clock readers: float seconds = tv_sec + tv_nsec * 1e-9.
     _float_clocks: dict[str, int] = {
         "time": _CLOCK_REALTIME,
         "monotonic": _CLOCK_MONOTONIC,
@@ -54,7 +42,6 @@ impl NaIRGenPass._emit_time_call(name: str, nd: uni.FuncCall) -> (ir.Value | Non
         return self.builder.fadd(sec_f, scaled, name=f"time.{name}");
     }
 
-    # Integer nanosecond readers: tv_sec * 1e9 + tv_nsec.
     _ns_clocks: dict[str, int] = {
         "time_ns": _CLOCK_REALTIME,
         "monotonic_ns": _CLOCK_MONOTONIC,
@@ -67,7 +54,6 @@ impl NaIRGenPass._emit_time_call(name: str, nd: uni.FuncCall) -> (ir.Value | Non
         return self.builder.add(scaled, nsec, name=f"time.{name}");
     }
 
-    # time.sleep(secs): build a timespec from the float and call nanosleep.
     if name == "sleep" {
         params = nd.params or [];
         if not params {

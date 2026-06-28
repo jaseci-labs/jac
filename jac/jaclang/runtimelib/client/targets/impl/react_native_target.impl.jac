@@ -1,14 +1,3 @@
-"""Implementation of ReactNativeTarget lifecycle methods.
-
-`setup`  — scaffolds the Expo project under ``mobile-rn/`` and installs
-            native deps (idempotent; safe to re-run).
-`build`  — JacClientCompiler(native runtime) -> stage compiled JS into
-            mobile-rn/ -> expo prebuild -> platform build backend
-            (Gradle/xcodebuild/EAS local). Returns the produced artifact.
-`dev`    — Metro Fast Refresh loop over JacFileWatcher.
-`start`  — Wraps Android ``build`` + ``adb install`` + ``adb shell am start``.
-"""
-
 import os;
 import shutil;
 import subprocess;
@@ -69,14 +58,6 @@ import from jaclang.runtimelib.client.targets.client_dev_common {
     terminate_dev_processes
 }
 
-"""Setup the Expo project scaffold and install native deps.
-
-Idempotent: re-running picks up changes to the scaffold templates but
-leaves user-edited files (``app/App.tsx``, ``app.json``) alone — see
-``_is_scaffold_managed`` in scaffold.jac for the marker-based detection.
-
-It also keeps the platform-aware messaging and EAS.json scaffolding in sync.
-"""
 impl ReactNativeTarget.setup(project_dir: Path) -> None {
     import from jaclang.runtimelib.client.targets.react_native.common {
         normalize_rn_platform
@@ -134,13 +115,6 @@ impl ReactNativeTarget.setup(project_dir: Path) -> None {
     );
 }
 
-"""Build a React Native artifact (Android or iOS).
-
-This method also handles:
-  - iOS build path (`xcodebuild` on macOS or EAS local, opt-in)
-  - release/debug switch via `[plugins.client.react_native].release`
-  - optional EAS Update publish hook (`eas_update=true`)
-"""
 impl ReactNativeTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
@@ -187,29 +161,22 @@ impl ReactNativeTarget.build(
         self.setup(project_dir);
     }
 
-    # Step 1: compile Jac modules + the *native* runtime, then lint + stage.
-    # The compile path is shared with `dev` — see `_compile_native_jac_modules`.
     (_, compiled_dir) = self._compile_native_jac_modules(entry_file);
 
-    # Step 1b: lint pass — surface unmapped HTML tags before Metro burns
-    # cycles bundling something the renderer will fall back on.
     lint_unmapped_tags(compiled_dir);
     lint_native_incompatible_usage(compiled_dir);
     strip_css_imports(compiled_dir);
 
-    # Step 2: stage compiled entry + write index.ts so Metro picks them up.
     entry_module: str = entry_file.stem;
     stage_compiled_entry(compiled_dir, rn_dir, entry_module);
     stage_native_image_assets(rn_dir / "jac-src", rn_dir);
     write_native_entry(rn_dir);
 
-    # Step 3: expo prebuild — generates android/ or ios/ from app.json.
     console.print(
         f"  Step 2: Running expo prebuild ({plat.capitalize()})...", style="muted"
     );
     run_expo_prebuild(rn_dir, plat);
 
-    # Step 4: native artifact build (Gradle/xcodebuild/EAS local).
     artifact: Path;
     if plat == "android" {
         android_builder = _resolve_rn_android_builder(rn_cfg);
@@ -265,30 +232,6 @@ impl ReactNativeTarget.build(
     return artifact;
 }
 
-"""Start the Metro dev loop with Fast Refresh.
-
-Orchestration (Android-only for v1; iOS sim is best-effort once Metro is
-up because Expo's CLI handles both, but our adb-reverse + emulator-host
-defaults assume Android):
-
-    1. Resolve dev host (env override > LAN IPv4 > 127.0.0.1).
-    2. Pick Metro port + API port; if either is busy, increment until we
-       find a free one so adb-reverse + app.json stay aligned with what
-       actually binds.
-    3. Compile Jac → ``.jac/client/compiled/`` with the *native* runtime
-       and stage the entry into ``mobile-rn/jac-app.js``.
-    4. Inject the dev API URL into ``mobile-rn/app.json``'s
-       ``expo.extra.apiBaseUrl`` so ``Constants.expoConfig`` exposes it
-       to the runtime at the very first walker call. Save the original
-       text so the ``finally`` block can restore it.
-    5. ``adb reverse`` Metro + API ports (best-effort).
-    6. Start the Jac API backend (``jaclang start --no_client``).
-    7. Start the JacFileWatcher; the callback recompiles native and
-       re-stages ``jac-app.js`` — Metro Fast Refresh handles the rest.
-    8. Exec ``npx expo start`` blocking; user iterates until Ctrl+C.
-    9. On exit (success or signal): stop watcher, kill backend, restore
-       app.json.
-"""
 impl ReactNativeTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
@@ -300,11 +243,6 @@ impl ReactNativeTarget.dev(
         );
     }
 
-    # Port resolution. In the react-native dev loop, `--port` is treated
-    # as the preferred API port. Metro keeps its own preferred port
-    # (8081 by default, or JAC_RN_METRO_PORT). If either preferred port is
-    # occupied we probe upward (+1, +2, ...) until we find free ports,
-    # keeping Metro/API distinct so adb reverse + app.json stay aligned.
     requested_api = api_port if api_port > 0 else port;
     requested_metro = resolve_metro_port();
     metro_port = resolve_port_or_next_available(requested_metro, "Metro");
@@ -312,10 +250,6 @@ impl ReactNativeTarget.dev(
         requested_api, "API", reserved=[metro_port]
     );
 
-    # Visible host: env override > LAN IPv4 > 127.0.0.1. For physical
-    # devices on the same Wi-Fi we need the dev machine's LAN IP.
-    # Emulators still work because adb reverse maps device localhost to
-    # the host API port.
     host_override = os.environ.get(JAC_RN_DEV_HOST_ENV, "").strip();
     visible_host: str;
     if host_override {
@@ -330,26 +264,19 @@ impl ReactNativeTarget.dev(
         style="bold"
     );
 
-    # Step 1: compile Jac + native runtime. Same path as `build` but no
-    # Gradle / prebuild — Metro reads the staged jac-app.js / jac-src tree
-    # that lives inside the Expo project.
     (jac_compiler, compiled_dir) = self._compile_native_jac_modules(entry_file);
     lint_unmapped_tags(compiled_dir);
     lint_native_incompatible_usage(compiled_dir);
     strip_css_imports(compiled_dir);
 
-    # Step 2: stage entry + index.ts so the running Metro picks them up.
     entry_module: str = entry_file.stem;
     stage_compiled_entry(compiled_dir, rn_dir, entry_module);
     stage_native_image_assets(rn_dir / "jac-src", rn_dir);
     write_native_entry(rn_dir);
 
-    # Step 3: inject dev API URL into app.json. Constants.expoConfig
-    # reads this at runtime via __getApiBaseUrl's second-tier fallback.
     dev_api_url = f"http://{visible_host}:{api_eff}";
     original_app_json = inject_dev_api_base_url(rn_dir, dev_api_url);
 
-    # Step 4: adb reverse so localhost on the emulator hits our host.
     setup_android_port_reverse(metro_port, api_eff);
 
     backend_p: any = None;
@@ -363,18 +290,14 @@ impl ReactNativeTarget.dev(
         console.print("  ✔ Stopped", style="success");
     }
 
-    # Install before starting subprocesses so Ctrl+C during setup unwinds
-    # the try/finally below and runs cleanup instead of leaking the backend.
     install_dev_signal_handlers();
 
     try {
-        # Step 5: backend.
         console.print(
             f"  Starting Jac API backend on port {api_eff}...", style="muted"
         );
         backend_p = start_backend_server_common(entry_file, project_dir, api_eff);
 
-        # Step 6: watcher.
         if ensure_watchdog_common("the device") {
             import from jaclang.runtimelib.watcher { JacFileWatcher }
 
@@ -411,29 +334,11 @@ impl ReactNativeTarget.dev(
     }
 }
 
-"""Compile ``entry_file`` + the native runtime into ``compiled_dir``.
-
-Shared by ``build`` and ``dev``. Depends on the core client bundle stack:
-
-  ``Jac.get_client_bundle_builder()`` → ``ViteClientBundleBuilder``
-  → ``ViteCompiler`` → ``JacClientCompiler``
-
-We reach through ``ViteCompiler`` to the inner ``JacClientCompiler``
-(bypassing ViteCompiler's web-only ``create_entry_file`` — ViteCompiler is a
-thin orchestrator and its ``compile`` would write a DOM-shaped ``_entry.js`` we
-don't want), then emits ``client_runtime_native.cl.jac`` for the react-native
-target.
-
-Returns ``(jac_compiler, compiled_dir)`` so callers can stage entries and
-bind HMR handlers against the same compiler state.
-"""
 impl ReactNativeTarget._compile_native_jac_modules(
     entry_file: Path
 ) -> tuple[(any, Path)] {
     console.print("  Step 1: Compiling Jac modules + native runtime...", style="muted");
-    # Core's default builder is the Vite variant from
-    # make_client_bundle_builder, which wires jac-client's D9 runtime when
-    # the client framework is available.
+
     builder = Jac.get_client_bundle_builder();
     if builder is None {
         raise RuntimeError(
@@ -466,15 +371,6 @@ impl ReactNativeTarget._compile_native_jac_modules(
     return (jac_compiler, compiled_dir);
 }
 
-"""Build then install + launch on a connected device/emulator.
-
-Android: APK is built, installed via ``adb install -r``, and launched via
-``adb shell am start``.
-
-iOS: A ``.app`` bundle is built (requires macOS), installed on a booted iOS
-simulator via ``xcrun simctl install``, and launched via
-``xcrun simctl launch``. Requires Xcode CLI tools on PATH.
-"""
 impl ReactNativeTarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
@@ -482,7 +378,6 @@ impl ReactNativeTarget.start(
         normalize_rn_platform
     }
 
-    # Default platform: Android. Override via jac.toml or --platform.
     rn_cfg = _load_react_native_config(project_dir);
     default_plat = str(rn_cfg.get("default_platform", "") or "android").strip().lower();
     plat = normalize_rn_platform(default_plat);
@@ -496,13 +391,6 @@ impl ReactNativeTarget.start(
     }
 }
 
-"""Watchdog callback bound to the RN dev-loop's compiler state.
-
-Delegates to ``rn_hmr_on_jac_changed`` which does the actual recompile
-+ re-stage. The wrapper exists because ``JacFileWatcher.add_callback``
-needs a callable, and binding the five required pieces of state via an
-object is the simplest cross-thread-safe shape Jac supports.
-"""
 impl _RNHmrHandler.on_event(evt: FileChangeEvent) -> None {
     rn_hmr_on_jac_changed(
         evt,
@@ -514,7 +402,6 @@ impl _RNHmrHandler.on_event(evt: FileChangeEvent) -> None {
     );
 }
 
-"""Install and launch an Android APK on a connected device/emulator."""
 def _start_android(apk_path: Path, project_dir: Path) -> None {
     import json;
     adb = shutil.which("adb");
@@ -562,17 +449,6 @@ def _start_android(apk_path: Path, project_dir: Path) -> None {
     console.success("App installed and launched.");
 }
 
-"""Install and launch an iOS app on a booted simulator.
-
-Requires macOS + Xcode CLI tools. If no simulator is booted, attempts to
-boot the first available iPhone simulator. The artifact is installed via
-``xcrun simctl install`` (which expects a ``.app`` bundle directory) and
-launched by bundle identifier.
-
-``artifact_path`` may be either a ``.app`` directory (the xcodebuild path)
-or a ``.ipa`` file (the EAS local build path). An ``.ipa`` is unzipped to
-a temporary directory and the ``.app`` under ``Payload/`` is installed.
-"""
 def _start_ios(artifact_path: Path, project_dir: Path) {
     import json;
     if platform_mod.system() != "Darwin" {
@@ -604,7 +480,6 @@ def _start_ios(artifact_path: Path, project_dir: Path) {
         );
     }
 
-    # Find or boot a simulator.
     sim_result = subprocess.run(
         [xcrun, "simctl", "list", "devices", "-j"],
         capture_output=True,
@@ -629,7 +504,6 @@ def _start_ios(artifact_path: Path, project_dir: Path) {
     }
 
     if not booted_udid {
-        # Boot the first available iPhone simulator.
         target_udid: str | None = None;
         for (runtime_key, device_list) in devices.items() {
             if "iOS" not in runtime_key {
@@ -659,9 +533,6 @@ def _start_ios(artifact_path: Path, project_dir: Path) {
         }
     }
 
-    # simctl install expects a .app bundle directory. The xcodebuild path
-    # returns one directly; the EAS local build path returns an .ipa, which
-    # we unzip to extract the .app under Payload/.
     install_target: Path = artifact_path;
     if artifact_path.is_file() and artifact_path.suffix == ".ipa" {
         import tempfile;
@@ -693,12 +564,6 @@ def _start_ios(artifact_path: Path, project_dir: Path) {
     console.success("iOS app installed and launched on simulator.");
 }
 
-"""Install a ``.app`` bundle on a booted simulator and launch it.
-
-``simctl install`` copies the bundle into the simulator's data container;
-``simctl launch`` then starts it by bundle identifier (best-effort, since
-the bundle id may not have been resolved from app.json).
-"""
 def _simctl_install_and_launch(
     xcrun: str, udid: str, app_path: Path, bundle_id: str | None
 ) {

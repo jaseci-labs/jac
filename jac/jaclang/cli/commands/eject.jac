@@ -1,13 +1,8 @@
-"""Eject command: compile a Jac project into a runnable FastAPI + JavaScript app.
-Writes an `ejected/{backend,frontend}` folder with zero .jac files: a FastAPI
-backend running walkers on `jaclang` plus the compiled `.cl.jac` UI on Vite."""
-
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Eject a Jac project to a runnable FastAPI + JavaScript app."""
 @registry.command(
     name="eject",
     help="Eject a Jac project to a runnable FastAPI + JavaScript app",

@@ -1,6 +1,3 @@
-"""Implementation for CompileOptions."""
-
-"""Return a copy with skip_native_engine set."""
 impl CompileOptions.with_skip_native_engine(`skip: bool = True) -> CompileOptions {
     return CompileOptions(
         type_check=self.type_check,
@@ -14,7 +11,6 @@ impl CompileOptions.with_skip_native_engine(`skip: bool = True) -> CompileOption
     );
 }
 
-"""Return a copy with aot_mode set."""
 impl CompileOptions.with_aot_mode(mode: bool = True) -> CompileOptions {
     return CompileOptions(
         type_check=self.type_check,

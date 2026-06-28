@@ -1,11 +1,3 @@
-"""CEF test host — opens a browser window to example.com.
-
-Run from this directory after `jac run build.jac` builds libcef_dispatch.so and
-the CEF runtime is staged in cef_dist/ (via a `cef` build / fetch_cef_dist):
-    jac nacompile cef_test_host.na.jac -o cef_test_host
-    LD_LIBRARY_PATH=. ./cef_test_host
-"""
-
 import sys;
 import from cef {
     cef_execute_subprocess,

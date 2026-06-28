@@ -1,4 +1,3 @@
-"""Implementation of PWATarget methods."""
 import from pathlib { Path }
 import from typing { Optional }
 import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
@@ -8,7 +7,6 @@ import json;
 import shutil;
 import sys;
 
-# PWA Constants
 glob PWA_DEFAULT_THEME_COLOR = "#000000",
      PWA_DEFAULT_BACKGROUND_COLOR = "#ffffff",
      PWA_DEFAULT_CACHE_NAME = "jac-pwa-cache-v1",
@@ -17,7 +15,6 @@ glob PWA_DEFAULT_THEME_COLOR = "#000000",
      PWA_API_PATH_PREFIX = "/api/",
      PWA_CACHEABLE_EXTENSIONS = ['.html', '.js', '.css', '.png', '.json'];
 
-# Install Banner Constants
 glob PWA_BANNER_STORAGE_KEY = "__jac_pwa_prefs__",
      PWA_BANNER_DEFAULT_DELAY_MS = 3000,
      PWA_BANNER_DISMISS_DELAYS_DAYS = [7, 14, 28],
@@ -27,7 +24,6 @@ glob PWA_BANNER_STORAGE_KEY = "__jac_pwa_prefs__",
      PWA_IOS_MODAL_Z_INDEX = 10000,
      PWA_MS_PER_DAY = 86400000;
 
-"""Load PWA config with project metadata in a single config fetch."""
 def _load_pwa_context -> tuple[dict, str] {
     config = get_config();
     project_name = "Jac App";
@@ -45,7 +41,6 @@ def _load_pwa_context -> tuple[dict, str] {
     return (pwa_config, project_name);
 }
 
-"""Get default PWA manifest configuration."""
 def _get_default_manifest(project_name: str, pwa_config: dict) -> dict {
     theme_color = pwa_config.get("theme_color", PWA_DEFAULT_THEME_COLOR);
     background_color = pwa_config.get("background_color", PWA_DEFAULT_BACKGROUND_COLOR);
@@ -71,7 +66,6 @@ def _get_default_manifest(project_name: str, pwa_config: dict) -> dict {
     };
 }
 
-"""Generate a PWA icon using Pillow."""
 def _generate_pwa_icon(dest_path: Path, size: int) -> bool {
     import subprocess;
     python_code = f'''
@@ -106,7 +100,6 @@ except Exception:
     }
 }
 
-"""Generate default PWA icons to directory."""
 def _generate_default_pwa_icons(dest_dir: Path) -> int {
     dest_dir.mkdir(parents=True, exist_ok=True);
     generated = 0;
@@ -126,7 +119,6 @@ def _generate_default_pwa_icons(dest_dir: Path) -> int {
     return generated;
 }
 
-"""Copy PWA icons from source to destination directory."""
 def _copy_icons(src_dir: Path, dest_dir: Path) -> int {
     icon_files = list(src_dir.glob("*.png"));
     if not icon_files {
@@ -139,7 +131,6 @@ def _copy_icons(src_dir: Path, dest_dir: Path) -> int {
     return len(icon_files);
 }
 
-"""Copy or generate PWA icons to dist directory."""
 def _copy_pwa_icons_to_dist(dist_dir: Path, project_dir: Path) -> None {
     try {
         user_icons_dir = project_dir / "pwa_icons";
@@ -161,7 +152,6 @@ def _copy_pwa_icons_to_dist(dist_dir: Path, project_dir: Path) -> None {
     }
 }
 
-"""Generate manifest.json for PWA."""
 def _generate_manifest(dist_dir: Path, project_name: str, pwa_config: dict) {
     manifest = _get_default_manifest(project_name, pwa_config);
 
@@ -177,7 +167,6 @@ def _generate_manifest(dist_dir: Path, project_name: str, pwa_config: dict) {
     }
 }
 
-"""Build list of files to precache from dist directory."""
 def _get_precache_files(dist_dir: Path) -> list[str] {
     precache_files: list[str] = [];
     if not dist_dir.exists() {
@@ -191,7 +180,6 @@ def _get_precache_files(dist_dir: Path) -> list[str] {
     return precache_files;
 }
 
-"""Generate service worker JavaScript content."""
 def _build_service_worker_content(cache_name: str, precache_files: list[str]) -> str {
     return f'''// Jac PWA Service Worker
 const CACHE_NAME = '{cache_name}';
@@ -251,7 +239,6 @@ self.addEventListener('fetch', (event) => {{
 ''';
 }
 
-"""Generate service worker for offline support."""
 def _generate_service_worker(dist_dir: Path, pwa_config: dict) {
     cache_name = pwa_config.get("cache_name", PWA_DEFAULT_CACHE_NAME);
     precache_files = _get_precache_files(dist_dir);
@@ -266,7 +253,6 @@ def _generate_service_worker(dist_dir: Path, pwa_config: dict) {
     }
 }
 
-"""Build beforeinstallprompt capture script (must be FIRST in head)."""
 def _build_install_prompt_capture_script -> str {
     return '''
     <script>
@@ -286,7 +272,6 @@ def _build_install_prompt_capture_script -> str {
     </script>''';
 }
 
-"""Build PWA head tags for HTML injection."""
 def _build_pwa_head_tags(theme_color: str) -> str {
     return f'''
     <link rel="manifest" href="manifest.json">
@@ -294,7 +279,6 @@ def _build_pwa_head_tags(theme_color: str) -> str {
     <link rel="apple-touch-icon" href="{PWA_ICON_SMALL}">''';
 }
 
-"""Build service worker registration script."""
 def _build_sw_registration_script -> str {
     return '''
     <script>
@@ -308,7 +292,6 @@ def _build_sw_registration_script -> str {
     </script>''';
 }
 
-"""Build CSS styles for PWA install banner."""
 def _build_banner_css(position: str) -> str {
     pos_style = "bottom: 16px;" if position == "bottom" else "top: 16px;";
     return f'''
@@ -368,13 +351,11 @@ def _build_banner_css(position: str) -> str {
           }}''';
 }
 
-"""Build PWA install banner auto-injection script (self-contained, no imports)."""
 def _build_pwa_install_banner_script(pwa_config: dict) -> str {
     if not pwa_config.get("install_banner", True) {
         return "";
     }
 
-    # Get configuration with defaults from constants
     delay = pwa_config.get("install_banner_delay", PWA_BANNER_DEFAULT_DELAY_MS);
     position = pwa_config.get("install_banner_position", "bottom");
     title = pwa_config.get("install_title", "");
@@ -384,10 +365,8 @@ def _build_pwa_install_banner_script(pwa_config: dict) -> str {
     install_text = pwa_config.get("install_button_text", "Install");
     dismiss_text = pwa_config.get("install_dismiss_text", "Not now");
 
-    # Get CSS from helper and escape for JS template literal
     banner_css = _build_banner_css(position);
 
-    # Use constants for magic numbers
     max_dismissals = PWA_BANNER_MAX_DISMISSALS;
     dismiss_delays = PWA_BANNER_DISMISS_DELAYS_DAYS;
     ms_per_day = PWA_MS_PER_DAY;
@@ -525,7 +504,6 @@ def _build_pwa_install_banner_script(pwa_config: dict) -> str {
     </script>''';
 }
 
-"""Update index.html to include PWA meta tags, service worker, and install banner."""
 def _update_html_for_pwa(dist_dir: Path, pwa_config: dict) -> None {
     index_path = dist_dir / "index.html";
     if not index_path.exists() {
@@ -539,14 +517,12 @@ def _update_html_for_pwa(dist_dir: Path, pwa_config: dict) -> None {
         html_content = index_path.read_text(encoding='utf-8');
         modified = False;
 
-        # 1. Inject beforeinstallprompt capture script FIRST in <head>
         if '<head>' in html_content {
             install_capture = _build_install_prompt_capture_script();
             html_content = html_content.replace('<head>', f'<head>{install_capture}');
             modified = True;
         }
 
-        # 2. Inject PWA meta tags before </head>
         if '</head>' in html_content {
             pwa_head = _build_pwa_head_tags(theme_color);
             html_content = html_content.replace('</head>', f'{pwa_head}\n  </head>');
@@ -555,7 +531,6 @@ def _update_html_for_pwa(dist_dir: Path, pwa_config: dict) -> None {
             console.warning("  No </head> tag found, skipping PWA head injection");
         }
 
-        # 3. Inject SW registration and install banner before </body>
         if '</body>' in html_content {
             sw_script = _build_sw_registration_script();
             banner_script = _build_pwa_install_banner_script(pwa_config);
@@ -582,7 +557,6 @@ def _update_html_for_pwa(dist_dir: Path, pwa_config: dict) -> None {
     }
 }
 
-"""Setup PWA target - copies default icons and configures jac.toml."""
 impl PWATarget.setup(project_dir: Path) -> None {
     console.print("\n📱 Setting up PWA target", style="bold");
     icons_dest = project_dir / "pwa_icons";
@@ -599,7 +573,6 @@ impl PWATarget.setup(project_dir: Path) -> None {
     );
 }
 
-"""Generate PWA icons to project directory."""
 def _copy_pwa_icons_to_project(dest_dir: Path) {
     try {
         generated = _generate_default_pwa_icons(dest_dir);
@@ -618,7 +591,6 @@ def _copy_pwa_icons_to_project(dest_dir: Path) {
     }
 }
 
-"""Ensure PWA config section exists in jac.toml."""
 def _ensure_pwa_config(project_dir: Path) -> None {
     import tomllib;
 
@@ -669,15 +641,11 @@ install_dismiss_text = "Not now"
     }
 }
 
-"""Build PWA bundle - web bundle + manifest + service worker.
-
-Uses super().build() to get the web bundle, then adds PWA artifacts.
-"""
 impl PWATarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
     console.print("\n📱 Building PWA target", style="bold");
-    # Use inherited WebTarget.build() via super()
+
     bundle_path = super.build(entry_file, project_dir, platform);
     bundler = ViteBundler(project_dir=project_dir);
     dist_dir = bundler.output_dir;
@@ -692,10 +660,6 @@ impl PWATarget.build(
     return bundle_path;
 }
 
-"""Start PWA dev server - delegates to WebTarget.dev() via super().
-
-Service worker is disabled in dev mode for better developer experience.
-"""
 impl PWATarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
@@ -703,19 +667,14 @@ impl PWATarget.dev(
     console.print(
         "  Note: Service worker is disabled in dev mode for better DX", style="muted"
     );
-    # Delegate to inherited WebTarget.dev()
+
     super.dev(entry_file, project_dir, port, api_port);
 }
 
-"""Start PWA in production preview mode - builds PWA then serves.
-
-Delegates to WebTarget.start() via super() after building PWA artifacts.
-"""
 impl PWATarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
-    # Build PWA first (which calls super().build() + adds PWA artifacts)
     self.build(entry_file, project_dir, None);
-    # Then serve using inherited WebTarget.start()
+
     super.start(entry_file, project_dir, api_port);
 }

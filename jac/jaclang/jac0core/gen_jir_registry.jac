@@ -1,13 +1,6 @@
-"""Regenerate jir_registry.jac by introspecting unitree node classes.
-
-Usage: jac gen-jir-registry
-"""
 import inspect;
 import from pathlib { Path }
 
-# Manual field overrides for nodes with non-standard serialization.
-# SpecialVarRef: kid=[] so its inner Name (orig) can't be assigned a node ID.
-# Serialize token fields directly from the SpecialVarRef node itself (IS-A Name).
 glob MANUAL_FIELDS: dict[str, list] = {
          "SpecialVarRef": [
              'FieldDesc(name="name", kind=0)',
@@ -23,9 +16,6 @@ glob MANUAL_FIELDS: dict[str, list] = {
          ],
 
      },
-     # body field from AstImplNeedingNode[T] is (Sequence | ImplDef | None), must be NODE_LIST
-     # TODO: Remove this override by specifying T in unitree.jac, e.g.:
-     #   obj Archetype(..., AstImplNeedingNode[Sequence[ArchBlockStmt] | ImplDef], ...)
      BODY_NODE_LIST_CLASSES: set = {"Archetype", "Ability", "Enum"},
      FIELD_KINDS: dict[str, int] = {
          "STRING": 0,
@@ -45,7 +35,6 @@ glob MANUAL_FIELDS: dict[str, list] = {
      ENUM_TYPES: set = {"SymbolType", "SymbolAccess", "EdgeDir", "CodeContext"},
      SKIP_PARAMS: set = {"self", "kid", "parent"};
 
-"""Map a type annotation string to a FieldKind int."""
 def classify_type(ann_str: str) -> int {
     ann = ann_str.strip();
     if ann == "bool" {
@@ -90,7 +79,6 @@ def classify_type(ann_str: str) -> int {
     return FIELD_KINDS["NODE_REF"];
 }
 
-"""Generate the registry source code in Jac syntax."""
 def generate -> str {
     import from jaclang.jac0core { unitree as ut_mod }
     import from jaclang.jac0core.unitree {
@@ -100,7 +88,6 @@ def generate -> str {
         ContextAwareNode as _CtxNode
     }
 
-    # Collect all UniNode subclasses sorted by name
     all_classes: list = [];
     for name in sorted(dir(ut_mod)) {
         attr = getattr(ut_mod, name);
@@ -191,14 +178,10 @@ def generate -> str {
             ] {
                 ann_str = ann_str.replace(prefix, "");
             }
-            # body field from AstImplNeedingNode[T] needs NODE_LIST (can be list or single node)
+
             if pname == "body" and name in BODY_NODE_LIST_CLASSES {
                 kind_val = FIELD_KINDS["NODE_LIST"];
             } elif pname == "accessors" and name == "HasVar" {
-                # accessors is `Sequence[Ability] | None`: plain fields have None,
-                # native properties have a list. NODE_LIST cannot distinguish
-                # None from [], which makes a cached plain field look like a
-                # setter-less property (false E1005). OPT_NODE_LIST keeps None.
                 kind_val = FIELD_KINDS["OPT_NODE_LIST"];
             } else {
                 kind_val = classify_type(ann_str);
@@ -206,7 +189,6 @@ def generate -> str {
             field_parts.append(f'FieldDesc(name="{pname}", kind={kind_val})');
         }
 
-        # Include inherited fields from ContextAwareNode (set by init, not postinit)
         if issubclass(cls, _CtxNode) and cls is not _CtxNode {
             if "__init__" in _CtxNode.__dict__ {
                 try {
@@ -238,7 +220,6 @@ def generate -> str {
             }
         }
 
-        # Apply manual overrides for nodes with non-standard serialization
         if name in MANUAL_FIELDS {
             field_parts = MANUAL_FIELDS[name];
         }

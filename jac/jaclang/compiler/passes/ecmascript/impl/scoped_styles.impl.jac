@@ -1,5 +1,3 @@
-"""Implementation for scoped-style annex support."""
-
 glob _GROUPING_AT_RULES: set[str] = {
          'media',
          'supports',
@@ -115,8 +113,7 @@ impl scope_selector(selector: str, module_path: str, class_map: dict[str, str]) 
             i = end;
             continue;
         }
-        # `:global(...)` escape hatch -- unwrap and keep the inner selector
-        # verbatim (no hashing).
+
         if (selector[i:i + 8] == ':global(') {
             depth = 1;
             j = i + 8;
@@ -135,7 +132,7 @@ impl scope_selector(selector: str, module_path: str, class_map: dict[str, str]) 
             i = (j + 1) if (j < n) else n;
             continue;
         }
-        # `.name` class selector -- hash and record.
+
         if (
             ch == '.'
             and (i + 1) < n
@@ -185,14 +182,12 @@ impl scope_stylesheet(css: str, module_path: str, class_map: dict[str, str]) -> 
             sel = ''.join(prelude);
             prelude = [];
             if _grouping_at_rule(sel) {
-                # Grouping at-rule: keep the prelude, descend into nested rules.
                 out.append(sel);
                 out.append('{');
                 i += 1;
                 continue;
             }
-            # Style rule (scope it) or declaration at-rule (keep verbatim);
-            # either way the block is opaque declarations -- copy it through.
+
             if sel.strip().startswith('@') {
                 out.append(sel);
             } else {
@@ -211,7 +206,6 @@ impl scope_stylesheet(css: str, module_path: str, class_map: dict[str, str]) -> 
             continue;
         }
         if (ch == ';') {
-            # Statement at-rule (`@import ...;`, `@layer a, b;`) or stray semi.
             out.append(''.join(prelude));
             prelude = [];
             out.append(';');

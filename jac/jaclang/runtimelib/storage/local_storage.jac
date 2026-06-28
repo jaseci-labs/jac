@@ -1,15 +1,8 @@
-"""Local filesystem storage implementation for Jac core."""
 import shutil;
 import from pathlib { Path }
 import from typing { BinaryIO, Generator }
 import from jaclang.runtimelib.storage.storage { Storage }
 
-"""Local filesystem storage provider.
-
-This is the default storage implementation that stores files on the local
-filesystem. Plugins like jac-scale can override store() to provide
-cloud storage backends instead.
-"""
 class LocalStorage(Storage) {
     has base_path: str = "./storage",
         create_dirs: bool = True;
@@ -18,9 +11,7 @@ class LocalStorage(Storage) {
         self: LocalStorage, base_path: str = "./storage", create_dirs: bool = True
     ) -> None;
 
-    """Resolve a relative path to an absolute path within the storage base."""
     def _resolve_path(self: LocalStorage, path: str) -> Path;
-
     override def upload(
         self: LocalStorage,
         source: (str | BinaryIO),

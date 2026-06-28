@@ -1,10 +1,8 @@
-"""Asset file processing and copying utilities."""
 import contextlib;
 import shutil;
 import from pathlib { Path }
 import from jaclang.project.config { get_config }
 
-"""Handles copying of asset files (CSS, images, fonts, etc.) between directories."""
 class AssetProcessor {
     with entry {
         ASSET_EXTENSIONS = {

@@ -1,23 +1,3 @@
-"""Compiler-backed code intelligence for tools and agents.
-
-A headless, protocol-agnostic facade over the Jac compiler's symbol tables and
-type information. Where a text search answers "which lines contain this
-string", `CodeIntelligence` answers "where is this symbol defined, everywhere
-it is used, what type it has, and which walkers traverse it" -- the questions
-that require the compiler, not a regex.
-
-It exists so tools and coding agents can navigate the *graph of meaning*
-instead of treating a project as text. The Jac language server consumes the
-same symbol data through its own LSP-shaped surface; this facade returns plain
-Jac objects (`SymbolInfo`, `SourceRef`, ...) so a caller never touches a raw
-AST node or an LSP wire type.
-
-The model is rebuild-on-write: `load` compiles the project once, `refresh`
-rebuilds after an edit. Unlike the language server it does not track
-keystroke-level edits -- an agent writes whole files, so a per-write rebuild
-is enough.
-"""
-
 import os;
 import time;
 import json;
@@ -44,7 +24,6 @@ import from jaclang.jac0core.ext_registry {
     is_annex
 }
 
-# Directories never worth compiling -- generated output, vendored deps, VCS.
 glob _SKIP_DIRS: set[str] = {
          "__pycache__",
          ".git",
@@ -56,7 +35,6 @@ glob _SKIP_DIRS: set[str] = {
          ".mypy_cache",
          ".pytest_cache"
      },
-     # Archetype keyword -> readable kind. Falls back to the raw token value.
      _ARCH_KIND: dict[str, str] = {
          "node": "node",
          "walker": "walker",
@@ -67,7 +45,6 @@ glob _SKIP_DIRS: set[str] = {
      };
 
 
-"""Resolve a path to its canonical absolute form."""
 def _real(path: str) -> str {
     try {
         return str(Path(path).resolve());
@@ -77,7 +54,6 @@ def _real(path: str) -> str {
 }
 
 
-"""A single source location -- a symbol's definition or one of its uses."""
 obj SourceRef {
     has file: str,
         line: int,
@@ -90,7 +66,6 @@ obj SourceRef {
         return f"{loc}  {self.snippet}" if self.snippet else loc;
     }
 
-    """A JSON-friendly mapping of this reference, for machine consumers."""
     def to_dict -> dict {
         return {
             "file": self.file,
@@ -103,12 +78,6 @@ obj SourceRef {
 }
 
 
-"""A resolved symbol: where it is defined, its kind, type, and structure.
-
-`kind` is one of node/walker/edge/obj/class/enum/ability/field/global/symbol.
-The structural fields (`fields`, `abilities`, `base_classes`) are populated
-only for archetypes; they are empty for everything else.
-"""
 obj SymbolInfo {
     has name: str,
         kind: str,
@@ -123,7 +92,6 @@ obj SymbolInfo {
         base_classes: list[str] = [],
         is_genai: bool = False;
 
-    """Render a compact, human/LLM-readable description of the symbol."""
     def render -> str {
         head = f"{self.kind} {self.name}";
         if self.signature {
@@ -147,7 +115,6 @@ obj SymbolInfo {
         return "\n".join(lines);
     }
 
-    """A JSON-friendly mapping of this symbol, for machine consumers."""
     def to_dict -> dict {
         return {
             "name": self.name,
@@ -165,7 +132,6 @@ obj SymbolInfo {
         };
     }
 
-    """Rebuild a SymbolInfo from its `to_dict` form (e.g. a cached index)."""
     static def from_dict(d: dict) -> SymbolInfo {
         return SymbolInfo(
             name=str(d.get("name", "")),
@@ -185,7 +151,6 @@ obj SymbolInfo {
 }
 
 
-"""A compiler diagnostic -- an error or warning at a source location."""
 obj Diagnostic {
     has file: str,
         line: int,
@@ -196,7 +161,6 @@ obj Diagnostic {
         return f"{self.severity}: {self.file}:{self.line}: {self.message}";
     }
 
-    """A JSON-friendly mapping of this diagnostic, for machine consumers."""
     def to_dict -> dict {
         return {
             "file": self.file,
@@ -208,17 +172,11 @@ obj Diagnostic {
 }
 
 
-"""A stable identity key for a diagnostic -- file, line, severity, message.
-
-Used to diff diagnostics across a recompile: a key absent before an edit and
-present after it identifies a problem the edit introduced.
-"""
 def _diag_key(d: Diagnostic) -> str {
     return f"{_real(d.file)}:{d.line}:{d.severity}:{d.message}";
 }
 
 
-"""A walker entry point: an ability that runs when a walker visits a node."""
 obj EntryPoint {
     has walker_name: str,
         ability: str,
@@ -231,7 +189,6 @@ obj EntryPoint {
         return f"{self.walker_name}.{self.ability}  ({self.event} {self.node_type})  [{self.file}:{self.line}]";
     }
 
-    """A JSON-friendly mapping of this entry point, for machine consumers."""
     def to_dict -> dict {
         return {
             "walker_name": self.walker_name,
@@ -243,7 +200,6 @@ obj EntryPoint {
         };
     }
 
-    """Rebuild an EntryPoint from its `to_dict` form (e.g. a cached index)."""
     static def from_dict(d: dict) -> EntryPoint {
         return EntryPoint(
             walker_name=str(d.get("walker_name", "")),
@@ -257,27 +213,13 @@ obj EntryPoint {
 }
 
 
-# Bump on any change to the structural index's serialized shape, so a stale
-# on-disk index from an older `CodeIntelligence` is rejected rather than
-# mis-decoded. The JIR header already invalidates on jaclang/Python version
-# change; this guards the index payload's own schema.
 glob _INDEX_SCHEMA: int = 1;
 
 
-"""A flat, serializable structural index of one module.
-
-Holds exactly what the parse-only structural queries need -- the module's
-archetypes (with their fields, member signatures, and base classes) and walker
-entry points -- as plain `SymbolInfo` / `EntryPoint` records with no
-cross-module pointers. This is the unit `CodeIntelligence` persists to and
-restores from the JIR `SEC_SYMINDEX` section so a cold start can answer
-`project_map` and friends without re-running the semantic pipeline.
-"""
 obj ModuleIndex {
     has archetypes: list[SymbolInfo] = [],
         entry_points: list[EntryPoint] = [];
 
-    """Serialize to a JSON-friendly dict, tagged with the index schema version."""
     def to_dict -> dict {
         return {
             "schema": _INDEX_SCHEMA,
@@ -286,7 +228,6 @@ obj ModuleIndex {
         };
     }
 
-    """Rebuild from a `to_dict` form, or None if the schema version mismatches."""
     static def from_dict(d: dict) -> ModuleIndex | None {
         if int(d.get("schema", 0)) != _INDEX_SCHEMA {
             return None;
@@ -299,29 +240,12 @@ obj ModuleIndex {
 }
 
 
-#-- structural index cache (cross-run) ---------------------------------------
-# A module's parse-only structural index is persisted as a JIR file carrying a
-# single `SEC_SYMINDEX` TLV section (no AST payload), so a later run can serve
-# `project_map`/structural queries without re-parsing. The cache reuses the JIR
-# header + section machinery; it lives at a `.symidx.jir` sibling of the module's
-# bytecode JIR so the two writers never clobber each other. Freshness is keyed
-# on the source's content hash (header `source_content_hash`), not mtime: a
-# parse-only index depends only on its own source and spliced annex files, so
-# no transitive-dependency tracking is needed.
-"""The on-disk cache path for a module's structural index."""
 def _index_cache_path(file: str) -> Path {
     base = get_module_cache_path(file);
     return base.with_name(base.stem + ".symidx.jir");
 }
 
 
-"""CRC32 over a module's source plus its spliced annex files.
-
-Both `.impl.jac` and `.test.jac` annexes are folded in, since the compiler
-splices them into the module and they can contribute archetypes. A change in
-any of them must invalidate the cached index. Returns -1 if the source cannot
-be read, which never matches a stored hash (so the cache misses safely).
-"""
 def _combined_source_hash(file: str) -> int {
     crc = 0;
     try {
@@ -353,12 +277,6 @@ def _combined_source_hash(file: str) -> int {
 }
 
 
-"""Read a module's cached structural index, or None if absent/stale/incompatible.
-
-Misses (returns None) when: the cache file is missing, its header is from an
-incompatible compiler/Python, the stored content hash no longer matches the
-source + annexes, or the section/schema cannot be decoded.
-"""
 def _read_index_cache(file: str) -> ModuleIndex | None {
     path = _index_cache_path(file);
     if not path.exists() {
@@ -391,13 +309,6 @@ def _read_index_cache(file: str) -> ModuleIndex | None {
 }
 
 
-"""Atomically write a module's structural index to its cache file.
-
-The JIR carries only the `SEC_SYMINDEX` section (an empty AST payload, like a
-precompiled bundle); the header's `source_content_hash` keys freshness. Any
-failure is swallowed -- the cache is an optimisation, never a correctness
-dependency.
-"""
 def _write_index_cache(file: str, idx: ModuleIndex) {
     try {
         payload = json.dumps(idx.to_dict()).encode('utf-8');
@@ -422,13 +333,6 @@ def _write_index_cache(file: str, idx: ModuleIndex) {
 }
 
 
-"""A typed neighbourhood of code, packed for prompt assembly.
-
-`slice_for` builds one: the target symbol, the symbols of the types it
-depends on (declared field types, base classes), and every place it is used.
-`render` turns it into a compact text block a model can read instead of
-whole files.
-"""
 obj ContextSlice {
     has query: str,
         target: SymbolInfo | None = None,
@@ -455,11 +359,6 @@ obj ContextSlice {
         return "\n".join(parts);
     }
 
-    """A JSON-friendly mapping of this slice, for machine consumers.
-
-    Nested records are serialised through their own `to_dict`, so the slice
-    shape stays in lockstep with the `SymbolInfo`/`SourceRef` contracts.
-    """
     def to_dict -> dict {
         return {
             "query": self.query,
@@ -471,67 +370,30 @@ obj ContextSlice {
 }
 
 
-"""Compiler-backed semantic queries over a Jac project.
-
-Construct with the project root, call `load` once, then query. After an edit,
-call `refresh` to rebuild. All query methods return plain `SymbolInfo` /
-`SourceRef` / `Diagnostic` objects -- never raw AST nodes.
-"""
 obj CodeIntelligence {
     has proj_dir: str,
         type_check: bool = True,
-        # Parse-only mode: compile each file with `parse_str` rather than the
-        # full pipeline, skipping symbol/import resolution and type inference.
-        # Valid only for the structural queries (`archetypes`, `entry_points`)
-        # that read declarations straight off the AST -- name- and type-
-        # addressed queries need the symbol tables a parse alone never builds.
         structural: bool = False,
-        # Lazy mode: `load` builds only the cheap, cross-run-cached structural
-        # index (parse-only), and the full type-checked pipeline is deferred
-        # until the first query that needs symbol tables or diagnostics. So a
-        # session that only reads the structural map (`project_map`, walkers)
-        # never pays the semantic-analysis cost, and a warm cache makes that
-        # startup nearly free; the full build still runs, once, on demand.
-        # Ignored when `structural` is set (that mode never upgrades to full).
         lazy: bool = False,
-        # Optional observer invoked after every compile (`load`/`refresh`) with
-        # a stats dict {op, file, recompiled, cached, total, ms}. Lets a caller
-        # (the `jac ai` live view) surface when code intelligence recompiles and
-        # how much it touched, without this facade knowing anything about rendering.
         on_event: any = None;
 
     def postinit {
         self._root_real: str = _real(self.proj_dir);
         self.prog: JacProgram = JacProgram();
-        # The program tracks the reverse-dependency graph for us: every compile
-        # records its import edges structurally, so `transitive_dependents` is
-        # complete (survives cache hits) and there is no parallel map to keep.
+
         self.prog._track_dependencies = True;
         self._files: list[str] = [];
         self._file_set: set[str] = set();
         self._compiled: dict[str, uni.Module] = {};
-        # In `structural` mode, each module's flat index keyed by real path --
-        # populated from the on-disk `SEC_SYMINDEX` cache on a hit, or built
-        # from a fresh parse on a miss. Structural queries read from here so a
-        # cache hit needs no AST. Empty (and unused) in full-compile mode.
+
         self._index: dict[str, ModuleIndex] = {};
-        # Lazy mode: whether the full type-checked pipeline has run yet. Until
-        # it has, only the structural index is available; the first type query
-        # flips this via `_ensure_full`.
+
         self._full_compiled: bool = False;
-        # Signature of the project's directory mtimes -- used by `refresh` to
-        # detect a file being added or removed out of band.
+
         self._dir_sig: dict[str, float] = {};
         self._loaded: bool = False;
     }
 
-    #-- lifecycle --------------------------------------------------------
-    """Discover and compile every non-annex .jac file under the project root.
-
-    Annex files (`.impl.jac`, `.test.jac`) are skipped: the compiler splices
-    them into their parent module automatically. A file that fails to compile
-    is skipped, not fatal -- partial knowledge still beats none.
-    """
     def load {
         t0 = time.time();
         self._files = self._discover();
@@ -540,13 +402,9 @@ obj CodeIntelligence {
         self.prog.warnings_had = [];
         self._compiled = {};
         self._index = {};
-        # A fresh load rebuilds only the structural index in lazy mode; the full
-        # pipeline re-defers to the next type query.
+
         self._full_compiled = False;
-        # In structural (and lazy) mode a file is either re-parsed (a cache miss)
-        # or served from its on-disk index (a hit); split the counts so the
-        # `on_event` observer can show the cross-run win. In full mode every file
-        # is compiled, so `parsed` is the whole project and `cached` is zero.
+
         parsed = 0;
         cached = 0;
         for f in self._files {
@@ -561,12 +419,6 @@ obj CodeIntelligence {
         self._emit("load", "", parsed, t0, cached);
     }
 
-    """Notify the `on_event` observer that a compile just happened (if set).
-
-    `recompiled` is how many modules were actually parsed/compiled; `cached`
-    is how many were served from the on-disk structural index (structural mode
-    only, else zero).
-    """
     def _emit(op: str, file: str, recompiled: int, t0: float, cached: int = 0) {
         cb = self.on_event;
         if cb is None {
@@ -588,20 +440,8 @@ obj CodeIntelligence {
         }
     }
 
-    """Rebuild after a file was created, edited, or deleted -- always incremental.
-
-    Given a `file`, only that module and the modules that import it
-    (transitively) are recompiled; the rest are served from the compiler's
-    cache, so the cost is an LSP-save, not a project rebuild. Creating a file
-    is handled the same way -- it is registered in place rather than triggering
-    a full rediscovery -- so scaffolding an app file-by-file stays linear. With
-    no `file`, or before the first `load`, this is a full build. The transitive
-    importer set comes from the program's own reverse-dependency graph
-    (`transitive_dependents`), kept complete by `record_module_dependencies`.
-    """
     def refresh(file: str = "") -> None {
         if not file or not self._loaded {
-            # A full build; `load` emits its own event.
             self.load();
             return;
         }
@@ -609,21 +449,16 @@ obj CodeIntelligence {
         target = self._head_for(_real(file));
         mode = "edit";
         if not Path(target).exists() {
-            # Deletion: drop the module, then recompile whatever imported it so
-            # the now-broken references surface. The file itself is not recompiled.
             mode = "delete";
             self._drop_file(target);
             stale: set[str] = self.prog.transitive_dependents(target);
         } else {
             if target not in self._file_set {
-                # A file the agent just created. Register it in place instead of
-                # rediscovering the project, and resync the directory signature.
                 mode = "create";
                 self._files.append(target);
                 self._file_set.add(target);
                 self._dir_sig = self._dir_signature();
             }
-            # The changed file plus every module that imports it (transitively).
             stale = self.prog.transitive_dependents(target);
             stale.add(target);
         }
@@ -634,8 +469,7 @@ obj CodeIntelligence {
                 _ = e;
             }
         }
-        # Drop the recompile set's old diagnostics; the recompile re-reports
-        # current ones. Untouched files' diagnostics are left intact.
+
         self.prog.errors_had = self._keep_diagnostics(self.prog.errors_had, stale);
         self.prog.warnings_had = self._keep_diagnostics(self.prog.warnings_had, stale);
         recompiled = 0;
@@ -648,28 +482,18 @@ obj CodeIntelligence {
         self._emit(mode, target, recompiled, t0);
     }
 
-    """Resolve an annex (`.impl.jac`/`.test.jac`) path to its owning head module.
-
-    Annex files are spliced into their parent module by the compiler and are
-    never compiled standalone, so a write to one must recompile the head. A
-    sibling annex (`foo.impl.jac`) maps to `foo.jac`; an annex inside a
-    `foo.impl/` directory maps to `foo.jac` in the parent. Non-annex paths, and
-    annexes whose head is not a known project file, are returned unchanged.
-    """
     def _head_for(real: str) -> str {
         p = Path(real);
         head: (Path | None) = None;
         name = p.name;
-        # Strip the annex suffix only, preserving any codespace variant
-        # (e.g. foo.cl.impl.jac -> foo.cl.jac).
+
         for asuf in ANNEX_SUFFIXES {
             if name.endswith(asuf) {
                 head = p.with_name(name[:-len(asuf)] + ".jac");
                 break;
             }
         }
-        # An annex living inside a `<head>.impl/` directory belongs to the
-        # `<head>.jac` beside that directory, not to a sibling.
+
         parent = p.parent;
         impl_folder = ANNEX_FOLDER[IMPL_SUFFIX];
         if parent.name.endswith(impl_folder) {
@@ -684,7 +508,6 @@ obj CodeIntelligence {
         return real;
     }
 
-    """Forget a deleted project file across the file list, set, and compiled map."""
     def _drop_file(real: str) {
         self._files = [
             f
@@ -701,14 +524,6 @@ obj CodeIntelligence {
         self._dir_sig = self._dir_signature();
     }
 
-    """Compile (or restore) one project file. Returns whether it was cache-served.
-
-    In `structural` mode -- and in `lazy` mode before the full pipeline has run
-    -- the module's flat index is restored from the on-disk `SEC_SYMINDEX` cache
-    when the source is unchanged (returns True, no parse), else parsed and cached
-    (returns False). Full mode (and lazy after upgrade) runs the type-checked-or-
-    not pipeline and returns False -- it needs symbol tables the cache omits.
-    """
     def _compile_one(file: str) -> bool {
         if self.structural or (self.lazy and not self._full_compiled) {
             return self._index_one(file);
@@ -717,12 +532,6 @@ obj CodeIntelligence {
         return False;
     }
 
-    """Run the full pipeline for one file and record its module and index.
-
-    Keeps the compiled module directly (rather than via the program hub, whose
-    routing depends on the project's location) and refreshes the file's
-    structural index from the now-fully-built AST.
-    """
     def _full_compile_one(file: str) {
         try {
             mod = self.prog.compile(
@@ -738,19 +547,10 @@ obj CodeIntelligence {
                 }
             }
         } except Exception as e {
-            # Keep going: one bad file should not blind the agent to the rest.
             _ = e;
         }
     }
 
-    """Upgrade a lazy load to the full type-checked pipeline, once, on demand.
-
-    A no-op unless `lazy` is set and the upgrade has not happened. Runs a clean
-    full build of every project file -- equivalent to a non-lazy `load` -- so
-    symbol tables, def/use chains, and type diagnostics become available. The
-    hub and type system are reset first so the full build does not reuse the
-    parse-only modules left by the structural load.
-    """
     def _ensure_full {
         if not self.lazy or self._full_compiled {
             return;
@@ -773,12 +573,6 @@ obj CodeIntelligence {
         self._emit("typecheck", "", len(self._files), t0);
     }
 
-    """Restore or build one module's structural index. Returns True on a cache hit.
-
-    Tries the on-disk `SEC_SYMINDEX` cache first; on a hit the index is restored
-    with no parse. On a miss the file is parsed, its index built off the AST and
-    written back to the cache for the next run.
-    """
     def _index_one(file: str) -> bool {
         real = _real(file);
         cached = _read_index_cache(file);
@@ -796,13 +590,11 @@ obj CodeIntelligence {
                 _write_index_cache(file, idx);
             }
         } except Exception as e {
-            # Keep going: one bad file should not blind the agent to the rest.
             _ = e;
         }
         return False;
     }
 
-    """Build a module's flat structural index from its parsed AST."""
     def _build_index(mod: uni.Module) -> ModuleIndex {
         idx = ModuleIndex();
         try {
@@ -823,11 +615,6 @@ obj CodeIntelligence {
         return idx;
     }
 
-    """A directory-mtime signature -- changes when a file is added or removed.
-
-    Editing a file's content does not touch its directory's mtime, so an
-    unchanged signature means an incremental refresh is safe.
-    """
     def _dir_signature -> dict[str, float] {
         dirs: set[str] = {self._root_real};
         for f in self._files {
@@ -844,7 +631,6 @@ obj CodeIntelligence {
         return sig;
     }
 
-    """Filter alerts down to those whose file is NOT in the stale set."""
     def _keep_diagnostics(alerts: list[Alert], stale: set[str]) -> list[Alert] {
         out: list[Alert] = [];
         for al in alerts {
@@ -862,23 +648,15 @@ obj CodeIntelligence {
         }
     }
 
-    """Whether `load` has compiled the project at least once.
-
-    Lets a caller read already-built results (e.g. `diagnostics`) without
-    paying for a first compile -- a query that must stay cheap can skip itself
-    when the project model is not yet built.
-    """
     def is_loaded -> bool {
         return self._loaded;
     }
 
-    """List the project .jac files that were compiled."""
     def files -> list[str] {
         self._ensure();
         return list(self._files);
     }
 
-    #-- internals --------------------------------------------------------
     def _discover -> list[str] {
         found: list[str] = [];
         base = Path(self._root_real);
@@ -898,18 +676,12 @@ obj CodeIntelligence {
         return found;
     }
 
-    """The fully-compiled modules of the project.
-
-    Reading the AST modules implies a type query, so this triggers the lazy
-    full-pipeline upgrade (a no-op outside lazy mode).
-    """
     def _modules -> list[uni.Module] {
         self._ensure();
         self._ensure_full();
         return list(self._compiled.values());
     }
 
-    """Recursively collect every Symbol reachable from a scope."""
     def _collect_syms(scope: uni.UniScopeNode, out: list[uni.Symbol]) {
         for sym in scope.names_in_scope.values() {
             out.append(sym);
@@ -924,7 +696,6 @@ obj CodeIntelligence {
         }
     }
 
-    """Every Symbol declared anywhere in the project."""
     def _all_syms -> list[uni.Symbol] {
         out: list[uni.Symbol] = [];
         for mod in self._modules() {
@@ -986,7 +757,6 @@ obj CodeIntelligence {
         return "";
     }
 
-    """Build a SymbolInfo from a resolved Symbol, or None if it has no decl."""
     def _info(sym: uni.Symbol) -> SymbolInfo | None {
         decl = sym.decl;
         if decl is None {
@@ -1058,7 +828,6 @@ obj CodeIntelligence {
         }
     }
 
-    """Find the canonical (non-imported) Symbols matching a name."""
     def _resolve(name: str) -> list[uni.Symbol] {
         hits: list[uni.Symbol] = [];
         seen: set[str] = set();
@@ -1083,8 +852,6 @@ obj CodeIntelligence {
         return hits;
     }
 
-    #-- name-addressed queries ------------------------------------------
-    """Look up every project symbol with the given name."""
     def lookup(name: str) -> list[SymbolInfo] {
         out: list[SymbolInfo] = [];
         for sym in self._resolve(name) {
@@ -1096,18 +863,11 @@ obj CodeIntelligence {
         return out;
     }
 
-    """The first definition of a symbol, or None if it is unknown."""
     def definition(name: str) -> SymbolInfo | None {
         hits = self.lookup(name);
         return hits[0] if hits else None;
     }
 
-    """Every definition and use of a symbol, across the whole project.
-
-    This is the precise answer that replaces a text search: it is computed
-    from the symbol table's def/use chains, so it never matches a comment, a
-    string, or an unrelated identifier that happens to share the name.
-    """
     def references(name: str) -> list[SourceRef] {
         out: list[SourceRef] = [];
         seen: set[str] = set();
@@ -1137,7 +897,6 @@ obj CodeIntelligence {
         return out;
     }
 
-    """Distinct files that define or use a symbol."""
     def importers(name: str) -> list[str] {
         files: list[str] = [];
         for ref in self.references(name) {
@@ -1148,7 +907,6 @@ obj CodeIntelligence {
         return files;
     }
 
-    """Top-level symbols of one file, or of the whole project if file is empty."""
     def symbols(file: str = "") -> list[SymbolInfo] {
         target = _real(file) if file else "";
         out: list[SymbolInfo] = [];
@@ -1173,17 +931,9 @@ obj CodeIntelligence {
         return out;
     }
 
-    #-- structural / OSP queries ----------------------------------------
-    """Project archetypes, optionally filtered to one kind (node/walker/...).
-
-    In structural mode these come from the (possibly cache-restored) flat index
-    rather than the AST, so a cold start with a warm cache pays no parse.
-    """
     def archetypes(kind: str = "") -> list[SymbolInfo] {
         out: list[SymbolInfo] = [];
         if self.structural or self.lazy {
-            # Served from the flat index -- in lazy mode this deliberately does
-            # NOT trigger the full pipeline, so a map query stays cheap.
             self._ensure();
             for idx in self._index.values() {
                 for info in idx.archetypes {
@@ -1222,15 +972,9 @@ obj CodeIntelligence {
         return info;
     }
 
-    """Every walker entry point in the project, as EntryPoint records.
-
-    In structural mode these come from the (possibly cache-restored) flat index;
-    otherwise they are read straight off each compiled module's AST.
-    """
     def entry_points -> list[EntryPoint] {
         out: list[EntryPoint] = [];
         if self.structural or self.lazy {
-            # Served from the flat index; stays cheap in lazy mode (no upgrade).
             self._ensure();
             for idx in self._index.values() {
                 out.extend(idx.entry_points);
@@ -1243,7 +987,6 @@ obj CodeIntelligence {
         return out;
     }
 
-    """Walker entry points declared in a single module, read off its AST."""
     def _module_entry_points(mod: uni.Module) -> list[EntryPoint] {
         out: list[EntryPoint] = [];
         try {
@@ -1282,11 +1025,6 @@ obj CodeIntelligence {
         return out;
     }
 
-    """Walker entry points that traverse the given node type.
-
-    A type query, not a search: `walkers_visiting("User")` finds every walker
-    ability declared `with User entry`, resolved through the entry signature.
-    """
     def walkers_visiting(node_type: str) -> list[EntryPoint] {
         return [
             ep
@@ -1295,7 +1033,6 @@ obj CodeIntelligence {
         ];
     }
 
-    """The node types a given walker traverses."""
     def nodes_visited_by(walker_name: str) -> list[EntryPoint] {
         return [
             ep
@@ -1304,12 +1041,9 @@ obj CodeIntelligence {
         ];
     }
 
-    #-- diagnostics ------------------------------------------------------
-    """Compiler errors and warnings, optionally filtered to one file."""
     def diagnostics(file: str = "") -> list[Diagnostic] {
         self._ensure();
-        # Diagnostics are a type query: parse-only never reports the semantic
-        # errors/warnings the agent's write-feedback loop relies on.
+
         self._ensure_full();
         target = _real(file) if file else "";
         out: list[Diagnostic] = [];
@@ -1336,23 +1070,12 @@ obj CodeIntelligence {
         return out;
     }
 
-    """Refresh after an edit and return the diagnostics the edit is responsible for.
-
-    Every diagnostic now in `file` is returned -- the caller just wrote that
-    file, so all of it is worth seeing (and its line numbers may have shifted,
-    making a per-line diff unreliable). For every *other* project file only
-    the diagnostics this edit newly introduced are returned: a dependent
-    module the edit broke surfaces, while a dependent's pre-existing error is
-    not misattributed to the edit. With no `file` this is a full refresh and
-    returns every diagnostic.
-    """
     def refresh_and_diff(file: str = "") -> list[Diagnostic] {
         if not file or not self._loaded {
             self.refresh(file);
             return self.diagnostics();
         }
-        # Snapshot the pre-edit diagnostics; anything not in this set after the
-        # recompile is breakage the edit caused.
+
         before: set[str] = {_diag_key(d) for d in self.diagnostics()};
         self.refresh(file);
         real = _real(file);
@@ -1365,14 +1088,6 @@ obj CodeIntelligence {
         return out;
     }
 
-    #-- context packing --------------------------------------------------
-    """Build a typed context slice around a symbol, for prompt assembly.
-
-    Returns the symbol's definition, the definitions of the types it depends
-    on (field types and base classes, up to `depth` of indirection), and the
-    list of places it is used -- a minimal, complete neighbourhood the model
-    can read instead of whole files.
-    """
     def slice_for(name: str, depth: int = 1) -> ContextSlice {
         sl = ContextSlice(query=name);
         sl.target = self.definition(name);
@@ -1408,7 +1123,6 @@ obj CodeIntelligence {
         return sl;
     }
 
-    """Extract candidate type identifiers a symbol depends on."""
     def _type_names(info: SymbolInfo) -> list[str] {
         names: set[str] = set();
         for b in info.base_classes {
@@ -1431,7 +1145,6 @@ obj CodeIntelligence {
         return list(names);
     }
 
-    """Pull capitalised bare identifiers out of a type expression string."""
     def _idents(text: str) -> list[str] {
         import re;
         out: list[str] = [];
