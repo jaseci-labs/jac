@@ -36,6 +36,78 @@ def build_release_binary(repo_root: Path) -> Path {
 }
 
 
+def _package_dir(plugin_dir: Path) -> (Path | None) {
+    for child in sorted(plugin_dir.iterdir()) {
+        if child.is_dir() and not is_excluded(child.relative_to(plugin_dir)) {
+            if (child / "__init__.py").is_file()
+            or (child / "__init__.jac").is_file() {
+                return child;
+            }
+        }
+    }
+    return None;
+}
+
+
+def precompile_plugins(repo_root: Path) -> int {
+    import marshal;
+    import from jaclang.jac0core.compiler { patch_co_filenames_bytes }
+    import from jaclang.jac0core.jir {
+        write_precompiled_jir,
+        FLAG_PRECOMPILED,
+        compute_module_key,
+        jir_matches_source,
+        PRECOMPILE_SENTINEL
+    }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    import from jaclang.jac0core.program { JacProgram }
+
+    import sys;
+    pyver = f"cpython-{sys.version_info.major}{sys.version_info.minor}";
+    compiler = Jac.get_compiler();
+    written = 0;
+    for name in _PLUGIN_DIRS {
+        pkg = _package_dir(repo_root / name) if (repo_root / name).is_dir() else None;
+        if pkg is None {
+            continue;
+        }
+        out_dir = pkg / "_precompiled" / pyver;
+        for jac_path in sorted(pkg.rglob("*.jac")) {
+            rel = jac_path.relative_to(pkg);
+            if is_excluded(rel) {
+                continue;
+            }
+            dest = out_dir / rel.with_suffix(".jir");
+
+            if dest.is_file()
+            and jir_matches_source(dest.read_bytes(), str(jac_path)) {
+                continue;
+            }
+            try {
+                code = compiler.get_bytecode(
+                    full_target=str(jac_path), target_program=JacProgram()
+                );
+                if code is None {
+                    continue;
+                }
+                patched = patch_co_filenames_bytes(
+                    marshal.dumps(code), str(pkg), PRECOMPILE_SENTINEL
+                );
+                jir = write_precompiled_jir(
+                    patched, compute_module_key(str(jac_path)), FLAG_PRECOMPILED
+                );
+                dest.parent.mkdir(parents=True, exist_ok=True);
+                dest.write_bytes(jir);
+                written += 1;
+            } except Exception {
+                continue;
+            }
+        }
+    }
+    return written;
+}
+
+
 def pack_toolchain(repo_root: Path, binary: Path) -> bytes {
     buf = io.BytesIO();
     with tarfile.open(fileobj=buf, mode="w:gz") as tar {

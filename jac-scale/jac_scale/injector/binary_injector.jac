@@ -2,6 +2,7 @@ import from jac_scale.injector.pvc_injector { PvcInjector, bundle_pvc_path }
 import from jac_scale.injector.binary {
     host_repo_root,
     build_release_binary,
+    precompile_plugins,
     pack_toolchain,
     toolchain_object_key
 }
@@ -16,6 +17,8 @@ obj BinaryInjector(PvcInjector) {
         super.prepare(app_name, namespace, project_dir);
         repo_root = host_repo_root();
         binary = build_release_binary(repo_root);
+
+        precompile_plugins(repo_root);
         raw = pack_toolchain(repo_root, binary);
         self._toolchain_object_key = toolchain_object_key(
             app_name, content_address(raw)
