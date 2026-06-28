@@ -75,8 +75,9 @@ impl c2jac(
     n_tier_b = tier_b_site_count(tags);
     if n_tier_b {
         console.warning(
-            f"[c2jac] {n_tier_b} best-effort (Tier-B) site(s) — flagged inline "
-            f"in the output (see the `# c2jac:` header and per-site notes)"
+            f"[c2jac] {n_tier_b} best-effort (Tier-B) site(s) — see the `# c2jac:` "
+            f"header in the output for the full list (surrogate sites are also "
+            f"flagged inline at their site)"
         );
     }
     return 0;
