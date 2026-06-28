@@ -79,13 +79,13 @@ obj CUniBuilder {
     # Enum → uni.Enum or GlobalVars                                         #
     # ------------------------------------------------------------------ #
     def _build_enum(nd: object) -> list[uni.UniNode] {
-        verdict = self.enum_verdicts.verdicts.get(id(nd), "tier_b");
+        verdict = self.enum_verdicts.verdicts.get(id(nd), Idiom.TIER_B);
         name_map = self.enum_verdicts.name_map.get(id(nd), {});
         (line, col) = self._coord(nd);
-        if verdict == Idiom.ENUM_AS_ENUM.value {
+        if verdict == Idiom.ENUM_AS_ENUM {
             return [self._enum_as_enum(nd, name_map, line, col)];
         }
-        if verdict == Idiom.ENUM_AS_CONSTS.value {
+        if verdict == Idiom.ENUM_AS_CONSTS {
             return self._enum_as_consts(name_map, line, col);
         }
         # TIER_B — emit nothing here; the mapper's placeholder already carries the surrogate.

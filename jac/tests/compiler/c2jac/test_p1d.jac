@@ -116,7 +116,7 @@ test "enum_prepass: Color gets ENUM_AS_ENUM verdict" {
     file_ast = c_parser.CParser().parse(src, "enum_simple.c");
     ev = build_enum_map(file_ast);
     verdicts = list(ev.verdicts.values());
-    assert Idiom.ENUM_AS_ENUM.value in verdicts , f"Expected ENUM_AS_ENUM in {verdicts}";
+    assert Idiom.ENUM_AS_ENUM in verdicts , f"Expected ENUM_AS_ENUM in {verdicts}";
 }
 
 test "enum_prepass: Permissions gets ENUM_AS_ENUM verdict (non-sequential, unique values)" {
@@ -127,7 +127,7 @@ test "enum_prepass: Permissions gets ENUM_AS_ENUM verdict (non-sequential, uniqu
     # PERM_ALL = 7 is non-sequential but every value is unique; _enum_as_enum
     # writes each value explicitly, so it lowers faithfully to an enum rather
     # than being demoted over a cosmetic gap.
-    assert Idiom.ENUM_AS_ENUM.value in verdicts , f"Expected ENUM_AS_ENUM in {verdicts}";
+    assert Idiom.ENUM_AS_ENUM in verdicts , f"Expected ENUM_AS_ENUM in {verdicts}";
 }
 
 test "enum_simple.c transpiles: named enum appears as enum keyword" {
@@ -151,7 +151,7 @@ test "enum_collision.c second enum demotes to TIER_B no duplicate glob" {
     ev = build_enum_map(file_ast);
     verdicts = list(ev.verdicts.values());
     # The second enum with VAL_A collision should be TIER_B.
-    assert "tier_b" in verdicts , f"Expected tier_b for collision in {verdicts}";
+    assert Idiom.TIER_B in verdicts , f"Expected TIER_B for collision in {verdicts}";
 }
 
 test "enum_collision.c emits valid Jac without duplicate globals" {
@@ -627,7 +627,7 @@ test "enum_tu_collision.c: enum constant colliding with a top-level function dem
     verdicts = list(ev.verdicts.values());
     # STATUS_OK is also a top-level function name — seeding TU names makes this
     # collision visible regardless of declaration order.
-    assert "tier_b" in verdicts , f"Expected tier_b for TU-name collision in {verdicts}";
+    assert Idiom.TIER_B in verdicts , f"Expected TIER_B for TU-name collision in {verdicts}";
 }
 
 # --- Review finding 4: direct-IR for-body/condition expression coverage.
