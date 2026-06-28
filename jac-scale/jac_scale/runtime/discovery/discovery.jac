@@ -1,12 +1,23 @@
+import os;
 import jaclang.jac0core.unitree as uni;
 import from pathlib { Path }
 import from jaclang.jac0core.parser { parse }
+import from jaclang.jac0core.modresolver { find_jac_project_root }
 import from jac_scale.runtime.discovery.route_policy {
     derive_route_prefix,
     guard_route_name
 }
 
-glob _SV_PREFIX_TOK: str = "KW_SERVER";
+glob _SV_PREFIX_TOK: str = "KW_SERVER",
+     _PRUNE_DIRS: set[str] = {
+         "node_modules",
+         "__pycache__",
+         "dist",
+         "build",
+         "venv",
+         ".venv",
+         "site-packages"
+     };
 
 
 obj ModuleMarkers {
@@ -69,23 +80,48 @@ def discover_sv_services(entry_file: str) -> dict[str, str] {
     if not root_dir.is_dir() {
         return {};
     }
+
+    project_root = find_jac_project_root(str(entry_path));
+    scan_root = Path(project_root) if project_root else root_dir;
+    scan_root_str = str(scan_root);
+
     services: set[str] = set();
 
-    for jac_file in sorted(root_dir.glob("*.jac")) {
-        try {
-            text = jac_file.read_text(encoding="utf-8");
-        } except Exception {
-            continue;
+    for (cur_root, dirnames, filenames) in os.walk(scan_root_str) {
+        kept: list[str] = [];
+        for d in dirnames {
+            if d.startswith(".") or (d in _PRUNE_DIRS) {
+                continue;
+            }
+            if os.path.isfile(os.path.join(cur_root, d, "jac.toml")) {
+                continue;
+            }
+            kept.append(d);
         }
-        markers = scan_markers(text, str(jac_file));
-        if markers is None {
-            continue;
+        dirnames.clear();
+        for d in sorted(kept) {
+            dirnames.append(d);
         }
-        for target in markers.sv_import_targets {
-            services.add(target);
-        }
-        if markers.is_service {
-            services.add(jac_file.stem);
+        for fn in sorted(filenames) {
+            if not fn.endswith(".jac") {
+                continue;
+            }
+            jac_path = os.path.join(cur_root, fn);
+            try {
+                text = Path(jac_path).read_text(encoding="utf-8");
+            } except Exception {
+                continue;
+            }
+            markers = scan_markers(text, jac_path);
+            if markers is None {
+                continue;
+            }
+            for target in markers.sv_import_targets {
+                services.add(target);
+            }
+            if markers.is_service {
+                services.add(Path(jac_path).stem);
+            }
         }
     }
 

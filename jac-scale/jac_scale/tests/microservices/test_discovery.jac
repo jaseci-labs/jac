@@ -183,6 +183,74 @@ test "discover returns empty for a missing directory" {
     assert routes == {};
 }
 
+test "discover finds a service living in a subdir of the same project" {
+    tmp = Path(tempfile.mkdtemp());
+    (tmp / "jac.toml").write_text("[project]\nname = \"app\"\n");
+    (tmp / "main.jac").write_text("with entry { print(1); }\n");
+    sub = tmp / "littlex";
+    sub.mkdir();
+    (sub / "social_graph.jac").write_text(
+        "to sv:\ndef:pub setup_profile -> int { return 1; }\n"
+    );
+    try {
+        routes = discover_sv_services(str(tmp / "main.jac"));
+        assert "social_graph" in routes , (
+            f"same-project subdir service missing: {routes}"
+        );
+    } finally {
+        shutil.rmtree(str(tmp), ignore_errors=True);
+    }
+}
+
+test "discover treats a nested jac.toml as a separate-project boundary" {
+    tmp = Path(tempfile.mkdtemp());
+    (tmp / "jac.toml").write_text("[project]\nname = \"parent\"\n");
+    (tmp / "main.jac").write_text("with entry { print(1); }\n");
+
+    embedded = tmp / "embedded";
+    embedded.mkdir();
+    (embedded / "social_graph.jac").write_text(
+        "to sv:\ndef:pub setup_profile -> int { return 1; }\n"
+    );
+
+    other = tmp / "other_app";
+    other.mkdir();
+    (other / "jac.toml").write_text("[project]\nname = \"other\"\n");
+    (other / "orders_app.jac").write_text(
+        "to sv:\ndef:pub list_orders -> int { return 1; }\n"
+    );
+    try {
+        routes = discover_sv_services(str(tmp / "main.jac"));
+        assert "social_graph" in routes , (
+            f"same-project embedded service missing: {routes}"
+        );
+        assert "orders_app" not in routes , (
+            f"nested subproject leaked into discovery: {routes}"
+        );
+    } finally {
+        shutil.rmtree(str(tmp), ignore_errors=True);
+    }
+}
+
+test "discover prunes build/vendor dirs" {
+    tmp = Path(tempfile.mkdtemp());
+    (tmp / "jac.toml").write_text("[project]\nname = \"app\"\n");
+    (tmp / "main.jac").write_text("with entry { print(1); }\n");
+    vendored = tmp / "node_modules" / "pkg";
+    vendored.mkdir(parents=True);
+    (vendored / "ghost_app.jac").write_text(
+        "to sv:\ndef:pub run -> int { return 1; }\n"
+    );
+    try {
+        routes = discover_sv_services(str(tmp / "main.jac"));
+        assert "ghost_app" not in routes , (
+            f"vendored service leaked into discovery: {routes}"
+        );
+    } finally {
+        shutil.rmtree(str(tmp), ignore_errors=True);
+    }
+}
+
 test "resolve_routes merges discovered services with explicit routes" {
     main = _K8S_E2E_FIXTURE / "main.jac";
 
