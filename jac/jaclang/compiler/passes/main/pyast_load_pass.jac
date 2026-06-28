@@ -44,6 +44,16 @@ obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     def _get_source_segment(nd: py_ast.AST) -> (str | None);
     def _strip_string_continuations(seg: str) -> str;
     def nu(nd: T) -> T;
+    def name_node(
+        nd: py_ast.AST,
+        value: str,
+        name_tok: Tok = Tok.NAME,
+        col_end: int = -1,
+        col_start: int = -1,
+        end_line: int = -1,
+        is_kwesc: bool = False
+    ) -> uni.Name;
+
     def convert(nd: py_ast.AST) -> uni.UniNode;
     def transform(ir_in: uni.PythonModuleAst) -> uni.Module;
     def extract_with_entry(
