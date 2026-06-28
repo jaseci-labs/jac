@@ -1,0 +1,33 @@
+import io;
+import os;
+import sys;
+import from jaclang { JacRuntimeInterface as Jac }
+
+glob jac_import = Jac.jac_import,
+     FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixtures");
+
+
+test "routes along edge attribute, not just node" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("routing_edge_choice", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+
+    assert "VISITED:beta" in stdout_value;
+    assert "VISITED:alpha" not in stdout_value;
+
+    assert stdout_value.count("VISITED:") == 1;
+}
+
+
+test "routing-only call_params do not leak to the model" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("routing_param_leak", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+
+    assert "LEAKED:" not in stdout_value;
+    assert "HAS_TEMPERATURE:True" in stdout_value;
+}
