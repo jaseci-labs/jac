@@ -15,6 +15,19 @@ impl start_cli -> None {
     import from jaclang.cli.executor { get_executor }
     import from jaclang.cli.help { get_help_formatter }
     import from jaclang.cli.console { console }
+    # Dev loop notice: when [dev] jaclang_source (or a linked dev binary)
+    # reroutes `import jaclang` to an in-repo source tree, the bundled compiler
+    # is being bypassed — surface that once on stderr so it's never a surprise.
+    # JAC_DEV_SOURCE is exported by _jac_finder.apply_dev_source_override()
+    # during site init (see jac/_jac_finder.py).
+    dev_source = os.environ.get('JAC_DEV_SOURCE');
+    if dev_source {
+        console.print(
+            f"🛠  jac dev mode — using compiler source at {dev_source}",
+            style='info',
+            file=sys.stderr
+        );
+    }
     # Auto-discover and load jac.toml project configuration
     _load_project_config();
     # Load plugins which may register additional commands
