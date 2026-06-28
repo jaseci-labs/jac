@@ -780,7 +780,7 @@ impl TypeEvaluator._infer_type_args_from_method(
         init_method, expr, is_constructor_call=True
     );
 
-    # Pick up TypeVars pinned in `self: Class[ConcreteType]` overload annotations.
+    # Bind TypeVars found in the constructor's self annotation (e.g. self: TemporaryDirectory[str]).
     self._extract_self_annotation_bindings(caller_type, init_method, bindings);
 
     # First, try direct binding from class type_params (works for enumerate)
@@ -808,7 +808,7 @@ impl TypeEvaluator._infer_type_args_from_method(
     return direct_args;
 }
 
-# Bind class TypeVars from `self: Class[T]` on the matched constructor overload.
+# Reads the `self: Class[T]` annotation on the constructor and binds T to the concrete type.
 impl TypeEvaluator._extract_self_annotation_bindings(
     caller_type: types.ClassType,
     method: types.FunctionType,
@@ -825,18 +825,20 @@ impl TypeEvaluator._extract_self_annotation_bindings(
     if not isinstance(self_ann, types.ClassType) {
         return;
     }
+    # Skip if the self annotation points to a different class.
     if self_ann.shared != caller_type.shared {
         return;
     }
     if not self_ann.private.type_args {
         return;
     }
+    # Map each class TypeVar to the concrete type from the self annotation.
     class_params = caller_type.shared.type_params;
     self_args = self_ann.private.type_args;
     for i in range(min(len(class_params), len(self_args))) {
         tp = class_params[i];
         if not tp.name or tp.name in bindings {
-            continue;  # already bound from arg matching
+            continue;  # already resolved from call arguments
         }
         self.assign_type_to_type_var(tp, self_args[i], bindings);
     }
