@@ -96,14 +96,27 @@ impl validate_resource_limits(
 
 """Execute a kubectl command and surface useful error details."""
 impl run_kubectl_command(args: list[str], cwd: str | Path | None = None) -> None {
+    import os;
     import shutil;
     import subprocess;
     if (shutil.which('kubectl') is None) {
-        raise RuntimeError('kubectl is required to sync code to the PVC.');
+        raise RuntimeError('kubectl is required to seed the bundle PVC.');
     }
+    # Strip the jac binary's bundled-CPython vars from the child env: kubectl's
+    # exec-credential (aws/gcloud/kubelogin) is itself a host Python tool and
+    # fails to find its stdlib if it inherits them (no token -> spurious 401).
+    child_env = {
+        k: v
+        for (k, v) in os.environ.items()
+        if k not in ('PYTHONHOME', 'PYTHONPATH')
+    };
     try {
         subprocess.run(
-            ['kubectl', *args], check=True, text=True, cwd=str(cwd) if cwd else None
+            ['kubectl', *args],
+            check=True,
+            text=True,
+            cwd=str(cwd) if cwd else None,
+            env=child_env
         );
     } except subprocess.CalledProcessError as exc {
         raise RuntimeError(

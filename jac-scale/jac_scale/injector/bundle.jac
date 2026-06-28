@@ -15,10 +15,13 @@ import from pathlib { Path }
 
 # Pod-side contract shared with the injector's init container. The bundle is
 # unpacked onto APP_VOLUME_NAME at APP_MOUNT_PATH; the shared runtime bootstrap
-# then installs jac there. JAC_ZIG_VERSION tracks jac/build.zig.zon's
-# minimum_zig_version (single source of truth for the experimental zig fetch).
+# (in a dedicated init container) installs jac under JAC_HOME, which lives on the
+# same shared volume so the built/installed toolchain survives into the app
+# container. JAC_ZIG_VERSION tracks jac/build.zig.zon's minimum_zig_version
+# (single source of truth for the experimental zig fetch).
 glob APP_VOLUME_NAME: str = "jac-app",
      APP_MOUNT_PATH: str = "/app",
+     JAC_HOME: str = "/app/.jachome",
      JAC_ZIG_VERSION: str = "0.16.0";
 
 # Directories never shipped into the cluster: build output, caches, vendored

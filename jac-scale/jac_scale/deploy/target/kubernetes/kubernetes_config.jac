@@ -41,6 +41,12 @@ obj KubernetesConfig(BaseConfig) {
         # Storage configuration
         pvc_size: str = '5Gi',
         mongodb_storage_size: str = '1Gi',
+        # StorageClass for the injector bundle PVC. It is ReadWriteMany, which
+        # EBS/gp3 (the EKS default) cannot provision, so on those clusters the
+        # bundle PVC stays Pending and the fleet never schedules. Empty = cluster
+        # default (fine on single-node MicroK8s); set to an RWX class (e.g.
+        # 'efs-sc' on EKS) so the bundle binds. Cloud-agnostic: no hardcoded class.
+        bundle_storage_class: str = '',
         # Timing configuration
         resource_deletion_wait: int = 5,
         aws_nlb_wait: int = 60,
@@ -162,6 +168,7 @@ obj KubernetesConfig(BaseConfig) {
                 # Storage configuration
                 'pvc_size': self.pvc_size,
                 'mongodb_storage_size': self.mongodb_storage_size,
+                'bundle_storage_class': self.bundle_storage_class,
                 # Timing configuration
                 'resource_deletion_wait': self.resource_deletion_wait,
                 'aws_nlb_wait': self.aws_nlb_wait,
@@ -247,6 +254,7 @@ obj KubernetesConfig(BaseConfig) {
             wait_image=config.get('wait_image', 'busybox'),
             pvc_size=config.get('pvc_size', '5Gi'),
             mongodb_storage_size=config.get('mongodb_storage_size', '1Gi'),
+            bundle_storage_class=config.get('bundle_storage_class', ''),
             resource_deletion_wait=config.get('resource_deletion_wait', 5),
             aws_nlb_wait=config.get('aws_nlb_wait', 60),
             app_mount_path=config.get('app_mount_path', '/app'),

@@ -26,6 +26,17 @@ obj KubernetesRealizer {
     """Run the deploy. Reads args off `context` and sets cancel/return data on it
     exactly as the deploy flow requires."""
     def realize(context: HookContext) -> None {
+        # The jac binary exports PYTHONHOME/PYTHONPATH for its bundled CPython.
+        # The kubernetes client's exec-credential (`aws eks get-token`, `gcloud`,
+        # `kubelogin`) and our kubectl bundle seed are host Python tools; if they
+        # inherit those vars they cannot import their own stdlib and emit no token
+        # (a spurious 401 at the API server). Drop them from this process env so
+        # every child the deploy spawns resolves its own interpreter. Safe: the
+        # running interpreter already bound its stdlib at startup; os.environ only
+        # affects children, and the host deploy never re-execs the jac binary.
+        for _embedded_python_var in ["PYTHONHOME", "PYTHONPATH"] {
+            os.environ.pop(_embedded_python_var, None);
+        }
         enabled = self.ms_config.get("enabled", None);
         filename = context.get_arg("filename");
         target = context.get_arg("target", "kubernetes");
@@ -39,7 +50,9 @@ obj KubernetesRealizer {
             needs_discovery = (enabled is None)
             or (enabled is True and not self.ms_config.get("routes", {}));
             if needs_discovery and filename and os.path.exists(filename) {
-                import from jac_scale.runtime.discovery.discovery { discover_sv_services }
+                import from jac_scale.runtime.discovery.discovery {
+                    discover_sv_services
+                }
                 scale_discovered = discover_sv_services(filename);
             }
             if (enabled is True) or scale_discovered {

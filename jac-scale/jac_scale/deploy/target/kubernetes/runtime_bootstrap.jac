@@ -14,7 +14,12 @@ runtime); callers run them in a container built with `needs_root` semantics.
 """
 
 import from jaclang.runtimelib.client { BUN_VERSION }
-import from jac_scale.injector.bundle { JAC_ZIG_VERSION }
+import from jac_scale.injector.bundle {
+    JAC_ZIG_VERSION,
+    JAC_HOME,
+    APP_VOLUME_NAME,
+    APP_MOUNT_PATH
+}
 import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesConfig }
 
 
@@ -28,6 +33,14 @@ def build_runtime_install_commands(
 ) -> list[str] {
     config = k8s_config;
     commands: list[str] = [];
+
+    # Install under a HOME on the shared app volume (JAC_HOME), not the init
+    # container's own ephemeral root: the released installer and Bun both honor
+    # $HOME, so the jac binary ($HOME/.local/bin), Bun ($HOME/.bun), and the
+    # plugin site all land on the volume the app container also mounts - the
+    # toolchain survives from the build init container into the app container.
+    commands.append(f'export HOME={JAC_HOME}');
+    commands.append(f'mkdir -p {JAC_HOME}/.local/bin');
 
     # Base setup
     commands.append('export DEBIAN_FRONTEND=noninteractive');
@@ -73,6 +86,9 @@ def build_runtime_install_commands(
     commands.append('export PATH="$BUN_INSTALL/bin:$PATH"');
 
     if experimental {
+        # Clone + build under $HOME (on the shared volume) so the built binary
+        # and its plugin site persist into the app container.
+        commands.append('cd "$HOME"');
         commands.append('rm -rf jaseci');
         # The pod has no SSH key/known_hosts, so a `git@host:owner/repo` or
         # `ssh://` URL makes the clone hang then fail. Normalize the common
@@ -148,6 +164,11 @@ def build_runtime_install_commands(
         commands.append('[ ! -d ./jac-byllm ] || jac install -e ./jac-byllm --global');
         commands.append('[ ! -d ./jac-mcp ] || jac install -e ./jac-mcp --global');
         commands.append('cd ..');
+        # Expose the zig-built binary on the same PATH the released installer
+        # uses, so the app container resolves `jac` identically in both modes.
+        commands.append(
+            'ln -sf "$HOME/jaseci/jac/zig-out/bin/jac" "$HOME/.local/bin/jac"'
+        );
     } else {
         packages = config.plugin_versions or {};
         jaclang_v = packages.get('jaclang', 'latest');
@@ -207,4 +228,58 @@ def build_runtime_install_commands(
         }
     }
     return commands;
+}
+
+
+"""PATH the app container uses to resolve the jac binary + Bun that the bootstrap
+init container installed under JAC_HOME on the shared volume."""
+def runtime_path -> str {
+    return f"{JAC_HOME}/.local/bin:{JAC_HOME}/.bun/bin:/usr/local/bin:/usr/bin:/bin";
+}
+
+
+"""Env (HOME + PATH) the app container needs so `jac` / `bun` resolve to the
+toolchain the bootstrap init container left on the shared volume. The app
+container does NOT install anything; it only runs the app."""
+def runtime_container_env -> list[dict[str, str]] {
+    return [
+        {"name": "HOME", "value": JAC_HOME},
+        {"name": "PATH", "value": runtime_path()}
+    ];
+}
+
+
+"""Init container that runs the shared install sequence (jac binary + Bun +
+plugins, or the experimental git-clone + zig-build) and `jac install` for the
+project, all onto the shared app volume.
+
+Run as an init container, NOT in the app container, for two reasons Udith's EKS
+run surfaced: (1) the multi-minute build would otherwise race the app container's
+startup probe and get SIGKILLed at the failureThreshold budget, and (2) an
+app-container restart re-runs the app command but NOT completed init containers,
+so the toolchain on the shared volume is reused instead of rebuilt from scratch.
+Needs a writable root + apt caps to install packages."""
+def build_bootstrap_init_container(
+    k8s_config: KubernetesConfig, experimental: bool, base_image: str
+) -> dict[str, any] {
+    commands = build_runtime_install_commands(k8s_config, experimental);
+    commands.append(f'cd {APP_MOUNT_PATH}');
+    commands.append('jac install');
+    script = ' && '.join(commands);
+    return {
+        "name": "jac-bootstrap",
+        "image": base_image,
+        "command": ["bash", "-c"],
+        "args": [script],
+        "securityContext": {
+            "readOnlyRootFilesystem": False,
+            "allowPrivilegeEscalation": False,
+            "capabilities": {
+                "drop": ["ALL"],
+                "add": ["CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID", "SETUID", "SETGID"]
+            },
+            "seccompProfile": {"type": "RuntimeDefault"}
+        },
+        "volumeMounts": [{"name": APP_VOLUME_NAME, "mountPath": APP_MOUNT_PATH}]
+    };
 }

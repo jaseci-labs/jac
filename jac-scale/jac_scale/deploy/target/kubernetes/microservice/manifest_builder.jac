@@ -77,7 +77,7 @@ obj MicroserviceManifestBuilder {
         # empty path and CrashLoop. seed() (the deploy-time publish) happens later
         # in apply_manifests, once the PVC from extra_manifests() exists.
         import from jac_scale.injector.pvc_injector { PvcInjector }
-        injector = PvcInjector();
+        injector = PvcInjector(storage_class=self.k8s_config.bundle_storage_class);
         injector.prepare(
             k8s_safe_name(self.k8s_config.app_name),
             self.k8s_config.namespace,
@@ -832,21 +832,14 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """Pod entrypoint: runs the shared runtime bootstrap (install the jac binary,
-    Bun, and plugins - the same sequence as the monolith cell), then reads
-    JAC_SV_NAME and runs `jac scale gateway` (gateway) or `jac start <name>.jac`
-    (service). JAC_SV_SIBLING=1 is exported so the pre-hook skips local-mode
-    orchestration. The injector init container unpacked the source at
-    APP_MOUNT_PATH; the bootstrap installs jac there and exports PATH inline, so
-    no PYDEPS/PYTHONPATH env override is needed."""
+    """Pod entrypoint: the RUN step only. The jac-bootstrap init container has
+    already installed jac + deps onto the shared volume (HOME/PATH point there via
+    runtime_container_env), so this just reads JAC_SV_NAME and runs `jac scale
+    gateway` (gateway) or `jac start <name>.jac` (service). JAC_SV_SIBLING=1 is
+    exported so the pre-hook skips local-mode orchestration. Keeping the heavy
+    install out of here is what lets the app answer the startup probe in time."""
     def _pod_entrypoint -> dict[str, any] {
-        import from jac_scale.deploy.target.kubernetes.runtime_bootstrap {
-            build_runtime_install_commands
-        }
         import from jac_scale.injector.bundle { APP_MOUNT_PATH }
-        install = ' && '.join(
-            build_runtime_install_commands(self.k8s_config, self.experimental)
-        );
         gw_prefix = "";
         client_entry = self._client_entry();
         if client_entry {
@@ -862,9 +855,7 @@ obj MicroserviceManifestBuilder {
             "command": ["bash", "-c"],
             "args": [
                 "set -euo pipefail; "
-                f"{install}; "
                 f"cd {APP_MOUNT_PATH}; "
-                "jac install; "
                 "export JAC_SV_SIBLING=1; "
                 'if [ "$JAC_SV_NAME" = "__gateway__" ]; then '
                 f"  {gw_prefix}"
@@ -908,12 +899,16 @@ obj MicroserviceManifestBuilder {
             container["resources"] = resources;
         }
         (shared_vols, shared_mounts) = self._shared_volumes_for_service(svc_name);
-        # The injector init container unpacked the source onto a shared emptyDir
-        # at APP_MOUNT_PATH; the entrypoint's runtime bootstrap installs jac there
-        # and exports PATH inline (binary or experimental zig-build), so no
-        # PYDEPS/PYTHONPATH/PATH env override is needed here.
+        # The injector init container unpacks the source onto the shared emptyDir
+        # at APP_MOUNT_PATH and the jac-bootstrap init container installs jac under
+        # JAC_HOME on it; HOME/PATH (runtime_container_env) point the app container
+        # at that toolchain, so this container only runs - it never installs.
         import from jac_scale.injector.bundle { APP_MOUNT_PATH }
+        import from jac_scale.deploy.target.kubernetes.runtime_bootstrap {
+            runtime_container_env
+        }
         container["workingDir"] = APP_MOUNT_PATH;
+        env_list.extend(runtime_container_env());
         if shared_mounts {
             container["volumeMounts"] = shared_mounts;
         }
@@ -932,10 +927,10 @@ obj MicroserviceManifestBuilder {
         }
         spec["volumes"] = list(shared_vols);
         spec["initContainers"] = list(self.deploy_context.init_containers);
-        # Delegate volume + init-container wiring to the injector so the pod
-        # gets the source mounted and jac installed before the app starts.
+        # Delegate volume + unpack-init-container wiring to the injector so the
+        # source is mounted at APP_MOUNT_PATH before anything runs.
         import from jac_scale.injector.pvc_injector { PvcInjector }
-        injector = PvcInjector();
+        injector = PvcInjector(storage_class=self.k8s_config.bundle_storage_class);
         injector._object_key = self._injector_object_key();
         spec["_jac_meta"] = {
             "app_name": k8s_safe_name(self.k8s_config.app_name),
@@ -943,6 +938,18 @@ obj MicroserviceManifestBuilder {
         };
         spec = injector.mutate_pod_spec(spec, self.k8s_config.python_image);
         spec.pop("_jac_meta", None);
+        # The jac-bootstrap init container runs AFTER the injector's unpack init
+        # container (init containers run in order), so the source exists before it
+        # installs jac + project deps. Doing the build here, not in the app
+        # container, keeps it off the startup-probe budget.
+        import from jac_scale.deploy.target.kubernetes.runtime_bootstrap {
+            build_bootstrap_init_container
+        }
+        spec["initContainers"].append(
+            build_bootstrap_init_container(
+                self.k8s_config, self.experimental, self.k8s_config.python_image
+            )
+        );
         return spec;
     }
 

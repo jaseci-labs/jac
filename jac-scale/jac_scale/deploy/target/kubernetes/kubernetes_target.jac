@@ -10,7 +10,8 @@ import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesCon
 import from jac_scale.injector.bundle { JAC_ZIG_VERSION }
 import from jac_scale.injector.pvc_injector { PvcInjector, bundle_pvc_name }
 import from jac_scale.deploy.target.kubernetes.runtime_bootstrap {
-    build_runtime_install_commands
+    build_bootstrap_init_container,
+    runtime_container_env
 }
 import from jac_scale.deploy.target.kubernetes.utils.kubernetes_utils {
     COMPANION_DEFS,
@@ -186,17 +187,16 @@ obj KubernetesTarget(DeploymentTarget) {
 
     """Build the bash command for setting up Jaseci runtime environment."""
     def _build_runtime_setup_command(app_config: AppConfig) -> list[str] {
-        commands = build_runtime_install_commands(
-            self.k8s_config, app_config.experimental
-        );
-
-        # Change to the app directory (the injector init container unpacked the
-        # project source there) and launch the monolith.
-        commands.append(f"cd {self.k8s_config.app_mount_path}");
-        commands.append('jac install');
-        commands.append(f"jac start {app_config.file_name}");
-        full_command = ' && '.join(commands);
-        return ['bash', '-c', full_command];
+        # RUN only. The jac-bootstrap init container already installed jac + the
+        # project deps onto the shared volume (HOME/PATH point the app container
+        # there via runtime_container_env). Keeping the build out of the app
+        # container is what keeps it off the startup-probe budget - the trap that
+        # crash-looped the experimental fleet when the build ran here.
+        commands = [
+            f"cd {self.k8s_config.app_mount_path}",
+            f"jac start {app_config.file_name}"
+        ];
+        return ['bash', '-c', ' && '.join(commands)];
     }
 
     """Build container configuration."""
@@ -1096,7 +1096,7 @@ obj KubernetesTarget(DeploymentTarget) {
             # mutate_pod_spec (after the Deployment is assembled) adds the unpack
             # init container + bundle mount. app_name is already a DNS-1123 name
             # (it names the Deployment/Service), so it doubles as the bundle key.
-            injector = PvcInjector();
+            injector = PvcInjector(storage_class=self.k8s_config.bundle_storage_class);
             injector.prepare(app_name, namespace, app_config.code_folder);
             ensure_pvc_exists(
                 core_v1,
@@ -1109,9 +1109,10 @@ obj KubernetesTarget(DeploymentTarget) {
             injector.seed(app_name, namespace);
             details["ship_source_bundle"] = "Successful";
 
-            # 10. Main container: the shared runtime bootstrap installs jac (binary
-            # + Bun + plugins, or the experimental zig-build) then `jac start`. The
-            # injector mounts the unpacked source at app_mount_path.
+            # 10. Main container: RUN only (`jac start`). The jac-bootstrap init
+            # container (added after mutate_pod_spec) does the install/build onto
+            # the shared volume; HOME/PATH (runtime_container_env) point the app
+            # container at that toolchain. needs_root stays for the writable /app.
             command = self._build_runtime_setup_command(app_config);
             container_config = self._build_container_config(
                 app_name,
@@ -1123,6 +1124,7 @@ obj KubernetesTarget(DeploymentTarget) {
                 secret_ref_name=secret_ref_name,
                 needs_root=True
             );
+            container_config['env'] = container_config['env'] + runtime_container_env();
 
             # 11. Create dedicated ServiceAccount for the app
             app_sa_name = f"{app_name}-sa";
@@ -1167,6 +1169,16 @@ obj KubernetesTarget(DeploymentTarget) {
                 template_spec, self.k8s_config.python_image
             );
             template_spec.pop('_jac_meta', None);
+            # The jac-bootstrap init container runs AFTER the injector's unpack
+            # init container (source must exist before it installs jac + deps),
+            # and off the app container's startup-probe budget.
+            template_spec['initContainers'].append(
+                build_bootstrap_init_container(
+                    self.k8s_config,
+                    app_config.experimental,
+                    self.k8s_config.python_image
+                )
+            );
             deployment['spec']['template']['spec'] = template_spec;
 
             # 12. Delete existing resources if they exist
