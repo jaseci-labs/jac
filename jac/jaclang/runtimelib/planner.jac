@@ -31,7 +31,6 @@ fallbacks or perf cliffs in CI.
 import logging;
 import from uuid { UUID }
 
-import from jaclang.jac0core.archetype { Anchor, Archetype, NodeAnchor }
 import from jaclang.runtimelib.query_plan { QueryPlan }
 
 glob logger = logging.getLogger(__name__),

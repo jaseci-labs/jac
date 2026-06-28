@@ -272,7 +272,6 @@ impl JSCodeGenerator.gen_member_expression(nd: es.MemberExpression) -> str {
             es.BinaryExpression,
             es.LogicalExpression,
             es.UnaryExpression,
-
         )
     ) {
         `obj = f"({`obj})";

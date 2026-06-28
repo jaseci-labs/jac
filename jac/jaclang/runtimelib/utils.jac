@@ -2,7 +2,6 @@
 import from collections.abc { Callable }
 import from pathlib { Path }
 import from uuid { UUID }
-import jaclang.jac0core.unitree as uni;
 import type from jaclang.jac0core.constructs { NodeArchetype }
 
 def collect_node_connections(

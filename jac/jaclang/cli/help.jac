@@ -7,7 +7,7 @@ Generates well-formatted help output with:
 - Plugin attribution for extended arguments
 """
 
-import from jaclang.cli.command { CommandSpec, Arg }
+import from jaclang.cli.command { CommandSpec }
 
 """Groups for organizing commands in help output.
 

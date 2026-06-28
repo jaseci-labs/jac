@@ -7,7 +7,6 @@ import from typing { Any, Awaitable, Callable, Coroutine, Optional, ParamSpec, T
 
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
-import from jaclang.jac0core.constant { SymbolType }
 import from jaclang.jac0core.passes.transform { Alert }
 import from jaclang.jac0core.unitree { Symbol, UniScopeNode }
 import from jaclang.lsp { uris }
