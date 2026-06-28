@@ -11,9 +11,7 @@ impl SqliteIdentityStorage.postinit -> None {
     # "database is locked" under concurrent access to the shared users.db
     # (e.g. parallel test workers sharing one data dir).
     self._engine = create_engine(
-        f"sqlite:///{self.db_path}",
-        echo=False,
-        connect_args={"timeout": 30}
+        f"sqlite:///{self.db_path}", echo=False, connect_args={"timeout": 30}
     );
     metadata = MetaData();
     self._table = Table(
