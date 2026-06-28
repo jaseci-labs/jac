@@ -31,10 +31,20 @@ def inject_tier_b_comments(jac_str: str, tags: TagTable) -> str {
     by_line = _reasons_by_line(entries);
     out: list[str] = [];
     for ln in jac_str.split("\n") {
-        m = _MARKER_RE.search(ln);
-        if m is not None {
-            c_line = int(m.group(1));
-            reasons = by_line.get(c_line, []);
+        # finditer, not search: a single formatted line can carry more than one
+        # surrogate marker (e.g. two unsupported expr args in one call), so merge
+        # the reasons of every marker on the line into one inline note rather than
+        # annotating only the first and dropping the rest.
+        matches = list(_MARKER_RE.finditer(ln));
+        if matches {
+            reasons: list[str] = [];
+            for m in matches {
+                for r in by_line.get(int(m.group(1)), []) {
+                    if r not in reasons {
+                        reasons.append(r);
+                    }
+                }
+            }
             note = "; ".join(reasons) if reasons else "unsupported C construct";
             # The formatted statement already ends with ';' — append inline.
             out.append(f"{ln}  {_NOTE_PREFIX}{note}");

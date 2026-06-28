@@ -97,9 +97,13 @@ def ptr_typename(ptr_decl: object) -> str {
     return "object";
 }
 
-def typename(decl_type: object) -> str {
-    # Canonical scalar/pointer/array type-name resolver. Walks the declarator
-    # chain (FuncDecl wrappers, etc.) down to the underlying TypeDecl.
+def _resolve_decl(decl_type: object, resolve_user: bool) -> str {
+    # Shared declarator-chain walk: descend through FuncDecl wrappers to the
+    # underlying TypeDecl, short-circuiting on array (→ list) and pointer (→
+    # ptr_typename). At the TypeDecl, `resolve_user` decides whether a struct/
+    # typedef element keeps its real name (array elements) or collapses to its
+    # primitive (scalar/return positions). Single source for typename/elem_typename
+    # so the walk is fixed in one place.
     t = decl_type;
     while not isinstance(t, c_ast.TypeDecl) {
         if isinstance(t, c_ast.ArrayDecl) {
@@ -117,8 +121,21 @@ def typename(decl_type: object) -> str {
             return "int";
         }
     }
+    if resolve_user {
+        user = user_type_name(t.type);
+        if user is not None {
+            return user;
+        }
+    }
     names = t.type?.names or ["int"];
     return jac_prim(names);
+}
+
+def typename(decl_type: object) -> str {
+    # Canonical scalar/pointer/array type-name resolver. A struct/typedef element
+    # collapses to its primitive (the conservative scalar default for annotation
+    # and return positions).
+    return _resolve_decl(decl_type, False);
 }
 
 def elem_typename(decl_type: object) -> str {
@@ -127,27 +144,5 @@ def elem_typename(decl_type: object) -> str {
     # array element types, where the `list[T]` annotation and the per-element
     # default `T()` must name the real type. Primitive elements resolve exactly
     # as `typename` does.
-    t = decl_type;
-    while not isinstance(t, c_ast.TypeDecl) {
-        if isinstance(t, c_ast.ArrayDecl) {
-            return "list";
-        }
-        if isinstance(t, c_ast.PtrDecl) {
-            return ptr_typename(t);
-        }
-        if isinstance(t, c_ast.FuncDecl) {
-            t = t.type;
-            continue;
-        }
-        t = t?.type;
-        if t is None {
-            return "int";
-        }
-    }
-    user = user_type_name(t.type);
-    if user is not None {
-        return user;
-    }
-    names = t.type?.names or ["int"];
-    return jac_prim(names);
+    return _resolve_decl(decl_type, True);
 }
