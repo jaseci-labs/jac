@@ -1,3 +1,19 @@
+"""
+Validate Jac code blocks in documentation markdown files.
+
+Extracts ```jac code blocks from markdown files and runs `jac check --parse-only`
+to verify they have valid syntax. This catches syntax errors without requiring
+imports or types to be resolvable.
+
+Usage:
+    jac run docs/scripts/validate_docs_code.jac [-- --docs-dir PATH] [-- --verbose]
+
+Exit codes:
+    0 - All code blocks pass validation
+    1 - One or more code blocks failed validation
+    2 - Script error (invalid arguments, missing dependencies)
+"""
+
 import argparse;
 import os;
 import re;
@@ -10,6 +26,7 @@ import from pathlib { Path }
 
 @dataclass
 obj CodeBlock {
+    """Represents a code block extracted from a markdown file."""
     has content: str,
         file_path: str,
         line_number: int;
@@ -17,11 +34,13 @@ obj CodeBlock {
 
 @dataclass
 obj ValidationResult {
+    """Result of validating a code block."""
     has code_block: CodeBlock,
         success: bool,
         error: str;
 }
 
+"""Extract all jac code blocks from a markdown file."""
 def extract_code_blocks(file_path: Path) -> list[CodeBlock] {
     code_blocks: list[CodeBlock] = [];
     with open(file_path, encoding="utf-8") as f {
@@ -33,7 +52,9 @@ def extract_code_blocks(file_path: Path) -> list[CodeBlock] {
     while i < len(lines) {
         m = pattern.match(lines[i]);
         if m {
+            # Skip blocks preceded by <!-- jac-skip --> comment
             if i > 0 and skip_pattern.search(lines[i - 1]) {
+                # Advance past the block without collecting it
                 i += 1;
                 while i < len(lines) and not lines[i].startswith("```") {
                     i += 1;
@@ -64,6 +85,7 @@ def extract_code_blocks(file_path: Path) -> list[CodeBlock] {
     return code_blocks;
 }
 
+"""Validate code blocks using jac check --parse-only."""
 def validate_code_blocks(code_blocks: list[CodeBlock]) -> list[ValidationResult] {
     if not code_blocks {
         return [];

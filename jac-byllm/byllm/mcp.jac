@@ -1,3 +1,9 @@
+"""MCP (Model Context Protocol) integration for byLLM.
+
+Provides McpTool and McpClient for using remote MCP server tools
+in by llm() calls, alongside local tools.
+"""
+
 import asyncio;
 import logging;
 import threading;
@@ -6,6 +12,7 @@ import from byllm.exceptions { McpError }
 
 glob logger = logging.getLogger("byllm.mcp");
 
+"""MCP server connection manager."""
 obj McpClient {
     has command: str = "",
         args: list[str] = [],
@@ -23,6 +30,7 @@ obj McpClient {
     def close -> None;
 }
 
+"""MCP tool wrapper with the same interface as byllm's Tool."""
 obj McpTool {
     has name: str,
         description: str,

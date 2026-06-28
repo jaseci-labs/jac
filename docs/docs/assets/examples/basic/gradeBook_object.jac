@@ -47,18 +47,22 @@ impl GradeBook.get_all_averages -> dict[str, float] {
     return averages;
 }
 
+# Create gradebook
 glob gradebook = GradeBook();
 
+# Add students
 with entry {
     gradebook.add_student("Alice");
     gradebook.add_student("Bob");
 
+    # Add grades
     gradebook.add_grade("Alice", 88);
     gradebook.add_grade("Alice", 92);
     gradebook.add_grade("Bob", 85);
     gradebook.add_grade("Bob", 79);
 }
 
+# Get results
 glob all_averages = gradebook.get_all_averages();
 
 with entry {
