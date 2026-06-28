@@ -1,18 +1,6 @@
 """P1c phase-exit: arrays.c → list[T] with subscripting."""
 
-import os;
-import from tests.support { JAC_ROOT }
-import from jaclang.compiler.c2jac.driver { transpile_c_str }
-
-glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "c2jac", "fixtures");
-
-def _transpile(name: str) -> str {
-    with open(os.path.join(FIXTURES, name)) as f {
-        src = f.read();
-    }
-    (jac_str, tags) = transpile_c_str(src, name);
-    return jac_str;
-}
+import from tests.compiler.c2jac.support { transpile_fixture as _transpile }
 
 test "arrays.c transpiles without error" {
     jac_str = _transpile("arrays.c");
@@ -46,8 +34,6 @@ test "uninitialized object array emits distinct elements, not [T()] * n" {
     # — the latter aliases one instance into every slot, so `a[0].x = 1` and
     # `a[1].x = 2` would clobber the same object.
     jac_str = _transpile("struct_array.c");
-    assert "for _ in range(2)" in jac_str ,
-        f"Expected per-element comprehension for struct array in:\n{jac_str}";
-    assert "] * 2" not in jac_str ,
-        f"Aliasing `[S()] * 2` must not appear in:\n{jac_str}";
+    assert "for _ in range(2)" in jac_str , f"Expected per-element comprehension for struct array in:\n{jac_str}";
+    assert "] * 2" not in jac_str , f"Aliasing `[S()] * 2` must not appear in:\n{jac_str}";
 }

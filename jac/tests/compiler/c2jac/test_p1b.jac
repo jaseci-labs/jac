@@ -1,18 +1,6 @@
 """P1b phase-exit: struct_shape.c pins the emitted obj shape."""
 
-import os;
-import from tests.support { JAC_ROOT }
-import from jaclang.compiler.c2jac.driver { transpile_c_str }
-
-glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "c2jac", "fixtures");
-
-def _transpile(name: str) -> str {
-    with open(os.path.join(FIXTURES, name)) as f {
-        src = f.read();
-    }
-    (jac_str, tags) = transpile_c_str(src, name);
-    return jac_str;
-}
+import from tests.compiler.c2jac.support { transpile_fixture as _transpile }
 
 test "struct_shape.c transpiles without error" {
     jac_str = _transpile("struct_shape.c");

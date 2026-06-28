@@ -1,23 +1,13 @@
 """P1a phase-exit: hello.c and control_flow.c round-trip, zero formatter errors."""
 
-import os;
-import from tests.support { JAC_ROOT }
+import re;
+import from tests.compiler.c2jac.support {
+    read_fixture as _read,
+    transpile_fixture as _transpile,
+    recompile_errors as _recompile_errors
+}
 import from jaclang.compiler.c2jac.driver { transpile_c_str }
 import from jaclang.compiler.c2jac.tags { Idiom, Tier }
-
-glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "c2jac", "fixtures");
-
-def _read(name: str) -> str {
-    with open(os.path.join(FIXTURES, name)) as f {
-        return f.read();
-    }
-}
-
-def _transpile(name: str) -> str {
-    src = _read(name);
-    (jac_str, tags) = transpile_c_str(src, name);
-    return jac_str;
-}
 
 test "hello.c transpiles without error" {
     jac_str = _transpile("hello.c");
@@ -96,10 +86,14 @@ test "for_block_spacing.c: multi-line loop body has no spurious blank line" {
     assert "total = total + i;" in jac_str , f"body stmt 1 missing:\n{jac_str}";
     assert "total = total + 1;" in jac_str , f"body stmt 2 missing:\n{jac_str}";
     # The two consecutive body statements must not be split by a blank line.
-    assert "total = total + i;\n        total = total + 1;" in jac_str , f"spurious blank line in loop body:\n{jac_str}";
+    # Indentation-agnostic: `[ \t]*` spans the next line's indent but NOT a blank
+    # line, so a spurious gap (which inserts `\n\n`) still fails the match.
+    assert re.search(
+        r"total = total \+ i;\n[ \t]*total = total \+ 1;", jac_str
+    ) is not None , f"spurious blank line in loop body:\n{jac_str}";
     # Nor a spurious blank after the loop block: the `}` is bumped to its own line
     # so `has_gap` sees the return statement as immediately following.
-    assert "    }\n    return total;" in jac_str , f"spurious blank line after loop block:\n{jac_str}";
+    assert re.search(r"\}\n[ \t]*return total;", jac_str) is not None , f"spurious blank line after loop block:\n{jac_str}";
     # And no two-blank-line gap should appear anywhere in the function.
     assert "\n\n\n" not in jac_str , f"double blank line in output:\n{jac_str}";
 }
@@ -263,20 +257,6 @@ test "ternary.c emitted Jac recompiles cleanly" {
     jac_str = _transpile("ternary.c");
     errs = _recompile_errors(jac_str, "ternary.c");
     assert len(errs) == 0 , f"Emitted Jac must recompile, got errors: {errs}\n{jac_str}";
-}
-
-def _recompile_errors(jac_str: str, name: str) -> list {
-    import tempfile;
-    import from jaclang.jac0core.program { JacProgram }
-    out_dir = tempfile.mkdtemp();
-    stem = name.rsplit(".", 1)[0];
-    path = os.path.join(out_dir, stem + ".jac");
-    with open(path, "w") as f {
-        f.write(jac_str);
-    }
-    prog = JacProgram();
-    prog.compile(file_path=path);
-    return prog.errors_had;
 }
 
 test "unsupported node yields valid Jac surrogate" {
