@@ -424,13 +424,17 @@ impl check_pods_restarted(namespace: str, app_name: str) -> bool {
     selector = "app in ({})".format(", ".join(app_labels));
     pods = v1.list_namespaced_pod(namespace=namespace, label_selector=selector);
     for pod in pods.items {
-        statuses = pod.status.container_statuses;
+        statuses = (pod.status.init_container_statuses or []) + (
+            pod.status.container_statuses or []
+        );
         if not statuses {
             continue;
         }
 
         for container in statuses {
-            if container.restart_count > 0 {
+            term = container.state.terminated if container.state else None;
+            completed_ok = term is not None and (term.exit_code or 0) == 0;
+            if container.restart_count > 0 and not completed_ok {
                 is_running = container.state and container.state.running;
                 if not is_running {
                     reason = (
@@ -542,6 +546,29 @@ impl check_deployment_status(
         if (attempt < max_retries) {
             time.sleep(interval);
         }
+    }
+
+    try {
+        config.load_kube_config();
+    } except ConfigException {
+        config.load_incluster_config();
+    }
+    diag_v1 = client.CoreV1Api();
+    diag_labels = [app_name + d[0] for d in COMPANION_DEFS];
+    diag_selector = "app in ({})".format(", ".join(diag_labels));
+    try {
+        diag_pods = diag_v1.list_namespaced_pod(
+            namespace=namespace, label_selector=diag_selector
+        );
+        for p in diag_pods.items {
+            console.print(
+                f"timeout diagnostics: pod {p.metadata.name}" + describe_pod_status(
+                    diag_v1, namespace, p.metadata.name, p
+                )
+            );
+        }
+    } except Exception as diag_err {
+        console.print(f"(timeout pod diagnostics unavailable: {diag_err})");
     }
     return (False, "Timeout reached");
 }
