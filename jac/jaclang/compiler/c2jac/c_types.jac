@@ -120,3 +120,34 @@ def typename(decl_type: object) -> str {
     names = t.type?.names or ["int"];
     return jac_prim(names);
 }
+
+def elem_typename(decl_type: object) -> str {
+    # Like `typename`, but resolves a struct/union/typedef element to its
+    # user-defined name (e.g. `S`) instead of collapsing it to "int". Used for
+    # array element types, where the `list[T]` annotation and the per-element
+    # default `T()` must name the real type. Primitive elements resolve exactly
+    # as `typename` does.
+    t = decl_type;
+    while not isinstance(t, c_ast.TypeDecl) {
+        if isinstance(t, c_ast.ArrayDecl) {
+            return "list";
+        }
+        if isinstance(t, c_ast.PtrDecl) {
+            return ptr_typename(t);
+        }
+        if isinstance(t, c_ast.FuncDecl) {
+            t = t.type;
+            continue;
+        }
+        t = t?.type;
+        if t is None {
+            return "int";
+        }
+    }
+    user = user_type_name(t.type);
+    if user is not None {
+        return user;
+    }
+    names = t.type?.names or ["int"];
+    return jac_prim(names);
+}

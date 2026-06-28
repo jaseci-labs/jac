@@ -266,6 +266,19 @@ impl CMapper._stmts_from(nd: object) -> list[object] {
 }
 
 impl CMapper.c_Return(nd: object) -> object {
+    # A null-pointer constant returned from a pointer-typed function is C's
+    # NULL — lower it to Jac `None` rather than the integer literal 0, which
+    # would otherwise leak through (the return annotation is str/object/etc.,
+    # so `return 0` is a type-mismatched value). Mirrors _zero_default's NULL
+    # handling for uninitialized pointers; plain expression lowering has no
+    # pointer context, so the function's return type supplies it here.
+    if nd.expr is not None
+    and self._ret_is_ptr
+    and is_null_ptr_constant(nd.expr) {
+        none_v = self._stamp(ast3.Constant(value=None), nd.expr, text="None");
+        r = ast3.Return(value=none_v);
+        return self._stamp(r, nd, text="return");
+    }
     val = self.conv_expr(nd.expr) if nd.expr is not None else None;
     r = ast3.Return(value=val);
     return self._stamp(r, nd, text="return");
