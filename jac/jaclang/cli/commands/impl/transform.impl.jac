@@ -1,13 +1,7 @@
-"""Implementation of transform commands.
-
-Direct implementations - no delegation to cli.jac.
-"""
-
 import ast as ast3;
 
 import from jaclang.cli.console { console }
 
-"""Convert Python to Jac."""
 impl py2jac(filename: str) -> int {
     import jaclang.jac0core.unitree as uni;
     import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
@@ -30,7 +24,7 @@ impl py2jac(filename: str) -> int {
         for error in prog.errors_had {
             console.error(f"{error}");
         }
-        # Surface failures: emitting invalid Jac must not exit 0 (#6928).
+
         if prog.errors_had {
             return 1;
         }
@@ -41,7 +35,6 @@ impl py2jac(filename: str) -> int {
     return 0;
 }
 
-"""Convert Jac to Python."""
 impl jac2py(filename: str) -> int {
     import from jaclang.jac0core.program { JacProgram }
     if filename.endswith('.jac') {
@@ -58,7 +51,6 @@ impl jac2py(filename: str) -> int {
     }
 }
 
-"""Convert Jac to JavaScript."""
 impl jac2js(filename: str) -> int {
     import from jaclang.jac0core.program { JacProgram }
     if filename.endswith('.jac') {
@@ -90,7 +82,6 @@ impl jac2js(filename: str) -> int {
     }
 }
 
-"""Deprecated alias for jac2js. Emits a warning then forwards."""
 impl js(filename: str) -> int {
     console.warning(
         "'jac js' is deprecated and will be removed in a future release. "

@@ -1,6 +1,3 @@
-"""Implementation of ECMAScript primitive emitters."""
-
-# --- Named methods ---
 impl ESIntEmitter.emit_bit_length(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -37,7 +34,6 @@ impl ESIntEmitter.emit_from_bytes(
     return _rt("int", "from_bytes", args);
 }
 
-# --- Arithmetic operators ---
 impl ESIntEmitter.emit_op_add(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -71,7 +67,6 @@ impl ESIntEmitter.emit_op_floordiv(
 impl ESIntEmitter.emit_op_mod(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
-    # Python modulo semantics: result has same sign as divisor
     return _rt("int", "mod", [target, args[0]]);
 }
 
@@ -81,7 +76,6 @@ impl ESIntEmitter.emit_op_pow(
     return _binop(target, "**", args[0]);
 }
 
-# --- Bitwise operators ---
 impl ESIntEmitter.emit_op_and(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -112,7 +106,6 @@ impl ESIntEmitter.emit_op_rshift(
     return _binop(target, ">>", args[0]);
 }
 
-# --- Comparison operators ---
 impl ESIntEmitter.emit_op_eq(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -149,7 +142,6 @@ impl ESIntEmitter.emit_op_ge(
     return _binop(target, ">=", args[0]);
 }
 
-# --- Unary operators ---
 impl ESIntEmitter.emit_op_neg(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -168,7 +160,6 @@ impl ESIntEmitter.emit_op_invert(
     return "(~" + target + ")";
 }
 
-# --- Named methods ---
 impl ESFloatEmitter.emit_is_integer(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -199,7 +190,6 @@ impl ESFloatEmitter.emit_fromhex(
     return _rt("float", "fromhex", args);
 }
 
-# --- Arithmetic operators ---
 impl ESFloatEmitter.emit_op_add(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -233,7 +223,6 @@ impl ESFloatEmitter.emit_op_floordiv(
 impl ESFloatEmitter.emit_op_mod(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
-    # Python modulo semantics: result has same sign as divisor
     return _rt("float", "mod", [target, args[0]]);
 }
 
@@ -243,7 +232,6 @@ impl ESFloatEmitter.emit_op_pow(
     return _binop(target, "**", args[0]);
 }
 
-# --- Comparison operators ---
 impl ESFloatEmitter.emit_op_eq(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -280,7 +268,6 @@ impl ESFloatEmitter.emit_op_ge(
     return _binop(target, ">=", args[0]);
 }
 
-# --- Unary operators ---
 impl ESFloatEmitter.emit_op_neg(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -293,14 +280,12 @@ impl ESFloatEmitter.emit_op_pos(
     return "(+" + target + ")";
 }
 
-# --- Named methods ---
 impl ESComplexEmitter.emit_conjugate(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("complex", "conjugate", [target]);
 }
 
-# --- Arithmetic operators ---
 impl ESComplexEmitter.emit_op_add(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -331,7 +316,6 @@ impl ESComplexEmitter.emit_op_pow(
     return _rt("complex", "pow", [target, args[0]]);
 }
 
-# --- Comparison operators ---
 impl ESComplexEmitter.emit_op_eq(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -344,7 +328,6 @@ impl ESComplexEmitter.emit_op_ne(
     return "!" + _rt("complex", "eq", [target, args[0]]);
 }
 
-# --- Unary operators ---
 impl ESComplexEmitter.emit_op_neg(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -357,7 +340,6 @@ impl ESComplexEmitter.emit_op_pos(
     return _rt("complex", "pos", [target]);
 }
 
-# Override bitwise ops to return boolean
 impl ESBoolEmitter.emit_op_and(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -376,7 +358,6 @@ impl ESBoolEmitter.emit_op_xor(
     return "Boolean(" + _binop(target, "^", args[0]) + ")";
 }
 
-# Case conversion
 impl ESStrEmitter.emit_capitalize(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -413,7 +394,6 @@ impl ESStrEmitter.emit_swapcase(
     return _rt("str", "swapcase", [target]);
 }
 
-# Search
 impl ESStrEmitter.emit_count(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -468,7 +448,6 @@ impl ESStrEmitter.emit_endswith(
     return _rt("str", "endswith", [target] + args);
 }
 
-# Modification
 impl ESStrEmitter.emit_replace(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -517,7 +496,6 @@ impl ESStrEmitter.emit_removesuffix(
     return _rt("str", "removesuffix", [target] + args);
 }
 
-# Split and join
 impl ESStrEmitter.emit_split(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -548,7 +526,6 @@ impl ESStrEmitter.emit_splitlines(
 impl ESStrEmitter.emit_join(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
-    # Python: separator.join(iterable) → JS: array.join(separator)
     return _mcall(args[0], "join", [target]);
 }
 
@@ -564,7 +541,6 @@ impl ESStrEmitter.emit_rpartition(
     return _rt("str", "rpartition", [target] + args);
 }
 
-# Formatting and alignment
 impl ESStrEmitter.emit_format(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -613,7 +589,6 @@ impl ESStrEmitter.emit_expandtabs(
     return _rt("str", "expandtabs", [target] + args);
 }
 
-# Character tests
 impl ESStrEmitter.emit_isalnum(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -686,14 +661,12 @@ impl ESStrEmitter.emit_isupper(
     return "(" + target + " === " + target + ".toUpperCase() && " + target + " !== " + target + ".toLowerCase())";
 }
 
-# Encoding
 impl ESStrEmitter.emit_encode(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "new TextEncoder().encode(" + target + ")";
 }
 
-# Translation
 impl ESStrEmitter.emit_translate(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -706,7 +679,6 @@ impl ESStrEmitter.emit_maketrans(
     return _rt("str", "maketrans", args);
 }
 
-# --- Arithmetic operators ---
 impl ESStrEmitter.emit_op_add(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -725,7 +697,6 @@ impl ESStrEmitter.emit_op_mod(
     return _rt("str", "mod", [target, args[0]]);
 }
 
-# --- Comparison operators ---
 impl ESStrEmitter.emit_op_eq(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -762,14 +733,12 @@ impl ESStrEmitter.emit_op_ge(
     return _binop(target, ">=", args[0]);
 }
 
-# --- Membership operators ---
 impl ESStrEmitter.emit_op_contains(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "includes", [args[0]]);
 }
 
-# Decoding
 impl ESBytesEmitter.emit_decode(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -788,7 +757,6 @@ impl ESBytesEmitter.emit_fromhex(
     return _rt("bytes", "fromhex", args);
 }
 
-# Search
 impl ESBytesEmitter.emit_count(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -831,7 +799,6 @@ impl ESBytesEmitter.emit_endswith(
     return _rt("bytes", "endswith", [target] + args);
 }
 
-# Modification
 impl ESBytesEmitter.emit_replace(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -868,7 +835,6 @@ impl ESBytesEmitter.emit_removesuffix(
     return _rt("bytes", "removesuffix", [target] + args);
 }
 
-# Split and join
 impl ESBytesEmitter.emit_split(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -905,7 +871,6 @@ impl ESBytesEmitter.emit_rpartition(
     return _rt("bytes", "rpartition", [target] + args);
 }
 
-# Case (ASCII only)
 impl ESBytesEmitter.emit_capitalize(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -936,7 +901,6 @@ impl ESBytesEmitter.emit_swapcase(
     return _rt("bytes", "swapcase", [target]);
 }
 
-# Character tests (ASCII only)
 impl ESBytesEmitter.emit_isalnum(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -985,7 +949,6 @@ impl ESBytesEmitter.emit_isupper(
     return _rt("bytes", "isupper", [target]);
 }
 
-# Alignment
 impl ESBytesEmitter.emit_center(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1016,7 +979,6 @@ impl ESBytesEmitter.emit_expandtabs(
     return _rt("bytes", "expandtabs", [target] + args);
 }
 
-# Translation
 impl ESBytesEmitter.emit_translate(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1029,7 +991,6 @@ impl ESBytesEmitter.emit_maketrans(
     return _rt("bytes", "maketrans", args);
 }
 
-# --- Arithmetic operators ---
 impl ESBytesEmitter.emit_op_add(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1048,7 +1009,6 @@ impl ESBytesEmitter.emit_op_mod(
     return _rt("bytes", "mod", [target, args[0]]);
 }
 
-# --- Comparison operators ---
 impl ESBytesEmitter.emit_op_eq(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1085,14 +1045,12 @@ impl ESBytesEmitter.emit_op_ge(
     return _rt("bytes", "ge", [target, args[0]]);
 }
 
-# --- Membership operators ---
 impl ESBytesEmitter.emit_op_contains(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _rt("bytes", "contains", [target, args[0]]);
 }
 
-# --- Named methods ---
 impl ESListEmitter.emit_append(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1165,7 +1123,6 @@ impl ESListEmitter.emit_copy(
     return "[..." + target + "]";
 }
 
-# --- Arithmetic operators ---
 impl ESListEmitter.emit_op_add(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1178,7 +1135,6 @@ impl ESListEmitter.emit_op_mul(
     return _rt("list", "repeat", [target, args[0]]);
 }
 
-# --- Comparison operators ---
 impl ESListEmitter.emit_op_eq(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1215,18 +1171,15 @@ impl ESListEmitter.emit_op_ge(
     return _rt("list", "ge", [target, args[0]]);
 }
 
-# --- Membership operators ---
 impl ESListEmitter.emit_op_contains(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "includes", [args[0]]);
 }
 
-# --- In-place operators ---
 impl ESListEmitter.emit_op_iadd(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
-    # list += other is extend in-place (mutates), not concat+reassign
     return target + ".push(..." + args[0] + ")";
 }
 
@@ -1236,7 +1189,6 @@ impl ESListEmitter.emit_op_imul(
     return _rt("list", "imul", [target, args[0]]);
 }
 
-# --- Named methods ---
 impl ESDictEmitter.emit_get(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1306,14 +1258,12 @@ impl ESDictEmitter.emit_fromkeys(
     return _rt("dict", "fromkeys", args);
 }
 
-# --- Bitwise operators (dict merge) ---
 impl ESDictEmitter.emit_op_or(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "{..." + target + ", ..." + args[0] + "}";
 }
 
-# --- Comparison operators ---
 impl ESDictEmitter.emit_op_eq(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1326,21 +1276,18 @@ impl ESDictEmitter.emit_op_ne(
     return "!" + _rt("dict", "eq", [target, args[0]]);
 }
 
-# --- Membership operators ---
 impl ESDictEmitter.emit_op_contains(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _binop(args[0], "in", target);
 }
 
-# --- In-place operators ---
 impl ESDictEmitter.emit_op_ior(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return "Object.assign(" + target + ", " + args[0] + ")";
 }
 
-# --- Named methods (mutation) ---
 impl ESSetEmitter.emit_add(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1371,7 +1318,6 @@ impl ESSetEmitter.emit_clear(
     return _mcall(target, "clear", []);
 }
 
-# --- Named methods (set algebra) ---
 impl ESSetEmitter.emit_union(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1396,7 +1342,6 @@ impl ESSetEmitter.emit_symmetric_difference(
     return _rt("set", "symmetricDifference", [target] + args);
 }
 
-# --- Named methods (in-place set algebra) ---
 impl ESSetEmitter.emit_update(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1421,7 +1366,6 @@ impl ESSetEmitter.emit_symmetric_difference_update(
     return _rt("set", "symmetric_difference_update", [target] + args);
 }
 
-# --- Named methods (tests) ---
 impl ESSetEmitter.emit_issubset(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1446,7 +1390,6 @@ impl ESSetEmitter.emit_copy(
     return "new Set(" + target + ")";
 }
 
-# --- Set algebra operators ---
 impl ESSetEmitter.emit_op_or(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1471,7 +1414,6 @@ impl ESSetEmitter.emit_op_xor(
     return _rt("set", "symmetricDifference", [target, args[0]]);
 }
 
-# --- Comparison operators (subset/superset) ---
 impl ESSetEmitter.emit_op_eq(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1508,14 +1450,12 @@ impl ESSetEmitter.emit_op_gt(
     return _rt("set", "is_proper_superset", [target, args[0]]);
 }
 
-# --- Membership operators ---
 impl ESSetEmitter.emit_op_contains(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "has", [args[0]]);
 }
 
-# --- In-place operators ---
 impl ESSetEmitter.emit_op_ior(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1540,7 +1480,6 @@ impl ESSetEmitter.emit_op_ixor(
     return _rt("set", "symmetric_difference_update", [target, args[0]]);
 }
 
-# --- Named methods ---
 impl ESFrozensetEmitter.emit_union(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1589,7 +1528,6 @@ impl ESFrozensetEmitter.emit_copy(
     return "new Set(" + target + ")";
 }
 
-# --- Set algebra operators ---
 impl ESFrozensetEmitter.emit_op_or(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1614,7 +1552,6 @@ impl ESFrozensetEmitter.emit_op_xor(
     return _rt("set", "symmetricDifference", [target, args[0]]);
 }
 
-# --- Comparison operators (subset/superset) ---
 impl ESFrozensetEmitter.emit_op_eq(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1651,14 +1588,12 @@ impl ESFrozensetEmitter.emit_op_gt(
     return _rt("set", "is_proper_superset", [target, args[0]]);
 }
 
-# --- Membership operators ---
 impl ESFrozensetEmitter.emit_op_contains(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "has", [args[0]]);
 }
 
-# --- Named methods ---
 impl ESTupleEmitter.emit_count(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1671,7 +1606,6 @@ impl ESTupleEmitter.emit_index(
     return _rt("tuple", "index", [target] + args);
 }
 
-# --- Arithmetic operators ---
 impl ESTupleEmitter.emit_op_add(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1684,7 +1618,6 @@ impl ESTupleEmitter.emit_op_mul(
     return _rt("tuple", "repeat", [target, args[0]]);
 }
 
-# --- Comparison operators ---
 impl ESTupleEmitter.emit_op_eq(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1721,14 +1654,12 @@ impl ESTupleEmitter.emit_op_ge(
     return _rt("tuple", "ge", [target, args[0]]);
 }
 
-# --- Membership operators ---
 impl ESTupleEmitter.emit_op_contains(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
     return _mcall(target, "includes", [args[0]]);
 }
 
-# --- Named methods ---
 impl ESRangeEmitter.emit_count(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1741,7 +1672,6 @@ impl ESRangeEmitter.emit_index(
     return _rt("range", "index", [target] + args);
 }
 
-# --- Comparison operators ---
 impl ESRangeEmitter.emit_op_eq(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1754,7 +1684,6 @@ impl ESRangeEmitter.emit_op_ne(
     return "!" + _rt("range", "eq", [target, args[0]]);
 }
 
-# --- Membership operators ---
 impl ESRangeEmitter.emit_op_contains(
     self, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
@@ -1851,13 +1780,6 @@ impl ESBuiltinEmitter.emit_all(self, ctx: ESEmitCtx, args: list[str]) -> (str | 
 impl ESBuiltinEmitter.emit_isinstance(
     self, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
-    # Route through the runtime helper rather than a raw `instanceof`: builtin
-    # types (lowered to string tags by `exit_builtin_type`), tuples of types,
-    # and user archetypes each need a different check, and `x instanceof String`
-    # is even `false` for JS primitive strings. The helper centralizes Python
-    # isinstance semantics. Decline (return None) on unexpected arity so a
-    # malformed call falls through to default codegen instead of indexing past
-    # the end of `args` (jaseci-labs/jaseci#6458).
     if len(args) != 2 {
         return None;
     }
@@ -1885,11 +1807,8 @@ impl ESBuiltinEmitter.emit_jid(self, ctx: ESEmitCtx, args: list[str]) -> (str | 
     return _rt("builtin", "jid", args);
 }
 
-# Portable constructor:  new(Cls, a, b) → Reflect.construct(Cls, [a, b])
-# (the JS spelling for `new Cls(a, b)`).
 impl ESBuiltinEmitter.emit_new(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
     if len(args) == 0 {
-        # `new()` with no callee is meaningless; defer to a runtime error.
         return "Reflect.construct(undefined, [])";
     }
     cls = args[0];
@@ -1897,11 +1816,6 @@ impl ESBuiltinEmitter.emit_new(self, ctx: ESEmitCtx, args: list[str]) -> (str | 
     return "Reflect.construct(" + cls + ", " + ctor_args + ")";
 }
 
-# Raw-HTML opt-in:  unsafe_html(x) → _jac.builtin.unsafe_html(x). The runtime
-# wraps the value in a sentinel object that the JSX flattener turns into a
-# `<span dangerouslySetInnerHTML={{__html: x}}/>` (jac-client) or sets
-# `innerHTML` on the parent element (bare-serve). Named `unsafe_html`
-# specifically so the danger is visible at the call site.
 impl ESBuiltinEmitter.emit_unsafe_html(
     self, ctx: ESEmitCtx, args: list[str]
 ) -> (str | None) {
@@ -2019,7 +1933,6 @@ impl ESBuiltinEmitter.emit_ascii(
     return _rt("builtin", "ascii", args);
 }
 
-# Type conversion builtins
 impl ESBuiltinEmitter.emit_str(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
     if len(args) == 0 {
         return '""';
@@ -2032,9 +1945,6 @@ impl ESBuiltinEmitter.emit_int(self, ctx: ESEmitCtx, args: list[str]) -> (str | 
         return "0";
     }
     if len(args) == 1 {
-        # Use Math.trunc(Number(x)) instead of parseInt(x) to correctly
-        # handle booleans (parseInt(false) → NaN, Number(false) → 0)
-        # and floats (int(3.14) → 3).
         return "Math.trunc(Number(" + args[0] + "))";
     }
     return "parseInt(" + args[0] + ", " + args[1] + ")";
@@ -2053,9 +1963,7 @@ impl ESBuiltinEmitter.emit_bool(self, ctx: ESEmitCtx, args: list[str]) -> (str |
     if len(args) == 0 {
         return "false";
     }
-    # Use runtime helper for Python truthiness semantics:
-    # Python: bool([]) → False, bool({}) → False, bool(set()) → False
-    # JS:     Boolean([]) → true,  Boolean({}) → true
+
     return _rt("builtin", "bool", args);
 }
 

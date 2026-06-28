@@ -23,7 +23,6 @@ impl RouteScanner.scan -> list[RouteEntry] {
     return self._routes;
 }
 
-"""Return layouts discovered during the last scan, keyed by URL prefix."""
 impl RouteScanner.get_layouts -> dict[(str, RouteEntry)] {
     return self._layouts;
 }
@@ -36,21 +35,20 @@ impl RouteScanner._scan_directory(
     dir_path: Path, url_prefix: str = "", auth_required: bool = False
 ) -> list[RouteEntry] {
     routes: list[RouteEntry] = [];
-    # Collect and sort entries for deterministic route ordering
+
     entries = sorted(dir_path.iterdir(), key=attrgetter('name'));
     for entry in entries {
         if entry.is_dir() {
             dir_name = entry.name;
-            # Route groups: (public), (auth), etc.
+
             group_match = re.match(r'^\((\w+)\)$', dir_name);
             if group_match {
                 group_name = group_match.group(1);
                 group_auth = auth_required or (group_name == self.AUTH_GROUP_NAME);
-                # Route groups don't add to the URL path
+
                 child_routes = self._scan_directory(entry, url_prefix, group_auth);
                 routes.extend(child_routes);
             } else {
-                # Regular subdirectory - adds to URL path
                 child_prefix = f"{url_prefix}/{dir_name}";
                 child_routes = self._scan_directory(entry, child_prefix, auth_required);
                 routes.extend(child_routes);
@@ -60,7 +58,6 @@ impl RouteScanner._scan_directory(
                 continue;
             }
             stem = entry.stem;
-            # layout.jac - not a route, it's a layout wrapper
             if stem == self.LAYOUT_FILENAME {
                 layout_key = url_prefix or "/";
                 if layout_key in self._layouts {
@@ -84,7 +81,6 @@ impl RouteScanner._scan_directory(
             route_segment = self._file_to_route_path(stem);
             is_catch_all = stem.startswith('[...');
             if stem == self.INDEX_FILENAME {
-                # index.jac maps to the directory path
                 route_path = url_prefix or "/";
             } else {
                 route_path = f"{url_prefix}/{route_segment}";
@@ -104,36 +100,20 @@ impl RouteScanner._scan_directory(
     return routes;
 }
 
-"""Convert a filename stem to a React Router route path segment.
-
-    index       → (empty, handled by caller)
-    about       → about
-    [id]        → :id
-    [...slug]   → *
-"""
 impl RouteScanner._file_to_route_path(filename: str) -> str {
-    # Catch-all: [...slug] → *
     catch_all_match = re.match(r'^\[\.\.\.(\w+)\]$', filename);
     if catch_all_match {
         return "*";
     }
-    # Dynamic segment: [id] → :id
+
     dynamic_match = re.match(r'^\[(\w+)\]$', filename);
     if dynamic_match {
         return f":{dynamic_match.group(1)}";
     }
-    # Static segment
+
     return filename;
 }
 
-"""Generate a unique component import name from a page file path.
-
-    pages/index.jac             → PagesIndex
-    pages/about.jac             → PagesAbout
-    pages/(auth)/dashboard.jac  → PagesDashboard
-    pages/users/[id].jac        → PagesUsersId
-    pages/[...slug].jac         → PagesSlug
-"""
 impl RouteScanner._file_to_component_name(file_path: Path) -> str {
     try {
         relative = file_path.relative_to(self.pages_dir);
@@ -142,13 +122,12 @@ impl RouteScanner._file_to_component_name(file_path: Path) -> str {
     }
     parts: list[str] = [];
     for part in relative.with_suffix('').parts {
-        # Skip route group directories like (auth), (public)
         if re.match(r'^\(\w+\)$', part) {
             continue;
         }
-        # Strip catch-all prefix: [...slug] → slug
+
         clean = re.sub(r'^\[\.\.\.(\w+)\]$', r'\1', part);
-        # Strip dynamic brackets: [id] → id
+
         clean = re.sub(r'^\[(\w+)\]$', r'\1', clean);
         parts.append(clean[0].upper() + clean[1:] if len(clean) > 0 else clean);
     }

@@ -1,12 +1,6 @@
-"""Implementation of command registry."""
-
 import argparse;
 import from jaclang.cli.banners { JAC_GITHUB_URL }
 
-# ===============================================================================
-# CommandRegistry Implementation
-# ===============================================================================
-"""Initialize the command registry."""
 impl CommandRegistry.init -> None {
     self.commands = {};
     self._pending_extensions = {};
@@ -31,7 +25,6 @@ impl CommandRegistry.init -> None {
     );
 }
 
-"""Register a new command with metadata."""
 impl CommandRegistry.command(
     name: str,
     help: str,
@@ -55,28 +48,19 @@ impl CommandRegistry.command(
             handler=func
         );
 
-        # Check for existing command with same name
         if name in self.commands {
             existing = self.commands[name];
-            # Higher priority wins
+
             if priority.value > existing.priority.value {
-                # Preserve extensions registered via extend_command before the
-                # higher-priority plugin re-registered the command. Without this
-                # carry-over, a plugin that re-declares a command silently wipes
-                # any pre/post hooks and extension args other plugins attached
-                # to the existing spec (e.g. `jac setup mobile` would lose
-                # jac-client's _handle_setup_target dispatcher).
                 spec.pre_hooks = list(existing.pre_hooks) + spec.pre_hooks;
                 spec.post_hooks = list(existing.post_hooks) + spec.post_hooks;
                 spec.extra_args = list(existing.extra_args) + spec.extra_args;
                 self.commands[name] = spec;
             }
-            # Same or lower priority - keep existing
         } else {
             self.commands[name] = spec;
         }
 
-        # Apply any pending extensions for this command
         self._apply_pending_extensions(name);
 
         return func;
@@ -84,7 +68,6 @@ impl CommandRegistry.command(
     return decorator;
 }
 
-"""Extend an existing command with additional arguments or hooks."""
 impl CommandRegistry.extend_command(
     command_name: str,
     args: list[Arg] | None = None,
@@ -93,7 +76,7 @@ impl CommandRegistry.extend_command(
     source: str = "unknown"
 ) -> None {
     import from jaclang.cli.command { Arg, HookContext }
-    # If command already exists, apply extension directly
+
     if command_name in self.commands {
         spec = self.commands[command_name];
         if args {
@@ -108,7 +91,6 @@ impl CommandRegistry.extend_command(
             spec.add_post_hook(post_hook, source);
         }
     } else {
-        # Store for later when command is registered
         if command_name not in self._pending_extensions {
             self._pending_extensions[command_name] = [];
         }
@@ -118,18 +100,15 @@ impl CommandRegistry.extend_command(
     }
 }
 
-"""Get a command by name."""
 impl CommandRegistry.get(name: str) -> CommandSpec | None {
     import from jaclang.cli.command { CommandSpec }
     return self.commands.get(name);
 }
 
-"""Check if a command exists."""
 impl CommandRegistry.has_command(name: str) -> bool {
     return name in self.commands;
 }
 
-"""Get all commands, optionally filtered by group."""
 impl CommandRegistry.get_all(group: str | None = None) -> list[CommandSpec] {
     import from jaclang.cli.command { CommandSpec }
     if group is None {
@@ -142,7 +121,6 @@ impl CommandRegistry.get_all(group: str | None = None) -> list[CommandSpec] {
     ];
 }
 
-"""Get all command group names."""
 impl CommandRegistry.get_groups -> list[str] {
     groups = set();
     for spec in self.commands.values() {
@@ -151,12 +129,11 @@ impl CommandRegistry.get_groups -> list[str] {
     return sorted(list(groups));
 }
 
-"""Finalize the registry and build argparse parser."""
 impl CommandRegistry.finalize -> argparse.ArgumentParser {
     if self._finalized {
         return self.parser;
     }
-    # Build subparsers for all commands
+
     for (name, spec) in self.commands.items() {
         self._build_subparser(self.sub_parsers, spec);
     }
@@ -164,7 +141,6 @@ impl CommandRegistry.finalize -> argparse.ArgumentParser {
     return self.parser;
 }
 
-"""Apply any pending extensions to a command."""
 impl CommandRegistry._apply_pending_extensions(name: str) -> None {
     if name not in self._pending_extensions {
         return;
@@ -186,16 +162,15 @@ impl CommandRegistry._apply_pending_extensions(name: str) -> None {
             spec.add_post_hook(post_hook, source);
         }
     }
-    # Clear pending extensions for this command
+
     del self._pending_extensions[name];
 }
 
-"""Build argparse subparser for a command."""
 impl CommandRegistry._build_subparser(
     subparsers: any, spec: CommandSpec
 ) -> argparse.ArgumentParser {
     import from jaclang.cli.command { CommandSpec }
-    # Build description with examples
+
     description = spec.description or spec.help;
     if spec.examples {
         description += "\n\nExamples:\n";
@@ -212,13 +187,12 @@ impl CommandRegistry._build_subparser(
         help=spec.help,
         formatter_class=argparse.RawDescriptionHelpFormatter
     );
-    # Add base arguments
+
     for arg in spec.args {
         self._add_argument(cmd_parser, arg);
     }
-    # Add plugin-extended arguments
+
     if spec.extra_args {
-        # Group by source for display
         sources: dict[str, list] = {};
         for arg in spec.extra_args {
             src = arg.source or "plugin";
@@ -237,7 +211,6 @@ impl CommandRegistry._build_subparser(
     return cmd_parser;
 }
 
-"""Add an argument to an argparse parser."""
 impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) -> None {
     import from jaclang.cli.command { Arg, ArgKind }
     kwargs: dict = {"help": arg.help};
@@ -250,20 +223,16 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
     if arg.dest {
         kwargs["dest"] = arg.dest;
     }
-    # Handle different argument kinds
+
     if arg.kind == ArgKind.POSITIONAL {
-        # Positional argument
         if arg.default is not None {
             kwargs["nargs"] = "?";
             kwargs["default"] = arg.default;
         }
-        # Positionals without a default are required (argparse default).
-        # Optional positionals must supply a default (e.g. start's main.jac).
+
         parser.add_argument(arg.name, **kwargs);
     } elif arg.kind == ArgKind.MULTI {
-        # Multiple arguments
         if arg.name in ("paths", "packages", "names") {
-            # Positional multiple arguments
             kwargs["nargs"] = "+";
             if arg.default is not None {
                 kwargs["default"] = arg.default;
@@ -271,7 +240,6 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
             }
             parser.add_argument(arg.name, **kwargs);
         } else {
-            # Optional multiple arguments (--ignore dir1 dir2 dir3)
             kwargs["nargs"] = "*";
             if arg.default is not None {
                 kwargs["default"] = arg.default;
@@ -283,10 +251,6 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
             }
         }
     } elif arg.kind == ArgKind.APPEND {
-        # Repeatable flag accepting one or more values each time:
-        #   -e ./a ./b -e ./c  →  [["./a","./b"],["./c"]]
-        # Flatten in the caller to get ["./a","./b","./c"].
-        # nargs="+" ensures `-e` with no path is a hard argparse error.
         kwargs["action"] = "append";
         kwargs["nargs"] = "+";
         kwargs["default"] = None;
@@ -296,15 +260,11 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
             parser.add_argument(f"--{arg.name}", **kwargs);
         }
     } elif arg.kind == ArgKind.REMAINDER {
-        # Remaining arguments
         kwargs["nargs"] = argparse.REMAINDER;
         parser.add_argument(arg.name, **kwargs);
     } elif arg.kind == ArgKind.FLAG or arg.typ == bool {
         kwargs["action"] = "store_true";
         kwargs["default"] = arg.default if arg.default is not None else False;
-        # `--X` and the auto `--no-X` share one underscored dest, else
-        # argparse leaves a phantom `X-dashed: True` in vars() for
-        # hyphenated names (issue #6115).
         shared_dest: str = kwargs.get("dest") or arg.name.replace("-", "_");
         kwargs["dest"] = shared_dest;
         if arg.short {
@@ -319,7 +279,6 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
         };
         parser.add_argument(f"--no-{arg.name}", **no_kwargs);
     } else {
-        # Regular option
         kwargs["type"] = arg.typ;
         kwargs["default"] = arg.default;
         if arg.required {
@@ -333,10 +292,6 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
     }
 }
 
-# ===============================================================================
-# Module-level Functions Implementation
-# ===============================================================================
-"""Get the global command registry."""
 impl get_registry -> CommandRegistry {
     import from jaclang.cli.registry { CommandRegistry }
     global _registry;

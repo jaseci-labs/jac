@@ -1,9 +1,7 @@
-"""Implementation of base plugin configuration infrastructure."""
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig, find_project_root }
 import from jaclang.jac0core.runtime { JacRuntime }
 
-"""Deep merge two dictionaries recursively."""
 impl deep_merge(base: dict[str, any], override_dict: dict[str, any]) -> dict[str, any] {
     result = base.copy();
     for (key, value) in override_dict.items() {
@@ -20,7 +18,6 @@ impl deep_merge(base: dict[str, any], override_dict: dict[str, any]) -> dict[str
     return result;
 }
 
-"""Initialize config loader with project directory."""
 impl PluginConfigBase.postinit{
     full_target = JacRuntime.get_full_target_path();
     project_root_result = find_project_root(Path(full_target)) if full_target else None;
@@ -34,17 +31,16 @@ impl PluginConfigBase.postinit{
     self._jac_config = None;
 }
 
-"""Load configuration from jac.toml, merging with defaults."""
 impl PluginConfigBase.load -> dict[str, any] {
     if self._config is not None {
         return self._config;
     }
     default_config = self.get_default_config();
     jac_config = self.get_jac_config();
-    # Get plugin config from [plugins.<plugin_name>] section
+
     plugin_name = self.get_plugin_name();
     plugin_config = jac_config.get_plugin_config(plugin_name);
-    # Deep merge defaults with user configuration (handle None plugin_config)
+
     if plugin_config is not None {
         self._config = deep_merge(default_config, plugin_config);
     } else {
@@ -53,13 +49,11 @@ impl PluginConfigBase.load -> dict[str, any] {
     return self._config;
 }
 
-"""Get or load the core JacConfig instance."""
 impl PluginConfigBase.get_jac_config -> JacConfig {
     if self._jac_config is None {
         if self.config_file.exists() {
             self._jac_config = JacConfig.load(self.config_file);
         } else {
-            # Create a new config with project root
             self._jac_config = JacConfig();
             self._jac_config.toml_path = self.config_file;
             self._jac_config.project_root = self.project_dir;
@@ -68,20 +62,17 @@ impl PluginConfigBase.get_jac_config -> JacConfig {
     return self._jac_config;
 }
 
-"""Get a configuration section with optional defaults."""
 impl PluginConfigBase.get_section(
     section: str, defaults: dict[str, any] | None = None
 ) -> dict[str, any] {
     config = self.load();
     section_config = config.get(section, {});
     if defaults is not None {
-        # Merge section config with defaults (section_config takes precedence)
         return {k: section_config.get(k, v) for (k, v) in defaults.items()};
     }
     return section_config;
 }
 
-"""Invalidate the cached configuration."""
 impl PluginConfigBase.invalidate -> None {
     self._config = None;
 }

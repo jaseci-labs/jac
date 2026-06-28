@@ -1,8 +1,3 @@
-"""Implementation for Python backend primitive emitters."""
-
-# =============================================================================
-#  Numeric Types
-# =============================================================================
 impl PyIntEmitter.emit_bit_length(target: str, args: list[str]) -> str {
     return _mcall(target, "bit_length", args);
 }
@@ -51,11 +46,6 @@ impl PyComplexEmitter.emit_conjugate(target: str, args: list[str]) -> str {
     return _mcall(target, "conjugate", args);
 }
 
-# =============================================================================
-#  String Types
-# =============================================================================
-
-# Case conversion
 impl PyStrEmitter.emit_capitalize(target: str, args: list[str]) -> str {
     return _mcall(target, "capitalize", args);
 }
@@ -80,7 +70,6 @@ impl PyStrEmitter.emit_swapcase(target: str, args: list[str]) -> str {
     return _mcall(target, "swapcase", args);
 }
 
-# Search
 impl PyStrEmitter.emit_count(target: str, args: list[str]) -> str {
     return _mcall(target, "count", args);
 }
@@ -109,7 +98,6 @@ impl PyStrEmitter.emit_endswith(target: str, args: list[str]) -> str {
     return _mcall(target, "endswith", args);
 }
 
-# Modification
 impl PyStrEmitter.emit_replace(target: str, args: list[str]) -> str {
     return _mcall(target, "replace", args);
 }
@@ -134,7 +122,6 @@ impl PyStrEmitter.emit_removesuffix(target: str, args: list[str]) -> str {
     return _mcall(target, "removesuffix", args);
 }
 
-# Split and join
 impl PyStrEmitter.emit_split(target: str, args: list[str]) -> str {
     return _mcall(target, "split", args);
 }
@@ -159,7 +146,6 @@ impl PyStrEmitter.emit_rpartition(target: str, args: list[str]) -> str {
     return _mcall(target, "rpartition", args);
 }
 
-# Formatting and alignment
 impl PyStrEmitter.emit_format(target: str, args: list[str]) -> str {
     return _mcall(target, "format", args);
 }
@@ -188,7 +174,6 @@ impl PyStrEmitter.emit_expandtabs(target: str, args: list[str]) -> str {
     return _mcall(target, "expandtabs", args);
 }
 
-# Character tests
 impl PyStrEmitter.emit_isalnum(target: str, args: list[str]) -> str {
     return _mcall(target, "isalnum", args);
 }
@@ -237,12 +222,10 @@ impl PyStrEmitter.emit_isupper(target: str, args: list[str]) -> str {
     return _mcall(target, "isupper", args);
 }
 
-# Encoding
 impl PyStrEmitter.emit_encode(target: str, args: list[str]) -> str {
     return _mcall(target, "encode", args);
 }
 
-# Translation
 impl PyStrEmitter.emit_translate(target: str, args: list[str]) -> str {
     return _mcall(target, "translate", args);
 }
@@ -251,9 +234,6 @@ impl PyStrEmitter.emit_maketrans(args: list[str]) -> str {
     return _scall("str", "maketrans", args);
 }
 
-# --- PyBytesEmitter ---
-
-# Decoding
 impl PyBytesEmitter.emit_decode(target: str, args: list[str]) -> str {
     return _mcall(target, "decode", args);
 }
@@ -266,7 +246,6 @@ impl PyBytesEmitter.emit_fromhex(args: list[str]) -> str {
     return _scall("bytes", "fromhex", args);
 }
 
-# Search
 impl PyBytesEmitter.emit_count(target: str, args: list[str]) -> str {
     return _mcall(target, "count", args);
 }
@@ -295,7 +274,6 @@ impl PyBytesEmitter.emit_endswith(target: str, args: list[str]) -> str {
     return _mcall(target, "endswith", args);
 }
 
-# Modification
 impl PyBytesEmitter.emit_replace(target: str, args: list[str]) -> str {
     return _mcall(target, "replace", args);
 }
@@ -320,7 +298,6 @@ impl PyBytesEmitter.emit_removesuffix(target: str, args: list[str]) -> str {
     return _mcall(target, "removesuffix", args);
 }
 
-# Split and join
 impl PyBytesEmitter.emit_split(target: str, args: list[str]) -> str {
     return _mcall(target, "split", args);
 }
@@ -345,7 +322,6 @@ impl PyBytesEmitter.emit_rpartition(target: str, args: list[str]) -> str {
     return _mcall(target, "rpartition", args);
 }
 
-# Case (ASCII only)
 impl PyBytesEmitter.emit_capitalize(target: str, args: list[str]) -> str {
     return _mcall(target, "capitalize", args);
 }
@@ -366,7 +342,6 @@ impl PyBytesEmitter.emit_swapcase(target: str, args: list[str]) -> str {
     return _mcall(target, "swapcase", args);
 }
 
-# Character tests (ASCII only)
 impl PyBytesEmitter.emit_isalnum(target: str, args: list[str]) -> str {
     return _mcall(target, "isalnum", args);
 }
@@ -399,7 +374,6 @@ impl PyBytesEmitter.emit_isupper(target: str, args: list[str]) -> str {
     return _mcall(target, "isupper", args);
 }
 
-# Alignment
 impl PyBytesEmitter.emit_center(target: str, args: list[str]) -> str {
     return _mcall(target, "center", args);
 }
@@ -420,7 +394,6 @@ impl PyBytesEmitter.emit_expandtabs(target: str, args: list[str]) -> str {
     return _mcall(target, "expandtabs", args);
 }
 
-# Translation
 impl PyBytesEmitter.emit_translate(target: str, args: list[str]) -> str {
     return _mcall(target, "translate", args);
 }
@@ -429,9 +402,6 @@ impl PyBytesEmitter.emit_maketrans(args: list[str]) -> str {
     return _scall("bytes", "maketrans", args);
 }
 
-# =============================================================================
-#  Collection Types
-# =============================================================================
 impl PyListEmitter.emit_append(target: str, args: list[str]) -> str {
     return _mcall(target, "append", args);
 }
@@ -520,7 +490,6 @@ impl PyDictEmitter.emit_fromkeys(args: list[str]) -> str {
     return _scall("dict", "fromkeys", args);
 }
 
-# Mutation
 impl PySetEmitter.emit_add(target: str, args: list[str]) -> str {
     return _mcall(target, "add", args);
 }
@@ -541,7 +510,6 @@ impl PySetEmitter.emit_clear(target: str, args: list[str]) -> str {
     return _mcall(target, "clear", args);
 }
 
-# Set algebra
 impl PySetEmitter.emit_union(target: str, args: list[str]) -> str {
     return _mcall(target, "union", args);
 }
@@ -558,7 +526,6 @@ impl PySetEmitter.emit_symmetric_difference(target: str, args: list[str]) -> str
     return _mcall(target, "symmetric_difference", args);
 }
 
-# In-place set algebra
 impl PySetEmitter.emit_update(target: str, args: list[str]) -> str {
     return _mcall(target, "update", args);
 }
@@ -577,7 +544,6 @@ impl PySetEmitter.emit_symmetric_difference_update(
     return _mcall(target, "symmetric_difference_update", args);
 }
 
-# Tests
 impl PySetEmitter.emit_issubset(target: str, args: list[str]) -> str {
     return _mcall(target, "issubset", args);
 }
@@ -642,9 +608,6 @@ impl PyRangeEmitter.emit_index(target: str, args: list[str]) -> str {
     return _mcall(target, "index", args);
 }
 
-# =============================================================================
-#  Builtin Functions
-# =============================================================================
 impl PyBuiltinEmitter.emit_print(args: list[str]) -> str {
     return _fcall("print", args);
 }
@@ -809,7 +772,6 @@ impl PyBuiltinEmitter.emit_ascii(args: list[str]) -> str {
     return _fcall("ascii", args);
 }
 
-# Type conversion builtins
 impl PyBuiltinEmitter.emit_str(args: list[str]) -> str {
     return _fcall("str", args);
 }

@@ -1,4 +1,3 @@
-"""Jac Client plugin for client-side rendering."""
 import hashlib;
 import html;
 import json;
@@ -15,7 +14,6 @@ glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] 
      ],
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 503)];
 
-"""Builds HTML head content from meta data."""
 obj HeaderBuilder {
     has meta_data: dict,
         function_name: str,
@@ -40,13 +38,6 @@ obj HeaderBuilder {
     def _build_generic_meta_tags -> list[str];
 }
 
-"""Jac Client.
-
-Client bundling (`get_client_bundle_builder` / `build_client_bundle`) is handled
-by core's default hook (the single Vite/Bun pipeline in jaclang.runtimelib.client).
-This plugin provides the framework serving layer: static files, page rendering,
-the client JS endpoint, and rich build-error formatting.
-"""
 class JacClient {
     static def send_static_file(
         handler: BaseHTTPRequestHandler,

@@ -1,14 +1,11 @@
-"""Meaning Typed Programming constructs for Jac Language."""
 import from collections.abc { Callable }
 
-"""Runtime context for Meaning Typed Programming."""
 obj MTRuntime {
     has caller: Callable[(..., object)],
         args: dict[((int | str), object)],
         call_params: dict[(str, object)],
         mtir: (MTIR | None);
 
-    """Create a new MTRuntime instance."""
     static def factory(
         caller: Callable[(..., object)],
         args: dict[((int | str), object)],
@@ -19,7 +16,6 @@ obj MTRuntime {
     }
 }
 
-"""Intermediate Representation for Meaning Typed Programming."""
 obj MTIR {
     has caller: Callable[(..., object)],
         args: dict[((int | str), object)],
@@ -106,7 +102,6 @@ def inner_types(t: object) -> tuple {
     return ();
 }
 
-"""Pretty-print a type-info value (primitive, ClassInfo, or tuple generic)."""
 def type_to_str(t: object) -> str {
     if (t is None) {
         return 'None';

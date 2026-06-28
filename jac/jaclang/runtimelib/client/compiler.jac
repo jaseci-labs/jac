@@ -1,4 +1,3 @@
-"""Main compilation orchestration module."""
 import contextlib;
 import from collections.abc { Callable }
 import from pathlib { Path }
@@ -16,7 +15,6 @@ with entry {
     if TYPE_CHECKING { }
 }
 
-"""Orchestrates the compilation process for Vite client bundles."""
 class ViteCompiler {
     with entry {
         ROUTER_EXPORTS = [
