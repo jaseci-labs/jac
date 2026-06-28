@@ -34,9 +34,6 @@ impl TransportResponse.fail(
     return response;
 }
 
-"""HTTP is stateless - nothing to connect."""
-impl HTTPTransport.connect -> None { }
-
 """Serialize and send HTTP response. Converts TransportResponse to HTTP format."""
 impl HTTPTransport.send(data: any) -> None {
     if isinstance(data, TransportResponse) {
@@ -106,6 +103,3 @@ impl HTTPTransport.send(data: any) -> None {
         self.on_message(data);
     }
 }
-
-"""HTTP is stateless - nothing to close."""
-impl HTTPTransport.close -> None { }

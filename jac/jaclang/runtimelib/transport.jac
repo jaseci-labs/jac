@@ -68,9 +68,7 @@ obj BaseTransport {
         on_error: (Callable[(..., Any)] | None) = None,
         on_close: (Callable[(..., Any)] | None) = None;
 
-    async def connect -> None;
     async def send(data: any) -> None;
-    async def close -> None;
 }
 
 """HTTP Transport for stateless request/response."""
@@ -78,7 +76,5 @@ obj HTTPTransport(BaseTransport) {
     has handler: any = None,
         response_data: dict[(str, Any)] = {};
 
-    def connect -> None;
     def send(data: any) -> None;
-    def close -> None;
 }
