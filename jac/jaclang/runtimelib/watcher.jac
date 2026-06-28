@@ -43,8 +43,7 @@ obj JacFileWatcher {
         _callbacks: list[Callable[[FileChangeEvent], None]] = [],
         _debounce_ms: int = 100,
         _running: bool = False,
-        _pending_events: dict[str, FileChangeEvent] = {},
-        _last_flush: float = 0.0;
+        _pending_events: dict[str, FileChangeEvent] = {};
 
     def start -> None;
     def stop -> None;

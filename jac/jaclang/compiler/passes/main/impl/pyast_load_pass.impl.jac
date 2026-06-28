@@ -95,8 +95,6 @@ Process python node.
 impl PyastBuildPass.proc_keyword(nd: py_ast.keyword) -> uni.KWPair {
     arg = None;
     if nd.arg {
-        import from jaclang.jac0core.constant { TOKEN_MAP }
-        reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
         arg = uni.Name(
             orig_src=self.orig_src,
             name=Tok.NAME,
@@ -107,7 +105,7 @@ impl PyastBuildPass.proc_keyword(nd: py_ast.keyword) -> uni.KWPair {
             col_end=(nd.col_offset + len(nd.arg or '_')),
             pos_start=0,
             pos_end=0,
-            is_kwesc=(nd.arg in reserved_keywords)
+            is_kwesc=(nd.arg in _reserved_keywords)
         );
     }
     value = self.convert(nd.value);
@@ -836,8 +834,6 @@ Process python node.
             names: list[_Identifier]
 """
 impl PyastBuildPass.proc_nonlocal(nd: py_ast.Nonlocal) -> uni.NonLocalStmt {
-    import from jaclang.jac0core.constant { TOKEN_MAP }
-    reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
     names: list[uni.NameAtom] = [];
     for name in nd.names {
         names.append(
@@ -851,7 +847,7 @@ impl PyastBuildPass.proc_nonlocal(nd: py_ast.Nonlocal) -> uni.NonLocalStmt {
                 col_end=(nd.col_offset + len(name)),
                 pos_start=0,
                 pos_end=0,
-                is_kwesc=(name in reserved_keywords)
+                is_kwesc=(name in _reserved_keywords)
             )
         );
     }
@@ -2758,8 +2754,6 @@ Process python node.
 impl PyastBuildPass.proc_function_def(
     nd: (py_ast.FunctionDef | py_ast.AsyncFunctionDef)
 ) -> uni.Ability {
-    import from jaclang.jac0core.constant { TOKEN_MAP }
-    reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
     name = uni.Name(
         orig_src=self.orig_src,
         name=Tok.NAME,
@@ -2770,7 +2764,7 @@ impl PyastBuildPass.proc_function_def(
         col_end=(nd.col_offset + len(nd.name)),
         pos_start=0,
         pos_end=0,
-        is_kwesc=(nd.name in reserved_keywords)
+        is_kwesc=(nd.name in _reserved_keywords)
     );
     body = [self.convert(i) for i in nd.body];
     valid = [

@@ -20,12 +20,13 @@ import from collections.abc { Sequence }
 import from threading { Event }
 import from typing { TypeAlias, TypeVar, cast }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.constant { Tokens as Tok, TOKEN_MAP }
 import from jaclang.jac0core.diagnostics { E5041, E5042 }
 import from jaclang.jac0core.passes.transform { Transform }
 import type from jaclang.jac0core.program { JacProgram }
 
-glob T = TypeVar('T', bound=uni.UniNode);
+glob T = TypeVar('T', bound=uni.UniNode),
+     _reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
 
 """Jac Parser."""
 obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {

@@ -122,7 +122,6 @@ obj JacAutoLintPass(UniPass) {
 
     def _collect_atom_trailers(uni_node: uni.UniNode, results: list) -> None;
     def _expr_to_key(expr: uni.Expr) -> (str | None);
-    def _get_trailer_key(trailer: uni.AtomTrailer) -> (str | None);
     def _exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> bool;
     def _convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> bool;
     def exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None;
@@ -149,7 +148,7 @@ obj JacAutoLintPass(UniPass) {
     def _extract_string_literal_value(expr: uni.Expr) -> (str | None);
     def _check_no_print(nd: uni.FuncCall) -> None;
     # New lint checks (W3020-W3036)
-    def _check_unnecessary_pass(body: list, `node: uni.UniNode) -> None;
+    def _check_unnecessary_pass(body: list) -> None;
     def _check_unnecessary_else_after_return(nd: uni.IfStmt) -> None;
     def _check_nested_if_to_elif(nd: uni.ElseStmt) -> None;
     def _check_return_bool_simplification(nd: uni.IfStmt) -> None;

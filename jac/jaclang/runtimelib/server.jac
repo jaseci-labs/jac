@@ -2,7 +2,6 @@
 import asyncio;
 import dataclasses;
 import hashlib;
-import html;
 import inspect;
 import json;
 import os;
@@ -10,7 +9,6 @@ import secrets;
 import sqlite3;
 import threading;
 import from collections.abc { Callable }
-import from contextlib { suppress }
 import from http.server { BaseHTTPRequestHandler, HTTPServer }
 import from inspect { iscoroutine, isgenerator }
 import from pathlib { Path }
@@ -25,12 +23,7 @@ import from typing {
 import from urllib.parse { parse_qs, urlparse }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from jaclang.runtimelib.context { CallState, ExecutionContext }
-import from jaclang.runtimelib.transport {
-    TransportRequest,
-    TransportResponse,
-    HTTPTransport,
-    Meta
-}
+import from jaclang.runtimelib.transport { TransportResponse, HTTPTransport, Meta }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.project.config { get_config }
 import from jaclang.runtimelib.scheduler { Scheduler }
@@ -183,13 +176,6 @@ obj ResponseBuilder {
     static def send_css(handler: BaseHTTPRequestHandler, css: str) -> None;
     static def _add_cors_headers(handler: BaseHTTPRequestHandler) -> None;
     static def _add_custom_headers(handler: BaseHTTPRequestHandler) -> None;
-}
-
-"""Base route handler."""
-obj RouteHandler {
-    has introspector: ModuleIntrospector,
-        execution_manager: ExecutionManager,
-        user_manager: UserManager;
 }
 
 """Handle authentication routes."""

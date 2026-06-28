@@ -46,7 +46,7 @@ impl JacAutoLintPass.exit_ability(ability_node: uni.Ability) -> None {
         }
     }
     if ability_node.body is not None and isinstance(ability_node.body, list) {
-        self._check_unnecessary_pass(list(ability_node.body), ability_node);
+        self._check_unnecessary_pass(list(ability_node.body));
     }
     name = ability_node.name_spec.sym_name if ability_node.name_spec else "<anonymous>";
     self._check_unnecessary_none_return(
@@ -1147,27 +1147,6 @@ impl JacAutoLintPass._expr_to_key(expr: uni.Expr) -> (str | None) {
     return None;
 }
 
-"""Get a unique key for an AtomTrailer based on its target and attribute.
-
-Returns a string like "obj.attr" that can be used to identify matching accesses.
-Returns None if the trailer is not a simple attribute access.
-"""
-impl JacAutoLintPass._get_trailer_key(trailer: uni.AtomTrailer) -> (str | None) {
-    if not trailer.is_attr {
-        return None;
-    }
-    if not isinstance(trailer.right, uni.Name) {
-        return None;
-    }
-    attr_name = trailer.right.value;
-    target_key = self._expr_to_key(trailer.target);
-    if target_key is not None {
-        null_ok = "?" if trailer.is_null_ok else "";
-        return f"{target_key}{null_ok}.{attr_name}";
-    }
-    return None;
-}
-
 """Check if two expressions are structurally identical without calling unparse().
 
 This avoids triggering normalize() which corrupts token locations.
@@ -1324,7 +1303,7 @@ impl JacAutoLintPass.exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None {
     null_ok_keys: set = set();
     for trailer in trailers {
         if isinstance(trailer, uni.AtomTrailer) and trailer.is_null_ok {
-            key = self._get_trailer_key(trailer);
+            key = self._expr_to_key(trailer);
             if key is not None {
                 null_ok_keys.add(key);
             }
@@ -1335,7 +1314,7 @@ impl JacAutoLintPass.exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None {
     }
     for trailer in trailers {
         if isinstance(trailer, uni.AtomTrailer) and not trailer.is_null_ok {
-            key = self._get_trailer_key(trailer);
+            key = self._expr_to_key(trailer);
             if key is not None and key in null_ok_keys {
                 self._make_null_ok(trailer);
             }
@@ -1360,7 +1339,7 @@ impl JacAutoLintPass.exit_bool_expr(bool_node: uni.BoolExpr) -> None {
     null_ok_keys: set = set();
     for trailer in trailers {
         if isinstance(trailer, uni.AtomTrailer) and trailer.is_null_ok {
-            key = self._get_trailer_key(trailer);
+            key = self._expr_to_key(trailer);
             if key is not None {
                 null_ok_keys.add(key);
             }
@@ -1371,7 +1350,7 @@ impl JacAutoLintPass.exit_bool_expr(bool_node: uni.BoolExpr) -> None {
     }
     for trailer in trailers {
         if isinstance(trailer, uni.AtomTrailer) and not trailer.is_null_ok {
-            key = self._get_trailer_key(trailer);
+            key = self._expr_to_key(trailer);
             if key is not None and key in null_ok_keys {
                 self._make_null_ok(trailer);
             }
@@ -1775,7 +1754,7 @@ impl JacAutoLintPass._extract_string_literal_value(expr: uni.Expr) -> (str | Non
 # New lint checks (W3020-W3036)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """W3020: Warn on unnecessary 'pass' in a body that has other statements."""
-impl JacAutoLintPass._check_unnecessary_pass(body: list, `node: uni.UniNode) -> None {
+impl JacAutoLintPass._check_unnecessary_pass(body: list) -> None {
     if self._is_suppressed(W3020) {
         return;
     }
@@ -2195,7 +2174,7 @@ impl JacAutoLintPass.exit_if_stmt(nd: uni.IfStmt) -> None {
     if not self.lint_enabled {
         return;
     }
-    self._check_unnecessary_pass(list(nd.body), nd);
+    self._check_unnecessary_pass(list(nd.body));
     self._check_unnecessary_else_after_return(nd);
     self._check_return_bool_simplification(nd);
     self._check_repeated_condition(nd);
@@ -2207,7 +2186,7 @@ impl JacAutoLintPass.enter_else_stmt(nd: uni.ElseStmt) -> None {
     if not self.lint_enabled {
         return;
     }
-    self._check_unnecessary_pass(list(nd.body), nd);
+    self._check_unnecessary_pass(list(nd.body));
     self._check_nested_if_to_elif(nd);
 }
 
@@ -2242,7 +2221,7 @@ impl JacAutoLintPass.exit_archetype(nd: uni.Archetype) -> None {
         return;
     }
     if nd.body is not None and isinstance(nd.body, list) {
-        self._check_unnecessary_pass(list(nd.body), nd);
+        self._check_unnecessary_pass(list(nd.body));
     }
 }
 
