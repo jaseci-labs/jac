@@ -780,9 +780,7 @@ impl TypeEvaluator._infer_type_args_from_method(
         init_method, expr, is_constructor_call=True
     );
 
-    # Bind TypeVars from the winning overload's `self: Class[ConcreteType]` annotation.
-    # `_collect_type_var_bindings` skips `self`, so no-arg calls like
-    # `TemporaryDirectory()` would leave AnyStr unbound without this.
+    # Pick up TypeVars pinned in `self: Class[ConcreteType]` overload annotations.
     self._extract_self_annotation_bindings(caller_type, init_method, bindings);
 
     # First, try direct binding from class type_params (works for enumerate)
@@ -810,8 +808,7 @@ impl TypeEvaluator._infer_type_args_from_method(
     return direct_args;
 }
 
-# Bind class TypeVars from the self annotation on the matched constructor overload.
-# Walks class_params and self's type_args in parallel, skips already-bound TypeVars.
+# Bind class TypeVars from `self: Class[T]` on the matched constructor overload.
 impl TypeEvaluator._extract_self_annotation_bindings(
     caller_type: types.ClassType,
     method: types.FunctionType,
@@ -828,16 +825,12 @@ impl TypeEvaluator._extract_self_annotation_bindings(
     if not isinstance(self_ann, types.ClassType) {
         return;
     }
-    # Only meaningful when the annotation is the SAME class being constructed.
-    # A different class in the self slot would be a typeshed error, not our
-    # binding source.
     if self_ann.shared != caller_type.shared {
         return;
     }
     if not self_ann.private.type_args {
         return;
     }
-    # Walk type_params and self's type_args in parallel.
     class_params = caller_type.shared.type_params;
     self_args = self_ann.private.type_args;
     for i in range(min(len(class_params), len(self_args))) {
