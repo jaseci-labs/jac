@@ -9,6 +9,9 @@ import from jaclang.compiler.c2jac.tags { Tier, Mechanism }
 import from jaclang.vendor.pycparser { c_ast }
 
 # Class refs (not string names) so a pycparser rename fails loudly at import.
+# Some entries lower faithfully but would default-stamp Tier-B with an empty
+# reason if omitted, presenting a faithful construct as a phantom best-effort
+# site; their per-entry notes mark why they belong here.
 glob _TIER_A_TYPES: tuple = (
          c_ast.FileAST,
          c_ast.FuncDef,
@@ -19,10 +22,10 @@ glob _TIER_A_TYPES: tuple = (
          c_ast.If,
          c_ast.While,
          c_ast.For,
-         # Case/Default lower to faithful if/elif arms; the whole-switch
-         # faithfulness verdict (fall-through, selector purity) is carried on the
-         # Switch node by c_Switch, not on each arm. Switch itself stays off this
-         # allowlist so an un-handled switch defaults to the conservative Tier-B.
+         # Case/Default lower to faithful if/elif arms; the whole-switch verdict
+         # (fall-through, selector purity) rides on the Switch node via c_Switch,
+         # not each arm. Switch stays off the allowlist so an unhandled one
+         # defaults to conservative Tier-B.
          c_ast.Case,
          c_ast.Default,
          c_ast.Return,
@@ -48,29 +51,13 @@ glob _TIER_A_TYPES: tuple = (
          c_ast.Typename,
          c_ast.Compound,
          c_ast.UnaryOp,
-         # `cond ? a : b` lowers faithfully to a Jac conditional expression —
-         # via the mapper (c_TernaryOp → uni.IfElseExpr) and the direct-IR
-         # for-body path (_expr_to_uni). Without it on the allowlist the node
-         # default-stamps Tier-B with an empty reason, presenting a faithful
-         # ternary as a phantom best-effort site.
-         c_ast.TernaryOp,
+         c_ast.TernaryOp,  # `cond ? a : b` → Jac conditional expr (faithful).
          c_ast.Cast,
          c_ast.ExprList,
          c_ast.NamedInitializer,
-         # A bare `;` is a no-op with no lost semantics — the mapper lowers it to
-         # a Jac `pass` (c_EmptyStatement) and the direct-IR for-body drops it
-         # outright. Without it on the allowlist the node would default-stamp
-         # Tier-B with an empty reason, presenting a do-nothing statement as a
-         # phantom best-effort site (mirrors the TernaryOp note above).
-         c_ast.EmptyStatement,
-         # A variadic `...` lowers faithfully to a Jac `*args` (c_FuncDef): the
-         # signature stays callable and a body that ignores the extra args is
-         # modelled exactly. Only a body that reaches into the varargs is demoted,
-         # and c_FuncDef stamps that Tier-B explicitly on the FuncDef's decl. So
-         # the EllipsisParam node itself belongs on the allowlist — without it the
-         # node default-stamps Tier-B with an empty reason, presenting every
-         # variadic function as a phantom best-effort site (mirrors the notes
-         # above).
+         c_ast.EmptyStatement,  # bare `;` → Jac `pass` / dropped (no-op).
+         # `...` → Jac `*args` (faithful); c_FuncDef demotes only a body that
+         # actually reaches into the varargs.
          c_ast.EllipsisParam,
 
      ),

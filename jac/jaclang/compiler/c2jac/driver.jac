@@ -288,6 +288,8 @@ def _promote_for(sentinel: uni.ExprStmt) {
             new_kid.append(k);
         }
     }
+    # Manual rewire (not set_kids): token ranges are stamped later by NormalizePass
+    # — see the note in _do_splice for why resolve_tok_range can't run here.
     gp.kid = new_kid;
     gp._invalidate_sub_node_tab();
 }
@@ -305,6 +307,12 @@ def _do_splice(sentinel: uni.ExprStmt, replacements: list[uni.UniNode]) -> None 
     }
     kid_idx = parent.kid.index(sentinel);
     new_kid = [*parent.kid[:kid_idx], *replacements, *parent.kid[kid_idx + 1:]];
+    # NB: deliberately not unitree's set_kids/insert_kids_at_pos here. Those
+    # refresh the token range via resolve_tok_range, which (a) raises on an empty
+    # kid list — `replacements` is [] for a Tier-B enum, leaving the parent empty
+    # — and (b) reads child token ranges that don't exist yet: this splice runs
+    # BEFORE NormalizePass stamps the synthesized tokens (driver step 5 vs 6). So
+    # the kid pointers are rewired by hand and token resolution is left to step 6.
     for r in replacements {
         r.parent = parent;
     }

@@ -6,26 +6,17 @@ each such site it emits a *placeholder* expression, records the originating C no
 in `CMapper.slot_map` under a slot id, and the driver later splices the real `uni`
 nodes (built by `CUniBuilder`) in place of the placeholder.
 
-Why a round-trip through PyastBuildPass is *safe*, not just convenient:
-  - The placeholder only has to survive ONE pass — PyastBuildPass, the py-ast →
-    uni bridge — so the driver can find WHERE in the tree to splice.
-  - PyastBuildPass is a pure *structural* build: it maps `Call(Name(...), ...)` to
-    `FuncCall(Name(...), ...)` verbatim and never renames identifiers.
-  - The splice runs at driver step 5, BEFORE NormalizePass/JacFormatPass at step 6
-    — the only passes that rewrite the tree. So the placeholder is observed by
-    exactly one pass that is contractually guaranteed not to touch it.
-That is the answer to "a stringly round-trip through a pass that may rewrite
-things": in THIS pipeline no rewriting pass ever sees the placeholder.
+The round-trip through PyastBuildPass is safe because the placeholder survives
+exactly one pass — a pure structural py-ast → uni build that never renames
+identifiers — and the splice (driver step 5) runs before the only tree-rewriting
+passes (NormalizePass/JacFormatPass, step 6). No rewriting pass ever sees it.
 
-What would actually be dangerous is a *silent* failure — a leaked
-`__c2jac_directir__(N)` call reaching emitted Jac. This module is the one place
-that knows what a placeholder looks like (`is_slot_placeholder` / `slot_id_of`),
-and the driver turns every way the protocol could break into a hard error:
-malformed placeholder → raise, unregistered slot → raise, any placeholder
-surviving the splice → raise. The `directir_no_leak` compat-matrix test locks the
-end-to-end invariant (a `for`/`enum` input emits zero sentinels), so a future
-change that broke the round-trip would fail CI loudly instead of corrupting
-output. The protocol survives on an enforced, tested invariant — not convention.
+The real hazard is a *silent* leak of `__c2jac_directir__(N)` into emitted Jac.
+This module owns what a placeholder looks like (`is_slot_placeholder` /
+`slot_id_of`), and the driver hard-errors on every break (malformed placeholder,
+unregistered slot, surviving placeholder). The `directir_no_leak` compat-matrix
+test locks the invariant (a `for`/`enum` input emits zero sentinels) so a broken
+round-trip fails CI instead of corrupting output.
 
 `SLOT_SENTINEL` is a deliberately ugly, namespaced identifier so it can never
 collide with a real C symbol surviving preprocessing.
