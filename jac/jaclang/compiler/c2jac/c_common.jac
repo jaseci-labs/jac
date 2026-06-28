@@ -353,6 +353,27 @@ def cast_scalar_target(nd: object) -> str | None {
     return None;
 }
 
+def is_null_ptr_constant(c_node: object) -> bool {
+    # A C null-pointer constant: an integer-constant 0, optionally wrapped in
+    # cast layers (after preprocessing, `NULL` is typically `((void *)0)`).
+    # Peel any Cast layers, then require an integer Constant whose parsed value
+    # is 0. Used by pointer-typed contexts (return/assignment) to lower a bare
+    # `0` to Jac `None` instead of the integer literal 0. (Local is named `cur`,
+    # not `node` — `node` is a reserved Jac archetype keyword and silently
+    # breaks codegen if used as a variable.)
+    cur = c_node;
+    while isinstance(cur, c_ast.Cast) {
+        cur = cur.expr;
+    }
+    if not isinstance(cur, c_ast.Constant) {
+        return False;
+    }
+    if classify_c_constant(cur.type) != CLIT_INT {
+        return False;
+    }
+    return parse_c_int(cur.value) == 0;
+}
+
 # --- Jac scalar zero defaults -------------------------------------------- #
 def jac_prim_zero(jac: str) -> tuple {
     # Zero literal (value, display text) for a Jac scalar primitive.

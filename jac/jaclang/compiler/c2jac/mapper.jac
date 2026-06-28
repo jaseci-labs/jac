@@ -50,6 +50,7 @@ import from jaclang.compiler.c2jac.c_common {
     switch_is_safe,
     section_terminates,
     is_simple_ref,
+    is_null_ptr_constant,
     cast_scalar_target,
     CLIT_INT,
     CLIT_FLOAT,
@@ -61,6 +62,7 @@ import from jaclang.compiler.c2jac.c_common {
 }
 import from jaclang.compiler.c2jac.c_types {
     C_PRIM_MAP,
+    elem_typename,
     jac_prim,
     typename,
     user_type_name
@@ -86,7 +88,8 @@ obj CMapper {
         _list_bound: set[str],  # names known to back a Jac list (§7.5 realloc-elide)
         _var_types:
             dict[str, str],  # scalar var name -> jac prim, for char-literal promotion
-        _func_depth: int;  # >0 while building a function body (function-local scope)
+        _func_depth: int,  # >0 while building a function body (function-local scope)
+        _ret_is_ptr: bool;  # current function returns a pointer (NULL → None on return)
 
     def init(tags: TagTable) {
         self.tags = tags;
@@ -96,6 +99,7 @@ obj CMapper {
         self._list_bound = set();
         self._var_types = {};
         self._func_depth = 0;
+        self._ret_is_ptr = False;
     }
 
     # ------------------------------------------------------------------ #
@@ -145,6 +149,7 @@ obj CMapper {
     def c_FileAST(nd: object) -> object;
     def c_Compound(nd: object) -> list[object];
     def c_FuncDef(nd: object) -> object;
+    def _body_inspects_varargs(nd: object) -> bool;
     def c_Decl(nd: object) -> object;
     def _all_quals(nd: object) -> set;
     def _decl_struct_var(nd: object) -> object;

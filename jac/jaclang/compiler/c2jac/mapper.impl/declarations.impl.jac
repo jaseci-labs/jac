@@ -48,16 +48,22 @@ impl CMapper.c_FuncDef(nd: object) -> object {
     if pl is not None {
         for p in pl.params {
             if isinstance(p, c_ast.EllipsisParam) {
-                # Variadic `...` (§roadmap #9): map the *declaration* to a Jac
-                # `*args` so the signature stays callable, and flag the function
-                # Tier-B — the body's `va_list`/`va_arg` semantics are not modelled.
+                # Variadic `...` (§roadmap #9): always map the *declaration* to a
+                # Jac `*args` so the signature stays callable. Lowering `...` to
+                # `*args` is fully faithful when the body ignores the extra args —
+                # they are harmlessly accepted — so that case stays Tier-A. Only a
+                # body that actually reaches into the varargs (a `va_list` object
+                # or a `va_start`/`va_arg`/`va_end` call), which Jac cannot model,
+                # keeps the function Tier-B.
                 vararg = ast3.arg(arg="args", annotation=None);
                 self._stamp(vararg, p, text="...");
-                self._mark_tier_b(
-                    nd.decl,
-                    "variadic `...` lowered to Jac `*args`: va_list/va_arg "
-                    "semantics are not modelled — verify"
-                );
+                if self._body_inspects_varargs(nd.body) {
+                    self._mark_tier_b(
+                        nd.decl,
+                        "variadic `...` lowered to Jac `*args`: va_list/va_arg "
+                        "semantics are not modelled — verify"
+                    );
+                }
                 continue;
             }
             if p.name is None {
@@ -84,7 +90,14 @@ impl CMapper.c_FuncDef(nd: object) -> object {
     # `static` (whose cross-call persistence Jac cannot express) distinctly
     # from a file-scope static (a plain module var).
     self._func_depth += 1;
+    # Track pointer-typed returns so c_Return lowers a bare `0` / NULL to Jac
+    # `None` rather than the integer literal 0 (expression lowering itself has
+    # no pointer context). The return declarator is nd.decl.type.type — a
+    # PtrDecl for `T *f(...)`.
+    prev_ret_is_ptr = self._ret_is_ptr;
+    self._ret_is_ptr = isinstance(nd.decl.type.type, c_ast.PtrDecl);
     raw_body = self.c_Compound(nd.body);
+    self._ret_is_ptr = prev_ret_is_ptr;
     self._func_depth -= 1;
     body: list[object] = raw_body or [self._stamp_manual(ast3.Pass(), 1, 0)];
     ret = self._ret_ann(nd.decl.type);
@@ -92,6 +105,32 @@ impl CMapper.c_FuncDef(nd: object) -> object {
         name=name, args=args, body=body, decorator_list=[], returns=ret, type_params=[],
     );
     return self._stamp(fn, nd, text=name);
+}
+
+impl CMapper._body_inspects_varargs(nd: object) -> bool {
+    # True iff a function body reaches into its variadic args — i.e. declares a
+    # `va_list` or calls `va_start`/`va_arg`/`va_end`/`va_copy`. Those are the
+    # only forms `*args` cannot model; a body that merely ignores the extra args
+    # is lowered faithfully (Tier-A). Walks the pycparser subtree generically via
+    # `.children()` (each child yields a (name, node) tuple) and keys off the two
+    # real node shapes: a `va_list` IdentifierType and a va-machinery FuncCall.
+    if nd is None {
+        return False;
+    }
+    if isinstance(nd, c_ast.IdentifierType) and "va_list" in (nd?.names or []) {
+        return True;
+    }
+    if isinstance(nd, c_ast.FuncCall)
+    and isinstance(nd.name, c_ast.ID)
+    and nd.name.name in ("va_start", "va_arg", "va_end", "va_copy") {
+        return True;
+    }
+    for (_, child) in nd.children() {
+        if self._body_inspects_varargs(child) {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl CMapper.c_Decl(nd: object) -> object {
@@ -133,18 +172,17 @@ impl CMapper.c_Decl(nd: object) -> object {
         self._mark_tier_b(nd, "function-local 'static' loses cross-call persistence");
     }
     # --- qualifiers (#6) ---
-    # `const` is a benign, idiomatic drop (value semantics are preserved;
-    # only the immutability guarantee is advisory) → stays Tier-A. `volatile`
-    # and `restrict` carry real semantics Jac cannot express, so emit
-    # faithfully but flag the loss rather than dropping it silently.
+    # `const`, `register`, and `restrict` are benign, idiomatic drops → stay
+    # Tier-A. `const`/`register` preserve value semantics (the immutability /
+    # storage hint is only advisory); `restrict` is an aliasing/optimization
+    # contract for the C optimizer, not a runtime operation the lowered code
+    # must perform, so dropping it is faithful for defined executions. Only
+    # `volatile` carries real semantics Jac cannot express (it must suppress
+    # read caching), so emit it faithfully but flag the loss rather than
+    # dropping it silently.
     if "volatile" in quals {
         self._mark_tier_b(
             nd, "'volatile' qualifier dropped (Jac cannot suppress read caching)"
-        );
-    }
-    if "restrict" in quals {
-        self._mark_tier_b(
-            nd, "'restrict' qualifier dropped (no-alias guarantee not expressible)"
         );
     }
     # Function forward declaration (prototype) — no-op in Jac.
@@ -354,7 +392,13 @@ impl CMapper.c_Typedef(nd: object) -> object {
 impl CMapper._decl_array(nd: object) -> object {
     # nd is c_ast.Decl whose .type is ArrayDecl.
     arr_decl = nd.type;
-    elem_type = self._type_ann_from_type(arr_decl.type);
+    # Resolve the element type once: `elem_typename` keeps struct/union/typedef
+    # elements as their real name (e.g. `S`) so both the `list[S]` annotation and
+    # the `S()` default below name the actual type instead of collapsing to int.
+    elem_name = elem_typename(arr_decl.type);
+    elem_type = self._stamp_manual(
+        ast3.Name(id=elem_name, ctx=ast3.Load()), self._lineno, 0, text=elem_name
+    );
     list_ann = ast3.Subscript(
         value=ast3.Name(id="list", ctx=ast3.Load()), slice=elem_type, ctx=ast3.Load(),
     );
@@ -367,18 +411,36 @@ impl CMapper._decl_array(nd: object) -> object {
         value = self.conv_expr(nd_init);
     } elif arr_decl.dim is not None {
         dim_expr = self.conv_expr(arr_decl.dim);
-        elem_default_name = typename(arr_decl.type);
-        elem_call = ast3.Call(
-            func=ast3.Name(id=elem_default_name, ctx=ast3.Load()), args=[], keywords=[],
-        );
-        self._stamp_manual(elem_call, self._lineno, 0);
-        mult = ast3.BinOp(
-            left=ast3.List(elts=[elem_call], ctx=ast3.Load()),
-            op=ast3.Mult(),
-            right=dim_expr
-        );
-        self._stamp_manual(mult, self._lineno, 0);
-        value = mult;
+        elem_default_name = elem_name;
+        elem_node = self._elem_default(elem_default_name);
+        if elem_default_name in C_PRIM_MAP {
+            # Immutable scalar defaults can't alias → `[0] * n` is fine.
+            mult = ast3.BinOp(
+                left=ast3.List(elts=[elem_node], ctx=ast3.Load()),
+                op=ast3.Mult(),
+                right=dim_expr
+            );
+            self._stamp_manual(mult, self._lineno, 0);
+            value = mult;
+        } else {
+            # Object elements (struct/union) must be distinct instances, else
+            # `a[0]` and `a[1]` would share one object (a[1].x = 2 clobbers
+            # a[0].x). Emit `[T() for _ in range(n)]`, mirroring _malloc_array.
+            range_fn = self._stamp_manual(
+                ast3.Name(id="range", ctx=ast3.Load()), self._lineno, 0, text="range"
+            );
+            range_call = self._stamp_manual(
+                ast3.Call(func=range_fn, args=[dim_expr], keywords=[]), self._lineno, 0
+            );
+            tgt = self._stamp_manual(
+                ast3.Name(id="_", ctx=ast3.Store()), self._lineno, 0, text="_"
+            );
+            gen = ast3.comprehension(
+                target=tgt, iter=range_call, ifs=[], is_async=0
+            );
+            lc = ast3.ListComp(elt=elem_node, generators=[gen]);
+            value = self._stamp_manual(lc, self._lineno, 0, text="[]");
+        }
     }
     aa = ast3.AnnAssign(target=target, annotation=list_ann, value=value, simple=1);
     return self._stamp(aa, nd, text=nd.name);

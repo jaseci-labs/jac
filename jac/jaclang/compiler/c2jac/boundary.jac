@@ -63,6 +63,15 @@ glob _TIER_A_TYPES: tuple = (
          # Tier-B with an empty reason, presenting a do-nothing statement as a
          # phantom best-effort site (mirrors the TernaryOp note above).
          c_ast.EmptyStatement,
+         # A variadic `...` lowers faithfully to a Jac `*args` (c_FuncDef): the
+         # signature stays callable and a body that ignores the extra args is
+         # modelled exactly. Only a body that reaches into the varargs is demoted,
+         # and c_FuncDef stamps that Tier-B explicitly on the FuncDef's decl. So
+         # the EllipsisParam node itself belongs on the allowlist — without it the
+         # node default-stamps Tier-B with an empty reason, presenting every
+         # variadic function as a phantom best-effort site (mirrors the notes
+         # above).
+         c_ast.EllipsisParam,
 
      ),
      # Node classes routed to the direct-IR builder (no faithful Python-AST analog).

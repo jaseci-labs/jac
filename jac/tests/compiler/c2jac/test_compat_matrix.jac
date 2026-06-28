@@ -60,6 +60,32 @@ glob _MATRIX: dict[str, dict] = {
              "tier": "A",
 
          },
+         # A null-pointer constant returned from a pointer-typed function is NULL —
+         # lower it to Jac `None`, not the integer literal 0 (the return annotation
+         # is str/object, so a bare `return 0` would be type-mismatched).
+         "null_char_ptr_ret": {
+             "src": "const char *s(void){ return 0; }",
+             "want": ["def s() -> str", "return None"],
+             "deny": ["return 0"],
+             "tier": "A",
+
+         },
+         "null_int_ptr_ret": {
+             "src": "int *p(void){ return 0; }",
+             "want": ["def p() -> object", "return None"],
+             "deny": ["return 0"],
+             "tier": "A",
+
+         },
+         # An integer 0 returned from a NON-pointer function is a genuine 0 — the
+         # pointer-context lowering must not over-fire and rewrite it to None.
+         "zero_int_ret": {
+             "src": "int z(void){ return 0; }",
+             "want": ["def z() -> int", "return 0"],
+             "deny": ["return None"],
+             "tier": "A",
+
+         },
          # -- register storage-class (#1) — already lowers as a no-op ---------------- #
          "register_noop": {
              "src": "int f(void){ register int x = 5; return x; }",
@@ -192,8 +218,10 @@ glob _MATRIX: dict[str, dict] = {
              "tier": "A",
 
          },
-         # -- qualifiers (#6): volatile / restrict carry semantics Jac can't express -- #
-         # Emitted faithfully but flagged; const (above) stays Tier-A as a benign drop.
+         # -- qualifiers (#6): only volatile carries semantics Jac can't express ------ #
+         # `volatile` is emitted faithfully but flagged Bf; `const` (above) and
+         # `restrict` stay Tier-A as benign drops (restrict is an aliasing /
+         # optimization contract for the C optimizer, not a runtime op).
          "volatile_var": {
              "src": "volatile int v = 1;",
              "want": ["v: int = 1", "'volatile' qualifier dropped"],
@@ -203,16 +231,29 @@ glob _MATRIX: dict[str, dict] = {
          },
          "restrict_ptr": {
              "src": "int *restrict rp;",
-             "want": ["rp", "'restrict' qualifier dropped"],
+             "want": ["rp: object = None"],
              "deny": ["__c2jac_unsupported"],
-             "tier": "Bf",
+             "tier": "A",
 
          },
          # Variadic `...` (#9): the declaration maps to a Jac `*args` so the
-         # signature stays callable, and the function is flagged Tier-B (va_list/
-         # va_arg body semantics are not modelled). Must NOT crash or be dropped.
+         # signature stays callable. When the body ignores the extra args (as
+         # here), `*args` models the C exactly → Tier-A; only a body that reaches
+         # into the varargs is flagged. Must NOT crash or be dropped.
          "variadic": {
              "src": "int log_many(const char *fmt, ...){ return 0; }",
+             "want": ["*args"],
+             "deny": ["__c2jac_unsupported"],
+             "tier": "A",
+
+         },
+         # A variadic body that DOES reach into the varargs — declares a `va_list`
+         # and calls `va_start`/`va_end` — cannot be modelled by `*args`, so it
+         # stays Tier-B (flagged, never dropped). (`va_list` is typedef'd inline
+         # because transpile_c_str gets no <stdarg.h>; the `va_arg(ap, int)` form
+         # is omitted — its type-argument is unparseable without fake-libc macros.)
+         "variadic_va_arg": {
+             "src": "typedef int va_list; int sum_n(int n, ...){ va_list ap; va_start(ap, n); va_end(ap); return n; }",
              "want": ["*args", "variadic `...` lowered to Jac `*args`"],
              "deny": ["__c2jac_unsupported"],
              "tier": "Bf",
@@ -228,6 +269,9 @@ glob _MATRIX: dict[str, dict] = {
          "long_long",
          "const_char_ptr_param",
          "const_char_ptr_ret",
+         "null_char_ptr_ret",
+         "null_int_ptr_ret",
+         "zero_int_ret",
          "register_noop",
          "const_qual",
          "unsigned_char",
@@ -247,6 +291,7 @@ glob _MATRIX: dict[str, dict] = {
          "volatile_var",
          "restrict_ptr",
          "variadic",
+         "variadic_va_arg",
 
      };
 
@@ -384,6 +429,22 @@ test "matrix_const_char_ptr_ret" {
     assert not fails , "\n\n".join(fails);
 }
 
+# null-pointer constant returned from a pointer-typed function → None
+test "matrix_null_char_ptr_ret" {
+    fails = check("null_char_ptr_ret");
+    assert not fails , "\n\n".join(fails);
+}
+
+test "matrix_null_int_ptr_ret" {
+    fails = check("null_int_ptr_ret");
+    assert not fails , "\n\n".join(fails);
+}
+
+test "matrix_zero_int_ret" {
+    fails = check("zero_int_ret");
+    assert not fails , "\n\n".join(fails);
+}
+
 # register storage-class (#1)
 test "matrix_register_noop" {
     fails = check("register_noop");
@@ -471,7 +532,7 @@ test "matrix_uninit_auto_local" {
     assert not fails , "\n\n".join(fails);
 }
 
-# volatile / restrict qualifiers (#6)
+# volatile (Bf) / restrict (Tier-A) qualifiers (#6)
 test "matrix_volatile_var" {
     fails = check("volatile_var");
     assert not fails , "\n\n".join(fails);
@@ -485,6 +546,11 @@ test "matrix_restrict_ptr" {
 # variadic functions (#9)
 test "matrix_variadic" {
     fails = check("variadic");
+    assert not fails , "\n\n".join(fails);
+}
+
+test "matrix_variadic_va_arg" {
+    fails = check("variadic_va_arg");
     assert not fails , "\n\n".join(fails);
 }
 
