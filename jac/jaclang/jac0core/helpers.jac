@@ -291,15 +291,8 @@ class Jdb(pdb.Pdb) {
     def has_breakpoint(self: Jdb, bytecode: bytes) -> bool;
 }
 
-glob debugger = Jdb();
-
-glob _JAC_TEXT_ENCODINGS = [
-         'utf-8-sig',
-         'utf-8',
-         'utf-16',
-         'utf-16le',
-         'utf-16be'
-     ];
+glob debugger = Jdb(),
+     _JAC_TEXT_ENCODINGS = ['utf-8-sig', 'utf-8', 'utf-16', 'utf-16le', 'utf-16be'];
 
 def read_file_with_encoding(file_path: str) -> str {
     for encoding in _JAC_TEXT_ENCODINGS {
