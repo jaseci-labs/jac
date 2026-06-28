@@ -1,10 +1,3 @@
-"""Regression: a static *mount* must not shadow the project's own /static/*
-assets. A mount whose url_prefix matches the request but does not contain the
-file has to fall through to the built-client assets and then the project static
-dirs -- otherwise project assets serve locally but 404 in a k8s deploy where a
-'static' mount is present. See jaseci-labs/jaseci#7020.
-"""
-
 import os;
 import tempfile;
 import from starlette.requests { Request }
@@ -12,10 +5,7 @@ import from jac_scale.runtime.gateway.microservice_gateway { MicroserviceGateway
 import from jac_scale.runtime.gateway.service_registry { ServiceRegistry }
 
 
-def _get_request() -> Request {
-    # Minimal ASGI scope: GET, no Accept header (so the SPA HTML fallback at
-    # the tail of handle_static is not triggered -- we want the pure
-    # static-resolution result).
+def _get_request -> Request {
     return Request({"type": "http", "method": "GET", "headers": []});
 }
 
@@ -37,9 +27,7 @@ test "project /static asset resolves even when a static mount claims the prefix"
     with open(os.path.join(project_root, "assets", "logo.svg"), "w") as f {
         f.write("<svg></svg>");
     }
-    # A mount that owns the 'static' prefix but does NOT contain the file, plus
-    # an empty client-dist so serve_static also misses. Pre-fix, the prefix
-    # match short-circuits the project-static fallback and this 404s.
+
     shadow_mount = tempfile.mkdtemp();
     empty_dist = tempfile.mkdtemp();
 

@@ -442,12 +442,6 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
 
     file_path: str = path.lstrip("/");
     if file_path {
-        # Static mounts are *preferred* locations for their url_prefix, not
-        # exclusive owners of it. A prefix match that does not contain the file
-        # must fall through to the built-client assets and then the project's
-        # own static dirs -- otherwise a mount on the "static" prefix shadows
-        # every /static/* project asset (serves locally, 404s in a k8s deploy
-        # whose client config registers such a mount). See jaseci-labs#7020.
         for mount in self.static_mounts {
             prefix = str(mount.get("url_prefix", "")).lstrip("/").rstrip("/");
             if not prefix {
