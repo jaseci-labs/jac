@@ -442,6 +442,7 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
 
     file_path: str = path.lstrip("/");
     if file_path {
+        mount_matched = False;
         for mount in self.static_mounts {
             prefix = str(mount.get("url_prefix", "")).lstrip("/").rstrip("/");
             if not prefix {
@@ -451,18 +452,22 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
                 continue;
             }
             if file_path.startswith(prefix + "/") {
+                mount_matched = True;
                 sub_path = file_path[len(prefix) + 1:];
                 local_dir = str(mount.get("local_path", ""));
                 mounted_resp = self.serve_extra_static(local_dir, sub_path);
                 if mounted_resp {
                     return mounted_resp;
                 }
+                break;
             }
         }
 
-        static_resp = self.serve_static(file_path);
-        if static_resp {
-            return static_resp;
+        if not mount_matched {
+            static_resp = self.serve_static(file_path);
+            if static_resp {
+                return static_resp;
+            }
         }
 
         if file_path.startswith("static/") {
