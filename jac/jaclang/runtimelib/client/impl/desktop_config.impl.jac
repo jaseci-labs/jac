@@ -49,6 +49,16 @@ impl JacDesktopConfig.get_window_config(self: JacDesktopConfig) -> WindowConfig 
     return WindowConfig.from_dict(window_data, title_fallback=identity.name);
 }
 
+impl JacDesktopConfig.get_dispatch_config(self: JacDesktopConfig) -> DispatchConfig {
+    config = self.load();
+    raw = config.get('dispatch', {});
+    data: dict[str, any] = {};
+    if isinstance(raw, dict) {
+        data = raw;
+    }
+    return DispatchConfig.from_dict(data);
+}
+
 impl JacDesktopConfig.get_engine(self: JacDesktopConfig) -> str {
     config = self.load();
     engine = str(config.get('engine', 'native'));
@@ -94,6 +104,23 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
             f"cannot be greater than window.height ({height})"
         );
     }
+    dispatch = config.get('dispatch', {});
+    if isinstance(dispatch, dict) {
+        timeout_s = float(dispatch.get('timeout_s', 30.0));
+        max_queue = int(dispatch.get('max_queue', 128));
+        if timeout_s <= 0 {
+            raise ValueError(
+                f"Desktop configuration error: dispatch.timeout_s ({timeout_s}) "
+                f"must be greater than 0"
+            );
+        }
+        if max_queue < 1 {
+            raise ValueError(
+                f"Desktop configuration error: dispatch.max_queue ({max_queue}) "
+                f"must be at least 1"
+            );
+        }
+    }
     plugins = config.get('plugins', {});
     if isinstance(plugins, dict) {
         _validate_plugin_keys(plugins);
@@ -104,7 +131,7 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
 
 Without this, a typo under [plugins.desktop.plugins.*] is silently ignored:
 a misspelled `allow_read` leaves the fs allow-list empty (no file access),
-and a misspelled plugin name disables the capability — both with no warning.
+and a misspelled plugin name disables the capability -- both with no warning.
 Valid keys are derived from the declared config schema (the single source of
 truth), so this never drifts from what the plugins actually accept. Only
 sub-keys for plugins that declare structured config (fs, shell, clipboard) are

@@ -184,6 +184,23 @@ def native_stdlib_root -> (str | None) {
     return root if os.path.isdir(root) else None;
 }
 
+"""True iff `module_name` names a bundled native stdlib `.na.jac` module.
+
+Checks ONLY the bundled root (not the user tree), so a whole-module import like
+`import hashlib;` can be admitted on the native pathway and routed to the bundled
+module the same way `import math` is, without a base_dir. Dotted names map to the
+nested layout (`os.path` -> `os/path.na.jac`) (issue #6978).
+"""
+def is_bundled_native_module(module_name: str) -> bool {
+    import os;
+    root = native_stdlib_root();
+    if root is None or not module_name {
+        return False;
+    }
+    path_name = module_name.lstrip('.').replace('.', os.sep);
+    return os.path.exists(os.path.join(root, f"{path_name}.na.jac"));
+}
+
 """Resolve a module name to a .na.jac file path.
 
 Shared resolver used by both BoundaryAnalysisPass and NaIRGenPass to

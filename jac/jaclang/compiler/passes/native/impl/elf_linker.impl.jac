@@ -35,6 +35,7 @@ glob SHT_NULL = 0,
      SHT_RELA = 4,
      SHT_HASH = 5,
      SHT_DYNAMIC = 6,
+     SHT_NOBITS = 8,
      SHT_DYNSYM = 11,
      SHT_INIT_ARRAY = 14;
 
@@ -83,11 +84,13 @@ glob DT_NULL = 0,
 glob ET_DYN = 3;
 
 # ── Symbol binding/type ──────────────────────────────────────────
-glob STB_GLOBAL = 1,
+glob STB_LOCAL = 0,
+     STB_GLOBAL = 1,
      STT_NOTYPE = 0,
      STT_OBJECT = 1,
      STT_FUNC = 2,
-     SHN_UNDEF = 0;
+     SHN_UNDEF = 0,
+     SHN_COMMON = 0xfff2;
 
 # ══════════════════════════════════════════════════════════════════
 # x86_64 relocation types
@@ -722,6 +725,15 @@ impl ElfLinker.build_executable -> bytes {
     data_sections: dict[str, tuple[int, int]] = {};
 
     section_placement: dict[int, tuple[str, int]] = {};
+    # Track the strongest section alignment per blob. _append_to_blob aligns each
+    # section WITHIN its blob, but that only yields the right ABSOLUTE address if
+    # the blob's base (text_foff/rodata_foff/data_foff) is aligned at least as
+    # strongly. OpenSSL's AVX2 code uses `vmovdqa` against 64-byte-aligned tables
+    # (e.g. sha512's K512 in .rodata); a 16-aligned segment base left K512 at
+    # 16-alignment and faulted. Default 16 (x86-64 ABI baseline). (#6978 Phase 1)
+    code_align: int = 16;
+    rodata_align: int = 16;
+    data_align: int = 16;
     sec_idx = 0;
     for sec in self.sections {
         if sec.typ == SHT_PROGBITS and (sec.flags & SHF_EXECINSTR) {
@@ -729,6 +741,9 @@ impl ElfLinker.build_executable -> bytes {
                 off = _append_to_blob(code_data, sec.data, sec.align, len(sec.data));
                 code_sections[sec.name] = (off, len(sec.data));
                 section_placement[sec_idx] = ("code", off);
+                if sec.align > code_align {
+                    code_align = sec.align;
+                }
             }
         } elif sec.typ == SHT_PROGBITS
         and (sec.flags & SHF_ALLOC)
@@ -737,6 +752,9 @@ impl ElfLinker.build_executable -> bytes {
                 off = _append_to_blob(rodata_blob, sec.data, sec.align, len(sec.data));
                 rodata_sections[sec.name] = (off, len(sec.data));
                 section_placement[sec_idx] = ("rodata", off);
+                if sec.align > rodata_align {
+                    rodata_align = sec.align;
+                }
             }
         } elif (sec.flags & SHF_WRITE) and (sec.flags & SHF_ALLOC) {
             alloc_size = sec.mem_size;
@@ -744,6 +762,9 @@ impl ElfLinker.build_executable -> bytes {
                 off = _append_to_blob(data_blob, sec.data, sec.align, alloc_size);
                 data_sections[sec.name] = (off, alloc_size);
                 section_placement[sec_idx] = ("data", off);
+                if sec.align > data_align {
+                    data_align = sec.align;
+                }
             }
         }
         sec_idx += 1;
@@ -755,9 +776,23 @@ impl ElfLinker.build_executable -> bytes {
     extern_data_syms: list[str] = [];
     local_sym_map: dict[str, tuple[str, int]] = {};
     sym_idx_placement: dict[int, tuple[str, int]] = {};
+    # A name DEFINED anywhere in the merged image is resolved locally and must
+    # NEVER be emitted as a dynamic import, even if some member also carries an
+    # UNDEF reference to it. The injected `atexit` is the case in point: libc.so
+    # does not export it (it lives in libc_nonshared.a), so a spurious import the
+    # loader cannot bind would abort the program at startup. (#6978 Phase 1)
+    defined_names: set[str] = set();
+    for sym in self.symbols {
+        if sym.shndx != SHN_UNDEF and sym.shndx < len(self.sections) and sym.name {
+            defined_names.add(sym.name);
+        }
+    }
     sym_i = 0;
     for sym in self.symbols {
-        if sym.shndx == SHN_UNDEF and sym.name and sym.bind >= STB_GLOBAL {
+        if sym.shndx == SHN_UNDEF
+        and sym.name
+        and sym.bind >= STB_GLOBAL
+        and sym.name not in defined_names {
             is_data = sym.typ == STT_OBJECT
             or (sym.typ == STT_NOTYPE and sym.name in known_data_syms);
             if is_data {
@@ -775,7 +810,14 @@ impl ElfLinker.build_executable -> bytes {
                 if sym.name {
                     local_sym_map[sym.name] = (placement[0], placement[1] + sym.value);
                 }
-                sym_idx_placement[sym_i] = (placement[0], placement[1]);
+                # Index-keyed placement must add sym.value too. A section symbol
+                # (empty name) from a merged archive member carries the member's
+                # offset within the coalesced section in sym.value, and
+                # section-relative relocs (e.g. `R_X86_64_PC32 .bss-4`) resolve
+                # through here; dropping it pointed every such ref at the section
+                # base, corrupting e.g. liblzma's .bss crc32 dispatch pointer.
+                # (#6978 Phase 0.1a, ELF)
+                sym_idx_placement[sym_i] = (placement[0], placement[1] + sym.value);
             }
         }
         sym_i += 1;
@@ -786,6 +828,28 @@ impl ElfLinker.build_executable -> bytes {
     for nm in self.export_symbols {
         if nm in local_sym_map and nm not in extern_syms {
             exec_exports.append(nm);
+        }
+    }
+
+    # GOTPCREL references to symbols DEFINED in this (non-PIE) binary each get a
+    # link-time-filled local GOT slot. Unlike instruction relaxation -- which would
+    # have to special-case every mov/call/jmp/cmp/binop GOTPCRELX encoding the
+    # psABI allows -- a GOT slot leaves the GOT-indirect instruction untouched and
+    # works for all forms. The slots are appended after the extern-data GOT and
+    # filled with each symbol's absolute address (no run-time relocation: a non-PIE
+    # executable has fixed addresses). libcrypto reaches OPENSSL_ia32cap_P and
+    # internal functions this way. (#6978 Phase 1)
+    local_got_syms: list[str] = [];
+    local_got_seen: set[str] = set();
+    for rela in self.relocations {
+        if rela.rtype in arch.gotpcrel_rtypes
+        and rela.sym_name
+        and rela.sym_name not in extern_func_syms
+        and rela.sym_name not in extern_data_syms
+        and rela.sym_name in local_sym_map
+        and rela.sym_name not in local_got_seen {
+            local_got_syms.append(rela.sym_name);
+            local_got_seen.add(rela.sym_name);
         }
     }
 
@@ -868,6 +932,13 @@ impl ElfLinker.build_executable -> bytes {
         dyn_entries.append((DT_RELASZ, len(extern_data_syms) * 24));
         dyn_entries.append((DT_RELAENT, 24));
     }
+    # A merged static-archive member may ship a load-time .init_array
+    # constructor (e.g. liblzma crc32 sets its .bss dispatch pointer there).
+    # The bespoke _start bypasses libc startup and ld.so does not run an
+    # ET_EXEC's own DT_INIT_ARRAY, so emitting it would be a no-op. Instead the
+    # injected `main` iterates the array itself; the linker writes its base +
+    # count into the __jac_init_array / __jac_init_count globals below.
+    # (#6978 Phase 0.1a, ELF)
     dyn_entries.append((DT_DEBUG, 0));
     dyn_entries.append((DT_NULL, 0));
     dynamic_data = bytearray();
@@ -898,10 +969,10 @@ impl ElfLinker.build_executable -> bytes {
     cur_offset = _align(cur_offset, 16);
     plt_foff = cur_offset;
     cur_offset += plt_size;
-    cur_offset = _align(cur_offset, 16);
+    cur_offset = _align(cur_offset, code_align);
     text_foff = cur_offset;
     cur_offset += len(code_data);
-    cur_offset = _align(cur_offset, 16);
+    cur_offset = _align(cur_offset, rodata_align);
     rodata_foff = cur_offset;
     cur_offset += len(rodata_blob);
     code_seg_size = cur_offset;
@@ -913,12 +984,14 @@ impl ElfLinker.build_executable -> bytes {
     cur_offset = data_seg_foff + got_plt_size;
     cur_offset = _align(cur_offset, 8);
     data_got_foff = cur_offset;
-    data_got_size = len(extern_data_syms) * 8;
+    # Extern-data slots first (filled by the loader via rela.dyn), then local-def
+    # slots (filled here at link time; see local_got_slot below).
+    data_got_size = (len(extern_data_syms) + len(local_got_syms)) * 8;
     cur_offset += data_got_size;
     cur_offset = _align(cur_offset, 8);
     dynamic_foff = cur_offset;
     cur_offset += len(dynamic_data);
-    cur_offset = _align(cur_offset, 8);
+    cur_offset = _align(cur_offset, data_align);
     data_foff = cur_offset;
     cur_offset += len(data_blob);
     data_seg_size = cur_offset - data_seg_foff;
@@ -1034,6 +1107,26 @@ impl ElfLinker.build_executable -> bytes {
     for got_idx in range(len(extern_data_syms)) {
         extern_got_addr[extern_data_syms[got_idx]] = data_got_vaddr + got_idx * 8;
     }
+    # Local GOT slots follow the extern-data slots; fill each with the symbol's
+    # resolved absolute address (non-PIE, so the value is fixed at link time).
+    local_got_slot: dict[str, int] = {};
+    _lg_base = len(extern_data_syms);
+    for lg_idx in range(len(local_got_syms)) {
+        _lg_name = local_got_syms[lg_idx];
+        local_got_slot[_lg_name] = data_got_vaddr + (_lg_base + lg_idx) * 8;
+        _lg_place = local_sym_map.get(_lg_name);
+        if _lg_place is not None {
+            _lg_abs = _resolve_seg_vaddr(
+                _lg_place[0], _lg_place[1], text_vaddr, rodata_vaddr, data_vaddr
+            );
+            struct.pack_into(
+                "<Q",
+                data_got_data,
+                (_lg_base + lg_idx) * 8,
+                _lg_abs & 0xFFFFFFFFFFFFFFFF
+            );
+        }
+    }
 
     code_bytes = bytearray(code_data);
     rodata_bytes = bytearray(rodata_blob);
@@ -1052,7 +1145,11 @@ impl ElfLinker.build_executable -> bytes {
                 func_idx = extern_func_syms.index(rela.sym_name);
                 sym_addr = got_plt_vaddr + (3 + func_idx) * 8;
             } else {
-                sym_addr = 0;
+                # GOTPCREL to a symbol DEFINED in this binary -> its local GOT
+                # slot (built above, filled with the symbol's absolute address).
+                # The GOT-indirect instruction is left unchanged, so this handles
+                # every GOTPCRELX form (mov/call/jmp/cmp/binop). (#6978 Phase 1)
+                sym_addr = local_got_slot.get(rela.sym_name, 0);
             }
         } elif is_func_extern {
             sym_addr = extern_plt_addr[rela.sym_name];
@@ -1112,6 +1209,25 @@ impl ElfLinker.build_executable -> bytes {
                 f"an unrelocated reference."
             );
         }
+    }
+
+    # ── Run-time init-array bridge (#6978 0.1a) ───────────────────
+    # Point the injected main's constructor loop at the merged .init_array (the
+    # load-time constructors a static-archive floor member ships). The bespoke
+    # _start bypasses libc startup and ld.so does not run an ET_EXEC's own
+    # DT_INIT_ARRAY, so main iterates the array itself: write its base vaddr and
+    # entry count into the __jac_init_array / __jac_init_count globals. The slot
+    # contents (constructor pointers) were already applied by the reloc loop.
+    _ia = data_sections.get(".init_array");
+    _ia_vaddr = (data_vaddr + _ia[0]) if _ia is not None else 0;
+    _ia_count = (_ia[1] // 8) if _ia is not None else 0;
+    _ia_sym = local_sym_map.get("__jac_init_array");
+    _ic_sym = local_sym_map.get("__jac_init_count");
+    if _ia_sym is not None and _ia_sym[0] == "data" {
+        struct.pack_into("<Q", data_bytes, _ia_sym[1], _ia_vaddr);
+    }
+    if _ic_sym is not None and _ic_sym[0] == "data" {
+        struct.pack_into("<Q", data_bytes, _ic_sym[1], _ia_count);
     }
 
     # ── Find entry point ──────────────────────────────────────────
@@ -1746,7 +1862,14 @@ impl ElfLinker.build_shared_object -> bytes {
                 if sym.name {
                     local_sym_map[sym.name] = (placement[0], placement[1] + sym.value);
                 }
-                sym_idx_placement[sym_i] = (placement[0], placement[1]);
+                # Index-keyed placement must add sym.value too. A section symbol
+                # (empty name) from a merged archive member carries the member's
+                # offset within the coalesced section in sym.value, and
+                # section-relative relocs (e.g. `R_X86_64_PC32 .bss-4`) resolve
+                # through here; dropping it pointed every such ref at the section
+                # base, corrupting e.g. liblzma's .bss crc32 dispatch pointer.
+                # (#6978 Phase 0.1a, ELF)
+                sym_idx_placement[sym_i] = (placement[0], placement[1] + sym.value);
             }
         }
         sym_i += 1;
@@ -2553,6 +2676,90 @@ impl ElfLinker.build_shared_object -> bytes {
 }
 
 
+"""Reserve .bss storage for SHN_COMMON (tentative-definition) symbols.
+
+A C tentative definition with no initializer (e.g. libcrypto's
+`unsigned int OPENSSL_ia32cap_P[...];`) is emitted as a COMMON symbol:
+shndx=SHN_COMMON, st_value=alignment, st_size=bytes, and NO section storage. A
+real linker reserves one .bss slot per unique COMMON name and points every
+reference at it; the bespoke linker did not, so a GOTPCREL load of such a symbol
+resolved to address 0 and crashed `OPENSSL_cpuid_setup`. Run this AFTER all
+members merge (so a strong definition, if any, has already overridden the COMMON
+in place): each remaining COMMON symbol is given a real `.bss` offset and its
+shndx repointed at `.bss`, so placement + relocation resolve it normally.
+(#6978 Phase 1)"""
+def _allocate_common(linker: ElfLinker) -> None {
+    has_common = False;
+    for sym in linker.symbols {
+        if sym.shndx == SHN_COMMON {
+            has_common = True;
+            break;
+        }
+    }
+    if not has_common {
+        return;
+    }
+    bss_idx: int = -1;
+    for (i, sec) in enumerate(linker.sections) {
+        if sec.name == ".bss" {
+            bss_idx = i;
+            break;
+        }
+    }
+    if bss_idx < 0 {
+        bss_idx = len(linker.sections);
+        linker.sections.append(
+            ElfSection(
+                name=".bss",
+                typ=SHT_NOBITS,
+                flags=SHF_WRITE | SHF_ALLOC,
+                addr=0,
+                data=b"",
+                mem_size=0,
+                align=1,
+                link=0,
+                info=0,
+                entsize=0
+            )
+        );
+    }
+    bss = linker.sections[bss_idx];
+    cur_size = bss.mem_size;
+    max_align = bss.align;
+    for (si, sym) in enumerate(linker.symbols) {
+        if sym.shndx == SHN_COMMON {
+            # COMMON st_value carries the required alignment, not an offset.
+            align = max(sym.value, 1);
+            if align > max_align {
+                max_align = align;
+            }
+            off = _align(cur_size, align);
+            linker.symbols[si] = ElfSymbol(
+                name=sym.name,
+                value=off,
+                size=sym.size,
+                bind=sym.bind,
+                typ=sym.typ,
+                shndx=bss_idx
+            );
+            cur_size = off + sym.size;
+        }
+    }
+    linker.sections[bss_idx] = ElfSection(
+        name=bss.name,
+        typ=bss.typ,
+        flags=bss.flags,
+        addr=bss.addr,
+        data=bss.data,
+        mem_size=cur_size,
+        align=max_align,
+        link=bss.link,
+        info=bss.info,
+        entsize=bss.entsize
+    );
+}
+
+
 # ── Merge a CRT object file's sections/symbols/relocs into self ──
 """Parse a CRT object and merge its sections, symbols, and relocations
 into the linker's existing parsed state.
@@ -2561,7 +2768,7 @@ When a CRT section has the same name as an existing section (e.g. .text),
 the CRT data is appended to the existing section. Symbol values and
 relocation offsets are adjusted by the merge offset.
 """
-def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes) -> bool {
+def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes, merge_ns: int = 0) -> bool {
     crt = ElfLinker(
         obj_data=crt_bytes, sections=[], symbols=[], relocations=[], needed_libs=[]
     );
@@ -2586,14 +2793,26 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes) -> bool {
             # Merge into existing section
             merged_idx = existing_sec_by_name[crt_sec.name];
             merged_sec = linker.sections[merged_idx];
-            # Align the append offset
             align = max(crt_sec.align, 1);
-            cur_len = len(merged_sec.data);
-            aligned_off = _align(cur_len, align);
-            padding = b"\x00" * (aligned_off - cur_len);
-            # Append CRT section data to existing section
-            new_data = merged_sec.data + padding + crt_sec.data;
-            new_mem_size = max(merged_sec.mem_size, len(new_data));
+            if crt_sec.typ == SHT_NOBITS {
+                # NOBITS (.bss/.tbss) carries NO data bytes, only a size, so the
+                # append offset must come from the accumulated mem_size -- NOT
+                # len(data) (always 0 for NOBITS), which would stack every
+                # member's .bss variables at the same address. That overlap
+                # aliased OpenSSL's `base` CRYPTO_ONCE guard onto unrelated
+                # members' .bss, corrupting its init state into a re-entrant
+                # pthread_once deadlock. (#6978 Phase 1)
+                aligned_off = _align(merged_sec.mem_size, align);
+                new_data = merged_sec.data;
+                new_mem_size = aligned_off + crt_sec.mem_size;
+            } else {
+                # PROGBITS (.text/.data/.rodata): append the bytes.
+                cur_len = len(merged_sec.data);
+                aligned_off = _align(cur_len, align);
+                padding = b"\x00" * (aligned_off - cur_len);
+                new_data = merged_sec.data + padding + crt_sec.data;
+                new_mem_size = max(merged_sec.mem_size, len(new_data));
+            }
             linker.sections[merged_idx] = ElfSection(
                 name=merged_sec.name,
                 typ=merged_sec.typ,
@@ -2619,11 +2838,18 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes) -> bool {
         }
     }
 
-    # Map CRT symbol indices -> merged symbol indices.
+    # Map CRT symbol indices -> merged symbol indices. Only GLOBAL/WEAK names
+    # participate in cross-object dedup (`bind >= STB_GLOBAL`); a file-local
+    # (STB_LOCAL) symbol is private to its own object, so two members'
+    # identically-named locals must stay DISTINCT. Keying every name here (the
+    # old behavior) let a later member's `static do_init` alias an earlier
+    # member's unrelated `static do_init`, redirecting the later member's own
+    # calls to the wrong function -- which deadlocked OpenSSL's re-entrant
+    # `pthread_once` lazy init (#6978 Phase 1).
     sym_idx_map: dict[int, int] = {};
     existing_syms: dict[str, int] = {};
     for (i, sym) in enumerate(linker.symbols) {
-        if sym.name {
+        if sym.name and sym.bind >= STB_GLOBAL {
             existing_syms[sym.name] = i;
         }
     }
@@ -2634,7 +2860,19 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes) -> bool {
             adjusted_value += sec_data_offset.get(crt_sym.shndx, 0);
         }
 
-        if crt_sym.name and crt_sym.name in existing_syms {
+        # Namespace a NAMED local so it cannot collide with another member's
+        # local of the same name. Resolution stays correct: this member's own
+        # relocations carry the renamed name (via sym_idx_map below), and the
+        # name is never imported/exported (locals are object-private). Unnamed
+        # locals (section symbols) keep their empty name -- they resolve by
+        # index through sym_idx_placement.
+        is_local = crt_sym.bind < STB_GLOBAL;
+        eff_name = crt_sym.name;
+        if is_local and crt_sym.name {
+            eff_name = f"{crt_sym.name}\x01na{merge_ns}";
+        }
+
+        if (not is_local) and crt_sym.name and crt_sym.name in existing_syms {
             existing_idx = existing_syms[crt_sym.name];
             existing_sym = linker.symbols[existing_idx];
             # If existing is undefined and CRT defines it, replace
@@ -2652,10 +2890,20 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes) -> bool {
             sym_idx_map[crt_sym_idx] = existing_idx;
         } else {
             new_idx = len(linker.symbols);
-            new_shndx = sec_idx_map.get(crt_sym.shndx, crt_sym.shndx);
+            # An undefined symbol must stay SHN_UNDEF. Remapping its shndx
+            # through sec_idx_map (where SHN_UNDEF==0 collides with the member's
+            # null section, which maps to a real merged index) would make a new
+            # extern reference (e.g. a member's libc call like getauxval) look
+            # defined, so it gets no PLT entry and resolves to 0. Only defined
+            # symbols carry a real section to remap. (#6978 Phase 0.1a, ELF)
+            if crt_sym.shndx == SHN_UNDEF {
+                new_shndx = SHN_UNDEF;
+            } else {
+                new_shndx = sec_idx_map.get(crt_sym.shndx, crt_sym.shndx);
+            }
             linker.symbols.append(
                 ElfSymbol(
-                    name=crt_sym.name,
+                    name=eff_name,
                     value=adjusted_value,
                     size=crt_sym.size,
                     bind=crt_sym.bind,
@@ -2664,7 +2912,9 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes) -> bool {
                 )
             );
             sym_idx_map[crt_sym_idx] = new_idx;
-            if crt_sym.name {
+            # Only globals/weaks are visible for later members to dedup against;
+            # a (namespaced) local must never become a dedup target.
+            if (not is_local) and crt_sym.name {
                 existing_syms[crt_sym.name] = new_idx;
             }
         }
@@ -2731,9 +2981,16 @@ impl ElfLinker.link(
         return False;
     }
 
+    # Each merged object gets a distinct namespace id so its file-local
+    # (STB_LOCAL) symbols cannot collide with an identically-named local in
+    # another member (rampant in C archives like libcrypto: `do_init`,
+    # `cleanup`, DEFINE_RUN_ONCE statics, ...). See _merge_crt_object.
+    merge_ns: int = 0;
+
     # Merge CRT objects (e.g. crt1.o) into the main object
     for crt_bytes in crt_objects {
-        if not _merge_crt_object(linker, crt_bytes) {
+        merge_ns += 1;
+        if not _merge_crt_object(linker, crt_bytes, merge_ns) {
             return False;
         }
     }
@@ -2747,10 +3004,16 @@ impl ElfLinker.link(
     # like Mach-O's _resolve_crossrefs -- build_executable only imports symbols
     # still left at SHN_UNDEF after all merges.
     for member in archive_members {
-        if not _merge_crt_object(linker, member) {
+        merge_ns += 1;
+        if not _merge_crt_object(linker, member, merge_ns) {
             return False;
         }
     }
+
+    # Reserve .bss for any tentative-definition (SHN_COMMON) symbols left after
+    # all merges (e.g. libcrypto's OPENSSL_ia32cap_P), so they get a real address
+    # instead of resolving to 0. (#6978 Phase 1)
+    _allocate_common(linker);
 
     exe_bytes = linker.build_shared_object() if shared else linker.build_executable();
     if not exe_bytes {

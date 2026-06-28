@@ -218,27 +218,32 @@ test "guardrail: field access on an untyped (any) node-ref element is rejected w
 # ─────────────────────────────────────────────────────────────────────
 # Import / builtin gaps (issue #6357)
 # ─────────────────────────────────────────────────────────────────────
-# Native compilation cannot import arbitrary Python modules: the import is
-# dropped, then `json.dumps(...)` lowers to nothing and the binary prints empty
-# output. That silent-wrong result is the worst failure mode -- reject it.
-# (`math`/`time`/`sys`/`os`/`random` are now lowered; `json` is still
-# unsupported per the #6404 roadmap, so it stays a valid rejection example.)
+# Native compilation cannot import an ARBITRARY Python module: the import is
+# dropped, then `collections.OrderedDict(...)` lowers to nothing and the binary
+# prints empty output. That silent-wrong result is the worst failure mode --
+# reject it. (`math`/`time`/`sys`/`os`/`random` are lowered builtins, and the
+# bundled `na_stdlib` modules -- `hashlib`/`json`/`os.path`/... -- are now
+# whole-module-importable per #6978; so the rejection example must be a module
+# that is neither, i.e. a pure-Python one like `collections` that will never be
+# an FFI-floor target.)
 test "guardrail: Python module import is rejected" {
     prog = compile_na_inline(
-        "py_import_json",
-        "import json;\n" "with entry { print(json.dumps({\"a\": 1})); }\n"
+        "py_import_collections",
+        "import collections;\n" "with entry { print(collections.OrderedDict()); }\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'json', got: {fmt_errors(
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'collections', got: {fmt_errors(
         prog
     )}";
 }
 
-# A dotted Python import (`import os.path;`) is equally unsupported.
+# A dotted non-bundled Python import (`import collections.abc;`) is equally
+# unsupported (a dotted bundled name like `os.path` now resolves, #6978).
 test "guardrail: dotted Python module import is rejected" {
     prog = compile_na_inline(
-        "py_import_dotted", "import os.path;\n" "with entry { print(\"hi\"); }\n"
+        "py_import_dotted",
+        "import collections.abc;\n" "with entry { print(\"hi\"); }\n"
     );
-    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'os.path', got: {fmt_errors(
+    assert has_error_code(prog, "E5090") , f"Expected E5090 for unsupported Python import 'collections.abc', got: {fmt_errors(
         prog
     )}";
 }
@@ -522,7 +527,7 @@ test "nacompile surfaces native E5090 help text, not just the generic message" {
     with tempfile.TemporaryDirectory() as td {
         src = os.path.join(td, "bad_import.na.jac");
         with open(src, "w") as f {
-            f.write("import json;\nwith entry { print(0); }\n");
+            f.write("import collections;\nwith entry { print(0); }\n");
         }
         buf = io.StringIO();
         with contextlib.redirect_stdout(buf) {

@@ -362,6 +362,13 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # Lazily initialized tracking sets
         _struct_bodies_done: set[str] = set(),
         _native_stdlib_modules: set[str] = set(),
+        # Bundled `.na.jac` stdlib modules pulled in via a *whole-module* import
+        # (`import hashlib;` -> `hashlib.sha256(...)`), as opposed to the
+        # hardcoded-interceptor stdlib in `_native_stdlib_modules`. A
+        # module-qualified call on one of these names routes to the shared
+        # cross-module free-function path, just like the selective
+        # `import from hashlib { sha256 }` form (issue #6978).
+        _native_module_imports: set[str] = set(),
         # names of one-time stdlib runtime-helper groups already emitted (#6404)
         _stdlib_helpers_emitted: set[str] = set(),
         _global_origins: dict[str, str] = {},
@@ -414,6 +421,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None);
     def _codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None);
     def _codegen_call(nd: uni.FuncCall) -> (ir.Value | None);
+    """If `nd` is a module-qualified call on a whole-module bundled native
+    import (`hashlib.sha256(...)`), return the bare function name (`sha256`) to
+    route through the shared free-function path; else None (issue #6978)."""
+    def _native_module_call_target(nd: uni.FuncCall) -> (str | None);
+
     def _emit_unsupported_builtin_call(nd: uni.FuncCall, func_name: str) -> None;
     # Lambda expressions (Phase 17)
     # Maps variable name -> list of (cap_name, cap_alloca) for closure injection.
@@ -491,7 +503,8 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _fill_default_args(
         nd: uni.FuncCall, func: ir.Function, args: list, skip_self: bool = False
     ) -> None;
-
+    # Type-valid placeholder for an omitted arg whose default could not lower.
+    def _default_arg_fallback(t: ir.Type) -> ir.Value;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);
     def _to_bool(val: ir.Value) -> ir.Value;
     def _entry_alloca(var_type: ir.Type, name: str) -> ir.Value;

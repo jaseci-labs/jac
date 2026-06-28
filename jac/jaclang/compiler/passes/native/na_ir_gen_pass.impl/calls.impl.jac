@@ -46,6 +46,23 @@ impl NaIRGenPass._callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None) 
     return sig if isinstance(sig, uni.FuncSignature) else None;
 }
 
+"""A type-valid placeholder for an omitted argument whose default-value
+expression could not be lowered at this call site (e.g. a cross-module callee's
+default node, which has no codegen context here). `ir.Constant(ptr, 0)` is
+INVALID LLVM IR for a pointer type (renders as `%T* 0`, the "integer constant
+must have integer type" error); emit an empty `bytes` object for a `bytes`
+parameter (the common `data: bytes = b""` case, e.g. `hashlib.sha256()`), a
+proper `null` for any other pointer, and integer 0 otherwise. (#6978 Phase 1)"""
+impl NaIRGenPass._default_arg_fallback(t: ir.Type) -> ir.Value {
+    if isinstance(t, ir.PointerType) {
+        if t.pointee == self._get_bytes_struct_type() {
+            return self._make_global_bytes(b"");
+        }
+        return ir.Constant(t, None);
+    }
+    return ir.Constant(t, 0);
+}
+
 """Fill omitted trailing parameters at a call site from the resolved
 callee's default-value expressions (FuncCall.callee_decl, the
 checker-stamped fact). Used by both free-function and method dispatch;
@@ -59,7 +76,7 @@ impl NaIRGenPass._fill_default_args(
     }
     if callee_sig is None {
         while len(args) < len(func.args) {
-            args.append(ir.Constant(func.args[len(args)].type, 0));
+            args.append(self._default_arg_fallback(func.args[len(args)].type));
         }
         return;
     }
@@ -75,10 +92,10 @@ impl NaIRGenPass._fill_default_args(
             if dval is not None {
                 args.append(self._coerce_type(dval, expected_type));
             } else {
-                args.append(ir.Constant(expected_type, 0));
+                args.append(self._default_arg_fallback(expected_type));
             }
         } else {
-            args.append(ir.Constant(expected_type, 0));
+            args.append(self._default_arg_fallback(expected_type));
         }
     }
 }
@@ -123,6 +140,35 @@ impl NaIRGenPass._emit_unsupported_builtin_call(
 }
 
 """Generate function call."""
+impl NaIRGenPass._native_module_call_target(nd: uni.FuncCall) -> (str | None) {
+    trailer = nd.target;
+    if not isinstance(trailer, uni.AtomTrailer) or not trailer.is_attr {
+        return None;
+    }
+    # Only the flat `module.func(...)` shape: a nested trailer (`os.path.join`)
+    # has an AtomTrailer base and is owned by the dedicated os.path interceptor.
+    if isinstance(trailer.target, uni.AtomTrailer) {
+        return None;
+    }
+    mod_name = self._get_name(trailer.target);
+    method_name = self._get_name(trailer.right);
+    if mod_name is None or method_name is None {
+        return None;
+    }
+    # A real local/instance of the same name wins over the module (e.g. a var
+    # that shadows the import) -- only treat it as a module call when the name
+    # is a registered whole-module bundled import and not a local value.
+    if (
+        self?._native_module_imports
+        and mod_name in self._native_module_imports
+        and mod_name not in self.local_vars
+        and mod_name not in self.struct_types
+    ) {
+        return method_name;
+    }
+    return None;
+}
+
 impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     # Dispatch on the checker-stamped call classification. Only call nodes
     # synthesized after type checking (e.g. desugared pipe-forward) lack
@@ -134,11 +180,22 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
     # Handle method calls: obj.method(args)
     if _call_kind == "method" {
-        return self._codegen_method_call(nd);
-    }
-    func_name = self._get_name(nd.target);
-    if func_name is None {
-        return None;
+        # A module-qualified call on a whole-module bundled native import
+        # (`import hashlib;` -> `hashlib.sha256(...)`) is shaped like a method
+        # call (AtomTrailer.is_attr) but is really a free function in the bundled
+        # module. Route it through the shared free-function path below with the
+        # bare name (`sha256`) so it resolves via func_symtab / the interop
+        # binding exactly like `import from hashlib { sha256 }` (issue #6978).
+        _mod_fn = self._native_module_call_target(nd);
+        if _mod_fn is None {
+            return self._codegen_method_call(nd);
+        }
+        func_name = _mod_fn;
+    } else {
+        func_name = self._get_name(nd.target);
+        if func_name is None {
+            return None;
+        }
     }
     # Builtin fast-paths fire only when the call actually resolves to a builtin.
     # The classification is shadow-aware, so a user symbol named e.g. `len` is

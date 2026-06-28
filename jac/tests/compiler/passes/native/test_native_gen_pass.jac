@@ -366,6 +366,29 @@ test "enums loops ternary" {
     assert f(0) == -10;
 }
 
+# Regression for #6987: a ternary whose two branches need a numeric coercion
+# (int<->float, or differing int widths) used to emit the cast into the merge
+# block ahead of the phi, so the LLVM verifier rejected the module with "PHI
+# nodes not grouped at top of basic block" and native compilation failed. The
+# cast now lands in the predecessor block before its branch, leaving the phi at
+# the top of the merge block. If the fix regresses, compile_native here fails
+# (no native engine) rather than asserting a wrong value.
+test "mixed-type ternary coerces in predecessor block (#6987)" {
+    (eng, _) = compile_native("enums_loops.na.jac");
+    # float "then" + int "else": int branch promoted to double.
+    f1 = get_func(eng, "ternary_int_float_test", ctypes.c_double, ctypes.c_int64);
+    assert f1(1) == 1.5;
+    assert f1(0) == 2.0;
+    # int "then" + float "else": the other predecessor side.
+    f2 = get_func(eng, "ternary_float_int_test", ctypes.c_double, ctypes.c_int64);
+    assert f2(1) == 2.0;
+    assert f2(0) == 1.5;
+    # bool "then" (i1) + int "else" (i64): the int-width zext path.
+    f3 = get_func(eng, "ternary_widen_test", ctypes.c_int64, ctypes.c_int64);
+    assert f3(1) == 1;
+    assert f3(0) == 5;
+}
+
 # --- TestNativeStrings ---
 test "strings greet" {
     (eng, _) = compile_native("strings.na.jac");

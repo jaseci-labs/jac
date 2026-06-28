@@ -11,16 +11,11 @@ Example:
     client.close();
 """
 
-import os;
-import sys;
 import shutil;
 import glob;
 import tempfile;
 import contextlib;
 import from pathlib { Path }
-
-import from jaclang { JacRuntime as Jac }
-import from jaclang.jac0core.constant { Constants as Con }
 
 """Create an isolated ScaleTestClient with temp dir from a fixture file."""
 def make_client(fixture_file: str = "test_api.jac") -> ScaleTestClient {
@@ -62,6 +57,7 @@ obj ScaleTestClient {
         _base_path: str,
         _server: any | None = None,
         _client: any | None = None,
+        _runtime: any | None = None,
         _tmp_dir: str | None = None;
 
     """Create test client from a .jac file path."""
@@ -78,58 +74,25 @@ obj ScaleTestClient {
         return client;
     }
 
-    """Initialize the jac-scale server and Starlette TestClient."""
+    """Initialize the jac-scale server and Starlette TestClient.
+
+    Delegates to the shared no-serve seam (jac_scale.inprocess, #6685) with the
+    "test" endpoint profile -- the same module load + server construction +
+    endpoint registration + guest user + transport this used to hand-copy from
+    start(). Background services (emailer/scheduler/events) stay off, as before.
+    """
     def _initialize {
-        import from starlette.testclient { TestClient }
-        import from jac_scale.serve { JacAPIServer }
+        import from jac_scale.inprocess { prepare_inprocess_runtime }
 
-        (base, mod) = os.path.split(self._jac_file);
-        base = base or "./";
-        if mod.endswith(".jac") {
-            mod = mod[:-4];
-        }
-
-        Jac.set_base_path(self._base_path);
-        mach = Jac.create_j_context(user_root=None);
-        Jac.set_context(mach);
-        # Remove any previously loaded module with same name to avoid collisions
-        # (e.g., test runner may have loaded a test file with the same module name)
-        if mod in Jac.loaded_modules {
-            del Jac.loaded_modules[mod];
-        }
-        if mod in sys.modules {
-            del sys.modules[mod];
-        }
-        Jac.jac_import(target=mod, base_path=base, lng="jac");
-
-        # port=0 => test mode (no socket binding; postinit creates a bare JFastApiServer)
-        self._server = JacAPIServer(module_name=mod, port=0, base_path=self._base_path);
-        self._server.load_module();
-
-        # Register all endpoints (same as start() but without run_server)
-        self._server.register_health_endpoint();
-        self._server.register_auth_endpoints();
-        self._server.register_graph_endpoint();
-        self._server.register_admin_endpoints();
-        self._server.register_llm_telemetry_endpoints();
-        self._server.register_workloads_endpoints();
-        self._server.register_walkers_endpoints();
-        self._server.register_functions_endpoints();
-        self._server.register_webhook_endpoints();
-        self._server.register_static_file_endpoint();
-        self._server.register_page_endpoint();
-        self._server.register_client_js_endpoint();
-        self._server.user_manager.create_internal_user(
-            Con.GUEST.value, '__no_password__'
+        self._runtime = prepare_inprocess_runtime(
+            self._jac_file,
+            self._base_path,
+            endpoint_profile="test",
+            setup_background_services=False,
+            transport_kind="testclient"
         );
-
-        # Execute endpoint registration (compiles JEndPoints into FastAPI routes)
-        self._server.server.create_server();
-
-        # Wrap the FastAPI app with Starlette TestClient
-        self._client = TestClient(
-            self._server.server.app, raise_server_exceptions=False
-        );
+        self._server = self._runtime.server;
+        self._client = self._runtime.client;
     }
 
     """Make a GET request."""
@@ -270,10 +233,12 @@ obj ScaleTestClient {
 
     """Cleanup resources."""
     def close {
-        if self._client {
-            self._client.close();
-            self._client = None;
+        if self._runtime {
+            # The seam owns transport teardown (and, later, lifespan/portal exit).
+            self._runtime.close();
+            self._runtime = None;
         }
+        self._client = None;
         self._server = None;
         if self._tmp_dir {
             shutil.rmtree(self._tmp_dir, ignore_errors=True);

@@ -230,6 +230,17 @@ test "zlib bundled" {
     run_with_both("prim_zlib.jac", "zlib_py", "zlib_cl", "zlib_na", require=["na"]);
 }
 
+# --- Bundled native stdlib: hashlib + hmac (Mechanism F — pure-Jac surface over
+# OpenSSL's libcrypto FFI floor, issue #6978 Phase 1). The same whole-module
+# `import hashlib`/`import hmac` binds CPython on sv and the bundled na_stdlib
+# modules on na; every hexdigest must be byte-identical. First F-module over the
+# large bundled libcrypto.a (staged in Phase 0.2). ---
+test "hashlib + hmac bundled" {
+    run_with_both(
+        "prim_hashlib.jac", "hashlib_py", "hashlib_cl", "hashlib_na", require=["na"]
+    );
+}
+
 # --- Static-method calls + class-attribute reads on user classes (issue #6951).
 # `ClassName.method(args)` on a `static def` and `ClassName.attr` on a
 # `static has`, including inheritance through the MRO; unblocks datetime. ---

@@ -49,7 +49,16 @@ impl CommandSpec.get_all_args -> list[Arg] {
 
 """Add an extension argument from a plugin."""
 impl CommandSpec.add_extension_arg(arg: Arg, source: str) -> None {
-    # Set the source on the arg
+    # Skip if an arg with the same name is already registered (inline or extended).
+    # Root cause: when jac-scale is editable-installed, the plugin entry-point AND
+    # the embedded-core path (prepare_inprocess_runtime -> plugin_manager.register)
+    # both fire extend_command for the same arg. The arg definition is identical so
+    # the skip is safe, but the double-registration indicates the registration paths
+    # are not fully idempotent. Tracked in jaseci-labs/jaseci#6983.
+    existing_names = {a.name for a in self.args} | {a.name for a in self.extra_args};
+    if arg.name in existing_names {
+        return;
+    }
     arg.source = source;
     self.extra_args.append(arg);
 }

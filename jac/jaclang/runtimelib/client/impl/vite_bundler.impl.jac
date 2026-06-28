@@ -306,7 +306,12 @@ impl ViteBundler.add_packages(
         cmd.extend(packages);
     } else {
         bun = get_bun();
-        cmd = [bun or 'bun', 'add'];
+        # bun is contained in the jac ecosystem (absolute path, never on PATH);
+        # there is no plain-"bun" PATH fallback to reach for.
+        if bun is None {
+            raise RuntimeError("bun unavailable: cannot install client dependencies");
+        }
+        cmd = [bun, 'add'];
         if dev {
             cmd.append('--dev');
         }

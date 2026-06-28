@@ -206,3 +206,24 @@ test "JAC_CEF_DISABLE_GPU wires through to --disable-gpu in cef_dispatch" {
         "JAC_CEF_DISABLE_GPU branch must append the \"disable-gpu\" switch"
     );
 }
+
+# String-only (no nacompile / CEF / display): assert the generated CEF host wires
+# the Phase J4 (#6596) in-process sv backend the same way the webview host does.
+test "cef host source boots inprocess and wires the sv bridge (#6596)" {
+    import from jaclang.runtimelib.client.targets.desktop.cef_desktop_target {
+        _generate_host_source
+    }
+    src = _generate_host_source(
+        "Title", 800, 600, "myapp", "/tmp/cache", {}, "main.jac", 30.0, 128, False
+    );
+    # The CEF host boots the SAME staged in-process backend the webview host runs,
+    # and the loopback routes /walker/* + /function/* into it via forward().
+    assert "import inprocess_dispatch" in src;
+    assert "inprocess_dispatch.boot(" in src;
+    assert "sv_bridge=inprocess_dispatch.forward" in src;
+    # The staged entry the boot snippet resolves at runtime (relative to the binary).
+    assert "main.jac" in src;
+    # The boot/import MUST appear before make_handler is called, or the
+    # `sv_bridge=inprocess_dispatch.forward` reference would NameError at runtime.
+    assert src.index("import inprocess_dispatch") < src.index("make_handler");
+}

@@ -1083,28 +1083,53 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
     if not self.builder.block.is_terminated {
         self.builder.branch(merge_bb);
     }
-    # Merge with phi
-    self.builder.position_at_end(merge_bb);
+    # Merge with phi.
+    #
+    # Any type coercion needed to give the two branches a common type must be
+    # emitted into the *predecessor* blocks (just before their branch to
+    # merge_bb), never into merge_bb ahead of the phi. LLVM requires every PHI
+    # to be among the first instructions of its block, so a `sitofp`/`zext`
+    # sitting in merge_bb before the phi fails the verifier with "PHI nodes not
+    # grouped at top of basic block" (issue #6987). This mirrors how the binary
+    # op / BoolExpr paths coerce operands before branching. A coercion is only
+    # ever emitted when the branch types differ (int<->float or differing int
+    # widths); same-type branches emit nothing and so were never affected.
     if then_val is not None and else_val is not None {
-        # Coerce both to same type
         if then_val.type != else_val.type {
             if isinstance(then_val.type, ir.DoubleType)
             or isinstance(else_val.type, ir.DoubleType) {
-                (then_val, else_val) = self._promote_to_float(then_val, else_val);
+                # Promote the int side to double in whichever block it came
+                # from, before that block's branch.
+                if isinstance(then_val.type, ir.IntType) {
+                    self.builder.position_before(then_end_bb.terminator);
+                    then_val = self.builder.sitofp(
+                        then_val, ir.DoubleType(), name="ternary.cast"
+                    );
+                }
+                if isinstance(else_val.type, ir.IntType) {
+                    self.builder.position_before(else_end_bb.terminator);
+                    else_val = self.builder.sitofp(
+                        else_val, ir.DoubleType(), name="ternary.cast"
+                    );
+                }
             } elif isinstance(then_val.type, ir.IntType)
             and isinstance(else_val.type, ir.IntType) {
-                # Widen the narrower int to match the wider one
+                # Widen the narrower int to match the wider one, in the
+                # predecessor block that produced it.
                 if then_val.type.width > else_val.type.width {
+                    self.builder.position_before(else_end_bb.terminator);
                     else_val = self.builder.zext(
                         else_val, then_val.type, name="ternary.widen"
                     );
                 } else {
+                    self.builder.position_before(then_end_bb.terminator);
                     then_val = self.builder.zext(
                         then_val, else_val.type, name="ternary.widen"
                     );
                 }
             }
         }
+        self.builder.position_at_end(merge_bb);
         phi = self.builder.phi(then_val.type, name="ternary.result");
         phi.add_incoming(then_val, then_end_bb);
         phi.add_incoming(else_val, else_end_bb);

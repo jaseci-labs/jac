@@ -264,10 +264,12 @@ install_binary() {
     # Create install directory
     mkdir -p "$INSTALL_DIR"
 
-    # Download to temp location
-    local tmpdir
+    # Download to temp location. `tmpdir` is intentionally NOT `local`: the EXIT
+    # trap below fires after install_binary returns, so a function-local would be
+    # out of scope and trip `set -u` ("unbound variable") during cleanup. The
+    # `${tmpdir:-}` guard keeps the trap safe if we exit before it is assigned.
     tmpdir=$(mktemp -d)
-    trap 'rm -rf "$tmpdir"' EXIT
+    trap 'rm -rf "${tmpdir:-}"' EXIT
 
     info "Downloading ${asset}..."
     if ! curl -fsSL -o "${tmpdir}/${asset}" "$download_url"; then

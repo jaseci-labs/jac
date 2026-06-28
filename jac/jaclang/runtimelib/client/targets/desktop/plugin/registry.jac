@@ -5,7 +5,7 @@ native_desktop_target.impl.jac with the `BUILTIN_PLUGINS` list and
 `bootstrap_plugins()`.
 
 `bootstrap_plugins()` runs in the embedded CPython at startup. It is ordinary
-Jac (transpiled like the other plugin modules), so it is unit-testable — unlike
+Jac (transpiled like the other plugin modules), so it is unit-testable -- unlike
 the generated source strings it replaces.
 
 Transpiled to dependency-free Python at build time.
@@ -25,11 +25,11 @@ import from built_in.shell_plugin { ShellPlugin }
 """Ordered registry. Order matters: PathPlugin first (it is a service other
 plugins depend on via PluginContext).
 
-NOTE: the build's importlib bootstrap keeps a parallel module load-order list
-(`_plugin_mods` in native_desktop_target.impl.jac) that must contain every
-`m.module` here plus the infra modules (manifest, desktop_plugin, ...). The two
-cannot be unified because that bootstrap runs before registry is importable.
-When you add a plugin, update both."""
+NOTE: the desktop host's plugin bootstrap imports `registry` from the fused
+runtime, which cascades to every `built_in.*` plugin via the module-scope imports
+below -- so there is no separate hardcoded load-order list to keep in sync (the
+old `_plugin_mods` is gone). Add a plugin by appending it to BUILTIN_PLUGINS and
+the imports below; the bootstrap picks it up automatically."""
 glob BUILTIN_PLUGINS: list = [
          PathPlugin.manifest(),
          WindowPlugin.manifest(),

@@ -190,6 +190,15 @@ impl native_capability_violations(mod: uni.Module) -> list {
             for item in stmt.items {
                 (mod_name, _ok) = classify_native_import(item);
                 if mod_name is not None and not _ok {
+                    # Whole-module import of a bundled native stdlib module
+                    # (`import hashlib;`): legal on the native pathway -- it
+                    # resolves and links through the same cross-module machinery
+                    # as `import from hashlib { ... }`, and `hashlib.sha256(...)`
+                    # routes to the bundled function (issue #6978). Admit it.
+                    import from jaclang.jac0core.codeinfo { is_bundled_native_module }
+                    if is_bundled_native_module(mod_name) {
+                        continue;
+                    }
                     # Type-only foreign import: the bound name only names a
                     # foreign type in annotations and is never lowered to a
                     # runtime value, so the import is harmless. It lets a field

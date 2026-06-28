@@ -4,6 +4,10 @@
 impl BoundaryAnalysisPass.before_pass(self: BoundaryAnalysisPass) -> None {
     self._func_defs: dict[(str, tuple[(InteropContext, uni.Ability)])] = {};
     self._imported_native_funcs: dict[(str, tuple[(str, InteropContext)])] = {};
+    # Whole-module bundled native imports (`import hashlib;`): module name ->
+    # (source_module_path, import_context). A `hashlib.sha256(...)` call binds
+    # the right-hand function to this module so it gets linked (issue #6978).
+    self._imported_native_modules: dict[(str, tuple[(str, InteropContext)])] = {};
     # Per-classification accumulators for endpoint graph effects (reset for
     # each endpoint body by _classify).
     self._is_writer: bool = False;
@@ -165,6 +169,26 @@ impl BoundaryAnalysisPass.enter_import(
                             );
                             manifest.bindings[func_name] = binding;
                         }
+                    }
+                }
+            }
+        }
+    }
+    # Whole-module form (`import hashlib;`): no from_loc; the module lives in
+    # nd.items as a ModulePath. Register each that resolves to a bundled native
+    # module so a later `hashlib.sha256(...)` call binds + links it (#6978).
+    if (not nd.from_loc) and nd.items and (not nd.clib_decls) {
+        import from jaclang.jac0core.codeinfo { is_bundled_native_module }
+        for item in nd.items {
+            if isinstance(item, uni.ModulePath) and item.path {
+                whole_name = '.'.join(getattr(p, 'value', str(p)) for p in item.path);
+                if whole_name and is_bundled_native_module(whole_name) {
+                    native_path = self._resolve_native_module(whole_name);
+                    if native_path {
+                        self._imported_native_modules[whole_name] = (
+                            native_path,
+                            import_context
+                        );
                     }
                 }
             }
@@ -475,17 +499,62 @@ impl BoundaryAnalysisPass.enter_func_call(
     } elif isinstance(nd.target, uni.NameAtom) {
         func_name = nd.target.sym_name;
     } elif isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
+        base = nd.target.target;
+        base_name = None;
+        if isinstance(base, uni.Name) {
+            base_name = base.value;
+        } elif isinstance(base, uni.NameAtom) {
+            base_name = base.sym_name;
+        }
+        # Module-qualified call on a whole-module bundled native import
+        # (`import hashlib;` -> `hashlib.sha256(...)`): the real callee is the
+        # right-hand name; bind it to the bundled module so NativeCompilePass
+        # links the module's object code (#6978). Runs before the
+        # static-method-on-class fallback below.
+        if base_name is not None and base_name in self._imported_native_modules {
+            right_name = nd.target.right?.sym_name;
+            if not right_name {
+                right_name = nd.target.right?.value;
+            }
+            # Native context for a call site in a `.na.jac` module is the
+            # module itself, not nd.in_native_context() (which defaults SERVER
+            # for an entry-block statement) -- mirror the selective-import gate.
+            import from jaclang.jac0core.ext_registry { is_native_module }
+            _is_native_ctx = (
+                self._get_context(nd) == InteropContext.NATIVE
+                or (
+                    self.ir_in
+                    and self.ir_in.loc
+                    and is_native_module(self.ir_in.loc.mod_path)
+                )
+            );
+            if right_name and _is_native_ctx {
+                (mod_path, _ctx) = self._imported_native_modules[base_name];
+                _mfst = self.ir_in.gen.interop_manifest;
+                if right_name not in _mfst.bindings {
+                    _mfst.bindings[right_name] = InteropBinding(
+                        name=right_name,
+                        source_context=InteropContext.NATIVE,
+                        callers={InteropContext.NATIVE},
+                        ret_type='int',
+                        param_types=[],
+                        param_names=[],
+                        ast_node=None,
+                        route=[InteropContext.NATIVE, InteropContext.NATIVE],
+                        source_module=mod_path
+                    );
+                } else {
+                    _mfst.bindings[right_name].callers.add(InteropContext.NATIVE);
+                }
+            }
+            return;
+        }
         # Static-method call on an imported class: `Class.method(...)` (#6951).
         # Bind on the base class name so a bundled/cross-module class used only
         # via its statics still pulls its defining module into the native link
         # set (instance calls on locals miss the `_imported_native_funcs` gate
         # below, so this never disturbs ordinary `obj.method()` dispatch).
-        base = nd.target.target;
-        if isinstance(base, uni.Name) {
-            func_name = base.value;
-        } elif isinstance(base, uni.NameAtom) {
-            func_name = base.sym_name;
-        }
+        func_name = base_name;
     }
     if not func_name {
         return;
