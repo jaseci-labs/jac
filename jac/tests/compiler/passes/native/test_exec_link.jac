@@ -238,27 +238,6 @@ test "a cross-module raise unwinds to the importer's handler (issue #7013)" {
 }
 
 
-test "a cross-module raise unwinds to the importer's handler (issue #7013)" {
-    triple = llvm.get_default_triple();
-    if sys.platform.startswith("linux") and ("x86_64" in triple) {
-        relobj = _emit_object(
-            _inject_elf(_compile_ir("xmod_exc_main.na.jac", triple)), triple
-        );
-        d = tempfile.mkdtemp();
-        out = os.path.join(d, "xmod_exc_main");
-        ok = ElfLinker.link(
-            obj_bytes=relobj, output_path=out, needed_libs=["libc.so.6"], shared=False
-        );
-        assert ok , "ElfLinker.link(shared=False) returned False";
-        res = subprocess.run([out], capture_output=True, timeout=30);
-        assert res.returncode == 0 , f"cross-module raise did not unwind (exit {res.returncode}); stderr={res.stderr}";
-        assert b"XMOD_CAUGHT" in res.stdout , f"handler did not catch cross-module raise: {res.stdout}";
-        assert b"DONE_OK" in res.stdout , f"program did not continue past the handler: {res.stdout}";
-        assert b"NO_RAISE" not in res.stdout , f"raise did not fire: {res.stdout}";
-    }
-}
-
-
 test "Mach-O executable has MH_EXECUTE filetype and an LC_MAIN entry" {
     triple = "x86_64-apple-darwin";
     relobj = _emit_object(_inject_macho(_compile_ir(FIXTURE, triple)), triple);

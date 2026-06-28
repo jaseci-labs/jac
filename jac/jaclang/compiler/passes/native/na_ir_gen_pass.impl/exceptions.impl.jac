@@ -25,7 +25,8 @@ impl NaIRGenPass._declare_exception_runtime -> None {
         handler_global = ir.GlobalVariable(
             self.llvm_module, exc_state_ptr, name="__jac_current_handler"
         );
-        handler_global.linkage = "weak";
+        _is_wasm = "wasm" in (self.llvm_module.triple or "");
+        handler_global.linkage = "internal" if _is_wasm else "weak";
         handler_global.initializer = ir.Constant(exc_state_ptr, None);
         self._exc_handler_global = handler_global;
     }
