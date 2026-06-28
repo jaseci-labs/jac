@@ -6,29 +6,7 @@ import from jac_scale.runtime.discovery.route_policy {
     guard_route_name
 }
 
-glob _SV_PREFIX_TOK: str = "KW_SERVER",
-     _DISCOVERY_EXCLUDE_DIRS: set[str] = {
-         ".jac",
-         "__pycache__",
-         "node_modules",
-         ".git",
-         "dist",
-         "build",
-         ".venv",
-         "venv",
-         ".mypy_cache",
-         ".pytest_cache"
-     };
-
-
-def _under_excluded_dir(rel: Path) -> bool {
-    for part in rel.parts[:-1] {
-        if part in _DISCOVERY_EXCLUDE_DIRS {
-            return True;
-        }
-    }
-    return False;
-}
+glob _SV_PREFIX_TOK: str = "KW_SERVER";
 
 
 obj ModuleMarkers {
@@ -93,10 +71,7 @@ def discover_sv_services(entry_file: str) -> dict[str, str] {
     }
     services: set[str] = set();
 
-    for jac_file in sorted(root_dir.rglob("*.jac")) {
-        if _under_excluded_dir(jac_file.relative_to(root_dir)) {
-            continue;
-        }
+    for jac_file in sorted(root_dir.glob("*.jac")) {
         try {
             text = jac_file.read_text(encoding="utf-8");
         } except Exception {
