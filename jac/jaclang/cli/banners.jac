@@ -1,5 +1,4 @@
 import platform;
-import sys;
 import from jaclang.cli.console { console }
 glob JAC_LOGO = '   _\n  (_) __ _  ___\n  | |/ _` |/ __|\n  | | (_| | (__\n _/ |\\__,_|\\___|\n|__/',
      JAC_DOCS_URL = 'https://docs.jaseci.org',
@@ -8,7 +7,6 @@ glob JAC_LOGO = '   _\n  (_) __ _  ___\n  | |/ _` |/ __|\n  | | (_| | (__\n _/ |
      JAC_ISSUES_URL = 'https://github.com/Jaseci-Labs/jaseci/issues';
 
 def print_version_banner(version: str) {
-    python_version = f"Python {sys.version.split()[0]}";
     platform_info = platform.platform();
     if (platform.system() == 'Linux') {
         platform_short = f"Linux {platform.machine()}";
@@ -24,7 +22,7 @@ def print_version_banner(version: str) {
     console.print((logo_lines[1] + '     Jac Language'), style='bold cyan');
     console.print(logo_lines[2], style='bold cyan');
     console.print((logo_lines[3] + f"     Version:  {version}"), style='cyan');
-    console.print((logo_lines[4] + f"    {python_version}"), style='cyan');
+    console.print(logo_lines[4], style='cyan');
     console.print(
         (logo_lines[5] + f"                Platform: {platform_short}"), style='cyan'
     );
