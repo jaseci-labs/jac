@@ -324,7 +324,13 @@ test "sync_capabilities installs the closure into .jac/venv" {
             mock_pip.return_value = (0, "Successfully installed", "");
             result = installer.sync_capabilities(closure);
             assert result;
-            installed_args: list = list(mock_pip.call_args_list[1][0][0]);
+            install_calls = [
+                c
+                for c in mock_pip.call_args_list
+                if c[0][0] and c[0][0][0] == "install"
+            ];
+            assert install_calls , "expected a pip install call";
+            installed_args: list = list(install_calls[0][0][0]);
             assert "fastapi>=0.121.3,<0.122.0" in installed_args;
             # runtime closure must not push deploy clients to pip
             assert "kubernetes>=34.1.0,<35.0.0" not in installed_args;

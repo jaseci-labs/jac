@@ -48,7 +48,7 @@ glob CAPABILITY_SPECS: dict[str, dict[str, any]] = {
                  "firebase-admin": ">=6.0.0,<8.0.0"
              }
          },
-         "storage.s3": {"context": "runtime", "deps": {"boto3": ">=1.40.0"}},
+         "storage.s3": {"context": "runtime", "deps": {"boto3": ">=1.40.0,<2.0.0"}},
          "deploy.k8s": {
              "context": "deploy",
              "deps": {"kubernetes": ">=34.1.0,<35.0.0", "docker": ">=7.1.0,<8.0.0"}
@@ -125,6 +125,16 @@ def get_capability_registry -> dict[str, Capability] {
                 requires=list(spec.get("requires", []))
             );
         }
+        for cap in built.values() {
+            for req in cap.requires {
+                if req not in built {
+                    raise ValueError(
+                        f"Capability '{cap.name}' requires unknown capability '{req}'. "
+                        f"Available: {', '.join(sorted(built.keys()))}"
+                    );
+                }
+            }
+        }
         _registry = built;
     }
     return _registry;
@@ -143,7 +153,7 @@ def _normalize_package(name: str) -> str {
     if "[" in base {
         base = base[:base.index("[")];
     }
-    return base.strip().lower().replace("_", "-");
+    return base.strip().lower().replace("_", "-").replace(".", "-");
 }
 
 def derive_capabilities(
@@ -186,7 +196,7 @@ def scale_intent_from_config(config: JacConfig) -> dict[str, any] {
     if config is None {
         return {};
     }
-    raw = config._raw_data.get("scale") if isinstance(config._raw_data, dict) else None;
+    raw = config.get_section("scale");
     if isinstance(raw, dict) {
         return raw;
     }
