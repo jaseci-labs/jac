@@ -22,6 +22,7 @@ obj CommandRegistry {
         args: list[Arg] | None = None,
         examples: list[tuple[str, str]] | None = None,
         group: str = "general",
+        tier: str = "",
         priority: CommandPriority = CommandPriority.CORE,
         source: str = "jaclang"
     ) -> Callable[[Callable], Callable];

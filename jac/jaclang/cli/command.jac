@@ -45,6 +45,7 @@ obj CommandSpec {
         args: list[Arg] = [],
         examples: list[tuple[str, str]] = [],
         group: str = "general",
+        tier: str = "",
         priority: CommandPriority = CommandPriority.CORE,
         source: str = "jaclang",
         handler: Callable | None = None,

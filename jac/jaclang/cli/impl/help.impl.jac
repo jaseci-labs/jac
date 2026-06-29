@@ -7,12 +7,20 @@ impl CommandGroups.get_ordered_groups -> list[str] {
 }
 
 impl HelpFormatter.format_main_help(
-    commands: list[CommandSpec], prog: str = "jac", version: str | None = None
+    commands: list[CommandSpec],
+    prog: str = "jac",
+    version: str | None = None,
+    verbose: bool = False
 ) -> str {
     import from jaclang.cli.command { CommandSpec }
+
+    if not verbose {
+        return self.format_curated_help(commands, prog);
+    }
+
     lines: list[str] = [];
 
-    lines.append(f"Jac Programming Language CLI");
+    lines.append("Jac Programming Language CLI");
     if version {
         lines.append(f"Version: {version}");
     }
@@ -75,6 +83,49 @@ impl HelpFormatter.format_main_help(
         }
     }
     lines.append(f"Run '{prog} COMMAND --help' for command details.");
+    lines.append(f"New to Jac? Run '{prog} guide' for curated docs.");
+    return "\n".join(lines);
+}
+
+impl HelpFormatter.format_curated_help(
+    commands: list[CommandSpec], prog: str = "jac"
+) -> str {
+    import from jaclang.cli.command { CommandSpec }
+    lines: list[str] = [];
+
+    lines.append(f"Usage: {prog} COMMAND [ARGS]...");
+    lines.append("");
+
+    by_tier: dict[str, list[CommandSpec]] = {};
+    for cmd in commands {
+        if cmd.tier {
+            if cmd.tier not in by_tier {
+                by_tier[cmd.tier] = [];
+            }
+            by_tier[cmd.tier].append(cmd);
+        }
+    }
+
+    for tier in self.groups.tier_order {
+        cmds = by_tier.get(tier, []);
+        if not cmds {
+            continue;
+        }
+        lines.append(f"{self.groups.tier_sections.get(tier, tier)}:");
+        cmds.sort(key=lambda c: str : c.name);
+        for cmd in cmds {
+            padding = " " * (12 - len(cmd.name));
+            lines.append(f"  {cmd.name}{padding}{cmd.help}");
+        }
+        lines.append("");
+    }
+
+    lines.append(
+        f"AI agents: run `{prog} guide` first to learn how to build with Jac."
+    );
+    lines.append("");
+    lines.append(f"  {prog} --help          Show all commands");
+    lines.append(f"  {prog} COMMAND --help  Show help for a command");
     return "\n".join(lines);
 }
 
