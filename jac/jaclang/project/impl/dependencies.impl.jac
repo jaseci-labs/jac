@@ -156,6 +156,20 @@ impl DependencyInstaller.get_extra_package_specs(groups: list[str]) -> list[str]
     return [self._make_pip_spec(name, ver) for (name, ver) in resolved.items()];
 }
 
+impl DependencyInstaller.get_capability_specs(closure: CapabilityClosure) -> list[str] {
+    return [
+        self._make_pip_spec(name, ver) for (name, ver) in sorted(closure.deps.items())
+    ];
+}
+
+impl DependencyInstaller.sync_capabilities(closure: CapabilityClosure) -> bool {
+    specs = self.get_capability_specs(closure);
+    if not specs {
+        return True;
+    }
+    return self.install_package(specs);
+}
+
 impl DependencyInstaller._make_pip_spec(name: str, version: str) -> str {
     if not version or version in ("*", "latest") {
         return name;
