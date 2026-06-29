@@ -251,10 +251,14 @@ test "deployment target methods" {
 
 test "redis template file in package" {
     try {
-        ref = importlib.resources.files("jaclang.scale") / "deploy" / "database" / "redis.conf.template";
+        import jaclang.scale;
+        import from pathlib { Path }
+        # jaclang.scale is a .jac package (custom loader) that importlib.resources
+        # can't traverse; resolve bundled data via the package __file__ instead.
+        ref = Path(jaclang.scale.__file__).parent / "deploy" / "database" / "redis.conf.template";
         assert ref.is_file() , (
             "redis.conf.template not discoverable as package data. "
-            "Ensure it's included via pyproject.toml package-data"
+            "Ensure it ships next to the jaclang.scale package."
         );
 
         content = ref.read_text(encoding='utf-8');

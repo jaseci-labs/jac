@@ -385,8 +385,13 @@ impl JacAPIServerStatic.register_graph_endpoint -> None {
 }
 
 impl JacAPIServerStatic.serve_graph_page -> HTMLResponse {
-    import from importlib.resources { files }
-    html_content = files('jaclang.scale').joinpath('templates/graph.html').read_text(
+    import jaclang.scale;
+    import from pathlib { Path }
+    # jaclang.scale is a .jac package (custom loader), so importlib.resources
+    # can't resolve it; use the package __file__ to locate bundled templates.
+    html_content = (
+        Path(jaclang.scale.__file__).parent / 'templates' / 'graph.html'
+    ).read_text(
         encoding='utf-8'
     );
     return HTMLResponse(content=html_content, status_code=200);
