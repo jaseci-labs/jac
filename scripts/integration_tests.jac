@@ -357,7 +357,16 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
         print("PASS");
         runner.passed += 1;
 
-        # Hit /admin/ and verify response
+        # Hit /admin/ and verify response. This requires the pre-built _dist
+        # (the check below fails if the server builds from source), so only run
+        # it when the bundle is present; otherwise the server-startup check above
+        # is the coverage and we skip the dashboard request.
+        if not dist_dir.exists() {
+            print(
+                f"SKIP: {desc} - /admin/ dashboard check (admin _dist not pre-built)"
+            );
+            return;
+        }
         print(f"\n{'=' * 60}");
         print(f"TEST: {desc} - /admin/ serves pre-built dashboard");
         print(f"CMD:  GET http://localhost:{port}/admin/");

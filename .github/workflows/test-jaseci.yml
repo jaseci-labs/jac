@@ -310,8 +310,11 @@ jobs:
     - name: Run jac-mcp tests
       # cwd = plugin dir; the plugin + deps live in the binary's global site
       # (installed above), on sys.path alongside the host jaclang.
+      # Run serially: these tests run from jac-mcp/ (outside the repo-root
+      # conftest's per-test DB isolation), so parallel workers would contend on a
+      # shared SQLite store ("database is locked").
       working-directory: jac-mcp
-      run: jac test .
+      run: JAC_TEST_JOBS=0 jac test .
 
   test-scale:
     needs: changes
