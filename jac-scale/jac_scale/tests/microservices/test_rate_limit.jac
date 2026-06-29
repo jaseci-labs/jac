@@ -1,8 +1,6 @@
-"""Tests for the gateway rate limiter (ROADMAP P17)."""
-
 import time;
 import asyncio;
-import from jac_scale.microservices.gateway_internals.middleware.rate_limit {
+import from jac_scale.runtime.middleware.rate_limit {
     InProcessRateLimiter,
     build_rate_limit_middleware
 }
@@ -26,7 +24,7 @@ test "token bucket refills at the configured rate" {
     assert a1;
     (a2, _) = rl.consume("k");
     assert not a2;
-    time.sleep(0.05);  # 0.05s * 100 tok/s = 5 tokens refilled
+    time.sleep(0.05);
     (a3, _) = rl.consume("k");
     assert a3;
 }
@@ -66,7 +64,7 @@ obj _Headers {
         if v is not None {
             return v;
         }
-        # Case-insensitive fallback
+
         for (kk, vv) in self._d.items() {
             if kk.lower() == key.lower() {
                 return vv;

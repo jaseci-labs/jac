@@ -1,5 +1,3 @@
-"""Preact backend — hooks-based reactivity identical to React; differs in imports and entry."""
-
 import from jaclang.compiler.passes.ecmascript.backends.react { ReactBackend }
 
 obj PreactBackend(ReactBackend) {

@@ -17,16 +17,6 @@ runs:
   steps:
     # typeshed stdlib stubs are vendored as plain files now (no submodule);
     # third-party stubs are installed per-project by `jac add` (PEP 561 types-*).
-    # The stdlib/ dir is gitignored and populated by `zig build` (via payload.zig's
-    # fetch-typeshed), so we cache it separately to ensure it's available even
-    # when the binary cache hits and zig build is skipped.
-    - name: Restore cached typeshed stdlib stubs
-      id: typeshed-cache
-      uses: actions/cache@v4
-      with:
-        path: jac/jaclang/vendor/typeshed/stdlib
-        key: typeshed-stdlib-${{ runner.os }}-${{ hashFiles('jac/jaclang/vendor/typeshed/PIN') }}
-
     - name: Restore cached jac binary
       id: cache
       uses: actions/cache@v4
@@ -39,6 +29,13 @@ runs:
           jac/zig-out/bin/jac
           jac/jaclang/vendor/typeshed/stdlib
         key: jac-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac/build.zig', 'jac/launcher/**') }}
+
+    - name: Restore cached typeshed stdlib stubs
+      id: typeshed-cache
+      uses: actions/cache@v4
+      with:
+        path: jac/jaclang/vendor/typeshed/stdlib
+        key: typeshed-stdlib-${{ hashFiles('jac/jaclang/vendor/typeshed/PIN', 'jac/jaclang/vendor/typeshed/TARBALL_SHA256', 'jac/launcher/payload.zig') }}
 
     # Avoid re-downloading + re-decoding the ~600 MB python-build-standalone tree
     # on every binary-cache miss (the std zstd decode of the 122 MB archive is
@@ -64,8 +61,19 @@ runs:
         path: jac/.llvm-build
         key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
 
-    - name: Set up Zig 0.16.0
+    # The contained bun runtime is fetched + sha256-verified and bundled into the
+    # payload during `zig build`. Cache the extracted tree (~58 MB) so a binary
+    # miss does not re-download it, keyed on payload.zig (BUN_VERSION lives there).
+    # Only engaged on a binary miss; a payload.zig edit re-fetches.
+    - name: Restore cached bun runtime
       if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache@v4
+      with:
+        path: jac/.bun-build
+        key: bun-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/launcher/payload.zig') }}
+
+    - name: Set up Zig 0.16.0
+      if: steps.cache.outputs.cache-hit != 'true' || steps.typeshed-cache.outputs.cache-hit != 'true'
       uses: mlugg/setup-zig@v2
       with:
         version: 0.16.0
@@ -81,6 +89,12 @@ runs:
       shell: bash
       working-directory: jac
       run: zig build fetch-llvm --summary all
+
+    - name: Fetch typeshed stdlib stubs
+      if: steps.typeshed-cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: jac
+      run: zig build fetch-typeshed --summary all
 
     - name: Build the jac binary
       if: steps.cache.outputs.cache-hit != 'true'

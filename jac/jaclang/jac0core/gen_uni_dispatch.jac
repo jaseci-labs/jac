@@ -1,36 +1,3 @@
-"""Regenerate the visitor double-dispatch surface for UniPass.
-
-The keystone blocker for native self-hosting (#6942, Workstream A.1) was the
-reflective dispatch in `uni_pass.impl.jac`: `enter_node`/`exit_node` picked the
-visitor method off the runtime class name via
-`hasattr`/`getattr(self, f"enter_{snake(type(nd))}")` -- string-keyed reflection
-the native backend cannot lower.
-
-It is replaced with classic visitor double-dispatch:
-
-- `UniPass.enter_node`/`exit_node` call `nd.accept_enter(self)` /
-  `nd.accept_exit(self)`.
-- Each node kind handled by some pass gets a generated `accept_<verb>` override
-  (`impl Module.accept_enter(v) { v.enter_module(self); }`) -- a direct,
-  exact-type, O(1) double-vtable call. Unhandled kinds inherit `UniNode`'s base
-  accept, which routes to the pass's `default_<verb>` hook.
-- `UniPass` carries a generated base surface (`enter_<kind>`/`exit_<kind>`) that
-  routes to `default_<verb>`; a pass's own ability simply overrides its slot.
-
-This generator (re)writes the two impl annexes from the passes' own abilities:
-  - `unitree.impl/dispatch.impl.jac`        -- the per-node accept overrides
-  - `passes/uni_pass.impl/surface.impl.jac` -- the UniPass base surface
-and refreshes the surface-decl block inside `uni_pass.jac` (between markers).
-
-The matching `accept_<verb>` *declarations* on each handled node class in
-`unitree.jac` are hand-maintained boilerplate (Jac requires a decl per override);
-`verify_all` flags any that are missing. Regenerate with `jac gen-uni-dispatch`.
-"""
-
-# Passes whose enter_*/exit_* abilities define the handled node-kind set.
-# Subclasses that add no abilities of their own (TypeInferencePass,
-# JacLintCheckPass, CoalesceBBPass) inherit dispatch via the vtable and are
-# intentionally absent.
 glob DISPATCH_PASSES: list = [
          ("jaclang.jac0core.passes.ast_validation_pass", "ASTValidationPass"),
          ("jaclang.jac0core.passes.boundary_analysis_pass", "BoundaryAnalysisPass"),
@@ -55,7 +22,6 @@ glob DISPATCH_PASSES: list = [
      SURFACE_BEGIN: str = "    # >>> generated visitor surface (jac gen-uni-dispatch) >>>",
      SURFACE_END: str = "    # <<< generated visitor surface <<<";
 
-"""Build {snake_name: PascalNodeName} for every UniNode subclass."""
 def node_snake_map -> dict[str, str] {
     import from jaclang.jac0core { unitree as ut_mod }
     import from jaclang.jac0core.unitree { UniNode }
@@ -72,13 +38,6 @@ def node_snake_map -> dict[str, str] {
     return out;
 }
 
-"""(handled_enter, handled_exit): sorted Pascal node names handled by some pass.
-
-Mirrors the reflective key: a pass handles kind X for `verb` iff it defines
-`verb_<snake(X)>`. Includes inherited abilities (dir walks the MRO). Helper
-methods sharing the prefix but not naming a node kind are ignored, exactly as
-reflection ignored them.
-"""
 def handled_kinds -> tuple[list[str], list[str]] {
     import importlib;
     snake_map = node_snake_map();
@@ -100,7 +59,6 @@ def handled_kinds -> tuple[list[str], list[str]] {
     return (sorted(sets["enter"]), sorted(sets["exit"]));
 }
 
-"""Render the per-node accept-override annex (unitree.impl/dispatch.impl.jac)."""
 def accept_annex_src(
     enter: list[str], exits: list[str], snake_map: dict[str, str]
 ) -> str {
@@ -122,7 +80,6 @@ def accept_annex_src(
     return "\n".join(lines) + "\n";
 }
 
-"""Render the UniPass base-surface annex (uni_pass.impl/surface.impl.jac)."""
 def surface_annex_src(
     enter: list[str], exits: list[str], snake_map: dict[str, str]
 ) -> str {
@@ -144,7 +101,6 @@ def surface_annex_src(
     return "\n".join(lines) + "\n";
 }
 
-"""Render the surface-decl block injected into uni_pass.jac."""
 def surface_decls_block(
     enter: list[str], exits: list[str], snake_map: dict[str, str]
 ) -> str {
@@ -160,7 +116,6 @@ def surface_decls_block(
     return "\n".join(lines);
 }
 
-"""Inject/replace the surface-decl block inside uni_pass.jac source text."""
 def apply_surface_block(src: str, block: str) -> str {
     import re;
     if SURFACE_BEGIN in src {
@@ -171,14 +126,12 @@ def apply_surface_block(src: str, block: str) -> str {
     return src[:idx] + "\n\n" + block + src[idx:];
 }
 
-"""Absolute path under the jaclang package for a package-relative path."""
 def abs_path(rel: str) -> str {
     import jaclang;
     import from pathlib { Path }
     return str(Path(jaclang.__file__).parent / rel);
 }
 
-"""Node classes whose accept_<verb> decl is missing in unitree.jac."""
 def missing_accept_decls(enter: list[str], exits: list[str]) -> list {
     import re;
     src = open(abs_path(UNITREE_SRC), encoding="utf-8").read();
@@ -199,7 +152,6 @@ def missing_accept_decls(enter: list[str], exits: list[str]) -> list {
     return missing;
 }
 
-"""(Re)write the visitor annexes + surface decls; return one status line each."""
 def write_all -> list {
     import os;
     snake_map = node_snake_map();
@@ -239,7 +191,6 @@ def write_all -> list {
     return msgs;
 }
 
-"""Relative paths / descriptions of anything stale or missing (empty = clean)."""
 def verify_all -> list {
     snake_map = node_snake_map();
     (enter, exits) = handled_kinds();

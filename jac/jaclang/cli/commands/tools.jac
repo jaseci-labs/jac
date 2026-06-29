@@ -1,14 +1,8 @@
-"""Tool commands: tool, dot, lsp.
-
-Commands for development tools and utilities.
-"""
-
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Run the specified AST tool with optional arguments."""
 @registry.command(
     name="tool",
     help="Run AST tools",
@@ -28,7 +22,6 @@ glob registry = get_registry();
 )
 def tool(tool: str, args: list = []) -> int;
 
-"""Generate graph visualization."""
 @registry.command(
     name="dot",
     help="Generate graph visualization (DOT format)",
@@ -82,7 +75,6 @@ def dot(
     format: str = "dot"
 ) -> int;
 
-"""Run Jac Language Server Protocol."""
 @registry.command(
     name="lsp",
     help="Start Jac language server",
@@ -125,7 +117,6 @@ def lsp -> int;
 )
 def completions(shell: str = "bash", install: bool = False) -> int;
 
-"""Regenerate jir_registry.jac from the current unitree node classes."""
 @registry.command(
     name="gen-jir-registry",
     help="Regenerate jir_registry.jac from unitree node classes",
@@ -148,7 +139,6 @@ def completions(shell: str = "bash", install: bool = False) -> int;
 )
 def gen_jir_registry(verify: bool = False) -> int;
 
-"""Regenerate the static visitor-dispatch annexes for de-dynamized passes."""
 @registry.command(
     name="gen-uni-dispatch",
     help="Regenerate static enter_node/exit_node dispatch for UniPass subclasses",

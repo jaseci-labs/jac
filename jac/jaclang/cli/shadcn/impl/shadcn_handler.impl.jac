@@ -1,5 +1,3 @@
-"""Implementation of shadcn component handler."""
-
 import re;
 import json as json_mod;
 import from pathlib { Path }
@@ -16,12 +14,11 @@ impl _read_shadcn_config(config: any) -> any {
 }
 
 impl _registry_dir -> any {
-    # shadcn_handler.impl.jac is in jaclang/cli/shadcn/impl/, so .parent.parent = jaclang/cli/shadcn/
     base = Path(__file__).parent.parent / "registry";
     if base.exists() {
         return base;
     }
-    # Fallback: resolve via installed package location
+
     import from importlib.resources { files }
     try {
         return Path(str(files("jaclang.cli.shadcn"))) / "registry";
@@ -58,7 +55,6 @@ impl parse_style_css(style_name: str) -> dict {
 }
 
 impl resolve_component(source: str, resolution_map: dict) -> str {
-    # Sort keys longest-first so cn-foo-bar is replaced before cn-foo.
     sorted_keys = sorted(list(resolution_map.keys()), key=len, reverse=True);
     result = source;
     for key in sorted_keys {
@@ -139,9 +135,9 @@ impl _update_npm_deps(config: any, npm_deps: dict) -> None {
 
     for key in npm_deps {
         ver = npm_deps[key];
-        # Scoped npm names (@scope/pkg) are not valid TOML bare keys -- quote them.
+
         toml_key = key if re.match(r'^[A-Za-z0-9_-]+$', key) else '"' + key + '"';
-        # Line-anchored check so e.g. `shadcn` is not falsely matched by `[jac-shadcn]`.
+
         if re.search(
             r'(?m)^\s*' + str(toml_key).replace('.', r'\.') + r'\s*=', content
         ) {
@@ -187,7 +183,6 @@ impl add_shadcn_components(config: any, component_names: list) -> bool {
     if ui_dir.exists() {
         for f in ui_dir.iterdir() {
             if f.suffix == ".jac" and f.name.endswith(".cl.jac") {
-                # Files are written with underscores; registry names are kebab-case.
                 existing.add(f.name.replace(".cl.jac", "").replace("_", "-"));
             }
         }
@@ -229,7 +224,6 @@ impl add_shadcn_components(config: any, component_names: list) -> bool {
             continue;
         }
 
-        # Hyphenated filenames are unimportable via jac-client dot-paths; use underscores.
         filename = str(comp_data.get("file", name + ".cl.jac")).replace("-", "_");
         content = str(comp_data.get("content", ""));
         out_path = ui_dir / filename;
@@ -283,10 +277,6 @@ impl remove_shadcn_components(config: any, component_names: list) -> bool {
         return False;
     }
 
-    # Resolve each name to its installed filename via the registry's `file`
-    # field -- some names differ from their file (e.g. `input-otp` installs as
-    # `otp-input.cl.jac`), so `name + ".cl.jac"` would miss them. Fall back to
-    # that form for names not in the registry (or already a bare file basename).
     registry_data = load_registry();
     components_meta = registry_data.get("components", {});
 

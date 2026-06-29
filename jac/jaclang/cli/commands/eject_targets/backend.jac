@@ -1,19 +1,9 @@
-"""FastAPI backend emitter for `jac eject`: writes the compiled Jac modules
-as-is (they import the real jaclang runtime) and a `main.py` that serves each
-walker/function over the @jac/runtime HTTP contract, with jaclang-native auth."""
-
 import ast;
 import from pathlib { Path }
 import from jaclang.cli.console { console }
 
 
-# jaclang companion packages a compiled module may import implicitly (not in
-# jac.toml). Detected in the emitted Python and added to requirements.txt so
-# `pip install` produces a runnable backend.
 glob _IMPLICIT_PY_DEPS: dict = {"byllm": "byllm"},
-     # Vendored into the ejected backend as `_jac_sqldb.py` when `[eject.db]
-     # driver` is "sqlalchemy"/"sqlite"; wired via the get_persistent_memory hook
-     # in main.py. Defaults to SQLite; JAC_DB_URL points it at Postgres/MySQL.
      _SQLDB_BACKEND_SRC: str = '''"""Vendored SQLAlchemy persistence backend for the ejected Jac app.
 Registered via jaclang\'s get_persistent_memory hook; defaults to a local SQLite
 file (set JAC_DB_URL for Postgres/MySQL). Single-writer; use jac-scale to scale."""
@@ -283,9 +273,6 @@ class SqlAlchemyMemory(PersistentMemory):
 ''';
 
 
-"""Emit the FastAPI backend into `backend_dir` from the orchestrator's
-{module, py, server} units and [{name, module, pub}] walker/function
-descriptors. `remap` renames module stems that collide with main.py."""
 def emit_backend(
     backend_dir: Path,
     project_name: str,
@@ -316,8 +303,7 @@ def emit_backend(
         }
         module = str(unit["module"]);
         code = _rewrite_imports(str(unit["py"]), remap);
-        # Dotted module (pkg.util) -> pkg/util.py, with __init__.py in each
-        # package dir so the compiler's dotted imports resolve at runtime.
+
         dest = backend_dir / (module.replace(".", "/") + ".py");
         dest.parent.mkdir(parents=True, exist_ok=True);
         pkg_dir = dest.parent;
@@ -339,8 +325,6 @@ def emit_backend(
         return 1;
     }
 
-    # Each walker/function name maps 1:1 to an HTTP route and a main.py import,
-    # so a name reused across modules would shadow the import and collide routes.
     dup = _first_duplicate([str(w["name"]) for w in walkers]);
     if dup {
         console.error(
@@ -383,9 +367,6 @@ def emit_backend(
         );
     }
 
-    # Opt-in via `[eject.db] driver` ("sqlalchemy"/"sqlite"/"sql"); absent it the
-    # backend keeps the runtime's built-in zero-dep SQLite. Default URL is a
-    # SQLite file under backend/; JAC_DB_URL overrides it for Postgres/MySQL.
     sql = str(db.get("driver", "")).lower() in ["sqlalchemy", "sqlite", "sql"];
     db_basename = _default_db_basename(project_name) if sql else "";
     if sql {
@@ -405,9 +386,6 @@ def emit_backend(
 }
 
 
-"""Default SQLite filename stem for an ejected project: the project name
-lowercased with non-alphanumerics folded to underscores (falls back to
-"jac_db"). The runtime DB URL is built from this unless JAC_DB_URL is set."""
 def _default_db_basename(project_name: str) -> str {
     chars: list = [];
     for ch in project_name.lower() {
@@ -418,13 +396,11 @@ def _default_db_basename(project_name: str) -> str {
 }
 
 
-"""Write the vendored SQLAlchemy persistence backend into the ejected app."""
 def _emit_sqldb_module(backend_dir: Path) {
     (backend_dir / "_jac_sqldb.py").write_text(_SQLDB_BACKEND_SRC, encoding="utf-8");
 }
 
 
-"""Return the first name that repeats in `names`, or "" if all are unique."""
 def _first_duplicate(names: list) -> str {
     seen: set = set();
     for n in names {
@@ -438,8 +414,6 @@ def _first_duplicate(names: list) -> str {
 }
 
 
-"""Scan emitted backend Python for imports of known jaclang companion
-packages (byllm, ...) and return the pip names to add."""
 def _detect_plugins(codes: list) -> list {
     found: set = set();
     for code in codes {
@@ -461,8 +435,6 @@ def _detect_plugins(codes: list) -> list {
 }
 
 
-"""Rewrite references to remapped sibling modules (a Jac module whose stem
-collided with main.py). The jaclang runtime imports are left untouched."""
 def _rewrite_imports(py_code: str, remap: dict) -> str {
     if not remap {
         return py_code;
@@ -488,8 +460,6 @@ def _rewrite_imports(py_code: str, remap: dict) -> str {
 }
 
 
-# Compiled runtime base classes a walker always inherits; not user fields, so
-# an unresolved base with one of these names is never a missing-field warning.
 glob _RUNTIME_ARCH_BASES: set = {
          "Walker",
          "WalkerArchetype",
@@ -502,9 +472,6 @@ glob _RUNTIME_ARCH_BASES: set = {
      };
 
 
-"""Extract each walker's request fields from the compiled Python (skipping
-private and `reports`), including same-module base-class fields (base-first,
-subclass overrides). Returns {walker: [{name, type, has_default, default}]}."""
 def _extract_walker_fields(py_code: str, walker_names: set) -> dict {
     result: dict = {};
     try {
@@ -537,9 +504,6 @@ def _extract_walker_fields(py_code: str, walker_names: set) -> dict {
 }
 
 
-"""Collect a walker class's annotated fields into `ordered` ({name: record}),
-recursing into same-module base classes first so a subclass field overrides an
-inherited one. Bases that are neither in-module nor runtime go to `unresolved`."""
 def _collect_walker_fields(
     cls_node: ast.ClassDef,
     class_map: dict[str, ast.ClassDef],
@@ -584,8 +548,6 @@ def _collect_walker_fields(
 }
 
 
-"""Extract each public function's parameters (with defaults) from the
-compiled Python. Returns {func_name: [{name, type, has_default, default}]}."""
 def _extract_func_params(py_code: str, func_names: set) -> dict {
     result: dict = {};
     try {
@@ -598,7 +560,7 @@ def _extract_func_params(py_code: str, func_names: set) -> dict {
         and (node.name in func_names) {
             all_args = node.args.args;
             defaults = node.args.defaults;
-            # Python aligns the defaults list to the LAST len(defaults) args.
+
             first_default = len(all_args) - len(defaults);
             params: list = [];
             for i in range(len(all_args)) {
@@ -629,17 +591,11 @@ def _extract_func_params(py_code: str, func_names: set) -> dict {
 }
 
 
-"""Pydantic request-model name. The `suffix` keeps walker and function models
-in separate namespaces so a name reused across both kinds does not collide
-(walker Square -> SquareIn, function Square -> SquareFnIn)."""
 def _model_class_name(name: str, suffix: str) -> str {
     return name[:1].upper() + name[1:] + suffix;
 }
 
 
-"""Write main.py: a FastAPI app running the walkers on the jaclang runtime with
-jaclang-native auth. When `sql` is set, register the get_persistent_memory hook
-so the graph persists via SQLAlchemy (SQLite `<db_basename>.db` / JAC_DB_URL)."""
 def _emit_main_py(
     backend_dir: Path,
     project_name: str,
@@ -664,8 +620,6 @@ def _emit_main_py(
         'from jaclang.runtimelib.server import UserManager, ExecutionManager'
     ];
 
-    # Import each walker/function under a kind-prefixed alias (_W_ / _F_) so a
-    # name reused across a walker and a function (or modules) never shadows.
     for w in walkers {
         wn = str(w["name"]);
         lines.append("from " + str(w["module"]) + " import " + wn + " as _W_" + wn);
@@ -677,9 +631,6 @@ def _emit_main_py(
 
     lines += ['', '_BASE = os.path.dirname(os.path.abspath(__file__))'];
 
-    # Register the get_persistent_memory hook before any ExecutionManager builds
-    # a context, so the runtime picks the SQLAlchemy L3 backend. Registered
-    # unconditionally; the SQLite default always resolves (JAC_DB_URL overrides).
     if sql {
         lines += [
             'from jaclang.jac0core.runtime import hookimpl, plugin_manager',
@@ -942,7 +893,6 @@ def _emit_main_py(
 }
 
 
-"""Resolve the jaclang requirement line, pinned to the build version."""
 def _jaclang_req -> str {
     version = "";
     try {
@@ -958,8 +908,6 @@ def _jaclang_req -> str {
 }
 
 
-"""Write backend/requirements.txt: jaclang + fastapi + uvicorn, plus any
-implicit jaclang companion packages detected in the emitted Python."""
 def _emit_requirements(backend_dir: Path, plugins: list) {
     lines: list[str] = [_jaclang_req(), "fastapi>=0.110", "uvicorn[standard]>=0.27"];
     for p in plugins {

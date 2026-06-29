@@ -1,5 +1,3 @@
-"""Implementation of the NpmBuilder."""
-
 import importlib.metadata;
 import from pathlib { Path }
 import from jaclang.publish.npm_tarball { pack_tarball }
@@ -10,10 +8,6 @@ import from jaclang.publish.npm_sources {
 }
 import from jaclang.publish.package_json { generate_package_json, npm_tarball_filename }
 
-"""Aggregate per-module external imports into npm dependencies + peerDependencies.
-
-   The Jac client runtime package lands in `dependencies` (pinned to a caret range
-   on the installed jaclang version); react/react-dom land in `peerDependencies`."""
 def _resolve_externals(
     config: any, files: list[any]
 ) -> tuple[dict[str, str], dict[str, str]] {
@@ -74,12 +68,11 @@ impl NpmBuilder.build -> bytes {
     entry = resolve_npm_entry(self.config, files);
     (extra_deps, extra_peers) = _resolve_externals(self.config, files);
 
-    # The entry's `.d.ts` (when it has one) becomes package.json `types`.
     types = None;
     if entry {
         for f in files {
             if f.npm_path == entry and f.dts {
-                types = entry[:-3] + ".d.ts";  # strip ".js"
+                types = entry[:-3] + ".d.ts";
             }
         }
     }

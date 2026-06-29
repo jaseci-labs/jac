@@ -1,9 +1,6 @@
-"""Implementation of JSDoc generation from typed Jac signatures."""
-
 import re;
 import from jaclang.jac0core.unitree { Module, Ability }
 
-# Scalar Jac type -> JSDoc/TS type. None maps contextually (see jac_type_to_jsdoc).
 glob _SCALAR_MAP: dict[str, str] = {
          "int": "number",
          "float": "number",
@@ -18,7 +15,6 @@ glob _SCALAR_MAP: dict[str, str] = {
 
      };
 
-"""Split `s` on `sep` only at bracket depth 0 (so `dict[a, b]` is not split on its inner comma)."""
 def _split_top(s: str, sep: str) -> list[str] {
     parts: list[str] = [];
     depth = 0;
@@ -41,9 +37,6 @@ def _split_top(s: str, sep: str) -> list[str] {
     return parts;
 }
 
-# Shared Jac->type-string mapping for both JSDoc and TypeScript declarations.
-# `ts=True` emits idiomatic TS (`any`, `Record<K,V>`); `ts=False` emits JSDoc
-# (`*`, `Object<K,V>`). The two dialects are otherwise identical.
 def _map_type(type_str: str, is_return: bool, ts: bool) -> str {
     s = type_str.strip();
     any_t = "any" if ts else "*";
@@ -51,14 +44,12 @@ def _map_type(type_str: str, is_return: bool, ts: bool) -> str {
         return any_t;
     }
 
-    # Unions: A | B | None  ->  (A|B|null)
     union_parts = _split_top(s, "|");
     if len(union_parts) > 1 {
         mapped = [_map_type(p, False, ts) for p in union_parts];
         return "(" + "|".join(mapped) + ")";
     }
 
-    # Generics: list[...], dict[...], Optional[...], custom[...]
     if s.endswith("]") and "[" in s {
         base = s[:s.index("[")].strip();
         inner = s[s.index("[") + 1:-1];
@@ -92,7 +83,7 @@ def _map_type(type_str: str, is_return: bool, ts: bool) -> str {
         if base in ("Optional", ) {
             return f"({_map_type(args[0], False, ts)}|null)" if args else any_t;
         }
-        # Unknown generic (e.g. a user Generic[T]) -> use the base identifier.
+
         return base;
     }
 
@@ -109,7 +100,7 @@ def _map_type(type_str: str, is_return: bool, ts: bool) -> str {
     if s in ("dict", "Dict") {
         return "Record<string, any>" if ts else "Object";
     }
-    # Custom class / archetype name passes through verbatim.
+
     return s;
 }
 

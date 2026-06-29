@@ -497,12 +497,12 @@ With the fundamentals of Jac syntax and graph data in place, you're now ready to
 **Create the Project**
 
 ```bash
-jac create day-planner --use client
+jac create day-planner --use web-static
 cd day-planner
 ```
 
 !!! note "Bun required"
-    The `--use client` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically.
+    The `--use web-static` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically.
 
 You can delete the scaffolded `main.jac` and the `components/` directory -- you'll replace them with the code below. Also create an empty `styles.css` file next to `main.jac` (we'll fill it in Part 4).
 
@@ -2158,7 +2158,7 @@ When `isLoggedIn` flips from `False` to `True`, this ability fires automatically
 Create a new project for the authenticated version:
 
 ```bash
-jac create day-planner-auth --use client
+jac create day-planner-auth --use web-static
 cd day-planner-auth
 ```
 
@@ -3181,7 +3181,7 @@ When you use `walker:priv`, the walker runs on the authenticated user's **own pr
 To try the walker-based version, create a new project:
 
 ```bash
-jac create day-planner-v2 --use client
+jac create day-planner-v2 --use web-static
 cd day-planner-v2
 ```
 

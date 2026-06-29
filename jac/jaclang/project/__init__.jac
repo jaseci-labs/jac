@@ -1,10 +1,3 @@
-"""Project configuration and management for Jac projects.
-
-This module provides the jac.toml configuration system, including:
-- JacConfig: Central configuration class for project settings
-- Project discovery: Auto-detection of jac.toml in parent directories
-- Dependency management: Install, add, remove dependencies
-"""
 import from jaclang.project.config {
     BuildConfig,
     CacheConfig,

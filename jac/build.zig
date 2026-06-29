@@ -157,6 +157,21 @@ pub fn build(b: *std.Build) void {
             .dependOn(&fetch_llvm.step);
     }
 
+    // Standalone: place the pinned, contained bun runtime into the source tree at
+    // jaclang/runtimelib/client/_bun/ for the HOST. Editable/source checkouts,
+    // the test suite, and -Ddev linked binaries resolve it there via get_bun()'s
+    // __file__-relative lookup. (Normal/release builds instead bundle a
+    // target-matched bun into the payload; see the payload block below.) Fetching
+    // straight into the source dir places it idempotently in one step -- no copy.
+    // fresh_env.sh runs this; the binary-bundled path needs no separate step.
+    if (osArchString(b.graph.host.result)) |host_osarch| {
+        const fetch_bun = b.addRunArtifact(tool);
+        fetch_bun.addArgs(&.{ "fetch-bun", host_osarch, b.pathFromRoot("jaclang/runtimelib/client/_bun") });
+        fetch_bun.has_side_effects = true;
+        b.step("fetch-bun", "Place the pinned bun into the source tree (editable/dev + tests)")
+            .dependOn(&fetch_bun.step);
+    }
+
     const osarch = osArchString(target.result) orelse {
         // Unsupported target for a full binary; stub + test steps still work.
         return;
@@ -240,6 +255,22 @@ pub fn build(b: *std.Build) void {
                     "Run `zig build fetch-llvm` once first (then -Ddev places it automatically).",
                 .{d},
             );
+        }
+
+        // Contained bun runtime: fetch the pinned bun for the target and bundle
+        // it inside the client package via --bun. Mirrors the fetch-pbs pattern
+        // (download + sha256-verify, all in the payload tool). Skipped in
+        // linked-source/dev mode -- there get_bun() resolves a contained,
+        // on-demand .jac/bin copy instead. A BUN_VERSION bump lands in
+        // payload.zig (tracked below), so it invalidates the cached payload.
+        if (link_dir == null) {
+            const bun_dir = b.pathFromRoot(b.fmt(".bun-build/{s}", .{osarch}));
+            const bun_basename = if (target.result.os.tag == .windows) "bun.exe" else "bun";
+            const fetch_bun = b.addRunArtifact(tool);
+            fetch_bun.addArgs(&.{ "fetch-bun", osarch, bun_dir });
+            fetch_bun.has_side_effects = true;
+            mk.step.dependOn(&fetch_bun.step);
+            mk.addArg(b.fmt("--bun={s}/{s}", .{ bun_dir, bun_basename }));
         }
 
         // Track the payload's real inputs so it repacks when any source changes.

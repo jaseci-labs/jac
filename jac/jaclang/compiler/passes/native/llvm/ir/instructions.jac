@@ -5,13 +5,11 @@ import from jaclang.compiler.passes.native.llvm.ir { types }
 import from jaclang.compiler.passes.native.llvm.ir.values {
     Block,
     Function,
-    Value,
     NamedValue,
     Constant,
     MetaDataArgument,
     MetaDataString,
     AttributeSet,
-    Undefined,
     ArgumentAttributes
 }
 import from jaclang.compiler.passes.native.llvm.ir._utils { _HasMetadata }
@@ -230,48 +228,6 @@ class CallInstr(Instruction) {
         self._descr(buf, add_metadata=True);
     }
 }
-class InvokeInstr(CallInstr) {
-    def init(
-        self: InvokeInstr,
-        parent: Any,
-        func: Any,
-        args: Any,
-        normal_to: Any,
-        unwind_to: Any,
-        name: Any = '',
-        cconv: Any = None,
-        fastmath: Any = (),
-        attrs: Any = (),
-        arg_attrs: Any = None
-    ) -> object {
-        assert isinstance(normal_to, Block);
-        assert isinstance(unwind_to, Block);
-        super.init(
-            parent,
-            func,
-            args,
-            name,
-            cconv,
-            tail=False,
-            fastmath=fastmath,
-            attrs=attrs,
-            arg_attrs=arg_attrs
-        );
-        self.opname = "invoke";
-        self.normal_to = normal_to;
-        self.unwind_to = unwind_to;
-    }
-    def descr(self: InvokeInstr, buf: Any) -> object {
-        super._descr(buf, add_metadata=False);
-        buf.append(
-            "      to label {0} unwind label {1}{metadata}\n".format(
-                self.normal_to.get_reference(),
-                self.unwind_to.get_reference(),
-                metadata=self._stringify_metadata(leading_comma=True)
-            )
-        );
-    }
-}
 class Terminator(Instruction) {
     def init(self: Terminator, parent: Any, opname: Any, operands: Any) -> object {
         super.init(parent, types.VoidType(), opname, operands);
@@ -357,43 +313,6 @@ class IndirectBranch(PredictableInstr, Terminator) {
         );
     }
 }
-class SwitchInstr(PredictableInstr, Terminator) {
-    def init(
-        self: SwitchInstr, parent: Any, opname: Any, val: Any, `default: Any
-    ) -> object {
-        super.init(parent, opname, [val]);
-        self.default = `default;
-        self.cases = [];
-    }
-    @property
-    def value(self: SwitchInstr) -> object {
-        return self.operands[0];
-    }
-    def add_case(self: SwitchInstr, val: Any, block: Any) -> object {
-        assert isinstance(block, Block);
-        if not isinstance(val, Value) {
-            val = Constant(self.value.type, val);
-        }
-        self.cases.append((val, block));
-    }
-    def descr(self: SwitchInstr, buf: Any) -> object {
-        cases = [
-            "{0} {1}, label {2}".format(
-                val.type, val.get_reference(), blk.get_reference()
-            ) for (val, blk) in self.cases
-        ];
-        buf.append(
-            "switch {0} {1}, label {2} [{3}]  {4}\n".format(
-                self.value.type,
-                self.value.get_reference(),
-                self.default.get_reference(),
-                ' '.join(cases),
-                self._stringify_metadata(leading_comma=True)
-            )
-        );
-    }
-}
-class Resume(Terminator) {}
 class SelectInstr(Instruction) {
     def init(
         self: SelectInstr,
@@ -608,71 +527,6 @@ class StoreInstr(Instruction) {
         );
     }
 }
-class LoadAtomicInstr(Instruction) {
-    def init(
-        self: LoadAtomicInstr,
-        parent: Any,
-        ptr: Any,
-        ordering: Any,
-        align: Any,
-        name: Any = '',
-        typ: Any = None
-    ) -> object {
-        if (typ is None) {
-            if isinstance(ptr, AllocaInstr) {
-                typ = ptr.allocated_type;
-            } elif not ptr.type.is_opaque {
-                typ = ptr.type.pointee;
-            } else {
-                raise ValueError("Load atomic lacks type.");
-            }
-        }
-        super.init(parent, typ, "load atomic", [ptr], name=name);
-        self.ordering = ordering;
-        self.align = align;
-    }
-    def descr(self: LoadAtomicInstr, buf: Any) -> object {
-        [val] = self.operands;
-        buf.append(
-            "load atomic {0}, {1} {2} {3}, align {4}{5}\n".format(
-                self.type,
-                val.type,
-                val.get_reference(),
-                self.ordering,
-                self.align,
-                self._stringify_metadata(leading_comma=True)
-            )
-        );
-    }
-}
-class StoreAtomicInstr(Instruction) {
-    def init(
-        self: StoreAtomicInstr,
-        parent: Any,
-        val: Any,
-        ptr: Any,
-        ordering: Any,
-        align: Any
-    ) -> object {
-        super.init(parent, types.VoidType(), "store atomic", [val, ptr]);
-        self.ordering = ordering;
-        self.align = align;
-    }
-    def descr(self: StoreAtomicInstr, buf: Any) -> object {
-        (val, ptr) = self.operands;
-        buf.append(
-            "store atomic {0} {1}, {2} {3} {4}, align {5}{6}\n".format(
-                val.type,
-                val.get_reference(),
-                ptr.type,
-                ptr.get_reference(),
-                self.ordering,
-                self.align,
-                self._stringify_metadata(leading_comma=True)
-            )
-        );
-    }
-}
 class AllocaInstr(Instruction) {
     def init(
         self: AllocaInstr, parent: Any, typ: Any, count: Any, name: Any
@@ -782,28 +636,6 @@ class PhiInstr(Instruction) {
         ];
     }
 }
-class ExtractElement(Instruction) {
-    def init(
-        self: ExtractElement, parent: Any, vector: Any, index: Any, name: Any = ''
-    ) -> object {
-        if not isinstance(vector.type, types.VectorType) {
-            raise TypeError("vector needs to be of VectorType.");
-        }
-        if not isinstance(index.type, types.IntType) {
-            raise TypeError("index needs to be of IntType.");
-        }
-        typ = vector.type.element;
-        super.init(parent, typ, "extractelement", [vector, index], name=name);
-    }
-    def descr(self: ExtractElement, buf: Any) -> object {
-        operands = ", ".join(
-            "{0} {1}".format(op.type, op.get_reference()) for op in self.operands
-        );
-        buf.append(
-            "{opname} {operands}\n".format(opname=self.opname, operands=operands)
-        );
-    }
-}
 class InsertElement(Instruction) {
     def init(
         self: InsertElement,
@@ -835,58 +667,6 @@ class InsertElement(Instruction) {
         );
         buf.append(
             "{opname} {operands}\n".format(opname=self.opname, operands=operands)
-        );
-    }
-}
-class ShuffleVector(Instruction) {
-    def init(
-        self: ShuffleVector,
-        parent: Any,
-        vector1: Any,
-        vector2: Any,
-        mask: Any,
-        name: Any = ''
-    ) -> object {
-        if not isinstance(vector1.type, types.VectorType) {
-            raise TypeError("vector1 needs to be of VectorType.");
-        }
-        if (vector2 != Undefined) {
-            if (vector2.type != vector1.type) {
-                raise TypeError(
-                    (
-                        "vector2 needs to be " + "Undefined or of the same type as vector1."
-                    )
-                );
-            }
-        }
-        if (
-            not isinstance(mask, Constant)
-            or not isinstance(mask.type, types.VectorType)
-            or not (
-                isinstance(mask.type.element, types.IntType)
-                and (mask.type.element.width == 32)
-            )
-        ) {
-            raise TypeError("mask needs to be a constant i32 vector.");
-        }
-        typ = types.VectorType(vector1.type.element, mask.type.count);
-        index_range = range(
-            vector1.type.count if (vector2 == Undefined) else (2 * vector1.type.count)
-        );
-        if not all((ii.constant in index_range) for ii in mask.constant) {
-            raise IndexError("mask values need to be in {0}".format(index_range));
-        }
-        super.init(parent, typ, "shufflevector", [vector1, vector2, mask], name=name);
-    }
-    def descr(self: ShuffleVector, buf: Any) -> object {
-        buf.append(
-            "shufflevector {0} {1}\n".format(
-                ", ".join(
-                    "{0} {1}".format(op.type, op.get_reference())
-                    for op in self.operands
-                ),
-                self._stringify_metadata(leading_comma=True)
-            )
         );
     }
 }
@@ -1031,146 +811,4 @@ class AtomicRMW(Instruction) {
     }
 }
 
-"""This instruction has changed since llvm3.5.  It is not compatible with
-    older llvm versions.
-    """
-class CmpXchg(Instruction) {
-    def init(
-        self: CmpXchg,
-        parent: Any,
-        ptr: Any,
-        cmp: Any,
-        val: Any,
-        ordering: Any,
-        failordering: Any,
-        name: Any
-    ) -> object {
-        outtype = types.LiteralStructType([val.type, types.IntType(1)]);
-        super.init(parent, outtype, "cmpxchg", (ptr, cmp, val), name=name);
-        self.ordering = ordering;
-        self.failordering = failordering;
-    }
-    def descr(self: CmpXchg, buf: Any) -> object {
-        (ptr, cmpval, val) = self.operands;
-        fmt = "cmpxchg {ptrty} {ptr}, {ty} {cmp}, {ty} {val} {ordering} "
-        "{failordering} {metadata}\n";
-        buf.append(
-            fmt.format(
-                ptrty=ptr.type,
-                ptr=ptr.get_reference(),
-                ty=cmpval.type,
-                cmp=cmpval.get_reference(),
-                val=val.get_reference(),
-                ordering=self.ordering,
-                failordering=self.failordering,
-                metadata=self._stringify_metadata(leading_comma=True)
-            )
-        );
-    }
-}
-
-class _LandingPadClause(object) {
-    def init(self: _LandingPadClause, value: Any) -> object {
-        self.value = value;
-    }
-    def __str__(self: _LandingPadClause) -> object {
-        return "{kind} {type} {value}".format(
-            kind=self.kind, `type=self.value.type, value=self.value.get_reference()
-        );
-    }
-}
-class CatchClause(_LandingPadClause) {
-    with entry {
-        kind = 'catch';
-    }
-}
-class FilterClause(_LandingPadClause) {
-    with entry {
-        kind = 'filter';
-    }
-
-    def init(self: FilterClause, value: Any) -> object {
-        assert isinstance(value, Constant);
-        assert isinstance(value.type, types.ArrayType);
-        super.init(value);
-    }
-}
-class LandingPadInstr(Instruction) {
-    def init(
-        self: LandingPadInstr,
-        parent: Any,
-        typ: Any,
-        name: Any = '',
-        cleanup: Any = False
-    ) -> object {
-        super.init(parent, typ, "landingpad", [], name=name);
-        self.cleanup = cleanup;
-        self.clauses = [];
-    }
-    def add_clause(self: LandingPadInstr, clause: Any) -> object {
-        assert isinstance(clause, _LandingPadClause);
-        self.clauses.append(clause);
-    }
-    def descr(self: LandingPadInstr, buf: Any) -> object {
-        fmt = "landingpad {type}{cleanup}{clauses}\n";
-        buf.append(
-            fmt.format(
-                `type=self.type,
-                cleanup=' cleanup' if self.cleanup else '',
-                clauses=''.join(
-                    ["\n      {0}".format(clause) for clause in self.clauses]
-                )
-            )
-        );
-    }
-}
-"""
-    The `fence` instruction.
-
-    As of LLVM 5.0.1:
-
-    fence [syncscope("<target-scope>")] <ordering>  ; yields void
-    """
-class Fence(Instruction) {
-    with entry {
-        VALID_FENCE_ORDERINGS = {"acquire", "release", "acq_rel", "seq_cst"};
-    }
-
-    def init(
-        self: Fence, parent: Any, ordering: Any, targetscope: Any = None, name: Any = ''
-    ) -> object {
-        super.init(parent, types.VoidType(), "fence", (), name=name);
-        if (ordering not in self.VALID_FENCE_ORDERINGS) {
-            msg = "Invalid fence ordering \"{0}\"! Should be one of {1}.";
-            raise ValueError(
-                msg.format(ordering, ", ".join(self.VALID_FENCE_ORDERINGS))
-            );
-        }
-        self.ordering = ordering;
-        self.targetscope = targetscope;
-    }
-    def descr(self: Fence, buf: Any) -> object {
-        if (self.targetscope is None) {
-            syncscope = "";
-        } else {
-            syncscope = 'syncscope("{0}") '.format(self.targetscope);
-        }
-        fmt = "fence {syncscope}{ordering}\n";
-        buf.append(fmt.format(syncscope=syncscope, ordering=self.ordering));
-    }
-}
-
-"""
-    A line comment.
-    """
-class Comment(Instruction) {
-    def init(self: Comment, parent: Any, text: Any) -> object {
-        super.init(parent, types.VoidType(), ";", (), name='');
-        assert ("\n" not in text) , "Comment cannot contain new line";
-        self.text = text;
-    }
-    def descr(self: Comment, buf: Any) -> object {
-        buf.append(f"; {self.text}");
-    }
-}
 

@@ -1,22 +1,3 @@
-"""Iterator protocol codegen (#6403).
-
-A first-class iterator is a boxed `JacIter` { i64 next_fn, i8* state }:
-  - next_fn: ptrtoint of a uniform `i1 (i8* state, i8* out)` function
-  - state:   pointer to a per-kind RC state struct
-
-`next(state, out)` writes the next element through `out` and returns 1, or
-returns 0 at exhaustion (no exception in the hot path). The for-loop drives
-any JacIter; adapters (map/filter/enumerate/zip) wrap an upstream JacIter and
-pull from it, so they compose and stay lazy with no generator machinery.
-
-Ownership: building an iterator yields a +1 reference. Wrapping transfers that
-reference to the parent (no retain); the bottom container is *borrowed* (stored
-as an i64, never released). The for-loop releases the outermost iterator once,
-and the generic struct destructor cascades the release down the chain.
-"""
-
-# ─── Struct registration ─────────────────────────────────────
-"""Register the JacIter box and the per-kind state structs (once)."""
 impl NaIRGenPass._ensure_iter_types -> None {
     if self._iter_structs_registered {
         return;
@@ -26,27 +7,24 @@ impl NaIRGenPass._ensure_iter_types -> None {
     i64 = ir.IntType(64);
     self._register_iter_struct("JacIter", ["next_fn", "state"], [i64, i8p]);
     self._jac_iter_type = self.struct_types["JacIter"];
-    # coll/s stored as i64 (ptrtoint) so the generic dtor BORROWS them.
+
     self._register_iter_struct("ListIterState", ["coll", "idx"], [i64, i64]);
     self._register_iter_struct("StrIterState", ["s", "idx"], [i64, i64]);
     self._register_iter_struct("DictKeyIterState", ["coll", "idx"], [i64, i64]);
     self._register_iter_struct("SetIterState", ["coll", "idx"], [i64, i64]);
-    # range is value-copied into the iterator (cursor + bounds), so nothing
-    # is borrowed and the generic dtor is a plain free.
+
     self._register_iter_struct(
         "RangeIterState", ["cur", "stop", "step"], [i64, i64, i64]
     );
-    # upstream stored as i8* so the generic dtor OWNS (releases) it.
+
     self._register_iter_struct("MapIterState", ["upstream"], [i8p]);
     self._register_iter_struct("FilterIterState", ["upstream"], [i8p]);
     self._register_iter_struct("EnumerateIterState", ["upstream", "idx"], [i8p, i64]);
     self._register_iter_struct("ZipIterState", ["up_a", "up_b"], [i8p, i8p]);
-    # user iterator object stored as i8* so the generic dtor OWNS (releases) it,
-    # cascading into the object's own struct destructor (#6403 M2).
+
     self._register_iter_struct("UserIterState", ["obj"], [i8p]);
 }
 
-"""Register an identified struct + its field index/type maps."""
 impl NaIRGenPass._register_iter_struct(
     name: str, field_names: list[str], field_types: list[ir.Type]
 ) -> None {
@@ -66,7 +44,6 @@ impl NaIRGenPass._register_iter_struct(
     self.struct_field_defaults[name] = {};
 }
 
-"""rc_alloc a registered struct and install its destructor pointer."""
 impl NaIRGenPass._alloc_iter_struct(name: str) -> ir.Value {
     self._ensure_iter_types();
     i8p = ir.IntType(8).as_pointer();
@@ -94,8 +71,6 @@ impl NaIRGenPass._alloc_iter_struct(name: str) -> ir.Value {
     return it_obj;
 }
 
-# ─── JacIter box + advance ───────────────────────────────────
-"""Box a next-fn + state pointer into a fresh JacIter (transfers state ref)."""
 impl NaIRGenPass._make_jac_iter(next_fn: ir.Function, state_ptr: ir.Value) -> ir.Value {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
@@ -117,7 +92,6 @@ impl NaIRGenPass._make_jac_iter(next_fn: ir.Function, state_ptr: ir.Value) -> ir
     return ji;
 }
 
-"""Emit a call to iter_val.next(state, out) using the given builder."""
 impl NaIRGenPass._emit_iter_advance(
     b: ir.IRBuilder, iter_val: ir.Value, out_ptr: ir.Value
 ) -> ir.Value {
@@ -146,8 +120,6 @@ impl NaIRGenPass._emit_iter_advance(
     return b.call(nf_ptr, [state, out_i8], name="adv.has");
 }
 
-# ─── Container iterators ─────────────────────────────────────
-"""Monomorphic next-fn for a list[T]: yield data[idx], idx++."""
 impl NaIRGenPass._list_iter_next_fn(
     elem_type_name: str, elem_type: ir.Type
 ) -> ir.Function {
@@ -196,7 +168,6 @@ impl NaIRGenPass._list_iter_next_fn(
     return fn;
 }
 
-"""Build a ListIter over list_val (borrows the list)."""
 impl NaIRGenPass._make_list_iter(
     list_val: ir.Value, elem_type_name: str, elem_type: ir.Type
 ) -> ir.Value {
@@ -216,7 +187,6 @@ impl NaIRGenPass._make_list_iter(
     return self._make_jac_iter(next_fn, state);
 }
 
-"""Monomorphic next-fn for a string: yield the 1-char string at idx."""
 impl NaIRGenPass._str_iter_next_fn -> ir.Function {
     key = "str";
     if key in self._iter_next_fns {
@@ -251,7 +221,7 @@ impl NaIRGenPass._str_iter_next_fn -> ir.Function {
     ok = b.icmp_signed("<", idx, n, name="sit.ok");
     b.cbranch(ok, cont, stop);
     b.position_at_end(cont);
-    # Extract the 1-char string at idx (inline; builder-local).
+
     i8 = ir.IntType(8);
     char_ptr = b.gep(s_ptr, [idx], name="sit.char.ptr");
     char_val = b.load(char_ptr, name="sit.char");
@@ -268,7 +238,6 @@ impl NaIRGenPass._str_iter_next_fn -> ir.Function {
     return fn;
 }
 
-"""Build a StrIter over str_val (borrows the string)."""
 impl NaIRGenPass._make_str_iter(str_val: ir.Value) -> ir.Value {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
@@ -286,8 +255,6 @@ impl NaIRGenPass._make_str_iter(str_val: ir.Value) -> ir.Value {
     return self._make_jac_iter(next_fn, state);
 }
 
-"""Monomorphic next-fn for bytes (#6749): yield the i64 byte value at idx,
-idx++. Reads the jacbytes len field (not strlen) so embedded NULs iterate."""
 impl NaIRGenPass._bytes_iter_next_fn -> ir.Function {
     key = "bytes";
     if key in self._iter_next_fns {
@@ -339,8 +306,6 @@ impl NaIRGenPass._bytes_iter_next_fn -> ir.Function {
     return fn;
 }
 
-"""Build a BytesIter over bytes_val (borrows it), yielding i64 byte values.
-Reuses StrIterState's {ptr, idx} shape."""
 impl NaIRGenPass._make_bytes_iter(bytes_val: ir.Value) -> ir.Value {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
@@ -358,8 +323,6 @@ impl NaIRGenPass._make_bytes_iter(bytes_val: ir.Value) -> ir.Value {
     return self._make_jac_iter(next_fn, state);
 }
 
-# ─── Dict-key / Set / Range iterators (#6403 M1) ─────────────
-"""Monomorphic next-fn for a dict's keys: yield get_key(d, idx), idx++."""
 impl NaIRGenPass._dict_iter_next_fn(dict_key: str) -> ir.Function {
     key = "dict:" + dict_key;
     if key in self._iter_next_fns {
@@ -409,7 +372,6 @@ impl NaIRGenPass._dict_iter_next_fn(dict_key: str) -> ir.Function {
     return fn;
 }
 
-"""Build a DictKeyIter over dict_val (borrows the dict)."""
 impl NaIRGenPass._make_dict_iter(dict_val: ir.Value, dict_key: str) -> ir.Value {
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
@@ -431,7 +393,6 @@ impl NaIRGenPass._make_dict_iter(dict_val: ir.Value, dict_key: str) -> ir.Value 
     return self._make_jac_iter(next_fn, state);
 }
 
-"""Monomorphic next-fn for a set: yield data[idx], idx++ (data = field 2)."""
 impl NaIRGenPass._set_iter_next_fn(
     elem_type_name: str, elem_type: ir.Type
 ) -> ir.Function {
@@ -464,7 +425,7 @@ impl NaIRGenPass._set_iter_next_fn(
         state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="set.idx.slot"
     );
     idx = b.load(idx_slot, name="set.idx");
-    # Set layout: { i64 len, i64 cap, elem_type* data }.
+
     n = b.load(
         b.gep(set_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="set.len.p"),
         name="set.len"
@@ -487,7 +448,6 @@ impl NaIRGenPass._set_iter_next_fn(
     return fn;
 }
 
-"""Build a SetIter over set_val (borrows the set)."""
 impl NaIRGenPass._make_set_iter(
     set_val: ir.Value, elem_type_name: str, elem_type: ir.Type
 ) -> ir.Value {
@@ -511,7 +471,6 @@ impl NaIRGenPass._make_set_iter(
     return self._make_jac_iter(next_fn, state);
 }
 
-"""Monomorphic next-fn for a range: yield cur, cur += step (either direction)."""
 impl NaIRGenPass._range_iter_next_fn -> ir.Function {
     key = "range";
     if key in self._iter_next_fns {
@@ -544,8 +503,7 @@ impl NaIRGenPass._range_iter_next_fn -> ir.Function {
         b.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="rit.step.slot"),
         name="rit.step"
     );
-    # In-bounds test honours step direction: cur<stop ascending, cur>stop
-    # descending. step is never 0 (range() rejects it).
+
     pos = b.icmp_signed(">", step, ir.Constant(i64, 0), name="rit.pos");
     lt = b.icmp_signed("<", cur, stop_v, name="rit.lt");
     gt = b.icmp_signed(">", cur, stop_v, name="rit.gt");
@@ -562,12 +520,11 @@ impl NaIRGenPass._range_iter_next_fn -> ir.Function {
     return fn;
 }
 
-"""Build a RangeIter over range_val (copies start/stop/step; borrows nothing)."""
 impl NaIRGenPass._make_range_iter(range_val: ir.Value) -> ir.Value {
     i32 = ir.IntType(32);
     next_fn = self._range_iter_next_fn();
     state = self._alloc_iter_struct("RangeIterState");
-    # JacRange layout: { i64 start, i64 stop, i64 step }.
+
     rp = range_val;
     rng_ptr_type = self.range_struct_type.as_pointer();
     if range_val.type != rng_ptr_type {
@@ -612,15 +569,11 @@ impl NaIRGenPass._make_range_iter(range_val: ir.Value) -> ir.Value {
     return self._make_jac_iter(next_fn, state);
 }
 
-# ─── Iterator construction from an expression ────────────────
-"""Make an iterator from an already-codegen'd value (list/str/JacIter)."""
 impl NaIRGenPass._make_iter_from_value(
     val: ir.Value, expr: uni.UniNode
 ) -> (tuple | None) {
     i8p = ir.IntType(8).as_pointer();
-    # The checked type of the source expression decides first (a bare i8*
-    # is only a string if the checker says so); the LLVM value shape is the
-    # fallback for expressions the checker left untyped.
+
     _checked_list = self._list_spec_of(expr);
     if _checked_list is not None and _checked_list in self.list_helpers {
         lt = self.list_types.get(_checked_list);
@@ -640,26 +593,25 @@ impl NaIRGenPass._make_iter_from_value(
             return (self._make_list_iter(val, lk, elem_type), lk, elem_type);
         }
     }
-    # range(...) -> RangeIter (#6403 M1); JacRange is value-copied.
+
     if self?.range_struct_type and val.type == self.range_struct_type.as_pointer() {
         return (self._make_range_iter(val), "range", ir.IntType(64));
     }
-    # dict -> DictKeyIter over the keys (Python `iter(dict)` semantics).
+
     for (dk, dt) in self.dict_types.items() {
         if val.type == dt.as_pointer() {
             key_type = self.dict_helpers[dk]["key_type"];
             return (self._make_dict_iter(val, dk), dk, key_type);
         }
     }
-    # set / frozenset -> SetIter over the backing array.
+
     for (sk, st) in self.set_types.items() {
         if val.type == st.as_pointer() {
             elem_type = self.set_helpers[sk]["elem_type"];
             return (self._make_set_iter(val, sk, elem_type), sk, elem_type);
         }
     }
-    # bytes -> BytesIter yielding i64 byte values (#6749). Distinct struct
-    # type, so it can't be confused with the i8* str path below.
+
     if self._is_bytes_value(val) {
         return (self._make_bytes_iter(val), "bytes", ir.IntType(64));
     }
@@ -668,20 +620,6 @@ impl NaIRGenPass._make_iter_from_value(
     }
     if self._jac_iter_type is not None
     and val.type == self._jac_iter_type.as_pointer() {
-        # Already an iterator value (Python's `iter(it) is it`). Recover its
-        # element type from the checked `Iterator[T]` so adapters wrapping a
-        # stored iterator (e.g. `map(f, it)`) alloca the right upstream slot;
-        # i8* is the last resort.
-        #
-        # The result of this branch is treated as OWNED by every consumer: the
-        # central ownership invariant marks `iter(...)` call results +1, and an
-        # adapter takes ownership of its upstream (the i8p state field releases
-        # it via the generic dtor). But `val` is the *borrowed* pointer the
-        # source already owns — returning it as-is means the single +1 is
-        # released twice (loop/adapter end + the source variable's scope exit),
-        # a use-after-free. Retain it so it genuinely carries the +1 the
-        # consumer will release; an already-owned temporary (e.g. an iterator
-        # returned from a call) needs no extra retain. (#6403)
         if not self._is_owned(val) {
             self._emit_rc_retain(val, op="iter_alias");
             self._mark_owned(val);
@@ -689,10 +627,7 @@ impl NaIRGenPass._make_iter_from_value(
         et = self._iter_elem_llvm_of(expr);
         return (val, "iter", et if et is not None else i8p);
     }
-    # User-defined iterator/iterable (#6403 M2): a struct implementing
-    # __iter__/__next__ is bridged into a JacIter whose next-fn drives the
-    # user's __next__ (StopIteration -> i1 0). It composes with the lazy
-    # adapters and crosses function boundaries like any other JacIter.
+
     ustruct = self._struct_name_of(expr);
     if ustruct is not None and self._arch_implements_iter(ustruct) {
         return self._make_user_iter_from_obj(val, ustruct, expr);
@@ -700,14 +635,12 @@ impl NaIRGenPass._make_iter_from_value(
     return None;
 }
 
-"""Recursively build a JacIter from an AST expr (handles adapter nesting)."""
 impl NaIRGenPass._build_iter_from_expr(expr: uni.UniNode) -> (tuple | None) {
     self._ensure_iter_types();
     if isinstance(expr, uni.FuncCall) {
         cname = self._get_name(expr.target);
         params = expr.params or [];
-        # Respect user shadowing: only builtin-classified calls are
-        # adapter forms (checker-stamped call_kind, Phase 4 fact).
+
         if cname in ("map", "filter", "enumerate", "zip", "iter")
         and expr.call_kind != "builtin" {
             cname = None;
@@ -754,8 +687,6 @@ impl NaIRGenPass._build_iter_from_expr(expr: uni.UniNode) -> (tuple | None) {
     return self._make_iter_from_value(val, expr);
 }
 
-# ─── Adapter iterators ───────────────────────────────────────
-"""map(fn, upstream): yield fn(x) for x in upstream."""
 impl NaIRGenPass._make_map_iter(up: tuple, fn: ir.Function) -> (tuple | None) {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
@@ -799,7 +730,6 @@ impl NaIRGenPass._make_map_iter(up: tuple, fn: ir.Function) -> (tuple | None) {
     return (self._make_jac_iter(nfn, st), "adapter", out_type);
 }
 
-"""filter(pred, upstream): yield x for x in upstream if pred(x)."""
 impl NaIRGenPass._make_filter_iter(up: tuple, pred: ir.Function) -> (tuple | None) {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
@@ -850,7 +780,6 @@ impl NaIRGenPass._make_filter_iter(up: tuple, pred: ir.Function) -> (tuple | Non
     return (self._make_jac_iter(nfn, st), up_name, up_type);
 }
 
-"""enumerate(upstream): yield (i, x) tuples with a running index."""
 impl NaIRGenPass._make_enumerate_iter(up: tuple) -> (tuple | None) {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
@@ -906,7 +835,6 @@ impl NaIRGenPass._make_enumerate_iter(up: tuple) -> (tuple | None) {
     return (self._make_jac_iter(nfn, st), "tuple", tuple_type);
 }
 
-"""zip(a, b): yield (a_i, b_i) until either upstream is exhausted."""
 impl NaIRGenPass._make_zip_iter(up_a: tuple, up_b: tuple) -> (tuple | None) {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
@@ -972,8 +900,6 @@ impl NaIRGenPass._make_zip_iter(up_a: tuple, up_b: tuple) -> (tuple | None) {
     return (self._make_jac_iter(nfn, st), "tuple", tuple_type);
 }
 
-# ─── User-defined iterators (#6403 M2) ───────────────────────
-"""Resolve a method function for an archetype, walking its MRO; None if absent."""
 impl NaIRGenPass._resolve_method(
     arch_name: str, method_name: str
 ) -> (ir.Function | None) {
@@ -986,25 +912,11 @@ impl NaIRGenPass._resolve_method(
     return None;
 }
 
-"""Whether an archetype participates in the iterator protocol.
-
-The OR routes both shapes the bridge handles: a self-iterator (has `__next__`,
-used directly) and a re-iterable (has `__iter__`, which yields a separate
-cursor). It is not the Python "is iterable" test — that requires `__iter__`,
-which the type checker already enforces before this pass, so a `__next__`-only
-object never reaches codegen as a for-loop / `iter()` target."""
 impl NaIRGenPass._arch_implements_iter(arch_name: str) -> bool {
     return self._resolve_method(arch_name, "__next__") is not None
     or self._resolve_method(arch_name, "__iter__") is not None;
 }
 
-"""Monomorphic next-fn bridging a user iterator's `__next__` into the protocol.
-Each call advances by invoking the user's `__next__`; a StopIteration raised
-there is the protocol's `i1 0` end-of-iteration (no exception leaks to the
-loop), while any other exception is re-raised to the enclosing handler. The
-StopIteration is caught with a local setjmp handler, so the fn carries the same
-optnone/noinline discipline try/except does (keep allocas off SSA across the
-non-local jump)."""
 impl NaIRGenPass._user_iter_next_fn(
     iter_struct: str, next_method_fn: ir.Function, elem_type: ir.Type
 ) -> ir.Function {
@@ -1019,10 +931,7 @@ impl NaIRGenPass._user_iter_next_fn(
     i32 = ir.IntType(32);
     i1 = ir.IntType(1);
     exc_state_type = self._get_exception_state_type();
-    # The receiver is bitcast to `__next__`'s own declared self-parameter type,
-    # not the concrete iter_struct pointer: when `__next__` is resolved up the
-    # MRO its LLVM signature expects the declaring class's pointer, so coercing
-    # to that (as the standard method-call path does) keeps the call well-typed.
+
     struct_ptr_type = next_method_fn.function_type.args[0];
     state_ptr_type = self.struct_types["UserIterState"].as_pointer();
     nfty = ir.FunctionType(i1, [i8p, i8p]);
@@ -1044,7 +953,7 @@ impl NaIRGenPass._user_iter_next_fn(
         name="usr.obj.i8"
     );
     recv = b.bitcast(obj_i8, struct_ptr_type, name="usr.obj");
-    # Push a local handler and setjmp around the __next__ call.
+
     exc_state = b.alloca(exc_state_type, name="usr.exc.state");
     b.call(self._exc_push_fn, [exc_state]);
     env_ptr = b.gep(
@@ -1054,14 +963,14 @@ impl NaIRGenPass._user_iter_next_fn(
     sj = b.call(self.extern_funcs["setjmp"], [env_i8p], name="usr.sj");
     is_exc = b.icmp_signed("!=", sj, ir.Constant(i32, 0), name="usr.is.exc");
     b.cbranch(is_exc, caught_bb, call_bb);
-    # Normal path: __next__ returned a value.
+
     b.position_at_end(call_bb);
     v = b.call(next_method_fn, [recv], name="usr.v");
     b.call(self._exc_pop_fn, []);
     out_t = b.bitcast(fn.args[1], elem_type.as_pointer(), name="usr.out");
     b.store(v, out_t);
     b.ret(ir.Constant(i1, 1));
-    # Exception path: distinguish StopIteration (end) from a real error.
+
     b.position_at_end(caught_bb);
     b.call(self._exc_pop_fn, []);
     exc_type_ptr = b.gep(
@@ -1086,9 +995,6 @@ impl NaIRGenPass._user_iter_next_fn(
     return fn;
 }
 
-"""Box a user iterator object (owns a +1 ref) into a JacIter over its
-`__next__`. The object is stored as i8* so the generic dtor releases it,
-cascading into the object's own struct destructor."""
 impl NaIRGenPass._make_user_iter(it_obj: ir.Value, iter_struct: str) -> (tuple | None) {
     next_method_fn = self._resolve_method(iter_struct, "__next__");
     if next_method_fn is None {
@@ -1109,12 +1015,6 @@ impl NaIRGenPass._make_user_iter(it_obj: ir.Value, iter_struct: str) -> (tuple |
     return (self._make_jac_iter(next_fn, st), "user", elem_type);
 }
 
-"""Build a JacIter from a user iterable/iterator object (#6403 M2).
-If the object is already an iterator (has __next__) it is its own iterator
-(Python's `iter(it) is it`); otherwise `__iter__()` produces a fresh one. Every
-function returns an owned (+1) pointer, so `__iter__`'s result needs no retain;
-a borrowed self-iterator does (the JacIter releases it at end of life). The
-iterable temporary is released once its separate iterator is in hand."""
 impl NaIRGenPass._make_user_iter_from_obj(
     obj_val: ir.Value, struct_name: str, expr: uni.UniNode
 ) -> (tuple | None) {
@@ -1133,12 +1033,7 @@ impl NaIRGenPass._make_user_iter_from_obj(
     }
     it_obj = self.builder.call(iter_fn, [obj_val], name="usr.iter");
     self._mark_owned(it_obj);
-    # Build the iterator BEFORE releasing the source, so a non-drivable
-    # `__iter__` result (e.g. one returning a builtin Iterator[T] box rather
-    # than a user iterator object, which `_infer_type_name`/`_make_user_iter`
-    # can't resolve a `__next__` for) bails with no partial side effects:
-    # release the owned `__iter__` result and leave `obj_val` for the caller's
-    # fall-through path.
+
     iter_struct = self._infer_type_name(it_obj);
     built = self._make_user_iter(it_obj, iter_struct)
         if iter_struct is not None
@@ -1147,21 +1042,13 @@ impl NaIRGenPass._make_user_iter_from_obj(
         self._emit_rc_release_simple(it_obj, op="user_iter_unresolved");
         return None;
     }
-    # The separate iterator is in hand, so drop the iterable temporary if owned.
+
     if self._is_owned(obj_val) {
         self._emit_rc_release_simple(obj_val, op="user_iter_src");
     }
     return built;
 }
 
-# ─── First-class next() ──────────────────────────────────────
-"""Lower `next(it)`: pull one element from a first-class iterator value.
-
-The element type comes from the checker's `Iterator[T]` (`_iter_elem_llvm_of`)
-so the out-slot is typed exactly. Exhaustion (`has_value == 0`) raises
-StopIteration — the for-loop drive uses the raw flag instead and never pays
-for the check, but the user-facing `next()` honors the Python contract.
-"""
 impl NaIRGenPass._codegen_next(nd: uni.FuncCall) -> (ir.Value | None) {
     params = nd.params or [];
     if len(params) != 1 {
@@ -1188,27 +1075,16 @@ impl NaIRGenPass._codegen_next(nd: uni.FuncCall) -> (ir.Value | None) {
     return self.builder.load(out_slot, name="next.val");
 }
 
-# ─── Generalized for-loop drive ──────────────────────────────
-"""Drive `for x in <iterator-producing expr>` via the protocol.
-
-Returns True if it handled the loop_bb (collection is map/filter/enumerate/zip/
-iter). Container collections (plain list/str/dict/range) fall through to the
-existing fast paths.
-"""
 impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     coll = nd.collection;
     self._ensure_iter_types();
-    # A map/filter/enumerate/zip/iter call builds a fresh (owned) iterator the
-    # loop must release at the end. A user-defined function named map/filter/...
-    # shadows the builtin; the checker-stamped classification (Phase 4 fact)
-    # decides, so the protocol only claims genuine builtin adapter calls.
+
     is_adapter_call = (
         isinstance(coll, uni.FuncCall)
         and self._get_name(coll.target) in ["map", "filter", "enumerate", "zip", "iter"]
         and coll.call_kind == "builtin"
     );
-    # A user-defined object implementing __iter__/__next__ is bridged into a
-    # fresh (owned) JacIter, driven exactly like a builtin iterator (#6403 M2).
+
     _ustruct = self._struct_name_of(coll) if not is_adapter_call else None;
     is_user_iterable = _ustruct is not None and self._arch_implements_iter(_ustruct);
     built: (tuple | None) = None;
@@ -1217,11 +1093,6 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         built = self._build_iter_from_expr(coll);
         owns_iter = True;
     } else {
-        # A first-class iterator value (`it: Iterator[T]`); #6403 phase 2.
-        # A borrowed binding (`for x in it`) stays owned by its variable and is
-        # released at that variable's end of life, so the loop must NOT release
-        # it. An owned temporary (`for x in gen()`, an iterator returned from a
-        # call) has no other owner — the loop is responsible for releasing it.
         elem_t = self._iter_elem_llvm_of(coll);
         if elem_t is not None {
             iv = self._codegen_expr(coll);
@@ -1239,7 +1110,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     i8p = ir.IntType(8).as_pointer();
     _loc = "iter_for";
     is_tuple_target = isinstance(nd.target, uni.TupleVal);
-    # Element slot the next-fn writes into.
+
     elem_slot = self._entry_alloca(elem_type, "iter.elem");
     a0: (ir.Value | None) = None;
     a1: (ir.Value | None) = None;
@@ -1278,8 +1149,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     }
     import from jaclang.compiler.ownership { loop_body_locals }
     _saved = loop_body_locals(nd.body if isinstance(nd.body, (list, tuple)) else None);
-    # Exclude enclosing-scope vars mutated in the body (misbinding guard, #6943
-    # NA-2): their storage predates the body, so they are not per-iteration locals.
+
     _iter_prebody = set(self.local_vars.keys());
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
@@ -1297,8 +1167,7 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
     }
     self.loop_stack.pop();
     self.builder.position_at_end(end_bb);
-    # Only release iterators this loop created; a stored iterator stays owned
-    # by its variable and is released at that variable's end of life.
+
     if owns_iter {
         self._emit_rc_release_simple(iter_val, op="iter_end", loc=_loc);
     }

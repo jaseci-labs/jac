@@ -1,12 +1,7 @@
-"""Implementations for LSP server infrastructure."""
-
 import dataclasses;
 import from enum { Enum }
 import from typing { get_type_hints, get_origin, get_args, Union }
 
-# ===========================================================================
-# Serialization helpers
-# ===========================================================================
 impl _to_camel_case(name: str) -> str {
     parts = name.split("_");
     tail = "".join([p.capitalize() for p in parts[1:]]);
@@ -24,7 +19,6 @@ impl _to_snake_case(name: str) -> str {
     return "".join(result);
 }
 
-"""Recursively convert an LSP object to a JSON-compatible dict."""
 impl to_dict(`obj: any) -> any {
     if `obj is None {
         return None;
@@ -41,7 +35,7 @@ impl to_dict(`obj: any) -> any {
     if isinstance(`obj, dict) {
         return {k: to_dict(v) for (k, v) in `obj.items()};
     }
-    # Object with __dict__ (Jac objs, dataclasses, etc.)
+
     if hasattr(`obj, "__dict__") {
         result: dict = {};
         for (key, value) in vars(`obj).items() {
@@ -59,7 +53,6 @@ impl to_dict(`obj: any) -> any {
     return `obj;
 }
 
-"""Recursively construct an LSP object from a JSON dict."""
 impl from_dict(data: any, cls: any) -> any {
     if data is None {
         return None;
@@ -70,11 +63,11 @@ impl from_dict(data: any, cls: any) -> any {
     if isinstance(cls, type) and issubclass(cls, Enum) {
         return cls(data);
     }
-    # Handle typing.Optional / Union
+
     origin = get_origin(cls);
     if origin is Union {
         args = get_args(cls);
-        # Optional[X] = Union[X, None]
+
         non_none = [
             a
             for a in args
@@ -83,7 +76,7 @@ impl from_dict(data: any, cls: any) -> any {
         if data is None {
             return None;
         }
-        # For content change events: if dict has "range" key, it's Type1
+
         if (
             TextDocumentContentChangeEvent_Type1 in args
             and TextDocumentContentChangeEvent in args
@@ -105,12 +98,12 @@ impl from_dict(data: any, cls: any) -> any {
     if not isinstance(data, dict) {
         return data;
     }
-    # Convert camelCase dict → snake_case and construct the obj
+
     snake_data: dict = {};
     for (key, value) in data.items() {
         snake_data[_to_snake_case(key)] = value;
     }
-    # Get constructor hints
+
     try {
         hints = get_type_hints(cls);
     } except Exception {
@@ -132,9 +125,6 @@ impl from_dict(data: any, cls: any) -> any {
     }
 }
 
-# ===========================================================================
-# PositionCodec
-# ===========================================================================
 impl PositionCodec.utf16_unit_offset(chars: str) -> int {
     return sum(
         1
@@ -193,17 +183,6 @@ impl PositionCodec.position_from_client_units(
     return Position(line=position.line, character=utf32_index);
 }
 
-impl PositionCodec.position_to_client_units(
-    lines: list[str], position: Position
-) -> Position {
-    try {
-        character = self.client_num_units(lines[position.line][:position.character]);
-        return Position(line=position.line, character=character);
-    } except IndexError {
-        return Position(line=len(lines), character=0);
-    }
-}
-
 impl PositionCodec.range_from_client_units(lines: list[str], range: Range) -> Range {
     return Range(
         start=self.position_from_client_units(lines, range.start),
@@ -211,16 +190,6 @@ impl PositionCodec.range_from_client_units(lines: list[str], range: Range) -> Ra
     );
 }
 
-impl PositionCodec.range_to_client_units(lines: list[str], range: Range) -> Range {
-    return Range(
-        start=self.position_to_client_units(lines, range.start),
-        end=self.position_to_client_units(lines, range.end)
-    );
-}
-
-# ===========================================================================
-# TextDocument
-# ===========================================================================
 impl TextDocument.postinit -> None {
     self.path = uris.to_fs_path(self.uri) or self.uri;
     self._position_codec = PositionCodec();
@@ -243,7 +212,6 @@ impl TextDocument.apply_change(change: any) -> None {
     if isinstance(change, TextDocumentContentChangeEvent_Type1) {
         self._apply_incremental_change(change);
     } elif isinstance(change, dict) and "range" in change {
-        # Dict form — convert to Type1
         range_data = change["range"];
         range_obj = Range(
             start=Position(
@@ -307,9 +275,6 @@ impl TextDocument._apply_full_change(change: any) -> None {
     }
 }
 
-# ===========================================================================
-# Workspace
-# ===========================================================================
 impl Workspace.postinit -> None {
     self._position_codec = PositionCodec();
     if self.root_uri is not None {
@@ -347,9 +312,6 @@ impl Workspace.remove_text_document(doc_uri: str) -> None {
     self._text_documents.pop(doc_uri, None);
 }
 
-# ===========================================================================
-# LanguageServer
-# ===========================================================================
 impl LanguageServer.postinit -> None {
     self._write_lock = threading.Lock();
 }
@@ -365,7 +327,6 @@ impl LanguageServer.lsp.getter -> LanguageServer {
     return self;
 }
 
-"""Register an LSP feature handler. Returns a decorator."""
 impl LanguageServer.feature(method: str, options: any = None) -> Callable {
     def decorator(func: Callable) -> Callable {
         self._features[method] = func;
@@ -377,7 +338,6 @@ impl LanguageServer.feature(method: str, options: any = None) -> Callable {
     return decorator;
 }
 
-"""Start the language server reading from stdin and writing to stdout."""
 impl LanguageServer.start_io -> None {
     stdin = sys.stdin.buffer;
     self._transport_writer = sys.stdout.buffer;
@@ -393,7 +353,6 @@ impl LanguageServer.start_io -> None {
             msg_id = msg.get("id");
             params = msg.get("params", {});
 
-            # Built-in lifecycle handlers
             if method == INITIALIZE {
                 result = self._handle_initialize(params);
                 self._send_response(msg_id, result);
@@ -412,7 +371,6 @@ impl LanguageServer.start_io -> None {
                 break;
             }
 
-            # Built-in text document sync
             if method == TEXT_DOCUMENT_DID_OPEN {
                 typed_params = from_dict(params, DidOpenTextDocumentParams);
                 self.workspace.put_text_document(typed_params.text_document);
@@ -428,17 +386,14 @@ impl LanguageServer.start_io -> None {
                 self.workspace.remove_text_document(typed_params.text_document.uri);
             }
 
-            # User-registered feature handler
             handler = self._features.get(method);
             if handler is None {
                 if msg_id is not None {
-                    # Unknown request — send empty response
                     self._send_response(msg_id, None);
                 }
                 continue;
             }
 
-            # Deserialize params to typed object
             param_cls = METHOD_TO_PARAMS.get(method);
             if param_cls is not None {
                 typed_params = from_dict(params, param_cls);
@@ -446,9 +401,8 @@ impl LanguageServer.start_io -> None {
                 typed_params = params;
             }
 
-            # Call handler (sync or async)
             try {
-                import inspect;  # 3.14: asyncio.iscoroutinefunction deprecated
+                import inspect;
                 if inspect.iscoroutinefunction(handler) {
                     result = loop.run_until_complete(handler(self, typed_params));
                 } else {
@@ -462,7 +416,6 @@ impl LanguageServer.start_io -> None {
                 continue;
             }
 
-            # Send response for requests (not notifications)
             if msg_id is not None {
                 self._send_response(msg_id, result);
             }
@@ -472,7 +425,6 @@ impl LanguageServer.start_io -> None {
     }
 }
 
-"""Publish diagnostics to the client."""
 impl LanguageServer.publish_diagnostics(uri: str, diagnostics: list) -> None {
     self._send_notification(
         TEXT_DOCUMENT_PUBLISH_DIAGNOSTICS,
@@ -480,7 +432,6 @@ impl LanguageServer.publish_diagnostics(uri: str, diagnostics: list) -> None {
     );
 }
 
-"""Show a message popup to the user."""
 impl LanguageServer.show_message(message: str, msg_type: any = None) -> None {
     self._send_notification(
         WINDOW_SHOW_MESSAGE,
@@ -488,7 +439,6 @@ impl LanguageServer.show_message(message: str, msg_type: any = None) -> None {
     );
 }
 
-"""Log a message to the output channel."""
 impl LanguageServer.show_message_log(message: str, msg_type: any = None) -> None {
     self._send_notification(
         WINDOW_LOG_MESSAGE,
@@ -496,7 +446,6 @@ impl LanguageServer.show_message_log(message: str, msg_type: any = None) -> None
     );
 }
 
-"""Send a request to the client (fire-and-forget)."""
 impl LanguageServer.send_request(method: str, params: any = None) -> None {
     if self._transport_writer is None {
         return;
@@ -509,14 +458,10 @@ impl LanguageServer.send_request(method: str, params: any = None) -> None {
     self._write_message(body);
 }
 
-"""Graceful shutdown — override in subclass for cleanup."""
 impl LanguageServer.shutdown -> None {
     self._shutdown_flag = True;
 }
 
-# ---------------------------------------------------------------------------
-# Internal transport
-# ---------------------------------------------------------------------------
 impl LanguageServer._send_notification(method: str, params: any) -> None {
     body: dict = {"jsonrpc": "2.0", "method": method, "params": params};
     self._write_message(body);
@@ -539,22 +484,21 @@ impl LanguageServer._write_message(body: dict) -> None {
             self._transport_writer.write(content);
             self._transport_writer.flush();
         } except (BrokenPipeError, OSError) {
-            ;  # Client disconnected
+            ;
         }
     }
 }
 
 impl LanguageServer._read_message(stream: any) -> Optional[dict] {
-    # Read headers
     content_length = -1;
     while True {
         line = stream.readline();
         if not line {
-            return None;  # EOF
+            return None;
         }
         line_str = line.decode("ascii").strip();
         if not line_str {
-            break;  # Empty line = end of headers
+            break;
         }
         m = RE_CONTENT_LENGTH.match(line_str);
         if m {
@@ -564,7 +508,7 @@ impl LanguageServer._read_message(stream: any) -> Optional[dict] {
     if content_length < 0 {
         return None;
     }
-    # Read body
+
     body = stream.read(content_length);
     if not body {
         return None;
@@ -573,18 +517,15 @@ impl LanguageServer._read_message(stream: any) -> Optional[dict] {
 }
 
 impl LanguageServer._dispatch(msg: dict) -> None {
-    ;  # Dispatch handled inline in start_io for simplicity
+    ;
 }
 
-"""Handle the initialize request and return capabilities."""
 impl LanguageServer._handle_initialize(params: dict) -> dict {
-    # Set up workspace from client-provided root URI
     root_uri = params.get("rootUri") or params.get("rootPath");
     self._workspace = Workspace(root_uri=root_uri);
     return {"capabilities": self._build_capabilities()};
 }
 
-"""Build ServerCapabilities from registered features."""
 impl LanguageServer._build_capabilities -> dict {
     caps: dict = {
         "textDocumentSync": {
@@ -608,7 +549,7 @@ impl LanguageServer._build_capabilities -> dict {
             options = self._feature_options.get(method);
             if options is not None {
                 caps[cap_key] = to_dict(options);
-                # semanticTokensProvider needs special structure
+
                 if cap_key == "semanticTokensProvider" {
                     opts = to_dict(options);
                     caps[cap_key] = {"legend": opts, "full": True};
@@ -618,7 +559,7 @@ impl LanguageServer._build_capabilities -> dict {
             }
         }
     }
-    # Workspace file operations
+
     file_ops: dict = {};
     file_op_map: dict = {
         "workspace/didCreateFiles": "didCreate",

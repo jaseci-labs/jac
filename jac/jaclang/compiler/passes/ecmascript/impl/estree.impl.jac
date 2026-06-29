@@ -1,5 +1,3 @@
-"""Convert an ESTree node to a dictionary representation."""
-
 impl es_node_to_dict(nd: Node) -> dict[str, any] {
     result: dict[(str, Any)] = {'type': nd.type};
     for (key, value) in nd.__dict__.items() {

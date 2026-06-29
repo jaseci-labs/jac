@@ -129,8 +129,8 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         return {"id": jid(task), "title": task.title, "done": task.done};
         ```
 
-    ??? question "`jac create --use client` fails or asks about Bun."
-        The `--use client` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically. You can also install it manually: `curl -fsSL https://bun.sh/install | bash`.
+    ??? question "`jac create --use web-static` fails or asks about Bun."
+        The `--use web-static` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically. You can also install it manually: `curl -fsSL https://bun.sh/install | bash`.
 
 ??? "Debugging & Support"
 

@@ -18,7 +18,7 @@ In this tutorial, you'll set up a full-stack project, understand the file struct
 ## Create a Project
 
 ```bash
-jac create --use client myapp
+jac create --use web-static myapp
 cd myapp
 ```
 

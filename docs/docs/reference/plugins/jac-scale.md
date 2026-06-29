@@ -17,6 +17,9 @@ jac install jac-scale
 # Add MongoDB + Redis for persistent storage and distributed cache
 jac install 'jac-scale[data]'
 
+# Add Firestore / Firebase document-store support for kvstore()
+pip install jac-scale[firebase]
+
 # Add Prometheus metrics and observability
 jac install 'jac-scale[monitoring]'
 
@@ -46,6 +49,7 @@ jac plugins enable scale
 |-------|-------------|-----------------|
 | _(core)_ | FastAPI, uvicorn, JWT auth, CLI | Always included |
 | `[data]` | pymongo, redis | Using MongoDB/Redis for storage (`jac start` with database config) |
+| `[firebase]` | google-cloud-firestore | Using Firestore with `kvstore(db_type='firestore')` |
 | `[aws]` | boto3 | Using S3-compatible cloud storage |
 | `[monitoring]` | prometheus-client | Prometheus `/metrics` endpoint |
 | `[scheduler]` | apscheduler | `@schedule(trigger=...)` on walkers/functions |
@@ -967,7 +971,7 @@ Errors: `400 INVALID_TOKEN`.
 
 ## Emailer
 
-jac-scale's `Emailer` is a thin abstraction (`jac_scale.abstractions.emailer.Emailer`) used by the framework to send verification and password-reset emails. It ships with a built-in SMTP implementation and accepts any user-supplied subclass via `jac.toml` -- no jac-scale code changes required.
+jac-scale's `Emailer` is a thin abstraction (`jac_scale.emailer.emailer.Emailer`) used by the framework to send verification and password-reset emails. It ships with a built-in SMTP implementation and accepts any user-supplied subclass via `jac.toml` -- no jac-scale code changes required.
 
 ### Configuration
 
@@ -1025,7 +1029,7 @@ Subclass `Emailer` and point `provider` at your class. The factory imports it dy
 
 ```python
 # myapp/email.py
-from jac_scale.abstractions.emailer import Emailer
+from jac_scale.emailer.emailer import Emailer
 import os, sendgrid
 
 class SendGridEmailer(Emailer):
@@ -1109,7 +1113,7 @@ Use this when you want SendGrid's REST API instead of SMTP (better deliverabilit
 
 ```python
 # myapp/email.py
-from jac_scale.abstractions.emailer import Emailer
+from jac_scale.emailer.emailer import Emailer
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 import os, logging
@@ -1977,7 +1981,7 @@ Configuration priority: environment variables > `jac.toml` > defaults.
 For advanced use cases, you can use `StorageFactory` directly instead of the `store()` builtin:
 
 ```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
+import from jac_scale.storage.factory { StorageFactory }
 
 # Create with explicit type and config
 glob config = {"base_path": "./my-files", "create_dirs": True};
@@ -2043,18 +2047,37 @@ walker async_processor {
 
 ## Direct Database Access (kvstore)
 
-Direct database operations without graph layer abstraction. Supports MongoDB (document queries) and Redis (key-value with TTL/atomic ops).
+Direct database operations without graph layer abstraction. Supports MongoDB (document queries), Firestore (Firebase-style document CRUD), and Redis (key-value with TTL/atomic ops).
 
 ```jac
-import from jac_scale.lib { kvstore }
+import from jac_scale.persistence.lib { kvstore }
 
 with entry {
     mongo_db = kvstore(db_name='my_app', db_type='mongodb');
+    firestore_db = kvstore(db_name='my_app', db_type='firestore');
     redis_db = kvstore(db_name='cache', db_type='redis');
 }
 ```
 
-**Parameters:** `db_name` (str), `db_type` ('mongodb'|'redis'), `uri` (str|None - priority: explicit → `MONGODB_URI`/`REDIS_URL` env vars → jac.toml)
+**Parameters:** `db_name` (str), `db_type` ('mongodb'|'firestore'|'redis'), `uri` (str|None - priority: explicit → env vars → jac.toml)
+
+### Firestore Configuration
+
+```toml
+[plugins.scale.database]
+type = "firestore"
+project_id = "my-firebase-project"
+```
+
+Or via environment variable:
+
+```bash
+export FIREBASE_PROJECT_ID="my-firebase-project"
+# Subsystem override (optional):
+# export FIRESTORE_PROJECT_ID="my-firebase-project"
+```
+
+`FIREBASE_PROJECT_ID` is the shared fallback for Auth SSO, Firestore, and Storage. Subsystem-specific vars override it when set.
 
 ---
 
@@ -2066,7 +2089,7 @@ with entry {
 **Example:**
 
 ```jac
-import from jac_scale.lib { kvstore }
+import from jac_scale.persistence.lib { kvstore }
 
 with entry {
     db = kvstore(db_name='my_app', db_type='mongodb');
@@ -2101,6 +2124,42 @@ with entry{
 
 ---
 
+## Firestore Operations
+
+**Common Methods:** `get()`, `set()`, `delete()`, `exists()`
+**Query Methods:** `find_one()`, `find()`, `insert_one()`, `insert_many()`, `update_one()`, `update_many()`, `delete_one()`, `delete_many()`, `find_by_id()`, `update_by_id()`, `delete_by_id()`
+
+**Example:**
+
+```jac
+import from jac_scale.lib { kvstore }
+
+with entry {
+    db = kvstore(db_name='my_app', db_type='firestore');
+
+    db.insert_one('users', {'name': 'Alice', 'role': 'admin', 'age': 30});
+    db.insert_one('users', {'name': 'Bob', 'role': 'user', 'age': 25});
+
+    alice = db.find_one('users', {'name': 'Alice'});
+    admins = list(db.find('users', {'role': 'admin'}));
+    older = list(db.find('users', {'age': {'$gte': 25}}));
+
+    todo = db.insert_one('todos', {'title': 'Buy milk', 'done': False});
+    db.update_by_id('todos', todo.inserted_id, {'$set': {'done': True}});
+    done_todos = list(db.find('todos', {'done': True}));
+}
+```
+
+**Supported filter operators:** `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$and`
+
+**Notes:**
+
+- Firestore collections are namespaced internally as `{db_name}__{col_name}`.
+- Querying by `_id` inside `find()` / `find_one()` is not supported; use `get()`, `find_by_id()`, `update_by_id()`, or `delete_by_id()`.
+- `find_nodes()` is intentionally not available for Firestore; Jac graph persistence remains on SQLite / MongoDB.
+
+---
+
 ## Redis Operations
 
 **Common Methods:** `get()`, `set()`, `delete()`, `exists()`
@@ -2109,7 +2168,7 @@ with entry{
 **Example:**
 
 ```jac
-import from jac_scale.lib { kvstore }
+import from jac_scale.persistence.lib { kvstore }
 
 with entry {
     cache = kvstore(db_name='cache', db_type='redis');
@@ -2150,7 +2209,7 @@ Pair `delete_if_equals` with `set_nx_with_ttl` and a unique fence token: a slow 
 import os;
 import time;
 import from uuid { uuid4 }
-import from jac_scale.lib { kvstore }
+import from jac_scale.persistence.lib { kvstore }
 
 glob _kv = kvstore(db_name='myapp', db_type='redis');
 

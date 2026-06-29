@@ -22,7 +22,7 @@ packages = ["jac_scale*"]
 [project.include.data]
 jac_scale = [
    "templates/**/*.html",
-   "providers/**/*.template",
+   "deploy/**/*.template",
    "admin/_dist/*",
    "admin/_dist/**/*",
 ]
@@ -48,6 +48,11 @@ redis = ">=7.1.0,<8.0.0"
 
 [optional-dependencies.monitoring]
 prometheus-client = ">=0.21.0,<1.0.0"
+
+[optional-dependencies.firebase]
+google-cloud-firestore = ">=2.21.0,<3.0.0"
+google-cloud-storage = ">=2.19.0,<3.0.0"
+firebase-admin = ">=6.0.0,<8.0.0"
 
 # O-02 distributed tracing. App-side OpenTelemetry SDK + OTLP/HTTP
 # exporter to the Alloy collector (M-14.a DaemonSet doubles as an OTel
@@ -75,7 +80,7 @@ docker = ">=7.1.0,<8.0.0"
 boto3 = ">=1.40.0"
 
 [optional-dependencies.all]
-"jac-scale[data,monitoring,tracing,scheduler,deploy,aws]" = "*"
+"jac-scale[data,monitoring,tracing,scheduler,deploy,aws,firebase]" = "*"
 
 [optional-dependencies.test]
 "jac-scale[all]" = "*"
@@ -85,4 +90,4 @@ requests = "*"
 
 [entrypoints.jac]
 scale = "jac_scale.plugin:JacCmd"
-scale_plugin_config = "jac_scale.plugin_config:JacScalePluginConfig"
+scale_plugin_config = "jac_scale.config.plugin_config:JacScalePluginConfig"

@@ -21,8 +21,14 @@ from types import ModuleType
 def _find_project_toml() -> str | None:
     """Walk up from the cwd to the nearest ``jac.toml``; return its path or None.
 
-    Shared by ``add_project_venv_to_path`` and ``apply_dev_source_override`` so
-    both anchor on the same project root. Plain Python, never fatal.
+    Deliberate plain-Python MIRROR of the single canonical resolver
+    ``jaclang.jac0core.helpers.find_project_root``. It cannot import that one
+    because this module runs during ``sitecustomize``/launcher boot, BEFORE
+    ``import jaclang`` is possible -- it is what sets jaclang up. Keep the walk
+    semantics (nearest jac.toml, cwd-anchored at boot) in lockstep with the
+    canonical function. Shared by ``add_project_venv_to_path`` and
+    ``apply_dev_source_override`` so both anchor on the same project root. Plain
+    Python, never fatal.
     """
     directory = os.getcwd()
     while True:
