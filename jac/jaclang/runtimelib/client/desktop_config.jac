@@ -1,20 +1,12 @@
-"""Configuration loader for jac-desktop.
-
-Loads from jac.toml under [plugins.desktop], inheriting PluginConfigBase like
-jac-scale and jac-client. Provides the app identity + window geometry the native
-desktop target bakes into the generated host.
-"""
 import from pathlib { Path }
 import from jaclang.project.plugin_config { PluginConfigBase }
 
-"""Desktop app identity (name, identifier, version)."""
 obj DesktopIdentity {
     has name: str,
         identifier: str,
         version: str;
 }
 
-"""Main window geometry from [plugins.desktop.window]."""
 obj WindowConfig {
     has title: str,
         width: int = 1200,
@@ -38,7 +30,6 @@ obj WindowConfig {
     }
 }
 
-"""In-process `sv` dispatch tuning from [plugins.desktop.dispatch] (issue #6596)."""
 obj DispatchConfig {
     has timeout_s: float = 30.0,
         max_queue: int = 128,
@@ -53,7 +44,6 @@ obj DispatchConfig {
     }
 }
 
-"""Default [plugins.desktop] values before merging user jac.toml."""
 obj DesktopDefaultConfig {
     has name: str,
         identifier: str,
@@ -78,7 +68,6 @@ obj DesktopDefaultConfig {
     }
 }
 
-"""Desktop plugin configuration loader."""
 class JacDesktopConfig(PluginConfigBase) {
     override def get_plugin_name(self: JacDesktopConfig) -> str;
     override def get_default_config(self: JacDesktopConfig) -> dict[str, any];
@@ -92,8 +81,6 @@ class JacDesktopConfig(PluginConfigBase) {
 
 glob _desktop_config_instance: JacDesktopConfig | None = None;
 
-"""Get or create the desktop config singleton."""
 def get_desktop_config(project_dir: Path | None = None) -> JacDesktopConfig;
 
-"""Reset cached desktop config (for tests)."""
 def reset_desktop_config -> None;

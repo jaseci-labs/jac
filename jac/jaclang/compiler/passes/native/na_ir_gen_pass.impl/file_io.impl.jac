@@ -1,20 +1,3 @@
-"""File I/O codegen: File / BinaryFile structs, open() builtin, and methods.
-
-A file object is a built-in archetype with:
-  [0] i8*  handle   — FILE* from fopen
-  [1] i8*  path     — file path string
-  [2] i8*  mode     — mode string ("r", "wb", etc.)
-  [3] i1   closed   — closed flag
-
-`open(path, "r")` returns a text `File` whose read()/readline() yield `str`;
-`open(path, "rb")` returns a `BinaryFile` whose read()/readline() yield a
-length-aware `bytes` value (#6404). The two share this struct layout and all
-the method logic — only the read/write payload type differs — so the helper
-emitter is parameterized over (struct_name, binary).
-"""
-
-# ─── File Struct Types ───────────────────────────────────────
-"""Get or create the text File struct type and register field indices."""
 impl NaIRGenPass._get_file_struct_type -> ir.Type {
     if self._file_struct_type is not None {
         return self._file_struct_type;
@@ -23,7 +6,6 @@ impl NaIRGenPass._get_file_struct_type -> ir.Type {
     return self._file_struct_type;
 }
 
-"""Get or create the BinaryFile struct type (same layout as File)."""
 impl NaIRGenPass._get_binary_file_struct_type -> ir.Type {
     if self._binary_file_struct_type is not None {
         return self._binary_file_struct_type;
@@ -32,8 +14,6 @@ impl NaIRGenPass._get_binary_file_struct_type -> ir.Type {
     return self._binary_file_struct_type;
 }
 
-"""Register a { i8* handle, i8* path, i8* mode, i1 closed } struct under `name`
-and record its field indices/types so method/field access resolve."""
 impl NaIRGenPass._register_file_like_struct(name: str) -> ir.Type {
     i8p = ir.IntType(8).as_pointer();
     i1 = ir.IntType(1);
@@ -51,8 +31,6 @@ impl NaIRGenPass._register_file_like_struct(name: str) -> ir.Type {
     return st;
 }
 
-# ─── File Helper Functions ───────────────────────────────────
-"""Emit all text File method functions as LLVM IR (once)."""
 impl NaIRGenPass._emit_file_helpers -> None {
     if self._file_helpers_emitted {
         return;
@@ -61,7 +39,6 @@ impl NaIRGenPass._emit_file_helpers -> None {
     self._emit_file_like_helpers("File", self._get_file_struct_type(), binary=False);
 }
 
-"""Emit all BinaryFile method functions as LLVM IR (once)."""
 impl NaIRGenPass._emit_binary_file_helpers -> None {
     if self._binary_file_helpers_emitted {
         return;
@@ -72,9 +49,6 @@ impl NaIRGenPass._emit_binary_file_helpers -> None {
     );
 }
 
-"""Emit read/readline/write/close/flush/__enter__/__exit__ for a file-like
-struct. When `binary`, read()/readline() return length-aware bytes and write()
-takes bytes; otherwise they use NUL-terminated str (i8*)."""
 impl NaIRGenPass._emit_file_like_helpers(
     struct_name: str, struct_type: ir.Type, binary: bool
 ) -> None {
@@ -98,9 +72,9 @@ impl NaIRGenPass._emit_file_like_helpers(
     rc_alloc_fn = self.rc_alloc_fn;
     bt = self._get_bytes_struct_type();
     bytes_ptr_type = bt.as_pointer();
-    # read() return type: bytes for binary, str (i8*) for text.
+
     read_ret = bytes_ptr_type if binary else i8p;
-    # ── read(): read the entire file ──
+
     read_fnty = ir.FunctionType(read_ret, [file_ptr_type]);
     read_fn = ir.Function(self.llvm_module, read_fnty, name=f"{struct_name}.read");
     read_fn.linkage = "private";
@@ -110,11 +84,10 @@ impl NaIRGenPass._emit_file_like_helpers(
     self_arg = read_fn.args[0];
     handle_ptr = b.gep(self_arg, [z32, z32], name="handle.ptr");
     handle = b.load(handle_ptr, name="handle");
-    b.call(fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 2)]);  # SEEK_END
+    b.call(fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 2)]);
     file_size = b.call(ftell_fn, [handle], name="file.size");
-    b.call(fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 0)]);  # SEEK_SET
+    b.call(fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 0)]);
     if binary {
-        # bytes value: { i64 len, [size x i8] } in one rc block; len is exact.
         total = b.add(file_size, ir.Constant(i64, 8), name="rd.total");
         raw = b.call(rc_alloc_fn, [total], name="rd.raw");
         self._emit_set_type_tag(b, raw, "bytes");
@@ -138,7 +111,7 @@ impl NaIRGenPass._emit_file_like_helpers(
         b.store(ir.Constant(i8, 0), null_pos);
         b.ret(buffer);
     }
-    # ── write(data) -> int ──
+
     write_arg = bytes_ptr_type if binary else i8p;
     write_fnty = ir.FunctionType(i64, [file_ptr_type, write_arg]);
     write_fn = ir.Function(self.llvm_module, write_fnty, name=f"{struct_name}.write");
@@ -164,7 +137,7 @@ impl NaIRGenPass._emit_file_like_helpers(
         fwrite_fn, [src_ptr, ir.Constant(i64, 1), data_len, handle], name="written"
     );
     b.ret(written);
-    # ── readline() -> str/bytes (one line) ──
+
     readline_fnty = ir.FunctionType(read_ret, [file_ptr_type]);
     readline_fn = ir.Function(
         self.llvm_module, readline_fnty, name=f"{struct_name}.readline"
@@ -179,10 +152,6 @@ impl NaIRGenPass._emit_file_like_helpers(
     handle_ptr = b.gep(self_arg, [z32, z32], name="handle.ptr");
     handle = b.load(handle_ptr, name="handle");
     if binary {
-        # getdelim returns the exact byte count (incl. the newline, excl. the
-        # trailing NUL it appends), so embedded NULs in the line survive —
-        # strlen/fgets would truncate at the first NUL. It mallocs *lineptr,
-        # which we copy out of and free.
         null_i8p = ir.Constant(i8p, None);
         n_slot = b.alloca(i64, name="rl.n");
         b.store(ir.Constant(i64, 0), n_slot);
@@ -199,7 +168,7 @@ impl NaIRGenPass._emit_file_like_helpers(
         );
         is_eof = b.icmp_signed("<", count, ir.Constant(i64, 0), name="rl.eof");
         b.cbranch(is_eof, eof_bb, ok_bb);
-        # EOF: free the (possibly allocated) buffer, return empty bytes.
+
         b.position_at_end(eof_bb);
         b.call(free_fn2, [b.load(lp_slot, name="rl.lp.eof")]);
         e_raw = b.call(rc_alloc_fn, [ir.Constant(i64, 8)], name="rl.eof.raw");
@@ -207,7 +176,7 @@ impl NaIRGenPass._emit_file_like_helpers(
         e_bv = b.bitcast(e_raw, bytes_ptr_type, name="rl.eof.bytes");
         b.store(ir.Constant(i64, 0), b.gep(e_bv, [z32, z32], name="rl.eof.len"));
         b.ret(e_bv);
-        # OK: copy `count` bytes into a fresh bytes value, free the buffer.
+
         b.position_at_end(ok_bb);
         lp = b.load(lp_slot, name="rl.lp.ok");
         rl_total = b.add(count, ir.Constant(i64, 8), name="rl.total");
@@ -230,13 +199,11 @@ impl NaIRGenPass._emit_file_like_helpers(
         );
         is_eof = b.icmp_signed("==", result, ir.Constant(i8p, None), name="is.eof");
         b.cbranch(is_eof, eof_bb, ok_bb);
-        # EOF: empty str.
         b.position_at_end(eof_bb);
         empty = b.call(rc_alloc_fn, [ir.Constant(i64, 1)], name="empty.str");
         self._emit_set_type_tag(b, empty, "str");
         b.store(ir.Constant(i8, 0), empty);
         b.ret(empty);
-        # OK: copy the line (with its NUL terminator).
         b.position_at_end(ok_bb);
         slen = b.call(strlen_fn, [buf_ptr], name="line.len");
         alloc_size = b.add(slen, ir.Constant(i64, 1), name="alloc.size");
@@ -245,7 +212,7 @@ impl NaIRGenPass._emit_file_like_helpers(
         b.call(memcpy_fn, [line_str, buf_ptr, alloc_size]);
         b.ret(line_str);
     }
-    # ── close() ──
+
     close_fnty = ir.FunctionType(ir.VoidType(), [file_ptr_type]);
     close_fn = ir.Function(self.llvm_module, close_fnty, name=f"{struct_name}.close");
     close_fn.linkage = "private";
@@ -266,7 +233,7 @@ impl NaIRGenPass._emit_file_like_helpers(
     b.call(fclose_fn, [handle]);
     b.store(ir.Constant(i1, 1), closed_ptr);
     b.ret_void();
-    # ── flush() ──
+
     flush_fnty = ir.FunctionType(ir.VoidType(), [file_ptr_type]);
     flush_fn = ir.Function(self.llvm_module, flush_fnty, name=f"{struct_name}.flush");
     flush_fn.linkage = "private";
@@ -278,7 +245,7 @@ impl NaIRGenPass._emit_file_like_helpers(
     handle = b.load(handle_ptr, name="handle");
     b.call(fflush_fn, [handle]);
     b.ret_void();
-    # ── __enter__() -> self ──
+
     enter_fnty = ir.FunctionType(file_ptr_type, [file_ptr_type]);
     enter_fn = ir.Function(
         self.llvm_module, enter_fnty, name=f"{struct_name}.__enter__"
@@ -288,7 +255,7 @@ impl NaIRGenPass._emit_file_like_helpers(
     bb = enter_fn.append_basic_block("entry");
     b = ir.IRBuilder(bb);
     b.ret(enter_fn.args[0]);
-    # ── __exit__(exc_type, exc_val, tb) -> bool: close if not closed ──
+
     exit_fnty = ir.FunctionType(i1, [file_ptr_type, i8p, i8p, i8p]);
     exit_fn = ir.Function(self.llvm_module, exit_fnty, name=f"{struct_name}.__exit__");
     exit_fn.linkage = "private";
@@ -300,7 +267,7 @@ impl NaIRGenPass._emit_file_like_helpers(
     b = ir.IRBuilder(bb);
     b.call(close_fn, [exit_fn.args[0]]);
     b.ret(ir.Constant(i1, 0));
-    # Register methods for dispatch + symbol lookup.
+
     _methods = {
         f"{struct_name}.read": read_fn,
         f"{struct_name}.write": write_fn,
@@ -316,13 +283,6 @@ impl NaIRGenPass._emit_file_like_helpers(
     }
 }
 
-# ─── open() Builtin ─────────────────────────────────────────
-"""Emit code for open(path, mode): allocate a File / BinaryFile and fopen.
-
-A literal mode containing 'b' selects the BinaryFile variant (read() -> bytes);
-this mirrors the na_builtins.pyi overload so the static type and the emitted
-struct always agree. A non-literal mode falls back to text File.
-"""
 impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
@@ -336,7 +296,7 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     if path_val is None {
         return None;
     }
-    # Determine binary-ness from a literal mode (if any).
+
     mode_literal: (str | None) = None;
     if len(params) >= 2 {
         _mnode = params[1];
@@ -350,6 +310,17 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
             }
         }
     }
+
+    mode_val: (ir.Value | None) = None;
+    if len(params) >= 2 {
+        mode_val = self._codegen_expr(params[1]);
+        if mode_val is not None and mode_val.type != i8p {
+            return None;
+        }
+    }
+    if mode_val is None {
+        mode_val = self._make_global_string("r", name_prefix=".file.mode");
+    }
     is_binary = mode_literal is not None and "b" in mode_literal;
     if is_binary {
         struct_type = self._get_binary_file_struct_type();
@@ -359,23 +330,15 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
         self._emit_file_helpers();
     }
     file_ptr_type = struct_type.as_pointer();
-    mode_val: (ir.Value | None) = None;
-    if len(params) >= 2 {
-        mode_val = self._codegen_expr(params[1]);
-    }
-    if mode_val is None {
-        mode_val = self._make_global_string("r", name_prefix=".file.mode");
-    }
     fopen_fn = self._get_or_declare_extern("fopen", i8p, [i8p, i8p]);
     file_handle = self.builder.call(
         fopen_fn, [path_val, mode_val], name="fopen.result"
     );
-    # CPython raises FileNotFoundError rather than returning None; keep the
-    # `open` surface congruent across sv/na (issue #6404, decision #4).
+
     null_ptr = ir.Constant(i8p, None);
     is_null = self.builder.icmp_signed("==", file_handle, null_ptr, name="fopen.null");
     self._emit_runtime_raise(is_null, "FileNotFoundError", "No such file or directory");
-    # fopen succeeded: allocate and initialize the file struct.
+
     null_file_ptr = ir.Constant(file_ptr_type, None);
     size_gep = self.builder.gep(
         null_file_ptr, [ir.Constant(i32, 1)], name="file.sizeof"

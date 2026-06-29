@@ -1,5 +1,3 @@
-"""Integration tests for memory hierarchy with testcontainers and jac start."""
-
 import atexit;
 import contextlib;
 import concurrent.futures;
@@ -16,9 +14,9 @@ import from pymongo { MongoClient }
 import from testcontainers.mongodb { MongoDbContainer }
 import from testcontainers.redis { RedisContainer }
 import from jaclang.jac0core.archetype { Root }
-import from jac_scale.context { JScaleExecutionContext }
-import from jac_scale.memory_hierarchy { _process_cache, MongoBackend }
-import from jac_scale.db { close_all_db_connections }
+import from jac_scale.memory.context { JScaleExecutionContext }
+import from jac_scale.memory.memory_hierarchy { _process_cache, MongoBackend }
+import from jac_scale.persistence.db { close_all_db_connections }
 
 def get_free_port -> int {
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
@@ -35,7 +33,6 @@ glob FIXTURES_DIR = Path(__file__).parent.parent / "fixtures",
      JAC_FILE = FIXTURES_DIR / "todo_app.jac",
      _shared: dict = {};
 
-"""Lazily start a shared MongoDB container; return (MongoClient, uri)."""
 def _get_mongo -> tuple {
     if "mongo_client" not in _shared {
         c = MongoDbContainer("mongo:latest");
@@ -49,7 +46,6 @@ def _get_mongo -> tuple {
     return (_shared["mongo_client"], _shared["mongo_uri"]);
 }
 
-"""Lazily start a shared Redis container; return (redis.Redis, url)."""
 def _get_redis -> tuple {
     if "redis_client" not in _shared {
         c = RedisContainer("redis:latest", port=6379);
@@ -67,7 +63,6 @@ def _get_redis -> tuple {
     return (_shared["redis_client"], _shared["redis_url"]);
 }
 
-"""Drop all non-system databases (resets jac_db between tests)."""
 def _reset_mongo -> None {
     if "mongo_client" not in _shared {
         return;
@@ -80,14 +75,12 @@ def _reset_mongo -> None {
     }
 }
 
-"""Flush all Redis keys (resets state between tests)."""
 def _reset_redis {
     if "redis_client" in _shared {
         _shared["redis_client"].flushall();
     }
 }
 
-"""Extract data from TransportResponse envelope format."""
 def extract_transport_response_data(
     json_response: dict[str, any] | list[any]
 ) -> dict[str, any] | list[any] {
@@ -160,7 +153,6 @@ def post_request(
     return cast(dict[str, any], extract_transport_response_data(res.json()));
 }
 
-"""Start jac server and wait for it to become ready."""
 def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Popen {
     jac_executable = Path(sys.executable).parent / "jac";
     cmd = [str(jac_executable), "start", str(jac_file.name), "--port", str(port)];
@@ -199,7 +191,6 @@ test "read and write" {
         raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}");
     }
 
-    # Clean up data files from previous runs
     data_dir = FIXTURES_DIR / ".jac" / "data";
     if data_dir.exists() {
         import shutil;
@@ -230,7 +221,6 @@ test "read and write" {
             "Initial docs should be 4 (super root, guest_user, admin, __system__)"
         );
 
-        # Register a user
         token = register_user(base_url, "reader", "pass123");
 
         mongo_doc_after_user_creation_count = collection.count_documents({});
@@ -240,7 +230,6 @@ test "read and write" {
 
         redis_size_before_task_creation = redis_client.dbsize();
 
-        # Create tasks
         created_tasks = [
             {"id": 203, "title": "Task 203"},
             {"id": 204, "title": "Task 204"}
@@ -273,7 +262,6 @@ test "read and write" {
             }
         }
 
-        # Clean up data files
         if data_dir.exists() {
             import shutil;
             shutil.rmtree(data_dir);
@@ -286,7 +274,6 @@ test "data persists after server restart for mongo db" {
         raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}");
     }
 
-    # Clean up data files
     data_dir = FIXTURES_DIR / ".jac" / "data";
     if data_dir.exists() {
         import shutil;
@@ -305,7 +292,6 @@ test "data persists after server restart for mongo db" {
     server = start_server(FIXTURES_DIR, JAC_FILE, port);
 
     try {
-        # Create task
         res = requests.post(
             f"{base_url}/walker/CreateTask",
             json={"id": 100, "title": "Test persistence"},
@@ -313,7 +299,6 @@ test "data persists after server restart for mongo db" {
         );
         assert res.status_code == 200;
 
-        # Verify task exists before restart
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=5);
         response_data = cast(
             dict[str, any], extract_transport_response_data(res.json())
@@ -327,12 +312,10 @@ test "data persists after server restart for mongo db" {
             0
         ]['title']}";
 
-        # Restart server
         server.terminate();
         server.wait(timeout=2);
         server = start_server(FIXTURES_DIR, JAC_FILE, port);
 
-        # Verify task persists after restart
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=2);
         response_data = cast(
             dict[str, any], extract_transport_response_data(res.json())
@@ -364,7 +347,6 @@ test "no unnecessary saves on read-only operations" {
         raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}");
     }
 
-    # Clean up data files
     data_dir = FIXTURES_DIR / ".jac" / "data";
     if data_dir.exists() {
         import shutil;
@@ -391,20 +373,16 @@ test "no unnecessary saves on read-only operations" {
         db = mongo_client["jac_db"];
         collection = db["_anchors"];
 
-        # Initial count after server start
         initial_count = collection.count_documents({});
         assert initial_count == 4 , (f"Initial count should be 4, got {initial_count}");
 
-        # Make a read-only request (walker with no data changes)
         token = register_user(base_url, "readonly_user", "pass123");
 
-        # Count after user creation
         after_user_count = collection.count_documents({});
         assert after_user_count == 5 , (
             f"After user creation should be 5, got {after_user_count}"
         );
 
-        # Capture document snapshots before read-only ops (to verify no updates)
         import hashlib;
         def get_docs_hash -> str {
             docs = list(collection.find({}, sort=[("_id", 1)]));
@@ -414,36 +392,30 @@ test "no unnecessary saves on read-only operations" {
 
         docs_hash_before = get_docs_hash();
 
-        # Capture server-side update count before read-only operations
         updates_before_readonly = get_update_count();
 
-        # Make multiple read-only requests
         for _ in range(3) {
             res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=2);
             assert res.status_code == 200;
         }
 
-        # Count should remain the same - no writes should occur
         after_readonly_count = collection.count_documents({});
         assert after_readonly_count == after_user_count , (
             f"Read-only operations should not create new docs. "
             f"Expected {after_user_count}, got {after_readonly_count}"
         );
 
-        # Verify documents weren't modified (content hash should match)
         docs_hash_after = get_docs_hash();
         assert docs_hash_before == docs_hash_after , (
             "Read-only operations should not modify existing documents in MongoDB"
         );
 
-        # Verify no update operations were issued to MongoDB during read-only requests.
         updates_after_readonly = get_update_count();
         assert updates_after_readonly == updates_before_readonly , (
             f"Read-only operations should not issue any MongoDB update commands. "
             f"Got {updates_after_readonly - updates_before_readonly} unexpected updates"
         );
 
-        # Now create a task (this should write)
         post_request(
             base_url, "/walker/CreateTask", {"id": 999, "title": "Test"}, token
         );
@@ -453,7 +425,6 @@ test "no unnecessary saves on read-only operations" {
             "Write operation should increase doc count"
         );
 
-        # Another read should not change the count
         requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=2);
         final_count = collection.count_documents({});
         assert final_count == after_write_count , (
@@ -487,7 +458,6 @@ test "data persists after server restart for sqlite" {
         shutil.rmtree(data_dir);
     }
 
-    # Ensure no MongoDB or Redis environment variables are set (SQLite-only mode)
     env_backup = {};
     for key in ["MONGODB_URI", "REDIS_URL"] {
         if key in os.environ {
@@ -501,7 +471,6 @@ test "data persists after server restart for sqlite" {
     server = start_server(FIXTURES_DIR, JAC_FILE, port);
 
     try {
-        # Create a task
         res = requests.post(
             f"{base_url}/walker/CreateTask",
             json={"id": 401, "title": "Persist me across restart"},
@@ -509,7 +478,6 @@ test "data persists after server restart for sqlite" {
         );
         assert res.status_code == 200 , f"Task creation failed: {res.status_code} - {res.text}";
 
-        # Verify task exists before restart
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=5);
         response_data = cast(
             dict[str, any], extract_transport_response_data(res.json())
@@ -525,12 +493,10 @@ test "data persists after server restart for sqlite" {
             0
         ]['title']}";
 
-        # Restart server
         server.terminate();
         server.wait(timeout=2);
         server = start_server(FIXTURES_DIR, JAC_FILE, port);
 
-        # Verify task persists after restart
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=5);
         assert res.status_code == 200 , f"Post-restart request failed: {res.status_code}";
         response_data = cast(
@@ -554,7 +520,6 @@ test "data persists after server restart for sqlite" {
             }
         }
 
-        # Restore environment variables
         for (key, value) in env_backup.items() {
             os.environ[key] = value;
         }
@@ -567,8 +532,6 @@ test "data persists after server restart for sqlite" {
 }
 
 test "L2 and L3 commit with server restart" {
-    # Verify that modifications persist across server restarts (L3)
-    # and that L2 caching works after reads
     if not JAC_FILE.exists() {
         raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}");
     }
@@ -594,22 +557,18 @@ test "L2 and L3 commit with server restart" {
         db = mongo_client["jac_db"];
         collection = db["_anchors"];
 
-        # Verify initial state in MongoDB
         initial_mongo_count = collection.count_documents({});
         assert initial_mongo_count == 4 , (
             f"Initial MongoDB should have 4 docs (super root, guest_user, admin, __system__), got {initial_mongo_count}"
         );
 
-        # Verify initial Redis state (4 initial nodes are cached on startup)
         initial_redis_count = redis_client.dbsize();
         assert initial_redis_count == 4 , (
             f"Redis should have 4 initial entries (super root, guest_user, admin, __system__) on startup, got {initial_redis_count} keys"
         );
 
-        # Register a user to ensure proper caching behavior (authenticated requests)
         token = register_user(base_url, "testuser", "testpass");
 
-        # Create and verify task with authenticated request
         res = requests.post(
             f"{base_url}/walker/CreateTask",
             json={"id": 500, "title": "L2/L3 Test"},
@@ -618,18 +577,16 @@ test "L2 and L3 commit with server restart" {
         );
         assert res.status_code == 200;
 
-        # DIRECT MONGODB VERIFICATION: Check task was written to L3
         mongo_count_after_create = collection.count_documents({});
         assert mongo_count_after_create == 7 , (
             f"After task creation, MongoDB should have 7 docs (4 initial + 1 user + 2 for task node and edge), got {mongo_count_after_create}"
         );
 
-        # Verify task data exists in MongoDB - search all documents
         all_docs_in_mongo = list(collection.find({}));
         task_node_found = False;
         for doc in all_docs_in_mongo {
             data_str = str(doc.get("data", ""));
-            # Check for task with id=500 in any format
+
             if "500" in data_str and "L2/L3 Test" in data_str {
                 task_node_found = True;
                 break;
@@ -639,7 +596,6 @@ test "L2 and L3 commit with server restart" {
             all_docs_in_mongo
         )} total docs";
 
-        # Read task via API to trigger L2 caching (use authenticated request)
         res = requests.post(
             f"{base_url}/walker/GetAllTasks",
             json={},
@@ -653,13 +609,11 @@ test "L2 and L3 commit with server restart" {
         assert len(tasks_before) == 1 , "Should have 1 task before restart";
         assert tasks_before[0]["id"] == 500;
 
-        # DIRECT REDIS VERIFICATION: Check exact key count and task data
         redis_count_after_read = redis_client.dbsize();
         assert redis_count_after_read == 7 , (
             f"After read, Redis (L2) should have exactly 7 entries (4 initial + user + task node + edge), got {redis_count_after_read}"
         );
 
-        # Verify actual task data is cached in Redis
         redis_keys = redis_client.keys("*");
         task_found_in_redis = False;
         for key in redis_keys {
@@ -674,22 +628,18 @@ test "L2 and L3 commit with server restart" {
         }
         assert task_found_in_redis , "Task with id=500 and full title should be cached in Redis (L2)";
 
-        # Restart server to verify L3 persistence
         server.terminate();
         server.wait(timeout=2);
-        redis_client.flushall();  # Clear L2 to force read from L3
+        redis_client.flushall();
 
-        # Verify Redis is actually empty after flush
         redis_count_after_flush = redis_client.dbsize();
         assert redis_count_after_flush == 0 , f"Redis should be empty after flush, got {redis_count_after_flush} keys";
 
-        # VERIFY MONGODB STILL HAS DATA (L3 persistence)
         mongo_count_before_restart = collection.count_documents({});
         assert mongo_count_before_restart == 7 , (
             f"MongoDB should still have 7 docs after Redis flush, got {mongo_count_before_restart}"
         );
 
-        # Verify task still exists in MongoDB before restart
         task_still_in_mongo = False;
         for doc in collection.find({}) {
             data_str = str(doc.get("data", ""));
@@ -702,7 +652,6 @@ test "L2 and L3 commit with server restart" {
 
         server = start_server(FIXTURES_DIR, JAC_FILE, port);
 
-        # Login as existing user after server restart (user persisted in MongoDB)
         res = requests.post(
             f"{base_url}/user/login",
             json={
@@ -715,7 +664,6 @@ test "L2 and L3 commit with server restart" {
         login_data = cast(dict[str, any], extract_transport_response_data(res.json()));
         token_after_restart = login_data["token"];
 
-        # Verify task persists after restart (proves L3 commit worked) - use authenticated request
         res = requests.post(
             f"{base_url}/walker/GetAllTasks",
             json={},
@@ -730,7 +678,6 @@ test "L2 and L3 commit with server restart" {
         assert tasks_after[0]["id"] == 500;
         assert tasks_after[0]["title"] == "L2/L3 Test";
 
-        # VERIFY MONGODB UNCHANGED AFTER RESTART (still has same 7 docs)
         mongo_count_after_restart = collection.count_documents({});
         assert mongo_count_after_restart == 7 , (
             f"MongoDB should still have 7 docs after restart (4 initial + user + 2 task), got {mongo_count_after_restart}"
@@ -772,10 +719,8 @@ test "Redis write cycle via commit" {
     server = start_server(FIXTURES_DIR, JAC_FILE, port);
 
     try {
-        # Initial: 4 nodes in Redis (super_root, guest, admin, __system__)
         assert redis_client.dbsize() == 4 , "Redis should start with 4 initial nodes";
 
-        # Create task
         res = requests.post(
             f"{base_url}/walker/CreateTask",
             json={"id": 999, "title": "Redis Write Test"},
@@ -783,7 +728,6 @@ test "Redis write cycle via commit" {
         );
         assert res.status_code == 200;
 
-        # HARSH CHECK: Task MUST be in Redis after creation+commit
         redis_keys = redis_client.keys("*");
         task_in_redis = False;
         for key in redis_keys {
@@ -798,8 +742,6 @@ test "Redis write cycle via commit" {
             "Redis write cycle via commit() is BROKEN!"
         );
 
-        # 4 initial + task node + edge - 1 (parent node's key invalidated by
-        # atomic write path, not re-written with stale snapshot) = 5
         final_count = redis_client.dbsize();
         assert final_count == 5 , (
             f"Redis should have 5 entries after task creation, got {final_count}"
@@ -824,44 +766,34 @@ test "hash-based dirty check detects all mutation types" {
     sys.path.insert(0, str(FIXTURES_DIR));
     import from mutation_app { Item }
 
-    # Create an Item with mutable fields
     item = Item(id=1);
     anchor = item.__jac__;
 
-    # New anchor has hash=0 (never persisted)
     assert anchor.hash == 0 , "New anchor should have hash=0";
 
-    # Simulate persist: compute and store baseline hash
     anchor.hash = Serializer._compute_hash(anchor);
     baseline = anchor.hash;
     assert baseline != 0 , "Computed hash should be non-zero";
 
-    # No mutation → hash unchanged
     assert Serializer._compute_hash(anchor) == baseline , "No mutation should yield same hash";
 
-    # Direct field assignment
     item.completed = True;
     assert Serializer._compute_hash(anchor) != baseline , "Direct assignment should change hash";
 
-    # Reset baseline
     anchor.hash = Serializer._compute_hash(anchor);
     baseline = anchor.hash;
 
-    # In-place list mutation
     item.tags.append("urgent");
     assert Serializer._compute_hash(anchor) != baseline , "list.append should change hash";
 
-    # Reset baseline
     anchor.hash = Serializer._compute_hash(anchor);
     baseline = anchor.hash;
 
-    # In-place dict mutation
     item.metadata["priority"] = "high";
     assert Serializer._compute_hash(anchor) != baseline , "dict[k]=v should change hash";
 }
 
 test "sequential requests work correctly" {
-    # Validates: Multiple sequential requests don't cause crashes or data corruption
     _reset_mongo();
     (_, mongo_uri) = _get_mongo();
     os.environ["MONGODB_URI"] = mongo_uri;
@@ -874,7 +806,6 @@ test "sequential requests work correctly" {
     server = start_server(FIXTURES_DIR, JAC_FILE, port);
 
     try {
-        # Make 5 sequential requests - all should succeed
         for i in range(5) {
             res = requests.post(
                 f"{base_url}/walker/CreateTask",
@@ -884,7 +815,6 @@ test "sequential requests work correctly" {
             assert res.status_code == 200 , f"Request {i} failed";
         }
 
-        # Verify all 5 tasks were created
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=5);
         all_tasks = cast(dict[str, any], extract_transport_response_data(res.json()))[
             "reports"
@@ -899,9 +829,6 @@ test "sequential requests work correctly" {
 }
 
 test "batch_get reduces MongoDB queries for edge traversals" {
-    # Validates: When traversing N edges, batch_get uses $in queries instead of N individual finds.
-    # Creates 10 tasks (10 edges + 10 nodes), restarts server to clear L1,
-    # then reads all tasks and verifies MongoDB query count is much less than 20.
     if not JAC_FILE.exists() {
         raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}");
     }
@@ -916,7 +843,6 @@ test "batch_get reduces MongoDB queries for edge traversals" {
     (mongo_client, mongo_uri) = _get_mongo();
     os.environ["MONGODB_URI"] = mongo_uri;
 
-    # No Redis — force all reads through MongoDB to measure query count accurately
     env_backup = {};
     if "REDIS_URL" in os.environ {
         env_backup["REDIS_URL"] = os.environ["REDIS_URL"];
@@ -933,7 +859,6 @@ test "batch_get reduces MongoDB queries for edge traversals" {
         db = mongo_client["jac_db"];
         collection = db["_anchors"];
 
-        # Create N tasks (each creates 1 node + 1 edge = 2 anchors)
         for i in range(num_tasks) {
             res = requests.post(
                 f"{base_url}/walker/CreateTask",
@@ -943,24 +868,19 @@ test "batch_get reduces MongoDB queries for edge traversals" {
             assert res.status_code == 200 , f"Task {i} creation failed: {res.status_code}";
         }
 
-        # Verify all tasks were stored in MongoDB
-        # 4 initial + num_tasks * 2 (node + edge per task)
         expected_docs = 4 + num_tasks * 2;
         actual_docs = collection.count_documents({});
         assert actual_docs == expected_docs , (
             f"Expected {expected_docs} docs in MongoDB, got {actual_docs}"
         );
 
-        # Restart server to clear L1 memory — forces reads from L3 (MongoDB)
         server.terminate();
         server.wait(timeout=2);
         server = start_server(FIXTURES_DIR, JAC_FILE, port);
 
-        # Capture MongoDB query count before the read traversal
         server_status_before = mongo_client.admin.command("serverStatus");
         queries_before = server_status_before["opcounters"]["query"];
 
-        # Read all tasks — this triggers _prefetch_edges -> batch_get
         res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=10);
         assert res.status_code == 200;
         response_data = cast(
@@ -971,14 +891,11 @@ test "batch_get reduces MongoDB queries for edge traversals" {
             f"Expected {num_tasks} tasks, got {len(tasks)}"
         );
 
-        # Capture MongoDB query count after read
         server_status_after = mongo_client.admin.command("serverStatus");
         queries_after = server_status_after["opcounters"]["query"];
 
-        # Without batch_get: would need ~20+ individual find() calls (1 per edge + 1 per node)
-        # With batch_get: should be ~2-4 calls (batch edges + batch nodes + root load)
         queries_used = queries_after - queries_before;
-        max_expected_queries = num_tasks;  # Should be well under N queries
+        max_expected_queries = num_tasks;
         assert queries_used < max_expected_queries , (
             f"batch_get should reduce queries: used {queries_used} queries to traverse "
             f"{num_tasks} edges, expected fewer than {max_expected_queries}. "
@@ -992,7 +909,6 @@ test "batch_get reduces MongoDB queries for edge traversals" {
             }
         }
 
-        # Restore environment
         for (key, value) in env_backup.items() {
             os.environ[key] = value;
         }
@@ -1006,8 +922,6 @@ test "batch_get reduces MongoDB queries for edge traversals" {
 
 glob MUTATION_JAC_FILE = FIXTURES_DIR / "mutation_app.jac";
 
-"""Validates that in-place mutations (list.append, dict[k]=v) which bypass
-__setattr__ are still detected and persisted through hash comparison."""
 test "in-place mutations on list and dict are persisted via hash-based dirty check" {
     _reset_mongo();
     _reset_redis();
@@ -1025,16 +939,13 @@ test "in-place mutations on list and dict are persisted via hash-based dirty che
     try {
         token = register_user(base_url, "mutation_tester");
 
-        # Create an item
         post_request(base_url, "/walker/CreateItem", {"id": 1}, token);
 
-        # --- In-place list mutation (list.append) ---
         result = post_request(
             base_url, "/walker/AppendTag", {"id": 1, "tag": "urgent"}, token
         );
         assert "urgent" in result["reports"][0]["tags"];
 
-        # --- In-place dict mutation (dict[k]=v) ---
         result = post_request(
             base_url,
             "/walker/SetMeta",
@@ -1043,14 +954,12 @@ test "in-place mutations on list and dict are persisted via hash-based dirty che
         );
         assert result["reports"][0]["metadata"]["priority"] == "high";
 
-        # --- Restart server to force reload from MongoDB ---
         server.terminate();
         with contextlib.suppress(Exception) {
             server.wait(timeout=2);
         }
         server = start_server(FIXTURES_DIR, MUTATION_JAC_FILE, port);
 
-        # Read back after restart — mutations must have been persisted
         result = post_request(base_url, "/walker/GetItems", {}, token);
         items = result["reports"][0];
         assert len(items) == 1 , f"Expected 1 item, got {len(items)}";
@@ -1074,7 +983,6 @@ test "in-place mutations on list and dict are persisted via hash-based dirty che
     }
 }
 
-"""Verify that put_partial touches only the mutated field's dot-path in MongoDB."""
 test "partial update only writes mutated fields — unmodified fields survive in MongoDB" {
     data_dir = FIXTURES_DIR / ".jac" / "data";
     if data_dir.exists() {
@@ -1107,8 +1015,6 @@ test "partial update only writes mutated fields — unmodified fields survive in
         assert item_doc is not None , "Item not found in MongoDB after creation";
         item_id = item_doc["_id"];
 
-        # Inject a sentinel key directly into the metadata sub-document.
-        # A full $set would wipe it; a targeted $set on data.archetype.tags must not.
         collection.update_one(
             {"_id": item_id},
             {"$set": {"data.archetype.metadata.__sentinel__": "PRESERVED"}}
@@ -1118,8 +1024,6 @@ test "partial update only writes mutated fields — unmodified fields survive in
             "Sentinel injection failed"
         );
 
-        # Mutate only tags (in-place list.append — no __setattr__ signal,
-        # goes through field-hash fallback → put_partial on data.archetype.tags only).
         post_request(base_url, "/walker/AppendTag", {"id": 42, "tag": "urgent"}, token);
 
         doc = collection.find_one({"_id": item_id});
@@ -1170,8 +1074,6 @@ test "mixed direct and in-place mutations in one request both persist after rest
         token = register_user(base_url, "mixed_tester");
         post_request(base_url, "/walker/CreateItem", {"id": 7}, token);
 
-        # MixedMutate does: here.completed = True  (direct → __setattr__ tracks it)
-        #                   here.tags.append(tag)  (in-place → only field-hash catches it)
         result = post_request(
             base_url, "/walker/MixedMutate", {"id": 7, "tag": "mixed"}, token
         );
@@ -1179,7 +1081,6 @@ test "mixed direct and in-place mutations in one request both persist after rest
         assert item["completed"] == True , "completed not set in response";
         assert "mixed" in item["tags"] , "tag not in response";
 
-        # Restart with no Redis — forces cold reload from MongoDB only.
         server.terminate();
         with contextlib.suppress(Exception) {
             server.wait(timeout=2);
@@ -1238,7 +1139,6 @@ test "concurrent requests do not lose edges" {
     try {
         token = register_user(base_url, "race_user", "pass123");
 
-        # Seed: first CreateTask ensures the root has ≥1 edge before we race
         res = requests.post(
             f"{base_url}/walker/CreateTask",
             json={"id": 1, "title": "first"},
@@ -1247,9 +1147,6 @@ test "concurrent requests do not lose edges" {
         );
         assert res.status_code == 200;
 
-        # The real race: CreateTask adds a new edge to root, while CompleteTask
-        # traverses root (loading a stale edge snapshot) and mutates a scalar.
-        # On main, CompleteTask's sync overwrites root.edges, erasing the new edge.
         def create_task -> int {
             r = requests.post(
                 f"{base_url}/walker/CreateTask",
@@ -1270,7 +1167,6 @@ test "concurrent requests do not lose edges" {
             return r.status_code;
         }
 
-        # Fire edge-add + scalar-mutation concurrently (multiple rounds)
         for _ in range(3) {
             with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool {
                 futures = [
@@ -1283,7 +1179,6 @@ test "concurrent requests do not lose edges" {
             }
         }
 
-        # Verify the new task edge survived concurrent scalar mutations
         time.sleep(0.5);
         res = requests.post(
             f"{base_url}/walker/GetAllTasks",
@@ -1313,16 +1208,10 @@ test "concurrent requests do not lose edges" {
     }
 }
 
-"""Unit test for issue 5931 fix: acommit() forwards anchor to commit().
-
-Before the fix, acommit() called asyncio.to_thread(self.commit) — anchor
-was silently dropped. After the fix it calls asyncio.to_thread(self.commit, anchor),
-so commit() receives whatever was passed.
-"""
 test "acommit forwards anchor argument to commit()" {
     import asyncio;
     import from unittest.mock { patch }
-    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+    import from jac_scale.memory.memory_hierarchy { ScaleTieredMemory }
 
     received: list = [None];
 
@@ -1332,12 +1221,10 @@ test "acommit forwards anchor argument to commit()" {
 
     with patch.object(ScaleTieredMemory, 'commit', capture_commit) {
         mem = object.__new__(ScaleTieredMemory);
-        # Case 1: no anchor — commit() must receive None.
         asyncio.run(mem.acommit());
         assert received[0] is None , (
             f"acommit() with no anchor must pass None to commit(), got {received[0]}"
         );
-        # Case 2: specific anchor — commit() must receive the same object.
         sentinel = object();
         asyncio.run(mem.acommit(sentinel));
         assert received[0] is sentinel , (
@@ -1347,16 +1234,10 @@ test "acommit forwards anchor argument to commit()" {
     }
 }
 
-"""Unit test for issue 1g fix: ScaleTieredMemory._committed flag.
-
-After the first acommit() the flag is set True. A second call (e.g. the
-close-time backstop) returns immediately — the collect pass and its
-O(L1-size) hash computation are skipped entirely.
-"""
 test "acommit is idempotent — _committed flag prevents second sync pass" {
     import asyncio;
     import from unittest.mock { patch }
-    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+    import from jac_scale.memory.memory_hierarchy { ScaleTieredMemory }
 
     call_count = [0];
 
@@ -1380,15 +1261,10 @@ test "acommit is idempotent — _committed flag prevents second sync pass" {
     }
 }
 
-"""Unit test for issue 1g fix: _committed stays False when commit() raises.
-
-If the thread pool commit raises (e.g. MongoDB unreachable), _committed must
-remain False so the middleware safety-net path can retry the commit.
-"""
 test "acommit leaves _committed False when commit() raises" {
     import asyncio;
     import from unittest.mock { patch }
-    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+    import from jac_scale.memory.memory_hierarchy { ScaleTieredMemory }
 
     def failing_commit(self: ScaleTieredMemory, anchor: any = None) {
         raise RuntimeError("simulated commit failure");
@@ -1412,10 +1288,6 @@ test "acommit leaves _committed False when commit() raises" {
 }
 
 
-# =============================================================================
-# In-process system root cache tests (no server subprocess needed)
-# =============================================================================
-"""Wipe process-level singletons so each test starts with a cold process cache."""
 def _reset_process_cache {
     _process_cache.clear();
     with contextlib.suppress(Exception) {
@@ -1423,14 +1295,12 @@ def _reset_process_cache {
     }
 }
 
-"""Create a JScaleExecutionContext pointed at mongo_uri with no Redis."""
 def _new_jscale_ctx(mongo_uri: str) -> JScaleExecutionContext {
     os.environ["MONGODB_URI"] = mongo_uri;
     os.environ.pop("REDIS_URL", None);
     return JScaleExecutionContext();
 }
 
-"""Return L3 (MongoDB) fetch count for this context, or 0 if not Mongo."""
 def _ctx_l3_fetch_count(ctx: JScaleExecutionContext) -> int {
     l3 = ctx.mem.l3;
     if isinstance(l3, MongoBackend) {
@@ -1440,8 +1310,6 @@ def _ctx_l3_fetch_count(ctx: JScaleExecutionContext) -> int {
 }
 
 
-"""After the very first JScaleExecutionContext(), _process_cache['system_root']
-must hold a NodeAnchor whose id equals SUPER_ROOT_UUID."""
 test "system root cache: populated with NodeAnchor after first context init" {
     import from uuid { UUID }
     import from jaclang.jac0core.constant { Constants as Con }
@@ -1468,12 +1336,6 @@ test "system root cache: populated with NodeAnchor after first context init" {
 }
 
 
-"""First init must fetch the system root from MongoDB (fetch_count >= 1).
-Second init must find it in L1 from the process cache (fetch_count == 0).
-
-Each JScaleExecutionContext creates a fresh MongoBackend with fetch_count=0,
-so the count measured is per-context, not cumulative.
-"""
 test "system root cache: second context init skips MongoDB fetch" {
     _reset_process_cache();
     _reset_mongo();
@@ -1498,8 +1360,6 @@ test "system root cache: second context init skips MongoDB fetch" {
 }
 
 
-"""When _process_cache is empty (fresh process), context init must succeed
-and set system_root, user_root, and entry_node correctly."""
 test "system root cache: cold cache still produces a valid system root" {
     import from uuid { UUID }
     import from jaclang.jac0core.constant { Constants as Con }
@@ -1524,9 +1384,6 @@ test "system root cache: cold cache still produces a valid system root" {
 }
 
 
-"""After the first init warms the cache, inits 2..N must each cost 0 fetches.
-Total MongoDB fetches for the system root across N inits equals the first
-init's fetch count, not N times that."""
 test "system root cache: N consecutive inits cost one MongoDB fetch total" {
     N = 10;
 
@@ -1555,7 +1412,7 @@ test "L2 Redis is invalidated (not re-poisoned) after edge-delta atomic write (i
     import from uuid { uuid4, UUID }
     import from jaclang.jac0core.archetype { EdgeAnchor, NodeAnchor }
     import from jaclang.runtimelib.utils { to_uuid }
-    import from jac_scale.memory_hierarchy { ScaleTieredMemory, MongoBackend }
+    import from jac_scale.memory.memory_hierarchy { ScaleTieredMemory, MongoBackend }
 
     _reset_mongo();
     _reset_redis();
@@ -1661,12 +1518,9 @@ test "L2 Redis is invalidated (not re-poisoned) after edge-delta atomic write (i
     }
 }
 
-# ----------------------------------------------------------------------
-# Cross-pod L1 cache invalidation via Redis pub/sub
-# ----------------------------------------------------------------------
 test "L1 invalidation: marks every sibling stale, skips origin, never pops" {
     import from uuid { uuid4 }
-    import from jac_scale.l1_invalidation {
+    import from jac_scale.memory.l1_invalidation {
         register_l1,
         deregister_l1,
         evict_local_l1,
@@ -1687,7 +1541,7 @@ test "L1 invalidation: marks every sibling stale, skips origin, never pops" {
     try {
         marked = evict_local_l1(str(anchor_id), id_a);
         assert marked == 2 , f"expected 2 siblings marked, got {marked}";
-        # The listener marks; it must never pop a sibling's __mem__.
+
         assert anchor_id in mem_a.__mem__ , "origin __mem__ must be untouched";
         assert anchor_id in mem_b.__mem__ , "sibling B __mem__ must be untouched";
         assert anchor_id in mem_c.__mem__ , "sibling C __mem__ must be untouched";
@@ -1705,8 +1559,12 @@ test "L1 invalidation: marks every sibling stale, skips origin, never pops" {
 
 test "L1 invalidation: stale-but-clean entries reload, dirty entries survive" {
     import from jaclang.runtimelib.serializer { Serializer }
-    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
-    import from jac_scale.l1_invalidation { evict_local_l1, deregister_l1, new_l1_id }
+    import from jac_scale.memory.memory_hierarchy { ScaleTieredMemory }
+    import from jac_scale.memory.l1_invalidation {
+        evict_local_l1,
+        deregister_l1,
+        new_l1_id
+    }
     import sys;
     sys.path.insert(0, str(FIXTURES_DIR));
     import from mutation_app { Item }
@@ -1715,14 +1573,14 @@ test "L1 invalidation: stale-but-clean entries reload, dirty entries survive" {
     os.environ.pop("MONGODB_URI", None);
 
     mem = ScaleTieredMemory();
-    mem.l2 = None;  # no lower tiers: a dropped entry just becomes a miss
+    mem.l2 = None;
     mem.l3 = None;
     other = new_l1_id();
 
     clean = Item(id=1).__jac__;
     clean.persistent = True;
     clean.hash = Serializer._compute_hash(clean);
-    # Mutated after its hash was stamped: an uncommitted in-flight write.
+
     dirty_item = Item(id=2);
     dirty = dirty_item.__jac__;
     dirty.persistent = True;
@@ -1730,8 +1588,6 @@ test "L1 invalidation: stale-but-clean entries reload, dirty entries survive" {
     dirty_item.completed = True;
 
     try {
-        # Same rule on every memory-routed read: a clean stale entry is dropped
-        # for reload; a dirty one is kept so the uncommitted write isn't lost.
         for read in ["get", "batch_get", "find_one"] {
             cast(dict, mem.__mem__)[clean.id] = clean;
             cast(dict, mem.__mem__)[dirty.id] = dirty;
@@ -1758,7 +1614,7 @@ test "L1 invalidation: stale-but-clean entries reload, dirty entries survive" {
 test "L1 invalidation: GC reclaims the registry and clears stale marks" {
     import gc;
     import from uuid { uuid4 }
-    import from jac_scale.l1_invalidation {
+    import from jac_scale.memory.l1_invalidation {
         register_l1,
         evict_local_l1,
         new_l1_id,
@@ -1770,13 +1626,12 @@ test "L1 invalidation: GC reclaims the registry and clears stale marks" {
     lid = new_l1_id();
     mem = _FakeL1(__mem__={aid: "x"});
     register_l1(lid, mem);
-    evict_local_l1(str(aid), new_l1_id());  # leave a mark under lid
+    evict_local_l1(str(aid), new_l1_id());
     assert lid in _l1_registry , "registered id must be present";
     assert lid in _stale_marks , "mark must be present";
     del mem;
     gc.collect();
-    # Without close(): the weak registry drops the entry and the finalizer clears
-    # the marks, so neither leaks.
+
     assert lid not in _l1_registry , "weak entry must disappear on GC";
     assert lid not in _stale_marks , "finalizer must clear stale marks on GC";
 }
@@ -1784,8 +1639,8 @@ test "L1 invalidation: GC reclaims the registry and clears stale marks" {
 test "L1 invalidation: pub/sub delivers (origin suppressed) and recovers after a drop" {
     import time;
     import from uuid { uuid4 }
-    import from jac_scale.memory_hierarchy { ScaleTieredMemory, _process_cache }
-    import from jac_scale.l1_invalidation { stop_listener, consume_stale }
+    import from jac_scale.memory.memory_hierarchy { ScaleTieredMemory, _process_cache }
+    import from jac_scale.memory.l1_invalidation { stop_listener, consume_stale }
 
     _reset_redis();
     _reset_process_cache();
@@ -1800,7 +1655,6 @@ test "L1 invalidation: pub/sub delivers (origin suppressed) and recovers after a
         mem_b = ScaleTieredMemory();
         assert mem_a.l2 is not None and mem_b.l2 is not None , "Redis L2 required";
 
-        # Baseline delivery: sibling B is marked, writer A is not (self-suppression).
         aid1 = uuid4();
         cast(dict, mem_b.__mem__)[aid1] = "x";
         cast(dict, mem_a.__mem__)[aid1] = "x";
@@ -1816,7 +1670,6 @@ test "L1 invalidation: pub/sub delivers (origin suppressed) and recovers after a
         assert delivered1 , "baseline pub/sub delivery must work";
         assert not consume_stale(mem_a._l1_id, aid1) , "writer's own L1 must not be marked";
 
-        # Kill the subscriber connection; the listener must reconnect and resume.
         with contextlib.suppress(Exception) {
             redis_client.execute_command("CLIENT", "KILL", "TYPE", "pubsub");
         }
@@ -1843,7 +1696,7 @@ test "L1 invalidation: pub/sub delivers (origin suppressed) and recovers after a
 
 test "L1 invalidation: ensure_listener is idempotent and self-heals" {
     import time;
-    import from jac_scale.l1_invalidation { ensure_listener, stop_listener }
+    import from jac_scale.memory.l1_invalidation { ensure_listener, stop_listener }
 
     _reset_process_cache();
     _redis_result = _get_redis();
@@ -1859,7 +1712,6 @@ test "L1 invalidation: ensure_listener is idempotent and self-heals" {
             "a live listener must be reused, not replaced"
         );
 
-        # Simulate an unrecoverable death; ensure_listener must replace it.
         first.stop();
         first.join(2.0);
         time.sleep(0.1);
@@ -1888,7 +1740,7 @@ obj _L2CachePerson(Root) {
 
 
 test "RedisBackend loads carry a field-hash snapshot (L2 parity with L3 loads)" {
-    import from jac_scale.memory_hierarchy { RedisBackend }
+    import from jac_scale.memory.memory_hierarchy { RedisBackend }
     import from jaclang.runtimelib.changeset { derive_dirty_fields }
 
     _reset_redis();

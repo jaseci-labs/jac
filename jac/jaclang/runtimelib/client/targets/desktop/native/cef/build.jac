@@ -1,14 +1,3 @@
-"""Build the CEF native pieces (libcef_dispatch.so + cef-subprocess) in place.
-
-Standalone entry for CI and manual rebuilds; the CefDesktopTarget build pipeline
-calls the same desktop_build functions directly. Run it from anywhere:
-
-    jac run jaclang/runtimelib/client/targets/desktop/native/cef/build.jac
-
-Compiles with `jac nacompile` only -- no gcc, no CEF runtime, no display. The
-shared cef_platform.na.jac fragment is spliced in by desktop_build._splice_platform
-(the in-Jac replacement for the old awk pass in build_cef_*.sh).
-"""
 import os;
 import from pathlib { Path }
 import from jaclang.cli.console { console }

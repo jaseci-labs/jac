@@ -1,18 +1,8 @@
-"""
-Correctness tests for native async drivers.
-
-Proves that MongoBackend.aget/acommit (PyMongo AsyncMongoClient) and
-RedisBackend.aget/aput (redis.asyncio) actually read and write anchor
-data, not just that the methods exist, but that round-trips produce the
-correct values.
-
-Requires running MongoDB and Redis via testcontainers (installed via [test]).
-"""
 import asyncio;
 import from uuid { UUID }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.changeset { ChangeSet }
-import from jac_scale.memory_hierarchy { MongoBackend, RedisBackend }
+import from jac_scale.memory.memory_hierarchy { MongoBackend, RedisBackend }
 import from jaclang.runtimelib.utils { storage_key }
 
 glob _mongo_uri: (str | None) = None,

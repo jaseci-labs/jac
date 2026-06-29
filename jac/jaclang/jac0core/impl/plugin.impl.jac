@@ -1,5 +1,3 @@
-"""Implementation for plugin system."""
-
 impl HookimplMarker.__call__(function: _F) -> _F {
     setattr(function, _IMPL_ATTR, True);
     return function;

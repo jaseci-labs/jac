@@ -1,11 +1,9 @@
-"""Unit tests for the EmailerFactory provider resolution + token store."""
-
 import sys;
 import from pathlib { Path }
 import from typing { Any }
-import from jac_scale.abstractions.emailer { Emailer }
-import from jac_scale.factories.emailer_factory { create as create_emailer, register }
-import from jac_scale.auth_tokens { AuthTokenStore, reset_auth_token_store }
+import from jac_scale.emailer.emailer { Emailer }
+import from jac_scale.emailer.factory { create as create_emailer, register }
+import from jac_scale.identity.auth_tokens { AuthTokenStore, reset_auth_token_store }
 
 
 obj _RecordingEmailer(Emailer) {
@@ -35,16 +33,13 @@ obj _RecordingEmailer(Emailer) {
 }
 
 
-# =============================================================================
-# EmailerFactory: provider resolution
-# =============================================================================
 test "factory_returns_none_when_provider_unset" {
     cfg = {"provider": "", "from_address": "x@y.z", "smtp": {}};
     assert create_emailer(cfg) is None;
 }
 
 test "factory_builds_smtp_provider" {
-    import from jac_scale.emailers { SMTPEmailer }
+    import from jac_scale.emailer.emailers { SMTPEmailer }
     cfg = {
         "provider": "smtp",
         "from_address": "noreply@example.com",
@@ -71,7 +66,6 @@ test "factory_uses_registered_name" {
 }
 
 test "factory_imports_dotted_path" {
-    # Stash a class in this test module's globals via sys.modules and import via dotted path.
     fixtures_dir = Path(__file__).parent.parent / "fixtures" / "identity_api";
     sys.path.insert(0, str(fixtures_dir));
     try {
@@ -98,13 +92,10 @@ test "factory_returns_none_for_invalid_provider" {
         "from_address": "x@y.z",
         "smtp": {}
     };
-    # _import_dotted raises ImportError, factory swallows it and returns None.
+
     assert create_emailer(cfg) is None;
 }
 
-# =============================================================================
-# AuthTokenStore: lifecycle, single-use, expiry
-# =============================================================================
 test "auth_tokens_create_and_consume_single_use" {
     reset_auth_token_store();
     store = AuthTokenStore.instance();
@@ -116,7 +107,7 @@ test "auth_tokens_create_and_consume_single_use" {
     assert record is not None;
     assert record["user_id"] == "u1";
     assert record["identity_value"] == "a@b.c";
-    # Single-use: second consume returns None.
+
     assert store.consume_token(raw, "reset") is None;
 }
 
@@ -124,9 +115,9 @@ test "auth_tokens_purpose_isolation" {
     reset_auth_token_store();
     store = AuthTokenStore.instance();
     raw = store.create_token(user_id="u2", purpose="reset", ttl_seconds=60);
-    # Wrong purpose → not found.
+
     assert store.consume_token(raw, "verify") is None;
-    # Right purpose still works.
+
     assert store.consume_token(raw, "reset") is not None;
 }
 
@@ -142,7 +133,7 @@ test "auth_tokens_revoke_all_for_user" {
     store = AuthTokenStore.instance();
     t1 = store.create_token(user_id="u4", purpose="reset", ttl_seconds=60);
     t2 = store.create_token(user_id="u4", purpose="reset", ttl_seconds=60);
-    # Different purpose for same user, should NOT be revoked.
+
     t3 = store.create_token(user_id="u4", purpose="verify", ttl_seconds=60);
     n = store.revoke_user_tokens("u4", "reset");
     assert n == 2;

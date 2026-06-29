@@ -1,7 +1,7 @@
 """Products Service - catalog management.
 
 Exposes public functions for browsing products. Callable via:
-  - HTTP: POST /api/products/function/{name}
+  - HTTP: POST /products/function/{name}
   - sv import: `sv import from products_app { list_products, get_product }`
 """
 

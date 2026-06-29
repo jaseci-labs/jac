@@ -128,7 +128,6 @@ impl PyJacAstLinkPass.exit_module_path(nd: uni.ModulePath) -> None {
     }
 }
 
-"""Link jac name ast to py ast nodes."""
 impl PyJacAstLinkPass.link_jac_py_nodes(
     jac_node: uni.UniNode, py_nodes: list[ast3.AST]
 ) -> None {

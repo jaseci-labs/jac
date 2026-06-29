@@ -10,7 +10,7 @@ def:pub AuthForm(
     onPasswordChange: any,
     onSubmit: any,
     onToggleMode: any
-) -> any {
+) -> JsxElement {
     return
         <div
             style={{

@@ -1,9 +1,9 @@
 """Implementations for the Jac Shop frontend.
 
 In microservice mode, the client calls gateway function endpoints:
-  /api/products/function/list_products
-  /api/cart/function/add_to_cart
-  /api/orders/function/create_order
+  /products/function/list_products
+  /cart/function/add_to_cart
+  /orders/function/create_order
 """
 
 impl app.apiCall(service: str, endpoint: str, body: dict = {}) -> any {
@@ -16,7 +16,7 @@ impl app.apiCall(service: str, endpoint: str, body: dict = {}) -> any {
         }
     };
     options["body"] = JSON.stringify(body or {});
-    resp = await fetch(f"/api/{service}/function/{endpoint}", options);
+    resp = await fetch(f"/{service}/function/{endpoint}", options);
     return await resp.json();
 }
 
@@ -67,17 +67,17 @@ impl app.fetchOrders -> None {
 
 impl app.handleLogin -> None {
     error = "";
-    if not username.trim() or not password {
+    if not authUsername.trim() or not authPassword {
         error = "Please fill in all fields";
         return;
     }
     loading = True;
-    success = await jacLogin(username, password);
+    success = await jacLogin(authUsername, authPassword);
     loading = False;
     if success {
         isLoggedIn = True;
-        username = "";
-        password = "";
+        authUsername = "";
+        authPassword = "";
     } else {
         error = "Invalid username or password";
     }
@@ -85,21 +85,21 @@ impl app.handleLogin -> None {
 
 impl app.handleSignup -> None {
     error = "";
-    if not username.trim() or not password {
+    if not authUsername.trim() or not authPassword {
         error = "Please fill in all fields";
         return;
     }
-    if password.length < 4 {
+    if authPassword.length < 4 {
         error = "Password must be at least 4 characters";
         return;
     }
     loading = True;
-    result = await jacSignup(username, password);
+    result = await jacSignup(authUsername, authPassword);
     loading = False;
     if result["success"] {
         isLoggedIn = True;
-        username = "";
-        password = "";
+        authUsername = "";
+        authPassword = "";
     } else {
         error = result["error"] if result["error"] else "Signup failed";
     }
@@ -111,8 +111,8 @@ impl app.handleLogout -> None {
     products = [];
     cart = {};
     orders = [];
-    username = "";
-    password = "";
+    authUsername = "";
+    authPassword = "";
     error = "";
     currentView = "products";
 }

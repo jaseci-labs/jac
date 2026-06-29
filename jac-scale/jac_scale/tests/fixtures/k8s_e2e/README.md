@@ -39,7 +39,7 @@ curl http://localhost:8000/api/products/function/list_products -X POST -d '{}'
 ```
 
 Services auto-bind in the `18000-18999` range; URLs come from
-`LocalDeployer.url_for`. See [`../../../jac_scale/microservices/docs.md`](../../../jac_scale/microservices/docs.md)
+`LocalDeployer.url_for`. See [`../../../jac_scale/runtime/docs.md`](../../../jac_scale/runtime/docs.md)
 for the full config reference.
 
 ## Real K8s e2e (incl. M-14.a observability stack)
@@ -79,7 +79,7 @@ rm minikube-linux-amd64
 
 # Python + editable jaseci install
 sudo apt update && sudo apt install -y python3-pip python3-venv git
-git clone -b feat/m14a-microservice-loki https://github.com/MusabMahmoodh/jaseci.git
+git clone https://github.com/jaseci-labs/jaseci.git
 cd jaseci
 pip install -e ./jac
 jac install -e ./jac-scale
@@ -98,7 +98,7 @@ bash jac-scale/scripts/k8s_microservice_real_e2e.sh \
 ```
 
 Expected runtime on `t3.xlarge`: 8-15 min for a cold run
-(docker build + pod boot dominates). The script ends with
+(host binary build + pod boot dominates). The script ends with
 `=== K8s microservice REAL e2e PASSED ===` on success.
 
 ### What the M-14.a phase asserts

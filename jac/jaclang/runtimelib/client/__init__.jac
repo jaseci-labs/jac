@@ -1,5 +1,3 @@
-"""Core client build plumbing: bun toolchain, Vite bundler, config, npm install, jac->js bridge."""
-
 import from .bun_installer { get_bun, BUN_VERSION }
 import from .client_deps { ensure_client_deps }
 import from .asset_processor { AssetProcessor }

@@ -1,8 +1,3 @@
-"""Auto-generated visitor accept overrides (#6942 A.1).
-
-DO NOT EDIT MANUALLY - regenerate with `jac gen-uni-dispatch`.
-"""
-
 impl Ability.accept_enter(v: UniPass) -> None {
     v.enter_ability(self);
 }

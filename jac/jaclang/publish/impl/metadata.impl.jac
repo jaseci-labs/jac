@@ -1,5 +1,3 @@
-"""Implementation of the METADATA file generator."""
-
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig, PersonConfig }
 
@@ -41,7 +39,6 @@ impl normalize_constraint(raw: str) -> str {
         return "";
     }
 
-    # npm caret: ^MAJOR[.MINOR[.PATCH]]
     if raw.startswith("^") {
         ver_str = raw[1:];
         parts = ver_str.split(".");
@@ -62,7 +59,6 @@ impl normalize_constraint(raw: str) -> str {
         }
     }
 
-    # npm tilde: ~MAJOR.MINOR  (NOT Python ~= compatible-release)
     if raw.startswith("~") and not raw.startswith("~=") {
         ver_str = raw[1:];
         parts = ver_str.split(".");

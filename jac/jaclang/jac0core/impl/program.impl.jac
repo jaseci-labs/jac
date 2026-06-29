@@ -1,5 +1,3 @@
-"""Implementation for program constructs."""
-
 impl JacProgram.init(
     self: JacProgram, main_mod: (uni.ProgramModule | None) = None
 ) -> None {
@@ -12,19 +10,13 @@ impl JacProgram.init(
     self._compiler: (JacCompiler | None) = None;
     self._compile_options: CompileOptions = CompileOptions();
     self._native_cache: dict = {};
-    # See `hub_cache_stamp` / `is_hub_entry_fresh`.
+
     self._hub_cache_times: dict[str, float] = {};
-    # See `record_dependency` / `transitive_dependents`.
+
     self._dependents: dict[str, set[str]] = {};
-    # When set, `compile`/`parse_str` call `record_module_dependencies` so the
-    # rdep map is complete (survives cache hits). Off for one-shot runs that
-    # never query dependents; on for long-lived clients (LSP, CodeIntelligence).
+
     self._track_dependencies: bool = False;
-    # Auto-promote-to-native request: set by the nacompile / `jac run
-    # --autonative` paths on an isolated program before compile. Read by
-    # `compile` (to force TypeCheckPass) and NaIRGenPass (to coerce the main
-    # module into native context). `_auto_promote_target` is the absolute path
-    # of the module to promote.
+
     self._auto_promote_native: bool = False;
     self._auto_promote_target: str = "";
 }
@@ -42,23 +34,13 @@ impl JacProgram.is_hub_entry_fresh(self: JacProgram, resolved_path: str) -> bool
     }
     cached_at = self._hub_cache_times.get(resolved_path);
     if cached_at is None {
-        # No stamp recorded for this path. The caller's eviction policy
-        # depends on context: paths that go through `_import_module_from_path`
-        # always get stamped, but `TypeEvaluator._module_type_cache` also
-        # caches external (.js/.ts/asset) modules and special namespace
-        # placeholders that never reach the import resolver. Treat the
-        # absence of a stamp as "trust the existing cache" so we do not
-        # churn those entries on every type-of query.
         return True;
     }
     try {
         if os.path.getmtime(resolved_path) > cached_at {
             return False;
         }
-        # Annex (.impl.jac/.test.jac) and variant (.cl.jac/.sv.jac/.na.jac)
-        # files are spliced into the parent module by the compiler, so
-        # editing them must invalidate the parent's cache too. This
-        # mirrors `is_module_cache_valid` in jac0core.jir.
+
         for related in discover_annex_files(resolved_path) {
             if os.path.getmtime(related) > cached_at {
                 return False;
@@ -95,8 +77,7 @@ impl JacProgram.record_module_dependencies(self: JacProgram, mod: uni.Module) ->
         return;
     }
     mod_path = mod.loc.mod_path;
-    # Only Jac modules participate in the project rdep graph; .pyi/.py targets
-    # are never recompiled incrementally, so recording them is wasted work.
+
     if not mod_path.endswith(".jac") {
         return;
     }
@@ -144,33 +125,26 @@ impl JacProgram.transitive_dependents(self: JacProgram, target_path: str) -> set
 }
 
 impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None {
-    # Drop hub IR + freshness stamp.
     if resolved_path in self.mod.hub {
         del (self.mod.hub[resolved_path], );
     }
     if resolved_path in self._hub_cache_times {
         del (self._hub_cache_times[resolved_path], );
     }
-    # Drop native artifacts referencing this module.
+
     if resolved_path in self._native_cache {
         del (self._native_cache[resolved_path], );
     }
-    # Drop the type-evaluator's per-path caches; if the evaluator does not
-    # exist yet (no compile has run on this program) there is nothing to do.
+
     te = self.type_evaluator;
     if te is not None {
         try {
             te.forget_module(resolved_path);
         } except AttributeError {
-            # Older TypeEvaluator instances without forget_module. Fall
-            # back to the coarse reset; correctness over performance.
             self.type_evaluator = None;
         }
     }
-    # Drop edges where this module is the importer; they will be re-added
-    # when the module is re-parsed and the import resolver runs again.
-    # Edges where this module is the target (i.e., its dependents) stay,
-    # so future invalidations of this module still fan out correctly.
+
     for bucket in self._dependents.values() {
         bucket.discard(resolved_path);
     }
@@ -206,9 +180,6 @@ impl JacProgram.clear_type_system(self: JacProgram, clear_hub: bool = False) -> 
     }
 }
 
-"""The hubs `find_module` spans: this program's, plus the compiler's internal
-program (jaclang-bundled files route there). Skipped when they are the same
-object so self is never scanned twice."""
 impl JacProgram._search_hubs(self: JacProgram) -> list[dict] {
     hubs: list[dict] = [self.mod.hub];
     internal = self._get_compiler().internal_program;
@@ -226,7 +197,7 @@ impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) 
             return hub[path];
         }
     }
-    # Normalized fallback for path case/separator differences (Windows).
+
     normalized = os.path.normcase(path);
     for hub in hubs {
         for (hub_path, mod) in hub.items() {

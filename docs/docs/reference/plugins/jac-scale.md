@@ -971,7 +971,7 @@ Errors: `400 INVALID_TOKEN`.
 
 ## Emailer
 
-jac-scale's `Emailer` is a thin abstraction (`jac_scale.abstractions.emailer.Emailer`) used by the framework to send verification and password-reset emails. It ships with a built-in SMTP implementation and accepts any user-supplied subclass via `jac.toml` -- no jac-scale code changes required.
+jac-scale's `Emailer` is a thin abstraction (`jac_scale.emailer.emailer.Emailer`) used by the framework to send verification and password-reset emails. It ships with a built-in SMTP implementation and accepts any user-supplied subclass via `jac.toml` -- no jac-scale code changes required.
 
 ### Configuration
 
@@ -1029,7 +1029,7 @@ Subclass `Emailer` and point `provider` at your class. The factory imports it dy
 
 ```python
 # myapp/email.py
-from jac_scale.abstractions.emailer import Emailer
+from jac_scale.emailer.emailer import Emailer
 import os, sendgrid
 
 class SendGridEmailer(Emailer):
@@ -1113,7 +1113,7 @@ Use this when you want SendGrid's REST API instead of SMTP (better deliverabilit
 
 ```python
 # myapp/email.py
-from jac_scale.abstractions.emailer import Emailer
+from jac_scale.emailer.emailer import Emailer
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 import os, logging
@@ -1981,7 +1981,7 @@ Configuration priority: environment variables > `jac.toml` > defaults.
 For advanced use cases, you can use `StorageFactory` directly instead of the `store()` builtin:
 
 ```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
+import from jac_scale.storage.factory { StorageFactory }
 
 # Create with explicit type and config
 glob config = {"base_path": "./my-files", "create_dirs": True};
@@ -2050,7 +2050,7 @@ walker async_processor {
 Direct database operations without graph layer abstraction. Supports MongoDB (document queries), Firestore (Firebase-style document CRUD), and Redis (key-value with TTL/atomic ops).
 
 ```jac
-import from jac_scale.lib { kvstore }
+import from jac_scale.persistence.lib { kvstore }
 
 with entry {
     mongo_db = kvstore(db_name='my_app', db_type='mongodb');
@@ -2089,7 +2089,7 @@ export FIREBASE_PROJECT_ID="my-firebase-project"
 **Example:**
 
 ```jac
-import from jac_scale.lib { kvstore }
+import from jac_scale.persistence.lib { kvstore }
 
 with entry {
     db = kvstore(db_name='my_app', db_type='mongodb');
@@ -2168,7 +2168,7 @@ with entry {
 **Example:**
 
 ```jac
-import from jac_scale.lib { kvstore }
+import from jac_scale.persistence.lib { kvstore }
 
 with entry {
     cache = kvstore(db_name='cache', db_type='redis');
@@ -2209,7 +2209,7 @@ Pair `delete_if_equals` with `set_nx_with_ttl` and a unique fence token: a slow 
 import os;
 import time;
 import from uuid { uuid4 }
-import from jac_scale.lib { kvstore }
+import from jac_scale.persistence.lib { kvstore }
 
 glob _kv = kvstore(db_name='myapp', db_type='redis');
 

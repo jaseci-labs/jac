@@ -14,9 +14,11 @@
 //!               = 80 bytes, fixed, at EOF.
 //!
 //! On first run the payload is gzip-decompressed and untarred into
-//! `<cache>/rt/<hash16>/` (atomic temp-dir + rename), where `<hash16>` is the
-//! first 16 hex chars of the trailer digest. A `.ok` marker guards against
-//! partial extracts; subsequent runs short-circuit on it.
+//! `<cache>/rt/<hash16>-<pathhash>/` (atomic temp-dir + rename). `<hash16>` is
+//! the first 16 hex chars of the trailer digest (the payload version);
+//! `<pathhash>` folds in the binary's own path so co-located checkouts with
+//! identical payloads get distinct trees (see `rtKey`, issue #7012). A `.ok`
+//! marker guards against partial extracts; subsequent runs short-circuit on it.
 //!
 //! The payload is gzip (deflate), not zstd, so BOTH ends of the pipe are pure
 //! std: launcher/payload.zig compresses with `std.compress.flate.Compress` at
@@ -61,7 +63,8 @@ pub const Trailer = struct {
     payload_len: u64,
     /// Full sha256 hex of the compressed payload; verified on the cold path.
     hash: [HASH_LEN]u8,
-    /// First 16 hex chars of `hash`; used as the `rt/<hash16>` dir name.
+    /// First 16 hex chars of `hash`; the payload-version prefix of the
+    /// `rt/<hash16>-<pathhash>` dir name (see `rtKey`).
     hash16: [16]u8,
 };
 
@@ -75,6 +78,33 @@ pub fn hexDigest(digest: *const [32]u8) [HASH_LEN]u8 {
         hex[i * 2 + 1] = chars[b & 0xf];
     }
     return hex;
+}
+
+/// Length of an `rt/<key>` cache-dir name: `<hash16>` + '-' + 16 path-hash hex.
+pub const RT_KEY_LEN = 16 + 1 + 16; // 33
+
+/// Cache-key dir name for the runtime tree: the payload version (`hash16`)
+/// folded together with a short digest of the binary's own path.
+///
+/// Keying on the path as well as the payload is what isolates co-located
+/// checkouts (issue #7012): two clones whose payloads are byte-identical share
+/// one `hash16`, so a payload-only key (`rt/<hash16>`) collapsed them onto a
+/// single materialized tree -- and whichever ran first baked in its own
+/// absolute dev-source paths, so the second checkout silently executed the
+/// first's source. Distinct binary paths now yield distinct `rt/<key>` trees.
+///
+/// The `<hash16>-...` shape is deliberate: every key for a given payload version
+/// shares the `hash16` prefix, which `gcStale` uses to keep sibling checkouts
+/// while still reclaiming trees from previous versions.
+pub fn rtKey(hash16: *const [16]u8, exe_path: []const u8) [RT_KEY_LEN]u8 {
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(exe_path, &digest, .{});
+    const path_hex = hexDigest(&digest);
+    var key: [RT_KEY_LEN]u8 = undefined;
+    @memcpy(key[0..16], hash16);
+    key[16] = '-';
+    @memcpy(key[17..RT_KEY_LEN], path_hex[0..16]);
+    return key;
 }
 
 /// Decode an 80-byte trailer blob. Pure function (no I/O) so it is trivially
@@ -142,7 +172,7 @@ fn dirWritable(io: Io, path: []const u8) bool {
 }
 
 /// Resolve (and on first run, extract) the runtime tree for this binary.
-/// Returns the `<cache>/rt/<hash16>` path inside `rt_out`.
+/// Returns the `<cache>/rt/<hash16>-<pathhash>` path inside `rt_out`.
 ///
 /// `exe_path` is this executable; `uid`/`pid` and the three env strings are
 /// passed in by the caller (launcher.zig) so this module stays libc-free.
@@ -172,7 +202,8 @@ pub fn materialize(
     var root_buf: [MAX_PATH]u8 = undefined;
     const root = try cacheRoot(io, xdg_cache_home, home, tmpdir, uid, &root_buf);
 
-    const rt = std.fmt.bufPrint(rt_out, "{s}/rt/{s}", .{ root, &trailer.hash16 }) catch
+    const key = rtKey(&trailer.hash16, exe_path);
+    const rt = std.fmt.bufPrint(rt_out, "{s}/rt/{s}", .{ root, &key }) catch
         return Error.MaterializeFailed;
 
     // Warm path: a complete extract is marked by `<rt>/.ok`.
@@ -246,8 +277,17 @@ fn extractPayload(
     };
 }
 
-/// Best-effort GC of `rt/<old-hash>` trees left by previous binary versions.
+/// Best-effort GC of `rt/<old-hash>...` trees left by previous binary versions.
 /// Replaces the C launcher's `system("find ... -exec rm -rf")`.
+///
+/// `keep_hash16` is the CURRENT payload version. Every co-located checkout of
+/// that version shares this prefix (`<hash16>-<pathhash>`, see `rtKey`), so we
+/// keep them all -- evicting a sibling here would force it to re-extract on its
+/// next run, churning the cache for no benefit. Trees whose prefix differs
+/// belong to a previous version and are reclaimed; so are pre-fix entries named
+/// by the bare `<hash16>` (a payload-only key), which no current binary looks
+/// up -- the length check evicts them on the first run after upgrading rather
+/// than letting them linger until the next version bump.
 fn gcStale(io: Io, root: []const u8, keep_hash16: *const [16]u8) void {
     var rtbuf: [MAX_PATH]u8 = undefined;
     const rtdir = std.fmt.bufPrint(&rtbuf, "{s}/rt", .{root}) catch return;
@@ -256,7 +296,12 @@ fn gcStale(io: Io, root: []const u8, keep_hash16: *const [16]u8) void {
     var it = dir.iterate();
     while (it.next(io) catch null) |entry| {
         if (entry.kind != .directory) continue;
-        if (std.mem.eql(u8, entry.name, keep_hash16)) continue;
+        // A current-version tree in the new key format -> keep. hash16 is a
+        // fixed 16-char hex string, so a prefix match is an exact version match;
+        // the length check excludes both other versions and the old bare-hash16
+        // format. (A live `.tmp.<pid>` extract is longer than RT_KEY_LEN, so it
+        // falls through to the explicit skip below rather than being kept here.)
+        if (entry.name.len == RT_KEY_LEN and std.mem.startsWith(u8, entry.name, keep_hash16)) continue;
         if (std.mem.indexOf(u8, entry.name, ".tmp.") != null) continue; // a live extract
         dir.deleteTree(io, entry.name) catch {};
     }
@@ -349,8 +394,9 @@ test "materialize extracts the fixture payload and is idempotent" {
     var rtbuf: [MAX_PATH]u8 = undefined;
     const rt = try materialize(io, testing.allocator, exe, home, null, null, 1000, 7, &rtbuf);
 
-    // Expected key = first 16 hex chars of the digest.
-    try testing.expect(std.mem.endsWith(u8, rt, hex[0..16]));
+    // Expected key = `<hash16>-<pathhash>` (rtKey): payload version then path.
+    try testing.expect(std.mem.endsWith(u8, rt, &rtKey(hex[0..16], exe)));
+    try testing.expect(std.mem.indexOf(u8, rt, hex[0..16]) != null);
 
     var dir = try Io.Dir.cwd().openDir(io, rt, .{});
     defer dir.close(io);
@@ -364,4 +410,117 @@ test "materialize extracts the fixture payload and is idempotent" {
     var rtbuf2: [MAX_PATH]u8 = undefined;
     const rt2 = try materialize(io, testing.allocator, exe, home, null, null, 1000, 7, &rtbuf2);
     try testing.expectEqualStrings(rt, rt2);
+}
+
+// Regression for #7012: two co-located checkouts whose payloads are
+// byte-identical (same trailer digest) must NOT share one materialized rt tree.
+// Keying the rt dir on the payload digest alone made both binaries resolve to
+// `rt/<hash16>`, so the second checkout silently ran the first's dev-linked
+// source. Build the SAME binary at two different paths under one cache home and
+// assert they materialize into distinct rt trees.
+test "materialize isolates co-located binaries with identical payloads" {
+    const io = testing.io;
+    const payload = try @import("tests/fixture.zig").payloadAlloc(testing.allocator);
+    defer testing.allocator.free(payload);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var pbuf: [MAX_PATH]u8 = undefined;
+    const home = pbuf[0..try tmp.dir.realPath(io, &pbuf)];
+
+    // One binary image; the two checkouts differ only by where the file lives.
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(payload, &digest, .{});
+    const hex = hexDigest(&digest);
+
+    var bin = std.array_list.Managed(u8).init(testing.allocator);
+    defer bin.deinit();
+    try bin.appendSlice("STUB");
+    try bin.appendSlice(payload);
+    try bin.appendSlice(MAGIC);
+    var lenle: [8]u8 = undefined;
+    std.mem.writeInt(u64, &lenle, payload.len, .little);
+    try bin.appendSlice(&lenle);
+    try bin.appendSlice(&hex);
+
+    try tmp.dir.createDirPath(io, "a");
+    try tmp.dir.createDirPath(io, "b");
+    try tmp.dir.writeFile(io, .{ .sub_path = "a/jacbin", .data = bin.items });
+    try tmp.dir.writeFile(io, .{ .sub_path = "b/jacbin", .data = bin.items });
+    var abuf: [MAX_PATH]u8 = undefined;
+    var bbuf: [MAX_PATH]u8 = undefined;
+    const exe_a = abuf[0..try tmp.dir.realPathFile(io, "a/jacbin", &abuf)];
+    const exe_b = bbuf[0..try tmp.dir.realPathFile(io, "b/jacbin", &bbuf)];
+
+    var rt_a_buf: [MAX_PATH]u8 = undefined;
+    var rt_b_buf: [MAX_PATH]u8 = undefined;
+    const rt_a = try materialize(io, testing.allocator, exe_a, home, null, null, 1000, 7, &rt_a_buf);
+    const rt_b = try materialize(io, testing.allocator, exe_b, home, null, null, 1000, 8, &rt_b_buf);
+
+    // Distinct checkouts -> distinct trees, even with an identical payload.
+    try testing.expect(!std.mem.eql(u8, rt_a, rt_b));
+    // Both still carry the payload version (hash16) so a version bump GCs both.
+    try testing.expect(std.mem.indexOf(u8, rt_a, hex[0..16]) != null);
+    try testing.expect(std.mem.indexOf(u8, rt_b, hex[0..16]) != null);
+
+    // Each tree extracted independently and completely.
+    for ([_][]const u8{ rt_a, rt_b }) |rt| {
+        var dir = try Io.Dir.cwd().openDir(io, rt, .{});
+        defer dir.close(io);
+        var fbuf: [64]u8 = undefined;
+        const marker = try dir.readFile(io, "python/lib/marker.txt", &fbuf);
+        try testing.expectEqualStrings("pybytecode-marker\n", marker);
+    }
+}
+
+// A pre-fix binary wrote the cache dir under the bare payload digest
+// (`rt/<hash16>`). After upgrading to a path-folded binary, that orphaned
+// old-format tree is never looked up again, so the cold-path GC must reclaim it
+// on the first run rather than leaving it until the next payload-version bump.
+test "materialize gc reclaims pre-fix bare-hash16 cache dirs" {
+    const io = testing.io;
+    const payload = try @import("tests/fixture.zig").payloadAlloc(testing.allocator);
+    defer testing.allocator.free(payload);
+
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    var pbuf: [MAX_PATH]u8 = undefined;
+    const home = pbuf[0..try tmp.dir.realPath(io, &pbuf)];
+
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(payload, &digest, .{});
+    const hex = hexDigest(&digest);
+
+    var bin = std.array_list.Managed(u8).init(testing.allocator);
+    defer bin.deinit();
+    try bin.appendSlice("STUB");
+    try bin.appendSlice(payload);
+    try bin.appendSlice(MAGIC);
+    var lenle: [8]u8 = undefined;
+    std.mem.writeInt(u64, &lenle, payload.len, .little);
+    try bin.appendSlice(&lenle);
+    try bin.appendSlice(&hex);
+    try tmp.dir.writeFile(io, .{ .sub_path = "jacbin", .data = bin.items });
+    var ebuf: [MAX_PATH]u8 = undefined;
+    const exe = ebuf[0..try tmp.dir.realPathFile(io, "jacbin", &ebuf)];
+
+    // Pre-seed the old-format tree `<home>/jac/rt/<hash16>` (bare digest, the
+    // shape a pre-fix binary wrote), complete with its `.ok` marker.
+    var oldrel: [MAX_PATH]u8 = undefined;
+    const old_rel = std.fmt.bufPrint(&oldrel, "jac/rt/{s}", .{hex[0..16]}) catch unreachable;
+    try tmp.dir.createDirPath(io, old_rel);
+    var okrel: [MAX_PATH]u8 = undefined;
+    const ok_rel = std.fmt.bufPrint(&okrel, "{s}/.ok", .{old_rel}) catch unreachable;
+    try tmp.dir.writeFile(io, .{ .sub_path = ok_rel, .data = "" });
+
+    var oldabs: [MAX_PATH]u8 = undefined;
+    const old_abs = std.fmt.bufPrint(&oldabs, "{s}/jac/rt/{s}", .{ home, hex[0..16] }) catch unreachable;
+    try testing.expect(pathExists(io, old_abs, ".ok")); // present before upgrade
+
+    // Cold-path materialize runs gcStale; the old-format tree must be gone and
+    // the new path-folded tree present.
+    var rtbuf: [MAX_PATH]u8 = undefined;
+    const rt = try materialize(io, testing.allocator, exe, home, null, null, 1000, 7, &rtbuf);
+    try testing.expect(std.mem.endsWith(u8, rt, &rtKey(hex[0..16], exe)));
+    try testing.expect(!pathExists(io, old_abs, ".ok")); // reclaimed on first run
 }

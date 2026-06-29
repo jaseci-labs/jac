@@ -1,5 +1,3 @@
-"""Decorator that returns a random instance of the function's return type."""
-
 impl returns_fake(func: any) -> any {
     try {
         type_hints = get_type_hints(
@@ -16,11 +14,9 @@ impl returns_fake(func: any) -> any {
     return wrapper;
 }
 
-"""Generate a random value that (best-effort) conforms to the type 'tp'."""
 impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) -> any {
-    random.seed(42);  # for reproducibility in tests
+    random.seed(42);
     if _depth > _max_depth {
-        # Depth cap to avoid infinite recursion on self-referential types
         origin = get_origin(tp);
         if origin in (list, set, frozenset, tuple, dict, deque) {
             return origin() if origin is not tuple else tuple();
@@ -32,26 +28,26 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
         return None;
     }
     tp = _unwrap_newtype(_unwrap_annotated(tp));
-    # Any / object => pick a simple JSON-friendly value
+
     if tp in (Any, object) {
         return random.choice(
             [_rand_str(), random.randint(0, 9999), True, None, random.uniform(0, 1)]
         );
     }
-    # Primitives and common stdlib scalars
+
     prim = _random_primitive(tp);
     if prim is not None {
         return prim;
     }
-    # Literal
+
     if get_origin(tp) is Literal {
         choices = get_args(tp);
         return _choose_from(choices);
     }
-    # Union / Optional
+
     if get_origin(tp) is Union {
         options = list(get_args(tp));
-        # Bias slightly away from None, if present
+
         if type(None) in options and len(options) > 1 and random.random() < 0.3 {
             return None;
         }
@@ -66,11 +62,10 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
             else None;
         return random_value_for_type(chosen, _depth=_depth + 1, _max_depth=_max_depth);
     }
-    # Tuple (fixed-length or variadic)
+
     if get_origin(tp) is tuple {
         args = get_args(tp);
         if len(args) == 2 and args[1] is Ellipsis {
-            # Tuple[T, ...]
             n = random.randint(0, 5);
             return tuple(
                 random_value_for_type(
@@ -84,7 +79,7 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
             );
         }
     }
-    # List / Set / FrozenSet / Deque / Dict
+
     origin = get_origin(tp);
     if origin in (list, set, frozenset, deque) {
         elem_type = get_args(tp)[0] if get_args(tp) else Any;
@@ -133,7 +128,7 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
             ) for _ in range(size)
         };
     }
-    # TypedDict
+
     if _is_typed_dict(tp) {
         req: set[str] = getattr(tp, '__required_keys__', set());
         opt: set[str] = getattr(tp, '__optional_keys__', set());
@@ -153,7 +148,7 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
         }
         return out;
     }
-    # NamedTuple
+
     if _is_namedtuple(tp) {
         anns = get_type_hints(tp, include_extras=True);
         values = [
@@ -162,11 +157,11 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
         ];
         return tp(*values);
     }
-    # Enum
+
     if _is_enum(tp) {
         return _choose_from(list(tp));
     }
-    # Dataclass
+
     if is_dataclass(tp) {
         try {
             type_hints = get_type_hints(tp, include_extras=True);
@@ -201,7 +196,7 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
             );
         }
     }
-    # TypeVar: use bound or one of constraints, else Any
+
     if isinstance(tp, TypeVar) {
         if tp.__constraints__ {
             chosen = _choose_from(tp.__constraints__);
@@ -216,7 +211,7 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
         }
         return random_value_for_type(Any, _depth=_depth + 1, _max_depth=_max_depth);
     }
-    # Callable[...] -> synthesize a dummy callable with compatible signature
+
     if get_origin(tp) is Callable {
         args = get_args(tp);
         ret_t = Any;
@@ -230,11 +225,11 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
         }
         return _fn_stub;
     }
-    # Plain classes: if it's a built-in container alias, treat as Any
+
     if tp in (list, set, frozenset, tuple, dict, deque) {
         return random_value_for_type(Any, _depth=_depth + 1, _max_depth=_max_depth);
     }
-    # Try to instantiate using __init__ annotations
+
     if isinstance(tp, type) {
         try {
             sig = inspect.signature(tp);
@@ -265,11 +260,10 @@ impl random_value_for_type(tp: any, *, _depth: int = 0, _max_depth: int = 10) ->
             }
         }
     }
-    # Fallback
+
     return None;
 }
 
-"""Generate a random value for primitive types."""
 impl _random_primitive(tp: any) -> any {
     if tp is int {
         return random.randint(-(10 ** 6), 10 ** 6);
@@ -312,12 +306,10 @@ impl _random_primitive(tp: any) -> any {
     return None;
 }
 
-"""Choose a random element from a sequence."""
 impl _choose_from(seq: any) -> any {
     return random.choice(list(seq));
 }
 
-"""Unwrap NewType to get the underlying type."""
 impl _unwrap_newtype(tp: any) -> any {
     if tp?.__supertype__ {
         return tp.__supertype__;
@@ -325,7 +317,6 @@ impl _unwrap_newtype(tp: any) -> any {
     return tp;
 }
 
-"""Unwrap Annotated type to get the underlying type."""
 impl _unwrap_annotated(tp: any) -> any {
     if get_origin(tp) is Annotated {
         return get_args(tp)[0];
@@ -333,7 +324,6 @@ impl _unwrap_annotated(tp: any) -> any {
     return tp;
 }
 
-"""Safely get subclasses of a type."""
 impl _safe_subclasses(tp: any) -> list[type] {
     try {
         return list(tp.__subclasses__());
@@ -342,7 +332,6 @@ impl _safe_subclasses(tp: any) -> list[type] {
     }
 }
 
-"""Check if type is an Enum."""
 impl _is_enum(tp: any) -> bool {
     try {
         import enum;
@@ -352,7 +341,6 @@ impl _is_enum(tp: any) -> bool {
     }
 }
 
-"""Check if type is a NamedTuple."""
 impl _is_namedtuple(tp: any) -> bool {
     return (
         isinstance(tp, type)
@@ -362,12 +350,10 @@ impl _is_namedtuple(tp: any) -> bool {
     );
 }
 
-"""Check if type is a TypedDict."""
 impl _is_typed_dict(tp: any) -> bool {
     return (isinstance(tp, type) and tp?.__annotations__ and tp?.__required_keys__);
 }
 
-"""Generate a random string of given length."""
 impl _rand_str(n: int = 12) -> str {
     return ''.join(random.choice(_RAND_STR_ALPH) for _ in range(n));
 }

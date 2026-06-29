@@ -1,6 +1,3 @@
-"""Implementation for pybc_gen_pass constructs."""
-
-"""Transform AST into Python bytecode."""
 impl PyBytecodeGenPass.transform(
     self: PyBytecodeGenPass, ir_in: uni.Module
 ) -> uni.Module {
@@ -8,7 +5,6 @@ impl PyBytecodeGenPass.transform(
     return ir_in;
 }
 
-"""Process all modules in the program."""
 impl PyBytecodeGenPass.process_modules(
     self: PyBytecodeGenPass, root_module: uni.Module
 ) -> None {
@@ -19,7 +15,6 @@ impl PyBytecodeGenPass.process_modules(
     }
 }
 
-"""Compile a module to Python bytecode."""
 impl PyBytecodeGenPass.compile_module_to_bytecode(
     self: PyBytecodeGenPass, mod: uni.Module
 ) -> None {

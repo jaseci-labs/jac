@@ -1,35 +1,18 @@
-"""Unit tests for `jac scale plan` / `--dry-run` (M-05).
-
-Scope - only the contracts that broke (or could break) in production:
-  - Validator catalog: one test per check (every check represents a
-    real config-bug class)
-  - CLI contracts: --show-yaml gate, dry-run touches nothing
-  - Quantity parsers: K8s suffix correctness
-  - Rendering smoke: full bundle renders all sections (refactor guard)
-
-Cosmetic per-field render asserts were dropped in the post-review
-cleanup - if a section disappears the smoke test catches it; if a
-field formats wrong the user will see it the same second a developer
-would. Per-field tests were boilerplate without bug-catching value."""
-
 import io;
 import unittest.mock as mock;
 import from contextlib { redirect_stdout }
 import from typing { Any }
-import from jac_scale.microservices.cli.plan { print_plan }
-import from jac_scale.microservices.cli.diagnostics {
+import from jac_scale.runtime.cli.plan { print_plan }
+import from jac_scale.runtime.cli.diagnostics {
     Diagnostic,
     PlanValidator,
     has_errors,
     _cpu_to_millicores,
     _mem_to_bytes
 }
-import jac_scale.microservices.cli.plan as plan_mod;
+import jac_scale.runtime.cli.plan as plan_mod;
 
 
-# ---------------------------------------------------------------------------
-# Test helpers
-# ---------------------------------------------------------------------------
 def _validate(bundle: dict, ms_cfg: dict, svc_configs: dict) -> list {
     return PlanValidator(bundle=bundle, ms_cfg=ms_cfg, svc_configs=svc_configs).run();
 }
@@ -60,7 +43,6 @@ def _make_app_config -> Any {
 }
 
 
-"""Minimal Deployment manifest with given image and optional resources."""
 def _dep(
     image: str | None = "a:v1", requests: dict | None = None, limits: dict | None = None
 ) -> dict {
@@ -82,8 +64,6 @@ def _dep(
 }
 
 
-"""Run print_plan with stubbed cluster_type + _load_ms_cfg. Returns
-(stdout, diagnostics). Optional `ms_cfg` overrides empty default."""
 def _run_plan(
     bundle: dict[str, Any], show_yaml: bool = False, ms_cfg_pair: tuple | None = None
 ) -> tuple {
@@ -92,24 +72,16 @@ def _run_plan(
     diagnostics: list = [];
     cfg_pair = ms_cfg_pair if ms_cfg_pair is not None else ({}, {});
     with redirect_stdout(buf) {
-        with mock.patch.object(plan_mod, "detect_cluster_type", return_value="kind") {
-            with mock.patch.object(
-                plan_mod.Plan, "_load_ms_cfg", return_value=cfg_pair
-            ) {
-                (_, diagnostics) = print_plan(
-                    target, _make_app_config(), show_yaml=show_yaml
-                );
-            }
+        with mock.patch.object(plan_mod.Plan, "_load_ms_cfg", return_value=cfg_pair) {
+            (_, diagnostics) = print_plan(
+                target, _make_app_config(), show_yaml=show_yaml
+            );
         }
     }
     return (buf.getvalue(), diagnostics);
 }
 
 
-# ---------------------------------------------------------------------------
-# Quantity parsers - K8s suffix correctness matters because mis-parsing
-# silently rounds to a default and the OOM-killer hits in production.
-# ---------------------------------------------------------------------------
 test "cpu parser: valid millicore + core forms, invalid -> None" {
     assert _cpu_to_millicores("500m") == 500;
     assert _cpu_to_millicores("1") == 1000;
@@ -129,9 +101,6 @@ test "mem parser: Mi/Gi binary, M decimal, bare int; rejects 'MB' and garbage" {
 }
 
 
-# ---------------------------------------------------------------------------
-# CLI contracts - the dry-run promise: touches nothing, --show-yaml gates raw.
-# ---------------------------------------------------------------------------
 test "dry-run contract: print_plan must NOT call deploy / apply_manifests" {
     target = _StubTarget(_bundle={"deployments": {"x": {}}, "services": {}});
     target.deploy = mock.MagicMock(
@@ -141,12 +110,8 @@ test "dry-run contract: print_plan must NOT call deploy / apply_manifests" {
         side_effect=AssertionError("apply_manifests must NOT be called")
     );
     with redirect_stdout(io.StringIO()) {
-        with mock.patch.object(plan_mod, "detect_cluster_type", return_value="kind") {
-            with mock.patch.object(
-                plan_mod.Plan, "_load_ms_cfg", return_value=({}, {})
-            ) {
-                print_plan(target, _make_app_config());
-            }
+        with mock.patch.object(plan_mod.Plan, "_load_ms_cfg", return_value=({}, {})) {
+            print_plan(target, _make_app_config());
         }
     }
     target.deploy.assert_not_called();
@@ -174,10 +139,6 @@ test "--show-yaml gate: YAML hidden by default, dumped on opt-in" {
 }
 
 
-# ---------------------------------------------------------------------------
-# Render smoke - one realistic bundle exercises every section. If a section
-# silently disappears in a refactor, this catches it.
-# ---------------------------------------------------------------------------
 test "render smoke: realistic bundle prints every section" {
     bundle: dict[str, Any] = {
         "deployments": {
@@ -217,11 +178,6 @@ test "render smoke: realistic bundle prints every section" {
 }
 
 
-# ---------------------------------------------------------------------------
-# Validator catalog - one test per check. Each represents a real config-bug
-# class that either breaks at kube-apiserver apply time or, worse, applies
-# silently and breaks in production.
-# ---------------------------------------------------------------------------
 test "validate: reserved name __gateway__ as a microservice -> error" {
     diags = _validate({"deployments": {}}, {"routes": {"__gateway__": "/x"}}, {});
     assert any(d.severity == "error" and "reserved" in d.message for d in diags);
@@ -270,8 +226,6 @@ test "validate: HPA enabled with no cpu_request -> warning" {
 
 
 test "validate: PDB drain-deadlock (max_unavailable=0 + replicas=1) -> warning, no false positive on default" {
-    # The bug: warning fires on max_unavailable=0 + replicas=1 (real deadlock).
-    # The regression: must NOT fire on jac-scale's default max_unavailable=1.
     dep = _dep(requests={"cpu": "100m"});
     dep["spec"]["replicas"] = 1;
     deadlock = _validate(
@@ -356,7 +310,7 @@ test "validate: deployment with no container image -> error" {
         {"a": {"cpu_request": "100m", "cpu_limit": "500m"}}
     );
     assert any(
-        d.severity == "error" and "no image resolved" in d.message for d in diags
+        d.severity == "error" and "no base image resolved" in d.message for d in diags
     );
 }
 
@@ -368,9 +322,9 @@ test "validate: route declared with no generated Deployment -> error + skips dow
     assert any(
         d.severity == "error" and "no generated Deployment" in d.message for d in diags
     );
-    # Downstream checks (HPA cpu baseline, image) MUST NOT chain on None
+
     assert not any("cpu_request is unset" in d.message for d in diags);
-    assert not any("no image resolved" in d.message for d in diags);
+    assert not any("no base image resolved" in d.message for d in diags);
 }
 
 

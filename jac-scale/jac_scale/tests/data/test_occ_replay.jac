@@ -1,17 +1,3 @@
-"""Read-set optimistic-concurrency tests for the node-identity race (#6266).
-
-Starts a real MongoDB container (testcontainers; needs Docker, skipped if
-unavailable) and exercises the read-gated version-CAS in
-MongoBackend._put_node_atomic plus the abort -> reload -> replay convergence
-the request boundary performs. Two writers model two pods racing against the
-same root. The CAS fires only when a request READ a traversal from the node
-(passed here as `_put_node_atomic`'s `cas_version`); a blind append takes no
-dependency and merges lock-free (#5644).
-
-Anchor handles are typed `any`: the checker has no stub for `.__jac__` /
-anchor metadata, and these tests poke the persistence layer directly.
-"""
-
 import atexit;
 import threading;
 import from uuid { uuid4 }
@@ -22,7 +8,7 @@ import from jaclang.jac0core.archetype { EdgeAnchor, GenericEdge, Root }
 import from jaclang.runtimelib.changeset { ChangeSet }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.exceptions { WriteConflict }
-import from jac_scale.memory_hierarchy { MongoBackend }
+import from jac_scale.memory.memory_hierarchy { MongoBackend }
 
 glob _shared: dict = {},
      _DB: str = "jac_test_occ";
@@ -33,7 +19,6 @@ node OccProfile {
 }
 
 
-"""Lazily start a shared MongoDB container; return (MongoClient, uri)."""
 def _get_mongo -> tuple {
     if "client" not in _shared {
         container = MongoDbContainer("mongo:latest");
@@ -48,7 +33,6 @@ def _get_mongo -> tuple {
 }
 
 
-"""Persist a fresh Root via the backend; return (anchor, id_str)."""
 def _seed_root(backend: any) -> tuple {
     root_arch: any = Root();
     ranch: any = root_arch.__jac__;
@@ -68,17 +52,14 @@ test "OCC: a read-gated stale write conflicts" {
     (ranch, rid) = _seed_root(backend);
     assert coll.find_one({"_id": rid})["data"]["version"] == 0;
 
-    # Two requests that each READ the root load the same version (two pods).
     a1: any = Serializer.deserialize(coll.find_one({"_id": rid})["data"]);
     a2: any = Serializer.deserialize(coll.find_one({"_id": rid})["data"]);
     assert a1.version == 0 and a2.version == 0;
 
-    # Writer 1 (read v0) wins and bumps the version.
     backend._put_node_atomic(a1, [str(uuid4())], [], set(), 0);
     assert a1.version == 1;
     assert coll.find_one({"_id": rid})["data"]["version"] == 1;
 
-    # Writer 2 (read v0) -> CAS miss -> WriteConflict.
     conflicted = False;
     try {
         backend._put_node_atomic(a2, [str(uuid4())], [], set(), 0);
@@ -97,7 +78,6 @@ test "OCC: a read-gated first write to a never-persisted anchor inserts, not con
     backend: any = MongoBackend(mongo_url=uri, db_name=_DB);
     coll: any = client[_DB]["_anchors"];
 
-    # A brand-new anchor that has NEVER been persisted: no document exists yet.
     root_arch: any = Root();
     ranch: any = root_arch.__jac__;
     ranch.persistent = True;
@@ -105,9 +85,6 @@ test "OCC: a read-gated first write to a never-persisted anchor inserts, not con
     rid: str = str(ranch.id);
     assert coll.find_one({"_id": rid}) is None;
 
-    # The request READ a traversal from this node -> cas_version=0. "Expected v0"
-    # must include "does not exist yet": the write inserts the doc rather than
-    # raising a phantom WriteConflict(expected v0, found v-1).
     conflicted = False;
     try {
         backend._put_node_atomic(ranch, [str(uuid4())], [], set(), 0);
@@ -129,12 +106,9 @@ test "OCC: a read-gated write on a legacy doc (no data.version) does not conflic
     coll: any = client[_DB]["_anchors"];
     (ranch, rid) = _seed_root(backend);
 
-    # Simulate a document written before this feature shipped: no data.version.
     coll.update_one({"_id": rid}, {"$unset": {"data.version": ""}});
     assert "version" not in coll.find_one({"_id": rid})["data"];
 
-    # A request reads it (absent version -> default 0) and adds an edge. The CAS
-    # must treat absent as 0 and succeed, not 409 on the legacy node.
     a: any = Serializer.deserialize(coll.find_one({"_id": rid})["data"]);
     assert a.version == 0;
     conflicted = False;
@@ -158,7 +132,6 @@ test "OCC: a blind append (no read) merges lock-free" {
     a1: any = Serializer.deserialize(coll.find_one({"_id": rid})["data"]);
     a2: any = Serializer.deserialize(coll.find_one({"_id": rid})["data"]);
 
-    # No cas_version -> no dependency -> both edges merge, no conflict.
     conflicted = False;
     try {
         backend._put_node_atomic(a1, [str(uuid4())], [], set());
@@ -171,9 +144,6 @@ test "OCC: a blind append (no read) merges lock-free" {
 }
 
 
-"""One pod's find-or-create with abort + reload + replay on conflict (mirrors
-the server boundary). The read of `[-->(?:OccProfile)]` is modelled by passing
-the loaded version as `cas_version`. Returns 'created' or 'found'."""
 def _find_or_create(uri: str, rid: str, barrier: any) -> str {
     backend: any = MongoBackend(mongo_url=uri, db_name=_DB);
     coll: any = backend.client[_DB]["_anchors"];
@@ -257,16 +227,11 @@ test "OCC (Mongo): apply() precheck aborts a stale unit before writing the child
     coll: any = client[_DB]["_anchors"];
     (ranch, rid) = _seed_root(backend);
 
-    # Winner bumps the root to v1 (read-gated).
     backend._put_node_atomic(ranch, [str(uuid4())], [], set(), 0);
     assert coll.find_one({"_id": rid})["data"]["version"] == 1;
 
-    # Loser builds a full find-or-create unit (child + edge + root edge-list
-    # delta) but read the root at v0. apply()'s precheck must detect the stale
-    # version and abort the WHOLE unit BEFORE the child/edge docs are written,
-    # so no orphan is left (MongoDB has no cross-document rollback).
     rstale: any = Serializer.deserialize(coll.find_one({"_id": rid})["data"]);
-    rstale.version = 0;  # the version this request "read"
+    rstale.version = 0;
     prof: any = OccProfile(uid="loser");
     panch: any = prof.__jac__;
     panch.persistent = True;
@@ -300,13 +265,11 @@ test "fsck (Mongo): a half-linked edge + its stranded child are collected" {
     coll: any = client[_DB]["_anchors"];
     (ranch, rid) = _seed_root(backend);
 
-    # Build root -> child with a real edge doc; both endpoints cite it.
     prof: any = OccProfile(uid="kid");
     panch: any = prof.__jac__;
     panch.persistent = True;
     panch.root = ranch.id;
-    # A real EdgeAnchor (not a bare GenericEdge().__jac__, which is a base
-    # Anchor) so it persists as a `type: EdgeAnchor` row that fsck recognizes.
+
     edge_arch: any = GenericEdge();
     eanch: any = EdgeAnchor(
         archetype=edge_arch, source=ranch, target=panch, is_undirected=False
@@ -315,15 +278,11 @@ test "fsck (Mongo): a half-linked edge + its stranded child are collected" {
     eanch.persistent = True;
     eanch.root = ranch.id;
     panch.edges.append(eanch);
-    backend._write_to_db(panch);  # child cites edge
-    backend._write_to_db(eanch);  # edge doc
-    backend._put_node_atomic(
-        ranch, [str(eanch.id)], [], set()
-    );  # root cites edge (blind)
+    backend._write_to_db(panch);
+    backend._write_to_db(eanch);
+    backend._put_node_atomic(ranch, [str(eanch.id)], [], set());
     assert len(coll.find_one({"_id": rid})["data"]["edges"]) == 1;
 
-    # Surgically remove the edge from the ROOT's list -> half-linked (kid cites,
-    # root doesn't): the residual orphan an OCC reject leaves on a non-txn store.
     coll.update_one({"_id": rid}, {"$pull": {"data.edges": str(eanch.id)}});
     assert len(coll.find_one({"_id": rid})["data"]["edges"]) == 0;
 

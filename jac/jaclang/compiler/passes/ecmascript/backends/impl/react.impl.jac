@@ -1,5 +1,3 @@
-"""ReactBackend implementations — verbatim move from EsastGenPass sites."""
-
 import jaclang.compiler.passes.ecmascript.estree as es;
 import from jaclang.compiler.passes.ecmascript.reactive_intent {
     StateField,
@@ -8,9 +6,7 @@ import from jaclang.compiler.passes.ecmascript.reactive_intent {
     Effect,
     AsyncBoundary
 }
-# View IR records are imported lazily inside `lower_view`/`_view_attr_property`
-# (see `framework_backend.jac`): a top-level runtime import would re-enter
-# `get_compiler()` during the compiler bootstrap.
+
 impl ReactBackend.name -> str {
     return "react";
 }
@@ -34,17 +30,14 @@ impl ReactBackend.required_globals -> list[str] {
     return ["__jacJsx", "__jacSpawn"];
 }
 
-"""Basename of the framework-specific client runtime .cl.jac source."""
 impl ReactBackend.runtime_source_basename -> str {
     return "client_runtime.cl.jac";
 }
 
-"""Vite resolve aliases — React needs no module remapping."""
 impl ReactBackend.vite_aliases -> dict[str, str] {
     return {};
 }
 
-"""Build the React entry script that mounts an exported `app` component."""
 impl ReactBackend.build_entry_script(
     entry_module: str, install_global_handlers: bool = True
 ) -> str {
@@ -52,8 +45,6 @@ impl ReactBackend.build_entry_script(
     return build_simple_react_entry_script(entry_module, install_global_handlers);
 }
 
-"""Build the React file-based-routing entry (`react-dom/client` + react-router-dom);
-Preact inherits this and resolves it through `preact/compat` via `vite_aliases`."""
 impl ReactBackend.build_pages_entry_script(
     entry_module: str, auth_redirect: str, has_app_wrapper: bool
 ) -> str {
@@ -61,7 +52,6 @@ impl ReactBackend.build_pages_entry_script(
     return build_pages_react_entry_script(entry_module, auth_redirect, has_app_wrapper);
 }
 
-"""All React hook names — used by import_source and subclass backends."""
 impl ReactBackend._hook_symbols -> set[str] {
     return {
         "useState",
@@ -82,12 +72,10 @@ impl ReactBackend._hook_symbols -> set[str] {
     };
 }
 
-"""Vite plugin for React (import line, plugin call expression)."""
 impl ReactBackend.vite_plugin_lines -> (tuple[str, str] | None) {
     return ('import react from "@vitejs/plugin-react";', 'react()');
 }
 
-"""Generate setter name for reactive variable (count -> setCount)."""
 impl ReactBackend._get_setter_name(var_name: str) -> str {
     if not var_name {
         return "";
@@ -95,7 +83,6 @@ impl ReactBackend._get_setter_name(var_name: str) -> str {
     return f"set{var_name[0].upper()}{var_name[1:]}";
 }
 
-"""Build `<>{children...}</>` — a fragment `<factory>(null, {}, [children])`."""
 impl ReactBackend._jsx_fragment(children: list[es.Expression]) -> es.CallExpression {
     return es.CallExpression(
         callee=es.Identifier(name=self.jsx_factory_name()),
@@ -107,22 +94,18 @@ impl ReactBackend._jsx_fragment(children: list[es.Expression]) -> es.CallExpress
     );
 }
 
-"""Runtime symbols required when lowering a reactive state field."""
 impl ReactBackend.state_field_symbols(s: StateField) -> list[str] {
     return ["useState"];
 }
 
-"""Runtime symbols required when lowering a ref field."""
 impl ReactBackend.ref_field_symbols(r: RefField) -> list[str] {
     return ["useRef"];
 }
 
-"""Runtime symbols required when lowering an effect."""
 impl ReactBackend.effect_symbols(e: Effect) -> list[str] {
     return ["useEffect"];
 }
 
-"""Runtime symbols required when lowering an async boundary."""
 impl ReactBackend.async_boundary_symbols(a: AsyncBoundary) -> list[str] {
     syms = ["JacAwaiting"];
     if a.except_exprs {
@@ -131,16 +114,10 @@ impl ReactBackend.async_boundary_symbols(a: AsyncBoundary) -> list[str] {
     return syms;
 }
 
-"""Framework view symbols a lowered tree references — none for the JS family.
-
-React/Preact render any lifted `IfChild`/`EachChild` from the carried
-`js_fallback` (`?:`/`.map()`), so no `<For>`/`<Show>`-style component import is
-needed; Solid overrides this to scan the tree."""
 impl ReactBackend.view_runtime_symbols(view: ViewElement) -> list[str] {
     return [];
 }
 
-"""Lower a reactive state field to `const [name, setName] = useState(init);`."""
 impl ReactBackend.lower_state_field(s: StateField) -> list[es.Statement] {
     setter_name = self._get_setter_name(s.name);
     array_pattern = es.ArrayPattern(
@@ -154,7 +131,6 @@ impl ReactBackend.lower_state_field(s: StateField) -> list[es.Statement] {
     return [decl_stmt];
 }
 
-"""Lower a ref field to `const name = useRef(init);`."""
 impl ReactBackend.lower_ref_field(r: RefField) -> list[es.Statement] {
     use_ref_call = es.CallExpression(
         callee=es.Identifier(name='useRef'), arguments=[r.init_expr]
@@ -165,32 +141,14 @@ impl ReactBackend.lower_ref_field(r: RefField) -> list[es.Statement] {
     return [es.VariableDeclaration(declarations=[ref_declarator], kind='const')];
 }
 
-"""Lower a reactive value read — bare identifier on hooks backends.
-
-Addresses issue #6677: `lower_state_read(name: str) -> es.Expression` is the
-value-read seam. React/Preact re-render on state change, so a reactive read is
-just the variable itself (this no-op keeps their output byte-identical); signals
-backends (Solid) override this to wrap the read as `name()`."""
 impl ReactBackend.lower_state_read(name: str) -> es.Expression {
     return es.Identifier(name=name);
 }
 
-"""Lower a dynamic JSX position — unchanged on hooks backends.
-
-React/Preact re-render, so a dynamic child/attribute value needs no thunk; this
-identity no-op keeps their JSX output byte-identical. Signals backends (Solid)
-override this to wrap the expression in a thunk (`() => expr`) so the JSX runtime
-can re-read it reactively."""
 impl ReactBackend.lower_view_expr(expr: es.Expression) -> es.Expression {
     return expr;
 }
 
-"""Build one classified attribute's factory-call `Property`.
-
-`{ key: value }` with `key` the attribute name. Dynamic values route through the
-view thunk seam (`lower_view_expr`) — identity on React/Preact, `() => value` on
-Solid; event handlers, refs, and static values pass through verbatim (thunking a
-handler/ref would defer the callback/swallow the element, not a reactive read)."""
 impl ReactBackend._view_attr_property(attr: any, sync_loc: any) -> es.Property {
     import from jaclang.compiler.passes.ecmascript.view_ir { DynamicAttr, EventAttr }
     if isinstance(attr, DynamicAttr) {
@@ -200,7 +158,6 @@ impl ReactBackend._view_attr_property(attr: any, sync_loc: any) -> es.Property {
         name = attr.name;
         value = attr.handler;
     } else {
-        # StaticAttr | RefAttr — both carry a pre-built `value` expression.
         name = attr.name;
         value = attr.value;
     }
@@ -218,15 +175,6 @@ impl ReactBackend._view_attr_property(attr: any, sync_loc: any) -> es.Property {
     );
 }
 
-"""Lower a neutral `ViewElement` tree to a `__jacJsx(tag, props, [children])` call.
-
-This is the JS-family view lowering shared by React/Preact/Solid (the factory
-name is `__jacJsx` for all three; Solid's runtime shim backs it with `solid-js/h`).
-It reproduces the ESTree the old `EsJsxProcessor.element` built directly, with the
-two backend-specific transforms now applied here from the neutral tree:
-dynamic positions are thunked via `lower_view_expr` (no-op on React/Preact) and
-spreads merge through `Object.assign`. `sync_loc` carries each View IR node's
-`jac_node` provenance onto the emitted ESTree."""
 impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression {
     import from jaclang.compiler.passes.ecmascript.view_ir {
         HostTag,
@@ -249,7 +197,6 @@ impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression 
     } elif isinstance(tag, DynamicTag) {
         tag_expr = tag.expr;
     } else {
-        # FragmentTag (or nameless element): a null tag.
         tag_expr = sync_loc(es.Literal(value=None), jac_node=tag.jac_node);
     }
     has_spread = `any(isinstance(a, SpreadAttr) for a in view.attrs);
@@ -259,8 +206,6 @@ impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression 
             es.ObjectExpression(properties=properties), jac_node=view.jac_node
         );
     } else {
-        # Spread present: merge `Object.assign({}, seg, …)` in source order; a
-        # normal attribute contributes a one-property object segment.
         segments: list[es.Expression] = [];
         for a in view.attrs {
             if isinstance(a, SpreadAttr) {
@@ -319,16 +264,12 @@ impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression 
         } elif isinstance(child, ElementChild) {
             children_elements.append(self.lower_view(child.element, sync_loc));
         } elif isinstance(child, (IfChild, EachChild)) {
-            # Native control flow is Solid/Svelte polish; the JS family renders
-            # the already-lowered `?:`/`.map()` expression the producer carried,
-            # so React/Preact output is byte-for-byte what it was before lifting.
             children_elements.append(
                 sync_loc(
                     self.lower_view_expr(child.js_fallback), jac_node=child.jac_node
                 )
             );
         } else {
-            # SlotChild — the already-built accumulator IIFE, emitted verbatim.
             children_elements.append(child.expr);
         }
     }
@@ -346,7 +287,6 @@ impl ReactBackend.lower_view(view: ViewElement, sync_loc: any) -> es.Expression 
     );
 }
 
-"""Lower a state update to `setName(value)` (or `setName(name + value)`)."""
 impl ReactBackend.lower_state_update(u: StateUpdate) -> es.Expression {
     setter_name = self._get_setter_name(u.name);
     if u.aug_op {
@@ -361,7 +301,6 @@ impl ReactBackend.lower_state_update(u: StateUpdate) -> es.Expression {
     );
 }
 
-"""Lower an effect to `useEffect(() => { ... }, [deps]);`."""
 impl ReactBackend.lower_effect(e: Effect) -> list[es.Statement] {
     effect_body: list[es.Statement] = [];
     if e.is_entry {
@@ -399,9 +338,6 @@ impl ReactBackend.lower_effect(e: Effect) -> list[es.Statement] {
     return [es.ExpressionStatement(expression=use_effect_call)];
 }
 
-"""Lower an async boundary to `<JacClientErrorBoundary fallback={...}>
-    <JacAwaiting fallback={...}>{try_iife}</JacAwaiting>
-</JacClientErrorBoundary>`."""
 impl ReactBackend.lower_async_boundary(a: AsyncBoundary) -> es.Expression {
     awaiting_children: list[es.Expression] = [];
     if a.awaiting_expr is not None {

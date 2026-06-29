@@ -1,14 +1,8 @@
-"""Analysis commands: check, lint, format, test, gen_parser.
-
-Commands for analyzing and testing Jac code.
-"""
-
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Run type checker for specified .jac files."""
 @registry.command(
     name="check",
     help="Type check Jac files",
@@ -77,7 +71,6 @@ def check(
     nowarn: bool = False
 ) -> int;
 
-"""Lint .jac files and report violations."""
 @registry.command(
     name="lint",
     help="Lint Jac files and report violations",
@@ -107,7 +100,6 @@ def check(
 )
 def lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int;
 
-"""Format .jac files with improved code style."""
 @registry.command(
     name="format",
     help="Format Jac source code",
@@ -152,7 +144,6 @@ def format(
     paths: list, to_screen: bool = False, lintfix: bool = False, check: bool = False
 ) -> int;
 
-"""Run format (lintfix) + check as a pre-commit pipeline using jac.toml settings."""
 @registry.command(
     name="precommit",
     help="Run format (--lintfix) + check using jac.toml lint settings; installable as a git hook",
@@ -196,7 +187,6 @@ def precommit(
     install: bool = False
 ) -> int;
 
-"""Run the test suite in the specified .jac file or directory."""
 @registry.command(
     name="test",
     help="Run Jac test suite",
@@ -260,7 +250,6 @@ def `test(
     ignore: str = ""
 ) -> int;
 
-"""Generate static parser."""
 @registry.command(
     name="gen_parser",
     help="Generate Jac parser (internal use)",
@@ -270,7 +259,6 @@ def `test(
 )
 def gen_parser -> int;
 
-"""Extract grammar from the Jac parser and print in EBNF or Lark format."""
 @registry.command(
     name="grammar",
     help="Extract and print the Jac grammar",

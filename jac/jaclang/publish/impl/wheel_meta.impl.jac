@@ -1,5 +1,3 @@
-"""Implementation of WHEEL file and entry_points.txt generators."""
-
 import from jaclang.project.config { JacConfig }
 import from jaclang.publish.metadata { normalize_package_name }
 
@@ -40,7 +38,7 @@ impl generate_entry_points(config: JacConfig) -> str {
         if not refs {
             continue;
         }
-        # 'scripts' → 'console_scripts' (pip convention for CLI entry points)
+
         section_name = "console_scripts" if group == "scripts" else group;
         entry_lines: list[str] = [f"[{section_name}]"];
         for (ep_name, ref) in sorted(refs.items()) {

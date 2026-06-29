@@ -172,7 +172,7 @@ def:pub FieldError(props: any) -> any {
             for error in errorList {
                 uniqueMap[error and error.message] = error;
             }
-            uniqueKeys = Object.keys(uniqueMap);  # jac:ignore[W6001]
+            uniqueKeys = Object.keys(uniqueMap);
             uniqueErrors: list[any] = [uniqueMap[k] for k in uniqueKeys];
             if len(uniqueErrors) == 1 {
                 return uniqueErrors[0] and uniqueErrors[0].message;

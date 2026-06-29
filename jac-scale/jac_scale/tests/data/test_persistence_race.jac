@@ -26,16 +26,10 @@ import requests;
 import from pymongo { MongoClient }
 import from testcontainers.mongodb { MongoDbContainer }
 import from testcontainers.redis { RedisContainer }
+import from jac_scale.tests.server_support { get_free_port }
 
 glob FIXTURES_DIR = Path(__file__).parent.parent / "fixtures",
      JAC_FILE = FIXTURES_DIR / "race_app.jac";
-
-def get_free_port -> int {
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
-        s.bind(("", 0));
-        return s.getsockname()[1];
-    }
-}
 
 def extract(json_response: any) -> any {
     if isinstance(json_response, list) and len(json_response) == 2 {

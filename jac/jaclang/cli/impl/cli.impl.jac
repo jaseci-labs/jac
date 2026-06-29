@@ -56,14 +56,14 @@ impl start_cli -> None {
 
     if args.version {
         import from jaclang.cli.banners { print_version_banner }
-        print_version_banner(pkg_version('jaclang'));
+        print_version_banner(jac_version());
         return;
     }
 
     if (args.command is None) {
         formatter = get_help_formatter();
         help_text = formatter.format_main_help(
-            registry.get_all(), prog="jac", version=pkg_version('jaclang')
+            registry.get_all(), prog="jac", version=jac_version()
         );
         console.print(help_text);
         return;
@@ -94,6 +94,21 @@ impl start_cli -> None {
     if result.return_code != 0 {
         sys.exit(result.return_code);
     }
+}
+
+impl jac_version -> str {
+    import from jaclang.project.config { JacConfig }
+
+    dev_source = os.environ.get('JAC_DEV_SOURCE');
+    if dev_source {
+        toml_path = Path(dev_source) / 'jac.toml';
+        if toml_path.exists() {
+            try {
+                return JacConfig.load(toml_path).project.version;
+            } except Exception { }
+        }
+    }
+    return pkg_version('jaclang');
 }
 
 def _extract_script_args(registry: object) -> list {
