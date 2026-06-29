@@ -46,17 +46,7 @@ exclude = [
     #  - jir_registry.jac is generated (jac gen-jir-registry) and must match its
     #    commented output;
     #  - plugin_bridge.na.jac carries functional `# --- BRIDGE ... ---` markers the
-    #    native bridge extractor reads;
-    #  - the rest carry exact source locations / source strings that langserve and
-    #    runtime tests assert against.
+    #    native bridge extractor reads.
     "jir_registry.jac",
     "plugin_bridge.na.jac",
-    "constant.jac",
-    "unitree.jac",
-    "type_utils.jac",
-    "types.jac",
-    "mobile_target.impl.jac",
-    "cli.jac",
-    "dev.jac",
-    "lsp/server.jac",
 ]

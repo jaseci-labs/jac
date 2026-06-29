@@ -1,4 +1,3 @@
-"""Implementation of MobileTarget methods (see `plugin/src/targets/mobile/` for logic)."""
 import os;
 import platform as platform_mod;
 import from pathlib { Path }
@@ -59,16 +58,6 @@ import from jaclang.runtimelib.client.targets.mobile.scaffold {
     _ensure_placeholder_index
 }
 
-# ==============================================================================
-# Target Implementation
-# ==============================================================================
-"""Setup mobile target - install Capacitor and scaffold platform project.
-
-Scaffolds selected platform(s):
-- explicit via JAC_MOBILE_SETUP_PLATFORM=android|ios|all
-- otherwise from [plugins.client.mobile].default_platform
-- otherwise host default (ios on macOS, android elsewhere)
-"""
 impl MobileTarget.setup(project_dir: Path) -> None {
     android_dir = project_dir / "android";
     ios_dir = project_dir / "ios";
@@ -109,7 +98,6 @@ impl MobileTarget.setup(project_dir: Path) -> None {
     needs_android = "android" in platforms;
     needs_ios = "ios" in platforms;
 
-    # Early return when required platform scaffolds already exist.
     if (not needs_android or android_dir.exists())
     and (not needs_ios or ios_dir.exists()) {
         return;
@@ -118,7 +106,6 @@ impl MobileTarget.setup(project_dir: Path) -> None {
     console.print("\n📱 Setting up mobile target (Capacitor)", style="bold");
     console.print(f"  Project directory: {project_dir}", style="muted");
 
-    # Check prerequisites for selected platforms
     try {
         checked: set[str] = set();
         for plat in platforms {
@@ -143,7 +130,6 @@ impl MobileTarget.setup(project_dir: Path) -> None {
     _ensure_capacitor_deps(project_dir);
     _ensure_capacitor_config(project_dir, web_dist_dir);
 
-    # Scaffold selected platforms.
     if needs_android {
         _ensure_android_platform(project_dir, web_dist_dir);
     }
@@ -151,7 +137,6 @@ impl MobileTarget.setup(project_dir: Path) -> None {
         _ensure_ios_platform(project_dir, web_dist_dir);
     }
 
-    # Write [plugins.client.mobile] into jac.toml
     mobile_cfg = _load_mobile_config(project_dir);
     app_name = mobile_cfg.get("app_name", DEFAULT_APP_NAME);
     app_id = mobile_cfg.get("app_id", DEFAULT_APP_ID);
@@ -181,7 +166,6 @@ impl MobileTarget.setup(project_dir: Path) -> None {
     }
 }
 
-"""Build mobile app - build web bundle first, then sync and build native app."""
 impl MobileTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
@@ -197,7 +181,6 @@ impl MobileTarget.build(
     _try_check_mobile_dependencies(selected_platform);
     _require_macos_for_ios(selected_platform);
 
-    # Ensure Capacitor scaffold exists
     prev_setup_platform = mobile_setup_platform_env_swap(selected_platform);
     try {
         self.setup(project_dir);
@@ -209,7 +192,6 @@ impl MobileTarget.build(
     web_bundle_path = super.build(entry_file, project_dir, None);
     console.print(f"  ✔ Web bundle built: {web_bundle_path}", style="success");
 
-    # Ensure webDir is up to date in config
     bundler = ViteBundler(project_dir=project_dir);
     web_dist_dir = Path(bundler.output_dir).resolve();
     _ensure_capacitor_config(project_dir, web_dist_dir);
@@ -222,7 +204,6 @@ impl MobileTarget.build(
     );
     console.print("  ✔ Capacitor sync complete", style="success");
 
-    # Platform-specific build
     if selected_platform == "android" {
         artifact = _build_android(project_dir, mobile_cfg);
     } else {
@@ -233,8 +214,6 @@ impl MobileTarget.build(
     return artifact;
 }
 
-"""Start mobile dev: Vite HMR + Jac API + Capacitor live-reload.
-`port` = Vite dev server, `api_port` = Jac API (0 = port+1), same as core `jac start --dev`."""
 impl MobileTarget.dev(
     entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
@@ -291,9 +270,7 @@ impl MobileTarget.dev(
     }
     compiler = builder._get_compiler();
     compiler.compiled_dir.mkdir(parents=True, exist_ok=True);
-    # Full compile graph (entry + all .jac deps) with add_runtime_imports per file,
-    # matching production dev - compiling only the entry leaves imported modules
-    # (e.g. components/*.js) without __jacJsx and causes "__jacJsx is not defined".
+
     (_, mod, _) = compiler.jac_compiler.compile_module(entry_file);
     if not mod {
         raise RuntimeError(f"Failed to compile client entry module: {entry_file}");
@@ -304,9 +281,6 @@ impl MobileTarget.dev(
     toml_base_url = _get_api_base_url_str(project_dir);
     server_port = cast(int, resolve_mobile_server_port(toml_base_url, effective_api));
 
-    # Verify both ports are free BEFORE rewriting capacitor.config.json and
-    # running adb reverse. The API subprocess otherwise silently bumps to a
-    # different port, breaking the handshake with the device.
     _assert_mobile_port_available(vite_port, "Vite");
     if server_port != vite_port {
         _assert_mobile_port_available(server_port, "API");
@@ -334,8 +308,6 @@ impl MobileTarget.dev(
         raise RuntimeError("Failed to start Vite dev server");
     }
 
-    # `jac start --dev` normally starts HotReloader, but the mobile pre-hook cancels that
-    # handler - so we watch .jac here and re-run the same ViteCompiler.compile graph Vite serves.
     if _mobile_ensure_watchdog() {
         import from jaclang.runtimelib.watcher { JacFileWatcher }
 
@@ -414,7 +386,6 @@ impl MobileTarget.dev(
     }
 }
 
-"""Start mobile app: production web bundle, sync, run (no Vite HMR)."""
 impl MobileTarget.start(
     entry_file: Path, project_dir: Path, api_port: int = 8000
 ) -> None {
