@@ -94,7 +94,7 @@ def main {
         );
         console.print("\nExamples:");
         console.print("  jac run utils/precompile_bytecode.jac./jac");
-        console.print("  jac run utils/precompile_bytecode.jac./jac-scale");
+        console.print("  jac run utils/precompile_bytecode.jac./jac/jaclang/scale");
         sys.exit(1);
     }
 

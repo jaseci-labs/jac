@@ -11,7 +11,7 @@ binaries - from a single file. It extends Python with 3 paradigms:
 
 ## What is Jaseci?
 
-The runtime stack: jaclang (compiler + runtime), jac-client (React frontend), jac-scale (deployment).
+The runtime stack: jaclang (compiler + runtime), which includes the built-in client framework (React frontend) and the built-in scale subsystem (deployment).
 They handle DB schema, API routing, HTTP, auth, and frontend generation automatically.
 
 ---
@@ -146,7 +146,7 @@ decorators, @property). Prefer `obj` for everything else.
   jac-client  - Full-stack frontend: React/JSX client components, routing, auth, state.
                 jac://docs/jac-client [L]
 
-  jac-scale   - Production deployment: REST API server, scaling, Kubernetes.
+  scale       - Production deployment: REST API server, scaling, Kubernetes (built into jaclang core).
                 jac://docs/jac-scale [L]
 
   jac-shadcn  - UI component library (shadcn/ui components for cl blocks).

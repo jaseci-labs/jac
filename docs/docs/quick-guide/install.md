@@ -49,15 +49,14 @@ The `jac` binary is the language core. Add plugins -- AI integration, deployment
 # AI/LLM integration
 jac install byllm
 
-# Production deployment & scaling
-jac install jac-scale              # core only (lightweight)
-jac install 'jac-scale[all]'       # all features
-
 # MCP server for AI-assisted Jac development
 jac install jac-mcp
 ```
 
 `jac install` resolves plugins from PyPI into your project environment; jaclang itself is provided by the binary, so it is never reinstalled. See the [CLI reference](../reference/cli/index.md#jac-install) for all options.
+
+!!! note "Deployment & scaling is built in"
+    Production serving and Kubernetes deployment (`jac start`, `jac start --scale`) ship inside the `jac` binary as the built-in `scale` subsystem -- there is no separate `jac-scale` package to install. Scale's optional heavier dependencies (MongoDB, Redis, Kubernetes, Prometheus, ...) are pulled into your project on demand: declare the matching `[scale.*]` config in `jac.toml`, then run `jac install` to resolve them into `.jac/venv`.
 
 ---
 
@@ -205,7 +204,7 @@ To upgrade a plugin, reinstall it:
 
 ```bash
 jac install --force-reinstall byllm
-jac install --force-reinstall jac-scale
+jac install --force-reinstall jac-mcp
 ```
 
 ---

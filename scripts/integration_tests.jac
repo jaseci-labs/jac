@@ -5,8 +5,9 @@ It is designed to run in CI (test-pypi-build) after all packages are installed,
 or locally when you have all plugins installed.
 
 Requirements:
-    - jaclang (jac) installed (the client/desktop framework ships with it)
-    - jac-scale installed
+    - jaclang (jac) installed (the client/desktop framework + the built-in
+      scale plugin, jaclang.scale, ship with it)
+    - scale's serve deps installed (for the admin prebuild server test)
     - byllm installed
 
 Usage:
@@ -245,7 +246,7 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
         [
             sys.executable, "-c",
             "from pathlib import Path;"
-            "import jac_scale;"
+            "import jaclang.scale as jac_scale;"
             "d = Path(jac_scale.__file__).parent / 'admin' / '_dist';"
             "idx = d / 'index.html';"
             "assert d.exists(), f'_dist not found at {d}';"
@@ -264,7 +265,7 @@ def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
         [
             sys.executable, "-c",
             "from pathlib import Path;"
-            "import jac_scale;"
+            "import jaclang.scale as jac_scale;"
             "idx = Path(jac_scale.__file__).parent / 'admin' / '_dist' / 'index.html';"
             "html = idx.read_text();"
             "assert '<html' in html.lower(), 'Not valid HTML';"

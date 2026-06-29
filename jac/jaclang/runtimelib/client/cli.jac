@@ -85,7 +85,7 @@ def build(
 """Register 'setup' command at module level.
 
 Note: --platform is wired in via extend_command (see create_cmd) so it survives
-when a higher-priority plugin (e.g. jac-scale) replaces this spec - primary
+when a higher-priority plugin (e.g. the scale plugin) replaces this spec - primary
 args on a spec are spec-local, but extension args are preserved across
 priority replacement by the registry.
 """
@@ -179,7 +179,7 @@ class JacClientCmd {
         # Add pre-hook + --platform to setup command. Registering --platform via
         # extend_command (instead of inline on the @registry.command above) keeps
         # the arg attached when a higher-priority plugin re-registers `setup`
-        # (e.g. jac-scale's microservice handler). See registry.impl.jac for the
+        # (e.g. the scale backend's microservice handler). See registry.impl.jac for the
         # corresponding extra_args preservation logic.
         registry.extend_command(
             command_name="setup",
@@ -199,13 +199,13 @@ class JacClientCmd {
         );
 
         # Extend 'start' command with --client flag
-        # Note: jac-scale also uses --client, so we use --client to avoid conflict
+        # Note: the scale plugin also uses --client, so we use --client to avoid conflict
         if registry.has_command("start") {
             registry.extend_command(
                 command_name="start",
                 args=[
                     Arg.create(
-                        "client",  # Use client to avoid conflict with jac-scale's --client
+                        "client",  # Use client to avoid conflict with the scale plugin's --client
                         typ=str,
                         default="web",
                         help=(
@@ -634,13 +634,13 @@ def _handle_setup_target(ctx: HookContext) -> None {
 
     factory = get_target_factory();
 
-    # `target` is jac-client's positional; `subcommand` is what jac-scale's
+    # `target` is jac-client's positional; `subcommand` is what the scale plugin's
     # higher-priority `setup` spec exposes. Reading both keeps us routable no
     # matter which plugin wins the surface registration.
     target_name = ctx.get_arg("target", None) or ctx.get_arg("subcommand", None);
     available_targets = factory.get_available_target_names();
     if target_name and target_name not in available_targets {
-        # Unknown to us - let another plugin's handler claim it (e.g. jac-scale's
+        # Unknown to us - let another plugin's handler claim it (e.g. the scale plugin's
         # `jac setup microservice`). Do NOT cancel.
         return;
     }

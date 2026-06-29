@@ -37,12 +37,15 @@ CLUSTER_TYPE="${CLUSTER_TYPE:-microk8s}"
 ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-600s}"
 DELETE_TIMEOUT="${DELETE_TIMEOUT:-300s}"
 
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# This script lives at jac/jaclang/scale/scripts/, so the repo root is four
+# levels up.
+REPO_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 
-# The no-Docker `--experimental` path ships the LOCAL jac-scale source: PyPI lags
-# the K-track rearchitecture, so PR-time CI must exercise the in-repo code.
-if [ ! -f "${REPO_ROOT}/jac-scale/jac_scale/__init__.py" ]; then
-    echo "FAIL: jac-scale source not found under ${REPO_ROOT}" >&2
+# The no-Docker `--experimental` path ships the LOCAL scale source (built into
+# jaclang as jaclang.scale): PyPI lags the K-track rearchitecture, so PR-time CI
+# must exercise the in-repo code.
+if [ ! -f "${REPO_ROOT}/jac/jaclang/scale/__init__.py" ]; then
+    echo "FAIL: jaclang.scale source not found under ${REPO_ROOT}" >&2
     exit 1
 fi
 # BinaryInjector builds the shipped binary with zig; fail early with a clear
@@ -79,9 +82,9 @@ kubectl label namespace "${NAMESPACE}" \
 cd "${PROJECT_DIR}"
 jac - <<PYEOF
 import logging, sys, jaclang  # noqa: F401
-from jac_scale.deploy.target.kubernetes.microservice.target import KubernetesMicroserviceTarget
-from jac_scale.deploy.target.kubernetes.kubernetes_config import KubernetesConfig
-from jac_scale.config.app_config import AppConfig
+from jaclang.scale.deploy.target.kubernetes.microservice.target import KubernetesMicroserviceTarget
+from jaclang.scale.deploy.target.kubernetes.kubernetes_config import KubernetesConfig
+from jaclang.scale.config.app_config import AppConfig
 
 # Surface MonitoringDeployer / observability warnings to stderr so CI
 # logs show the actual error instead of the silent

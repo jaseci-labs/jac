@@ -99,7 +99,7 @@ impl Model.invoke(mt_run: MTRuntime) -> object {
 
         # Streaming: reset the Token now, in the Context that created it. The
         # wrapper carries its own Context, so it never resets a Token from a
-        # foreign one — safe to iterate on jac-scale's SSE thread-pool worker.
+        # foreign one — safe to iterate on the scale backend's SSE thread-pool worker.
         if isinstance(result, _types_mod.GeneratorType) {
             _current_invocation_id.reset(_ctx_token);
             return _stream_with_telemetry(result, mt_run, self.model_name, _start);
@@ -129,7 +129,7 @@ impl Model.invoke(mt_run: MTRuntime) -> object {
 Captures a copy_context, sets mt._invocation_id in it, and drives each step via
 ctx.run(next, gen) — so nested by llm() calls still see the right parent and no
 ContextVar Token is reset across Contexts. This keeps the stream safe to consume
-from a foreign Context (e.g. jac-scale's SSE thread-pool worker).
+from a foreign Context (e.g. the scale backend's SSE thread-pool worker).
 """
 def _stream_with_telemetry(
     gen: object, mt: object, model_name: str, start: float

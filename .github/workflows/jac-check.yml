@@ -53,7 +53,18 @@ jobs:
 
       - name: Install plugins (deps into project venvs; jaclang is host-provided)
         run: |
-          jac install -e ./jac-scale --extras all
+          # Scale is a built-in plugin in jaclang now (jaclang.scale); only its
+          # third-party deps need installing so `jac check` can resolve scale's
+          # imports. Pins mirror jac/jaclang/project/capabilities.jac. --global
+          # puts them in the binary's own site (host jaclang imports scale).
+          jac install \
+            fastapi "uvicorn[standard]" pyjwt fastapi-sso python-multipart bcrypt \
+            aiohttp sqlalchemy email-validator python-dotenv \
+            pymongo redis prometheus-client \
+            opentelemetry-sdk opentelemetry-exporter-otlp-proto-http \
+            apscheduler kubernetes docker boto3 \
+            google-cloud-firestore google-cloud-storage firebase-admin \
+            --global
           jac install -e ./jac-byllm
 
       - name: Warm up compiler cache

@@ -51,16 +51,6 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
              notes_display="byllm",
              submodules=True
          ),
-         "jac-scale": PackageInfo(
-             dir="jac-scale",
-             pypi="jac-scale",
-             tier=2,
-             release_notes="docs/docs/community/release_notes/jac-scale.md",
-             notes_display="jac-scale",
-             submodules=True,
-             extra_build_cmd="jac run scripts/build_admin_ui.jac",
-             needs_nodejs=True
-         ),
          "jac-mcp": PackageInfo(
              dir="jac-mcp",
              pypi="jac-mcp",
@@ -78,7 +68,6 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
      INTERNAL_DEPS: dict[(str, list[str])] = {
          "jaclang": [],
          "byllm": [],
-         "jac-scale": [],
          "jac-mcp": []
      },
      DEPENDENTS: dict[(str, list[str])] = {};

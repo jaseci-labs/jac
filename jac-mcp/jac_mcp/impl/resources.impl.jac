@@ -208,7 +208,7 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
          "jac://docs/jac-scale": (
              "reference/plugins/jac-scale.md",
              "jac-scale.md",
-             "jac-scale - Deployment/scaling reference"
+             "scale - Deployment/scaling reference (built into jaclang)"
          ),
          "jac://docs/tutorial-production-local": (
              "tutorials/production/local.md",
