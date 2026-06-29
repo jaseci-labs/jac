@@ -1,23 +1,23 @@
-"""Cross-backend `urllib.request` equivalence over the libcurl floor
-(issues #6404 / #6940, Phase 3: transport + HTTP).
+"""Cross-backend `urllib.request` equivalence over the socket+ssl transport
+(issue #6978 Phase 1: the network tier; supersedes the original libcurl floor).
 
 `import from urllib.request { urlopen }` binds the bundled
-`na_stdlib/urllib/request.na.jac` Mechanism-F module (libcurl floor + pure-Jac
-surface) on the na backend; the sv reference is CPython's real `urllib.request`.
-There is no live network: a loopback `http.server` is stood up on an ephemeral
-port, its port published in `JAC_URLLIB_TEST_PORT`, and the two `urlopen`
-implementations are pinned congruent on HTTP status and received body length --
-for a direct GET and for a 301 redirect both follow.
+`na_stdlib/urllib/request.na.jac` module on the na backend -- now a pure-Jac
+surface over the bundled `socket` + `ssl` modules (no libcurl), parsing the URL,
+opening the connection (TLS-wrapped for https), sending an HTTP/1.0 GET, draining
+the response, and following redirects. The sv reference is CPython's real
+`urllib.request`. There is no live network: a loopback `http.server` is stood up
+on an ephemeral port, its port published in `JAC_URLLIB_TEST_PORT`, and the two
+`urlopen` implementations are pinned congruent on HTTP status and received body
+length -- for a direct GET and for a 301 redirect both follow.
 
-This is the executable Phase-3 guard: it exercises DNS/connect (loopback), the
-HTTP/1.1 GET, libcurl header+body capture to temp files, the native variadic
-`curl_easy_setopt` FFI, status-line parsing, and redirect following. The native
-functions return plain `int`s, driven directly through the JIT (`get_func`),
-because the native pathway does not yet box object-derived values into a
-`dict[str, any]` reliably -- so this suite compares ints rather than going
-through `run_with_both`. The sv reference is pinned with concrete asserts, so a
-regression in either backend is a hard failure. ES/JS opts out (no libcurl floor).
-"""
+This is the executable guard for the http/urllib leg: it exercises loopback
+connect (via the `socket` floor), the HTTP/1.0 GET, header/body split,
+status-line parsing, and redirect following. The native functions return plain
+`int`s, driven directly through the JIT (`get_func`), so this suite compares ints
+rather than going through `run_with_both`. The sv reference is pinned with
+concrete asserts, so a regression in either backend is a hard failure. ES/JS
+opts out (no native socket/ssl floor)."""
 
 import ctypes;
 import os;
