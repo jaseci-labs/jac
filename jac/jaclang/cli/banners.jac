@@ -6,6 +6,20 @@ glob JAC_LOGO = '   _\n  (_) __ _  ___\n  | |/ _` |/ __|\n  | | (_| | (__\n _/ |
      JAC_GITHUB_URL = 'https://github.com/Jaseci-Labs/jaseci',
      JAC_ISSUES_URL = 'https://github.com/Jaseci-Labs/jaseci/issues';
 
+def print_logo(version: str, platform_short: str | None = None) {
+    logo_lines = JAC_LOGO.split('\n');
+    console.print(logo_lines[0], style='bold cyan');
+    console.print((logo_lines[1] + '     Jac Language'), style='bold cyan');
+    console.print(logo_lines[2], style='bold cyan');
+    console.print((logo_lines[3] + f"     Version:  {version}"), style='cyan');
+    console.print(logo_lines[4], style='cyan');
+    last = logo_lines[5];
+    if platform_short {
+        last += f"                Platform: {platform_short}";
+    }
+    console.print(last, style='cyan');
+}
+
 def print_version_banner(version: str) {
     platform_info = platform.platform();
     if (platform.system() == 'Linux') {
@@ -17,15 +31,7 @@ def print_version_banner(version: str) {
     } else {
         platform_short = platform_info;
     }
-    logo_lines = JAC_LOGO.split('\n');
-    console.print(logo_lines[0], style='bold cyan');
-    console.print((logo_lines[1] + '     Jac Language'), style='bold cyan');
-    console.print(logo_lines[2], style='bold cyan');
-    console.print((logo_lines[3] + f"     Version:  {version}"), style='cyan');
-    console.print(logo_lines[4], style='cyan');
-    console.print(
-        (logo_lines[5] + f"                Platform: {platform_short}"), style='cyan'
-    );
+    print_logo(version, platform_short);
     console.print(f'\n📚 Documentation: {JAC_DOCS_URL}');
     console.print(f'💬 Community:     {JAC_DISCORD_URL}');
     console.print(f'🐛 Issues:        {JAC_ISSUES_URL}');
