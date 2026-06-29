@@ -215,7 +215,6 @@ impl TypeEvaluator.get_type_of_int(nd: uni.Int) -> TypeBase {
     return self.prefetch.int_class;
 }
 
-"""Return the effective type of an ability."""
 impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
     if node_.name_spec.type is not None {
         return node_.name_spec.type;

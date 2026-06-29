@@ -329,10 +329,7 @@ async def _run_function_with_occ(
                 ctx.mem.abort();
                 ctx.pending_effects.clear();
                 ctx.read_versions.clear();
-                # Drop diagnostics accrued by the aborted attempt (e.g. a
-                # PermissionDenied raised during the walker body or the collect
-                # pass) so a converged replay's 200 response doesn't surface
-                # stale warnings from a unit of work that never committed.
+
                 ctx.diagnostics.clear();
                 if attempt >= max_attempts {
                     return {
@@ -346,9 +343,6 @@ async def _run_function_with_occ(
                 }
                 await ctx.aset_user_root(root_id);
             } except Exception as e {
-                # Abort-on-error: a failed call must not half-mutate the graph.
-                # Discard its uncommitted unit of work instead of leaving it in
-                # the shared working set for the next commit to flush (#6619).
                 ctx.mem.abort();
                 return {'error': str(e)};
             } finally {
@@ -379,16 +373,9 @@ impl ExecutionManager.execute_function(
 impl ExecutionManager.execute_function_sync(
     func: Callable[(..., Any)], args: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
-    # OCC replay (parity with spawn_walker_*): a function that loses a
-    # check-then-create race converges via abort + reload + replay instead of
-    # surfacing the WriteConflict as a 500. The shared scaffold lives in
-    # `_run_function_with_occ`; the per-attempt body is the closure below.
     async def run_attempt(call_state: CallState) {
         result = await asyncio.to_thread(func, **args);
-        # Preserve legacy behavior: a plain-sync wrapper may return a
-        # coroutine (e.g. `def wrap(): return some_async()`). Unwrap it
-        # back on the event loop so callers see the awaited value, not
-        # the coroutine object.
+
         if iscoroutine(result) {
             result = await result;
         }
@@ -400,9 +387,6 @@ impl ExecutionManager.execute_function_sync(
 impl ExecutionManager.execute_function_async(
     func: Callable[(..., Any)], args: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
-    # OCC replay (parity with spawn_walker_*): converge a lost check-then-create
-    # race instead of surfacing the WriteConflict as a 500. The shared scaffold
-    # lives in `_run_function_with_occ`; the per-attempt body is the closure below.
     async def run_attempt(call_state: CallState) {
         result = await func(**args);
         return await self._finalize_call_response(call_state, result);

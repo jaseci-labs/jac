@@ -102,11 +102,6 @@ impl NaIRGenPass._list_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
     return self._spec_of(expr, ("list", ), self.list_types);
 }
 
-"""Shared spec-key resolver backing _set_spec_of / _dict_key_of / _list_spec_of.
-Returns None unless the expression's checked type's mangled name is one of
-`names` (exact) or `<name>[...]` (parameterized). Lowering the type registers
-the struct + helpers as a side effect, so the matched key is then guaranteed
-present in `registry` (set_types / dict_types / list_types)."""
 impl NaIRGenPass._spec_of(
     expr: (uni.UniNode | None), names: tuple, registry: dict
 ) -> (str | None) {
@@ -287,9 +282,6 @@ impl NaIRGenPass._iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | No
     return self._typed_elem_llvm_of(expr, "Iterator[");
 }
 
-"""Shared body for _list_elem_llvm_of / _iter_elem_llvm_of: when `expr` is a
-checked `<prefix>...]` type, lower its first type argument (registering any
-needed collection helpers), else None."""
 impl NaIRGenPass._typed_elem_llvm_of(
     expr: (uni.UniNode | None), prefix: str
 ) -> (ir.Type | None) {

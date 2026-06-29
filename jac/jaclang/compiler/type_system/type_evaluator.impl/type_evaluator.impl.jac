@@ -1,10 +1,3 @@
-"""Type-walk the clauses of a comprehension (collection, target, filters).
-
-Shared by the Set/Gen/List comprehension cases: visits each clause's
-collection and (Name) target, plus every `if` filter, so their types are
-resolved and narrowing flows through the CFG. (DictCompr does extra
-tuple/list target handling and keeps its own loop.)
-"""
 impl TypeEvaluator._walk_compr_clauses(comprs: list[uni.InnerCompr]) -> None {
     for compr in comprs {
         self.get_type_of_expression(compr.collection);
@@ -19,12 +12,6 @@ impl TypeEvaluator._walk_compr_clauses(comprs: list[uni.InnerCompr]) -> None {
     }
 }
 
-"""Resolve the result type of an optional-chaining (?.) attribute miss.
-
-The ?. operator returns None when the attribute doesn't exist (or the base
-is None), so this records NoneType on `expr.right` and returns it (falling
-back to UnknownType when the NoneType class isn't prefetched).
-"""
 impl TypeEvaluator._null_ok_attr_type(expr: uni.AtomTrailer) -> TypeBase {
     none_type = self.prefetch.none_type_class;
     if none_type is not None {
@@ -34,7 +21,6 @@ impl TypeEvaluator._null_ok_attr_type(expr: uni.AtomTrailer) -> TypeBase {
     return types.UnknownType();
 }
 
-"""Core function to get the type of the expression."""
 impl TypeEvaluator._get_type_of_expression_core(
     expr: uni.Expr, expected_type: TypeBase | None = None
 ) -> TypeBase {
@@ -437,13 +423,7 @@ impl TypeEvaluator._get_type_of_expression_core(
             if self.prefetch and self.prefetch.list_class {
                 list_inst = self._convert_to_instance(self.prefetch.list_class);
                 self._walk_compr_clauses(expr.compr);
-                # Bidirectional: flow the expected element type into the
-                # output expression (so nested comprehensions and literals
-                # adopt it too) and adopt it as this comprehension's element
-                # type when the inferred output is assignable. This types
-                # `[[None for _ in range(n)] for _ in range(n)]` under a
-                # `list[list[T | None]]` annotation as nested `T | None`
-                # lists instead of `list[None]`.
+
                 expected_elem_lc = self._get_expected_element_type(
                     expected_type, self.prefetch.list_class
                 );
@@ -1165,10 +1145,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                     return types.UnknownType();
                 }
             } elif expr.is_null_ok {
-                # Optional chaining on non-class types (e.g. Unknown, TypeVar).
-                # The ?. operator safely returns None when the base is None or
-                # the attribute doesn't exist. Handled inside the class branches
-                # above; this fallback covers remaining base_type categories.
                 return self._null_ok_attr_type(expr);
             } elif isinstance(expr.right, uni.AssignCompr) {
                 if not isinstance(base_type, types.ClassType) {
@@ -4189,13 +4165,6 @@ impl TypeEvaluator._apply_narrowing(
     }
 }
 
-"""Filter a union type to only include types that pass isinstance(x, target_type).
-
-Returns types from the union that are:
-1. The same as target_type
-2. Subclasses of target_type
-3. Types where target_type is a subclass (for contravariant checks)
-"""
 impl TypeEvaluator._filter_union_for_isinstance(
     base_type: TypeBase, target_type: TypeBase
 ) -> TypeBase | None {
@@ -4564,13 +4533,6 @@ impl TypeEvaluator._filter_union_to_callables(
     return types.NeverType();
 }
 
-"""Check whether an annotation type represents typing.TypeAlias.
-
-Uses symbol-based detection: TypeAlias is a _SpecialForm from the typing
-module, so its resolved type shares the same ClassType.shared as other
-special forms (e.g. Callable). We verify both the structural match and
-the name to avoid false positives with other special forms.
-"""
 impl TypeEvaluator._is_type_alias_annotation(
     annotation_type: types.TypeBase, tag_expr: uni.Expr
 ) -> bool {

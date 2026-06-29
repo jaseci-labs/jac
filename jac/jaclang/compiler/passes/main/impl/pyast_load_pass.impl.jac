@@ -2170,14 +2170,6 @@ impl PyastBuildPass.nu(nd: T) -> T {
     return nd;
 }
 
-"""Build a uni.Name from a Python AST node, resolving location sentinels.
-
-`col_end`, `col_start` and `end_line` use a `-1` sentinel (not falsiness) so a
-real `0` location is preserved verbatim:
-- col_end == -1   -> nd.col_offset + len(value)
-- col_start == -1 -> nd.col_offset
-- end_line == -1  -> (nd.end_lineno or nd.lineno)
-"""
 impl PyastBuildPass.name_node(
     nd: py_ast.AST,
     value: str,
@@ -2201,7 +2193,6 @@ impl PyastBuildPass.name_node(
     );
 }
 
-"""Initialize parser."""
 impl PyastBuildPass.postinit -> None {
     self.mod_path = self.ir_in.loc.mod_path;
     self.orig_src = self.ir_in.loc.orig_src;

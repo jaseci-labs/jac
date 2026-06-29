@@ -914,9 +914,6 @@ impl TypeEvaluator._find_overload_by_arg_count(
     return None;
 }
 
-"""
-Collect TypeVar bindings from matching call args to method params.
-"""
 impl TypeEvaluator._collect_type_var_bindings(
     method: types.FunctionType,
     expr: uni.FuncCall,

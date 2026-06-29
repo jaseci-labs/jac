@@ -50,7 +50,6 @@ impl TypeVarType.__str__ -> str {
     return "<TypeVar>";
 }
 
-"""Return a shallow copy of this parameter (all seven fields)."""
 impl Parameter.clone -> Parameter {
     return Parameter(
         name=self.name,
@@ -63,10 +62,6 @@ impl Parameter.clone -> Parameter {
     );
 }
 
-"""Specialize the function type based on the given class type. (Pyright: applySolvedTypeVars)
-
-Uses the unified apply_solved_type_vars from type_utils.
-"""
 impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
     import from jaclang.compiler.type_system.type_utils {
         apply_solved_type_vars,
@@ -373,7 +368,6 @@ impl ClassType.get_literal_value -> (str | int | bool | None) {
     return self.private.literal_value;
 }
 
-"""Return a string representation of the class type."""
 impl ClassType.__str__ -> str {
     if self.private.literal_value is not None {
         lit_val = self.private.literal_value;
@@ -423,7 +417,6 @@ impl TypeBase.is_instantiable -> bool {
     return bool((self.flags & TypeFlags.Instantiable));
 }
 
-"""Returns the category of the type."""
 impl TypeBase.category.getter -> TypeCategory {
     return self.CATEGORY;
 }
@@ -497,7 +490,6 @@ impl EnumMemberType.__str__ -> str {
     return f"<{self.enum_class.shared.class_name}.{self.member_info.member_name}>";
 }
 
-"""Get value type: check member's explicit type first, then enum's inherited type requirement."""
 impl EnumMemberType.get_value_type -> TypeBase {
     return self.member_info.value_type
     or self.enum_class.shared.enum_value_type

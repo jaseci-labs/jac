@@ -264,23 +264,19 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _set_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     def _dict_key_of(expr: (uni.UniNode | None)) -> (str | None);
     def _list_spec_of(expr: (uni.UniNode | None)) -> (str | None);
-    # Shared spec-key resolver for set/dict/list: match the checked type's
-    # mangled name against `names` (exact or `<name>[`), then search `registry`.
     def _spec_of(
         expr: (uni.UniNode | None), names: tuple, registry: dict
     ) -> (str | None);
-    # Native struct name from a checked instance type (handles T | None).
+
     def _struct_name_of(expr: (uni.UniNode | None)) -> (str | None);
     def _struct_ptr_pointee_name(val: ir.Value) -> (str | None);
     def _struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.Value;
     def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
-    # Shared: lowered LLVM type of the first type-arg of a checked `<prefix>...]`
-    # type (backs _list_elem_llvm_of / _iter_elem_llvm_of).
     def _typed_elem_llvm_of(
         expr: (uni.UniNode | None), prefix: str
     ) -> (ir.Type | None);
-    # Element spec ("i64"/"f64"/"ptr"/"jacval") of a checked list type.
+
     def _elem_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     def _resolve_type_str(type_name: str) -> ir.Type;
     def _callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None);
@@ -740,14 +736,11 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _clib_cb_coerce_scalar(val: ir.Value, target_type: ir.Type) -> ir.Value;
     def _emit_clib_c_trampoline(jac_fn: ir.Function, c_fn_ty: ir.Type) -> ir.Function;
     def _clib_alloc_vtable(name: str) -> ir.Value;
-    # ─── System V AMD64 ABI lowering for foreign structs (Phase 1) ───
     def _clib_struct_layout(name: str) -> tuple;
-    # Memoized foreign declaration model over this pass's module universe.
     def _foreign_model -> dict;
     def _foreign_fns -> dict;
     def _foreign_fields_of(name: str) -> list;
     def _classify_clib_struct(name: str) -> dict;
-    # True if the clib struct has a field that is itself a clib struct.
     def _clib_has_nested(name: str) -> bool;
     def _clib_c_type(name: str) -> ir.Type;
     def _clib_materialize_c_ptr(jac_ptr: ir.Value, name: str) -> ir.Value;

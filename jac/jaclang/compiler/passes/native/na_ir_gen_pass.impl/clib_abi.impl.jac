@@ -40,7 +40,6 @@ impl NaIRGenPass._classify_clib_struct(name: str) -> dict {
     return classify_struct(size, align, scalars, str(self.llvm_module.triple or ""));
 }
 
-"""True if a clib struct has a field whose type is itself a clib struct."""
 impl NaIRGenPass._clib_has_nested(name: str) -> bool {
     for (_fn, nested) in self._foreign_fields_of(name) {
         if nested is not None {

@@ -717,7 +717,6 @@ impl JacLangServer.update_modules(
     }
 }
 
-"""Remove errors and warnings for a specific file from the lists."""
 impl JacLangServer._clear_alerts_for_file(file_path: str) -> None {
     with self._state_lock.write_lock() {
         self.module_manager.clear_alerts_for_file(file_path);

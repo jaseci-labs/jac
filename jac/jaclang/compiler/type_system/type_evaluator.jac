@@ -330,9 +330,6 @@ obj TypeEvaluator {
 
     def _walk_compr_clauses(comprs: list[uni.InnerCompr]) -> None;
     def _null_ok_attr_type(expr: uni.AtomTrailer) -> TypeBase;
-    # -----------------------------------------------------------------------------
-    # Helper functions
-    # -----------------------------------------------------------------------------
     def _set_module_item_symbol_and_type(
         node_: uni.ModuleItem, sym: uni.Symbol
     ) -> TypeBase;
@@ -394,7 +391,7 @@ obj TypeEvaluator {
     def _get_special_form_type(
         name: str, symbol_type: types.TypeBase
     ) -> types.TypeBase | None;
-    # --- Callable type handling (similar to Pyright's createCallableType) ---
+
     def _create_callable_type(
         type_args_expr: uni.Expr | None, error_node: uni.Expr
     ) -> types.FunctionType;
@@ -407,7 +404,6 @@ obj TypeEvaluator {
         base_type: types.ClassType, member: str
     ) -> type_utils.ClassMember | None;
 
-    # Check if ClassType is type[T] (builtin type with type args).
     def _is_type_subscript(class_type: types.ClassType) -> bool;
     def _get_type_for_member_lookup(object_type: types.ClassType) -> types.ClassType;
     def _get_getattr_return_type(base_type: types.ClassType) -> TypeBase | None;

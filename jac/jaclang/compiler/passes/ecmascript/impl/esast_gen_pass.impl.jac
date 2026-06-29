@@ -83,7 +83,6 @@ impl EsastGenPass.exit_token(nd: uni.Token) -> None {
     ;
 }
 
-"""Collect a node body's statements, flattening list-valued es_ast results."""
 impl EsastGenPass._collect_body_stmts(
     body: Sequence[uni.UniNode]
 ) -> list[es.Statement] {
@@ -102,7 +101,6 @@ impl EsastGenPass._collect_body_stmts(
     return body_stmts;
 }
 
-"""Process test as a function."""
 impl EsastGenPass.exit_test(nd: uni.Test) -> None {
     params: list[es.Pattern] = [];
     body_stmts = self._collect_body_stmts(nd.body);
@@ -952,20 +950,13 @@ impl EsastGenPass._record_sv_backend(nd: uni.Import) -> None {
     }
 }
 
-"""Resolve the statically known ability targeted by a function call."""
 impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None) {
     import from jaclang.compiler.symbol_utils { ability_of_symbol }
-    # Checker-stamped resolved callee (FuncCall.callee_decl, the Phase 4
-    # central fact) is the authoritative answer when present. The
-    # symbol/manifest/evaluator paths below remain as fallbacks for
-    # JIR-loaded trees whose stamps are recomputed only on inference.
+
     if nd.callee_decl is not None {
         return nd.callee_decl;
     }
     if isinstance(nd.target, uni.Name) {
-        # No re-resolution fallbacks: the checker-stamped callee_decl above
-        # and the stored .sym are the facts; a missing stamp means no
-        # statically-known ability (the no-fallback contract of #6542).
         ability_node = ability_of_symbol(nd.target.sym);
         if ability_node {
             return ability_node;
@@ -3978,9 +3969,6 @@ impl EsastGenPass._osp_arch_set -> set[str] {
     return set(self._osp_arch_kinds().keys());
 }
 
-"""Memoized {variable name -> local archetype name} for `x = Arch(...)` bindings
-in a local-OSP module. Lets a spawn whose walker is held in a variable
-(`w spawn n`) identify the walker side without type inference (which cl skips)."""
 impl EsastGenPass._osp_var_arch -> dict[str, str] {
     if self._osp_var_arch_cache is not None {
         return self._osp_var_arch_cache;
@@ -4674,7 +4662,7 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
 
 impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
     import from jaclang.compiler.symbol_utils { ability_of_symbol }
-    # Resolve the source module to look up function signatures
+
     source_mod: uni.Module | None = self._resolve_source_module(nd);
     stubs: list[es.Statement] = [];
     for item in nd.items {
@@ -5871,7 +5859,6 @@ impl EsastGenPass.get_main_mod -> uni.Module {
     return mod;
 }
 
-"""Remove Jac/ES await wrappers for spawn analysis."""
 impl EsastGenPass._strip_spawn_await(
     node_expr: uni.Expr, es_expr: es.Expression
 ) -> tuple[uni.Expr, es.Expression] {

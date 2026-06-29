@@ -4121,7 +4121,6 @@ impl NativeSetEmitter.emit_clear(
     return ir.Constant(i64, 0);
 }
 
-# Set algebra
 impl NativeSetEmitter._emit_set_iterate(
     self, ctx: NativeEmitCtx, source: ir.Value, prefix: str
 ) -> tuple {

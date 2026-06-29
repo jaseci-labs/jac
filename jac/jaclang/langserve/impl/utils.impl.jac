@@ -111,7 +111,6 @@ impl get_token_start(
     return (current_line, current_char, 0);
 }
 
-"""Map the symbol node to an lspt.SymbolKind."""
 impl kind_map(sub_tab: uni.UniNode) -> lspt.SymbolKind {
     return lspt.SymbolKind.Function
         if isinstance(sub_tab, uni.Ability)
@@ -230,7 +229,6 @@ impl position_within_node(n: uni.UniNode, line: int, character: int) -> bool {
     return True;
 }
 
-"""Debounce decorator for async functions."""
 impl debounce(`wait: float) -> Callable[[T], Callable[(..., Awaitable[None])]] {
     def decorator(fn: T) -> Callable[P, Awaitable[None]] {
         @wraps(fn)

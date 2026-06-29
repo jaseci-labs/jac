@@ -425,11 +425,6 @@ impl NaIRGenPass._emit_is_strip_char(
     );
 }
 
-"""General string strip backing strip()/lstrip()/rstrip(), with or without a
-character set. `charset` is None for the whitespace form or an i8* for the
-set form; `do_left`/`do_right` select which ends are trimmed. A single
-implementation keeps strip/lstrip/rstrip congruent across the no-arg and
-char-set cases (#6943 NA-9)."""
 impl NaIRGenPass._codegen_str_strip_chars(
     str_val: ir.Value, charset: (ir.Value | None), do_left: bool, do_right: bool
 ) -> (ir.Value | None) {

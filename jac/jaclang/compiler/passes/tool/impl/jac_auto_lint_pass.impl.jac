@@ -353,13 +353,6 @@ impl JacAutoLintPass.combine_consecutive_has(body: list) -> list {
     return new_body;
 }
 
-"""Run W3002 has-combining over a node body and rebuild its kids.
-
-Shared archetype/enum/ability handling: runs combine_consecutive_has and,
-when it merges has-statements (and the warning is emitted), installs the new
-body, recalculates parents, and rebuilds the kid list to drop the merged
-ArchHas children that are no longer in the body.
-"""
 impl JacAutoLintPass._combine_has_in_node(
     nd: uni.Archetype | uni.Enum | uni.Ability
 ) -> None {
@@ -382,7 +375,6 @@ impl JacAutoLintPass._combine_has_in_node(
     }
 }
 
-"""Check if two GlobalVars nodes can be combined (same access, frozen, no docstrings)."""
 impl JacAutoLintPass.can_combine_glob(
     glob1: uni.GlobalVars, glob2: uni.GlobalVars
 ) -> bool {
@@ -676,14 +668,6 @@ impl JacAutoLintPass._convert_getattr_to_null_ok(
     return self._funccall_to_null_safe(nd, True);
 }
 
-"""Build an obj?.attr null-safe AtomTrailer from a hasattr/getattr FuncCall.
-
-Shared tail of the hasattr/getattr -> obj?.attr converters: extracts the
-string attribute name from params[1], optionally validates it is a real
-non-keyword identifier, and builds the null-safe AtomTrailer over params[0].
-Returns None when params[1] is not a usable string literal (or, when
-require_valid_identifier is set, not a valid non-keyword identifier).
-"""
 impl JacAutoLintPass._funccall_to_null_safe(
     fc: uni.FuncCall, require_valid_identifier: bool
 ) -> (uni.AtomTrailer | None) {
@@ -997,10 +981,6 @@ impl JacAutoLintPass._expr_to_key(expr: uni.Expr) -> (str | None) {
     return None;
 }
 
-"""Check if two expressions are structurally identical without calling unparse().
-
-This avoids triggering normalize() which corrupts token locations.
-"""
 impl JacAutoLintPass._exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> bool {
     if expr1 is expr2 {
         return True;
@@ -1522,10 +1502,6 @@ impl JacAutoLintPass._extract_string_literal_value(expr: uni.Expr) -> (str | Non
     return None;
 }
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# New lint checks (W3020-W3036)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-"""W3020: Warn on unnecessary 'pass' in a body that has other statements."""
 impl JacAutoLintPass._check_unnecessary_pass(body: list) -> None {
     if self._is_suppressed(W3020) {
         return;

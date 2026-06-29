@@ -363,17 +363,6 @@ impl TypeEvaluator._get_type_for_member_lookup(
     return object_type;
 }
 
-"""
-Get member type and specialize it with class type_args. (Pyright: getTypeOfMember)
-
-This is the proper way to get a member's type from a specialized generic class.
-Instead of getting raw type then manually specializing, this does it in one place.
-
-For `__new__`-style methods (cls-first param without the ClassMethod flag) and
-staticmethods, `Self` binding is deferred to the call site so it can be solved
-from the receiver argument — `object.__new__(self.__class__)` must resolve
-`Self -> type(self.__class__)`, not the lookup-time class.
-"""
 impl TypeEvaluator.get_type_of_member(
     member: any, class_type: types.ClassType
 ) -> TypeBase {
@@ -1170,11 +1159,6 @@ impl TypeEvaluator._get_special_form_type(
     return None;
 }
 
-"""Resolve the filesystem path for the from-clause of an import.
-
-Bare-dot imports (from . import x) have no named module component, so
-resolve_relative_path() is unreliable. Walk up from the current file directly.
-"""
 impl TypeEvaluator._resolve_from_path(from_mod: uni.ModulePath) -> Path {
     if from_mod.level > 0 and not from_mod.path {
         base = Path(from_mod.loc.mod_path).parent;

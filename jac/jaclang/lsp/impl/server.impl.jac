@@ -190,9 +190,6 @@ impl PositionCodec.range_from_client_units(lines: list[str], range: Range) -> Ra
     );
 }
 
-# ===========================================================================
-# TextDocument
-# ===========================================================================
 impl TextDocument.postinit -> None {
     self.path = uris.to_fs_path(self.uri) or self.uri;
     self._position_codec = PositionCodec();

@@ -47,7 +47,6 @@ impl JacFileWatcher.start -> None {
     self._running = True;
     self._last_flush = time.time();
 
-    # Start debounce flush thread
     def flush_loop {
         while self._running {
             time.sleep(float(self._debounce_ms) / 1000.0);

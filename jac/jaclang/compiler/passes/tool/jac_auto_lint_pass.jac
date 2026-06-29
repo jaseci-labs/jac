@@ -114,7 +114,6 @@ obj JacAutoLintPass(UniPass) {
 
     def _extract_string_literal_value(expr: uni.Expr) -> (str | None);
     def _check_no_print(nd: uni.FuncCall) -> None;
-    # New lint checks (W3020-W3036)
     def _check_unnecessary_pass(body: list) -> None;
     def _check_unnecessary_else_after_return(nd: uni.IfStmt) -> None;
     def _check_nested_if_to_elif(nd: uni.ElseStmt) -> None;
@@ -140,7 +139,6 @@ obj JacAutoLintPass(UniPass) {
     def enter_param_var(nd: uni.ParamVar) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;
     def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
-    # useState-to-has conversion (W3038)
     def _is_usestate_assignment(
         stmt: uni.UniNode
     ) -> (tuple[str, str, uni.Expr | None] | None);

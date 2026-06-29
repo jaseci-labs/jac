@@ -2,7 +2,6 @@ impl CommandGroups.get_display_name(group: str) -> str {
     return self.groups.get(group, group.title());
 }
 
-"""Get all groups in display order."""
 impl CommandGroups.get_ordered_groups -> list[str] {
     return self.group_order.copy();
 }
@@ -79,9 +78,6 @@ impl HelpFormatter.format_main_help(
     return "\n".join(lines);
 }
 
-# ===============================================================================
-# Module-level Functions Implementation
-# ===============================================================================
 impl get_command_groups -> CommandGroups {
     import from jaclang.cli.help { CommandGroups }
     global _groups;
@@ -91,7 +87,6 @@ impl get_command_groups -> CommandGroups {
     return _groups;
 }
 
-"""Get the global HelpFormatter instance."""
 impl get_help_formatter -> HelpFormatter {
     import from jaclang.cli.help { HelpFormatter }
     global _formatter;

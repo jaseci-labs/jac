@@ -139,7 +139,6 @@ impl GrammarExtractPass.format_ebnf(expr: GExpr) -> str {
     return "???";
 }
 
-"""Simplify grammar expression by flattening nested structures."""
 impl GrammarExtractPass.simplify_expr(expr: GExpr) -> GExpr {
     simp = GrammarExtractPass.simplify_expr;
     if isinstance(expr, GSeq) {

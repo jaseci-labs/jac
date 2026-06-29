@@ -11,7 +11,6 @@ impl es_to_js_with_map(
     return (code, generator.line_map);
 }
 
-"""Generate JSX identifier (`div`, `className`, `Foo`)."""
 impl JSCodeGenerator.gen_jsx_identifier(nd: es.JsxIdentifier) -> str {
     return nd.name;
 }
@@ -74,7 +73,6 @@ impl JSCodeGenerator.gen_jsx_fragment(nd: es.JsxFragment) -> str {
     return f"<>{children}</>";
 }
 
-"""Generate export specifier."""
 impl JSCodeGenerator.gen_export_specifier(nd: es.ExportSpecifier) -> str {
     local = self.generate(nd.local);
     exported = self.generate(nd.exported);
@@ -170,12 +168,10 @@ impl JSCodeGenerator.gen_array_pattern(nd: es.ArrayPattern) -> str {
     return f"[{elements}]";
 }
 
-"""Generate spread element."""
 impl JSCodeGenerator.gen_spread_element(nd: es.SpreadElement) -> str {
     return f"...{self.generate(nd.argument)}";
 }
 
-"""Generate template element."""
 impl JSCodeGenerator.gen_template_element(nd: es.TemplateElement) -> str {
     value = nd.value.get('raw') if nd.value else '';
     return (value or '');
@@ -196,7 +192,6 @@ impl JSCodeGenerator.gen_await_expression(nd: es.AwaitExpression) -> str {
     return f"await {self.generate(nd.argument)}";
 }
 
-"""Generate new expression."""
 impl JSCodeGenerator.gen_new_expression(nd: es.NewExpression) -> str {
     callee = self.generate(nd.callee);
     if isinstance(nd.arguments, es.ObjectExpression) {
@@ -207,7 +202,6 @@ impl JSCodeGenerator.gen_new_expression(nd: es.NewExpression) -> str {
     return f"new {callee}({args})";
 }
 
-"""Generate call expression."""
 impl JSCodeGenerator.gen_call_expression(nd: es.CallExpression) -> str {
     callee = self.generate(nd.callee);
 
@@ -242,6 +236,7 @@ impl JSCodeGenerator.gen_member_expression(nd: es.MemberExpression) -> str {
             es.BinaryExpression,
             es.LogicalExpression,
             es.UnaryExpression,
+
         )
     ) {
         `obj = f"({`obj})";
@@ -283,7 +278,6 @@ impl JSCodeGenerator.gen_binary_expression(nd: es.BinaryExpression) -> str {
     return f"({left} {nd.operator} {right})";
 }
 
-"""Generate unary expression."""
 impl JSCodeGenerator.gen_unary_expression(nd: es.UnaryExpression) -> str {
     arg = self.generate(nd.argument);
     if nd.prefix {
@@ -391,7 +385,6 @@ impl JSCodeGenerator.gen_identifier(nd: es.Identifier) -> str {
     return nd.name;
 }
 
-"""Generate class field definition."""
 impl JSCodeGenerator.gen_property_definition(nd: es.PropertyDefinition) -> str {
     static_str = 'static ' if nd.static else '';
     key = self.generate(nd.key) if nd.key else '';
@@ -433,7 +426,6 @@ impl JSCodeGenerator.gen_class_body(nd: es.ClassBody) -> str {
     return f"{{\n{methods}\n{self.indent()}}}";
 }
 
-"""Generate class declaration."""
 impl JSCodeGenerator.gen_class_declaration(nd: es.ClassDeclaration) -> str {
     name = self.generate(nd.id) if nd.id else '';
     extends = f" extends {self.generate(nd.superClass)}" if nd.superClass else '';
@@ -532,7 +524,6 @@ impl JSCodeGenerator.gen_for_of_statement(nd: es.ForOfStatement) -> str {
     return f"{self.indent()}for {await_str}({left} of {right}) {body}";
 }
 
-"""Generate for statement."""
 impl JSCodeGenerator.gen_for_statement(nd: es.ForStatement) -> str {
     if nd.`init {
         init_str = self.generate(nd.`init).lstrip();
@@ -548,7 +539,6 @@ impl JSCodeGenerator.gen_for_statement(nd: es.ForStatement) -> str {
     return f"{self.indent()}for ({init_str}; {test_str}; {update}) {body}";
 }
 
-"""Generate while statement."""
 impl JSCodeGenerator.gen_while_statement(nd: es.WhileStatement) -> str {
     `test = self.generate(nd.test);
     body = self.generate(nd.body);
@@ -576,7 +566,6 @@ impl JSCodeGenerator.gen_return_statement(nd: es.ReturnStatement) -> str {
     return f"{self.indent()}return;";
 }
 
-"""Generate block statement with source mapping for inner statements."""
 impl JSCodeGenerator.gen_block_statement(nd: es.BlockStatement) -> str {
     if not nd.body {
         return '{}';

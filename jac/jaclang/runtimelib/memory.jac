@@ -53,12 +53,6 @@ obj Memory {
         arch_type_name: str, field_filter: (dict | None) = None
     ) -> Generator[Anchor, None, None];
 
-    # ---- Async hot-path mirrors ----
-    # Non-abstract: default implementations delegate to the sync variant via
-    # asyncio.to_thread so every existing backend (SQLite, Volatile, Tiered)
-    # gets non-blocking behavior under an event loop without a rewrite. Native
-    # async backends (aiosqlite, asyncpg, motor) can override these to drop
-    # the thread hop entirely.
     async def aget(id: UUID) -> (Anchor | None);
     async def aput(anchor: Anchor) -> None;
     async def adelete(id: UUID) -> None;

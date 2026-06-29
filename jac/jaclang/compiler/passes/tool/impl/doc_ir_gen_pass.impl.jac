@@ -2342,8 +2342,6 @@ impl DocIRGenPass._assign_group_concat(nd: uni.UniNode) -> None {
     );
 }
 
-"""Group a simple statement's children, dropping a trailing SEMI and the final
-separating space."""
 impl DocIRGenPass._assign_semi_stmt_doc_ir(nd: uni.UniNode) -> None {
     parts: list[doc.DocType] = [];
     for i in nd.kid {
@@ -2357,7 +2355,6 @@ impl DocIRGenPass._assign_semi_stmt_doc_ir(nd: uni.UniNode) -> None {
     nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
 }
 
-"""Lay out a comprehension (list/set/gen)."""
 impl DocIRGenPass._assign_compr_doc_ir(nd: uni.UniNode) -> None {
     parts: list[doc.DocType] = [];
     for i in nd.kid {
@@ -2371,7 +2368,6 @@ impl DocIRGenPass._assign_compr_doc_ir(nd: uni.UniNode) -> None {
     nd.gen.doc_ir = self.format_comprehension(parts);
 }
 
-"""Lay out an else/else-if statement."""
 impl DocIRGenPass._assign_else_doc_ir(
     nd: uni.UniNode, body: Sequence[uni.UniNode]
 ) -> None {
@@ -2398,7 +2394,6 @@ impl DocIRGenPass._assign_else_doc_ir(
     nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
 }
 
-"""Lay out a balanced `kw { ... }` block (client/server/native)."""
 impl DocIRGenPass._emit_keyword_block(nd: uni.UniNode, kw: Tok) -> None {
     if (
         len(nd.kid) > 0
@@ -2450,7 +2445,6 @@ impl DocIRGenPass._child_docs(nd: uni.UniNode) -> list[doc.DocType] {
     return docs;
 }
 
-"""Join parts with space separator."""
 impl DocIRGenPass.join_with_space(parts: list[doc.DocType]) -> doc.DocType {
     return self.join(self.space(), parts);
 }
@@ -2499,7 +2493,6 @@ impl DocIRGenPass.group(
     return doc.Group(contents, break_contiguous, ast_node=ast_node);
 }
 
-"""Create a tight line break."""
 impl DocIRGenPass.tight_line -> doc.Line {
     return doc.Line(tight=True);
 }

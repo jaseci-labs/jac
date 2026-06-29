@@ -52,19 +52,16 @@ obj ExpressionStatement(Node) {
         `type: TypingLiteral['ExpressionStatement'] = 'ExpressionStatement';
 }
 
-"""Block statement."""
 obj BlockStatement(Node) {
     has body: List[Statement] = [],
         `type: TypingLiteral['BlockStatement'] = 'BlockStatement';
 }
 
-"""Return statement."""
 obj ReturnStatement(Node) {
     has argument: (Expression | None) = None,
         `type: TypingLiteral['ReturnStatement'] = 'ReturnStatement';
 }
 
-"""Break statement."""
 obj BreakStatement(Node) {
     has label: (Identifier | None) = None,
         `type: TypingLiteral['BreakStatement'] = 'BreakStatement';
@@ -118,7 +115,6 @@ obj WhileStatement(Node) {
         `type: TypingLiteral['WhileStatement'] = 'WhileStatement';
 }
 
-"""For statement."""
 obj ForStatement(Node) {
     has `init: VariableDeclaration | Expression | None = None,
         `test: (Expression | None) = None,
@@ -127,7 +123,6 @@ obj ForStatement(Node) {
         `type: TypingLiteral['ForStatement'] = 'ForStatement';
 }
 
-"""For-of statement (ES6)."""
 obj ForOfStatement(Node) {
     has left: VariableDeclaration | Pattern | None = None,
         right: (Expression | None) = None,
@@ -205,7 +200,6 @@ obj UnaryExpression(Node) {
         `type: TypingLiteral['UnaryExpression'] = 'UnaryExpression';
 }
 
-"""Binary expression."""
 obj BinaryExpression(Node) {
     has operator: str = '',
         left: (Expression | None) = None,
@@ -249,14 +243,12 @@ obj CallExpression(Node) {
         `type: TypingLiteral['CallExpression'] = 'CallExpression';
 }
 
-"""New expression."""
 obj NewExpression(Node) {
     has callee: (Expression | None) = None,
         arguments: list[(Expression | SpreadElement)] = [],
         `type: TypingLiteral['NewExpression'] = 'NewExpression';
 }
 
-"""Await expression (ES2017)."""
 obj AwaitExpression(Node) {
     has argument: (Expression | None) = None,
         `type: TypingLiteral['AwaitExpression'] = 'AwaitExpression';
@@ -274,13 +266,11 @@ obj TemplateElement(Node) {
         `type: TypingLiteral['TemplateElement'] = 'TemplateElement';
 }
 
-"""Spread element (ES6)."""
 obj SpreadElement(Node) {
     has argument: (Expression | None) = None,
         `type: TypingLiteral['SpreadElement'] = 'SpreadElement';
 }
 
-"""Assignment pattern (default parameters)."""
 obj AssignmentPattern(Node) {
     has left: (Pattern | None) = None,
         right: (Expression | None) = None,
@@ -319,7 +309,6 @@ obj ClassDeclaration(Node) {
         `type: TypingLiteral['ClassDeclaration'] = 'ClassDeclaration';
 }
 
-"""Class body (ES2022: supports methods, properties, and static blocks)."""
 obj ClassBody(Node) {
     has body: list[MethodDefinition | PropertyDefinition] = [],
         `type: TypingLiteral['ClassBody'] = 'ClassBody';
@@ -342,7 +331,6 @@ obj PropertyDefinition(Node) {
         `type: TypingLiteral['PropertyDefinition'] = 'PropertyDefinition';
 }
 
-"""Import declaration."""
 obj ImportDeclaration(Node) {
     has specifiers:
         list[ImportSpecifier | ImportDefaultSpecifier | ImportNamespaceSpecifier] = [],
@@ -350,7 +338,6 @@ obj ImportDeclaration(Node) {
         `type: TypingLiteral['ImportDeclaration'] = 'ImportDeclaration';
 }
 
-"""Import specifier."""
 obj ImportSpecifier(Node) {
     has imported: (Identifier | None) = None,
         local: (Identifier | None) = None,
@@ -380,15 +367,6 @@ obj ExportSpecifier(Node) {
         `type: TypingLiteral['ExportSpecifier'] = 'ExportSpecifier';
 }
 
-# === JSX nodes (ESTree-JSX) ==================================================
-# Mirror the ESTree-JSX spec (https://github.com/facebook/jsx/blob/main/AST.md),
-# named with the `Jsx` casing used throughout this codebase (`uni.JsxElement`,
-# `EsJsxProcessor`, `JsxExpression`) rather than the spec's all-caps `JSX` prefix:
-# the unparser dispatches on `gen_{pascal_to_snake(type)}`, and a consecutive-caps
-# `JSX` prefix would mangle the method name (`j_s_x_element`). These print as JSX
-# *text* via `es_unparse` (Solid's `lower_view` path, Branch 3) and are never
-# handed to a real ESTree consumer, so the internal `Jsx` casing is harmless.
-"""JSX identifier — a tag or attribute name (`div`, `className`, `Foo`)."""
 obj JsxIdentifier(Node) {
     has name: str = '',
         `type: TypingLiteral['JsxIdentifier'] = 'JsxIdentifier';

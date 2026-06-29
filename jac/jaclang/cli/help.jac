@@ -1,12 +1,3 @@
-"""Help formatter for CLI commands.
-
-Generates well-formatted help output with:
-- Command grouping by category
-- Argument documentation with types and defaults
-- Example usage
-- Plugin attribution for extended arguments
-"""
-
 import from jaclang.cli.command { CommandSpec, Arg }
 
 obj CommandGroups {
@@ -41,7 +32,6 @@ obj HelpFormatter {
     ) -> str;
 }
 
-# Global singleton instance
 glob _groups: CommandGroups | None = None,
      _formatter: HelpFormatter | None = None;
 
