@@ -32,7 +32,10 @@ jobs:
         # self-contained; build.zig fetches the per-target python-build-standalone
         # and (for the native backend) the per-target LLVM release.
         include:
-          - os: ubuntu-latest
+          # Pin to 22.04 (glibc 2.35) so the binary's glibc floor stays low and
+          # the asset runs on 22.04+ (forward-compatible). ubuntu-latest builds
+          # against a newer glibc and fails on still-supported 22.04 hosts.
+          - os: ubuntu-22.04
             platform: linux-x86_64
           - os: ubuntu-24.04-arm
             platform: linux-aarch64
