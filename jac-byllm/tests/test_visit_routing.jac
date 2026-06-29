@@ -39,3 +39,19 @@ test "routing-only call_params do not leak to the model" {
     assert "LEAKED:" not in stdout_value;
     assert "HAS_TEMPERATURE:True" in stdout_value;
 }
+
+
+test "routes over an arbitrary non-adjacent node list without fabricating edges" {
+    captured_output = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured_output;
+    try {
+        jac_import("routing_node_list", base_path=FIXTURE_DIR + "/");
+    } finally {
+        sys.stdout = old_stdout;
+    }
+    stdout_value = captured_output.getvalue();
+
+    assert "FABRICATED_EDGE" not in stdout_value;
+    assert "VISITED:" in stdout_value;
+}

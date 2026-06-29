@@ -273,20 +273,24 @@ def route_visit(candidates: list, model: object) -> list {
 
     lines: list = [];
     for r in recs {
-        edge_txt = _describe_arch(r["edge"]) if r["edge"] is not None else "(direct)";
-        if r["dir"] == "in" {
-            arrow = f"<--({edge_txt})--";
-        } elif r["dir"] == "undir" {
-            arrow = f"<-({edge_txt})->";
-        } else {
-            arrow = f"--({edge_txt})-->";
-        }
         node_txt = _describe_arch(r["node"]);
         runs = _node_run_desc(r["node"], wkr);
         if runs {
             node_txt = node_txt + f" [runs: {runs}]";
         }
-        lines.append(f"{r['handle']}) here {arrow} {node_txt}");
+        if r["edge"] is None {
+            lines.append(f"{r['handle']}) {node_txt}");
+        } else {
+            edge_txt = _describe_arch(r["edge"]);
+            if r["dir"] == "in" {
+                arrow = f"<--({edge_txt})--";
+            } elif r["dir"] == "undir" {
+                arrow = f"<-({edge_txt})->";
+            } else {
+                arrow = f"--({edge_txt})-->";
+            }
+            lines.append(f"{r['handle']}) here {arrow} {node_txt}");
+        }
     }
     candidates_block = "\n".join(lines);
 
