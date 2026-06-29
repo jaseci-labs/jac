@@ -1,7 +1,5 @@
-"""Constants across the project."""
 import from enum { Enum, IntEnum, IntFlag, StrEnum }
 
-"""Symbol types."""
 enum SymbolType {
     MODULE = 'module',
     MOD_VAR = 'mod_var',
@@ -34,7 +32,6 @@ enum SymbolType {
     }
 }
 
-"""LSP Token types for Jac."""
 enum JacSemTokenType: int {
     NAMESPACE = 0,
     TYPE = 1,
@@ -69,7 +66,6 @@ enum JacSemTokenType: int {
     }
 }
 
-"""LSP Token modifiers for Jac."""
 class JacSemTokenModifier(IntFlag) {
     with entry {
         DECLARATION = 1 << 0;
@@ -84,11 +80,9 @@ class JacSemTokenModifier(IntFlag) {
         DEFAULT_LIBRARY = 1 << 9;
     }
 
-    """Return the string list of token modifiers."""
     static def as_str_list -> list[str];
 }
 
-"""Token constants for Jac."""
 class Constants(StrEnum) {
     with entry {
         HERE = 'here';
@@ -98,11 +92,9 @@ class Constants(StrEnum) {
         SUPER_ROOT_UUID = '00000000-0000-0000-0000-000000000000';
     }
 
-    """Return the string representation of the token."""
     def __str__(self: Constants) -> str;
 }
 
-"""Code execution context for client/server/native separation."""
 enum CodeContext {
     SERVER = 'server',
     CLIENT = 'client',
@@ -120,14 +112,8 @@ enum CodeContext {
     }
 }
 
-"""Edge direction indicator."""
-enum EdgeDir {
-    IN = 1,
-    OUT = 2,
-    ANY = 3
-}
+enum EdgeDir { IN = 1, OUT = 2, ANY = 3 }
 
-"""Symbol access levels."""
 enum SymbolAccess {
     PRIVATE = 'private',
     PUBLIC = 'public',
@@ -139,11 +125,6 @@ enum SymbolAccess {
     }
 }
 
-"""Where a symbol's runtime binding lives (storage class).
-
-Computed centrally from the symbol table so backends never re-derive
-scoping facts (see analysis-centralization-plan, Phase 2).
-"""
 enum SymbolStorage {
     LOCAL = 'local',
     PARAM = 'param',
@@ -157,7 +138,6 @@ enum SymbolStorage {
     }
 }
 
-"""Token constants for the lexer."""
 class Tokens(StrEnum) {
     with entry {
         FLOAT = 'FLOAT';
@@ -375,7 +355,6 @@ class Tokens(StrEnum) {
     }
 }
 
-"""Token name to string value mapping."""
 glob TOKEN_MAP: dict[str, str] = {
          'ABILITY_OP': ':can:',
          'ADD_EQ': '+=',

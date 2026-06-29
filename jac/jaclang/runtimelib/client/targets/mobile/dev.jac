@@ -1,4 +1,3 @@
-"""Mobile target: Vite HMR, Capacitor live-reload, and dev workflow helpers."""
 import json;
 import os;
 import shutil;
@@ -14,24 +13,11 @@ import from jaclang.runtimelib.client.targets.mobile.common {
     _resolve_npx
 }
 
-"""Read [plugins.client.api] base_url for warnings and port resolution."""
 def _get_api_base_url_str(project_dir: Path) -> str {
     loader = JacClientConfig(project_dir);
     return loader.get_api_config().get("base_url", "") or "";
 }
 
-"""Fail fast if a port is already bound.
-
-The mobile dev flow reserves ports via adb reverse and rewrites
-capacitor.config.json with a fixed Vite URL. The API subprocess
-(`jaclang start`) silently bumps the port on EADDRINUSE - which leaves
-adb-reverse / cap-config pointing at a port nothing is listening on, so the
-device can never reach the API. Probing the port before we configure
-anything makes the failure mode explicit instead of arriving as a confusing
-"WebView won't connect" issue later.
-
-`role` is a short label (e.g. "Vite" or "API") used in the error message.
-"""
 def _assert_mobile_port_available(port: int, role: str) {
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
     try {
@@ -50,7 +36,6 @@ def _assert_mobile_port_available(port: int, role: str) {
     }
 }
 
-"""API connectivity for mobile dev."""
 def _warn_mobile_dev_api_url(project_dir: Path) {
     base = _get_api_base_url_str(project_dir);
     if base {
@@ -64,21 +49,12 @@ def _warn_mobile_dev_api_url(project_dir: Path) {
     }
 }
 
-"""Read mobile dev options set by jac-client CLI (see cli.jac). Vite port: resolve_mobile_vite_port."""
 def _mobile_read_dev_env -> tuple[str, str] {
     host_ov = os.environ.get("JAC_MOBILE_DEV_HOST", "");
     plat_mode = os.environ.get("JAC_MOBILE_PLATFORM", "auto");
     return (host_ov, plat_mode);
 }
 
-"""Best-effort ADB reverse for Android mobile dev connectivity.
-
-No-op when adb is not on PATH - adb only exists when the Android SDK platform
-tools are installed, so a missing binary means there is no device to reverse
-ports to anyway. The previous implementation called subprocess unconditionally
-and emitted noisy "[Errno 2] No such file" warnings on every dev run on hosts
-without adb.
-"""
 def _mobile_setup_android_port_reverse(vite_port: int, server_port: int) {
     if not shutil.which("adb") {
         return;
@@ -113,7 +89,6 @@ def _mobile_setup_android_port_reverse(vite_port: int, server_port: int) {
     }
 }
 
-"""Return True if watchdog is available (required for .jac → client HMR)."""
 def _mobile_ensure_watchdog -> bool {
     try {
         import watchdog;
@@ -128,12 +103,6 @@ def _mobile_ensure_watchdog -> bool {
     }
 }
 
-"""Remove stale Jac modules from JacRuntime hub before mobile dev recompiles.
-
-The client bundle compiler reuses JacRuntime.program.mod.hub entries; without
-evicting changed modules, compile_module() may return stale JS and Vite reloads
-the same bytes.
-"""
 def _mobile_invalidate_runtime_module_cache(paths: list[str]) -> None {
     try {
         import from jaclang { JacRuntime as Jac }
@@ -166,13 +135,10 @@ def _mobile_invalidate_runtime_module_cache(paths: list[str]) -> None {
             del hub[k];
         }
     } except Exception {
-        # Cache eviction is best-effort; compile still proceeds if this fails.
         return;
     }
 }
 
-"""Recompile the Vite client graph after a .jac file change (runs on watchdog thread).
-"""
 def _mobile_hmr_on_jac_changed(
     event: FileChangeEvent, compiler: any, entry_file: Path, project_dir: Path
 ) -> None {
@@ -206,7 +172,6 @@ def _mobile_hmr_on_jac_changed(
     }
 }
 
-"""Start Jac API only for mobile dev."""
 def _mobile_start_backend_server(
     entry_file: Path, project_dir: Path, port: int
 ) -> any {
@@ -228,11 +193,6 @@ def _mobile_start_backend_server(
     );
 }
 
-"""Write server.url into capacitor.config.json for live-reload.
-
-During dev, the Capacitor WebView loads directly from the Vite dev server
-instead of the static webDir. We save the original config and restore it on exit.
-"""
 def _inject_capacitor_dev_url(project_dir: Path, dev_url: str) -> str | None {
     config_path = project_dir / "capacitor.config.json";
     if not config_path.exists() {
@@ -256,7 +216,6 @@ def _inject_capacitor_dev_url(project_dir: Path, dev_url: str) -> str | None {
     return original;
 }
 
-"""Restore capacitor.config.json to its pre-dev state."""
 def _restore_capacitor_config(project_dir: Path, original: str | None) -> None {
     if original is None {
         return;
@@ -266,7 +225,6 @@ def _restore_capacitor_config(project_dir: Path, original: str | None) -> None {
     console.print("  ✔ Restored capacitor.config.json", style="muted");
 }
 
-"""Run cap run (no --live-reload; server.url in config points to Vite)."""
 def _run_cap_run_live_reload(
     project_dir: Path, plat: str, _lr_host: str, _lr_port: int
 ) -> int {
@@ -278,14 +236,6 @@ def _run_cap_run_live_reload(
     return result.returncode;
 }
 
-"""Describe the user-facing outcome of `cap run`. Pure / no side effects.
-
-Returns a dict with:
-  ok       - True when rc == 0 (cap run succeeded).
-  messages - list[str] for the user. Must NOT claim deployment when rc != 0
-             (the original code printed "📱 App deployed" unconditionally,
-             misleading users when there was no device or no Android SDK).
-"""
 def _describe_cap_run_completion(rc: int, dev_url: str) -> dict {
     if rc == 0 {
         return {
