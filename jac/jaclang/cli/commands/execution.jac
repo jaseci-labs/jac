@@ -6,6 +6,7 @@ glob registry = get_registry();
 @registry.command(
     name="run",
     help="Run a Jac program",
+    tier="core",
     args=[
         Arg.create(
             "filename",
@@ -112,7 +113,8 @@ def enter(
 
 @registry.command(
     name="start",
-    help="Start REST API server for a Jac program",
+    help="Start server for a Jac program",
+    tier="core",
     args=[
         Arg.create(
             "filename",

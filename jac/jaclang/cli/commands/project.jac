@@ -6,6 +6,7 @@ glob registry = get_registry();
 @registry.command(
     name="create",
     help="Create a new Jac project",
+    tier="core",
     args=[
         Arg.create(
             "name",
