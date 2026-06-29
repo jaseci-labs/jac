@@ -346,9 +346,11 @@ def route_visit(candidates: list, model: object) -> list {
     selected = raw if isinstance(raw, list) else [raw];
     by_handle = {r["handle"]: r["node"] for r in recs};
     chosen: list = [];
+    seen_ids: set = set();
     for item in selected {
         picked = _resolve_choice(item, by_handle, recs);
-        if picked is not None and picked not in chosen {
+        if picked is not None and id(picked) not in seen_ids {
+            seen_ids.add(id(picked));
             chosen.append(picked);
         }
     }

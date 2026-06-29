@@ -55,3 +55,18 @@ test "routes over an arbitrary non-adjacent node list without fabricating edges"
     assert "FABRICATED_EDGE" not in stdout_value;
     assert "VISITED:" in stdout_value;
 }
+
+
+test "candidate nodes with identical field values are distinct visit targets" {
+    captured_output = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured_output;
+    try {
+        jac_import("routing_dup_values", base_path=FIXTURE_DIR + "/");
+    } finally {
+        sys.stdout = old_stdout;
+    }
+    stdout_value = captured_output.getvalue();
+
+    assert stdout_value.count("VISIT") == 2;
+}
