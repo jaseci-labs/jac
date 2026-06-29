@@ -248,9 +248,7 @@ test "dev launch detects editable worktree roots" {
     if (Path(os.environ.get("JAC_DESKTOP_JAC_SRC", "")) / "jaclang").exists() {
         assert "JAC_DESKTOP_JAC_SRC" in roots , "editable jaclang root should be detected";
     }
-    if (
-        Path(os.environ.get("JAC_DESKTOP_SCALE_SRC", "")) / "jaclang" / "scale" / "server" / "inprocess.jac"
-    ).exists() {
-        assert "JAC_DESKTOP_SCALE_SRC" in roots , "editable scale root should be detected";
-    }
+    # Scale is folded into jaclang (jaclang.scale), so the editable jaclang root
+    # carries it; there is no separate JAC_DESKTOP_SCALE_SRC root to detect.
+    assert "JAC_DESKTOP_SCALE_SRC" not in roots , "no separate scale root (scale is part of jaclang)";
 }
