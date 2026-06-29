@@ -1,6 +1,5 @@
 import from uuid { uuid4 }
-import from google.cloud.exceptions { NotFound }
-import from google.api_core.exceptions { AlreadyExists }
+import from jaclang.scale._optdeps.firestore { NotFound, AlreadyExists }
 import from jaclang.scale._optdeps.pymongo { DuplicateKeyError }
 import from jaclang.scale.persistence._db_helpers { _validate_not_read_only }
 

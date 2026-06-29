@@ -1,7 +1,6 @@
 """Implementation of Google Cloud Storage / Firebase Storage."""
 import from datetime { timedelta }
-import from google.cloud.exceptions { NotFound }
-import from jaclang.scale._optdeps.gcs { StorageClient, require_google_cloud_storage }
+import from jaclang.scale._optdeps.gcs { StorageClient, NotFound, require_google_cloud_storage }
 
 impl GcsStorage.init(
     self: GcsStorage,
