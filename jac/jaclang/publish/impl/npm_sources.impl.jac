@@ -1,5 +1,3 @@
-"""Implementation of the npm client-module collector."""
-
 import re;
 import fnmatch;
 import from pathlib { Path }
@@ -30,8 +28,6 @@ def _top_level_decls(js: str) -> set {
     return names;
 }
 
-"""Prepend a runtime import for any runtime symbols the module uses, and report
-   the npm packages it depends on (runtime + react/react-dom)."""
 def _wire_externals(js: str, runtime_pkg: str) -> tuple[str, list[str]] {
     externals: list[str] = [];
     local = _top_level_decls(js);
@@ -52,7 +48,6 @@ def _wire_externals(js: str, runtime_pkg: str) -> tuple[str, list[str]] {
         externals.append(runtime_pkg);
     }
 
-    # Detect bare-package imports of react / react-dom (peerDependencies).
     for m in re.finditer(r'from\s+["\']([^"\']+)["\']', js) {
         spec = m.group(1);
         base = spec;
@@ -147,6 +142,7 @@ def _compile_module(program: any, path: Path) -> any {
 impl collect_npm_sources(
     config: JacConfig, project_root: Path | None = None,
 ) -> list[NpmSourceFile] {
+    import from jaclang.jac0core.ext_registry { codespace_of }
     proj_root = project_root or config.project_root;
     if proj_root is None {
         raise ValueError(
@@ -172,7 +168,8 @@ impl collect_npm_sources(
             if not src.is_file() or _in_excluded_dir(src, pkg_dir) {
                 continue;
             }
-            if any(src.name.endswith(suf) for suf in NON_CLIENT_SUFFIXES) {
+
+            if codespace_of(src.name) in ('server', 'native') {
                 continue;
             }
             rel = str(src.relative_to(proj_root)).replace("\\", "/");
@@ -184,7 +181,7 @@ impl collect_npm_sources(
             mod = _compile_module(program, src);
             js = (mod.gen.js if mod and mod.gen else "") or "";
             if not js.strip() {
-                continue;  # no client output (e.g. a server-only plain .jac)
+                continue;
             }
             if _crosses_server_boundary(mod) {
                 raise NpmBoundaryError(
@@ -228,7 +225,6 @@ impl resolve_npm_entry(config: JacConfig, files: list[NpmSourceFile],) -> str | 
         }
     }
 
-    # Prefer the shallowest index.js (fewest path segments).
     index_files = sorted(
         [
             p

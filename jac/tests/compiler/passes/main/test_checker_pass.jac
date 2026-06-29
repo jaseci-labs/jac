@@ -1,15 +1,14 @@
 """Type checker pass tests -- migrated from test_checker_pass.py."""
 
 import os;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(
+glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      ),
      CHECKER_FIXTURES = os.path.join(
@@ -1082,6 +1081,38 @@ test "named_entry_no_w1051" {
     ]}";
 }
 
+test "lambda_param_inferred_from_expected_callable" {
+    # Unannotated lambda params infer from the key= callable, so no E1054/W1051.
+    path = os.path.join(CHECKER_FIXTURES, "checker_lambda_param_inference.jac");
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    assert len(program.errors_had) == 0 , f"Unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051"
+    ];
+    assert len(w1051) == 0 , f"Expected no W1051 on inferred lambdas, got {len(
+        w1051
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
+}
+
+test "lambda_param_unresolved_requires_annotation" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_lambda_unresolved_param.jac");
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    e1119 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1119"
+    ];
+    assert len(e1119) == 3 , f"Expected 3 E1119, got {len(e1119)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in e1119
+    );
+}
+
 test "ability_trigger_archetype" {
     # Walker abilities must trigger on a node/edge/Root; node/edge
     # abilities must trigger on a walker. Tuple and union triggers are
@@ -2132,6 +2163,15 @@ test "postinit_fields_not_required_in_constructor" {
     assert len(program.errors_had) == 0 , f"Expected no type checking errors, but got {len(
         program.errors_had
     )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+    # `by postinit` must not emit W1051 on the postinit name.
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051"
+    ];
+    assert len(w1051) == 0 , f"Expected no W1051 warnings, but got {len(w1051)}: " + "\n".join(
+        [w.pretty_print() for w in w1051]
+    );
 }
 
 test "impl_body_type_checking" {
@@ -2143,24 +2183,31 @@ test "impl_body_type_checking" {
     assert len(program.errors_had) == 3 , f"Expected 3 type errors, but got {len(
         program.errors_had
     )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+    # Order-independent: all three impl-body errors are reported from the impl
+    # file. The order they fire in (an enum member is checked eagerly when its
+    # decl is typed, a function/method body when its merged impl is traversed)
+    # is an implementation detail, not a contract.
+    all_pretty = "\n".join([err.pretty_print() for err in program.errors_had]);
     assert_error_pretty_found(
         """x = "wrong";  # <-- Error: Cannot assign str to int
         ^^^^^^^^^^^^""",
-        program.errors_had[0].pretty_print()
+        all_pretty
     );
-    assert "checker_impl_body.impl.jac" in program.errors_had[0].loc.mod_path;
     assert_error_pretty_found(
         """result = "wrong";  # <-- Error: Cannot assign str to int
         ^^^^^^^^^^^^^^^^^""",
-        program.errors_had[1].pretty_print()
+        all_pretty
     );
-    assert "checker_impl_body.impl.jac" in program.errors_had[1].loc.mod_path;
     assert_error_pretty_found(
         """PENDING: int = "wrong",  # <-- Error: Cannot assign str to int
         ^^^^^^^^^^^^^^^^^^^^^^""",
-        program.errors_had[2].pretty_print()
+        all_pretty
     );
-    assert "checker_impl_body.impl.jac" in program.errors_had[2].loc.mod_path;
+    for err in program.errors_had {
+        assert "checker_impl_body.impl.jac" in err.loc.mod_path , (
+            f"Error not from the impl file: {err.loc.mod_path}"
+        );
+    }
 }
 
 """Reassigning a module global from an impl-file body keeps the global's

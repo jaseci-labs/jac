@@ -36,6 +36,7 @@ share/python-wheels/
 *.egg
 MANIFEST
 .venv/
+.venv-precommit/
 
 # Others #
 .coverage
@@ -73,6 +74,20 @@ demo/
 .env
 
 node_modules
+
+# Zig build artifacts. jac/.gitignore covers the in-tree binary build under jac/,
+# but `jac run` invoking the native backend emits a .zig-cache/ at the *repo
+# root* (its cwd) too -- and a release `git add -A` (create-release-pr.yml) will
+# otherwise sweep in the >100 MB outputs and get rejected by GitHub's file-size
+# limit. These patterns are path-anchored to any depth, so they catch both.
+.zig-cache/
+zig-out/
+
+# Agent / IDE working notes (not repo artifacts)
+AGENTS.md
+PLAN.md
+IMPLEMENTATION.md
+RUNTIME_SPLIT_PROGRESS.md
 
 # Claude Code local instructions
 CLAUDE.local.md

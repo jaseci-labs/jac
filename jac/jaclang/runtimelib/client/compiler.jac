@@ -1,4 +1,3 @@
-"""Main compilation orchestration module."""
 import contextlib;
 import from collections.abc { Callable }
 import from pathlib { Path }
@@ -8,6 +7,7 @@ import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from jaclang.runtimelib.client.asset_processor { AssetProcessor }
 import from jaclang.runtimelib.client.import_processor { ImportProcessor }
 import from jaclang.runtimelib.client.jac_to_js { JacToJSCompiler }
+import from jaclang.jac0core.ext_registry { CLIENT_SUFFIX, ANNEX_SUFFIXES }
 import from .route_scanner { RouteScanner, RouteEntry }
 import from jaclang.runtimelib.client.vite_bundler { ViteBundler }
 
@@ -15,7 +15,6 @@ with entry {
     if TYPE_CHECKING { }
 }
 
-"""Orchestrates the compilation process for Vite client bundles."""
 class ViteCompiler {
     with entry {
         ROUTER_EXPORTS = [
@@ -30,7 +29,7 @@ class ViteCompiler {
             'useParams',
             'AuthGuard'
         ];
-        COMPOUND_EXTENSIONS = ['.cl.jac', '.impl.jac', '.test.jac'];
+        COMPOUND_EXTENSIONS = [CLIENT_SUFFIX] + list(ANNEX_SUFFIXES);
     }
 
     def _jac_path_to_js(self: ViteCompiler, rel_str: str) -> str;
@@ -47,6 +46,7 @@ class ViteCompiler {
 
     def compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[str]];
     def compile_pwa_runtime(self: ViteCompiler) -> tuple[str, list[str]];
+    def compile_desktop_sdk(self: ViteCompiler);
     def _write_source_map(
         self: ViteCompiler,
         mod: Any,

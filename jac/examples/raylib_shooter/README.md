@@ -145,7 +145,7 @@ The current frame rate is shown top-left. The loop runs **uncapped** (no
 
 ## Requirements
 
-- The `jac` CLI (`pip install jaclang`, or the repo's `.venv`) - for the Jac build
+- The `jac` binary (built via `./scripts/fresh_env.sh`, or installed via the install script) - for the Jac build
   (i.e. the default benchmark and `--jac`).
 - A `zig` toolchain - for the Zig build (the default benchmark and `--zig`).
   `demo.sh` downloads one into `.build/` automatically if you don't already have
@@ -157,17 +157,23 @@ The current frame rate is shown top-left. The loop runs **uncapped** (no
 
 No C compiler or system linker is required to build the Jac side.
 
-## How the 3D works (and a caveat)
+## How the 3D works (a deliberate scalar pipeline)
 
 raylib's headline 3D API passes small math structs **by value** -
 `DrawCube(Vector3 position, …)`, `BeginMode3D(Camera3D camera)`. The Jac native
-backend does not yet implement the full C struct-by-value ABI for multi-field
-float structs, so those entry points can't be called correctly today.
+backend lowers struct-by-value calls to the platform C ABI (System V AMD64
+eightbyte classification / AArch64 AAPCS), so those entry points _can_ be bound
+directly: declare the C struct as an `obj` in the `import from` block and call
+the by-value API.
 
-This demo therefore builds its 3D pipeline on raylib's lower-level **`rlgl`
+This demo nonetheless builds its 3D pipeline on raylib's lower-level **`rlgl`
 immediate-mode API**, which is entirely scalar (`rlVertex3f`, `rlColor4ub`,
-`rlTranslatef`, `rlRotatef`, `rlFrustum`, …) and so crosses the FFI boundary
-cleanly. The camera is a hand-built `rlFrustum` projection plus an
+`rlTranslatef`, `rlRotatef`, `rlFrustum`, …) - a deliberate choice, not a
+workaround. Two reasons: the `shooter.zig` twin binds the same scalar `rlgl`
+entry points, so the Jac and Zig builds stay line-for-line comparable and
+pixel-identical; and the WebGL/DOM `raylib_shim` behind the `web/` build emulates
+exactly this scalar `rlgl` surface, so one unchanged game source targets native
+_and_ the browser. The camera is a hand-built `rlFrustum` projection plus an
 `rlRotatef`/`rlTranslatef` view transform; cubes are drawn the same way raylib
 draws its own - `rlPushMatrix` + per-vertex emission. Every FFI call in the
 bindings is scalar - even the screen clear goes through `rlClearColor`'s four

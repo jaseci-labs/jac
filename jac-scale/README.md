@@ -19,7 +19,7 @@
 ### 3. Kubernetes Deployment & Auto-Scaling
 
 - **Easy Deployment**: One-command deployment to Kubernetes clusters
-- **Auto-Scaling**: Scale your application based on demand
+- **Auto-Scaling**: CPU-based HPA autoscaling by default; switch to `autoscaler_engine = "keda"` for event-driven triggers (Prometheus, Redis, RabbitMQ, and more) and scale-to-zero support
 - **Database Auto-Provisioning**: Automatically spawns and configures Redis and MongoDB instances
 - **Production-Ready**: Built-in health checks, persistent storage, and service discovery
 
@@ -61,36 +61,23 @@ cd jaseci
 git submodule update --init --recursive
 ```
 
-### 2. Create Python Virtual Environment
+### 2. Build the `jac` Binary
+
+Build the `jac` binary from the cloned repository and put it on your `PATH`:
 
 ```bash
-python -m venv venv
+./scripts/fresh_env.sh
 ```
 
-### 3. Activate the Virtual Environment
+### 3. Install JAC-Scale
 
-**Linux/Mac:**
-
-```bash
-source venv/bin/activate
-```
-
-**Windows:**
+Install JAC-Scale in editable mode from the cloned repository:
 
 ```bash
-venv\Scripts\activate
-```
-
-### 4. Install JAC and JAC-Scale
-
-Install both packages in editable mode from the cloned repository:
-
-```bash
-pip install -e ./jac
 jac install -e ./jac-scale
 ```
 
-### 5. Download the Demo Application
+### 4. Download the Demo Application
 
 Download the Travel Planner demo application from GitHub:
 
@@ -142,7 +129,7 @@ cd traveller
 cd traveller
 ```
 
-### 6. Configure Environment Variables
+### 5. Configure Environment Variables
 
 You should now be in the `traveller` folder. Create a `.env` file:
 
@@ -164,13 +151,14 @@ Add the following to your `.env` file:
 OPENAI_API_KEY=your-openai-api-key-here
 ```
 
-### 7. Install Demo Application Requirements
+### 6. Install Demo Application Requirements
 
 ```bash
-pip install byllm python-dotenv
+jac install byllm
+pip install python-dotenv
 ```
 
-### 8. Run the Application with JAC Start
+### 7. Run the Application with JAC Start
 
 To run your application using FastAPI with ShelfStorage (no Kubernetes required):
 
@@ -190,7 +178,7 @@ jac start main.jac
 - Application: http://localhost:8000
 - Swagger Documentation: http://localhost:8000/docs
 
-### 9. Set Up Kubernetes (For JAC Scale)
+### 8. Set Up Kubernetes (For JAC Scale)
 
 To use `jac start --scale`, you need Kubernetes installed on your machine.
 
@@ -204,7 +192,7 @@ To use `jac start --scale`, you need Kubernetes installed on your machine.
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - Enable Kubernetes in Docker Desktop settings (easier setup)
 
-### 10. Deploy with JAC Scale
+### 9. Deploy with JAC Scale
 
 Once Kubernetes is running, you have two deployment methods:
 
@@ -274,7 +262,7 @@ jac start main.jac --scale --build
 - Sharing your application with others
 - Creating reproducible deployments
 
-### 11. Clean Up Kubernetes Resources
+### 10. Clean Up Kubernetes Resources
 
 When you're done testing, remove all created Kubernetes resources:
 
@@ -314,37 +302,25 @@ cd jaseci
 git submodule update --init --recursive
 ```
 
-### 2. Create Python Virtual Environment
+### 2. Build the `jac` Binary
+
+Build the `jac` binary from the cloned repository and put it on your `PATH`:
 
 ```bash
-python -m venv venv
+./scripts/fresh_env.sh
 ```
 
-### 3. Activate the Virtual Environment
+### 3. Install JAC-Scale
 
-**Linux/Mac:**
-
-```bash
-source venv/bin/activate
-```
-
-**Windows:**
+Install JAC-Scale in editable mode from the cloned repository (the full-stack
+client framework ships inside `jac`/`jaclang`, so there is no separate `jac-client`
+package to install):
 
 ```bash
-venv\Scripts\activate
-```
-
-### 4. Install JAC, JAC-Scale and JAC-Client
-
-Install the packages in editable mode from the cloned repository:
-
-```bash
-pip install -e ./jac
 jac install -e ./jac-scale
-jac install -e ./jac-client
 ```
 
-### 5. Create Todo application using jac-client
+### 4. Create Todo application using jac-client
 
 Lets create the todo application using jac client.For that lets run following command
 
@@ -359,7 +335,7 @@ cp jac-scale/examples/todo/app.jac todo/app.jac
 cd todo
 ```
 
-### 8. Run the Application Locally
+### 5. Run the Application Locally
 
 To run your application run the following command
 
@@ -376,7 +352,7 @@ jac start app.jac
 you can add new todo tasks
  from the frontend at http://localhost:8000/cl/app
 
-### 9. Set Up Kubernetes (For JAC Scale)
+### 6. Set Up Kubernetes (For JAC Scale)
 
 To use `jac start --scale`, you need Kubernetes installed on your machine.
 
@@ -390,7 +366,7 @@ To use `jac start --scale`, you need Kubernetes installed on your machine.
 - Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - Enable Kubernetes in Docker Desktop settings (easier setup)
 
-### 10. Deploy with JAC Scale
+### 7. Deploy with JAC Scale
 
 Once Kubernetes is running, you have two deployment methods:
 
@@ -435,7 +411,7 @@ jac start app.jac --scale --build
 - Sharing your application with others
 - Creating reproducible deployments
 
-### 11. Clean Up Kubernetes Resources
+### 8. Clean Up Kubernetes Resources
 
 When you're done testing, remove all created Kubernetes resources:
 
@@ -479,6 +455,121 @@ async walker FetchData {
 }
 ```
 
+## Firestore via `kvstore()`
+
+If you want Firebase-style document CRUD without raw SDK calls, `jac-scale` now supports Firestore through `kvstore()`.
+
+**Install the optional extra:**
+
+```bash
+pip install jac-scale[firebase]
+```
+
+**Configure Firestore:**
+
+```toml
+[plugins.scale.database]
+type = "firestore"
+project_id = "my-firebase-project"
+```
+
+Or with an environment variable:
+
+```bash
+export FIREBASE_PROJECT_ID="my-firebase-project"
+# Subsystem override (optional):
+# export FIRESTORE_PROJECT_ID="my-firebase-project"
+```
+
+**Use it from Jac:**
+
+```jac
+import from jac_scale.lib { kvstore };
+
+glob db = kvstore(db_name='app', db_type='firestore');
+
+walker get_admins {
+    can read with Root entry {
+        admins = list(db.find('users', {'role': 'admin'}));
+        report {"admins": admins};
+    }
+}
+```
+
+**CRUD snippet:**
+
+```jac
+import from jac_scale.lib { kvstore };
+
+with entry {
+    db = kvstore(db_name='app', db_type='firestore');
+
+    todo = db.insert_one('todos', {'title': 'Buy milk', 'done': False});
+    db.update_by_id('todos', todo.inserted_id, {'$set': {'done': True}});
+    done_todos = list(db.find('todos', {'done': True}));
+}
+```
+
+**Notes:**
+
+- Firestore is exposed through the existing document-style `Db` API.
+- Collections are namespaced internally by `db_name`.
+- Jac graph persistence (`PersistentMemory` / `_anchors`) still stays on SQLite or MongoDB; Firestore support here is for `kvstore()` only.
+
+## Firebase Storage via `store()`
+
+You can also point `store()` at Firebase Storage (backed by Google Cloud Storage).
+
+**Install the optional extra:**
+
+```bash
+pip install jac-scale[firebase]
+```
+
+**Configure Firebase Storage:**
+
+```toml
+[storage]
+type = "firebase"
+bucket = "my-firebase-project.appspot.com"
+prefix = "uploads/"
+project_id = "my-firebase-project"
+```
+
+Or with environment variables:
+
+```bash
+export JAC_STORAGE_TYPE="firebase"
+export JAC_STORAGE_FIREBASE_BUCKET="my-firebase-project.appspot.com"
+export FIREBASE_PROJECT_ID="my-firebase-project"
+# Subsystem override (optional):
+# export JAC_STORAGE_FIREBASE_PROJECT_ID="my-firebase-project"
+```
+
+**Use it from Jac:**
+
+```jac
+glob storage = store();
+```
+
+`type = "gcs"` is also supported as an alias.
+
+### Firebase project ID (shared env var)
+
+When using multiple Firebase features together, set one shared project ID:
+
+```bash
+export FIREBASE_PROJECT_ID="my-firebase-project"
+```
+
+Subsystem-specific vars still work and take precedence when you need different values:
+
+| Feature | Subsystem env var |
+|---------|-------------------|
+| Firebase Auth SSO | `FIREBASE_AUTH_PROJECT_ID` |
+| Firestore `kvstore()` | `FIRESTORE_PROJECT_ID` |
+| Firebase / GCS Storage | `JAC_STORAGE_FIREBASE_PROJECT_ID` or `JAC_STORAGE_GCS_PROJECT_ID` |
+
 ## Configuration Options
 
 ### Optional Environment Variables
@@ -503,6 +594,10 @@ async walker FetchData {
 | `K8s_REDIS` | Whether Redis is needed (`True`/`False`) | `True` |
 | `MONGODB_URI` | URL of MongoDB database | - |
 | `REDIS_URL` | URL of Redis database | - |
+| `FIRESTORE_PROJECT_ID` | Firestore / Firebase project ID for `kvstore(db_type="firestore")` (fallback: `FIREBASE_PROJECT_ID`) | - |
+| `JAC_STORAGE_FIREBASE_BUCKET` | Firebase Storage bucket for `store()` when `JAC_STORAGE_TYPE=firebase` | - |
+| `JAC_STORAGE_FIREBASE_PROJECT_ID` | Firebase project ID for Firebase Storage / GCS (fallback: `FIREBASE_PROJECT_ID`) | - |
+| `FIREBASE_PROJECT_ID` | Shared Firebase project ID for Auth SSO, Firestore, and Storage | - |
 | `JWT_EXP_DELTA_DAYS` | Number of days until JWT token expires | `7` |
 | `JWT_SECRET` | Secret key used for JWT token signing and verification | `'supersecretkey_for_testing_only!'` |
 | `JWT_ALGORITHM` | Algorithm used for JWT token encoding/decoding | `'HS256'` |
@@ -695,29 +790,11 @@ If you encounter issues:
 
 ## Tested Examples
 
-You can find more working examples in the examples directory:
-
-<!-- - [basic](../jac-client/jac_client/examples/basic/) - Minimal JAC application -->
-<!-- - [basic-full-stack](../jac-client/jac_client/examples/basic-full-stack/) - Basic full-stack application -->
-- [all-in-one](../jac-client/jac_client/examples/all-in-one/) - Complete example with all features
-- [with-router](../jac-client/jac_client/examples/with-router/) - Application with routing
-<!-- - [nested-folders/nested-basic](../jac-client/jac_client/examples/nested-folders/nested-basic/) - Basic nested folder structure -->
-- [nested-folders/nested-advance](../jac-client/jac_client/examples/nested-folders/nested-advance/) - Advanced nested folder structure
-- [basic-auth](../jac-client/jac_client/examples/basic-auth/) - Basic authentication
-- [basic-auth-with-router](../jac-client/jac_client/examples/basic-auth-with-router/) - Authentication with routing
-<!-- - [full-stack-with-auth](../jac-client/jac_client/examples/full-stack-with-auth/) - Full-stack app with authentication -->
-- [css-styling/js-styling](../jac-client/jac_client/examples/css-styling/js-styling/) - JavaScript styling example
-- [css-styling/material-ui](../jac-client/jac_client/examples/css-styling/material-ui/) - Material-UI styling example
-- [css-styling/pure-css](../jac-client/jac_client/examples/css-styling/pure-css/) - Pure CSS styling example
-- [css-styling/sass-example](../jac-client/jac_client/examples/css-styling/sass-example/) - SASS styling example
-- [css-styling/styled-components](../jac-client/jac_client/examples/css-styling/styled-components/) - Styled Components example
-- [css-styling/tailwind-example](../jac-client/jac_client/examples/css-styling/tailwind-example/) - Tailwind CSS example
-- [asset-serving/css-with-image](../jac-client/jac_client/examples/asset-serving/css-with-image/) - CSS with image assets
-- [asset-serving/image-asset](../jac-client/jac_client/examples/asset-serving/image-asset/) - Image asset serving
-- [asset-serving/import-alias](../jac-client/jac_client/examples/asset-serving/import-alias/) - Import alias example
-<!-- - [little-x](../jac-client/jac_client/examples/little-x/) - Little X application example -->
-
-Each example includes complete source code and can be run with `jac start`.
+Full-stack client examples now live in the main repository under
+[`jac/examples/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/examples)
+(for example, `littleX`) -- the client framework moved into `jaclang` core, and its
+former standalone example apps were consolidated there. Each example includes
+complete source code and can be run with `jac start`.
 
 ## Next Steps
 

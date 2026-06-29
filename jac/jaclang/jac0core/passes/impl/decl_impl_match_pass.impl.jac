@@ -1,57 +1,19 @@
-"""Implementation for decl_impl_match_pass constructs."""
-
-"""Connect Decls and Defs."""
 impl DeclImplMatchPass.transform(
     self: DeclImplMatchPass, ir_in: uni.Module
 ) -> uni.Module {
     self._e2026_reported = set();
     self.cur_node = ir_in;
+
     self.connect_impls(ir_in.sym_tab, ir_in.sym_tab);
-    for impl_module in ir_in.impl_mod {
-        self.connect_impls(impl_module.sym_tab, ir_in.sym_tab);
-        # Set impl module's parent_scope to main module for import visibility.
-        # This ensures impl files can access imports from their parent .jac file.
-        impl_module.parent_scope = ir_in;
-    }
-    for variant_module in ir_in.variant_mod {
-        self.connect_impls(variant_module.sym_tab, variant_module.sym_tab);
-        for impl_module in variant_module.impl_mod {
-            self.connect_impls(impl_module.sym_tab, variant_module.sym_tab);
-            # Set impl module's parent_scope to variant module for import visibility.
-            impl_module.parent_scope = variant_module;
-        }
-    }
-    # Cross-variant: head impl files may provide impls for variant decls.
-    for impl_module in ir_in.impl_mod {
-        for variant_module in ir_in.variant_mod {
-            self.connect_impls(impl_module.sym_tab, variant_module.sym_tab);
-        }
-    }
-    # Resolve all Load-context names across primary, impls, and variants.
-    # Why: prior carve-out to (TypeAlias, GlobalVars, ModuleCode) missed
-    # standalone top-level constructs in .impl.jac files (def/obj/node/walker/
-    # enum/etc.), leaving their bodies' reads unresolved and defeating type
-    # inference. _resolve_symbols_in_subtree is idempotent — it skips Names
-    # whose sym is already set by the matched-impl path above.
-    for module in [ir_in] + ir_in.impl_mod + ir_in.variant_mod {
-        self._resolve_symbols_in_subtree(module);
-    }
-    for variant_module in ir_in.variant_mod {
-        for impl_module in variant_module.impl_mod {
-            self._resolve_symbols_in_subtree(impl_module);
-        }
-    }
-    # Scan inline init/postinit for annotated self-assignments on obj types.
-    # Must run after symbol resolution so all names are connected.
-    for module in [ir_in] + ir_in.impl_mod + ir_in.variant_mod {
-        for arch in module.get_all_sub_nodes(uni.Archetype) {
-            self._populate_inline_init_symbols(arch);
-        }
+
+    self._resolve_symbols_in_subtree(ir_in);
+
+    for arch in ir_in.get_all_sub_nodes(uni.Archetype) {
+        self._populate_inline_init_symbols(arch);
     }
     return ir_in;
 }
 
-"""Lookup a definition in a symbol table."""
 impl DeclImplMatchPass.defn_lookup(
     self: DeclImplMatchPass, lookup: Symbol
 ) -> (uni.NameAtom | None) {
@@ -67,16 +29,9 @@ impl DeclImplMatchPass.defn_lookup(
     return None;
 }
 
-"""Find the archetype definition from a symbol's definitions.
-
-        When a class is used as a base class or has forward declarations,
-        its symbol may have multiple definitions. This method finds the
-        Archetype with a body (not a forward declaration).
-        """
 impl DeclImplMatchPass._find_archetype_defn(
     self: DeclImplMatchPass, lookup: Symbol
 ) -> (uni.NameAtom | None) {
-    # First pass: find an Archetype with a body (not a forward declaration)
     for defn_idx in range(len(lookup.defn)) {
         candidate = lookup.defn[defn_idx];
         if (
@@ -86,184 +41,28 @@ impl DeclImplMatchPass._find_archetype_defn(
             return candidate;
         }
     }
-    # Second pass: find any Archetype (including forward declarations)
+
     for defn_idx in range(len(lookup.defn)) {
         candidate = lookup.defn[defn_idx];
         if isinstance(candidate.name_of, uni.Archetype) {
             return candidate;
         }
     }
-    # Fallback to last definition if no Archetype found
+
     return lookup.defn[-1] if lookup.defn else None;
 }
 
-"""Connect implementations from source symbol table to declarations in
-target symbol table.
-
-        When source_sym_tab and target_sym_tab are the same, this connects
-within the same module.
-        When different, it connects implementations from impl_mod to
-declarations in the main module.
-        """
 impl DeclImplMatchPass.connect_impls(
     self: DeclImplMatchPass, source_sym_tab: UniScopeNode, target_sym_tab: UniScopeNode
 ) -> None {
     for sym in source_sym_tab.names_in_scope.values() {
-        if not isinstance(sym.decl.name_of, uni.ImplDef) {
-            continue;
-        }
-        arch_refs = sym.sym_name.split('.')[1:];
-        name_of_links: list = [];
-        lookup = target_sym_tab.lookup(arch_refs[0]);
-        if (lookup and not isinstance(lookup.decl.name_of, uni.AstImplNeedingNode)) {
-            lookup = target_sym_tab.parent_scope.lookup(arch_refs[0])
-                if target_sym_tab.parent_scope
-                else target_sym_tab.lookup(arch_refs[0]);
-        }
-        decl_node = self.defn_lookup(lookup)
-            if ((len(arch_refs) == 1) and lookup)
-            else self._find_archetype_defn(lookup) if lookup else None;
-        name_of_links.append(decl_node) if decl_node else None;
-        for name in arch_refs[1:] {
-            if decl_node {
-                # Native property accessor (`impl Cls.prop.getter/.setter/.deleter`):
-                # resolve within the property's own accessor list rather than the
-                # enclosing class scope, where every accessor of a given kind is
-                # registered under the same bare name (`getter`) and would
-                # otherwise all collapse onto one symbol.
-                if (
-                    isinstance(decl_node.name_of, uni.HasVar)
-                    and (decl_node.name_of.accessors is not None)
-                    and (name in ["getter", "setter", "deleter"])
-                ) {
-                    want_kind = "property" if (name == "getter") else name;
-                    acc_match: (uni.Ability | None) = None;
-                    for acc in decl_node.name_of.accessors {
-                        if acc.accessor_kind == want_kind {
-                            acc_match = acc;
-                            break;
-                        }
-                    }
-                    decl_node = acc_match.name_ref if acc_match else None;
-                    name_of_links.append(decl_node) if decl_node else None;
-                    continue;
-                }
-                lookup = decl_node.name_of.sym_tab.lookup(name, deep=False)
-                    if decl_node.name_of.sym_tab
-                    else None;
-                decl_node = lookup.defn[-1] if lookup else None;
-                name_of_links.append(decl_node) if decl_node else None;
-            } else {
-                break;
+        for defn in sym.defn {
+            if isinstance(defn.name_of, uni.ImplDef) {
+                self._connect_one_impl(defn.name_of, sym.sym_name, target_sym_tab);
             }
-        }
-        if not decl_node {
-            # Only log error if the archetype was found but the ability wasn't
-            if len(name_of_links) > 0 {
-                self.emit(E2009, node_override=sym.decl.name_of);
-            }
-            continue;
-        } elif (isinstance(decl_node, uni.Ability) and decl_node.is_abstract) {
-            self.emit(W2010, node_override=decl_node, name=decl_node.py_resolve_name());
-            continue;
-        }
-        if (
-            not isinstance((valid_decl := decl_node.name_of), uni.AstImplNeedingNode)
-            or not (valid_decl.sym_tab and sym.decl.name_of.sym_tab)
-        ) {
-            raise self.ice(
-                f"Expected AstImplNeedingNode, got {valid_decl.__class__.__name__}. Not possible."
-            );
-        }
-        if not valid_decl.needs_impl and valid_decl.body {
-            if isinstance(valid_decl.body, uni.ImplDef) {
-                if valid_decl.body is sym.decl.name_of {
-                    continue;
-                }
-                self.emit(E2017, node_override=sym.decl.name_of);
-            } else {
-                self.emit(E2016, node_override=sym.decl.name_of);
-            }
-            continue;
-        }
-        self.validate_params_match(sym, decl_node.name_of);
-        valid_decl.body = sym.decl.name_of;
-        sym.decl.name_of.decl_link = valid_decl;
-        for (idx, a) in enumerate(sym.decl.name_of.target) {
-            if ((idx < len(name_of_links)) and (link := name_of_links[idx])) {
-                a.name_spec.name_of = link.name_of;
-                if ((link_sym := link.sym) is not None) {
-                    a.name_spec.sym = link_sym;
-                }
-            }
-        }
-        sym.decl.name_of.sym_tab.names_in_scope.update(
-            valid_decl.sym_tab.names_in_scope
-        );
-        valid_decl.sym_tab.names_in_scope = sym.decl.name_of.sym_tab.names_in_scope;
-        # SymTabBuildPass deferred assignment-target binding for impl bodies
-        # because it can't see the decl's scope chain. Now that decl_link is
-        # set and UniScopeNode.lookup follows it into the enclosing scope,
-        # run the same binding decision here — shared helper, single source
-        # of truth. Must run before _resolve_symbols_in_subtree because that
-        # skips Names whose sym is already set.
-        if isinstance(sym.decl.name_of, uni.ImplDef) {
-            # `global x;` must be re-bound before its assignments: it pulls the
-            # decl-module global into the body's Python scope (decl_link is only
-            # reachable now) so the assignment below rebinds the global instead
-            # of shadowing it with an inferred local that drops its type.
-            for global_stmt in sym.decl.name_of.get_all_sub_nodes(uni.GlobalStmt) {
-                bind_global_stmt(global_stmt);
-            }
-            for assignment in sym.decl.name_of.get_all_sub_nodes(uni.Assignment) {
-                bind_assignment_targets(assignment);
-            }
-        }
-        self._resolve_symbols_in_subtree(sym.decl.name_of);
-        # Populate self-member symbols from impl to archetype for method impls
-        # (e.g., impl Foo.init { self.x = 1; } should add 'x' to Foo's symbol table)
-        if (
-            len(name_of_links) >= 1
-            and name_of_links[0]
-            and isinstance(name_of_links[0].name_of, uni.Archetype)
-        ) {
-            self._populate_self_member_symbols(
-                sym.decl.name_of, name_of_links[0].name_of
-            );
         }
     }
-    # Detect bare re-declaring definitions in .impl.jac files that match
-    # unlinked stubs in the parent module. This catches the common mistake
-    # of writing `def foo() { ... }` instead of `impl foo() { ... }`.
-    if (source_sym_tab is not target_sym_tab) {
-        for sym in source_sym_tab.names_in_scope.values() {
-            if isinstance(sym.decl.name_of, uni.ImplDef) {
-                continue;
-            }
-            if not isinstance(sym.decl.name_of, uni.AstImplNeedingNode) {
-                continue;
-            }
-            lookup = target_sym_tab.lookup(sym.sym_name, deep=False);
-            if not lookup {
-                continue;
-            }
-            decl_node = self.defn_lookup(lookup);
-            if (
-                not decl_node
-                or not isinstance(decl_node.name_of, uni.AstImplNeedingNode)
-                or decl_node.name_of.body
-            ) {
-                continue;
-            }
-            bare_node = sym.decl.name_of;
-            node_key = id(bare_node);
-            if node_key in self._e2026_reported {
-                continue;
-            }
-            self._e2026_reported.add(node_key);
-            self.emit(E2026, node_override=bare_node, name=sym.sym_name);
-        }
-    }
+    self._report_bare_redecls(source_sym_tab);
     for source_scope in source_sym_tab.kid_scope {
         if (source_sym_tab is target_sym_tab) {
             self.connect_impls(source_scope, source_scope);
@@ -278,24 +77,160 @@ impl DeclImplMatchPass.connect_impls(
     }
 }
 
-"""Validate if the parameters match."""
+impl DeclImplMatchPass._connect_one_impl(
+    self: DeclImplMatchPass,
+    impl_node: uni.ImplDef,
+    sym_name: str,
+    target_sym_tab: UniScopeNode
+) -> None {
+    arch_refs = sym_name.split('.')[1:];
+    name_of_links: list = [];
+    lookup = target_sym_tab.lookup(arch_refs[0]);
+    if (lookup and not isinstance(lookup.decl.name_of, uni.AstImplNeedingNode)) {
+        lookup = target_sym_tab.parent_scope.lookup(arch_refs[0])
+            if target_sym_tab.parent_scope
+            else target_sym_tab.lookup(arch_refs[0]);
+    }
+    decl_node = self.defn_lookup(lookup)
+        if ((len(arch_refs) == 1) and lookup)
+        else self._find_archetype_defn(lookup) if lookup else None;
+    name_of_links.append(decl_node) if decl_node else None;
+    for name in arch_refs[1:] {
+        if decl_node {
+            if (
+                isinstance(decl_node.name_of, uni.HasVar)
+                and (decl_node.name_of.accessors is not None)
+                and (name in ["getter", "setter", "deleter"])
+            ) {
+                want_kind = "property" if (name == "getter") else name;
+                acc_match: (uni.Ability | None) = None;
+                for acc in decl_node.name_of.accessors {
+                    if acc.accessor_kind == want_kind {
+                        acc_match = acc;
+                        break;
+                    }
+                }
+                decl_node = acc_match.name_ref if acc_match else None;
+                name_of_links.append(decl_node) if decl_node else None;
+                continue;
+            }
+            lookup = decl_node.name_of.sym_tab.lookup(name, deep=False)
+                if decl_node.name_of.sym_tab
+                else None;
+            decl_node = lookup.defn[-1] if lookup else None;
+            name_of_links.append(decl_node) if decl_node else None;
+        } else {
+            break;
+        }
+    }
+    if not decl_node {
+        if len(name_of_links) > 0 {
+            self.emit(E2009, node_override=impl_node);
+        }
+        return;
+    } elif (isinstance(decl_node, uni.Ability) and decl_node.is_abstract) {
+        self.emit(W2010, node_override=decl_node, name=decl_node.py_resolve_name());
+        return;
+    }
+    if (
+        not isinstance((valid_decl := decl_node.name_of), uni.AstImplNeedingNode)
+        or not (valid_decl.sym_tab and impl_node.sym_tab)
+    ) {
+        raise self.ice(
+            f"Expected AstImplNeedingNode, got {valid_decl.__class__.__name__}. Not possible."
+        );
+    }
+    if not valid_decl.needs_impl and valid_decl.body {
+        if isinstance(valid_decl.body, uni.ImplDef) {
+            if valid_decl.body is impl_node {
+                return;
+            }
+            self.emit(E2017, node_override=impl_node);
+        } else {
+            self.emit(E2016, node_override=impl_node);
+        }
+        return;
+    }
+    self.validate_params_match(impl_node, sym_name, decl_node.name_of);
+    valid_decl.body = impl_node;
+    impl_node.decl_link = valid_decl;
+    for (idx, a) in enumerate(impl_node.target) {
+        if ((idx < len(name_of_links)) and (link := name_of_links[idx])) {
+            a.name_spec.name_of = link.name_of;
+            if ((link_sym := link.sym) is not None) {
+                a.name_spec.sym = link_sym;
+            }
+        }
+    }
+    impl_node.sym_tab.names_in_scope.update(valid_decl.sym_tab.names_in_scope);
+    valid_decl.sym_tab.names_in_scope = impl_node.sym_tab.names_in_scope;
+
+    for global_stmt in impl_node.get_all_sub_nodes(uni.GlobalStmt) {
+        bind_global_stmt(global_stmt);
+    }
+    for assignment in impl_node.get_all_sub_nodes(uni.Assignment) {
+        bind_assignment_targets(assignment);
+    }
+    self._resolve_symbols_in_subtree(impl_node);
+
+    if (
+        len(name_of_links) >= 1
+        and name_of_links[0]
+        and isinstance(name_of_links[0].name_of, uni.Archetype)
+    ) {
+        self._populate_self_member_symbols(impl_node, name_of_links[0].name_of);
+    }
+}
+
+impl DeclImplMatchPass._report_bare_redecls(
+    self: DeclImplMatchPass, sym_tab: UniScopeNode
+) -> None {
+    import from jaclang.jac0core.ext_registry { is_annex }
+    for sym in sym_tab.names_in_scope.values() {
+        stub: (uni.UniNode | None) = None;
+        bare: (uni.UniNode | None) = None;
+        for defn in sym.defn {
+            defn_node = defn.name_of;
+            if isinstance(defn_node, uni.ImplDef) {
+                continue;
+            }
+            if not isinstance(defn_node, uni.AstImplNeedingNode) {
+                continue;
+            }
+            if defn_node.body is None {
+                stub = defn_node;
+            } elif is_annex(defn_node.loc.mod_path) {
+                bare = defn_node;
+            }
+        }
+        if (stub is not None) and (bare is not None) {
+            node_key = id(bare);
+            if node_key in self._e2026_reported {
+                continue;
+            }
+            self._e2026_reported.add(node_key);
+            self.emit(E2026, node_override=bare, name=sym.sym_name);
+        }
+    }
+}
+
 impl DeclImplMatchPass.validate_params_match(
-    self: DeclImplMatchPass, sym: Symbol, valid_decl: uni.AstSymbolNode
+    self: DeclImplMatchPass,
+    impl_node: uni.ImplDef,
+    sym_name: str,
+    valid_decl: uni.AstSymbolNode
 ) -> None {
     if (
         isinstance(valid_decl, uni.Ability)
-        and isinstance(sym.decl.name_of, uni.ImplDef)
         and isinstance(valid_decl.signature, uni.FuncSignature)
-        and isinstance(sym.decl.name_of.spec, uni.FuncSignature)
+        and isinstance(impl_node.spec, uni.FuncSignature)
     ) {
         params_decl = valid_decl.signature.params;
-        params_defn = sym.decl.name_of.spec.params;
+        params_defn = impl_node.spec.params;
         decl_count = len(params_decl) if params_decl else 0;
         defn_count = len(params_defn) if params_defn else 0;
         if (defn_count != decl_count) {
-            self.emit(
-                E2011, node_override=sym.decl.name_of.name_spec, name=sym.sym_name
-            );
+            self.emit(E2011, node_override=impl_node.name_spec, name=sym_name);
             self.emit(
                 E2012,
                 node_override=valid_decl.name_spec,
@@ -318,15 +253,6 @@ impl DeclImplMatchPass.validate_params_match(
     }
 }
 
-"""Resolve unresolved Name and AtomTrailer symbols in a subtree.
-
-Best-effort: a single Name or chain whose scope chain is detached
-(seen in synthetic nodes from pyast_load_pass when type-checking
-imported `.py` modules) must not abort resolution for the rest of
-the subtree. The lookups here only ever populate `.sym`; failing
-to do so on one node is a degraded-info outcome, not a correctness
-hazard for the others.
-"""
 impl DeclImplMatchPass._resolve_symbols_in_subtree(
     self: DeclImplMatchPass, root_node: uni.UniNode
 ) -> None {
@@ -354,14 +280,12 @@ impl DeclImplMatchPass._resolve_symbols_in_subtree(
 }
 
 
-"""Populate self-member symbols from impl body to archetype's symbol table."""
 impl DeclImplMatchPass._populate_self_member_symbols(
     self: DeclImplMatchPass, impl_def: uni.ImplDef, archetype: uni.Archetype
 ) -> None {
     import from jaclang.jac0core.diagnostics { W2080 }
-    # Find all self.x = value assignments in the impl body
+
     for trailer_node in impl_def.get_all_sub_nodes(uni.AtomTrailer) {
-        # Check if this is a self.attr = value assignment
         if not (
             trailer_node.parent and isinstance(trailer_node.parent, uni.Assignment)
         ) {
@@ -375,21 +299,15 @@ impl DeclImplMatchPass._populate_self_member_symbols(
             continue;
         }
         attr_name = chain[1];
-        # Skip if already defined in the archetype
+
         if archetype.sym_tab.lookup(attr_name.sym_name, deep=False) is not None {
             continue;
         }
         assign: uni.Assignment = trailer_node.parent;
         if archetype.arch_type.name == 'KW_CLASS' {
-            # class archetypes (Python-style): register all self-assignments.
             archetype.sym_tab.def_insert(attr_name, access_spec=archetype);
         } elif assign.type_tag is not None {
-            # obj/node/edge/walker with annotated self-assignment
-            # (e.g. self.x: int = 5 in init/postinit).
-            # Register the symbol so downstream code resolves correctly,
-            # but warn the user to declare it as a proper 'has' field.
             archetype.sym_tab.def_insert(attr_name, access_spec=archetype);
-            # Determine the method name for the diagnostic message.
             method_name = "init";
             if (
                 impl_def.decl_link
@@ -411,28 +329,25 @@ impl DeclImplMatchPass._populate_self_member_symbols(
                 name=archetype.name_spec.sym_name
             );
         }
-        # Unannotated self-assignments on obj/node/edge/walker are silently
-        # skipped — these will be caught by E1030 "has no attribute".
     }
 }
 
-"""Scan inline init/postinit bodies for annotated self-assignments."""
 impl DeclImplMatchPass._populate_inline_init_symbols(
     self: DeclImplMatchPass, archetype: uni.Archetype
 ) -> None {
     import from jaclang.jac0core.diagnostics { W2080 }
-    # Only check obj/node/edge/walker (class types are handled above).
+
     if archetype.arch_type.name == 'KW_CLASS' {
         return;
     }
-    # Scan init and __post_init__ (postinit) abilities within the archetype.
+
     for method_name in ('init', '__post_init__') {
         method_sym = archetype.sym_tab.lookup(method_name, deep=False);
         if not method_sym or not isinstance(method_sym.decl.name_of, uni.Ability) {
             continue;
         }
         ability: uni.Ability = method_sym.decl.name_of;
-        # Scan the ability body (inline or impl-linked).
+
         body_node = ability.body
             if not isinstance(ability.body, uni.ImplDef)
             else ability.body;
@@ -450,12 +365,12 @@ impl DeclImplMatchPass._populate_inline_init_symbols(
                 continue;
             }
             attr_name = chain[1];
-            # Skip if already defined in the archetype.
+
             if archetype.sym_tab.lookup(attr_name.sym_name, deep=False) is not None {
                 continue;
             }
             assign: uni.Assignment = trailer_node.parent;
-            # Only resolve annotated self-assignments (self.x: Type = value).
+
             if assign.type_tag is None {
                 continue;
             }

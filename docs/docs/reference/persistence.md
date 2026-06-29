@@ -28,6 +28,61 @@ After `jac enter app.jac create`, alice and bob live in `.jac/data/<app>.db`. A 
 
 ---
 
+## Concurrent writes: check-then-create and convergence
+
+A common walker pattern is *find-or-create*: look something up, create it only if it's missing.
+
+```jac
+walker ensure_profile {
+    can go with Root entry {
+        profiles = [-->(?:UserProfile)];
+        if profiles {
+            report profiles[0];
+        } else {
+            here ++> UserProfile(tier="free");   # only when missing
+        }
+    }
+}
+```
+
+Under concurrency this is a race: two requests against the same `root` can both read an empty `[-->(?:UserProfile)]`, both take the create branch, and both attach a profile -- a duplicate that was meant to be unique. The runtime closes this race with **optimistic concurrency at the node level**, so the pattern above is safe without app-level locks.
+
+**How it works.** Every node carries a version. When a request reads an out-traversal from a node (the `[-->(?:UserProfile)]` above), it snapshots that node's version. At commit, an edge-list change to a node the request *read* is applied with a compare-and-swap on that version: if a concurrent request already changed the node, the swap misses and the commit raises a conflict. The first committer wins; the second is rejected before it can write a duplicate.
+
+**Convergence (default).** A rejected request does not error. The server aborts its uncommitted work, reloads the node, and **replays the walker (or function) from the start**. The replay re-reads the graph -- now containing the winner's node -- takes the *find* branch, and returns normally. Two racing find-or-creates converge on one node; the client sees a normal `200`, not a duplicate and not an error.
+
+**The losing unit of work is atomic.** A walker's writes are staged child-node-first, then its edge, then the edge-list link onto the parent that carries the compare-and-swap -- so a naive flush could persist the loser's child *before* the link fails, stranding it. The runtime does not allow that:
+
+- On **SQLite** (the default local store), `apply()` runs the whole unit in one transaction and **rolls it back** on a conflict. A lost race leaves the store byte-for-byte unchanged -- no orphan.
+- On **Mongo** (multi-pod), there is no cross-document rollback, so `apply()` runs a **version precheck before staging any write**: a read-gated node whose stored version already moved aborts the unit before the child/edge docs are written. The common case (the winner committed first) leaves no orphan. In the narrow window where the winner commits *during* the loser's `apply()`, the in-line CAS still rejects the link, leaving the loser's child reachable only by a *half-linked* edge (cited by the child, refused by the parent). That residual is invisible to traversal and is reclaimed by [`jac db fsck`](cli/index.md#database-operations), which now sweeps half-linked edges and the nodes they strand.
+
+**Blind appends stay lock-free.** The compare-and-swap only fires on nodes the request *read*. A walker that appends without first reading -- `here ++> LogEntry(...)` with no preceding `[-->...]` -- takes no dependency, so concurrent appends to the same node merge instead of serializing. Only check-then-create pays the conflict-and-replay cost, and only on the node it actually checked.
+
+**Side effects and replay: `on_commit`.** Because a losing request replays from scratch, an *external* side effect in the body (charging a card, sending mail, registering a token) would otherwise run more than once. Defer such effects with the `on_commit(...)` ambient builtin (no import needed): it registers a callback that runs only after the unit of work commits successfully, and is discarded on abort/replay -- so it fires exactly once, for the attempt that wins.
+
+```jac
+walker me {
+    can go with Root entry {
+        if not [-->(?:UserProfile)] {
+            new = here ++> UserProfile(tier="free");
+            on_commit(lambda () { grant_signup_bonus(new); });   # once, post-commit
+        }
+    }
+}
+```
+
+**Configuration.** The policy is set in [`jac.toml`](config/index.md#serve) under `[serve]`:
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `on_conflict` | `"retry"` | `"retry"` converges via replay; `"fail"` returns a typed `409 write_conflict` immediately (for clients that handle conflicts themselves) |
+| `conflict_max_attempts` | `5` | Max attempts under `"retry"` before giving up with a `409` |
+| `conflict_backoff_ms` | `0` | Linear backoff (ms x attempt) between replay attempts |
+
+**Scope.** Conflict detection lives in the `MongoBackend` and `SqliteMemory` backends, so it holds on both the local SQLite store and a multi-pod Mongo deployment. Granularity is per node: two *different* find-or-creates on the same node (say a `UserProfile` and a `Settings` both attached to `root`) may each trigger one extra replay even though they don't truly duplicate -- harmless, since the replay re-confirms and proceeds.
+
+---
+
 ## The schema fingerprint
 
 Every archetype class carries a stable schema fingerprint at runtime:

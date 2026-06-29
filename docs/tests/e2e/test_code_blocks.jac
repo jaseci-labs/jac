@@ -12,6 +12,7 @@ Run:
 
 import os;
 import socket;
+import tempfile;
 import time;
 
 import from subprocess { Popen, DEVNULL, run }
@@ -24,8 +25,6 @@ glob HEADLESS: bool = not os.environ.get("HEADED", ""),
          os.path.join(os.path.dirname(__file__), "..", "..")
      ),
      SITE_DIR: str = os.path.join(DOCS_DIR, "site"),
-     TEST_PAGE_PATH: str = os.path.join(SITE_DIR, "_test.html"),
-     PAGE: str = "/_test.html",
      TEST_HTML: str = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -117,52 +116,95 @@ def _start_server -> tuple {
     if not os.path.isdir(SITE_DIR) {
         run(["mkdocs", "build"], cwd=DOCS_DIR, check=True);
     }
-    with open(TEST_PAGE_PATH, "w") as f {
-        f.write(TEST_HTML);
-    }
-    port = _get_free_port();
-    server = Popen(
-        ["python", "-c", SERVER_SCRIPT, SITE_DIR, str(port)],
-        stdout=DEVNULL,
-        stderr=DEVNULL
+    # mkstemp gives an atomic, unique file within SITE_DIR so concurrent xdist
+    # workers never collide on the same path (fixes the shared _test.html race).
+    (fd, abs_path) = tempfile.mkstemp(
+        dir=SITE_DIR, suffix=".html", prefix="_jac_test_"
     );
-    _wait_for_port(port);
-    return (server, f"http://127.0.0.1:{port}");
+    # os.fdopen only adopts the raw mkstemp fd on success; if it itself raises
+    # (rare), we must close fd ourselves or the OS descriptor leaks until the
+    # worker process exits. Keep fd adoption separate from the `with` so a
+    # failure here can't leave fd half-open. On any later failure (port/Popen/
+    # _wait_for_port) _with_page's finally never runs, so clean up abs_path in
+    # the except below before re-raising so it isn't leaked in SITE_DIR.
+    try {
+        fh = os.fdopen(fd, "w");
+    } except Exception {
+        os.close(fd);
+        raise;
+    }
+    try {
+        with fh as f {
+            f.write(TEST_HTML);
+        }
+        page_path = "/" + os.path.basename(abs_path);
+        port = _get_free_port();
+        server = Popen(
+            ["python", "-c", SERVER_SCRIPT, SITE_DIR, str(port)],
+            stdout=DEVNULL,
+            stderr=DEVNULL
+        );
+        _wait_for_port(port);
+        return (server, f"http://127.0.0.1:{port}", page_path, abs_path);
+    } except Exception {
+        try {
+            os.remove(abs_path);
+        } except OSError {
+            pass;
+        }
+        raise;
+    }
 }
 
-def _stop_server(server: any) {
+def _stop_server(server: any, abs_path: str) {
     server.terminate();
     try {
         server.wait(timeout=5);
     } except Exception {
         server.kill();
     }
-    if os.path.exists(TEST_PAGE_PATH) {
-        os.remove(TEST_PAGE_PATH);
+    try {
+        os.remove(abs_path);
+    } except OSError {
+        pass;
     }
 }
 
-"""Start server, launch browser, navigate to test page, run callback(page, resp)."""
-def _with_page(callback: any, wait_until: str = "networkidle") {
-    (server, base_url) = _start_server();
+"""Start server, launch browser, navigate to test page, run callback(page, resp).
+
+Navigation waits for `domcontentloaded`, not `networkidle`. The fixture's
+`run-code.js` spawns the Pyodide web worker on `DOMContentLoaded`, so the page
+keeps pulling bytes from the CDN long after the DOM is ready and `networkidle`
+(500ms of zero network activity) is never reached within the `goto` timeout —
+flaking the fast rendering tests that don't even need Pyodide. Each test already
+waits on the specific element/condition it depends on (Monaco, Pyodide output,
+Viz SVG, response headers), so none relies on the network going idle.
+"""
+def _with_page(callback: any, wait_until: str = "domcontentloaded") {
+    (server, base_url, page_path, abs_path) = _start_server();
     try {
         with sync_playwright() as p {
             browser = p.chromium.launch(headless=HEADLESS);
             page = browser.new_page();
             try {
-                resp = page.goto(f"{base_url}{PAGE}", wait_until=wait_until);
+                resp = page.goto(f"{base_url}{page_path}", wait_until=wait_until);
                 callback(page, resp);
             } finally {
                 browser.close();
             }
         }
     } finally {
-        _stop_server(server);
+        _stop_server(server, abs_path);
     }
 }
 
 def _scroll_to(page: any, block_id: str) {
-    page.evaluate(f"document.querySelector('{block_id}').scrollIntoView()");
+    # Wait for the block to attach before scrolling. Otherwise, when the page is
+    # still settling, `querySelector` returns null and `.scrollIntoView()` throws
+    # "Cannot read properties of null", flaking the test instead of giving a
+    # clear timeout. The `?.` is a belt-and-suspenders no-op if it races away.
+    page.wait_for_selector(block_id, state="attached", timeout=MONACO_TIMEOUT);
+    page.evaluate(f"document.querySelector('{block_id}')?.scrollIntoView()");
 }
 
 def _click_run(page: any, block_id: str) {

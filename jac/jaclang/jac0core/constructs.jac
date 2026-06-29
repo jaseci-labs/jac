@@ -1,4 +1,3 @@
-"""Core constructs for Jac Language - re-exports."""
 import from jaclang.jac0core.archetype {
     AccessLevel,
     access_level_cast,

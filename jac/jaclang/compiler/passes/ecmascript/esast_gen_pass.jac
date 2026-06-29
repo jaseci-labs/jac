@@ -1,25 +1,3 @@
-"""
-ECMAScript AST Generation Pass for the Jac compiler.
-
-This pass transforms the Jac AST into equivalent ECMAScript AST following
-the ESTree specification by:
-
-1. Traversing the Jac AST and generating corresponding ESTree nodes
-2. Handling all Jac language constructs and translating them to JavaScript/ECMAScript equivalents:
-   - Classes, functions, and methods
-   - Control flow statements (if/else, loops, try/catch)
-   - Data structures (arrays, objects)
-   - Special Jac features (walkers, abilities, archetypes) converted to JS classes
-   - Object spatial operations converted to appropriate JS patterns
-
-3. Managing imports and module dependencies
-4. Preserving source location information
-5. Generating valid ECMAScript code that can be executed in JavaScript environments
-
-The output of this pass is a complete ESTree AST representation that can be
-serialized to JavaScript source code or used by JavaScript tooling.
-"""
-
 import json;
 import from collections.abc { Callable, Sequence }
 import from typing { Any, TypeVar, cast }
@@ -28,6 +6,7 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
 import from jaclang.jac0core.constant { CodeContext, SymbolType }
 import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.osp_model { OspAnalysis, OspModel }
 import from jaclang.jac0core.passes.ast_gen { BaseAstGenPass }
 import from jaclang.jac0core.passes.ast_gen.jsx_processor { EsJsxProcessor }
 import from jaclang.jac0core.codeinfo { ClientManifest }
@@ -35,6 +14,7 @@ import from jaclang.compiler.passes.ecmascript.scoped_styles {
     ScopedStyleSheet,
     load_style_annex
 }
+import from jaclang.compiler.passes.ecmascript.framework_backend { FrameworkBackend }
 import from jaclang.jac0core.modresolver {
     convert_to_js_import_path,
     resolve_relative_path
@@ -48,7 +28,8 @@ import from jaclang.jac0core.diagnostics {
     W5013,
     W5014,
     W5015,
-    E5080
+    E5080,
+    E5081
 }
 
 glob _T = TypeVar('_T', bound=es.Node),
@@ -141,20 +122,14 @@ glob _T = TypeVar('_T', bound=es.Node),
      },
      LiteralValue = str | bool | int | float | None;
 
-"""Name of the synthesized children accumulator local for a JSX `{...}`
-slot. The outermost slot in a given scope uses this name; nested slot
-scopes (a `try`/`awaiting`/`except` arm's own accumulator) get a unique
-`__jac_view_kids_N` suffix so hoisted `let` bindings never collide."""
 glob VIEW_ACC: str = "__jac_view_kids";
 
-"""Track declarations within a lexical scope."""
 obj ScopeInfo {
     has nd: uni.UniScopeNode,
         declared: set[str] = set(),
         hoisted: list[es.Statement] = [];
 }
 
-"""Container for processed assignment targets."""
 obj AssignmentTargetInfo {
     has nd: uni.Expr,
         left: (es.Pattern | es.Expression),
@@ -163,98 +138,52 @@ obj AssignmentTargetInfo {
         pattern_names: list[tuple[(str, uni.Name)]];
 }
 
-"""Describes the walker-side of a spawn expression."""
 obj SpawnWalkerInfo {
     has call_node: uni.FuncCall,
         walker_name: str,
         fields_object: es.ObjectExpression;
 }
 
-"""Describes the target-side of a spawn expression."""
 obj SpawnTargetInfo {
     has nd: uni.Expr,
         expression: es.Expression;
 }
 
-"""Deconstructed spawn expression ready for runtime lowering."""
 obj SpawnCallParts {
     has `walker: SpawnWalkerInfo,
         target: SpawnTargetInfo;
 }
 
-"""Resolved function-call argument slot."""
 obj CallArgSlot {
     has name: (str | None),
         value: (es.Expression | es.SpreadElement | None);
 }
 
-"""Jac to ECMAScript AST transpilation pass."""
 obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     has child_passes: list[EsastGenPass] = [],
         imports: list[es.ImportDeclaration] = [],
         exports: list[es.ExportNamedDeclaration] = [],
         scope_stack: list[ScopeInfo] = [],
         scope_map: dict[(uni.UniScopeNode, ScopeInfo)] = {},
+        backend: (FrameworkBackend | None) = None,
         client_manifest: (ClientManifest | None) = None,
         jsx_processor: (EsJsxProcessor | None) = None,
         scoped_styles: (ScopedStyleSheet | None) = None,
-        # Reactive state variables: var_name -> setter_name (e.g., "count" -> "setCount")
-        reactive_vars: dict[str, str] = {},
-        # Stack to save/restore reactive_vars per function boundary
-        reactive_vars_stack: list[dict[str, str]] = [],
-        # Runtime imports auto-injected by the codegen; tracked to avoid duplicates
+        reactive_vars: set[str] = set(),
+        reactive_vars_stack: list[set[str]] = [],
         injected_imports: set[str] = set(),
-        # JSX `{...}` slot view-lowering state. Holds the accumulator name of each
-        # enclosing slot scope (a `str`), or `None` for a nested-`def` barrier that
-        # suspends lowering. The topmost `str` is the accumulator a JSX statement
-        # pushes into; a `None` on top means we are inside a nested function and
-        # JSX should NOT be accumulated. The counter gives nested slot scopes
-        # (try/awaiting/except arms) unique local names.
         _view_stack: list[(str | None)] = [],
-        # The first slot keeps the bare `__jac_view_kids` name; every later slot
-        # (sibling or nested) draws a unique `__jac_view_kids_N` suffix.
         _view_used_base: bool = False,
         _view_acc_counter: int = 0,
-        # TryStmt nodes (by id) being lowered into a `<JacAwaiting>` wrapper, so
-        # the clause handlers know to scope their own accumulators.
         _view_awaiting_tries: set[int] = set(),
-        # JS function stubs for def:pub functions imported via sv import
         sv_import_stubs: list[es.Statement] = [],
-        # True iff the primitive emitter produced `_jac.*` calls and the runtime needs importing
         needs_jac_runtime: bool = False,
-        # OSP local-kernel lowering: set when a local walker is spawned via the
-        # portable kernel (not `__jacSpawn` RPC). Triggers kernel + descriptor
-        # injection in exit_module. `_osp_slots` collects one record per OSP
-        # ability: {owner, kind, name, trigger_names (list, empty = untyped),
-        # is_entry}.
         needs_osp_kernel: bool = False,
-        # Set when a connect op / edge ref is lowered: pulls in the cl OSP graph
-        # runtime (`__ospConn` / `__ospRefs`).
         needs_osp_graph: bool = False,
-        _osp_slots: list[dict] = [],
-        # Memoized {archetype name -> kind} for every local walker/node/edge in a
-        # module that has local OSP (any event ability). Includes edge types with
-        # no abilities (e.g. used only in connects/refs) so they still get a type
-        # tag + field constructor. Computed up front so emission order doesn't
-        # matter; empty for non-OSP modules.
-        _osp_prescan: (dict | None) = None,
-        # Memoized {variable name -> local archetype name} for `x = Arch(...)`
-        # bindings, so a spawn whose walker is held in a variable (`w spawn n`)
-        # can identify the walker side without type inference.
         _osp_var_arch_cache: (dict | None) = None,
-        # Memoized {archetype name -> direct local base archetype names}, for the
-        # subtype `is_a` table (a `with Base entry` ability firing on a `Sub`).
-        _osp_bases_cache: (dict | None) = None,
-        # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
         _primitive_emitters: (dict[str, object] | None) = None,
         _builtin_emitter: (object | None) = None,
         _primitives_es_mod: (object | None) = None,
-        # Set of Python method names that any primitive emitter knows how to
-        # emit (derived from the emitter registry, never hand-maintained). A
-        # method call on a receiver whose static type is not provably a
-        # primitive is routed through `_jac.poly.call(obj, "name", ...)` iff its
-        # name is in this set; otherwise it is a user-defined method and emits a
-        # plain member call. Lazily computed alongside the emitter singletons.
         _poly_methods: (set[str] | None) = None;
 
     def before_pass -> None;
@@ -272,11 +201,11 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         nd: uni.UniScopeNode, statements: list[es.Statement]
     ) -> list[es.Statement];
 
+    def _collect_body_stmts(body: Sequence[uni.UniNode]) -> list[es.Statement];
     def _strip_spawn_await(
         node_expr: uni.Expr, es_expr: es.Expression
     ) -> tuple[uni.Expr, es.Expression];
 
-    def search_sym_in_main_mod(expr: uni.Expr) -> (uni.Symbol | None);
     def get_main_mod -> uni.Module;
     def _expr_from_node(
         nd: (uni.UniNode | None), `default: LiteralValue = None
@@ -303,8 +232,8 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         nd: uni.BinaryExpr, parts: SpawnCallParts
     ) -> es.AwaitExpression;
 
+    def _osp_model -> OspModel;
     def _osp_ability_info(nd: uni.Ability) -> (dict | None);
-    def _osp_trigger_names(expr: (uni.Expr | None)) -> list[str];
     def _osp_const_decl(
         name: str, `init: es.Expression, nd: uni.UniNode
     ) -> es.VariableDeclaration;
@@ -312,11 +241,9 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None;
     def _build_osp_setup_js -> str;
     def _osp_slots_js(slots: list, tags: dict) -> str;
-    def _local_walker_names -> set[str];
     def _osp_arch_kinds -> dict[str, str];
     def _osp_arch_set -> set[str];
     def _osp_var_arch -> dict[str, str];
-    def _osp_arch_bases -> dict[str, list[str]];
     def _spawn_walker_arch(expr: uni.Expr) -> (str | None);
     def _spawn_target_is_local_node(expr: uni.Expr) -> bool;
     def _build_osp_graph_call(
@@ -340,10 +267,10 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
 
     def exit_module(nd: uni.Module) -> None;
     def populate_client_manifest(nd: uni.Module) -> None;
-    def _populate_client_manifest(nd: uni.Module) -> None;
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
     def exit_import(nd: uni.Import) -> None;
     def _generate_sv_import_stubs(nd: uni.Import) -> None;
+    def _sv_import_item_is_type(nd: uni.Import, item: uni.ModuleItem) -> bool;
     def _record_sv_backend(nd: uni.Import) -> None;
     def _emit_boundary_type_stubs(nd: uni.Module) -> list;
     def exit_type_alias(nd: uni.TypeAlias) -> None;
@@ -360,12 +287,12 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_param_var(nd: uni.ParamVar) -> None;
     def exit_arch_has(nd: uni.ArchHas) -> None;
     def exit_has_var(nd: uni.HasVar) -> None;
-    def _get_setter_name(var_name: str) -> str;
     def _has_import(name: str) -> bool;
     def _inject_runtime_import(name: str, nd: uni.UniNode) -> None;
     def _ref_head_name(expr: (uni.UniNode | None)) -> (str | None);
     def _ref_forward_param(nd: uni.Ability) -> (uni.ParamVar | None);
     def _register_jac_runtime_import -> None;
+    def _ensure_backend -> None;
     def _transform_to_useeffect(nd: uni.Ability) -> None;
     def exit_jsx_element(nd: uni.JsxElement) -> None;
     def exit_jsx_element_name(nd: uni.JsxElementName) -> None;
@@ -380,37 +307,23 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def enter_except(nd: uni.Except) -> None;
     def enter_awaiting_clause(nd: uni.AwaitingClause) -> None;
     def exit_awaiting_clause(nd: uni.AwaitingClause) -> None;
-    # ----- JSX `{...}` slot view-lowering (direct es_ast) ------------------
-    """Name of the slot accumulator currently in scope, or None when not
-    directly inside a slot body (e.g. inside a nested `def` barrier)."""
     def _cur_view_acc -> (str | None);
-
-    """Push a fresh slot-accumulator scope and return its local name."""
     def _push_view_acc -> str;
-
-    """Build `acc.push(<value>);` — accumulate one template element."""
     def _view_push_stmt(
         acc_name: str, value: es.Expression, anchor: uni.UniNode
     ) -> es.ExpressionStatement;
 
-    """Build `<>{children...}</>` as a `__jacJsx(null, {}, [children])` call."""
     def _jsx_fragment(
         children: list[es.Expression], anchor: uni.UniNode
     ) -> es.CallExpression;
 
-    """Build `return <>{acc}</>;` — the fragment of all content so far."""
     def _view_fragment_return(
         acc_name: str, anchor: uni.UniNode
     ) -> es.ReturnStatement;
 
-    """Wrap a lowered slot body in an inline accumulator IIFE expression."""
     def _build_view_iife(
         body_nodes: (Sequence[uni.UniNode] | None), acc_name: str, anchor: uni.UniNode
     ) -> es.CallExpression;
-
-    """Assemble the `<JacAwaiting>`/`<JacClientErrorBoundary>` wrapper for a
-    slot `try { ... } awaiting { ... } except { ... }` on the cl target."""
-    def _build_awaiting_wrapper(nd: uni.TryStmt, try_acc: str) -> None;
 
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def exit_else_if(nd: uni.ElseIf) -> None;
@@ -474,7 +387,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _collect_pattern_names(target: uni.UniNode) -> list[tuple[(str, uni.Name)]];
     def exit_assignment(nd: uni.Assignment) -> None;
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
-    def _ability_from_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
     def _return_type_includes_jsx_element(rt: uni.Expr) -> bool;
     def _component_call_abi(ability_node: uni.Ability) -> str;

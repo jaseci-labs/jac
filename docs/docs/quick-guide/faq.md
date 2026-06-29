@@ -6,7 +6,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
 
 ??? "Getting Started & Setup"
 
-    ??? question "I updated to the latest Jaseci PyPI packages and my project won't `jac start` properly."
+    ??? question "I updated to the latest Jac toolchain and my project won't `jac start` properly."
         Run `jac purge` to clear the global bytecode cache. This is the recommended approach after upgrading packages:
         ```bash
         jac purge
@@ -29,8 +29,8 @@ Answers to common questions about Jac, organized by topic. Click a category to e
 
     ??? question "What's the difference between Jac, Jaclang, and Jaseci?"
         - Jac: The language
-        - Jaclang: The compiler/runtime
-        - Jaseci: The full framework and ecosystem including plugins (byllm, jac-client, jac-scale, etc.)
+        - Jaclang: The compiler/runtime, shipped as the self-contained `jac` binary
+        - Jaseci: The broader framework and ecosystem, including plugins (byllm, jac-scale, etc.) installed via `jac install`
 
     ??? question "Do I need to know graph theory to use Jaseci?"
         No. Learn OSP: [OSP Guide](https://docs.jaseci.org/tutorials/language/osp/)
@@ -129,8 +129,8 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         return {"id": jid(task), "title": task.title, "done": task.done};
         ```
 
-    ??? question "`jac create --use client` fails or asks about Bun."
-        The `--use client` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically. You can also install it manually: `curl -fsSL https://bun.sh/install | bash`.
+    ??? question "`jac create --use web-static` fails or asks about Bun."
+        The `--use web-static` template requires [Bun](https://bun.sh) for frontend bundling. If Bun isn't installed, `jac create` will offer to install it automatically. You can also install it manually: `curl -fsSL https://bun.sh/install | bash`.
 
 ??? "Debugging & Support"
 

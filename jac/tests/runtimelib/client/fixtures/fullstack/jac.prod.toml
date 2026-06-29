@@ -1,0 +1,4 @@
+# Prod profile overrides -- loaded only with `--profile prod`. The title swap
+# is what the profile-config test observes.
+[plugins.client.app_meta_data]
+title = "Fullstack Prod"

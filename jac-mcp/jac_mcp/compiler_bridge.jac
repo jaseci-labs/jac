@@ -5,6 +5,8 @@ providing parse, typecheck, format, and py2jac operations.
 """
 
 glob MAX_INPUT_SIZE: int = 102400,
+     MAX_OUTPUT_SIZE: int = 102400,
+     OUTPUT_TRUNCATION_MARKER: str = "\n[... output truncated ...]",
      DEFAULT_TIMEOUT: int = 10;
 
 """Run a function with timeout protection."""
@@ -60,7 +62,7 @@ obj CompilerBridge {
 
     """Create a new Jac project from a template."""
     static def create_project(
-        name: str, template: str = "default", directory: str = ""
+        name: str, template: str = "cli", directory: str = ""
     ) -> dict[str, any];
 
     """Start a Jac REST API server as a background process."""

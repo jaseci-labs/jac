@@ -85,7 +85,7 @@ This single file defines a persistent data model, an AI-powered categorizer, a R
     Install Jac, set your API key, and run:
 
     ```bash
-    pip install jaseci
+    curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
     export ANTHROPIC_API_KEY="your-key-here"
     jac start
     ```
@@ -204,11 +204,12 @@ with entry {
 }
 ```
 
-This same program runs three ways with no code changes. `jac start` defaults to `main.jac` if you omit the filename; `jac run` always needs the filename explicitly:
+This same program runs three ways with no code changes. With no filename, both `jac run` and `jac start` use the project's `jac.toml` (a bare `jac run` dispatches on the project's `kind`):
 
 | Command | What Happens |
 |---------|-------------|
 | `jac main.jac` | Runs locally, SQLite persistence |
+| `jac run` (no filename) | Runs the current project per its `[project] kind` |
 | `jac start` (or `jac start main.jac`) | HTTP API server, walkers become REST endpoints |
 | `jac start --scale` | Kubernetes deployment with Redis, MongoDB, load balancing |
 
@@ -223,10 +224,10 @@ The runtime handles database schemas, user authentication (per-user graph isolat
 ### Step 1: Install
 
 ```bash
-pip install jaseci
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-This installs the complete Jac ecosystem: `jaclang` (compiler), `byllm` (AI integration), `jac-client` (frontend), `jac-scale` (deployment), and `jac-super` (enhanced console).
+This installs the self-contained `jac` binary -- no Python, pip, or uv required. It includes the compiler and the built-in full-stack frontend/desktop framework. Add AI integration and deployment with `jac install byllm` and `jac install jac-scale`.
 
 Verify your installation:
 

@@ -1,18 +1,3 @@
-"""C→Jac callback trampolines for clib vtable structs (issue #6570).
-
-C libraries with callback-based APIs (CEF, libuv) describe their hooks as
-vtable structs: plain C structs whose fields are function pointers. A Jac
-`def` stored into such a slot is later called BY THE C RUNTIME with the C
-signature from the slot's `Callable[[...], ret]` annotation — which need
-not match the Jac function's native signature (Jac `int` params are i64;
-a slot may declare i32, f64, ...). Each such store goes through a thin
-LLVM wrapper carrying the exact C function type that coerces every
-argument to the Jac parameter type, calls the Jac function, and coerces
-the result back. Trampolines are cached per (jac_fn, c_fn_type) pair and
-named `{jac_fn}.__clibcb.{n}` so IR tests can grep for `__clibcb`.
-"""
-
-"""True when a registered clib struct has a function-pointer field."""
 impl NaIRGenPass._clib_struct_has_fn_ptr(name: str) -> bool {
     for ftype in self.struct_field_types.get(name, {}).values() {
         if isinstance(ftype, ir.PointerType)
@@ -23,11 +8,6 @@ impl NaIRGenPass._clib_struct_has_fn_ptr(name: str) -> bool {
     return False;
 }
 
-"""Record which clib structs are vtables (have fn-ptr slots).
-
-Runs per import block, after pass 1.5 has laid out the struct bodies,
-so every field's LLVM type is final.
-"""
 impl NaIRGenPass._clib_detect_vtable_structs -> None {
     for name in self.clib_struct_names {
         if name not in self.clib_vtable_structs
@@ -37,14 +17,6 @@ impl NaIRGenPass._clib_detect_vtable_structs -> None {
     }
 }
 
-"""Coerce a value stored into a clib vtable fn-ptr slot to the slot's C type.
-
-A Jac `def` whose native signature already matches the slot is stored
-directly; one with a different signature goes through a C-ABI trampoline.
-Anything else (the `= 0` NULL default, raw integers, loaded pointers)
-falls through to the generic coercions — int → inttoptr yields the C
-NULL function pointer for the literal 0.
-"""
 impl NaIRGenPass._clib_coerce_callback(val: ir.Value, c_fn_ty: ir.Type) -> ir.Value {
     if isinstance(val, ir.Function) {
         if val.function_type == c_fn_ty.pointee {
@@ -56,13 +28,6 @@ impl NaIRGenPass._clib_coerce_callback(val: ir.Value, c_fn_ty: ir.Type) -> ir.Va
     return self._coerce_type(val, c_fn_ty);
 }
 
-"""Integer-aware argument coercion for trampoline boundaries.
-
-C integer arguments are signed by default, so width changes between the
-C slot type and the Jac parameter type must sign-extend / truncate —
-unlike `_coerce_type`, whose zext is tuned for bools. Everything
-non-integer delegates to the generic coercions.
-"""
 impl NaIRGenPass._clib_cb_coerce_scalar(
     val: ir.Value, target_type: ir.Type
 ) -> ir.Value {
@@ -78,14 +43,6 @@ impl NaIRGenPass._clib_cb_coerce_scalar(
     return self._coerce_type(val, target_type);
 }
 
-"""Emit (or fetch from cache) the C-ABI trampoline for `jac_fn`.
-
-The trampoline is an internal function with the slot's exact C function
-type. C argument counts may differ from the Jac signature (CEF passes
-`self` first, a Jac handler may ignore trailing params): extra C args are
-dropped, missing Jac args are zero/null-filled, so the indirect call from
-C stays well-typed either way.
-"""
 impl NaIRGenPass._emit_clib_c_trampoline(
     jac_fn: ir.Function, c_fn_ty: ir.Type
 ) -> ir.Function {
@@ -136,23 +93,6 @@ impl NaIRGenPass._emit_clib_c_trampoline(
     return tramp;
 }
 
-"""Allocate a clib vtable struct as plain C memory (issue #6571).
-
-C vtable structs are read by the C runtime starting at field 0 (CEF
-validates `struct->size` there) and live as long as the C side holds
-them, so the instance must be flat C data: no RC header at negative
-offsets, no destructor, no type tag, and a lifetime Jac never reclaims.
-`calloc` gives a zero-initialized block (unset fn-ptr slots are NULL C
-function pointers) on the heap, so the address stays valid after the
-creating function returns — vtables registered with `cef_initialize()`
-&co. are invoked long after the registering scope is gone. Ownership
-belongs to the C library (CEF vtables embed their own ref-counting via
-`cef_base_ref_counted_t`); Jac intentionally never frees the block.
-
-The allocation uses the C-laid-out type from `_clib_c_type` so nested
-clib structs reserve their inlined (by-value) size, then views the block
-through the Jac struct type for field access.
-"""
 impl NaIRGenPass._clib_alloc_vtable(name: str) -> ir.Value {
     i8_ptr = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);

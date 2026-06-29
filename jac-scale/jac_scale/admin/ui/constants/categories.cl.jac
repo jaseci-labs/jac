@@ -15,11 +15,21 @@ glob:pub navGroups = [
              "label": "Monitoring",
              "items": [
                  {"id": "metrics", "label": "Metrics"},
+                 {"id": "workloads", "label": "Workloads"},
+                 {"id": "usage", "label": "Usage"},
                  {"id": "llm_metrics", "label": "LLM Metrics"},
                  {"id": "llm_traces", "label": "LLM Traces"},
                  {"id": "traces", "label": "Traces"},
                  {"id": "logs", "label": "Logs"}
              ]
          },
-         {"label": "Operations", "items": [{"id": "ops", "label": "Self-Check"}]}
+         {
+             "label": "Operations",
+             "items": [
+                 {"id": "ops", "label": "Self-Check"},
+                 {"id": "deploy", "label": "Deploy Health"},
+                 {"id": "network", "label": "Endpoints & Storage"},
+                 {"id": "podenv", "label": "Pod Env"}
+             ]
+         }
      ];

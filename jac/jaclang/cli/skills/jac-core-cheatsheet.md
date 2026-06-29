@@ -109,16 +109,18 @@ import from "@jac/runtime" { Router, Routes, Route }  # npm (quoted)
 
 **`main.jac` is the one mixed-context file.** Server imports go at the top (server is the default context - no block needed). Then a `cl { ... }` block holds the client section: CSS import, top-level component, `def:pub app()`.
 
-**Relative imports - what each dot means (Python-style):** each leading `.` walks ONE folder up from the importing file's directory. `sv import` carries the same dot semantics.
+**No-dot imports are project-root absolute.** In server/native code (`.jac`, `.na.jac`, `.sv.jac`), `import from engine.math.vec3 { Vec3 }` resolves against the **project root** (the nearest `jac.toml` dir) from *anywhere* in the project - the importing file may sit at the root, under `tests/`, or any depth, and the import is identical. This is the idiomatic form; prefer it over dot-counting. A test in `tests/` imports the modules it exercises with the same no-dot path it would use at the root.
+
+**Relative (dotted) imports** walk up from the importing file's own directory - each leading `.` is one folder. They are mainly needed in **client** code (`.cl.jac` files / `cl { }` blocks), where the bundler resolves them. `sv import` carries the same dot semantics.
 
 | Dots | Meaning | Use when |
 |---|---|---|
-| `services.X`   | project-root absolute  | importing file is AT the root (e.g. `main.jac`) |
-| `.services.X`  | same folder            | `services/` content is a sibling file in this same folder |
+| `services.X`   | project-root absolute  | **default** - resolves from any depth in the project (server/native) |
+| `.services.X`  | same folder            | `services` is a sibling file in this same folder |
 | `..services.X` | one folder up          | importing file is one level deep (`components/X.cl.jac`) |
 | `...services.X`| two folders up         | importing file is two levels deep (`components/pages/X.cl.jac`) |
 
-If a file moves to a different depth, **the dot count must change**. Wrong dot count = silent import resolution failure = every imported name becomes `<Unknown>` → cascading type errors.
+A no-dot import is depth-independent: moving a file between directories never changes it. Dot-counted forms (`..`, `...`) DO break when a file moves to a different depth - wrong dot count = silent resolution failure = imported names become `<Unknown>` → cascading type errors. Prefer no-dot imports to avoid this.
 
 ## Also available (Python semantics, brace bodies)
 

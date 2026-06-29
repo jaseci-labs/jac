@@ -1,8 +1,3 @@
-"""Interop bridge utilities for cross-boundary function calls.
-
-Provides helpers for creating ctypes callbacks and generating Python stubs
-for native/Python interop.
-"""
 import ctypes;
 import logging;
 import from collections.abc { Callable }
@@ -22,24 +17,12 @@ glob logger = logging.getLogger(__name__),
          'str': 'ctypes.c_char_p'
      };
 
-"""Create late-binding ctypes callbacks for Python functions called from native.
-
-    For each Python function that native code calls, creates a ctypes CFUNCTYPE
-    callback that looks up the actual Python function from py_func_table at
-    call time. This allows the Python function to be registered later (when
-    the module bytecode executes).
-
-    Args:
-        manifest: InteropManifest with bindings
-        py_func_table: Dict populated with Python functions at runtime
-        callbacks_list: List to store callback references (prevents GC)
-    """
 def register_py_callbacks(
     manifest: InteropManifest,
     py_func_table: dict[(str, Callable[(..., object)])],
     callbacks_list: list
 ) {
-    import llvmlite.binding as llvm;
+    import jaclang.compiler.passes.native.llvm.binding as llvm;
     for binding in manifest.native_imports {
         ret_ct = JAC_TO_CTYPES.get(binding.ret_type, ctypes.c_int64);
         arg_cts = [JAC_TO_CTYPES.get(pt, ctypes.c_int64) for pt in binding.param_types];

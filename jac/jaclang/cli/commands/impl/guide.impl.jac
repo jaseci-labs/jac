@@ -1,5 +1,3 @@
-"""Implementation of the `jac guide` command."""
-
 import json;
 import shutil;
 import sys;
@@ -13,21 +11,10 @@ import from jaclang.cli.guide_store {
     grouped_guides
 }
 
-"""Write text verbatim to stdout, followed by a newline.
-
-Used for guide bodies and `--json` payloads: `console.print` routes through a
-Rich-enhanced console that reflows long lines, which would corrupt fenced code
-blocks and JSON. A direct stream write keeps the output byte-exact.
-"""
 def _emit(text: str) {
     sys.stdout.write(text + "\n");
 }
 
-"""Write every guide out as a Claude Code skills directory.
-
-Each guide becomes `<dest>/<name>/SKILL.md` -- the dir-per-skill layout that
-Claude Code, Cursor, and the Claude Agent SDK discover and auto-load.
-"""
 def _export_guides(dest: str) -> int {
     guides = list_guides();
     if not guides {
@@ -49,20 +36,13 @@ def _export_guides(dest: str) -> int {
     return 0;
 }
 
-"""Show curated Jac reference guides bundled with the compiler.
-
-Guide bodies and `--json` payloads go through `_emit` (a verbatim stream
-write) rather than `console.print`, whose Rich backend reflows long lines.
-The decorative list view keeps `console`.
-"""
 impl guide(
     topic: str = "", search: str = "", export: str = "", as_json: bool = False
 ) -> int {
-    # Export every guide as a Claude Code skills directory.
     if export {
         return _export_guides(export);
     }
-    # Display a single guide.
+
     if topic {
         g = get_guide(topic);
         if g is None {
@@ -88,8 +68,7 @@ impl guide(
         }
         return 0;
     }
-    # Grouped console listing (the default no-arg path) loads guides through
-    # grouped_guides() alone, so the skills directory is read once.
+
     if not search and not as_json {
         groups = grouped_guides();
         if not groups {
@@ -111,7 +90,7 @@ impl guide(
         console.print();
         return 0;
     }
-    # JSON listing and --search results.
+
     guides = search_guides(search) if search else list_guides();
     if as_json {
         payload = [
@@ -124,14 +103,14 @@ impl guide(
         _emit(json.dumps(payload, indent=2));
         return 0;
     }
-    # Only the console search path remains.
+
     if not guides {
         console.warning(f"No guides match '{search}'.");
         return 0;
     }
     console.print();
     console.print(f"Jac guides matching '{search}'", style="bold");
-    # Search results are already a filtered subset -- keep them flat.
+
     console.print();
     for g in guides {
         console.print(f"  {g.name}", style="bold cyan");

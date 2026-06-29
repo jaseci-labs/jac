@@ -5,10 +5,9 @@ a GitHub Actions matrix for tiered publishing.
 
 Example PR title: "release: jaclang 1.2.3, jac-byllm 2.0.0"
 
-The output matrix `includes tier information for dependency-aware publishing:
-  - Tier 1: jaclang (base package, no internal dependencies)
-  - Tier 2: jac-byllm, jac-client, etc. (depend on jaclang)
-  - Tier 3: jaseci meta-package (depends on all)
+The output matrix includes tier info for dependency-aware publishing:
+  - Tier 0: jaclang -- the release anchor; ships as the native binary, not PyPI
+  - Tier 2: jac-byllm, jac-scale, jac-mcp (plugins published to PyPI)
 """
 import from __future__ { annotations }
 import argparse;
@@ -27,13 +26,15 @@ def release_entry(pkg_name_lower: str, version: str) -> dict {
         "tier": pkg_info.tier,
         "version": version,
         "submodules": pkg_info.submodules,
-        "precompile": pkg_info.precompile,
         "extra_build_cmd": pkg_info.extra_build_cmd,
         "needs_nodejs": pkg_info.needs_nodejs,
-        "extra_build_deps": pkg_info.extra_build_deps
+        "extra_build_deps": pkg_info.extra_build_deps,
+        "publish_pypi": pkg_info.publish_pypi,
+        "is_anchor": pkg_info.is_anchor
     };
 }
-"""Match patterns like 'jaclang 1.2.3' or 'jac-client 2.0.0'."""
+
+"""Match patterns like 'jaclang 1.2.3' or 'jac-scale 2.0.0'."""
 def parse_from_title(pr_title: str) -> list[dict] {
     releases = [];
     for (pkg_name, version) in re.findall(r"([\w-]+)\s+(\d+\.\d+\.\d+)", pr_title) {
@@ -44,6 +45,7 @@ def parse_from_title(pr_title: str) -> list[dict] {
     }
     return releases;
 }
+
 """Build releases for an explicit package list, reading versions from manifests.
 
     Used by the manual (workflow_dispatch) re-publish path: the caller selects
@@ -65,6 +67,7 @@ def parse_from_packages(pkg_names: list[str]) -> list[dict] {
     }
     return releases;
 }
+
 def main() -> int {
     parser = argparse.ArgumentParser();
     parser.add_argument("--pr-title", `default="");
@@ -75,7 +78,11 @@ def main() -> int {
     );
     args = parser.parse_args();
     if args.packages {
-        pkg_list = [p for p in re.split(r"[,\s]+", args.packages) if p];
+        pkg_list = [
+            p
+            for p in re.split(r"[,\s]+", args.packages)
+            if p
+        ];
         releases = parse_from_packages(pkg_list);
     } else {
         releases = parse_from_title(args.pr_title);
@@ -87,13 +94,10 @@ def main() -> int {
         set_output("release_summary", "none");
         return 1;
     }
-    releases.sort(key=lambda x: x["tier"]);
+    releases.sort(key=lambda x : x["tier"]);
     print("Packages to release:");
     for r in releases {
         print(f"  - {r['pypi']} {r['version']} (tier {r['tier']})");
-        if r["precompile"] {
-            print("    (requires precompilation)");
-        }
     }
     summary = ", ".join(f"{r['pypi']} {r['version']}" for r in releases);
     set_output("has_releases", "true");
@@ -101,6 +105,7 @@ def main() -> int {
     set_output("release_summary", summary);
     return 0;
 }
+
 with entry:__main__ {
     sys.exit(main());
 }

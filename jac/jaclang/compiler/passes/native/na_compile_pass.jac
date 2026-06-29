@@ -1,13 +1,7 @@
-"""JIT compile LLVM IR to native machine code using llvmlite.
-
-Takes the LLVM IR module from NaIRGenPass and compiles it to
-executable native code via MCJIT. Function addresses can then
-be called via ctypes.
-"""
-
-import llvmlite.binding as llvm;
+import jaclang.compiler.passes.native.llvm.binding as llvm;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { Transform }
+import from jaclang.jac0core.codeinfo { CodeGenTarget }
 import from jaclang.jac0core.diagnostics {
     E5020,
     W5021,
@@ -18,14 +12,28 @@ import from jaclang.jac0core.diagnostics {
     E5026
 }
 
-"""JIT compile LLVM IR module to native machine code."""
+obj DepClibMeta {
+    has clib_paths: list[str] = [],
+        clib_symbol_lib: dict[str, str] = {},
+        exported_symbols: list[str] = [],
+        imported_symbols: list[str] = [],
+        owned_symbols: list[str] = [],
+        transitive_deps: list[str] = [];
+
+    def to_meta -> dict;
+    static def from_meta(meta: dict) -> DepClibMeta;
+    def propagate_to(gen: CodeGenTarget) -> None;
+}
+
+
 obj NativeCompilePass(Transform) {
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
-    # Link imported .na.jac modules at IR level (na↔na linking)
     def _compile_and_link_native_imports(
         module: uni.Module, main_mod: object, imports: list, target_machine: object
     ) -> None;
-    # Link the portable OSP kernel's IR into an OSP program (issue #6146)
+
+    def _jit_load_clib(lib_path: str) -> bool;
     def _link_osp_kernel(main_mod: object) -> None;
+    def _references_undefined_osp_kernel(main_mod: object) -> bool;
 }

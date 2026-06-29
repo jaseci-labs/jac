@@ -1,4 +1,3 @@
-"""Semantic Token Manager module."""
 import from typing { List, Optional, Tuple }
 import logging;
 
@@ -11,9 +10,6 @@ import from jaclang.langserve.utils {
 }
 import jaclang.lsp.types as lspt;
 
-# Semantic token flat array field offsets.
-# Each token occupies TOK_STRIDE (5) consecutive ints:
-#   [line_delta, col_delta, length, token_type, token_modifier]
 glob TOK_LINE_DELTA = 0,
      TOK_COL_DELTA = 1,
      TOK_LENGTH = 2,
@@ -22,10 +18,10 @@ glob TOK_LINE_DELTA = 0,
      TOK_STRIDE = 5,
      logger = logging.getLogger("jaclang.langserve.sem_manager");
 
-"""Semantic Token Manager class."""
 obj SemTokManager {
     has ir: uni.Module,
         hub: dict = {},
+        target_path: (str | None) = None,
         sem_tokens: List[int] by postinit,
         static_sem_tokens:
             List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] by postinit;

@@ -1,12 +1,3 @@
-"""
-Pass to inject comments using token-level precision.
-
-This pass injects comments into the DocIR structure by:
-1. Categorizing comments as inline (same line as token) or standalone
-2. Injecting inline comments after their anchor tokens
-3. Injecting standalone comments at appropriate positions (module, body, params)
-4. Handling spacing adjustments for empty structures that receive comments
-"""
 import from bisect { bisect_left }
 import from collections.abc { Sequence }
 import from typing { NamedTuple }
@@ -16,7 +7,6 @@ import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes { Transform }
 import from jaclang.jac0core.diagnostics { W5050, E5051 }
 
-"""Information about a pair of delimiters and their positions."""
 class DelimiterInfo(NamedTuple) {
     has open_idx: int,
         close_idx: int,
@@ -24,7 +14,6 @@ class DelimiterInfo(NamedTuple) {
         close_line: int;
 }
 
-"""Rich metadata about a source comment."""
 obj CommentInfo {
     has index: int,
         token: uni.CommentToken,
@@ -35,7 +24,6 @@ obj CommentInfo {
     has last_line: int { getter; }
 }
 
-"""Efficient bookkeeping for inline and standalone comments."""
 obj CommentStore {
     has _inline: dict[(int, list[CommentInfo])],
         _standalone: list[CommentInfo],
@@ -51,13 +39,6 @@ obj CommentStore {
     def drain_unattached -> list[CommentInfo];
 }
 
-"""
-Injects comments using token sequence analysis for perfect precision.
-
-    Uses src_terminals to detect inline vs standalone comments, then
-    injects them using source_token annotations with automatic duplicate
-    line collapsing.
-"""
 obj CommentInjectionPass(Transform[uni.Module, uni.Module]) {
     has _token_cache: dict by postinit;
 

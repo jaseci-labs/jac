@@ -1,20 +1,40 @@
-"""Semantic Token Manager Implementation."""
-
-"""Initialize semantic token manager."""
 impl SemTokManager.postinit -> None {
     self.sem_tokens = self.gen_sem_tokens(self.ir);
     self.static_sem_tokens = self.gen_sem_tok_node(self.ir);
 }
 
-"""Collect all resolved NameAtom nodes from the module IR.
-
-Iterates all in-module nodes and collects those with valid semantic tokens.
-"""
 impl SemTokManager.collect_resolved_nodes(ir: uni.Module) -> list {
+    import from pathlib { Path }
+
+    target: (str | None) = None;
+    if self.target_path {
+        try {
+            target = str(Path(self.target_path).resolve());
+        } except Exception {
+            target = self.target_path;
+        }
+    }
+    resolved_cache: dict = {};
+    def belongs(mp: (str | None)) -> bool {
+        if target is None {
+            return True;
+        }
+        if not mp {
+            return False;
+        }
+        if mp not in resolved_cache {
+            try {
+                resolved_cache[mp] = str(Path(mp).resolve());
+            } except Exception {
+                resolved_cache[mp] = mp;
+            }
+        }
+        return resolved_cache[mp] == target;
+    }
     nodes: list = [];
     for nd in ir._in_mod_nodes {
         if isinstance(nd, uni.NameAtom) {
-            if nd.sem_token {
+            if nd.sem_token and belongs(nd.loc.mod_path) {
                 nodes.append(nd);
             }
         }
@@ -22,7 +42,6 @@ impl SemTokManager.collect_resolved_nodes(ir: uni.Module) -> list {
     return nodes;
 }
 
-"""Return semantic tokens as position-mapped nodes."""
 impl SemTokManager.gen_sem_tok_node(
     ir: uni.Module
 ) -> List[Tuple[(lspt.Position, int, int, uni.AstSymbolNode)]] {
@@ -50,7 +69,6 @@ impl SemTokManager.gen_sem_tok_node(
     return tokens;
 }
 
-"""Return semantic tokens as delta-encoded flat list."""
 impl SemTokManager.gen_sem_tokens(ir: uni.Module) -> list[int] {
     tokens = [];
     seen_locs: dict = {};
@@ -75,7 +93,7 @@ impl SemTokManager.gen_sem_tokens(ir: uni.Module) -> list[int] {
     } except Exception as e {
         logger.error(f"Error generating semantic tokens: {e}");
     }
-    # Sort by (line, col) and convert to delta format
+
     tokens.sort(key=lambda x: any : (x[0], x[1]));
     result = [];
     (prev_line, prev_col) = (0, 0);
@@ -92,7 +110,6 @@ impl SemTokManager.gen_sem_tokens(ir: uni.Module) -> list[int] {
     return result;
 }
 
-"""Handle insert inside token."""
 impl SemTokManager.handle_insert_inside_token(
     self: SemTokManager,
     change: lspt.TextDocumentContentChangeEvent_Type1,
@@ -161,7 +178,6 @@ impl SemTokManager.handle_insert_inside_token(
     return (sem_tokens, is_token_boundary_edit, nxt_tok_pos, next_token_index);
 }
 
-"""Handle multi line insertion."""
 impl SemTokManager.handle_multi_line_insertion(
     self: SemTokManager,
     sem_tokens: list[int],
@@ -203,7 +219,6 @@ impl SemTokManager.handle_multi_line_insertion(
     return sem_tokens;
 }
 
-"""Handle single line insertion."""
 impl SemTokManager.handle_single_line_insertion(
     self: SemTokManager,
     sem_tokens: list[int],
@@ -241,7 +256,6 @@ impl SemTokManager.handle_single_line_insertion(
     return sem_tokens;
 }
 
-"""Handle single line deletion."""
 impl SemTokManager.handle_single_line_delete(
     self: SemTokManager,
     sem_tokens: list[int],
@@ -264,7 +278,6 @@ impl SemTokManager.handle_single_line_delete(
     return sem_tokens;
 }
 
-"""Handle single line deletion between tokens."""
 impl SemTokManager.handle_single_line_delete_between_tokens(
     self: SemTokManager,
     sem_tokens: list[int],
@@ -287,7 +300,6 @@ impl SemTokManager.handle_single_line_delete_between_tokens(
     return sem_tokens;
 }
 
-"""Handle multi line deletion."""
 impl SemTokManager.handle_multi_line_delete(
     self: SemTokManager,
     sem_tokens: list[int],
@@ -318,7 +330,6 @@ impl SemTokManager.handle_multi_line_delete(
     return sem_tokens;
 }
 
-"""Update semantic tokens on change."""
 impl SemTokManager.update_sem_tokens(
     content_changes: lspt.DidChangeTextDocumentParams,
     sem_tokens: list[int],

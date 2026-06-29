@@ -6,6 +6,8 @@ Jac parser module. Also validates grammar matches jac.spec.
 """
 
 import from pathlib { Path }
+import os;
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.tool.grammar_extract_pass {
     GAlt,
@@ -27,7 +29,7 @@ import from jaclang.jac0core.program { JacProgram }
 glob PARSER_PATH = str(
          Path(jaclang.__file__).parent / "jac0core" / "parser" / "parser.jac"
      ),
-     SPEC_PATH = str(Path(jaclang.__file__).parent.parent / "jaclang" / "jac.spec");
+     SPEC_PATH = os.path.join(JAC_ROOT, "jaclang", "jac.spec");
 
 """Helper: format a GExpr as EBNF."""
 def fmt(expr: object) -> str {

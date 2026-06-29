@@ -165,6 +165,10 @@ def unbox_jacval(jv: JacVal) -> object {
         st_ptr = ctypes.cast(jv.payload, ctypes.POINTER(SetStruct));
         n = st_ptr.contents.len;
         return {st_ptr.contents.elems[i] for i in range(n)};
+    } elif jv.tag == 7 {
+        # bool: kept distinct from int (tag 0) so it round-trips as True/False
+        # rather than 1/0, matching the Python reference exactly.
+        return jv.payload != 0;
     }
     return None;
 }
@@ -177,6 +181,19 @@ def run_native_function(eng: object, func_name: str) -> dict {
             ("keys", ctypes.POINTER(ctypes.c_char_p)),
             ("vals", ctypes.POINTER(JacVal))
         ];
+    }
+    # Run the module initializer first so module-level and `static has` globals
+    # whose values are not compile-time constants (strings, constructor calls)
+    # are populated before the fixture function reads them. Prefer jac_entry
+    # (chains __jac_glob_init across this module and every linked import); fall
+    # back to this module's __jac_glob_init when no `with entry` block emitted a
+    # jac_entry. Fixtures carry no entry block, so this only runs initializers.
+    init_addr = eng.get_function_address("jac_entry");
+    if init_addr == 0 {
+        init_addr = eng.get_function_address("__jac_glob_init");
+    }
+    if init_addr != 0 {
+        ctypes.CFUNCTYPE(None)(init_addr)();
     }
     f = get_func(eng, func_name, ctypes.POINTER(DictStruct));
     dict_ptr = f();

@@ -9,9 +9,7 @@ react = "^18.2.0"
 react-dom = "^18.2.0"
 react-router-dom = "^6.22.0"
 react-error-boundary = "^5.0.0"
-react-hook-form = "^7.71.0"
 zod = "^4.3.6"
-"@hookform/resolvers" = "^5.2.2"
 
 [dependencies.npm.dev]
 vite = "^6.4.1"
@@ -44,9 +42,9 @@ health_monitor_interval = 10.0
 # Map module name -> gateway prefix. Services NOT listed here still work
 # for internal `sv import` calls; this only controls public URL routing.
 [plugins.scale.microservices.routes]
-products_app = "/api/products"
-orders_app = "/api/orders"
-cart_app = "/api/cart"
+products_app = "/products"
+orders_app = "/orders"
+cart_app = "/cart"
 
 # Gateway memory. The gateway loads the admin portal, LLM-telemetry, log
 # wiring and runtime OpenAPI aggregation that service pods don't, so its

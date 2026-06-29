@@ -1,10 +1,3 @@
-"""Static analysis pass for the Jac compiler.
-
-This pass detects:
-1. Unused variables - symbols defined but never referenced
-2. Undefined variables - name references that failed to resolve
-3. Unreachable code - statements with no incoming control flow edges
-"""
 import ast as ast3;
 import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
@@ -28,12 +21,6 @@ import from jaclang.jac0core.diagnostics {
     E2083
 }
 
-"""Static analysis pass for JacLang.
-
-Does not traverse the tree node-by-node; all analysis is performed
-in transform() via bulk sub-node queries, so we extend Transform
-directly instead of UniPass.
-"""
 obj StaticAnalysisPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
         prog: any,
@@ -45,6 +32,7 @@ obj StaticAnalysisPass(Transform[uni.Module, uni.Module]) {
     def _check_undefined_names(mod: uni.Module) -> None;
     def _literal_case_suggestion(name: str) -> (str | None);
     def _osp_shape_position(name_nd: uni.Name) -> (str | None);
+    def _native_type_position(name_nd: uni.Name) -> (str | None);
     def _check_unreachable_code(mod: uni.Module) -> None;
     def _check_semantic_patterns(mod: uni.Module) -> None;
     def _check_redundant_imports(mod: uni.Module) -> None;

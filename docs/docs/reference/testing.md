@@ -149,7 +149,19 @@ jac test -d tests/
 
 # Run specific test
 jac test main.jac -t my_feature
+
+# Run with no arguments: discovery is scoped to [test] directory
+# from jac.toml (falls back to the project root when unset)
+jac test
 ```
+
+!!! note "No-argument discovery"
+    With no file and no `-d`, `jac test` reads `directory` from the `[test]`
+    section of `jac.toml` and collects tests only from that directory (like
+    pytest's `testpaths`). Scoping to `tests/` keeps collection from importing
+    application modules whose top-level `with entry` block would otherwise run
+    as a side effect of being imported. When `[test] directory` is unset, the
+    whole project (from the root) is walked, as before.
 
 ### CLI Options
 
@@ -287,13 +299,13 @@ walker Incrementer {
 test "walker increments" {
     counter = root ++> Counter();
     root spawn Incrementer();
-    assert counter[0].count == 1;
+    assert counter.count == 1;
 }
 
 test "walker custom amount" {
     counter = root ++> Counter();
     root spawn Incrementer(amount=5);
-    assert counter[0].count == 5;
+    assert counter.count == 5;
 }
 ```
 
@@ -412,6 +424,17 @@ jac test -d tests/
 # Run specific file
 jac test tests/models_test.jac
 ```
+
+Tests under `tests/` import the modules they exercise with the **same
+project-root-absolute path** they would use from the root - no `..` dots:
+
+```jac
+# tests/models_test.jac
+import from src.models { User }   # resolves from the project root, any depth
+```
+
+Imports anchor to the project root (the nearest `jac.toml`), so a test file can
+move between directories without rewriting its imports.
 
 ### Tests in Same File
 
@@ -691,7 +714,7 @@ test "all math operations" {
 test "counter increment" {
     counter = root ++> Counter();
     root spawn Incrementer();
-    assert counter[0].count == 1;
+    assert counter.count == 1;
 }
 
 # Each test should be independent

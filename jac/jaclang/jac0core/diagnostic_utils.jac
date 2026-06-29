@@ -1,5 +1,3 @@
-"""Shared helpers for diagnostic-code token normalization."""
-
 def resolve_diagnostic_tokens(tokens: list) -> tuple[list[str], list[str]] {
     import from jaclang.jac0core.diagnostics { DIAGNOSTICS, LINT_ALIASES }
     resolved: list[str] = [];

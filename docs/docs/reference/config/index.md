@@ -14,11 +14,11 @@ jac create myapp
 cd myapp
 
 # Full-stack web app (recommended for web development)
-jac create myapp --use client
+jac create myapp --use web-static
 cd myapp
 ```
 
-This creates a `jac.toml` with default settings. When using `--use client`, the scaffolded project includes:
+This creates a `jac.toml` with default settings. When using `--use web-static`, the scaffolded project includes:
 
 ```
 myapp/
@@ -32,7 +32,7 @@ myapp/
 └── .gitignore
 ```
 
-The auto-generated `jac.toml` for a `--use client` project looks like:
+The auto-generated `jac.toml` for a `--use web-static` project looks like:
 
 ```toml
 [project]
@@ -66,6 +66,7 @@ name = "myapp"
 version = "1.0.0"
 description = "My Jac application"
 entry-point = "main.jac"
+kind = "service"   # drives `jac run` (omit to infer from the entry-point)
 jac-version = ">=0.15.0"
 
 # Publishing metadata -- only needed to run `jac bundle`
@@ -87,6 +88,7 @@ repository = "https://github.com/user/repo"
 | `version` | string | Semantic version (default: `0.1.0`) |
 | `description` | string | One-line summary (also shown on PyPI) |
 | `entry-point` | string | Main file for `jac run` (default: `main.jac`) |
+| `kind` | string | Project kind that drives `jac run` dispatch (execute / serve / build). Empty = inferred from the entry-point codespace. One of: `cli`, `cli-native`, `native-binary`, `native-lib`, `service`, `service-mesh`, `py-package`, `js-package`, `web-app`, `web-static`, `desktop`, `mobile` |
 | `jac-version` | string | Required Jac compiler version |
 | `license` | string | SPDX license identifier (e.g. `"MIT"`) |
 | `readme` | string | Path to README file (default: `README.md`) |
@@ -199,7 +201,16 @@ session = ""             # Session name
 main = true              # Run as main module
 cl_route_prefix = "cl"   # URL prefix for client apps
 base_route_app = ""      # Client app to serve at /
+
+# Optimistic-concurrency policy for concurrent check-then-create races
+# (see Persistence -> Concurrent writes).
+on_conflict = "retry"        # "retry": abort + replay so the loser converges
+                             # "fail":  no replay, return HTTP 409 immediately
+conflict_max_attempts = 5    # max walker/function attempts under "retry"
+conflict_backoff_ms = 0      # linear backoff between replay attempts (0 = none)
 ```
+
+`on_conflict` controls what happens when two concurrent requests race a "look it up, create it if missing" against the same node and the loser's commit is rejected. `retry` (default) re-runs the request against the now-current graph so it converges on the winner's node; `fail` surfaces a typed `409 write_conflict` for the client to handle. See [Persistence -> Concurrent writes: check-then-create](../persistence.md#concurrent-writes-check-then-create-and-convergence) for the full model.
 
 ---
 
@@ -228,12 +239,16 @@ Defaults for `jac test`:
 
 ```toml
 [test]
-directory = ""          # Test directory (empty = current directory)
+directory = ""          # Scopes no-argument `jac test` discovery (empty = walk project root)
 filter = ""             # Filter pattern
 verbose = false         # Verbose output
 fail_fast = false       # Stop on first failure
 max_failures = 0        # Max failures (0 = unlimited)
 ```
+
+When `directory` is set, `jac test` with no file argument collects tests only
+from that directory (resolved against the project root), so application modules
+whose top-level `with entry` runs on import are not pulled into test collection.
 
 ---
 
@@ -308,8 +323,21 @@ select = ["combine-has", "remove-empty-parens"]
 | `fix-impl-signature` | `W3010` | Fix signature mismatches between declarations and implementations | default |
 | `remove-import-semi` | `W3011` | Remove trailing semicolons from `import from X { ... }` | default |
 | `no-print` | `E3012` | Error on bare `print()` calls (use console abstraction instead) | all |
+| `strip-comments` | `W3050` | Remove **all** comments | opt-in |
+| `strip-docstrings` | `W3051` | Remove **all** docstrings | opt-in |
 
 Diagnostic codes can be suppressed inline with `# jac:ignore[CODE]` comments. See the full [Errors & Warnings](../diagnostics.md) reference for all diagnostic codes.
+
+**Opt-in (deslop) rules:**
+
+`strip-comments` and `strip-docstrings` are destructive "deslop" rules: they delete content rather than restructure it. Unlike every other rule, they are **never** activated by `select = ["all"]` or `select = ["default"]`; they fire only when named explicitly. A project that wants them on by default lists them alongside its other selections:
+
+```toml
+[check.lint]
+select = ["default", "strip-comments", "strip-docstrings"]
+```
+
+The two are independent, so you can strip comments while keeping docstrings (or vice versa). With a rule selected, `jac format --lintfix` removes the content and `jac check` reports it. They are also the rules driving [`jac precommit`](../cli/index.md#jac-precommit) when configured.
 
 **Excluding files from lint:**
 
@@ -352,8 +380,9 @@ Bytecode cache settings:
 
 ```toml
 [cache]
-enabled = true      # Enable caching
-dir = ".jac_cache"  # Cache directory
+enabled = true   # Enable caching
+dir = "cache"    # Cache subdirectory under the build dir (i.e. .jac/cache).
+                 # An absolute path relocates the cache wholesale.
 ```
 
 ---
@@ -425,9 +454,8 @@ api_key_expiry_days = 365
 
 # Kubernetes version pinning (jac-scale)
 [plugins.scale.kubernetes.plugin_versions]
-jaclang = "latest"
+jaclang = "latest"           # also provides the full-stack client/desktop framework
 jac_scale = "latest"
-jac_client = "latest"
 jac_byllm = "none"           # Use "none" to skip installation
 jac_mcp = "latest"
 ```
@@ -470,6 +498,26 @@ auto_download  = false                # true = skip the first-run TTY prompt
 ```
 
 Bundled aliases are downloaded as Q4_K_M GGUFs into `~/.cache/jac/models/<alias>/` on first use and managed via `jac model list/pull/rm`. See [Built-in Local Models](../plugins/byllm.md#built-in-local-models) for the full reference and [`jac model`](../cli/index.md#jac-model) for cache management.
+
+**Frontend Framework (jac-client):**
+
+```toml
+[plugins.client]
+framework = "react"   # "react" (default), "solid" (experimental), or "preact"
+```
+
+Controls which JavaScript framework the `cl` compiler target emits. The default is `"react"`.
+
+| Value | Status | Notes |
+|-------|--------|-------|
+| `"react"` | Stable | Default. Uses React hooks and `@vitejs/plugin-react`. |
+| `"solid"` | Experimental | Uses Solid signals and `vite-plugin-solid`. API may change. |
+| `"preact"` | Stable | Drop-in React alternative with a smaller bundle. |
+
+Switching frameworks automatically adjusts the installed npm packages and the generated Vite config; no other changes are needed. Delete your `.jac/client/` build cache after switching so the previous framework's output is not mixed in.
+
+!!! warning "Solid support is experimental"
+    The `solid` framework target is under active development. Some jac-client features (error boundaries, suspense slots, advanced routing) may not yet be fully supported. Check the [release notes](../../community/release_notes/jac-client.md) before upgrading.
 
 **Import Path Aliases (jac-client):**
 
@@ -768,6 +816,10 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 |----------|-------------|
 | `MONGODB_URI` | MongoDB connection URI |
 | `REDIS_URL` | Redis connection URL |
+| `FIRESTORE_PROJECT_ID` | Firestore / Firebase project ID |
+| `FIREBASE_PROJECT_ID` | Shared Firebase project ID fallback for Auth SSO, Firestore, Storage |
+
+Project ID vars (`FIREBASE_AUTH_PROJECT_ID`, `FIRESTORE_PROJECT_ID`, `JAC_STORAGE_FIREBASE_PROJECT_ID`, `JAC_STORAGE_GCS_PROJECT_ID`) override `FIREBASE_PROJECT_ID` when set.
 
 ### jac-scale: Authentication
 

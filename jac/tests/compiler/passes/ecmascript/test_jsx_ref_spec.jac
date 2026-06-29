@@ -12,15 +12,14 @@ remains a visible tracker.
 
 import os;
 import pytest;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.passes.ecmascript { EsastGenPass }
 import jaclang.compiler.passes.ecmascript.estree as es;
 import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
 import from jaclang.jac0core.program { JacProgram }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     SLOT_EXT = os.path.join(
+glob SLOT_EXT = os.path.join(
          JAC_ROOT,
          "tests",
          "compiler",
