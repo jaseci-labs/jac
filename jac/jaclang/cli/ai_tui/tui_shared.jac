@@ -1,34 +1,4 @@
-"""Shared helpers for the `jac ai --tui` embed host launch + NA renderer.
-
-The frame/command grammar (ai_tui/PROTOCOL.md) is single-sourced here: the embed
-host (`ai_tui_na/host_embed.na.jac`) imports `_frame_blob` + `_dispatch_cmd` into
-its embedded interpreter VERBATIM, so the wire grammar can never drift from the
-launcher side. The same helpers back the NA renderer test harness
-(`tests/cli/test_ai_tui_host.jac`, which drives `bin/libtui.so` -- the in-process
-carrier for the *same* renderer the embed host links).
-
-`_frame_blob` joins the KEY:VALUE PROTOCOL.md lines into one string. `_dispatch_cmd`
-maps a command line (SEND/STOP/RESET/QUIT/APPLY) onto the agent UI API; it takes
-an optional `proc` (terminated on QUIT when present, `None` from the embed host
-where quit flows through `stop_evt` + the native `tui_quit_requested`).
-
-`_configure_ui_env` is the one copy of the JAC_AI_UI_* env contract
-(PROJECT/MODEL/NCTX/FILES/MODEL_PRESETS plus the JAC_AI_UI_ACTIVE=1 capture gate)
-the embed host + its embedded agent read on `ui_configure()`. `run_tui_embed`
-sets this block (then `execve`s the host); the returned `restore` closure is moot
-across an exec but kept so the same helper is testable and reusable in-process.
-
-`_ensure_embed_host` ensures `bin/jac-ai-tui` (compile via `build_embed.sh` on a
-dev tree; trust the prebuilt payload artifact otherwise). `_embed_byllm_seams`
-locates byLLM + its LLM-stack deps by `find_spec` (never importing them) for the
-host's runtime sys.path seams. `_ensure_na_artifact` is the legacy NA-artifact
-ensure (compile `bin/jac-na-tui` / `bin/libtui.so` from `*.na.jac`) still used by
-the renderer test harness; auto-build passes an explicit `JAC_BIN` when available.
-
-`_probe_tty` is the single TTY probe: `_first_tty_stream` once, returning
-`{"available": bool, "device": str}` (device = /dev path on POSIX, "" on Windows).
-`_require_tty` wraps it with the user-facing error + `None`-on-failure contract.
-"""
+"""Shared helpers for the `jac ai --tui` embed host launch + NA renderer. """
 
 def _debug_log(msg: str) -> None {
     # Append-only trace, enabled only when JAC_AI_TUI_DEBUG_LOG points at a file.
@@ -63,9 +33,6 @@ def _ev_line(ev: dict) -> str {
 
 
 def _frame_blob(frame: dict) -> str {
-    # Build the exact KEY:VALUE\n...\n--- text PROTOCOL.md specifies. The
-    # subprocess path writes this to the sidecar's stdin; the in-process path
-    # hands it to tui_apply_frame via ctypes. Byte-for-byte identical either way.
     parts = [];
     if frame.get("full") {
         parts.append("TYPE:full");
@@ -101,9 +68,6 @@ def _frame_blob(frame: dict) -> str {
 
 
 def _list_project_files(project: str) -> str {
-    # Newline-separated relative file paths under `project` for the file picker.
-    # Tracked files first (git ls-files), else a bounded filesystem walk. Capped
-    # so the value stays well within env-var size limits.
     import os;
     import subprocess;
 
@@ -170,10 +134,6 @@ def _first_tty_stream -> object {
 
 
 def _probe_tty -> dict {
-    # Returns {"available": bool, "device": str}. Calls _first_tty_stream once.
-    # POSIX: device is the /dev/pts path (or "" if ttyname() fails but the stream
-    # is still a tty). Windows: device is always ""; tty_open_dev("") attaches the
-    # parent console.
     import os;
     import sys;
 
@@ -193,7 +153,6 @@ def _probe_tty -> dict {
 
 
 def _require_tty -> str | None {
-    # Full TTY guard shared by both backends: probe + emit the user-facing error +
     # return None on failure. Returns the tty device path on success ('' on Windows).
     import from jaclang.cli.console { console }
     probe = _probe_tty();
@@ -219,22 +178,10 @@ def _restore_ui_env_var(key: str, prev: str | None) {
 
 
 def _configure_ui_env(r: any) -> dict {
-    # Set the JAC_AI_UI_* env contract shared by both `jac ai --tui` backends and
-    # gate agent bus capture with JAC_AI_UI_ACTIVE=1. The agent reads these on
-    # ui_configure(); the native sidecar/host reads PROJECT/MODEL/NCTX/FILES/
-    # MODEL_PRESETS at startup. Returns the computed project/files_env/presets_env
-    # (the in-process backend hands them to host.start) plus a zero-arg `restore`
-    # closure that unwinds every mutated key to its prior value, so each backend
-    # restores the env on every exit path without duplicating the save/restore
-    # dance. One copy here = the two backends cannot drift on the env contract.
     import os;
 
     project = os.path.normpath(str(r?.cwd or os.getcwd()));
     files_env = _list_project_files(project);
-    # Model presets feed the host's model picker. byLLM may be absent in THIS
-    # interpreter (the embed launcher can run on a fused `jac` that doesn't bundle
-    # byLLM -- the embedded interpreter resolves it via the runtime seams instead),
-    # so a missing import degrades to no presets rather than failing the launch.
     presets_env = "";
     try {
         import from jaclang.cli.ai_agent { _MODEL_PRESETS }
@@ -286,10 +233,6 @@ def _configure_ui_env(r: any) -> dict {
 
 
 def _dispatch_cmd(line: str, stop_evt: any, proc: any) {
-    # Map one command line (SEND:/STOP/RESET/QUIT/APPLY:) onto the agent UI API.
-    # Shared by both backends. `proc` is the subprocess handle for the subprocess
-    # backend (terminated on QUIT) and None for the in-process backend, where quit
-    # is signalled purely through stop_evt + the native tui_quit_requested poll.
     import from jaclang.cli.ai_agent { ui_send, ui_stop, ui_reset, ui_apply_settings }
 
     if line.startswith("SEND:") {
@@ -358,10 +301,6 @@ def _dispatch_cmd(line: str, stop_evt: any, proc: any) {
 
 
 def _resolve_jac_build_bin(pkg_root: any) -> str | None {
-    # Resolve an explicit jac binary for NA auto-build subprocesses. Only $JAC_BIN
-    # or the repo zig-out binary qualify here; repo .venv editable is left to
-    # build.sh / build.ps1. Never fall back to PATH -- stale globals are a common
-    # footgun in dev trees.
     import os;
     import sys;
 

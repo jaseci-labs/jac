@@ -38,9 +38,6 @@ impl run_tui_embed(req: AgentRequest) -> int {
         return 1;
     }
 
-    # An impl annex's __file__ resolves to its DECL module (run_tui_embed.jac in
-    # jaclang/cli/ai_tui/), not the impl/ file -- so ai_tui -> cli is two parents
-    # up (mirrors the retired backends' `parent.parent`).
     cli_root = Path(__file__).resolve().parent.parent;
 
     ensured = _ensure_embed_host(cli_root);
@@ -62,9 +59,6 @@ impl run_tui_embed(req: AgentRequest) -> int {
 
     r: any = req;
 
-    # JAC_AI_UI_* contract (PROJECT/FILES/MODEL/NCTX/session + ACTIVE=1 capture
-    # gate), single-sourced with the NA renderer. Mutates os.environ in place; the
-    # returned `restore` is moot here because execve replaces the process.
     _configure_ui_env(r);
     child = dict(os.environ);
     child["JAC_AI_TUI_EMBED_REAL"] = "1";

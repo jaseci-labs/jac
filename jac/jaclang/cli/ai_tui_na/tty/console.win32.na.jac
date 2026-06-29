@@ -1,8 +1,5 @@
 """Win32 console backend — kernel32 Console API, no termios.
 
-Implements the same function surface as libc_tty.linux.na.jac. Attaches to
-the parent console (parent-console v1 mode); no ConPTY (v2 follow-up).
-
 KEY TRANSLATION:
 ReadConsoleInputW delivers INPUT_RECORD structs; each keystroke is a discrete
 KEY_EVENT. Unlike the Linux byte stream, no coalescing is needed: arrow keys
@@ -35,19 +32,10 @@ CONSOLE_SCREEN_BUFFER_INFO layout (22 bytes):
   +8   wAttributes        WORD
   +10  srWindow           SMALL_RECT (Left, Top, Right, Bottom each WORD)
   +18  dwMaximumWindowSize COORD
-
-FFI buffers (INPUT_RECORD[], CONSOLE_SCREEN_BUFFER_INFO, DWORD*) MUST be
-calloc'd -- NA strings are NUL-terminated and concat of chr(0) truncates at
-the first zero byte, corrupting struct layouts. Never use chr()+concat for
-struct buffers.
-
-Type rule: Jac `int` for locals; `i32`/`i64` only in FFI decl slots.
 """
 
 import os;
 
-# PeekConsoleInputW: reserved for Phase 6 subprocess IPC multiplex.
-# WaitForSingleObject: used by tty_poll as the Windows poll(2) equivalent.
 import from "kernel32.dll" {
     def GetStdHandle(std: i32) -> i64;  def GetConsoleMode(
         handle: i64, mode: str
@@ -68,7 +56,6 @@ import from "msvcrt.dll" {
     ) -> int;  def memcpy(dst: int, src: str, n: int) -> int;
 }
 
-# ── constants ────────────────────────────────────────────────────────────────
 
 # GetStdHandle sentinel for failure (INVALID_HANDLE_VALUE as i64).
 glob INVALID_HANDLE: int = -1;
@@ -151,7 +138,6 @@ def u16le(buf: str, off: int) -> int {
 
 # Encode a BMP Unicode code point (non-NUL) to a UTF-8 str using chr().
 # All output bytes for non-NUL BMP points are >= 0x80 for multi-byte sequences,
-# so no NUL truncation can occur. U+0000 returns "" (NUL would truncate NA str).
 def wchar_to_utf8(c: int) -> str {
     if c <= 0 {
         return "";
@@ -179,7 +165,6 @@ def _read_console_mode(handle: int) -> int {
     return val;
 }
 
-# ── lifecycle ────────────────────────────────────────────────────────────────
 def tty_open -> int {
     return tty_open_dev("");
 }

@@ -33,15 +33,6 @@ env:
   JAC_NO_DEV_SOURCE: "1"
 
 jobs:
-  # Cheap path filter on a free GitHub-hosted runner, mirroring the gate in
-  # test-jaseci.yml. test-binary only exercises jac/tests/, so a PR touching
-  # none of jac core, this workflow, or setup-jac cannot affect it. `build`
-  # below is the single gate point: on PRs it (and its test-compiler /
-  # test-runtime dependents, which `needs: build`) skip unless `core` is true;
-  # on push/dispatch everything always runs, so main and feat/** keep full
-  # coverage regardless of the filter. If build/test-* are required
-  # branch-protection checks, configure protection to tolerate the skip (same
-  # model test-jaseci.yml already relies on).
   changes:
     runs-on: ubuntu-latest
     outputs:

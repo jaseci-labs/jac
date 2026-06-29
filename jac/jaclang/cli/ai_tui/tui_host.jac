@@ -1,21 +1,4 @@
-"""ctypes binding to the NA TUI renderer shared library (libtui.so).
-
-`ctypes.CDLL`s `ai_tui_na/bin/libtui.so` and wraps its eight `:pub` exports in a
-`TuiHost` object. na -> sv is a PULL QUEUE, not callbacks: there are no
-`CFUNCTYPE` trampolines and no keep-alive globals -- the caller drains commands
-via `next_command()` after each key.
-
-This is no longer a `jac ai --tui` runtime backend (the embed host is the sole
-backend). It survives as the in-process TEST/dev harness for the SAME NA renderer
-the embed host links -- `tests/cli/test_ai_tui_host.jac` drives it to exercise the
-TuiState/DiffEngine parser, key handling, and gated-render invariants without
-booting a full embedded interpreter.
-
-Threading contract a caller MUST honor, mirrored from the native side: `wait_key`
-is the ONLY lock-free call (pure poll(2), GIL released for the duration of the
-foreign call); `apply_frame` / `handle_key` / `next_command` / `quit_requested` /
-`render` all read or mutate the native TuiState and MUST run under a render lock.
-"""
+"""ctypes binding to the NA TUI renderer shared library (libtui.so)."""
 
 import from jaclang.cli.ai_tui.tui_shared { _ensure_na_artifact }
 
@@ -122,10 +105,6 @@ def _tui_lib_path(pkg_root: any) -> str {
 
 
 def _ensure_tui_lib(pkg_root: any) -> dict {
-    # libtui.so/.dylib is the renderer shared lib the test harness ctypes-loads;
-    # host.na.jac is its entry source, used to detect a dev tree. Delegates to the
-    # shared NA artifact ensure (build.sh --quick) so the harness compiles it on a
-    # dev tree exactly as the renderer artifacts were always built.
     import os;
     lib_path = _tui_lib_path(pkg_root);
     return _ensure_na_artifact(

@@ -1,24 +1,4 @@
 name: Run tests for TUI macOS
-
-# Native TUI port (jac/jaclang/cli/ai_tui_na/) — macOS coverage.
-#
-# Two jobs:
-#   macos-cross-compile  — Linux runner, builds libtui.dylib + jac-na-tui via
-#                          nacompile --target darwin, asserts Mach-O format.
-#                          Validates the compiler's Mach-O backend handles this
-#                          code's FFI shape (calloc'd struct buffers, ioctl(i64))
-#                          before a macOS runner is involved.
-#   macos-native         — macos-latest runner, native build + headless gates:
-#                          codesign, export-trie completeness, CDLL load, picker
-#                          logic, PTY termios harness.
-#
-# Toolchain: jaclang ships as the self-contained `jac` binary (Zig launcher +
-# bundled CPython), built once per job via the setup-jac composite action. This
-# replaces the retired `pip install -e ./jac` editable install.
-#
-# CI green is necessary but NOT sufficient to merge — human Mac sign-off on
-# Terminal.app/iTerm2/Warp gates the final merge.
-
 on:
   push:
     branches: [main]
@@ -35,11 +15,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ── Linux cross-compile gate ────────────────────────────────────────────────
-  # Build libtui.dylib and jac-na-tui targeting arm64-apple-darwin on a Linux
-  # runner. Cannot run the output, but `file` asserts it is Mach-O 64-bit and
-  # links libSystem — enough to validate the Mach-O codegen path for this
-  # module's FFI shape before any macOS runner is involved.
   test-macos-cross-compile:
     runs-on: blacksmith-4vcpu-ubuntu-2404
 
@@ -84,13 +59,6 @@ jobs:
           echo "$FILE_OUT" | grep -q "Mach-O 64-bit" \
             || { echo "FAIL: jac-na-tui is not Mach-O 64-bit"; exit 1; }
           echo "ok: jac-na-tui is Mach-O 64-bit"
-
-  # ── macOS native job ────────────────────────────────────────────────────────────
-  # Native arm64 macOS build, codesign, and three headless gates:
-  #   1. test_host.jac   — CDLL load + apply_frame/render (no TTY)
-  #   2. test_pickers    — picker logic (no TTY)
-  #   3. test_tty_darwin.jac — PTY termios harness (validates the Darwin flag
-  #                            table and raw-mode masks against live xnu)
   test-macos-native:
     runs-on: macos-latest
 

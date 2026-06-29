@@ -1,4 +1,4 @@
-"""Pure-Jac terminal helpers — direct libc FFI, zero custom .c files.
+"""Pure-Jac terminal helpers. 
 
 Requires a controlling terminal (/dev/tty). Uses:
   - scalar libc calls (open, read, write, dup2, fcntl, poll, …)
