@@ -74,10 +74,6 @@ impl GrammarRule.to_ebnf -> str {
     return f"{self.name} ::= {GrammarExtractPass.format_ebnf(None, self.body)}";
 }
 
-impl GrammarRule.to_lark -> str {
-    return f"{self.name}: {GrammarExtractPass.format_lark(None, self.body)}";
-}
-
 impl GrammarRule.__repr__ -> str {
     return f"GrammarRule({self.name!r}, {self.body!r})";
 }
@@ -141,10 +137,6 @@ impl GrammarExtractPass.format_ebnf(expr: GExpr) -> str {
         return expr.name;
     }
     return "???";
-}
-
-impl GrammarExtractPass.format_lark(expr: GExpr) -> str {
-    return GrammarExtractPass.format_ebnf(self, expr);
 }
 
 impl GrammarExtractPass.simplify_expr(expr: GExpr) -> GExpr {

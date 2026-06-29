@@ -363,19 +363,6 @@ impl TypeEvaluator._get_type_for_member_lookup(
     return object_type;
 }
 
-impl TypeEvaluator.get_type_of_bound_member(
-    object_type: types.ClassType, member_name: str
-) -> type_utils.ClassMember | None {
-    object_type_is_instantiable = object_type.is_instantiable();
-
-    if object_type_is_instantiable {
-        lookup_type = self._get_type_for_member_lookup(object_type);
-        return self._lookup_class_member(lookup_type, member_name);
-    } else {
-        return self._lookup_object_member(object_type, member_name);
-    }
-}
-
 impl TypeEvaluator.get_type_of_member(
     member: any, class_type: types.ClassType
 ) -> TypeBase {
@@ -1168,26 +1155,6 @@ impl TypeEvaluator._get_special_form_type(
         case "NoReturn":
             return types.NeverType();
 
-    }
-    return None;
-}
-
-impl TypeEvaluator.create_self_type(
-    symbol_type: types.TypeBase
-) -> types.TypeVarType | None {
-    if not self.prefetch {
-        return None;
-    }
-
-    if not isinstance(symbol_type, types.ClassType) {
-        return None;
-    }
-    if not self.prefetch.callable_class {
-        return None;
-    }
-
-    if symbol_type.shared == self.prefetch.callable_class.shared {
-        return type_utils.synthesize_self_type_var();
     }
     return None;
 }

@@ -123,10 +123,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     def builtin_name(name: str) -> ast3.Name;
     def _is_edge_ref_target(target: uni.UniNode) -> bool;
     def _add_preamble_once(key: str, nd: ast3.AST) -> None;
-    def needs_typing -> None;
-    def needs_enum -> None;
     def needs_enum_kind(kind: str) -> None;
-    def needs_future -> None;
     def _next_temp_name(prefix: str) -> str;
     def _py_name(nd: uni.AstSymbolNode) -> str;
     def _function_expr_from_def(
@@ -151,11 +148,6 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
         nd: Sequence[uni.CodeBlockStmt] | Sequence[uni.EnumBlockStmt] | None,
         doc: (uni.String | None) = None
     ) -> list[ast3.AST];
-
-    def sync_many(py_nodes: list[T], jac_node: uni.UniNode) -> list[T];
-    def list_to_attrib(
-        attribute_list: list[str], sync_node_list: Sequence[uni.UniNode]
-    ) -> ast3.AST;
 
     def _resolve_self_type(nd: uni.Name) -> (ast3.expr | None);
     def _is_in_type_annotation(nd: uni.UniNode) -> bool;

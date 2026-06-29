@@ -5,12 +5,13 @@ import from collections.abc { Sequence }
 import from threading { Event }
 import from typing { TypeAlias, TypeVar, cast }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.constant { Tokens as Tok, TOKEN_MAP }
 import from jaclang.jac0core.diagnostics { E5041, E5042 }
 import from jaclang.jac0core.passes.transform { Transform }
 import type from jaclang.jac0core.program { JacProgram }
 
-glob T = TypeVar('T', bound=uni.UniNode);
+glob T = TypeVar('T', bound=uni.UniNode),
+     _reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
 
 obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     has ir_in: uni.PythonModuleAst,
@@ -27,6 +28,16 @@ obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     def _get_source_segment(nd: py_ast.AST) -> (str | None);
     def _strip_string_continuations(seg: str) -> str;
     def nu(nd: T) -> T;
+    def name_node(
+        nd: py_ast.AST,
+        value: str,
+        name_tok: Tok = Tok.NAME,
+        col_end: int = -1,
+        col_start: int = -1,
+        end_line: int = -1,
+        is_kwesc: bool = False
+    ) -> uni.Name;
+
     def convert(nd: py_ast.AST) -> uni.UniNode;
     def transform(ir_in: uni.PythonModuleAst) -> uni.Module;
     def extract_with_entry(

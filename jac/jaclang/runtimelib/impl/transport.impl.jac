@@ -30,8 +30,6 @@ impl TransportResponse.fail(
     return response;
 }
 
-impl HTTPTransport.connect -> None { }
-
 impl HTTPTransport.send(data: any) -> None {
     if isinstance(data, TransportResponse) {
         status = data.meta.extra.get('http_status', 200 if data.ok else 500)
@@ -96,56 +94,5 @@ impl HTTPTransport.send(data: any) -> None {
 
     if self.on_message {
         self.on_message(data);
-    }
-}
-
-impl HTTPTransport.close -> None { }
-
-impl StreamTransport.connect -> None { }
-
-impl StreamTransport.send(data: any) -> None {
-    import asyncio;
-
-    try {
-        self.queue.put_nowait(data);
-    } except Exception as e {
-        if self.on_error {
-            self.on_error(e);
-        }
-    }
-}
-
-impl StreamTransport.close -> None {
-    try {
-        self.queue.put_nowait(None);
-    } except Exception as e {
-        if self.on_error {
-            self.on_error(e);
-        }
-    }
-    if self.on_close {
-        self.on_close();
-    }
-}
-
-impl WebSocketTransport.connect -> None { }
-
-impl WebSocketTransport.send(data: any) -> None {
-    try {
-        json_data = json.dumps(data);
-
-        if self.on_message {
-            self.on_message(data);
-        }
-    } except Exception as e {
-        if self.on_error {
-            self.on_error(e);
-        }
-    }
-}
-
-impl WebSocketTransport.close -> None {
-    if self.on_close {
-        self.on_close();
     }
 }

@@ -276,7 +276,7 @@ test "test_go_to_definition_md_path" {
             (20, 34, "jaclang/jac0core/unitree.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
             (23, 28, "jaclang/lsp/uris.jac:0:0-0:0"),
-            (24, 40, "jaclang/lsp/server.jac:115:4-115:18"),
+            (24, 40, "jaclang/lsp/server.jac:113:4-113:18"),
             (26, 31, "jaclang/lsp/types.jac:0:0-0:0"),
 
         ];

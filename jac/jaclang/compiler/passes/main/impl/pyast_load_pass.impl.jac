@@ -65,20 +65,7 @@ impl PyastBuildPass.proc_match_case(nd: py_ast.match_case) -> uni.MatchCase {
 impl PyastBuildPass.proc_keyword(nd: py_ast.keyword) -> uni.KWPair {
     arg = None;
     if nd.arg {
-        import from jaclang.jac0core.constant { TOKEN_MAP }
-        reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
-        arg = uni.Name(
-            orig_src=self.orig_src,
-            name=Tok.NAME,
-            value=nd.arg,
-            line=nd.lineno,
-            end_line=nd.end_lineno or nd.lineno,
-            col_start=nd.col_offset,
-            col_end=(nd.col_offset + len(nd.arg or '_')),
-            pos_start=0,
-            pos_end=0,
-            is_kwesc=(nd.arg in reserved_keywords)
-        );
+        arg = self.name_node(nd, nd.arg, is_kwesc=(nd.arg in _reserved_keywords));
     }
     value = self.convert(nd.value);
     if isinstance(value, uni.Expr) {
@@ -359,32 +346,11 @@ impl PyastBuildPass.proc_arg(nd: py_ast.arg) -> uni.ParamVar {
         for (_, v) in TOKEN_MAP.items()
         if (v not in ['float', 'int', 'str', 'bool', 'self'])
     ];
-    name = uni.Name(
-        orig_src=self.orig_src,
-        name=Tok.NAME,
-        value=nd.arg,
-        line=nd.lineno,
-        end_line=nd.end_lineno or nd.lineno,
-        col_start=nd.col_offset,
-        col_end=(nd.col_offset + len(nd.arg)),
-        pos_start=0,
-        pos_end=0,
-        is_kwesc=(nd.arg in reserved_keywords)
-    );
+    name = self.name_node(nd, nd.arg, is_kwesc=(nd.arg in reserved_keywords));
     self.in_type_annotation = True;
     ann_expr = self.convert(nd.annotation)
         if nd.annotation
-        else uni.Name(
-            orig_src=self.orig_src,
-            name=Tok.NAME,
-            value='Any',
-            line=nd.lineno,
-            end_line=nd.end_lineno or nd.lineno,
-            col_start=nd.col_offset,
-            col_end=(nd.col_offset + 3),
-            pos_start=0,
-            pos_end=0
-        );
+        else self.name_node(nd, 'Any');
     self.in_type_annotation = False;
     if not isinstance(ann_expr, uni.Expr) {
         raise self.ice('Expected annotation to be an expression');
@@ -397,30 +363,8 @@ impl PyastBuildPass.proc_arg(nd: py_ast.arg) -> uni.ParamVar {
 }
 
 impl PyastBuildPass.proc_alias(nd: py_ast.alias) -> uni.ExprAsItem {
-    name = uni.Name(
-        orig_src=self.orig_src,
-        name=Tok.NAME,
-        value=nd.name,
-        line=nd.lineno,
-        end_line=nd.end_lineno or nd.lineno,
-        col_start=nd.col_offset,
-        col_end=(nd.col_offset + len(nd.name)),
-        pos_start=0,
-        pos_end=0
-    );
-    asname = uni.Name(
-        orig_src=self.orig_src,
-        name=Tok.NAME,
-        value=nd.asname,
-        line=nd.lineno,
-        end_line=nd.end_lineno or nd.lineno,
-        col_start=nd.col_offset,
-        col_end=(nd.col_offset + len(nd.asname)),
-        pos_start=0,
-        pos_end=0
-    )
-        if nd.asname
-        else None;
+    name = self.name_node(nd, nd.name);
+    asname = self.name_node(nd, nd.asname) if nd.asname else None;
     return uni.ExprAsItem(
         expr=name, alias=asname, kid=[name, asname] if asname else [name]
     );
@@ -666,24 +610,9 @@ impl PyastBuildPass.proc_pass(nd: py_ast.Pass) -> uni.Semi {
 }
 
 impl PyastBuildPass.proc_nonlocal(nd: py_ast.Nonlocal) -> uni.NonLocalStmt {
-    import from jaclang.jac0core.constant { TOKEN_MAP }
-    reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
     names: list[uni.NameAtom] = [];
     for name in nd.names {
-        names.append(
-            uni.Name(
-                orig_src=self.orig_src,
-                name=Tok.NAME,
-                value=name,
-                line=nd.lineno,
-                end_line=nd.end_lineno or nd.lineno,
-                col_start=nd.col_offset,
-                col_end=(nd.col_offset + len(name)),
-                pos_start=0,
-                pos_end=0,
-                is_kwesc=(name in reserved_keywords)
-            )
-        );
+        names.append(self.name_node(nd, name, is_kwesc=(name in _reserved_keywords)));
     }
     return uni.NonLocalStmt(target=names, kid=names);
 }
@@ -726,18 +655,7 @@ impl PyastBuildPass.proc_name(nd: py_ast.Name) -> uni.Name {
         and not self.in_match_pattern
         and not self.in_fstring_expr
     );
-    ret = uni.Name(
-        orig_src=self.orig_src,
-        name=Tok.NAME,
-        value=nd.id,
-        line=nd.lineno,
-        end_line=nd.end_lineno or nd.lineno,
-        col_start=nd.col_offset,
-        col_end=(nd.col_offset + len(nd.id)),
-        pos_start=0,
-        pos_end=0,
-        is_kwesc=should_escape
-    );
+    ret = self.name_node(nd, nd.id, is_kwesc=should_escape);
     return ret;
 }
 
@@ -751,17 +669,7 @@ impl PyastBuildPass.proc_match_value(nd: py_ast.MatchValue) -> uni.MatchValue {
 }
 
 impl PyastBuildPass.proc_match_star(nd: py_ast.MatchStar) -> uni.MatchStar {
-    name = uni.Name(
-        orig_src=self.orig_src,
-        name=Tok.NAME,
-        value=nd.name or '_',
-        line=nd.lineno,
-        end_line=nd.end_lineno or nd.lineno,
-        col_start=nd.col_offset,
-        col_end=(nd.col_offset + len(nd.name or '_')),
-        pos_start=0,
-        pos_end=0
-    );
+    name = self.name_node(nd, nd.name or '_');
     return uni.MatchStar(name=name, is_list=True, kid=[name]);
 }
 
@@ -846,17 +754,7 @@ impl PyastBuildPass.proc_match_mapping(nd: py_ast.MatchMapping) -> uni.MatchMapp
         values.append(kv_pair);
     }
     if nd.rest {
-        name = uni.Name(
-            orig_src=self.orig_src,
-            name=Tok.NAME,
-            value=nd.rest,
-            line=nd.lineno,
-            end_line=nd.end_lineno or nd.lineno,
-            col_start=nd.col_offset,
-            col_end=(nd.col_offset + len(nd.rest)),
-            pos_start=0,
-            pos_end=0
-        );
+        name = self.name_node(nd, nd.rest);
         values.append(uni.MatchStar(name=name, is_list=False, kid=[name]));
     }
     return uni.MatchMapping(values=values, kid=values);
@@ -943,17 +841,7 @@ impl PyastBuildPass.proc_match_class(nd: py_ast.MatchClass) -> uni.MatchArch {
 
 impl PyastBuildPass.proc_match_as(nd: py_ast.MatchAs) -> (uni.MatchAs | uni.MatchWild) {
     pattern = self.convert(nd.pattern) if nd.pattern else None;
-    name = uni.Name(
-        orig_src=self.orig_src,
-        name=Tok.NAME,
-        value=nd.name or '_',
-        line=nd.lineno,
-        end_line=nd.end_lineno or nd.lineno,
-        col_start=nd.col_offset,
-        col_end=(nd.col_offset + len(nd.name)) if nd.name else (nd.col_offset + 1),
-        pos_start=0,
-        pos_end=0
-    );
+    name = self.name_node(nd, nd.name or '_');
     if (
         (name.value == '_')
         or ((pattern is not None) and not isinstance(pattern, uni.MatchPattern))
@@ -1108,33 +996,11 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> uni.MultiString {
 }
 
 impl PyastBuildPass.proc_import_from(nd: py_ast.ImportFrom) -> uni.Import {
-    lang = uni.Name(
-        orig_src=self.orig_src,
-        name=Tok.NAME,
-        value='py',
-        line=nd.lineno,
-        end_line=nd.end_lineno or nd.lineno,
-        col_start=nd.col_offset,
-        col_end=0,
-        pos_start=0,
-        pos_end=0
-    );
+    lang = self.name_node(nd, 'py', col_end=0);
     modpaths: list[uni.Name] = [];
     if nd.module {
         for i in nd.module.split('.') {
-            modpaths.append(
-                uni.Name(
-                    orig_src=self.orig_src,
-                    name=Tok.NAME,
-                    value=i,
-                    line=nd.lineno,
-                    end_line=nd.end_lineno or nd.lineno,
-                    col_start=0,
-                    col_end=0,
-                    pos_start=0,
-                    pos_end=0
-                )
-            );
+            modpaths.append(self.name_node(nd, i, col_start=0, col_end=0));
         }
     }
     moddots = [self.operator(Tok.DOT, '.') for _ in range(nd.level)];
@@ -1244,19 +1110,7 @@ impl PyastBuildPass.proc_if_exp(nd: py_ast.IfExp) -> uni.IfElseExpr {
 impl PyastBuildPass.proc_global(nd: py_ast.Global) -> uni.GlobalStmt {
     names: list[uni.NameAtom] = [];
     for id in nd.names {
-        names.append(
-            uni.Name(
-                orig_src=self.orig_src,
-                name=Tok.NAME,
-                value=id,
-                line=nd.lineno,
-                end_line=nd.end_lineno or nd.lineno,
-                col_start=nd.col_offset,
-                col_end=(nd.col_offset + len(id)),
-                pos_start=0,
-                pos_end=0
-            )
-        );
+        names.append(self.name_node(nd, id));
     }
     return uni.GlobalStmt(target=names, kid=names);
 }
@@ -1346,42 +1200,10 @@ impl PyastBuildPass.proc_except_handler(nd: py_ast.ExceptHandler) -> uni.Except 
     type = self.convert(nd.type) if nd.type else None;
     name: (uni.Name | None) = None;
     if (not type and not nd.name) {
-        type = uni.Name(
-            orig_src=self.orig_src,
-            name=Tok.NAME,
-            value='Exception',
-            line=nd.lineno,
-            end_line=nd.end_lineno or nd.lineno,
-            col_start=nd.col_offset,
-            col_end=(nd.col_offset + 9),
-            pos_start=0,
-            pos_end=0
-        );
-        name = uni.Name(
-            orig_src=self.orig_src,
-            name=Tok.NAME,
-            value='e',
-            line=nd.lineno,
-            end_line=nd.end_lineno or nd.lineno,
-            col_start=nd.col_offset,
-            col_end=(nd.col_offset + 1),
-            pos_start=0,
-            pos_end=0
-        );
+        type = self.name_node(nd, 'Exception');
+        name = self.name_node(nd, 'e');
     } else {
-        name = uni.Name(
-            orig_src=self.orig_src,
-            name=Tok.NAME,
-            value=nd.name,
-            line=nd.lineno,
-            end_line=nd.end_lineno or nd.lineno,
-            col_start=nd.col_offset,
-            col_end=(nd.col_offset + len(nd.name)),
-            pos_start=0,
-            pos_end=0
-        )
-            if nd.name
-            else None;
+        name = self.name_node(nd, nd.name) if nd.name else None;
     }
     body = [self.convert(i) for i in nd.body];
     valid = [
@@ -1674,29 +1496,14 @@ impl PyastBuildPass.proc_attribute(nd: py_ast.Attribute) -> uni.AtomTrailer {
         and isinstance(value.target, uni.Name)
         and (value.target.value == 'super')
     ) {
-        tok = uni.Name(
-            orig_src=self.orig_src,
-            name=Tok.KW_SUPER,
-            value='super',
-            line=nd.lineno,
-            end_line=nd.end_lineno or nd.lineno,
-            col_start=nd.col_offset,
-            col_end=(nd.col_offset + len('super')),
-            pos_start=0,
-            pos_end=0
-        );
+        tok = self.name_node(nd, 'super', name_tok=Tok.KW_SUPER);
         value = uni.SpecialVarRef(var=tok);
     }
-    attribute = uni.Name(
-        orig_src=self.orig_src,
-        name=Tok.KW_INIT if (nd.attr == '__init__') else Tok.NAME,
-        value='init' if (nd.attr == '__init__') else nd.attr,
-        line=nd.lineno,
-        end_line=nd.end_lineno or nd.lineno,
-        col_start=nd.col_offset,
+    attribute = self.name_node(
+        nd,
+        'init' if (nd.attr == '__init__') else nd.attr,
+        name_tok=Tok.KW_INIT if (nd.attr == '__init__') else Tok.NAME,
         col_end=(nd.col_offset + len(nd.attr)),
-        pos_start=0,
-        pos_end=0,
         is_kwesc=(nd.attr == 'init')
     );
     if isinstance(value, uni.Expr) {
@@ -2071,17 +1878,7 @@ impl PyastBuildPass.proc_return(nd: py_ast.Return) -> (uni.ReturnStmt | None) {
 }
 
 impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.Enum) {
-    name = uni.Name(
-        orig_src=self.orig_src,
-        name=Tok.NAME,
-        value=nd.name,
-        line=nd.lineno,
-        end_line=nd.end_lineno or nd.lineno,
-        col_start=nd.col_offset,
-        col_end=(nd.col_offset + len(nd.name)),
-        pos_start=0,
-        pos_end=0
-    );
+    name = self.name_node(nd, nd.name);
     arch_type = uni.Token(
         orig_src=self.orig_src,
         name=Tok.KW_CLASS,
@@ -2100,17 +1897,7 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
             and isinstance(body_stmt.name_ref, uni.Name)
             and (body_stmt.name_ref.value == '__init__')
         ) {
-            tok = uni.Name(
-                orig_src=self.orig_src,
-                name=Tok.KW_INIT,
-                value='init',
-                line=nd.lineno,
-                end_line=nd.end_lineno or nd.lineno,
-                col_start=nd.col_offset,
-                col_end=(nd.col_offset + len('init')),
-                pos_start=0,
-                pos_end=0
-            );
+            tok = self.name_node(nd, 'init', name_tok=Tok.KW_INIT);
             body_stmt.name_ref = uni.SpecialVarRef(var=tok);
         }
 
@@ -2197,20 +1984,7 @@ impl PyastBuildPass.proc_async_function_def(
 impl PyastBuildPass.proc_function_def(
     nd: (py_ast.FunctionDef | py_ast.AsyncFunctionDef)
 ) -> uni.Ability {
-    import from jaclang.jac0core.constant { TOKEN_MAP }
-    reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
-    name = uni.Name(
-        orig_src=self.orig_src,
-        name=Tok.NAME,
-        value=nd.name,
-        line=nd.lineno,
-        end_line=nd.end_lineno or nd.lineno,
-        col_start=nd.col_offset,
-        col_end=(nd.col_offset + len(nd.name)),
-        pos_start=0,
-        pos_end=0,
-        is_kwesc=(nd.name in reserved_keywords)
-    );
+    name = self.name_node(nd, nd.name, is_kwesc=(nd.name in _reserved_keywords));
     body = [self.convert(i) for i in nd.body];
     valid = [
         i
@@ -2249,17 +2023,8 @@ impl PyastBuildPass.proc_function_def(
     self.in_type_annotation = True;
     ret_sig = self.convert(nd.returns) if nd.returns else None;
     if ret_sig is None {
-        ret_sig = uni.Name(
-            orig_src=self.orig_src,
-            name=Tok.NAME,
-            value='object',
-            line=nd.lineno,
-            end_line=nd.lineno,
-            col_start=nd.col_offset,
-            col_end=nd.col_offset,
-            pos_start=0,
-            pos_end=0,
-            is_kwesc=False,
+        ret_sig = self.name_node(
+            nd, 'object', col_end=nd.col_offset, end_line=nd.lineno
         );
     }
     self.in_type_annotation = False;
@@ -2403,6 +2168,29 @@ impl PyastBuildPass.convert(nd: py_ast.AST) -> uni.UniNode {
 impl PyastBuildPass.nu(nd: T) -> T {
     self.cur_node = nd;
     return nd;
+}
+
+impl PyastBuildPass.name_node(
+    nd: py_ast.AST,
+    value: str,
+    name_tok: Tok = Tok.NAME,
+    col_end: int = -1,
+    col_start: int = -1,
+    end_line: int = -1,
+    is_kwesc: bool = False
+) -> uni.Name {
+    return uni.Name(
+        orig_src=self.orig_src,
+        name=name_tok,
+        value=value,
+        line=nd.lineno,
+        end_line=(nd.end_lineno or nd.lineno) if (end_line == -1) else end_line,
+        col_start=nd.col_offset if (col_start == -1) else col_start,
+        col_end=(nd.col_offset + len(value)) if (col_end == -1) else col_end,
+        pos_start=0,
+        pos_end=0,
+        is_kwesc=is_kwesc
+    );
 }
 
 impl PyastBuildPass.postinit -> None {

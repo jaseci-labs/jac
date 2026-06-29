@@ -386,18 +386,6 @@ impl UniScopeNode._init_scope(
     self.names_in_scope_overload: dict[(str, list[Symbol])] = {};
 }
 
-
-impl UniScopeNode.get_type -> SymbolType {
-    if isinstance(self, AstSymbolNode) {
-        return self.sym_category;
-    }
-    return SymbolType.VAR;
-}
-
-impl UniScopeNode.get_parent -> (UniScopeNode | None) {
-    return self.parent_scope;
-}
-
 impl UniScopeNode.lookup(
     name: str, deep: bool = True, incl_inner_scope: bool = False
 ) -> (Symbol | None) {
@@ -803,10 +791,6 @@ impl NameAtom.sym_category.getter -> SymbolType {
     return self._sym_category;
 }
 
-impl NameAtom.binds_new_var.getter -> bool {
-    return (self.sym is not None) and (self.sym.decl is self);
-}
-
 impl NameAtom.create_symbol(
     access: SymbolAccess,
     parent_tab: (UniScopeNode | None) = None,
@@ -1056,17 +1040,6 @@ impl Import.postinit -> None {
     ContextAwareNode.postinit(self);
 }
 
-
-impl Import.is_py.getter -> bool {
-    if (self.hint and (self.hint.tag.value == 'py')) {
-        return True;
-    }
-    if not self.hint {
-        return not self.__jac_detected;
-    }
-    return False;
-}
-
 impl Import.is_jac.getter -> bool {
     if (self.hint and (self.hint.tag.value == 'jac')) {
         return True;
@@ -1137,8 +1110,33 @@ impl ModulePath.base_module_name.getter -> str {
 }
 
 impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
+    bundled = self.native_bundled_path();
+    if bundled is not None {
+        return bundled;
+    }
     target = self.dot_path_str + (f".{target_item}" if target_item else '');
     return resolve_relative_path(target, self.loc.mod_path);
+}
+
+impl ModulePath.native_bundled_path -> (str | None) {
+    import os;
+    import from jaclang.jac0core.codeinfo {
+        is_bundled_native_module,
+        resolve_native_module
+    }
+    mod_path = self.loc.mod_path if self.loc else None;
+    is_native = self.in_native_context()
+    or (mod_path is not None and mod_path.endswith('.na.jac'));
+    if not is_native {
+        return None;
+    }
+    base = self.dot_path_str;
+    if not is_bundled_native_module(base) {
+        return None;
+    }
+    base_dir = os.path.dirname(mod_path) if mod_path else os.getcwd();
+    (_src, full_path) = resolve_native_module(base, base_dir);
+    return full_path;
 }
 
 impl ModulePath.resolve_relative_path_list -> list[str] {
@@ -1147,7 +1145,7 @@ impl ModulePath.resolve_relative_path_list -> list[str] {
         return [];
     }
 
-    full_path = resolve_relative_path(self.dot_path_str, self.loc.mod_path);
+    full_path = self.resolve_relative_path();
 
     paths: list[str] = [''] * len(parts);
     paths[-1] = full_path;
@@ -1448,23 +1446,6 @@ impl Ability.method_owner.getter -> Archetype | Enum | None {
 
 impl Ability.is_genai_ability.getter -> bool {
     return isinstance(self.body, Expr);
-}
-
-impl Ability.get_pos_argc_range -> tuple[(int, int)] {
-    (mn, mx) = (0, 0);
-    if isinstance(self.signature, FuncSignature) {
-        for param in self.signature.params {
-            if param.unpack {
-                if (param.unpack == Tok.STAR_MUL) {
-                    mx = -1;
-                }
-                break;
-            }
-            mn += 1;
-            mx += 1;
-        }
-    }
-    return (mn, mx);
 }
 
 impl Ability.py_resolve_name -> str {
@@ -2545,23 +2526,6 @@ impl CommentToken.init(
     );
     self.kid = [x.set_parent(self) for x in kid];
     self.loc = CodeLocInfo(*self.resolve_tok_range());
-}
-
-impl CommentToken.left_node.getter -> (UniNode | None) {
-    if (self.parent and ((idx := self.parent.kid.index(self)) > 0)) {
-        return self.parent.kid[(idx - 1)];
-    }
-    return None;
-}
-
-impl CommentToken.right_node.getter -> (UniNode | None) {
-    if (
-        self.parent
-        and ((idx := self.parent.kid.index(self)) < (len(self.parent.kid) - 1))
-    ) {
-        return self.parent.kid[(idx + 1)];
-    }
-    return None;
 }
 
 impl Source.init(source: str, mod_path: str) -> None {

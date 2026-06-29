@@ -3,9 +3,9 @@
 """
 
 import logging;
-import from jac_scale.events.publisher { publish }
-import from jac_scale.events.subscriber { subscribe }
-import from jac_scale.events.broker { Event }
+import from jaclang.scale.events.publisher { publish }
+import from jaclang.scale.events.subscriber { subscribe }
+import from jaclang.scale.events.broker { Event }
 
 glob _logger = logging.getLogger("events-example");
 

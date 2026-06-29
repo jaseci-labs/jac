@@ -69,7 +69,7 @@ Setup
          -d '{"col_name": "items", "filter": {"price": {"$gte": 1.0}}}'
 """
 
-import from jac_scale.lib { kvstore }
+import from jaclang.scale.lib { kvstore }
 
 # Open a Firestore-backed kvstore.
 # The db_name is used as a namespace prefix on collection names

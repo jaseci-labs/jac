@@ -18,12 +18,6 @@ def register_test_client(module_name: str, client: any) {
     _test_clients[module_name] = client;
 }
 
-def unregister_test_client(module_name: str) {
-    if module_name in _test_clients {
-        del _test_clients[module_name];
-    }
-}
-
 def clear_test_clients {
     _test_clients.clear();
 }

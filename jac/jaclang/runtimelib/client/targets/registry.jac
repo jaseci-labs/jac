@@ -71,28 +71,17 @@ class ClientTarget {
 }
 
 obj TargetRegistry {
-    has _targets: dict[str, ClientTarget] = {},
-        _default_target: Optional[str] = None;
+    has _targets: dict[str, ClientTarget] = {};
 
     def register(target: ClientTarget) -> None;
     def get(name: str) -> Optional[ClientTarget];
-    def get_default -> Optional[ClientTarget];
     def get_all -> list[ClientTarget];
-    def `has(name: str) -> bool;
-    def set_default(name: str) -> None;
-    def clear -> None;
 }
 
 obj TargetFactory {
-    has _web_target: Optional[ClientTarget] = None,
-        _cached_targets: dict[str, ClientTarget] = {};
-
     def create(name: str, project_dir: Path) -> ClientTarget;
     def create_by_type(target_type: TargetType, project_dir: Path) -> ClientTarget;
-    def get_default(project_dir: Path) -> ClientTarget;
-    def get_available_targets -> list[TargetType];
     def get_available_target_names -> list[str];
-    def clear_cache -> None;
 }
 
 glob _registry: TargetRegistry | None = None,

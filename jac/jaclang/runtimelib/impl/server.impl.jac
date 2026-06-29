@@ -306,6 +306,59 @@ impl ExecutionManager._finalize_call_response(
     return envelope;
 }
 
+async def _run_function_with_occ(
+    mgr: ExecutionManager, args: dict[(str, Any)], username: str, run_attempt: Callable
+) -> dict[str, JsonValue] | Generator | AsyncGenerator {
+    root_id = await mgr.user_manager.aget_root_id(username);
+    if not root_id {
+        return {'error': 'User not found'};
+    }
+    (ctx, req_token) = await _begin_request_context(root_id);
+    try {
+        _deserialize_wire_args(args);
+        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
+        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
+        attempt = 0;
+        while attempt < max_attempts {
+            attempt += 1;
+            call_token = ctx.call_state.set(CallState());
+            call_state = ctx.call_state.get();
+            try {
+                return await run_attempt(call_state);
+            } except WriteConflict as wc {
+                ctx.mem.abort();
+                ctx.pending_effects.clear();
+                ctx.read_versions.clear();
+
+                ctx.diagnostics.clear();
+                if attempt >= max_attempts {
+                    return {
+                        'error': wc.message(),
+                        'error_code': 'write_conflict',
+                        'http_status': 409
+                    };
+                }
+                if occ_backoff_ms > 0 {
+                    await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
+                }
+                await ctx.aset_user_root(root_id);
+            } except Exception as e {
+                ctx.mem.abort();
+                return {'error': str(e)};
+            } finally {
+                ctx.call_state.reset(call_token);
+            }
+        }
+        return {
+            'error': 'write_conflict: retries exhausted',
+            'error_code': 'write_conflict',
+            'http_status': 409
+        };
+    } finally {
+        Jac.reset_request_context(req_token);
+    }
+}
+
 impl ExecutionManager.execute_function(
     func: Callable[(..., Any)], args: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
@@ -320,115 +373,25 @@ impl ExecutionManager.execute_function(
 impl ExecutionManager.execute_function_sync(
     func: Callable[(..., Any)], args: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
-    root_id = await self.user_manager.aget_root_id(username);
-    if not root_id {
-        return {'error': 'User not found'};
-    }
-    (ctx, req_token) = await _begin_request_context(root_id);
+    async def run_attempt(call_state: CallState) {
+        result = await asyncio.to_thread(func, **args);
 
-    try {
-        _deserialize_wire_args(args);
-        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
-        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
-        attempt = 0;
-        while attempt < max_attempts {
-            attempt += 1;
-            call_token = ctx.call_state.set(CallState());
-            call_state = ctx.call_state.get();
-            try {
-                result = await asyncio.to_thread(func, **args);
-
-                if iscoroutine(result) {
-                    result = await result;
-                }
-                return await self._finalize_call_response(call_state, result);
-            } except WriteConflict as wc {
-                ctx.mem.abort();
-                ctx.pending_effects.clear();
-                ctx.read_versions.clear();
-
-                ctx.diagnostics.clear();
-                if attempt >= max_attempts {
-                    return {
-                        'error': wc.message(),
-                        'error_code': 'write_conflict',
-                        'http_status': 409
-                    };
-                }
-                if occ_backoff_ms > 0 {
-                    await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
-                }
-                await ctx.aset_user_root(root_id);
-            } except Exception as e {
-                ctx.mem.abort();
-                return {'error': str(e)};
-            } finally {
-                ctx.call_state.reset(call_token);
-            }
+        if iscoroutine(result) {
+            result = await result;
         }
-        return {
-            'error': 'write_conflict: retries exhausted',
-            'error_code': 'write_conflict',
-            'http_status': 409
-        };
-    } finally {
-        Jac.reset_request_context(req_token);
+        return await self._finalize_call_response(call_state, result);
     }
+    return await _run_function_with_occ(self, args, username, run_attempt);
 }
 
 impl ExecutionManager.execute_function_async(
     func: Callable[(..., Any)], args: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
-    root_id = await self.user_manager.aget_root_id(username);
-    if not root_id {
-        return {'error': 'User not found'};
+    async def run_attempt(call_state: CallState) {
+        result = await func(**args);
+        return await self._finalize_call_response(call_state, result);
     }
-    (ctx, req_token) = await _begin_request_context(root_id);
-
-    try {
-        _deserialize_wire_args(args);
-        (occ_mode, occ_max, occ_backoff_ms) = _occ_policy();
-        max_attempts = 1 if occ_mode == "fail" else max(1, occ_max);
-        attempt = 0;
-        while attempt < max_attempts {
-            attempt += 1;
-            call_token = ctx.call_state.set(CallState());
-            call_state = ctx.call_state.get();
-            try {
-                result = await func(**args);
-                return await self._finalize_call_response(call_state, result);
-            } except WriteConflict as wc {
-                ctx.mem.abort();
-                ctx.pending_effects.clear();
-                ctx.read_versions.clear();
-
-                ctx.diagnostics.clear();
-                if attempt >= max_attempts {
-                    return {
-                        'error': wc.message(),
-                        'error_code': 'write_conflict',
-                        'http_status': 409
-                    };
-                }
-                if occ_backoff_ms > 0 {
-                    await asyncio.sleep(occ_backoff_ms * attempt / 1000.0);
-                }
-                await ctx.aset_user_root(root_id);
-            } except Exception as e {
-                ctx.mem.abort();
-                return {'error': str(e)};
-            } finally {
-                ctx.call_state.reset(call_token);
-            }
-        }
-        return {
-            'error': 'write_conflict: retries exhausted',
-            'error_code': 'write_conflict',
-            'http_status': 409
-        };
-    } finally {
-        Jac.reset_request_context(req_token);
-    }
+    return await _run_function_with_occ(self, args, username, run_attempt);
 }
 
 impl ExecutionManager.spawn_walker(
@@ -1155,25 +1118,6 @@ impl ModuleIntrospector.is_auth_required_for_walker(walker_name: str) -> bool {
     return self._walker_access.get(walker_name, True);
 }
 
-impl ModuleIntrospector._collect_client_globals -> dict[str, any] {
-    if not self._module {
-        return {};
-    }
-    result: dict[(str, Any)] = {};
-    names = self._client_manifest.get('globals', []);
-    values_map = self._client_manifest.get('globals_values', {});
-    for name in names {
-        if (name in values_map) {
-            result[name] = values_map[name];
-        } elif hasattr(self._module, name) {
-            result[name] = getattr(self._module, name);
-        } else {
-            result[name] = None;
-        }
-    }
-    return result;
-}
-
 impl ResponseBuilder.send_json(
     handler: BaseHTTPRequestHandler, status: StatusCode, data: dict[(str, JsonValue)]
 ) -> None {
@@ -1560,12 +1504,8 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             return json.loads(body);
         }
 
-        def _send_response(
-            self: JacRequestHandler, response: (Response | TransportResponse)
-        ) {
-            if isinstance(response, Response) {
-                Jac.send_json(self, response.status, response.body);
-            } elif isinstance(response, TransportResponse)
+        def _send_response(self: JacRequestHandler, response: TransportResponse) {
+            if isinstance(response, TransportResponse)
             and (
                 isgenerator(response.data) or isinstance(response.data, AsyncGenerator)
             ) {
@@ -2136,28 +2076,6 @@ impl JacAPIServer.get_functions -> dict[str, Callable[(..., Any)]] {
 
 impl JacAPIServer.get_walkers -> dict[str, type[WalkerArchetype]] {
     return self.introspector.get_walkers();
-}
-
-impl JacAPIServer.introspect_callable(func: Callable[(..., Any)]) -> dict[str, any] {
-    return self.introspector.introspect_callable(func);
-}
-
-impl JacAPIServer.introspect_walker(
-    walker_cls: type[WalkerArchetype]
-) -> dict[str, any] {
-    return self.introspector.introspect_walker(walker_cls);
-}
-
-impl JacAPIServer.render_client_page(
-    function_name: str, args: dict[(str, Any)], username: str
-) -> dict[str, any] {
-    return self.introspector.render_page(function_name, args, username);
-}
-
-impl JacAPIServer.get_client_bundle_code -> str {
-    self.introspector.load();
-    self.introspector.ensure_bundle();
-    return self.introspector._bundle.code;
 }
 
 impl JacAPIServer.print_endpoint_docs -> None {

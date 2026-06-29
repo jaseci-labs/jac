@@ -216,12 +216,9 @@ impl JacAPIServerPodEnv.register_podenv_endpoints -> None {
         # Stricter gate: pod env is the most sensitive Ops surface. Same
         # admin requirement as the rest plus allowlist redaction; if a
         # finer role system lands, tighten here first.
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get("http_status", 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         try {
             data = await asyncio.to_thread(_collect_podenv);

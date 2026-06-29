@@ -60,6 +60,7 @@ obj JacAutoLintPass(UniPass) {
     def can_combine_glob(glob1: uni.GlobalVars, glob2: uni.GlobalVars) -> bool;
     def combine_consecutive_has(body: list) -> list;
     def combine_consecutive_glob(body: list) -> list;
+    def _combine_has_in_node(nd: uni.Archetype | uni.Enum | uni.Ability) -> None;
     def enter_archetype(nd: uni.Archetype) -> None;
     def enter_enum(nd: uni.Enum) -> None;
     def enter_impl_def(nd: uni.ImplDef) -> None;
@@ -73,6 +74,10 @@ obj JacAutoLintPass(UniPass) {
     def exit_func_call(nd: uni.FuncCall) -> None;
     def _convert_hasattr_to_null_ok(nd: uni.FuncCall) -> (uni.AtomTrailer | None);
     def _convert_getattr_to_null_ok(nd: uni.FuncCall) -> (uni.AtomTrailer | None);
+    def _funccall_to_null_safe(
+        fc: uni.FuncCall, require_valid_identifier: bool
+    ) -> (uni.AtomTrailer | None);
+
     def _replace_child_in_parent(
         parent: uni.UniNode, old: uni.UniNode, new: uni.Expr
     ) -> None;
@@ -91,7 +96,6 @@ obj JacAutoLintPass(UniPass) {
 
     def _collect_atom_trailers(uni_node: uni.UniNode, results: list) -> None;
     def _expr_to_key(expr: uni.Expr) -> (str | None);
-    def _get_trailer_key(trailer: uni.AtomTrailer) -> (str | None);
     def _exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> bool;
     def _convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> bool;
     def exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None;
@@ -110,7 +114,7 @@ obj JacAutoLintPass(UniPass) {
 
     def _extract_string_literal_value(expr: uni.Expr) -> (str | None);
     def _check_no_print(nd: uni.FuncCall) -> None;
-    def _check_unnecessary_pass(body: list, `node: uni.UniNode) -> None;
+    def _check_unnecessary_pass(body: list) -> None;
     def _check_unnecessary_else_after_return(nd: uni.IfStmt) -> None;
     def _check_nested_if_to_elif(nd: uni.ElseStmt) -> None;
     def _check_return_bool_simplification(nd: uni.IfStmt) -> None;
@@ -134,9 +138,7 @@ obj JacAutoLintPass(UniPass) {
     def exit_func_signature(nd: uni.FuncSignature) -> None;
     def enter_param_var(nd: uni.ParamVar) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;
-    def exit_ability(ability_node: uni.Ability) -> None;
     def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
-    def _body_to_key(body: list) -> str;
     def _is_usestate_assignment(
         stmt: uni.UniNode
     ) -> (tuple[str, str, uni.Expr | None] | None);

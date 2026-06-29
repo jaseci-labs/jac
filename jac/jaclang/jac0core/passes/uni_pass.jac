@@ -43,16 +43,6 @@ obj UniPass(ModuleCodegenPass) {
         return None;
     }
 
-    static def has_parent_of_node(nd: uni.UniNode, parent: uni.UniNode) -> bool {
-        while nd.parent {
-            if (nd.parent == parent) {
-                return True;
-            }
-            nd = nd.parent;
-        }
-        return False;
-    }
-
     def recalculate_parents(nd: uni.UniNode) -> None;
     def transform(ir_in: uni.Module) -> uni.Module;
     def traverse(nd: uni.UniNode) -> uni.UniNode;

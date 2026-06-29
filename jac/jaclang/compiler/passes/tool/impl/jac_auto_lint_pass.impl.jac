@@ -39,7 +39,7 @@ impl JacAutoLintPass.exit_ability(ability_node: uni.Ability) -> None {
         }
     }
     if ability_node.body is not None and isinstance(ability_node.body, list) {
-        self._check_unnecessary_pass(list(ability_node.body), ability_node);
+        self._check_unnecessary_pass(list(ability_node.body));
     }
     name = ability_node.name_spec.sym_name if ability_node.name_spec else "<anonymous>";
     self._check_unnecessary_none_return(
@@ -137,24 +137,7 @@ impl JacAutoLintPass.enter_ability(ability_node: uni.Ability) -> None {
     if not self._is_suppressed(W3038) {
         self._convert_usestate_vars(ability_node);
     }
-    if ability_node.body is not None and isinstance(ability_node.body, list) {
-        old_body = list(ability_node.body);
-        new_body = self.combine_consecutive_has(old_body);
-        if len(new_body) != len(old_body)
-        and self.emit(W3002, node_override=ability_node) {
-            ability_node.body = new_body;
-            self.recalculate_parents(ability_node);
-            new_body_set = set(id(s) for s in new_body);
-            new_kid: list[uni.UniNode] = [];
-            for kid in ability_node.kid {
-                if not isinstance(kid, uni.ArchHas) or id(kid) in new_body_set {
-                    new_kid.append(kid);
-                }
-            }
-            ability_node.kid = new_kid;
-            ability_node._invalidate_sub_node_tab();
-        }
-    }
+    self._combine_has_in_node(ability_node);
     if not ability_node.is_method {
         return;
     }
@@ -227,24 +210,7 @@ impl JacAutoLintPass.enter_enum(nd: uni.Enum) -> None {
         return;
     }
     enum_node = nd;
-    if enum_node.body is not None and isinstance(enum_node.body, list) {
-        old_body = list(enum_node.body);
-        new_body = self.combine_consecutive_has(old_body);
-        if len(new_body) != len(old_body)
-        and self.emit(W3002, node_override=enum_node) {
-            enum_node.body = new_body;
-            self.recalculate_parents(enum_node);
-            new_body_set = set(id(s) for s in new_body);
-            new_kid: list[uni.UniNode] = [];
-            for kid in enum_node.kid {
-                if not isinstance(kid, uni.ArchHas) or id(kid) in new_body_set {
-                    new_kid.append(kid);
-                }
-            }
-            enum_node.kid = new_kid;
-            enum_node._invalidate_sub_node_tab();
-        }
-    }
+    self._combine_has_in_node(enum_node);
 }
 
 impl JacAutoLintPass.enter_archetype(nd: uni.Archetype) -> None {
@@ -258,23 +224,7 @@ impl JacAutoLintPass.enter_archetype(nd: uni.Archetype) -> None {
     and isinstance(arch.body, list) {
         self._convert_properties(arch);
     }
-    if arch.body is not None and isinstance(arch.body, list) {
-        old_body = list(arch.body);
-        new_body = self.combine_consecutive_has(old_body);
-        if len(new_body) != len(old_body) and self.emit(W3002, node_override=arch) {
-            arch.body = new_body;
-            self.recalculate_parents(arch);
-            new_body_set = set(id(s) for s in new_body);
-            new_kid: list[uni.UniNode] = [];
-            for kid in arch.kid {
-                if not isinstance(kid, uni.ArchHas) or id(kid) in new_body_set {
-                    new_kid.append(kid);
-                }
-            }
-            arch.kid = new_kid;
-            arch._invalidate_sub_node_tab();
-        }
-    }
+    self._combine_has_in_node(arch);
 }
 
 impl JacAutoLintPass.combine_consecutive_glob(body: list) -> list {
@@ -401,6 +351,28 @@ impl JacAutoLintPass.combine_consecutive_has(body: list) -> list {
         }
     }
     return new_body;
+}
+
+impl JacAutoLintPass._combine_has_in_node(
+    nd: uni.Archetype | uni.Enum | uni.Ability
+) -> None {
+    if nd.body is not None and isinstance(nd.body, list) {
+        old_body = list(nd.body);
+        new_body = self.combine_consecutive_has(old_body);
+        if len(new_body) != len(old_body) and self.emit(W3002, node_override=nd) {
+            nd.body = new_body;
+            self.recalculate_parents(nd);
+            new_body_set = set(id(s) for s in new_body);
+            new_kid: list[uni.UniNode] = [];
+            for kid in nd.kid {
+                if not isinstance(kid, uni.ArchHas) or id(kid) in new_body_set {
+                    new_kid.append(kid);
+                }
+            }
+            nd.kid = new_kid;
+            nd._invalidate_sub_node_tab();
+        }
+    }
 }
 
 impl JacAutoLintPass.can_combine_glob(
@@ -617,54 +589,7 @@ impl JacAutoLintPass._convert_hasattr_to_null_ok(
     if len(nd.params) != 2 {
         return None;
     }
-    obj_expr = nd.params[0];
-    attr_expr = nd.params[1];
-    attr_value: str | None = None;
-    string_node: uni.String | None = None;
-    if isinstance(attr_expr, uni.String) {
-        attr_value = attr_expr.value;
-        string_node = attr_expr;
-    } elif isinstance(attr_expr, uni.MultiString) {
-        if len(attr_expr.strings) == 1
-        and isinstance(attr_expr.strings[0], uni.String) {
-            attr_value = attr_expr.strings[0].value;
-            string_node = attr_expr.strings[0];
-        }
-    }
-    if attr_value is None or string_node is None {
-        return None;
-    }
-    if (attr_value.startswith('"') and attr_value.endswith('"'))
-    or (attr_value.startswith("'") and attr_value.endswith("'")) {
-        attr_name = attr_value[1:-1];
-    } else {
-        return None;
-    }
-    attr_name_node = uni.Name(
-        orig_src=string_node.loc.orig_src,
-        name=Tok.NAME.name,
-        value=attr_name,
-        line=string_node.loc.first_line,
-        end_line=string_node.loc.last_line,
-        col_start=string_node.loc.col_start,
-        col_end=string_node.loc.col_end,
-        pos_start=string_node.loc.pos_start,
-        pos_end=string_node.loc.pos_end,
-        is_kwesc=False
-    );
-    null_ok_access = uni.AtomTrailer(
-        target=obj_expr,
-        right=attr_name_node,
-        is_attr=True,
-        is_null_ok=True,
-        kid=[obj_expr, attr_name_node]
-    );
-    new_kid: list[uni.UniNode] = [obj_expr];
-    new_kid.append(null_ok_access.gen_token(Tok.NULL_OK));
-    new_kid.append(null_ok_access.gen_token(Tok.DOT));
-    new_kid.append(attr_name_node);
-    null_ok_access.set_kids(nodes=new_kid);
-    return null_ok_access;
+    return self._funccall_to_null_safe(nd, False);
 }
 
 impl JacAutoLintPass._is_matching_attr_access(
@@ -740,6 +665,14 @@ impl JacAutoLintPass._convert_getattr_to_null_ok(
     if not isinstance(default_expr, uni.Null) {
         return None;
     }
+    return self._funccall_to_null_safe(nd, True);
+}
+
+impl JacAutoLintPass._funccall_to_null_safe(
+    fc: uni.FuncCall, require_valid_identifier: bool
+) -> (uni.AtomTrailer | None) {
+    obj_expr = fc.params[0];
+    attr_expr = fc.params[1];
     attr_value: str | None = None;
     string_node: uni.String | None = None;
     if isinstance(attr_expr, uni.String) {
@@ -761,7 +694,8 @@ impl JacAutoLintPass._convert_getattr_to_null_ok(
     } else {
         return None;
     }
-    if not attr_name.isidentifier() or keyword.iskeyword(attr_name) {
+    if require_valid_identifier
+    and (not attr_name.isidentifier() or keyword.iskeyword(attr_name)) {
         return None;
     }
     attr_name_node = uni.Name(
@@ -1047,22 +981,6 @@ impl JacAutoLintPass._expr_to_key(expr: uni.Expr) -> (str | None) {
     return None;
 }
 
-impl JacAutoLintPass._get_trailer_key(trailer: uni.AtomTrailer) -> (str | None) {
-    if not trailer.is_attr {
-        return None;
-    }
-    if not isinstance(trailer.right, uni.Name) {
-        return None;
-    }
-    attr_name = trailer.right.value;
-    target_key = self._expr_to_key(trailer.target);
-    if target_key is not None {
-        null_ok = "?" if trailer.is_null_ok else "";
-        return f"{target_key}{null_ok}.{attr_name}";
-    }
-    return None;
-}
-
 impl JacAutoLintPass._exprs_are_identical(expr1: uni.Expr, expr2: uni.Expr) -> bool {
     if expr1 is expr2 {
         return True;
@@ -1197,7 +1115,7 @@ impl JacAutoLintPass.exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None {
     null_ok_keys: set = set();
     for trailer in trailers {
         if isinstance(trailer, uni.AtomTrailer) and trailer.is_null_ok {
-            key = self._get_trailer_key(trailer);
+            key = self._expr_to_key(trailer);
             if key is not None {
                 null_ok_keys.add(key);
             }
@@ -1208,7 +1126,7 @@ impl JacAutoLintPass.exit_if_else_expr(if_else_node: uni.IfElseExpr) -> None {
     }
     for trailer in trailers {
         if isinstance(trailer, uni.AtomTrailer) and not trailer.is_null_ok {
-            key = self._get_trailer_key(trailer);
+            key = self._expr_to_key(trailer);
             if key is not None and key in null_ok_keys {
                 self._make_null_ok(trailer);
             }
@@ -1228,7 +1146,7 @@ impl JacAutoLintPass.exit_bool_expr(bool_node: uni.BoolExpr) -> None {
     null_ok_keys: set = set();
     for trailer in trailers {
         if isinstance(trailer, uni.AtomTrailer) and trailer.is_null_ok {
-            key = self._get_trailer_key(trailer);
+            key = self._expr_to_key(trailer);
             if key is not None {
                 null_ok_keys.add(key);
             }
@@ -1239,7 +1157,7 @@ impl JacAutoLintPass.exit_bool_expr(bool_node: uni.BoolExpr) -> None {
     }
     for trailer in trailers {
         if isinstance(trailer, uni.AtomTrailer) and not trailer.is_null_ok {
-            key = self._get_trailer_key(trailer);
+            key = self._expr_to_key(trailer);
             if key is not None and key in null_ok_keys {
                 self._make_null_ok(trailer);
             }
@@ -1584,7 +1502,7 @@ impl JacAutoLintPass._extract_string_literal_value(expr: uni.Expr) -> (str | Non
     return None;
 }
 
-impl JacAutoLintPass._check_unnecessary_pass(body: list, `node: uni.UniNode) -> None {
+impl JacAutoLintPass._check_unnecessary_pass(body: list) -> None {
     if self._is_suppressed(W3020) {
         return;
     }
@@ -1961,7 +1879,7 @@ impl JacAutoLintPass.exit_if_stmt(nd: uni.IfStmt) -> None {
     if not self.lint_enabled {
         return;
     }
-    self._check_unnecessary_pass(list(nd.body), nd);
+    self._check_unnecessary_pass(list(nd.body));
     self._check_unnecessary_else_after_return(nd);
     self._check_return_bool_simplification(nd);
     self._check_repeated_condition(nd);
@@ -1972,7 +1890,7 @@ impl JacAutoLintPass.enter_else_stmt(nd: uni.ElseStmt) -> None {
     if not self.lint_enabled {
         return;
     }
-    self._check_unnecessary_pass(list(nd.body), nd);
+    self._check_unnecessary_pass(list(nd.body));
     self._check_nested_if_to_elif(nd);
 }
 
@@ -2003,7 +1921,7 @@ impl JacAutoLintPass.exit_archetype(nd: uni.Archetype) -> None {
         return;
     }
     if nd.body is not None and isinstance(nd.body, list) {
-        self._check_unnecessary_pass(list(nd.body), nd);
+        self._check_unnecessary_pass(list(nd.body));
     }
 }
 

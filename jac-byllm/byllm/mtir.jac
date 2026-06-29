@@ -60,7 +60,6 @@ obj MTRuntime {
         _stream_reset_count: int = 0;
 
     static def factory(mtir: MTIR) -> MTRuntime;
-    def dispatch_params -> dict[str, object];
     def add_message(message: MessageType) -> None;
     def add_scaffolding_message(message: MessageType) -> None;
     def get_msg_list -> list[dict[(str, object)] | LiteLLMMessage];

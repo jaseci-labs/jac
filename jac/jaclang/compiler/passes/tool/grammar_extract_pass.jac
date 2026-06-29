@@ -63,7 +63,6 @@ obj GrammarRule {
         body: GExpr;
 
     def to_ebnf -> str;
-    def to_lark -> str;
     def __repr__ -> str;
 }
 
@@ -86,8 +85,6 @@ glob METHOD_TABLE: dict[str, MethodSemantics] = {
          "is_keyword_token": MethodSemantics(kind="lookahead", token_args=False),
          "at_end": MethodSemantics(kind="lookahead", token_args=False),
          "error": MethodSemantics(kind="ignore", token_args=False),
-         "error_at": MethodSemantics(kind="ignore", token_args=False),
-         "warn_at": MethodSemantics(kind="ignore", token_args=False),
          "make_uni_token": MethodSemantics(kind="ignore", token_args=False),
          "make_name": MethodSemantics(kind="ignore", token_args=False),
          "make_special_name": MethodSemantics(kind="ignore", token_args=False),
@@ -105,7 +102,6 @@ glob METHOD_TABLE: dict[str, MethodSemantics] = {
          "peek": MethodSemantics(kind="ignore", token_args=False),
          "get_source": MethodSemantics(kind="ignore", token_args=False),
          "synchronize": MethodSemantics(kind="ignore", token_args=False),
-         "gen_token": MethodSemantics(kind="ignore", token_args=False),
          "prune": MethodSemantics(kind="ignore", token_args=False)
      },
      SPECIAL_LOOKAHEAD_TOKENS: dict[str, list] = {
@@ -127,7 +123,6 @@ obj GrammarExtractPass(UniPass) {
     def enter_impl_def(nd: uni.ImplDef) -> None;
     def after_pass -> None;
     def format_ebnf(expr: GExpr) -> str;
-    def format_lark(expr: GExpr) -> str;
     def simplify_expr(expr: GExpr) -> GExpr;
     def interpret_stmts(stmts: list) -> GExpr | None;
     def interpret_stmt(stmt: uni.UniNode) -> GExpr | None;

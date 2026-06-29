@@ -50,6 +50,18 @@ impl TypeVarType.__str__ -> str {
     return "<TypeVar>";
 }
 
+impl Parameter.clone -> Parameter {
+    return Parameter(
+        name=self.name,
+        category=self.category,
+        param_type=self.param_type,
+        default_value=self.default_value,
+        is_self=self.is_self,
+        is_cls=self.is_cls,
+        param_kind=self.param_kind
+    );
+}
+
 impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
     import from jaclang.compiler.type_system.type_utils {
         apply_solved_type_vars,
@@ -61,17 +73,7 @@ impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
     clone = FunctionType(
         func_name=self.func_name,
         return_type=self.return_type,
-        parameters=[
-            Parameter(
-                name=param.name,
-                category=param.category,
-                param_type=param.param_type,
-                default_value=param.default_value,
-                is_self=param.is_self,
-                is_cls=param.is_cls,
-                param_kind=param.param_kind
-            ) for param in self.parameters
-        ],
+        parameters=[param.clone() for param in self.parameters],
         type_params=self.type_params,
         is_async=self.is_async,
     );
@@ -101,17 +103,7 @@ impl FunctionType.specialize_func_type_vars(
     clone = FunctionType(
         func_name=self.func_name,
         return_type=self.return_type,
-        parameters=[
-            Parameter(
-                name=param.name,
-                category=param.category,
-                param_type=param.param_type,
-                default_value=param.default_value,
-                is_self=param.is_self,
-                is_cls=param.is_cls,
-                param_kind=param.param_kind
-            ) for param in self.parameters
-        ],
+        parameters=[param.clone() for param in self.parameters],
         function_flags=self.function_flags,
         type_params=self.type_params,
         is_async=self.is_async,
@@ -376,21 +368,6 @@ impl ClassType.get_literal_value -> (str | int | bool | None) {
     return self.private.literal_value;
 }
 
-impl ClassType.is_property_class -> bool {
-    return self.private.is_property_class;
-}
-
-impl ClassType.get_getter_type_from_property -> (TypeBase | None) {
-    if not self.private.is_property_class {
-        return None;
-    }
-    fget = self.private.fget_info;
-    if fget is None {
-        return None;
-    }
-    return fget.return_type;
-}
-
 impl ClassType.__str__ -> str {
     if self.private.literal_value is not None {
         lit_val = self.private.literal_value;
@@ -438,10 +415,6 @@ impl TypeBase.is_instance -> bool {
 
 impl TypeBase.is_instantiable -> bool {
     return bool((self.flags & TypeFlags.Instantiable));
-}
-
-impl TypeBase.unknown -> UnknownType {
-    return UnknownType();
 }
 
 impl TypeBase.category.getter -> TypeCategory {
@@ -515,10 +488,6 @@ impl TypeBase.is_any_type -> bool {
 
 impl EnumMemberType.__str__ -> str {
     return f"<{self.enum_class.shared.class_name}.{self.member_info.member_name}>";
-}
-
-impl EnumMemberType.get_name_as_str -> str {
-    return self.member_info.member_name;
 }
 
 impl EnumMemberType.get_value_type -> TypeBase {

@@ -92,24 +92,3 @@ async def aggregate_openapi(registry: ServiceRegistry) -> dict {
         "components": {"schemas": merged_schemas}
     };
 }
-
-def _empty_openapi -> dict {
-    return {
-        "openapi": "3.0.2",
-        "info": {
-            "title": "Jac Microservice Gateway",
-            "version": "1.0.0",
-            "description": "Aggregated OpenAPI (no services reachable)."
-        },
-        "paths": {
-            "/health": {
-                "get": {
-                    "summary": "Gateway aggregated health status",
-                    "tags": ["gateway"],
-                    "responses": {"200": {"description": "healthy"}}
-                }
-            }
-        },
-        "components": {"schemas": {}}
-    };
-}

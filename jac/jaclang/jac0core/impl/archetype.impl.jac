@@ -87,11 +87,6 @@ impl ObjectSpatialPath.edge_any(
     return self.append(EdgeDir.ANY, `edge, nd);
 }
 
-impl ObjectSpatialPath.set_edge_only -> ObjectSpatialPath {
-    self.edge_only = True;
-    return self;
-}
-
 impl ObjectSpatialPath.repr_builder(
     repr_str: str, dest: ObjectSpatialDestination, mark: str
 ) -> str {

@@ -60,32 +60,12 @@ obj BaseTransport {
         on_error: (Callable[(..., Any)] | None) = None,
         on_close: (Callable[(..., Any)] | None) = None;
 
-    async def connect -> None;
     async def send(data: any) -> None;
-    async def close -> None;
 }
 
 obj HTTPTransport(BaseTransport) {
     has handler: any = None,
         response_data: dict[(str, Any)] = {};
 
-    def connect -> None;
     def send(data: any) -> None;
-    def close -> None;
-}
-
-obj StreamTransport(BaseTransport) {
-    has queue: any = None;
-
-    async def connect -> None;
-    async def send(data: any) -> None;
-    async def close -> None;
-}
-
-obj WebSocketTransport(BaseTransport) {
-    has websocket: any = None;
-
-    async def connect -> None;
-    async def send(data: any) -> None;
-    async def close -> None;
 }

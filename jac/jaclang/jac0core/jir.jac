@@ -23,51 +23,6 @@ glob MAGIC = b"JIR\x00",
      PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
      FLAG_BOOTSTRAP: int = 0x04;
 
-def write_varint(buf: bytearray, value: int) {
-    while value >= 0x80 {
-        buf.append((value & 0x7F) | 0x80);
-        value >>= 7;
-    }
-    buf.append(value & 0x7F);
-}
-
-def read_varint(data: (bytes | memoryview), pos: int) -> tuple[int, int] {
-    result = 0;
-    shift = 0;
-    byte = data[pos];
-    while (byte & 0x80) != 0 {
-        result |= (byte & 0x7F) << shift;
-        shift += 7;
-        pos += 1;
-        byte = data[pos];
-    }
-    result |= (byte & 0x7F) << shift;
-    pos += 1;
-    return (result, pos);
-}
-
-class StringPool {
-    def init(self: StringPool) -> None;
-    def intern(self: StringPool, s: str) -> int;
-    def get(self: StringPool, idx: int) -> str;
-    def __len__(self: StringPool) -> int;
-    def serialize(self: StringPool) -> bytes;
-}
-
-def deserialize_string_pool(
-    data: (bytes | memoryview), pos: int
-) -> tuple[StringPool, int] {
-    pool = StringPool();
-    (count, pos) = read_varint(data, pos);
-    for _ in range(count) {
-        (length, pos) = read_varint(data, pos);
-        s = bytes(data[pos:pos + length]).decode('utf-8');
-        pool.intern(s);
-        pos += length;
-    }
-    return (pool, pos);
-}
-
 obj JirHeader {
     has magic: any = b"JIR\x00",
         format_version: int = FORMAT_VERSION,
@@ -139,12 +94,6 @@ def parse_header(data: (bytes | memoryview)) -> (JirHeader | None) {
 def get_jir_cache_dir -> Path {
     import from jaclang.jac0core.cache_paths { get_jir_cache_dir as _root }
     return _root();
-}
-
-def compute_content_crc32(file_path: str) -> int {
-    with open(file_path, 'rb') as f {
-        return zlib.crc32(f.read()) & 0xFFFFFFFF;
-    }
 }
 
 def compute_content_sha256(file_path: str) -> str {
@@ -232,13 +181,6 @@ def cache_mode -> tuple[bool, bool] {
     rebuild = os.environ.get('JAC_REBUILD', '') in truthy;
     no_precompile = os.environ.get('JAC_NO_PRECOMPILE', '') in truthy;
     return (rebuild, no_precompile);
-}
-
-def get_stub_cache_path(stub_path: str, content_hash: str) -> Path {
-    cache_dir = get_jir_cache_dir() / 'stubs';
-    name = Path(stub_path).stem;
-    (major, minor) = (sys.version_info.major, sys.version_info.minor);
-    return cache_dir / f"{name}.{content_hash[:16]}.cpython-{major}{minor}.jir";
 }
 
 glob _jaclang_pkg_dir: str = str(Path(__file__).resolve().parent.parent);

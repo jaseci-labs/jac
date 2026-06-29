@@ -1,3 +1,26 @@
+impl TypeEvaluator._walk_compr_clauses(comprs: list[uni.InnerCompr]) -> None {
+    for compr in comprs {
+        self.get_type_of_expression(compr.collection);
+        if isinstance(compr.target, uni.Name) {
+            self.get_type_of_expression(compr.target);
+        }
+        if compr.conditional {
+            for cond in compr.conditional {
+                self.get_type_of_expression(cond);
+            }
+        }
+    }
+}
+
+impl TypeEvaluator._null_ok_attr_type(expr: uni.AtomTrailer) -> TypeBase {
+    none_type = self.prefetch.none_type_class;
+    if none_type is not None {
+        expr.right.type = self._convert_to_instance(none_type);
+        return expr.right.type;
+    }
+    return types.UnknownType();
+}
+
 impl TypeEvaluator._get_type_of_expression_core(
     expr: uni.Expr, expected_type: TypeBase | None = None
 ) -> TypeBase {
@@ -375,17 +398,7 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.SetCompr():
             if self.prefetch and self.prefetch.set_class {
                 set_inst = self._convert_to_instance(self.prefetch.set_class);
-                for compr in expr.compr {
-                    self.get_type_of_expression(compr.collection);
-                    if isinstance(compr.target, uni.Name) {
-                        self.get_type_of_expression(compr.target);
-                    }
-                    if compr.conditional {
-                        for cond in compr.conditional {
-                            self.get_type_of_expression(cond);
-                        }
-                    }
-                }
+                self._walk_compr_clauses(expr.compr);
                 elem_type = self.get_type_of_expression(expr.out_expr);
                 if isinstance(set_inst, types.ClassType)
                 and not isinstance(elem_type, types.UnknownType) {
@@ -397,17 +410,7 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.GenCompr():
             if self.prefetch and self.prefetch.list_class {
                 list_inst = self._convert_to_instance(self.prefetch.list_class);
-                for compr in expr.compr {
-                    self.get_type_of_expression(compr.collection);
-                    if isinstance(compr.target, uni.Name) {
-                        self.get_type_of_expression(compr.target);
-                    }
-                    if compr.conditional {
-                        for cond in compr.conditional {
-                            self.get_type_of_expression(cond);
-                        }
-                    }
-                }
+                self._walk_compr_clauses(expr.compr);
                 elem_type = self.get_type_of_expression(expr.out_expr);
                 if isinstance(list_inst, types.ClassType)
                 and not isinstance(elem_type, types.UnknownType) {
@@ -419,17 +422,7 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.ListCompr():
             if self.prefetch and self.prefetch.list_class {
                 list_inst = self._convert_to_instance(self.prefetch.list_class);
-                for compr in expr.compr {
-                    self.get_type_of_expression(compr.collection);
-                    if isinstance(compr.target, uni.Name) {
-                        self.get_type_of_expression(compr.target);
-                    }
-                    if compr.conditional {
-                        for cond in compr.conditional {
-                            self.get_type_of_expression(cond);
-                        }
-                    }
-                }
+                self._walk_compr_clauses(expr.compr);
 
                 expected_elem_lc = self._get_expected_element_type(
                     expected_type, self.prefetch.list_class
@@ -712,12 +705,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                         return expr.right.type;
                     }
                     if expr.is_null_ok {
-                        none_type = self.prefetch.none_type_class;
-                        if none_type is not None {
-                            expr.right.type = self._convert_to_instance(none_type);
-                            return expr.right.type;
-                        }
-                        return types.UnknownType();
+                        return self._null_ok_attr_type(expr);
                     }
                     if not self.is_any_type(lookup_type) {
                         _has_tvars = (
@@ -914,12 +902,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                         return getattr_return;
                     }
                     if expr.is_null_ok {
-                        none_type = self.prefetch.none_type_class;
-                        if none_type is not None {
-                            expr.right.type = self._convert_to_instance(none_type);
-                            return expr.right.type;
-                        }
-                        return types.UnknownType();
+                        return self._null_ok_attr_type(expr);
                     }
                     if not self.is_any_type(base_type) {
                         _has_tvars = (
@@ -1012,12 +995,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                         return expr.right.type;
                     }
                     if expr.is_null_ok {
-                        none_type = self.prefetch.none_type_class;
-                        if none_type is not None {
-                            expr.right.type = self._convert_to_instance(none_type);
-                            return expr.right.type;
-                        }
-                        return types.UnknownType();
+                        return self._null_ok_attr_type(expr);
                     }
                     missing_types: list[str] = [];
                     for union_member in base_type.types {
@@ -1167,12 +1145,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     return types.UnknownType();
                 }
             } elif expr.is_null_ok {
-                none_type = self.prefetch.none_type_class;
-                if none_type is not None {
-                    expr.right.type = self._convert_to_instance(none_type);
-                    return expr.right.type;
-                }
-                return types.UnknownType();
+                return self._null_ok_attr_type(expr);
             } elif isinstance(expr.right, uni.AssignCompr) {
                 if not isinstance(base_type, types.ClassType) {
                     self.emit_diag(E1034, expr, type=str(base_type));
@@ -4192,20 +4165,6 @@ impl TypeEvaluator._apply_narrowing(
     }
 }
 
-impl TypeEvaluator._refine_isinstance_type(
-    narrowing_key: str, isinstance_type: types.TypeBase, condition: uni.Expr
-) -> types.TypeBase {
-    sym = self._find_symbol_by_key(narrowing_key, condition);
-    if sym is not None {
-        base_type = self.get_type_of_symbol(sym);
-        filtered = self._filter_union_for_isinstance(base_type, isinstance_type);
-        if filtered is not None {
-            return filtered;
-        }
-    }
-    return isinstance_type;
-}
-
 impl TypeEvaluator._filter_union_for_isinstance(
     base_type: TypeBase, target_type: TypeBase
 ) -> TypeBase | None {
@@ -4569,29 +4528,6 @@ impl TypeEvaluator._filter_union_to_callables(
         }
     }
     if self._is_callable_type(union_type) {
-        return union_type;
-    }
-    return types.NeverType();
-}
-
-impl TypeEvaluator._filter_union_to_non_callables(
-    union_type: types.TypeBase
-) -> types.TypeBase {
-    if isinstance(union_type, types.UnionType) and union_type.types {
-        non_callables: list[types.TypeBase] = [
-            t
-            for t in union_type.types
-            if not self._is_callable_type(t)
-        ];
-        if len(non_callables) == 0 {
-            return types.NeverType();
-        } elif len(non_callables) == 1 {
-            return non_callables[0];
-        } else {
-            return types.UnionType(types=non_callables);
-        }
-    }
-    if not self._is_callable_type(union_type) {
         return union_type;
     }
     return types.NeverType();

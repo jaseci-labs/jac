@@ -339,6 +339,16 @@ obj IngressDeployer {
         return f"{namespace}-{app_name}-nginx";
     }
 
+    def _ingress_path(
+        path: str, svc: str, port: int, path_type: str = 'Prefix'
+    ) -> dict[str, any] {
+        return {
+            'path': path,
+            'pathType': path_type,
+            'backend': {'service': {'name': svc, 'port': {'number': port}}}
+        };
+    }
+
     def _wait_for_nginx_ready(
         app_name: str, namespace: str, apps_v1: any, max_wait: int = 180
     ) -> None {
@@ -391,46 +401,19 @@ obj IngressDeployer {
         ingress_name = f"{app_name}-ingress";
         redis_ingress_name = f"{app_name}-redis-insight-ingress";
 
-        paths = [
-            {
-                'path': '/',
-                'pathType': 'Prefix',
-                'backend': {
-                    'service': {
-                        'name': f"{app_name}-service",
-                        'port': {'number': service_port}
-                    }
-                }
-            }
-        ];
+        paths = [self._ingress_path('/', f"{app_name}-service", service_port)];
 
         if grafana_enabled {
             paths.append(
-                {
-                    'path': '/grafana',
-                    'pathType': 'Prefix',
-                    'backend': {
-                        'service': {
-                            'name': f"{app_name}-grafana-service",
-                            'port': {'number': 3000}
-                        }
-                    }
-                }
+                self._ingress_path('/grafana', f"{app_name}-grafana-service", 3000)
             );
         }
 
         if mongo_dashboard {
             paths.append(
-                {
-                    'path': '/db-dashboard',
-                    'pathType': 'Prefix',
-                    'backend': {
-                        'service': {
-                            'name': f"{app_name}-mongo-express-service",
-                            'port': {'number': 8081}
-                        }
-                    }
-                }
+                self._ingress_path(
+                    '/db-dashboard', f"{app_name}-mongo-express-service", 8081
+                )
             );
         }
 
@@ -594,16 +577,12 @@ obj IngressDeployer {
             redis_ingress_annotations['nginx.ingress.kubernetes.io/auth-realm'] = 'RedisInsight';
 
             redis_paths = [
-                {
-                    'path': '/cache-dashboard(/|$)(.*)',
-                    'pathType': 'ImplementationSpecific',
-                    'backend': {
-                        'service': {
-                            'name': f"{app_name}-redis-insight-service",
-                            'port': {'number': 5540}
-                        }
-                    }
-                }
+                self._ingress_path(
+                    '/cache-dashboard(/|$)(.*)',
+                    f"{app_name}-redis-insight-service",
+                    5540,
+                    path_type='ImplementationSpecific'
+                )
             ];
 
             if self.k8s_config.shared_ingress {
@@ -720,35 +699,6 @@ obj IngressDeployer {
             mongo_dashboard,
             networking_v1,
             core_v1
-        );
-    }
-
-    def deploy(
-        app_name: str,
-        namespace: str,
-        provider: ClusterProvider,
-        service_port: int,
-        grafana_enabled: bool,
-        redis_dashboard: bool,
-        mongo_dashboard: bool,
-        apps_v1: any,
-        core_v1: any,
-        rbac_v1: any,
-        networking_v1: any
-    ) {
-        self.start_controller(
-            app_name, namespace, provider, apps_v1, core_v1, rbac_v1, networking_v1
-        );
-        self.finish_ingress(
-            app_name,
-            namespace,
-            service_port,
-            grafana_enabled,
-            redis_dashboard,
-            mongo_dashboard,
-            apps_v1,
-            core_v1,
-            networking_v1
         );
     }
 

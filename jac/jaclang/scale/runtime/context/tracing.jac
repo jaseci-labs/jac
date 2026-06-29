@@ -115,10 +115,6 @@ def tracing_installed -> bool {
     return _tracing_installed;
 }
 
-def get_tracer -> any {
-    return _tracer;
-}
-
 class _JacIdGenerator(IdGenerator) {
     def generate_span_id(self: any) -> int {
         return new_span_id();
@@ -203,18 +199,6 @@ def install_tracing(
         _tracing_active = False;
         return False;
     }
-}
-
-def shutdown_tracing {
-    global _tracing_active;
-    if _provider is not None {
-        try {
-            _provider.shutdown();
-        } except Exception as e {
-            _logger.debug(f"Tracing shutdown error (ignored): {e}");
-        }
-    }
-    _tracing_active = False;
 }
 
 

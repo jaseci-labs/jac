@@ -1,7 +1,6 @@
 import asyncio;
 import dataclasses;
 import hashlib;
-import html;
 import inspect;
 import json;
 import os;
@@ -9,7 +8,6 @@ import secrets;
 import sqlite3;
 import threading;
 import from collections.abc { Callable }
-import from contextlib { suppress }
 import from http.server { BaseHTTPRequestHandler, HTTPServer }
 import from inspect { iscoroutine, isgenerator }
 import from pathlib { Path }
@@ -24,12 +22,7 @@ import from typing {
 import from urllib.parse { parse_qs, urlparse }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
 import from jaclang.runtimelib.context { CallState, ExecutionContext }
-import from jaclang.runtimelib.transport {
-    TransportRequest,
-    TransportResponse,
-    HTTPTransport,
-    Meta
-}
+import from jaclang.runtimelib.transport { TransportResponse, HTTPTransport, Meta }
 import from jaclang { JacRuntime as Jac }
 import from jaclang.project.config { get_config }
 import from jaclang.runtimelib.scheduler { Scheduler }
@@ -40,18 +33,6 @@ glob JsonValue: TypeAlias = None | str | int | float | bool | list['JsonValue'] 
          (str, 'JsonValue')
      ],
      StatusCode: TypeAlias = Literal[(200, 201, 400, 401, 404, 500, 503)];
-
-obj Response {
-    has status: StatusCode,
-        body: JsonValue,
-        content_type: str = 'application/json';
-}
-
-obj UserData {
-    has username: str,
-        token: str,
-        root_id: str;
-}
 
 obj UserManager {
     has base_path: str,
@@ -146,7 +127,6 @@ obj ModuleIntrospector {
 
     def is_auth_required_for_function(func_name: str) -> bool;
     def is_auth_required_for_walker(walker_name: str) -> bool;
-    def _collect_client_globals -> dict[str, any];
 }
 
 obj ResponseBuilder {
@@ -164,12 +144,6 @@ obj ResponseBuilder {
     static def send_css(handler: BaseHTTPRequestHandler, css: str) -> None;
     static def _add_cors_headers(handler: BaseHTTPRequestHandler) -> None;
     static def _add_custom_headers(handler: BaseHTTPRequestHandler) -> None;
-}
-
-obj RouteHandler {
-    has introspector: ModuleIntrospector,
-        execution_manager: ExecutionManager,
-        user_manager: UserManager;
 }
 
 obj AuthHandler {
@@ -244,13 +218,6 @@ obj JacAPIServer {
 
     def get_functions -> dict[str, Callable[(..., Any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
-    def introspect_callable(func: Callable[(..., Any)]) -> dict[str, any];
-    def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, any];
-    def render_client_page(
-        function_name: str, args: dict[(str, Any)], username: str
-    ) -> dict[str, any];
-
-    def get_client_bundle_code -> str;
     def print_endpoint_docs -> None;
     def _ensure_sv_siblings -> None;
     def start(

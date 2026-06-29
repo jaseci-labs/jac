@@ -215,11 +215,6 @@ impl TypeEvaluator.get_type_of_int(nd: uni.Int) -> TypeBase {
     return self.prefetch.int_class;
 }
 
-impl TypeEvaluator.get_type_of_string(nd: uni.String | uni.MultiString) -> TypeBase {
-    assert self.prefetch.str_class is not None;
-    return self.prefetch.str_class;
-}
-
 impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
     if node_.name_spec.type is not None {
         return node_.name_spec.type;

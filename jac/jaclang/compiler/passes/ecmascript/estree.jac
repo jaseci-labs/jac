@@ -52,39 +52,14 @@ obj ExpressionStatement(Node) {
         `type: TypingLiteral['ExpressionStatement'] = 'ExpressionStatement';
 }
 
-obj Directive(ExpressionStatement) {
-    has directive: str = '',
-        `type: TypingLiteral['ExpressionStatement'] = 'ExpressionStatement';
-}
-
 obj BlockStatement(Node) {
     has body: List[Statement] = [],
         `type: TypingLiteral['BlockStatement'] = 'BlockStatement';
 }
 
-obj EmptyStatement(Node) {
-    has `type: TypingLiteral['EmptyStatement'] = 'EmptyStatement';
-}
-
-obj DebuggerStatement(Node) {
-    has `type: TypingLiteral['DebuggerStatement'] = 'DebuggerStatement';
-}
-
-obj WithStatement(Node) {
-    has object: (Expression | None) = None,
-        body: (Statement | None) = None,
-        `type: TypingLiteral['WithStatement'] = 'WithStatement';
-}
-
 obj ReturnStatement(Node) {
     has argument: (Expression | None) = None,
         `type: TypingLiteral['ReturnStatement'] = 'ReturnStatement';
-}
-
-obj LabeledStatement(Node) {
-    has label: (Identifier | None) = None,
-        body: (Statement | None) = None,
-        `type: TypingLiteral['LabeledStatement'] = 'LabeledStatement';
 }
 
 obj BreakStatement(Node) {
@@ -140,25 +115,12 @@ obj WhileStatement(Node) {
         `type: TypingLiteral['WhileStatement'] = 'WhileStatement';
 }
 
-obj DoWhileStatement(Node) {
-    has body: (Statement | None) = None,
-        `test: (Expression | None) = None,
-        `type: TypingLiteral['DoWhileStatement'] = 'DoWhileStatement';
-}
-
 obj ForStatement(Node) {
     has `init: VariableDeclaration | Expression | None = None,
         `test: (Expression | None) = None,
         update: (Expression | None) = None,
         body: (Statement | None) = None,
         `type: TypingLiteral['ForStatement'] = 'ForStatement';
-}
-
-obj ForInStatement(Node) {
-    has left: VariableDeclaration | Pattern | None = None,
-        right: (Expression | None) = None,
-        body: (Statement | None) = None,
-        `type: TypingLiteral['ForInStatement'] = 'ForInStatement';
 }
 
 obj ForOfStatement(Node) {
@@ -238,13 +200,6 @@ obj UnaryExpression(Node) {
         `type: TypingLiteral['UnaryExpression'] = 'UnaryExpression';
 }
 
-obj UpdateExpression(Node) {
-    has operator: str = '++',
-        argument: (Expression | None) = None,
-        prefix: bool = True,
-        `type: TypingLiteral['UpdateExpression'] = 'UpdateExpression';
-}
-
 obj BinaryExpression(Node) {
     has operator: str = '',
         left: (Expression | None) = None,
@@ -267,7 +222,7 @@ obj LogicalExpression(Node) {
 }
 
 obj MemberExpression(Node) {
-    has object: Expression | Super | None = None,
+    has object: Expression | None = None,
         property: (Expression | None) = None,
         computed: bool = False,
         optional: bool = False,
@@ -282,32 +237,16 @@ obj ConditionalExpression(Node) {
 }
 
 obj CallExpression(Node) {
-    has callee: Expression | Super | None = None,
+    has callee: Expression | None = None,
         arguments: list[(Expression | SpreadElement)] = [],
         optional: bool = False,
         `type: TypingLiteral['CallExpression'] = 'CallExpression';
-}
-
-obj ChainExpression(Node) {
-    has expression: CallExpression | MemberExpression | None = None,
-        `type: TypingLiteral['ChainExpression'] = 'ChainExpression';
 }
 
 obj NewExpression(Node) {
     has callee: (Expression | None) = None,
         arguments: list[(Expression | SpreadElement)] = [],
         `type: TypingLiteral['NewExpression'] = 'NewExpression';
-}
-
-obj SequenceExpression(Node) {
-    has expressions: list[Expression] = [],
-        `type: TypingLiteral['SequenceExpression'] = 'SequenceExpression';
-}
-
-obj YieldExpression(Node) {
-    has argument: (Expression | None) = None,
-        delegate: bool = False,
-        `type: TypingLiteral['YieldExpression'] = 'YieldExpression';
 }
 
 obj AwaitExpression(Node) {
@@ -327,25 +266,9 @@ obj TemplateElement(Node) {
         `type: TypingLiteral['TemplateElement'] = 'TemplateElement';
 }
 
-obj TaggedTemplateExpression(Node) {
-    has tag: (Expression | None) = None,
-        quasi: (TemplateLiteral | None) = None,
-        `type: TypingLiteral['TaggedTemplateExpression'] = 'TaggedTemplateExpression';
-}
-
 obj SpreadElement(Node) {
     has argument: (Expression | None) = None,
         `type: TypingLiteral['SpreadElement'] = 'SpreadElement';
-}
-
-obj Super(Node) {
-    has `type: TypingLiteral['Super'] = 'Super';
-}
-
-obj MetaProperty(Node) {
-    has meta: (Identifier | None) = None,
-        property: (Identifier | None) = None,
-        `type: TypingLiteral['MetaProperty'] = 'MetaProperty';
 }
 
 obj AssignmentPattern(Node) {
@@ -386,15 +309,8 @@ obj ClassDeclaration(Node) {
         `type: TypingLiteral['ClassDeclaration'] = 'ClassDeclaration';
 }
 
-obj ClassExpression(Node) {
-    has id: (Identifier | None) = None,
-        superClass: (Expression | None) = None,
-        body: (ClassBody | None) = None,
-        `type: TypingLiteral['ClassExpression'] = 'ClassExpression';
-}
-
 obj ClassBody(Node) {
-    has body: list[MethodDefinition | PropertyDefinition | StaticBlock] = [],
+    has body: list[MethodDefinition | PropertyDefinition] = [],
         `type: TypingLiteral['ClassBody'] = 'ClassBody';
 }
 
@@ -415,21 +331,11 @@ obj PropertyDefinition(Node) {
         `type: TypingLiteral['PropertyDefinition'] = 'PropertyDefinition';
 }
 
-obj StaticBlock(Node) {
-    has body: list[Statement] = [],
-        `type: TypingLiteral['StaticBlock'] = 'StaticBlock';
-}
-
 obj ImportDeclaration(Node) {
     has specifiers:
         list[ImportSpecifier | ImportDefaultSpecifier | ImportNamespaceSpecifier] = [],
         source: (Literal | None) = None,
         `type: TypingLiteral['ImportDeclaration'] = 'ImportDeclaration';
-}
-
-obj ImportExpression(Node) {
-    has source: (Expression | None) = None,
-        `type: TypingLiteral['ImportExpression'] = 'ImportExpression';
 }
 
 obj ImportSpecifier(Node) {
@@ -459,17 +365,6 @@ obj ExportSpecifier(Node) {
     has exported: (Identifier | None) = None,
         local: (Identifier | None) = None,
         `type: TypingLiteral['ExportSpecifier'] = 'ExportSpecifier';
-}
-
-obj ExportDefaultDeclaration(Node) {
-    has declaration: Declaration | Expression | None = None,
-        `type: TypingLiteral['ExportDefaultDeclaration'] = 'ExportDefaultDeclaration';
-}
-
-obj ExportAllDeclaration(Node) {
-    has source: (Literal | None) = None,
-        exported: (Identifier | None) = None,
-        `type: TypingLiteral['ExportAllDeclaration'] = 'ExportAllDeclaration';
 }
 
 obj JsxIdentifier(Node) {
@@ -542,14 +437,12 @@ obj IndexInfo {
     has value: (Node | None) = None;
 }
 
-glob Statement = ExpressionStatement | BlockStatement | EmptyStatement | DebuggerStatement | WithStatement | ReturnStatement | LabeledStatement | BreakStatement | ContinueStatement | IfStatement | SwitchStatement | ThrowStatement | TryStatement | WhileStatement | DoWhileStatement | ForStatement | ForInStatement | ForOfStatement | FunctionDeclaration | VariableDeclaration | ClassDeclaration,
+glob Statement = ExpressionStatement | BlockStatement | ReturnStatement | BreakStatement | ContinueStatement | IfStatement | SwitchStatement | ThrowStatement | TryStatement | WhileStatement | ForStatement | ForOfStatement | FunctionDeclaration | VariableDeclaration | ClassDeclaration,
      Expression = (
-         Identifier | Literal | ThisExpression | ArrayExpression | ObjectExpression | FunctionExpression | ArrowFunctionExpression | UnaryExpression | UpdateExpression | BinaryExpression | AssignmentExpression | LogicalExpression | MemberExpression | ConditionalExpression | CallExpression | ChainExpression | NewExpression | SequenceExpression | YieldExpression | AwaitExpression | TemplateLiteral | TaggedTemplateExpression | ClassExpression | ImportExpression | JsxElement | JsxFragment
+         Identifier | Literal | ThisExpression | ArrayExpression | ObjectExpression | FunctionExpression | ArrowFunctionExpression | UnaryExpression | BinaryExpression | AssignmentExpression | LogicalExpression | MemberExpression | ConditionalExpression | CallExpression | NewExpression | AwaitExpression | TemplateLiteral | JsxElement | JsxFragment
      ),
      Pattern = Identifier | ArrayPattern | ObjectPattern | AssignmentPattern | RestElement,
      Declaration = FunctionDeclaration | VariableDeclaration | ClassDeclaration,
-     ModuleDeclaration = (
-         ImportDeclaration | ExportNamedDeclaration | ExportDefaultDeclaration | ExportAllDeclaration
-     );
+     ModuleDeclaration = ImportDeclaration | ExportNamedDeclaration;
 
 def es_node_to_dict(nd: Node) -> dict[str, any];

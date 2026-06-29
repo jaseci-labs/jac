@@ -49,12 +49,3 @@ def print_version_banner(version: str) {
     } except Exception { }
     console.print();
 }
-
-def print_startup_header(mode: str = 'development') {
-    console.print('\n  JAC DEV SERVER', style='bold cyan');
-    console.print();
-}
-
-def print_celebration(message: str = 'Happy coding!') {
-    console.print(f"🚀 {message}", style='bold green');
-}

@@ -229,12 +229,9 @@ def _collect_network -> dict {
 
 impl JacAPIServerNetwork.register_network_endpoints -> None {
     async def network_handler(request: Request) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get("http_status", 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         try {
             data = await asyncio.to_thread(_collect_network);

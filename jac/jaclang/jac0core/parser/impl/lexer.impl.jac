@@ -16,17 +16,6 @@ impl Lexer.current_mode -> LexerMode {
     return LexerMode.NORMAL;
 }
 
-impl Lexer.in_fstring -> bool {
-    mode = self.current_mode();
-    return mode in [
-        LexerMode.FSTRING_DQ,
-        LexerMode.FSTRING_SQ,
-        LexerMode.FSTRING_TDQ,
-        LexerMode.FSTRING_TSQ,
-        LexerMode.FSTRING_EXPR
-    ];
-}
-
 impl Lexer.in_jsx -> bool {
     mode = self.current_mode();
     return mode in [LexerMode.JSX_TAG, LexerMode.JSX_CONTENT];
@@ -1140,32 +1129,6 @@ impl Lexer.scan_jsx_content -> Token {
     return self.make_token(TokenKind.ERROR, "", start_line, start_col, start_pos);
 }
 
-impl Lexer.scan_jsx_expr_token -> Token {
-    self.skip_whitespace_and_comments();
-    start_line = self.line;
-    start_col = self.col;
-    start_pos = self.pos;
-    ch = self.current();
-    if ch == "{" {
-        self.jsx_brace_depth += 1;
-        self.advance();
-        return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
-    }
-    if ch == "}" {
-        self.jsx_brace_depth -= 1;
-        self.advance();
-        if self.jsx_brace_depth == 0 {
-            self.pop_mode();
-
-            if self.jsx_brace_depth_stack {
-                self.jsx_brace_depth = self.jsx_brace_depth_stack.pop();
-            }
-        }
-        return self.make_token(TokenKind.RBRACE, "}", start_line, start_col, start_pos);
-    }
-    return self.scan_regular_token();
-}
-
 impl Lexer.scan_regular_token -> Token {
     self.skip_whitespace_and_comments();
     if self.at_end() {
@@ -1828,8 +1791,4 @@ impl Lexer.tokenize -> list[Token] {
         last_pos = self.pos;
     }
     return tokens;
-}
-
-impl Lexer.has_errors -> bool {
-    return self.error_count > 0;
 }

@@ -1,7 +1,7 @@
 """Pre-build the admin dashboard UI for PyPI release.
 
 Runs `jac build main.jac` in the admin UI source directory and copies
-the built output (HTML/JS/CSS) into jac_scale/admin/_dist/ so it ships
+the built output (HTML/JS/CSS) into jaclang.scale/admin/_dist/ so it ships
 with the package. At runtime, the server copies these bundled assets
 instead of building from source on first request.
 
@@ -21,8 +21,8 @@ glob w = sys.stdout.write;
 def main -> int {
     script_dir = Path(__file__).resolve().parent;
     pkg_root = script_dir.parent;
-    ui_dir = pkg_root / "jac_scale" / "admin" / "ui";
-    dist_dst = pkg_root / "jac_scale" / "admin" / "_dist";
+    ui_dir = pkg_root / "jaclang.scale" / "admin" / "ui";
+    dist_dst = pkg_root / "jaclang.scale" / "admin" / "_dist";
 
     w(f"Admin UI source: {ui_dir}\n");
     w(f"Bundle destination: {dist_dst}\n\n");

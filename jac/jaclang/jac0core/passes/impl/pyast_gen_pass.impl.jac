@@ -434,17 +434,6 @@ impl PyastGenPass._add_preamble_once(key: str, nd: ast3.AST) -> None {
     self.already_added.append(key);
 }
 
-impl PyastGenPass.needs_typing -> None {
-    self._add_preamble_once(
-        self.needs_typing.__name__,
-        ast3.Import(names=[self.sync(ast3.alias(name='typing'), jac_node=self.ir_out)])
-    );
-}
-
-impl PyastGenPass.needs_enum -> None {
-    self.needs_enum_kind("Enum");
-}
-
 impl PyastGenPass.needs_enum_kind(kind: str) -> None {
     self._add_preamble_once(
         f"needs_enum_kind:{kind}",
@@ -454,17 +443,6 @@ impl PyastGenPass.needs_enum_kind(kind: str) -> None {
                 self.sync(ast3.alias(name=kind, asname=None)),
                 self.sync(ast3.alias(name='auto', asname=None))
             ],
-            level=0
-        )
-    );
-}
-
-impl PyastGenPass.needs_future -> None {
-    self._add_preamble_once(
-        self.needs_future.__name__,
-        ast3.ImportFrom(
-            module='concurrent.futures',
-            names=[self.sync(ast3.alias(name='Future', asname=None))],
             level=0
         )
     );
@@ -741,29 +719,6 @@ impl PyastGenPass.resolve_stmt_block(
         ];
     }
     return ret;
-}
-
-impl PyastGenPass.sync_many(py_nodes: list[T], jac_node: uni.UniNode) -> list[T] {
-    for py_node in py_nodes {
-        self.sync(py_node, jac_node);
-    }
-    return py_nodes;
-}
-
-impl PyastGenPass.list_to_attrib(
-    attribute_list: list[str], sync_node_list: Sequence[uni.UniNode]
-) -> ast3.AST {
-    attr_node: (ast3.Name | ast3.Attribute) = self.sync(
-        ast3.Name(id=attribute_list[0], ctx=ast3.Load()), sync_node_list[0]
-    );
-    for (attr, sync_node) in zip(
-        attribute_list[1:], sync_node_list[1:], strict=False
-    ) {
-        attr_node = self.sync(
-            ast3.Attribute(value=attr_node, attr=attr, ctx=ast3.Load()), sync_node
-        );
-    }
-    return attr_node;
 }
 
 impl PyastGenPass.exit_sub_tag(nd: uni.SubTag[uni.T]) -> None {

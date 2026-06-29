@@ -717,12 +717,6 @@ impl JacLangServer.update_modules(
     }
 }
 
-impl JacLangServer.get_ir(file_path: str) -> Optional[uni.Module] {
-    with self._state_lock.read_lock() {
-        return self.mod.hub.get(file_path);
-    }
-}
-
 impl JacLangServer._clear_alerts_for_file(file_path: str) -> None {
     with self._state_lock.write_lock() {
         self.module_manager.clear_alerts_for_file(file_path);

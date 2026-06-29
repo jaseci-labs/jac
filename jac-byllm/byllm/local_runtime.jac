@@ -8,23 +8,21 @@ The runtime side of `local:<alias>` lives in `llm.jac::LocalLLM`
 and `llm.impl/local.impl.jac`.
 """
 
-import logging;
 import json;
 
-glob _logger: logging.Logger = logging.getLogger("byllm.local_runtime"),
-     # Bundled local model registry. Each entry maps an alias the user types
-     # (`local:<alias>`) to a HuggingFace GGUF artifact + sensible defaults.
-     # Gemma 4 (released 2026-04-02) is the default — E4B is the on-device
-     # instruction-tuned variant, ~5 GB at Q4_K_M, and benchmarks at 100%
-     # on the mini_todo categorize fixture (see jac/examples/mini_todo/
-     # bench_local.jac).
-     #
-     # `chat_format` is intentionally omitted: every modern instruction-tuned
-     # GGUF ships its own Jinja chat template inside the file metadata, and
-     # llama-cpp-python uses it when no explicit format is given. Hard-coding
-     # `chat_format="gemma"` etc. forces an older template that breaks the
-     # newer Qwen 3.5 and Gemma 4 variants.
-     LOCAL_MODELS: dict[str, dict] = {
+# Bundled local model registry. Each entry maps an alias the user types
+# (`local:<alias>`) to a HuggingFace GGUF artifact + sensible defaults.
+# Gemma 4 (released 2026-04-02) is the default — E4B is the on-device
+# instruction-tuned variant, ~5 GB at Q4_K_M, and benchmarks at 100%
+# on the mini_todo categorize fixture (see jac/examples/mini_todo/
+# bench_local.jac).
+#
+# `chat_format` is intentionally omitted: every modern instruction-tuned
+# GGUF ships its own Jinja chat template inside the file metadata, and
+# llama-cpp-python uses it when no explicit format is given. Hard-coding
+# `chat_format="gemma"` etc. forces an older template that breaks the
+# newer Qwen 3.5 and Gemma 4 variants.
+glob LOCAL_MODELS: dict[str, dict] = {
          "gemma-4-e4b": {
              "repo": "unsloth/gemma-4-E4B-it-GGUF",
              "file": "gemma-4-E4B-it-Q4_K_M.gguf",
@@ -47,7 +45,6 @@ glob _logger: logging.Logger = logging.getLogger("byllm.local_runtime"),
              "description": "Alibaba Qwen 3.5 4B (instruction-tuned, Q4_K_M)"
          }
      },
-     DEFAULT_LOCAL_MODEL: str = "gemma-4-e4b",
      LOCAL_PREFIX: str = "local:";
 
 """Strip the `local:` prefix and return the bare alias.
@@ -59,18 +56,6 @@ def parse_alias(model_name: str) -> str | None {
         return None;
     }
     return model_name[len(LOCAL_PREFIX):].strip().lower();
-}
-
-"""Look up a `local:<alias>` model name in the registry.
-
-Returns the spec dict or None when the alias is unknown.
-"""
-def resolve_local_alias(model_name: str) -> dict | None {
-    alias = parse_alias(model_name);
-    if alias is None {
-        return None;
-    }
-    return LOCAL_MODELS.get(alias);
 }
 
 """All registered local-model aliases (without the `local:` prefix)."""

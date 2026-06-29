@@ -83,11 +83,12 @@ impl EsastGenPass.exit_token(nd: uni.Token) -> None {
     ;
 }
 
-impl EsastGenPass.exit_test(nd: uni.Test) -> None {
-    params: list[es.Pattern] = [];
+impl EsastGenPass._collect_body_stmts(
+    body: Sequence[uni.UniNode]
+) -> list[es.Statement] {
     body_stmts: list[es.Statement] = [];
-    if nd.body {
-        for stmt in nd.body {
+    if body {
+        for stmt in body {
             if stmt.gen.es_ast {
                 if isinstance(stmt.gen.es_ast, list) {
                     body_stmts.extend(cast(es.Statement, s) for s in stmt.gen.es_ast);
@@ -97,6 +98,12 @@ impl EsastGenPass.exit_test(nd: uni.Test) -> None {
             }
         }
     }
+    return body_stmts;
+}
+
+impl EsastGenPass.exit_test(nd: uni.Test) -> None {
+    params: list[es.Pattern] = [];
+    body_stmts = self._collect_body_stmts(nd.body);
     body_stmts = self._prepend_hoisted(nd, body_stmts);
     block = self.sync_loc(es.BlockStatement(body=body_stmts), jac_node=nd);
     func_id = self.sync_loc(es.Identifier(name=nd.name.sym_name), jac_node=nd.name);
@@ -119,19 +126,7 @@ impl EsastGenPass.exit_test(nd: uni.Test) -> None {
 }
 
 impl EsastGenPass.exit_client_block(nd: uni.ClientBlock) -> None {
-    body_stmts: list[es.Statement] = [];
-    if nd.body {
-        for stmt in nd.body {
-            if stmt.gen.es_ast {
-                if isinstance(stmt.gen.es_ast, list) {
-                    body_stmts.extend(cast(es.Statement, s) for s in stmt.gen.es_ast);
-                } else {
-                    body_stmts.append(cast(es.Statement, stmt.gen.es_ast));
-                }
-            }
-        }
-    }
-    nd.gen.es_ast = body_stmts;
+    nd.gen.es_ast = self._collect_body_stmts(nd.body);
 }
 
 impl EsastGenPass.exit_native_block(nd: uni.NativeBlock) -> None {
@@ -139,19 +134,7 @@ impl EsastGenPass.exit_native_block(nd: uni.NativeBlock) -> None {
 }
 
 impl EsastGenPass.exit_module_code(nd: uni.ModuleCode) -> None {
-    body_stmts: list[es.Statement] = [];
-    if nd.body {
-        for stmt in nd.body {
-            if stmt.gen.es_ast {
-                if isinstance(stmt.gen.es_ast, list) {
-                    body_stmts.extend(cast(es.Statement, s) for s in stmt.gen.es_ast);
-                } else {
-                    body_stmts.append(cast(es.Statement, stmt.gen.es_ast));
-                }
-            }
-        }
-    }
-    nd.gen.es_ast = body_stmts;
+    nd.gen.es_ast = self._collect_body_stmts(nd.body);
 }
 
 impl EsastGenPass.exit_non_local_stmt(nd: uni.NonLocalStmt) -> None {
@@ -967,29 +950,14 @@ impl EsastGenPass._record_sv_backend(nd: uni.Import) -> None {
     }
 }
 
-impl EsastGenPass._ability_from_symbol(
-    sym: (uni.Symbol | None)
-) -> (uni.Ability | None) {
-    if not sym or not sym.defn {
-        return None;
-    }
-    defn_node = sym.defn[0];
-    if isinstance(defn_node, uni.Ability) {
-        return defn_node;
-    }
-    if defn_node.parent and isinstance(defn_node.parent, uni.Ability) {
-        return defn_node.parent;
-    }
-    return None;
-}
-
-
 impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None) {
+    import from jaclang.compiler.symbol_utils { ability_of_symbol }
+
     if nd.callee_decl is not None {
         return nd.callee_decl;
     }
     if isinstance(nd.target, uni.Name) {
-        ability_node = self._ability_from_symbol(nd.target.sym);
+        ability_node = ability_of_symbol(nd.target.sym);
         if ability_node {
             return ability_node;
         }
@@ -1003,7 +971,7 @@ impl EsastGenPass._resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None
     }
     if isinstance(nd.target, uni.AtomTrailer)
     and isinstance(nd.target.right, uni.Name) {
-        return self._ability_from_symbol(nd.target.right.sym);
+        return ability_of_symbol(nd.target.right.sym);
     }
     return None;
 }
@@ -4001,16 +3969,6 @@ impl EsastGenPass._osp_arch_set -> set[str] {
     return set(self._osp_arch_kinds().keys());
 }
 
-impl EsastGenPass._local_walker_names -> set[str] {
-    names: set[str] = set();
-    for slot in self._osp_model().local_slots() {
-        if slot.kind == "walker" {
-            names.add(slot.owner);
-        }
-    }
-    return names;
-}
-
 impl EsastGenPass._osp_var_arch -> dict[str, str] {
     if self._osp_var_arch_cache is not None {
         return self._osp_var_arch_cache;
@@ -4431,7 +4389,7 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
             self.client_manifest.exports.append(nd.name.sym_name);
         }
     }
-    body_stmts: list[es.MethodDefinition | es.PropertyDefinition | es.StaticBlock] = [];
+    body_stmts: list[es.MethodDefinition | es.PropertyDefinition] = [];
     has_members: list[uni.ArchHas] = [];
     inner = self.unwrap_body(nd);
     if inner {
@@ -4444,8 +4402,7 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
                 stmt.gen.es_ast
                 and stmt.gen.es_ast
                 and isinstance(
-                    stmt.gen.es_ast,
-                    (es.MethodDefinition, es.PropertyDefinition, es.StaticBlock)
+                    stmt.gen.es_ast, (es.MethodDefinition, es.PropertyDefinition)
                 )
             ) {
                 body_stmts.append(stmt.gen.es_ast);
@@ -4704,6 +4661,8 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
 }
 
 impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
+    import from jaclang.compiler.symbol_utils { ability_of_symbol }
+
     source_mod: uni.Module | None = self._resolve_source_module(nd);
     stubs: list[es.Statement] = [];
     for item in nd.items {
@@ -4723,7 +4682,7 @@ impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
         ret_type_name: str = '';
         ability_node: uni.Ability | None = None;
         if source_mod {
-            ability_node = self._ability_from_symbol(source_mod.lookup(func_name));
+            ability_node = ability_of_symbol(source_mod.lookup(func_name));
             if ability_node {
                 param_names = self._param_names_from_ability(ability_node);
                 param_type_map = self._param_type_map_from_ability(ability_node);
@@ -5898,14 +5857,6 @@ impl EsastGenPass.get_main_mod -> uni.Module {
         self.emit(E5012);
     }
     return mod;
-}
-
-impl EsastGenPass.search_sym_in_main_mod(expr: uni.Expr) -> (uni.Symbol | None) {
-    if not isinstance(expr, uni.Name) {
-        return None;
-    }
-    main_mod = self.get_main_mod();
-    return main_mod and main_mod.lookup(expr.sym_name);
 }
 
 impl EsastGenPass._strip_spawn_await(

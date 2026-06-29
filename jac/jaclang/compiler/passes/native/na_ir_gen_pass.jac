@@ -264,11 +264,19 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _set_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     def _dict_key_of(expr: (uni.UniNode | None)) -> (str | None);
     def _list_spec_of(expr: (uni.UniNode | None)) -> (str | None);
+    def _spec_of(
+        expr: (uni.UniNode | None), names: tuple, registry: dict
+    ) -> (str | None);
+
     def _struct_name_of(expr: (uni.UniNode | None)) -> (str | None);
     def _struct_ptr_pointee_name(val: ir.Value) -> (str | None);
     def _struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.Value;
     def _list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
     def _iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None);
+    def _typed_elem_llvm_of(
+        expr: (uni.UniNode | None), prefix: str
+    ) -> (ir.Type | None);
+
     def _elem_spec_of(expr: (uni.UniNode | None)) -> (str | None);
     def _resolve_type_str(type_name: str) -> ir.Type;
     def _callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None);
@@ -512,7 +520,6 @@ obj NaIRGenPass(ModuleCodegenPass) {
         target_val: ir.Value, index_val: ir.Value
     ) -> (ir.Value | None);
 
-    def _codegen_str_strip(str_val: ir.Value) -> (ir.Value | None);
     def _emit_is_strip_char(ch: ir.Value, charset: (ir.Value | None)) -> ir.Value;
     def _codegen_str_strip_chars(
         str_val: ir.Value, charset: (ir.Value | None), do_left: bool, do_right: bool

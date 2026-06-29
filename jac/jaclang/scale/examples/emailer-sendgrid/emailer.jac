@@ -1,6 +1,6 @@
 """Custom SendGrid emailer for the jac-scale example.
 
-Subclasses jac_scale.abstractions.emailer.Emailer. The factory imports this
+Subclasses jaclang.scale.abstractions.emailer.Emailer. The factory imports this
 module at server startup via `provider = "emailer:SendGridEmailer"` in
 jac.toml. The constructor receives the resolved emailer config dict
 (everything under [plugins.scale.emailer]) plus from_address and enabled.
@@ -12,7 +12,7 @@ logged and dropped (the server keeps running with email features off).
 import logging;
 import os;
 import from typing { Any }
-import from jac_scale.abstractions.emailer { Emailer }
+import from jaclang.scale.abstractions.emailer { Emailer }
 import from sendgrid { SendGridAPIClient }
 import from sendgrid.helpers.mail { Mail }
 
