@@ -77,7 +77,7 @@ def prompt_install_client_deps(config_loader: object) -> bool {
         console.error(
             "\n  To configure manually, add [dependencies.npm] to your jac.toml."
         );
-        console.error("  Or create a new project with: jac create --kind fullstack\n");
+        console.error("  Or create a new project with: jac create --kind web-app\n");
         return False;
     }
     (default_deps, default_dev_deps) = _default_client_deps(framework);

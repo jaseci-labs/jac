@@ -428,13 +428,11 @@ The pod-spec's `command`/`args` reads `JAC_SV_NAME` and dispatches:
 `JAC_SV_SIBLING=1` is set so the JacScalePlugin pre-hook skips the
 local-mode orchestrator.
 
-Starter Dockerfile + .dockerignore at
-`jac-scale/scripts/Dockerfile.microservice` / `dockerignore.microservice`.
-
 ### End-to-end smoke
 
-`jac-scale/scripts/k8s_microservice_real_e2e.sh` builds the image,
-deploys, waits for rollout, curls gateway + per-service routes, then
+`jac-scale/scripts/k8s_microservice_real_e2e.sh` deploys via the no-Docker
+path (a host-built `jac` binary + source ship over a PVC, jac installs at
+pod startup), waits for rollout, curls gateway + per-service routes, then
 hammers `/health` during a rolling restart asserting zero non-2xx.
 
 ```bash

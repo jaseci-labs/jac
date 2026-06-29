@@ -667,7 +667,7 @@ jobs:
     # install and serve HTTP. Codegen unit tests live in test_eject.jac.
     - name: Create fullstack project and eject it
       run: |
-        jac create --use fullstack fs-smoke
+        jac create --use web-app fs-smoke
         jac eject fs-smoke
 
     - name: Install ejected backend and start it

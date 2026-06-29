@@ -234,15 +234,15 @@ def _run_blurb(kind: str) -> str {
     import from jaclang.project.kinds { VALID_KINDS }
     blurbs: dict[str, str] = {
         "cli": "Execute the project",
-        "native-app": "Native-compile and run",
+        "cli-native": "Native-compile and run",
         "native-binary": "Build a native binary into dist/",
-        "shared-library": "Build a shared library",
-        "api-service": "Serve the headless API",
-        "microservices": "Serve the microservice",
-        "pypi-package": "Build a wheel into dist/",
-        "npm-package": "Build an npm package into dist/",
-        "fullstack": "Serve the app (dev mode)",
-        "client": "Serve the client-only app (static)",
+        "native-lib": "Build a shared library",
+        "service": "Serve the headless API",
+        "service-mesh": "Serve the microservice",
+        "py-package": "Build a wheel into dist/",
+        "js-package": "Build an npm package into dist/",
+        "web-app": "Serve the app (dev mode)",
+        "web-static": "Serve the client-only app (static)",
         "desktop": "Run the desktop app",
         "mobile": "Build the mobile app"
     };
@@ -304,7 +304,7 @@ Start with `jac guide jac-core-cheatsheet` and `jac guide jac-types`.
 - `jac check <file>` -- type-check and lint. Compiler diagnostics link to the
   relevant guide; follow the `-> run 'jac guide ...'` hints.
 - `jac run <file>` -- execute a Jac script.
-- `jac start --dev main.jac` -- start a fullstack app or service in dev mode
+- `jac start --dev main.jac` -- start a web-app or service in dev mode
   (hot-reload for client files; restart for server changes). Use this instead
   of `jac run` for apps.
 - `jac browse <action>` -- QA a running app in a headless browser:

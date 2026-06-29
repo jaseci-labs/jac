@@ -41,37 +41,70 @@ impl NaIRGenPass._default_arg_fallback(t: ir.Type) -> ir.Value {
     return ir.Constant(t, 0);
 }
 
-impl NaIRGenPass._fill_default_args(
-    nd: uni.FuncCall, func: ir.Function, args: list, skip_self: bool = False
-) -> None {
-    callee_sig = self._callee_sig_of(nd);
-    if len(args) >= len(func.args) {
-        return;
-    }
-    if callee_sig is None {
-        while len(args) < len(func.args) {
-            args.append(self._default_arg_fallback(func.args[len(args)].type));
-        }
-        return;
-    }
-    sig_params = callee_sig.get_parameters();
-    base = len(args) - 1 if skip_self else len(args);
-    for pix in range(base, len(sig_params)) {
-        expected_type = func.args[len(args)].type
-            if len(args) < len(func.args)
-            else ir.IntType(64);
-        p = sig_params[pix];
-        if p.value is not None {
-            dval = self._codegen_expr(p.value);
-            if dval is not None {
-                args.append(self._coerce_type(dval, expected_type));
-            } else {
-                args.append(self._default_arg_fallback(expected_type));
+impl NaIRGenPass._codegen_bound_args(
+    nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
+) -> list {
+    raw = nd.params or [];
+    positional: list = [];
+    kw_map: dict = {};
+    for param in raw {
+        if isinstance(param, uni.KWPair) {
+            key = param.key.sym_name if param.key is not None else None;
+            if key is not None {
+                kw_map[key] = param.value;
             }
+        } else {
+            positional.append(param);
+        }
+    }
+
+    callee_sig = self._callee_sig_of(nd);
+    args: list = [];
+
+    if callee_sig is None {
+        for p in positional {
+            v = self._codegen_expr(p);
+            if v is not None {
+                args.append(v);
+            }
+        }
+        slot = self_offset + len(args);
+        while slot < len(func.args) {
+            args.append(self._default_arg_fallback(func.args[slot].type));
+            slot += 1;
+        }
+        return args;
+    }
+
+    sig_params = callee_sig.get_parameters();
+    for (pix, sp) in enumerate(sig_params) {
+        slot = self_offset + pix;
+        expected_type = func.args[slot].type
+            if slot < len(func.args)
+            else ir.IntType(64);
+        chosen: (uni.Expr | None) = None;
+        if pix < len(positional) {
+            chosen = positional[pix];
+        } elif sp.name.sym_name in kw_map {
+            chosen = kw_map[sp.name.sym_name];
+        } elif sp.value is not None {
+            chosen = sp.value;
+        }
+        val = self._codegen_expr(chosen) if chosen is not None else None;
+        if val is not None {
+            args.append(val);
         } else {
             args.append(self._default_arg_fallback(expected_type));
         }
     }
+
+    for pix in range(len(sig_params), len(positional)) {
+        v = self._codegen_expr(positional[pix]);
+        if v is not None {
+            args.append(v);
+        }
+    }
+    return args;
 }
 
 impl NaIRGenPass._codegen_call_args(nd: uni.FuncCall) -> list {
@@ -774,16 +807,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         return None;
     }
 
-    args: list[ir.Value] = [];
-    params = nd.params or [];
-    for param in params {
-        val = self._codegen_expr(param);
-        if val is not None {
-            args.append(val);
-        }
-    }
-
-    self._fill_default_args(nd, func, args, skip_self=False);
+    args: list[ir.Value] = self._codegen_bound_args(nd, func, self_offset=0);
 
     if func_name in self.clib_fn_abi {
         return self._codegen_clib_call(func, func_name, args);

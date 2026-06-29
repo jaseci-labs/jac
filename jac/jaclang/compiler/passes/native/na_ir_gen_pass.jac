@@ -274,9 +274,9 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _callee_sig_of(nd: uni.FuncCall) -> (uni.FuncSignature | None);
     def _codegen_call_args(nd: uni.FuncCall) -> list;
     def _emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None;
-    def _fill_default_args(
-        nd: uni.FuncCall, func: ir.Function, args: list, skip_self: bool = False
-    ) -> None;
+    def _codegen_bound_args(
+        nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
+    ) -> list;
 
     def _default_arg_fallback(t: ir.Type) -> ir.Value;
     def _get_name(nd: (uni.UniNode | None)) -> (str | None);

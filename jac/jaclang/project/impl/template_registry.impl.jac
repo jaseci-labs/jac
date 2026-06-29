@@ -245,8 +245,8 @@ def _register_core_templates(registry: TemplateRegistry) {
             "cli", "Command-line Jac project", "main.jac", {"main.jac": _hello}
         ),
         _core_template(
-            "native-app",
-            "Natively-compiled Jac app (runs via the LLVM JIT)",
+            "cli-native",
+            "Natively-compiled Jac program (compiled and run)",
             "main.na.jac",
             {"main.na.jac": _hello}
         ),
@@ -257,31 +257,31 @@ def _register_core_templates(registry: TemplateRegistry) {
             {"main.na.jac": _hello}
         ),
         _core_template(
-            "shared-library",
+            "native-lib",
             "Natively-compiled shared library (.so / .dylib / .dll)",
             "main.na.jac",
             {"main.na.jac": _shared}
         ),
         _core_template(
-            "api-service",
+            "service",
             "Headless Jac API service (server walkers, no client)",
             "main.sv.jac",
             {"main.sv.jac": _service}
         ),
         _core_template(
-            "microservices",
+            "service-mesh",
             "Jac microservice (server walkers; auto-starts providers)",
             "main.sv.jac",
             {"main.sv.jac": _service}
         ),
         _core_template(
-            "pypi-package",
+            "py-package",
             "Distributable Python package (built into a wheel)",
             "lib.jac",
             {"lib.jac": _lib}
         ),
         _core_template(
-            "npm-package",
+            "js-package",
             "Distributable npm package (built into a tarball)",
             "lib.jac",
             {"lib.jac": _lib}

@@ -1613,16 +1613,9 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
         );
     }
 
-    args: list[ir.Value] = [obj_val];
-    params = nd.params or [];
-    for param in params {
-        val = self._codegen_expr(param);
-        if val is not None {
-            args.append(val);
-        }
-    }
-
-    self._fill_default_args(nd, func, args, skip_self=True);
+    args: list[ir.Value] = [obj_val] + self._codegen_bound_args(
+        nd, func, self_offset=1
+    );
 
     if self._arch_has_vtable(type_name) {
         result = self._codegen_virtual_call(obj_val, method_name, args, type_name);

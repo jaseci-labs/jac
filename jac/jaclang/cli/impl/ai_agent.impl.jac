@@ -490,7 +490,7 @@ impl ProcessTools.run_jac_cli(subcommand: str, path: str) -> str {
     }
 }
 
-sem ProcessTools.run_command = "Run a shell command in the project directory and return its combined output. Use this to scaffold a new project (`jac create --kind fullstack <name>`), install dependencies (`jac install`), run a file (`jac run <file>`), run tests, or any other shell task. `jac create --kind <kind>` kinds: cli (default), fullstack, api-service, native-binary, pypi-package, and more (run `jac create --list_jacpacks` for the full list).";
+sem ProcessTools.run_command = "Run a shell command in the project directory and return its combined output. Use this to scaffold a new project (`jac create --kind web-app <name>`), install dependencies (`jac install`), run a file (`jac run <file>`), run tests, or any other shell task. `jac create --kind <kind>` kinds: cli (default), web-app, service, native-binary, py-package, and more (run `jac create --list_jacpacks` for the full list).";
 sem ProcessTools.run_command.command = "The shell command to run.";
 impl ProcessTools.run_command(command: str) -> str {
     stripped = command.strip();
@@ -611,7 +611,7 @@ impl ProcessTools.start_app(entry_file: str) -> str {
     return truncate(str(output) if output else "(no startup output)");
 }
 
-sem ProcessTools.serve = "Start the web/fullstack dev server and wait until it is actually serving, returning the URL to open. The first start can take a while because it installs the client dependencies and builds the client; this tool blocks until the server is ready (or fails) so you do not have to guess. On success, call browse_open on the returned URL. On failure it returns the server log tail -- read it, go back to Build to fix the cause, and do not conclude the app works.";
+sem ProcessTools.serve = "Start the web/full-stack dev server and wait until it is actually serving, returning the URL to open. The first start can take a while because it installs the client dependencies and builds the client; this tool blocks until the server is ready (or fails) so you do not have to guess. On success, call browse_open on the returned URL. On failure it returns the server log tail -- read it, go back to Build to fix the cause, and do not conclude the app works.";
 sem ProcessTools.serve.entry_file = "Entry .jac file to serve; empty string means 'main.jac'.";
 
 impl ProcessTools.serve(entry_file: str) -> str {
@@ -1800,11 +1800,11 @@ impl PhaseState.tools -> list {
     return [t.fn for t in [self->:Exposes:->]];
 }
 
-sem Plan = "the PLANNING state: understand the request and the existing project before writing anything. Use project_map for an unfamiliar project, find_symbol / find_uses / context_slice to navigate by meaning, read_file to read what you will change, and the guides for unfamiliar Jac (read at least the one for the kind of code you will write -- e.g. jac-cl-components for a UI). Do not write or edit files here. Finish by stating a short, concrete plan: whether to scaffold (and which template -- client for a browser-only UI, fullstack for server/data, default for a script), the files to create or change, and what each is for.";
+sem Plan = "the PLANNING state: understand the request and the existing project before writing anything. Use project_map for an unfamiliar project, find_symbol / find_uses / context_slice to navigate by meaning, read_file to read what you will change, and the guides for unfamiliar Jac (read at least the one for the kind of code you will write -- e.g. jac-cl-components for a UI). Do not write or edit files here. Finish by stating a short, concrete plan: whether to scaffold (and which template -- web-static for a browser-only UI, web-app for server/data, default for a script), the files to create or change, and what each is for.";
 
-sem Build = "the BUILDING state: carry out the plan. For a new app, scaffold it ONCE with `jac create --kind <kind> <name>` via run_command, then `cd <name>` so every later tool works inside the project (the cd persists). Pick the SIMPLEST kind that fits: `wasm` for a browser-only UI with no server or saved data (a calculator, a unit converter, a static page); `fullstack` only when you need server endpoints or persistent/multi-user data; `cli` for a non-web script. To create a NEW file, call write_file with its FULL contents -- never create files with shell redirection (`echo >`, `cat <<EOF`, `touch`) and never try to edit a file that does not exist yet. Use edit_file only to change a file that already exists, and read it first. Every write reports the compiler errors it introduced; fix them before moving on. Keep files focused; split large archetypes into impl files.";
+sem Build = "the BUILDING state: carry out the plan. For a new app, scaffold it ONCE with `jac create --kind <kind> <name>` via run_command, then `cd <name>` so every later tool works inside the project (the cd persists). Pick the SIMPLEST kind that fits: `web-static` for a browser-only UI with no server or saved data (a calculator, a unit converter, a static page); `web-app` only when you need server endpoints or persistent/multi-user data; `cli` for a non-web script. To create a NEW file, call write_file with its FULL contents -- never create files with shell redirection (`echo >`, `cat <<EOF`, `touch`) and never try to edit a file that does not exist yet. Use edit_file only to change a file that already exists, and read it first. Every write reports the compiler errors it introduced; fix them before moving on. Keep files focused; split large archetypes into impl files.";
 
-sem QA = "the QA state: verify the work end to end and fix what you find. Run `jac check .` (zero errors required). For a runnable app, start_app and confirm it boots cleanly. For a web or fullstack app, drive the built-in browser: call serve(entry) to start the dev server -- it waits until the server is actually ready and returns its URL (the first start is slow, as it installs client deps and builds the client). Then browse_open that URL, browse_snapshot to read the page, exercise the main flows with browse_click / browse_fill / browse_type / browse_press (snapshotting after each), check for errors with browse_eval, then browse_close and stop_server. If serve reports the server failed to start, read the log tail it returns and go back to Build to fix the cause -- do not conclude the app works until you have actually run and exercised it.";
+sem QA = "the QA state: verify the work end to end and fix what you find. Run `jac check .` (zero errors required). For a runnable app, start_app and confirm it boots cleanly. For a web or full-stack app, drive the built-in browser: call serve(entry) to start the dev server -- it waits until the server is actually ready and returns its URL (the first start is slow, as it installs client deps and builds the client). Then browse_open that URL, browse_snapshot to read the page, exercise the main flows with browse_click / browse_fill / browse_type / browse_press (snapshotting after each), check for errors with browse_eval, then browse_close and stop_server. If serve reports the server failed to start, read the log tail it returns and go back to Build to fix the cause -- do not conclude the app works until you have actually run and exercised it.";
 
 impl PhaseState.directive -> str {
     return f"Carry out the {type(self).__name__} state now.";
@@ -1877,7 +1877,7 @@ impl Build.directive -> str {
 impl QA.directive -> str {
     return (
         "Verify the finished work end to end NOW. Run jac_check and require "
-        "zero errors. For a web or fullstack app, serve it and drive the "
+        "zero errors. For a web or full-stack app, serve it and drive the "
         "browser (browse_open, browse_snapshot, then click/type the real "
         "controls) to confirm the REQUESTED feature actually works on the "
         "page -- not just that the scaffold loads. If anything is missing, "

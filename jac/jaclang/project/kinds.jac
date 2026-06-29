@@ -4,15 +4,15 @@ import from jaclang.jac0core.ext_registry { base_stem, codespace_of, MODULE_SUFF
 
 glob KIND_SPECS: dict[str, dict[str, str]] = {
          "cli": {"entry": "main.jac", "plugin": ""},
-         "native-app": {"entry": "main.na.jac", "plugin": ""},
+         "cli-native": {"entry": "main.na.jac", "plugin": ""},
          "native-binary": {"entry": "main.na.jac", "plugin": ""},
-         "shared-library": {"entry": "main.na.jac", "plugin": ""},
-         "api-service": {"entry": "main.sv.jac", "plugin": ""},
-         "microservices": {"entry": "main.sv.jac", "plugin": ""},
-         "pypi-package": {"entry": "lib.jac", "plugin": ""},
-         "npm-package": {"entry": "lib.jac", "plugin": ""},
-         "fullstack": {"entry": "main.jac", "plugin": ""},
-         "client": {"entry": "main.jac", "plugin": ""},
+         "native-lib": {"entry": "main.na.jac", "plugin": ""},
+         "service": {"entry": "main.sv.jac", "plugin": ""},
+         "service-mesh": {"entry": "main.sv.jac", "plugin": ""},
+         "py-package": {"entry": "lib.jac", "plugin": ""},
+         "js-package": {"entry": "lib.jac", "plugin": ""},
+         "web-app": {"entry": "main.jac", "plugin": ""},
+         "web-static": {"entry": "main.jac", "plugin": ""},
          "desktop": {"entry": "main.jac", "plugin": ""},
          "mobile": {"entry": "main.jac", "plugin": ""}
      },
@@ -105,16 +105,16 @@ def resolve_project_kind(config: JacConfig, entry_path: str) -> str {
     }
     entry_codespace = codespace_of(entry_path);
     if (entry_codespace == 'native') {
-        return "native-app";
+        return "cli-native";
     }
     if (entry_codespace == 'server') {
-        return "api-service";
+        return "service";
     }
     if (entry_codespace == 'client') {
-        return "fullstack";
+        return "web-app";
     }
     if _has_client(config) {
-        return "fullstack";
+        return "web-app";
     }
     return "cli";
 }
@@ -130,12 +130,12 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
     entry_path = resolve_entry(config, project_root);
     kind = resolve_project_kind(config, entry_path);
 
-    needs_entry = kind not in ["pypi-package", "npm-package"];
+    needs_entry = kind not in ["py-package", "js-package"];
     if needs_entry and not entry_path {
         return None;
     }
     stem = _entry_stem(entry_path) if entry_path else config.project.name;
-    if kind in ["cli", "native-app"] {
+    if kind in ["cli", "cli-native"] {
         return RunPlan(
             kind=kind,
             action="execute",
@@ -156,7 +156,7 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
             summary=f"Build native binary -> {out}"
         );
     }
-    if kind == "shared-library" {
+    if kind == "native-lib" {
         return RunPlan(
             kind=kind,
             action="build",
@@ -166,7 +166,7 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
             summary="Build shared library (.so / .dylib / .dll)"
         );
     }
-    if kind == "api-service" {
+    if kind == "service" {
         return RunPlan(
             kind=kind,
             action="serve",
@@ -176,7 +176,7 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
             summary="Serve headless API service"
         );
     }
-    if kind == "microservices" {
+    if kind == "service-mesh" {
         return RunPlan(
             kind=kind,
             action="serve",
@@ -186,7 +186,7 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
             summary="Serve microservice consumer (auto-starts providers)"
         );
     }
-    if kind == "fullstack" {
+    if kind == "web-app" {
         return RunPlan(
             kind=kind,
             action="serve",
@@ -197,7 +197,7 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
             requires_plugin=kind_required_plugin(kind)
         );
     }
-    if kind == "client" {
+    if kind == "web-static" {
         return RunPlan(
             kind=kind,
             action="serve",
@@ -219,7 +219,7 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
             requires_plugin=kind_required_plugin(kind)
         );
     }
-    if kind == "pypi-package" {
+    if kind == "py-package" {
         return RunPlan(
             kind=kind,
             action="build",
@@ -229,7 +229,7 @@ def plan_project_run(config: JacConfig, project_root: str) -> (RunPlan | None) {
             summary="Build PyPI wheel into dist/"
         );
     }
-    if kind == "npm-package" {
+    if kind == "js-package" {
         return RunPlan(
             kind=kind,
             action="build",

@@ -63,11 +63,3 @@ keywords = "little-x social jac jaseci"
 author = "Jaseci Labs"
 theme_color = "#f97316"
 icon = "/static/assets/littlex-logo.svg"
-
-# Experimental-mode deploy source. With `jac start --scale --experimental`, the
-# pod git-clones this repo/branch and `zig build`s jac from source in-cluster
-# (bypassing install.sh / GitHub Releases). Points at the fork's branch so the
-# in-pod build uses the rearchitecture code.
-[plugins.scale.kubernetes]
-jaseci_repo_url = "https://github.com/MusabMahmoodh/jaseci.git"
-jaseci_branch = "feat/jac-scale-rearchitecture"

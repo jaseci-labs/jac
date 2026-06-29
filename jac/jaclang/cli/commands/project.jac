@@ -23,7 +23,7 @@ glob registry = get_registry();
         Arg.create(
             "kind",
             default="",
-            help="Project kind to scaffold (cli, native-app, api-service, fullstack, ...)",
+            help="Project kind to scaffold (cli, cli-native, service, web-app, ...)",
             short="k"
         ),
         Arg.create(
@@ -47,12 +47,12 @@ glob registry = get_registry();
             "Initialize a cli project in the current directory (name from cwd)"
         ),
         ("jac create myapp", "Create new myapp/ directory (cli kind)"),
-        ("jac create myapp --kind api-service", "Scaffold a headless API service"),
+        ("jac create myapp --kind service", "Scaffold a headless API service"),
         (
             "jac create myapp --kind native-binary",
             "Scaffold a natively-compiled binary"
         ),
-        ("jac create myapp --kind fullstack", "Scaffold a fullstack app"),
+        ("jac create myapp --kind web-app", "Scaffold a full-stack web app"),
         ("jac create --force", "Reinitialize existing project"),
         ("jac create --use ./my.jacpack", "Create from local .jacpack file"),
         ("jac create --use https://example.com/t.jacpack", "Create from URL"),

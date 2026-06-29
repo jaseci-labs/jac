@@ -931,7 +931,7 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
     if not ensure_client_deps(self.config_loader) {
         raise ClientBundleError(
             'Client dependencies not configured. Add [dependencies.npm] to jac.toml '
-            'or create a project with: jac create --kind fullstack'
+            'or create a project with: jac create --kind web-app'
         ) from None;
     }
     self.output_dir.mkdir(parents=True, exist_ok=True);

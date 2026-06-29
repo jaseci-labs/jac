@@ -237,7 +237,7 @@ impl _build_shadcn_template_info -> dict[str, any] | None {
         template = load_template_from_directory(template_dir);
         info = template.to_dict();
 
-        info["kind"] = "fullstack";
+        info["kind"] = "web-app";
         info["is_default_for_kind"] = False;
 
         info["post_create"] = _shadcn_post_create;

@@ -254,36 +254,41 @@ def _jac_sdk_js -> str {
     return boot[start:end];
 }
 
-def _splice_platform(host_src: str, platform_src: str, drop_entry: bool) -> str {
-    plat = platform_src[:-1] if platform_src.endswith("\n") else platform_src;
-    out: list[str] = [];
-    for line in host_src.split("\n") {
-        if line == "# PLATFORM" {
-            out.append(plat);
-            continue;
+def _top_level_import_boundary(lines: list[str]) -> int {
+    depth = 0;
+    idx = 0;
+    for line in lines {
+        stripped = line.strip();
+        if (
+            depth == 0
+            and stripped != ""
+            and (not stripped.startswith("#"))
+            and (not stripped.startswith("import"))
+        ) {
+            return idx;
         }
-        if drop_entry and line == "# ENTRY" {
-            continue;
-        }
-        out.append(line);
+        depth += line.count("{") - line.count("}");
+        idx += 1;
     }
-    return "\n".join(out);
+    return len(lines);
+}
+
+def _inject_platform(host_src: str, platform_src: str) -> str {
+    plat = platform_src[:-1] if platform_src.endswith("\n") else platform_src;
+    lines = host_src.split("\n");
+    at = _top_level_import_boundary(lines);
+    return "\n".join(lines[:at] + [plat] + lines[at:]);
 }
 
 def _nacompile_cef(
-    cef_dir: Path,
-    source_name: str,
-    build_name: str,
-    output: Path,
-    drop_entry: bool,
-    shared: bool,
+    cef_dir: Path, source_name: str, build_name: str, output: Path, shared: bool,
 ) -> Path {
     build_dir = cef_dir / ".build";
     build_dir.mkdir(parents=True, exist_ok=True);
     build_src = build_dir / build_name;
     host_src = (cef_dir / source_name).read_text();
     platform_src = (cef_dir / "cef_platform.na.jac").read_text();
-    build_src.write_text(_splice_platform(host_src, platform_src, drop_entry));
+    build_src.write_text(_inject_platform(host_src, platform_src));
     cmd = [_jac_bin(), "nacompile"];
     if shared {
         cmd.append("--shared");
@@ -305,7 +310,6 @@ def build_cef_dispatch(cef_dir: Path) -> Path {
         "cef_dispatch.na.jac",
         "cef_dispatch_build.na.jac",
         cef_dir / "libcef_dispatch.so",
-        False,
         True,
     );
 }
@@ -316,7 +320,6 @@ def build_cef_subprocess(cef_dir: Path) -> Path {
         "cef_subprocess.na.jac",
         "cef_subprocess_build.na.jac",
         cef_dir / "cef-subprocess",
-        True,
         False,
     );
 }
