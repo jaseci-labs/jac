@@ -98,7 +98,7 @@ bash jac-scale/scripts/k8s_microservice_real_e2e.sh \
 ```
 
 Expected runtime on `t3.xlarge`: 8-15 min for a cold run
-(docker build + pod boot dominates). The script ends with
+(host binary build + pod boot dominates). The script ends with
 `=== K8s microservice REAL e2e PASSED ===` on success.
 
 ### What the M-14.a phase asserts
