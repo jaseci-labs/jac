@@ -1,26 +1,15 @@
 glob g_cmdline_buf: int = 0,
      g_argv_arr: int = 0;
 
-# ── CEF ABI guard ────────────────────────────────────────────────
-# Exact CEF build the struct/vtable offsets in cef_dispatch.na.jac and the
-# cef_app_t in cef_subprocess.na.jac were verified against. Must stay in
-# lockstep with cef_sums.lock (`# version:`). Lives here because cef_platform
-# is spliced into both the host (libcef_dispatch.so) and the subprocess binary,
-# so a single definition guards both. Callers must import cef_version_info,
-# write, abort, strlen, calloc, memset, and free.
 glob CEF_ABI_MAJOR: int = 119,
      CEF_ABI_MINOR: int = 4,
      CEF_ABI_PATCH: int = 7;
 glob g_abi_checked: int = 0;
 
-"""Write a str to stderr (fd 2). Named to avoid clashing with cef_dispatch's _log."""
 def _eprint(msg: str) {
     write(2, msg, strlen(msg));
 }
 
-"""Write a non-negative integer to stderr in decimal (no libc itoa/snprintf is
-imported, and snprintf is variadic which this FFI does not model). Used only by
-the ABI mismatch diagnostic."""
 def _write_uint(n: int) {
     if n < 0 {
         return;
@@ -34,13 +23,6 @@ def _write_uint(n: int) {
     free(digit_buf);
 }
 
-"""Fail loud and early if the loaded libcef.so is not the exact build the CEF
-struct/vtable offsets were verified against. Every struct layout and vtable
-slot is pinned to one CEF build; a mismatched libcef would shift those offsets
-and corrupt memory deep inside cef_initialize / cef_execute_process with no
-clear cause. This is the runtime analogue of the build-time API-version assert
-other CEF embedders use -- it converts silent corruption into an immediate,
-explained abort. Idempotent: the check runs once per process."""
 def _assert_cef_abi {
     global g_abi_checked;
     if g_abi_checked != 0 {

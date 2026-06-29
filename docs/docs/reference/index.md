@@ -52,7 +52,7 @@ The language spec covers all core Jac constructs:
 curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 
 # 2. Scaffold a new project
-jac create myapp --use client
+jac create myapp --use web-static
 
 # 3. Run
 jac start

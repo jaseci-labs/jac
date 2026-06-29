@@ -1,0 +1,43 @@
+[project]
+name = "todo-app"
+version = "0.1.0"
+description = "Jac desktop todo example"
+entry-point = "main.jac"
+kind = "desktop"
+
+[dependencies.npm]
+react = "^18.2.0"
+react-dom = "^18.2.0"
+react-router-dom = "^6.22.0"
+react-error-boundary = "^5.0.0"
+"@tanstack/react-form" = "^1.33.0"
+zod = "^4.3.6"
+
+[dependencies.npm.dev]
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.2.1"
+typescript = "^5.3.3"
+"@types/react" = "^18.2.0"
+"@types/react-dom" = "^18.2.0"
+
+[dev-dependencies]
+watchdog = ">=3.0.0"
+
+[serve]
+base_route_app = "app"
+
+[plugins.client]
+
+[plugins.desktop]
+name = "todo-app"
+identifier = "org.jaseci.examples.todo-app"
+version = "0.1.0"
+
+[plugins.desktop.window]
+title = "Todo App"
+width = 900
+height = 800
+min_width = 800
+
+[dev]
+jaclang_source = "../.."

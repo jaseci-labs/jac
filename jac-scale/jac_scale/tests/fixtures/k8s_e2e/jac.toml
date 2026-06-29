@@ -42,9 +42,9 @@ health_monitor_interval = 10.0
 # Map module name -> gateway prefix. Services NOT listed here still work
 # for internal `sv import` calls; this only controls public URL routing.
 [plugins.scale.microservices.routes]
-products_app = "/api/products"
-orders_app = "/api/orders"
-cart_app = "/api/cart"
+products_app = "/products"
+orders_app = "/orders"
+cart_app = "/cart"
 
 # Gateway memory. The gateway loads the admin portal, LLM-telemetry, log
 # wiring and runtime OpenAPI aggregation that service pods don't, so its

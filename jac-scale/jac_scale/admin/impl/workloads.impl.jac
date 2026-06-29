@@ -1,13 +1,3 @@
-"""Workloads admin endpoints implementation.
-
-Queries the in-cluster Prometheus for kube-state-metrics and cAdvisor data,
-then projects it into a flat, UI-friendly shape so the admin panel can render
-traffic-light cards without doing any PromQL math.
-
-Scopes everything by K8S_NAMESPACE — the namespace IS the application boundary,
-no name-pattern filtering. The monitoring stack (Prometheus, Grafana, etc.)
-shows up in the list and the UI labels it as infrastructure.
-"""
 import os;
 import time;
 import math;
@@ -21,7 +11,7 @@ import from jac_scale.jserver.jserver {
     APIParameter,
     ParameterType
 }
-import from jac_scale.utilities.metrics.prometheus_client {
+import from jac_scale.observability.prometheus_client {
     query as prom_query,
     query_range as prom_query_range,
     scalar as prom_scalar,
@@ -35,13 +25,6 @@ import from jac_scale.admin.workload_helpers {
 
 glob logger = logging.getLogger(__name__);
 
-"""Index a `by (<label>)` Prometheus result into {label_value: number}.
-
-Consolidates the previous per-shape indexers. `as_int` rounds to int (replica
-counts), otherwise keeps float (cpu/memory). Non-finite values (NaN/Inf) coerce
-to 0: Prometheus returns "NaN" for increase()/rate() over windows shorter than a
-pod's lifetime, and int(nan) raises while round(nan)/json reject it downstream.
-"""
 def _index_by(rows: list, label: str, as_int: bool = False) -> dict {
     out: dict = {};
     for entry in rows {
@@ -58,11 +41,6 @@ def _index_by(rows: list, label: str, as_int: bool = False) -> dict {
     return out;
 }
 
-"""Parse a Prometheus value pair ['<ts>', '<value>'] to a finite float.
-
-Returns 0.0 for missing, unparseable, or non-finite (NaN/Inf) values so callers
-can accumulate without risking int(nan) crashes or non-JSON-serialisable floats.
-"""
 def _finite(v: list) -> float {
     try {
         val = float(v[1]) if len(v) > 1 else 0.0;
@@ -72,25 +50,13 @@ def _finite(v: list) -> float {
     return val if math.isfinite(val) else 0.0;
 }
 
-"""Build a namespace-scoped PromQL selector for a bare metric.
-
-`scoped("kube_deployment_created", 'namespace="x"')` ->
-`kube_deployment_created{namespace="x"}`; with an empty filter returns the
-bare metric name.
-"""
 def _scoped(metric: str, ns_filter: str) -> str {
     return f'{metric}{{{ns_filter}}}' if ns_filter else metric;
 }
 
-"""Return a user-facing reason string when metrics can't be shown, else "".
-
-Distinguishes "monitoring disabled in jac.toml" (the stack was never deployed)
-from "Prometheus URL unresolved" so the UI can tell the user to enable
-monitoring rather than implying a transient outage.
-"""
 def _unavailable_reason -> str {
     try {
-        import from jac_scale.config_loader { get_scale_config }
+        import from jac_scale.config.config_loader { get_scale_config }
         if not bool(get_scale_config().get_monitoring_config().get('enabled', False)) {
             return "Monitoring is disabled. Set [plugins.scale.monitoring] enabled = true in jac.toml and redeploy to see workload metrics.";
         }
@@ -101,7 +67,6 @@ def _unavailable_reason -> str {
     return "";
 }
 
-"""Register all workloads endpoints under /admin/workloads/*."""
 impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
     async def summary_handler(request: Request) -> TransportResponse {
         authorization = request.headers.get('Authorization');
@@ -182,13 +147,6 @@ impl JacAPIServerWorkloads.register_workloads_endpoints -> None {
     );
 }
 
-"""Build the top-of-page summary cards.
-
-Runs ~5 instant queries against Prometheus and rolls them up into the shape
-the UI renders directly. If Prometheus is unreachable the response still
-succeeds with `metrics_available: false` so the UI can show a banner instead
-of erroring.
-"""
 impl JacAPIServerWorkloads.admin_workloads_summary(
     Authorization: str | None = None
 ) -> TransportResponse {
@@ -218,8 +176,7 @@ impl JacAPIServerWorkloads.admin_workloads_summary(
         );
     }
     running = int(prom_scalar(probe));
-    # A None (not []) from these core pod-phase queries means Prometheus became
-    # unreachable after the probe passed; surface that instead of fake zeros.
+
     pending_raw = prom_query(
         f'count(kube_pod_status_phase{{phase="Pending"{ns_and}}} == 1)'
     );
@@ -246,10 +203,7 @@ impl JacAPIServerWorkloads.admin_workloads_summary(
         )
     );
     nodes_total = int(prom_scalar(prom_query('count(kube_node_info)')));
-    # The app's own /metrics series carry no `namespace` label (only k8s SD
-    # metrics do), so these app-traffic queries are NOT namespace-filtered.
-    # Safe because Prometheus is per-namespace and only this app exposes
-    # *_http_requests_total here.
+
     request_rate = prom_scalar(
         prom_query('sum(rate({__name__=~".+_http_requests_total"}[1m]))')
     );
@@ -280,12 +234,6 @@ impl JacAPIServerWorkloads.admin_workloads_summary(
     );
 }
 
-"""Build the per-workload table including Deployments, StatefulSets and DaemonSets.
-
-Joins kube-state-metrics replica counts against cAdvisor CPU/memory metrics
-and rolls each pod's usage up to its parent workload by stripping the
-replicaset/pod hash suffix. Scope is the entire K8S_NAMESPACE.
-"""
 impl JacAPIServerWorkloads.admin_workloads_list(
     Authorization: str | None = None
 ) -> TransportResponse {
@@ -303,7 +251,7 @@ impl JacAPIServerWorkloads.admin_workloads_list(
     }
     ns_filter = f'namespace="{namespace}"' if namespace else '';
     ns_and = f',{ns_filter}' if ns_filter else '';
-    # Probe Prometheus once before fanning out queries.
+
     dep_available_raw = prom_query(
         _scoped('kube_deployment_status_replicas_available', ns_filter)
     );
@@ -352,8 +300,6 @@ impl JacAPIServerWorkloads.admin_workloads_list(
     sts_created_by = _index_by(sts_created, "statefulset", True);
     ds_created_by = _index_by(ds_created, "daemonset", True);
 
-    # Build the workload entries first so we know every workload name before
-    # rolling pod-level metrics up to their owner.
     entries: list = [];
     wl_names: list = [];
     for entry in dep_available_raw {
@@ -414,7 +360,6 @@ impl JacAPIServerWorkloads.admin_workloads_list(
         wl_names.append(name);
     }
 
-    # Roll pod-level metrics up to the longest matching workload name.
     cpu_by_owner: dict = {};
     mem_by_owner: dict = {};
     restarts_by_owner: dict = {};
@@ -471,7 +416,6 @@ impl JacAPIServerWorkloads.admin_workloads_list(
     );
 }
 
-"""List every individual pod in the namespace with status + resource usage."""
 impl JacAPIServerWorkloads.admin_workloads_pods(
     Authorization: str | None = None
 ) -> TransportResponse {
@@ -565,11 +509,6 @@ impl JacAPIServerWorkloads.admin_workloads_pods(
     );
 }
 
-"""Roll a `by (pod)` range-query result up to per-workload time-series.
-
-Returns {workload_name: {timestamp: summed_value}}. Pods are matched to the
-longest owning workload name (same logic as the list endpoint).
-"""
 def _rollup_range(rows: list, names: list) -> dict {
     out: dict = {};
     for entry in rows {
@@ -591,7 +530,6 @@ def _rollup_range(rows: list, names: list) -> dict {
     return out;
 }
 
-"""Flatten a {timestamp: value} map into a sorted list of {t, v} points."""
 def _series_points(tsmap: dict) -> list {
     pts: list = [];
     for ts in sorted(tsmap.keys()) {
@@ -600,12 +538,6 @@ def _series_points(tsmap: dict) -> list {
     return pts;
 }
 
-"""CPU + memory time-series for every workload over a range, in one response.
-
-Powers the admin Graphs tab: two range queries (cpu, memory) bucketed by pod,
-rolled up to workloads. `range_minutes` picks both the window and the step so
-point counts stay reasonable (1h/30s, 6h/2m, 24h/10m, 7d/1h).
-"""
 impl JacAPIServerWorkloads.admin_workloads_timeseries(
     range_minutes: int = 60, Authorization: str | None = None
 ) -> TransportResponse {
@@ -613,8 +545,7 @@ impl JacAPIServerWorkloads.admin_workloads_timeseries(
     if error {
         return error;
     }
-    # Clamp to the [1 min, 7 day] window the UI exposes - uncapped values
-    # would ask Prometheus for huge bucket counts; <=0 gives an empty window.
+
     range_minutes = max(1, min(int(range_minutes), 10080));
     namespace = os.environ.get("K8S_NAMESPACE", "");
     reason = _unavailable_reason();
@@ -631,7 +562,7 @@ impl JacAPIServerWorkloads.admin_workloads_timeseries(
     }
     ns_filter = f'namespace="{namespace}"' if namespace else '';
     ns_and = f',{ns_filter}' if ns_filter else '';
-    # Collect workload names so pods can be rolled up to their owner.
+
     names: list = [];
     for spec in [
         ('kube_deployment_created', 'deployment'),

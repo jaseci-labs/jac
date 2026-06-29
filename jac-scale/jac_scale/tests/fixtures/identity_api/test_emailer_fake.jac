@@ -8,7 +8,7 @@ token out of the body).
 Loaded via `provider = "test_emailer_fake:FakeEmailer"` in jac.toml.
 """
 import from typing { Any }
-import from jac_scale.abstractions.emailer { Emailer }
+import from jac_scale.emailer.emailer { Emailer }
 
 # Shared mailbox - tests inspect and clear this between cases.
 glob SENT: list[dict[str, Any]] = [];

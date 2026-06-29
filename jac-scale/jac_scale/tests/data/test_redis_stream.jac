@@ -1,13 +1,8 @@
-"""Integration tests for RedisEventStream against a real Redis (testcontainers).
-
-Covers roundtrip, ack semantics, push delivery, retry-to-DLQ, and health probe. Mirrors test_direct_db.jac for fixture style.
-"""
-
 import contextlib;
 import time;
 import threading;
 import from testcontainers.redis { RedisContainer }
-import from jac_scale.db { close_all_db_connections, get_redis_client }
+import from jac_scale.persistence.db { close_all_db_connections, get_redis_client }
 import from jac_scale.events.broker { Event, RetryPolicy }
 import from jac_scale.events.streams.redis { RedisEventStream }
 
@@ -19,7 +14,6 @@ def cleanup_connections {
 }
 
 
-# Session-scoped container, mirrors test_direct_db.jac
 glob _redis_container = RedisContainer("redis:7.2-alpine"),
      REDIS_URI: str = "";
 
@@ -53,13 +47,11 @@ def _make_broker(
 
 
 def _flush_redis {
-    # Each test gets a fresh keyspace so streams from prior tests don't leak.
     client = get_redis_client(REDIS_URI);
     client.flushdb();
 }
 
 
-# --- publish + consume roundtrip ---
 test "publish then consume roundtrips event fields" {
     _flush_redis();
     b = _make_broker(group="t_rt");
@@ -96,7 +88,6 @@ test "publish then consume roundtrips event fields" {
 }
 
 
-# --- ack semantics ---
 test "ack prevents redelivery in same group" {
     _flush_redis();
     b = _make_broker(group="t_ack");
@@ -112,7 +103,6 @@ test "ack prevents redelivery in same group" {
     assert len(first) == 1;
     b.ack(first[0]);
 
-    # After ack, the consumer group should not see the same message again.
     second = b.consume("acks", group="t_ack", max_messages=1, timeout_seconds=0.2);
     assert second == [];
 
@@ -133,7 +123,6 @@ test "consume returns empty on timeout when stream is empty" {
 }
 
 
-# --- subscribe drives handler ---
 test "subscribe handler receives published events" {
     _flush_redis();
     b = _make_broker(group="t_sub");
@@ -147,7 +136,7 @@ test "subscribe handler receives published events" {
     }
 
     b.register_handler("subs", handler, group="t_sub");
-    # Give the consumer thread a beat to issue its first XREADGROUP.
+
     time.sleep(0.2);
     b.publish("subs", Event(event_type="ping", data={"n": 7}));
 
@@ -161,7 +150,6 @@ test "subscribe handler receives published events" {
 }
 
 
-# --- retry exhaustion -> dead-letter ---
 test "retry exhaustion routes to dlq stream" {
     _flush_redis();
     b = _make_broker(
@@ -188,11 +176,9 @@ test "retry exhaustion routes to dlq stream" {
     time.sleep(0.2);
     b.publish("dlqtest", Event(event_type="boom", data={"n": 1}));
 
-    # Wait for both attempts to fire and the broker to publish to DLQ.
     assert done.wait(timeout=5.0);
     time.sleep(0.3);
 
-    # Pull from the DLQ via a fresh group on the .dlq stream.
     dlq_msgs = b.consume(
         "dlqtest.dlq",
         group="t_dlq_reader",
@@ -209,13 +195,10 @@ test "retry exhaustion routes to dlq stream" {
 }
 
 
-# --- start_from semantics ---
 test "start_from earliest replays messages published before group existed" {
     _flush_redis();
     b = _make_broker(group="t_replay");
 
-    # Publish before the consumer group is created. With default 'latest'
-    # the group would skip these; 'earliest' must surface them.
     b.publish("replay", Event(event_type="x", data={"n": 1}));
     b.publish("replay", Event(event_type="x", data={"n": 2}));
 
@@ -240,8 +223,6 @@ test "start_from latest skips messages published before group existed" {
 
     b.publish("skip", Event(event_type="x", data={"n": 1}));
 
-    # Default start_from='latest' creates the group at the tail, so the
-    # pre-existing message must be invisible to it.
     out = b.consume("skip", group="t_skip", max_messages=5, timeout_seconds=0.3);
     assert out == [];
 
@@ -250,7 +231,6 @@ test "start_from latest skips messages published before group existed" {
 }
 
 
-# --- delivery metadata ---
 test "consumed event exposes delivery_id, delivery_topic, delivery_group" {
     _flush_redis();
     b = _make_broker(group="t_delivery");
@@ -269,14 +249,12 @@ test "consumed event exposes delivery_id, delivery_topic, delivery_group" {
     assert ev.delivery_topic == "delivered";
     assert ev.delivery_group == "t_delivery";
 
-    # ack() reads delivery_id off the first-class fields, not headers.
     b.ack(ev);
     b.stop(drain=False);
     cleanup_connections();
 }
 
 
-# --- health probe ---
 test "health returns healthy redis broker" {
     b = _make_broker(group="t_health");
     h = b.health();

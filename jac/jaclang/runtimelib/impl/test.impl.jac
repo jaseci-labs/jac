@@ -1,7 +1,6 @@
 import from jaclang.cli.console { console }
 import from jaclang.jac0core.ext_registry { strip_suffix }
 
-"""Create a new test."""
 impl JacTestCheck.add_test(
     filepath: str, func_name: str, test_func: Callable, display_name: str = ""
 ) -> None {
@@ -22,7 +21,6 @@ impl JacTestCheck.add_test(
     JacTestCheck.test_suite.addTest(test_case);
 }
 
-"""Run the test suite."""
 impl JacTestCheck.run_test(
     xit: bool,
     maxfail: (int | None),
@@ -70,31 +68,26 @@ impl JacTestCheck.run_test(
     }
 }
 
-"""Clear the test suite."""
 impl JacTestCheck.reset -> None {
     JacTestCheck.test_suite = unittest.TestSuite();
     JacTestCheck.test_suite_path = {};
 }
 
-"""Override the method to return an instance of JacTestResult."""
 impl JacTextTestRunner._makeResult -> JacTestResult {
     return JacTestResult(
         self.stream, self.descriptions, self.verbosity, max_failures=self.max_failures
     );
 }
 
-"""Initialize JacTextTestRunner object."""
 impl JacTextTestRunner.init(max_failures: (int | None) = None, **kwargs: any) -> None {
     self.max_failures = max_failures;
     super.init(**kwargs);
 }
 
-"""Stop the test execution."""
 impl JacTestResult.stop -> None {
     self.shouldStop = True;
 }
 
-"""Count failures and stop."""
 impl JacTestResult.addFailure(`test: any, err: any) -> None {
     super.addFailure(`test, err);
     self.failures_count += 1;
@@ -105,13 +98,11 @@ impl JacTestResult.addFailure(`test: any, err: any) -> None {
     }
 }
 
-"""Initialize FailFastTestResult object."""
 impl JacTestResult.postinit -> None {
     self.failures_count = JacTestCheck.failcount;
     super.init(self.stream, self.descriptions, self.verbosity);
 }
 
-"""Register one test per parameter (like pytest.mark.parametrize)."""
 impl parametrize(
     base_name: str,
     params: Iterable,

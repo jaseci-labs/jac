@@ -107,7 +107,7 @@ uni_pass.jac
 unitree.jac
 unparse_pass.jac
 jac-mcp/examples/mcp-dashboard-studio/backend/utils.jac
-jac-scale/jac_scale/utils.jac
+jac-scale/jac_scale/shared/utils.jac
 jac/jaclang/langserve/utils.jac
 jac/jaclang/runtimelib/utils.jac
 vite_bundler.impl.jac

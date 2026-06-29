@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
-# Real-app K8s e2e for jac-scale microservice mode:
-#   build image -> deploy via KubernetesMicroserviceTarget -> wait for
-#   rollout -> hit gateway -> verify per-service routing -> optional
-#   Ingress check -> rolling-restart zero-downtime assertion.
+# Real-app K8s e2e for jac-scale microservice mode (NO-DOCKER path).
+#
+# Deploys the fixture with the same pipeline `jac start --scale --experimental`
+# uses: a host-built self-contained `jac` binary + precompiled plugin source are
+# shipped into the cluster over a ReadWriteMany PVC (no image build, no
+# registry), jac is installed at pod startup, then KubernetesMicroserviceTarget
+# rolls out the gateway + per-service deployments. Verifies rollout -> gateway
+# /health -> per-service routing -> observability stack -> rolling-restart
+# zero-downtime assertion.
 #
 # Usage: bash k8s_microservice_real_e2e.sh <PROJECT_DIR>
 #
-# Env: CLUSTER_TYPE (minikube | microk8s | remote; default minikube),
-# REGISTRY (required for remote), BUILDX_CACHE_DIR (optional, persists
-# BuildKit cache), ROLLOUT_TIMEOUT (default 600s).
+# Env: CLUSTER_TYPE (minikube | microk8s; default microk8s; only affects the
+# Ingress IP probe), ROLLOUT_TIMEOUT (default 600s).
+#
+# Requires: `jac` on PATH (with jac-scale importable) and `zig` 0.16.0 on PATH
+# (BinaryInjector shells out to `zig build` to produce the shipped binary).
 
 set -euo pipefail
 
@@ -23,27 +30,26 @@ if [ ! -f "${PROJECT_DIR}/jac.toml" ]; then
     exit 1
 fi
 
-IMAGE_TAG="${IMAGE_TAG:-jac-microservice-e2e:dev}"
 NAMESPACE="${NAMESPACE:-jac-e2e}"
-REGISTRY="${REGISTRY:-}"
-BUILDX_CACHE_DIR="${BUILDX_CACHE_DIR:-}"
-# Back-compat: USE_MINIKUBE=0 + REGISTRY -> remote; else minikube.
-CLUSTER_TYPE="${CLUSTER_TYPE:-$([ "${USE_MINIKUBE:-1}" = "0" ] && [ -n "${REGISTRY}" ] && echo remote || echo minikube)}"
+# microk8s (host containerd) or minikube; only affects the Ingress IP probe.
+CLUSTER_TYPE="${CLUSTER_TYPE:-microk8s}"
 # 600s rollout = 10x typical; a fail is a real bug, not infra slowness.
 ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-600s}"
 DELETE_TIMEOUT="${DELETE_TIMEOUT:-300s}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-DOCKERFILE_TEMPLATE="${REPO_ROOT}/jac-scale/scripts/Dockerfile.microservice"
-DOCKERIGNORE_TEMPLATE="${REPO_ROOT}/jac-scale/scripts/dockerignore.microservice"
-DOCKERFILE_EXP_TEMPLATE="${REPO_ROOT}/jac-scale/scripts/Dockerfile.microservice.exp"
 
-# Use the experimental (local-source) Dockerfile when inside the jaseci
-# repo; PyPI lags the K-track code so PR-time CI must install from source.
-USE_LOCAL_SOURCE=0
-if [ -f "${REPO_ROOT}/jac/jaclang/__init__.py" ] \
-   && [ -f "${REPO_ROOT}/jac-scale/jac_scale/__init__.py" ]; then
-    USE_LOCAL_SOURCE=1
+# The no-Docker `--experimental` path ships the LOCAL jac-scale source: PyPI lags
+# the K-track rearchitecture, so PR-time CI must exercise the in-repo code.
+if [ ! -f "${REPO_ROOT}/jac-scale/jac_scale/__init__.py" ]; then
+    echo "FAIL: jac-scale source not found under ${REPO_ROOT}" >&2
+    exit 1
+fi
+# BinaryInjector builds the shipped binary with zig; fail early with a clear
+# message instead of a deep RuntimeError mid-deploy if it is missing.
+if ! command -v zig >/dev/null 2>&1; then
+    echo "FAIL: zig not on PATH (the --experimental binary-ship build needs zig 0.16.0)" >&2
+    exit 1
 fi
 
 cleanup() {
@@ -55,82 +61,17 @@ cleanup() {
         kill "${LOKI_PORT_FORWARD_PID}" 2>/dev/null || true
     fi
     kubectl delete namespace "${NAMESPACE}" --ignore-not-found --timeout="${DELETE_TIMEOUT}" || true
-    # M-14.a: Alloy's ClusterRole + ClusterRoleBinding are cluster-scoped
-    # so the namespace delete doesn't sweep them. Re-runs leak otherwise.
+    # Alloy's ClusterRole + ClusterRoleBinding are cluster-scoped so the
+    # namespace delete doesn't sweep them. Re-runs leak otherwise.
     kubectl delete clusterrole,clusterrolebinding \
         -l managed=jac-scale --ignore-not-found 2>/dev/null || true
-    if [ "${USE_LOCAL_SOURCE}" != "1" ]; then
-        rm -f "${PROJECT_DIR}/Dockerfile" "${PROJECT_DIR}/.dockerignore" 2>/dev/null || true
-    fi
 }
 trap cleanup EXIT
 
-if [ "${USE_LOCAL_SOURCE}" = "1" ]; then
-    echo "=== local-source build (Dockerfile.microservice.exp) ==="
-    PROJECT_REL="${PROJECT_DIR#${REPO_ROOT}/}"
-    if [ "${PROJECT_REL}" = "${PROJECT_DIR}" ]; then
-        echo "FAIL: PROJECT_DIR (${PROJECT_DIR}) is not under REPO_ROOT (${REPO_ROOT})" >&2
-        exit 1
-    fi
-    BUILD_CWD="${REPO_ROOT}"
-    BUILD_FILE="${DOCKERFILE_EXP_TEMPLATE}"
-    BUILD_ARGS="--build-arg PROJECT_PATH=${PROJECT_REL}"
-else
-    echo "=== copy Dockerfile + .dockerignore into ${PROJECT_DIR} ==="
-    cp "${DOCKERFILE_TEMPLATE}" "${PROJECT_DIR}/Dockerfile"
-    cp "${DOCKERIGNORE_TEMPLATE}" "${PROJECT_DIR}/.dockerignore"
-    BUILD_CWD="${PROJECT_DIR}"
-    BUILD_FILE="${PROJECT_DIR}/Dockerfile"
-    BUILD_ARGS=""
-fi
-
-# --cache-from / --cache-to need buildx; fall back to plain build otherwise.
-BUILD_CMD=(docker build)
-if [ -n "${BUILDX_CACHE_DIR}" ] && docker buildx version >/dev/null 2>&1; then
-    mkdir -p "${BUILDX_CACHE_DIR}"
-    BUILD_CMD=(docker buildx build --load
-        --cache-from "type=local,src=${BUILDX_CACHE_DIR}"
-        --cache-to "type=local,dest=${BUILDX_CACHE_DIR},mode=max")
-fi
-
-case "${CLUSTER_TYPE}" in
-    minikube)
-        echo "=== build inside minikube's docker daemon ==="
-        eval "$(minikube docker-env)"
-        # shellcheck disable=SC2086
-        DOCKER_BUILDKIT=1 "${BUILD_CMD[@]}" -f "${BUILD_FILE}" ${BUILD_ARGS} -t "${IMAGE_TAG}" "${BUILD_CWD}"
-        ;;
-    microk8s)
-        echo "=== build with host docker, import into microk8s containerd ==="
-        # shellcheck disable=SC2086
-        DOCKER_BUILDKIT=1 "${BUILD_CMD[@]}" -f "${BUILD_FILE}" ${BUILD_ARGS} -t "${IMAGE_TAG}" "${BUILD_CWD}"
-        # ctr images import is synchronous (image lands in containerd
-        # before this returns), so no race with kubelet's pull state.
-        for _ in 1 2 3; do
-            docker save "${IMAGE_TAG}" | sudo microk8s ctr images import - && break
-            sleep 5
-        done
-        ;;
-    remote)
-        [ -n "${REGISTRY}" ] || { echo "FAIL: CLUSTER_TYPE=remote needs REGISTRY" >&2; exit 1; }
-        FULL_IMAGE="${REGISTRY}/${IMAGE_TAG}"
-        echo "=== build + push to ${FULL_IMAGE} ==="
-        # shellcheck disable=SC2086
-        DOCKER_BUILDKIT=1 "${BUILD_CMD[@]}" -f "${BUILD_FILE}" ${BUILD_ARGS} -t "${FULL_IMAGE}" "${BUILD_CWD}"
-        docker push "${FULL_IMAGE}"
-        IMAGE_TAG="${FULL_IMAGE}"
-        ;;
-    *) echo "FAIL: unknown CLUSTER_TYPE=${CLUSTER_TYPE}" >&2; exit 1 ;;
-esac
-
-echo "=== deploy via KubernetesMicroserviceTarget ==="
+echo "=== deploy via KubernetesMicroserviceTarget (no-Docker: host-built binary + source over PVC) ==="
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
-# Belt-and-suspenders: M-14.a's _deploy_observability also labels the
-# namespace privileged at the API layer, but doing it here means the
-# label lands before any DaemonSet manifest hits the API server even
-# on cluster configs where the python step is delayed (slow image
-# pull, etc.). Required because node-exporter + Alloy mount /proc,
-# /sys, and /var/log/pods, which PodSecurity `baseline` rejects.
+# node-exporter + Alloy mount /proc, /sys, and /var/log/pods, which PodSecurity
+# `baseline` rejects - label the namespace privileged before any manifest lands.
 kubectl label namespace "${NAMESPACE}" \
     pod-security.kubernetes.io/enforce=privileged \
     --overwrite
@@ -138,9 +79,9 @@ kubectl label namespace "${NAMESPACE}" \
 cd "${PROJECT_DIR}"
 jac - <<PYEOF
 import logging, sys, jaclang  # noqa: F401
-from jac_scale.targets.kubernetes.microservice.target import KubernetesMicroserviceTarget
-from jac_scale.targets.kubernetes.kubernetes_config import KubernetesConfig
-from jac_scale.abstractions.config.app_config import AppConfig
+from jac_scale.deploy.target.kubernetes.microservice.target import KubernetesMicroserviceTarget
+from jac_scale.deploy.target.kubernetes.kubernetes_config import KubernetesConfig
+from jac_scale.config.app_config import AppConfig
 
 # Surface MonitoringDeployer / observability warnings to stderr so CI
 # logs show the actual error instead of the silent
@@ -155,16 +96,21 @@ class StderrLogger:
     def debug(self, msg, *args, **kwargs):
         pass
 
+# No python_image override: the default base (python:3.12-slim) is a plain
+# runtime. The app source + a host-built self-contained jac binary + precompiled
+# plugin JIRs ship over the bundle PVC (experimental=True -> BinaryInjector), and
+# jac is installed at pod startup. No image build, no registry.
 target = KubernetesMicroserviceTarget(
     config=KubernetesConfig(
         app_name="jac-e2e",
         namespace="${NAMESPACE}",
         container_port=8000,
-        python_image="${IMAGE_TAG}",
     ),
     logger=StderrLogger(),
 )
-result = target.deploy(AppConfig(code_folder=".", app_name="jac-e2e", build=False))
+result = target.deploy(
+    AppConfig(code_folder=".", app_name="jac-e2e", experimental=True)
+)
 if not result.success:
     print(f"deploy failed: {result.message}", file=sys.stderr)
     sys.exit(1)

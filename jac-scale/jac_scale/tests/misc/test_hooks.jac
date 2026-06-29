@@ -1,7 +1,5 @@
-"""Test hook registration for JacScale."""
-
 import from jac_scale.plugin { JacScalePlugin }
-import from jac_scale.user_manager { JacScaleUserManager }
+import from jac_scale.identity.user_manager { JacScaleUserManager }
 import from jaclang.jac0core.runtime { plugin_manager as pm }
 
 test "get user manager implementation" {

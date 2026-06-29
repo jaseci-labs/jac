@@ -54,6 +54,20 @@ jobs:
             exit 1
           fi
 
+      - name: Check bun version lockstep
+        run: |
+          jac_ver=$(grep -oE 'glob BUN_VERSION = "[^"]+"' jac/jaclang/runtimelib/client/bun_installer.jac | grep -oE '"[^"]+"' | tr -d '"')
+          zig_ver=$(grep -oE 'const BUN_VERSION = "[^"]+"' jac/launcher/payload.zig | grep -oE '"[^"]+"' | tr -d '"')
+          echo "jaclang BUN_VERSION='$jac_ver'  payload.zig BUN_VERSION='$zig_ver'"
+          if [ -z "$jac_ver" ] || [ -z "$zig_ver" ]; then
+            echo "::error::Could not read BUN_VERSION from both bun_installer.jac and payload.zig"
+            exit 1
+          fi
+          if [ "$jac_ver" != "$zig_ver" ]; then
+            echo "::error::BUN_VERSION mismatch: bun_installer.jac=$jac_ver vs payload.zig=$zig_ver. The Jac resolver/deploy pin and the Zig fetcher must stay in lockstep."
+            exit 1
+          fi
+
       - name: Set up Python 3.12 (for the mkdocs docs build)
         uses: actions/setup-python@v4
         with:

@@ -1,26 +1,10 @@
-"""A failed flush must surface, not vanish (#6633 review).
-
-`ScaleTieredMemory.commit` used to swallow every exception at
-logger.warning, and `acommit` then marked the request committed
-unconditionally. On the spawn path — the dominant production path —
-a transient backend error during commit silently lost the request's
-graph mutations: no error to the caller, and the close-time backstop
-(`if not self._committed`) was bypassed too.
-
-The contract under test: commit propagates flush failures (core
-`TieredMemory.commit` never swallowed), a failed acommit leaves
-`_committed` False so close() retries, and the unit of work survives
-the failure for that retry.
-"""
-
 import asyncio;
 
 import from jaclang.jac0core.archetype { Root }
 import from jaclang.runtimelib.changeset { ChangeSet }
-import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+import from jac_scale.memory.memory_hierarchy { ScaleTieredMemory }
 
 
-"""L3 stand-in whose flush always fails, like a Mongo outage mid-request."""
 obj _FailingBackend {
     def apply(changeset: any) {
         raise RuntimeError("transient backend outage");
@@ -30,8 +14,6 @@ obj _FailingBackend {
 }
 
 
-"""A ScaleTieredMemory wired by hand (no Mongo/Redis): empty L1, one
-pending create intent, and an L3 whose apply() always fails."""
 def _mem_with_pending_intent -> ScaleTieredMemory {
     mem = ScaleTieredMemory.__new__(ScaleTieredMemory);
     mem.__mem__ = {};

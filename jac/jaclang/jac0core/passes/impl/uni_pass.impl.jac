@@ -1,39 +1,28 @@
-"""Implementation for uni_pass constructs."""
-
-"""Initialize parser."""
 impl UniPass.postinit -> None {
     super.postinit();
 }
 
-"""Run once before pass."""
 impl UniPass.before_pass -> None { }
 
-"""Run once after pass."""
 impl UniPass.after_pass -> None { }
 
-"""Run on entering node — delegate to the static dispatch hook."""
 impl UniPass.enter_node(nd: uni.UniNode) -> None {
     nd.accept_enter(self);
 }
 
-"""Run on exiting node — delegate to the static dispatch hook."""
 impl UniPass.exit_node(nd: uni.UniNode) -> None {
     nd.accept_exit(self);
 }
 
 
-"""Default visit hook (no-op); overridable, e.g. UnparsePass default rendering."""
 impl UniPass.default_enter(nd: uni.UniNode) -> None { }
 
-"""Default visit hook (no-op); overridable, e.g. UnparsePass default rendering."""
 impl UniPass.default_exit(nd: uni.UniNode) -> None { }
 
-"""Prune traversal."""
 impl UniPass.prune -> None {
     self.prune_signal = True;
 }
 
-"""Recalculate parents."""
 impl UniPass.recalculate_parents(nd: uni.UniNode) -> None {
     if not nd {
         return;
@@ -46,7 +35,6 @@ impl UniPass.recalculate_parents(nd: uni.UniNode) -> None {
     }
 }
 
-"""Run pass."""
 impl UniPass.transform(ir_in: uni.Module) -> uni.Module {
     self.ir_out = ir_in;
     if not isinstance(ir_in, uni.UniNode) {
@@ -61,7 +49,6 @@ impl UniPass.transform(ir_in: uni.Module) -> uni.Module {
     return self.ir_in;
 }
 
-"""Traverse tree."""
 impl UniPass.traverse(nd: uni.UniNode) -> uni.UniNode {
     if self.is_canceled() {
         return nd;

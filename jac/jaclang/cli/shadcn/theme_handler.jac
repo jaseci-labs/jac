@@ -1,13 +1,3 @@
-"""Shadcn theme handler - local, offline theming for jac-shadcn projects.
-
-Ports the registry's server-side theming so `jac create --use jac-shadcn` and
-`jac retheme` work without network access:
-- resolve CSS variables from baseColor + theme + radius + menuAccent (themes.json)
-- generate a themed global.css (color vars + font import + @theme inline tokens)
-- materialize a minimal themed starter project
-- re-theme an existing project in place
-"""
-
 import re;
 import json as json_mod;
 import from pathlib { Path }
@@ -126,7 +116,6 @@ glob _DEFAULTS: dict = {
      ],
      _UTILS_CONTENT: str = 'cl import from "clsx" { clsx }\ncl import from "tailwind-merge" { twMerge }\n\ndef:pub cn(*inputs: any) -> str {\n    return twMerge(clsx(inputs));\n}\n';
 
-"""Fill a raw [jac-shadcn] dict with the 7 default fields."""
 def normalize_shadcn_config(raw: (dict | None)) -> dict {
     cfg: dict = {};
     cfg.update(_DEFAULTS);
@@ -140,7 +129,6 @@ def normalize_shadcn_config(raw: (dict | None)) -> dict {
     return cfg;
 }
 
-"""Load themes from the bundled registry/themes.json."""
 def load_themes -> list {
     themes_path = _registry_dir() / "themes.json";
     if themes_path.is_file() {
@@ -151,7 +139,6 @@ def load_themes -> list {
     return [];
 }
 
-"""Find a theme entry by name from the bundled themes data."""
 def find_theme(name: str) -> any {
     for theme in load_themes() {
         if theme["name"] == name {
@@ -161,7 +148,6 @@ def find_theme(name: str) -> any {
     return None;
 }
 
-"""Resolve light/dark CSS variables from a [jac-shadcn] config."""
 def resolve_css_vars(shadcn_config: dict) -> dict {
     base_color = find_theme(shadcn_config.get("baseColor", "neutral"));
     theme = find_theme(shadcn_config.get("theme", "neutral"));
@@ -212,7 +198,6 @@ def resolve_css_vars(shadcn_config: dict) -> dict {
     return {"light": light_vars, "dark": dark_vars};
 }
 
-"""Generate themed global.css text."""
 def generate_global_css(font_value: str, css_vars: dict) -> str {
     font_info = FONT_DATA.get(font_value, FONT_DATA["figtree"]);
     font_family = font_info["family"];
@@ -275,7 +260,6 @@ def generate_global_css(font_value: str, css_vars: dict) -> str {
     return "\n".join(lines);
 }
 
-"""Render a starter main.jac that demos the bundled button + card."""
 def generate_starter_main_jac -> str {
     lines: list = [
         'cl import from ".components.ui.button" { Button }',
@@ -305,7 +289,6 @@ def generate_starter_main_jac -> str {
     return "\n".join(lines);
 }
 
-"""Render the [jac-shadcn] TOML block (no trailing newline)."""
 def _render_shadcn_block(shadcn_config: dict) -> str {
     lines: list = ["[jac-shadcn]"];
     for key in _SHADCN_KEYS {
@@ -314,7 +297,6 @@ def _render_shadcn_block(shadcn_config: dict) -> str {
     return "\n".join(lines);
 }
 
-"""Replace or append the [jac-shadcn] section in a jac.toml with the given config."""
 def set_shadcn_section(toml_path: any, shadcn_config: dict) {
     path = Path(str(toml_path));
     content = path.read_text() if path.exists() else "";
@@ -334,12 +316,10 @@ def set_shadcn_section(toml_path: any, shadcn_config: dict) {
     path.write_text(content);
 }
 
-"""Quote a TOML key when it is not a bare key (e.g. scoped npm names like @scope/pkg)."""
 def _toml_key(key: str) -> str {
     return key if re.match(r'^[A-Za-z0-9_-]+$', key) else '"' + key + '"';
 }
 
-"""Insert npm deps under [dependencies.npm] in a jac.toml, skipping ones already present."""
 def _patch_npm_deps(toml_path: any, npm_deps: dict) -> None {
     if not npm_deps {
         return;
@@ -348,7 +328,6 @@ def _patch_npm_deps(toml_path: any, npm_deps: dict) -> None {
     content = path.read_text();
     marker = "[dependencies.npm]";
     for key in npm_deps {
-        # Line-anchored check so e.g. `shadcn` is not falsely matched by `[jac-shadcn]`.
         if re.search(
             r'(?m)^\s*' + _toml_key(key).replace('.', r'\.') + r'\s*=', content
         ) {
@@ -364,13 +343,6 @@ def _patch_npm_deps(toml_path: any, npm_deps: dict) -> None {
     path.write_text(content);
 }
 
-"""Ensure the Tailwind v4 vite plugin is wired in jac.toml (no-op if already present).
-
-The `[plugins.client.vite]` table also registers the `client` plugin, which is
-what unlocks jac-client's self-healing dependency injection (react/react-dom/
-vite/@vitejs/plugin-react/...). jac-client has no Tailwind auto-detection, so a
-generated `global.css` that `@import`s tailwindcss only compiles when the
-`@tailwindcss/vite` plugin is registered here."""
 def _ensure_vite_tailwind(toml_path: any) -> None {
     path = Path(str(toml_path));
     if not path.exists() {
@@ -384,20 +356,18 @@ def _ensure_vite_tailwind(toml_path: any) -> None {
     path.write_text(content.rstrip() + "\n\n" + block);
 }
 
-"""Resolve and write a single bundled component into <ui_dir>. Returns its npm deps."""
 def _install_component(ui_dir: any, name: str, style: str) -> list {
     comp = resolve_single_component(name, style);
     if not comp or "error" in comp {
         return [];
     }
-    # Hyphenated filenames are unimportable via jac-client dot-paths; use underscores.
+
     out_name = str(comp.get("file", name + ".cl.jac")).replace("-", "_");
     out_path = Path(str(ui_dir)) / out_name;
     out_path.write_text(comp.get("content", ""));
     return comp.get("npmDeps", []);
 }
 
-"""Materialize a minimal themed starter into project_root."""
 def materialize_themed_starter(
     project_root: any, project_name: str, shadcn_config: dict
 ) -> bool {
@@ -405,7 +375,6 @@ def materialize_themed_starter(
     style = shadcn_config.get("style", "nova");
     font = shadcn_config.get("font", "figtree");
 
-    # Starter components (button + card); everything else via `jac add --shadcn`.
     ui_dir = pr / "components" / "ui";
     ui_dir.mkdir(parents=True, exist_ok=True);
 
@@ -427,24 +396,20 @@ def materialize_themed_starter(
         }
     }
 
-    # cn() utility
     lib_dir = pr / "lib";
     lib_dir.mkdir(parents=True, exist_ok=True);
     (lib_dir / "utils.cl.jac").write_text(_UTILS_CONTENT);
 
-    # Themed global.css
     styles_dir = pr / "styles";
     styles_dir.mkdir(parents=True, exist_ok=True);
     (styles_dir / "global.css").write_text(
         generate_global_css(font, resolve_css_vars(shadcn_config))
     );
 
-    # Starter main.jac (with project name substituted)
     (pr / "main.jac").write_text(
         generate_starter_main_jac().replace("{{name}}", project_name)
     );
 
-    # jac.toml: persist chosen [jac-shadcn] + npm deps + Tailwind vite plugin
     toml_path = pr / "jac.toml";
     set_shadcn_section(toml_path, shadcn_config);
     _patch_npm_deps(toml_path, npm_deps);
@@ -461,7 +426,6 @@ def materialize_themed_starter(
     return True;
 }
 
-"""Re-theme an existing project in place from CLI overrides."""
 def retheme_project(config: any, overrides: dict) -> bool {
     if config is None or config.project_root is None {
         console.error(
@@ -489,7 +453,6 @@ def retheme_project(config: any, overrides: dict) -> bool {
     project_root = Path(str(config.project_root));
     toml_path = project_root / "jac.toml";
 
-    # Persist config and regenerate the themed stylesheet.
     set_shadcn_section(toml_path, merged);
     styles_dir = project_root / "styles";
     styles_dir.mkdir(parents=True, exist_ok=True);
@@ -515,7 +478,6 @@ def retheme_project(config: any, overrides: dict) -> bool {
     );
     console.print("  + styles/global.css", style="green");
 
-    # When the style changes, re-resolve components already installed.
     if new_style != old_style {
         restyled = 0;
         ui_dir = project_root / "components" / "ui";

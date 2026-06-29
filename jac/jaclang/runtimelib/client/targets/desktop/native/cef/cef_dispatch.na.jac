@@ -1,15 +1,3 @@
-"""Jac-native CEF dispatch helper compiled to libcef_dispatch.so.
-
-Wraps the parts of the CEF C API that Jac FFI cannot express directly:
-calling methods on CEF-returned objects through their vtable pointers, and
-allocating data structs with mixed-size fields.
-
-Compile to libcef_dispatch.so:
-  jac nacompile --shared cef_dispatch.na.jac -o libcef_dispatch.so
-
-All :pub symbols match the C-ABI surface imported by cef.na.jac.
-"""
-
 import from "libcef.so" {
     def cef_execute_process(args: int, app: int, sandbox: int) -> i32;  def cef_initialize(
         args: int, settings: int, app: int, sandbox: int
@@ -43,11 +31,6 @@ import from "libc.so.6" {
 import from "libdl.so.2" { def dlsym(handle: int, symbol: str) -> int;  }
 
 import from "libX11.so.6" {
-    """Native window control for WindowPlugin (set_title / set_size). Title/size
-    are X11 operations on Linux -- CEF native windows have no set-title C API and
-    the WM owns the frame. These run on the broker (CPython) thread; we open a
-    fresh Display per call (Xlib is not thread-safe across one connection, and the
-    CEF UI thread keeps its own). All char* args are passed as int pointers."""
     def XOpenDisplay(name: int) -> int;  def XCloseDisplay(dpy: int) -> i32;  def XDefaultRootWindow(
         dpy: int
     ) -> int;  def XQueryTree(
@@ -80,94 +63,90 @@ import from "libX11.so.6" {
 }
 
 import from "libcef.so" {
-    """cef_string_t - 24 bytes: ptr(8), len(8), dtor(8)"""
     obj cef_string_t {
         has ptr: int = 0,
             len: int = 0,
             dtor: int = 0;
-    }  """cef_settings_t - 440 bytes (verified with offsetof)"""
-    obj cef_settings_t {
-        has size: int = 0,  # 0
-            no_sandbox: i32 = 0,  # 8
-            _s_pad0: i32 = 0,  # 12
-            bsp_ptr: int = 0,  # 16  browser_subprocess_path.ptr
-            bsp_len: int = 0,  # 24
-            bsp_dtor: int = 0,  # 32
-            fdp_ptr: int = 0,  # 40  framework_dir_path
-            fdp_len: int = 0,  # 48
-            fdp_dtor: int = 0,  # 56
-            mbp_ptr: int = 0,  # 64  main_bundle_path
-            mbp_len: int = 0,  # 72
-            mbp_dtor: int = 0,  # 80
-            chrome_runtime: i32 = 0,  # 88
-            multi_threaded: i32 = 0,  # 92  multi_threaded_message_loop
-            ext_msg_pump: i32 = 0,  # 96
-            windowless: i32 = 0,  # 100
-            cmdline_disabled: i32 = 0,  # 104
-            _s_pad1: i32 = 0,  # 108
-            cp_ptr: int = 0,  # 112  cache_path.ptr
-            cp_len: int = 0,  # 120
-            cp_dtor: int = 0,  # 128
-            rcp_ptr: int = 0,  # 136  root_cache_path
-            rcp_len: int = 0,  # 144
-            rcp_dtor: int = 0,  # 152
-            persist_sess: i32 = 0,  # 160
-            persist_user: i32 = 0,  # 164
-            ua_ptr: int = 0,  # 168  user_agent
-            ua_len: int = 0,  # 176
-            ua_dtor: int = 0,  # 184
-            uap_ptr: int = 0,  # 192  user_agent_product
-            uap_len: int = 0,  # 200
-            uap_dtor: int = 0,  # 208
-            locale_ptr: int = 0,  # 216
-            locale_len: int = 0,  # 224
-            locale_dtor: int = 0,  # 232
-            lf_ptr: int = 0,  # 240  log_file
-            lf_len: int = 0,  # 248
-            lf_dtor: int = 0,  # 256
-            log_severity: i32 = 0,  # 264
-            log_items: i32 = 0,  # 268
-            jsf_ptr: int = 0,  # 272  javascript_flags
-            jsf_len: int = 0,  # 280
-            jsf_dtor: int = 0,  # 288
-            rdp_ptr: int = 0,  # 296  resources_dir_path.ptr
-            rdp_len: int = 0,  # 304
-            rdp_dtor: int = 0,  # 312
-            ldp_ptr: int = 0,  # 320  locales_dir_path.ptr
-            ldp_len: int = 0,  # 328
-            ldp_dtor: int = 0,  # 336
-            pack_disabled: i32 = 0,  # 344
-            remote_dbg: i32 = 0,  # 348
-            uncaught_exc: i32 = 0,  # 352
-            bg_color: i32 = 0,  # 356
-            al_ptr: int = 0,  # 360  accept_language_list
-            al_len: int = 0,  # 368
-            al_dtor: int = 0,  # 376
-            csl_ptr: int = 0,  # 384  cookieable_schemes_list
-            csl_len: int = 0,  # 392
-            csl_dtor: int = 0,  # 400
-            cs_excl: i32 = 0,  # 408
-            _s_pad2: i32 = 0,  # 412
-            cpid_ptr: int = 0,  # 416  chrome_policy_id
-            cpid_len: int = 0,  # 424
-            cpid_dtor: int = 0;  # 432  (end at 440)
-    }  """cef_window_info_t - 72 bytes (verified with offsetof)"""
-    obj cef_window_info_t {
-        has wn_ptr: int = 0,  # 0   window_name.ptr
-            wn_len: int = 0,  # 8
-            wn_dtor: int = 0,  # 16
-            bounds_x: i32 = 0,  # 24  bounds.x
-            bounds_y: i32 = 0,  # 28
-            bounds_w: i32 = 0,  # 32
-            bounds_h: i32 = 0,  # 36
-            parent: int = 0,  # 40  parent_window
-            windowless: i32 = 0,  # 48
-            shared_tex: i32 = 0,  # 52
-            ext_begin: i32 = 0,  # 56
-            _wi_pad: i32 = 0,  # 60
-            window: int = 0;  # 64  (end at 72)
-    }  """cef_life_span_handler_t - 80 bytes"""
-    obj cef_life_span_handler_t {
+    }  obj cef_settings_t {
+        has size: int = 0,
+            no_sandbox: i32 = 0,
+            _s_pad0: i32 = 0,
+            bsp_ptr: int = 0,
+            bsp_len: int = 0,
+            bsp_dtor: int = 0,
+            fdp_ptr: int = 0,
+            fdp_len: int = 0,
+            fdp_dtor: int = 0,
+            mbp_ptr: int = 0,
+            mbp_len: int = 0,
+            mbp_dtor: int = 0,
+            chrome_runtime: i32 = 0,
+            multi_threaded: i32 = 0,
+            ext_msg_pump: i32 = 0,
+            windowless: i32 = 0,
+            cmdline_disabled: i32 = 0,
+            _s_pad1: i32 = 0,
+            cp_ptr: int = 0,
+            cp_len: int = 0,
+            cp_dtor: int = 0,
+            rcp_ptr: int = 0,
+            rcp_len: int = 0,
+            rcp_dtor: int = 0,
+            persist_sess: i32 = 0,
+            persist_user: i32 = 0,
+            ua_ptr: int = 0,
+            ua_len: int = 0,
+            ua_dtor: int = 0,
+            uap_ptr: int = 0,
+            uap_len: int = 0,
+            uap_dtor: int = 0,
+            locale_ptr: int = 0,
+            locale_len: int = 0,
+            locale_dtor: int = 0,
+            lf_ptr: int = 0,
+            lf_len: int = 0,
+            lf_dtor: int = 0,
+            log_severity: i32 = 0,
+            log_items: i32 = 0,
+            jsf_ptr: int = 0,
+            jsf_len: int = 0,
+            jsf_dtor: int = 0,
+            rdp_ptr: int = 0,
+            rdp_len: int = 0,
+            rdp_dtor: int = 0,
+            ldp_ptr: int = 0,
+            ldp_len: int = 0,
+            ldp_dtor: int = 0,
+            pack_disabled: i32 = 0,
+            remote_dbg: i32 = 0,
+            uncaught_exc: i32 = 0,
+            bg_color: i32 = 0,
+            al_ptr: int = 0,
+            al_len: int = 0,
+            al_dtor: int = 0,
+            csl_ptr: int = 0,
+            csl_len: int = 0,
+            csl_dtor: int = 0,
+            cs_excl: i32 = 0,
+            _s_pad2: i32 = 0,
+            cpid_ptr: int = 0,
+            cpid_len: int = 0,
+            cpid_dtor: int = 0;
+    }  obj cef_window_info_t {
+        has wn_ptr: int = 0,
+            wn_len: int = 0,
+            wn_dtor: int = 0,
+            bounds_x: i32 = 0,
+            bounds_y: i32 = 0,
+            bounds_w: i32 = 0,
+            bounds_h: i32 = 0,
+            parent: int = 0,
+            windowless: i32 = 0,
+            shared_tex: i32 = 0,
+            ext_begin: i32 = 0,
+            _wi_pad: i32 = 0,
+            window: int = 0;
+    }  obj cef_life_span_handler_t {
         has size: int = 0,
             add_ref: Callable[[int], None] = 0,
             release: Callable[[int], int] = 0,
@@ -183,8 +162,7 @@ import from "libcef.so" {
             on_after_created: Callable[[int, int], None] = 0,
             do_close: Callable[[int, int], int] = 0,
             on_before_close: Callable[[int, int], None] = 0;
-    }  """cef_browser_process_handler_t - 80 bytes"""
-    obj cef_browser_process_handler_t {
+    }  obj cef_browser_process_handler_t {
         has size: int = 0,
             add_ref: Callable[[int], None] = 0,
             release: Callable[[int], int] = 0,
@@ -195,8 +173,7 @@ import from "libcef.so" {
             on_before_child_process_launch: Callable[[int, int], None] = 0,
             on_schedule_message_pump_work: Callable[[int, int], None] = 0,
             get_default_client: Callable[[int], int] = 0;
-    }  """cef_render_process_handler_t - 112 bytes"""
-    obj cef_render_process_handler_t {
+    }  obj cef_render_process_handler_t {
         has size: int = 0,
             add_ref: Callable[[int], None] = 0,
             release: Callable[[int], int] = 0,
@@ -211,8 +188,7 @@ import from "libcef.so" {
             on_uncaught_exception: Callable[[int, int, int, int, int, int], None] = 0,
             on_focused_node_changed: Callable[[int, int, int, int], None] = 0,
             on_process_message_received: Callable[[int, int, int, i32, int], int] = 0;
-    }  """cef_client_t - 192 bytes"""
-    obj cef_client_t {
+    }  obj cef_client_t {
         has size: int = 0,
             add_ref: Callable[[int], None] = 0,
             release: Callable[[int], int] = 0,
@@ -237,18 +213,10 @@ import from "libcef.so" {
             get_render_handler: Callable[[int], int] = 0,
             get_request_handler: Callable[[int], int] = 0,
             on_process_message_received: Callable[[int, int, int, i32, int], int] = 0;
-    }  """Two-field helper for argv / pointer packing via memcpy."""
-    obj cef_ptr_wrap_t {
+    }  obj cef_ptr_wrap_t {
         has p0: int = 0,
             p1: int = 0;
-    }  """cef_app_t - 80 bytes (CEF capi cef_app_t).
-
-    MUST stay field-compatible with the copy in cef_subprocess.na.jac:
-    same field order + 80-byte size. This copy types the handler fields as
-    Callable because it assigns real dispatch callbacks; the subprocess copy
-    only assigns cef_stub_* and types them as int. nacompile cannot yet share
-    a struct decl across the spliced modules — keep the two in sync by hand."""
-    obj cef_app_t {
+    }  obj cef_app_t {
         has size: int = 0,
             add_ref: Callable[[int], None] = 0,
             release: Callable[[int], int] = 0,
@@ -259,149 +227,124 @@ import from "libcef.so" {
             get_resource_bundle_handler: Callable[[int], int] = 0,
             get_browser_process_handler: Callable[[int], int] = 0,
             get_render_process_handler: Callable[[int], int] = 0;
-    }  """cef_frame_t vtable - 240 bytes (dispatch targets). No defaults: only used as a local view via f: cef_frame_t = frame_int"""
-    obj cef_frame_t {
-        has _f0: int,  # base.size       0
-            _f1: int,  # add_ref         8
-            _f2: int,  # release         16
-            _f3: int,  # has_one_ref     24
-            _f4: int,  # has_at_least    32
-            _f5: int,  # is_valid        40
-            _f6: int,  # undo            48
-            _f7: int,  # redo            56
-            _f8: int,  # cut             64
-            _f9: int,  # copy            72
-            _f10: int,  # paste           80
-            _f11: int,  # del             88
-            _f12: int,  # select_all      96
-            _f13: int,  # view_source     104
-            _f14: int,  # get_source      112
-            _f15: int,  # get_text        120
-            _f16: int,  # load_request    128
-            load_url: Callable[[int, int], None],  # 136
-            execute_java_script: Callable[[int, int, int, i32], None],  # 144
-            is_main: Callable[[int], i32],  # 152
-            _f20: int,  # is_focused      160
-            _f21: int,  # get_name        168
-            _f22: int,  # get_identifier  176
-            _f23: int,  # get_parent      184
-            _f24: int,  # get_url         192
-            _f25: int,  # get_browser     200
-            _f26: int,  # get_v8context   208
-            _f27: int,  # visit_dom       216
-            _f28: int,  # create_urlreq   224
-            _f29: int;  # send_msg        232
-    }  """cef_browser_t vtable - 208 bytes. No defaults: only used as a local view via b: cef_browser_t = browser_int"""
-    obj cef_browser_t {
-        has _b0: int,  # base.size     0
-            _b1: int,  # add_ref       8
-            _b2: int,  # release       16
-            _b3: int,  # has_one_ref   24
-            _b4: int,  # has_at_least  32
-            _b5: int,  # is_valid      40
-            get_host: Callable[[int], int],  # get_host      48
-            _b7: int,  # can_go_back   56
-            _b8: int,  # go_back       64
-            _b9: int,  # can_fwd       72
-            _b10: int,  # go_forward    80
-            _b11: int,  # is_loading    88
-            _b12: int,  # reload        96
-            _b13: int,  # reload_ic     104
-            _b14: int,  # stop_load     112
-            _b15: int,  # get_id        120
-            _b16: int,  # is_same       128
-            _b17: int,  # is_popup      136
-            _b18: int,  # has_doc       144
-            get_main_frame: Callable[[int], int],  # 152
-            _b20: int,  # get_focused   160
-            _b21: int,  # get_byident   168
-            _b22: int,  # get_frame     176
-            _b23: int,  # get_count     184
-            _b24: int,  # get_idents    192
-            _b25: int;  # get_names     200
-    }  """cef_browser_host_t vtable - only get_window_handle (offset 72) is
-    called. Field order/offsets verified against CEF 119.4.7 capi
-    (cef_browser_capi.h): base(0-32), get_browser(40), close_browser(48),
-    try_close_browser(56), set_focus(64), get_window_handle(72). No defaults:
-    used as a local view via h: cef_browser_host_t = host_int."""
-    obj cef_browser_host_t {
-        has _bh0: int,  # base.size            0
-            _bh1: int,  # add_ref              8
-            _bh2: int,  # release             16
-            _bh3: int,  # has_one_ref         24
-            _bh4: int,  # has_at_least_one    32
-            _bh5: int,  # get_browser         40
-            _bh6: int,  # close_browser       48
-            _bh7: int,  # try_close_browser   56
-            _bh8: int,  # set_focus           64
-            get_window_handle: Callable[[int], int];  # get_window_handle  72
-    }  """cef_command_line_t vtable - 200 bytes. No defaults: only used as a local view via c: cef_command_line_t = cmd_int"""
-    obj cef_command_line_t {
-        has _c0: int,  # base.size         0
-            _c1: int,  # add_ref           8
-            _c2: int,  # release           16
-            _c3: int,  # has_one_ref       24
-            _c4: int,  # has_at_least      32
-            _c5: int,  # is_valid          40
-            _c6: int,  # is_read_only      48
-            _c7: int,  # copy              56
-            _c8: int,  # init_from_argv    64
-            _c9: int,  # init_from_string  72
-            _c10: int,  # reset             80
-            _c11: int,  # get_argv          88
-            _c12: int,  # get_cmd_string    96
-            _c13: int,  # get_program       104
-            _c14: int,  # set_program       112
-            _c15: int,  # has_switches      120
-            _c16: int,  # has_switch        128
-            _c17: int,  # get_switch_val    136
-            _c18: int,  # get_switches      144
-            append_switch: Callable[[int, int], None],  # 152
-            append_switch_with_value: Callable[[int, int, int], None],  # 160
-            _c21: int,  # has_arguments     168
-            _c22: int,  # get_arguments     176
-            _c23: int,  # append_argument   184
-            _c24: int;  # prepend_wrapper   192
+    }  obj cef_frame_t {
+        has _f0: int,
+            _f1: int,
+            _f2: int,
+            _f3: int,
+            _f4: int,
+            _f5: int,
+            _f6: int,
+            _f7: int,
+            _f8: int,
+            _f9: int,
+            _f10: int,
+            _f11: int,
+            _f12: int,
+            _f13: int,
+            _f14: int,
+            _f15: int,
+            _f16: int,
+            load_url: Callable[[int, int], None],
+            execute_java_script: Callable[[int, int, int, i32], None],
+            is_main: Callable[[int], i32],
+            _f20: int,
+            _f21: int,
+            _f22: int,
+            _f23: int,
+            _f24: int,
+            _f25: int,
+            _f26: int,
+            _f27: int,
+            _f28: int,
+            _f29: int;
+    }  obj cef_browser_t {
+        has _b0: int,
+            _b1: int,
+            _b2: int,
+            _b3: int,
+            _b4: int,
+            _b5: int,
+            get_host: Callable[[int], int],
+            _b7: int,
+            _b8: int,
+            _b9: int,
+            _b10: int,
+            _b11: int,
+            _b12: int,
+            _b13: int,
+            _b14: int,
+            _b15: int,
+            _b16: int,
+            _b17: int,
+            _b18: int,
+            get_main_frame: Callable[[int], int],
+            _b20: int,
+            _b21: int,
+            _b22: int,
+            _b23: int,
+            _b24: int,
+            _b25: int;
+    }  obj cef_browser_host_t {
+        has _bh0: int,
+            _bh1: int,
+            _bh2: int,
+            _bh3: int,
+            _bh4: int,
+            _bh5: int,
+            _bh6: int,
+            _bh7: int,
+            _bh8: int,
+            get_window_handle: Callable[[int], int];
+    }  obj cef_command_line_t {
+        has _c0: int,
+            _c1: int,
+            _c2: int,
+            _c3: int,
+            _c4: int,
+            _c5: int,
+            _c6: int,
+            _c7: int,
+            _c8: int,
+            _c9: int,
+            _c10: int,
+            _c11: int,
+            _c12: int,
+            _c13: int,
+            _c14: int,
+            _c15: int,
+            _c16: int,
+            _c17: int,
+            _c18: int,
+            append_switch: Callable[[int, int], None],
+            append_switch_with_value: Callable[[int, int, int], None],
+            _c21: int,
+            _c22: int,
+            _c23: int,
+            _c24: int;
     }
-}  # import from libcef.so
+}
 
-# PLATFORM
 glob g_pending_url: str = "",
      g_pending_title: str = "",
      g_pending_w: int = 800,
      g_pending_h: int = 600,
      g_browser_pending: int = 0,
-     # Captured once on the CEF UI thread in _on_after_created; read (only) by the
-     # broker-thread window-control calls below. g_browser_xid is the X11 window id.
      g_browser: int = 0,
      g_browser_xid: int = 0,
      g_vtables_ready: int = 0,
      g_exe_dir_buf: int = 0,
      g_exe_path_buf: int = 0,
      g_cached_args: int = 0,
-     # Static vtable instances
      g_lsh: cef_life_span_handler_t = cef_life_span_handler_t(),
      g_bph: cef_browser_process_handler_t = cef_browser_process_handler_t(),
      g_rph: cef_render_process_handler_t = cef_render_process_handler_t(),
      g_cli: cef_client_t = cef_client_t(),
      g_dispatch_app: cef_app_t = cef_app_t(),
      g_stub_app: cef_app_t = cef_app_t(),
-     # Reusable data structs (single-threaded CEF lifecycle)
      g_settings: cef_settings_t = cef_settings_t(),
      g_wi: cef_window_info_t = cef_window_info_t();
 
-# JS injected at document start in the render process. Three parts:
-#   1. the __jac_invoke fetch shim (CEF's render process can't bind into the host
-#      in-process, so it POSTs the wire array to the loopback /__jac/invoke route);
-#   2. the window.__jac SDK -- the single source of truth for the desktop JS
-#      bootstrap. The native/webview target does NOT keep its own copy: it slices
-#      this SDK back out of this glob at build time (desktop_build._jac_sdk_js via
-#      _cef_bootstrap_js). Edit the SDK here; the native target follows. The SDK
-#      IIFE must start with `(function(){var _l={}` and the EventSource pump below
-#      with `(function(){try{` -- those are the extraction boundaries.
-#   3. an EventSource on /__jac/events that drives host->JS pushes: {eval} runs
-#      JS (WindowPlugin), {event,payload} fans out to __jac.__emit__ (on()).
-# Uses only single quotes so it embeds cleanly in this double-quoted glob.
 glob BOOTSTRAP_JS: str = "window.__jac_invoke=function(p,c,a){return fetch('/__jac/invoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify([p,c,a||{}])}).then(function(r){return r.text();});};(function(){var _l={};window.__jac={invoke:function(p,c,a){return window.__jac_invoke(p,c,a||{}).then(function(r){if(typeof r==='string')r=JSON.parse(r);if(r.ok)return r.data;var e=new Error(r.error.message);e.code=r.error.code;throw e;});},on:function(ev,cb){(_l[ev]=_l[ev]||[]).push(cb);return function(){var a=_l[ev]||[];var i=a.indexOf(cb);if(i!==-1)a.splice(i,1);};},__emit__:function(ev,p){(_l[ev]||[]).forEach(function(h){try{h(p);}catch(_){}});}};window.__JAC_DESKTOP__=true;window.__JAC_BROKER__='/__jac';})();(function(){try{var es=new EventSource('/__jac/events');es.onmessage=function(m){try{var d=JSON.parse(m.data);if(d.eval){(0,eval)(d.eval);}else if(d.event){window.__jac.__emit__(d.event,d.payload);}}catch(_){}};}catch(_){}})();";
 
 def _log(msg: str) {
@@ -441,9 +384,9 @@ def _init_exe_dir {
 
 def:pub cef_platform_bootstrap {
     _init_exe_dir();
-    # Disable AT-SPI2 D-Bus accessibility probe (causes cef_initialize hang on Arch/Wayland)
+
     setenv("NO_AT_BRIDGE", "1", 0);
-    # Point fontconfig at the bundled minimal config to avoid Arch 48-guessfamily.conf stall
+
     fc_val: int = getenv("FONTCONFIG_FILE");
     if fc_val == 0 && g_exe_dir_buf != 0 {
         fc_buf: int = calloc(1, 4096);
@@ -474,12 +417,6 @@ def _on_before_close(self: int, browser: int) {
     cef_quit_message_loop();
 }
 
-"""Capture the browser + its X11 window id for native window control.
-
-Runs on the CEF UI thread (only safe place to touch browser/host vtables). We
-read the immutable window id once here so the broker thread never has to call
-CEF off-thread -- it does pure X11 against this id (see the window-control
-section at the bottom of this file)."""
 def _on_after_created(self: int, browser: int) {
     global g_browser,g_browser_xid;
     g_browser = browser;
@@ -530,7 +467,6 @@ def _on_context_created(self: int, browser: int, frame: int, context: int) {
 }
 
 def _on_before_cmdline(self: int, process_type: int, command_line: int) {
-    # ozone-platform intentionally omitted: C test without it works; CEF auto-detects from DISPLAY
     _log("cmdline: no platform flag (auto-detect)");
     if cef_dispatch_getenv_set("JAC_CEF_SINGLE_PROCESS") != 0 {
         cef_dispatch_cmdline_append_switch(command_line, "single-process");
@@ -539,9 +475,7 @@ def _on_before_cmdline(self: int, process_type: int, command_line: int) {
         cef_dispatch_cmdline_append_switch(command_line, "headless");
         cef_dispatch_cmdline_append_switch(command_line, "disable-gpu");
     }
-    # JAC_CEF_DISABLE_GPU: documented GPU fallback (QA.md §3/§5, notes-app
-    # README). Without this branch the env var was a silent no-op and the GPU
-    # process still spawned, crashing on hosts with no usable GL.
+
     if cef_dispatch_getenv_set("JAC_CEF_DISABLE_GPU") != 0 {
         cef_dispatch_cmdline_append_switch(command_line, "disable-gpu");
         cef_dispatch_cmdline_append_switch(command_line, "disable-gpu-compositing");
@@ -549,14 +483,14 @@ def _on_before_cmdline(self: int, process_type: int, command_line: int) {
     if cef_dispatch_getenv_set("JAC_CEF_IN_PROCESS_GPU") != 0 {
         cef_dispatch_cmdline_append_switch(command_line, "in-process-gpu");
     }
-    # Verbose Chromium logging when JAC_CEF_VERBOSE is set
+
     if cef_dispatch_getenv_set("JAC_CEF_VERBOSE") != 0 {
         cef_dispatch_cmdline_append_switch_value(
             command_line, "enable-logging", "stderr"
         );
         cef_dispatch_cmdline_append_switch_value(command_line, "v", "1");
     }
-    # Use a unique user-data-dir to avoid singleton lock conflicts
+
     ud_val: int = getenv("JAC_CEF_USER_DATA_DIR");
     if ud_val != 0 && strlen(ud_val) > 0 {
         cef_dispatch_cmdline_append_switch_value(command_line, "user-data-dir", ud_val);
@@ -649,8 +583,8 @@ def:pub cef_dispatch_settings_create(no_sandbox: i32, cache_path: str) -> int {
     g_settings.size = 440;
     g_settings.no_sandbox = no_sandbox;
     g_settings.multi_threaded = 0;
-    g_settings.log_severity = 3;  # LOGSEVERITY_WARNING (1=VERBOSE exits, 2=INFO may log to file)
-    # cache_path (Jac str from host — safe across the FFI boundary)
+    g_settings.log_severity = 3;
+
     if strlen(cache_path) > 0 {
         s: cef_string_t = cef_string_t();
         cef_string_utf8_to_utf16(cache_path, strlen(cache_path), s);
@@ -658,8 +592,7 @@ def:pub cef_dispatch_settings_create(no_sandbox: i32, cache_path: str) -> int {
         g_settings.cp_len = s.len;
         g_settings.cp_dtor = s.dtor;
     }
-    # resources_dir_path + locales_dir_path from exe dir (C char* only — do not
-    # pass int pointers as Jac `str` across function calls; nacompile mis-marshals).
+
     if g_exe_dir_buf != 0 {
         rlen: int = strlen(g_exe_dir_buf);
         if rlen > 0 {
@@ -721,14 +654,13 @@ def:pub cef_dispatch_window_info_create(title: str, width: int, height: int) -> 
 }
 
 def:pub cef_dispatch_browser_settings_create -> int {
-    # Allocate 264-byte zeroed block (cef_browser_settings_t is 264 bytes)
     buf: int = calloc(1, 264);
-    # size at offset 0 (i64): 264 = 0x0108 in little-endian bytes [8, 1, 0, ...]
+
     memset(buf, 8, 1);
     memset(buf + 1, 1, 1);
-    # javascript at offset 204 (i32): 1 = [1, 0, 0, 0]
+
     memset(buf + 204, 1, 1);
-    # local_storage at offset 236 (i32): 1 = [1, 0, 0, 0]
+
     memset(buf + 236, 1, 1);
     return buf;
 }
@@ -779,7 +711,7 @@ def:pub cef_dispatch_execute_process -> i32 {
         return code;
     }
     _log("execute_process: main process");
-    # Keep g_cached_args alive - reused in cef_dispatch_startup
+
     return code;
 }
 
@@ -789,12 +721,12 @@ def:pub cef_dispatch_startup(cache_path: str, no_sandbox: int) -> i32 {
     _init_vtables();
     _log("startup: initializing CEF");
     settings: int = cef_dispatch_settings_create(no_sandbox, cache_path);
-    # Reuse args from execute_process (same pointer = same memory CEF registered)
+
     global g_cached_args;
     if g_cached_args == 0 {
         g_cached_args = cef_dispatch_main_args_create();
     }
-    # Reset SIGCHLD to SIG_DFL (=0) in case Jac runtime changed it
+
     old_sigchld: int = signal(17, 0);
     _log("startup: calling cef_initialize");
     rc: int = cef_initialize(g_cached_args, settings, g_dispatch_app, 0);
@@ -874,16 +806,6 @@ def:pub cef_dispatch_create_browser(
     return result;
 }
 
-# --- Native window control (X11) -------------------------------------------
-# WindowPlugin.set_title / set_size call cef_dispatch_window_set_* below from the
-# broker (CPython) thread via ctypes. The browser's X11 window id was captured on
-# the UI thread in _on_after_created; here we only do pure X11 (stable ABI) on a
-# fresh per-call Display connection -- so no CEF UI-thread marshalling and no
-# shared-Xlib-connection races between concurrent broker request threads. Every
-# op is best-effort: a 0 window id or missing $DISPLAY (headless) is a silent
-# no-op that returns 0, and the Python side then falls back to a renderer-side
-# document.title / window.resizeTo via the SSE eval channel.
-"""Parent window id of w (0 on failure); frees the child list XQueryTree allocs."""
 def _x11_parent(dpy: int, w: int) -> int {
     root_b: int = calloc(1, 8);
     par_b: int = calloc(1, 8);
@@ -906,7 +828,6 @@ def _x11_parent(dpy: int, w: int) -> int {
     return parent;
 }
 
-"""1 if window w carries property `prop` (used to find the WM_STATE top-level)."""
 def _x11_has_prop(dpy: int, w: int, prop: int) -> i32 {
     if prop == 0 {
         return 0;
@@ -938,9 +859,6 @@ def _x11_has_prop(dpy: int, w: int, prop: int) -> i32 {
     return found;
 }
 
-"""Walk up from the captured (possibly nested) window to the WM-managed
-top-level -- the ancestor carrying WM_STATE. Falls back to the highest non-root
-ancestor when WM_STATE is absent (e.g. before the window is mapped)."""
 def _x11_toplevel(dpy: int, xid: int) -> int {
     root_win: int = XDefaultRootWindow(dpy);
     wm_state: int = XInternAtom(dpy, "WM_STATE", 1);
@@ -969,9 +887,6 @@ def _x11_toplevel(dpy: int, xid: int) -> int {
     return cur;
 }
 
-"""Set the OS window title. `title` is a UTF-8 char* passed as a pointer from the
-CPython broker via ctypes c_char_p -- NOT a Jac str (whose ABI differs). Returns
-1 if applied, 0 if there is no window / no X display."""
 def:pub cef_dispatch_window_set_title(title: int) -> i32 {
     if g_browser_xid == 0 {
         return 0;
@@ -985,9 +900,9 @@ def:pub cef_dispatch_window_set_title(title: int) -> i32 {
         XCloseDisplay(dpy);
         return 0;
     }
-    # WM_NAME (legacy XA_STRING) for older WMs ...
+
     XStoreName(dpy, top, title);
-    # ... and _NET_WM_NAME (UTF8_STRING) which modern WMs prefer.
+
     netname: int = XInternAtom(dpy, "_NET_WM_NAME", 0);
     utf8: int = XInternAtom(dpy, "UTF8_STRING", 0);
     if netname != 0 && utf8 != 0 {
@@ -998,8 +913,6 @@ def:pub cef_dispatch_window_set_title(title: int) -> i32 {
     return 1;
 }
 
-"""Resize the OS top-level window. Returns 1 if applied, 0 if there is no
-window / no X display. The WM may clamp the request."""
 def:pub cef_dispatch_window_set_size(w: int, h: int) -> i32 {
     if g_browser_xid == 0 {
         return 0;

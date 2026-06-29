@@ -1,18 +1,3 @@
-"""
-Python AST to Jac AST Conversion Pass for the Jac compiler.
-
-This pass transforms Python AST nodes into equivalent Jac AST nodes by:
-
-1. Converting Python modules, classes, functions, and expressions to their Jac equivalents
-2. Preserving source location information and symbol relationships
-3. Handling Python-specific constructs and adapting them to Jac's object model
-4. Supporting both standard Python modules and type stub (.pyi) files
-5. Creating appropriate symbol tables and scopes for the converted nodes
-
-This pass is crucial for Python interoperability, allowing Python code to be imported
-and used within Jac programs while maintaining type information and semantic relationships.
-"""
-
 import ast as py_ast;
 import os;
 import re;
@@ -20,14 +5,14 @@ import from collections.abc { Sequence }
 import from threading { Event }
 import from typing { TypeAlias, TypeVar, cast }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.constant { Tokens as Tok, TOKEN_MAP }
 import from jaclang.jac0core.diagnostics { E5041, E5042 }
 import from jaclang.jac0core.passes.transform { Transform }
 import type from jaclang.jac0core.program { JacProgram }
 
-glob T = TypeVar('T', bound=uni.UniNode);
+glob T = TypeVar('T', bound=uni.UniNode),
+     _reserved_keywords = [v for (_, v) in TOKEN_MAP.items()];
 
-"""Jac Parser."""
 obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     has ir_in: uni.PythonModuleAst,
         prog: JacProgram,
@@ -43,6 +28,16 @@ obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     def _get_source_segment(nd: py_ast.AST) -> (str | None);
     def _strip_string_continuations(seg: str) -> str;
     def nu(nd: T) -> T;
+    def name_node(
+        nd: py_ast.AST,
+        value: str,
+        name_tok: Tok = Tok.NAME,
+        col_end: int = -1,
+        col_start: int = -1,
+        end_line: int = -1,
+        is_kwesc: bool = False
+    ) -> uni.Name;
+
     def convert(nd: py_ast.AST) -> uni.UniNode;
     def transform(ir_in: uni.PythonModuleAst) -> uni.Module;
     def extract_with_entry(
@@ -86,11 +81,6 @@ obj PyastBuildPass(Transform[uni.PythonModuleAst, uni.Module]) {
     def proc_expr(nd: py_ast.Expr) -> uni.ExprStmt;
     def proc_formatted_value(nd: py_ast.FormattedValue) -> uni.FormattedValue;
     def proc_function_type(nd: py_ast.FunctionType) { }
-    # Python 3.14 ast nodes. `interactive` (REPL mode) never reaches the
-    # module-parsing pathway, so it is a no-op like `function_type`. The PEP 750
-    # t-string nodes have no Jac equivalent; reject them with a clear error
-    # rather than silently dropping. (TemplateStr/Interpolation are not in the
-    # pinned typeshed yet, so the params are typed as the base py_ast.AST.)
     def proc_interactive(nd: py_ast.Interactive) { }
     def proc_template_str(nd: py_ast.AST) -> uni.UniNode;
     def proc_interpolation(nd: py_ast.AST) -> uni.UniNode;

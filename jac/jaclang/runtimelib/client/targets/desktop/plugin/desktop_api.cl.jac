@@ -1,32 +1,8 @@
-"""Typed client SDK for jac-desktop plugins.
-
-Importable from `cl` code so consumers stop hand-writing
-`window.__jac.invoke("jac.fs", "read_file", {...})` with magic strings.
-
-Hand-written, not generated. Two tests guard it against drift with the host
-plugins: "client SDK commands map to host plugin commands" (every `_invoke`
-call resolves to a real plugin command) and "desktop_sdk exports match api
-declarations" (the export list tracks the `obj` declarations in this file).
-
-Binding note: the bridge is injected by the host's BOOTSTRAP_JS onto the browser
-global and is reached via `globalThis.__jac` (see `_invoke`). `globalThis` is
-the same object as `window` in the webview and is unambiguous regardless of any
-identifiers in local scope. (The window-control facade is named `app_window`,
-not `window`, so it does not shadow the ambient global.)
-"""
-
-"""Thin wrapper over the injected JS bridge. Resolves to data or throws an
-Error carrying `.code` (the host's structured PluginError code).
-
-Uses `globalThis.__jac` (not bare `window.__jac`): `globalThis` is the same
-object as `window` in the webview and is unambiguous regardless of any
-identifiers in local scope."""
 async def _invoke(plugin: str, command: str, args: dict) -> any {
     return await globalThis.__jac.invoke(plugin, command, args);
 }
 
 
-"""Filesystem capability (mirrors jac.fs). Gated by [plugins.desktop.plugins.fs]."""
 obj fs {
     static async def read_file(path: str, encoding: str = "utf-8") -> str {
         r = await _invoke("jac.fs", "read_file", {"path": path, "encoding": encoding});
@@ -61,7 +37,6 @@ obj fs {
 }
 
 
-"""Native dialogs (mirrors jac.dialog)."""
 obj dialog {
     static async def open_file(title: str = "Open File") -> dict {
         return await _invoke("jac.dialog", "open_file", {"title": title});
@@ -83,7 +58,6 @@ obj dialog {
 }
 
 
-"""System clipboard (mirrors jac.clipboard)."""
 obj clipboard {
     static async def read -> str {
         r = await _invoke("jac.clipboard", "read", {});
@@ -96,7 +70,6 @@ obj clipboard {
 }
 
 
-"""Desktop notifications (mirrors jac.notification)."""
 obj notification {
     static async def send(title: str, body: str = "") {
         await _invoke("jac.notification", "send", {"title": title, "body": body});
@@ -104,8 +77,6 @@ obj notification {
 }
 
 
-"""Window control (mirrors jac.window). Named `app_window` (not `window`) so it
-never shadows the ambient browser `window` global in consumer code."""
 obj app_window {
     static async def set_title(title: str) {
         await _invoke("jac.window", "set_title", {"title": title});
@@ -127,7 +98,6 @@ obj app_window {
 }
 
 
-"""Shell execution (mirrors jac.shell)."""
 obj shell {
     static async def exec(command: str, timeout: int = 30, cwd: str = "") -> dict {
         args: dict = {"command": command, "timeout": timeout};
@@ -139,7 +109,6 @@ obj shell {
 }
 
 
-"""Path resolution (mirrors jac.path)."""
 obj path {
     static async def home -> str {
         r = await _invoke("jac.path", "home", {});
@@ -171,21 +140,3 @@ obj path {
         return r["path"];
     }
 }
-# Usage from a .cl.jac component:
-#
-#   import from "@jac/desktop" { fs, dialog, clipboard }
-#
-#   async def export_notes() -> None {
-#       picked = await dialog.save_file("Export", "notes.txt");
-#       if not picked["canceled"] {
-#           await fs.write_file(picked["path"], current_text);
-#           await dialog.message("Saved", "Notes exported.");
-#       }
-#   }
-#
-# Call these with POSITIONAL arguments, not keywords. The cl compiler can't
-# resolve param names across the @jac/desktop module boundary, so a keyword call
-# like `dialog.save_file(title="Export", default_name="notes.txt")` silently
-# compiles to a single options object passed as the first positional arg — the
-# host then receives `title={...}` and fails. Tracked in jaseci-labs/jaseci#6675;
-# until fixed, pass positionally.

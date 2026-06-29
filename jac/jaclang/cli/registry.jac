@@ -1,13 +1,3 @@
-"""Command registry with plugin extension support.
-
-The registry is the central point for command registration and extension.
-It supports:
-- Registering new commands
-- Extending existing commands with additional arguments
-- Adding pre/post execution hooks
-- Priority-based conflict resolution
-"""
-
 import argparse;
 import from typing { Callable }
 import from jaclang.cli.command {
@@ -18,7 +8,6 @@ import from jaclang.cli.command {
     HookContext
 }
 
-"""Central registry for CLI commands with extension support."""
 obj CommandRegistry {
     has commands: dict[str, CommandSpec] = {},
         _pending_extensions: dict[str, list[tuple]] = {},
@@ -58,8 +47,6 @@ obj CommandRegistry {
     def _add_argument(parser: argparse.ArgumentParser, arg: Arg) -> None;
 }
 
-# Global singleton instance
 glob _registry: CommandRegistry | None = None;
 
-"""Get the global command registry."""
 def get_registry -> CommandRegistry;

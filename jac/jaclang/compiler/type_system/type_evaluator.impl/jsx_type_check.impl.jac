@@ -1,17 +1,6 @@
-"""JSX prop type validation for the Jac type evaluator.
-
-Validates that JSX element attributes match the expected types from:
-1. User-defined component function signatures (uppercase tags like <Button>)
-2. Intrinsic HTML element prop schemas (lowercase tags like <button>)
-"""
-
-# Reserved JSX attributes consumed by the framework reconciler, never forwarded
-# to the component as props.  Must be accepted on any element/component without
-# being declared in its parameter list (mirrors React/Preact behaviour).
 glob _JSX_RESERVED_ATTRS: set[str] = {"key", "ref"};
 
 
-"""Resolve a JsxElementName to the FunctionType of the component it references."""
 impl TypeEvaluator._resolve_jsx_component_type(
     name: uni.JsxElementName
 ) -> types.FunctionType | None {
@@ -25,14 +14,11 @@ impl TypeEvaluator._resolve_jsx_component_type(
     } elif isinstance(first_part, uni.Token) {
         component_name = first_part.value or "";
     }
-    # Only resolve uppercase names (user components); lowercase = intrinsic HTML.
+
     if not component_name or not component_name[0].isupper() {
         return None;
     }
-    # The JsxElement expression handler drives get_type_of_expression()
-    # on each Name part before reaching this method, so .sym is already
-    # populated via the standard name-resolution pipeline (lines 1613-1626
-    # of type_evaluator.impl.jac). Read it directly.
+
     sym: uni.Symbol | None = None;
     if isinstance(first_part, uni.Name) and first_part.sym {
         sym = first_part.sym;
@@ -46,11 +32,6 @@ impl TypeEvaluator._resolve_jsx_component_type(
     return None;
 }
 
-"""Look up the intrinsic prop ClassType for a lowercase HTML tag name.
-
-Uses _JsxIntrinsicElements from dom_types.pyi — each member maps a tag name
-to its prop type (e.g. ``button: _ButtonIntrinsicProps``).  Returns None for
-unrecognised tags so the caller can decide whether to warn or allow."""
 impl TypeEvaluator._get_intrinsic_props_type(tag_name: str) -> types.ClassType | None {
     registry = self.prefetch.jsx_intrinsic_elements_class if self.prefetch else None;
     if registry is not None {
@@ -62,20 +43,13 @@ impl TypeEvaluator._get_intrinsic_props_type(tag_name: str) -> types.ClassType |
             }
         }
     }
-    # Fallback: tag not listed in _JsxIntrinsicElements — use common props.
+
     if self.prefetch and self.prefetch.html_common_props_class {
         return self.prefetch.html_common_props_class;
     }
     return None;
 }
 
-"""Bind a symbol on an intrinsic JSX tag Name node.
-
-Looks up the tag name (e.g. ``div``) in ``_JsxIntrinsicElements``.  If found,
-binds the member symbol to ``part.sym`` so that:
-  - the static-analysis pass sees a resolved name (no W2001),
-  - IDE hover / goto-definition works on tag names.
-If the tag is unknown, emits W1050."""
 impl TypeEvaluator._resolve_intrinsic_jsx_tag(part: uni.Name, tag_name: str) -> None {
     registry = self.prefetch.jsx_intrinsic_elements_class if self.prefetch else None;
     if registry is not None {
@@ -87,14 +61,12 @@ impl TypeEvaluator._resolve_intrinsic_jsx_tag(part: uni.Name, tag_name: str) -> 
             return;
         }
     }
-    # Tag not in _JsxIntrinsicElements — warn about unknown intrinsic element.
+
     if tag_name {
         self.emit_diag(W1050, part, tag=tag_name);
     }
 }
 
-"""Validate JSX element attributes against the component's parameter types
-or intrinsic element prop types."""
 impl TypeEvaluator._validate_jsx_props(
     expr: uni.JsxElement, expected_type: TypeBase | None = None
 ) -> None {
@@ -117,7 +89,6 @@ impl TypeEvaluator._validate_jsx_props(
     }
 }
 
-"""Validate props for a user-defined component (uppercase tag)."""
 impl TypeEvaluator._validate_component_jsx_props(
     expr: uni.JsxElement, component_name: str
 ) -> None {
@@ -125,7 +96,7 @@ impl TypeEvaluator._validate_component_jsx_props(
     if not func_type or not func_type.parameters {
         return;
     }
-    # Build a param lookup dict (skip self/cls).
+
     param_map: dict[str, types.Parameter] = {};
     for param in func_type.parameters {
         if not param.is_self and not param.is_cls {
@@ -134,16 +105,9 @@ impl TypeEvaluator._validate_component_jsx_props(
     }
     matched_params: set[str] = set();
 
-    # Props-bag pattern: a component declared with a single parameter named
-    # `props` receives all JSX attributes as one object instead of as
-    # destructured named parameters (mirrors the codegen heuristic in
-    # esast_gen_pass — single param named `props`).  Validate attributes
-    # against the members of the props object's type, not against the lone
-    # `props` parameter name.
     if len(param_map) == 1 and "props" in param_map {
         props_type = param_map["props"].param_type;
-        # `props: any` resolves to the prefetched `any` ClassType, not
-        # AnyType — treat both (and Unknown / unannotated) as "untyped".
+
         is_any_class = (
             self.prefetch is not None
             and self.prefetch.any_class is not None
@@ -155,16 +119,11 @@ impl TypeEvaluator._validate_component_jsx_props(
             or isinstance(props_type, (types.AnyType, types.UnknownType))
             or is_any_class
         ) {
-            # Untyped props bag (`props: any`) — no prop schema to check
-            # against, so every attribute is accepted.  The component is
-            # flagged once at its definition site via W1052.
             return;
         }
         if isinstance(props_type, types.ClassType) {
             for attr in expr.attributes {
                 if not isinstance(attr, uni.JsxNormalAttribute) {
-                    # Spread into a typed props bag — keys can't be verified
-                    # statically, accept it.
                     continue;
                 }
                 attr_name = attr.name.value
@@ -224,7 +183,7 @@ impl TypeEvaluator._validate_component_jsx_props(
                 attr_type = self.get_type_of_expression(
                     attr.value, expected_type=matched_param.param_type
                 );
-                # Skip check when attr type is Unknown/Any (unresolvable, not a type error).
+
                 if (
                     not isinstance(attr_type, (types.UnknownType, types.AnyType))
                     and not self.assign_type(attr_type, matched_param.param_type)
@@ -239,23 +198,17 @@ impl TypeEvaluator._validate_component_jsx_props(
                 }
             }
         } elif isinstance(attr, uni.JsxSpreadAttribute) {
-            # Step 6: Validate spread props.
             spread_type = self.get_type_of_expression(attr.expr);
             if isinstance(spread_type, types.ClassType) {
-                # Check if it's a dict type.
                 if (
                     self.prefetch
                     and self.prefetch.dict_class
                     and spread_type.shared == self.prefetch.dict_class.shared
                 ) {
-                    # dict[str, X] spread — mark all params as potentially matched.
-                    # We can't check individual keys at compile time for plain dicts,
-                    # so we accept it and skip required-param checking for spread attrs.
                     for pname in param_map {
                         matched_params.add(pname);
                     }
                 } else {
-                    # Not a dict — emit error.
                     self.emit_diag(
                         E1104, attr, actual=str(spread_type), component=component_name
                     );
@@ -267,7 +220,7 @@ impl TypeEvaluator._validate_component_jsx_props(
             }
         }
     }
-    # Check for missing required params (no default value).
+
     for (pname, p) in param_map.items() {
         if pname not in matched_params and p.default_value is None {
             self.emit_diag(E1102, expr, component=component_name, name=pname);
@@ -275,7 +228,6 @@ impl TypeEvaluator._validate_component_jsx_props(
     }
 }
 
-"""Validate props for an intrinsic HTML element (lowercase tag)."""
 impl TypeEvaluator._validate_intrinsic_jsx_props(
     expr: uni.JsxElement, tag_name: str
 ) -> None {
@@ -288,10 +240,9 @@ impl TypeEvaluator._validate_intrinsic_jsx_props(
             attr_name = attr.name.value
                 if isinstance(attr.name, (uni.Name, uni.Token))
                 else str(attr.name);
-            # Look up the prop in the intrinsic props class.
+
             member = self._lookup_class_member(props_class, attr_name);
             if not member {
-                # Unknown intrinsic props are allowed (data-*, aria-*, etc.)
                 continue;
             }
             if attr.value is not None {
@@ -300,7 +251,7 @@ impl TypeEvaluator._validate_intrinsic_jsx_props(
                 attr_type = self.get_type_of_expression(
                     attr.value, expected_type=member_type
                 );
-                # Skip check when attr type is Unknown/Any (unresolvable, not a type error).
+
                 if (
                     not isinstance(attr_type, (types.UnknownType, types.AnyType))
                     and not self.assign_type(attr_type, member_type)
@@ -315,7 +266,6 @@ impl TypeEvaluator._validate_intrinsic_jsx_props(
                 }
             }
         } elif isinstance(attr, uni.JsxSpreadAttribute) {
-            # For intrinsic elements, spread is allowed with dict types.
             spread_type = self.get_type_of_expression(attr.expr);
             if (
                 not isinstance(spread_type, (types.AnyType, types.UnknownType))

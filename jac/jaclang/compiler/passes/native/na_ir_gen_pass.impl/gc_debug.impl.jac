@@ -1,64 +1,19 @@
-"""GC debug-only IR emitters for NaIRGenPass.
-
-All methods here emit LLVM IR that is only needed when RC debug tracing is
-enabled at runtime (__rc_debug == 1).  They are called exclusively from
-refcount.impl.jac and _emit_struct_release_fn.
-
-After Phase R2 (JAC_RC_DEBUG_CODEGEN compile-time guard), every call site
-in refcount.impl.jac will be wrapped in `if _RC_DEBUG_CODEGEN:` so that
-non-debug builds emit no live-list machinery at all.
-
-Extracted from refcount.impl.jac as part of GC_DEBUG_REFACTOR Phase R3.
-See jac-bun/docs/GC_DEBUG_REFACTOR.md for the full plan.
-
-Methods:
-  _emit_rc_debug_globals()        — __rc_debug global + enable/disable fns + ctx + live_head
-  _emit_ctx_load(b)               — null-safe load of ctx op/loc into current block
-  _emit_live_node_insert(b, ...)  — prepend 40-byte live-node to __rc_live_head list
-  _emit_alloc_log_bb(...)         — log_alloc_bb (RC MALLOC printf)
-  _emit_retain_log_bb(...)        — log_retain_bb + rc_snap walk
-  _emit_dbl_free_log_bb(...)      — log_dbl_free_bb (double-free printf)
-  _emit_release_log_bb(...)       — dbg_rel_check_bb + log_release_bb
-  _emit_raw_free_bbs(...)         — log_free_raw_bb + log_raw_bb + live_rm_bb + actual_free_bb
-  _emit_struct_free_log(...)      — fills log_free_struct + log_struct_line BBs
-  _set_rc_ctx(op, loc)            — store op/loc strings into ctx globals
-  _emit_live_list_remove(...)     — inline live-list unlink+free
-  _emit_rc_live_dump()            — walk live-list at exit, print leaks
-"""
-
 import from jaclang.compiler.passes.native.llvm { ir }
 import os;
 
-"""Emit all debug-only globals and their companion functions into the current module.
-
-  __rc_debug         (i8, internal, init=0) — 0=silent, 1=trace
-  __rc_debug_enable  ()                     — sets flag, prints banner
-  __rc_debug_disable ()                     — clears flag, prints banner
-  __rc_ctx_op        (i8*, internal, null)  — op-name context for log lines
-  __rc_ctx_loc       (i8*, internal, null)  — "file:line" context for log lines
-  __rc_live_head     (i8*, internal, null)  — head of live-objects linked list
-
-Sets self.rc_debug_gv, self.rc_ctx_op_gv, self.rc_ctx_loc_gv,
-self.rc_live_head_gv on the pass instance.
-
-Called once from _emit_rc_helpers during module initialisation.
-"""
 impl NaIRGenPass._emit_rc_debug_globals -> None {
     i8 = ir.IntType(8);
     i8_ptr = i8.as_pointer();
     i32 = ir.IntType(32);
 
-    # __rc_debug (i8, weak): 0 = silent (default), 1 = trace.
-    # weak so link_in() merges all per-module copies; enable/disable from any module.
     rc_debug_gv = ir.GlobalVariable(self.llvm_module, i8, name="__rc_debug");
     rc_debug_gv.linkage = "weak";
     rc_debug_gv.initializer = ir.Constant(i8, 0);
     self.rc_debug_gv = rc_debug_gv;
 
-    # __rc_debug_enable() -> void
     en_fnty = ir.FunctionType(ir.VoidType(), []);
     en_fn = self._define_function("__rc_debug_enable", en_fnty);
-    en_fn.linkage = "weak_odr";  # one definition kept after link_in()
+    en_fn.linkage = "weak_odr";
     en_bb = en_fn.append_basic_block("entry");
     _b_en = ir.IRBuilder(en_bb);
     _b_en.store(ir.Constant(i8, 1), rc_debug_gv);
@@ -69,9 +24,8 @@ impl NaIRGenPass._emit_rc_debug_globals -> None {
     _b_en.call(self._get_printf(), [_fmt_on_ptr]);
     _b_en.ret_void();
 
-    # __rc_debug_disable() -> void
     dis_fn = self._define_function("__rc_debug_disable", en_fnty);
-    dis_fn.linkage = "weak_odr";  # one definition kept after link_in()
+    dis_fn.linkage = "weak_odr";
     dis_bb = dis_fn.append_basic_block("entry");
     _b_dis = ir.IRBuilder(dis_bb);
     _b_dis.store(ir.Constant(i8, 0), rc_debug_gv);
@@ -82,8 +36,6 @@ impl NaIRGenPass._emit_rc_debug_globals -> None {
     _b_dis.call(self._get_printf(), [_fmt_off_ptr]);
     _b_dis.ret_void();
 
-    # __rc_ctx_op / __rc_ctx_loc: op-name and source-location strings.
-    # weak so all modules share one slot after link_in() (set in module A, visible in module B's dtors).
     ctx_op_gv = ir.GlobalVariable(self.llvm_module, i8_ptr, name="__rc_ctx_op");
     ctx_op_gv.linkage = "weak";
     ctx_op_gv.initializer = ir.Constant(i8_ptr, None);
@@ -94,18 +46,12 @@ impl NaIRGenPass._emit_rc_debug_globals -> None {
     ctx_loc_gv.initializer = ir.Constant(i8_ptr, None);
     self.rc_ctx_loc_gv = ctx_loc_gv;
 
-    # __rc_live_head (i8*): head of live-objects linked list, weak (shared across modules).
     live_head_gv = ir.GlobalVariable(self.llvm_module, i8_ptr, name="__rc_live_head");
     live_head_gv.linkage = "weak";
     live_head_gv.initializer = ir.Constant(i8_ptr, None);
     self.rc_live_head_gv = live_head_gv;
 }
 
-"""Null-safe load of __rc_ctx_op and __rc_ctx_loc into the current IR block.
-
-Returns (op_val, loc_val) where null pointers are replaced with an empty string GEP.
-Used by all log-block emitters to avoid null-pointer dereferences in printf.
-"""
 impl NaIRGenPass._emit_ctx_load(b: ir.IRBuilder) -> tuple {
     i8_ptr = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
@@ -126,14 +72,6 @@ impl NaIRGenPass._emit_ctx_load(b: ir.IRBuilder) -> tuple {
     return (_op, _loc);
 }
 
-"""Insert a live-objects tracking node for a fresh allocation into __rc_live_head.
-
-Appends IR inline into the current block b (no new BBs created). Must be called
-with b positioned at the end of the alloc function's entry block, after aid
-(alloc_id i64) and user (i8* user pointer) are computed.
-
-Node layout (40 bytes): [i64 id | i8* user_ptr | i8* type_tag | i64 rc_snap | i8* next]
-"""
 impl NaIRGenPass._emit_live_node_insert(
     b: ir.IRBuilder, aid: ir.Value, user: ir.Value, tag_raw: ir.Value
 ) -> None {
@@ -157,7 +95,7 @@ impl NaIRGenPass._emit_live_node_insert(
     );
     _ntag_slot_pp = b.bitcast(_ntag_slot, i8_ptr.as_pointer(), name="n.tag.pp");
     b.store(tag_raw, _ntag_slot_pp);
-    # initial RC is 1 (matches what __rc_alloc stores at HDR_RC_OFF)
+
     _nrc_slot = b.gep(
         _node_raw, [ir.Constant(i64, LIVE_NODE_RC_OFF)], name="n.rc.slot"
     );
@@ -172,12 +110,6 @@ impl NaIRGenPass._emit_live_node_insert(
     b.store(_node_raw, self.rc_live_head_gv);
 }
 
-"""Create and fill log_alloc_bb: printf RC MALLOC → ret_bb.
-
-Appends one basic block to func, fills it with the alloc-trace printf,
-branches unconditionally to ret_bb, and returns the block so the caller
-can cbranch to it when __rc_debug is non-zero.
-"""
 impl NaIRGenPass._emit_alloc_log_bb(
     func: ir.Function,
     ret_bb: ir.Block,
@@ -201,14 +133,6 @@ impl NaIRGenPass._emit_alloc_log_bb(
     return log_bb;
 }
 
-"""Create and fill log_retain_bb + rc_snap update walk for __rc_retain.
-
-Creates: log_retain_bb (printf RC RETAIN), ur.scan, ur.check, ur.body,
-         ur.next, ur.upd (update rc_snap in live-list node).
-After the printf the walk updates the rc_snap field (+24) in the node
-matching ptr, then branches to done_bb.
-Returns log_retain_bb so the caller can cbranch to it from do_bb.
-"""
 impl NaIRGenPass._emit_retain_log_bb(
     func: ir.Function,
     done_bb: ir.Block,
@@ -222,23 +146,23 @@ impl NaIRGenPass._emit_retain_log_bb(
     i32 = ir.IntType(32);
     log_bb = func.append_basic_block("log_retain");
     b = ir.IRBuilder(log_bb);
-    # Load alloc_id from ptr-32 (strip magic from upper 32 bits)
+
     _aid_slot = b.gep(ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="ret.aid.slot");
     _aid_ptr = b.bitcast(_aid_slot, i64_ptr, name="ret.aid.ptr");
     _aid_raw = b.load(_aid_ptr, name="ret.aid.raw");
     _aid = b.and_(_aid_raw, ir.Constant(i64, 4294967295), name="ret.aid");
-    # Load type_tag from ptr-24
+
     _tag_slot = b.gep(ptr, [ir.Constant(i64, HDR_TAG_OFF)], name="ret.tag.slot");
     _tag_ptr = b.bitcast(_tag_slot, i8_ptr.as_pointer(), name="ret.tag.ptr");
     _tag = b.load(_tag_ptr, name="ret.tag");
-    # Null-safe ctx load
+
     (_op, _loc) = self._emit_ctx_load(b);
     _fmt = self._get_fmt_string(
         "RC RETAIN  id=%-4lld ptr=%p  rc=%lld->%lld  type=%-12s  op=%-12s  at=%s"
     );
     _fmt_ptr = b.gep(_fmt, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ret.fmt");
     b.call(self._get_printf(), [_fmt_ptr, _aid, ptr, old_rc, new_rc, _tag, _op, _loc]);
-    # Walk live list to update rc_snap at node+24
+
     _ur_scan_bb = func.append_basic_block("ur.scan");
     _ur_check_bb = func.append_basic_block("ur.check");
     _ur_body_bb = func.append_basic_block("ur.body");
@@ -262,16 +186,14 @@ impl NaIRGenPass._emit_retain_log_bb(
     _ur_eq = b.icmp_unsigned("==", _ur_node_ptr, ptr, name="ur.eq");
     b.cbranch(_ur_eq, _ur_upd_bb, _ur_next_bb);
     b = ir.IRBuilder(_ur_upd_bb);
-    _ur_rc_off = b.gep(
-        _ur_cur, [ir.Constant(i64, LIVE_NODE_RC_OFF)], name="ur.rc.off"
-    );  # rc_snap at +24
+    _ur_rc_off = b.gep(_ur_cur, [ir.Constant(i64, LIVE_NODE_RC_OFF)], name="ur.rc.off");
     _ur_rc_pp = b.bitcast(_ur_rc_off, i64_ptr, name="ur.rc.pp");
     b.store(new_rc, _ur_rc_pp);
     b.branch(done_bb);
     b = ir.IRBuilder(_ur_next_bb);
     _ur_nxt_off = b.gep(
         _ur_cur, [ir.Constant(i64, LIVE_NODE_NEXT_OFF)], name="ur.nxt.off"
-    );  # next at +32
+    );
     _ur_nxt_pp = b.bitcast(_ur_nxt_off, i8_ptr.as_pointer(), name="ur.nxt.pp");
     _ur_nxt = b.load(_ur_nxt_pp, name="ur.nxt");
     _ur_cur.add_incoming(_ur_nxt, _ur_next_bb);
@@ -279,11 +201,6 @@ impl NaIRGenPass._emit_retain_log_bb(
     return log_bb;
 }
 
-"""Create and fill log_dbl_free_bb for __rc_release_simple.
-
-Appends one basic block to func, prints RC DOUBLE-FREE, branches to done_bb,
-and returns the block so dblchk_bb can cbranch to it when old_rc == 0.
-"""
 impl NaIRGenPass._emit_dbl_free_log_bb(
     func: ir.Function, done_bb: ir.Block, ptr: ir.Value
 ) -> ir.Block {
@@ -310,13 +227,6 @@ impl NaIRGenPass._emit_dbl_free_log_bb(
     return log_bb;
 }
 
-"""Create and fill dbg_rel_check_bb + log_release_bb for __rc_release_simple.
-
-Creates: dbg_rel_check_bb — loads __rc_debug, cbranches to log_release_bb or done_bb.
-         log_release_bb   — prints RC RELEASE, branches to done_bb.
-Returns dbg_rel_check_bb (the entry point) so do_release can cbranch to it
-when the new refcount is still > 0.
-"""
 impl NaIRGenPass._emit_release_log_bb(
     func: ir.Function,
     done_bb: ir.Block,
@@ -356,15 +266,6 @@ impl NaIRGenPass._emit_release_log_bb(
     return dbg_rel_bb;
 }
 
-"""Create and fill the raw-free debug + live-list removal BBs for __rc_release_simple.
-
-Creates: log_free_raw_bb — loads msz, cbranches debug→log_raw / done→live_rm.
-         log_raw_bb       — prints RC FREE, falls through to live_rm.
-         live_rm_bb       — calls _emit_live_list_remove (done→done, found→actual_free).
-         actual_free_bb   — calls free(ptr-32), branches to done_bb.
-
-Returns log_free_raw_bb so check_dtor can cbranch to it when dtor_fn == 0.
-"""
 impl NaIRGenPass._emit_raw_free_bbs(
     func: ir.Function, done_bb: ir.Block, ptr: ir.Value
 ) -> ir.Block {
@@ -377,11 +278,7 @@ impl NaIRGenPass._emit_raw_free_bbs(
     log_raw_bb = func.append_basic_block("log_raw");
     live_rm_bb = func.append_basic_block("live_rm");
     actual_free_bb = func.append_basic_block("actual_free");
-    # log_free_raw: check the debug flag only. The malloc-size intrinsic is
-    # computed on the log path below, NOT here: calling it before the flag
-    # check ran it on every free even in non-debug builds (its result is used
-    # only by the printf), and on the wasm target that meant invoking an
-    # i64-returning runtime import in the hot free path.
+
     b = ir.IRBuilder(log_free_bb);
     dbg_flag3 = b.load(self.rc_debug_gv, name="rc.dbg3");
     b.cbranch(
@@ -389,10 +286,7 @@ impl NaIRGenPass._emit_raw_free_bbs(
         log_raw_bb,
         live_rm_bb
     );
-    # log_raw: compute alloc size, then printf RC FREE → live_rm.
-    # glibc exports malloc_usable_size; macOS libSystem only has malloc_size
-    # (same i64(i8*) signature). Picking the wrong one fails at dyld load with
-    # "Symbol not found: _malloc_usable_size".
+
     b = ir.IRBuilder(log_raw_bb);
     import platform;
     _msz_sym = "malloc_size" if platform.system() == "Darwin" else "malloc_usable_size";
@@ -413,10 +307,10 @@ impl NaIRGenPass._emit_raw_free_bbs(
     _fmt_ptr = b.gep(_fmt, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="free.fmt");
     b.call(self._get_printf(), [_fmt_ptr, _aid, ptr, _msz, _tag, _op, _loc]);
     b.branch(live_rm_bb);
-    # live_rm: remove from live-list; node found → actual_free; not found → done_bb
+
     b = ir.IRBuilder(live_rm_bb);
     self._emit_live_list_remove(b, ptr, i8_ptr, i64_ptr, done_bb, actual_free_bb);
-    # actual_free: free(ptr-32) → done_bb
+
     b = ir.IRBuilder(actual_free_bb);
     _raw_for_free = b.gep(
         ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="raw.for.free"
@@ -426,19 +320,6 @@ impl NaIRGenPass._emit_raw_free_bbs(
     return log_free_bb;
 }
 
-"""Fill the debug-log basic blocks inside a typed struct destructor.
-
-The caller (_emit_struct_release_fn) creates log_free_struct_bb and
-actual_free_struct_bb, does the live-list removal (via _emit_live_list_remove),
-and passes them here.  This method appends log_struct_line_bb, fills
-log_free_struct_bb (debug flag check) and log_struct_line_bb (printf), and
-branches both paths to actual_free_struct_bb.
-
-obj_i8  — bitcast of struct ptr to i8* (for printf %p)
-obj_raw — gep(obj_i8, -32)            (for malloc_usable_size)
-aid     — alloc_id with magic stripped (i64)
-tag     — type_tag string pointer (i8*)
-"""
 impl NaIRGenPass._emit_struct_free_log(
     func: ir.Function,
     log_free_struct_bb: ir.Block,
@@ -453,9 +334,7 @@ impl NaIRGenPass._emit_struct_free_log(
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
     log_struct_line_bb = func.append_basic_block("log_struct_line");
-    # log_free_struct: check the debug flag only. The malloc-size intrinsic is
-    # computed on the log path below (see _emit_raw_free_bbs) so a non-debug
-    # struct free does not call it on every release.
+
     b = ir.IRBuilder(log_free_struct_bb);
     dbg_flag_s = b.load(self.rc_debug_gv, name="rc.dbg.s");
     b.cbranch(
@@ -463,8 +342,7 @@ impl NaIRGenPass._emit_struct_free_log(
         log_struct_line_bb,
         actual_free_struct_bb
     );
-    # log_struct_line: compute alloc size, then printf RC FREE.
-    # macOS libSystem has malloc_size, not glibc's malloc_usable_size.
+
     b = ir.IRBuilder(log_struct_line_bb);
     import platform;
     _msz_sym = "malloc_size" if platform.system() == "Darwin" else "malloc_usable_size";
@@ -481,11 +359,6 @@ impl NaIRGenPass._emit_struct_free_log(
     b.branch(actual_free_struct_bb);
 }
 
-"""Store op/loc into __rc_ctx_op/__rc_ctx_loc without emitting a retain or release.
-
-Use this before direct calls to RC helper functions (e.g. list append, dict set)
-that internally call rc_retain_fn directly, so their log output shows the right context.
-"""
 impl NaIRGenPass._set_rc_ctx(op: str, loc: str) -> None {
     if self.rc_ctx_op_gv is None {
         self._emit_rc_helpers();
@@ -507,15 +380,6 @@ impl NaIRGenPass._set_rc_ctx(op: str, loc: str) -> None {
     }
 }
 
-"""Clear __rc_ctx_op and __rc_ctx_loc back to null.
-
-Must be called immediately after each emit_rc_retain / emit_rc_release_simple
-(or after any call-site that used _set_rc_ctx) so that subsequent allocations
-do not inherit a stale op/at attribution from the previous RC operation.
-
-Without this, the next loop iteration's allocations would be tagged with the
-op/loc that was last stored (e.g. "append"/"line:15") instead of their own.
-"""
 impl NaIRGenPass._clear_rc_ctx -> None {
     if self.rc_ctx_op_gv is None {
         return;
@@ -525,9 +389,6 @@ impl NaIRGenPass._clear_rc_ctx -> None {
     self.builder.store(ir.Constant(i8_ptr, None), self.rc_ctx_loc_gv);
 }
 
-"""Emit live-list removal inline: scan __rc_live_head for node whose ptr field
-matches target_ptr, unlink and free it, then branch to next_bb.
-Branches to free_bb after the list walk regardless of whether a node was found."""
 impl NaIRGenPass._emit_live_list_remove(
     b: ir.IRBuilder,
     target_ptr: ir.Value,
@@ -536,8 +397,6 @@ impl NaIRGenPass._emit_live_list_remove(
     done_bb: ir.Block,
     free_bb: ir.Block
 ) -> None {
-    # Phase R2: when debug-codegen is off, the live list isn't built, so there
-    # is nothing to scan or unlink. Just continue down the free path.
     if not self._rc_debug_codegen {
         b.branch(free_bb);
         return;
@@ -553,7 +412,7 @@ impl NaIRGenPass._emit_live_list_remove(
     head = b2.load(self.rc_live_head_gv, name="lrm.head");
     b2.branch(check_bb);
     b2 = ir.IRBuilder(check_bb);
-    # phi: (cur_node, prev_node)
+
     cur_phi = b2.phi(i8_ptr, name="lrm.cur");
     prev_phi = b2.phi(i8_ptr, name="lrm.prev");
     cur_phi.add_incoming(head, scan_bb);
@@ -569,13 +428,13 @@ impl NaIRGenPass._emit_live_list_remove(
     is_match = b2.icmp_unsigned("==", node_ptr, target_ptr, name="lrm.eq");
     b2.cbranch(is_match, unlink_bb, next_bb);
     b2 = ir.IRBuilder(unlink_bb);
-    # Load next pointer from node (next at +32 in 40-byte layout)
+
     nnxt_off = b2.gep(
         cur_phi, [ir.Constant(ir.IntType(64), LIVE_NODE_NEXT_OFF)], name="nnxt.off"
     );
     nnxt_pp = b2.bitcast(nnxt_off, i8_ptr.as_pointer(), name="nnxt.pp");
     nxt_node = b2.load(nnxt_pp, name="nxt.node");
-    # If prev is null: update head; else update prev->next
+
     prev_null_bb = func.append_basic_block("live.prev.null");
     prev_set_bb = func.append_basic_block("live.prev.set");
     after_unlink = func.append_basic_block("live.after.unlink");
@@ -589,19 +448,17 @@ impl NaIRGenPass._emit_live_list_remove(
     b3 = ir.IRBuilder(prev_set_bb);
     prev_nxt_off = b3.gep(
         prev_phi, [ir.Constant(ir.IntType(64), LIVE_NODE_NEXT_OFF)], name="pnxt.off"
-    );  # next at +32
+    );
     prev_nxt_pp = b3.bitcast(prev_nxt_off, i8_ptr.as_pointer(), name="pnxt.pp");
     b3.store(nxt_node, prev_nxt_pp);
     b3.branch(after_unlink);
     b3 = ir.IRBuilder(after_unlink);
-    b3.call(
-        self.rc_safe_free_fn, [cur_phi]
-    );  # free the node (non-RC, gated by JAC_NO_GC)
+    b3.call(self.rc_safe_free_fn, [cur_phi]);
     b3.branch(free_bb);
     b2 = ir.IRBuilder(next_bb);
     nnxt_off2 = b2.gep(
         cur_phi, [ir.Constant(ir.IntType(64), LIVE_NODE_NEXT_OFF)], name="nnxt2.off"
-    );  # next at +32
+    );
     nnxt_pp2 = b2.bitcast(nnxt_off2, i8_ptr.as_pointer(), name="nnxt2.pp");
     nxt2 = b2.load(nnxt_pp2, name="nxt2");
     cur_phi.add_incoming(nxt2, next_bb);
@@ -609,9 +466,6 @@ impl NaIRGenPass._emit_live_list_remove(
     b2.branch(check_bb);
 }
 
-"""Emit inline IR that walks __rc_live_head and prints surviving objects.
-Only emits output when JAC_RC_DEBUG flag is non-zero at runtime.
-Should be called just before `ret void` in jac_entry."""
 impl NaIRGenPass._emit_rc_live_dump -> None {
     if self.rc_live_head_gv is None or not self._rc_debug_codegen {
         return;
@@ -623,7 +477,7 @@ impl NaIRGenPass._emit_rc_live_dump -> None {
     i8 = ir.IntType(8);
     b = self.builder;
     func = b.function;
-    # Guard: only dump if debug flag is set
+
     dbg_on_bb = func.append_basic_block("dump.dbg.on");
     scan_bb = func.append_basic_block("dump.scan");
     check_bb = func.append_basic_block("dump.check");
@@ -650,17 +504,17 @@ impl NaIRGenPass._emit_rc_live_dump -> None {
     is_end = b.icmp_unsigned("==", cur, ir.Constant(i8_ptr, None), name="dump.end");
     b.cbranch(is_end, after_bb, body_bb);
     b = ir.IRBuilder(body_bb);
-    # Node layout (40 bytes): [i64 id | i8* user_ptr | i8* type_tag | i64 rc_snap | i8* next]
+
     id_ptr = b.bitcast(cur, i64_ptr, name="dump.id.ptr");
     node_id = b.load(id_ptr, name="dump.id");
     uptr_off = b.gep(cur, [ir.Constant(i64, LIVE_NODE_USER_OFF)], name="dump.uptr.off");
     uptr_pp = b.bitcast(uptr_off, i8_ptr.as_pointer(), name="dump.uptr.pp");
     user_ptr = b.load(uptr_pp, name="dump.uptr");
-    # Read rc from user_ptr-16 (live header value — most accurate at dump time)
+
     rc_slot = b.gep(user_ptr, [ir.Constant(i64, HDR_RC_OFF)], name="dump.rc.slot");
     rc_ptr_c = b.bitcast(rc_slot, i64_ptr, name="dump.rc.ptr");
     rc_val = b.load(rc_ptr_c, name="dump.rc");
-    # Read type_tag from node offset +16
+
     ttag_off = b.gep(cur, [ir.Constant(i64, LIVE_NODE_TAG_OFF)], name="dump.ttag.off");
     ttag_pp = b.bitcast(ttag_off, i8_ptr.as_pointer(), name="dump.ttag.pp");
     ttag = b.load(ttag_pp, name="dump.ttag");
@@ -669,9 +523,7 @@ impl NaIRGenPass._emit_rc_live_dump -> None {
     b.call(self._get_printf(), [_fmt_live_ptr, node_id, user_ptr, rc_val, ttag]);
     b.branch(next_bb);
     b = ir.IRBuilder(next_bb);
-    nxt_off = b.gep(
-        cur, [ir.Constant(i64, LIVE_NODE_NEXT_OFF)], name="dump.nxt.off"
-    );  # next at +32
+    nxt_off = b.gep(cur, [ir.Constant(i64, LIVE_NODE_NEXT_OFF)], name="dump.nxt.off");
     nxt_pp = b.bitcast(nxt_off, i8_ptr.as_pointer(), name="dump.nxt.pp");
     nxt = b.load(nxt_pp, name="dump.nxt");
     cur.add_incoming(nxt, next_bb);

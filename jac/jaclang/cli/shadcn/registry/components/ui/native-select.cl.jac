@@ -8,7 +8,7 @@ def:pub NativeSelect(props: any) -> JsxElement {
     size = props["size"] or "default";
 
     restProps = {};
-    for key in Object.keys(props) {  # jac:ignore[W6001]
+    for key in Object.keys(props) {
         if key not in _nativeSelectExcludeKeys {
             restProps[key] = props[key];
         }

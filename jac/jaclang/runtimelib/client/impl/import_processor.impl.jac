@@ -1,12 +1,9 @@
-"""Check if an import should be processed (compiled/copied) vs left for Vite."""
-
 impl ImportProcessor.should_process_import(
     self: ImportProcessor, import_path: Path
 ) -> bool {
     return (import_path.suffix in {'.jac', '.js'});
 }
 
-"""Process client imports for Vite bundling."""
 impl ImportProcessor.process_vite_imports(
     self: ImportProcessor, manifest: (ClientManifest | None), module_path: Path
 ) -> list[(Path | None)] {

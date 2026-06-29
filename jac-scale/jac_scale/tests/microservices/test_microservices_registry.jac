@@ -1,14 +1,9 @@
-"""Tests for microservices ServiceRegistry."""
-
-import from jac_scale.microservices.service_registry {
+import from jac_scale.runtime.gateway.service_registry {
     ServiceRegistry,
     ServiceEntry,
     ServiceStatus
 }
 
-# =============================================================================
-# ServiceEntry
-# =============================================================================
 test "service entry has correct defaults" {
     entry = ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders");
     assert entry.port == 0;
@@ -33,9 +28,6 @@ test "service entry accepts custom fields" {
     assert entry.env["STRIPE_KEY"] == "sk_test";
 }
 
-# =============================================================================
-# Register and lookup
-# =============================================================================
 test "register and lookup by path" {
     reg = ServiceRegistry();
     reg.register(
@@ -80,9 +72,6 @@ test "empty registry returns none" {
     assert reg.health_summary() == {};
 }
 
-# =============================================================================
-# Longest prefix matching
-# =============================================================================
 test "longest prefix wins" {
     reg = ServiceRegistry();
     reg.register(
@@ -97,9 +86,6 @@ test "longest prefix wins" {
     assert reg.match_route("/api/orders/list").name == "orders";
 }
 
-# =============================================================================
-# Multiple services
-# =============================================================================
 test "multiple services route correctly" {
     reg = ServiceRegistry();
     reg.register(
@@ -118,9 +104,6 @@ test "multiple services route correctly" {
     assert reg.match_route("/api/users/me").name == "users";
 }
 
-# =============================================================================
-# Deregister
-# =============================================================================
 test "deregister removes service" {
     reg = ServiceRegistry();
     reg.register(
@@ -151,9 +134,6 @@ test "deregister preserves other services" {
     assert reg.match_route("/api/payments/charge").name == "payments";
 }
 
-# =============================================================================
-# Health summary
-# =============================================================================
 test "health summary returns all fields" {
     reg = ServiceRegistry();
     reg.register(
@@ -168,9 +148,6 @@ test "health summary returns all fields" {
     assert summary["orders"]["pid"] is None;
 }
 
-# =============================================================================
-# Re-register (overwrite)
-# =============================================================================
 test "register same name overwrites entry" {
     reg = ServiceRegistry();
     reg.register(
