@@ -83,15 +83,15 @@ class DatabaseProviderFactory {
         resolved_uri = _resolve_uri(uri, db_type_enum);
 
         if (db_type_enum == DatabaseType.MONGODB) {
-            require_optional("pymongo", "data");
+            require_optional("pymongo", "data.mongo");
             import from pymongo { MongoClient }
             return MongoClient(resolved_uri, **(config or {}));
         } elif (db_type_enum == DatabaseType.REDIS) {
-            require_optional("redis", "data");
+            require_optional("redis", "data.redis");
             import from redis { Redis }
             return Redis.from_url(resolved_uri, **(config or {}));
         } elif (db_type_enum == DatabaseType.FIRESTORE) {
-            require_optional("google.cloud.firestore", "firebase");
+            require_optional("google.cloud.firestore", "storage.firebase");
             import from jac_scale._optdeps.firestore { FirestoreClient }
             return FirestoreClient(project=resolved_uri, **(config or {}));
         } else {

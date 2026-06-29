@@ -175,7 +175,7 @@ impl JacAPIServerCore._setup_events -> None {
         } else {
             logger.warning(
                 "events enabled and url set, but `redis` extra is not installed; "
-                "using LocalEventStream. Run `pip install jac-scale[data]` to use Redis."
+                "using LocalEventStream. Enable the 'data.redis' capability to use Redis."
             );
         }
     }

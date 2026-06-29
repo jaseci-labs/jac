@@ -1,6 +1,6 @@
-"""Guarded re-exports for google-cloud-firestore (install group: [firebase]).
+"""Guarded re-exports for google-cloud-firestore (capability: storage.firebase).
 
-Callers guard usage with `require_optional("google.cloud.firestore", "firebase")`
+Callers guard usage with `require_optional("google.cloud.firestore", "storage.firebase")`
 from optional_deps, matching the pymongo/redis convention.
 """
 

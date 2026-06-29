@@ -56,11 +56,11 @@ def _traces_chain(p: dict) -> dict {
     return short_circuit_chain(
         [
             {
-                "name": "jac-scale[tracing] importable (HAS_OTEL)",
+                "name": "'tracing' capability importable (HAS_OTEL)",
                 "ok": p.get("has_otel", False),
                 "detail": "opentelemetry SDK present"
                     if p.get("has_otel", False)
-                    else "tracing extra NOT installed (image lacks jac-scale[...,tracing])"
+                    else "tracing NOT installed (image lacks the 'tracing' capability)"
             },
             {
                 "name": "config tracing.enabled",
@@ -138,7 +138,7 @@ def _metrics_chain(p: dict) -> dict {
                 "ok": p.get("has_client", False),
                 "detail": "prometheus_client present"
                     if p.get("has_client", False)
-                    else "prometheus_client NOT installed (image lacks jac-scale[...,monitoring])"
+                    else "prometheus_client NOT installed (image lacks the 'monitoring' capability)"
             },
             {
                 "name": "Prometheus reachable",

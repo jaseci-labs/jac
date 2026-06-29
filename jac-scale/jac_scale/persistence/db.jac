@@ -39,7 +39,7 @@ obj DeleteResult {
 }
 
 def get_mongo_client(uri: (str | None) = None) -> MongoClient {
-    require_optional("pymongo", "data");
+    require_optional("pymongo", "data.mongo");
     global _mongo_clients;
 
     resolved_uri = _resolve_uri(uri, DatabaseType.MONGODB);
@@ -54,7 +54,7 @@ def get_mongo_client(uri: (str | None) = None) -> MongoClient {
 }
 
 def get_redis_client(uri: (str | None) = None) -> Redis {
-    require_optional("redis", "data");
+    require_optional("redis", "data.redis");
     global _redis_clients;
 
     resolved_uri = _resolve_uri(uri, DatabaseType.REDIS);
@@ -69,7 +69,7 @@ def get_redis_client(uri: (str | None) = None) -> Redis {
 }
 
 def get_firestore_client(project_id: (str | None) = None) -> FirestoreClient {
-    require_optional("google.cloud.firestore", "firebase");
+    require_optional("google.cloud.firestore", "storage.firebase");
     global _firestore_clients;
 
     resolved_project_id = _resolve_uri(project_id, DatabaseType.FIRESTORE);

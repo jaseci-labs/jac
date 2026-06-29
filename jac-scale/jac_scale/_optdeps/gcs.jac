@@ -1,4 +1,4 @@
-"""Guarded re-exports for google-cloud-storage (install group: [firebase])."""
+"""Guarded re-exports for google-cloud-storage (capability: storage.gcs)."""
 
 import from jac_scale._optdeps.optional_deps { require_optional }
 
@@ -14,5 +14,5 @@ with entry {
 
 """Raise a helpful error if google-cloud-storage is missing."""
 def require_google_cloud_storage {
-    require_optional("google.cloud.storage", "firebase");
+    require_optional("google.cloud.storage", "storage.gcs");
 }

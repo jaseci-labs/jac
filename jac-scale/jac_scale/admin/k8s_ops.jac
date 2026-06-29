@@ -107,7 +107,7 @@ def api_error_detail(e: any) -> str {
 
 def unavailable_detail -> str {
     if not HAS_KUBERNETES {
-        return "kubernetes client not installed (image lacks jac-scale[deploy]).";
+        return "kubernetes client not installed (image lacks the 'deploy.k8s' capability).";
     }
     if not os.getenv("KUBERNETES_SERVICE_HOST", "").strip() {
         return "not running inside a Kubernetes cluster.";

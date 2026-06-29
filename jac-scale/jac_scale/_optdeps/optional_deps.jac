@@ -1,13 +1,21 @@
 """Helpers for guarding optional dependencies."""
 
-"""Raise a helpful error if an optional dependency is missing."""
-def require_optional(package: str, group: str) {
+import from jaclang.project.capabilities { missing_capability_error }
+
+"""Raise a capability-oriented error if an optional dependency is missing.
+
+`capability` is a capability name from the core registry (e.g. "data.mongo",
+"deploy.k8s"); the actionable install guidance is sourced from there, so the
+dependency taxonomy lives in exactly one place instead of being duplicated as
+per-shim extras strings.
+"""
+def require_optional(package: str, capability: str) {
     try {
         __import__(package);
     } except (ImportError, ValueError) {
         raise ImportError(
             f"'{package}' is required for this feature. "
-            f"Install it with: pip install jac-scale[{group}]"
+            f"{missing_capability_error(capability)}"
         );
     }
 }

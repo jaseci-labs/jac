@@ -22,7 +22,7 @@ class DeploymentTargetFactory {
         }
 
         if target_type == 'kubernetes' {
-            require_optional("kubernetes", "deploy");
+            require_optional("kubernetes", "deploy.k8s");
             import from jac_scale.deploy.target.kubernetes.kubernetes_target {
                 KubernetesTarget
             }
@@ -32,7 +32,7 @@ class DeploymentTargetFactory {
             k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);
             return KubernetesTarget(config=k8s_config, logger=logger);
         } elif target_type == 'kubernetes-microservice' {
-            require_optional("kubernetes", "deploy");
+            require_optional("kubernetes", "deploy.k8s");
             import from jac_scale.deploy.target.kubernetes.kubernetes_config {
                 KubernetesConfig
             }

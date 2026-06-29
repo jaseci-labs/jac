@@ -23,7 +23,7 @@ obj FirebaseSSOProvider(SSOProvider) {
             );
         }
         if not HAS_FIREBASE_ADMIN {
-            require_optional("firebase_admin", "firebase");
+            require_optional("firebase_admin", "storage.firebase");
         }
         fa: any = firebase_admin;
         cred_mod: any = credentials;

@@ -8,34 +8,39 @@ import from jac_scale._optdeps.kubernetes { HAS_KUBERNETES, client as k8s_client
 import from jac_scale._optdeps.gcs { HAS_GCS, StorageClient }
 
 test "require_optional does not raise for installed stdlib package" {
-    require_optional("json", "core");
+    require_optional("json", "serve");
 }
 
 test "require_optional does not raise for installed package" {
-    require_optional("fastapi", "core");
+    require_optional("fastapi", "serve");
 }
 
 test "require_optional raises ImportError for missing package" {
     raised = False;
     try {
-        require_optional("nonexistent_package_xyz", "data");
+        require_optional("nonexistent_package_xyz", "data.mongo");
     } except ImportError as e {
         raised = True;
         assert "nonexistent_package_xyz" in str(e);
-        assert "pip install jac-scale[data]" in str(e);
+        # capability-oriented message sourced from the core registry; the old
+        # jac-scale[...] extras taxonomy is gone.
+        assert "data.mongo" in str(e);
+        assert "jac install" in str(e);
+        assert "jac-scale[" not in str(e);
     }
     assert raised , "Expected ImportError for missing package";
 }
 
-test "require_optional error includes correct install group" {
+test "require_optional error names the capability, not a pip extra" {
     raised = False;
     try {
         require_optional("nonexistent_package_xyz", "monitoring");
     } except ImportError as e {
         raised = True;
-        assert "pip install jac-scale[monitoring]" in str(e);
+        assert "monitoring" in str(e);
+        assert "jac-scale[" not in str(e);
     }
-    assert raised , "Expected ImportError with correct group name";
+    assert raised , "Expected ImportError naming the capability";
 }
 
 test "is_optional_available returns True for installed package" {
@@ -154,7 +159,8 @@ test "database factory requires pymongo for mongodb" {
     with unittest.mock.patch(
         "jac_scale.deploy.database.factory.require_optional",
         side_effect=ImportError(
-            "'pymongo' is required. Install: pip install jac-scale[data]"
+            "'pymongo' is required for this feature. "
+            "Capability 'data.mongo' is required but not installed."
         )
     ) {
         raised = False;
@@ -164,7 +170,8 @@ test "database factory requires pymongo for mongodb" {
             );
         } except ImportError as e {
             raised = True;
-            assert "jac-scale[data]" in str(e);
+            assert "data.mongo" in str(e);
+            assert "jac-scale[" not in str(e);
         }
         assert raised , "Expected ImportError when pymongo is missing";
     }
@@ -179,7 +186,8 @@ test "database factory requires redis for redis" {
     with unittest.mock.patch(
         "jac_scale.deploy.database.factory.require_optional",
         side_effect=ImportError(
-            "'redis' is required. Install: pip install jac-scale[data]"
+            "'redis' is required for this feature. "
+            "Capability 'data.redis' is required but not installed."
         )
     ) {
         raised = False;
@@ -189,7 +197,8 @@ test "database factory requires redis for redis" {
             );
         } except ImportError as e {
             raised = True;
-            assert "jac-scale[data]" in str(e);
+            assert "data.redis" in str(e);
+            assert "jac-scale[" not in str(e);
         }
         assert raised , "Expected ImportError when redis is missing";
     }
@@ -204,7 +213,8 @@ test "database factory requires firestore for firestore" {
     with unittest.mock.patch(
         "jac_scale.deploy.database.factory.require_optional",
         side_effect=ImportError(
-            "'google.cloud.firestore' is required. Install: pip install jac-scale[firebase]"
+            "'google.cloud.firestore' is required for this feature. "
+            "Capability 'storage.firebase' is required but not installed."
         )
     ) {
         raised = False;
@@ -214,7 +224,8 @@ test "database factory requires firestore for firestore" {
             );
         } except ImportError as e {
             raised = True;
-            assert "jac-scale[firebase]" in str(e);
+            assert "storage.firebase" in str(e);
+            assert "jac-scale[" not in str(e);
         }
         assert raised , "Expected ImportError when google-cloud-firestore is missing";
     }
@@ -226,7 +237,8 @@ test "deployment factory requires kubernetes for k8s target" {
     with unittest.mock.patch(
         "jac_scale.deploy.target.factory.require_optional",
         side_effect=ImportError(
-            "'kubernetes' is required. Install: pip install jac-scale[deploy]"
+            "'kubernetes' is required for this feature. "
+            "Capability 'deploy.k8s' is required but not installed."
         )
     ) {
         raised = False;
@@ -234,7 +246,8 @@ test "deployment factory requires kubernetes for k8s target" {
             DeploymentTargetFactory.create("kubernetes", {"app_name": "test"});
         } except ImportError as e {
             raised = True;
-            assert "jac-scale[deploy]" in str(e);
+            assert "deploy.k8s" in str(e);
+            assert "jac-scale[" not in str(e);
         }
         assert raised , "Expected ImportError when kubernetes is missing";
     }
@@ -243,7 +256,7 @@ test "deployment factory requires kubernetes for k8s target" {
 test "require_optional with empty package name raises" {
     raised = False;
     try {
-        require_optional("", "data");
+        require_optional("", "data.mongo");
     } except ImportError {
         raised = True;
     }
@@ -268,9 +281,9 @@ test "compat modules are always importable" {
 }
 
 test "multiple require_optional calls do not conflict" {
-    require_optional("json", "core");
-    require_optional("json", "core");
-    require_optional("os", "core");
+    require_optional("json", "serve");
+    require_optional("json", "serve");
+    require_optional("os", "serve");
 }
 
 test "scheduler setup succeeds without apscheduler installed" {
@@ -314,7 +327,8 @@ test "scheduler create_job raises clear error without apscheduler" {
                     );
                 } except RuntimeError as e {
                     raised = True;
-                    assert "jac-scale[scheduler]" in str(e) , "Error message should include install instructions";
+                    assert "scheduler" in str(e) , "Error message should name the scheduler capability";
+                    assert "jac-scale[" not in str(e);
                 }
                 assert raised , "Expected RuntimeError when creating job without APScheduler";
             }

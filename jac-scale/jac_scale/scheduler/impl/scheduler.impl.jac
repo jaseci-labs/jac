@@ -26,7 +26,7 @@ impl TriggerSpec.validate(
         _ct: Any = CronTrigger;
         if _ct is None {
             raise ValueError(
-                "cron triggers require APScheduler. Install with: pip install jac-scale[scheduler]"
+                "cron triggers require APScheduler — enable the 'scheduler' capability and run 'jac install'."
             );
         }
         try {
@@ -342,7 +342,7 @@ impl JacScaleScheduler.setup(system_user_id: str, server: Any | None = None) -> 
         self._apscheduler = None;
         logger.info(
             "APScheduler not installed — dynamic scheduling disabled. "
-            "Install with: pip install jac-scale[scheduler]"
+            "Enable the 'scheduler' capability and run 'jac install'."
         );
     }
 }
@@ -484,7 +484,7 @@ impl JacScaleScheduler.create_job(
 ) -> dict {
     if self._apscheduler is None {
         raise RuntimeError(
-            "APScheduler is not available. Install with: pip install jac-scale[scheduler]"
+            "APScheduler is not available — enable the 'scheduler' capability and run 'jac install'."
         );
     }
 
