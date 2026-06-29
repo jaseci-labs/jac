@@ -9,9 +9,13 @@ glob jac_import = Jac.jac_import,
 
 test "routes along edge attribute, not just node" {
     captured_output = io.StringIO();
+    old_stdout = sys.stdout;
     sys.stdout = captured_output;
-    jac_import("routing_edge_choice", base_path=FIXTURE_DIR + "/");
-    sys.stdout = sys.__stdout__;
+    try {
+        jac_import("routing_edge_choice", base_path=FIXTURE_DIR + "/");
+    } finally {
+        sys.stdout = old_stdout;
+    }
     stdout_value = captured_output.getvalue();
 
     assert "VISITED:beta" in stdout_value;
@@ -23,9 +27,13 @@ test "routes along edge attribute, not just node" {
 
 test "routing-only call_params do not leak to the model" {
     captured_output = io.StringIO();
+    old_stdout = sys.stdout;
     sys.stdout = captured_output;
-    jac_import("routing_param_leak", base_path=FIXTURE_DIR + "/");
-    sys.stdout = sys.__stdout__;
+    try {
+        jac_import("routing_param_leak", base_path=FIXTURE_DIR + "/");
+    } finally {
+        sys.stdout = old_stdout;
+    }
     stdout_value = captured_output.getvalue();
 
     assert "LEAKED:" not in stdout_value;

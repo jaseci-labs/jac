@@ -2520,6 +2520,10 @@ walker explorer {
 !!! note
     `select` bounds the count; it does not force it upward when too few candidates
     qualify. With `select=2` but only one sensible successor, the walker visits one.
+    For `(min, max)`, `max` is a **hard cap** (the result is truncated to it), but
+    `min` is **advisory**: the model is *asked* to pick at least `min`, yet routing
+    can only visit candidates the model actually chose (and there may be fewer than
+    `min` available), so a shortfall is surfaced as a warning rather than enforced.
 
 ### Tool-Using Agents
 
