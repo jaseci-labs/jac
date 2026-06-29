@@ -1,25 +1,5 @@
-import os;
-
-import from curl {
-    def curl_easy_init -> int;  def curl_easy_setopt(
-        handle: int, option: int, *rest: int
-    ) -> int;  def curl_easy_perform(handle: int) -> int;  def curl_easy_cleanup(
-        handle: int
-    ) -> None;
-}
-
-import from c {
-    def fopen(path: str, mode: str) -> int;  def fclose(stream: int) -> int;  def remove(
-        path: str
-    ) -> int;
-}
-
-glob _CURLOPT_WRITEDATA: int = 10001,
-     _CURLOPT_URL: int = 10002,
-     _CURLOPT_FOLLOWLOCATION: int = 52,
-     _CURLOPT_HEADERDATA: int = 10029;
-
-glob _CURLE_OK: int = 0;
+import from socket { create_connection }
+import from ssl { create_default_context }
 
 
 obj:pub HTTPResponse {
@@ -33,81 +13,99 @@ obj:pub HTTPResponse {
 }
 
 
-def _tmpdir -> str {
-    d = os.getenv("TMPDIR");
-    if len(d) == 0 {
-        return "/tmp";
-    }
-    while len(d) > 1 and d[len(d) - 1] == "/" {
-        d = d[:len(d) - 1];
-    }
-    return d;
+obj _Url {
+    has scheme: str,
+        host: str,
+        port: int,
+        path: str;
 }
 
 
-def:pub urlopen(url: str) -> HTTPResponse {
-    h = curl_easy_init();
-    if h == 0 {
-        raise Exception("urlopen: curl_easy_init failed");
+def _parse_url(u: str) -> _Url {
+    scheme = "http";
+    rest = u;
+    if u.startswith("https://") {
+        scheme = "https";
+        rest = u[8:];
+    } elif u.startswith("http://") {
+        scheme = "http";
+        rest = u[7:];
     }
+    hostport = rest;
+    path = "/";
+    slash = rest.find("/");
+    if slash != -1 {
+        hostport = rest[:slash];
+        path = rest[slash:];
+    }
+    host = hostport;
+    port = 443 if scheme == "https" else 80;
+    colon = hostport.find(":");
+    if colon != -1 {
+        host = hostport[:colon];
+        port = int(hostport[colon + 1:]);
+    }
+    return _Url(scheme=scheme, host=host, port=port, path=path);
+}
 
-    stem = _tmpdir() + "/jac_urlopen_" + str(h);
-    body_path = stem + ".body";
-    hdr_path = stem + ".hdr";
-    body_fp = fopen(body_path, "wb");
-    hdr_fp = fopen(hdr_path, "wb");
 
-    if body_fp is None or hdr_fp is None {
-        if body_fp is not None {
-            fclose(body_fp);
+def _request_text(host: str, path: str) -> str {
+    return "GET " + path + " HTTP/1.0\r\nHost: " + host + "\r\nConnection: close\r\nUser-Agent: jac-urllib/1.0\r\nAccept: */*\r\n\r\n";
+}
+
+
+def _fetch_raw(pu: _Url) -> bytes {
+    sock = create_connection((pu.host, pu.port));
+    reqb = _request_text(pu.host, pu.path).encode();
+    raw = b"";
+    if pu.scheme == "https" {
+        ctx = create_default_context();
+        ss = ctx.wrap_socket(sock, server_hostname=pu.host);
+        ss.sendall(reqb);
+        chunk = ss.recv(8192);
+        while len(chunk) > 0 {
+            raw += chunk;
+            chunk = ss.recv(8192);
         }
-        if hdr_fp is not None {
-            fclose(hdr_fp);
+        ss.close();
+    } else {
+        sock.sendall(reqb);
+        chunk = sock.recv(8192);
+        while len(chunk) > 0 {
+            raw += chunk;
+            chunk = sock.recv(8192);
         }
-        curl_easy_cleanup(h);
-        remove(body_path);
-        remove(hdr_path);
-        raise Exception("urlopen: cannot open temp file under " + _tmpdir());
+        sock.close();
     }
+    return raw;
+}
 
-    curl_easy_setopt(h, _CURLOPT_URL, url);
-    curl_easy_setopt(h, _CURLOPT_WRITEDATA, body_fp);
-    curl_easy_setopt(h, _CURLOPT_HEADERDATA, hdr_fp);
-    curl_easy_setopt(h, _CURLOPT_FOLLOWLOCATION, 1);
 
-    rc = curl_easy_perform(h);
-
-    fclose(body_fp);
-    fclose(hdr_fp);
-    curl_easy_cleanup(h);
-
-    if rc != _CURLE_OK {
-        remove(body_path);
-        remove(hdr_path);
-        raise Exception("urlopen: transport error (curl code " + str(rc) + ")");
-    }
-
-    hf = open(hdr_path, "r");
-    hdr_text = hf.read();
-    hf.close();
-    bf = open(body_path, "rb");
-    body = bf.read();
-    bf.close();
-    remove(body_path);
-    remove(hdr_path);
-
-    lines = hdr_text.split("\n");
-    start: int = 0;
-    scan: int = 0;
-    for raw in lines {
-        if raw.rstrip("\r").startswith("HTTP/") {
-            start = scan;
+def _find_header_end(raw: bytes) -> int {
+    n = len(raw);
+    i = 0;
+    while i + 3 < n {
+        if raw[i] == 13
+        and raw[i + 1] == 10
+        and raw[i + 2] == 13
+        and raw[i + 3] == 10 {
+            return i;
         }
-        scan += 1;
+        i += 1;
     }
+    return -1;
+}
+
+
+def _parse_response(raw: bytes, url: str) -> HTTPResponse {
+    sep = _find_header_end(raw);
+    header_bytes = raw[:sep] if sep != -1 else raw;
+    body = raw[sep + 4:] if sep != -1 else b"";
+    header_text = header_bytes.decode();
+    lines = header_text.split("\r\n");
     status: int = 0;
     reason: str = "";
-    status_line = lines[start].rstrip("\r");
+    status_line = lines[0];
     sp1 = status_line.find(" ");
     if sp1 != -1 {
         after = status_line[sp1 + 1:];
@@ -121,21 +119,16 @@ def:pub urlopen(url: str) -> HTTPResponse {
     }
     names: list[str] = [];
     values: list[str] = [];
-    j: int = start + 1;
-    while j < len(lines) {
-        line = lines[j].rstrip("\r");
-        if len(line) == 0 {
-            j += 1;
-            continue;
-        }
+    i: int = 1;
+    while i < len(lines) {
+        line = lines[i];
         colon = line.find(":");
         if colon != -1 {
             names.append(line[:colon].strip().lower());
             values.append(line[colon + 1:].strip());
         }
-        j += 1;
+        i += 1;
     }
-
     return HTTPResponse(
         status=status,
         body_length=len(body),
@@ -145,4 +138,49 @@ def:pub urlopen(url: str) -> HTTPResponse {
         header_names=names,
         header_values=values
     );
+}
+
+
+def _header_value(resp: HTTPResponse, name: str) -> str {
+    i: int = 0;
+    while i < len(resp.header_names) {
+        if resp.header_names[i] == name {
+            return resp.header_values[i];
+        }
+        i += 1;
+    }
+    return "";
+}
+
+
+def _resolve_redirect(pu: _Url, loc: str) -> str {
+    if loc.startswith("http://") or loc.startswith("https://") {
+        return loc;
+    }
+    base = pu.scheme + "://" + pu.host + ":" + str(pu.port);
+    if loc.startswith("/") {
+        return base + loc;
+    }
+    return base + "/" + loc;
+}
+
+
+def:pub urlopen(url: str) -> HTTPResponse {
+    cur = url;
+    redirects: int = 0;
+    while redirects < 10 {
+        pu = _parse_url(cur);
+        raw = _fetch_raw(pu);
+        resp = _parse_response(raw, cur);
+        if resp.status >= 300 and resp.status < 400 {
+            loc = _header_value(resp, "location");
+            if len(loc) > 0 {
+                cur = _resolve_redirect(pu, loc);
+                redirects += 1;
+                continue;
+            }
+        }
+        return resp;
+    }
+    raise Exception("urlopen: too many redirects (>10) for " + url);
 }

@@ -6,6 +6,7 @@ glob registry = get_registry();
 @registry.command(
     name="check",
     help="Type check Jac files",
+    tier="core",
     args=[
         Arg.create(
             "paths", kind=ArgKind.MULTI, help="Paths to .jac files or directories"
@@ -103,6 +104,7 @@ def lint(paths: list, fix: bool = False, ignore: (list | None) = None) -> int;
 @registry.command(
     name="format",
     help="Format Jac source code",
+    tier="core",
     args=[
         Arg.create(
             "paths", kind=ArgKind.MULTI, help="Paths to .jac files or directories"
@@ -190,6 +192,7 @@ def precommit(
 @registry.command(
     name="test",
     help="Run Jac test suite",
+    tier="core",
     args=[
         Arg.create(
             "paths",
