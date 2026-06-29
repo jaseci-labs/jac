@@ -21,6 +21,15 @@ def _resolve_storage_env(suffix: str, env_prefix: str) -> (str | None) {
 }
 
 class StorageFactory {
+    static def default_storage_type() -> StorageType {
+        jac_config = get_config();
+        storage_type_str = os.environ.get("JAC_STORAGE_TYPE");
+        if not storage_type_str and jac_config and jac_config.storage {
+            storage_type_str = jac_config.storage.storage_type;
+        }
+        return StorageType(storage_type_str or StorageType.LOCAL.value);
+    }
+
     static def create(
         storage_type: (StorageType | str), config: (dict[str, any] | None) = None
     ) -> Storage {
@@ -72,11 +81,7 @@ class StorageFactory {
         jac_config = get_config();
         storage_config: dict[str, any] = {};
 
-        storage_type_str = os.environ.get("JAC_STORAGE_TYPE");
-        if not storage_type_str and jac_config and jac_config.storage {
-            storage_type_str = jac_config.storage.storage_type;
-        }
-        storage_type = StorageType(storage_type_str or StorageType.LOCAL.value);
+        storage_type = StorageFactory.default_storage_type();
 
         if storage_type == StorageType.LOCAL {
             if jac_config and jac_config.storage {

@@ -4,9 +4,7 @@ import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, CommandPriority, HookContext }
 import from jaclang.cli.console { console }
 import from jaclang.jac0core.runtime { hookimpl, plugin_manager }
-import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.server { JacAPIServer as JacServer }
-import from .memory.context { JScaleExecutionContext }
 import from .config.config_loader { get_scale_config }
 import from .deploy.target.factory { DeploymentTargetFactory }
 import from .observability.factory { UtilityFactory }
@@ -539,19 +537,6 @@ class JacCmd {
 }
 
 class JacScalePlugin {
-    @hookimpl
-    static def create_j_context(
-        user_root: (str | None),
-        base_path_dir: (str | None) = None,
-        full_target_path: (str | None) = None
-    ) -> ExecutionContext {
-        ctx = JScaleExecutionContext();
-        if user_root is not None {
-            ctx.set_user_root(user_root);
-        }
-        return ctx;
-    }
-
     # The three server hooks below decline (return None) when the serve runtime
     # closure (fastapi / uvicorn / pyjwt / ...) is not installed, so pluggy falls
     # back to core's zero-dependency stdlib server. This keeps non-scale serving
@@ -590,8 +575,15 @@ class JacScalePlugin {
     @hookimpl
     static def store(
         base_path: str = "./storage", create_dirs: bool = True
-    ) -> Storage {
-        import from .storage.factory { StorageFactory }
+    ) -> Storage | None {
+        # Scale only owns the object-storage backends (S3 / GCS / Firebase).
+        # For the default LOCAL backend, decline so core's LocalStorage answers:
+        # it honors the caller's base_path verbatim, whereas this built-in is
+        # always registered and would otherwise hijack every local run.
+        import from .storage.factory { StorageFactory, StorageType }
+        if StorageFactory.default_storage_type() == StorageType.LOCAL {
+            return None;
+        }
         return StorageFactory.get_default(base_path, create_dirs);
     }
 
@@ -728,16 +720,6 @@ class JacScalePlugin {
 }
 
 
-import inspect;
-glob func = JacScalePlugin.create_j_context,
-     sig = inspect.signature(func),
-     sig_nodef = sig.replace(
-         parameters=[
-             p.replace(default=inspect.Parameter.empty) for p in sig.parameters.values()
-         ]
-     );
-
 with entry {
-    func.__signature__ = sig_nodef;
     plugin_manager.register(JacScalePlugin());
 }

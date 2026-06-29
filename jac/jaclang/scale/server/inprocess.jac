@@ -85,7 +85,8 @@ def prepare_inprocess_runtime(
     Jac.set_base_path(base_path);
 
     prior_ctx = Jac.exec_ctx;
-    mach = Jac.create_j_context(user_root=None);
+    import from jaclang.scale.memory.context { JScaleExecutionContext }
+    mach = JScaleExecutionContext();
     Jac.set_context(mach);
     try {
         if mod in Jac.loaded_modules {

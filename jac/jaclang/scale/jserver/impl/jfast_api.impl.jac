@@ -1060,7 +1060,8 @@ impl JFastApiServer.init(
     }
 
     async def request_context_middleware(request: Request, call_next: Callable) {
-        ctx = JacRuntimeInterface.create_j_context(user_root=None);
+        import from jaclang.scale.memory.context { JScaleExecutionContext }
+        ctx = JScaleExecutionContext();
         req_token = JacRuntime.push_request_context(ctx);
 
         import from jaclang.scale.runtime.context.auth_ctx {
