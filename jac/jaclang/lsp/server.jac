@@ -59,9 +59,7 @@ obj PositionCodec {
     def utf16_unit_offset(chars: str) -> int;
     def client_num_units(chars: str) -> int;
     def position_from_client_units(lines: list[str], position: Position) -> Position;
-    def position_to_client_units(lines: list[str], position: Position) -> Position;
     def range_from_client_units(lines: list[str], range: Range) -> Range;
-    def range_to_client_units(lines: list[str], range: Range) -> Range;
 }
 
 # ---------------------------------------------------------------------------

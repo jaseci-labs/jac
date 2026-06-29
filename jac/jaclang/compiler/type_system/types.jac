@@ -68,7 +68,6 @@ obj TypeBase(ABC) {
 
     has category: TypeCategory { getter; }
 
-    static def unknown -> UnknownType;
     # Canonical, stable string key for this type ("int", "list[int]",
     # "dict[str,MyStruct]"). The ONLY string form of a type intended for
     # keying (backend emission caches, layout tables, cached semantics);
@@ -227,20 +226,7 @@ Holds the private details of class type.
             # Literal value for Literal types (e.g., Literal["hello"], Literal[42]).
             # Similar to Pyright's classType.priv.literalValue.
             # When set, this ClassType represents a literal type like Literal["x"].
-            literal_value: (str | int | bool | None) = None,
-            # Property class flag
-            # Set to True when this ClassType represents a @property or @cached_property
-            is_property_class: bool = False,
-            # Property getter info
-            # Stores the getter method type for properties
-            fget_info: (FunctionType | None) = None,
-            # Property setter info
-            fset_info: (FunctionType | None) = None,
-            # Property deleter info
-            fdel_info: (FunctionType | None) = None,
-            # Asymmetric descriptor flag
-            # True if getter and setter have different types
-            is_asymmetric_descriptor: bool = False;
+            literal_value: (str | int | bool | None) = None;
 
         def postinit -> None;
     }
@@ -270,10 +256,6 @@ Holds the private details of class type.
     def clone_with_literal(value: (str | int | bool | None)) -> ClassType;
     def is_literal_type -> bool;
     def get_literal_value -> (str | int | bool | None);
-    # Property class support
-    def is_property_class -> bool;
-    # Get getter return type from property
-    def get_getter_type_from_property -> (TypeBase | None);
 }
 
 """Enumeration of parameter kinds."""
@@ -316,6 +298,8 @@ obj Parameter {
         is_self: bool = False,
         is_cls: bool = False,
         param_kind: ParamKind = ParamKind.NORMAL;
+
+    def clone -> Parameter;
 }
 
 """
@@ -430,5 +414,4 @@ obj EnumMemberType(TypeBase) {
 
     def __str__ -> str;
     def get_value_type -> TypeBase;
-    def get_name_as_str -> str;
 }

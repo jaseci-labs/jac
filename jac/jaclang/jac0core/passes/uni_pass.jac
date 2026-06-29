@@ -1,4 +1,3 @@
-"""Abstract class for IR Passes for Jac."""
 import from threading { Event }
 import from typing { TypeVar }
 import jaclang.jac0core.unitree as uni;
@@ -6,45 +5,19 @@ import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import type from jaclang.jac0core.program { JacProgram }
 
 glob T = TypeVar('T', bound=uni.UniNode);
-"""Abstract class for IR passes."""
+
 obj UniPass(ModuleCodegenPass) {
     has term_signal: bool = False,
         prune_signal: bool = False;
 
-    """Initialize parser."""
     def postinit -> None;
-
-    """Run once before pass."""
     def before_pass -> None;
-
-    """Run once after pass."""
     def after_pass -> None;
-
-    """Run on entering node."""
     def enter_node(nd: uni.UniNode) -> None;
-
-    """Run on exiting node."""
     def exit_node(nd: uni.UniNode) -> None;
-
-    """Default visit hooks for node kinds this pass does not specifically handle.
-
-    `UniNode.accept_enter`/`accept_exit` route here by default; the generated
-    per-kind base surface (`enter_<kind>`/`exit_<kind>`) also falls through here.
-    No-op by default; a pass like UnparsePass overrides `default_exit` to render
-    any node it has no specific handler for.
-    """
     def default_enter(nd: uni.UniNode) -> None;
-
     def default_exit(nd: uni.UniNode) -> None;
-    """Prune traversal."""
     def prune -> None;
-
-    """Get all sub nodes of type.
-
-    Reads from the node's memoized sub node table, which is kept correct by
-    invalidation on every kid mutation (see UniNode._invalidate_sub_node_tab),
-    so the table is always authoritative -- no brute force walk is needed.
-    """
     static def get_all_sub_nodes(nd: uni.UniNode, typ: type[T]) -> list[T] {
         result: list[T] = [];
         if not nd {
@@ -60,7 +33,6 @@ obj UniPass(ModuleCodegenPass) {
         return result;
     }
 
-    """Check if node has parent of type."""
     static def find_parent_of_type(nd: uni.UniNode, typ: type[T]) -> (T | None) {
         while nd.parent {
             if isinstance(nd.parent, typ) {
@@ -71,27 +43,9 @@ obj UniPass(ModuleCodegenPass) {
         return None;
     }
 
-    """Check if node has parent of type."""
-    static def has_parent_of_node(nd: uni.UniNode, parent: uni.UniNode) -> bool {
-        while nd.parent {
-            if (nd.parent == parent) {
-                return True;
-            }
-            nd = nd.parent;
-        }
-        return False;
-    }
-
-    """Recalculate parents."""
     def recalculate_parents(nd: uni.UniNode) -> None;
-
-    """Run pass."""
     def transform(ir_in: uni.Module) -> uni.Module;
-
-    """Traverse tree."""
     def traverse(nd: uni.UniNode) -> uni.UniNode;
-
-    # >>> generated visitor surface (jac gen-uni-dispatch) >>>
     def enter_ability(nd: uni.Ability) -> None;
     def enter_arch_has(nd: uni.ArchHas) -> None;
     def enter_archetype(nd: uni.Archetype) -> None;
@@ -327,5 +281,4 @@ obj UniPass(ModuleCodegenPass) {
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
     def exit_with_stmt(nd: uni.WithStmt) -> None;
     def exit_yield_expr(nd: uni.YieldExpr) -> None;
-    # <<< generated visitor surface <<<
 }

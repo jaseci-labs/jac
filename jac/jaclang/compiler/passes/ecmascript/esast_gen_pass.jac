@@ -1,25 +1,3 @@
-"""
-ECMAScript AST Generation Pass for the Jac compiler.
-
-This pass transforms the Jac AST into equivalent ECMAScript AST following
-the ESTree specification by:
-
-1. Traversing the Jac AST and generating corresponding ESTree nodes
-2. Handling all Jac language constructs and translating them to JavaScript/ECMAScript equivalents:
-   - Classes, functions, and methods
-   - Control flow statements (if/else, loops, try/catch)
-   - Data structures (arrays, objects)
-   - Special Jac features (walkers, abilities, archetypes) converted to JS classes
-   - Object spatial operations converted to appropriate JS patterns
-
-3. Managing imports and module dependencies
-4. Preserving source location information
-5. Generating valid ECMAScript code that can be executed in JavaScript environments
-
-The output of this pass is a complete ESTree AST representation that can be
-serialized to JavaScript source code or used by JavaScript tooling.
-"""
-
 import json;
 import from collections.abc { Callable, Sequence }
 import from typing { Any, TypeVar, cast }
@@ -144,20 +122,14 @@ glob _T = TypeVar('_T', bound=es.Node),
      },
      LiteralValue = str | bool | int | float | None;
 
-"""Name of the synthesized children accumulator local for a JSX `{...}`
-slot. The outermost slot in a given scope uses this name; nested slot
-scopes (a `try`/`awaiting`/`except` arm's own accumulator) get a unique
-`__jac_view_kids_N` suffix so hoisted `let` bindings never collide."""
 glob VIEW_ACC: str = "__jac_view_kids";
 
-"""Track declarations within a lexical scope."""
 obj ScopeInfo {
     has nd: uni.UniScopeNode,
         declared: set[str] = set(),
         hoisted: list[es.Statement] = [];
 }
 
-"""Container for processed assignment targets."""
 obj AssignmentTargetInfo {
     has nd: uni.Expr,
         left: (es.Pattern | es.Expression),
@@ -166,32 +138,27 @@ obj AssignmentTargetInfo {
         pattern_names: list[tuple[(str, uni.Name)]];
 }
 
-"""Describes the walker-side of a spawn expression."""
 obj SpawnWalkerInfo {
     has call_node: uni.FuncCall,
         walker_name: str,
         fields_object: es.ObjectExpression;
 }
 
-"""Describes the target-side of a spawn expression."""
 obj SpawnTargetInfo {
     has nd: uni.Expr,
         expression: es.Expression;
 }
 
-"""Deconstructed spawn expression ready for runtime lowering."""
 obj SpawnCallParts {
     has `walker: SpawnWalkerInfo,
         target: SpawnTargetInfo;
 }
 
-"""Resolved function-call argument slot."""
 obj CallArgSlot {
     has name: (str | None),
         value: (es.Expression | es.SpreadElement | None);
 }
 
-"""Jac to ECMAScript AST transpilation pass."""
 obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     has child_passes: list[EsastGenPass] = [],
         imports: list[es.ImportDeclaration] = [],
@@ -202,55 +169,21 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         client_manifest: (ClientManifest | None) = None,
         jsx_processor: (EsJsxProcessor | None) = None,
         scoped_styles: (ScopedStyleSheet | None) = None,
-        # Reactive state variables (which vars are reactive; setter naming is backend-specific)
         reactive_vars: set[str] = set(),
-        # Stack to save/restore reactive_vars per function boundary
         reactive_vars_stack: list[set[str]] = [],
-        # Runtime imports auto-injected by the codegen; tracked to avoid duplicates
         injected_imports: set[str] = set(),
-        # JSX `{...}` slot view-lowering state. Holds the accumulator name of each
-        # enclosing slot scope (a `str`), or `None` for a nested-`def` barrier that
-        # suspends lowering. The topmost `str` is the accumulator a JSX statement
-        # pushes into; a `None` on top means we are inside a nested function and
-        # JSX should NOT be accumulated. The counter gives nested slot scopes
-        # (try/awaiting/except arms) unique local names.
         _view_stack: list[(str | None)] = [],
-        # The first slot keeps the bare `__jac_view_kids` name; every later slot
-        # (sibling or nested) draws a unique `__jac_view_kids_N` suffix.
         _view_used_base: bool = False,
         _view_acc_counter: int = 0,
-        # TryStmt nodes (by id) being lowered into a `<JacAwaiting>` wrapper, so
-        # the clause handlers know to scope their own accumulators.
         _view_awaiting_tries: set[int] = set(),
-        # JS function stubs for def:pub functions imported via sv import
         sv_import_stubs: list[es.Statement] = [],
-        # True iff the primitive emitter produced `_jac.*` calls and the runtime needs importing
         needs_jac_runtime: bool = False,
-        # OSP local-kernel lowering: set when a local walker is spawned via the
-        # portable kernel (not `__jacSpawn` RPC). Triggers kernel + descriptor
-        # injection in exit_module. The OSP "program facts" (kinds, tags, is_a,
-        # dispatch slots) are NOT stored here: they are derived once by
-        # OspAnalysis.compute and held on the single store `gen.osp_model`
-        # (reached via `_osp_model`).
         needs_osp_kernel: bool = False,
-        # Set when a connect op / edge ref is lowered: pulls in the cl OSP graph
-        # runtime (`__ospConn` / `__ospRefs`).
         needs_osp_graph: bool = False,
-        # Memoized {variable name -> local archetype name} for `x = Arch(...)`
-        # bindings, so a spawn whose walker is held in a variable (`w spawn n`)
-        # can identify the walker side without type inference. (Variable bindings,
-        # not an OSP fact -- ES-local.)
         _osp_var_arch_cache: (dict | None) = None,
-        # Primitive emitter instances for codegen dispatch (lazily initialized to avoid circular imports)
         _primitive_emitters: (dict[str, object] | None) = None,
         _builtin_emitter: (object | None) = None,
         _primitives_es_mod: (object | None) = None,
-        # Set of Python method names that any primitive emitter knows how to
-        # emit (derived from the emitter registry, never hand-maintained). A
-        # method call on a receiver whose static type is not provably a
-        # primitive is routed through `_jac.poly.call(obj, "name", ...)` iff its
-        # name is in this set; otherwise it is a user-defined method and emits a
-        # plain member call. Lazily computed alongside the emitter singletons.
         _poly_methods: (set[str] | None) = None;
 
     def before_pass -> None;
@@ -268,11 +201,11 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         nd: uni.UniScopeNode, statements: list[es.Statement]
     ) -> list[es.Statement];
 
+    def _collect_body_stmts(body: Sequence[uni.UniNode]) -> list[es.Statement];
     def _strip_spawn_await(
         node_expr: uni.Expr, es_expr: es.Expression
     ) -> tuple[uni.Expr, es.Expression];
 
-    def search_sym_in_main_mod(expr: uni.Expr) -> (uni.Symbol | None);
     def get_main_mod -> uni.Module;
     def _expr_from_node(
         nd: (uni.UniNode | None), `default: LiteralValue = None
@@ -299,8 +232,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
         nd: uni.BinaryExpr, parts: SpawnCallParts
     ) -> es.AwaitExpression;
 
-    # The single OSP-fact store for this compile (memoized on `gen.osp_model`);
-    # every OSP helper reads it, none re-derives.
     def _osp_model -> OspModel;
     def _osp_ability_info(nd: uni.Ability) -> (dict | None);
     def _osp_const_decl(
@@ -310,7 +241,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _emit_osp_slot_method(nd: uni.Ability, osp: dict) -> None;
     def _build_osp_setup_js -> str;
     def _osp_slots_js(slots: list, tags: dict) -> str;
-    def _local_walker_names -> set[str];
     def _osp_arch_kinds -> dict[str, str];
     def _osp_arch_set -> set[str];
     def _osp_var_arch -> dict[str, str];
@@ -377,30 +307,20 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def enter_except(nd: uni.Except) -> None;
     def enter_awaiting_clause(nd: uni.AwaitingClause) -> None;
     def exit_awaiting_clause(nd: uni.AwaitingClause) -> None;
-    # ----- JSX `{...}` slot view-lowering (direct es_ast) ------------------
-    """Name of the slot accumulator currently in scope, or None when not
-    directly inside a slot body (e.g. inside a nested `def` barrier)."""
     def _cur_view_acc -> (str | None);
-
-    """Push a fresh slot-accumulator scope and return its local name."""
     def _push_view_acc -> str;
-
-    """Build `acc.push(<value>);` — accumulate one template element."""
     def _view_push_stmt(
         acc_name: str, value: es.Expression, anchor: uni.UniNode
     ) -> es.ExpressionStatement;
 
-    """Build `<>{children...}</>` as a backend JSX-factory fragment call."""
     def _jsx_fragment(
         children: list[es.Expression], anchor: uni.UniNode
     ) -> es.CallExpression;
 
-    """Build `return <>{acc}</>;` — the fragment of all content so far."""
     def _view_fragment_return(
         acc_name: str, anchor: uni.UniNode
     ) -> es.ReturnStatement;
 
-    """Wrap a lowered slot body in an inline accumulator IIFE expression."""
     def _build_view_iife(
         body_nodes: (Sequence[uni.UniNode] | None), acc_name: str, anchor: uni.UniNode
     ) -> es.CallExpression;
@@ -467,7 +387,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def _collect_pattern_names(target: uni.UniNode) -> list[tuple[(str, uni.Name)]];
     def exit_assignment(nd: uni.Assignment) -> None;
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
-    def _ability_from_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None);
     def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
     def _return_type_includes_jsx_element(rt: uni.Expr) -> bool;
     def _component_call_abi(ability_node: uni.Ability) -> str;

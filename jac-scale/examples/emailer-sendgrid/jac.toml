@@ -5,7 +5,7 @@ description = "Custom SendGrid emailer example for jac-scale"
 entry-point = "app.jac"
 
 # Custom provider: factory imports emailer:SendGridEmailer at startup.
-# The class must subclass jac_scale.abstractions.emailer.Emailer.
+# The class must subclass jac_scale.emailer.emailer.Emailer.
 [plugins.scale.emailer]
 provider = "emailer:SendGridEmailer"
 from_address = "no-reply@example.com"

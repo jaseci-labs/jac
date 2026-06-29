@@ -1,5 +1,3 @@
-"""Layout pass implementation — computes class hierarchy, C3 MRO,
-field layout, and vtable structure for all archetypes."""
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.constant { Tokens as Tok }
@@ -11,42 +9,41 @@ impl LayoutPass.postinit -> None {
 
 impl LayoutPass.transform(ir_in: uni.Module) -> uni.Module {
     module = self.ir_in;
-    # Step 1: Collect all archetypes
+
     arch_map = self._collect_archetypes(module);
     if not arch_map {
         module.gen.layout_registry = self.registry;
         return ir_in;
     }
-    # Step 2: Build hierarchy (parents + MRO)
+
     self._build_hierarchy(arch_map);
-    # Step 3: Topological sort (cached in registry for backend reuse)
+
     topo_order = self._topo_sort(arch_map);
     self.registry.topo_order = topo_order;
-    # Step 4: Build field layouts in topo order
+
     for name in topo_order {
         if name in arch_map {
             layout = self._build_layout(arch_map[name]);
             self.registry.layouts[name] = layout;
         }
     }
-    # Step 5: Build vtable layouts in topo order
+
     for name in topo_order {
         if name in arch_map {
             self._build_vtable_layout(name, arch_map);
         }
     }
-    # Step 6: Validate obj field types (CType struct contract)
+
     for name in topo_order {
         if name in arch_map {
             self._validate_obj_fields(arch_map[name], arch_map);
         }
     }
-    # Store registry on module (using setattr to avoid modifying CodeGenTarget)
+
     module.gen.layout_registry = self.registry;
     return ir_in;
 }
 
-"""Collect all Archetype nodes from the module, deduplicating forward declarations."""
 impl LayoutPass._collect_archetypes(module: uni.Module) -> dict[str, uni.Archetype] {
     arch_map: dict[str, uni.Archetype] = {};
     for nd in UniPass.get_all_sub_nodes(module, uni.Archetype) {
@@ -54,7 +51,7 @@ impl LayoutPass._collect_archetypes(module: uni.Module) -> dict[str, uni.Archety
         if aname is None {
             continue;
         }
-        # Full definition overrides forward declaration
+
         if aname not in arch_map or nd.body is not None {
             arch_map[aname] = nd;
         }
@@ -62,15 +59,13 @@ impl LayoutPass._collect_archetypes(module: uni.Module) -> dict[str, uni.Archety
     return arch_map;
 }
 
-"""Extract parent names from base_classes and compute C3 MRO for all archetypes."""
 impl LayoutPass._build_hierarchy(archetypes: dict[str, uni.Archetype]) -> None {
     reg = self.registry;
-    # Extract parents
+
     for (aname, arch) in archetypes.items() {
         if arch.base_classes {
             parents: list[str] = [];
             for base_expr in arch.base_classes {
-                # Get the name string from the base class expression
                 pname: (str | None) = None;
                 if isinstance(base_expr, uni.Name) {
                     pname = base_expr.value;
@@ -86,7 +81,7 @@ impl LayoutPass._build_hierarchy(archetypes: dict[str, uni.Archetype]) -> None {
             }
         }
     }
-    # Compute C3 MRO for all classes
+
     for aname in archetypes {
         if aname not in reg.mro_order {
             reg.mro_order[aname] = self._compute_c3_mro(aname);
@@ -94,18 +89,14 @@ impl LayoutPass._build_hierarchy(archetypes: dict[str, uni.Archetype]) -> None {
     }
 }
 
-"""Compute C3 linearization (MRO) for a class.
-
-Extracted from NaIRGenPass._compute_c3_mro in vtable.impl.jac.
-"""
 impl LayoutPass._compute_c3_mro(class_name: str) -> list[str] {
     reg = self.registry;
-    # Base case: no parents
+
     parents = reg.class_parents.get(class_name);
     if parents is None or not parents {
         return [class_name];
     }
-    # Compute MRO for each parent first (recursive, with memoization)
+
     parent_mros: list[list[str]] = [];
     for p in parents {
         if p not in reg.mro_order {
@@ -113,12 +104,11 @@ impl LayoutPass._compute_c3_mro(class_name: str) -> list[str] {
         }
         parent_mros.append(list(reg.mro_order[p]));
     }
-    # Add the parents list itself as a constraint
+
     parent_mros.append(list(parents));
-    # C3 merge
+
     result: list[str] = [class_name];
     while True {
-        # Check if all lists are empty
         any_remaining = False;
         for mro_list in parent_mros {
             if len(mro_list) > 0 {
@@ -129,14 +119,14 @@ impl LayoutPass._compute_c3_mro(class_name: str) -> list[str] {
         if not any_remaining {
             break;
         }
-        # Find a candidate: head of some list not in tail of any other
+
         candidate: (str | None) = None;
         for mro_list in parent_mros {
             if len(mro_list) == 0 {
                 continue;
             }
             head = mro_list[0];
-            # Check if head appears in tail of any non-empty list
+
             in_tail = False;
             for other_list in parent_mros {
                 if len(other_list) > 1 and head in other_list[1:] {
@@ -154,7 +144,7 @@ impl LayoutPass._compute_c3_mro(class_name: str) -> list[str] {
             return result;
         }
         result.append(candidate);
-        # Remove candidate from heads of all lists
+
         new_parent_mros: list[list[str]] = [];
         for mro_list in parent_mros {
             if len(mro_list) > 0 and mro_list[0] == candidate {
@@ -167,12 +157,11 @@ impl LayoutPass._compute_c3_mro(class_name: str) -> list[str] {
     return result;
 }
 
-"""Topological sort: ancestors before descendants."""
 impl LayoutPass._topo_sort(arch_map: dict[str, uni.Archetype]) -> list[str] {
     visited: set[str] = set();
     order: list[str] = [];
     reg = self.registry;
-    # Iterative DFS using explicit stack (avoids nested function issues during bootstrap)
+
     for aname in arch_map {
         if aname in visited {
             continue;
@@ -200,17 +189,14 @@ impl LayoutPass._topo_sort(arch_map: dict[str, uni.Archetype]) -> list[str] {
     return order;
 }
 
-"""Build the field layout for one archetype (inherited + own fields)."""
 impl LayoutPass._build_layout(arch: uni.Archetype) -> ArchetypeLayout {
     reg = self.registry;
     aname = arch.name.value if arch.name else "unknown";
     mro = reg.mro_order.get(aname, [aname]);
     parents = reg.class_parents.get(aname, []);
 
-    # Determine arch_type string ("object" covers obj/class archetypes)
     arch_type_str = arch.arch_kind or "object";
 
-    # Determine if vtable is needed
     parents_set: set[str] = set();
     for (_, plist) in reg.class_parents.items() {
         for p in plist {
@@ -225,20 +211,16 @@ impl LayoutPass._build_layout(arch: uni.Archetype) -> ArchetypeLayout {
     seen_fields: set[str] = set();
     current_idx = 0;
 
-    # Reserve slot 0 for vtable pointer if needed (backends that need it will use this)
-    # We track this in the layout but don't add a FieldInfo for it — it's implicit.
-
-    # Flatten fields from ancestors in MRO order (diamond dedup by name)
     for ancestor_name in mro[1:] {
         ancestor_layout = reg.layouts.get(ancestor_name);
         if ancestor_layout is None {
             continue;
         }
         parent_field_start[ancestor_name] = current_idx;
-        # Iterate ancestor fields in their original order
+
         for finfo in ancestor_layout.fields {
             if finfo.name in seen_fields {
-                continue;  # Diamond dedup
+                continue;
             }
             seen_fields.add(finfo.name);
             new_field = FieldInfo(
@@ -255,11 +237,10 @@ impl LayoutPass._build_layout(arch: uni.Archetype) -> ArchetypeLayout {
         }
     }
 
-    # Add own fields via Archetype.get_has_vars() (handles ImplDef resolution)
     for var in arch.get_has_vars() {
         fname = var.name.value if var.name else "field";
         if fname in seen_fields {
-            continue;  # Skip fields already inherited
+            continue;
         }
         seen_fields.add(fname);
         type_tag = "";
@@ -295,7 +276,6 @@ impl LayoutPass._build_layout(arch: uni.Archetype) -> ArchetypeLayout {
     );
 }
 
-"""Build vtable layout for a class: merge methods from MRO ancestors + own."""
 impl LayoutPass._build_vtable_layout(
     arch_name: str, arch_map: dict[str, uni.Archetype]
 ) -> None {
@@ -308,7 +288,6 @@ impl LayoutPass._build_vtable_layout(
     seen_methods: set[str] = set();
     mro = reg.mro_order.get(arch_name, [arch_name]);
 
-    # Merge method slots from all ancestors in MRO order
     for ancestor_name in mro[1:] {
         ancestor_layout = reg.layouts.get(ancestor_name);
         if ancestor_layout is None {
@@ -322,7 +301,6 @@ impl LayoutPass._build_vtable_layout(
         }
     }
 
-    # Add own methods via Archetype.get_methods() (handles ImplDef resolution)
     arch = arch_map.get(arch_name);
     if arch is not None {
         for method in arch.get_methods() {
@@ -334,11 +312,9 @@ impl LayoutPass._build_vtable_layout(
         }
     }
 
-    # Build MethodSlot list with indices
     methods: list[MethodSlot] = [];
     method_index: dict[str, int] = {};
     for (i, mname) in enumerate(method_list) {
-        # Find the signature from the defining class
         sig_node: (uni.UniNode | None) = None;
         owner = arch_name;
         for check_name in mro {
@@ -366,7 +342,6 @@ impl LayoutPass._build_vtable_layout(
     layout_obj.method_index = method_index;
 }
 
-# --- LayoutRegistry methods ---
 impl LayoutRegistry.get_layout(name: str) -> (ArchetypeLayout | None) {
     return self.layouts.get(name);
 }
@@ -400,7 +375,6 @@ impl LayoutRegistry.is_subclass(child: str, parent: str) -> bool {
     return parent in mro;
 }
 
-"""Check if ancestor is reachable via primary parent chain from child."""
 impl LayoutRegistry.is_primary_ancestor(child: str, ancestor: str) -> bool {
     current = child;
     while current is not None {
@@ -417,24 +391,9 @@ impl LayoutRegistry.is_primary_ancestor(child: str, ancestor: str) -> bool {
     return False;
 }
 
-# --- CType struct contract: field type validation for obj archetypes ---
-"""Validate that all fields on an obj archetype use layout-compatible types.
-
-Layout-compatible types are:
-  - Primitive types (int, float, bool, str, bytes, i8..u64, f32, f64)
-  - Other obj archetypes (reference types, stored as pointers)
-  - Enum types (stored as i64 ordinals)
-  - Typed collections: list[T], dict[K,V], set[T] where T/K/V are layout-compatible
-  - Callable types with explicit signatures (function pointers)
-  - Optional types (T | None) where T is layout-compatible
-  - tuple types of layout-compatible elements
-
-Rejects: Any, untyped fields, dynamic types, class archetypes.
-"""
 impl LayoutPass._validate_obj_fields(
     arch: uni.Archetype, arch_map: dict[str, uni.Archetype]
 ) -> None {
-    # Only validate obj archetypes (not class, node, edge, walker)
     if arch.arch_type {
         tok_name = arch.arch_type.name;
         if tok_name != Tok.KW_OBJECT.value {
@@ -444,7 +403,7 @@ impl LayoutPass._validate_obj_fields(
     aname = arch.name.value if arch.name else "unknown";
     for var in arch.get_has_vars() {
         fname = var.name.value if var.name else "field";
-        # All obj fields MUST have a type annotation
+
         if not var.type_tag or not var.type_tag.tag {
             self.emit(W5031, node_override=var, arch=aname, field=fname);
             continue;
@@ -457,7 +416,6 @@ impl LayoutPass._validate_obj_fields(
     }
 }
 
-"""Check if a type AST node represents a layout-compatible type."""
 impl LayoutPass._is_layout_compatible_type(
     type_node: (uni.UniNode | None), arch_map: dict[str, uni.Archetype]
 ) -> bool {
@@ -467,11 +425,11 @@ impl LayoutPass._is_layout_compatible_type(
     if type_node is None {
         return False;
     }
-    # Callable / function signature → function pointer
+
     if isinstance(type_node, uni.FuncSignature) {
         return True;
     }
-    # Name node: check primitives, known archetypes, enums
+
     if isinstance(type_node, uni.Name) {
         tname = type_node.value;
         if tname in LAYOUT_COMPATIBLE_PRIMITIVES {
@@ -480,24 +438,23 @@ impl LayoutPass._is_layout_compatible_type(
         if tname == "None" {
             return True;
         }
-        # Known archetype (obj) → pointer type
+
         if tname in arch_map {
             return True;
         }
-        # Enum types are layout-compatible (stored as i64)
-        # Check if the name resolves to an Enum in the module
+
         if tname in self.registry.layouts {
             return True;
         }
-        # Reject 'Any', 'any', 'object', and other dynamic types
+
         return False;
     }
-    # BuiltinType node
+
     if uni?.BuiltinType and isinstance(type_node, uni.BuiltinType) {
         tname = type_node.value;
         return tname in LAYOUT_COMPATIBLE_PRIMITIVES;
     }
-    # Union types: T | None (optional) - both sides must be layout-compatible
+
     if isinstance(type_node, uni.BinaryExpr) {
         op_val = getattr(type_node.op, 'value', '');
         if op_val == "|" {
@@ -507,14 +464,13 @@ impl LayoutPass._is_layout_compatible_type(
             );
         }
     }
-    # Parameterized types: list[T], dict[K,V], set[T], tuple[T, ...]
+
     if isinstance(type_node, uni.AtomTrailer) and not type_node.is_attr {
         target_name: (str | None) = None;
         if isinstance(type_node.target, uni.Name) {
             target_name = type_node.target.value;
         }
         if target_name in {"list", "dict", "set", "frozenset", "tuple"} {
-            # Validate element types
             if type_node?.right and type_node.right?.slices {
                 for sl in type_node.right.slices {
                     elem = sl.start if sl?.start else sl;
@@ -534,7 +490,7 @@ impl LayoutPass._is_layout_compatible_type(
             return True;
         }
     }
-    # Token with .value matching a type name (fallback)
+
     if type_node?.value and isinstance(type_node?.value, str) {
         tname = type_node.value;
         if tname in LAYOUT_COMPATIBLE_PRIMITIVES {

@@ -25,7 +25,8 @@ impl NaIRGenPass._declare_exception_runtime -> None {
         handler_global = ir.GlobalVariable(
             self.llvm_module, exc_state_ptr, name="__jac_current_handler"
         );
-        handler_global.linkage = "internal";
+        _is_wasm = "wasm" in (self.llvm_module.triple or "");
+        handler_global.linkage = "internal" if _is_wasm else "weak";
         handler_global.initializer = ir.Constant(exc_state_ptr, None);
         self._exc_handler_global = handler_global;
     }
@@ -209,8 +210,8 @@ impl NaIRGenPass._get_or_register_exc_type(exc_name: str) -> int {
     if exc_name in self._exc_type_registry {
         return self._exc_type_registry[exc_name];
     }
-    type_id = self._exc_type_counter;
-    self._exc_type_counter = self._exc_type_counter + 1;
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    type_id = JAC_TYPE_REGISTRY.exception_type_id(exc_name);
     self._exc_type_registry[exc_name] = type_id;
 
     if "Exception" not in self._exc_type_registry {

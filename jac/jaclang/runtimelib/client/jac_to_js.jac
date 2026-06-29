@@ -1,4 +1,3 @@
-"""Jac to JavaScript compilation module."""
 import from collections.abc { Callable }
 import from pathlib { Path }
 import from types { ModuleType }
@@ -10,7 +9,6 @@ with entry {
     }
 }
 
-"""Handles compilation of Jac files to JavaScript."""
 obj JacToJSCompiler {
     has _compile_to_js: Callable[([Path], tuple[(str, (ModuleType | None))])],
         _extract_client_exports: Callable[([any], list[str])],

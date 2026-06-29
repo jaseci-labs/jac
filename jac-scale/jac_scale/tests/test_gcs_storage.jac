@@ -1,4 +1,3 @@
-"""Tests for GCS / Firebase Storage implementation."""
 import io;
 import datetime;
 
@@ -140,7 +139,7 @@ test "gcs list metadata copy move and url" {
 }
 
 test "store builtin resolves firebase storage when configured" {
-    cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+    cfg_patcher = patch("jac_scale.storage.factory.get_config");
     env_patcher = patch.dict(
         "os.environ",
         {

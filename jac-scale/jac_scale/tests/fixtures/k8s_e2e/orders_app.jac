@@ -6,7 +6,7 @@ Demonstrates inter-service communication via `sv import`:
   auto-spawns cart_app via our `ensure_sv_service` hookimpl.
 
 Exposes public functions for order operations. Callable via:
-  - HTTP: POST /api/orders/function/{name}
+  - HTTP: POST /orders/function/{name}
   - sv import: `sv import from orders_app { create_order, list_orders }`
 """
 

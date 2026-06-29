@@ -52,7 +52,7 @@ jac start --dev    # same, with hot reload   (jac build emits the artifacts with
 
 ## The boundary is the raw wasm ABI (verified)
 
-- **Call `wasm.__jac_glob_init()` once before using any export** - it runs the module's `glob` initializers (the shared-library auto-init has no loader equivalent in wasm, so the JS host calls it).
+- **Call `wasm.__jac_glob_init()` once before using any export** - it runs the module's `glob` initializers (the native-lib auto-init has no loader equivalent in wasm, so the JS host calls it).
 - **Jac `int` is i64 and crosses as `BigInt`**: `wasm.count_primes(20000)` throws `TypeError: Cannot convert 20000 to a BigInt`; pass `BigInt(20000)`, and int returns arrive as BigInt (`2262n`) - interpolate into an f-string or `Number(...)` it before arithmetic with JS numbers.
 - The instantiation import object must satisfy **all** of the module's imports; only a pure-scalar module gets away with `{"env": {"puts": ...}}` (the native runtime's print hook). Anything touching collections/objects/str demands a libc-ish surface - see the next section.
 - Exports = your `na` functions plus runtime internals (`memory`, `__heap_base`, `__jac_glob_init`, `__stack_pointer`, ...). Drive only your own functions.

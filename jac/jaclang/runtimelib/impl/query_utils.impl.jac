@@ -1,5 +1,3 @@
-"""Shared edge-traversal query helpers implementation."""
-
 import from typing { cast }
 
 
@@ -9,9 +7,6 @@ impl _trace_enabled -> bool {
 }
 
 
-"""Compute the derived cache-key components from the lambda. Constructor
-takes only `filt`; `code` and `closure_types` are filled here so callers
-don't have to pre-compute them."""
 impl _CodeKey.postinit -> None {
     self.code = self.filt.__code__;
     cells = self.filt.__closure__ if self.filt.__closure__ is not None else ();
@@ -62,7 +57,6 @@ impl _filter_has_predicates(filt: (Callable[[Archetype], bool] | None)) -> bool 
     }
     code = filt?.__code__;
     if code is None {
-        # Non-function callable (rare); run uncached.
         try {
             opcodes = {instr.opname for instr in dis.get_instructions(filt)};
         } except (TypeError, AttributeError, ValueError) {

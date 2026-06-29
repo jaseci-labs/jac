@@ -11,7 +11,7 @@
 //! What it owns (and nothing more -- no argv, no BOOT_SRC, no worker mode; those
 //! belong to each frontend):
 //!
-//!   1. materialize the trailer payload to `<cache>/rt/<hash16>/` (runtime.zig),
+//!   1. materialize the trailer payload to `<cache>/rt/<hash16>-<pathhash>/` (runtime.zig),
 //!   2. set the hermetic PYTHONHOME/PYTHONPATH/JAC_* env so a foreign/venv
 //!      interpreter can never be adopted,
 //!   3. dlopen the bundled libpython (RTLD_NOW|GLOBAL) -- GLOBAL so the embedded
@@ -69,8 +69,8 @@ const MAX_PATH = Io.Dir.max_path_bytes;
 pub const Embed = struct {
     /// dlopen handle for the bundled libpython (RTLD_NOW|GLOBAL).
     handle: *anyopaque,
-    /// `<cache>/rt/<hash16>` -- the materialized runtime tree (slice into the
-    /// caller-provided rt_buf passed to `open`).
+    /// `<cache>/rt/<hash16>-<pathhash>` -- the materialized runtime tree (slice
+    /// into the caller-provided rt_buf passed to `open`).
     rt: []const u8,
 
     /// Resolve a CPython (or any libpython-visible) symbol; null if absent.

@@ -1,13 +1,3 @@
-"""Integration tests for MongoBackend Layer 1+2+3 parity.
-
-These tests start a real MongoDB container (via testcontainers) and
-exercise the same fingerprint / quarantine / alias / recover surface
-that SqliteMemory exposes, via the abstract PersistentMemory interface.
-
-Locally they require Docker; in CI they run against a throwaway Mongo
-instance. Skipped automatically if Docker is unavailable.
-"""
-
 import atexit;
 import json;
 import os;
@@ -27,7 +17,7 @@ import from jaclang.jac0core.archetype {
     NodeArchetype
 }
 import from jaclang.runtimelib.serializer { Serializer }
-import from jac_scale.memory_hierarchy {
+import from jac_scale.memory.memory_hierarchy {
     _process_cache,
     MongoBackend,
     ScaleTieredMemory
@@ -41,19 +31,16 @@ obj _MongoLayer123Person(Root) {
         age: int = 0;
 }
 
-# Used by the field-failure quarantine reason test: name has NO default.
 obj _MongoRequiredField(Root) {
     has name: str;
 }
 
-# Used by issue-#6167 regression: archetype with default empty-dict fields.
 obj _MongoEmptyDictNode(Root) {
     has label: str = "",
         settings: dict = {},
         metadata: dict = {};
 }
 
-"""Lazily start a shared MongoDB container; return (MongoClient, uri)."""
 def _get_mongo -> tuple {
     if "mongo_client" not in _shared {
         container = MongoDbContainer("mongo:latest");
@@ -68,7 +55,6 @@ def _get_mongo -> tuple {
 }
 
 
-"""Drop all non-system databases (resets jac_test_l123 between tests)."""
 def _reset_mongo -> None {
     if "mongo_client" not in _shared {
         return;
@@ -82,7 +68,6 @@ def _reset_mongo -> None {
 }
 
 
-"""Lazily start a shared Redis container; return (redis.Redis, url)."""
 def _get_redis -> tuple {
     if "redis_client" not in _shared {
         container = RedisContainer("redis:latest", port=6379);
@@ -101,7 +86,6 @@ def _get_redis -> tuple {
 }
 
 
-"""Flush all Redis keys (resets state between tests)."""
 def _reset_redis {
     if "redis_client" in _shared {
         _shared["redis_client"].flushall();
@@ -328,9 +312,6 @@ test "MongoBackend inspect_summary shape matches SqliteMemory's" {
 
 
 test "MongoBackend cascade-quarantines edges when their target node is quarantined" {
-    # Reproduces the schema-drift scenario from issue #5987:
-    # A NodeAnchor of a removed type is quarantined; the connected EdgeAnchors
-    # must also be quarantined and stripped from their source node's data.edges.
     _reset_mongo();
     (client, uri) = _get_mongo();
     backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
@@ -436,9 +417,6 @@ test "MongoBackend cascade-quarantines edges when their target node is quarantin
 
 
 test "MongoBackend recover re-links undirected edge to both endpoints" {
-    # Verifies the undirected-edge gap: when an EdgeAnchor with is_undirected=True
-    # is recovered from quarantine, the edge ID must be re-added to BOTH the
-    # source node's data.edges AND the target node's data.edges.
     _reset_mongo();
     (client, uri) = _get_mongo();
     backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
@@ -523,8 +501,6 @@ test "MongoBackend recover re-links undirected edge to both endpoints" {
 
 
 test "MongoBackend recover_all processes nodes before edges so re-link finds live endpoints" {
-    # Ordering bug regression: edge inserted into quarantine BEFORE the node;
-    # naïve iteration would restore the edge first, leaving data.edges empty.
     _reset_mongo();
     (client, uri) = _get_mongo();
     backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
@@ -534,7 +510,6 @@ test "MongoBackend recover_all processes nodes before edges so re-link finds liv
     node_id = str(uuid4());
     edge_id = str(uuid4());
 
-    # Adversarial insertion order: edge first, node second.
     quarantine_col.insert_one(
         {
             '_id': edge_id,
@@ -600,9 +575,6 @@ test "MongoBackend recover_all processes nodes before edges so re-link finds liv
 
 
 test "MongoBackend recover_all emits warning when re-link target is missing" {
-    # When a quarantined edge's source node is absent from live _anchors,
-    # recover_all must still succeed (matched_count==0 is not a crash) and
-    # the edge must be moved to the live collection.
     _reset_mongo();
     (client, uri) = _get_mongo();
     backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
@@ -649,12 +621,6 @@ test "MongoBackend recover_all emits warning when re-link target is missing" {
 }
 
 
-# ---------------------------------------------------------------------------
-# Regression: issue #6076 — _put_node_atomic fails with "empty object" error
-# when access.roots.anchors is {} (the default for every new NodeAnchor).
-# MongoDB's aggregation-pipeline $set rejects empty embedded documents
-# (error 40180), so every graph write silently failed before this fix.
-# ---------------------------------------------------------------------------
 test "_put_node_atomic persists node despite default empty access.roots.anchors (issue #6076)" {
     _reset_mongo();
     (client, uri) = _get_mongo();
@@ -681,7 +647,6 @@ test "_put_node_atomic persists node despite default empty access.roots.anchors 
         f"added edge must appear in data.edges; got: {stored_edges}"
     );
 
-    # $literal lets the pipeline $set store the default empty access dict instead of raising 40180; a non-None access proves the write went through.
     stored_access = doc.get('data', {}).get('access');
     assert stored_access is not None , (
         "access (which carries the default empty roots.anchors dict) must be "
@@ -693,11 +658,6 @@ test "_put_node_atomic persists node despite default empty access.roots.anchors 
 
 
 test "_put_node_atomic written document round-trips correctly after fix (issue #6076)" {
-    # Mirrors the production flow: _write_to_db seeds the full document first
-    # (hash=0 path), then a subsequent sync with an edge delta calls
-    # _put_node_atomic to atomically merge the edge list.  A fresh second
-    # backend (simulating a different pod with a cold L1 cache) must be able
-    # to read and fully deserialize the anchor afterwards.
     _reset_mongo();
     (_, uri) = _get_mongo();
     backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
@@ -733,13 +693,6 @@ test "_put_node_atomic written document round-trips correctly after fix (issue #
 }
 
 
-# Regression: issue #6785 — deterministic (insertion-order) out-edge ordering.
-# The atomic edge-merge pipeline must preserve insertion order in data.edges.
-# MongoDB's $setUnion / $setDifference return *sets*: they sort + dedup and
-# discard array order, so a node's persisted out-edges came back in BSON sort
-# order rather than connection order. That silently broke ordered/nested OSP
-# structures (ASTs, DOM/JSX trees, grammars) on the scale backend, where edge
-# order is the structure. These tests pin the order-preserving contract.
 test "data.edges preserves insertion order on atomic add (issue #6785)" {
     _reset_mongo();
     (client, uri) = _get_mongo();
@@ -750,9 +703,6 @@ test "data.edges preserves insertion order on atomic add (issue #6785)" {
     anchor.persistent = True;
     backend._write_to_db(anchor);
 
-    # Edge IDs chosen so connection order is the REVERSE of BSON/lexicographic
-    # sort order: a set-based merge would re-sort them ascending, exposing the
-    # bug deterministically (no reliance on random UUID layout).
     edge_ids = [str(UUID(int=200 - i)) for i in range(10)];
     backend._put_node_atomic(anchor, edge_ids, [], set());
 
@@ -781,7 +731,6 @@ test "data.edges preserves order when a middle edge is removed (issue #6785)" {
     edge_ids = [str(UUID(int=200 - i)) for i in range(10)];
     backend._put_node_atomic(anchor, edge_ids, [], set());
 
-    # Drop a middle edge; the remaining edges must keep their relative order.
     removed = edge_ids[4];
     expected = [
         e
@@ -803,7 +752,6 @@ test "data.edges preserves order when a middle edge is removed (issue #6785)" {
 
 
 test "_put_node_atomic stores a dict field with $-prefixed keys verbatim on the atomic path" {
-    # Pins that the whole-value $literal wrap stores `$`-prefixed keys (e.g. the Serializer's `$ref`/`$type`) as data, not as misread pipeline operators.
     _reset_mongo();
     (client, uri) = _get_mongo();
     backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
@@ -836,11 +784,9 @@ test "_put_node_atomic stores a dict field with $-prefixed keys verbatim on the 
 }
 
 
-# mongo:6.0 (the shipped image) is the only supported version that rejects a bare {} in a pipeline $set with 40180; 6.1+ accept it. See #6167.
 glob _MONGO_40180_IMAGE = "mongo:6.0";
 
 
-"""Lazily start a shared mongo:6.0 container (reproduces 40180); return (MongoClient, uri)."""
 def _get_mongo_40180 -> tuple {
     if "mongo40180_client" not in _shared {
         container = MongoDbContainer(_MONGO_40180_IMAGE);
@@ -855,7 +801,6 @@ def _get_mongo_40180 -> tuple {
 }
 
 
-"""Drop all non-system databases on the shared mongo:6.0 container."""
 def _reset_mongo_40180 -> None {
     if "mongo40180_client" not in _shared {
         return;
@@ -870,7 +815,6 @@ def _reset_mongo_40180 -> None {
 
 
 test "_put_node_atomic persists a cleared-to-{} dict field on mongo:6.0 via $literal (#6167/#6294)" {
-    # On mongo:6.0 a bare {} in a pipeline $set raises 40180; $literal lets the clear-to-{} write through and store a real empty object.
     _reset_mongo_40180();
     _process_cache.pop('mongo_client', None);
     _process_cache.pop('mongo_available', None);
@@ -882,11 +826,10 @@ test "_put_node_atomic persists a cleared-to-{} dict field on mongo:6.0 via $lit
     anchor.persistent = True;
     backend._write_to_db(anchor);
 
-    # Mirror the __setattr__ hook: clear the dict field and force it dirty.
     inst.settings = {};
     inst.__dict__['__jac_dirty_fields__'] = {'settings'};
     fake_edge_id = str(uuid4());
-    # `fields` = collect pass's dirty set; pass {'settings'} to authorize persisting the cleared field.
+
     backend._put_node_atomic(anchor, [fake_edge_id], [], {'settings'});
 
     col = client["jac_test_l123"]["_anchors"];
@@ -1053,17 +996,13 @@ test "sync writes endpoint nodes before the edges that reference them" {
     (client, uri) = _get_mongo();
     backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
 
-    # A source node that already exists in the DB (loaded at request start).
     source = cast(NodeAnchor, _MongoLayer123Person(name="src").__jac__);
     source.persistent = True;
     backend._write_to_db(source);
-    # hash=0 keeps write-access checks context-free; _initial_edge_ids=∅ makes
-    # the new eanch show up as an add in edge_delta() so source takes the atomic
-    # ($setUnion) path, exactly like a real connect.
+
     source.hash = 0;
     source.__dict__['_initial_edge_ids'] = frozenset();
 
-    # A brand-new target node connected via a brand-new eanch: source ++> target.
     target = cast(NodeAnchor, _MongoLayer123Person(name="tgt").__jac__);
     target.persistent = True;
     eanch = EdgeAnchor(
@@ -1073,16 +1012,12 @@ test "sync writes endpoint nodes before the edges that reference them" {
     source.edges = [eanch];
     target.edges = [eanch];
 
-    # Adversarial recording order: the eanch is recorded before its target
-    # node, and the source's edge-list repair before both. staged() must
-    # reorder regardless of recording order.
     import from jaclang.runtimelib.changeset { ChangeSet }
     cs = ChangeSet();
     cs.record_edge_delta(source, added=[eanch.id], removed=[]);
     cs.record_create(eanch);
     cs.record_create(target);
 
-    # Record the order in which documents are physically written.
     written: list = [];
     orig_write = backend._write_to_db;
     orig_atomic = backend._put_node_atomic;
@@ -1105,9 +1040,6 @@ test "sync writes endpoint nodes before the edges that reference them" {
 
     backend.apply(cs);
 
-    # Core invariant: replaying the writes in order, every eanch's endpoints are
-    # already live when the eanch is written. `source` seeds the set because it
-    # was persisted before this sync began.
     live: set = {str(source.id)};
     for anchor in written {
         if isinstance(anchor, EdgeAnchor) {
@@ -1123,14 +1055,12 @@ test "sync writes endpoint nodes before the edges that reference them" {
         live.add(str(anchor.id));
     }
 
-    # Sanity: the target node really was written before the eanch this cycle.
     types = [type(a).__name__ for a in written];
     assert 'NodeAnchor' in types and 'EdgeAnchor' in types;
     assert types.index('NodeAnchor') < types.index('EdgeAnchor') , (
         f"target node must be written before the eanch; got order {types}"
     );
 
-    # And the final DB state is consistent: eanch present, both endpoints present.
     anchors_col = client["jac_test_l123"]["_anchors"];
     assert anchors_col.find_one({'_id': str(eanch.id)}) is not None;
     assert anchors_col.find_one({'_id': str(target.id)}) is not None;
@@ -1147,13 +1077,9 @@ test "apply writes exactly the intent's fields, never re-derived dirtiness" {
 
     person = cast(NodeAnchor, _MongoLayer123Person(name="orig", age=30).__jac__);
     person.persistent = True;
-    backend._write_to_db(person);  # persists + snapshots field hashes
+    backend._write_to_db(person);
     person.__dict__['_initial_edge_ids'] = frozenset();
 
-    # The walker mutated BOTH fields, but the collect pass recorded only
-    # 'age' on the intent (e.g. field write access was granted selectively).
-    # Backends execute intents — they must not re-run dirty detection and
-    # persist fields the runtime's access checks never authorized.
     person.archetype.name = "sneaky";
     person.archetype.age = 31;
 
@@ -1166,7 +1092,7 @@ test "apply writes exactly the intent's fields, never re-derived dirtiness" {
     import from jaclang.runtimelib.changeset { ChangeSet }
     cs = ChangeSet();
     cs.record_edge_delta(person, added=[edge_id], removed=[]);
-    cs.record_update(person, {'age'});  # merges into the EDGE_LIST_DELTA intent
+    cs.record_update(person, {'age'});
 
     apply_report = backend.apply(cs);
     assert apply_report.ok() , (

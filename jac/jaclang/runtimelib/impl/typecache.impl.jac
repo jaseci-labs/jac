@@ -1,5 +1,3 @@
-"""Cached dataclass field-type introspection — implementation."""
-
 import from dataclasses { fields, is_dataclass }
 import from typing { get_type_hints }
 

@@ -103,7 +103,7 @@ class JacClientPluginConfig {
     static def client_project_templates -> list[dict[str, any]] {
         templates: list[dict[str, any]] = [];
 
-        for template_name in ["fullstack", "client", "mobile"] {
+        for template_name in ["web-app", "web-static", "mobile"] {
             template = _load_template(template_name);
             if template {
                 templates.append(template);

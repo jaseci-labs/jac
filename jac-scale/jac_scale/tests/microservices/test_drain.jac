@@ -1,10 +1,8 @@
-"""Unit tests for the microservices drain module (ROADMAP P13)."""
-
 import asyncio;
 import json;
 import time;
 import threading;
-import from jac_scale.microservices.gateway_internals.drain {
+import from jac_scale.runtime.lifecycle.drain {
     is_draining,
     inflight,
     start_drain,
@@ -106,7 +104,6 @@ test "wait_for_zero times out when inflight stays stuck" {
 }
 
 
-"""Drive an async function from a sync test."""
 def _run_async(coro: object) -> object {
     loop = asyncio.new_event_loop();
     try {

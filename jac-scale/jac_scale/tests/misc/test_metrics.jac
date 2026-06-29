@@ -1,12 +1,7 @@
-"""Tests for Prometheus metrics integration."""
+import from jac_scale.observability.metrics { NoOpMetricsCollector }
+import from jac_scale.observability.factory { UtilityFactory }
+import from jac_scale.observability.prometheus_metrics { PrometheusMetricsCollector }
 
-import from jac_scale.abstractions.metrics { NoOpMetricsCollector }
-import from jac_scale.factories.utility_factory { UtilityFactory }
-import from jac_scale.utilities.metrics.prometheus_metrics {
-    PrometheusMetricsCollector
-}
-
-# --- NoOpMetricsCollector tests ---
 test "noop is disabled" {
     collector = NoOpMetricsCollector();
     assert collector.is_enabled() is False;
@@ -15,7 +10,6 @@ test "noop is disabled" {
 test "noop methods do nothing" {
     collector = NoOpMetricsCollector();
 
-    # These should not raise any exceptions
     collector.request_started();
     collector.request_finished();
     collector.record_request("GET", "/test", 200, 0.5);
@@ -28,7 +22,6 @@ test "noop endpoint handler returns callable" {
     assert callable(handler);
 }
 
-# --- PrometheusMetricsCollector tests ---
 glob ENABLED_CONFIG: dict = {
          "enabled": True,
          "namespace": "test_app",
@@ -95,7 +88,6 @@ test "prometheus endpoint handler returns response" {
     assert "text" in response.media_type or "openmetrics" in response.media_type;
 }
 
-# --- UtilityFactory metrics tests ---
 test "factory returns noop when disabled" {
     config = {"enabled": False};
     collector = UtilityFactory.create_metrics("prometheus", config);
@@ -132,11 +124,9 @@ test "factory raises for unsupported type" {
     assert raised , "Expected ValueError for unsupported metrics type";
 }
 
-# --- MetricsCollector interface compliance tests ---
 test "noop implements interface" {
     collector = NoOpMetricsCollector();
-    # `init` is the Jac constructor (compiles to __init__), not a queryable
-    # attribute, so it is exercised by construction above rather than hasattr.
+
     assert hasattr(collector, "record_request");
     assert hasattr(collector, "request_started");
     assert hasattr(collector, "request_finished");
@@ -149,7 +139,7 @@ test "prometheus implements interface" {
     collector = PrometheusMetricsCollector(
         config={"enabled": True, "namespace": "iface_test"}
     );
-    # `init` is the Jac constructor (compiles to __init__), exercised above.
+
     assert hasattr(collector, "record_request");
     assert hasattr(collector, "request_started");
     assert hasattr(collector, "request_finished");
@@ -158,7 +148,6 @@ test "prometheus implements interface" {
     assert hasattr(collector, "is_enabled");
 }
 
-# --- Prometheus text parsing and summary tests ---
 test "parse prometheus text and calculate summary" {
     import from jac_scale.admin.admin_portal {
         _parse_prometheus_text,
@@ -181,7 +170,6 @@ test "parse prometheus text and calculate summary" {
 
     metrics = _parse_prometheus_text(raw);
 
-    # Should parse 3 metric families
     assert len(metrics) == 3;
     assert metrics[0]['name'] == 'http_requests_total';
     assert metrics[0]['type'] == 'counter';
@@ -197,7 +185,6 @@ test "parse prometheus text and calculate summary" {
     assert summary['avg_latency_ms'] == 50.0;
 }
 
-# --- Admin metrics endpoint integration tests ---
 import shutil;
 import tempfile;
 import from pathlib { Path }
@@ -208,7 +195,6 @@ glob FIXTURES_DIR: str = str(Path(__file__).parent.parent / "fixtures");
 test "admin metrics endpoint returns valid response" {
     tmp = tempfile.mkdtemp();
     try {
-        # Copy fixture files to temp dir for isolation
         import glob as glob_mod;
         for f in glob_mod.glob(str(Path(FIXTURES_DIR) / "*")) {
             dest = Path(tmp) / Path(f).name;

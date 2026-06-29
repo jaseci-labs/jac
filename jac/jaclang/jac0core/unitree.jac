@@ -137,8 +137,6 @@ obj UniScopeNode(UniNode) {
         names_in_scope_overload: dict[(str, list[Symbol])] by postinit;
 
     def _init_scope(name: str, parent_scope: (UniScopeNode | None) = None) -> None;
-    def get_type -> SymbolType;
-    def get_parent -> (UniScopeNode | None);
     static def get_python_scoping_nodes -> tuple[(type[UniScopeNode], ...)] {
         return (Module, Enum, Archetype, Ability, ImplDef, Test);
     }
@@ -359,7 +357,6 @@ obj NameAtom(AtomExpr, EnumBlockStmt) {
     has sym: (Symbol | None) { getter; setter(sym: Symbol); }
     has sym_name: str { getter; }
     has sym_category: SymbolType { getter; }
-    has binds_new_var: bool { getter; }
 
     def create_symbol(
         access: SymbolAccess,
@@ -426,22 +423,6 @@ obj Module(AstDocNode, UniScopeNode) {
             terminals=[],
             stub_only=True,
             kid=[EmptyToken()]
-        );
-    }
-
-    static def get_href_path(nd: UniNode) -> str {
-        parent = nd.find_parent_of_type(Module);
-        mod_list: list[(Module | Archetype)] = [];
-        if isinstance(nd, (Module, Archetype)) {
-            mod_list.append(nd);
-        }
-        while (parent is not None) {
-            mod_list.append(parent);
-            parent = parent.find_parent_of_type(Module);
-        }
-        mod_list.reverse();
-        return '.'.join(
-            p.name if isinstance(p, Module) else p.name.sym_name for p in mod_list
         );
     }
 }
@@ -575,7 +556,6 @@ obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
 
     def postinit -> None;
 
-    has is_py: bool { getter; }
     has is_jac: bool { getter; }
     has __jac_detected: bool { getter; }
 }
@@ -719,7 +699,6 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
     has method_owner: Archetype | Enum | None { getter; }
     has is_genai_ability: bool { getter; }
 
-    def get_pos_argc_range -> tuple[(int, int)];
     def py_resolve_name -> str;
     # Checker-resolved trigger type names as canonical mangled keys; None
     # when unresolved (callers fall back to flattening the trigger AST).
@@ -2006,9 +1985,6 @@ obj CommentToken(Token) {
         kid: Sequence[UniNode],
         is_inline: bool = False
     ) -> None;
-
-    has left_node: (UniNode | None) { getter; }
-    has right_node: (UniNode | None) { getter; }
 }
 
 """SourceString node type for Jac Ast."""

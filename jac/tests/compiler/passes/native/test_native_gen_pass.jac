@@ -2750,6 +2750,23 @@ test "default params omitted trailing defaults" {
     assert free_f() == 142;  # 42 + 100 (bias default)
 }
 
+test "keyword arguments bind to their named parameters (issue #7026)" {
+    (eng, _) = compile_native("kwargs_call.na.jac");
+    cases = {
+        "test_positional": 305,
+        "test_keyword": 407,
+        "test_keyword_partial": 201,
+        "test_keyword_reordered": 509,
+        "test_mixed_pos_kw": 304,
+        "test_method_keyword": 1206,
+        "test_xmod_keyword": 508
+    };
+    for (name, expected) in cases.items() {
+        f = get_func(eng, name, ctypes.c_int64);
+        assert f() == expected , f"{name}() == {f()}, expected {expected}";
+    }
+}
+
 # --- Auto-Promotion Tests ---
 glob CHESS_JAC = os.path.join(JAC_ROOT, "examples", "chess", "chess.jac");
 

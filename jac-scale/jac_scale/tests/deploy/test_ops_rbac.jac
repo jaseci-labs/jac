@@ -1,11 +1,4 @@
-"""Tests for the Ops Console RBAC builder (foundation).
-
-`build_ops_rbac` is a pure manifest builder: a namespace-scoped read-only
-Role + RoleBinding bound to the gateway ServiceAccount, with mutation verbs
-appended only when requested. No K8s I/O, so it's unit-tested directly.
-"""
-
-import from jac_scale.targets.kubernetes.microservice.ops_rbac {
+import from jac_scale.deploy.target.kubernetes.microservice.ops_rbac {
     build_ops_rbac,
     ops_role_name
 }
@@ -48,7 +41,7 @@ test "build_ops_rbac: mutations append patch/delete verbs" {
     mverbs = _all_verbs(mut["role"]);
     assert "patch" in mverbs and "delete" in mverbs;
     assert len(mut["role"]["rules"]) > len(ro["role"]["rules"]) , "mutation rules are appended";
-    # Empty SA falls back to the namespace `default` SA.
+
     assert build_ops_rbac("a", "n", "", False)["role_binding"]["subjects"][0][
         "name"
     ] == "default";

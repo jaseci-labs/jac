@@ -91,63 +91,39 @@ impl NaIRGenPass._tuple_key_of(expr: (uni.UniNode | None)) -> (str | None) {
 }
 
 impl NaIRGenPass._set_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
-    if not isinstance(expr, uni.Expr) or expr.type is None {
-        return None;
-    }
-    tk = expr.type.mangle();
-    if not (
-        tk in ("set", "frozenset")
-        or tk.startswith("set[")
-        or tk.startswith("frozenset[")
-    ) {
-        return None;
-    }
-    lowered = self._lower_type(expr.type);
-    if lowered is None {
-        return None;
-    }
-    for (spec, st) in self.set_types.items() {
-        if lowered == st.as_pointer() {
-            return spec;
-        }
-    }
-    return None;
+    return self._spec_of(expr, ("set", "frozenset"), self.set_types);
 }
 
 impl NaIRGenPass._dict_key_of(expr: (uni.UniNode | None)) -> (str | None) {
-    if not isinstance(expr, uni.Expr) or expr.type is None {
-        return None;
-    }
-    tk = expr.type.mangle();
-    if not (tk == "dict" or tk.startswith("dict[")) {
-        return None;
-    }
-    lowered = self._lower_type(expr.type);
-    if lowered is None {
-        return None;
-    }
-    for (dkey, dt) in self.dict_types.items() {
-        if lowered == dt.as_pointer() {
-            return dkey;
-        }
-    }
-    return None;
+    return self._spec_of(expr, ("dict", ), self.dict_types);
 }
 
 impl NaIRGenPass._list_spec_of(expr: (uni.UniNode | None)) -> (str | None) {
+    return self._spec_of(expr, ("list", ), self.list_types);
+}
+
+impl NaIRGenPass._spec_of(
+    expr: (uni.UniNode | None), names: tuple, registry: dict
+) -> (str | None) {
     if not isinstance(expr, uni.Expr) or expr.type is None {
         return None;
     }
     tk = expr.type.mangle();
-    if not (tk == "list" or tk.startswith("list[")) {
+    matched = tk in names;
+    for nm in names {
+        if tk.startswith(nm + "[") {
+            matched = True;
+        }
+    }
+    if not matched {
         return None;
     }
     lowered = self._lower_type(expr.type);
     if lowered is None {
         return None;
     }
-    for (spec, lt) in self.list_types.items() {
-        if lowered == lt.as_pointer() {
+    for (spec, st) in registry.items() {
+        if lowered == st.as_pointer() {
             return spec;
         }
     }
@@ -299,24 +275,20 @@ impl NaIRGenPass._struct_array_elem_ptr(ptr: ir.Value, idx_val: ir.Value) -> ir.
 }
 
 impl NaIRGenPass._list_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
-    if not isinstance(expr, uni.Expr) or expr.type is None {
-        return None;
-    }
-    if not expr.type.mangle().startswith("list[") {
-        return None;
-    }
-    args = expr.type.private.type_args or [];
-    if not args {
-        return None;
-    }
-    return self._lower_type(args[0]);
+    return self._typed_elem_llvm_of(expr, "list[");
 }
 
 impl NaIRGenPass._iter_elem_llvm_of(expr: (uni.UniNode | None)) -> (ir.Type | None) {
+    return self._typed_elem_llvm_of(expr, "Iterator[");
+}
+
+impl NaIRGenPass._typed_elem_llvm_of(
+    expr: (uni.UniNode | None), prefix: str
+) -> (ir.Type | None) {
     if not isinstance(expr, uni.Expr) or expr.type is None {
         return None;
     }
-    if not expr.type.mangle().startswith("Iterator[") {
+    if not expr.type.mangle().startswith(prefix) {
         return None;
     }
     args = expr.type.private.type_args or [];

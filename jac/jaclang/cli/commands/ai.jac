@@ -1,25 +1,8 @@
-"""AI command: launch an interactive Jac coding agent in the terminal.
-
-`jac ai` starts a coding agent -- a byLLM ReAct loop wired to file and guide
-tools -- that reads, writes, and debugs Jac code in the current project. It is
-grounded in the bundled Jac reference guides (the same ones `jac guide` shows),
-so the agent self-serves the authoritative spec for idiomatic Jac.
-
-The agent works with any byLLM-compatible model -- local llama.cpp builds or
-cloud providers (OpenAI, Anthropic, Gemini, ...). Pick one with `--model`, or
-set `[plugins.byllm.model] default_model` in jac.toml; with neither it falls
-back to the bundled `local:gemma-4-e4b` so it runs with no API key. Cloud
-models read credentials from `[plugins.byllm.model]` in jac.toml (or the usual
-provider env vars). byLLM must be installed -- the command reports how to
-install it when it is missing.
-"""
-
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Launch an interactive Jac coding agent powered by a byLLM model."""
 @registry.command(
     name="ai",
     help="Launch an interactive Jac coding agent",

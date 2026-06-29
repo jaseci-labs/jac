@@ -1,8 +1,3 @@
-# --- Public API forwarders to the framework-agnostic core -------------------
-# Thin pass-throughs so `@jac/runtime` exposes the core auth/nav/spawn surface
-# as typed functions (the bodies live in `client_runtime_core`). See the typed
-# re-export note in `solid_runtime.cl.jac`. Identical to the React shim's
-# forwarders — only the JSX factory below diverges.
 impl navigate(path: str) -> None {
     _navigate(path);
 }
@@ -41,29 +36,10 @@ impl jacSetToken(token: str) -> None {
     _jacSetToken(token);
 }
 
-# ============================================================================
-# Router bindings — adapters bridging react-router-dom's shape onto @solidjs/router
-# ============================================================================
-# `Router`, `useNavigate`, `useLocation`, `useParams` are re-exported verbatim
-# (see the glob block in the shim); only the components whose prop shape diverges
-# are adapted here.
-"""Adapter for react-router-dom's `<Routes>`, which has no `@solidjs/router`
-equivalent — `@solidjs/router`'s `<Router>` consumes `<Route>` children as its
-config directly. The generated file-based-routing entry therefore renders routes
-straight under `<Router>` (no `<Routes>`). This passthrough is kept only for
-cross-framework surface parity; hand-written `<Router><Routes>...` source still
-lowers, but route *matching* through the wrapper is best-effort — prefer the
-native form."""
 impl Routes(props: dict) -> JsxElement {
     return props.children;
 }
 
-"""Adapter mapping react-router-dom's `<Route element={<C/>}>` onto
-`@solidjs/router`'s `<Route component={C}>`. The native `component` prop is
-preferred (Solid then delivers nested/auth route content to the component as
-`props.children`); a React-shape `element` is wrapped in a thunk component as a
-documented best-effort fallback for hand-written source. `path`/`children` pass
-through."""
 impl Route(props: dict) -> JsxElement {
     routeProps = {};
     if props.path != undefined {
@@ -80,8 +56,6 @@ impl Route(props: dict) -> JsxElement {
     return SolidRoute(routeProps);
 }
 
-"""Adapter mapping react-router-dom's `<Link to=...>` onto `@solidjs/router`'s
-`<A href=...>`. All other props (className, style, children, ...) pass through."""
 impl Link(props: dict) -> JsxElement {
     anchorProps = {};
     for key in Object.keys(props) {
@@ -93,9 +67,6 @@ impl Link(props: dict) -> JsxElement {
     return SolidAnchor(anchorProps);
 }
 
-"""Adapter mapping react-router-dom's `<Navigate to=... replace>` onto
-`@solidjs/router`'s `<Navigate href=...>`. Solid's `Navigate` always replaces, so
-the `replace` prop is accepted but redundant (documented)."""
 impl Navigate(props: dict) -> JsxElement {
     navProps = {"href": props.to};
     if props.state != undefined {
@@ -104,13 +75,6 @@ impl Navigate(props: dict) -> JsxElement {
     return SolidNavigate(navProps);
 }
 
-"""`@solidjs/router` has no `<Outlet>`; it delivers the matched nested route to a
-parent/layout route's `component` as `props.children`. Jac layouts are authored
-`def layout -> JsxElement` (no params) and place `<Outlet/>` where children go, so
-the matched content can't reach them through their own props. `__jacMakeLayoutRoot`
-publishes the route props on `__JacOutletContext`; this reads `.children` back so
-the layout's `<Outlet/>` resolves. Outside a provider the context default `None`
-falls through to any direct `props.children`."""
 impl Outlet(props: dict = {}) -> JsxElement {
     ctx = solidUseContext(__JacOutletContext);
     if ctx != None and ctx != undefined {
@@ -122,10 +86,6 @@ impl Outlet(props: dict = {}) -> JsxElement {
     return None;
 }
 
-"""Wrap a Jac layout component as a `@solidjs/router` `<Router root=...>` layout.
-Solid renders `root` once as the app shell and hands the matched route to it as
-`props.children`; this publishes those props on `__JacOutletContext` and renders
-the (param-less) layout, so the layout's `<Outlet/>` reads the children back."""
 impl __jacMakeLayoutRoot(layout_component: any) -> any {
     return lambda props: any -> JsxElement {
         LayoutComponent = layout_component;
@@ -137,9 +97,6 @@ impl __jacMakeLayoutRoot(layout_component: any) -> any {
     };
 }
 
-"""Composed router hook — mirrors the React shim's `useRouter`, returning the
-same `{navigate, location, params, pathname, search, hash}` dict so call sites
-are framework-identical. Backed by `@solidjs/router`'s reactive primitives."""
 impl useRouter -> dict {
     navigate = solidUseNavigate();
     location = solidUseLocation();
@@ -154,10 +111,6 @@ impl useRouter -> dict {
     };
 }
 
-"""Auth guard for file-based routing. Used as a pathless parent route's
-`component`, so `@solidjs/router` passes the matched protected route in as
-`children`: render it when authenticated, else redirect to the login path.
-Mirrors the React shim's `AuthGuard` (whose `<Outlet/>` plays the same role)."""
 impl AuthGuard(redirect: str = "/login", children: any = None) -> JsxElement {
     if jacIsLoggedIn() {
         return children;
@@ -165,14 +118,6 @@ impl AuthGuard(redirect: str = "/login", children: any = None) -> JsxElement {
     return Navigate({"to": redirect, "replace": True});
 }
 
-# ============================================================================
-# Error boundary + async boundary
-# ============================================================================
-"""Presents react-error-boundary's API ({FallbackComponent, onError, children})
-over `solid-js`'s `<ErrorBoundary fallback={(err, reset) => ...}>`, so the same
-React-shaped boundary call sites work on Solid. `onError` (when supplied) is
-invoked before the fallback renders; Solid's fallback has no `componentStack`,
-so an empty one is passed through to keep the reporting signature stable."""
 impl JacClientErrorBoundary(props: dict) -> JsxElement {
     def fallback(err: any, reset: any) -> any {
         if props.onError != undefined {
@@ -186,10 +131,6 @@ impl JacClientErrorBoundary(props: dict) -> JsxElement {
     return SolidErrorBoundary({"fallback": fallback, "children": props.children});
 }
 
-"""Default error fallback UI. Solid (like react-error-boundary) calls the
-fallback with a single props object, so the first parameter `error` carries
-`{error, resetErrorBoundary}` - accessed as `error.error.message` /
-`error.resetErrorBoundary()`, matching the React shim verbatim."""
 impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
     return
         <div
@@ -256,8 +197,6 @@ impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
         </div>;
 }
 
-"""Full-screen compilation-error overlay (HMR). Framework-neutral JSX (lowers
-through `__jacJsx`), identical to the React shim's `errorOverlay`."""
 impl errorOverlay(filePath: str, errors: str) -> JsxElement {
     return (
         <div
@@ -342,16 +281,10 @@ impl errorOverlay(filePath: str, errors: str) -> JsxElement {
     );
 }
 
-"""Async-boundary wrapper for the `try { ...await... } awaiting {...}` clause —
-a thin wrapper over `solid-js`'s `<Suspense fallback={...}>`. Mirrors the React
-shim's `JacAwaiting` (which wraps `React.Suspense`)."""
 impl JacAwaiting(props: dict) -> JsxElement {
     return SolidSuspense({"fallback": props.fallback, "children": props.children});
 }
 
-# ============================================================================
-# Forms (@tanstack/solid-form + zod)
-# ============================================================================
 impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
     actualSchema = schema;
     try {
@@ -378,11 +311,6 @@ impl useJacForm(form_mode: str, schema: any, onSubmit: any = None) -> any {
     } elif form_mode == "onBlur" {
         validators["onBlur"] = schema;
     } elif form_mode == "onTouched" {
-        # Only onChange so errors are always fresh when values change. The error
-        # display is gated on isTouched so errors appear only after blur. Using
-        # both onChange+onBlur leaves stale onBlur entries in other fields'
-        # errorMap (set when the first field blurs), keeping isValid=false even
-        # after those fields have valid values.
         validators["onChange"] = schema;
     } else {
         console.warn(f"Unknown validateMode '{form_mode}'; falling back to onBlur");
@@ -427,7 +355,7 @@ impl JacForm(props: dict) -> JsxElement {
         if depth >= maxDepth {
             return schema;
         }
-        # Prefer public Zod methods (optional/nullable expose .unwrap())
+
         try {
             if schema.unwrap {
                 return unwrapZodSchema(schema.unwrap(), depth + 1);
@@ -463,15 +391,15 @@ impl JacForm(props: dict) -> JsxElement {
     }
     def getEnumOptions(fieldSchema: any) -> list {
         unwrapped = unwrapZodSchema(fieldSchema);
-        # Public Zod v3/v4 API: z.enum() exposes .options array
+
         if unwrapped.options and Array.isArray(unwrapped.options) {
             return unwrapped.options;
         }
-        # Public Zod v3 API: z.nativeEnum() exposes .enum object
+
         if unwrapped.enum {
             return Object.keys(unwrapped.enum);
         }
-        # Fallback: Zod v4 internal _def.entries / def.entries
+
         if unwrapped._def and unwrapped._def.entries {
             return Object.keys(unwrapped._def.entries);
         }
@@ -832,20 +760,11 @@ impl JacForm(props: dict) -> JsxElement {
     );
 }
 
-# ============================================================================
-# Client Error Reporting
-# ============================================================================
-"""Reports an error caught by the client error boundary to the server. Mirrors
-the React shim's handler; named `__jacReactErrorHandler` for API parity across
-frameworks. Solid's `ErrorBoundary` provides no `componentStack`, so `info` is
-optional."""
 impl __jacReactErrorHandler(error: any, info: any) -> None {
     try {
         message = error.message if error else "Unknown error";
         stack = error.stack if error else "";
         componentStack = info.componentStack if info else "";
         __jacReportError(message, stack, "", "ErrorBoundary", componentStack);
-    } except Exception {
-    # Silent: error reporting from a lifecycle hook must never throw.
-    }
+    } except Exception { }
 }

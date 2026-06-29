@@ -22,7 +22,7 @@ packages = ["jac_scale*"]
 [project.include.data]
 jac_scale = [
    "templates/**/*.html",
-   "providers/**/*.template",
+   "deploy/**/*.template",
    "admin/_dist/*",
    "admin/_dist/**/*",
 ]
@@ -90,4 +90,4 @@ requests = "*"
 
 [entrypoints.jac]
 scale = "jac_scale.plugin:JacCmd"
-scale_plugin_config = "jac_scale.plugin_config:JacScalePluginConfig"
+scale_plugin_config = "jac_scale.config.plugin_config:JacScalePluginConfig"
