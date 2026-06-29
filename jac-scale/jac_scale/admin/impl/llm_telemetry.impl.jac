@@ -650,12 +650,9 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
     }
 
     async def summary_handler(request: Request) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get('http_status', 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         data = store.get_summary();
         return JSONResponse(content={"ok": True, "data": data});
@@ -675,12 +672,9 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
     );
 
     async def traces_handler(request: Request) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get('http_status', 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         qp = request.query_params;
         try {
@@ -724,12 +718,9 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
     async def trace_detail_handler(
         request: Request, invocation_id: str
     ) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get('http_status', 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         data = store.get_trace(invocation_id);
         if data is None {
@@ -764,12 +755,9 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
     );
 
     async def filters_handler(request: Request) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get('http_status', 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         data = store.get_available_filters();
         return JSONResponse(content={"ok": True, "data": data});

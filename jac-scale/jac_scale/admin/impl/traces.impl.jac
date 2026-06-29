@@ -190,12 +190,9 @@ def _flatten_tempo_trace(payload: dict) -> dict {
 
 impl JacAPIServerTraces.register_traces_endpoints -> None {
     async def services_handler(request: Request) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get("http_status", 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         return JSONResponse(
             content={"ok": True, "data": {"services": _trace_services()}}
@@ -218,12 +215,9 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
     );
 
     async def search_handler(request: Request) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get("http_status", 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         qp = request.query_params;
         service = (qp.get("service") or "").strip();
@@ -318,12 +312,9 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
     );
 
     async def trace_handler(request: Request, trace_id: str) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get("http_status", 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         norm = _normalize_trace_id(trace_id);
         if not norm {

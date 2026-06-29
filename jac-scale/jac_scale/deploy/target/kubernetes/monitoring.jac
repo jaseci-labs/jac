@@ -13,6 +13,18 @@ obj MonitoringDeployer {
     has k8s_config: KubernetesConfig,
         logger: (Logger | None) = None;
 
+    def ensure_service(core_v1: any, name: str, namespace: str, body: dict) {
+        try {
+            core_v1.read_namespaced_service(name=name, namespace=namespace);
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service(namespace=namespace, body=body);
+            } else {
+                raise;
+            }
+        }
+    }
+
     def _deploy_prometheus(
         app_name: str,
         namespace: str,
@@ -333,19 +345,9 @@ obj MonitoringDeployer {
                 'ports': [{'protocol': 'TCP', 'port': 9090, 'targetPort': 9090}]
             }
         };
-        try {
-            core_v1.read_namespaced_service(
-                name=f"{prometheus_name}-service", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_service(
-                    namespace=namespace, body=prometheus_service
-                );
-            } else {
-                raise;
-            }
-        }
+        self.ensure_service(
+            core_v1, f"{prometheus_name}-service", namespace, prometheus_service
+        );
 
         if self.logger {
             self.logger.info(f"Prometheus deployed for '{app_name}'");
@@ -562,19 +564,7 @@ obj MonitoringDeployer {
                 ]
             }
         };
-        try {
-            core_v1.read_namespaced_service(
-                name=f"{ksm_name}-service", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_service(
-                    namespace=namespace, body=ksm_service
-                );
-            } else {
-                raise;
-            }
-        }
+        self.ensure_service(core_v1, f"{ksm_name}-service", namespace, ksm_service);
 
         if self.logger {
             self.logger.info(f"kube-state-metrics deployed for '{app_name}'");
@@ -675,17 +665,7 @@ obj MonitoringDeployer {
                 ]
             }
         };
-        try {
-            core_v1.read_namespaced_service(
-                name=f"{ne_name}-service", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_service(namespace=namespace, body=ne_service);
-            } else {
-                raise;
-            }
-        }
+        self.ensure_service(core_v1, f"{ne_name}-service", namespace, ne_service);
 
         if self.logger {
             self.logger.info(f"node-exporter deployed for '{app_name}'");
@@ -1285,19 +1265,9 @@ obj MonitoringDeployer {
             }
         };
 
-        try {
-            core_v1.read_namespaced_service(
-                name=f"{grafana_name}-service", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_service(
-                    namespace=namespace, body=grafana_service
-                );
-            } else {
-                raise;
-            }
-        }
+        self.ensure_service(
+            core_v1, f"{grafana_name}-service", namespace, grafana_service
+        );
 
         if self.logger {
             self.logger.info(
@@ -1503,19 +1473,7 @@ obj MonitoringDeployer {
                 ]
             }
         };
-        try {
-            core_v1.read_namespaced_service(
-                name=f"{tempo_name}-service", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_service(
-                    namespace=namespace, body=tempo_service
-                );
-            } else {
-                raise;
-            }
-        }
+        self.ensure_service(core_v1, f"{tempo_name}-service", namespace, tempo_service);
 
         if self.logger {
             self.logger.info(f"Tempo deployed for '{app_name}'");
@@ -1698,19 +1656,7 @@ obj MonitoringDeployer {
                 'ports': [{'protocol': 'TCP', 'port': 3100, 'targetPort': 3100}]
             }
         };
-        try {
-            core_v1.read_namespaced_service(
-                name=f"{loki_name}-service", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                core_v1.create_namespaced_service(
-                    namespace=namespace, body=loki_service
-                );
-            } else {
-                raise;
-            }
-        }
+        self.ensure_service(core_v1, f"{loki_name}-service", namespace, loki_service);
 
         if self.logger {
             self.logger.info(f"Loki deployed for '{app_name}'");
@@ -2092,19 +2038,9 @@ obj MonitoringDeployer {
                     ]
                 }
             };
-            try {
-                core_v1.read_namespaced_service(
-                    name=f"{alloy_name}-service", namespace=namespace
-                );
-            } except ApiException as e {
-                if e.status == 404 {
-                    core_v1.create_namespaced_service(
-                        namespace=namespace, body=alloy_service
-                    );
-                } else {
-                    raise;
-                }
-            }
+            self.ensure_service(
+                core_v1, f"{alloy_name}-service", namespace, alloy_service
+            );
         }
 
         if self.logger {

@@ -244,12 +244,9 @@ def _flatten_loki_response(payload: dict, ascending: bool = True) -> list[dict] 
 
 impl JacAPIServerLogs.register_logs_endpoints -> None {
     async def services_handler(request: Request) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get("http_status", 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         return JSONResponse(
             content={"ok": True, "data": {"services": _microservice_services()}}
@@ -272,12 +269,9 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
     );
 
     async def query_handler(request: Request) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get("http_status", 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
         qp = request.query_params;
         service = (qp.get("service") or "").strip();
@@ -383,12 +377,9 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
     );
 
     async def trace_handler(request: Request, trace_id: str) -> JSONResponse {
-        auth_error = self.require_admin(request.headers.get("Authorization"));
-        if auth_error {
-            return JSONResponse(
-                status_code=auth_error.meta.extra.get("http_status", 403),
-                content={"ok": False, "error": {"message": "Unauthorized"}}
-            );
+        guard = self.require_admin_json(request.headers.get("Authorization"));
+        if guard {
+            return guard;
         }
 
         now_ns = int(time.time() * 1_000_000_000);

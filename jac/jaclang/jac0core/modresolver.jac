@@ -93,23 +93,6 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     );
 }
 
-def get_py_search_paths(base_path: (str | None) = None) -> list[str] {
-    paths = [];
-    if base_path {
-        paths.append(base_path);
-    }
-    paths.append(os.getcwd());
-    return `list(
-        `dict.fromkeys(
-            [
-                p
-                for p in paths
-                if p
-            ]
-        )
-    );
-}
-
 def _candidate_from(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
     candidate = os.path.join(base, *parts);
     if os.path.isdir(candidate) {

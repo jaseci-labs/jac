@@ -23,16 +23,9 @@ import from jac_scale.tests.auth_test_helpers {
     data as _data,
     register_and_login as _get_token
 }
+import from jac_scale.tests.server_support { get_free_port }
 
 glob FIXTURES_DIR: Path = Path(__file__).parent.parent / "fixtures";
-
-def get_free_port -> int {
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
-        s.bind(("", 0));
-        s.listen(1);
-        return s.getsockname()[1];
-    }
-}
 
 def _err(resp: dict[str, Any]) -> dict[str, Any] | None {
     if isinstance(resp, dict) and not resp.get("ok") {

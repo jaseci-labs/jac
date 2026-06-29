@@ -156,10 +156,6 @@ class PointerType(Type) {
     def __hash__(self: PointerType) -> object {
         return hash(PointerType);
     }
-    @property
-    def intrinsic_name(self: PointerType) -> object {
-        return ('p%d' % self.addrspace);
-    }
     """
         Create from a jaclang.compiler.passes.native.llvm.binding.TypeRef
         """
@@ -205,14 +201,6 @@ class _TypedPointerType(PointerType) {
             raise TypeError(i.type);
         }
         return self.pointee;
-    }
-
-    @property
-    def intrinsic_name(self: _TypedPointerType) -> object {
-        if ir_layer_typed_pointers_enabled {
-            return ('p%d%s' % (self.addrspace, self.pointee.intrinsic_name));
-        }
-        return super.intrinsic_name;
     }
 }
 
@@ -351,10 +339,6 @@ class IntType(Type) {
         }
         return val;
     }
-    @property
-    def intrinsic_name(self: IntType) -> object {
-        return str(self);
-    }
     """
         Create from a jaclang.compiler.passes.native.llvm.binding.TypeRef
         """
@@ -427,7 +411,6 @@ class _BaseFloatType(Type) {
 class HalfType(_BaseFloatType) {
     with entry {
         null = '0.0';
-        intrinsic_name = 'f16';
     }
 
     def __str__(self: HalfType) -> object {
@@ -444,7 +427,6 @@ class HalfType(_BaseFloatType) {
 class FloatType(_BaseFloatType) {
     with entry {
         null = '0.0';
-        intrinsic_name = 'f32';
     }
 
     def __str__(self: FloatType) -> object {
@@ -461,7 +443,6 @@ class FloatType(_BaseFloatType) {
 class DoubleType(_BaseFloatType) {
     with entry {
         null = '0.0';
-        intrinsic_name = 'f64';
     }
 
     def __str__(self: DoubleType) -> object {
