@@ -139,17 +139,19 @@ test "host source boots the fused runtime and bakes no build-machine state" {
     assert "_baked_dep_sites" not in src , "must not bake builder site dirs";
 }
 
-"""DISPATCH_PY's scale seam is runtime-only and portable: it reads
-JAC_DESKTOP_SCALE_SRC / JAC_DESKTOP_DEPS at runtime, with no build-time baking,
-so the one binary stays portable until the scale backend is bundled into the runtime."""
-test "DISPATCH_PY scale hook is the slim runtime-only seam" {
+"""DISPATCH_PY's seam is runtime-only and portable: it reads JAC_DESKTOP_DEPS at
+runtime with no build-time baking. The scale backend is now folded into jaclang
+(jaclang.scale), so it travels with the jaclang source (JAC_DESKTOP_JAC_SRC) and
+no separate JAC_DESKTOP_SCALE_SRC seam is needed."""
+test "DISPATCH_PY exposes the runtime extra-deps seam" {
     import from jaclang.runtimelib.client.targets.desktop._host_bootstrap {
         _generate_host_source
     }
 
     src = _generate_host_source("T", 800, 600, "test-app");
-    assert "JAC_DESKTOP_SCALE_SRC" in src , "host must read the runtime scale source seam";
     assert "JAC_DESKTOP_DEPS" in src , "host must read the runtime deps seam";
+    assert "inprocess_dispatch" in src , "host must dispatch into the in-process runtime";
+    assert "JAC_DESKTOP_SCALE_SRC" not in src , "separate scale-source seam is gone (scale is folded into jaclang)";
 }
 
 """Generated host source must call inprocess_dispatch.shutdown() after run_main_loop()
