@@ -32,13 +32,19 @@ jobs:
         # self-contained; build.zig fetches the per-target python-build-standalone
         # and (for the native backend) the per-target LLVM release.
         include:
-          # Pin to 22.04 (glibc 2.35) so the binary's glibc floor stays low and
-          # the asset runs on 22.04+ (forward-compatible). ubuntu-latest builds
-          # against a newer glibc and fails on still-supported 22.04 hosts.
-          - os: ubuntu-22.04
+          # Zig cross-links each Linux binary against an explicit glibc 2.34
+          # floor (zig_target) regardless of the runner's own glibc, so the
+          # asset runs on glibc 2.34+ (forward-compatible: covers Ubuntu 20.04+,
+          # Debian 11+, RHEL 9+). This is more durable than pinning the runner
+          # OS -- it survives runner-image retirements and gives x86_64 and
+          # aarch64 the same floor without needing an old ARM runner. macOS sets
+          # no zig_target and builds host-native.
+          - os: ubuntu-latest
             platform: linux-x86_64
+            zig_target: x86_64-linux-gnu.2.34
           - os: ubuntu-24.04-arm
             platform: linux-aarch64
+            zig_target: aarch64-linux-gnu.2.34
           # No macos-x86_64 (Intel) leg: the native (na) backend statically links
           # a pinned LLVM release, and LLVM ships no macOS-x64 prebuilt for 20.1.8
           # (only Linux-X64/ARM64 + macOS-ARM64). Apple Silicon is covered by
@@ -77,11 +83,13 @@ jobs:
       # cached here, matching this workflow's fresh-each-release policy.
       - name: Fetch LLVM for the jacllvm shim
         working-directory: jac
-        run: zig build fetch-llvm --summary all
+        # ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) }}
+        # expands to -Dtarget=... on the Linux legs and to nothing on macOS.
+        run: zig build fetch-llvm ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) }} --summary all
 
       - name: Build the jac binary (one command)
         working-directory: jac
-        run: zig build --summary all
+        run: zig build ${{ matrix.zig_target && format('-Dtarget={0}', matrix.zig_target) }} --summary all
 
       - name: Smoke test (no system Python)
         working-directory: jac
