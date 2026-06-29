@@ -10,7 +10,6 @@ import from .memory.context { JScaleExecutionContext }
 import from .config.config_loader { get_scale_config }
 import from .deploy.target.factory { DeploymentTargetFactory }
 import from .observability.factory { UtilityFactory }
-import from .config.app_config { AppConfig }
 import from jaclang.runtimelib.server { UserManager }
 import from jaclang.runtimelib.storage { Storage }
 

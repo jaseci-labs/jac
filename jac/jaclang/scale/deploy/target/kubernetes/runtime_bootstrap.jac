@@ -62,7 +62,9 @@ def build_runtime_install_commands(
             'build jac in-pod instead." >&2; exit 1; fi'
         );
 
-        commands.append(f'jac install -e "{tc}/jac-scale" --extras all --global');
+        # scale is built into the shipped jac binary (jaclang.scale); no separate
+        # install. The app's runtime capability closure is materialized by the
+        # app-level `jac install`.
         commands.append(
             f'[ ! -d "{tc}/jac-byllm" ] || jac install -e "{tc}/jac-byllm" --global'
         );

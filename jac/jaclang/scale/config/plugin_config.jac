@@ -136,12 +136,7 @@ class JacScalePluginConfig {
                                 "jaclang": {
                                     "type": "string",
                                     "default": "latest",
-                                    "description": "jaclang package version"
-                                },
-                                "jaclang.scale": {
-                                    "type": "string",
-                                    "default": "latest",
-                                    "description": "jac-scale package version"
+                                    "description": "jaclang package version (scale ships inside it)"
                                 },
                                 "jac_byllm": {
                                     "type": "string",
