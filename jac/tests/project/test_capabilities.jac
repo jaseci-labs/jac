@@ -7,7 +7,10 @@ import from pathlib { Path }
 import from unittest.mock { patch }
 
 import from jaclang.project.config { JacConfig }
-import from jaclang.project.dependencies { DependencyInstaller }
+import from jaclang.project.dependencies {
+    DependencyInstaller,
+    capability_specs_for_install
+}
 import from jaclang.project.capabilities {
     Capability,
     CapabilityClosure,
@@ -343,6 +346,77 @@ test "sync_capabilities on empty closure is a no-op success" {
             assert result;
             mock_install.assert_not_called();
         }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+# ===== Install wiring (capability_specs_for_install) =====
+def make_service_project(scale_toml: str) -> tuple[str, Path] {
+    tmp = tempfile.mkdtemp(prefix="jac_capinst_");
+    project_dir = Path(tmp) / "svc";
+    project_dir.mkdir();
+    (project_dir / "jac.toml").write_text(
+        '[project]\nname = "svc"\nversion = "0.1.0"\nkind = "service"\n'
+        'entry-point = "main.sv.jac"\n\n' + scale_toml
+    );
+    (project_dir / "main.sv.jac").write_text("with entry {\n    print(\"hi\");\n}\n");
+    return (tmp, project_dir);
+}
+
+test "capability_specs_for_install resolves runtime closure from config + kind" {
+    reset_config();
+    (tmp, project_dir) = make_service_project('[scale.database]\nbackend = "mongo"\n');
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        installer = DependencyInstaller(config=config);
+        specs = capability_specs_for_install(config, installer, scale=False);
+        joined = " ".join(specs);
+        # serve (command-implied by the service kind) + mongo (config-implied)
+        assert "fastapi>=0.121.3,<0.122.0" in specs;
+        assert "pymongo>=4.15.4,<5.0.0" in specs;
+        # runtime closure must never carry deploy-only clients
+        assert "kubernetes" not in joined;
+        assert "docker" not in joined;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "capability_specs_for_install --scale adds the deploy closure" {
+    reset_config();
+    (tmp, project_dir) = make_service_project(
+        '[scale.database]\nbackend = "mongo"\n\n[scale.deploy]\ntarget = "kubernetes"\n'
+    );
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        installer = DependencyInstaller(config=config);
+        specs = capability_specs_for_install(config, installer, scale=True);
+        joined = " ".join(specs);
+        assert "pymongo>=4.15.4,<5.0.0" in specs;
+        assert "kubernetes>=34.1.0,<35.0.0" in specs;
+        assert "docker>=7.1.0,<8.0.0" in specs;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "capability_specs_for_install is empty for a plain cli project" {
+    reset_config();
+    tmp = tempfile.mkdtemp(prefix="jac_capinst_");
+    project_dir = Path(tmp) / "cli";
+    project_dir.mkdir();
+    (project_dir / "jac.toml").write_text(
+        '[project]\nname = "cli"\nversion = "0.1.0"\nkind = "cli"\nentry-point = "main.jac"\n'
+    );
+    (project_dir / "main.jac").write_text("with entry {\n    print(\"hi\");\n}\n");
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        installer = DependencyInstaller(config=config);
+        assert capability_specs_for_install(config, installer, scale=False) == [];
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();

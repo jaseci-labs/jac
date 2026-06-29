@@ -153,10 +153,21 @@ def create(
             short="",
             dest="install_global"
         ),
+        Arg.create(
+            "scale",
+            typ=bool,
+            default=False,
+            help="Materialize the deploy-time capability closure (adds deploy-only clients like kubernetes/docker) instead of just the runtime closure",
+            short=""
+        ),
 
     ],
     examples=[
         ("jac install", "Install all dependencies from jac.toml"),
+        (
+            "jac install --scale",
+            "Also install deploy-time capabilities (kubernetes/docker) for the operator machine"
+        ),
         ("jac install numpy", "Install numpy into the project venv"),
         (
             "jac install numpy pandas scipy",
@@ -198,7 +209,8 @@ def install(
     no_deps: bool = False,
     quiet: bool = False,
     prefer_binary: bool = False,
-    install_global: bool = False
+    install_global: bool = False,
+    scale: bool = False
 ) -> int;
 
 @registry.command(
