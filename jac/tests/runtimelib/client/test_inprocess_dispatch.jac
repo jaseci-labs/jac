@@ -1170,3 +1170,189 @@ test "_boot_impl closes a prior runtime before re-booting" {
         ipd._BOOT_ERROR = orig_err;
     }
 }
+
+
+# ------------------------------------------------------------------------------
+# dispatch_sync() -- the timeout-protected synchronous path the desktop host's
+# `_jac_unified_dispatch` uses for walker/function invokes (Greptile P1: a
+# synchronous dispatch must not hold the GIL indefinitely; a slow/stuck walker
+# must reject with NATIVE_DISPATCH_TIMEOUT instead of freezing the app).
+# ------------------------------------------------------------------------------
+
+# Backend-free: a fast dispatch round-trips its result through dispatch_sync()'s
+# worker thread unchanged (the worker runs the real `dispatch`, which here hits
+# a mock TestClient).
+test "dispatch_sync() returns the result for a fast call" {
+    import from importlib { import_module }
+    import from unittest.mock { MagicMock }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    orig_tc = ipd._tc;
+    orig_err = ipd._BOOT_ERROR;
+    try {
+        mock_resp = MagicMock();
+        mock_resp.status_code = 200;
+        mock_resp.is_success = True;
+        mock_resp.json.return_value = {"ok": True, "data": {"result": 42}};
+        mock_client = MagicMock();
+        mock_client.post.return_value = mock_resp;
+
+        ipd._tc = mock_client;
+        ipd._BOOT_ERROR = "";
+        raw = ipd.dispatch_sync(
+            json.dumps({"kind": "function", "name": "add", "fields": {"a": 2, "b": 40}})
+        );
+        env = json.loads(raw);
+        assert env["status"] == 200 , "dispatch_sync must return the wrapped envelope";
+        assert env["body"]["data"]["result"] == 42 , (
+            "the fast dispatch result must round-trip through the worker thread"
+        );
+    } finally {
+        ipd._tc = orig_tc;
+        ipd._BOOT_ERROR = orig_err;
+    }
+}
+
+
+# Backend-free: the whole point of dispatch_sync(). A slow dispatch stub stands
+# in for a walker that stalls past the timeout; dispatch_sync must reject with
+# NATIVE_DISPATCH_TIMEOUT and return promptly (it must NOT block for the full
+# slow duration).
+test "dispatch_sync() times out a slow call with NATIVE_DISPATCH_TIMEOUT" {
+    import time;
+    import from importlib { import_module }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    orig_tc = ipd._tc;
+    orig_err = ipd._BOOT_ERROR;
+    orig_dispatch = ipd.dispatch;
+    orig_timeout = ipd._timeout_s;
+    try {
+        ipd._tc = object();  # truthy: clears the not-booted guard
+        ipd._BOOT_ERROR = "";
+        ipd._timeout_s = 30.0;  # default; the explicit timeout_s below wins
+        ipd.dispatch = _slow_dispatch;  # sleeps 0.6s
+
+        t0 = time.monotonic();
+        raw = ipd.dispatch_sync(
+            json.dumps({"kind": "walker", "name": "slow", "fields": {}, "token": ""}),
+            timeout_s=0.2
+        );
+        elapsed = time.monotonic() - t0;
+        env = json.loads(raw);
+        assert env["body"]["error"]["code"] == "NATIVE_DISPATCH_TIMEOUT" , (
+            "a call exceeding timeout_s must reject with NATIVE_DISPATCH_TIMEOUT"
+        );
+        assert "0.2s" in env["body"]["error"]["message"] , (
+            "the timeout message must report the applied threshold"
+        );
+        assert elapsed < 1.0 , (
+            "dispatch_sync must return promptly after the timeout, not wait for "
+            "the slow call to finish"
+        );
+    } finally {
+        ipd._tc = orig_tc;
+        ipd._BOOT_ERROR = orig_err;
+        ipd.dispatch = orig_dispatch;
+        ipd._timeout_s = orig_timeout;
+    }
+}
+
+
+# Backend-free: timeout_s <= 0 means "use the configured _timeout_s". Drive a
+# slow stub with _timeout_s set short and timeout_s left at its default.
+test "dispatch_sync() falls back to _timeout_s when timeout_s <= 0" {
+    import from importlib { import_module }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    orig_tc = ipd._tc;
+    orig_err = ipd._BOOT_ERROR;
+    orig_dispatch = ipd.dispatch;
+    orig_timeout = ipd._timeout_s;
+    try {
+        ipd._tc = object();
+        ipd._BOOT_ERROR = "";
+        ipd._timeout_s = 0.2;
+        ipd.dispatch = _slow_dispatch;  # 0.6s -- past the configured 0.2s
+
+        raw = ipd.dispatch_sync(
+            json.dumps({"kind": "walker", "name": "slow", "fields": {}, "token": ""})
+        );
+        env = json.loads(raw);
+        assert env["body"]["error"]["code"] == "NATIVE_DISPATCH_TIMEOUT" , (
+            "timeout_s <= 0 must apply the configured _timeout_s"
+        );
+    } finally {
+        ipd._tc = orig_tc;
+        ipd._BOOT_ERROR = orig_err;
+        ipd.dispatch = orig_dispatch;
+        ipd._timeout_s = orig_timeout;
+    }
+}
+
+
+# Backend-free: when the underlying dispatch() raises, dispatch_sync must catch
+# it on the worker thread and return a NATIVE_DISPATCH_ERROR envelope (never let
+# the exception escape and freeze the host's GIL-held invoke handler).
+test "dispatch_sync() returns NATIVE_DISPATCH_ERROR when dispatch() raises" {
+    import from importlib { import_module }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    orig_tc = ipd._tc;
+    orig_err = ipd._BOOT_ERROR;
+    orig_dispatch = ipd.dispatch;
+    try {
+        ipd._tc = object();
+        ipd._BOOT_ERROR = "";
+        ipd.dispatch = _raising_dispatch;  # always raises RuntimeError
+
+        raw = ipd.dispatch_sync(
+            json.dumps({"kind": "walker", "name": "x", "fields": {}, "token": ""}),
+            timeout_s=5.0
+        );
+        env = json.loads(raw);
+        assert env["body"]["error"]["code"] == "NATIVE_DISPATCH_ERROR" , (
+            "a dispatch() exception must surface as NATIVE_DISPATCH_ERROR"
+        );
+    } finally {
+        ipd._tc = orig_tc;
+        ipd._BOOT_ERROR = orig_err;
+        ipd.dispatch = orig_dispatch;
+    }
+}
+
+
+# Backend-free: dispatch_sync() shares dispatch()'s not-booted / boot-error
+# guards. When boot() never ran it must reply NOT_BOOTED (not raise / hang).
+test "dispatch_sync() replies NOT_BOOTED when boot() never ran" {
+    import from importlib { import_module }
+
+    ipd = import_module(
+        "jaclang.runtimelib.client.targets.desktop.native.inprocess_dispatch"
+    );
+    orig_tc = ipd._tc;
+    orig_err = ipd._BOOT_ERROR;
+    try {
+        ipd._tc = None;
+        ipd._BOOT_ERROR = "";
+        raw = ipd.dispatch_sync(
+            json.dumps({"kind": "walker", "name": "x", "fields": {}, "token": ""})
+        );
+        env = json.loads(raw);
+        assert env["body"]["error"]["code"] != "NATIVE_BOOT_ERROR" , (
+            "a fresh module must not report a stale boot error"
+        );
+        assert ipd._tc is None , "test must not leave a fake client behind";
+    } finally {
+        ipd._tc = orig_tc;
+        ipd._BOOT_ERROR = orig_err;
+    }
+}
