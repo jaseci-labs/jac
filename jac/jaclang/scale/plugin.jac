@@ -552,21 +552,38 @@ class JacScalePlugin {
         return ctx;
     }
 
+    # The three server hooks below decline (return None) when the serve runtime
+    # closure (fastapi / uvicorn / pyjwt / ...) is not installed, so pluggy falls
+    # back to core's zero-dependency stdlib server. This keeps non-scale serving
+    # (e.g. a client app, or `jac start` in an env without the scale deps) working
+    # now that scale is a built-in that is always registered.
     @hookimpl
     static def create_server(jac_server: JacServer, host: str, port: int) {
-        import from .jserver.jfast_api { JFastApiServer }
+        try {
+            import from .jserver.jfast_api { JFastApiServer }
+        } except ImportError {
+            return None;
+        }
         return JFastApiServer([]);
     }
 
     @hookimpl
-    static def get_api_server_class -> type {
-        import from .server.serve { JacAPIServer }
+    static def get_api_server_class -> type | None {
+        try {
+            import from .server.serve { JacAPIServer }
+        } except ImportError {
+            return None;
+        }
         return JacAPIServer;
     }
 
     @hookimpl
-    static def get_user_manager(base_path: str) -> UserManager {
-        import from .identity.user_manager { JacScaleUserManager }
+    static def get_user_manager(base_path: str) -> UserManager | None {
+        try {
+            import from .identity.user_manager { JacScaleUserManager }
+        } except ImportError {
+            return None;
+        }
         return JacScaleUserManager(base_path=base_path);
     }
 
