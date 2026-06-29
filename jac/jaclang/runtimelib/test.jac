@@ -1,8 +1,7 @@
-"""Core constructs for Jac Language."""
 import unittest;
 import from collections.abc { Callable, Iterable }
 import from typing { ClassVar }
-"""Jac test result class."""
+
 obj JacTestResult(unittest.TextTestResult) {
     has stream: any,
         descriptions: any,
@@ -15,19 +14,16 @@ obj JacTestResult(unittest.TextTestResult) {
     def stop -> None;
 }
 
-"""Jac test runner class."""
 obj JacTextTestRunner(unittest.TextTestRunner) {
     def init(max_failures: (int | None) = None, **kwargs: any) -> None;
     def _makeResult -> JacTestResult;
 }
 
-"""Jac Testing and Checking."""
 obj JacTestCheck {
     with entry {
         test_suite = unittest.TestSuite();
     }
 
-    """Test Suite."""
     obj TestSuite {
         with entry {
             test_case: unittest.FunctionTestCase;
@@ -56,7 +52,6 @@ obj JacTestCheck {
     ) -> None;
 }
 
-"""Register one test per parameter (like pytest.mark.parametrize)."""
 def parametrize(
     base_name: str,
     params: Iterable,

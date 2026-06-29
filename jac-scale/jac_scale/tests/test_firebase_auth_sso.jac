@@ -1,5 +1,3 @@
-"""Tests for Firebase Auth SSO support."""
-
 import os;
 import shutil;
 import asyncio;
@@ -9,10 +7,10 @@ import from tempfile { mkdtemp }
 import from uuid { uuid4 }
 import from fastapi { Request }
 
-import from jac_scale.config_loader { reset_scale_config }
-import from jac_scale.enums { Platforms, Operations }
-import from jac_scale.user_manager { JacScaleUserManager }
-import from jac_scale.serve { JacAPIServer }
+import from jac_scale.config.config_loader { reset_scale_config }
+import from jac_scale.shared.enums { Platforms, Operations }
+import from jac_scale.identity.user_manager { JacScaleUserManager }
+import from jac_scale.server.serve { JacAPIServer }
 import from jac_scale._optdeps.firebase_auth { firebase_admin as _real_firebase_admin }
 import from jac_scale.tests.scale_test_client { make_client, extract_data }
 import from jaclang.runtimelib.transport { TransportResponse }
@@ -70,7 +68,7 @@ def _setup_user_manager(sso_config: dict) -> tuple[str, JacScaleUserManager] {
     reset_scale_config();
     mock_config = MockScaleConfig(sso_config);
     with unittest.mock.patch(
-        'jac_scale.user_manager.get_scale_config', return_value=mock_config
+        'jac_scale.identity.user_manager.get_scale_config', return_value=mock_config
     ) {
         user_manager = JacScaleUserManager(base_path=test_dir);
     }
@@ -97,12 +95,6 @@ def _make_request(body: dict) -> Request {
 }
 
 
-"""Build a MagicMock that quacks like firebase_admin.
-
-All Firebase SSO code imports firebase_admin, auth, and credentials
-from jac_scale._optdeps.firebase_auth (not directly), so patching
-that single module covers every code path.
-"""
 def _mock_firebase_admin -> unittest.mock.MagicMock {
     mock = unittest.mock.MagicMock();
     mock.get_app.side_effect = ValueError('no app');
@@ -111,9 +103,6 @@ def _mock_firebase_admin -> unittest.mock.MagicMock {
 }
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
 test 'platforms enum includes firebase' {
     assert Platforms.FIREBASE.value == 'firebase';
 }
@@ -123,7 +112,7 @@ test 'supported platforms includes firebase when configured' {
     reset_scale_config();
     mock_config = MockScaleConfig(mock_sso_config_with_firebase());
     with unittest.mock.patch(
-        'jac_scale.user_manager.get_scale_config', return_value=mock_config
+        'jac_scale.identity.user_manager.get_scale_config', return_value=mock_config
     ) {
         user_manager = JacScaleUserManager(base_path='');
         assert 'firebase' in user_manager.SUPPORTED_PLATFORMS;
@@ -136,7 +125,7 @@ test 'supported platforms excludes firebase when not configured' {
     reset_scale_config();
     mock_config = MockScaleConfig(mock_sso_config_without_firebase());
     with unittest.mock.patch(
-        'jac_scale.user_manager.get_scale_config', return_value=mock_config
+        'jac_scale.identity.user_manager.get_scale_config', return_value=mock_config
     ) {
         user_manager = JacScaleUserManager(base_path='');
         assert 'firebase' not in user_manager.SUPPORTED_PLATFORMS;
@@ -254,7 +243,7 @@ test 'firebase token auth auto register new user' {
         ), unittest.mock.patch('jac_scale.sso.firebase.auth', mock_fb.auth), unittest.mock.patch.object(
             user_manager, 'create_jwt_token', return_value='jwt-token'
         ), unittest.mock.patch(
-            'jac_scale.user_manager.generate_random_password',
+            'jac_scale.identity.user_manager.generate_random_password',
             return_value='random-pass'
         ) {
             result = asyncio.run(
@@ -314,7 +303,7 @@ test 'register firebase token endpoint' {
     mock_user_manager = unittest.mock.Mock();
     mock_config = MockScaleConfig(mock_sso_config_with_firebase());
     with unittest.mock.patch(
-        'jac_scale.serve.get_scale_config', return_value=mock_config
+        'jac_scale.server.serve.get_scale_config', return_value=mock_config
     ) {
         with unittest.mock.patch(
             'jaclang.jac0core.runtime.JacRuntimeInterface.get_user_manager',

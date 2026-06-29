@@ -1,5 +1,3 @@
-"""URI utilities for converting between filesystem paths and file:// URIs."""
-
 import re;
 import sys;
 import from urllib { parse }

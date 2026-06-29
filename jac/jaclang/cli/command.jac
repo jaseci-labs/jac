@@ -1,47 +1,28 @@
-"""Core types for CLI command definitions.
-
-This module provides the foundational types for declaring CLI commands
-with structured metadata that enables auto-documentation and plugin extension.
-"""
-
 import from typing { Callable }
 
-"""Kind of command-line argument."""
 enum ArgKind {
-    POSITIONAL = 1,  # jac run <filename>
-    OPTION = 2,  # jac run --session foo
-    FLAG = 3,  # jac run --verbose (bool, no value)
-    MULTI = 4,  # jac check file1.jac file2.jac (nargs="*", space-separated)
-    REMAINDER = 5,  # jac enter main args...
-    APPEND = 6,  # jac install -e ./a -e ./b (action="append", repeatable flag)
+    POSITIONAL = 1,
+    OPTION = 2,
+    FLAG = 3,
+    MULTI = 4,
+    REMAINDER = 5,
+    APPEND = 6,
 }
 
-"""Priority levels for command registration."""
-enum CommandPriority {
-    CORE = 100,  # Built-in commands
-    PLUGIN = 200,  # Plugin-provided commands
-    USER = 300,  # User-defined commands (highest priority)
-}
+enum CommandPriority { CORE = 100, PLUGIN = 200, USER = 300, }
 
-"""Definition of a command-line argument with full metadata.
-
-Provides structured argument definitions that enable:
-- Auto-generated help documentation
-- Type-safe argument parsing
-- Plugin argument extension
-"""
 obj Arg {
-    has name: str,  # Parameter name
-        kind: ArgKind = ArgKind.OPTION,  # Argument kind
-        typ: any = str,  # Python type for conversion
-        `default: any = None,  # Default value
-        help: str = "",  # Help text for this argument
-        short: str | None = None,  # Short flag, e.g., "-s" for "--session"
-        choices: list[any] | None = None,  # Valid choices
-        required: bool = False,  # Whether argument is required
-        dest: str | None = None,  # Override destination variable name
-        metavar: str | None = None,  # Display name in help
-        source: str = "jaclang";  # Source plugin that added this arg
+    has name: str,
+        kind: ArgKind = ArgKind.OPTION,
+        typ: any = str,
+        `default: any = None,
+        help: str = "",
+        short: str | None = None,
+        choices: list[any] | None = None,
+        required: bool = False,
+        dest: str | None = None,
+        metavar: str | None = None,
+        source: str = "jaclang";
 
     static def create(
         name: str,
@@ -57,27 +38,19 @@ obj Arg {
     ) -> Arg;
 }
 
-"""Complete specification for a CLI command.
-
-Contains all metadata needed to:
-- Generate help documentation
-- Build argparse configuration
-- Execute the command with hooks
-"""
 obj CommandSpec {
-    has name: str,  # Command name
-        help: str,  # One-line description
-        description: str = "",  # Detailed description (multi-line)
-        args: list[Arg] = [],  # Base arguments
-        examples: list[tuple[str, str]] = [],  # (command, description) pairs
-        group: str = "general",  # Command group for help menu
+    has name: str,
+        help: str,
+        description: str = "",
+        args: list[Arg] = [],
+        examples: list[tuple[str, str]] = [],
+        group: str = "general",
         priority: CommandPriority = CommandPriority.CORE,
-        source: str = "jaclang",  # Source package/plugin
-        handler: Callable | None = None,  # Implementation function
-        # Plugin extensions (populated at runtime)
-        extra_args: list[Arg] = [],  # Arguments added by plugins
-        pre_hooks: list[tuple[Callable, str]] = [],  # (hook, source) pairs
-        post_hooks: list[tuple[Callable, str]] = [];  # (hook, source) pairs
+        source: str = "jaclang",
+        handler: Callable | None = None,
+        extra_args: list[Arg] = [],
+        pre_hooks: list[tuple[Callable, str]] = [],
+        post_hooks: list[tuple[Callable, str]] = [];
 
     def get_all_args -> list[Arg];
     def add_extension_arg(arg: Arg, source: str) -> None;
@@ -85,17 +58,10 @@ obj CommandSpec {
     def add_post_hook(hook: Callable, source: str) -> None;
 }
 
-"""Hook context passed to pre/post hooks.
-
-Provides a mutable context for:
-- Accessing command arguments
-- Passing data between pre and post hooks
-- Storing plugin-specific state
-"""
 obj HookContext {
-    has command_name: str,  # Name of the command being executed
-        args: dict[str, any],  # Parsed command arguments
-        data: dict[str, any] = {};  # Mutable context for hook communication
+    has command_name: str,
+        args: dict[str, any],
+        data: dict[str, any] = {};
 
     def get_arg(name: str, `default: any = None) -> any;
     def set_data(key: str, value: any) -> None;

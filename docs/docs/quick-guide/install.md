@@ -151,7 +151,7 @@ You should see `Hello from Jac!` printed to the console.
 The full-stack client framework ships with `jaclang` core, so you can scaffold a complete full-stack project in one command:
 
 ```bash
-jac create example --use fullstack
+jac create example --use web-app
 cd example
 jac install
 jac start
@@ -215,17 +215,17 @@ jac install --force-reinstall jac-scale
 Use `jac create` to scaffold a new project:
 
 ```bash
-# Full-stack web app (frontend + backend)
-jac create my-app --use client
+# Client-only web app (no backend, runs in the browser)
+jac create my-app --use web-static
 
 # Start the development server
 cd my-app
 jac start
 ```
 
-The `--use client` template sets up a complete project with:
+The `--use web-static` template sets up a complete project with:
 
-- `main.jac` -- Entry point with server and client code
+- `main.jac` -- Entry point with client code
 - `jac.toml` -- Project configuration
 - `styles.css` -- Default stylesheet
 - Bundled frontend dependencies (via Bun)
@@ -234,8 +234,8 @@ Available templates:
 
 | Template | Command | What It Creates |
 |----------|---------|-----------------|
-| Client | `--use client` | Full-stack web app with frontend and backend |
-| Fullstack | `--use fullstack` | Alias for `--use client` |
+| Web app | `--use web-app` | Full-stack web app with frontend and backend |
+| Web static | `--use web-static` | Client-only app that runs in the browser (no backend) |
 
 You can also use community templates (Jacpacks):
 

@@ -79,7 +79,7 @@ def:pub Item(props: any) -> JsxElement {
     );
 
     restProps = {};
-    for key in Object.keys(props) {  # jac:ignore[W6001]
+    for key in Object.keys(props) {
         if key not in _itemExcludeKeys {
             restProps[key] = props[key];
         }

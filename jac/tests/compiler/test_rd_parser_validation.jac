@@ -191,14 +191,31 @@ glob GAP_FILES = [
          "walrus_call_lhs": "with entry { foo() := 5; }",
          "walrus_subscript_lhs": "with entry { a[0] := 5; }",
          "assign_to_root": 'with entry { root = "s"; }',
-         "assign_to_super": "with entry { super = 1; }"
+         "assign_to_super": "with entry { super = 1; }",
+         "for_in_target_root": "with entry { for root in [1, 2] { } }",
+         "for_in_target_super": "with entry { for super in [1, 2] { } }",
+         "for_in_destructure_root": "with entry { for (a, root) in [(1, 2)] { } }",
+         "compr_target_root": "with entry { x = [root for root in [1, 2]]; }",
+         "has_var_root": "obj F { has root: int = 0; }",
+         "has_var_super": "obj F { has super: int = 0; }",
+         "with_as_root": 'with entry { with open("/x") as root { } }',
+         "del_root": "with entry { del root; }",
+         "walrus_root": "with entry { x = (root := 5); }"
+     },
+     MUST_VALIDATE_CLEAN: dict[str, str] = {
+         # The backtick escape hatch and the bindable special names
+         # (here/visitor/self/props) must NOT trip the non-bindable check.
+         "for_in_escaped_root": "with entry { for `root in [1, 2] { } }",
+         "has_var_escaped_root": "obj F { has `root: int = 0; }",
+         "for_in_here": "with entry { for here in [1, 2] { } }",
+         "has_var_visitor": "obj F { has visitor: int = 0; }"
      };
 
 def parse_and_validate(source: str, file_path: str) -> bool {
     try {
         import from jaclang.jac0core.parser.parser { parse }
-        (module, parse_errors, lex_errors) = parse(source, file_path);
-        if lex_errors or parse_errors {
+        (module, had_error) = parse(source, file_path);
+        if had_error {
             return True;
         }
         if module is None {
@@ -224,6 +241,12 @@ def validation_strictness_test(name_snippet: tuple[str, str]) {
     assert has_errors , f"Parser + ASTValidationPass must reject '{name}': {snippet}";
 }
 
+def validation_clean_test(name_snippet: tuple[str, str]) {
+    (name, snippet) = name_snippet;
+    has_errors = parse_and_validate(snippet, "/tmp/strictness_test.jac");
+    assert not has_errors , f"Parser + ASTValidationPass must accept '{name}': {snippet}";
+}
+
 with entry {
     parametrize(
         "rd parse", MICRO_JAC_FILES, rd_parse_file_test, id_fn=lambda f : Path(f).stem
@@ -238,6 +261,12 @@ with entry {
         "rd strict validation",
         list(MUST_REJECT_VALIDATION.items()),
         validation_strictness_test,
+        id_fn=lambda x : x[0]
+    );
+    parametrize(
+        "rd clean validation",
+        list(MUST_VALIDATE_CLEAN.items()),
+        validation_clean_test,
         id_fn=lambda x : x[0]
     );
 }

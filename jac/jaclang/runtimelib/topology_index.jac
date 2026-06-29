@@ -1,32 +1,9 @@
-"""Topology Index for graph query optimization.
-
-Stores a compact adjacency structure on root nodes so that edge-op chains
-with type filters can be resolved without loading every node from the DB.
-
-Two layered structures are kept in sync:
-  * Canonical adj_list — `(src_lid, edge_type_id, tgt_lid)` triples; preserves
-    multi-edge multiplicity, source of truth for encode/decode.
-  * type-keyed lookup map — type-keyed dict
-    `buckets[src_lid][col_key] = (in_lids, out_lids)` where `col_key` is
-    `"n:<type_id>"` or `"e:<edge_type_id>"`. Gives O(1) per-type lookup and
-    holds MRO fan-out (each target indexed under every ancestor type).
-
-Encoding format (version 2):
-  [1B version][2B num_types][2B num_nodes][4B num_edges]
-  TypeTable:  for each type:
-    [1B name_len][name_bytes...]
-    [1B mro_len][mro_len × 2B ancestor_type_id]
-  NodeTable:  for each node: [16B uuid][2B type_id][16B owner_root_uuid]
-  AdjList:    for each edge: [2B src_lid][2B edge_type_id][2B tgt_lid]
-"""
-
 import struct;
 import from uuid { UUID }
 
 glob SELF_ROOT: UUID = UUID(int=0),
      TOPO_VERSION: int = 2;
 
-"""In-memory topology index with type-keyed adjacency matrix and MRO fan-out."""
 obj TopologyIndex {
     has type_table: list[str] = [],
         type_to_id: dict[str, int] = {},
@@ -50,26 +27,12 @@ obj TopologyIndex {
         source_id: UUID, target_id: UUID, edge_type_name: (str | None) = None
     ) -> None;
 
-    """Walk the chain entirely inside this index.
-
-    With `bail_on_intermediate_foreign=True`, returns `None` the moment
-    any non-final hop lands on a node owned by a *different* root. Those
-    nodes' outgoing edges live in their own root's index, not this one,
-    so continuing here would silently undercount. The planner uses this
-    flag to fall back to the global edge walk in that situation."""
     def resolve_chain(
         origin_ids: set[UUID],
         chain: list[tuple[(str | None), (str | None), int]],
         bail_on_intermediate_foreign: bool = False
     ) -> (set[UUID] | None);
 
-    """Single-hop ordered resolution: walk the canonical adj_list in
-    insertion order, filtering by origin / edge_type / node_type / direction
-    (with MRO fan-out), and return the slice of resulting target UUIDs.
-
-    Returns the ordered list of UUIDs after applying `slc`. Order matches the
-    natural edge-walk that `edges_to_nodes` would produce, so the bounded
-    fast path stays semantically equivalent to materialize-then-slice."""
     def resolve_chain_ordered(
         origin_ids: set[UUID],
         edge_type: (str | None),

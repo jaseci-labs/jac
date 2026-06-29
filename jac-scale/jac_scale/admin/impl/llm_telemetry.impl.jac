@@ -1,4 +1,3 @@
-"""LLM Telemetry Implementation for JAC-Scale."""
 import logging;
 import threading;
 import time;
@@ -20,7 +19,6 @@ glob logger = logging.getLogger(__name__);
 
 
 obj LLMCallRecord {
-    """Record for a single LLM API call within an agent invocation."""
     has call_id: str | None = None,
         model: str | None = None,
         prompt_tokens: int = 0,
@@ -35,7 +33,6 @@ obj LLMCallRecord {
         timestamp: float = 0;
 
     def to_dict -> dict {
-        # Safely serialize messages and response (may contain non-JSON-serializable objects)
         safe_messages = self.messages;
         try {
             json_module.dumps(safe_messages);
@@ -67,7 +64,6 @@ obj LLMCallRecord {
 
 
 obj Trace {
-    """A complete agent invocation trace with correlated LLM calls."""
     has invocation_id: str = "",
         parent_invocation_id: str | None = None,
         caller_name: str = "unknown",
@@ -124,7 +120,6 @@ obj Trace {
 
 
 obj TelemetryStore {
-    """Thread-safe in-memory telemetry store with trace correlation."""
     has max_traces: int = 1000,
         _lock: any = None,
         _traces: any = None;
@@ -134,8 +129,6 @@ obj TelemetryStore {
         self._traces = OrderedDict();
     }
 
-    # Called by JacLLMLogger for each individual LLM API call.
-    # Creates/updates a Trace based on invocation_id in metadata.
     def record_llm_event(event: dict) {
         with self._lock {
             metadata = event.get("metadata", {}) or {};
@@ -150,7 +143,6 @@ obj TelemetryStore {
                 );
             }
             trace = self._traces[inv_id];
-            # Cap stored payloads to bound memory usage
             _raw_msgs = event.get("messages");
             if isinstance(_raw_msgs, list) and len(_raw_msgs) > 20 {
                 _raw_msgs = _raw_msgs[-20:];
@@ -182,14 +174,12 @@ obj TelemetryStore {
             trace.total_tokens += call_record.total_tokens;
             trace.total_cost += call_record.response_cost;
             trace.llm_call_count += 1;
-            # Evict oldest traces if over capacity
             while len(self._traces) > self.max_traces {
                 self._traces.popitem(last=False);
             }
         }
     }
 
-    # Called by byllm agent callback. Finalizes the Trace with agent-level data.
     def record_agent_completion(record: dict) {
         with self._lock {
             inv_id = record.get("invocation_id");
@@ -202,7 +192,7 @@ obj TelemetryStore {
                 trace.user_prompt = record.get("user_prompt") or "";
                 trace.agent_response = record.get("agent_response") or "";
                 trace.conversation_history = record.get("conversation_history") or [];
-                # Cap conversation history to last 40 entries
+
                 if isinstance(trace.conversation_history, list)
                 and len(trace.conversation_history) > 40 {
                     trace.conversation_history = trace.conversation_history[-40:];
@@ -213,7 +203,6 @@ obj TelemetryStore {
                 trace.model = record.get("model") or trace.model;
                 trace.completed = True;
             } elif inv_id {
-                # Agent callback arrived but no LLM calls recorded (e.g., MockLLM or proxy path)
                 self._traces[inv_id] = Trace(
                     invocation_id=inv_id,
                     parent_invocation_id=record.get("parent_invocation_id"),
@@ -229,7 +218,6 @@ obj TelemetryStore {
                     completed=True,
                     timestamp=time.time()
                 );
-                # Evict oldest traces if over capacity
                 while len(self._traces) > self.max_traces {
                     self._traces.popitem(last=False);
                 }
@@ -237,8 +225,6 @@ obj TelemetryStore {
         }
     }
 
-    # Backfill agent_response for streaming traces from the last LLM call's response.
-    # byllm contract: tool-based agents ALWAYS end with finish_tool(final_output=...).
     def _backfill_streaming_response(trace: Trace) -> None {
         if trace.agent_response != "[streaming]" or not trace.llm_calls {
             return;
@@ -252,10 +238,8 @@ obj TelemetryStore {
                     _msg = _msg.get("message", {});
                 }
                 if hasattr(_msg, "get") {
-                    # Direct text response (no tools used)
                     if _msg.get("content") {
                         trace.agent_response = str(_msg.get("content"))[:2000];
-                        # Tool-based: byllm ALWAYS uses finish_tool as last call
                     } elif _msg.get("tool_calls") {
                         for _tc in _msg.get("tool_calls", []) {
                             if _tc?.get
@@ -288,7 +272,6 @@ obj TelemetryStore {
     }
 
     def _aggregate_descendants(trace_id: str, children_lookup: dict) -> dict {
-        # Walk all descendants of trace_id via BFS with cycle guard.
         agg_tokens = 0;
         agg_cost = 0.0;
         agg_calls = 0;
@@ -316,14 +299,11 @@ obj TelemetryStore {
         caller: str | None = None,
         root_only: bool = False
     ) -> dict {
-        # Return traces newest-first with optional filters.
         with self._lock {
             all_traces = list(reversed(self._traces.values()));
-            # Backfill streaming responses from LLM call data
             for t in all_traces {
                 self._backfill_streaming_response(t);
             }
-            # Filter to root traces only (no parent)
             if root_only {
                 all_traces = [
                     t
@@ -331,7 +311,6 @@ obj TelemetryStore {
                     if t.parent_invocation_id is None
                 ];
             }
-            # Apply filters
             if model {
                 all_traces = [
                     t
@@ -355,7 +334,6 @@ obj TelemetryStore {
             }
             total = len(all_traces);
             page = all_traces[offset:offset + limit];
-            # Build a children lookup for efficient recursive aggregation.
             all_trace_values = list(self._traces.values());
             children_lookup: dict = {};
             for tv in all_trace_values {
@@ -372,7 +350,7 @@ obj TelemetryStore {
                 d = t.to_dict();
                 direct_children = children_lookup.get(t.invocation_id, []);
                 d["child_count"] = len(direct_children);
-                # Recursively aggregate all descendant costs/tokens.
+
                 _agg = self._aggregate_descendants(t.invocation_id, children_lookup);
                 d["aggregated_total_tokens"] = t.total_tokens + _agg["tokens"];
                 d["aggregated_total_cost"] = round(t.total_cost + _agg["cost"], 6);
@@ -387,14 +365,13 @@ obj TelemetryStore {
         }
     }
 
-    # Single trace with full detail (conversation history, all LLM calls).
     def get_trace(invocation_id: str) -> dict | None {
         with self._lock {
             trace = self._traces.get(invocation_id);
             if trace {
                 self._backfill_streaming_response(trace);
                 result = trace.to_dict(include_detail=True);
-                # Build children lookup for recursive aggregation.
+
                 all_vals = list(self._traces.values());
                 children_lookup: dict = {};
                 for tv in all_vals {
@@ -406,13 +383,13 @@ obj TelemetryStore {
                         children_lookup[pid].append(tv);
                     }
                 }
-                # Direct children of this trace.
+
                 child_traces = children_lookup.get(invocation_id, []);
                 enriched_children: list = [];
                 for ct in child_traces {
                     self._backfill_streaming_response(ct);
                     cd = ct.to_dict(include_detail=True);
-                    # Enrich each child with its own child_count and aggregated stats.
+
                     gc = children_lookup.get(ct.invocation_id, []);
                     cd["child_count"] = len(gc);
                     _ct_agg = self._aggregate_descendants(
@@ -429,7 +406,7 @@ obj TelemetryStore {
                 }
                 result["child_traces"] = enriched_children;
                 result["child_count"] = len(child_traces);
-                # Aggregate all descendant costs/tokens recursively.
+
                 _top_agg = self._aggregate_descendants(invocation_id, children_lookup);
                 result["aggregated_total_tokens"] = result["total_tokens"] + _top_agg[
                     "tokens"
@@ -446,7 +423,6 @@ obj TelemetryStore {
         }
     }
 
-    # Aggregate stats across all traces.
     def get_summary -> dict {
         with self._lock {
             traces_list = list(self._traces.values());
@@ -483,7 +459,6 @@ obj TelemetryStore {
                 for t in traces_list
                 if t.status == "error"
             );
-            # Per-model breakdown
             per_model: dict = {};
             for t in traces_list {
                 m = t.model or "unknown";
@@ -497,7 +472,6 @@ obj TelemetryStore {
                     per_model[m]["errors"] += 1;
                 }
             }
-            # Per-caller breakdown
             per_caller: dict = {};
             for t in traces_list {
                 c = t.caller_name or "unknown";
@@ -511,7 +485,6 @@ obj TelemetryStore {
                     per_caller[c]["errors"] += 1;
                 }
             }
-            # Round cost values
             for m_stats in per_model.values() {
                 m_stats["cost"] = round(m_stats["cost"], 6);
             }
@@ -532,7 +505,6 @@ obj TelemetryStore {
         }
     }
 
-    # Return unique model names, callers, and statuses for filter dropdowns.
     def get_available_filters -> dict {
         with self._lock {
             models = list(
@@ -566,21 +538,17 @@ obj TelemetryStore {
 }
 
 
-# Global store instance (created once per server)
 glob _telemetry_store: TelemetryStore | None = None;
 
 
-"""Register LLM telemetry endpoints and set up litellm callback + byllm agent callback."""
 impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
     global _telemetry_store;
 
-    # Create the store with configurable max_traces
-    import from jac_scale.config_loader { get_scale_config }
+    import from jac_scale.config.config_loader { get_scale_config }
     telemetry_cfg = get_scale_config().get_telemetry_config();
     _telemetry_store = TelemetryStore(max_traces=telemetry_cfg.get('max_traces', 1000));
     store = _telemetry_store;
 
-    # --- Register litellm CustomLogger callback ---
     try {
         import litellm;
         import from litellm.integrations.custom_logger { CustomLogger }
@@ -671,7 +639,6 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
         logger.warning(f"LLM telemetry: failed to register litellm callback: {e}");
     }
 
-    # --- Register byllm agent callback ---
     try {
         import from byllm.telemetry { register_agent_callback }
         register_agent_callback(store.record_agent_completion);
@@ -682,9 +649,6 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
         logger.warning(f"LLM telemetry: failed to register byllm callback: {e}");
     }
 
-    # --- Register REST endpoints ---
-
-    # GET /admin/llm/telemetry/summary
     async def summary_handler(request: Request) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
@@ -710,7 +674,6 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
         )
     );
 
-    # GET /admin/llm/telemetry/traces
     async def traces_handler(request: Request) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
@@ -758,7 +721,6 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
         )
     );
 
-    # GET /admin/llm/telemetry/traces/{invocation_id}
     async def trace_detail_handler(
         request: Request, invocation_id: str
     ) -> JSONResponse {
@@ -801,7 +763,6 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
         )
     );
 
-    # GET /admin/llm/telemetry/filters
     async def filters_handler(request: Request) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {

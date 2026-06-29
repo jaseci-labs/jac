@@ -473,7 +473,7 @@ def _post_create_starter(project_path: any, project_name: str) -> None {
 | `directories` | `list[str]` | Empty directories created alongside the file tree. |
 | `post_create` | `Callable[[Path, str], None]` | Optional callback run after files are written. Receives `(project_path, project_name)`. |
 
-**Real reference**: [the built-in client framework ships project templates (`client` and `fullstack`)](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client/plugin_config.jac) by loading them from disk via `load_template_from_directory(...)`. The post-create hook installs Bun and runs `bun install` to bootstrap the frontend. If your template is large, prefer the disk-loading approach over inlining `files` in code.
+**Real reference**: [the built-in client framework ships project templates (`web-static` and `web-app`)](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtimelib/client/plugin_config.jac) by loading them from disk via `load_template_from_directory(...)`. The post-create hook installs Bun and runs `bun install` to bootstrap the frontend. If your template is large, prefer the disk-loading approach over inlining `files` in code.
 
 ### Recipe 6: Register a custom dependency type
 

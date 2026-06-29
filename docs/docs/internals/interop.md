@@ -293,7 +293,7 @@ can cross -- the exception being Python-style monkey-patched classes.
 
 `jac run --autonative` JITs `jac_entry` directly when a module is
 `native_compat` (and silently falls back to the Python path otherwise). The
-*ahead-of-time* counterpart is the **`na → C host`** shared-library export
+*ahead-of-time* counterpart is the **`na → C host`** native-lib export
 path (below), where the native side is packaged as a real `.so` and a host (Python via `ctypes`, or C) loads
 it across the process boundary.
 

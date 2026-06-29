@@ -1,28 +1,11 @@
-"""TopologyIndex implementation.
-
-The canonical `adj_list` is the source of truth for encode/decode and preserves
-multi-edge multiplicity. The `buckets` map is a derived index keyed by
-`(src_lid, col_key) -> (in_lids, out_lids)` where `col_key` is `"n:<type_id>"`
-or `"e:<edge_type_id>"`. Targets are fanned out under every ancestor type id so
-parent-type queries resolve in O(1).
-"""
-
-"""Build a lookup column key for a node-type id."""
 def _n_key(type_id: int) -> str {
     return "n:" + str(type_id);
 }
 
-"""Build a lookup column key for an edge-type id."""
 def _e_key(edge_type_id: int) -> str {
     return "e:" + str(edge_type_id);
 }
 
-"""Get or create the (in, out) sets for `(src_lid, col_key)` in the lookup.
-
-Backed by sets (not lists) so add/discard/membership are all O(1) â keeps
-add_edge linear-per-call even for hub nodes with thousands of outgoing
-edges. Order is not preserved, but the canonical adj_list already provides
-deterministic ordering for any caller that needs it."""
 def _get_col(
     buckets: dict[int, dict[str, tuple[set[int], set[int]]]], src_lid: int, col_key: str
 ) -> tuple[set[int], set[int]] {
@@ -39,7 +22,6 @@ def _get_col(
     return col;
 }
 
-"""Return type_id for type_name, registering it (and its MRO chain) if new."""
 impl TopologyIndex._ensure_type(
     type_name: str, mro_chain: (list[str] | None) = None
 ) -> int {
@@ -50,11 +32,7 @@ impl TopologyIndex._ensure_type(
         self.type_to_id[type_name] = tid;
         self.type_mro_ids.append([]);
     }
-    # Lazily fill / upgrade the MRO chain. The first element of `mro_chain`
-    # is the concrete type itself, so encoded chains always include `tid`
-    # at index 0. We also accept a longer chain over a shorter one — this
-    # lets the v1->v2 migration's stub `[tid]` chain upgrade to the real
-    # ancestor list on the next mutation that provides one.
+
     if mro_chain and len(mro_chain) > len(self.type_mro_ids[tid]) {
         chain_ids: list[int] = [];
         for anc in mro_chain {
@@ -67,7 +45,6 @@ impl TopologyIndex._ensure_type(
     return tid;
 }
 
-"""Register a node. Returns its local_id. Idempotent on `node_id`."""
 impl TopologyIndex.add_node(
     node_id: UUID,
     type_name: str,
@@ -87,7 +64,6 @@ impl TopologyIndex.add_node(
     return lid;
 }
 
-"""Remove a node and every edge involving it."""
 impl TopologyIndex.remove_node(node_id: UUID) -> None {
     lid = self.node_to_lid.get(node_id);
     if lid is None {
@@ -107,7 +83,6 @@ impl TopologyIndex.remove_node(node_id: UUID) -> None {
     }
 }
 
-"""Add an edge to `adj_list` and fan out into the buckets under MRO ancestors."""
 impl TopologyIndex.add_edge(
     source_id: UUID, target_id: UUID, edge_type_name: str
 ) -> None {
@@ -139,8 +114,6 @@ impl TopologyIndex.add_edge(
     e_in[0].add(src_lid);
 }
 
-"""Remove a single edge between source and target. If `edge_type_name` is None,
-drops the first edge found between them."""
 impl TopologyIndex.remove_edge(
     source_id: UUID, target_id: UUID, edge_type_name: (str | None) = None
 ) -> None {
@@ -245,15 +218,6 @@ impl TopologyIndex.remove_edge(
     }
 }
 
-"""Walk the buckets using type filters. `chain` is a list of
-`(edge_type, node_type, direction)` where direction is 1=IN, 2=OUT, 3=ANY.
-
-When `bail_on_intermediate_foreign` is True, returns None if any hop
-*before* the final hop produces a node owned by another root -- those
-nodes' outgoing edges live in their owner's index, not this one, so the
-chain would silently miss them. The final hop is allowed to land on
-foreign nodes because their incoming edges are mirrored into this
-index by `_index_edge_into`."""
 impl TopologyIndex.resolve_chain(
     origin_ids: set[UUID],
     chain: list[tuple[(str | None), (str | None), int]],
@@ -347,20 +311,6 @@ impl TopologyIndex.resolve_chain(
     return {self.node_table[lid][0] for lid in current_lids};
 }
 
-"""Single-hop ordered resolution for the slice-pushdown fast path.
-
-The buckets index is set-keyed (fast type membership but order-lossy), so we
-walk the canonical adj_list (which preserves edge insertion order) and gate
-each triple by:
-  * source lid in `origin_lids`
-  * edge type id matches `edge_type` (with the special wildcard when None)
-  * target node type id matches `node_type` via MRO fan-out (or wildcard)
-  * direction: 1=IN (consider when target is the origin), 2=OUT (source is
-    the origin), 3=ANY
-
-The buckets membership lookup gives us the type-filtered "pass-set" — the
-adj_list walk recovers the order. We dedupe (a single neighbor may have
-multiple parallel edges), apply the slice, and return."""
 impl TopologyIndex.resolve_chain_ordered(
     origin_ids: set[UUID],
     edge_type: (str | None),
@@ -381,7 +331,6 @@ impl TopologyIndex.resolve_chain_ordered(
 
     etid: (int | None) = self.type_to_id.get(edge_type) if edge_type else None;
     if edge_type and etid is None {
-        # Edge type referenced doesn't exist in the index — empty result.
         return [];
     }
     ntid: (int | None) = self.type_to_id.get(node_type) if node_type else None;
@@ -389,9 +338,6 @@ impl TopologyIndex.resolve_chain_ordered(
         return [];
     }
 
-    # Build the type-filtered candidate sets per origin lid using buckets.
-    # `cand_pairs` collects (src_lid, allowed_target_lids) so the adj_list walk
-    # can quickly check membership without re-running MRO logic per edge.
     out_allowed: dict[int, set[int]] = {};
     in_allowed: dict[int, set[int]] = {};
     want_out = direction in (2, 3);
@@ -409,7 +355,6 @@ impl TopologyIndex.resolve_chain_ordered(
             col_keys.append(_n_key(ntid));
         }
         if not col_keys {
-            # Wildcard: union all columns for this src.
             out_set: set[int] = set();
             in_set: set[int] = set();
             for (_, col) in bucket.items() {
@@ -452,12 +397,9 @@ impl TopologyIndex.resolve_chain_ordered(
         return [];
     }
 
-    # Walk adj_list in insertion order; collect ordered target UUIDs that
-    # pass the per-origin allow-sets. Dedupe across parallel edges.
     ordered: list[UUID] = [];
     seen: set[int] = set();
     for (s, _et, t) in self.adj_list {
-        # OUT: origin is the source, target is the neighbor.
         if want_out and s in out_allowed and t in out_allowed[s] {
             if t not in seen {
                 seen.add(t);
@@ -465,7 +407,7 @@ impl TopologyIndex.resolve_chain_ordered(
             }
             continue;
         }
-        # IN: origin is the target, source is the neighbor.
+
         if want_in and t in in_allowed and s in in_allowed[t] {
             if s not in seen {
                 seen.add(s);
@@ -477,7 +419,6 @@ impl TopologyIndex.resolve_chain_ordered(
     return ordered[slc];
 }
 
-"""For a set of node UUIDs, return mapping of foreign_root_uuid -> {node_ids}."""
 impl TopologyIndex.get_cross_root_ids(node_ids: set[UUID]) -> dict[UUID, set[UUID]] {
     result: dict[UUID, set[UUID]] = {};
     for uid in node_ids {
@@ -493,7 +434,6 @@ impl TopologyIndex.get_cross_root_ids(node_ids: set[UUID]) -> dict[UUID, set[UUI
     return result;
 }
 
-"""Serialize to compact binary format (version 2)."""
 impl TopologyIndex.encode -> bytes {
     num_types = len(self.type_table);
     num_nodes = len(self.node_table);
@@ -527,10 +467,6 @@ impl TopologyIndex.encode -> bytes {
     return bytes(buf);
 }
 
-"""Migrate a v1 encoded blob to v2 by splicing default MRO chains into the
-type table. Pure byte-level — no graph data is loaded. Each type is given a
-chain of `[self]`; subsequent mutations replace it with the real ancestor
-chain via `_ensure_type`'s widen-the-check logic."""
 def _migrate_v1_to_v2(data: bytes) -> bytes {
     if len(data) < 9 or data[0] != 1 {
         return data;
@@ -545,8 +481,7 @@ def _migrate_v1_to_v2(data: bytes) -> bytes {
         out.append(name_len);
         out.extend(data[offset:offset + name_len]);
         offset += name_len;
-        # Stub MRO: type is its own only ancestor. Real chain gets installed
-        # on the next mutation that calls _ensure_type with mro_chain.
+
         out.append(1);
         out.extend(struct.pack("<H", tid));
     }
@@ -554,7 +489,6 @@ def _migrate_v1_to_v2(data: bytes) -> bytes {
     return bytes(out);
 }
 
-"""Deserialize from compact binary format. Rebuilds the buckets by replaying edges."""
 impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
     idx = TopologyIndex();
     if not data {
@@ -571,7 +505,7 @@ impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
     if version != TOPO_VERSION {
         return idx;
     }
-    # Pass 1: type names + MRO chains.
+
     for _ in range(num_types) {
         (name_len, ) = struct.unpack_from("<B", data, offset);
         offset += 1;
@@ -589,7 +523,7 @@ impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
         }
         idx.type_mro_ids.append(chain);
     }
-    # Pass 2: nodes.
+
     for i in range(num_nodes) {
         node_id = UUID(bytes=data[offset:offset + 16]);
         offset += 16;
@@ -600,8 +534,7 @@ impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
         idx.node_table.append((node_id, type_id, owner_root));
         idx.node_to_lid[node_id] = i;
     }
-    # Pass 3: edges. Replay through the fan-out helper (skipping the public
-    # add_edge so we don't re-resolve UUIDs back to lids).
+
     for _ in range(num_edges) {
         unpacked = struct.unpack_from("<HHH", data, offset);
         src: int = int(unpacked[0]);
@@ -629,12 +562,10 @@ impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
     return idx;
 }
 
-"""Number of edges in the canonical adj_list."""
 impl TopologyIndex.__len__ -> int {
     return len(self.adj_list);
 }
 
-"""Compact debug repr."""
 impl TopologyIndex.__repr__ -> str {
     return (
         f"TopologyIndex(types={len(self.type_table)}, "

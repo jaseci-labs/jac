@@ -1,5 +1,3 @@
-"""Random value generator for type-based fake data (non-LLM fallback)."""
-
 import inspect;
 import random;
 import string;

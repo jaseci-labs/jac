@@ -1,22 +1,3 @@
-"""Implementation of JacAPIServerOps - the signal self-check.
-
-Two clearly separated layers:
-
-  (a) PURE chain-evaluation helpers - `short_circuit_chain` plus the
-      per-signal `_*_chain` builders. They take a flat dict of probe
-      primitives and assemble `{status, chain[]}`, short-circuiting so the
-      first failing rung is the diagnosis and every rung after it is marked
-      `ok=None` ("skipped"). No I/O, no globals -> `test_ops_health.jac`
-      exercises them with mocked probe dicts.
-
-  (b) THIN probe functions - each does one outbound call (Tempo/Loki/
-      Prometheus /ready, a Mongo/Redis ping, a recent-volume query) with a
-      short timeout inside try/except, returning a primitive. They feed the
-      pure builders. A dead/slow backend yields a red rung, never a 500.
-
-Backend URLs reuse the existing resolvers `_tempo_base_url` (traces) and
-`_loki_base_url` (logs); Prometheus gets a sibling resolver here.
-"""
 import os;
 import asyncio;
 import logging;
@@ -29,36 +10,17 @@ import from jac_scale.jserver.jserver {
     APIParameter,
     ParameterType
 }
-import from jac_scale.config_loader { get_scale_config }
+import from jac_scale.config.config_loader { get_scale_config }
 import from jac_scale.admin.traces { _tempo_base_url }
 import from jac_scale.admin.logs { _loki_base_url, _app_namespace }
 import from jac_scale._optdeps.prometheus { HAS_PROMETHEUS }
 import from jac_scale._optdeps.opentelemetry { HAS_OTEL }
-import from jac_scale.microservices.runtime.tracing { tracing_active }
+import from jac_scale.runtime.context.tracing { tracing_active }
 
 glob logger = logging.getLogger(__name__),
-     # Short, uniform probe budget: a dead backend must render a red row fast,
-     # never hang the diagnostics endpoint.
      _PROBE_TIMEOUT_S: float = 2.0;
 
 
-# =========================================================================
-# (a) PURE chain-evaluation helpers - no I/O, unit-tested directly.
-# =========================================================================
-"""Short-circuit an ordered rung list into a `{status, chain}` result.
-
-Each input rung is `{name, ok: bool, detail: str, gate?: bool}`. Walks in
-order: every rung up to AND INCLUDING the first `ok==False` is emitted with
-its real verdict; every rung after it is emitted with `ok=None` and
-detail "skipped" (its probe was blocked by the earlier failure, so its
-value is meaningless). The first failure IS the diagnosis.
-
-status:
-  - "ok"   : every rung passed.
-  - "off"  : the first failing rung is a `gate` (a config on/off toggle,
-             e.g. `tracing.enabled = false`) - amber, not an error.
-  - "fail" : the first failing rung is a real check - red.
-"""
 def short_circuit_chain(rungs: list[dict]) -> dict {
     chain: list[dict] = [];
     status: str = "ok";
@@ -79,8 +41,6 @@ def short_circuit_chain(rungs: list[dict]) -> dict {
 }
 
 
-"""Fallback signal result when a probe raises unexpectedly. Renders a
-single red rung naming the error, so the endpoint never 500s."""
 def _probe_error(name: str, err: any) -> dict {
     logger.warning(f"ops self-check probe '{name}' errored: {err}");
     return {
@@ -90,8 +50,6 @@ def _probe_error(name: str, err: any) -> dict {
 }
 
 
-"""Traces signal chain (the `count:0` incident). Probe keys:
-has_otel, cfg_enabled, active, endpoint, tempo_ready, recent_count."""
 def _traces_chain(p: dict) -> dict {
     endpoint = str(p.get("endpoint", "") or "");
     count = int(p.get("recent_count", 0) or 0);
@@ -143,7 +101,6 @@ def _traces_chain(p: dict) -> dict {
 }
 
 
-"""Logs signal chain. Probe keys: cfg_enabled, loki_ready, recent_count."""
 def _logs_chain(p: dict) -> dict {
     count = int(p.get("recent_count", 0) or 0);
     return short_circuit_chain(
@@ -173,7 +130,6 @@ def _logs_chain(p: dict) -> dict {
 }
 
 
-"""Metrics signal chain. Probe keys: has_client, prom_ready."""
 def _metrics_chain(p: dict) -> dict {
     return short_circuit_chain(
         [
@@ -196,8 +152,6 @@ def _metrics_chain(p: dict) -> dict {
 }
 
 
-"""Mongo signal chain (covers the admin-login-HTML incident). Probe keys:
-configured, detail, ping."""
 def _mongo_chain(p: dict) -> dict {
     return short_circuit_chain(
         [
@@ -218,7 +172,6 @@ def _mongo_chain(p: dict) -> dict {
 }
 
 
-"""Redis signal chain. Probe keys: configured, detail, ping."""
 def _redis_chain(p: dict) -> dict {
     return short_circuit_chain(
         [
@@ -239,9 +192,6 @@ def _redis_chain(p: dict) -> dict {
 }
 
 
-"""Admin-API signal chain. Single rung: is the JSON API registered?
-A False here is the exact `_install_admin_api()` failure mode that makes
-every /admin/* fall through to the SPA catchall (the HTML-not-JSON bug)."""
 def _admin_api_chain(registered: bool) -> dict {
     return short_circuit_chain(
         [
@@ -257,13 +207,6 @@ def _admin_api_chain(registered: bool) -> dict {
 }
 
 
-# =========================================================================
-# Config / URL resolvers (in-process reads, no I/O).
-# =========================================================================
-"""Prometheus base URL: PROMETHEUS_URL env -> K8s DNS -> localhost.
-
-Mirrors `_tempo_base_url` / `_loki_base_url`. The deploy names the service
-`<app>-prometheus-service:9090` (see targets/kubernetes/monitoring.jac)."""
 def _prometheus_base_url -> str {
     env = os.getenv("PROMETHEUS_URL", "").strip();
     if env {
@@ -289,8 +232,6 @@ def _prometheus_base_url -> str {
 }
 
 
-"""Read `[plugins.scale.microservices.<section>].enabled`; False on any
-lookup failure. Used for the tracing/logs config gates."""
 def _ms_section_enabled(section: str) -> bool {
     try {
         ms = get_scale_config().get_microservices_config();
@@ -301,10 +242,6 @@ def _ms_section_enabled(section: str) -> bool {
 }
 
 
-"""Mask a connection URI's credentials for safe display in the UI.
-
-`mongodb://user:pass@host:27017/db` -> `mongodb://***@host:27017/db`.
-Returns '' for a falsy uri."""
 def _mask_uri(uri: str) -> str {
     if not uri {
         return "";
@@ -313,7 +250,7 @@ def _mask_uri(uri: str) -> str {
         if "@" in uri and "://" in uri {
             scheme = uri.split("://", 1)[0];
             after = uri.split("://", 1)[1];
-            # rsplit on the last '@' so a password containing '@' is masked.
+
             host_part = after.rsplit("@", 1)[1];
             return f"{scheme}://***@{host_part}";
         }
@@ -324,13 +261,6 @@ def _mask_uri(uri: str) -> str {
 }
 
 
-# =========================================================================
-# (b) THIN probe functions - one short, guarded outbound call each.
-# =========================================================================
-"""GET `base + path` with a ~2s timeout. True iff status < 500.
-
-`/ready`-style endpoints answer 200 when healthy; we treat any non-5xx as
-"reachable". Any transport error / timeout -> False (a red rung)."""
 async def _http_ready(base: str, path: str) -> bool {
     import httpx;
     url = base.rstrip("/") + path;
@@ -348,8 +278,6 @@ async def _http_ready(base: str, path: str) -> bool {
 }
 
 
-"""Count traces in the last 5m via Tempo's search API (limit 1 is enough
-to answer count > 0). Returns 0 on any failure."""
 async def _tempo_recent_count -> int {
     import httpx;
     base = _tempo_base_url();
@@ -370,8 +298,6 @@ async def _tempo_recent_count -> int {
 }
 
 
-"""Count log lines in the last 5m via Loki query_range (limit 1). Returns 0
-on any failure. Namespace-scoped when known, else all-streams."""
 async def _loki_recent_count -> int {
     import httpx;
     base = _loki_base_url();
@@ -407,8 +333,6 @@ async def _loki_recent_count -> int {
 }
 
 
-"""Blocking Mongo ping (run off the event loop via asyncio.to_thread).
-True iff `admin.command('ping')` succeeds within the timeout."""
 def _mongo_ping_blocking(uri: str) -> bool {
     client: any = None;
     try {
@@ -435,7 +359,6 @@ def _mongo_ping_blocking(uri: str) -> bool {
 }
 
 
-"""Blocking Redis ping (run off the event loop via asyncio.to_thread)."""
 def _redis_ping_blocking(url: str) -> bool {
     client: any = None;
     try {
@@ -462,11 +385,6 @@ def _redis_ping_blocking(url: str) -> bool {
 }
 
 
-# =========================================================================
-# Per-signal probe assemblers - gather primitives (short-circuiting the
-# network calls when an in-process gate already failed) then call the pure
-# builder. Wrapped in try/except by the handler so they never 500.
-# =========================================================================
 async def _probe_traces -> dict {
     has_otel = bool(HAS_OTEL);
     cfg_enabled = _ms_section_enabled("tracing");
@@ -556,13 +474,7 @@ async def _probe_redis -> dict {
 }
 
 
-# =========================================================================
-# Endpoint registration.
-# =========================================================================
 impl JacAPIServerOps.register_ops_endpoints -> None {
-    # GET /admin/ops/health - the self-check. Per signal a
-    # {status, chain[]} with short-circuit diagnosis. Every probe is
-    # best-effort; a dead backend renders a red row, never a 500.
     async def health_handler(request: Request) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
@@ -574,13 +486,9 @@ impl JacAPIServerOps.register_ops_endpoints -> None {
 
         signals: dict = {};
 
-        # admin API: pure in-process read, can't fail. self.server is None
-        # exactly when _install_admin_api() threw at boot.
         registered = self?.server is not None;
         signals["admin_api"] = _admin_api_chain(registered);
 
-        # Run the probes concurrently so worst-case latency is ~one timeout,
-        # not the sum. return_exceptions maps a stray failure to a red row.
         probe_names = ["traces", "logs", "metrics", "mongo", "redis"];
         results = await asyncio.gather(
             _probe_traces(),

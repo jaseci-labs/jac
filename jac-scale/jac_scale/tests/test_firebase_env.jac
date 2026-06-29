@@ -1,15 +1,14 @@
-"""Tests for shared Firebase project ID env resolution."""
 import os;
 import from unittest.mock { patch, MagicMock }
-import from jac_scale.firebase_env {
+import from jac_scale.config.firebase_env {
     FIREBASE_AUTH_PROJECT_ID_ENV,
     FIREBASE_PROJECT_ID_ENV,
     FIRESTORE_PROJECT_ID_ENV,
     JAC_STORAGE_FIREBASE_PROJECT_ID_ENV,
     resolve_firebase_project_id
 }
-import from jac_scale.config_loader { get_scale_config, reset_scale_config }
-import from jac_scale.factories.storage_factory { StorageFactory }
+import from jac_scale.config.config_loader { get_scale_config, reset_scale_config }
+import from jac_scale.storage.factory { StorageFactory }
 
 
 test "resolve_firebase_project_id prefers subsystem env over shared" {
@@ -76,7 +75,7 @@ test "database config uses FIREBASE_PROJECT_ID fallback" {
 
 
 def _mock_storage_factory_get_default(env: dict[str, str]) -> any {
-    cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+    cfg_patcher = patch("jac_scale.storage.factory.get_config");
     env_patcher = patch.dict("os.environ", env, clear=True);
     gcs_req_patcher = patch(
         "jac_scale.storage.gcs_storage.require_google_cloud_storage"
@@ -128,8 +127,6 @@ test "storage subsystem env overrides FIREBASE_PROJECT_ID" {
 
 
 test "GCS storage type accepts FIREBASE-aliased env vars" {
-    # Building a GCS storage with only FIREBASE_* vars set must still resolve
-    # bucket, prefix, and public_read via the GCS<->FIREBASE alias.
     storage = _mock_storage_factory_get_default(
         {
             "JAC_STORAGE_TYPE": "gcs",
@@ -139,13 +136,13 @@ test "GCS storage type accepts FIREBASE-aliased env vars" {
         }
     );
     assert storage.bucket == "aliased-bucket";
-    assert storage.prefix == "aliased";  # constructor strips surrounding slashes
+    assert storage.prefix == "aliased";
     assert storage.public_read == True;
 }
 
 
 def _mock_storage_factory_with_toml(env: dict[str, str], toml: any) -> any {
-    cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+    cfg_patcher = patch("jac_scale.storage.factory.get_config");
     env_patcher = patch.dict("os.environ", env, clear=True);
     gcs_req_patcher = patch(
         "jac_scale.storage.gcs_storage.require_google_cloud_storage"
@@ -172,8 +169,6 @@ def _mock_storage_factory_with_toml(env: dict[str, str], toml: any) -> any {
 
 
 test "public_read env aliases override jac.toml storage section" {
-    # Regression: with a [storage] table present, public_read alias must still
-    # apply (the old presence-based guard silently dropped it).
     toml = MagicMock();
     toml.storage = MagicMock(
         bucket="toml-bucket", prefix="", project_id=None, public_read=False

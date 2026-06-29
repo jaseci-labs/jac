@@ -1,9 +1,3 @@
-"""Test for jac-scale serve command and REST API server.
-
-Optimized test structure: Tests are grouped by category to share server instances,
-reducing CI time from ~13 minutes to ~2-3 minutes.
-"""
-
 import asyncio;
 import contextlib;
 import gc;
@@ -28,10 +22,6 @@ import from jac_scale.tests.scale_test_client {
     extract_data
 }
 
-# =============================================================================
-# HELPER FUNCTIONS
-# =============================================================================
-"""Build identity-based register payload."""
 def register_payload(username: str, password: str) -> dict[str, any] {
     return {
         "identities": [{"type": "username", "value": username}],
@@ -39,7 +29,6 @@ def register_payload(username: str, password: str) -> dict[str, any] {
     };
 }
 
-"""Build identity-based login payload."""
 def login_payload(username: str, password: str) -> dict[str, any] {
     return {
         "identity": {"type": "username", "value": username},
@@ -47,26 +36,22 @@ def login_payload(username: str, password: str) -> dict[str, any] {
     };
 }
 
-"""Register a user via the test client, return the response data."""
 def do_register(client: any, username: str, password: str) -> dict[str, any] {
     response = client.post("/user/register", json=register_payload(username, password));
     return extract_data(response.json());
 }
 
-"""Login a user via the test client, return the response data (includes token)."""
 def do_login(client: any, username: str, password: str) -> dict[str, any] {
     response = client.post("/user/login", json=login_payload(username, password));
     return extract_data(response.json());
 }
 
-"""Register + login, return token."""
 def register_and_get_token(client: any, username: str, password: str) -> str {
     do_register(client, username, password);
     result = do_login(client, username, password);
     return result["token"];
 }
 
-"""Get a free port by binding to port 0 and releasing it."""
 def get_free_port -> int {
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
         s.bind(("", 0));
@@ -76,7 +61,6 @@ def get_free_port -> int {
     return port;
 }
 
-"""Extract data from TransportResponse envelope format."""
 def _extract_transport_response_data(
     json_response: dict[str, any] | list[any]
 ) -> dict[str, any] | list[any] {
@@ -110,7 +94,6 @@ def _extract_transport_response_data(
     return json_response;
 }
 
-"""Delete SQLite database files and legacy shelf files."""
 def _cleanup_db_files(fixtures_dir: Path) {
     for pattern in [
         "*.db",
@@ -143,7 +126,6 @@ def _cleanup_db_files(fixtures_dir: Path) {
     }
 }
 
-"""Start the jac-scale server in a subprocess."""
 def _start_server(
     fixtures_dir: Path,
     test_file: Path,
@@ -172,10 +154,6 @@ def _start_server(
         cwd=str(fixtures_dir) if not extra_args else None
     );
 
-    # ~60s budget (0.5s sleep per attempt): a cold-cache start compiles the
-    # fixture and any uncached package modules through full type inference
-    # (typed-tree contract), which can exceed the old ~25s window on slower
-    # CI runners. Warm starts exit the loop early.
     max_attempts = 120;
     server_ready = False;
 
@@ -217,7 +195,6 @@ def _start_server(
     return server_process;
 }
 
-"""Stop server process."""
 def _stop_server(server_process: subprocess.Popen | None) {
     if server_process {
         server_process.terminate();
@@ -232,7 +209,6 @@ def _stop_server(server_process: subprocess.Popen | None) {
     gc.collect();
 }
 
-"""Create an expired JWT token for testing."""
 def _create_expired_token(username: str, days_ago: int = 1) -> str {
     secret = "supersecretkey_for_testing_only!";
     algorithm = "HS256";
@@ -246,7 +222,6 @@ def _create_expired_token(username: str, days_ago: int = 1) -> str {
     return pyjwt.encode(payload, secret, algorithm=algorithm);
 }
 
-"""Create a token that's too old to refresh."""
 def _create_very_old_token(username: str, days_ago: int = 15) -> str {
     secret = "supersecretkey_for_testing_only!";
     algorithm = "HS256";
@@ -260,16 +235,12 @@ def _create_very_old_token(username: str, days_ago: int = 15) -> str {
     return pyjwt.encode(payload, secret, algorithm=algorithm);
 }
 
-# =============================================================================
-# SERVER CONFIGURATION (used by websocket, dev mode, and port fallback tests)
-# =============================================================================
 glob sv_fixtures_dir: Path = Path(__file__).parent.parent / "fixtures",
      sv_test_file: Path = sv_fixtures_dir / "test_api.jac",
      sv_port: int = get_free_port(),
      sv_base_url: str = f"http://localhost:{sv_port}",
      sv_ws_url: str = f"ws://localhost:{sv_port}";
 
-"""Setup and start the serve server."""
 def setup_serve_server -> subprocess.Popen {
     if not sv_test_file.exists() {
         raise FileNotFoundError(f"Test fixture not found: {sv_test_file}");
@@ -278,28 +249,21 @@ def setup_serve_server -> subprocess.Popen {
     return _start_server(sv_fixtures_dir, sv_test_file, sv_port, sv_base_url);
 }
 
-"""Teardown the serve server."""
 def teardown_serve_server(sp: subprocess.Popen | None) {
     _stop_server(sp);
     _cleanup_db_files(sv_fixtures_dir);
 }
 
-# =============================================================================
-# GROUP 1: STATIC & SCHEMA TESTS (Read-only, no state changes)
-# =============================================================================
 test "static and schema endpoints" {
     client = make_client();
     try {
-        # Test: health check endpoint
         response = client.get("/healthz");
         assert response.status_code == 200 , "Health check should return 200";
         assert response.json() == {"status": "ok"};
 
-        # Test: docs are enabled by default (docs_enabled config defaults to true)
         response = client.get("/docs");
         assert response.status_code == 200 , "Docs should be enabled by default";
 
-        # Test: custom response headers from config (use /graph which is always available)
         response = client.get("/graph");
         assert response.status_code == 200;
         assert "x-custom-test-header" in response.headers;
@@ -309,11 +273,9 @@ test "static and schema endpoints" {
         assert "cross-origin-embedder-policy" in response.headers;
         assert response.headers["cross-origin-embedder-policy"] == "require-corp";
 
-        # Test: OpenAPI schema via app.openapi()
         openapi_spec = client._server.server.app.openapi();
         paths = openapi_spec.get("paths", {});
 
-        # Test: refresh endpoint in openapi docs
         assert "/user/refresh-token" in paths;
         refresh_endpoint = paths["/user/refresh-token"];
         assert "post" in refresh_endpoint;
@@ -321,7 +283,6 @@ test "static and schema endpoints" {
         assert post_spec["summary"] == "Refresh JWT token";
         assert "User APIs" in post_spec["tags"];
 
-        # Test: websocket endpoints NOT in openapi (they use /ws/ prefix)
         assert "/walker/EchoMessage" not in paths , "WebSocket walker should not be in /walker/ paths";
         assert "/walker/MinimalWebSocket" not in paths;
         ws_walkers = [
@@ -335,7 +296,6 @@ test "static and schema endpoints" {
             assert f"/walker/{walker}" not in paths , f"WebSocket walker {walker} should not be in /walker/ paths";
         }
 
-        # Test: 404 responses for non-existent paths
         response = client.get("/cl/nonexistent_page_xyz");
         assert response.status_code == 404;
         assert "404" in response.text;
@@ -347,13 +307,11 @@ test "static and schema endpoints" {
         response = client.get("/nonexistent_image.png");
         assert response.status_code == 404;
 
-        # Test: disallowed extensions return 404
         response = client.get("/malware.exe");
         assert response.status_code == 404;
         response = client.get("/script.php");
         assert response.status_code == 404;
 
-        # Test: reserved paths return 404 for asset requests
         reserved_paths = [
             "page/something.png",
             "walker/something.png",
@@ -366,14 +324,12 @@ test "static and schema endpoints" {
             assert response.status_code == 404;
         }
 
-        # Test: static client.js (may be 200, 503, or 500 depending on build state)
         response = client.get("/static/client.js");
         assert response.status_code in [200, 503, 500];
         if response.status_code == 200 {
             assert "application/javascript" in response.headers.get("content-type", "");
         }
 
-        # Test: graph endpoint returns html page
         response = client.get("/graph");
         assert response.status_code == 200;
         assert "text/html" in response.headers["content-type"];
@@ -382,13 +338,9 @@ test "static and schema endpoints" {
     }
 }
 
-# =============================================================================
-# GROUP 2: USER AUTH & PROFILE (Register, Login, Token Refresh, /user/me)
-# =============================================================================
 test "user registration and login" {
     client = make_client();
     try {
-        # Test: user creation (identity-based)
         test_username = f"testuser_{uuid.uuid4().hex[:8]}";
         response = client.post(
             "/user/register",
@@ -401,7 +353,6 @@ test "user registration and login" {
         assert "user_id" in result;
         assert "message" in result;
 
-        # Test: status code 201 for successful registration
         status_user = f"status_{uuid.uuid4().hex[:8]}";
         response = client.post(
             "/user/register",
@@ -414,7 +365,6 @@ test "user registration and login" {
         data = extract_data(response.json());
         assert "user_id" in data;
 
-        # Test: status code 400 for duplicate registration
         response = client.post(
             "/user/register",
             json={
@@ -424,7 +374,6 @@ test "user registration and login" {
         );
         assert response.status_code == 400;
 
-        # Test: user login (identity-based)
         login_username = f"login_{uuid.uuid4().hex[:8]}";
         response = client.post(
             "/user/register",
@@ -446,7 +395,6 @@ test "user registration and login" {
         assert "user_id" in login_result;
         assert "root_id" in login_result;
 
-        # Test: status code 200 for successful login
         response = client.post(
             "/user/login",
             json={
@@ -456,7 +404,6 @@ test "user registration and login" {
         );
         assert response.status_code == 200;
 
-        # Test: user login wrong password
         fail_username = f"fail_{uuid.uuid4().hex[:8]}";
         response = client.post(
             "/user/register",
@@ -475,7 +422,6 @@ test "user registration and login" {
         login_result = extract_data(response.json());
         assert "error" in login_result;
 
-        # Test: status code 401 for invalid credentials
         response = client.post(
             "/user/login",
             json={
@@ -487,7 +433,6 @@ test "user registration and login" {
         data = extract_data(response.json());
         assert data["error"] == "Invalid credentials";
 
-        # Test: validation error for missing/invalid structure (422 from FastAPI Pydantic validation)
         response = client.post("/user/login", json={});
         assert response.status_code in (400, 422);
 
@@ -506,7 +451,6 @@ test "user registration and login" {
         );
         assert response.status_code in (400, 422);
 
-        # Test: nonexistent user returns 401
         response = client.post(
             "/user/login",
             json={
@@ -526,7 +470,6 @@ test "email identity register and login" {
         suffix = uuid.uuid4().hex[:8];
         cred = {"type": "password", "password": "pw"};
 
-        # Username-only identity
         uname = f"u_{suffix}";
         r = client.post(
             "/user/register",
@@ -543,7 +486,6 @@ test "email identity register and login" {
         assert r.status_code == 200;
         assert "token" in extract_data(r.json());
 
-        # Email-only identity
         email = f"e_{suffix}@example.com";
         r = client.post(
             "/user/register",
@@ -557,7 +499,6 @@ test "email identity register and login" {
         assert r.status_code == 200;
         assert "token" in extract_data(r.json());
 
-        # Both username + email: login works via either identity
         both_u = f"both_{suffix}";
         both_e = f"both_{suffix}@example.com";
         r = client.post(
@@ -582,7 +523,6 @@ test "email identity register and login" {
         );
         assert r.status_code == 200;
 
-        # Invalid email strings are rejected by validation
         for bad in ["notanemail", "bad@", "@bad.com", "a b@x.com", ""] {
             r = client.post(
                 "/user/register",
@@ -606,7 +546,6 @@ test "email identity register and login" {
 test "token refresh functionality" {
     client = make_client();
     try {
-        # Test: refresh token with missing token
         response = client.post("/user/refresh-token", json={});
         refresh_result = extract_data(response.json());
         if "detail" in refresh_result {
@@ -622,17 +561,14 @@ test "token refresh functionality" {
             ];
         }
 
-        # Test: refresh token with empty token
         response = client.post("/user/refresh-token", json={"token": ""});
         refresh_result = extract_data(response.json());
         assert "error" in refresh_result;
         assert refresh_result["error"] == "Token is required";
 
-        # Test: status code 400 for empty token
         response = client.post("/user/refresh-token", json={"token": ""});
         assert response.status_code == 400;
 
-        # Test: refresh token with invalid/malformed tokens (all return same error)
         invalid_tokens = ["invalid.token.here", "not.a.jwt", "invalid_token_string"];
         for invalid_token in invalid_tokens {
             response = client.post(
@@ -643,13 +579,11 @@ test "token refresh functionality" {
             assert refresh_result["error"] == "Invalid or expired token";
         }
 
-        # Test: status code 401 for invalid token
         response = client.post(
             "/user/refresh-token", json={"token": "invalid_token_string"}
         );
         assert response.status_code == 401;
 
-        # Test: refresh token with bearer prefix
         refresh_bearer_user = f"refresh_bearer_{uuid.uuid4().hex[:8]}";
         original_token = register_and_get_token(
             client, refresh_bearer_user, "password123"
@@ -663,14 +597,12 @@ test "token refresh functionality" {
         assert "message" in refresh_result;
         assert refresh_result["message"] == "Token refreshed successfully";
 
-        # Test: status code 200 for successful refresh
         response = client.post("/user/refresh-token", json={"token": original_token});
         assert response.status_code == 200;
         data = extract_data(response.json());
         assert "token" in data;
         assert data["message"] == "Token refreshed successfully";
 
-        # Test: refresh token too old
         old_user = f"refresh_old_{uuid.uuid4().hex[:8]}";
         do_register(client, old_user, "password123");
         very_old_token = _create_very_old_token(old_user, days_ago=15);
@@ -679,14 +611,12 @@ test "token refresh functionality" {
         assert "error" in refresh_result;
         assert refresh_result["error"] == "Invalid or expired token";
 
-        # Test: refresh token with nonexistent user
         fake_token = _create_expired_token("nonexistent", days_ago=1);
         response = client.post("/user/refresh-token", json={"token": fake_token});
         refresh_result = extract_data(response.json());
         assert "error" in refresh_result;
         assert refresh_result["error"] == "Invalid or expired token";
 
-        # Test: refresh token multiple times
         refresh_multi_user = f"refresh_multi_{uuid.uuid4().hex[:8]}";
         token1 = register_and_get_token(client, refresh_multi_user, "password123");
 
@@ -701,7 +631,6 @@ test "token refresh functionality" {
         assert token3 != token2;
         assert token3 != token1;
 
-        # Test: refresh token preserves user_id
         username = f"refresh_preserve_{uuid.uuid4().hex[:8]}";
         token = register_and_get_token(client, username, "password123");
 
@@ -726,7 +655,6 @@ test "integration auth flow" {
     try {
         username = f"integration_{uuid.uuid4().hex[:8]}";
 
-        # Register
         register_response = client.post(
             "/user/register",
             json={
@@ -738,7 +666,6 @@ test "integration auth flow" {
         data = extract_data(register_response.json());
         assert "user_id" in data;
 
-        # Login (first time)
         login_response = client.post(
             "/user/login",
             json={
@@ -750,7 +677,6 @@ test "integration auth flow" {
         data = extract_data(login_response.json());
         token1 = data["token"];
 
-        # Login (second time)
         login_response2 = client.post(
             "/user/login",
             json={
@@ -762,13 +688,11 @@ test "integration auth flow" {
         data = extract_data(login_response2.json());
         token2 = data["token"];
 
-        # Refresh
         refresh_response = client.post("/user/refresh-token", json={"token": token1});
         assert refresh_response.status_code == 200;
         data = extract_data(refresh_response.json());
         token3 = data["token"];
 
-        # Failed login
         fail_response = client.post(
             "/user/login",
             json={
@@ -778,7 +702,6 @@ test "integration auth flow" {
         );
         assert fail_response.status_code == 401;
 
-        # All tokens should be different
         assert token1 != token2;
         assert token2 != token3;
         assert token1 != token3;
@@ -787,8 +710,6 @@ test "integration auth flow" {
     }
 }
 
-"""Register a user (optionally with a profile) and return (user_id, token).
-Used by the /user/me tests below."""
 def _me_register_and_login(
     client: ScaleTestClient,
     username: str,
@@ -839,7 +760,7 @@ test "GET /user/me returns MeResponse shape without credentials" {
         assert ident["value"] == username , f"identity value: {ident}";
         assert isinstance(ident["verified"], bool) , f"verified: {ident}";
         assert ident["is_recovery"] is False , f"is_recovery: {ident}";
-        # Internal storage fields must not leak.
+
         assert "value_normalized" not in ident , f"leaked: {ident}";
         assert "external_id" not in ident , f"leaked: {ident}";
 
@@ -885,7 +806,6 @@ test "PATCH /user/me merges new keys with existing profile" {
         merged = {"firstname": "Alice", "city": "Boston", "phone": "555-1234"};
         assert data["profile"] == merged , f"merged: {data}";
 
-        # Verify the merge persisted via GET /user/me.
         me = client.get("/user/me", headers={"Authorization": f"Bearer {token}"});
         assert extract_data(me.json())["profile"] == merged;
     } finally {
@@ -900,8 +820,7 @@ test "PATCH /user/me preserves server-managed profile.sso" {
         (user_id, token) = _me_register_and_login(
             client, username, profile={"firstname": "Alice"}
         );
-        # Seed profile.sso via the internal helper (bypasses validator,
-        # mimicking what the SSO callback does).
+
         sso_seed = {
             "sso": {
                 "google": {
@@ -971,13 +890,9 @@ test "POST /user/register applies AfterValidator to reject reserved sso key" {
     }
 }
 
-# =============================================================================
-# GROUP 3: API OPERATIONS (Functions and Walkers)
-# =============================================================================
 test "function calls" {
     client = make_client();
     try {
-        # Create a user for authenticated calls
         func_user = f"funcuser_{uuid.uuid4().hex[:8]}";
         response = client.post(
             "/user/register",
@@ -998,7 +913,6 @@ test "function calls" {
         login_result = extract_data(response.json());
         token = login_result["token"];
 
-        # Test: call function add_numbers
         response = client.post(
             "/function/add_numbers",
             json={"a": 10, "b": 25},
@@ -1008,7 +922,6 @@ test "function calls" {
         assert "result" in result;
         assert result["result"] == 35;
 
-        # Test: call function greet
         response = client.post(
             "/function/greet",
             json={"name": "Alice"},
@@ -1018,7 +931,6 @@ test "function calls" {
         assert "result" in result;
         assert result["result"] == "Hello, Alice!";
 
-        # Test: call function with defaults
         response = client.post(
             "/function/greet",
             json={"args": {}},
@@ -1028,7 +940,6 @@ test "function calls" {
         assert "result" in result;
         assert result["result"] == "Hello, World!";
 
-        # Test: multiply function
         response = client.post(
             "/function/multiply",
             json={"x": 7, "y": 8},
@@ -1038,7 +949,6 @@ test "function calls" {
         assert "result" in result;
         assert result["result"] == 56;
 
-        # Test: status code 200 for function success
         response = client.post(
             "/function/add_numbers",
             json={"a": 10, "b": 20},
@@ -1048,7 +958,6 @@ test "function calls" {
         data = extract_data(response.json());
         assert "result" in data;
 
-        # Test: invalid function returns 404/405
         response = client.post(
             "/function/nonexistent",
             json={"args": {}},
@@ -1060,10 +969,6 @@ test "function calls" {
     }
 }
 
-"""Regression: `report` inside a plain `def:pub` function (no walk scope) must
-reach the response. The OSP kernel migration routed `report` through the walk
-scope only, silently dropping function-level reports; this is the fast,
-in-process guard for the slow dev-mode `FunctionStream` path."""
 test "function report streams (in-process)" {
     client = make_client();
     try {
@@ -1098,7 +1003,6 @@ test "function report streams (in-process)" {
 test "walker calls" {
     client = make_client();
     try {
-        # Create a user for authenticated calls
         walker_user = f"walkeruser_{uuid.uuid4().hex[:8]}";
         response = client.post(
             "/user/register",
@@ -1119,7 +1023,6 @@ test "walker calls" {
         login_result = extract_data(response.json());
         token = login_result["token"];
 
-        # Test: status code 200 for walker success
         response = client.post(
             "/walker/CreateTask",
             json={"title": "Test Task", "priority": 2},
@@ -1127,7 +1030,6 @@ test "walker calls" {
         );
         assert response.status_code == 200;
 
-        # Test: invalid walker returns 404/405
         response = client.post(
             "/walker/NonExistentWalker",
             json={"fields": {}},
@@ -1135,13 +1037,11 @@ test "walker calls" {
         );
         assert response.status_code in [404, 405];
 
-        # Test: private walker 401 unauthorized (no token)
         response = client.post(
             "/walker/PrivateCreateTask", json={"title": "Private Task", "priority": 1}
         );
         assert response.status_code == 401;
 
-        # Test: public walker 200 no auth
         response = client.post("/walker/PublicInfo", json={});
         assert response.status_code == 200;
         response_data = extract_data(response.json());
@@ -1151,7 +1051,6 @@ test "walker calls" {
         assert "auth_required" in data;
         assert data["auth_required"] is False;
 
-        # Test: public walker 200 with auth
         response = client.post(
             "/walker/PublicInfo", json={}, headers={"Authorization": f"Bearer {token}"}
         );
@@ -1160,7 +1059,6 @@ test "walker calls" {
         data = response_data["reports"][0];
         assert data["message"] == "This is a public endpoint";
 
-        # Test: private walker 401 with deleted user token
         secret = "supersecretkey_for_testing_only!";
         now = datetime.now(UTC);
         payload = {
@@ -1179,13 +1077,11 @@ test "walker calls" {
             f"Expected 401 for deleted/non-existent user, got {response.status_code}"
         );
 
-        # Test: graph data returns nodes and edges
         response = client.get("/graph/data");
         assert response.status_code == 200;
         data = response.json();
         assert "nodes" in data and "edges" in data;
 
-        # Create a node and verify it appears for authenticated user
         g_user = f"guser_{uuid.uuid4().hex[:8]}";
         response = client.post(
             "/user/register",
@@ -1220,17 +1116,9 @@ test "walker calls" {
     }
 }
 
-# Regression: walkers with mutable defaults like `has tags: list[str] = []`
-# compile to dataclass fields with `default_factory=...`. Earlier the
-# introspector returned the dataclasses._HAS_DEFAULT_FACTORY sentinel for
-# such params, which Pydantic then crashed on while validating the request
-# body of any call that omitted those fields ("'_HAS_DEFAULT_FACTORY_CLASS'
-# object is not iterable").
 test "walker default-factory list field accepts empty body" {
     client = make_client();
     try {
-        # Empty body: every defaulted field must be filled in by the
-        # walker's own __init__ from its factory, not by the request schema.
         response = client.post("/walker/CollectWithDefault", json={});
         assert response.status_code == 200 , (
             f"Expected 200, got {response.status_code}: {response.text}"
@@ -1239,7 +1127,6 @@ test "walker default-factory list field accepts empty body" {
         assert data["tags"] == [];
         assert data["seen"] == {};
 
-        # Explicit value: still works, factory was only the fallback path.
         response = client.post(
             "/walker/CollectWithDefault", json={"tags": ["a", "b", "a"]}
         );
@@ -1248,13 +1135,11 @@ test "walker default-factory list field accepts empty body" {
         assert data["tags"] == ["a", "b", "a"];
         assert data["seen"] == {"a": 2, "b": 1};
 
-        # OpenAPI schema must expose the resolved default, not a sentinel,
-        # so generated clients and /docs render correctly.
         spec = client.get("/openapi.json").json();
         body_schema = spec["paths"]["/walker/CollectWithDefault"]["post"]["requestBody"][
             "content"
         ]["application/json"]["schema"];
-        # Schema may be inline or via $ref; resolve once if needed.
+
         if "$ref" in body_schema {
             ref = body_schema["$ref"].split("/")[-1];
             body_schema = spec["components"]["schemas"][ref];
@@ -1268,13 +1153,9 @@ test "walker default-factory list field accepts empty body" {
     }
 }
 
-# =============================================================================
-# GROUP 4: USER MANAGEMENT (Username and Password Updates)
-# =============================================================================
 test "user management operations" {
     client = make_client();
     try {
-        # Test: update password success
         username = f"passuser_{uuid.uuid4().hex[:8]}";
         token = register_and_get_token(client, username, "oldpass123");
 
@@ -1286,17 +1167,14 @@ test "user management operations" {
         update_result = extract_data(response.json());
         assert "message" in update_result;
 
-        # Verify login with new password works
         login_result = do_login(client, username, "newpass456");
         assert "user_id" in login_result;
 
-        # Verify login with old password fails
         response = client.post(
             "/user/login", json=login_payload(username, "oldpass123")
         );
         assert response.status_code == 401;
 
-        # Test: update password requires auth
         username = f"noauthuser_{uuid.uuid4().hex[:8]}";
         do_register(client, username, "password123");
         response = client.put(
@@ -1305,7 +1183,6 @@ test "user management operations" {
         );
         assert response.status_code == 401;
 
-        # Test: update password wrong current password
         username = f"wrongpass_{uuid.uuid4().hex[:8]}";
         token = register_and_get_token(client, username, "correctpass");
         response = client.put(
@@ -1315,7 +1192,6 @@ test "user management operations" {
         );
         assert response.status_code == 400;
 
-        # Test: update password with other user's token (wrong current password returns 400)
         user1_name = f"passuser1_{uuid.uuid4().hex[:8]}";
         user1_token = register_and_get_token(client, user1_name, "pass1");
         user2_name = f"passuser2_{uuid.uuid4().hex[:8]}";
@@ -1327,7 +1203,6 @@ test "user management operations" {
         );
         assert response.status_code == 400;
 
-        # Test: update password empty validation (Pydantic rejects empty strings)
         username = f"emptypass_{uuid.uuid4().hex[:8]}";
         token = register_and_get_token(client, username, "oldpass");
         response = client.put(
@@ -1337,7 +1212,6 @@ test "user management operations" {
         );
         assert response.status_code in (400, 422);
 
-        # Test: password update then login with new password
         username = f"combined_{uuid.uuid4().hex[:8]}";
         token = register_and_get_token(client, username, "oldpass");
         login_result = do_login(client, username, "oldpass");
@@ -1350,7 +1224,6 @@ test "user management operations" {
         );
         assert "message" in extract_data(response.json());
 
-        # New password works, old fails
         login_result = do_login(client, username, "newpass");
         assert login_result["root_id"] == root_id;
 
@@ -1361,14 +1234,10 @@ test "user management operations" {
     }
 }
 
-# =============================================================================
-# GROUP 5: WEBSOCKET TESTS
-# =============================================================================
 test "websocket functionality" {
     import websockets;
     sp = setup_serve_server();
     try {
-        # Test: websocket connect and echo
         async def test_echo {
             async with websockets.connect(f"{sv_ws_url}/ws/EchoMessage") as ws {
                 await ws.send(json.dumps({"message": "hello", "client_id": "test-1"}));
@@ -1386,7 +1255,6 @@ test "websocket functionality" {
         }
         asyncio.run(test_echo());
 
-        # Test: websocket minimal walker
         async def test_minimal {
             async with websockets.connect(f"{sv_ws_url}/ws/MinimalWebSocket") as ws {
                 await ws.send(json.dumps({}));
@@ -1403,7 +1271,6 @@ test "websocket functionality" {
         }
         asyncio.run(test_minimal());
 
-        # Test: websocket multiple messages
         async def test_multiple {
             async with websockets.connect(f"{sv_ws_url}/ws/EchoMessage") as ws {
                 for i in range(3) {
@@ -1424,7 +1291,6 @@ test "websocket functionality" {
         }
         asyncio.run(test_multiple());
 
-        # Test: websocket not accessible via walker endpoint
         response = requests.post(
             f"{sv_base_url}/walker/EchoMessage",
             json={"message": "test", "client_id": "test"},
@@ -1434,7 +1300,6 @@ test "websocket functionality" {
             f"Expected 400/404/405, got {response.status_code}: {response.text}"
         );
 
-        # Test: websocket nonexistent walker
         async def test_nonexistent {
             try {
                 async with websockets.connect(
@@ -1444,12 +1309,11 @@ test "websocket functionality" {
                     pytest.fail("Expected connection to be rejected");
                 }
             } except (websockets.exceptions.ConnectionClosed, Exception) {
-                0;  # Expected
+                0;
             }
         }
         asyncio.run(test_nonexistent());
 
-        # Test: http walker not accessible via ws
         async def test_http_via_ws {
             try {
                 async with websockets.connect(f"{sv_ws_url}/ws/CreateTask") as ws {
@@ -1457,12 +1321,11 @@ test "websocket functionality" {
                     pytest.fail("Expected connection to be rejected for HTTP walker");
                 }
             } except (websockets.exceptions.ConnectionClosed, Exception) {
-                0;  # Expected
+                0;
             }
         }
         asyncio.run(test_http_via_ws());
 
-        # Test: private websocket requires auth
         async def test_private_no_auth {
             async with websockets.connect(f"{sv_ws_url}/ws/PrivateWebSocket") as ws {
                 await ws.send(json.dumps({"message": "hello"}));
@@ -1474,7 +1337,6 @@ test "websocket functionality" {
         }
         asyncio.run(test_private_no_auth());
 
-        # Test: private websocket with valid token
         username = f"ws_test_user_{uuid.uuid4().hex[:8]}";
         password = "testpass123";
 
@@ -1518,7 +1380,6 @@ test "websocket functionality" {
         }
         asyncio.run(test_private_with_token(token));
 
-        # Test: private websocket with query token
         username = f"ws_query_user_{uuid.uuid4().hex[:8]}";
         response = requests.post(
             f"{sv_base_url}/user/register",
@@ -1558,7 +1419,6 @@ test "websocket functionality" {
         }
         asyncio.run(test_query_token(query_token));
 
-        # Test: broadcast websocket all clients receive
         async def test_broadcast {
             async with websockets.connect(f"{sv_ws_url}/ws/BroadcastChat") as ws1 {
                 async with websockets.connect(f"{sv_ws_url}/ws/BroadcastChat") as ws2 {
@@ -1595,7 +1455,6 @@ test "websocket functionality" {
         }
         asyncio.run(test_broadcast());
 
-        # Test: private broadcast requires auth
         async def test_private_broadcast_no_auth {
             async with websockets.connect(
                 f"{sv_ws_url}/ws/PrivateBroadcastChat"
@@ -1608,7 +1467,6 @@ test "websocket functionality" {
         }
         asyncio.run(test_private_broadcast_no_auth());
 
-        # Test: private broadcast with auth
         users: list = [];
         for i in range(2) {
             username = f"broadcast_user_{i}_{uuid.uuid4().hex[:8]}";
@@ -1681,16 +1539,12 @@ test "websocket functionality" {
     }
 }
 
-# =============================================================================
-# GROUP 6: DEV MODE TESTS
-# =============================================================================
 glob dm_fixtures_dir: Path = Path(__file__).parent.parent / "fixtures",
      dm_test_file: Path = dm_fixtures_dir / "test_api.jac",
      dm_vite_port: int = get_free_port(),
      dm_api_port: int = get_free_port(),
      dm_base_url: str = f"http://localhost:{dm_api_port}";
 
-"""Extract data from TransportResponse envelope for dev mode."""
 def _extract_data_dev(json_response: dict[str, any]) -> dict[str, any] {
     if isinstance(json_response, dict) and "ok" in json_response {
         if json_response.get("ok") and json_response.get("data") is not None {
@@ -1703,7 +1557,6 @@ def _extract_data_dev(json_response: dict[str, any]) -> dict[str, any] {
     return json_response;
 }
 
-"""Setup and start the dev mode server."""
 def setup_dev_mode_server -> subprocess.Popen {
     if not dm_test_file.exists() {
         raise FileNotFoundError(f"Test fixture not found: {dm_test_file}");
@@ -1726,7 +1579,6 @@ def setup_dev_mode_server -> subprocess.Popen {
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
     );
 
-    # Dev mode needs more time due to Jac compilation, bun setup, and vite initialization
     max_attempts = 60;
     server_ready = False;
 
@@ -1749,7 +1601,7 @@ def setup_dev_mode_server -> subprocess.Popen {
                 break;
             }
         } except (requests.ConnectionError, requests.Timeout) {
-            time.sleep(2);  # Dev mode needs longer polling interval for CI
+            time.sleep(2);
         }
     }
 
@@ -1770,7 +1622,6 @@ def setup_dev_mode_server -> subprocess.Popen {
     return server_process;
 }
 
-"""Teardown the dev mode server."""
 def teardown_dev_mode_server(sp: subprocess.Popen | None) {
     _stop_server(sp);
     _cleanup_db_files(dm_fixtures_dir);
@@ -1779,7 +1630,6 @@ def teardown_dev_mode_server(sp: subprocess.Popen | None) {
 test "dev mode operations" {
     sp = setup_dev_mode_server();
     try {
-        # Test: dev mode walker body parsing
         devtest_user = f"devtest_{uuid.uuid4().hex[:8]}";
         register_response = requests.post(
             f"{dm_base_url}/user/register",
@@ -1813,7 +1663,6 @@ test "dev mode operations" {
         data = _extract_data_dev(response.json());
         assert "result" in data or "reports" in data , f"Unexpected response: {data}";
 
-        # Test: dev mode function body parsing
         devfunc_user = f"devfunc_{uuid.uuid4().hex[:8]}";
         register_response = requests.post(
             f"{dm_base_url}/user/register",
@@ -1848,7 +1697,6 @@ test "dev mode operations" {
         assert "result" in data , f"Expected 'result' in response: {data}";
         assert data["result"] == 100 , f"Expected 100, got {data['result']}";
 
-        # Test: dev mode public walker no auth
         response = requests.post(
             f"{dm_base_url}/walker/PublicInfo", json={}, timeout=10
         );
@@ -1857,7 +1705,6 @@ test "dev mode operations" {
         assert "reports" in data;
         assert data["reports"][0]["message"] == "This is a public endpoint";
 
-        # Test: dev mode private walker requires auth
         response = requests.post(
             f"{dm_base_url}/walker/PrivateCreateTask",
             json={"title": "Private Task", "priority": 1},
@@ -1865,7 +1712,6 @@ test "dev mode operations" {
         );
         assert response.status_code == 401;
 
-        # Test: async walker basic execution
         username = f"asyncuser_{uuid.uuid4().hex[:8]}";
         register_response = requests.post(
             f"{dm_base_url}/user/register",
@@ -1909,7 +1755,6 @@ test "dev mode operations" {
         assert reports[2]["status"] == "completed";
         assert "task" in reports[2];
 
-        # Test: walker stream response
         response = requests.post(
             f"{dm_base_url}/walker/WalkerStream",
             json={"count": 3},
@@ -1938,7 +1783,6 @@ test "dev mode operations" {
         }
         assert "event: end" in content , f"Missing SSE terminator in: {content!r}";
 
-        # Test: function stream response
         response = requests.post(
             f"{dm_base_url}/function/FunctionStream",
             json={"count": 2},
@@ -1971,16 +1815,13 @@ test "dev mode operations" {
     }
 }
 
-"""Test that dev mode shows named endpoints in OpenAPI spec and HMR adds new ones."""
 test "dev mode named endpoints and HMR refresh" {
     sp = setup_dev_mode_server();
     try {
-        # Test: OpenAPI spec shows named walker endpoints (not generic {walker_name})
         response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
         assert response.status_code == 200;
         paths = response.json().get("paths", {});
 
-        # Named endpoints should exist (from test_api.jac fixture)
         assert "/walker/CreateTask" in paths , f"Expected /walker/CreateTask in OpenAPI paths, got: {list(
             paths.keys()
         )}";
@@ -1988,24 +1829,19 @@ test "dev mode named endpoints and HMR refresh" {
         assert "/walker/PublicInfo" in paths , f"Expected /walker/PublicInfo in OpenAPI paths";
         assert "/function/add_numbers" in paths , f"Expected /function/add_numbers in OpenAPI paths";
 
-        # Generic catch-all should NOT exist
         assert "/walker/{walker_name}" not in paths , "Generic /walker/{walker_name} should not exist";
         assert "/function/{function_name}" not in paths , "Generic /function/{function_name} should not exist";
 
-        # Test: HMR adds new walker to OpenAPI spec
-        # Append a new walker to the fixture file
         greet_walker = '\nwalker:pub Greet {\n    has name: str = "World";\n\n    can greet with Root entry {\n        report {"message": "Hello, " + self.name + "!"};\n    }\n}\n';
         with open(str(dm_test_file), 'a') as f {
             f.write(greet_walker);
         }
 
-        # Wait for HMR to detect the change, then trigger a request to flush it
         time.sleep(3);
-        # Make a request to trigger the HMR middleware refresh
+
         requests.get(f"{dm_base_url}/healthz", timeout=10);
         time.sleep(1);
 
-        # Fetch updated OpenAPI spec
         response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
         assert response.status_code == 200;
         paths = response.json().get("paths", {});
@@ -2014,7 +1850,6 @@ test "dev mode named endpoints and HMR refresh" {
             paths.keys()
         )}";
 
-        # New walker should also be callable
         response = requests.post(
             f"{dm_base_url}/walker/Greet", json={"name": "Jaseci"}, timeout=10
         );
@@ -2022,7 +1857,6 @@ test "dev mode named endpoints and HMR refresh" {
         data = _extract_data_dev(response.json());
         assert data["reports"][0]["message"] == "Hello, Jaseci!";
     } finally {
-        # Remove the appended walker from fixture file to not pollute other tests
         with open(str(dm_test_file), 'r') as f {
             original = f.read();
         }
@@ -2035,10 +1869,7 @@ test "dev mode named endpoints and HMR refresh" {
     }
 }
 
-# =============================================================================
-# GROUP 7: PORT FALLBACK TESTS
-# =============================================================================
-import from jac_scale.serve {
+import from jac_scale.server.serve {
     _find_available_port,
     _get_network_ips,
     PORT_RETRY_LIMIT,
@@ -2046,23 +1877,18 @@ import from jac_scale.serve {
     ERRNO_ADDR_IN_USE_WINDOWS
 }
 
-"""Test _find_available_port returns the same port when it's available."""
 test "port fallback - available port returns same port" {
-    # Get a free port and verify _find_available_port returns it
     free_port = get_free_port();
     result = _find_available_port(free_port);
     assert result == free_port , f"Expected {free_port}, got {result}";
 }
 
-"""Test _find_available_port finds next port when requested port is in use."""
 test "port fallback - finds next available port when port in use" {
-    # Bind to a port to block it
     blocked_port = get_free_port();
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
         s.bind(('0.0.0.0', blocked_port));
         s.listen(1);
-        # Request the blocked port - should get next available
         result = _find_available_port(blocked_port);
         assert result > blocked_port , f"Expected port > {blocked_port}, got {result}";
         assert result <= blocked_port + PORT_RETRY_LIMIT , (
@@ -2071,9 +1897,7 @@ test "port fallback - finds next available port when port in use" {
     }
 }
 
-"""Test _find_available_port skips multiple blocked ports."""
 test "port fallback - skips multiple blocked ports" {
-    # Block consecutive ports
     start_port = get_free_port();
     sockets: list[socket.socket] = [];
     ports_to_block = 3;
@@ -2087,12 +1911,10 @@ test "port fallback - skips multiple blocked ports" {
                 s.listen(1);
                 sockets.append(s);
             } except OSError {
-                # Port already in use, skip
                 s.close();
             }
         }
 
-        # Request the first blocked port - should skip all blocked ones
         result = _find_available_port(start_port);
         assert result >= start_port + len(sockets) , (
             f"Expected port >= {start_port + len(sockets)}, got {result}"
@@ -2104,9 +1926,7 @@ test "port fallback - skips multiple blocked ports" {
     }
 }
 
-"""Test _find_available_port raises OSError when all ports exhausted."""
 test "port fallback - raises error when no ports available" {
-    # Block all ports within retry limit
     start_port = get_free_port();
     sockets: list[socket.socket] = [];
 
@@ -2123,7 +1943,6 @@ test "port fallback - raises error when no ports available" {
             }
         }
 
-        # Only test if we successfully blocked all ports
         if len(sockets) == PORT_RETRY_LIMIT {
             error_raised = False;
             try {
@@ -2141,46 +1960,37 @@ test "port fallback - raises error when no ports available" {
     }
 }
 
-"""Test _get_network_ips returns list of valid IPs."""
 test "network IPs - returns valid IP list" {
     ips = _get_network_ips();
     assert isinstance(ips, list) , "Expected list of IPs";
 
-    # All IPs should be non-localhost and non-IPv6
     for ip in ips {
         assert not ip.startswith('127.') , f"Localhost IP {ip} should be filtered";
         assert ':' not in ip , f"IPv6 address {ip} should be filtered";
     }
 
-    # No duplicates
     assert len(ips) == len(set(ips)) , "IP list should not contain duplicates";
 }
 
-"""Test constants are defined correctly."""
 test "port constants - values are correct" {
     assert PORT_RETRY_LIMIT == 10 , "PORT_RETRY_LIMIT should be 10";
     assert ERRNO_ADDR_IN_USE_LINUX == 98 , "ERRNO_ADDR_IN_USE_LINUX should be 98";
     assert ERRNO_ADDR_IN_USE_WINDOWS == 10048 , "ERRNO_ADDR_IN_USE_WINDOWS should be 10048";
 }
 
-"""Test server startup with port fallback via subprocess."""
 test "server startup - port fallback integration" {
-    # Start a server on a specific port
     port1 = get_free_port();
     sp1: subprocess.Popen | None = None;
     sp2: subprocess.Popen | None = None;
 
     try {
-        # Start first server
         sp1 = _start_server(
             sv_fixtures_dir, sv_test_file, port1, f"http://localhost:{port1}"
         );
 
-        # Verify first server is running
         response = requests.get(f"http://localhost:{port1}/healthz", timeout=5);
         assert response.status_code == 200 , "First server should be running";
 
-        # Try to start second server on same port - should fallback to next port
         jac_executable = Path(sys.executable).parent / "jac";
         cmd = [str(jac_executable), "start", sv_test_file.name, "--port", str(port1)];
 
@@ -2192,13 +2002,11 @@ test "server startup - port fallback integration" {
             cwd=str(sv_fixtures_dir)
         );
 
-        # Wait for server to start and detect port fallback
         actual_port = port1;
         max_wait = 60;
         start_time = time.time();
 
         while time.time() - start_time < max_wait {
-            # Check stdout for port fallback message
             if sp2.stdout and select.select([sp2.stdout], [], [], 0.5)[0] {
                 line = sp2.stdout.readline();
                 if line and "using port" in line {
@@ -2209,7 +2017,6 @@ test "server startup - port fallback integration" {
                 }
             }
 
-            # Check if server is responding on fallback ports
             for test_port in range(port1 + 1, port1 + 5) {
                 try {
                     resp = requests.get(
@@ -2219,16 +2026,13 @@ test "server startup - port fallback integration" {
                         actual_port = test_port;
                         break;
                     }
-                } except Exception {
-                # Connection not ready yet
-                }
+                } except Exception { }
             }
             if actual_port > port1 {
                 break;
             }
         }
 
-        # Verify the fallback happened
         assert actual_port > port1 , f"Second server should use port > {port1}, got {actual_port}";
     } finally {
         if sp2 {
@@ -2246,13 +2050,9 @@ test "server startup - port fallback integration" {
     }
 }
 
-# =============================================================================
-# HEALTH CHECK FILTER UNIT TESTS
-# =============================================================================
-"""Test that HealthCheckFilter is not attached by default (suppress_health_check_logs defaults to false)."""
 test "health check filter is disabled by default" {
     import logging;
-    import from jac_scale.config_loader { get_scale_config, reset_scale_config }
+    import from jac_scale.config.config_loader { get_scale_config, reset_scale_config }
     import from jac_scale.jserver.jfast_api { ConsoleLogHandler, HealthCheckFilter }
 
     reset_scale_config();
@@ -2261,7 +2061,6 @@ test "health check filter is disabled by default" {
 
     assert not server_cfg.get('suppress_health_check_logs', False) , "suppress_health_check_logs should default to False";
 
-    # Verify that when False, no HealthCheckFilter is added to the handler
     handler = ConsoleLogHandler();
     handler.setFormatter(logging.Formatter("%(message)s"));
     if server_cfg.get('suppress_health_check_logs', False) {
@@ -2272,7 +2071,6 @@ test "health check filter is disabled by default" {
     reset_scale_config();
 }
 
-"""Test HealthCheckFilter suppresses noisy health-check access log entries."""
 test "health check filter suppresses health endpoint log records" {
     import logging;
     import from jac_scale.jserver.jfast_api { HealthCheckFilter }
@@ -2291,7 +2089,6 @@ test "health check filter suppresses health endpoint log records" {
 
     f = HealthCheckFilter();
 
-    # These should be suppressed (filter returns False)
     suppressed = [
         '127.0.0.1:12345 - "GET /health HTTP/1.1" 200',
         '127.0.0.1:12345 - "GET /docs HTTP/1.1" 200',
@@ -2306,7 +2103,6 @@ test "health check filter suppresses health endpoint log records" {
         assert not f.filter(make_record(msg)) , f"Expected suppressed: {msg}";
     }
 
-    # These should pass through (filter returns True)
     allowed = [
         '127.0.0.1:12345 - "GET /walker/MyWalker HTTP/1.1" 200',
         '127.0.0.1:12345 - "POST /user/login HTTP/1.1" 200',
@@ -2320,7 +2116,6 @@ test "health check filter suppresses health endpoint log records" {
     }
 }
 
-"""Test that HealthCheckFilter integrates correctly with Python's logging Handler."""
 test "health check filter blocks records when attached to a handler" {
     import logging;
     import from jac_scale.jserver.jfast_api { HealthCheckFilter }
@@ -2373,7 +2168,6 @@ test "health check filter blocks records when attached to a handler" {
     }
 }
 
-"""Test that jac start --client pwa uses jac-scale server (422 from /user/login = FastAPI validation)."""
 test "pwa target uses jac-scale server" {
     import tempfile;
 
@@ -2382,7 +2176,6 @@ test "pwa target uses jac-scale server" {
 
     with tempfile.TemporaryDirectory() as temp_dir {
         temp_path = Path(temp_dir);
-        # Create minimal jac app
         main_jac = temp_path / "main.jac";
         main_jac.write_text(
             'cl { def:pub app -> JsxElement { return <div>Test</div>; } }'
@@ -2397,7 +2190,6 @@ version = "1.0.0"
 theme_color = "#000000"
 '''
         );
-        # Start server with --client pwa
         server = subprocess.Popen(
             [
                 str(jac_executable),
@@ -2414,21 +2206,19 @@ theme_color = "#000000"
             text=True
         );
         try {
-            # Wait for server to start and verify jac-scale's FastAPI is running
-            # POST /user/login with empty body returns 422 (FastAPI validation) — base HTTP server would 404
             for _ in range(30) {
                 try {
                     resp = requests.post(
                         f"http://127.0.0.1:{port}/user/login", json={}, timeout=2
                     );
                     if resp.status_code in [400, 422] {
-                        return;  # Test passed — jac-scale's FastAPI is running
+                        return;
                     }
                 } except (requests.ConnectionError, requests.Timeout) {
                     time.sleep(1);
                 }
             }
-            # Capture output for debugging
+
             server.terminate();
             (stdout, stderr) = server.communicate(timeout=5);
             raise AssertionError(
@@ -2445,9 +2235,6 @@ theme_color = "#000000"
     }
 }
 
-# =============================================================================
-# GROUP 8: JWT MIDDLEWARE
-# =============================================================================
 test "jwt middleware: per-user isolation and token rejection" {
     client = make_client();
     try {
@@ -2515,26 +2302,21 @@ test "jwt middleware: per-user isolation and token rejection" {
 
         ];
 
-        # Bad tokens must be rejected on auth-required endpoints.
         for (hdrs, label) in bad_token_cases {
             r = client.post("/walker/CreateTask", json={"title": "x"}, headers=hdrs);
             assert r.status_code == 401 , f"{label} on auth endpoint: expected 401, got {r.status_code}";
         }
 
-        # No token on auth-required endpoint must also be rejected.
         r = client.post("/walker/CreateTask", json={"title": "x"});
         assert r.status_code == 401 , f"no token on auth endpoint: expected 401, got {r.status_code}";
 
-        # Bad tokens on public (pub) endpoints must be ignored — the request
-        # should succeed as guest rather than returning 401.
         for (hdrs, label) in bad_token_cases {
             r = client.post("/walker/PublicInfo", json={}, headers=hdrs);
             assert r.status_code == 200 , f"{label} on pub walker: expected 200 (guest), got {r.status_code}";
         }
-        # No token on a public endpoint must still work (anonymous access).
+
         assert client.post("/walker/PublicInfo", json={}).status_code == 200 , "pub walker broken for anonymous requests";
 
-        # Same check for pub functions — bad tokens must be ignored.
         for (hdrs, label) in bad_token_cases {
             r = client.post("/function/public_status", json={}, headers=hdrs);
             assert r.status_code == 200 , f"{label} on pub function: expected 200 (guest), got {r.status_code}";

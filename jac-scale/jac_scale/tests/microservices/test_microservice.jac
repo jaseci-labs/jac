@@ -1,14 +1,3 @@
-"""TDD tests for sv-to-sv microservice interop.
-
-Simulates the jac start flow: each module is its own server.
-Consumer sv-imported functions should route through the provider's
-HTTP endpoints, NOT be called in-process.
-
-Key RED test: we verify that the consumer's sv-imported functions are
-HTTP stubs (not the original function objects). This fails until the
-compiler generates proper HTTP client stubs for sv-to-sv imports.
-"""
-
 import os;
 import sys;
 import shutil;
@@ -19,7 +8,7 @@ import from jaclang { JacRuntime as Jac }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.runtimelib { sv_client as __jac_sv }
 import from starlette.testclient { TestClient }
-import from jac_scale.serve { JacAPIServer }
+import from jac_scale.server.serve { JacAPIServer }
 
 glob FIXTURES: Path = Path(__file__).parent.parent / "fixtures" / "microservice";
 
@@ -69,24 +58,18 @@ def done(tmp: str) {
     shutil.rmtree(tmp, ignore_errors=True);
 }
 
-# =============================================================================
-# RED: sv import should generate HTTP stubs, not share module references
-# =============================================================================
 test "sv-to-sv: sv import does not load provider into process" {
-    # sv import should generate HTTP stubs, NOT import the provider module.
-    # Loading order_service should NOT pull inventory_service into sys.modules.
     tmp = setup_env();
     try {
-        # Ensure provider is not loaded
         if "inventory_service" in sys.modules {
             del sys.modules["inventory_service"];
         }
         if "inventory_service" in Jac.loaded_modules {
             del Jac.loaded_modules["inventory_service"];
         }
-        # Load ONLY the consumer
+
         cons = make_server("order_service", tmp);
-        # RED: sv import today loads the provider in-process
+
         assert "inventory_service" not in sys.modules;
     } finally {
         done(tmp);
@@ -109,9 +92,6 @@ test "sv-to-sv: sv import does not load math provider into process" {
     }
 }
 
-# =============================================================================
-# End-to-end: verify behavior AND that provider isn't loaded in consumer
-# =============================================================================
 test "sv-to-sv: consumer creates order via provider" {
     tmp = setup_env();
     try {
@@ -128,7 +108,7 @@ test "sv-to-sv: consumer creates order via provider" {
         )["result"];
         assert r["success"] is True;
         assert abs(r["total"] - 19.98) < 0.01;
-        # RED: consumer should not share provider's module object
+
         ord_mod = Jac.loaded_modules["order_service"];
         inv_mod = sys.modules.get("inventory_service");
         assert inv_mod is None or ord_mod.check_stock is not inv_mod.check_stock;
@@ -176,13 +156,6 @@ test "sv-to-sv: typed objects serialize across boundary" {
 }
 
 test "sv-to-sv: typed archetype return rehydrates for attribute access" {
-    # #6710: a sv->sv function whose declared return type is an archetype
-    # must hand back a real instance, not the serialized `_jac_type` dict.
-    # The consumer is compiled BEFORE the provider so the provider module is
-    # not in the consumer's program hub at codegen time -- exactly how
-    # `jac start` builds each service independently. Provider-first ordering
-    # masks the bug (the provider symtab resolves the return type), so the
-    # ordering here is load-bearing, not incidental.
     tmp = setup_env();
     try {
         cons = make_server("calculator_service", tmp);
@@ -190,8 +163,7 @@ test "sv-to-sv: typed archetype return rehydrates for attribute access" {
         r = xd(cons.post("/function/describe_divide", json={"a": 6.0, "b": 2.0}))[
             "result"
         ];
-        # Before the fix this 500s with "'dict' object has no attribute 'result'"
-        # because `res.result` runs against the raw wire dict.
+
         assert r["value"] == 3.0;
         assert r["error"] == "";
         calc_mod = Jac.loaded_modules["calculator_service"];
@@ -226,9 +198,6 @@ test "sv-to-sv: walker routes through provider" {
     }
 }
 
-# =============================================================================
-# Walker imported across the sv boundary (provider exposes a walker).
-# =============================================================================
 test "sv-to-sv: sv-imported walker round-trips report and fields" {
     tmp = setup_env();
     try {
@@ -238,9 +207,7 @@ test "sv-to-sv: sv-imported walker round-trips report and fields" {
             0
         ];
         assert rpt == "hello, world";
-        # Calling the sv-imported walker as a plain function from a
-        # def:pub helper should also round-trip and not fall through to
-        # an in-process import.
+
         rpt2 = xd(cons.post("/function/greet_via_walker", json={"who": "ada"}))[
             "result"
         ];
@@ -276,10 +243,7 @@ test "sv-to-sv: sv-imported walker does not load provider in-process" {
             del Jac.loaded_modules["notify_service"];
         }
         cons = make_server("dispatcher_service", tmp);
-        # The consumer-side Greet symbol must be a generated stub, not a
-        # reference to the provider's walker class. If sv import of a
-        # walker silently degrades to a regular import the provider's
-        # module ends up in sys.modules and the symbol identities match.
+
         disp_mod = Jac.loaded_modules["dispatcher_service"];
         notify_mod = sys.modules.get("notify_service");
         assert notify_mod is None or disp_mod.Greet is not notify_mod.Greet;

@@ -1,11 +1,9 @@
-"""Unit tests for Firestore-backed kvstore behavior."""
-
 import os;
 import unittest.mock;
-import from jac_scale.config_loader { get_scale_config, reset_scale_config }
-import from jac_scale.factories.database_factory { DatabaseType, _resolve_uri }
-import from jac_scale.firestore_db { FirestoreDb }
-import from jac_scale.lib { kvstore }
+import from jac_scale.config.config_loader { get_scale_config, reset_scale_config }
+import from jac_scale.deploy.database.factory { DatabaseType, _resolve_uri }
+import from jac_scale.persistence.firestore_db { FirestoreDb }
+import from jac_scale.persistence.lib { kvstore }
 
 
 def _copy_doc(doc: dict | None) -> dict | None {
@@ -163,7 +161,6 @@ obj _FakeQuery {
         );
     }
 
-    """Model Firestore server-side field projection."""
     def select(field_paths: list) -> _FakeQuery {
         return _FakeQuery(
             collection=self.collection,
@@ -426,31 +423,26 @@ test "firestore find honors projection" {
     db.insert_one('users', {'_id': 'u1', 'name': 'Alice', 'role': 'admin', 'age': 30});
     db.insert_one('users', {'_id': 'u2', 'name': 'Bob', 'role': 'user', 'age': 25});
 
-    # Inclusion: only the requested fields, plus _id by default.
     assert db.find_one('users', {'name': 'Alice'}, {'name': 1}) == {
         'name': 'Alice',
         '_id': 'u1'
     };
 
-    # Inclusion with _id suppressed.
     assert db.find_one('users', {'name': 'Alice'}, {'name': 1, '_id': 0}) == {
         'name': 'Alice'
     };
 
-    # Exclusion: everything except the listed fields.
     assert db.find_one('users', {'name': 'Bob'}, {'age': 0, 'role': 0}) == {
         'name': 'Bob',
         '_id': 'u2'
     };
 
-    # Projection applies across find() too.
     rows = list(db.find('users', {}, {'role': 1, '_id': 0}));
     assert sorted([r['role'] for r in rows]) == ['admin', 'user'];
     for r in rows {
         assert set(r.keys()) == {'role'};
     }
 
-    # Mixing inclusion and exclusion is rejected, matching pymongo.
     raised = False;
     try {
         db.find('users', {}, {'name': 1, 'age': 0});
@@ -465,7 +457,7 @@ test "kvstore routes firestore through pooled client helper" {
     fake_client = _FakeFirestoreClient();
 
     with unittest.mock.patch(
-        'jac_scale.db.get_firestore_client', return_value=fake_client
+        'jac_scale.persistence.db.get_firestore_client', return_value=fake_client
     ) {
         db = kvstore(db_name='app', db_type='firestore');
         assert db.db_type == DatabaseType.FIRESTORE;
@@ -478,8 +470,6 @@ test "kvstore routes firestore through pooled client helper" {
 test "firestore returns None for redis-only methods and graph persistence" {
     db = FirestoreDb(client=_FakeFirestoreClient(), db_name='app');
 
-    # Redis-only and Mongo-only abilities are not overridden by FirestoreDb, so
-    # the abstract Db default applies and the call returns None.
     assert db.set_with_ttl('key', {'v': 1}, ttl=60) is None;
     assert db.incr('counter') is None;
     assert db.find_nodes('TestNode') is None;

@@ -1,4 +1,3 @@
-"""Basic Logging Module for Jac Compiler."""
 import logging;
 
 with entry {

@@ -1,27 +1,12 @@
-# cef_subprocess -- imports + entry; cef_platform.na.jac is spliced in at # PLATFORM by desktop_build._splice_platform (the # ENTRY marker is dropped)
 import sys;
 
-# Import order is load-order sensitive: libcef.so MUST be NEEDED before
-# libc.so.6. libcef.so's internal `close` wrapper resolves the real libc
-# close via dlsym(RTLD_NEXT, "close"), which only finds libc's close when
-# libc loads AFTER libcef. If libc is NEEDED first, RTLD_NEXT from libcef
-# walks past it and finds nothing -> "close symbol missing" -> ImmediateCrash
-# in every child process (zygote/renderer/utility/gpu). This matches the
-# working libcef_dispatch.so NEEDED order (libcef.so before libc.so.6).
 import from "libcef.so" {
     def cef_execute_process(args: int, app: int, sandbox: int) -> i32;  def cef_version_info(
         which: i32
     ) -> i32;  obj cef_ptr_wrap_t {
         has p0: int = 0,
             p1: int = 0;
-    }  """cef_app_t - 80 bytes (CEF capi cef_app_t).
-
-    MUST stay field-compatible with the copy in cef_dispatch.na.jac: same
-    field order + 80-byte size. Handlers are typed int here because the
-    subprocess only assigns cef_stub_* and passes the struct opaquely; the
-    dispatch copy types them as Callable. Keep the two in sync by hand until
-    nacompile can share a struct decl across the spliced modules."""
-    obj cef_app_t {
+    }  obj cef_app_t {
         has size: int = 0,
             add_ref: int = 0,
             release: int = 0,
@@ -53,11 +38,7 @@ import from "libc.so.6" {
     ) -> int;  def abort -> None;
 }
 
-# PLATFORM
-
-# ENTRY
 def _subprocess_bootstrap {
-    # Match main-process bootstrap (nacompile cannot share setenv/getenv cross-module yet).
     setenv("NO_AT_BRIDGE", "1", 0);
     buf: int = calloc(1, 4096);
     n: int = readlink("/proc/self/exe", buf, 4095);
@@ -76,7 +57,7 @@ def _subprocess_bootstrap {
     strcpy(fc_buf, buf);
     strcat(fc_buf, "/minimal-fonts.conf");
     if access(fc_buf, 4) == 0 {
-        setenv("FONTCONFIG_FILE", fc_buf, 0);  # no-op if already set (overwrite=0)
+        setenv("FONTCONFIG_FILE", fc_buf, 0);
     }
     free(fc_buf);
     free(buf);

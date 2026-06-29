@@ -1,27 +1,13 @@
-"""In-process test client for jac-scale's JacAPIServer (no socket binding).
-
-Uses Starlette's TestClient to dispatch requests through FastAPI's ASGI app
-without opening OS ports. Supports admin login, authenticated requests, etc.
-
-Example:
-    client = ScaleTestClient.from_file("app.jac", base_path="/tmp/test");
-    token = client.admin_login("admin", "changeme");
-    response = client.get("/admin/metrics", headers={"Authorization": f"Bearer {token}"});
-    assert response.status_code == 200;
-    client.close();
-"""
-
 import shutil;
 import glob;
 import tempfile;
 import contextlib;
 import from pathlib { Path }
 
-"""Create an isolated ScaleTestClient with temp dir from a fixture file."""
 def make_client(fixture_file: str = "test_api.jac") -> ScaleTestClient {
     fixtures_dir = Path(__file__).parent / "fixtures";
     tmp = tempfile.mkdtemp();
-    # Copy fixture files to temp dir for isolation
+
     for f in glob.glob(str(fixtures_dir / "*")) {
         if Path(f).is_file() {
             shutil.copy2(f, Path(tmp) / Path(f).name);
@@ -32,7 +18,6 @@ def make_client(fixture_file: str = "test_api.jac") -> ScaleTestClient {
     return client;
 }
 
-"""Extract data from TransportResponse envelope format."""
 def extract_data(json_response: dict[str, any]) -> dict[str, any] {
     if isinstance(json_response, dict) and "ok" in json_response {
         if json_response.get("ok") and json_response.get("data") is not None {
@@ -51,7 +36,6 @@ def extract_data(json_response: dict[str, any]) -> dict[str, any] {
     return json_response;
 }
 
-"""Test client for jac-scale's JacAPIServer using Starlette TestClient."""
 obj ScaleTestClient {
     has _jac_file: str,
         _base_path: str,
@@ -60,7 +44,6 @@ obj ScaleTestClient {
         _runtime: any | None = None,
         _tmp_dir: str | None = None;
 
-    """Create test client from a .jac file path."""
     static def from_file(
         jac_file: str, base_path: str | None = None
     ) -> ScaleTestClient {
@@ -74,15 +57,8 @@ obj ScaleTestClient {
         return client;
     }
 
-    """Initialize the jac-scale server and Starlette TestClient.
-
-    Delegates to the shared no-serve seam (jac_scale.inprocess, #6685) with the
-    "test" endpoint profile -- the same module load + server construction +
-    endpoint registration + guest user + transport this used to hand-copy from
-    start(). Background services (emailer/scheduler/events) stay off, as before.
-    """
     def _initialize {
-        import from jac_scale.inprocess { prepare_inprocess_runtime }
+        import from jac_scale.server.inprocess { prepare_inprocess_runtime }
 
         self._runtime = prepare_inprocess_runtime(
             self._jac_file,
@@ -95,7 +71,6 @@ obj ScaleTestClient {
         self._client = self._runtime.client;
     }
 
-    """Make a GET request."""
     def get(
         path: str,
         headers: dict[str, str] | None = None,
@@ -107,7 +82,6 @@ obj ScaleTestClient {
         );
     }
 
-    """Make a POST request with JSON body."""
     def post(
         path: str,
         json: dict[str, any] | None = None,
@@ -132,7 +106,6 @@ obj ScaleTestClient {
         return self._client.post(path, **kwargs);
     }
 
-    """Make a PUT request with JSON body."""
     def put(
         path: str,
         json: dict[str, any] | None = None,
@@ -141,13 +114,10 @@ obj ScaleTestClient {
         return self._client.put(path, json=json, headers=headers or {});
     }
 
-    """Make a DELETE request."""
     def delete(path: str, headers: dict[str, str] | None = None) -> any {
         return self._client.delete(path, headers=headers or {});
     }
 
-    """Register a user and return (user_id, message) tuple.
-    If the user already exists, returns the username as user_id."""
     def register_user(username: str, password: str) -> tuple[str, str] {
         response = self.post(
             "/user/register",
@@ -163,7 +133,7 @@ obj ScaleTestClient {
                 data["data"].get("message", "")
             );
         }
-        # If user already exists, treat as success
+
         error = data.get("error", {});
         if error.get("code") == "IDENTITY_TAKEN" {
             return (username, "User already exists");
@@ -171,7 +141,6 @@ obj ScaleTestClient {
         raise RuntimeError(f"User registration failed: {data}");
     }
 
-    """Login a user and return the token."""
     def login_user(username: str, password: str) -> str {
         response = self.post(
             "/user/login",
@@ -187,7 +156,6 @@ obj ScaleTestClient {
         raise RuntimeError(f"User login failed: {data}");
     }
 
-    """Login as admin. Returns the auth token string."""
     def admin_login(username: str = "admin", password: str = "changeme") -> str {
         response = self.post(
             "/admin/login", json={"username": username, "password": password}
@@ -195,7 +163,7 @@ obj ScaleTestClient {
         data = response.json();
         if data.get("ok") and data.get("data") {
             login_data = data["data"];
-            # Handle bootstrap password reset if required
+
             if login_data.get("requires_password_reset") {
                 token = login_data["token"];
                 new_password = "TestAdmin123!";
@@ -204,7 +172,7 @@ obj ScaleTestClient {
                     json={"current_password": password, "new_password": new_password},
                     headers={"Authorization": f"Bearer {token}"}
                 );
-                # Re-login with new password
+
                 response = self.post(
                     "/admin/login",
                     json={"username": username, "password": new_password}
@@ -231,10 +199,8 @@ obj ScaleTestClient {
         }
     }
 
-    """Cleanup resources."""
     def close {
         if self._runtime {
-            # The seam owns transport teardown (and, later, lifespan/portal exit).
             self._runtime.close();
             self._runtime = None;
         }

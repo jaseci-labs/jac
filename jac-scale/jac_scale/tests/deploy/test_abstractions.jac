@@ -1,11 +1,6 @@
-"""Tests for abstraction base classes."""
-
-import from jac_scale.abstractions.config.app_config { AppConfig }
-import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
-import from jac_scale.abstractions.models.resource_status {
-    ResourceStatus,
-    ResourceStatusInfo
-}
+import from jac_scale.config.app_config { AppConfig }
+import from jac_scale.models.deployment_result { DeploymentResult }
+import from jac_scale.models.resource_status { ResourceStatus, ResourceStatusInfo }
 
 test "deployment result success" {
     result = DeploymentResult(

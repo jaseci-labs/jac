@@ -1,5 +1,3 @@
-"""Implementation of local filesystem storage."""
-
 impl LocalStorage.init(
     self: LocalStorage, base_path: str = "./storage", create_dirs: bool = True
 ) -> None {
@@ -10,7 +8,6 @@ impl LocalStorage.init(
     }
 }
 
-"""Resolve a relative path to an absolute path within the storage base."""
 impl LocalStorage._resolve_path(self: LocalStorage, path: str) -> Path {
     return Path(self.base_path) / path.lstrip("/");
 }

@@ -1,19 +1,3 @@
-"""Implementation of JacAPIServerLogs - A-05a pod-log query endpoints.
-
-Three endpoints, all admin-auth-gated, all GET. They proxy Loki's HTTP
-API and reshape the response into the flat `{ts, level, service,
-trace_id, pod, msg, extras}` shape the React LogsPage expects.
-
-Loki URL discovery (checked in order):
-  1. LOKI_URL env var (dev / debugging override)
-  2. http://<app_name>-loki-service:3100 (K8s service DNS when our
-     M-14.a observability stack is deployed in the same namespace)
-  3. http://localhost:3100 (last-resort dev fallback)
-
-The handlers parse log line bodies as JSON (M-14.b format) and fall back
-to a plain-text shape `{msg: line}` for non-JSON lines (pods that
-predate M-14.b, third-party libraries, etc.). UI renders both.
-"""
 import os;
 import json as json_module;
 import logging;
@@ -28,28 +12,12 @@ import from jac_scale.jserver.jserver {
     APIParameter,
     ParameterType
 }
-import from jac_scale.config_loader { get_scale_config }
+import from jac_scale.config.config_loader { get_scale_config }
 
-# Match the [trace=abc12345] prefix `TraceIdLogFilter` adds to plain
-# text logs - lets us recover a short trace id from pre-M-14.b lines.
 glob _TRACE_PREFIX_RE: any = re.compile(r"^\[trace=([0-9a-fA-F-]+)\]\s*"),
      logger = logging.getLogger(__name__);
 
 
-"""Loki base URL with the env override / K8s DNS / localhost fallback.
-
-Resolution order:
-  1. `LOKI_URL` env var (full URL; dev / debugging override).
-  2. `K8S_APP_NAME` env var (injected by K-track on every microservice
-     pod) -> `http://<app>-loki-service:3100`. This is the runtime path
-     in K8s; we read it directly because jac.toml's `${K8S_APP_NAME}`
-     placeholder isn't expanded by the config loader.
-  3. `kubernetes.app_name` from jac.toml, expanded against os.environ
-     (it may carry a literal `${VAR}` placeholder). Un-expanded
-     placeholders are treated as missing so we never build a bogus
-     `http://${K8S_APP_NAME}-loki-service:3100` DNS name.
-  4. Last-resort `http://localhost:3100` for dev runs.
-"""
 def _loki_base_url -> str {
     env = os.getenv("LOKI_URL", "").strip();
     if env {
@@ -75,7 +43,6 @@ def _loki_base_url -> str {
 }
 
 
-"""Read [plugins.scale.kubernetes].namespace; '' on lookup failure."""
 def _app_namespace -> str {
     try {
         return get_scale_config().get_kubernetes_config().get("namespace", "");
@@ -85,9 +52,6 @@ def _app_namespace -> str {
 }
 
 
-"""Read [plugins.scale.kubernetes].app_name; '' on lookup failure.
-Used in monolith mode to populate the service dropdown / pod regex
-since there's no `[microservices.routes]` table to derive names from."""
 def _app_name -> str {
     try {
         return get_scale_config().get_kubernetes_config().get("app_name", "");
@@ -97,9 +61,6 @@ def _app_name -> str {
 }
 
 
-"""True when the app declares one or more microservices via
-`[plugins.scale.microservices.routes]`. False for monolith deploys
-(no routes table or it's empty). Drives the per-mode forks below."""
 def _is_microservice_mode -> bool {
     try {
         routes: dict = get_scale_config().get_microservices_config().get("routes", {});
@@ -110,13 +71,6 @@ def _is_microservice_mode -> bool {
 }
 
 
-"""Resolve service names from a config dict (pure helper).
-
-In microservice mode: `['gateway']` plus the sorted route keys.
-In monolith mode: a single-element list with the configured
-`app_name`, or `[]` if app_name is unknown - matches what users
-see in `kubectl get pods`. Pure function so tests can exercise
-both modes without touching the global config singleton."""
 def _services_for_mode(microservice: bool, routes: dict, app_name: str) -> list[str] {
     if microservice {
         names: list[str] = list(routes.keys());
@@ -126,7 +80,6 @@ def _services_for_mode(microservice: bool, routes: dict, app_name: str) -> list[
 }
 
 
-"""Configured services list for the admin UI dropdown."""
 def _microservice_services -> list[str] {
     try {
         ms = get_scale_config().get_microservices_config();
@@ -138,12 +91,6 @@ def _microservice_services -> list[str] {
 }
 
 
-"""Translate a service name into the pod-name regex Loki labels use
-(pure helper). K-track names microservice pods
-`<svc>-deployment-<replicaset>-<random>` (gateway, builder-sv,
-jac-coder-sv); monolith pods are `<app_name>-<replicaset>-<random>`
-with no `-deployment-` infix. Pure function so tests can pin the
-mode explicitly."""
 def _service_to_pod_regex_for_mode(service: str, microservice: bool) -> str {
     safe = service.lower().replace("_", "-");
     if microservice {
@@ -153,17 +100,12 @@ def _service_to_pod_regex_for_mode(service: str, microservice: bool) -> str {
 }
 
 
-"""Translate a service name into the pod-name regex Loki labels use."""
 def _service_to_pod_regex(service: str) -> str {
     return _service_to_pod_regex_for_mode(service, _is_microservice_mode());
 }
 
 
-"""Parse a single Loki log line body. Returns the flat shape the UI
-expects. Detects M-14.b JSON and pre-M-14.b plain-text + [trace=...]
-prefix automatically."""
 def _parse_log_body(body: str, pod_labels: dict, ts_nanos: str) -> dict {
-    # Default ts: Loki's wall-clock for the line, as RFC3339.
     try {
         ns = int(ts_nanos);
         ts_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ns / 1_000_000_000)) + f".{(
@@ -175,9 +117,6 @@ def _parse_log_body(body: str, pod_labels: dict, ts_nanos: str) -> dict {
 
     out: dict = {
         "ts": ts_iso,
-        # Raw Loki nanosecond timestamp - kept as a string to avoid
-        # JSON-side precision loss (>53 bits) and used by the
-        # listing endpoint's `before` cursor for older-page paging.
         "ts_ns": ts_nanos,
         "level": pod_labels.get("level") or "INFO",
         "service": (
@@ -193,10 +132,6 @@ def _parse_log_body(body: str, pod_labels: dict, ts_nanos: str) -> dict {
 
     stripped = body.lstrip();
     if stripped.startswith("{") and stripped.endswith("}") {
-        # Jac doesn't support a bare `pass` in except blocks; we model
-        # "ignore the parse failure and fall through" by setting a flag
-        # the regular flow below checks for. Cleaner than wrapping the
-        # whole post-try body in an else clause.
         parse_ok: bool = False;
         parsed: any = None;
         try {
@@ -206,8 +141,6 @@ def _parse_log_body(body: str, pod_labels: dict, ts_nanos: str) -> dict {
             parse_ok = False;
         }
         if parse_ok {
-            # Lift M-14.b stable schema; fall back to Loki labels for
-            # any missing key.
             out["ts"] = parsed.get("ts") or ts_iso;
             out["level"] = parsed.get("level") or out["level"];
             out["service"] = parsed.get("service") or out["service"];
@@ -221,9 +154,6 @@ def _parse_log_body(body: str, pod_labels: dict, ts_nanos: str) -> dict {
         }
     }
 
-    # Non-JSON line. Recover trace id from the [trace=...] prefix if
-    # present (the TraceIdLogFilter format). Renamed to `trace_match`
-    # because `match` is a Jac keyword.
     trace_match = _TRACE_PREFIX_RE.match(body);
     if trace_match {
         out["trace_id"] = trace_match.group(1);
@@ -232,9 +162,6 @@ def _parse_log_body(body: str, pod_labels: dict, ts_nanos: str) -> dict {
 }
 
 
-"""Build a LogQL `query_range` selector. Always namespace-scoped to
-avoid all-cluster firehose; adds optional service/level/search filters.
-"""
 def _build_logql(
     namespace: str, service: str, level: str, search: str, trace_id: str
 ) -> str {
@@ -247,37 +174,18 @@ def _build_logql(
     }
     selector = "{" + ",".join(parts) + "}" if parts else "{namespace=~\".+\"}";
 
-    # Pipeline stages: parse JSON first so | level / trace_id are
-    # available as label-filters (M-14.b labels lift service + level
-    # to Loki labels, so we use label-match for level; trace_id is a
-    # parsed field).
     pipeline: list[str] = [];
     if level {
-        # Level may be a Loki label (post-M-14.b) OR only inside JSON
-        # body (pre-M-14.b). Match both with a regex search.
         escaped = level.upper().replace('"', '\\"');
         pipeline.append(f'|~ "\\"level\\":\\"{escaped}\\"|{escaped}"');
     }
     if trace_id {
-        # The K-12 trace id is exactly 8 hex chars for the short form
-        # we put in the [trace=...] prefix; full UUID elsewhere. Match
-        # both shapes. The literal brackets need `\\[` / `\\]` in the
-        # LogQL string so the parser unescapes them to `\[` / `\]` for
-        # the regex engine - a bare `\[` is rejected as "invalid char
-        # escape" by Go's strconv.Unquote inside Loki's parser.
-        # Backslashes are doubled first so quotes inserted next don't
-        # get re-doubled (replace order matters here).
         escaped_tid = trace_id.replace("\\", "\\\\").replace('"', '\\"');
         pipeline.append(
             f'|~ "trace_id\\":\\"{escaped_tid}|\\\\[trace={escaped_tid[:8]}\\\\]"'
         );
     }
     if search {
-        # Free-text contains-match. `|=` is case-sensitive substring.
-        # Backslashes MUST be doubled before quotes are escaped,
-        # otherwise the `\"` we just inserted gets re-mangled into
-        # `\\"` which delivers a stray backslash to the substring
-        # match.
         escaped_search = search.replace("\\", "\\\\").replace('"', '\\"');
         pipeline.append(f'|= "{escaped_search}"');
     }
@@ -289,9 +197,6 @@ def _build_logql(
 }
 
 
-"""HTTP GET to Loki with a short timeout, returning the parsed JSON
-body. Raises ConnectionError on transport failure for the caller to
-turn into a 502 response."""
 async def _loki_request(path: str, params: dict) -> dict {
     import httpx;
     base = _loki_base_url();
@@ -317,14 +222,6 @@ async def _loki_request(path: str, params: dict) -> dict {
 }
 
 
-"""Flatten a Loki query_range response into the UI-shaped log line list.
-
-`ascending=True` (default) sorts oldest-first so trace timelines render
-in causal order in the React component. `ascending=False` sorts
-newest-first, which is what the main /admin/logs listing wants (matches
-`kubectl logs --tail`'s feel; users expect the most recent line at the
-top of the panel).
-"""
 def _flatten_loki_response(payload: dict, ascending: bool = True) -> list[dict] {
     out: list[dict] = [];
     data = payload.get("data") or {};
@@ -339,19 +236,13 @@ def _flatten_loki_response(payload: dict, ascending: bool = True) -> list[dict] 
             out.append(_parse_log_body(body, labels, ts_nanos));
         }
     }
-    # Sort by the raw nanosecond ts (string-compare is safe: both
-    # sides are zero-padded same-length nanosecond integers from Loki).
+
     out.sort(key=lambda line : line.get("ts_ns", ""), reverse=not ascending);
     return out;
 }
 
 
-"""Register the three log query endpoints. Called once at server start
-from JacAPIServerCore._register_endpoints."""
 impl JacAPIServerLogs.register_logs_endpoints -> None {
-    # GET /admin/logs/services - dropdown options for the UI's service
-    # filter. Reads [plugins.scale.microservices.routes]; never touches
-    # the cluster. Cheap, no auth deferral on startup races.
     async def services_handler(request: Request) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
@@ -380,9 +271,6 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
         )
     );
 
-    # GET /admin/logs - paginated query (LogQL query_range under the
-    # hood). Query params: service, level, search, trace, since
-    # (default 15m), limit (default 200, max 1000).
     async def query_handler(request: Request) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
@@ -403,8 +291,7 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
         } except (ValueError, TypeError) {
             limit = 200;
         }
-        # Loki rejects limits over its `max_entries_limit_per_query`
-        # (default 5000); cap at 1000 to keep responses fast.
+
         if limit < 1 {
             limit = 1;
         }
@@ -412,9 +299,6 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
             limit = 1000;
         }
 
-        # Translate `since` into ns timestamps. Supports m/h/d suffix
-        # via Loki's relative-time syntax; we compute it server-side
-        # so we control the window.
         now_ns = int(time.time() * 1_000_000_000);
         unit = since[-1] if since else "m";
         try {
@@ -425,10 +309,6 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
         multiplier_s = {"s": 1, "m": 60, "h": 3600, "d": 86400}.get(unit, 60);
         start_ns = now_ns - (magnitude * multiplier_s * 1_000_000_000);
 
-        # `before` is the cursor for "load older": a nanosecond ts
-        # (the oldest entry's ts_ns from the previous page). We
-        # subtract 1 so Loki excludes the boundary entry, otherwise
-        # the same line would re-appear at the top of the next page.
         before = (qp.get("before") or "").strip();
         end_ns = now_ns;
         if before {
@@ -464,12 +344,8 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
             );
         }
 
-        # Listing wants newest-first - matches `kubectl logs --tail` UX
-        # so the latest line sits at the top of the panel.
         lines = _flatten_loki_response(payload, ascending=False);
-        # Cursor for the next page: the oldest (last) entry's ts_ns.
-        # `null` when the page is short of `limit` so the UI hides
-        # the "Load older" button.
+
         next_before = None;
         if len(lines) >= limit and lines {
             next_before = lines[-1].get("ts_ns");
@@ -506,9 +382,6 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
         )
     );
 
-    # GET /admin/logs/trace/{trace_id} - all lines for a single trace.
-    # Uses a wider time window (24h) because trace_ids often surface
-    # in incident reports hours after the request.
     async def trace_handler(request: Request, trace_id: str) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {

@@ -1,10 +1,3 @@
-"""Implementation of JacAPIServerTraces - distributed-trace endpoints.
-
-Proxies Tempo's HTTP API for the in-admin Distributed Traces page.
-Tempo resolution: TEMPO_URL env override -> in-cluster
-`http://<app>-tempo-service:3200` DNS -> localhost. trace_id values
-accept a dashed UUID and normalize to the 32-hex form Tempo stores.
-"""
 import os;
 import logging;
 import time;
@@ -16,12 +9,11 @@ import from jac_scale.jserver.jserver {
     APIParameter,
     ParameterType
 }
-import from jac_scale.config_loader { get_scale_config }
+import from jac_scale.config.config_loader { get_scale_config }
 
 glob logger = logging.getLogger(__name__);
 
 
-"""Tempo base URL: TEMPO_URL env -> K8s DNS -> localhost (port 3200)."""
 def _tempo_base_url -> str {
     env = os.getenv("TEMPO_URL", "").strip();
     if env {
@@ -47,7 +39,6 @@ def _tempo_base_url -> str {
 }
 
 
-"""Configured microservice route keys + 'gateway'. Empty list off-K8s."""
 def _trace_services -> list[str] {
     try {
         ms = get_scale_config().get_microservices_config();
@@ -60,11 +51,6 @@ def _trace_services -> list[str] {
 }
 
 
-"""Normalize a trace id to the 32-hex form Tempo stores.
-
-Accepts a dashed UUID or raw hex, strips dashes, lowercases, and
-validates it parses as hex. Returns '' when unusable so the handler can
-400 instead of querying Tempo with garbage."""
 def _normalize_trace_id(raw: str) -> str {
     hex_str = (raw or "").replace("-", "").strip().lower();
     if not hex_str {
@@ -79,7 +65,6 @@ def _normalize_trace_id(raw: str) -> str {
 }
 
 
-"""Build a TraceQL selector from the UI filters. `{ }` matches all."""
 def _build_traceql(service: str, status: str, min_duration_ms: int) -> str {
     clauses: list[str] = [];
     if service {
@@ -99,11 +84,6 @@ def _build_traceql(service: str, status: str, min_duration_ms: int) -> str {
 }
 
 
-"""GET against Tempo's HTTP API. Returns parsed JSON.
-
-Raises ConnectionError on transport / status failure so handlers map it
-to a 502. `accept_json` forces `Accept: application/json` (needed for
-/api/traces/{id}, which defaults to protobuf)."""
 async def _tempo_request(path: str, params: dict, accept_json: bool = False) -> dict {
     import httpx;
     base = _tempo_base_url();
@@ -128,10 +108,6 @@ async def _tempo_request(path: str, params: dict, accept_json: bool = False) -> 
 }
 
 
-"""Pull a scalar out of an OTLP-JSON attribute value object.
-
-OTLP encodes values as `{stringValue|intValue|boolValue|doubleValue:
-...}`. Returns the first present field as a Python scalar, or '' ."""
 def _otlp_value(value: dict) -> any {
     if "stringValue" in value {
         return value["stringValue"];
@@ -149,7 +125,6 @@ def _otlp_value(value: dict) -> any {
 }
 
 
-"""Flatten OTLP attribute list `[{key, value}]` into a plain dict."""
 def _otlp_attrs(attrs: list) -> dict {
     out: dict = {};
     for a in (attrs or []) {
@@ -162,13 +137,6 @@ def _otlp_attrs(attrs: list) -> dict {
 }
 
 
-"""Flatten Tempo's OTLP-JSON trace into a flat span list for the UI.
-
-Walks batches -> scopeSpans -> spans, lifting `service.name` from each
-batch's resource attributes onto every span. Each span becomes
-`{span_id, parent_span_id, name, service, kind, start_ns, duration_ms,
-status, attributes}`. Also returns the trace's min start + total span
-count so the waterfall can scale its time axis."""
 def _flatten_tempo_trace(payload: dict) -> dict {
     spans: list[dict] = [];
     min_start: int = 0;
@@ -208,7 +176,7 @@ def _flatten_tempo_trace(payload: dict) -> dict {
             }
         }
     }
-    # Sort by start time so the UI can lay the waterfall top-down.
+
     spans.sort(key=lambda s : s.get("start_ns", 0));
     total_ms = (max_end - min_start) / 1_000_000.0 if (max_end and min_start) else 0;
     return {
@@ -221,8 +189,6 @@ def _flatten_tempo_trace(payload: dict) -> dict {
 
 
 impl JacAPIServerTraces.register_traces_endpoints -> None {
-    # GET /admin/traces/services - dropdown options for the UI service
-    # filter. Reads [plugins.scale.microservices.routes]; no cluster call.
     async def services_handler(request: Request) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
@@ -251,8 +217,6 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
         )
     );
 
-    # GET /admin/traces - TraceQL search. Query params: service, status
-    # (error), min_duration_ms, since (default 1h), limit (default 20).
     async def search_handler(request: Request) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {
@@ -282,7 +246,6 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
             limit = 100;
         }
 
-        # Tempo search takes unix-second start/end.
         now_s = int(time.time());
         unit = since[-1] if since else "h";
         try {
@@ -328,8 +291,7 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
                 }
             );
         }
-        # Newest-first: Tempo's search result order isn't guaranteed, so
-        # sort by trace start time descending for a kubectl-logs-like UX.
+
         traces.sort(key=lambda x : x.get("start_ns", 0), reverse=True);
         return JSONResponse(
             content={
@@ -355,7 +317,6 @@ impl JacAPIServerTraces.register_traces_endpoints -> None {
         )
     );
 
-    # GET /admin/traces/{trace_id} - one trace's spans for the waterfall.
     async def trace_handler(request: Request, trace_id: str) -> JSONResponse {
         auth_error = self.require_admin(request.headers.get("Authorization"));
         if auth_error {

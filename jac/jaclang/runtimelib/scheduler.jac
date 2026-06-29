@@ -1,4 +1,3 @@
-"""Scheduler for walkers and functions."""
 import threading;
 import time;
 import heapq;
@@ -10,7 +9,6 @@ import from jaclang.runtimelib.builtin { ScheduleTrigger }
 glob _scheduler_instance: (Scheduler | None) = None,
      logger = logging.getLogger(__name__);
 
-"""Holds the configuration for a scheduled task."""
 obj ScheduleSpec {
     has date: (str | None) = None,
         interval: (float | None) = None,
@@ -18,7 +16,6 @@ obj ScheduleSpec {
         trigger: ScheduleTrigger = ScheduleTrigger.STATIC;
 }
 
-"""One registered scheduled task."""
 obj ScheduledTask {
     has name: str,
         target: Callable,
@@ -28,7 +25,6 @@ obj ScheduledTask {
         last_run: (datetime.datetime | None) = None;
 }
 
-"""Background scheduler engine (singleton)."""
 obj Scheduler {
     has _tasks: list[ScheduledTask] = [],
         _thread: (threading.Thread | None) = None,

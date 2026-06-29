@@ -1,7 +1,7 @@
 [project]
 name = "{{name}}"
 entry-point = "main.jac"
-kind = "fullstack"
+kind = "web-app"
 
 [jac-shadcn]
 style = "nova"
@@ -24,7 +24,7 @@ description = "Jac project with shadcn UI components and theming"
 
 [jacpack.options]
 directories = ["components", "components/ui", "lib"]
-# A named variant of the `fullstack` kind, not its default template: it is
-# reached via `jac create --use jac-shadcn`, while `--kind fullstack` gives the
-# plain jac-client fullstack template.
+# A named variant of the `web-app` kind, not its default template: it is
+# reached via `jac create --use jac-shadcn`, while `--kind web-app` gives the
+# plain jac-client web-app template.
 default_for_kind = false

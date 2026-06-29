@@ -1,15 +1,3 @@
-"""Integration tests for MongoBackend schema repair (read-repair + retry).
-
-Exercises the v1 drift-management surface end to end against a real
-MongoDB container: lazy read-repair with CAS write-back (renames, upgrade
-callbacks, drop-attic, dual-written shadows), quarantine reason codes,
-and the startup auto-retry that recovers quarantined docs once the
-deploy that fixes them arrives.
-
-Locally these require Docker; in CI they run against a throwaway Mongo
-instance.
-"""
-
 import atexit;
 import from typing { cast }
 import from uuid { uuid4, UUID }
@@ -18,12 +6,11 @@ import from testcontainers.mongodb { MongoDbContainer }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.serializer { Serializer }
-import from jac_scale.memory_hierarchy { MongoBackend }
+import from jac_scale.memory.memory_hierarchy { MongoBackend }
 
 glob _shared: dict = {};
 
 
-"""Upgrade callback: legacy comma-string tags become list[str]."""
 def _split_repair_tags(doc: dict) -> dict {
     doc['tags'] = [
         t.strip()
@@ -50,7 +37,6 @@ impl _RepairUser.__jac_schema__ -> None {
 }
 
 
-"""Lazily start a shared MongoDB container; return (MongoClient, uri)."""
 def _get_mongo -> tuple {
     if "mongo_client" not in _shared {
         container = MongoDbContainer("mongo:latest");
@@ -65,7 +51,6 @@ def _get_mongo -> tuple {
 }
 
 
-"""Drop all non-system databases between tests."""
 def _reset_mongo -> None {
     if "mongo_client" not in _shared {
         return;
@@ -79,7 +64,6 @@ def _reset_mongo -> None {
 }
 
 
-"""Insert a pre-rename-shape _RepairUser doc; returns its id string."""
 def _insert_old_shape_doc(backend: MongoBackend, stored_fp: str) -> str {
     arch_mod = getattr(_RepairUser, '__module__');
     doc_id = str(uuid4());
@@ -124,14 +108,13 @@ test "read-repair renames, upgrades, attics, and write-backs with CAS" {
     assert arch.name == 'ada' , f"rename failed: {arch}";
     assert arch.tags == ['math', 'computing'] , f"upgrade failed: {arch.tags}";
 
-    # The repaired form must be persisted back (lazy migration).
     stored = backend.collection.find_one({'_id': doc_id});
     assert stored is not None;
     stored_arch = stored['data']['archetype'];
     assert stored_arch.get('name') == 'ada' , (
         f"write-back missing renamed field: {stored_arch}"
     );
-    # Dual-write: the old stored name rides along for old-version readers.
+
     assert stored_arch.get('username') == 'ada' , (
         f"write-back must dual-write the shadow copy: {stored_arch}"
     );
@@ -140,9 +123,9 @@ test "read-repair renames, upgrades, attics, and write-backs with CAS" {
     assert attic.get('legacy_bio', {}).get('value') == 'wrote the first program' , (
         f"dropped field must persist in the attic: {attic}"
     );
-    # Fingerprint re-stamped to the live class (CAS succeeded).
+
     assert stored.get('fingerprint') == getattr(_RepairUser, '__jac_fingerprint__');
-    # Nothing quarantined.
+
     q = client["jac_test_repair"]["_anchors_quarantine"].find_one({'_id': doc_id});
     assert q is None;
     backend.close();
@@ -157,7 +140,6 @@ test "second read of a repaired doc causes no further write-back churn" {
     assert backend.get(UUID(doc_id)) is not None;
     first = backend.collection.find_one({'_id': doc_id});
 
-    # Drop the in-memory anchor cacheless path: fetch again fresh.
     loaded = backend.get(UUID(doc_id));
     assert loaded is not None;
     second = backend.collection.find_one({'_id': doc_id});
@@ -207,8 +189,7 @@ test "startup auto-retry recovers quarantined docs the deploy fixed" {
     (client, uri) = _get_mongo();
     arch_mod = getattr(_RepairUser, '__module__');
     doc_id = str(uuid4());
-    # Simulate a doc quarantined by a previous deploy that lacked the
-    # class (CLASS_MISSING); the class + drift rules exist in this one.
+
     client["jac_test_repair"]["_anchors_quarantine"].insert_one(
         {
             '_id': doc_id,
@@ -236,7 +217,7 @@ test "startup auto-retry recovers quarantined docs the deploy fixed" {
             'from_format_version': 1
         }
     );
-    # Constructing the backend runs postinit -> _auto_retry_quarantine.
+
     backend = MongoBackend(mongo_url=uri, db_name="jac_test_repair");
     q = client["jac_test_repair"]["_anchors_quarantine"].find_one({'_id': doc_id});
     assert q is None , "auto-retry must recover the now-loadable doc at startup";

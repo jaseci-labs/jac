@@ -2,7 +2,7 @@
 
 jac-client adds client-side compilation to Jac so you can write React-style UI components using `cl { }` blocks (or `.cl.jac` files). The compiler separates your code automatically -- server-side logic compiles to Python, while client-side components compile to JavaScript with React as the rendering engine.
 
-You also get project scaffolding (`jac create --use client`), npm dependency management, a Vite-powered dev server with HMR, and automatic HTTP bridge generation so your client components can call server walkers without manual API wiring. This reference covers installation, project structure, the module system, component authoring, and build configuration.
+You also get project scaffolding (`jac create --use web-static`), npm dependency management, a Vite-powered dev server with HMR, and automatic HTTP bridge generation so your client components can call server walkers without manual API wiring. This reference covers installation, project structure, the module system, component authoring, and build configuration.
 
 ---
 
@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/ins
 ### Create New Project
 
 ```bash
-jac create myapp --use client
+jac create myapp --use web-static
 cd myapp
 ```
 
@@ -1626,7 +1626,7 @@ Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if nee
 
 | Command | Description |
 |---------|-------------|
-| `jac create myapp --use client` | Create new full-stack project |
+| `jac create myapp --use web-static` | Create new full-stack project |
 | `jac start` | Start dev server |
 | `jac start --dev` | Dev server with HMR |
 | `jac start --client pwa` | Start PWA (builds then serves) |
@@ -1670,7 +1670,7 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 | `--client` | Build target (`web`, `pwa`, `static`, `desktop`, `mobile`) | `web` |
 | `-p, --platform` | Platform for **mobile** (`android`, `ios`) or **desktop sidecar naming** (`windows` selects `.exe`; no cross-compilation yet) | Current platform |
 
-A project whose `jac.toml` declares `kind = "client"` is built with the
+A project whose `jac.toml` declares `kind = "web-static"` is built with the
 `static` target automatically -- no `--client` flag needed (see [Client-only apps](#client-only-apps)).
 
 For desktop builds, see the [jac-desktop Reference](jac-desktop.md): the desktop target compiles your `cl` UI into a single native binary that embeds the OS webview. In all desktop builds the build environment sets `JAC_BUILD=1` so import-time server starts stay inert.
@@ -1710,12 +1710,12 @@ to in-browser WebAssembly). Declare it once in `jac.toml`:
 [project]
 name = "browser-app"
 entry-point = "main.jac"
-kind = "client"
+kind = "web-static"
 
 [plugins.client]
 ```
 
-With `kind = "client"` set, `jac build` and `jac start` auto-detect the
+With `kind = "web-static"` set, `jac build` and `jac start` auto-detect the
 client-only project and take the portable path -- no `--client static` flag
 required. An explicit non-web `--client <target>` (e.g. `--client pwa`)
 overrides the auto-detection.
@@ -1725,7 +1725,7 @@ generated `index.html` has its JS bundle and CSS **inlined**, making it fully
 self-contained:
 
 ```bash
-jac build                      # auto-detected from kind = "client"
+jac build                      # auto-detected from kind = "web-static"
 # -> .jac/client/dist/index.html  (open directly from disk)
 ```
 
@@ -1791,7 +1791,7 @@ jac-client extends several core commands:
 
 | Command | Added Option | Description |
 |---------|-------------|-------------|
-| `jac create` | `--use client` | Create full-stack project template |
+| `jac create` | `--use web-static` | Create full-stack project template |
 | `jac create` | `--skip` | Skip npm package installation |
 | `jac start` | `--client <target>` | Client build target for dev server |
 | `jac add` | `--npm` | Add npm (client-side) dependency |
