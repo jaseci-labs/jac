@@ -26,14 +26,6 @@ base_route_app = "app"
 
 [plugins.client]
 
-# Experimental-mode deploy source. With `jac start --scale --experimental`, the
-# pod git-clones this repo/branch and `zig build`s jac from source in-cluster
-# (bypassing install.sh / GitHub Releases). Points at the fork's branch so the
-# in-pod build uses the rearchitecture code.
-[plugins.scale.kubernetes]
-jaseci_repo_url = "https://github.com/MusabMahmoodh/jaseci.git"
-jaseci_branch = "feat/jac-scale-rearchitecture"
-
 # Microservice mode - services are auto-discovered from `sv import`.
 # The gateway only needs to know which module name maps to which URL prefix
 # for client-facing routing.
