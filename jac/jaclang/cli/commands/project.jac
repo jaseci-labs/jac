@@ -176,7 +176,7 @@ def create(
         ("jac install -e .", "Install current package in editable mode"),
         ("jac install -e /path/to/lib", "Install a cloned library in editable mode"),
         (
-            "jac install -e ./jac-byllm ./jac-scale -e ./jac-client",
+            "jac install -e ./jac-byllm -e ./jac-client",
             "Install multiple packages in editable mode (space-separated or repeated -e)"
         ),
         ("jac install --dev", "Include dev dependencies"),

@@ -52,7 +52,6 @@ export PATH="$PWD/jac/zig-out/bin:$PATH"
 
 # Plugins (editable, global): importable from anywhere, including each plugin dir.
 jac install -e jac-byllm --global
-jac install -e jac-scale --global
 jac install -e jac-mcp --global
 
 # pre-commit is a standalone contributor tool (not part of the jac toolchain).

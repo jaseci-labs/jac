@@ -107,7 +107,9 @@ def build_runtime_install_commands(
         commands.append('export PATH="/tmp/${ZDIR}:$PATH"');
         commands.append('( cd jac && zig build fetch-llvm && zig build )');
         commands.append('export PATH="$PWD/jac/zig-out/bin:$PATH"');
-        commands.append('jac install -e ./jac-scale --extras all --global');
+        # scale is built into jaclang now (jaclang.scale); no separate install.
+        # The app's runtime capability closure (serve + configured backends) is
+        # materialized by `jac install` in the app dir below.
         commands.append('[ ! -d ./jac-byllm ] || jac install -e ./jac-byllm --global');
         commands.append('[ ! -d ./jac-mcp ] || jac install -e ./jac-mcp --global');
         commands.append('cd ..');
@@ -117,7 +119,6 @@ def build_runtime_install_commands(
     } else {
         packages = config.plugin_versions or {};
         jaclang_v = packages.get('jaclang', 'latest');
-        scale_v = packages.get('jaclang.scale', 'latest');
         byllm_v = packages.get('jac_byllm', 'latest');
         mcp_v = packages.get('jac_mcp', 'latest');
         install_jac = (
@@ -137,11 +138,9 @@ def build_runtime_install_commands(
             f'published release, or deploy with --experimental to build jac from '
             f'source in-pod." >&2; exit 1; fi'
         );
-        if scale_v == 'latest' {
-            commands.append("jac install 'jac-scale[all]' --global");
-        } else {
-            commands.append(f"jac install 'jac-scale[all]=={scale_v}' --global");
-        }
+        # scale ships inside jaclang now; the pod's runtime capability closure
+        # (serve + configured backends, never deploy.k8s) is materialized by the
+        # app-level `jac install` into the app .jac/venv, not a global package.
         if byllm_v and byllm_v != 'none' {
             if byllm_v == 'latest' {
                 commands.append('jac install byllm --global');
