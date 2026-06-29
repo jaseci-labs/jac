@@ -39,9 +39,7 @@ obj HelpFormatter {
         verbose: bool = False
     ) -> str;
 
-    def format_curated_help(
-        commands: list[CommandSpec], prog: str = "jac"
-    ) -> str;
+    def format_curated_help(commands: list[CommandSpec], prog: str = "jac") -> str;
 }
 
 glob _groups: CommandGroups | None = None,

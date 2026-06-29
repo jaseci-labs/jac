@@ -20,6 +20,11 @@ impl HelpFormatter.format_main_help(
 
     lines: list[str] = [];
 
+    lines.append("Jac Programming Language CLI");
+    if version {
+        lines.append(f"Version: {version}");
+    }
+    lines.append("");
     lines.append(f"Usage: {prog} [OPTIONS] COMMAND [ARGS]...");
     lines.append("");
     lines.append("Options:");
