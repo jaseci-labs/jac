@@ -9,7 +9,15 @@ impl CommandRegistry.init -> None {
         prog='jac',
         description='Jac Programming Language CLI',
         epilog=f'For more information, visit: {JAC_GITHUB_URL}',
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False
+    );
+    self.parser.add_argument(
+        '-h',
+        '--help',
+        action='store_true',
+        dest='help',
+        help='Show all commands and exit'
     );
     self.parser.add_argument(
         '-V',
@@ -31,6 +39,7 @@ impl CommandRegistry.command(
     args: list[Arg] | None = None,
     examples: list[tuple[str, str]] | None = None,
     group: str = "general",
+    tier: str = "",
     priority: CommandPriority = CommandPriority.CORE,
     source: str = "jaclang"
 ) -> Callable[[Callable], Callable] {
@@ -43,6 +52,7 @@ impl CommandRegistry.command(
             args=args or [],
             examples=examples or [],
             group=group,
+            tier=tier,
             priority=priority,
             source=source,
             handler=func

@@ -1110,8 +1110,33 @@ impl ModulePath.base_module_name.getter -> str {
 }
 
 impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
+    bundled = self.native_bundled_path();
+    if bundled is not None {
+        return bundled;
+    }
     target = self.dot_path_str + (f".{target_item}" if target_item else '');
     return resolve_relative_path(target, self.loc.mod_path);
+}
+
+impl ModulePath.native_bundled_path -> (str | None) {
+    import os;
+    import from jaclang.jac0core.codeinfo {
+        is_bundled_native_module,
+        resolve_native_module
+    }
+    mod_path = self.loc.mod_path if self.loc else None;
+    is_native = self.in_native_context()
+    or (mod_path is not None and mod_path.endswith('.na.jac'));
+    if not is_native {
+        return None;
+    }
+    base = self.dot_path_str;
+    if not is_bundled_native_module(base) {
+        return None;
+    }
+    base_dir = os.path.dirname(mod_path) if mod_path else os.getcwd();
+    (_src, full_path) = resolve_native_module(base, base_dir);
+    return full_path;
 }
 
 impl ModulePath.resolve_relative_path_list -> list[str] {
@@ -1120,7 +1145,7 @@ impl ModulePath.resolve_relative_path_list -> list[str] {
         return [];
     }
 
-    full_path = resolve_relative_path(self.dot_path_str, self.loc.mod_path);
+    full_path = self.resolve_relative_path();
 
     paths: list[str] = [''] * len(parts);
     paths[-1] = full_path;

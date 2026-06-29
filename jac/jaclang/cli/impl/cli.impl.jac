@@ -60,8 +60,20 @@ impl start_cli -> None {
         return;
     }
 
-    if (args.command is None) {
+    if args.help {
         formatter = get_help_formatter();
+        help_text = formatter.format_main_help(
+            registry.get_all(), prog="jac", version=jac_version(), verbose=True
+        );
+        console.print(help_text);
+        return;
+    }
+
+    if (args.command is None) {
+        import from jaclang.cli.banners { print_logo }
+        formatter = get_help_formatter();
+        print_logo(jac_version());
+        console.print("");
         help_text = formatter.format_main_help(
             registry.get_all(), prog="jac", version=jac_version()
         );
@@ -79,6 +91,7 @@ impl start_cli -> None {
     args_dict = vars(args);
     args_dict.pop('command');
     args_dict.pop('version', None);
+    args_dict.pop('help', None);
 
     if script_args {
         args_dict['args'] = script_args;

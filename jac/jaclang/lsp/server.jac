@@ -1,5 +1,3 @@
-"""LSP server infrastructure: LanguageServer, Workspace, TextDocument, PositionCodec."""
-
 import asyncio;
 import enum;
 import io;
@@ -41,18 +39,11 @@ import from . { uris }
 glob logger = logging.getLogger("jaclang.lsp.server"),
      RE_CONTENT_LENGTH = re.compile(r"Content-Length: (\d+)");
 
-# ---------------------------------------------------------------------------
-# Serialization helpers
-# ---------------------------------------------------------------------------
 def _to_camel_case(name: str) -> str;
 def _to_snake_case(name: str) -> str;
 def to_dict(`obj: any) -> any;
 def from_dict(data: any, cls: any) -> any;
 
-# ---------------------------------------------------------------------------
-# PositionCodec — UTF-16 ↔ UTF-32 position conversion
-# ---------------------------------------------------------------------------
-"""Converts between LSP client positions (UTF-16) and Python positions (UTF-32)."""
 obj PositionCodec {
     has encoding: str = PositionEncodingKind.Utf16;
 
@@ -62,10 +53,6 @@ obj PositionCodec {
     def range_from_client_units(lines: list[str], range: Range) -> Range;
 }
 
-# ---------------------------------------------------------------------------
-# TextDocument — in-memory document with incremental sync
-# ---------------------------------------------------------------------------
-"""A text document managed by the workspace."""
 obj TextDocument {
     has uri: str = "",
         _source: Optional[str] = None,
@@ -86,10 +73,6 @@ obj TextDocument {
     def _apply_full_change(change: any) -> None;
 }
 
-# ---------------------------------------------------------------------------
-# Workspace — manages open text documents
-# ---------------------------------------------------------------------------
-"""Manages open documents and workspace folders."""
 obj Workspace {
     has root_uri: Optional[str] = None,
         _sync_kind: TextDocumentSyncKind = TextDocumentSyncKind.Incremental,
@@ -107,10 +90,6 @@ obj Workspace {
     def remove_text_document(doc_uri: str) -> None;
 }
 
-# ---------------------------------------------------------------------------
-# LanguageServer — the main LSP server
-# ---------------------------------------------------------------------------
-"""Base language server with feature registration, transport, and lifecycle."""
 obj LanguageServer {
     has name: str = "",
         version: str = "",
@@ -134,7 +113,6 @@ obj LanguageServer {
     def show_message_log(message: str, msg_type: any = None) -> None;
     def send_request(method: str, params: any = None) -> None;
     def shutdown -> None;
-    # Internal transport methods
     def _send_notification(method: str, params: any) -> None;
     def _send_response(msg_id: any, result: any) -> None;
     def _write_message(body: dict) -> None;

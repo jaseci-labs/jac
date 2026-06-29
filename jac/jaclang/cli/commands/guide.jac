@@ -6,6 +6,7 @@ glob registry = get_registry();
 @registry.command(
     name="guide",
     help="Show curated Jac reference guides",
+    tier="learn",
     args=[
         Arg.create(
             "topic",
