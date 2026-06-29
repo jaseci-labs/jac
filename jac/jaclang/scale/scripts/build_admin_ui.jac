@@ -21,8 +21,8 @@ glob w = sys.stdout.write;
 def main -> int {
     script_dir = Path(__file__).resolve().parent;
     pkg_root = script_dir.parent;
-    ui_dir = pkg_root / "jaclang.scale" / "admin" / "ui";
-    dist_dst = pkg_root / "jaclang.scale" / "admin" / "_dist";
+    ui_dir = pkg_root / "admin" / "ui";
+    dist_dst = pkg_root / "admin" / "_dist";
 
     w(f"Admin UI source: {ui_dir}\n");
     w(f"Bundle destination: {dist_dst}\n\n");
