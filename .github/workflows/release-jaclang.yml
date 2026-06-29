@@ -116,6 +116,30 @@ jobs:
             "dist/${{ steps.pkg.outputs.asset }}.sha256" \
             --clobber
 
+      # End-to-end check of the user-facing install path. Now that THIS
+      # platform's asset is attached to the release, `scripts/install.sh` must be
+      # able to resolve, download, checksum-verify, and run it. This is the gate
+      # that catches release-tag/installer scheme drift (the kind that silently
+      # breaks `curl ... | bash`) at release time, on the same native hardware
+      # the asset targets, instead of in users' terminals. Gated like the upload
+      # above -- only meaningful once the asset is actually on a release. Runs in
+      # an isolated $HOME so the runner's PATH/profile is left untouched.
+      - name: Verify install.sh can fetch + run this release
+        if: github.event_name == 'release' || inputs.tag != ''
+        env:
+          JAC_VER: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euxo pipefail
+          HOME="$(mktemp -d)"; export HOME
+          bash scripts/install.sh --version "$JAC_VER"
+          BIN="$HOME/.local/bin/jac"
+          test -x "$BIN"
+          "$BIN" --version
+          printf 'with entry { print("installed ok"); }\n' > "$HOME/h.jac"
+          "$BIN" run "$HOME/h.jac" | grep -q "installed ok"
+          bash scripts/install.sh --uninstall
+          ! test -e "$BIN"
+
       - name: Upload as workflow artifact
         uses: actions/upload-artifact@v4
         with:

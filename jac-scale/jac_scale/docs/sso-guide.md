@@ -158,7 +158,7 @@ Create a new file `sso/microsoft.jac` implementing the `SSOProvider` interface:
 import from fastapi { Request, Response }
 import from fastapi_sso.sso.microsoft { MicrosoftSSO }
 import from jac_scale.sso.provider { SSOProvider, SSOUserInfo }
-import from jac_scale.enums { Platforms }
+import from jac_scale.shared.enums { Platforms }
 
 obj MicrosoftSSOProvider(SSOProvider) {
     has client_id: str,

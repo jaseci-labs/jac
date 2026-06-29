@@ -1,10 +1,3 @@
-"""Jac MTIR Generation Pass.
-
-This module defines the MTIRGenPass class for generating MTIR (Method Type
-Information Registry) from JacLang code. The pass extracts type information
-from GenAI abilities for use by the LLM runtime.
-"""
-
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.mtp {
     ClassInfo,
@@ -45,11 +38,6 @@ glob PRIMITIVE_TYPES: list[str] = [
          'f64'
      ];
 
-"""Jac MTIR Generation Pass.
-
-Does not need per-node traversal; uses the sub-node table to find
-all Ability nodes, so we extend Transform directly instead of UniPass.
-"""
 obj MTIRGenPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
         prog: any,

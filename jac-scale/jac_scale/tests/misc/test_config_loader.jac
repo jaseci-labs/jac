@@ -1,9 +1,5 @@
-"""Tests for jac_scale.config_loader against the real loader (other
-tests stub get_microservices_config; this catches bugs in the loader
-itself - e.g. when the ingress block was dropped from the return dict)."""
-
 import os;
-import from jac_scale.config_loader { JacScaleConfig }
+import from jac_scale.config.config_loader { JacScaleConfig }
 
 
 test "get_microservices_config returns ingress block" {
@@ -86,10 +82,6 @@ test "get_microservices_config logs block round-trips enabled flag" {
 }
 
 
-# =============================================================================
-# Tri-state `enabled` (zero-config auto-detect). Absent must be None, not
-# False, so _scale_pre_hook can tell auto-detect from an explicit opt-out.
-# =============================================================================
 test "get_microservices_config enabled is None when unset (auto-detect)" {
     cfg = JacScaleConfig();
     cfg._config = {"microservices": {"gateway_port": 8000}};
@@ -119,11 +111,6 @@ test "get_microservices_config preserves explicit enabled=True" {
 }
 
 
-# =============================================================================
-# Route propagation: JAC_SV_ROUTES env fallback (zero-config --scale pods read
-# routes from the env the manifest builder injected, since the in-cluster
-# jac.toml has no [routes] table).
-# =============================================================================
 test "get_microservices_config reads routes from JAC_SV_ROUTES when config empty" {
     cfg = JacScaleConfig();
     cfg._config = {"microservices": {"enabled": True}};

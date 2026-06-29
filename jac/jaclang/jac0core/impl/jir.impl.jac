@@ -1,9 +1,7 @@
-"""Implementation of JIR class methods."""
 import struct;
 import sys;
 import zlib;
 
-# --- JirHeader methods ---
 impl JirHeader.to_bytes -> bytes {
     return struct.pack(
         HEADER_FMT,

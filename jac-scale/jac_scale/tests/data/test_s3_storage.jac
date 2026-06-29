@@ -1,4 +1,3 @@
-"""Tests for S3 storage implementation."""
 import io;
 import os;
 import boto3;
@@ -10,7 +9,7 @@ import from jaclang.runtimelib.storage { Storage }
 import from jaclang.runtimelib.storage.local_storage { LocalStorage }
 import from jac_scale.storage.s3_storage { S3Storage }
 import from jaclang.project.config { JacConfig }
-"""Helper to create a mocked S3Storage instance."""
+
 def get_mock_s3_storage(
     bucket: str = "test-bucket", public: bool = False
 ) -> S3Storage {
@@ -24,7 +23,6 @@ test "s3 upload and exists" {
         s3.create_bucket(Bucket="test-bucket");
         storage = get_mock_s3_storage();
         content = b"S3 Test Content";
-        # Upload from bytes
         storage.upload(io.BytesIO(content), "test.txt");
         assert storage.exists("test.txt");
         assert storage.download("test.txt") == content;
@@ -108,11 +106,9 @@ test "s3 copy and move" {
         s3.create_bucket(Bucket="test-bucket");
         storage = get_mock_s3_storage();
         storage.upload(io.BytesIO(b"original"), "orig.txt");
-        # Copy
         storage.copy("orig.txt", "copy.txt");
         assert storage.exists("orig.txt");
         assert storage.exists("copy.txt");
-        # Move
         storage.move("orig.txt", "moved.txt");
         assert not storage.exists("orig.txt");
         assert storage.exists("moved.txt");
@@ -125,10 +121,8 @@ test "s3 prefix handling" {
         s3.create_bucket(Bucket="prefix-bucket");
         storage = S3Storage(bucket="prefix-bucket", prefix="my/app/");
         storage.upload(io.BytesIO(b"data"), "file.txt");
-        # Verify the actual key in S3 includes the prefix
         response = s3.list_objects_v2(Bucket="prefix-bucket");
         assert response["Contents"][0]["Key"] == "my/app/file.txt";
-        # Verify our storage abstraction still sees it as "file.txt"
         assert storage.exists("file.txt");
         assert "file.txt" in list(storage.list_files(""));
     }
@@ -177,7 +171,7 @@ test "s3 download nonexistent raises" {
 }
 
 test "store builtin defaults to local storage" {
-    cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+    cfg_patcher = patch("jac_scale.storage.factory.get_config");
     env_patcher = patch.dict("os.environ", {}, clear=True);
 
     mock_cfg = cfg_patcher.start();
@@ -201,7 +195,7 @@ test "store builtin resolves to s3 storage when configured" {
             "JAC_STORAGE_TYPE": "s3",
             "JAC_STORAGE_S3_BUCKET": "builtin-test-bucket"
         };
-        cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+        cfg_patcher = patch("jac_scale.storage.factory.get_config");
         env_patcher = patch.dict("os.environ", env);
         mock_cfg = cfg_patcher.start();
         env_patcher.start();
@@ -229,7 +223,6 @@ endpoint_url = "https://custom-s3.com"
 public_read = true
 """;
 
-    # This calls the _parse_toml_data function we just fixed in config.impl.jac
     config = JacConfig.from_toml_str(toml_content);
 
     assert config.storage.storage_type == "s3";
@@ -247,11 +240,10 @@ type = "s3"
 bucket = "toml-bucket"
 region = "eu-central-1"
 """;
-    # 1. Parse the TOML using the real Jaseci loader
+
     config = JacConfig.from_toml_str(toml_content);
 
-    # 2. Mock get_config to return our parsed object
-    cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+    cfg_patcher = patch("jac_scale.storage.factory.get_config");
     env_patcher = patch.dict("os.environ", {}, clear=True);
     mock_get_cfg = cfg_patcher.start();
     env_patcher.start();
@@ -259,7 +251,6 @@ region = "eu-central-1"
     try {
         mock_get_cfg.return_value = config;
 
-        # 3. Call store() and verify it picks up the TOML values
         s = store();
         assert isinstance(s, S3Storage);
         assert s.bucket == "toml-bucket";
@@ -274,14 +265,10 @@ test "s3 get_url handles special characters and encoding" {
     with mock_aws() {
         s3 = boto3.client("s3", region_name="us-east-1");
         s3.create_bucket(Bucket="test-bucket");
-        # Test with public=True to verify UNSIGNED client logic
         storage = get_mock_s3_storage(public=True);
-        # Path with spaces and a hash
         path = "uploads/my summer #photo.jpg";
         url = storage.get_url(path);
-        # 1. Verify space is encoded as %20 and # as %23
         assert "my%20summer%20%23photo.jpg" in url;
-        # 2. Verify no signature/tokens in the URL (should be a clean public link)
         assert "X-Amz-Signature" not in url;
         assert "X-Amz-Algorithm" not in url;
     }
@@ -295,7 +282,6 @@ base_path = "/tmp/my-storage"
 create_dirs = false
 """;
 
-    # This verifies our fix in config.impl.jac for the local type
     config = JacConfig.from_toml_str(toml_content);
 
     assert config.storage.storage_type == "local";
@@ -309,11 +295,10 @@ test "store builtin uses values from jac.toml for local storage" {
 type = "local"
 base_path = "/tmp/custom-local"
 """;
-    # 1. Parse the TOML using the real Jaseci loader
+
     config = JacConfig.from_toml_str(toml_content);
 
-    # 2. Mock get_config to return our parsed object
-    cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+    cfg_patcher = patch("jac_scale.storage.factory.get_config");
     env_patcher = patch.dict("os.environ", {}, clear=True);
     mock_get_cfg = cfg_patcher.start();
     env_patcher.start();
@@ -321,7 +306,6 @@ base_path = "/tmp/custom-local"
     try {
         mock_get_cfg.return_value = config;
 
-        # 3. Call store() and verify it picks up the TOML values
         s = store();
         assert isinstance(s, LocalStorage);
         assert s.base_path == "/tmp/custom-local";

@@ -1,17 +1,12 @@
-"""Implementation of the @jaseci/runtime npm package builder."""
-
 import re;
 import json;
 import jaclang;
 import from pathlib { Path }
 import from jaclang.publish.npm_tarball { pack_tarball }
 
-# Caches keyed by the resolved runtime source path, so React and Solid builds
-# (or any two frameworks) never clobber each other's compiled output.
 glob _api_names_cache: dict[str, set] = {},
      _runtime_js_cache: dict[str, str] = {};
 
-"""Absolute path to `framework`'s client runtime `.cl.jac` (`""` = active backend)."""
 def _runtime_source_path(framework: str = "") -> Path {
     import from jaclang.runtimelib.runtime_source { resolve_client_runtime_cl_path }
     return Path(resolve_client_runtime_cl_path(framework));
@@ -20,12 +15,11 @@ def _runtime_source_path(framework: str = "") -> Path {
 impl runtime_pkg_name(framework: str = "") -> str {
     import from jaclang.runtimelib.runtime_source { client_runtime_cl_basename }
     base = client_runtime_cl_basename(framework);
-    # React and Preact share `client_runtime.cl.jac` → the canonical package name.
+
     if base == "client_runtime.cl.jac" {
         return RUNTIME_PKG_NAME;
     }
-    # Any other backend (`<fw>_runtime.cl.jac`) gets a suffixed package so a Solid
-    # runtime never collides with the React one on the registry.
+
     suffix = base.split("_runtime.cl.jac")[0] or base;
     return f"{RUNTIME_PKG_NAME}-{suffix}";
 }
@@ -40,14 +34,13 @@ impl runtime_api_names(framework: str = "") -> set {
     }
     text = src.read_text(encoding="utf-8");
     names: set[str] = set();
-    # Top-level `def`/`glob`, optionally `async` and/or an access tag (`:pub`).
+
     for m in re.finditer(
         r"(?m)^(?:async\s+)?(?:def|glob)(?::\w+)?\s+([A-Za-z_][A-Za-z0-9_]*)", text
     ) {
         names.add(m.group(1));
     }
-    # Multi-line `glob` blocks list further bindings on indented continuation
-    # lines (`     foo = bar,`). The header regex above only captures the first.
+
     for m in re.finditer(r"(?m)^\s+([A-Za-z_][A-Za-z0-9_]*)\s*=", text) {
         names.add(m.group(1));
     }
@@ -55,8 +48,6 @@ impl runtime_api_names(framework: str = "") -> set {
     return names;
 }
 
-"""Compile one `.cl.jac` source file to its single-module ESM JavaScript string.
-Raises ValueError listing any compiler diagnostics for that file."""
 def _compile_cl_to_js(src: Path) -> str {
     import from jaclang.jac0core.program { JacProgram }
     program = JacProgram();
@@ -83,11 +74,6 @@ impl compile_runtime_js(framework: str = "") -> str {
     return js;
 }
 
-"""Names the compiled JS already exports — via `export { a, b as c }` clauses
-(the exported binding is the alias after `as`, else the name) and inline
-`export function/const/...` declarations. Subtracted from the appended export
-list so a runtime whose codegen already emits its own `export {...}` is not
-double-exported (invalid ESM: "Duplicate export of ...")."""
 def _already_exported(js: str) -> set[str] {
     names: set[str] = set();
     for block in re.finditer(r"export\s*\{([^}]*)\}", js) {
@@ -96,7 +82,7 @@ def _already_exported(js: str) -> set[str] {
             if not piece {
                 continue;
             }
-            # `name as alias` exports `alias`; a bare `name` exports `name`.
+
             tokens = re.split(r"\s+as\s+", piece);
             names.add(tokens[-1].strip());
         }
@@ -119,14 +105,10 @@ impl runtime_export_names(js: str, framework: str = "") -> list[str] {
     ) {
         top_level.add(m.group(1));
     }
-    # Exclude anything the compiled runtime already exports — its codegen emits its
-    # own `export {...}` clause for `:pub` symbols, so re-listing them would yield a
-    # duplicate export (invalid ESM: "Duplicate export of ...").
+
     return sorted((top_level & api) - _already_exported(js));
 }
 
-"""Package root of a bare import specifier (`solid-js/h` → `solid-js`,
-`@hookform/resolvers/zod` → `@hookform/resolvers`); None for relative imports."""
 def _pkg_root(spec: str) -> (str | None) {
     if spec.startswith(".") or spec.startswith("/") {
         return None;
@@ -138,14 +120,6 @@ def _pkg_root(spec: str) -> (str | None) {
     return parts[0];
 }
 
-# Canonical npm version ranges for runtime peer packages. Kept in lockstep with
-# the client-side dependency defaults in
-# `runtimelib/client/impl/client_deps.impl.jac` (`_default_client_deps`) and
-# `runtimelib/client/impl/config_loader.impl.jac` — the source of truth a project
-# actually installs. Duplicated as a flat literal here (rather than imported) so
-# the runtime-npm builder stays free of the client config/console dependency
-# graph. Any imported package not listed must be added here (and in client_deps)
-# — `_runtime_peer_deps` raises rather than emitting an unbounded `"*"`.
 glob _PEER_VERSIONS: dict[str, str] = {
          "react": "^18.2.0",
          "react-dom": "^18.2.0",
@@ -158,17 +132,9 @@ glob _PEER_VERSIONS: dict[str, str] = {
          "zod": "^4.3.6"
      };
 
-"""peerDependencies for the runtime: the external npm packages the compiled
-runtime module actually imports, versioned from `_PEER_VERSIONS`.
-
-Scanning the compiled JS — rather than dumping a whole dep map — keeps the peer
-list honest: `react-dom` lives in the generated entry script, not the runtime
-module, so it is correctly absent here. Anything imported but not in the canonical
-map raises `ValueError` so published packages never ship an unbounded peer."""
 def _runtime_peer_deps(js: str) -> dict[str, str] {
     roots: set[str] = set();
-    # Normalize single-quoted specifiers to double quotes so a single regex (with
-    # no embedded single quote) covers both `from "spec"` and bare `import "spec"`.
+
     norm = js.replace("'", '"');
     for m in re.finditer('(?m)\\bfrom\\s+"([^"]+)"', norm) {
         pkg = _pkg_root(m.group(1));
@@ -201,8 +167,6 @@ impl runtime_peer_deps(js: str) -> dict[str, str] {
     return _runtime_peer_deps(js);
 }
 
-"""Relative `.js` import specifiers in `js` (those starting with `.` and ending
-in `.js`) — the sibling runtime modules that must travel inside the tarball."""
 def _relative_dep_specs(js: str) -> list[str] {
     specs: list[str] = [];
     norm = js.replace("'", '"');
@@ -219,23 +183,13 @@ def _relative_dep_specs(js: str) -> list[str] {
     return specs;
 }
 
-"""Compile and collect every sibling runtime module the entry transitively
-imports via relative paths, as `(tarball_relpath, js)` pairs.
-
-The runtime split (`client_runtime_core.cl.jac`) means the framework shim no
-longer compiles to a single self-contained module — its codegen emits
-`import ... from "./jaclang/runtimelib/client_runtime_core.js"`. Those siblings
-must be compiled and shipped at the same relative layout or the published package
-fails to load (`ERR_MODULE_NOT_FOUND`). Walks the relative-import graph breadth
--first (resolving each spec against the importing module's own dir) so arbitrary
-depth is handled, not just the current single core dependency."""
 def _collect_dep_modules(entry_js: str) -> list[tuple[str, str]] {
     import jaclang;
     import posixpath;
     base = Path(jaclang.__file__).parent.parent;
     seen: set[str] = set();
     out: list[tuple[str, str]] = [];
-    # worklist entries: (dir of the importing module relative to package root, js)
+
     worklist: list[tuple[str, str]] = [("", entry_js)];
     while worklist {
         (cur_dir, js) = worklist.pop();
@@ -280,16 +234,14 @@ impl build_runtime_tarball(
 ) -> bytes {
     name = pkg_name or runtime_pkg_name(framework);
     entry_js = compile_runtime_js(framework);
-    # Compile + ship every sibling module the entry imports relatively (the split
-    # `client_runtime_core` etc.), or the package fails to load at runtime.
+
     deps = _collect_dep_modules(entry_js);
-    # Append only the public API the entry's codegen did not already export.
+
     exports = runtime_export_names(entry_js, framework);
     if exports {
         entry_js = entry_js.rstrip("\n") + "\nexport { " + ", ".join(exports) + " };\n";
     }
-    # peerDependencies span the whole graph — the core module imports external
-    # packages too (e.g. `zod`), not just the framework shim.
+
     all_js = "\n".join([entry_js] + [dep_js for (_, dep_js) in deps]);
     peers = _runtime_peer_deps(all_js);
     pj = _runtime_package_json(version, name, peers);

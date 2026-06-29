@@ -1307,3 +1307,71 @@ test "W3042 filter-map chain converts to filtered comprehension" {
     assert "for item in items" in formatted;
     assert "if item.active" in formatted;
 }
+
+test "W3050 strip-comments removes all comments when selected" {
+    input_path = auto_lint_fixture_path("deslop.jac");
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["default", "strip-comments"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+    } finally {
+        set_config(None);
+    }
+    assert "# standalone comment" not in formatted;
+    assert "# inline comment" not in formatted;
+    assert "# field comment" not in formatted;
+    # Docstrings are a separate rule and must be preserved here.
+    assert "Module docstring to deslop" in formatted;
+    assert "Archetype docstring to deslop" in formatted;
+}
+
+test "W3051 strip-docstrings removes all docstrings when selected" {
+    input_path = auto_lint_fixture_path("deslop.jac");
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["default", "strip-docstrings"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+    } finally {
+        set_config(None);
+    }
+    assert "Module docstring to deslop" not in formatted;
+    assert "Archetype docstring to deslop" not in formatted;
+    # Comments are a separate rule and must be preserved here.
+    assert "# standalone comment" in formatted;
+    assert "# inline comment" in formatted;
+}
+
+test "deslop rules are opt-in and never fire under select all" {
+    input_path = auto_lint_fixture_path("deslop.jac");
+    config = JacConfig();
+    config.check = CheckConfig(lint=LintConfig(select=["all"]));
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+    } finally {
+        set_config(None);
+    }
+    # "all" must NOT activate the destructive deslop rules.
+    assert "# standalone comment" in formatted;
+    assert "Module docstring to deslop" in formatted;
+    assert "Archetype docstring to deslop" in formatted;
+}
+
+test "deslop rules are disabled under default select" {
+    input_path = auto_lint_fixture_path("deslop.jac");
+    config = JacConfig();
+    set_config(config);
+    try {
+        prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+        formatted = prog.mod.main.gen.jac;
+    } finally {
+        set_config(None);
+    }
+    assert "# standalone comment" in formatted;
+    assert "Module docstring to deslop" in formatted;
+}

@@ -1,5 +1,3 @@
-"""URI utility implementations."""
-
 impl _normalize_win_path(path: str) -> tuple[str, str] {
     netloc = "";
     if IS_WIN {
@@ -23,7 +21,6 @@ impl _normalize_win_path(path: str) -> tuple[str, str] {
     return (path, netloc);
 }
 
-"""Convert a filesystem path to a file:// URI."""
 impl from_fs_path(path: str) -> Optional[str] {
     try {
         scheme = "file";
@@ -35,7 +32,6 @@ impl from_fs_path(path: str) -> Optional[str] {
     }
 }
 
-"""Convert a file:// URI to a filesystem path."""
 impl to_fs_path(uri: str) -> Optional[str] {
     try {
         (scheme, netloc, path, _, _, _) = _urlparse(uri);

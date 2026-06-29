@@ -70,7 +70,7 @@ jobs:
             docs:
               - 'docs/**'
             desktop:
-              - 'jac-desktop/**'
+              - 'jac/jaclang/runtimelib/client/targets/desktop/**'
 
   test-solid-jsdom:
     # Runtime exec of the Solid framework backend: compile a Solid component +
@@ -127,7 +127,13 @@ jobs:
       run: echo "TEST_ENV=true" >> $GITHUB_ENV
 
     - name: Run all client tests
-      run: jac test jac/tests/runtimelib/client
+      # In-process sv dispatch needs jac-scale; run it in the step below.
+      run: jac test jac/tests/runtimelib/client --ignore jac/tests/runtimelib/client/test_inprocess_dispatch.jac
+
+    - name: Re-run in-process sv dispatch against jac-scale backend
+      run: |
+        jac install -e jac-scale
+        jac test -vv jac/tests/runtimelib/client/test_inprocess_dispatch.jac
 
   test-packages-and-docs:
     needs: changes
@@ -189,7 +195,7 @@ jobs:
     # pathway - NO WebKitGTK, no libpython-dev, no display/Xvfb. The webview /
     # embedded-Python *runtime* behavior is covered by a separate, gated tier.
     needs: changes
-    # Not a required check. Skip on PRs that touch neither jac core nor jac-desktop; always run on push/dispatch.
+    # Not a required check. Skip on PRs that touch neither jac core nor the desktop target; always run on push/dispatch.
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.desktop == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
@@ -262,13 +268,13 @@ jobs:
       working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
       run: |
         # The Jac native linker emits DT_RUNPATH (readelf prints "RUNPATH"),
-        # not the legacy DT_RPATH — so match either.
+        # not the legacy DT_RPATH -- so match either.
         readelf -d libcef_dispatch.so | grep -qE '(RUN)?PATH.*\$ORIGIN'
 
     - name: ldd audit (no missing deps against libc + libcef stub)
       working-directory: jac/jaclang/runtimelib/client/targets/desktop/native/cef
       run: |
-        # With libcef.so absent, ldd will report it missing — that is expected.
+        # With libcef.so absent, ldd will report it missing -- that is expected.
         # The audit checks that no *other* unexpected dep is missing.
         # grep exits non-zero when it matches nothing (the expected/good case);
         # the trailing `|| true` keeps `set -e` from aborting the step there.
@@ -339,6 +345,19 @@ jobs:
           exit 1
         fi
 
+    - name: Install jac-scale[firebase] extras
+      if: matrix.group == 'data'
+      run: jac install -e jac-scale --extras firebase
+
+    - name: Run Firebase storage / Firestore / Auth SSO tests
+      if: matrix.group == 'data'
+      # Each file in its own process to avoid importlib double-load pollution.
+      # test_firestore_e2e is omitted: needs FIRESTORE_EMULATOR_HOST.
+      run: |
+        jac test jac-scale/jac_scale/tests/test_gcs_storage.jac -x
+        jac test jac-scale/jac_scale/tests/test_firestore_db.jac -x
+        jac test jac-scale/jac_scale/tests/test_firebase_auth_sso.jac -x
+
   test-scale-k8s:
     needs: changes
     # Not a required check. Skips on PRs that touch neither jac core nor jac-scale,
@@ -365,25 +384,28 @@ jobs:
       - name: Install Jaseci scale package (global, importable from jac-scale/)
         run: jac install -e jac-scale --extras deploy --global
 
-      - name: Write kind config
-        run: |
-          cat <<EOF > /tmp/kind-config.yaml
-          kind: Cluster
-          apiVersion: kind.x-k8s.io/v1alpha4
-          nodes:
-          - role: control-plane
-            extraPortMappings:
-            - containerPort: 30080
-              hostPort: 30080
-              protocol: TCP
-          EOF
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
 
-      - name: Create kind cluster
-        uses: helm/kind-action@v1
-        with:
-          cluster_name: jaseci-test
-          wait: 120s
-          config: /tmp/kind-config.yaml
+      # MicroK8s instead of kind: its hostpath-storage provisioner binds
+      # ReadWriteMany PVCs (kind's default local-path only does ReadWriteOnce),
+      # which the bundle-injection path requires. Single node, so the loader and
+      # app pods share the RWX bundle PVC on one host.
+      - name: Set up MicroK8s (RWX-capable hostpath storage)
+        run: |
+          set -euxo pipefail
+          sudo snap install microk8s --classic --channel=1.31/stable
+          sudo microk8s status --wait-ready
+          sudo microk8s enable hostpath-storage dns
+          sudo microk8s kubectl -n kube-system rollout status deploy/coredns --timeout=180s
+          sudo microk8s kubectl -n kube-system rollout status deploy/hostpath-provisioner --timeout=180s || true
+          # Admin kubeconfig for the python kubernetes client + kubectl binary
+          mkdir -p "$HOME/.kube"
+          sudo microk8s config > "$HOME/.kube/config"
+          sudo chown "$(id -u):$(id -g)" "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          kubectl get storageclass
+          kubectl get nodes -o wide
 
       - name: Run K8 tests (deploy-core)
         if: matrix.group == 'deploy-core'
@@ -391,7 +413,6 @@ jobs:
         env:
           JAC_TEST_JOBS: "0"
         run: |
-          jac test jac_scale/tests/test_image_build.jac -x
           jac test jac_scale/tests/test_pod_env.jac -x
           jac test jac_scale/tests/test_k8s_utils.jac -x
           jac test jac_scale/tests/test_deploy_k8s.jac -x -f "not (early and exit)"

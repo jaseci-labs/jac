@@ -1,9 +1,3 @@
-"""Minimal plugin system for Jac.
-
-Replaces the vendored pluggy library with a lightweight implementation
-that supports only the features used by the Jac ecosystem.
-"""
-
 import inspect;
 import importlib.metadata;
 import from collections.abc { Callable }
@@ -14,14 +8,12 @@ glob _F = TypeVar('_F', bound=Callable[(..., object)]),
      _SPEC_ATTR = '_jac_hookspec',
      _HOOKABLE_ATTR = '_jac_hookable';
 
-"""Marks a function as a hook implementation."""
 obj HookimplMarker {
     has project_name: str = '';
 
     def __call__(function: _F) -> _F;
 }
 
-"""Marks a function as a hook specification."""
 obj HookspecMarker {
     has project_name: str = '';
 
@@ -30,23 +22,12 @@ obj HookspecMarker {
     ) -> (_F | Callable[([_F], _F)]);
 }
 
-"""Marks an interface method as a plugin extension point (a hook).
-
-Applied at the method's declaration in its domain class so hook-ness is
-local and self-documenting. `build_plugin_hook_layer` reflects over the
-runtime interface, collects every method carrying `_HOOKABLE_ATTR`, and
-turns those (and only those) into dispatchable `plugin_manager` hooks --
-everything else stays a plain inherited direct method. `firstresult` defaults
-to True (a plugin override wins, core default falls through); set it False for
-aggregating hooks where every plugin contributes (e.g. register_project_template).
-"""
 obj HookableMarker {
     def __call__(
         function: (_F | None) = None, *, firstresult: bool = True
     ) -> (_F | Callable[([_F], _F)]);
 }
 
-"""Return the parameter names of func, or None if it accepts **kwargs."""
 def _get_argnames(func: Callable[(..., Any)]) -> (tuple[(str, ...)] | None) {
     try {
         params = inspect.signature(func).parameters;
@@ -72,7 +53,6 @@ def _get_argnames(func: Callable[(..., Any)]) -> (tuple[(str, ...)] | None) {
     return None;
 }
 
-"""Represents a single hook implementation."""
 obj HookImpl {
     has function: Callable[(..., Any)],
         plugin: object,
@@ -82,7 +62,6 @@ obj HookImpl {
     def __repr__ -> str;
 }
 
-"""Manages implementations for a single hook and dispatches calls."""
 obj HookCaller {
     has name: str,
         _hookimpls: list[HookImpl] by postinit,
@@ -100,10 +79,8 @@ obj HookCaller {
     def __repr__ -> str;
 }
 
-"""Namespace object for plugin_manager.hook.<name> access."""
 class HookRelay {}
 
-"""Registers plugins, manages hook specs, and dispatches hook calls."""
 obj PluginManager {
     has project_name: str = '',
         _name2plugin: dict[(str, object)] by postinit,
@@ -134,7 +111,6 @@ def _canonical_name(plugin: object) -> str {
     return plugin?.__name__ or `type(plugin).__name__;
 }
 
-"""Thin wrapper around importlib.metadata.Distribution."""
 obj _DistFacade {
     has _dist: importlib.metadata.Distribution;
     has project_name: str { getter; }

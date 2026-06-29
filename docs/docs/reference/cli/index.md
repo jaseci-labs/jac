@@ -17,6 +17,7 @@ The CLI is extensible through plugins. When you install a plugin like `jac-scale
 | `jac test` | Run tests |
 | `jac format` | Format code |
 | `jac lint` | Lint code (use `--fix` to auto-fix) |
+| `jac precommit` | Run format + check using `jac.toml` lint settings (installable as a git hook) |
 | `jac clean` | Clean project build artifacts |
 | `jac purge` | Purge global bytecode cache (works even if corrupted) |
 | `jac enter` | Run specific entrypoint |
@@ -30,6 +31,7 @@ The CLI is extensible through plugins. When you install a plugin like `jac-scale
 | `jac status` | Show deployment status of Kubernetes resources (jac-scale) |
 | `jac add` | Add packages to project |
 | `jac install` | Install project dependencies from `jac.toml`, or `jac install <pkg>` to install packages into the project's `.jac/venv` |
+| `jac x` | Run an installed CLI tool (Python console-script or npm tool) under the `jac` runtime |
 | `jac remove` | Remove packages from project |
 | `jac update` | Update dependencies to latest compatible versions |
 | `jac bundle` | Build a distributable `.whl` from `jac.toml` |
@@ -461,6 +463,41 @@ jac lint . --ignore fixtures
 ```
 
 > **Lint Rules**: Configure rules via [`[check.lint]`](../config/index.md#checklint) in `jac.toml`. See [Lint Rules](../diagnostics.md#lint-rules-w3xxx--e3xxx) for the full list with diagnostic codes.
+
+---
+
+### jac precommit
+
+Run a pre-commit pipeline (`jac format --lintfix` followed by `jac check`) using the lint settings from `jac.toml`. Exits non-zero if any file was reformatted or `jac check` reported errors, so it can gate a commit. Because formatting honors [`[check.lint]`](../config/index.md#checklint), enabling the opt-in `strip-comments` / `strip-docstrings` rules there makes `jac precommit` apply them too.
+
+```bash
+jac precommit [-h] [-s] [-v] [-i] [paths ...]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `paths` | Files/directories to process | Project root |
+| `-s, --staged` | Only process git-staged `.jac` files | `False` |
+| `-v, --verify` | Verify only: do not rewrite files (exit 1 if unformatted) | `False` |
+| `-i, --install` | Install a git pre-commit hook that runs this command | `False` |
+
+**Examples:**
+
+```bash
+# Format (lintfix) and check the whole project
+jac precommit
+
+# Run on staged .jac files only
+jac precommit --staged
+
+# Verify without writing (what the installed git hook runs)
+jac precommit --staged --verify
+
+# Install a .git/hooks/pre-commit hook
+jac precommit --install
+```
+
+> **Git hook**: `jac precommit --install` writes an executable `.git/hooks/pre-commit` that runs `jac precommit --staged --verify`. The hook blocks a commit when staged `.jac` files are unformatted or fail `jac check`; run `jac precommit` (without `--verify`) to apply the fixes, then re-stage. If a hook already exists, the installer leaves it untouched and reports the conflict.
 
 ---
 
@@ -1345,6 +1382,59 @@ Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See 
 > **Self-contained installs:** `jac install` (and `jac add`, `jac remove`, `jac update`) run through the `jac` binary's own bundled pip against the project's `.jac/venv`. No system Python, `pip`, or external package manager (such as `uv`) is required or consulted -- behaviour is identical regardless of what is installed on the host.
 >
 > **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, `--pre`, `--no-deps`, `--quiet`, `--prefer-binary`) are forwarded directly to pip. Use `jac update` to upgrade packages to their latest versions.
+>
+> **Running installed tools:** packages that ship a command-line tool (a Python console-script, or an npm tool in `node_modules/.bin`) are runnable with [`jac x <tool>`](#jac-x) -- no need to put anything on your shell `PATH`.
+
+---
+
+### jac x
+
+`jac x <tool>` runs an installed command-line tool under the `jac` runtime -- the Jac-native, cross-ecosystem equivalent of `pipx run` / `npx`. It resolves a **Python console-script** (from an installed package's entry points) or an **npm tool** (from `node_modules/.bin`) and runs it. Python tools execute in-process under the bundled interpreter; npm tools run through the jac-managed **bun** runtime -- so **neither a system Python nor a system Node is required**.
+
+The CLI tools you install with `jac install` / `jac add` are therefore runnable without putting anything on your shell `PATH`, and resolution is project-aware: inside a project, a tool installed in that project shadows a global one of the same name.
+
+> **Resolution order (first match wins).** By default `jac x` searches tiers **locality-first**:
+>
+> 1. the project's Python venv (`.jac/venv`),
+> 2. the project's npm tools (`.jac/client/node_modules/.bin`),
+> 3. the jac-owned global Python site (where `jac install --global` installs).
+>
+> `--global` restricts the search to the global Python site; `--node` restricts it to the project's npm tools. Each tool's tier is shown by `jac x --list`.
+
+```bash
+jac x [-h] [-g] [-n] [-l] [name] [args ...]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `name` | Tool/command name to run. Omit (or pass `--list`) to list the available tools. | `""` |
+| `args` | Everything after `name` is forwarded verbatim to the tool. Flags for `jac x` itself must come **before** `name`. | `[]` |
+| `-g, --global` | Resolve from the jac-owned global Python site only, ignoring the project venv and npm tools. | `False` |
+| `-n, --node` | Resolve from the project's npm tools (`node_modules/.bin`) only. | `False` |
+| `-l, --list_tools` | List the runnable tools across all tiers (each tagged with its tier), then exit. A bare `jac x` does the same. | `False` |
+
+**Examples:**
+
+```bash
+# Run a Python tool installed in the project (e.g. huggingface_hub's `hf`)
+jac x hf download gpt2
+
+# Run an installed formatter on the current directory
+jac x black .
+
+# Run a project npm tool (node_modules/.bin) through bun -- no system Node needed
+jac x eslint .
+jac x vite build
+
+# Force a specific tier when a name exists in more than one
+jac x --global hf whoami      # the global-site Python copy
+jac x --node vite build       # the project's npm copy
+
+# List everything runnable here, tagged by tier ([project] / [node] / [global])
+jac x --list
+```
+
+> **No system Python or Node required.** Python tools run in-process under the `jac` binary's bundled interpreter; npm tools run via the jac-managed `bun` (resolved from the system `PATH`, the project's `.jac/bin/bun`, or auto-downloaded), which executes the `node_modules/.bin` shims directly. Arguments after the tool name -- including flags like `--help` -- pass straight through, and the tool's exit code becomes `jac x`'s exit code.
 
 ---
 

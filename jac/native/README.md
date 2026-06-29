@@ -23,7 +23,6 @@ zig build fetch-llvm   # one-time: range-fetch ONLY the ~84 MB the shim needs
                        # (lib/libLLVM*.a + llvm/llvm-c headers, +macOS libLTO) out
                        # of the jaseci-labs/llvm-slice repackaged zip into
                        # .llvm-build/ -- no xz, no clang/tools. Pure Zig.
-                       # JAC_LLVM_FULL_TARBALL=1 uses the full upstream .tar.xz.
 zig build              # compiles the shim, statically links LLVM, packs it into
                        # the jac binary, AND drops it in-tree (gitignored) for the
                        # editable dev loop. No manual step, no JAC_LLVM_SHIM.

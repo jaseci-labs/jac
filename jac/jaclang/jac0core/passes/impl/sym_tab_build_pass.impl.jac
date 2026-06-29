@@ -1,11 +1,7 @@
-"""Implementation for sym_tab_build_pass constructs."""
-
-"""Before pass."""
 impl SymTabBuildPass.before_pass(self: SymTabBuildPass) -> None {
     self.cur_sym_tab: list[UniScopeNode] = [];
 }
 
-"""Push scope."""
 impl SymTabBuildPass.push_scope_and_link(
     self: SymTabBuildPass, key_node: uni.UniScopeNode
 ) -> None {
@@ -16,17 +12,14 @@ impl SymTabBuildPass.push_scope_and_link(
     }
 }
 
-"""Pop scope."""
 impl SymTabBuildPass.pop_scope(self: SymTabBuildPass) -> UniScopeNode {
     return self.cur_sym_tab.pop();
 }
 
-"""Return current scope."""
 impl SymTabBuildPass.cur_scope.getter(self: SymTabBuildPass) -> UniScopeNode {
     return self.cur_sym_tab[-1];
 }
 
-"""Create symbols for Name nodes in a module path."""
 impl SymTabBuildPass._bind_import_path_symbols(
     self: SymTabBuildPass, module_path: uni.ModulePath
 ) -> None {
@@ -86,12 +79,6 @@ impl SymTabBuildPass.exit_global_vars(
 impl SymTabBuildPass.enter_global_stmt(
     self: SymTabBuildPass, nd: uni.GlobalStmt
 ) -> None {
-    # `global x;` from inside a function: pull the module-level symbol into
-    # the enclosing python scope so subsequent assignments rebind the global
-    # instead of creating a shadow local that bind_assignment_targets would
-    # type as Unknown. For impl-file bodies the decl module is not reachable
-    # yet (decl_link unset), so this is a no-op here and re-run by
-    # DeclImplMatchPass.connect_impls.
     bind_global_stmt(nd);
 }
 
@@ -100,11 +87,7 @@ impl bind_global_stmt(nd: uni.GlobalStmt) -> None {
     if py_scope is None or isinstance(py_scope, uni.Module) {
         return;
     }
-    # The global is owned by the module that holds the *declaration*. For an
-    # impl body that is the decl module reached via decl_link; for an inline
-    # body it is simply the enclosing module. decl_link is unset until
-    # DeclImplMatchPass, so impl bodies resolve to None here (no-op) and are
-    # re-run by connect_impls once the link is wired.
+
     impl_def = nd.find_parent_of_type(uni.ImplDef);
     module: (uni.Module | None) = None;
     if impl_def is not None and impl_def.decl_link is not None {
@@ -135,34 +118,16 @@ impl bind_global_stmt(nd: uni.GlobalStmt) -> None {
 impl SymTabBuildPass.exit_assignment(
     self: SymTabBuildPass, nd: uni.Assignment
 ) -> None {
-    # Impl-body assignments are deferred: the ImplDef's scope chain doesn't
-    # reach its connected decl until DeclImplMatchPass, so any "bare name =
-    # expr" in an impl body would incorrectly fall through the
-    # reactive-has-var / python-scope branches and produce a shadow local.
-    # DeclImplMatchPass.connect_impls calls bind_assignment_targets on every
-    # Assignment in the impl body once decl_link is wired — by then the
-    # decl_link-aware lookup in UniScopeNode.lookup can reach the enclosing
-    # Ability's HasVars and Python scope correctly.
     if nd.find_parent_of_type(uni.ImplDef) is not None {
         return;
     }
-    # Global-var assignments are owned by exit_global_vars, which inserts each
-    # target with the `glob :pub|:protect|:priv` access modifier carried on the
-    # GlobalVars node. Binding the target here first would create the symbol
-    # with the default PUBLIC access, and the later access-carrying insert only
-    # appends a defn (it does not overwrite an existing symbol's access), so the
-    # modifier would be silently dropped. Skip and let exit_global_vars bind.
+
     if isinstance(nd.parent, uni.GlobalVars) {
         return;
     }
     bind_assignment_targets(nd);
 }
 
-"""Handle walrus operator (:=) assignments.
-
-Walrus variables are scoped to the enclosing function, not the local block.
-This matches Python semantics where `if (x := expr):` defines x in the function scope.
-"""
 impl SymTabBuildPass.exit_binary_expr(
     self: SymTabBuildPass, nd: uni.BinaryExpr
 ) -> None {
@@ -171,8 +136,6 @@ impl SymTabBuildPass.exit_binary_expr(
         return;
     }
     if isinstance(nd.left, uni.Name) {
-        # Find enclosing function scope for walrus variable
-        # (walrus vars scope to function, not local block)
         target_scope = nd.left.sym_tab;
         if func := nd.find_parent_of_type(uni.Ability) {
             target_scope = func.sym_tab;
@@ -226,7 +189,6 @@ impl SymTabBuildPass._exit_import_absorb(
     }
     self._bind_import_path_symbols(import_all_module_path_node);
     if module {
-        # Copy symbols from names_in_scope (primary definitions)
         for sym in module.names_in_scope.values() {
             if (sym.access != SymbolAccess.PRIVATE) {
                 sym_table_to_update.def_insert(
@@ -234,7 +196,7 @@ impl SymTabBuildPass._exit_import_absorb(
                 );
             }
         }
-        # Copy overloaded function symbols from names_in_scope_overload
+
         for (name, overload_syms) in module.names_in_scope_overload.items() {
             for sym in overload_syms {
                 if (sym.access != SymbolAccess.PRIVATE) {
@@ -296,16 +258,6 @@ impl SymTabBuildPass.exit_module_item(
 }
 
 impl SymTabBuildPass.enter_archetype(self: SymTabBuildPass, nd: uni.Archetype) -> None {
-    # Jac supports decl/impl separation, not decl/decl. A second
-    # `obj/node/edge/walker Foo` block when one already exists in the
-    # same scope is a hard error -- inline bodies don't merge, and the
-    # silent collision used to produce empty class scopes that cascaded
-    # into spurious E1030 "no attribute" errors downstream.
-    #
-    # Codespace blocks (na {} / cl {} / sv {}) lower to separate backends, so
-    # one archetype name may be declared once per target -- the cross-backend
-    # equivalence fixtures depend on this. The decl/decl collision only applies
-    # within the same target context, so the guard compares contexts first.
     if self.cur_sym_tab {
         existing_sym = self.cur_scope.names_in_scope.get(nd.sym_name, None);
         if existing_sym {
@@ -389,7 +341,6 @@ impl SymTabBuildPass.enter_param_var(self: SymTabBuildPass, nd: uni.ParamVar) ->
     nd.sym_tab.def_insert(nd, single_decl='param');
 }
 
-"""Handle attribute access for self member assignments."""
 impl SymTabBuildPass.exit_atom_trailer(
     self: SymTabBuildPass, nd: uni.AtomTrailer
 ) -> None {
@@ -397,13 +348,11 @@ impl SymTabBuildPass.exit_atom_trailer(
         return;
     }
     chain = nd.as_attr_list;
-    # Case 1: Inside an Ability directly (e.g., obj Foo { def init() { self.x = 1; } })
+
     ability = nd.find_parent_of_type(uni.Ability);
     if (ability and ability.method_owner) {
         archetype = ability.method_owner;
         if isinstance(archetype, uni.Archetype) {
-            # Only allow dynamic self.attr for class archetypes (Python-style).
-            # obj/node/edge/walker have fixed schemas via 'has' declarations.
             if (
                 archetype.arch_type.name == 'KW_CLASS'
                 or archetype.sym_tab.lookup(chain[1].sym_name, deep=False) is not None
@@ -413,9 +362,7 @@ impl SymTabBuildPass.exit_atom_trailer(
         }
         return;
     }
-    # Case 2: Inside an ImplDef (e.g., impl Foo.init() { self.x = 1; })
-    # For same-module impls, insert directly. For separate .impl.jac files,
-    # DeclImplMatchPass handles it after connecting impl to declaration.
+
     impl_def = nd.find_parent_of_type(uni.ImplDef);
     if (impl_def and (len(impl_def.target) >= 2)) {
         archetype_name = impl_def.target[0].sym_name;
@@ -423,7 +370,7 @@ impl SymTabBuildPass.exit_atom_trailer(
             lookup = impl_def.sym_tab.parent_scope.lookup(archetype_name, deep=True);
             if (lookup and isinstance(lookup.decl.name_of, uni.Archetype)) {
                 archetype = lookup.decl.name_of;
-                # Only allow dynamic self.attr for class archetypes.
+
                 if (
                     archetype.arch_type.name == 'KW_CLASS'
                     or archetype.sym_tab.lookup(
@@ -437,7 +384,6 @@ impl SymTabBuildPass.exit_atom_trailer(
     }
 }
 
-"""Check if the node represents a simple `self.attr = value` assignment."""
 impl SymTabBuildPass._is_self_member_assignment(
     self: SymTabBuildPass, nd: uni.AtomTrailer
 ) -> bool {
@@ -451,17 +397,16 @@ impl SymTabBuildPass._is_self_member_assignment(
     if ((len(chain) != 2) or (chain[0].sym_name != 'self')) {
         return False;
     }
-    # Case 1: Inside an Ability directly
+
     ability = nd.find_parent_of_type(uni.Ability);
     if ability is not None {
         return (
             ability.is_method and not ability.is_static and not ability.is_cls_method
         );
     }
-    # Case 2: Inside an ImplDef that represents a method implementation
+
     impl_def = nd.find_parent_of_type(uni.ImplDef);
     if (impl_def and (len(impl_def.target) >= 2)) {
-        # target has >= 2 parts means it's impl Archetype.method, not just impl Archetype
         return True;
     }
     return False;
@@ -735,9 +680,6 @@ impl bind_assignment_targets(nd: uni.Assignment) -> None {
                 (i.sym_name in i.sym_tab.names_in_scope)
                 and ((sym := i.sym_tab.names_in_scope[i.sym_name]) is not None)
             ) {
-                # Direct names_in_scope check only — bypass the decl_link
-                # fallback in UniScopeNode.lookup so archetype methods get
-                # Python-local scoping and don't silently rebind `has` fields.
                 sym.add_use(i.name_spec);
             } elif (
                 (nd.type_tag is None)
@@ -745,9 +687,6 @@ impl bind_assignment_targets(nd: uni.Assignment) -> None {
                 and outer_has.sym_type == SymbolType.HAS_VAR
                 and isinstance(outer_has.parent_tab, uni.Ability)
             ) {
-                # In cl def components, has variables are reactive state owned by
-                # the enclosing ability (not an archetype). Assignments to these
-                # names in nested abilities are state mutations, not new locals.
                 outer_has.add_use(i.name_spec);
             } elif (
                 (nd.type_tag is None)
@@ -755,10 +694,6 @@ impl bind_assignment_targets(nd: uni.Assignment) -> None {
                     i.sym_tab, uni.UniScopeNode.get_python_scoping_nodes()
                 )
             ) {
-                # Python semantics: an unannotated assignment inside a non-scoping
-                # block (try/except/finally, if/else, for/while, match) binds in
-                # the nearest enclosing Python scope, not in the inner block.
-                # Mirrors the walrus handling in exit_binary_expr.
                 py_scope = find_python_scope_node_of(i);
                 if py_scope is not None {
                     if (
@@ -766,20 +701,12 @@ impl bind_assignment_targets(nd: uni.Assignment) -> None {
                     ) {
                         outer.add_use(i.name_spec);
                     } else {
-                        # Python semantics: a function-scope assignment binds a
-                        # NEW local, even when a module global of the same name
-                        # exists. Rebinding the global requires an explicit
-                        # `global x;` (handled by enter_global_stmt, which puts
-                        # the module symbol in scope so the branch above fires).
-                        # Keeping this a local is what makes na ⊆ sv hold: the
-                        # native and sv pathways then agree on scoping.
                         py_scope.def_insert(i, single_decl='local var');
                     }
                 } else {
                     i.sym_tab.def_insert(i, single_decl='local var');
                 }
             } else {
-                # Tag enum members with the correct sym_category
                 if isinstance(i.sym_tab, uni.Enum) {
                     i.name_spec._sym_category = SymbolType.ENUM_MEMBER;
                 }

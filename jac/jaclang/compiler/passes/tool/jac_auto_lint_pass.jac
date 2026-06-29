@@ -1,24 +1,3 @@
-"""Jac Auto Linting Pass for automatic code pattern corrections.
-
-This pass applies automatic linting corrections to Jac code, including:
-- Converting `with entry` blocks to `glob` declarations (in-place)
-- Converting `@staticmethod` decorator to `static` keyword
-- Combining consecutive `has` statements with same modifiers into single statement
-- Combining consecutive `glob` statements with same modifiers into single statement
-- Converting `def __init__` to `can init` (Jac style)
-- Converting `def __post_init__` to `can postinit` (Jac style)
-- Removing empty parentheses from function/method declarations (def foo() -> def foo)
-- Removing unnecessary backtick escaping from names that are not actual keywords
-- Converting hasattr(obj, "attr") to null-safe access
-- Converting getattr(obj, "attr", None) to null-safe access
-- Propagating null-safe access consistency
-- Simplifying ternary expressions (x if x else default -> x or default)
-- Removing `import from __future__ { annotations }` (not needed in Jac)
-- Fixing signature mismatches between declarations and implementations
-- Removing trailing semicolons from `import from X { ... }` style imports
-- (Future) Import organization
-- (Future) Redundant code removal
-"""
 import keyword;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
@@ -52,16 +31,13 @@ import from jaclang.jac0core.diagnostics {
     W3040,
     W3041,
     W3042,
-    W3043
+    W3043,
+    W3050,
+    W3051
 }
 
-# W3043 impl-side coordination: dotted impl target ("Cls.prop" / "Outer.Inner.prop")
-# -> accessor keyword ("getter"/"setter"/"deleter"). Populated by a program-level
-# driver before formatting annex (.impl.jac) files, since decl_link is not resolved
-# in the parse-only format pipeline. Empty in the normal single-file path.
 glob PROPERTY_IMPL_TARGETS: dict[str, str] = {};
 
-"""Auto linting pass that applies code style corrections to Jac AST."""
 obj JacAutoLintPass(UniPass) {
     has lint_enabled: bool = True,
         report_only: bool = False,
@@ -73,9 +49,7 @@ obj JacAutoLintPass(UniPass) {
         _base_decl_cache: list[uni.Archetype] = [],
         _base_decls_loaded: bool = False;
 
-    """Initialize the pass with linting options."""
     def postinit -> None;
-
     def _is_file_excluded(file_path: str) -> bool;
     def enter_module(nd: uni.Module) -> None;
     def can_convert_to_glob(assignment: uni.Assignment) -> bool;
@@ -124,14 +98,7 @@ obj JacAutoLintPass(UniPass) {
     def exit_bool_expr(bool_node: uni.BoolExpr) -> None;
     def _is_future_annotations_import(stmt: uni.UniNode) -> bool;
     def _fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> None;
-    """Top-level archetype declarations of an annex file's base module.
-
-    Annex (.impl.jac) files are formatted as their own tool programs, so the
-    declarations an impl is matched against live in a different file. Parse that
-    base file (once, cached) so cross-file signature mismatches can still be
-    fixed when formatting the annex in isolation."""
     def _base_decl_archetypes(annex_path: str) -> list[uni.Archetype];
-
     def _signatures_match(
         decl_sig: uni.FuncSignature, impl_sig: uni.FuncSignature
     ) -> bool;
@@ -143,7 +110,6 @@ obj JacAutoLintPass(UniPass) {
 
     def _extract_string_literal_value(expr: uni.Expr) -> (str | None);
     def _check_no_print(nd: uni.FuncCall) -> None;
-    # New lint checks (W3020-W3036)
     def _check_unnecessary_pass(body: list, `node: uni.UniNode) -> None;
     def _check_unnecessary_else_after_return(nd: uni.IfStmt) -> None;
     def _check_nested_if_to_elif(nd: uni.ElseStmt) -> None;
@@ -171,7 +137,6 @@ obj JacAutoLintPass(UniPass) {
     def exit_ability(ability_node: uni.Ability) -> None;
     def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
     def _body_to_key(body: list) -> str;
-    # useState-to-has conversion (W3038)
     def _is_usestate_assignment(
         stmt: uni.UniNode
     ) -> (tuple[str, str, uni.Expr | None] | None);
@@ -188,7 +153,9 @@ obj JacAutoLintPass(UniPass) {
     def _strip_usestate_imports(nd: uni.Module) -> None;
     def exit_expr_stmt(nd: uni.ExprStmt) -> None;
     def exit_module(nd: uni.Module) -> None;
-    # Stale-`has`-read detection (W3041)
+    def _strip_noise(nd: uni.Module) -> None;
+    def _strip_docstrings(start: uni.UniNode) -> None;
+    def _collect_doc_nodes(`node: uni.UniNode, results: list) -> None;
     def _check_stale_has_read(ability_node: uni.Ability) -> None;
     def _collect_reactive_has_names(ability_node: uni.Ability) -> set[str];
     def _walk_for_has_uses(
@@ -197,7 +164,7 @@ obj JacAutoLintPass(UniPass) {
         writes: list[tuple[int, int, str]],
         reads: list[tuple[int, int, str, uni.Name]]
     ) -> None;
-    # map-lambda-to-comprehension conversion (W3042)
+
     def _make_name_node(ref_node: uni.UniNode, value: str) -> uni.Name;
     def _detect_map_lambda_jsx(
         nd: uni.FuncCall
@@ -208,7 +175,6 @@ obj JacAutoLintPass(UniPass) {
     ) -> (tuple[uni.Expr, uni.Expr] | None);
 
     def _convert_map_to_comprehension(nd: uni.FuncCall) -> bool;
-    # @property-decorator -> native property syntax conversion (W3043)
     def _convert_properties(container: uni.Archetype) -> None;
     def _property_role_of_ability(ab: uni.Ability) -> str;
     def _make_accessor_from_ability(src: uni.Ability, kind: str) -> uni.Ability;
@@ -223,10 +189,6 @@ obj JacAutoLintPass(UniPass) {
     def _convert_property_impl(nd: uni.ImplDef) -> None;
 }
 
-"""Report-only lint pass for use in the standard compile/LSP pipeline.
-
-Emits lint warnings without mutating the AST.
-"""
 obj JacLintCheckPass(JacAutoLintPass) {
     has report_only: bool = True;
 }

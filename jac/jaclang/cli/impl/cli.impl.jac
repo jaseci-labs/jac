@@ -1,9 +1,3 @@
-"""Start the command line interface.
-
-Uses the new registry infrastructure for command registration,
-help formatting, and execution with plugin hook support.
-"""
-
 import os;
 import sys;
 import from importlib.metadata { version as pkg_version }
@@ -15,15 +9,24 @@ impl start_cli -> None {
     import from jaclang.cli.executor { get_executor }
     import from jaclang.cli.help { get_help_formatter }
     import from jaclang.cli.console { console }
-    # Auto-discover and load jac.toml project configuration
+
+    dev_source = os.environ.get('JAC_DEV_SOURCE');
+    if dev_source {
+        notice = (
+            f"🛠  jac dev mode — using compiler source at {dev_source}"
+                if console.use_emoji
+                else f"[dev] jac dev mode - using compiler source at {dev_source}"
+        );
+        console.print(notice, style='info', file=sys.stderr);
+    }
+
     _load_project_config();
-    # Load plugins which may register additional commands
+
     Jac.create_cmd();
-    # Get the registry and finalize it (builds argparse parser)
+
     registry = get_registry();
     parser = registry.finalize();
-    # Handle implicit 'run' command for .jac files
-    # Scan past any leading flags (e.g. --autonative) to find a .jac/.py file
+
     raw_argv = sys.argv[1:];
     has_jac_file = any(
         not tok.startswith('-') and tok.lower().endswith(('.jac', '.py'))
@@ -32,15 +35,11 @@ impl start_cli -> None {
     if has_jac_file and (not raw_argv or raw_argv[0] not in registry.commands) {
         sys.argv = [sys.argv[0], 'run'] + raw_argv;
     }
-    # Extract script arguments before argparse parsing (Python-like behavior).
-    # For commands with REMAINDER args, everything after the filename goes
-    # to the script — no '--' separator needed.
+
     script_args = _extract_script_args(registry);
-    # Parse arguments
+
     (args, unknown) = parser.parse_known_args();
     if unknown {
-        # e.g. jac test file.jac --test_name typevar5 unbounded operations
-        #      sys.argv[1] → "test"
         cmd = sys.argv[1] if len(sys.argv) > 1 else '';
         if cmd == 'test' and any(not u.startswith('-') for u in unknown) {
             console.error(
@@ -54,42 +53,41 @@ impl start_cli -> None {
         }
         sys.exit(2);
     }
-    # Handle --version flag
+
     if args.version {
         import from jaclang.cli.banners { print_version_banner }
-        print_version_banner(pkg_version('jaclang'));
+        print_version_banner(jac_version());
         return;
     }
-    # Handle no command specified
+
     if (args.command is None) {
-        # Display custom help with grouped commands
         formatter = get_help_formatter();
         help_text = formatter.format_main_help(
-            registry.get_all(), prog="jac", version=pkg_version('jaclang')
+            registry.get_all(), prog="jac", version=jac_version()
         );
         console.print(help_text);
         return;
     }
-    # Get the command specification
+
     command_spec = registry.get(args.command);
     if not command_spec {
         console.error(f"Unknown command: {args.command}");
         parser.print_help();
         return;
     }
-    # Prepare arguments for execution
+
     args_dict = vars(args);
     args_dict.pop('command');
     args_dict.pop('version', None);
-    # Override REMAINDER args with the pre-extracted script arguments
+
     if script_args {
         args_dict['args'] = script_args;
     }
     _apply_profile(args_dict);
-    # Execute using the new executor with hook support
+
     executor = get_executor();
     result = executor.execute(command_spec, args_dict);
-    # Exit with the command's return code
+
     if result.error {
         console.error(f"{result.error}");
     }
@@ -98,18 +96,21 @@ impl start_cli -> None {
     }
 }
 
-"""Extract script arguments before argparse parsing.
+impl jac_version -> str {
+    import from jaclang.project.config { JacConfig }
 
-For commands with REMAINDER args (like 'run' and 'enter'), this mimics
-Python's behavior: jac flags must come before the script filename, and
-everything after the filename is passed to the script.
+    dev_source = os.environ.get('JAC_DEV_SOURCE');
+    if dev_source {
+        toml_path = Path(dev_source) / 'jac.toml';
+        if toml_path.exists() {
+            try {
+                return JacConfig.load(toml_path).project.version;
+            } except Exception { }
+        }
+    }
+    return pkg_version('jaclang');
+}
 
-    jac run file.jac arg1 arg2        -> args = [arg1, arg2]
-    jac run --no-cache file.jac arg1  -> args = [arg1]
-    jac run file.jac -- --flag        -> args = [--flag]
-
-Modifies sys.argv in-place so argparse only sees jac's own flags.
-"""
 def _extract_script_args(registry: object) -> list {
     import from jaclang.cli.command { ArgKind }
 
@@ -124,21 +125,18 @@ def _extract_script_args(registry: object) -> list {
         return [];
     }
 
-    # Only apply to commands with REMAINDER args
     all_args = spec.get_all_args();
     has_remainder = any(a.kind == ArgKind.REMAINDER for a in all_args);
     if not has_remainder {
         return [];
     }
 
-    # Count expected positional args (excluding REMAINDER)
     n_positionals = sum(
         1
         for a in all_args
         if a.kind == ArgKind.POSITIONAL
     );
 
-    # Build set of flags that consume a value argument
     value_flags: set = set();
     for arg in all_args {
         if arg.kind in (ArgKind.POSITIONAL, ArgKind.MULTI, ArgKind.REMAINDER) {
@@ -153,7 +151,6 @@ def _extract_script_args(registry: object) -> list {
         }
     }
 
-    # Scan argv after command name
     i = 1;
     positionals_seen = 0;
 
@@ -161,7 +158,6 @@ def _extract_script_args(registry: object) -> list {
         token = raw[i];
 
         if token == '--' {
-            # Explicit separator: everything after goes to script
             script_args = raw[i + 1:];
             sys.argv = [sys.argv[0]] + raw[:i];
             return script_args;
@@ -176,10 +172,8 @@ def _extract_script_args(registry: object) -> list {
         } else {
             positionals_seen += 1;
             if positionals_seen >= n_positionals {
-                # Found the last expected positional (filename)
-                # Everything after is for the script
                 script_args = raw[i + 1:];
-                # Strip leading '--' for backward compat with old separator syntax
+
                 if script_args and script_args[0] == '--' {
                     script_args = script_args[1:];
                 }
@@ -193,40 +187,26 @@ def _extract_script_args(registry: object) -> list {
     return [];
 }
 
-"""Load project configuration from jac.toml if present."""
 def _load_project_config {
     import from jaclang.jac0core.helpers { MalformedJacTomlError }
     try {
         import from jaclang.project.config { get_config, set_config }
         import from jaclang.project.dependencies { add_venv_to_path }
 
-        # Auto-discover jac.toml
         config = get_config();
         if config is not None {
-            # Add venv site-packages to Python path
             add_venv_to_path(config);
         }
 
-        # Initialize plugin-registered dependency types
         _initialize_dependency_registry();
 
-        # Initialize plugin-registered project templates
         _initialize_template_registry();
     } except MalformedJacTomlError as exc {
-        # The CLI is the right layer to hard-exit on malformed jac.toml:
-        # the user is explicitly invoking jac, so blocking with an
-        # actionable banner is the most helpful response. Library users
-        # (notebooks, scripts) see only a warning from get_disabled_plugins
-        # and keep working.
         _exit_on_malformed_jac_toml(exc);
-    } except Exception {
-    # Silently ignore if project module not available or config discovery fails
-    }
+    } except Exception { }
 }
 
 
-"""Print actionable red banner and exit 2 on malformed jac.toml. Called
-from _load_project_config when the CLI encounters a parse failure."""
 def _exit_on_malformed_jac_toml(exc: 'Any') {
     import sys;
     sys.stderr.write(
@@ -239,30 +219,20 @@ def _exit_on_malformed_jac_toml(exc: 'Any') {
     sys.exit(2);
 }
 
-"""Initialize the dependency registry from plugin hooks."""
 def _initialize_dependency_registry {
     try {
         import from jaclang.project.dep_registry { initialize_dependency_registry }
         initialize_dependency_registry();
-    } except Exception {
-    # Silently ignore if registry initialization fails
-    }
+    } except Exception { }
 }
 
-"""Initialize the template registry from plugin hooks."""
 def _initialize_template_registry {
     try {
         import from jaclang.project.template_registry { initialize_template_registry }
         initialize_template_registry();
-    } except Exception {
-    # Silently ignore if registry initialization fails
-    }
+    } except Exception { }
 }
 
-"""Resolve the active profile name and apply multi-file config overlay.
-
-Profile priority: --profile flag > JAC_PROFILE > JAC_ENV (deprecated) > default_profile
-"""
 def _apply_profile(args_dict: dict) -> None {
     import from jaclang.cli.console { console }
     try {
@@ -273,7 +243,6 @@ def _apply_profile(args_dict: dict) -> None {
             return;
         }
 
-        # Determine profile name: --profile flag > JAC_PROFILE > JAC_ENV (deprecated) > default
         profile = args_dict.pop('profile', None);
         if not profile {
             profile = os.environ.get('JAC_PROFILE');
@@ -294,26 +263,13 @@ def _apply_profile(args_dict: dict) -> None {
 
         config.apply_profile_overlay(profile or None);
 
-        # Bridge config values into args_dict when the CLI arg is at its
-        # argparse default so that config file values take effect.
-        # Only override when the config explicitly sets the value (in _raw_data
-        # or via profile overlay) — otherwise leave the argparse default alone.
         _apply_config_defaults(config, args_dict);
     } except (KeyError, ValueError, OSError) as e {
         console.print(f"Warning: Failed to apply profile: {e}", style="warning");
     }
 }
 
-"""Apply config values to args_dict for keys still at their argparse defaults.
-
-Maps config fields to CLI arg names with their argparse defaults.
-Only overrides an arg if:
-  1. The arg exists in args_dict (the command accepts it)
-  2. The arg value equals the argparse default (user didn't explicitly pass it)
-  3. The config has an explicitly-set value (from file or profile, not just the object default)
-"""
 def _apply_config_defaults(config: object, args_dict: dict) {
-    # (arg_name, argparse_default, config_value, raw_data_section, raw_data_key)
     bridges: list = [
         ("port", 8000, config.serve.port, "serve", "port"),
         ("cache", True, config.run.cache, "run", "cache"),
@@ -327,9 +283,9 @@ def _apply_config_defaults(config: object, args_dict: dict) {
             continue;
         }
         if args_dict[arg_name] != arg_default {
-            continue;  # User explicitly passed this arg
+            continue;
         }
-        # Check if the config explicitly sets this value
+
         raw = config._raw_data.get(section, {});
         if isinstance(raw, dict) and key in raw {
             args_dict[arg_name] = config_value;

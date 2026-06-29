@@ -76,7 +76,8 @@ glob FORBIDDEN: dict[str, str] = {
          ("native/na_ir_gen_pass.impl/func.impl.jac", "type_tag.tag"): (
              4,
              "scalar LLVM materialization from declared clib annotations "
-             "at the declaration site - the backend's lowering role"
+             "at the declaration site - the backend's lowering role "
+             "(sysv sig planning + fixed-param lowering, #6707, #6708)"
          ),
          ("native/na_ir_gen_pass.impl/objects.impl.jac", "type_tag.tag"): (
              1,

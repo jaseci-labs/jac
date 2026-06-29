@@ -1,15 +1,14 @@
 """S3 storage implementation for Jac."""
 import from typing { Any, BinaryIO, Generator }
-import from jaclang.runtimelib.storage.storage { Storage }
+import from jac_scale.storage.bucket_storage { BucketStorage }
 
 """S3 storage provider.
 
 This implementation uses boto3 to interact with AWS S3 or S3-compatible
 services like MinIO, Cloudflare R2, or DigitalOcean Spaces.
 """
-class S3Storage(Storage) {
+class S3Storage(BucketStorage) {
     has bucket: str,
-        prefix: str = "",
         region: str = "us-east-1",
         endpoint_url: (str | None) = None,
         public_read: bool = False,
@@ -23,9 +22,6 @@ class S3Storage(Storage) {
         endpoint_url: (str | None) = None,
         public_read: bool = False
     ) -> None;
-
-    """Resolve a relative path to an S3 key with the configured prefix."""
-    def _resolve_key(self: S3Storage, path: str) -> str;
 
     override def upload(
         self: S3Storage,
@@ -46,7 +42,6 @@ class S3Storage(Storage) {
 
     override def get_metadata(self: S3Storage, path: str) -> dict[str, Any];
     override def copy(self: S3Storage, source: str, destination: str) -> bool;
-    override def move(self: S3Storage, source: str, destination: str) -> bool;
     override def get_url(
         self: S3Storage, path: str, expires_in: (int | None) = 3600
     ) -> str;

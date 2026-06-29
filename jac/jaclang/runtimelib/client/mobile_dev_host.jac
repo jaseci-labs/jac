@@ -1,4 +1,3 @@
-"""Resolve dev-server host for Capacitor live reload."""
 import os;
 import platform as platform_mod;
 import shutil;
@@ -13,10 +12,8 @@ glob ADB_STATE_TIMEOUT_SEC: int = 2,
      ADB_PROPS_TIMEOUT_SEC: int = 2,
      XCRUN_SIMCTL_TIMEOUT_SEC: int = 3;
 
-# Android emulator: loopback to host (see Android docs for AVD networking).
 glob ANDROID_EMULATOR_HOST_ALIAS: str = "10.0.2.2";
 
-"""Best-effort LAN IPv4 of this machine (connects outbound to discover primary route)."""
 def detect_lan_ipv4 -> str | None {
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM);
     try {
@@ -34,7 +31,6 @@ def detect_lan_ipv4 -> str | None {
     return None;
 }
 
-"""Resolve backend API port from jac.toml base_url or CLI default."""
 def resolve_mobile_server_port(toml_base_url: str, api_port: int) -> int {
     if toml_base_url {
         import from urllib.parse { urlparse }
@@ -45,8 +41,6 @@ def resolve_mobile_server_port(toml_base_url: str, api_port: int) -> int {
     return api_port;
 }
 
-"""Vite HMR port for mobile dev: JAC_MOBILE_VITE_PORT, then [plugins.client].vite.server.port, else `cli_vite_port`
-(same as core `jac start --dev --port`, default 8000)."""
 def resolve_mobile_vite_port(project_dir: Path, cli_vite_port: int = 8000) -> int {
     raw = os.environ.get(JAC_MOBILE_VITE_PORT_ENV, "");
     if raw and str(raw).strip() {
@@ -68,10 +62,6 @@ def resolve_mobile_vite_port(project_dir: Path, cli_vite_port: int = 8000) -> in
     return cli_vite_port;
 }
 
-"""True if the default `adb` device is an Android emulator (AVD), else False.
-
-If adb is missing, no device is online, or detection fails, returns False and callers
-should fall back to LAN / 127.0.0.1. Multiple devices: uses adb's default target."""
 def is_android_emulator_adb -> bool {
     if not shutil.which("adb") {
         return False;
@@ -131,7 +121,6 @@ def is_android_emulator_adb -> bool {
     return False;
 }
 
-"""True if a booted iOS Simulator is present (macOS + simctl)."""
 def is_ios_simulator -> bool {
     if platform_mod.system() != "Darwin" {
         return False;
@@ -160,12 +149,6 @@ def is_ios_simulator -> bool {
     return False;
 }
 
-"""Pick the host string the WebView uses to reach the dev machine (Vite / HMR / API).
-
-Override: JAC_MOBILE_DEV_HOST or `jac start --dev --client mobile --host`.
-
-Else: Android AVD (adb) -> 10.0.2.2; iOS Simulator (simctl booted) -> 127.0.0.1;
-otherwise LAN IPv4, then 127.0.0.1."""
 def resolve_mobile_dev_host(plat: str, host_override: str = "") -> str {
     if host_override and host_override.strip() {
         return host_override.strip();

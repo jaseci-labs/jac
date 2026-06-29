@@ -1,6 +1,5 @@
 import from jaclang.project.config { get_config }
 
-"""Send static file response (images, fonts, etc.)."""
 impl JacClient.send_static_file(
     handler: BaseHTTPRequestHandler, file_path: Path, content_type: (str | None) = None
 ) -> None {
@@ -30,7 +29,6 @@ impl JacClient.send_static_file(
     }
 }
 
-"""Render HTML page for client function using the Vite bundle."""
 impl JacClient.render_page(
     introspector: ModuleIntrospector,
     function_name: str,
@@ -98,7 +96,7 @@ impl JacClient.render_page(
       }
     </script>''';
     }
-    # Build __jac_init__ JSON with endpoint effects for client-side auto-caching
+
     init_data = {
         'module': introspector._module.__name__
             if introspector._module
@@ -116,14 +114,9 @@ impl JacClient.render_page(
     };
 }
 
-"""Get client JavaScript bundle code.
-
-For PWA builds (when manifest.json exists), returns the Vite-bundled JS.
-Otherwise returns the introspector bundle.
-"""
 impl JacClient.get_client_js(introspector: ModuleIntrospector) -> str {
     import from jaclang.project.config { find_project_root, get_config }
-    # Find project root
+
     base_path_dir = Path(Jac.get_base_path_dir());
     project_root_result = find_project_root(base_path_dir);
     if project_root_result {
@@ -131,44 +124,40 @@ impl JacClient.get_client_js(introspector: ModuleIntrospector) -> str {
     } else {
         base_path = base_path_dir;
     }
-    # Get client directory from config
+
     config = get_config();
     if config is not None {
         dist_dir = config.get_client_dir() / 'dist';
     } else {
         dist_dir = base_path / '.jac' / 'client' / 'dist';
     }
-    # Check if this is a PWA build (has manifest.json)
+
     is_pwa = dist_dir.exists() and (dist_dir / 'manifest.json').exists();
     if is_pwa {
-        # Vite outputs client.{hash}.js - find and return it
         for client_js in dist_dir.glob('client.*.js') {
             return client_js.read_text(encoding='utf-8');
         }
     }
-    # Fall back to introspector bundle
+
     introspector.load();
     introspector.ensure_bundle();
     return introspector._bundle.code;
 }
 
-"""Build complete HTML head."""
 impl HeaderBuilder.build_head -> str {
     lines: list = [];
-    lines.extend(self._build_special_tags());  # charset, viewport, title
-    lines.extend(self._build_meta_tags());  # description, robots, etc
-    lines.extend(self._build_og_tags());  # Open Graph
-    lines.extend(self._build_link_tags());  # canonical, icon, etc
-    lines.extend(self._build_generic_meta_tags());  # custom meta_* tags
+    lines.extend(self._build_special_tags());
+    lines.extend(self._build_meta_tags());
+    lines.extend(self._build_og_tags());
+    lines.extend(self._build_link_tags());
+    lines.extend(self._build_generic_meta_tags());
     return "\n            ".join(lines);
 }
 
-"""Build generic meta tags (meta_* prefix for any custom metadata)."""
 impl HeaderBuilder._build_generic_meta_tags -> list[str] {
     lines: list = [];
     for (key, val) in self.meta_data.items() {
         if key.startswith("meta_") and val {
-            # meta_custom_field → name="custom-field"
             name = key[5:].replace("_", "-");
             lines.append(f'<meta name={name} content={html.escape(str(val))} />');
         }
@@ -176,7 +165,6 @@ impl HeaderBuilder._build_generic_meta_tags -> list[str] {
     return lines;
 }
 
-"""Build link tags (link_* prefix or special cases)."""
 impl HeaderBuilder._build_link_tags -> list[str] {
     lines: list = [];
     special_links = {
@@ -192,7 +180,6 @@ impl HeaderBuilder._build_link_tags -> list[str] {
     }
     for (key, val) in self.meta_data.items() {
         if key.startswith("link_") and val {
-            # link_preconnect_google → rel="preconnect"
             rel = key[5:].replace("_", "-");
             lines.append(f'<link rel={rel} href={html.escape(str(val))} />');
         }
@@ -200,7 +187,6 @@ impl HeaderBuilder._build_link_tags -> list[str] {
     return lines;
 }
 
-"""Build Open Graph tags (og_* prefix)."""
 impl HeaderBuilder._build_og_tags -> list[str] {
     lines: list = [];
     for (key, val) in self.meta_data.items() {
@@ -214,12 +200,10 @@ impl HeaderBuilder._build_og_tags -> list[str] {
     return lines;
 }
 
-"""Build standard meta tags (description, robots, keywords, author, etc)."""
 impl HeaderBuilder._build_meta_tags -> list[str] {
     lines: list = [];
     for key in self.standard_tags {
         if val := self._get_value(key) {
-            # Convert underscore to dash (theme_color → theme-color)
             name = key.replace("_", "-");
             lines.append(f'<meta name={name} content={html.escape(val)} />');
         }
@@ -227,7 +211,6 @@ impl HeaderBuilder._build_meta_tags -> list[str] {
     return lines;
 }
 
-"""Build special tags (charset, viewport, title)."""
 impl HeaderBuilder._build_special_tags -> list[str] {
     lines: list = [];
     if charset := self._get_value("charset") {
@@ -241,12 +224,10 @@ impl HeaderBuilder._build_special_tags -> list[str] {
     return lines;
 }
 
-"""Get value with fallback to defaults."""
 impl HeaderBuilder._get_value(key: str) -> str {
     return self.meta_data.get(key) or self.DEFAULTS.get(key);
 }
 
-"""Format a build error with rich diagnostics."""
 impl JacClient.format_build_error(
     error_output: str, project_dir: Path, config: object = None
 ) -> str {

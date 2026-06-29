@@ -1,11 +1,8 @@
-"""Commands for managing Jac projects and dependencies."""
-
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Initialize a new Jac project."""
 @registry.command(
     name="create",
     help="Create a new Jac project",
@@ -72,7 +69,6 @@ def create(
     list_jacpacks: bool = False
 ) -> int;
 
-"""Install all dependencies from jac.toml, or install a package in editable mode."""
 @registry.command(
     name="install",
     help="Install project dependencies, or 'jac install <pkg>' to add a package to the project venv",
@@ -205,7 +201,6 @@ def install(
     install_global: bool = False
 ) -> int;
 
-"""Add dependencies to the project."""
 @registry.command(
     name="add",
     help="Add a dependency to the project",
@@ -235,7 +230,6 @@ def add(
     packages: list = [], dev: bool = False, git: str = "", verbose: bool = False
 ) -> int;
 
-"""Remove dependencies from the project."""
 @registry.command(
     name="remove",
     help="Remove a dependency from the project",
@@ -261,7 +255,6 @@ def add(
 )
 def remove(packages: list = [], dev: bool = False) -> int;
 
-"""Update project dependencies to latest compatible versions."""
 @registry.command(
     name="update",
     help="Update project dependencies to latest compatible versions",
@@ -290,7 +283,6 @@ def remove(packages: list = [], dev: bool = False) -> int;
 )
 def update(packages: list = [], dev: bool = False, verbose: bool = False) -> int;
 
-"""Run custom scripts defined in jac.toml."""
 @registry.command(
     name="script",
     help="Run project scripts",
@@ -316,7 +308,6 @@ def update(packages: list = [], dev: bool = False, verbose: bool = False) -> int
 )
 def script(name: str = "", list_scripts: bool = False) -> int;
 
-"""Clean project build artifacts."""
 @registry.command(
     name="clean",
     help="Clean project build artifacts",
@@ -375,7 +366,6 @@ def clean(
     force: bool = False
 ) -> int;
 
-"""Bundle a template directory into a distributable .jacpack file."""
 @registry.command(
     name="jacpack",
     help="Manage project templates (.jacpack files)",
@@ -409,7 +399,6 @@ def clean(
 )
 def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
-"""Build a distributable package from jac.toml into the output directory."""
 @registry.command(
     name="bundle",
     help="Build a .whl (PyPI) or npm .tgz (npmjs) from jac.toml; upload separately",

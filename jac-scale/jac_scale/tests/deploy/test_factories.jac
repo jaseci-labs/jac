@@ -1,16 +1,13 @@
-"""Tests for the new factory-based architecture."""
-
 import unittest.mock;
 import from kubernetes.client.exceptions { ApiException }
-import from jac_scale.abstractions.config.app_config { AppConfig }
-import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
-import from jac_scale.factories.autoscaler_factory { AutoscalerFactory }
-import from jac_scale.factories.registry_factory { ImageRegistryFactory }
-import from jac_scale.factories.utility_factory { UtilityFactory }
-import from jac_scale.abstractions.autoscaler { AutoscalerSpec, Trigger }
-import from jac_scale.abstractions.autoscalers.hpa_autoscaler { HPAAutoscaler }
-import from jac_scale.abstractions.autoscalers.keda_autoscaler { KEDAAutoscaler }
-import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
+import from jac_scale.config.app_config { AppConfig }
+import from jac_scale.deploy.target.factory { DeploymentTargetFactory }
+import from jac_scale.deploy.autoscale.factory { AutoscalerFactory }
+import from jac_scale.observability.factory { UtilityFactory }
+import from jac_scale.deploy.autoscale.autoscaler { AutoscalerSpec, Trigger }
+import from jac_scale.deploy.autoscale.hpa_autoscaler { HPAAutoscaler }
+import from jac_scale.deploy.autoscale.keda_autoscaler { KEDAAutoscaler }
+import from jac_scale.deploy.target.kubernetes.kubernetes_config { KubernetesConfig }
 
 test "deployment target factory creates kubernetes target" {
     config = {"app_name": "test-app", "namespace": "default", "container_port": 8000};
@@ -51,33 +48,14 @@ test "deployment target factory raises for not implemented target" {
     assert raised , "Expected NotImplementedError for aws target";
 }
 
-test "image registry factory creates dockerhub" {
-    config = {
-        "app_name": "test-app",
-        "docker_username": "testuser",
-        "docker_password": "testpass"
-    };
+test "deployment target factory creates kubernetes-microservice target" {
+    config = {"app_name": "test-app", "namespace": "default", "container_port": 8000};
 
-    registry = ImageRegistryFactory.create("dockerhub", config);
+    target = DeploymentTargetFactory.create("kubernetes-microservice", config);
 
-    assert registry is not None;
-    assert hasattr(registry, "build_image");
-    assert hasattr(registry, "push_image");
-    assert hasattr(registry, "get_image_url");
-    assert registry.docker_username == "testuser";
-}
-
-test "image registry factory raises for unsupported registry" {
-    config = {"app_name": "test-app"};
-
-    raised = False;
-    try {
-        ImageRegistryFactory.create("unsupported", config);
-    } except ValueError as e {
-        raised = True;
-        assert "Unsupported image registry" in str(e);
-    }
-    assert raised , "Expected ValueError for unsupported registry";
+    assert target is not None;
+    assert hasattr(target, "deploy");
+    assert hasattr(target, "destroy");
 }
 
 test "utility factory creates standard logger" {
@@ -119,20 +97,18 @@ test "kubernetes config from dict" {
 
 test "app config creation" {
     app_config = AppConfig(
-        code_folder="/path/to/code", file_name="main.jac", build=True
+        code_folder="/path/to/code", file_name="main.jac", no_image=True
     );
 
     assert app_config.code_folder == "/path/to/code";
     assert app_config.file_name == "main.jac";
-    assert app_config.build is True;
+    assert app_config.no_image is True;
     assert app_config.testing is False;
 }
 
 test "deployment target with logger" {
-    # KubernetesTarget is lazily imported inside create() (gated by
-    # require_optional), so patch it at its source module, not on the factory.
     with unittest.mock.patch(
-        "jac_scale.targets.kubernetes.kubernetes_target.KubernetesTarget"
+        "jac_scale.deploy.target.kubernetes.kubernetes_target.KubernetesTarget"
     ) as mock_kubernetes_target {
         mock_target = unittest.mock.MagicMock();
         mock_kubernetes_target.return_value = mock_target;
@@ -160,7 +136,7 @@ test "deployment target factory register and create custom target" {
     result = DeploymentTargetFactory.create("custom-test", config);
     assert result is mock_target;
     assert result.config == config;
-    # Clean up registry
+
     del DeploymentTargetFactory._registry["custom-test"];
 }
 
@@ -179,7 +155,7 @@ test "deployment target factory custom target with logger" {
     assert len(calls) == 1;
     assert calls[0]["config"] == config;
     assert calls[0]["logger"] == logger;
-    # Clean up registry
+
     del DeploymentTargetFactory._registry["logged-test"];
 }
 
@@ -190,11 +166,10 @@ test "deployment target factory custom target overrides builtin" {
         return mock_target;
     }
 
-    # Register a custom 'kubernetes' target to override the built-in
     DeploymentTargetFactory.register("kubernetes", override_factory);
     result = DeploymentTargetFactory.create("kubernetes", {"app_name": "test"});
     assert result is mock_target;
-    # Clean up - restore built-in behavior
+
     del DeploymentTargetFactory._registry["kubernetes"];
 }
 
@@ -292,15 +267,11 @@ test "hpa autoscaler build manifests produces correct dict" {
 }
 
 test "autoscaler factory creates keda autoscaler for engine=keda" {
-    # Ensures "keda" is a registered built-in engine — not just a custom override.
-    # This test will fail until KEDAAutoscaler and its factory registration exist.
     autoscaler = AutoscalerFactory.create("keda", {});
     assert isinstance(autoscaler, KEDAAutoscaler);
 }
 
 test "autoscaler factory error message lists both hpa and keda as valid engines" {
-    # When an operator typos the engine name they need to see valid options in the
-    # error.  A message that only says "hpa" after Phase 2 is shipped is misleading.
     raised = False;
     try {
         AutoscalerFactory.create("unknown-engine", {});
@@ -313,24 +284,16 @@ test "autoscaler factory error message lists both hpa and keda as valid engines"
 }
 
 test "hpa resource_name_for returns target name with hpa suffix" {
-    # Callers that formerly hardcoded f'{name}-hpa' must switch to this method.
-    # The test pins the exact contract so a rename doesn't silently break destroy.
     hpa = AutoscalerFactory.create("hpa", {});
     assert hpa.resource_name_for("my-app") == "my-app-hpa";
 }
 
 test "keda resource_name_for returns target name with scaledobject suffix" {
-    # destroy() on the Kubernetes target looks up the ScaledObject by name.
-    # A suffix mismatch means destroy() tries to delete a non-existent resource
-    # and the ScaledObject stays alive, continuing to scale the workload.
     keda = AutoscalerFactory.create("keda", {});
     assert keda.resource_name_for("my-app") == "my-app-scaledobject";
 }
 
 test "hpa apply deletes competing ScaledObject when switching from keda engine" {
-    # If an operator switches autoscaler_engine from keda to hpa and redeploys,
-    # the old ScaledObject stays on the cluster and fights the new HPA for
-    # spec.replicas.  apply() must attempt to remove it before writing the HPA.
     spec = AutoscalerSpec(
         scale_target_name="svc-deployment",
         app_name="svc",
@@ -338,10 +301,10 @@ test "hpa apply deletes competing ScaledObject when switching from keda engine" 
         triggers=[Trigger(type="cpu", metadata={})]
     );
     with unittest.mock.patch(
-        "jac_scale.abstractions.autoscalers.hpa_autoscaler.AutoscalingV2Api"
+        "jac_scale.deploy.autoscale.hpa_autoscaler.AutoscalingV2Api"
     ) as mock_v2_cls {
         with unittest.mock.patch(
-            "jac_scale.abstractions.autoscalers.hpa_autoscaler.client"
+            "jac_scale.deploy.autoscale.hpa_autoscaler.client"
         ) as mock_client {
             mock_v2_cls.return_value.read_namespaced_horizontal_pod_autoscaler.side_effect = ApiException(
                 status=404
@@ -359,7 +322,6 @@ test "hpa apply deletes competing ScaledObject when switching from keda engine" 
 }
 
 test "hpa apply engine-switch ScaledObject deletion is a no-op when no ScaledObject exists" {
-    # 404 or 422 on the ScaledObject delete means nothing to clean up; must not raise.
     spec = AutoscalerSpec(
         scale_target_name="svc-deployment",
         app_name="svc",
@@ -367,10 +329,10 @@ test "hpa apply engine-switch ScaledObject deletion is a no-op when no ScaledObj
         triggers=[Trigger(type="cpu", metadata={})]
     );
     with unittest.mock.patch(
-        "jac_scale.abstractions.autoscalers.hpa_autoscaler.AutoscalingV2Api"
+        "jac_scale.deploy.autoscale.hpa_autoscaler.AutoscalingV2Api"
     ) as mock_v2_cls {
         with unittest.mock.patch(
-            "jac_scale.abstractions.autoscalers.hpa_autoscaler.client"
+            "jac_scale.deploy.autoscale.hpa_autoscaler.client"
         ) as mock_client {
             mock_v2_cls.return_value.read_namespaced_horizontal_pod_autoscaler.side_effect = ApiException(
                 status=404
@@ -385,13 +347,11 @@ test "hpa apply engine-switch ScaledObject deletion is a no-op when no ScaledObj
 }
 
 test "hpa destroy collection also sweeps competing KEDA resources" {
-    # destroy_collection is called on teardown.  Any ScaledObjects and
-    # TriggerAuthentications left from a prior keda-engine deploy must be removed.
     with unittest.mock.patch(
-        "jac_scale.abstractions.autoscalers.hpa_autoscaler.AutoscalingV2Api"
+        "jac_scale.deploy.autoscale.hpa_autoscaler.AutoscalingV2Api"
     ) {
         with unittest.mock.patch(
-            "jac_scale.abstractions.autoscalers.hpa_autoscaler.client"
+            "jac_scale.deploy.autoscale.hpa_autoscaler.client"
         ) as mock_client {
             mock_client.CustomObjectsApi.return_value.list_namespaced_custom_object.return_value = {
                 "items": []
@@ -400,21 +360,4 @@ test "hpa destroy collection also sweeps competing KEDA resources" {
             assert mock_client.CustomObjectsApi.return_value.list_namespaced_custom_object.call_count == 2;
         }
     }
-}
-
-test "image registry factory register and create custom registry" {
-    mock_registry = unittest.mock.MagicMock();
-
-    def custom_factory(config: dict) -> object {
-        mock_registry.config = config;
-        return mock_registry;
-    }
-
-    ImageRegistryFactory.register("custom-registry", custom_factory);
-    config = {"username": "test", "password": "test"};
-    result = ImageRegistryFactory.create("custom-registry", config);
-    assert result is mock_registry;
-    assert result.config == config;
-    # Clean up registry
-    del ImageRegistryFactory._registry["custom-registry"];
 }

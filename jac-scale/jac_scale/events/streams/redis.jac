@@ -1,6 +1,3 @@
-"""Redis Streams implementation of EventStreamBroker.
-Maps publish/subscribe/consume/ack to XADD/XREADGROUP/XACK; routes to <topic><dead_letter_suffix> on retry exhaustion.
-"""
 import from typing { Callable }
 import from threading { Thread, Event as _ThreadStop }
 import from jac_scale.events.broker {
@@ -11,7 +8,7 @@ import from jac_scale.events.broker {
 }
 import from jac_scale.events.streams._stream_common { consumer_loop, wait_or_stop }
 import from jac_scale._optdeps.redis { Redis }
-import from jac_scale.db { get_redis_client }
+import from jac_scale.persistence.db { get_redis_client }
 import logging;
 import json;
 import socket;
@@ -20,7 +17,6 @@ import time;
 import uuid;
 
 
-"""Decode bytes to str if needed; pass through everything else as str(x)."""
 def _to_str(value: any) -> str {
     if isinstance(value, bytes) {
         return value.decode("utf-8");
@@ -30,7 +26,6 @@ def _to_str(value: any) -> str {
 
 glob _logger = logging.getLogger(__name__);
 
-"""Redis Streams implementation. subscribe() spawns a daemon thread; stop(drain=True) joins all threads."""
 obj RedisEventStream(EventStreamBroker) {
     has config: dict[str, any] = {},
         _client: Redis | None = None,
@@ -49,7 +44,7 @@ obj RedisEventStream(EventStreamBroker) {
         }
         self._consumer_name = f"{host}-{os.getpid()}-{str(uuid.uuid4())[:8]}";
         self._default_group = self.config.get("consumer_group", "jac-scale");
-        # Pull retry defaults from the abstraction so they live in one place.
+
         retry_cfg = self.config.get("retry", {});
         defaults = RetryPolicy();
         self._default_retry = RetryPolicy(
@@ -70,10 +65,6 @@ obj RedisEventStream(EventStreamBroker) {
     }
 
     def _serialize_event(event: Event) -> str {
-        # Wire format follows CloudEvents 1.0: required `specversion`/`type`/`source`/`id`
-        # so strict CE consumers (Argo Events, Knative, etc.) can validate. `event_type`
-        # is the in-memory name because `type` is a Python builtin; on the wire it's `type`.
-        # delivery_* are broker-managed and not serialized; they're set fresh on each consume.
         return json.dumps(
             {
                 "specversion": "1.0",
@@ -106,8 +97,6 @@ obj RedisEventStream(EventStreamBroker) {
     }
 
     def _resolve_start_id(start_from: str) -> str {
-        # Map portable names to Redis stream ids; pass anything else through
-        # so callers can resume from a specific position token if they have one.
         if start_from == "latest" {
             return "$";
         }
@@ -127,9 +116,6 @@ obj RedisEventStream(EventStreamBroker) {
                 topic, group, id=self._resolve_start_id(start_from), mkstream=True
             );
         } except Exception as e {
-            # BUSYGROUP just means the group already exists; anything
-            # else is a real error and worth surfacing. start_from is one-shot
-            # bookmark for *new* groups, so existing groups silently keep their position.
             if "BUSYGROUP" not in str(e) {
                 _logger.warning(f"XGROUP CREATE failed for {topic}/{group}: {e}");
             }
@@ -138,7 +124,6 @@ obj RedisEventStream(EventStreamBroker) {
     }
 
     def _decode_message(topic: str, group: str, msg_id: any, fields: dict) -> Event {
-        # redis-py returns bytes by default unless decode_responses=True
         payload = fields.get(b"payload") or fields.get("payload");
         event = self._deserialize_event(payload);
         event.delivery_id = _to_str(msg_id);
@@ -148,15 +133,12 @@ obj RedisEventStream(EventStreamBroker) {
     }
 
     def start {
-        # Threads are spawned in subscribe(); start() just signals
-        # 'we are operational' by clearing the stop event.
         self._stop_event.clear();
     }
 
     def stop(drain: bool = True) {
         self._stop_event.set();
         if drain {
-            # Shared deadline so total wait is <=10s regardless of thread count.
             deadline = time.time() + 10.0;
             for t in self._threads {
                 remaining = max(0.0, deadline - time.time());
@@ -171,7 +153,6 @@ obj RedisEventStream(EventStreamBroker) {
     }
 
     def publish(topic: str, event: Event, key: str | None = None) {
-        # Fire-and-forget: log and swallow so emit sites don't have to try/except.
         try {
             self._xadd_payload(topic, event);
         } except Exception as e {
@@ -232,9 +213,6 @@ obj RedisEventStream(EventStreamBroker) {
     }
 
     def _send_to_dlq(topic: str, event: Event, retry: RetryPolicy) -> bool {
-        # Returns True iff the DLQ XADD succeeded. Caller must NOT ack the
-        # original event when this returns False; leaving it un-acked makes
-        # Redis redeliver later so at-least-once survives a DLQ outage.
         dlq = topic + retry.dead_letter_suffix;
         try {
             self._xadd_payload(dlq, event);
@@ -257,8 +235,7 @@ obj RedisEventStream(EventStreamBroker) {
         for attempt in range(retry.max_attempts) {
             try {
                 result = handler(event);
-                # Async handlers would silently no-op (coroutine never awaited),
-                # so reject them loudly. Subscribers must be sync today.
+
                 if inspect.iscoroutine(result) {
                     result.close();
                     raise TypeError(
@@ -282,9 +259,7 @@ obj RedisEventStream(EventStreamBroker) {
                 }
             }
         }
-        # Exhausted. Only ack the original after the DLQ write actually lands;
-        # otherwise leave it un-acked so Redis redelivers and we can retry the
-        # whole cycle (preserves at-least-once during a DLQ outage).
+
         if self._send_to_dlq(topic, event, retry) {
             self.ack(event);
         }

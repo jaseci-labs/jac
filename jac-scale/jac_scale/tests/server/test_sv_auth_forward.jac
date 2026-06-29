@@ -1,15 +1,6 @@
-"""Tests for sv-to-sv Authorization header forwarding via the plugin's
-sv_service_call hookimpl.
-
-Covers:
-  - _auth_ctx.set/get/reset semantics
-  - plugin override reads the current auth token and forwards it
-  - no auth set -> no header added
-"""
-
 import httpx;
 import from jaclang.runtimelib { sv_client }
-import from jac_scale.microservices.runtime.auth_ctx {
+import from jac_scale.runtime.context.auth_ctx {
     set_current_auth,
     reset_current_auth,
     get_current_auth
@@ -17,30 +8,7 @@ import from jac_scale.microservices.runtime.auth_ctx {
 import from jac_scale.plugin { JacScalePlugin }
 
 
-# =============================================================================
-# Test helper: mock-backed httpx.Client
-# =============================================================================
-# The plugin's sv_service_call uses httpx.Client(timeout=...).stream("POST", ...)
-# to inspect Content-Type before consuming the body (so it can pivot to SSE
-# streaming when the downstream returns a generator). For tests we need to
-# intercept at the Client level — `transport=MockTransport(handler)` lets a
-# real Client serve canned Responses without doing real I/O. Both .stream()
-# and .post() on the Client go through the transport, so a single helper
-# covers every existing test pattern (plain JSON, ConnectError on retry,
-# call counting, timeout capture).
 def _mock_client_class(handler: any, on_init: any = None) -> any {
-    # Returns a *factory callable* (not a class) so the plugin's
-    # `httpx.Client(timeout=...)` substitution still works. Subclassing
-    # httpx.Client inside a Jac function and calling super().__init__
-    # raises 'super' object is not callable (Jac compiles the inner
-    # class differently than CPython expects). The factory pattern
-    # sidesteps that — we just hand back a fresh real Client backed by
-    # our MockTransport on every call.
-    #
-    # Capture the *original* httpx.Client at helper-construction time:
-    # by the time the factory runs, the test has already done
-    # `httpx.Client = _mock_client_class(...)`, so calling httpx.Client
-    # inside the factory would recurse infinitely.
     transport = httpx.MockTransport(handler);
     real_client_cls = httpx.Client;
     def factory(*args: any, **kwargs: any) -> any {
@@ -52,9 +20,6 @@ def _mock_client_class(handler: any, on_init: any = None) -> any {
     return factory;
 }
 
-# =============================================================================
-# _auth_ctx
-# =============================================================================
 test "set/get/reset auth context round-trips" {
     tok = set_current_auth("Bearer abc");
     assert get_current_auth() == "Bearer abc";
@@ -68,9 +33,6 @@ test "set_current_auth None stores empty string" {
     reset_current_auth(tok);
 }
 
-# =============================================================================
-# Plugin sv_service_call override forwards Authorization header
-# =============================================================================
 test "sv_service_call forwards Authorization header when auth set" {
     captured: dict = {};
 
@@ -116,7 +78,7 @@ test "sv_service_call omits Authorization when no auth context" {
 
     try {
         sv_client.register("demo_mod2", "http://demo.invalid");
-        # Do not set auth; context var default is ""
+
         result = JacScalePlugin.sv_service_call("demo_mod2", "echo", {});
         assert captured["auth"] == "";
         assert result == "ok";
@@ -152,12 +114,7 @@ test "sv_service_call surfaces application-level error from envelope" {
     }
 }
 
-# =============================================================================
-# Retry with exponential backoff
-# =============================================================================
 test "sv_service_call retries on transport error and succeeds on 2nd attempt" {
-    # Simulates: pod is coming up, first connect fails; second succeeds.
-    # We count how many times the handler was called - should be 2.
     call_count: dict = {"n": 0};
 
     def handler(request: httpx.Request) -> httpx.Response {
@@ -177,7 +134,7 @@ test "sv_service_call retries on transport error and succeeds on 2nd attempt" {
         sv_client.register("retry_mod", "http://demo.invalid");
         result = JacScalePlugin.sv_service_call("retry_mod", "ping", {});
         assert result == "ok";
-        assert call_count["n"] == 2;  # first failed, second succeeded
+        assert call_count["n"] == 2;
     } finally {
         httpx.Client = original_client;
         sv_client.unregister("retry_mod");
@@ -185,8 +142,6 @@ test "sv_service_call retries on transport error and succeeds on 2nd attempt" {
 }
 
 test "sv_service_call gives up after max_attempts on persistent transport error" {
-    # Simulates: downstream is genuinely unreachable. All 3 attempts
-    # fail; caller gets a RuntimeError mentioning "after N attempts".
     call_count: dict = {"n": 0};
 
     def handler(request: httpx.Request) -> httpx.Response {
@@ -213,10 +168,7 @@ test "sv_service_call gives up after max_attempts on persistent transport error"
     }
 }
 
-# =============================================================================
-# X-Trace-Id propagation
-# =============================================================================
-import from jac_scale.microservices.runtime.trace_ctx {
+import from jac_scale.runtime.context.trace_ctx {
     set_current_trace,
     reset_current_trace,
     get_current_trace,
@@ -242,11 +194,10 @@ test "ensure_trace_id preserves inbound header" {
 
 test "ensure_trace_id mints a UUID4 when no inbound header" {
     minted = ensure_trace_id(None);
-    # UUID4 string is 36 chars with 4 dashes; basic shape check
+
     assert len(minted) == 36;
     assert minted.count("-") == 4;
-    # Must differ between calls (statistically; UUID4 collision
-    # probability is astronomically low)
+
     assert ensure_trace_id(None) != minted;
 }
 
@@ -293,7 +244,7 @@ test "sv_service_call omits X-Trace-Id when no trace context is set" {
 
     try {
         sv_client.register("trace_mod2", "http://demo.invalid");
-        # Don't set trace ctx; default empty string means no header added
+
         JacScalePlugin.sv_service_call("trace_mod2", "ping", {});
         assert captured["trace"] == "";
     } finally {
@@ -302,35 +253,24 @@ test "sv_service_call omits X-Trace-Id when no trace context is set" {
     }
 }
 
-# =============================================================================
-# Circuit breaker
-# =============================================================================
-import from jac_scale.plugin {
+import from jac_scale.runtime.rpc.breaker {
     _breaker_reset,
-    _breaker_record_success,
-    _breaker_record_failure,
-    _breaker_should_skip,
+    breaker_record_success,
+    breaker_record_failure,
+    breaker_should_skip,
     _BREAKER_TRIP_THRESHOLD
 }
 
 test "breaker trips OPEN after N consecutive transport failures and fails fast" {
-    # Drive the breaker to OPEN directly via the recorder so we don't
-    # have to burn N full retry cycles in the test.
     mod = "breaker_open_test";
     _breaker_reset(mod);
 
     for _ in range(_BREAKER_TRIP_THRESHOLD) {
-        _breaker_record_failure(mod);
+        breaker_record_failure(mod);
     }
 
-    # Breaker should now short-circuit any sv_service_call for this mod.
-    # Confirm by checking the skip helper directly - no httpx mock needed
-    # because the call path raises before any network I/O.
-    assert _breaker_should_skip(mod);
+    assert breaker_should_skip(mod);
 
-    # And a real sv_service_call should fail fast with the breaker msg.
-    # We don't even register the URL: if the breaker opens correctly,
-    # the call never gets as far as URL resolution.
     raised_msg = "";
     try {
         JacScalePlugin.sv_service_call(mod, "anything", {});
@@ -346,45 +286,41 @@ test "breaker success recorder resets failure count" {
     mod = "breaker_reset_test";
     _breaker_reset(mod);
 
-    # Fail threshold-1 times (one short of tripping)
     for _ in range(_BREAKER_TRIP_THRESHOLD - 1) {
-        _breaker_record_failure(mod);
+        breaker_record_failure(mod);
     }
-    assert not _breaker_should_skip(mod);
+    assert not breaker_should_skip(mod);
 
-    # A success resets the counter
-    _breaker_record_success(mod);
+    breaker_record_success(mod);
 
-    # Now threshold-1 more failures should NOT trip (counter was reset)
     for _ in range(_BREAKER_TRIP_THRESHOLD - 1) {
-        _breaker_record_failure(mod);
+        breaker_record_failure(mod);
     }
-    assert not _breaker_should_skip(mod);
+    assert not breaker_should_skip(mod);
 
     _breaker_reset(mod);
 }
 
 test "HALF_OPEN probe success closes the breaker" {
-    # Simulate: breaker OPEN, cooldown elapses, probe succeeds.
-    # Without waiting 30s we use _breaker_force_cooldown_elapsed.
-    import from jac_scale.plugin { _breaker_peek, _breaker_force_cooldown_elapsed }
+    import from jac_scale.runtime.rpc.breaker {
+        _breaker_peek,
+        _breaker_force_cooldown_elapsed
+    }
 
     mod = "breaker_half_open_test";
     _breaker_reset(mod);
 
     for _ in range(_BREAKER_TRIP_THRESHOLD) {
-        _breaker_record_failure(mod);
+        breaker_record_failure(mod);
     }
-    assert _breaker_should_skip(mod);
+    assert breaker_should_skip(mod);
 
-    # Force cooldown elapsed, next skip-check transitions OPEN -> HALF_OPEN
     _breaker_force_cooldown_elapsed(mod);
-    assert not _breaker_should_skip(mod);
+    assert not breaker_should_skip(mod);
     st = _breaker_peek(mod);
     assert st is not None and st["state"] == "HALF_OPEN";
 
-    # Probe success closes the breaker fully
-    _breaker_record_success(mod);
+    breaker_record_success(mod);
     st = _breaker_peek(mod);
     assert st is not None and st["state"] == "CLOSED";
     assert st["fails"] == 0;
@@ -393,9 +329,6 @@ test "HALF_OPEN probe success closes the breaker" {
 }
 
 test "application error envelope does NOT trip the breaker" {
-    # 5 application-error calls in a row should NOT open the breaker -
-    # only transport errors count. Verified by calling through the real
-    # hookimpl with a mock that always returns ok=false.
     mod = "breaker_app_err_test";
     _breaker_reset(mod);
 
@@ -418,8 +351,8 @@ test "application error envelope does NOT trip the breaker" {
                 ;
             }
         }
-        # Breaker should still be CLOSED - app errors don't count
-        assert not _breaker_should_skip(mod);
+
+        assert not breaker_should_skip(mod);
     } finally {
         httpx.Client = original_client;
         sv_client.unregister(mod);
@@ -428,9 +361,6 @@ test "application error envelope does NOT trip the breaker" {
 }
 
 test "sv_service_call does NOT retry on application error envelope" {
-    # Simulates: downstream returns 200 with ok=false (application-level
-    # error). Retrying won't change the answer, so we give up after 1
-    # request and raise immediately.
     call_count: dict = {"n": 0};
 
     def handler(request: httpx.Request) -> httpx.Response {
@@ -452,7 +382,7 @@ test "sv_service_call does NOT retry on application error envelope" {
         } except RuntimeError as e {
             raised_msg = str(e);
         }
-        # Exactly one call: application errors don't retry
+
         assert call_count["n"] == 1;
         assert "deterministic_fail" in raised_msg;
     } finally {
@@ -490,7 +420,7 @@ test "sv_service_call uses the default 10s timeout when no per-service override"
 
 
 test "sv_service_call honors per-service rpc_timeout from config" {
-    import jac_scale.plugin as plugin_mod;
+    import jac_scale.runtime.rpc.rpc as plugin_mod;
     captured: dict = {};
 
     def handler(request: httpx.Request) -> httpx.Response {
@@ -506,7 +436,6 @@ test "sv_service_call honors per-service rpc_timeout from config" {
     original_client = httpx.Client;
     httpx.Client = _mock_client_class(handler, on_init=on_init);
 
-    # Patch _sv_rpc_timeout to avoid depending on a jac.toml fixture.
     original_resolver = getattr(plugin_mod, "_sv_rpc_timeout");
     def fake_resolver(module_name: str) -> float {
         return 75.5 if module_name == "slow_mod" else 10.0;
@@ -526,15 +455,13 @@ test "sv_service_call honors per-service rpc_timeout from config" {
 
 
 test "_sv_rpc_timeout returns default when config lookup fails" {
-    import from jac_scale.plugin { _sv_rpc_timeout }
+    import from jac_scale.runtime.rpc.rpc { _sv_rpc_timeout }
     t: float = _sv_rpc_timeout("module_that_has_no_override");
     assert t == 10.0;
 }
 
 
-# sv_service_call URL resolution via get_sv_registry hookspec
 test "sv_service_call uses URL from get_sv_registry hookspec when present" {
-    # No sv_client._registry entry + no JAC_SV_*_URL env; hookspec alone resolves.
     import jaclang;
 
     captured: dict = {};
@@ -549,7 +476,6 @@ test "sv_service_call uses URL from get_sv_registry hookspec when present" {
     original_get_registry = jaclang.JacRuntime.get_sv_registry;
     httpx.Client = _mock_client_class(handler);
 
-    # Stub: hookspec returns a DNS-like URL.
     def fake_registry -> dict[str, str] {
         return {
             "k9_test_mod": "http://k9-test-mod-service.prod.svc.cluster.local:8000"
@@ -564,7 +490,7 @@ test "sv_service_call uses URL from get_sv_registry hookspec when present" {
 
         result = JacScalePlugin.sv_service_call("k9_test_mod", "do", {});
         assert result == "via-hookspec";
-        # Captured URL must be the DNS one, not a sv_client._registry loopback.
+
         assert "k9-test-mod-service.prod.svc.cluster.local" in captured["url"];
     } finally {
         jaclang.JacRuntime.get_sv_registry = original_get_registry;
@@ -574,8 +500,6 @@ test "sv_service_call uses URL from get_sv_registry hookspec when present" {
 
 
 test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
-    # If module is registered locally but not in the hookspec snapshot,
-    # the fallback to sv_client.resolve_url should still work.
     import jaclang;
 
     captured: dict = {};
@@ -590,7 +514,6 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
     original_get_registry = jaclang.JacRuntime.get_sv_registry;
     httpx.Client = _mock_client_class(handler);
 
-    # Empty hookspec forces the fallback branch.
     jaclang.JacRuntime.get_sv_registry = staticmethod(lambda : {});
 
     try {
@@ -606,10 +529,6 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
 }
 
 
-# ensure_sv_service registers DNS URLs in K8s mode (no subprocess spawn).
-# Defined at module scope: a Jac `obj` declared inside a test block compiles to
-# a dataclass whose __module__ is not in sys.modules, breaking dataclass
-# processing with `NoneType has no attribute __dict__`.
 obj _K8sStubMsCfg {
     has data: dict[str, any];
 
@@ -620,14 +539,14 @@ obj _K8sStubMsCfg {
 
 test "ensure_sv_service registers DNS URL when in K8s mode" {
     import os;
-    import jac_scale.config_loader as cfg_mod;
+    import jac_scale.config.config_loader as cfg_mod;
     import from jac_scale.plugin { JacScalePlugin }
 
     orig_k8s_host = os.environ.get("KUBERNETES_SERVICE_HOST");
     orig_ns = os.environ.get("POD_NAMESPACE");
     original_cfg = getattr(cfg_mod, "get_scale_config");
 
-    os.environ["KUBERNETES_SERVICE_HOST"] = "10.0.0.1";  # signal "in cluster"
+    os.environ["KUBERNETES_SERVICE_HOST"] = "10.0.0.1";
     os.environ["POD_NAMESPACE"] = "prod";
     setattr(
         cfg_mod,
@@ -638,14 +557,11 @@ test "ensure_sv_service registers DNS URL when in K8s mode" {
             )
     );
 
-    # Make sure registry is empty for our module so the early-return
-    # branch doesn't fire.
     if "k9_2_peer" in sv_client._registry {
         sv_client.unregister("k9_2_peer");
     }
 
     try {
-        # No subprocess spawn; just registers DNS URL and returns.
         JacScalePlugin.ensure_sv_service("k9_2_peer", ".");
         url = sv_client._registry.get("k9_2_peer", "");
         assert url == "http://k9-2-peer-service.prod.svc.cluster.local:8000" , (
@@ -671,9 +587,6 @@ test "ensure_sv_service registers DNS URL when in K8s mode" {
 
 
 test "ensure_sv_service early-returns when peer already registered" {
-    # Regression guard: even in K8s mode, the existing idempotency
-    # check (registered? -> early return) must fire BEFORE the K8s
-    # peer-DNS-registration branch tries to register again.
     import os;
     import from jac_scale.plugin { JacScalePlugin }
 
@@ -683,7 +596,6 @@ test "ensure_sv_service early-returns when peer already registered" {
     sv_client.register("k9_2_already_registered", "http://prior-url.example.com:8000");
 
     try {
-        # Should early-return without touching the registry.
         JacScalePlugin.ensure_sv_service("k9_2_already_registered", ".");
         assert sv_client._registry["k9_2_already_registered"] == (
             "http://prior-url.example.com:8000"

@@ -1,5 +1,3 @@
-"""Test for SSO (Single Sign-On) implementation in jac-scale."""
-
 import json;
 import os;
 import shutil;
@@ -14,17 +12,16 @@ import pytest;
 import from fastapi { Request }
 import from fastapi.responses { JSONResponse, RedirectResponse }
 
-import from jac_scale.config_loader { reset_scale_config }
-import from jac_scale.utils { is_safe_loopback_redirect }
+import from jac_scale.config.config_loader { reset_scale_config }
+import from jac_scale.shared.utils { is_safe_loopback_redirect }
 import from jac_scale.sso.google { GoogleSSOProvider }
 import from jac_scale.sso.apple { AppleSSOProvider }
 import from jac_scale.sso.github { GithubSSOProvider }
-import from jac_scale.serve { JacAPIServer }
-import from jac_scale.enums { Platforms, Operations }
-import from jac_scale.user_manager { JacScaleUserManager }
+import from jac_scale.server.serve { JacAPIServer }
+import from jac_scale.shared.enums { Platforms, Operations }
+import from jac_scale.identity.user_manager { JacScaleUserManager }
 import from jaclang.runtimelib.transport { TransportResponse }
 
-"""Return mock SSO config with Google, Apple, and GitHub credentials configured."""
 def mock_sso_config_with_credentials -> dict {
     return {
         "host": "http://localhost:8000",
@@ -43,7 +40,6 @@ def mock_sso_config_with_credentials -> dict {
     };
 }
 
-"""Return mock SSO config without credentials."""
 def mock_sso_config_without_credentials -> dict {
     return {
         "host": "http://localhost:8000",
@@ -53,7 +49,6 @@ def mock_sso_config_without_credentials -> dict {
     };
 }
 
-"""Return mock SSO config with only client_id (no secret)."""
 def mock_sso_config_partial_credentials -> dict {
     return {
         "host": "http://localhost:8000",
@@ -63,7 +58,6 @@ def mock_sso_config_partial_credentials -> dict {
     };
 }
 
-"""Mock user info from SSO provider."""
 @dataclass
 obj MockUserInfo {
     has email: str,
@@ -74,7 +68,6 @@ obj MockUserInfo {
         display_name: str = "Test User",
         picture: str = "https://example.com/picture.jpg";
 
-    """Mirror SSOUserInfo.profile_fields() so production code can call it."""
     def profile_fields -> dict[str, any] {
         fields: dict[str, any] = {};
         for key in ['display_name', 'first_name', 'last_name', 'picture'] {
@@ -87,7 +80,6 @@ obj MockUserInfo {
     }
 }
 
-"""Mock GoogleSSO for testing - implements SSOProvider interface."""
 obj MockGoogleSSO {
     has client_id: str,
         client_secret: str,
@@ -101,22 +93,18 @@ obj MockGoogleSSO {
         self.handle_callback = self._default_handle_callback;
     }
 
-    """Mock get_login_redirect method."""
     async def _default_get_login_redirect -> RedirectResponse {
         return RedirectResponse(url="https://accounts.google.com/oauth/authorize");
     }
 
-    """Mock verify_and_process method."""
     async def _default_verify_and_process(_request: Request) -> MockUserInfo {
         return MockUserInfo(email="test@example.com");
     }
 
-    """Mock initiate_auth method (SSOProvider interface)."""
     async def _default_initiate_auth(state: str | None = None) -> RedirectResponse {
         return RedirectResponse(url="https://accounts.google.com/oauth/authorize");
     }
 
-    """Mock handle_callback method (SSOProvider interface)."""
     async def _default_handle_callback(request: Request) -> MockUserInfo {
         return await self.verify_and_process(request);
     }
@@ -134,7 +122,6 @@ obj MockGoogleSSO {
     }
 }
 
-"""Mock AppleSSO for testing - implements SSOProvider interface."""
 obj MockAppleSSO {
     has client_id: str,
         client_secret: str,
@@ -148,22 +135,18 @@ obj MockAppleSSO {
         self.handle_callback = self._default_handle_callback;
     }
 
-    """Mock get_login_redirect method."""
     async def _default_get_login_redirect -> RedirectResponse {
         return RedirectResponse(url="https://appleid.apple.com/auth/authorize");
     }
 
-    """Mock verify_and_process method."""
     async def _default_verify_and_process(_request: Request) -> MockUserInfo {
         return MockUserInfo(email="test@privaterelay.appleid.com");
     }
 
-    """Mock initiate_auth method (SSOProvider interface)."""
     async def _default_initiate_auth(state: str | None = None) -> RedirectResponse {
         return RedirectResponse(url="https://appleid.apple.com/auth/authorize");
     }
 
-    """Mock handle_callback method (SSOProvider interface)."""
     async def _default_handle_callback(request: Request) -> MockUserInfo {
         return await self.verify_and_process(request);
     }
@@ -181,7 +164,6 @@ obj MockAppleSSO {
     }
 }
 
-"""Mock GithubSSO for testing - implements SSOProvider interface."""
 obj MockGithubSSO {
     has client_id: str,
         client_secret: str,
@@ -195,22 +177,18 @@ obj MockGithubSSO {
         self.handle_callback = self._default_handle_callback;
     }
 
-    """Mock get_login_redirect method."""
     async def _default_get_login_redirect -> RedirectResponse {
         return RedirectResponse(url="https://github.com/login/oauth/authorize");
     }
 
-    """Mock verify_and_process method."""
     async def _default_verify_and_process(_request: Request) -> MockUserInfo {
         return MockUserInfo(email="test@github.com");
     }
 
-    """Mock initiate_auth method (SSOProvider interface)."""
     async def _default_initiate_auth(state: str | None = None) -> RedirectResponse {
         return RedirectResponse(url="https://github.com/login/oauth/authorize");
     }
 
-    """Mock handle_callback method (SSOProvider interface)."""
     async def _default_handle_callback(request: Request) -> MockUserInfo {
         return await self.verify_and_process(request);
     }
@@ -228,7 +206,6 @@ obj MockGithubSSO {
     }
 }
 
-"""Mock JacScaleConfig for testing."""
 obj MockScaleConfig {
     has sso_config: dict | None = None,
         _sso_config: dict by postinit;
@@ -266,7 +243,6 @@ obj MockScaleConfig {
     }
 }
 
-"""Extract body content from JSONResponse or TransportResponse."""
 def _get_response_body(result: JSONResponse | TransportResponse) -> str {
     if isinstance(result, JSONResponse) {
         return result.body.decode("utf-8");
@@ -308,13 +284,12 @@ def _get_response_body(result: JSONResponse | TransportResponse) -> str {
     }
 }
 
-"""Setup a user manager with temp dir for testing."""
 def _setup_user_manager -> tuple[str, JacScaleUserManager] {
     test_dir = mkdtemp();
     reset_scale_config();
     mock_config = MockScaleConfig(mock_sso_config_with_credentials());
     with unittest.mock.patch(
-        "jac_scale.user_manager.get_scale_config", return_value=mock_config
+        "jac_scale.identity.user_manager.get_scale_config", return_value=mock_config
     ) {
         user_manager = JacScaleUserManager(base_path=test_dir);
     }
@@ -324,17 +299,12 @@ def _setup_user_manager -> tuple[str, JacScaleUserManager] {
     return (test_dir, user_manager);
 }
 
-"""Teardown user manager temp dir."""
 def _teardown_user_manager(test_dir: str) {
     if os.path.exists(test_dir) {
         shutil.rmtree(test_dir);
     }
 }
 
-# ============================================================================
-# Common SSO Tests (get_sso, sso_initiate, sso_callback)
-# ============================================================================
-"""Test get_sso returns GoogleSSO instance for Google platform."""
 test "get sso with google platform" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -352,7 +322,6 @@ test "get sso with google platform" {
     }
 }
 
-"""Test get_sso returns None for invalid platform."""
 test "get sso with invalid platform" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -363,14 +332,13 @@ test "get sso with invalid platform" {
     }
 }
 
-"""Test get_sso returns None when platform credentials are not configured."""
 test "get sso with unconfigured platform" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
         reset_scale_config();
         mock_config = MockScaleConfig(mock_sso_config_without_credentials());
         with unittest.mock.patch(
-            "jac_scale.user_manager.get_scale_config", return_value=mock_config
+            "jac_scale.identity.user_manager.get_scale_config", return_value=mock_config
         ) {
             um = JacScaleUserManager(base_path="");
             sso = um.get_sso(Platforms.GOOGLE.value);
@@ -381,7 +349,6 @@ test "get sso with unconfigured platform" {
     }
 }
 
-"""Test get_sso creates correct redirect URI (host + /sso/{platform}/callback)."""
 test "get sso redirect uri format" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -396,7 +363,6 @@ test "get sso redirect uri format" {
     }
 }
 
-"""Test successful SSO initiation."""
 test "sso initiate success" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -416,7 +382,6 @@ test "sso initiate success" {
     }
 }
 
-"""Test SSO initiation with invalid platform."""
 test "sso initiate with invalid platform" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -431,7 +396,6 @@ test "sso initiate with invalid platform" {
     }
 }
 
-"""Test SSO initiation with unconfigured platform."""
 test "sso initiate with unconfigured platform" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -447,7 +411,6 @@ test "sso initiate with unconfigured platform" {
     }
 }
 
-"""Test SSO initiation with invalid operation."""
 test "sso initiate with invalid operation" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -462,7 +425,6 @@ test "sso initiate with invalid operation" {
     }
 }
 
-"""Test SSO initiation when get_sso returns None."""
 test "sso initiate when get sso fails" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -481,7 +443,6 @@ test "sso initiate when get sso fails" {
     }
 }
 
-"""Test SSO callback logs in existing user."""
 test "sso callback login existing user" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -516,8 +477,6 @@ test "sso callback login existing user" {
                     body = _get_response_body(result);
                     assert "Login successful" in body;
                     assert "mock_jwt_token" in body;
-                    # On every SSO login, profile.sso.<platform> is refreshed from
-                    # the latest provider data
                     mock_update.assert_called_once();
                     (call_args, _call_kwargs) = mock_update.call_args;
                     assert call_args[0] == mock_user_id;
@@ -533,7 +492,6 @@ test "sso callback login existing user" {
     }
 }
 
-"""Test SSO callback for existing user with no provider data — no refresh attempted."""
 test "sso callback existing user with no profile data" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -548,7 +506,7 @@ test "sso callback existing user with no profile data" {
         );
         user_manager.link_sso_account = unittest.mock.Mock(return_value={});
         mock_sso = MockGoogleSSO("id", "secret", "uri");
-        # Apple's later-login behavior: only email, no name/picture
+
         mock_sso.verify_and_process = unittest.mock.AsyncMock(
             return_value=MockUserInfo(
                 email="test@example.com",
@@ -571,7 +529,6 @@ test "sso callback existing user with no profile data" {
                         user_manager.sso_callback(mock_request, Platforms.GOOGLE.value)
                     );
                     assert isinstance(result, (JSONResponse, TransportResponse));
-                    # No SSO fields available — refresh skipped, login still works
                     mock_update.assert_not_called();
                 }
             }
@@ -581,7 +538,6 @@ test "sso callback existing user with no profile data" {
     }
 }
 
-"""Test SSO callback for new user with no provider data — profile=None passed to create_user."""
 test "sso callback new user with no profile data" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -610,7 +566,7 @@ test "sso callback new user with no profile data" {
                 user_manager, "create_jwt_token", return_value="mock_jwt_token"
             ) {
                 with unittest.mock.patch(
-                    "jac_scale.user_manager.generate_random_password",
+                    "jac_scale.identity.user_manager.generate_random_password",
                     return_value="random_pass"
                 ) {
                     asyncio.run(
@@ -635,7 +591,6 @@ test "sso callback new user with no profile data" {
     }
 }
 
-"""Test SSO callback auto-registers new user."""
 test "sso callback auto register new user" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -658,15 +613,13 @@ test "sso callback auto register new user" {
                 user_manager, "create_jwt_token", return_value="mock_jwt_token"
             ) {
                 with unittest.mock.patch(
-                    "jac_scale.user_manager.generate_random_password",
+                    "jac_scale.identity.user_manager.generate_random_password",
                     return_value="random_pass"
                 ) {
                     result = asyncio.run(
                         user_manager.sso_callback(mock_request, Platforms.GOOGLE.value)
                     );
                     assert isinstance(result, (JSONResponse, TransportResponse));
-                    # MockUserInfo defaults populate all four optional fields,
-                    # so the SSO profile sub-document is fully populated.
                     user_manager.create_user_with_identities.assert_called_once_with(
                         identities=[
                             {
@@ -695,7 +648,6 @@ test "sso callback auto register new user" {
     }
 }
 
-"""Test SSO callback with invalid platform."""
 test "sso callback with invalid platform" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -711,7 +663,6 @@ test "sso callback with invalid platform" {
     }
 }
 
-"""Test SSO callback with unconfigured platform."""
 test "sso callback with unconfigured platform" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -728,7 +679,6 @@ test "sso callback with unconfigured platform" {
     }
 }
 
-"""Test SSO callback when get_sso returns None."""
 test "sso callback when get sso fails" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -746,7 +696,6 @@ test "sso callback when get sso fails" {
     }
 }
 
-"""Test SSO callback when email is not provided by SSO provider."""
 test "sso callback when email not provided" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -772,7 +721,6 @@ test "sso callback when email not provided" {
     }
 }
 
-"""Test SSO callback when authentication fails."""
 test "sso callback authentication failure" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -796,7 +744,6 @@ test "sso callback authentication failure" {
     }
 }
 
-"""Test SUPPORTED_PLATFORMS initialization when credentials are in jac.toml."""
 test "supported platforms initialization with jac toml credentials" {
     reset_scale_config();
     mock_config = MockScaleConfig(
@@ -806,7 +753,7 @@ test "supported platforms initialization with jac toml credentials" {
         }
     );
     with unittest.mock.patch(
-        "jac_scale.user_manager.get_scale_config", return_value=mock_config
+        "jac_scale.identity.user_manager.get_scale_config", return_value=mock_config
     ) {
         user_manager = JacScaleUserManager(base_path="");
         assert "google" in user_manager.SUPPORTED_PLATFORMS;
@@ -814,35 +761,29 @@ test "supported platforms initialization with jac toml credentials" {
     }
 }
 
-"""Test SUPPORTED_PLATFORMS initialization when credentials are missing."""
 test "supported platforms initialization without jac toml credentials" {
     reset_scale_config();
     mock_config = MockScaleConfig(mock_sso_config_without_credentials());
     with unittest.mock.patch(
-        "jac_scale.user_manager.get_scale_config", return_value=mock_config
+        "jac_scale.identity.user_manager.get_scale_config", return_value=mock_config
     ) {
         user_manager = JacScaleUserManager(base_path="");
         assert "google" not in user_manager.SUPPORTED_PLATFORMS;
     }
 }
 
-# ============================================================================
-# SSO Account Linking Tests
-# ============================================================================
-"""Setup user manager without mocked create_user/get_user for linking tests."""
 def _setup_real_user_manager -> tuple[str, JacScaleUserManager] {
     test_dir = mkdtemp();
     reset_scale_config();
     mock_config = MockScaleConfig(mock_sso_config_with_credentials());
     with unittest.mock.patch(
-        "jac_scale.user_manager.get_scale_config", return_value=mock_config
+        "jac_scale.identity.user_manager.get_scale_config", return_value=mock_config
     ) {
         user_manager = JacScaleUserManager(base_path=test_dir);
     }
     return (test_dir, user_manager);
 }
 
-"""Test linking an SSO account successfully."""
 test "link sso account success" {
     (test_dir, user_manager) = _setup_real_user_manager();
     try {
@@ -861,7 +802,6 @@ test "link sso account success" {
     }
 }
 
-"""Test preventing duplicate SSO account linking."""
 test "link sso account duplicate" {
     (test_dir, user_manager) = _setup_real_user_manager();
     try {
@@ -882,7 +822,6 @@ test "link sso account duplicate" {
     }
 }
 
-"""Test unlinking an SSO account."""
 test "unlink sso account" {
     (test_dir, user_manager) = _setup_real_user_manager();
     try {
@@ -901,7 +840,6 @@ test "unlink sso account" {
     }
 }
 
-"""Test retrieving user by SSO credentials."""
 test "get user by sso" {
     (test_dir, user_manager) = _setup_real_user_manager();
     try {
@@ -921,16 +859,12 @@ test "get user by sso" {
     }
 }
 
-# ============================================================================
-# Endpoint Registration Tests
-# ============================================================================
-"""Test SSO endpoints registration."""
 test "register sso endpoints" {
     mock_server_impl = unittest.mock.Mock();
     mock_user_manager = unittest.mock.Mock();
     mock_config = MockScaleConfig(mock_sso_config_with_credentials());
     with unittest.mock.patch(
-        "jac_scale.serve.get_scale_config", return_value=mock_config
+        "jac_scale.server.serve.get_scale_config", return_value=mock_config
     ) {
         with unittest.mock.patch(
             "jaclang.jac0core.runtime.JacRuntimeInterface.get_user_manager",
@@ -942,7 +876,7 @@ test "register sso endpoints" {
     server.server = mock_server_impl;
     mock_server_impl.reset_mock();
     server.register_sso_endpoints();
-    # 3 endpoints: GET /sso/{platform}/{operation}, GET /sso/{platform}/callback, POST /sso/{platform}/callback
+
     assert mock_server_impl.add_endpoint.call_count == 3;
     calls = mock_server_impl.add_endpoint.call_args_list;
     initiate_endpoint = calls[0][0][0];
@@ -956,23 +890,11 @@ test "register sso endpoints" {
     assert post_callback_endpoint.method.name == "POST";
 }
 
-# ============================================================================
-# Desktop / loopback SSO redirect (RFC 8252)
-#
-# A desktop "thin client" serves its UI from http://127.0.0.1:<random-port>.
-# The OAuth provider's redirect_uri is registered against the server origin, so
-# after the round-trip the server must send the token back to the *initiating
-# client's* own loopback origin — otherwise the token lands on a different
-# origin and the loopback app's localStorage never sees it (user stays logged
-# out). The client passes its loopback callback through the OAuth `state`
-# parameter; the callback wrapper honors it only when it is a safe loopback URL.
-# ============================================================================
-"""Build a JacAPIServer with mocked config + user manager for wrapper tests."""
 def _setup_callback_wrapper_server(sso_config: dict) -> tuple {
     mock_user_manager = unittest.mock.Mock();
     mock_config = MockScaleConfig(sso_config);
     with unittest.mock.patch(
-        "jac_scale.serve.get_scale_config", return_value=mock_config
+        "jac_scale.server.serve.get_scale_config", return_value=mock_config
     ) {
         with unittest.mock.patch(
             "jaclang.jac0core.runtime.JacRuntimeInterface.get_user_manager",
@@ -984,11 +906,6 @@ def _setup_callback_wrapper_server(sso_config: dict) -> tuple {
     return (server, mock_config);
 }
 
-"""Loopback callback in `state` is honored over the configured remote URL.
-
-This is the desktop-login fix: the token must be redirected to the 127.0.0.1
-origin the client initiated from, not the server-configured client_auth_callback_url.
-"""
 test "sso callback honors loopback client callback from state" {
     sso_config = mock_sso_config_with_credentials();
     sso_config["client_auth_callback_url"] = "https://app.jaseci.org/auth/callback";
@@ -1001,7 +918,7 @@ test "sso callback honors loopback client callback from state" {
     loopback = "http://127.0.0.1:43117/auth/callback";
     mock_request.query_params = {"state": loopback};
     with unittest.mock.patch(
-        "jac_scale.serve.get_scale_config", return_value=mock_config
+        "jac_scale.server.serve.get_scale_config", return_value=mock_config
     ) {
         result = asyncio.run(wrapper(mock_request, Platforms.GOOGLE.value));
     }
@@ -1009,13 +926,10 @@ test "sso callback honors loopback client callback from state" {
     location = result.headers.get("location", "");
     assert location.startswith(loopback);
     assert "tok123" in location;
-    # The token must NOT have leaked to the configured remote origin.
+
     assert "jaseci.org" not in location;
 }
 
-"""A non-loopback `state` (e.g. an attacker-controlled https URL) is ignored:
-the token falls back to the server-configured callback, never the malicious
-origin. Guards against `state` being abused as an open redirect to steal tokens."""
 test "sso callback rejects non-loopback client callback from state" {
     sso_config = mock_sso_config_with_credentials();
     sso_config["client_auth_callback_url"] = "https://app.jaseci.org/auth/callback";
@@ -1027,7 +941,7 @@ test "sso callback rejects non-loopback client callback from state" {
     mock_request = unittest.mock.Mock(spec=Request);
     mock_request.query_params = {"state": "https://evil.com/steal"};
     with unittest.mock.patch(
-        "jac_scale.serve.get_scale_config", return_value=mock_config
+        "jac_scale.server.serve.get_scale_config", return_value=mock_config
     ) {
         result = asyncio.run(wrapper(mock_request, Platforms.GOOGLE.value));
     }
@@ -1037,9 +951,6 @@ test "sso callback rejects non-loopback client callback from state" {
     assert "evil.com" not in location;
 }
 
-"""sso_initiate forwards a safe loopback client_callback to the provider as the
-OAuth `state`, so it round-trips back on the callback (the initiate half of the
-desktop fix)."""
 test "sso initiate forwards loopback client callback as state" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -1065,8 +976,6 @@ test "sso initiate forwards loopback client callback as state" {
     }
 }
 
-"""A non-loopback client_callback is dropped at initiate (state=None): an
-untrusted origin is never even sent to the provider."""
 test "sso initiate drops non-loopback client callback" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -1093,15 +1002,12 @@ test "sso initiate drops non-loopback client callback" {
     }
 }
 
-"""Unit-test the loopback validator's truth table, including classic bypass
-attempts (userinfo, look-alike host, non-http schemes)."""
 test "is safe loopback redirect truth table" {
-    # Trusted: loopback hosts, with/without port, http or https, ipv6.
     assert is_safe_loopback_redirect("http://127.0.0.1:43117/auth/callback");
     assert is_safe_loopback_redirect("http://localhost:8000/cb");
     assert is_safe_loopback_redirect("https://127.0.0.1/cb");
     assert is_safe_loopback_redirect("http://[::1]:5000/cb");
-    # Rejected: remote hosts, look-alikes, userinfo tricks, bad schemes, junk.
+
     assert not is_safe_loopback_redirect("https://evil.com/steal");
     assert not is_safe_loopback_redirect("http://127.0.0.1.evil.com/cb");
     assert not is_safe_loopback_redirect("http://127.0.0.1@evil.com/cb");
@@ -1111,10 +1017,6 @@ test "is safe loopback redirect truth table" {
     assert not is_safe_loopback_redirect(None);
 }
 
-# ============================================================================
-# Google SSO Provider Tests
-# ============================================================================
-"""Test Google initiate_auth delegates to inner SSO."""
 test "google sso provider initiate auth" {
     with unittest.mock.patch("jac_scale.sso.google.GoogleSSO") as mock_cls {
         mock_inner_sso = unittest.mock.Mock();
@@ -1133,7 +1035,6 @@ test "google sso provider initiate auth" {
     }
 }
 
-"""Test Google handle_callback delegates and maps user info."""
 test "google sso provider handle callback" {
     with unittest.mock.patch("jac_scale.sso.google.GoogleSSO") as mock_cls {
         mock_inner_sso = unittest.mock.Mock();
@@ -1157,10 +1058,6 @@ test "google sso provider handle callback" {
     }
 }
 
-# ============================================================================
-# Apple SSO Provider Tests
-# ============================================================================
-"""Test get_sso returns AppleSSOProvider instance for Apple platform."""
 test "get sso with apple platform" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -1178,7 +1075,6 @@ test "get sso with apple platform" {
     }
 }
 
-"""Test get_sso creates correct redirect URI for Apple platform."""
 test "get sso apple redirect uri format" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -1193,7 +1089,6 @@ test "get sso apple redirect uri format" {
     }
 }
 
-"""Test successful Apple SSO initiation."""
 test "apple sso initiate success" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -1211,7 +1106,6 @@ test "apple sso initiate success" {
     }
 }
 
-"""Test Apple SSO callback logs in existing user."""
 test "apple sso callback login existing user" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -1253,7 +1147,6 @@ test "apple sso callback login existing user" {
     }
 }
 
-"""Test Apple SSO callback auto-registers new user."""
 test "apple sso callback auto register new user" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -1276,7 +1169,7 @@ test "apple sso callback auto register new user" {
                 user_manager, "create_jwt_token", return_value="mock_apple_jwt"
             ) {
                 with unittest.mock.patch(
-                    "jac_scale.user_manager.generate_random_password",
+                    "jac_scale.identity.user_manager.generate_random_password",
                     return_value="random_pass"
                 ) {
                     result = asyncio.run(
@@ -1311,7 +1204,6 @@ test "apple sso callback auto register new user" {
     }
 }
 
-"""Test Apple initiate_auth delegates to inner SSO."""
 test "apple sso provider initiate auth" {
     with unittest.mock.patch("jac_scale.sso.apple.AppleSSO") as mock_cls {
         mock_inner_sso = unittest.mock.Mock();
@@ -1330,7 +1222,6 @@ test "apple sso provider initiate auth" {
     }
 }
 
-"""Test Apple handle_callback delegates and maps user info."""
 test "apple sso provider handle callback" {
     with unittest.mock.patch("jac_scale.sso.apple.AppleSSO") as mock_cls {
         mock_inner_sso = unittest.mock.Mock();
@@ -1354,7 +1245,6 @@ test "apple sso provider handle callback" {
     }
 }
 
-"""Test SUPPORTED_PLATFORMS includes Apple when credentials are configured."""
 test "supported platforms initialization with apple credentials" {
     reset_scale_config();
     mock_config = MockScaleConfig(
@@ -1365,7 +1255,7 @@ test "supported platforms initialization with apple credentials" {
         }
     );
     with unittest.mock.patch(
-        "jac_scale.user_manager.get_scale_config", return_value=mock_config
+        "jac_scale.identity.user_manager.get_scale_config", return_value=mock_config
     ) {
         user_manager = JacScaleUserManager(base_path="");
         assert "google" in user_manager.SUPPORTED_PLATFORMS;
@@ -1374,7 +1264,6 @@ test "supported platforms initialization with apple credentials" {
     }
 }
 
-"""Test SUPPORTED_PLATFORMS excludes Apple when credentials are missing."""
 test "supported platforms initialization without apple credentials" {
     reset_scale_config();
     mock_config = MockScaleConfig(
@@ -1385,7 +1274,7 @@ test "supported platforms initialization without apple credentials" {
         }
     );
     with unittest.mock.patch(
-        "jac_scale.user_manager.get_scale_config", return_value=mock_config
+        "jac_scale.identity.user_manager.get_scale_config", return_value=mock_config
     ) {
         user_manager = JacScaleUserManager(base_path="");
         assert "google" in user_manager.SUPPORTED_PLATFORMS;
@@ -1393,10 +1282,6 @@ test "supported platforms initialization without apple credentials" {
     }
 }
 
-# ============================================================================
-# GitHub SSO Provider Tests
-# ============================================================================
-"""Test get_sso returns GithubSSOProvider instance for GitHub platform."""
 test "get sso with github platform" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -1414,7 +1299,6 @@ test "get sso with github platform" {
     }
 }
 
-"""Test get_sso creates correct redirect URI for GitHub platform."""
 test "get sso github redirect uri format" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -1429,7 +1313,6 @@ test "get sso github redirect uri format" {
     }
 }
 
-"""Test successful GitHub SSO initiation."""
 test "github sso initiate success" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -1449,7 +1332,6 @@ test "github sso initiate success" {
     }
 }
 
-"""Test GitHub SSO callback logs in existing user."""
 test "github sso callback login existing user" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -1491,7 +1373,6 @@ test "github sso callback login existing user" {
     }
 }
 
-"""Test GitHub SSO callback auto-registers new user."""
 test "github sso callback auto register new user" {
     (test_dir, user_manager) = _setup_user_manager();
     try {
@@ -1514,7 +1395,7 @@ test "github sso callback auto register new user" {
                 user_manager, "create_jwt_token", return_value="mock_github_jwt"
             ) {
                 with unittest.mock.patch(
-                    "jac_scale.user_manager.generate_random_password",
+                    "jac_scale.identity.user_manager.generate_random_password",
                     return_value="random_pass"
                 ) {
                     result = asyncio.run(
@@ -1549,7 +1430,6 @@ test "github sso callback auto register new user" {
     }
 }
 
-"""Test GitHub initiate_auth delegates to inner SSO."""
 test "github sso provider initiate auth" {
     with unittest.mock.patch("jac_scale.sso.github.GithubSSO") as mock_cls {
         mock_inner_sso = unittest.mock.Mock();
@@ -1568,7 +1448,6 @@ test "github sso provider initiate auth" {
     }
 }
 
-"""Test GitHub handle_callback delegates and maps user info."""
 test "github sso provider handle callback" {
     with unittest.mock.patch("jac_scale.sso.github.GithubSSO") as mock_cls {
         mock_inner_sso = unittest.mock.Mock();
@@ -1592,7 +1471,6 @@ test "github sso provider handle callback" {
     }
 }
 
-"""Test SUPPORTED_PLATFORMS includes GitHub when credentials are configured."""
 test "supported platforms initialization with github credentials" {
     reset_scale_config();
     mock_config = MockScaleConfig(
@@ -1602,7 +1480,7 @@ test "supported platforms initialization with github credentials" {
         }
     );
     with unittest.mock.patch(
-        "jac_scale.user_manager.get_scale_config", return_value=mock_config
+        "jac_scale.identity.user_manager.get_scale_config", return_value=mock_config
     ) {
         user_manager = JacScaleUserManager(base_path="");
         assert "github" in user_manager.SUPPORTED_PLATFORMS;
@@ -1610,7 +1488,6 @@ test "supported platforms initialization with github credentials" {
     }
 }
 
-"""Test SUPPORTED_PLATFORMS excludes GitHub when credentials are missing."""
 test "supported platforms initialization without github credentials" {
     reset_scale_config();
     mock_config = MockScaleConfig(
@@ -1621,7 +1498,7 @@ test "supported platforms initialization without github credentials" {
         }
     );
     with unittest.mock.patch(
-        "jac_scale.user_manager.get_scale_config", return_value=mock_config
+        "jac_scale.identity.user_manager.get_scale_config", return_value=mock_config
     ) {
         user_manager = JacScaleUserManager(base_path="");
         assert "google" in user_manager.SUPPORTED_PLATFORMS;
@@ -1629,12 +1506,11 @@ test "supported platforms initialization without github credentials" {
     }
 }
 
-"""Test all three platforms configured together."""
 test "supported platforms initialization with all providers" {
     reset_scale_config();
     mock_config = MockScaleConfig(mock_sso_config_with_credentials());
     with unittest.mock.patch(
-        "jac_scale.user_manager.get_scale_config", return_value=mock_config
+        "jac_scale.identity.user_manager.get_scale_config", return_value=mock_config
     ) {
         user_manager = JacScaleUserManager(base_path="");
         assert "google" in user_manager.SUPPORTED_PLATFORMS;

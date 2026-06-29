@@ -93,6 +93,8 @@ mylib = "mylib.plugin:JacRuntime"
 
 `[entrypoints.scripts]` is written as `[console_scripts]` in the wheel; `[entrypoints.jac]` is the `jac` entry-point group queried by the plugin loader.
 
+Consumers who install your package into a Jac project (`jac install mylib`) can run its console-script with [`jac x mylib`](cli/index.md#jac-x) under the `jac` runtime, without it being on their shell `PATH`.
+
 ## 2. Build the wheel
 
 ```bash

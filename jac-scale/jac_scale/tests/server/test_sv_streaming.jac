@@ -1,28 +1,3 @@
-"""Tests for generator-returning sv-RPC (the SSE streaming path).
-
-Stack under test:
-
-  jaclang.runtimelib._finalize_call_response  — passes generator results
-                                                straight through
-  jac_scale.microservices._sse.sse_frame_stream — wraps yields into
-                                                  `data: {json}\n\n`
-  jac_scale serve.endpoints.create_function_callback — emits as
-                                                       text/event-stream
-                                                       StreamingResponse
-  jaclang.runtimelib.sv_sse._parse_sse / consume_sse_stream — parses
-                                                              the framed
-                                                              body line
-                                                              by line
-  jac_scale.plugin.sv_service_call (override) — picks SSE vs JSON by
-                                                Content-Type, hands back a
-                                                generator on SSE
-
-Tests intercept at the httpx.Client level (matches test_sv_auth_forward).
-The factory builds an httpx.MockTransport-backed Client; the handler can
-return either a JSON Response (existing behavior) or an SSE Response so
-we exercise both branches end-to-end.
-"""
-
 import httpx;
 import json;
 import from jaclang.runtimelib { sv_client }
@@ -30,11 +5,6 @@ import from jaclang.runtimelib.sv_sse { _parse_sse, consume_sse_stream }
 import from jac_scale.plugin { JacScalePlugin }
 
 
-# =============================================================================
-# Test helper (same shape as test_sv_auth_forward._mock_client_class — kept
-# duplicated to avoid an import cycle; if a third file needs it, hoist into
-# a shared tests/_mock_httpx.jac).
-# =============================================================================
 def _mock_client_class(handler: any) -> any {
     transport = httpx.MockTransport(handler);
     real_client_cls = httpx.Client;
@@ -45,13 +15,6 @@ def _mock_client_class(handler: any) -> any {
 }
 
 
-"""Compose a valid SSE body for use in tests.
-
-`events` are JSON-serialized as one `data: {...}\n\n` chunk each.
-`trailer` decides whether to append `event: end\ndata: {}\n\n`
-(graceful close — the default) or `event: error\ndata: ...\n\n`
-or "" (raw EOF — caller handles).
-"""
 def _sse_body(events: list[dict], trailer: str = "end") -> str {
     parts: list[str] = [];
     for ev in events {
@@ -66,9 +29,6 @@ def _sse_body(events: list[dict], trailer: str = "end") -> str {
 }
 
 
-# =============================================================================
-# _parse_sse low-level parser
-# =============================================================================
 test "_parse_sse splits messages on blank lines and accumulates data" {
     body = "data: hello\n" "\n" "data: line1\n" "data: line2\n" "\n";
     out: list = [];
@@ -97,7 +57,7 @@ test "_parse_sse picks up event: tags and trims one leading space" {
 
 test "_parse_sse ignores comment lines and unknown fields" {
     body = (
-        ": this is a heartbeat comment — ignore me\n" "id: 42\n" "data: keep_me\n" "\n"
+        ": this is a heartbeat comment - ignore me\n" "id: 42\n" "data: keep_me\n" "\n"
     );
     out: list = [];
     for ev in _parse_sse(body.splitlines()) {
@@ -126,9 +86,6 @@ test "_parse_sse decodes bytes input (httpx iter_lines() under raw mode)" {
 }
 
 
-# =============================================================================
-# consume_sse_stream — orchestrates _parse_sse over an httpx Response
-# =============================================================================
 obj _FakeResp {
     has body: str;
 
@@ -184,9 +141,6 @@ test "consume_sse_stream skips malformed JSON payload, keeps streaming" {
 }
 
 
-# =============================================================================
-# sv_service_call end-to-end with an SSE-returning downstream
-# =============================================================================
 test "sv_service_call returns a generator when downstream emits SSE" {
     events_in = [
         {"type": "agent_started", "run_id": "r1"},
@@ -208,7 +162,7 @@ test "sv_service_call returns a generator when downstream emits SSE" {
 
     try {
         sv_client.register("stream_mod", "http://demo.invalid");
-        # SSE path: sv_service_call returns a generator, NOT a dict
+
         gen = JacScalePlugin.sv_service_call("stream_mod", "stream_events", {});
         out: list = [];
         for ev in gen {
@@ -253,7 +207,6 @@ test "sv_service_call SSE path surfaces producer error as RuntimeError" {
 }
 
 test "sv_service_call still unwraps JSON envelope when not SSE" {
-    # Sanity check that the SSE branch didn't break the existing JSON path.
     def handler(request: httpx.Request) -> httpx.Response {
         return httpx.Response(
             status_code=200, json={"ok": True, "data": {"result": "plain_json_ok"}}

@@ -1,7 +1,7 @@
 """Cart Service - shopping cart management.
 
 Exposes public functions for cart operations. Callable via:
-  - HTTP: POST /api/cart/function/{name}
+  - HTTP: POST /cart/function/{name}
   - sv import: `sv import from cart_app { view_cart, add_to_cart, clear_cart }`
 """
 

@@ -1,5 +1,3 @@
-"""Implementations for the browser-automation engine (see browser_engine.jac)."""
-
 import base64;
 import hashlib;
 import json;
@@ -13,9 +11,6 @@ import from pathlib { Path }
 import from urllib.request { urlopen }
 
 
-# ===========================================================================
-# WebSocket
-# ===========================================================================
 impl WebSocket._handshake(host: str, port: int) {
     key = base64.b64encode(os.urandom(16)).decode();
     req = (
@@ -32,7 +27,7 @@ impl WebSocket._handshake(host: str, port: int) {
     if "101".encode() not in status {
         raise ConnectionError(f"WebSocket upgrade failed: {status}");
     }
-    # Validate the server's accept token per the RFC.
+
     guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     expected = base64.b64encode(hashlib.sha1((key + guid).encode()).digest()).decode();
     if expected.encode() not in header {
@@ -69,11 +64,11 @@ impl WebSocket._recv_exact(n: int) -> bytes {
 
 impl WebSocket.send(data: (str | bytes), opcode: int = OP_TEXT) {
     payload = data.encode() if isinstance(data, str) else data;
-    b0 = 0x80 | opcode;  # FIN + opcode
+    b0 = 0x80 | opcode;
     header = bytearray([b0]);
     ln = len(payload);
     if ln < 126 {
-        header.append(0x80 | ln);  # mask bit + length
+        header.append(0x80 | ln);
     } elif ln < 65536 {
         header.append(0x80 | 126);
         header.extend(struct.pack("!H", ln));
@@ -121,7 +116,7 @@ impl WebSocket.recv -> (str | bytes) {
         if opcode == OP_CLOSE {
             raise ConnectionError("server closed WebSocket");
         }
-        if opcode != 0 {  # start of a new data message
+        if opcode != 0 {
             op_started = opcode;
         }
         chunks.extend(payload);
@@ -134,16 +129,11 @@ impl WebSocket.recv -> (str | bytes) {
 impl WebSocket.close{
     try {
         self.send(bytes(), opcode=OP_CLOSE);
-    } except OSError {
-    # socket already gone; nothing to flush
-    }
+    } except OSError { }
     self.sock.close();
 }
 
 
-# ===========================================================================
-# CDP
-# ===========================================================================
 impl CDP.call(
     method: str, params: (dict | None) = None, timeout: float = 30.0
 ) -> dict {
@@ -160,7 +150,6 @@ impl CDP.call(
             return msg.get("result", {});
         }
         if "method" in msg {
-            # An event for a domain we enabled; stash for drain_events().
             self.events.append(msg);
         }
     }
@@ -174,7 +163,7 @@ impl CDP.drain_events(idle: float = 0.25) -> list {
             try {
                 msg = json.loads(self.ws.recv());
             } except OSError {
-                break;  # idle gap (socket.timeout) or peer closed: done
+                break;
             }
             if "method" in msg {
                 self.events.append(msg);
@@ -193,9 +182,6 @@ impl CDP.close{
 }
 
 
-# ===========================================================================
-# Chrome process management + target discovery
-# ===========================================================================
 impl get_cache_dir -> Path {
     env = os.environ.get("JACBROWSER_CACHE");
     return Path(env) if env else (Path.home() / ".cache" / "jacbrowser");
@@ -231,7 +217,7 @@ impl _find_chrome -> str {
             return app;
         }
     }
-    # Playwright-managed Chromium (any installed version), newest first.
+
     for pw in [
         Path.home() / ".cache" / "ms-playwright",
         Path.home() / "Library" / "Caches" / "ms-playwright",
@@ -286,7 +272,7 @@ impl _page_ws(port: int) -> str {
             return t["webSocketDebuggerUrl"];
         }
     }
-    # No page target yet: mint one via the browser-level Target domain.
+
     browser_ws = _http_json(port, "/json/version")["webSocketDebuggerUrl"];
     cdp = CDP(ws_url=browser_ws);
     cdp.call("Target.createTarget", {"url": "about:blank"});
@@ -324,11 +310,7 @@ impl _chrome_args(chrome: str, profile: Path, viewport: str) -> list {
         f"--user-data-dir={profile}",
         "--no-first-run",
         "--no-default-browser-check",
-        # A real desktop viewport; the old ~780x437 default rendered pages in
-        # their narrow breakpoint and pushed content below the fold.
         f"--window-size={w},{h}",
-        # Software WebGL via SwiftShader: with the former --disable-gpu flag,
-        # getContext('webgl') returned null and canvas/wasm apps drew nothing.
         "--use-angle=swiftshader",
         "--enable-unsafe-swiftshader",
         "--no-sandbox",
@@ -371,9 +353,7 @@ impl _calibrate_viewport(port: int, w: int, h: int) {
             }
         );
         bcdp.close();
-    } except Exception {
-    # best-effort: a slightly shorter viewport beats failing the launch
-    }
+    } except Exception { }
 }
 
 impl launch(session: str = "default", viewport: str = "1280x720") -> dict {
@@ -382,9 +362,7 @@ impl launch(session: str = "default", viewport: str = "1280x720") -> dict {
         try {
             _http_json(st["port"], "/json/version");
             return st;
-        } except OSError {
-        # stale endpoint; fall through and relaunch below
-        }
+        } except OSError { }
     }
     cache = get_cache_dir();
     cache.mkdir(parents=True, exist_ok=True);
@@ -395,8 +373,7 @@ impl launch(session: str = "default", viewport: str = "1280x720") -> dict {
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     );
-    # Chrome writes the chosen port to DevToolsActivePort. Clear any stale file
-    # first so we don't read a dead port from a prior run.
+
     port_file = profile / "DevToolsActivePort";
     port_file.unlink(missing_ok=True);
     port = None;
@@ -429,9 +406,6 @@ impl connect(session: str = "default") -> CDP {
 }
 
 
-# ===========================================================================
-# Shared helpers
-# ===========================================================================
 impl _eval(cdp: CDP, expr: str) -> any {
     res = cdp.call(
         "Runtime.evaluate",
@@ -463,14 +437,14 @@ impl _resolve_object_id(cdp: CDP, session: str, selector: str) -> (str | None) {
             res = cdp.call("DOM.resolveNode", {"backendNodeId": backend});
             return res["object"]["objectId"];
         } except Exception {
-            return None;  # node not in the DOM (yet / anymore); caller retries
+            return None;
         }
     }
     res = cdp.call(
         "Runtime.evaluate",
         {"expression": f"document.querySelector({json.dumps(selector)})"}
     );
-    return res.get("result", {}).get("objectId");  # absent when null
+    return res.get("result", {}).get("objectId");
 }
 
 impl _locate(cdp: CDP, session: str, selector: str, timeout: float = 10.0) -> tuple {
@@ -478,8 +452,7 @@ impl _locate(cdp: CDP, session: str, selector: str, timeout: float = 10.0) -> tu
     deadline = time.time() + timeout;
     prev = None;
     last_err = "element not found";
-    # Poll until ACTIONABILITY_JS reports an in-viewport, hit-testable point
-    # that is position-stable across two consecutive samples.
+
     while time.time() < deadline {
         oid = _resolve_object_id(cdp, session, selector);
         if oid is None {
@@ -498,7 +471,7 @@ impl _locate(cdp: CDP, session: str, selector: str, timeout: float = 10.0) -> tu
                 }
             );
         } except RuntimeError as e {
-            last_err = str(e);  # e.g. context destroyed mid-navigation; retry
+            last_err = str(e);
             prev = None;
             time.sleep(0.1);
             continue;
@@ -579,9 +552,6 @@ impl _press(cdp: CDP, key: str, modifiers: int = 0) {
 }
 
 
-# ===========================================================================
-# Command surface
-# ===========================================================================
 impl cmd_open(session: str, url: (str | None), viewport: str = "1280x720") -> str {
     launch(session, viewport);
     if url {
@@ -591,14 +561,13 @@ impl cmd_open(session: str, url: (str | None), viewport: str = "1280x720") -> st
 }
 
 impl cmd_navigate(session: str, url: str) -> str {
-    # Add a scheme only to bare hosts (example.com); leave data:, file:, etc.
     if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", url) {
         url = "https://" + url;
     }
     cdp = connect(session);
     cdp.call("Page.enable");
     cdp.call("Page.navigate", {"url": url});
-    # Tier-0/1 load wait: poll readyState rather than wiring load events.
+
     deadline = time.time() + 30;
     while time.time() < deadline {
         if _eval(cdp, "document.readyState") == "complete" {
@@ -629,7 +598,7 @@ impl cmd_click(session: str, selector: str) -> str {
 impl cmd_type(session: str, selector: str, text: str) -> str {
     cdp = connect(session);
     (x, y) = _locate(cdp, session, selector);
-    _real_click(cdp, x, y);  # focus first
+    _real_click(cdp, x, y);
     _type_text(cdp, text);
     cdp.close();
     return f"typed into {selector}";
@@ -639,9 +608,9 @@ impl cmd_fill(session: str, selector: str, text: str) -> str {
     cdp = connect(session);
     (x, y) = _locate(cdp, session, selector);
     _real_click(cdp, x, y);
-    _press(cdp, "a", modifiers=2);  # Ctrl+A (modifiers bit 2 = Ctrl)
+    _press(cdp, "a", modifiers=2);
     _press(cdp, "Delete");
-    _insert_text(cdp, text);  # fast, paste-like insertion
+    _insert_text(cdp, text);
     cdp.close();
     return f"filled {selector}";
 }
@@ -691,7 +660,7 @@ impl _remote_obj_str(ro: dict) -> str {
         return v if isinstance(v, str) else json.dumps(v);
     }
     if ro.get("unserializableValue") {
-        return ro["unserializableValue"];  # NaN, Infinity, -0, bigint
+        return ro["unserializableValue"];
     }
     if ro.get("description") {
         return ro["description"];
@@ -714,7 +683,7 @@ impl _format_console_event(method: str, params: dict) -> (str | None) {
     if method == "Log.entryAdded" {
         e = params.get("entry", {});
         if e.get("source") == "console-api" {
-            return None;  # already surfaced via Runtime.consoleAPICalled
+            return None;
         }
         url = e.get("url", "");
         loc = f" ({url}:{e.get('lineNumber')})" if url else "";
@@ -725,9 +694,7 @@ impl _format_console_event(method: str, params: dict) -> (str | None) {
 
 impl cmd_console(session: str, clear: bool = False) -> str {
     cdp = connect(session);
-    # Chrome buffers console/log/exception events per context and replays
-    # them to a newly attached session on enable, so a fresh connection sees
-    # the full history since page load — no resident listener required.
+
     cdp.call("Runtime.enable");
     cdp.call("Log.enable");
     events = cdp.drain_events();
@@ -767,7 +734,7 @@ impl cmd_scroll(session: str, target: str, amount: (int | None) = None) -> str {
         deltas = {"down": (0, 1), "up": (0, -1), "right": (1, 0), "left": (-1, 0)};
         if target in deltas {
             (sx, sy) = deltas[target];
-            # Default step: 80% of the viewport along the scroll axis.
+
             amt = str(amount)
                 if amount is not None
                 else ("innerWidth * 0.8" if sx else "innerHeight * 0.8");
@@ -781,7 +748,6 @@ impl cmd_scroll(session: str, target: str, amount: (int | None) = None) -> str {
         } elif target == "bottom" {
             _eval(cdp, "window.scrollTo(0, document.documentElement.scrollHeight)");
         } else {
-            # Selector: _locate already scrolls the element into view.
             (x, y) = _locate(cdp, session, target);
             return f"scrolled {target} into view at ({int(x)},{int(y)})";
         }
@@ -914,9 +880,7 @@ impl cmd_sessions(session: str) -> str {
             lines.append(
                 f"{marker} {st.get('session')}  pid={st['pid']} port={st['port']} [{status}]"
             );
-        } except Exception {
-        # skip unreadable/partial state file
-        }
+        } except Exception { }
     }
     return "\n".join(lines) if lines else "(no sessions)";
 }
@@ -926,9 +890,7 @@ impl cmd_close(session: str) -> str {
     if st and _pid_alive(st["pid"]) {
         try {
             os.kill(st["pid"], 15);
-        } except OSError {
-        # process already dead
-        }
+        } except OSError { }
     }
     _state_path(session).unlink(missing_ok=True);
     _refs_path(session).unlink(missing_ok=True);
@@ -936,9 +898,6 @@ impl cmd_close(session: str) -> str {
 }
 
 
-# ===========================================================================
-# Standalone CLI dispatch
-# ===========================================================================
 impl main(argv: list) -> int {
     session = os.environ.get("JACBROWSER_SESSION", "default");
     if not argv {

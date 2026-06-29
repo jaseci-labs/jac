@@ -1,9 +1,3 @@
-"""File discovery utilities for Jac module caching.
-
-Provides functions to discover annex files (.impl.jac, .test.jac),
-variant files (.sv.jac, .cl.jac, .na.jac), and base files for a
-given Jac source path. Used by JIR cache invalidation and formatter.
-"""
 import os;
 import from pathlib { Path }
 import from jaclang.jac0core.ext_registry {
@@ -13,17 +7,13 @@ import from jaclang.jac0core.ext_registry {
     MODULE_SUFFIXES
 }
 
-"""Discover annex files (.impl.jac, .test.jac) for a source .jac or .cl.jac file.
-
-    Searches: same directory, module-specific folder (foo.impl/), shared folder (impl/, test/).
-    """
 def discover_annex_files(source_path: str, suffix: str = '.impl.jac') -> list[str] {
     src = Path(source_path).resolve();
     if (not src.name.endswith('.jac') or src.name.endswith(suffix)) {
         return [];
     }
     base = src.stem;
-    # Determine the source file's own variant context (if any).
+
     src_variant: (str | None) = None;
     for vext in VARIANT_STEM_SUFFIXES {
         if base.endswith(vext) {
@@ -32,8 +22,7 @@ def discover_annex_files(source_path: str, suffix: str = '.impl.jac') -> list[st
             break;
         }
     }
-    # When the source is a variant (.sv/.cl/.na) and no bare .jac head
-    # exists, bare annex files (no variant suffix) belong to this variant.
+
     bare_head_exists = (
         src_variant is not None and (src.parent / (base + '.jac')).is_file()
     );
@@ -55,8 +44,8 @@ def discover_annex_files(source_path: str, suffix: str = '.impl.jac') -> list[st
             if not f.is_file() {
                 continue;
             }
-            # Determine the annex file's variant context.
-            annex_stem = f.name[:-len(suffix)];  # e.g. "svc.sv" from "svc.sv.impl.jac"
+
+            annex_stem = f.name[:-len(suffix)];
             annex_variant: (str | None) = None;
             for vext in VARIANT_STEM_SUFFIXES {
                 if annex_stem.endswith(vext) {
@@ -64,9 +53,7 @@ def discover_annex_files(source_path: str, suffix: str = '.impl.jac') -> list[st
                     break;
                 }
             }
-            # Variant-suffixed annex: must match the source variant exactly.
-            # Bare annex (no variant): matches any source, UNLESS a bare
-            # .jac head exists that would claim it instead.
+
             if annex_variant is not None {
                 if (annex_variant != src_variant) {
                     continue;
@@ -80,15 +67,6 @@ def discover_annex_files(source_path: str, suffix: str = '.impl.jac') -> list[st
     return results;
 }
 
-"""Discover the `.style.css` scoped-style annex for a Jac source file.
-
-    Scoped styles attach to a module by shared base name: ``foo.cl.jac`` (or
-    ``foo.jac`` / ``foo.sv.jac`` / ``foo.na.jac``) pairs with ``foo.style.css``
-    living in the same directory. The variant suffix is stripped before the
-    base is matched so every variant of a module shares one annex.
-
-    Returns the absolute path to the annex if it exists, else ``None``.
-    """
 def discover_style_annex(source_path: str) -> (str | None) {
     src = Path(source_path).resolve();
     if not src.name.endswith('.jac') {
@@ -105,17 +83,6 @@ def discover_style_annex(source_path: str) -> (str | None) {
     return str(candidate) if candidate.is_file() else None;
 }
 
-"""Discover variant files (.sv.jac, .cl.jac, .na.jac) for a head module.
-
-    The head module is whichever file has the highest precedence among the
-    variants that exist on disk:  .jac > .sv.jac > .cl.jac > .na.jac
-
-    Given the head, this function returns all *lower-precedence* variant
-    files that exist.  For example if only ``main.sv.jac`` and ``main.na.jac``
-    exist, calling with ``main.sv.jac`` returns ``[".../main.na.jac"]``.
-
-    Impl and test files are never considered heads or variants.
-    """
 def discover_variant_files(source_path: str) -> list[str] {
     src = Path(source_path).resolve();
     if not src.name.endswith('.jac') {
@@ -124,19 +91,18 @@ def discover_variant_files(source_path: str) -> list[str] {
     if ('.impl.' in src.name or '.test.' in src.name) {
         return [];
     }
-    # Determine the base stem and which suffix the source has.
-    stem = src.stem;  # e.g. "main" or "main.sv"
+
+    stem = src.stem;
     head_suffix: (str | None) = None;
     for vs in VARIANT_SUFFIXES {
-        ext = vs[:-4];  # ".sv", ".cl", ".na"
+        ext = vs[:-4];
         if stem.endswith(ext) {
             head_suffix = vs;
             stem = stem[:-len(ext)];
             break;
         }
     }
-    # If a higher-precedence file exists on disk this file is a variant,
-    # not the head — return empty so the head handles discovery.
+
     if (head_suffix is not None) {
         if (src.parent / f"{stem}.jac").is_file() {
             return [];
@@ -150,9 +116,8 @@ def discover_variant_files(source_path: str) -> list[str] {
             }
         }
     }
-    # Collect only the suffixes that come AFTER the head in precedence.
+
     if (head_suffix is None) {
-        # Plain .jac — all variant suffixes are lower precedence.
         search_suffixes = list(VARIANT_SUFFIXES);
     } else {
         idx = list(VARIANT_SUFFIXES).index(head_suffix);
@@ -168,11 +133,6 @@ def discover_variant_files(source_path: str) -> list[str] {
     return variants;
 }
 
-"""Discover the base .jac or .cl.jac file for an annex file (.impl.jac, .test.jac).
-
-    Searches: same directory, module-specific folder (foo.impl/), shared folder (impl/).
-    For multi-part names like "foo.bar.impl.jac", only the first component is used.
-    """
 def discover_base_file(annex_path: str) -> (str | None) {
     src = Path(annex_path).resolve();
     for (suffix, folder_suffix) in ANNEX_FOLDER.items() {

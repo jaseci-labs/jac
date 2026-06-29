@@ -1,11 +1,5 @@
-"""Compilation options for the Jac compiler.
-
-This module provides the CompileOptions obj which encapsulates
-all options that control compilation behavior.
-"""
 import from dataclasses { field }
 
-"""Options controlling Jac compilation behavior."""
 obj CompileOptions {
     has type_check: bool = True,
         symtab_ir_only: bool = False,

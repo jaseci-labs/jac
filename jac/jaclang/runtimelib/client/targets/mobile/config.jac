@@ -1,4 +1,3 @@
-"""Mobile target: jac.toml and capacitor.config.json helpers."""
 import json;
 import os;
 import from pathlib { Path }
@@ -11,7 +10,6 @@ import from jaclang.runtimelib.client.targets.mobile.common {
     SUPPORTED_PLATFORMS
 }
 
-"""Load mobile config from jac.toml."""
 def _load_mobile_config(project_dir: Path) -> dict {
     try {
         import tomllib;
@@ -27,10 +25,6 @@ def _load_mobile_config(project_dir: Path) -> dict {
     return {};
 }
 
-"""Resolve mobile setup mode (android, ios, all).
-
-Priority: explicit env override -> jac.toml default_platform -> host default.
-"""
 def _resolve_mobile_setup_mode(project_dir: Path, is_macos: bool) -> tuple[str, bool] {
     requested = os.environ.get(MOBILE_SETUP_PLATFORM_ENV, "").strip().lower();
     if requested in MOBILE_SETUP_MODES {
@@ -44,7 +38,6 @@ def _resolve_mobile_setup_mode(project_dir: Path, is_macos: bool) -> tuple[str, 
     return ("ios", False) if is_macos else ("android", False);
 }
 
-"""Add [plugins.client.mobile] section to jac.toml if not present."""
 def _add_mobile_config(project_dir: Path, app_name: str, app_id: str) -> None {
     toml_path = project_dir / "jac.toml";
     if not toml_path.exists() {
@@ -66,7 +59,6 @@ def _add_mobile_config(project_dir: Path, app_name: str, app_id: str) -> None {
     console.print("  ✔ Added [plugins.client.mobile] to jac.toml", style="success");
 }
 
-"""Write capacitor.config.json pointing webDir at the Vite output."""
 def _write_capacitor_config(project_dir: Path, web_dist_dir: Path) {
     mobile_cfg = _load_mobile_config(project_dir);
     app_id = mobile_cfg.get("app_id", DEFAULT_APP_ID);

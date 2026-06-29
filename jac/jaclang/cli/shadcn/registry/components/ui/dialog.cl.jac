@@ -33,8 +33,7 @@ def:pub DialogOverlay(props: any) -> JsxElement {
 }
 
 def:pub DialogContent(props: any) -> JsxElement {
-    # default to shown; only an explicit False hides the close button
-    showCloseButton = props["showCloseButton"] is not False;  # jac:ignore[W2075]
+    showCloseButton = props["showCloseButton"] is not False;
     return
         <DialogPortal>
             <DialogOverlay/>

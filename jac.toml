@@ -12,13 +12,35 @@ name = "jaclang"
 jaclang_source = "jac"   # dir CONTAINING jaclang/, relative to this file
 
 [check.lint]
-select = ["all"]
+# "all" enables every autolint rule; the two strip-* entries are the opt-in
+# "deslop" rules (W3050/W3051) that remove all comments and docstrings. They
+# only activate when named explicitly here, so `jac format --lintfix`,
+# `jac precommit`, and CI's `jac format --check --lintfix` will strip comments
+# and docstrings from every non-excluded .jac file.
+select = ["all", "strip-comments", "strip-docstrings"]
 exclude = [
     "docs/*",
     "*/examples/*",
     "*/tests/*",
     "console.impl.jac",
     "cli_boot.jac",
+    # Files whose comments/docstrings are load-bearing, so they are NOT deslopped:
+    #  - jir_registry.jac is generated (jac gen-jir-registry) and must match its
+    #    commented output;
+    #  - plugin_bridge.na.jac carries functional `# --- BRIDGE ... ---` markers the
+    #    native bridge extractor reads;
+    #  - the rest carry exact source locations / source strings that langserve and
+    #    runtime tests assert against.
+    "jir_registry.jac",
+    "plugin_bridge.na.jac",
+    "constant.jac",
+    "unitree.jac",
+    "type_utils.jac",
+    "types.jac",
+    "mobile_target.impl.jac",
+    "cli.jac",
+    "dev.jac",
+    "lsp/server.jac",
 ]
 
 [plugins.byllm.model]
