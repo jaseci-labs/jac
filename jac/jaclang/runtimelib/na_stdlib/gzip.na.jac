@@ -1,6 +1,7 @@
 import from _zlib_native { z_compress2, z_compress_bound, z_uncompress, z_crc32 }
 
 glob Z_OK: int = 0,
+     Z_DATA_ERROR: int = -3,
      _MASK32: int = 4294967295;
 
 
@@ -39,10 +40,6 @@ def:pub compress(data: bytes, compresslevel: int = 9, mtime: int = 0) -> bytes {
 
 def:pub decompress(data: bytes) -> bytes {
     n: int = len(data);
-    if n == 0 {
-        return b"";
-    }
-
     if n < 18 {
         raise ValueError("gzip.decompress: not a gzip file (truncated header)");
     }
@@ -93,15 +90,13 @@ def:pub decompress(data: bytes) -> bytes {
     }
     dest = b"\x00" * cap;
     dest_len = cap.to_bytes(8, "little");
-    z_uncompress(dest, dest_len, rewrapped, len(rewrapped));
-    written: int = int.from_bytes(dest_len, "little");
+    rc: int = z_uncompress(dest, dest_len, rewrapped, len(rewrapped));
+    if rc != Z_DATA_ERROR {
+        raise ValueError("gzip.decompress: zlib error code " + str(rc));
+    }
+    written: int = isize;
     out = dest[0:written];
 
-    if (written & _MASK32) != isize {
-        raise ValueError(
-            "gzip.decompress: invalid or truncated stream (length mismatch)"
-        );
-    }
     if z_crc32(0, out, written) != crc_expected {
         raise ValueError("gzip.decompress: CRC check failed (corrupt stream)");
     }
