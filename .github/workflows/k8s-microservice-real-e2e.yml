@@ -68,6 +68,18 @@ jobs:
           # the ReadWriteMany bundle PVC on a single node.
           sudo microk8s enable hostpath-storage
           sudo microk8s status --wait-ready --timeout 180
+          # `microk8s status --wait-ready` gates on microk8s core services, NOT
+          # the calico-node CNI pod. If calico-node never goes Ready (felix has
+          # been observed wedged at 503 on cloud runners), app pods get no
+          # networking and every deployment times out as `0/N ready` 20 min
+          # later with no obvious cause. Gate on calico here, and restart it once
+          # if it wedges, so the cluster is actually network-ready before deploy
+          # and a genuinely broken CNI fails fast and legibly instead.
+          if ! sudo microk8s kubectl -n kube-system rollout status ds/calico-node --timeout=180s; then
+            echo "WARN: calico-node not ready; restarting it once"
+            sudo microk8s kubectl -n kube-system rollout restart ds/calico-node
+            sudo microk8s kubectl -n kube-system rollout status ds/calico-node --timeout=240s
+          fi
           sudo usermod -aG microk8s "$USER"
           mkdir -p "$HOME/.kube"
           sudo microk8s config | sudo tee "$HOME/.kube/config" >/dev/null
