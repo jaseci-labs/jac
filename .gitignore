@@ -12,7 +12,6 @@ venv
 *.jbc
 _precompiled/
 _dist/
-**/content/docs/
 _planning/
 
 # Distribution / packaging

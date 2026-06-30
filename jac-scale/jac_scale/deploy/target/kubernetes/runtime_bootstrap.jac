@@ -61,11 +61,9 @@ def build_runtime_install_commands(
         );
 
         commands.append(f'jac install -e "{tc}/jac-scale" --extras all --global');
+        # byllm is optional; the MCP server is built into the jac binary now.
         commands.append(
             f'[ ! -d "{tc}/jac-byllm" ] || jac install -e "{tc}/jac-byllm" --global'
-        );
-        commands.append(
-            f'[ ! -d "{tc}/jac-mcp" ] || jac install -e "{tc}/jac-mcp" --global'
         );
     } elif experimental {
         commands.append('cd "$HOME"');
@@ -107,7 +105,6 @@ def build_runtime_install_commands(
         commands.append('export PATH="$PWD/jac/zig-out/bin:$PATH"');
         commands.append('jac install -e ./jac-scale --extras all --global');
         commands.append('[ ! -d ./jac-byllm ] || jac install -e ./jac-byllm --global');
-        commands.append('[ ! -d ./jac-mcp ] || jac install -e ./jac-mcp --global');
         commands.append('cd ..');
         commands.append(
             'ln -sf "$HOME/jaseci/jac/zig-out/bin/jac" "$HOME/.local/bin/jac"'
@@ -117,7 +114,6 @@ def build_runtime_install_commands(
         jaclang_v = packages.get('jaclang', 'latest');
         scale_v = packages.get('jac_scale', 'latest');
         byllm_v = packages.get('jac_byllm', 'latest');
-        mcp_v = packages.get('jac_mcp', 'latest');
         install_jac = (
             'curl -fsSL https://raw.githubusercontent.com/jaseci-labs/'
             'jaseci/main/scripts/install.sh | bash'
@@ -145,13 +141,6 @@ def build_runtime_install_commands(
                 commands.append('jac install byllm --global');
             } else {
                 commands.append(f'jac install byllm=={byllm_v} --global');
-            }
-        }
-        if mcp_v and mcp_v != 'none' {
-            if mcp_v == 'latest' {
-                commands.append('jac install jac-mcp --global');
-            } else {
-                commands.append(f'jac install jac-mcp=={mcp_v} --global');
             }
         }
     }
