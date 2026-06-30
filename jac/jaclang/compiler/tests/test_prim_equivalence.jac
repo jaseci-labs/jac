@@ -192,6 +192,10 @@ test "zlib bundled" {
     run_with_both("prim_zlib.jac", "zlib_py", "zlib_cl", "zlib_na", require=["na"]);
 }
 
+test "gzip bundled" {
+    run_with_both("prim_gzip.jac", "gzip_py", "gzip_cl", "gzip_na", require=["na"]);
+}
+
 test "hashlib + hmac bundled" {
     run_with_both(
         "prim_hashlib.jac", "hashlib_py", "hashlib_cl", "hashlib_na", require=["na"]

@@ -42,6 +42,23 @@ bundled one. A bundled module links through the existing cross-module machinery
   intercept, so it is exact for a fixed timestamp; `year`/`month`/`day`/`hour`/
   `minute`/`second`, `weekday()`, and `isoformat()` match CPython. SCOPE: UTC /
   fixed-offset only (no tz database, DST, leap seconds, or microseconds).
+- **`gzip.na.jac`** (#6978 Phase 2) -- a Mechanism-B gzip framing over the
+  bundled `zlib` floor (no new FFI): `compress(data, compresslevel=9, mtime=0)`
+  and `decompress(data)`. gzip is zlib's DEFLATE engine plus an RFC 1952 header,
+  CRC-32, and ISIZE trailer, so the surface reuses the `zlib` floor's one-shot
+  `compress2` / `uncompress`. `compress` takes the raw DEFLATE body (the zlib
+  stream with its 2-byte header + 4-byte adler32 stripped -- the DEFLATE bytes
+  are identical under either frame) and wraps it; the result is byte-identical
+  to CPython's `gzip.compress` at the same level/`mtime` (XFL 2/4/0 for level
+  9/1/other, OS byte 255). `decompress` parses the header (incl. the FEXTRA /
+  FNAME / FCOMMENT / FHCRC flags), re-wraps the DEFLATE body as a zlib stream
+  with a placeholder adler32, inflates it through `uncompress` (which fills the
+  output then rejects only the bogus trailer), and re-validates with gzip's own
+  CRC-32 + ISIZE -- the canonical gzip integrity check. Two documented
+  divergences: `mtime` defaults to `0` (reproducible) rather than CPython's
+  wall-clock default, and `decompress` reads a single gzip member (CPython
+  additionally concatenates trailing members). The `GzipFile` class and
+  streaming file API are out of scope.
 
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, ...) are Mechanism-A/H compiler intercepts, reached via the
