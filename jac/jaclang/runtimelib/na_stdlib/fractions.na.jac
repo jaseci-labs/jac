@@ -1,19 +1,3 @@
-"""Bundled native ``fractions`` (Mechanism B) for the na pathway (#6978 Phase 2).
-
-A pure-Jac ``Fraction`` over native ``int``: numerator/denominator normalized on
-construction via Euclid's GCD, the sign carried by the numerator and the
-denominator kept positive -- CPython's ``fractions.Fraction`` value model. The
-SAME ``import from fractions { Fraction }`` binds CPython on the sv pathway and
-this module on the na pathway.
-
-SCOPE / divergence: integer construction (``Fraction(n, d)``), reduction,
-``numerator`` / ``denominator``, and ``str()`` match CPython exactly. The native
-backend has no operator-overload dispatch yet, so arithmetic and ordering are
-exposed as methods (``add`` / ``sub`` / ``mul`` / ``div`` / ``eq`` / ``lt``)
-rather than ``+`` / ``<``; the resulting *values* and ``str()`` are congruent.
-Float / Decimal / string construction is out of scope.
-"""
-
 def _gcd(a: int, b: int) -> int {
     x: int = a;
     if x < 0 {
