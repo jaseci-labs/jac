@@ -192,6 +192,16 @@ test "zlib bundled" {
     run_with_both("prim_zlib.jac", "zlib_py", "zlib_cl", "zlib_na", require=["na"]);
 }
 
+test "fractions bundled" {
+    run_with_both(
+        "prim_fractions.jac",
+        "fractions_py",
+        "fractions_cl",
+        "fractions_na",
+        require=["na"]
+    );
+}
+
 test "hashlib + hmac bundled" {
     run_with_both(
         "prim_hashlib.jac", "hashlib_py", "hashlib_cl", "hashlib_na", require=["na"]

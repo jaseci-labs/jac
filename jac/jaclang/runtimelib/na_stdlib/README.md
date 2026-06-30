@@ -43,6 +43,16 @@ bundled one. A bundled module links through the existing cross-module machinery
   `minute`/`second`, `weekday()`, and `isoformat()` match CPython. SCOPE: UTC /
   fixed-offset only (no tz database, DST, leap seconds, or microseconds).
 
+- **`fractions.na.jac`** (#6978 Phase 2) -- a pure-Jac (Mechanism B) `Fraction`
+  over native `int`, normalized on construction via Euclid's GCD with the sign
+  carried by the numerator and the denominator kept positive (CPython's value
+  model). Construction/reduction (`Fraction(n, d)`), `numerator` /
+  `denominator`, and `str()` match CPython exactly. DIVERGENCE: the native
+  backend has no operator-overload dispatch, so arithmetic and ordering are
+  exposed as methods (`add` / `sub` / `mul` / `div` / `eq` / `lt`) rather than
+  `+` / `<`; the resulting *values* are congruent. Float/Decimal/string
+  construction is out of scope.
+
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, ...) are Mechanism-A/H compiler intercepts, reached via the
 flat `import os`, not bundled here (see
