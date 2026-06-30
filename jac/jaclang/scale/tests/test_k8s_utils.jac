@@ -263,6 +263,7 @@ test "check pods restarted selector and return values" {
     stabilised_container.state = unittest.mock.MagicMock();
     stabilised_container.state.waiting = None;
     stabilised_container.state.running = unittest.mock.MagicMock();
+    stabilised_container.state.terminated = None;
     stabilised_container.restart_count = 1;
 
     pod_stabilised = unittest.mock.MagicMock();
@@ -357,17 +358,18 @@ test "check pods restarted falls back to broad selector when RS lookup fails" {
     clean_container.state = unittest.mock.MagicMock();
     clean_container.state.waiting = None;
     clean_container.state.running = unittest.mock.MagicMock();
+    clean_container.state.terminated = None;
     clean_container.restart_count = 0;
 
     pod_clean = unittest.mock.MagicMock();
     pod_clean.status.container_statuses = [clean_container];
     pod_clean.status.init_container_statuses = None;
 
-    resp = unittest.mock.MagicMock();
-    resp.items = [pod_clean];
+    resp_clean = unittest.mock.MagicMock();
+    resp_clean.items = [pod_clean];
 
     fake_v1 = unittest.mock.MagicMock();
-    fake_v1.list_namespaced_pod.return_value = resp;
+    fake_v1.list_namespaced_pod.return_value = resp_clean;
 
     with unittest.mock.patch.object(utils.config, "load_kube_config") {
         with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
@@ -380,6 +382,36 @@ test "check pods restarted falls back to broad selector when RS lookup fails" {
     }
 
     assert result is False , "should not raise when RS lookup fails; falls back to broad selector";
+
+    crash_container = unittest.mock.MagicMock();
+    crash_state = unittest.mock.MagicMock();
+    crash_state.reason = "CrashLoopBackOff";
+    crash_container.state = unittest.mock.MagicMock();
+    crash_container.state.waiting = crash_state;
+    crash_container.state.running = None;
+    crash_container.state.terminated = None;
+    crash_container.restart_count = 3;
+
+    pod_crash = unittest.mock.MagicMock();
+    pod_crash.status.container_statuses = [crash_container];
+    pod_crash.status.init_container_statuses = None;
+
+    resp_crash = unittest.mock.MagicMock();
+    resp_crash.items = [pod_crash];
+
+    fake_v1.list_namespaced_pod.return_value = resp_crash;
+
+    with unittest.mock.patch.object(utils.config, "load_kube_config") {
+        with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : fake_v1 ) {
+            with unittest.mock.patch.object(
+                utils.client, "AppsV1Api", lambda : fake_apps_v1
+            ) {
+                result_crash = check_pods_restarted(namespace, app_name);
+            }
+        }
+    }
+
+    assert result_crash is True , "crash must still be detected when RS lookup falls back to broad selector";
 }
 
 test "resize pvc if needed: increase patches, no-op skips, decrease raises" {

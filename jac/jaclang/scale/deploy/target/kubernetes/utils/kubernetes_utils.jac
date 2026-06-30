@@ -28,7 +28,9 @@ glob COMPANION_DEFS: list = [
 
      ];
 
-def check_pods_restarted(namespace: str, app_name: str) -> bool;
+def check_pods_restarted(
+    namespace: str, app_name: str, _rs_hashes: (set | None) = None
+) -> bool;
 
 def debug_print(statement: str, debug_only: bool = False) -> None;
 

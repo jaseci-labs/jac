@@ -413,7 +413,9 @@ impl get_cluster_provider -> ClusterProvider {
     return LocalProvider();
 }
 
-impl check_pods_restarted(namespace: str, app_name: str) -> bool {
+impl check_pods_restarted(
+    namespace: str, app_name: str, _rs_hashes: (set | None) = None
+) -> bool {
     try {
         config.load_kube_config();
     } except ConfigException {
@@ -424,46 +426,49 @@ impl check_pods_restarted(namespace: str, app_name: str) -> bool {
     selector = "app in ({})".format(", ".join(app_labels));
 
     current_hashes: set = set();
-    use_hash_filter = False;
-    try {
-        apps_v1 = client.AppsV1Api();
-        rs_items = apps_v1.list_namespaced_replica_set(
-            namespace=namespace, label_selector=selector
-        ).items;
-        best_rev: dict = {};
-        best_rs: dict = {};
-        for rs in rs_items {
-            app_val = (rs.metadata.labels or {}).get("app", "");
-            if not app_val {
-                continue;
+    if _rs_hashes is not None {
+        current_hashes = _rs_hashes;
+    } else {
+        try {
+            apps_v1 = client.AppsV1Api();
+            rs_items = apps_v1.list_namespaced_replica_set(
+                namespace=namespace, label_selector=selector
+            ).items;
+            best: dict = {};
+            for rs in rs_items {
+                app_val = (rs.metadata.labels or {}).get("app", "");
+                if not app_val {
+                    continue;
+                }
+                rev_str = (rs.metadata.annotations or {}).get(
+                    "deployment.kubernetes.io/revision", "0"
+                );
+                try {
+                    rev = int(rev_str);
+                } except (ValueError, TypeError) {
+                    rev = 0;
+                }
+                prev = best.get(app_val);
+                if prev is None or rev > prev[0] {
+                    best[app_val] = (rev, rs);
+                }
             }
-            rev_str = (rs.metadata.annotations or {}).get(
-                "deployment.kubernetes.io/revision", "0"
-            );
-            try {
-                rev = int(rev_str);
-            } except ValueError {
-                rev = 0;
+            pending: set = set();
+            for (_, rs) in best.values() {
+                h = (rs.metadata.labels or {}).get("pod-template-hash");
+                if h {
+                    pending.add(h);
+                }
             }
-            if app_val not in best_rev or rev > best_rev[app_val] {
-                best_rev[app_val] = rev;
-                best_rs[app_val] = rs;
-            }
+            current_hashes = pending;
+        } except Exception {
+            ;
         }
-        for rs in best_rs.values() {
-            h = (rs.metadata.labels or {}).get("pod-template-hash");
-            if h {
-                current_hashes.add(h);
-                use_hash_filter = True;
-            }
-        }
-    } except Exception {
-        ;
     }
 
     pods = v1.list_namespaced_pod(namespace=namespace, label_selector=selector);
     for pod in pods.items {
-        if use_hash_filter {
+        if current_hashes {
             pod_hash = (pod.metadata.labels or {}).get("pod-template-hash");
             if pod_hash not in current_hashes {
                 continue;
@@ -569,6 +574,49 @@ impl check_deployment_status(
     } else {
         url = f"http://localhost:{node_port}{path}";
     }
+    rs_hashes: (set | None) = None;
+    try {
+        config.load_kube_config();
+    } except ConfigException {
+        config.load_incluster_config();
+    }
+    try {
+        _apps_v1 = client.AppsV1Api();
+        _app_labels = [app_name + d[0] for d in COMPANION_DEFS];
+        _selector = "app in ({})".format(", ".join(_app_labels));
+        _rs_items = _apps_v1.list_namespaced_replica_set(
+            namespace=namespace, label_selector=_selector
+        ).items;
+        _best: dict = {};
+        for _rs in _rs_items {
+            _app_val = (_rs.metadata.labels or {}).get("app", "");
+            if not _app_val {
+                continue;
+            }
+            _rev_str = (_rs.metadata.annotations or {}).get(
+                "deployment.kubernetes.io/revision", "0"
+            );
+            try {
+                _rev = int(_rev_str);
+            } except (ValueError, TypeError) {
+                _rev = 0;
+            }
+            _prev = _best.get(_app_val);
+            if _prev is None or _rev > _prev[0] {
+                _best[_app_val] = (_rev, _rs);
+            }
+        }
+        _pending: set = set();
+        for (_, _rs) in _best.values() {
+            _h = (_rs.metadata.labels or {}).get("pod-template-hash");
+            if _h {
+                _pending.add(_h);
+            }
+        }
+        rs_hashes = _pending;
+    } except Exception {
+        ;
+    }
     for attempt in range(1, (max_retries + 1)) {
         try {
             response = requests.get(url, timeout=10);
@@ -576,11 +624,11 @@ impl check_deployment_status(
                 return (True, "Successful");
             }
 
-            if check_pods_restarted(namespace, app_name) {
+            if check_pods_restarted(namespace, app_name, rs_hashes) {
                 return (False, "Containers restarted");
             }
         } except RequestException as e {
-            if check_pods_restarted(namespace, app_name) {
+            if check_pods_restarted(namespace, app_name, rs_hashes) {
                 return (False, "Containers restarted");
             }
 
