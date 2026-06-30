@@ -4,6 +4,7 @@ import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, CommandPriority, HookContext }
 import from jaclang.cli.console { console }
 import from jaclang.jac0core.runtime { hookimpl, plugin_manager }
+import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.runtimelib.server { JacAPIServer as JacServer }
 import from .config.config_loader { get_scale_config }
 import from .deploy.target.factory { DeploymentTargetFactory }
@@ -32,7 +33,21 @@ def _print_autodetect_banner(routes: dict[str, str]) {
     );
 }
 
+def _scale_runtime_active -> bool {
+    # True when this process is a scale runtime (the `jac start` server set by
+    # _scale_pre_hook, or a spawned sv sibling). Used to gate create_j_context
+    # so the scale tiered-memory context is used only while scale actually
+    # serves -- plain `jac run` / `jac test` / `jac db` keep core's SQLite store.
+    return (
+        os.environ.get("JAC_SCALE_RUNTIME") == "1"
+        or os.environ.get("JAC_SV_SIBLING") == "1"
+    );
+}
+
 def _scale_pre_hook(context: HookContext) -> None {
+    # `jac start` is the scale serve entry; mark the process so the server-boot
+    # and per-request contexts resolve to the scale tiered-memory context.
+    os.environ["JAC_SCALE_RUNTIME"] = "1";
     scale_config = get_scale_config();
     ms_config = scale_config.get_microservices_config();
     is_sv_sibling = os.environ.get("JAC_SV_SIBLING") == "1";
@@ -537,6 +552,27 @@ class JacCmd {
 }
 
 class JacScalePlugin {
+    # Scale is a built-in that is always registered, so this declines (returns
+    # None -> core default) unless the process is actually a scale runtime. Only
+    # then does graph state live in the scale tiered-memory context; otherwise a
+    # plain `jac run` / `jac test` keeps core's local SQLite store.
+    @hookimpl
+    static def create_j_context(
+        user_root: (str | None),
+        base_path_dir: (str | None) = None,
+        full_target_path: (str | None) = None
+    ) -> ExecutionContext | None {
+        if not _scale_runtime_active() {
+            return None;
+        }
+        import from .memory.context { JScaleExecutionContext }
+        ctx = JScaleExecutionContext();
+        if user_root is not None {
+            ctx.set_user_root(user_root);
+        }
+        return ctx;
+    }
+
     # The three server hooks below decline (return None) when the serve runtime
     # closure (fastapi / uvicorn / pyjwt / ...) is not installed, so pluggy falls
     # back to core's zero-dependency stdlib server. This keeps non-scale serving
@@ -575,15 +611,8 @@ class JacScalePlugin {
     @hookimpl
     static def store(
         base_path: str = "./storage", create_dirs: bool = True
-    ) -> Storage | None {
-        # Scale only owns the object-storage backends (S3 / GCS / Firebase).
-        # For the default LOCAL backend, decline so core's LocalStorage answers:
-        # it honors the caller's base_path verbatim, whereas this built-in is
-        # always registered and would otherwise hijack every local run.
-        import from .storage.factory { StorageFactory, StorageType }
-        if StorageFactory.default_storage_type() == StorageType.LOCAL {
-            return None;
-        }
+    ) -> Storage {
+        import from .storage.factory { StorageFactory }
         return StorageFactory.get_default(base_path, create_dirs);
     }
 
@@ -720,6 +749,16 @@ class JacScalePlugin {
 }
 
 
+import inspect;
+glob func = JacScalePlugin.create_j_context,
+     sig = inspect.signature(func),
+     sig_nodef = sig.replace(
+         parameters=[
+             p.replace(default=inspect.Parameter.empty) for p in sig.parameters.values()
+         ]
+     );
+
 with entry {
+    func.__signature__ = sig_nodef;
     plugin_manager.register(JacScalePlugin());
 }
