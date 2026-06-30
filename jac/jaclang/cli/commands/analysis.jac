@@ -49,7 +49,7 @@ glob registry = get_registry();
         ("jac check myprogram.jac", "Check a single file"),
         ("jac check file1.jac file2.jac", "Check multiple files"),
         ("jac check myproject/", "Check all files in directory"),
-        ("jac check . --ignore jac jac-scale test", "Check excluding directories"),
+        ("jac check . --ignore jac scale test", "Check excluding directories"),
         (
             "jac check myprogram.jac --disable-error-code E1030 W2001",
             "Check while suppressing selected diagnostics"
@@ -94,7 +94,7 @@ def check(
         ("jac lint myfile.jac", "Lint a single file"),
         ("jac lint myproject/", "Lint all files in directory"),
         ("jac lint myfile.jac --fix", "Auto-fix lint violations"),
-        ("jac lint . --ignore jac jac-scale test", "Lint excluding directories"),
+        ("jac lint . --ignore jac scale test", "Lint excluding directories"),
 
     ],
     group="analysis"

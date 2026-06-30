@@ -1,7 +1,7 @@
 """Regression test: a streaming `by llm()` result must be safe to iterate from a
 different contextvars.Context than the one that created it.
 
-jac-scale's `sse_frame_stream` drives each `next()` on a thread-pool worker via
+The scale backend's `sse_frame_stream` drives each `next()` on a thread-pool worker via
 `loop.run_in_executor`, i.e. a *foreign* Context. Pre-fix, `Model.invoke`'s
 streaming wrapper reset its `byllm_invocation_id` Token in a `finally` that ran
 in that foreign Context, raising
@@ -47,7 +47,7 @@ def consume_in_copied_context() -> list {
 }
 
 # Path B: drive each next() on a thread-pool worker — the exact asyncio +
-# run_in_executor shape jac-scale's SSE microservice uses.
+# run_in_executor shape the scale backend's SSE microservice uses.
 async def consume_in_thread_pool() -> list {
     gen = stream_answer();
     loop = asyncio.get_event_loop();

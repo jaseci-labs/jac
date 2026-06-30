@@ -75,7 +75,7 @@ def _load_app_and_get_l3(app_path: str) -> (PersistentMemory | None) {
                     "No L3 persistent backend is configured.",
                     hint=(
                         "Ensure your app has a base_path set or a plugin "
-                        "(e.g. jac-scale) that installs one."
+                        "(e.g. the built-in scale backend) that installs one."
                     )
                 );
                 return None;

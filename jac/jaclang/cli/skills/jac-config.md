@@ -88,7 +88,7 @@ jac plugins enable byllm
 jac plugins disabled          # list disabled
 ```
 
-Install/remove plugins with `jac install` / `jac remove` (e.g. `jac install jac-scale`); `jac plugins` only toggles already-installed ones. **There is no `jac plugins info` action.** The env var `JAC_DISABLED_PLUGINS` disables plugins without touching jac.toml (useful when a broken plugin blocks the CLI itself).
+Install/remove plugins with `jac install` / `jac remove` (e.g. `jac install byllm`); `jac plugins` only toggles already-installed ones. (Note: scale and the client/desktop framework are built into `jaclang` core, not installable plugins.) **There is no `jac plugins info` action.** The env var `JAC_DISABLED_PLUGINS` disables plugins without touching jac.toml (useful when a broken plugin blocks the CLI itself).
 
 ## .jacignore
 

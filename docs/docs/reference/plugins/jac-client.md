@@ -131,7 +131,7 @@ sv import from .database { connect_db }
 sv node SecretData { has value: str; }
 ```
 
-> **Note on `sv import` between two server modules.** When both the importer and the importee are server-context modules running as separate microservices, `sv import` generates HTTP client stubs instead of pulling the provider into the consumer's process. The same source also works as a monolith. See [Microservice Interop (sv-to-sv)](jac-scale.md#microservice-interop-sv-to-sv) in the jac-scale reference for details.
+> **Note on `sv import` between two server modules.** When both the importer and the importee are server-context modules running as separate microservices, `sv import` generates HTTP client stubs instead of pulling the provider into the consumer's process. The same source also works as a monolith. See [Microservice Interop (sv-to-sv)](jac-scale.md#microservice-interop-sv-to-sv) in the Scale reference for details.
 
 ### REST API with jac start
 
@@ -908,7 +908,7 @@ jac-client provides built-in authentication functions via `@jac/runtime`.
 | `jacLogout()` | `void` | Clear auth token |
 | `jacIsLoggedIn()` | `bool` | Check if user is authenticated |
 
-**Additional user management operations** (available via API endpoints when using jac-scale):
+**Additional user management operations** (available via API endpoints when serving with the built-in scale subsystem):
 
 | Operation | Description |
 |-----------|-------------|

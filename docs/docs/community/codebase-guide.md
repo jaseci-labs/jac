@@ -39,7 +39,8 @@ Here's a quick map from contribution type to the right part of the codebase:
 | Fix a runtime bug | `jac/jaclang/runtimelib/` |
 | Improve the formatter/linter | `jac/jaclang/compiler/passes/tool/` |
 | Improve IDE support | `jac/jaclang/lsp/` + `langserve/` |
-| Work on a plugin | `jac-byllm/`, `jac-scale/`, etc. |
+| Work on the scale subsystem | `jac/jaclang/scale/` (built-in deployment provider) |
+| Work on a plugin | `jac-byllm/`, `jac-mcp/`, etc. |
 | Write or fix docs | `docs/docs/reference/` (most features go here) |
 | Add a test | `jac/tests/` (mirror the directory of the code you're testing) |
 
@@ -51,9 +52,8 @@ The repo is a **monorepo** with the core language and a family of plugins:
 
 ```
 jaseci/
-├── jac/                  # Core language: compiler, runtime, CLI, LSP, MCP server, full-stack client/desktop framework
+├── jac/                  # Core language: compiler, runtime, CLI, LSP, MCP server, full-stack client/desktop framework, built-in scale subsystem (jaclang/scale/)
 ├── jac-byllm/            # Plugin: LLM integration (Meaning Typed Programming)
-├── jac-scale/            # Plugin: cloud deployment (FastAPI, Kubernetes, Docker)
 ├── jac-plugins/          # Additional community plugins
 ├── docs/                 # MkDocs documentation site
 └── scripts/              # Release, CI, and utility scripts
@@ -198,7 +198,7 @@ Registration happens in `pyproject.toml`:
 | Plugin | What it adds |
 |--------|-------------|
 | `jac-byllm` | LLM-powered functions -- annotate a function signature with a docstring and byLLM calls an LLM to implement it at runtime. Depends on `litellm`. |
-| `jac-scale` | Cloud deployment -- wraps `jac start` with FastAPI, adds Kubernetes deployment, Docker builds, MongoDB/Redis storage backends. |
+| `scale` (built into core, `jac/jaclang/scale/`) | Cloud deployment -- wraps `jac start` with FastAPI, adds Kubernetes deployment, Docker builds, MongoDB/Redis storage backends. Ships inside `jaclang`; its optional deps are pulled per-project via `[scale.*]` config + `jac install`. |
 
 (The MCP server -- `jac mcp`, exposing the Jac project to AI coding assistants -- is built into core, not a plugin. See [its source](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/cli/mcp) and the [MCP reference](../reference/mcp.md).)
 

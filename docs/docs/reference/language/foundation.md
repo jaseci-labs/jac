@@ -89,8 +89,8 @@ curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/ins
 
 # Individual plugins
 jac install byllm        # LLM integration
-jac install jac-scale    # Production deployment
-# (full-stack web + native-desktop app building ships with the jac binary)
+# (Production deployment & scaling and full-stack web + native-desktop app
+#  building ship with the jac binary -- no separate install)
 ```
 
 This installs the self-contained `jac` binary -- no Python, pip, or uv required.

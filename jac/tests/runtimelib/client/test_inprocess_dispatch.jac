@@ -10,11 +10,11 @@ runtime routing a call through `window.__jac_invoke` instead of `fetch`) is
 covered by `jac/tests/runtimelib/test_native_invoke.cl.jac`. Together they prove
 the full round-trip without a live webview, a display, or `nacompile`.
 
-The round-trip needs the jac-scale backend (starlette + jac_scale). The lean
-`jac test` desktop CI step does NOT install it, so the heavy imports are lazy
-(module import + collection stay backend-free) and each test self-skips when the
-backend is absent. It runs for real in the jac-scale-backed CI step -- see
-`.github/workflows/test-jaseci.yml`.
+The round-trip needs the built-in scale backend (starlette + jaclang.scale). The
+lean `jac test` desktop CI step does NOT install starlette, so the heavy imports
+are lazy (module import + collection stay backend-free) and each test self-skips
+when the backend deps are absent. It runs for real in the scale-backed CI step
+-- see `.github/workflows/test-jaseci.yml`.
 """
 
 import os;
@@ -28,16 +28,16 @@ import from pathlib { Path }
 glob _FIXTURE: str = str(Path(__file__).parent / "fixtures" / "inprocess_app.jac"),
      # Boot the in-process app exactly ONCE for the whole module, then reuse it across
      # tests -- this mirrors the real host (boot at startup, dispatch many times) and
-     # avoids the jac-scale in-process module-reload quirk where a second boot() in
+     # avoids the scale in-process module-reload quirk where a second boot() in
      # the same interpreter degrades the function executor.
      _BOOTED: bool = False;
 
 
-"""True when the in-process backend (starlette + jac_scale) is importable."""
+"""True when the in-process backend (starlette + jaclang.scale) is importable."""
 def _backend_available -> bool {
     try {
         import starlette.testclient;
-        import jac_scale.serve;
+        import jaclang.scale.server.serve;
         return True;
     } except ImportError {
         return False;
@@ -78,7 +78,7 @@ def _dispatch_request(request: dict) -> dict {
 
 test "walker call round-trips in-process and returns its report" {
     if not _backend_available() {
-        print("[skip] jac-scale backend (starlette + jac_scale) not installed");
+        print("[skip] scale backend (starlette + jaclang.scale) not installed");
         return;
     }
     reply = _dispatch_request(
@@ -101,7 +101,7 @@ test "walker call round-trips in-process and returns its report" {
 
 test "function call round-trips in-process and returns its result" {
     if not _backend_available() {
-        print("[skip] jac-scale backend (starlette + jac_scale) not installed");
+        print("[skip] scale backend (starlette + jaclang.scale) not installed");
         return;
     }
     reply = _dispatch_request(
@@ -128,7 +128,7 @@ test "function call round-trips in-process and returns its result" {
 # backs `root.shared` for unauthenticated desktop calls.
 test "root.shared round-trips a write then read on the desktop path (P1-D / #6685)" {
     if not _backend_available() {
-        print("[skip] jac-scale backend (starlette + jac_scale) not installed");
+        print("[skip] scale backend (starlette + jaclang.scale) not installed");
         return;
     }
     saved = _dispatch_request(
@@ -161,7 +161,7 @@ booting the fixture once on first use; returns `(status, body_text, content_type
 `forward()` is the CEF half of the `cl` -> `sv` path: the page leaves
 __JAC_NATIVE__ unset and POSTs to the loopback, which hands the request here and
 echoes our return straight back -- so unlike `dispatch()` this returns the
-jac-scale response VERBATIM (real status + raw {ok,data,error} body), not the
+scale response VERBATIM (real status + raw {ok,data,error} body), not the
 {status,ok,body} envelope."""
 def _forward_request(method: str, path: str, body: bytes, token: str = "") -> tuple {
     global _BOOTED;
@@ -186,7 +186,7 @@ def _forward_request(method: str, path: str, body: bytes, token: str = "") -> tu
 
 test "forward() passes a walker call through to the in-process app verbatim" {
     if not _backend_available() {
-        print("[skip] jac-scale backend (starlette + jac_scale) not installed");
+        print("[skip] scale backend (starlette + jaclang.scale) not installed");
         return;
     }
     (status, body, ctype) = _forward_request(
@@ -204,7 +204,7 @@ test "forward() passes a walker call through to the in-process app verbatim" {
 
 test "forward() surfaces the real non-200 status for an unknown walker" {
     if not _backend_available() {
-        print("[skip] jac-scale backend (starlette + jac_scale) not installed");
+        print("[skip] scale backend (starlette + jaclang.scale) not installed");
         return;
     }
     # Proves the raw-passthrough contract: dispatch()'s wrapper would always ride
@@ -295,7 +295,7 @@ def _error_code_for(id_bytes: bytes) -> str {
 
 """Slow dispatch stub: sleep past the test's timeout, then return a normal-
 looking envelope. Installed in place of the module's real `dispatch` so the
-timeout/late-reply tests need no jac-scale backend (the worker calls the module
+timeout/late-reply tests need no scale backend (the worker calls the module
 global `dispatch`, so reassigning it is enough)."""
 def _slow_dispatch(payload_json: str) -> str {
     import time;
@@ -527,7 +527,7 @@ test "error envelopes gate the traceback behind debug and always carry a request
 }
 
 
-# Backend-free in BOTH lanes: a bad entry fails boot() at jac_scale import (lean
+# Backend-free in BOTH lanes: a bad entry fails boot() at the scale backend import (lean
 # lane) or at jac_import (backend lane). Either way boot() must record the reason
 # and RE-RAISE, so the host's PyRun_SimpleString(DISPATCH_PY) sees != 0 and shows
 # the error page (P1-B).
