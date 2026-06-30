@@ -8,6 +8,9 @@ def:pub compress(data: bytes, compresslevel: int = 9) -> bytes {
     source_len: int = len(data);
 
     bound: int = source_len + (source_len // 100) + 600;
+    if bound > 4294967295 {
+        raise ValueError("bz2.compress: input too large for libbz2 one-shot API");
+    }
     dest = b"\x00" * bound;
     dest_len = bound.to_bytes(4, "little");
     rc: int = bz2_compress(dest, dest_len, data, source_len, compresslevel);
