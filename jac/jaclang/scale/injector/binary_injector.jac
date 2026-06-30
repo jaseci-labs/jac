@@ -30,8 +30,8 @@ obj BinaryInjector(PvcInjector) {
             binary = build_release_binary(repo_root);
         }
 
-        precompile_plugins(repo_root);
         try {
+            precompile_plugins(repo_root);
             raw = pack_toolchain(repo_root, binary);
         } finally {
             if self._used_prebuilt {
