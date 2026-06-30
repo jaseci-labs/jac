@@ -125,6 +125,18 @@ impl nacompile(
         return 1;
     }
 
+    # The musl build ships no LLVM shim; fail clearly instead of letting the
+    # binding raise deep in the compile.
+    import from jaclang.compiler.passes.native.llvm.binding.ffi { shim_available }
+    if not shim_available() {
+        console.error(
+            "Native compilation is not available in this jac build (no LLVM "
+            + "backend). Use a glibc (gnu) build for `jac build`/native output, "
+            + "or run on the Python backend with `jac run`."
+        );
+        return 1;
+    }
+
     _prev_native_debug = os.environ.get("JAC_NATIVE_DEBUG") if debug else None;
     if debug {
         os.environ["JAC_NATIVE_DEBUG"] = "1";

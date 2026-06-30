@@ -32,6 +32,8 @@ INSTALL_DIR="${HOME}/.local/bin"
 # --- Defaults ---
 VERSION=""
 UNINSTALL=false
+# Asset libc suffix ("" glibc/macOS, "-musl" on musl); set by detect_platform.
+LIBC=""
 
 # --- Colors and output helpers ---
 
@@ -121,6 +123,17 @@ detect_platform() {
             exit 1
             ;;
     esac
+
+    # musl hosts (Alpine) need the -musl asset; a glibc binary won't run there.
+    # Detect via the musl loader or ldd's banner.
+    LIBC=""
+    if [[ "$OS" == "linux" ]]; then
+        if ls /lib/ld-musl-*.so* >/dev/null 2>&1 \
+            || ls /lib/libc.musl-*.so* >/dev/null 2>&1 \
+            || (ldd --version 2>&1 | grep -qi musl); then
+            LIBC="-musl"
+        fi
+    fi
 }
 
 # --- Argument parsing ---
@@ -260,7 +273,7 @@ install_binary() {
     asset_version=$(resolve_jaclang_version_from_release "$VERSION")
     info "jac binary version: ${asset_version}"
 
-    local asset="jac-${asset_version}-${OS}-${ARCH}"
+    local asset="jac-${asset_version}-${OS}-${ARCH}${LIBC}"
     local download_url="https://github.com/${REPO}/releases/download/v${VERSION}/${asset}"
     local checksum_url="${download_url}.sha256"
 
@@ -280,7 +293,7 @@ install_binary() {
         err ""
         err "This could mean:"
         err "  - The version '${VERSION}' does not exist"
-        err "  - A native binary is not available for ${OS}-${ARCH}"
+        err "  - A native binary is not available for ${OS}-${ARCH}${LIBC}"
         err "  - Network issue"
         exit 1
     fi
@@ -380,7 +393,7 @@ main() {
 
     detect_platform
 
-    info "Detected platform: ${OS}-${ARCH}"
+    info "Detected platform: ${OS}-${ARCH}${LIBC}"
 
     install_binary
 }

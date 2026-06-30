@@ -70,12 +70,17 @@ pub fn build(b: *std.Build) void {
         b.resolveTargetQuery(.{ .cpu_model = .baseline });
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSmall });
 
+    // -Dnative (default true): bundle the LLVM native (na) backend. False ships
+    // without it for targets that have no LLVM to link -- the musl build -- which
+    // then runs the Python backend only. fetch-llvm is unneeded in that case.
+    const native = b.option(bool, "native", "Bundle the LLVM native (na) backend; false ships without LLVM (e.g. the musl build)") orelse true;
+
     // --- LLVMPY_* shim: compile jac/native/*.cpp + statically link host LLVM ---
     // Replaces the bundled libllvmlite.so (llvmlite wheel). Gated on -Dllvm-dir
     // (an extracted LLVM 22.1.x prebuilt); without it the step is unavailable so
     // the normal binary build is unaffected. See jac/native/README.md, #6925.
     // When set, the shim replaces the llvmlite wheel in the payload below.
-    const jacllvm = addLlvmShim(b, target, optimize);
+    const jacllvm = if (native) addLlvmShim(b, target, optimize) else null;
 
     // --- launcher stub (links libc only; Python is dlopened at runtime) ----
     const launcher_mod = b.createModule(.{
@@ -85,6 +90,9 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     const stub = b.addExecutable(.{ .name = "jac", .root_module = launcher_mod });
+    // Zig links musl static by default, but a static binary cannot dlopen the
+    // bundled libpython. Force dynamic on musl -- Alpine ships ld-musl.
+    if (isMuslAbi(target.result.abi)) stub.linkage = .dynamic;
     b.step("stub", "Build just the launcher stub (no payload)")
         .dependOn(&b.addInstallArtifact(stub, .{}).step);
 
@@ -218,6 +226,10 @@ pub fn build(b: *std.Build) void {
             // A plain `zig build` also drops the shim into the source tree so the
             // editable dev loop works without any manual step.
             b.getInstallStep().dependOn(shim.place);
+        } else if (!native) {
+            // Tell mkpayload the missing shim is intentional (vs. native requested
+            // but unbuilt, which still errors).
+            mk.addArg("--no-native");
         }
         // Bundle the libjacpyembed shim beside the desktop native assets (release)
         // and drop it into the source tree (dev), so the desktop host build always
@@ -554,8 +566,18 @@ fn addTests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
     test_step.dependOn(&b.addRunArtifact(payload_tests).step);
 }
 
-/// Map a target to the pbs platform token the fetch-pbs subcommand understands,
-/// or null for targets we don't ship a binary for yet.
+/// True for the musl Linux ABIs. x86_64/aarch64 resolve to plain `.musl`; the
+/// rest are listed so a future arch leg can't silently fall through to gnu.
+fn isMuslAbi(abi: std.Target.Abi) bool {
+    return switch (abi) {
+        .musl, .muslabin32, .muslabi64, .musleabi, .musleabihf, .muslf32, .muslsf, .muslx32 => true,
+        else => false,
+    };
+}
+
+/// Map a target to the pbs platform token, or null for targets we don't ship.
+/// musl gets a distinct `-musl` token so the artifacts and asset name don't
+/// collide with the gnu build.
 fn osArchString(t: std.Target) ?[]const u8 {
     return switch (t.os.tag) {
         .macos => switch (t.cpu.arch) {
@@ -564,8 +586,8 @@ fn osArchString(t: std.Target) ?[]const u8 {
             else => null,
         },
         .linux => switch (t.cpu.arch) {
-            .x86_64 => "linux-x86_64",
-            .aarch64 => "linux-aarch64",
+            .x86_64 => if (isMuslAbi(t.abi)) "linux-x86_64-musl" else "linux-x86_64",
+            .aarch64 => if (isMuslAbi(t.abi)) "linux-aarch64-musl" else "linux-aarch64",
             else => null,
         },
         else => null,

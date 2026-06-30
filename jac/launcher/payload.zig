@@ -161,12 +161,13 @@ pub fn main(init: std.process.Init) !void {
             try fetchTypeshed(io, gpa, a, argv[2]);
         },
         .mkpayload => {
-            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--skip-precompile] [--link-source=PATH]", .{});
+            if (n < 5) die("usage: payload mkpayload <pbs-python-dir> <repo-root> <out.tar.gz> [--shim=PATH] [--no-native] [--skip-precompile] [--link-source=PATH]", .{});
             // Trailing flags (after the positional pbs/root/out, see build.zig):
             var shim_so: ?[]const u8 = null;
             var pyembed_so: ?[]const u8 = null;
             var bun_bin: ?[]const u8 = null;
             var skip_precompile = false;
+            var no_native = false;
             var link_source: ?[]const u8 = null;
             var i: usize = 5;
             while (i < n) : (i += 1) {
@@ -179,11 +180,13 @@ pub fn main(init: std.process.Init) !void {
                     bun_bin = arg["--bun=".len..];
                 } else if (std.mem.eql(u8, arg, "--skip-precompile")) {
                     skip_precompile = true;
+                } else if (std.mem.eql(u8, arg, "--no-native")) {
+                    no_native = true;
                 } else if (std.mem.startsWith(u8, arg, "--link-source=")) {
                     link_source = arg["--link-source=".len..];
                 }
             }
-            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, link_source);
+            try mkPayload(io, gpa, a, init.environ_map, argv[2], argv[3], argv[4], shim_so, pyembed_so, bun_bin, skip_precompile, no_native, link_source);
         },
         .@"typeshed-sha" => {
             if (n < 3) die("usage: payload typeshed-sha <commit>", .{});
@@ -219,7 +222,7 @@ fn fetchPbs(io: Io, gpa: Allocator, a: Allocator, osarch: []const u8, dest: []co
     }
 
     const plat = pbsPlatform(osarch) orelse die("fetch-pbs: unsupported platform '{s}'", .{osarch});
-    const asset = try std.fmt.allocPrint(a, "cpython-{s}+{s}-{s}-{s}.tar.zst", .{ PBS_PY, PBS_TAG, plat, PBS_FLAVOR });
+    const asset = try std.fmt.allocPrint(a, "cpython-{s}+{s}-{s}-{s}.tar.zst", .{ PBS_PY, PBS_TAG, plat, pbsFlavor(osarch) });
     const url = try std.fmt.allocPrint(a, "{s}/{s}/{s}", .{ PBS_BASE, PBS_TAG, asset });
 
     log("fetch-pbs: downloading {s}", .{asset});
@@ -505,6 +508,8 @@ fn bunAssetName(osarch: []const u8) ?[]const u8 {
         .{ "macos-x86_64", "bun-darwin-x64" },
         .{ "linux-x86_64", "bun-linux-x64" },
         .{ "linux-aarch64", "bun-linux-aarch64" },
+        .{ "linux-x86_64-musl", "bun-linux-x64-musl" },
+        .{ "linux-aarch64-musl", "bun-linux-aarch64-musl" },
         .{ "windows-x86_64", "bun-windows-x64" },
     });
     return m.get(osarch);
@@ -602,8 +607,17 @@ fn pbsPlatform(osarch: []const u8) ?[]const u8 {
         .{ "macos-x86_64", "x86_64-apple-darwin" },
         .{ "linux-x86_64", "x86_64-unknown-linux-gnu" },
         .{ "linux-aarch64", "aarch64-unknown-linux-gnu" },
+        .{ "linux-x86_64-musl", "x86_64-unknown-linux-musl" },
+        .{ "linux-aarch64-musl", "aarch64-unknown-linux-musl" },
     });
     return m.get(osarch);
+}
+
+/// The pbs flavor for a platform. musl gets `lto-full` (pbs publishes no PGO
+/// build for musl); still a full build with the shared libpython the launcher
+/// dlopens. gnu/macOS keep PBS_FLAVOR.
+fn pbsFlavor(osarch: []const u8) []const u8 {
+    return if (std.mem.endsWith(u8, osarch, "-musl")) "lto-full" else PBS_FLAVOR;
 }
 
 /// SHA256SUMS lines are `<hex>  <filename>`; return the hex for `asset`.
@@ -715,6 +729,10 @@ fn mkPayload(
     // Null in linked-source / standalone packs (dev uses an on-demand copy).
     bun_bin: ?[]const u8,
     skip_precompile: bool,
+    // Ship without the LLVM shim intentionally (the musl build has no LLVM),
+    // vs. a missing --shim which is an error. jaclang drops the native passes at
+    // runtime when no shim is found.
+    no_native: bool,
     // Editable dev binary: an absolute path to the dir CONTAINING jaclang/. When
     // set, the compiler is NOT bundled -- the payload ships only CPython + the
     // bootstrap shims + the test runner, and a baked `site/jac_linked_source`
@@ -798,7 +816,9 @@ fn mkPayload(
     // Skipped in linked-source mode: there is no bundled site/jaclang/ to host
     // it, and build.zig's `place` step writes the shim into the linked tree
     // (jaclang/compiler/passes/native/llvm/) where ffi.jac finds it instead.
-    if (link_source == null) {
+    if (no_native) {
+        log("==> no-native build: skipping LLVM shim (Python backend only)", .{});
+    } else if (link_source == null) {
         const so = shim_so orelse die(
             "mkpayload: no LLVM shim (--shim). Run `zig build fetch-llvm` once so the" ++
                 " build can compile + statically link the LLVMPY_* shim.",

@@ -187,7 +187,13 @@ def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
 
         passes: list[type[Transform[uni.Module, uni.Module]]] = [EsastGenPass];
         import from jaclang.compiler.passes.native { NaIRGenPass, NativeCompilePass }
-        passes.extend([NaIRGenPass, NativeCompilePass]);
+        # NativeCompilePass.postinit touches the LLVM shim on instantiation, so
+        # only schedule the native passes when a shim is bundled. Builds without
+        # one (the musl build has no LLVM) run the Python backend.
+        import from jaclang.compiler.passes.native.llvm.binding.ffi { shim_available }
+        if shim_available() {
+            passes.extend([NaIRGenPass, NativeCompilePass]);
+        }
         passes.extend([PyastGenPass, PyJacAstLinkPass, PyBytecodeGenPass]);
         return passes;
     } except ImportError {

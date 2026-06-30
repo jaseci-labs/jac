@@ -66,6 +66,19 @@ def _find_shim() -> str {
 }
 
 
+"""Whether the LLVM shim is locatable, without dlopening it. The codegen
+schedule uses this to skip the native passes when no shim is bundled (the musl
+build has no LLVM) rather than crash in NativeCompilePass.postinit."""
+def shim_available() -> bool {
+    try {
+        _find_shim();
+        return True;
+    } except OSError {
+        return False;
+    }
+}
+
+
 """Lazy CDLL proxy: loads libjacllvm.so (~130 MB) on first symbol access, not
 at import. Mirrors a lazy lib wrapper so processes that merely
 type-import the binding (e.g. codeinfo's ModuleRef/ExecutionEngine) never map

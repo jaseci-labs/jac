@@ -151,3 +151,106 @@ jobs:
         with:
           name: ${{ steps.pkg.outputs.asset }}
           path: jac/dist/*
+
+  # musl / Alpine leg. No musl LLVM exists to link the shim against, so this
+  # ships without the native backend (-Dnative=false): the Python backend runs;
+  # nacompile/native AOT does not. Built natively inside Alpine, not via
+  # `zig -Dtarget=*-musl`, because Zig links musl static by default and a static
+  # binary cannot dlopen libpython -- a native build links the dynamic system
+  # musl. JS steps run on the glibc host (node-in-Alpine is painful); only the
+  # build + smoke/install checks run in the container, where the binary can run.
+  # The pinned host Zig (static) is mounted in so there's one version source.
+  build-musl:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64-musl
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64-musl
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+
+      - name: Read version (from jac.toml)
+        id: ver
+        working-directory: jac
+        run: echo "version=$(grep -m1 '^version' jac.toml | sed -E 's/.*"([^"]+)".*/\1/')" >> "$GITHUB_OUTPUT"
+
+      - name: Build + smoke-test + package the musl jac binary (Alpine, no native backend)
+        id: pkg
+        env:
+          ASSET: jac-${{ steps.ver.outputs.version }}-${{ matrix.platform }}
+        run: |
+          set -euxo pipefail
+          # The pinned host Zig (static) dir, mounted into the container.
+          ZIG_DIR="$(dirname "$(readlink -f "$(command -v zig)")")"
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+          docker run --rm \
+            -v "$PWD:/src" -v "$ZIG_DIR:/zig:ro" \
+            -e ASSET -w /src/jac alpine:3.21 sh -euxc '
+              # build-base: gcc + musl-dev (dynamic system musl) + binutils (strip).
+              apk add --no-cache build-base
+              export PATH=/zig:$PATH
+              # Native build (no -Dtarget) links dynamic musl so it can dlopen libpython.
+              zig build -Dnative=false --summary all
+              BIN="/src/jac/zig-out/bin/jac"
+              WORK="$(mktemp -d)"
+              env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" --version
+              printf "with entry { print(\"ok\"); }\n" > "$WORK/h.jac"
+              env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
+              # nacompile must fail cleanly without LLVM, not crash.
+              if env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" nacompile "$WORK/h.jac"; then
+                echo "expected nacompile to fail on a no-native binary" >&2; exit 1
+              fi
+              mkdir -p /src/jac/dist
+              cp "$BIN" "/src/jac/dist/$ASSET"
+              ( cd /src/jac/dist && sha256sum "$ASSET" > "$ASSET.sha256" )
+            '
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release' || inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag }}"
+          [ -n "$TAG" ] || TAG="${{ github.event.release.tag_name }}"
+          gh release upload "$TAG" \
+            "dist/${{ steps.pkg.outputs.asset }}" \
+            "dist/${{ steps.pkg.outputs.asset }}.sha256" \
+            --clobber
+
+      # install.sh gate, run in Alpine so it exercises the musl libc detection.
+      - name: Verify install.sh can fetch + run this release (Alpine)
+        if: github.event_name == 'release' || inputs.tag != ''
+        env:
+          JAC_VER: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euxo pipefail
+          docker run --rm -v "$PWD:/src" -e JAC_VER -w /src alpine:3.21 sh -euxc '
+            apk add --no-cache bash curl
+            HOME="$(mktemp -d)"; export HOME
+            bash scripts/install.sh --version "$JAC_VER"
+            BIN="$HOME/.local/bin/jac"
+            test -x "$BIN"
+            "$BIN" --version
+            printf "with entry { print(\"installed ok\"); }\n" > "$HOME/h.jac"
+            "$BIN" run "$HOME/h.jac" | grep -q "installed ok"
+            bash scripts/install.sh --uninstall
+            ! test -e "$BIN"
+          '
+
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pkg.outputs.asset }}
+          path: jac/dist/*
