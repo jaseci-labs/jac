@@ -1,9 +1,7 @@
-"""Implementation of mode resolution."""
-
 import from jaclang.project.config { get_config, set_config, JacConfig }
 import logging;
 
-glob _logger = logging.getLogger("jac_mcp.mode");
+glob _logger = logging.getLogger("jaclang.cli.mcp.mode");
 
 impl get_mcp_mode -> str {
     jac_cfg = get_config();
@@ -38,7 +36,6 @@ impl set_mcp_mode(mode: str) -> None {
     }
 }
 
-# Placeholder: populated by follow-up PRs once per-mode surfaces are decided.
 impl disabled_tools_for_mode(mode: str) -> set[str] {
     _ = mode;
     return set();

@@ -1,8 +1,5 @@
-"""Implementation of MCP prompt templates."""
-
-"""Load a resource's content, returning empty string if unavailable."""
 impl load_resource_content(uri: str) -> str {
-    import from jac_mcp.resources { ResourceProvider }
+    import from jaclang.cli.mcp.resources { ResourceProvider }
     rp = ResourceProvider();
     rp.index_resources();
     content = rp.read_resource(uri);
@@ -12,7 +9,6 @@ impl load_resource_content(uri: str) -> str {
     return content;
 }
 
-"""Build system prompt with pitfalls and optional extra resources."""
 impl build_system_prompt(extra_uris: list[str] = []) -> str {
     parts: list[str] = [
         "You are an expert Jac programmer. You MUST follow the syntax rules and patterns provided below EXACTLY.",
@@ -36,7 +32,6 @@ impl build_system_prompt(extra_uris: list[str] = []) -> str {
     return "\n".join(parts);
 }
 
-"""Return list of available prompts, filtered by active mode."""
 impl PromptProvider.list_prompts -> list[dict[str, any]] {
     all_prompts: list[dict[str, any]] = [
         {
@@ -180,7 +175,7 @@ impl PromptProvider.list_prompts -> list[dict[str, any]] {
 
     ];
 
-    import from jac_mcp.mode { get_mcp_mode, disabled_prompts_for_mode }
+    import from jaclang.cli.mcp.mode { get_mcp_mode, disabled_prompts_for_mode }
     disabled = disabled_prompts_for_mode(get_mcp_mode());
     if not disabled {
         return all_prompts;
@@ -192,7 +187,6 @@ impl PromptProvider.list_prompts -> list[dict[str, any]] {
     ];
 }
 
-"""Get a prompt by name with arguments."""
 impl PromptProvider.get_prompt(name: str, arguments: dict[str, str]) -> dict[str, any] {
     if name == "write_module" {
         return _prompt_write_module(arguments);
@@ -222,7 +216,6 @@ impl PromptProvider.get_prompt(name: str, arguments: dict[str, str]) -> dict[str
     }
 }
 
-"""Helper to build a prompt result with proper system/user role separation."""
 def _make_prompt(description: str, system: str, user_msg: str) -> dict[str, any] {
     return {
         "description": description,
@@ -265,7 +258,9 @@ def _prompt_write_walker(args: dict[str, str]) -> dict[str, any] {
     purpose = args.get("purpose", "");
     node_types = args.get("node_types", "");
 
-    system = build_system_prompt(["jac://docs/osp", "jac://guide/patterns"]);
+    system = build_system_prompt(
+        ["jac://guide/jac-walker-patterns", "jac://guide/patterns"]
+    );
     user_msg = f"Generate a walker named '{name}' that {purpose}, traversing node types: {node_types}.";
     user_msg += "\nUse 'visit [-->]' for traversal and proper Jac walker syntax.";
     user_msg += "\nAfter generating, validate the code using the validate_jac tool.";
@@ -277,7 +272,7 @@ def _prompt_write_node(args: dict[str, str]) -> dict[str, any] {
     name = args.get("name", "MyNode");
     fields = args.get("fields", "");
 
-    system = build_system_prompt(["jac://docs/osp"]);
+    system = build_system_prompt(["jac://guide/jac-node-edge-patterns"]);
     user_msg = f"Generate a node archetype named '{name}' with fields: {fields}.";
     user_msg += "\nUse 'has' declarations with type annotations.";
     user_msg += "\nAfter generating, validate the code using the validate_jac tool.";
@@ -302,7 +297,7 @@ def _prompt_write_ability(args: dict[str, str]) -> dict[str, any] {
     signature = args.get("signature", "");
     purpose = args.get("purpose", "");
 
-    system = build_system_prompt(["jac://docs/functions-objects"]);
+    system = build_system_prompt(["jac://guide/jac-core-cheatsheet"]);
     user_msg = f"Generate an ability named '{name}' with signature '{signature}' that {purpose}.";
     user_msg += "\nAfter generating, validate the code using the validate_jac tool.";
 
@@ -326,7 +321,7 @@ def _prompt_fix_type_error(args: dict[str, str]) -> dict[str, any] {
     error_output = args.get("error_output", "");
     code = args.get("code", "");
 
-    system = build_system_prompt(["jac://docs/primitives"]);
+    system = build_system_prompt(["jac://guide/jac-types"]);
     user_msg = f"Fix this type error:\n\n```\n{error_output}\n```";
     user_msg += f"\n\nIn this code:\n\n```jac\n{code}\n```";
     user_msg += "\n\nExplain the type mismatch and provide corrected code.";
@@ -339,7 +334,7 @@ def _prompt_migrate_python(args: dict[str, str]) -> dict[str, any] {
     python_code = args.get("python_code", "");
 
     system = build_system_prompt(
-        ["jac://docs/python-integration", "jac://guide/patterns"]
+        ["jac://guide/jac-python-interop", "jac://guide/patterns"]
     );
     user_msg = f"Convert this Python code to idiomatic Jac:\n\n```python\n{python_code}\n```";
     user_msg += "\n\nUse obj instead of class, has instead of self.x, can for methods, semicolons, braces, and Jac import syntax.";

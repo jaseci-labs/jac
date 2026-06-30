@@ -1,11 +1,9 @@
-"""Implementation of compiler bridge."""
-
 import tempfile;
 import os;
 import sys;
 import threading;
 import logging;
-"""Extract line, col, and message from an Alert object."""
+
 def _extract_error_info(alert: object) -> dict[str, any] {
     return {
         "line": alert?.loc?.first_line or 0,
@@ -14,7 +12,6 @@ def _extract_error_info(alert: object) -> dict[str, any] {
     };
 }
 
-"""Run a function with timeout protection."""
 impl run_with_timeout(func: object, timeout: int = 10) -> tuple {
     result_holder: list = [None];
     error_holder: list = [None];
@@ -37,18 +34,6 @@ impl run_with_timeout(func: object, timeout: int = 10) -> tuple {
     return (True, result_holder[0]);
 }
 
-"""Read from a binary stream into holder[0], capping at cap bytes.
-
-Reads in 4 KiB chunks. When the cap is reached a single extra byte is read:
-if it exists the stream was genuinely truncated, so the pipe is drained
-(discarding the excess) to let the child exit normally, and
-OUTPUT_TRUNCATION_MARKER is appended. Decoded by the caller with
-errors='replace' since truncation can split a multibyte sequence.
-
-Closes the stream itself when done so the caller never has to close a pipe
-that this thread might still be blocked reading -- closing a BufferedReader
-held by an in-progress read() would block on its buffer lock.
-"""
 def _cap_read(stream: object, holder: list, cap: int) {
     try {
         chunks: list = [];
@@ -67,9 +52,7 @@ def _cap_read(stream: object, holder: list, cap: int) {
         }
         data: bytes = b"".join(chunks);
         if total >= cap {
-            # One extra byte distinguishes exact-cap (no truncation) from overflow.
             if stream.read(1) {
-                # Drain so the child isn't blocked on a full OS pipe buffer.
                 while stream.read(65536) { }
                 holder[0] = data + OUTPUT_TRUNCATION_MARKER.encode();
             } else {
@@ -85,25 +68,16 @@ def _cap_read(stream: object, holder: list, cap: int) {
     }
 }
 
-"""Join a pipe-reader thread with a deadline.
-
-A descendant that inherited the pipe write-end and survived killpg/taskkill /T
-could otherwise block this handler indefinitely. Threads are daemon-marked so
-they never block process exit; this bounds the per-request wait. The caller
-must not close a pipe whose reader is still alive after this returns -- see
-run_snippet's teardown -- since the reader owns closing its own stream.
-"""
 def _join_reader(t: threading.Thread, name: str, deadline: float = 5.0) {
     t.join(timeout=deadline);
     if t.is_alive() {
-        logging.getLogger("jac_mcp").warning(
+        logging.getLogger("jac.mcp").warning(
             f"{name} reader thread still alive {deadline}s after "
             "process teardown; pipe may be held open by a descendant"
         );
     }
 }
 
-"""Parse Jac code and return structured errors."""
 impl CompilerBridge.parse_snippet(
     code: str, filename: str = "snippet.jac"
 ) -> dict[str, any] {
@@ -154,7 +128,6 @@ impl CompilerBridge.parse_snippet(
     return result;
 }
 
-"""Full type-check pipeline on Jac code."""
 impl CompilerBridge.typecheck_snippet(
     code: str, filename: str = "snippet.jac"
 ) -> dict[str, any] {
@@ -212,7 +185,6 @@ impl CompilerBridge.typecheck_snippet(
     return result;
 }
 
-"""Format Jac code."""
 impl CompilerBridge.format_snippet(code: str) -> dict[str, any] {
     if len(code) > MAX_INPUT_SIZE {
         return {
@@ -238,7 +210,6 @@ impl CompilerBridge.format_snippet(code: str) -> dict[str, any] {
                 return {"formatted": code, "changed": False, "error": "Format failed"};
             }
 
-            # Get formatted source from the result
             formatted = code;
             if result_prog.mod and result_prog.mod?.unparse {
                 formatted = result_prog.mod.unparse();
@@ -257,7 +228,6 @@ impl CompilerBridge.format_snippet(code: str) -> dict[str, any] {
     return result;
 }
 
-"""Convert Python code to Jac."""
 impl CompilerBridge.py_to_jac(python_code: str) -> dict[str, any] {
     if len(python_code) > MAX_INPUT_SIZE {
         return {
@@ -294,7 +264,6 @@ impl CompilerBridge.py_to_jac(python_code: str) -> dict[str, any] {
                 return {"jac_code": "", "warnings": errors or ["Conversion failed"]};
             }
 
-            # Get transpiled Jac source via unparse
             jac_code = "";
             if ir?.unparse {
                 jac_code = ir.unparse();
@@ -312,7 +281,6 @@ impl CompilerBridge.py_to_jac(python_code: str) -> dict[str, any] {
     return result;
 }
 
-"""Parse Jac code and return AST representation."""
 impl CompilerBridge.get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, any] {
     import json;
 
@@ -363,7 +331,6 @@ impl CompilerBridge.get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, a
     return result;
 }
 
-"""Lint Jac code and return violations with optional auto-fix."""
 impl CompilerBridge.lint_snippet(code: str, auto_fix: bool = False) -> dict[str, any] {
     if len(code) > MAX_INPUT_SIZE {
         return {
@@ -384,12 +351,10 @@ impl CompilerBridge.lint_snippet(code: str, auto_fix: bool = False) -> dict[str,
 
         try {
             if auto_fix {
-                # Use format with auto_lint=True to get auto-fixed code
                 prog = JacCompiler.jac_str_formatter(
                     source_str=code, file_path=tmp_path, auto_lint=True
                 );
             } else {
-                # Lint-only pass
                 prog = JacCompiler.jac_file_linter(file_path=tmp_path);
             }
 
@@ -434,7 +399,6 @@ impl CompilerBridge.lint_snippet(code: str, auto_fix: bool = False) -> dict[str,
     return result;
 }
 
-"""Convert Jac code to Python."""
 impl CompilerBridge.jac_to_py(code: str) -> dict[str, any] {
     if len(code) > MAX_INPUT_SIZE {
         return {
@@ -481,7 +445,6 @@ impl CompilerBridge.jac_to_py(code: str) -> dict[str, any] {
     return result;
 }
 
-"""Convert Jac code to JavaScript."""
 impl CompilerBridge.jac_to_js(code: str) -> dict[str, any] {
     if len(code) > MAX_INPUT_SIZE {
         return {
@@ -533,17 +496,6 @@ impl CompilerBridge.jac_to_js(code: str) -> dict[str, any] {
     return result;
 }
 
-"""Execute Jac code and return output.
-
-Delegates to the `jac` binary itself -- `jac run` for a plain module execution,
-`jac enter` to spawn a named walker -- in a fresh child process. The child owns
-all the global Jac runtime state the run creates (program `mod.hub`,
-`loaded_modules`, native caches, `sys.modules` pollution), so it is reclaimed by
-process exit instead of accumulating in this long-lived server. The child also
-gives a *real* timeout: a hung snippet is killed via its process group (CPython
-cannot interrupt an in-process thread, so an in-process timeout could never
-actually stop the work).
-"""
 impl CompilerBridge.run_snippet(
     code: str, entrypoint: str = "", timeout: int = 10
 ) -> dict[str, any] {
@@ -572,11 +524,6 @@ impl CompilerBridge.run_snippet(
         cmd = ["jac", "run", jac_path];
     }
 
-    # Run in its own session/process group so a snippet that spawns children
-    # can be torn down as a group on timeout. POSIX uses a new session +
-    # killpg(SIGKILL); Windows uses CREATE_NEW_PROCESS_GROUP + taskkill /T /F
-    # to kill the child and its descendants (Windows has no POSIX process
-    # group, and proc.kill() only terminates the immediate child).
     is_windows = os.name == "nt";
     try {
         if is_windows {
@@ -604,13 +551,7 @@ impl CompilerBridge.run_snippet(
         );
         t_out.start();
         t_err.start();
-        # The reader threads own closing proc.stdout/stderr (see _cap_read), so
-        # we do NOT use `with proc`: Popen.__exit__ would close those pipes, and
-        # closing one whose reader is still blocked in read() (a descendant
-        # escaped killpg/taskkill and holds the write-end) deadlocks on the
-        # buffer lock -- defeating _join_reader's bound. proc.wait() below reaps
-        # the child on every path, so there is no zombie. The only residual cost
-        # of an evasive descendant is one leaked fd until that thread exits.
+
         try {
             try {
                 proc.wait(timeout=timeout);
@@ -656,9 +597,6 @@ impl CompilerBridge.run_snippet(
             }
             return result;
         } finally {
-            # Safety net for the rare path where a reader thread never ran (e.g.
-            # thread-start failure): close any pipe whose reader has finished.
-            # Skip a still-alive reader -- closing under it would block.
             if not t_out.is_alive() {
                 try {
                     proc.stdout.close();
@@ -677,7 +615,6 @@ impl CompilerBridge.run_snippet(
     }
 }
 
-"""Generate graph visualization from Jac code."""
 impl CompilerBridge.graph_viz_snippet(
     code: str,
     format: str = "dot",
@@ -740,7 +677,6 @@ impl CompilerBridge.graph_viz_snippet(
     return result;
 }
 
-"""List available Jac project templates."""
 impl CompilerBridge.list_templates -> dict[str, any] {
     def _do_list_templates -> dict[str, any] {
         import from jaclang.project.template_registry {
@@ -763,7 +699,6 @@ impl CompilerBridge.list_templates -> dict[str, any] {
     return result;
 }
 
-"""Create a new Jac project from a template."""
 impl CompilerBridge.create_project(
     name: str, template: str = "cli", directory: str = ""
 ) -> dict[str, any] {
@@ -774,14 +709,12 @@ impl CompilerBridge.create_project(
         return {"success": False, "error": "Project name is required"};
     }
 
-    # Determine working directory
     if directory {
         work_dir = str(Path(directory).resolve());
     } else {
         work_dir = tempfile.gettempdir();
     }
 
-    # Build command
     cmd: list[str] = ["jac", "create", name, "-u", template, "--force"];
 
     def _do_create -> dict[str, any] {
@@ -791,7 +724,6 @@ impl CompilerBridge.create_project(
 
         project_path = str(Path(work_dir) / name);
 
-        # List files created
         files_created: list[str] = [];
         pp = Path(project_path);
         if pp.exists() {

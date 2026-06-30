@@ -6,7 +6,7 @@ import from pathlib { Path }
 import from jac_scale.injector.bundle { is_excluded, TOOLCHAIN_SUBDIR }
 
 glob _SHIP_PREFIX: str = ".ship-out",
-     _PLUGIN_DIRS: list[str] = ["jac-scale", "jac-byllm", "jac-mcp"],
+     _PLUGIN_DIRS: list[str] = ["jac-scale", "jac-byllm"],
      BINARY_ARCNAME: str = "bin/jac";
 
 

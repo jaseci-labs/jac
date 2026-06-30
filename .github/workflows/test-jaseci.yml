@@ -47,7 +47,6 @@ jobs:
       core: ${{ steps.filter.outputs.core }}
       scale: ${{ steps.filter.outputs.scale }}
       byllm: ${{ steps.filter.outputs.byllm }}
-      mcp: ${{ steps.filter.outputs.mcp }}
       docs: ${{ steps.filter.outputs.docs }}
       desktop: ${{ steps.filter.outputs.desktop }}
     steps:
@@ -65,8 +64,6 @@ jobs:
               - 'jac-scale/**'
             byllm:
               - 'jac-byllm/**'
-            mcp:
-              - 'jac-mcp/**'
             docs:
               - 'docs/**'
             desktop:
@@ -281,28 +278,9 @@ jobs:
         MISSING=$(ldd libcef_dispatch.so 2>&1 | grep 'not found' | grep -v libcef || true)
         [ -z "$MISSING" ] || (echo "Unexpected missing deps: $MISSING" && exit 1)
 
-  test-mcp:
-    needs: changes
-    # Not a required check. Skip on PRs that touch neither jac core nor jac-mcp; always run on push/dispatch.
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' || needs.changes.outputs.mcp == 'true' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
-
-    - name: Set up jac (build the binary)
-      uses: ./.github/actions/setup-jac
-
-    - name: Install jac-mcp (global so its tests, run from jac-mcp/, can import it)
-      run: jac install -e jac-mcp --global
-
-    - name: Run jac-mcp tests
-      # cwd = plugin dir; the plugin + deps live in the binary's global site
-      # (installed above), on sys.path alongside the host jaclang.
-      working-directory: jac-mcp
-      run: jac test .
+  # The MCP server is now built into jaclang core (jaclang.cli.mcp); its tests
+  # live at jac/tests/cli/test_mcp.jac and run under the core `jac test tests/`
+  # gate in test-binary.yml, so there is no longer a dedicated jac-mcp job.
 
   test-scale:
     needs: changes

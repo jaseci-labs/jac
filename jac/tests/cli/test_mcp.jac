@@ -1,12 +1,12 @@
-"""Tests for jac-mcp plugin."""
+"""Tests for the built-in `jac mcp` server (jaclang.cli.mcp)."""
 
-import from jac_mcp.server { JacMcpServer }
-import from jac_mcp.plugin_config { JacMcpPluginConfig }
-import from jac_mcp.resources { ResourceProvider }
-import from jac_mcp.tools { ToolProvider }
-import from jac_mcp.prompts { PromptProvider }
-import from jac_mcp.compiler_bridge { CompilerBridge }
-import from jac_mcp.mode {
+import from jaclang.cli.mcp.server { JacMcpServer }
+import from jaclang.cli.mcp.plugin_config { JacMcpPluginConfig }
+import from jaclang.cli.mcp.resources { ResourceProvider }
+import from jaclang.cli.mcp.tools { ToolProvider }
+import from jaclang.cli.mcp.prompts { PromptProvider }
+import from jaclang.cli.mcp.compiler_bridge { CompilerBridge }
+import from jaclang.cli.mcp.mode {
     get_mcp_mode,
     set_mcp_mode,
     disabled_tools_for_mode,
@@ -30,77 +30,158 @@ test "server creation with custom config" {
     assert server.host == "0.0.0.0";
 }
 
-test "streamable-http transport initializes session manager and app" {
-    import from mcp.server { Server }
-    import from mcp.server.streamable_http_manager { StreamableHTTPSessionManager }
-    import from starlette.applications { Starlette }
-    import from starlette.routing { Mount }
-    import contextlib;
-
-    server = Server("test-server");
-    session_manager = StreamableHTTPSessionManager(
-        app=server, json_response=True, stateless=False
-    );
-    assert session_manager is not None;
-
-    @contextlib.asynccontextmanager
-    async def lifespan(app: object) -> object {
-        async with session_manager.run() {
-            yield ;
+# ── Protocol Engine Tests (stdlib MCP, no external deps) ──
+test "engine initialize negotiates protocol version and advertises capabilities" {
+    import from jaclang.cli.mcp.protocol { build_engine }
+    engine = build_engine(instructions="hello");
+    resp = engine.handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": "2025-03-26", "capabilities": {}}
         }
-    }
-
-    starlette_app = Starlette(
-        lifespan=lifespan, routes=[Mount("/mcp", app=session_manager.handle_request)]
     );
-    assert starlette_app is not None;
-    assert starlette_app.routes[0].path == "/mcp";
+    assert resp["id"] == 1;
+    result = resp["result"];
+    # A supported version the client asked for is echoed back verbatim.
+    assert result["protocolVersion"] == "2025-03-26";
+    assert "resources" in result["capabilities"];
+    assert "tools" in result["capabilities"];
+    assert "prompts" in result["capabilities"];
+    assert result["serverInfo"]["name"] == "jac-mcp";
+    assert result["instructions"] == "hello";
 }
 
-test "sse _async_start builds correct Mount-based route for messages" {
-    import from unittest.mock { patch, AsyncMock, MagicMock }
-    import from jac_mcp.server { JacMcpServer }
-    import from starlette.routing { Mount, Route }
-
-    captured_apps: list = [];
-
-    def fake_config(app: object, **kwargs: object) -> object {
-        captured_apps.append(app);
-        return MagicMock();
-    }
-
-    mock_serve = AsyncMock();
-    mock_server_instance = MagicMock();
-    mock_server_instance.serve = mock_serve;
-    mock_server_class = MagicMock();
-    mock_server_class.return_value = mock_server_instance;
-
-    mock_config_class = MagicMock();
-    mock_config_class.side_effect = fake_config;
-
-    # Pass mocks as positional arg (maps to patch's 'new' parameter)
-    with patch("uvicorn.Config", mock_config_class) {
-        with patch("uvicorn.Server", mock_server_class) {
-            JacMcpServer(transport="sse", port=3001, host="127.0.0.1").start();
+test "engine falls back to latest protocol version for an unknown client version" {
+    import from jaclang.cli.mcp.protocol { build_engine, LATEST_PROTOCOL_VERSION }
+    engine = build_engine();
+    resp = engine.handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": "1999-01-01"}
         }
-    }
-
-    assert len(captured_apps) == 1 , "uvicorn.Config should have been called once";
-    app: object = captured_apps[0];
-    routes: list = getattr(app, "routes");
-    assert len(routes) >= 2;
-
-    sse_route: object = routes[0];
-    messages_route: object = routes[1];
-    assert isinstance(sse_route, Route) , f"Expected Route for /sse, got {type(
-        sse_route
-    )}";
-    assert getattr(sse_route, "path") == "/sse";
-    assert isinstance(messages_route, Mount) , (
-        f"Expected Mount for /messages (handle_post_message is an ASGI app, "
-        f"not a Starlette endpoint — use Mount not Route). Got {type(messages_route)}"
     );
-    assert getattr(messages_route, "path") == "/messages";
+    assert resp["result"]["protocolVersion"] == LATEST_PROTOCOL_VERSION;
+}
+
+test "engine lists tools, prompts, and resources with MCP-shaped entries" {
+    import from jaclang.cli.mcp.protocol { build_engine }
+    engine = build_engine();
+    tools = engine.handle_message({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})[
+        "result"
+    ]["tools"];
+    assert len(tools) > 0;
+    for t in tools {
+        assert "name" in t and "description" in t and "inputSchema" in t;
+    }
+    prompts = engine.handle_message(
+        {"jsonrpc": "2.0", "id": 2, "method": "prompts/list"}
+    )["result"]["prompts"];
+    assert len(prompts) > 0;
+    resources = engine.handle_message(
+        {"jsonrpc": "2.0", "id": 3, "method": "resources/list"}
+    )["result"]["resources"];
+    assert len(resources) > 0;
+    for r in resources {
+        assert "uri" in r and "mimeType" in r;
+    }
+}
+
+test "engine tools/call wraps the tool result as MCP text content" {
+    import from jaclang.cli.mcp.protocol { build_engine }
+    import json;
+    engine = build_engine();
+    resp = engine.handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "check_syntax",
+                "arguments": {"code": "with entry { print(1); }"}
+            }
+        }
+    );
+    content = resp["result"]["content"];
+    assert content[0]["type"] == "text";
+    assert json.loads(content[0]["text"])["valid"] == True;
+}
+
+test "engine returns no response for notifications (messages without an id)" {
+    import from jaclang.cli.mcp.protocol { build_engine }
+    engine = build_engine();
+    reply = engine.handle_message(
+        {"jsonrpc": "2.0", "method": "notifications/initialized"}
+    );
+    assert reply is None;
+}
+
+test "engine returns Invalid Request for a request with id but no method" {
+    import from jaclang.cli.mcp.protocol { build_engine }
+    engine = build_engine();
+    resp = engine.handle_message({"jsonrpc": "2.0", "id": 7});
+    assert resp["error"]["code"] == -32600;
+    # A method-less object without an id is a malformed notification: dropped.
+    assert engine.handle_message({"jsonrpc": "2.0"}) is None;
+}
+
+test "all-notification batch yields no reply, mixed batch returns only requests" {
+    import from jaclang.cli.mcp.protocol { build_engine, _process }
+    engine = build_engine();
+    all_notifs = [
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"jsonrpc": "2.0", "method": "notifications/cancelled"}
+    ];
+    assert _process(engine, all_notifs) is None;
+    mixed = [
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"jsonrpc": "2.0", "id": 1, "method": "ping"}
+    ];
+    out = _process(engine, mixed);
+    assert isinstance(out, list) and len(out) == 1 and out[0]["id"] == 1;
+}
+
+test "engine surfaces method-not-found and invalid-params as JSON-RPC errors" {
+    import from jaclang.cli.mcp.protocol { build_engine }
+    engine = build_engine();
+    not_found = engine.handle_message(
+        {"jsonrpc": "2.0", "id": 9, "method": "does/not/exist"}
+    );
+    assert not_found["error"]["code"] == -32601;
+    bad_params = engine.handle_message(
+        {"jsonrpc": "2.0", "id": 10, "method": "resources/read", "params": {}}
+    );
+    assert bad_params["error"]["code"] == -32602;
+}
+
+test "engine get_prompt renders messages as text content with valid roles" {
+    import from jaclang.cli.mcp.protocol { build_engine }
+    engine = build_engine();
+    prompts = engine.handle_message(
+        {"jsonrpc": "2.0", "id": 1, "method": "prompts/list"}
+    )["result"]["prompts"];
+    name = prompts[0]["name"];
+    args: dict = {};
+    for a in prompts[0].get("arguments", []) {
+        args[a["name"]] = "x";
+    }
+    resp = engine.handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "prompts/get",
+            "params": {"name": name, "arguments": args}
+        }
+    );
+    msgs = resp["result"]["messages"];
+    assert len(msgs) > 0;
+    for m in msgs {
+        assert m["role"] in ["user", "assistant"];
+        assert m["content"]["type"] == "text";
+    }
 }
 
 # ── Plugin Config Tests ──
@@ -158,18 +239,19 @@ test "grammar tokens exists" {
     assert "jac://grammar/tokens" in uris;
 }
 
-test "docs foundation exists" {
+test "guide resources exist" {
     rp = ResourceProvider();
     rp.index_resources();
     resources = rp.list_resources();
     uris = [r["uri"] for r in resources];
-    assert "jac://docs/foundation" in uris;
+    assert "jac://guide/jac-core-cheatsheet" in uris;
+    assert "jac://guide/jac-walker-patterns" in uris;
 }
 
-test "docs foundation content" {
+test "guide resource content" {
     rp = ResourceProvider();
     rp.index_resources();
-    content = rp.read_resource("jac://docs/foundation");
+    content = rp.read_resource("jac://guide/jac-core-cheatsheet");
     assert content;
     assert len(content) > 100;
 }
@@ -197,17 +279,17 @@ test "invalid uri returns error" {
     assert content.startswith("Error:");
 }
 
-test "all doc resources readable" {
+test "all guide resources readable" {
     rp = ResourceProvider();
     rp.index_resources();
     resources = rp.list_resources();
-    doc_resources = [
+    guide_resources = [
         r
         for r in resources
-        if r["uri"].startswith("jac://docs/")
+        if r["uri"].startswith("jac://guide/")
     ];
-    assert len(doc_resources) >= 5;
-    for r in doc_resources {
+    assert len(guide_resources) >= 5;
+    for r in guide_resources {
         content = rp.read_resource(r["uri"]);
         assert not content.startswith("Error:");
         assert len(content) > 0;
@@ -304,9 +386,9 @@ test "list examples returns results when repo root is None (PyPI install)" {
     # and stub the GitHub API fetch so the test does not depend on live network
     # access (which is rate-limited and flaky in CI).
     fake_categories = ["chess", "littleX"];
-    with patch("jac_mcp.resources.find_repo_root", return_value=None) {
+    with patch("jaclang.cli.mcp.resources.find_repo_root", return_value=None) {
         with patch(
-            "jac_mcp.resources.ResourceProvider._fetch_github_categories",
+            "jaclang.cli.mcp.resources.ResourceProvider._fetch_github_categories",
             return_value=fake_categories
         ) {
             tp = ToolProvider();
@@ -518,30 +600,31 @@ test "unknown prompt returns error" {
     assert "Unknown" in result.get("description", "") or "messages" in result;
 }
 
-# ── Plugin Config / jac.toml Integration Tests ──
-#   CLI (explicit) > [plugins.mcp] in jac.toml > CLI default
-test "jac.toml values override CLI defaults for all three fields" {
+# ── jac.toml Config Resolution Tests ──
+#   CLI (explicit) > [plugins.mcp] in jac.toml > CLI default. The resolution
+#   lives in the `mcp_cmd` command body; JacMcpServer is patched so the server
+#   never actually starts -- we only capture the constructor kwargs.
+glob _MCP_TOML_CFG: dict = {
+         "transport": "streamable-http",
+         "port": 9000,
+         "host": "0.0.0.0"
+     };
+
+"""Invoke mcp_cmd with patched config+server; return captured ctor kwargs."""
+def _run_mcp_cmd(
+    cfg_value: object,
+    transport: str = "stdio",
+    port: int = 3001,
+    host: str = "127.0.0.1"
+) -> dict {
     import from unittest.mock { patch, MagicMock }
-    import from jac_mcp.plugin { _handle_mcp_cmd }
+    import from jaclang.cli.commands.mcp { mcp_cmd }
 
-    mock_jac_cfg = MagicMock();
-    mock_jac_cfg.get_plugin_config.return_value = {
-        "transport": "streamable-http",
-        "port": 9000,
-        "host": "0.0.0.0"
-    };
-
-    # Simulate: user ran `jac mcp` with no explicit args (all CLI defaults)
-    mock_ctx = MagicMock();
-    def cli_no_args(name: str, fallback: object = None) -> object {
-        m = {"transport": "stdio", "port": 3001, "host": "127.0.0.1", "inspect": False};
-        if name in m {
-            return m[name];
-        }
-        return fallback;
+    mock_jac_cfg = None;
+    if cfg_value is not None {
+        mock_jac_cfg = MagicMock();
+        mock_jac_cfg.get_plugin_config.return_value = cfg_value;
     }
-    mock_ctx.get_arg.side_effect = cli_no_args;
-
     captured: list = [];
     def capture_ctor(**kwargs: object) -> object {
         captured.append(kwargs);
@@ -551,128 +634,42 @@ test "jac.toml values override CLI defaults for all three fields" {
     mock_server_cls.side_effect = capture_ctor;
 
     with patch("jaclang.project.config.get_config", return_value=mock_jac_cfg) {
-        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
-            _handle_mcp_cmd(mock_ctx);
+        with patch("jaclang.cli.mcp.server.JacMcpServer", mock_server_cls) {
+            mcp_cmd(transport=transport, port=port, host=host);
         }
     }
     assert len(captured) == 1 , "JacMcpServer should have been instantiated once";
-    ctor_kwargs = captured[0];
-    assert ctor_kwargs["transport"] == "streamable-http" , "jac.toml transport should override CLI default";
-    assert ctor_kwargs["port"] == 9000 , "jac.toml port should override CLI default";
-    assert ctor_kwargs["host"] == "0.0.0.0" , "jac.toml host should override CLI default";
+    return captured[0];
+}
+
+test "jac.toml values override CLI defaults for all three fields" {
+    # User ran `jac mcp` with no explicit args (all CLI defaults).
+    kw = _run_mcp_cmd(_MCP_TOML_CFG);
+    assert kw["transport"] == "streamable-http" , "jac.toml transport should override CLI default";
+    assert kw["port"] == 9000 , "jac.toml port should override CLI default";
+    assert kw["host"] == "0.0.0.0" , "jac.toml host should override CLI default";
 }
 
 test "explicit CLI args take priority over jac.toml for all three fields" {
-    import from unittest.mock { patch, MagicMock }
-    import from jac_mcp.plugin { _handle_mcp_cmd }
-
-    mock_jac_cfg = MagicMock();
-    mock_jac_cfg.get_plugin_config.return_value = {
-        "transport": "streamable-http",
-        "port": 9000,
-        "host": "0.0.0.0"
-    };
-
-    # Simulate: user ran `jac mcp --transport sse --port 8080 --host 10.0.0.1`
-    mock_ctx = MagicMock();
-    def cli_explicit(name: str, fallback: object = None) -> object {
-        m = {"transport": "sse", "port": 8080, "host": "10.0.0.1", "inspect": False};
-        if name in m {
-            return m[name];
-        }
-        return fallback;
-    }
-    mock_ctx.get_arg.side_effect = cli_explicit;
-
-    captured: list = [];
-    def capture_ctor(**kwargs: object) -> object {
-        captured.append(kwargs);
-        return MagicMock();
-    }
-    mock_server_cls = MagicMock();
-    mock_server_cls.side_effect = capture_ctor;
-
-    with patch("jaclang.project.config.get_config", return_value=mock_jac_cfg) {
-        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
-            _handle_mcp_cmd(mock_ctx);
-        }
-    }
-    assert len(captured) == 1;
-    ctor_kwargs = captured[0];
-    assert ctor_kwargs["transport"] == "sse" , "explicit CLI --transport must win over jac.toml";
-    assert ctor_kwargs["port"] == 8080 , "explicit CLI --port must win over jac.toml";
-    assert ctor_kwargs["host"] == "10.0.0.1" , "explicit CLI --host must win over jac.toml";
+    # User ran `jac mcp --transport sse --port 8080 --host 10.0.0.1`.
+    kw = _run_mcp_cmd(_MCP_TOML_CFG, transport="sse", port=8080, host="10.0.0.1");
+    assert kw["transport"] == "sse" , "explicit CLI --transport must win over jac.toml";
+    assert kw["port"] == 8080 , "explicit CLI --port must win over jac.toml";
+    assert kw["host"] == "10.0.0.1" , "explicit CLI --host must win over jac.toml";
 }
 
 test "CLI defaults used when jac.toml has no mcp section" {
-    import from unittest.mock { patch, MagicMock }
-    import from jac_mcp.plugin { _handle_mcp_cmd }
-
-    mock_jac_cfg = MagicMock();
-    mock_jac_cfg.get_plugin_config.return_value = {};
-
-    mock_ctx = MagicMock();
-    def cli_no_args(name: str, fallback: object = None) -> object {
-        m = {"transport": "stdio", "port": 3001, "host": "127.0.0.1", "inspect": False};
-        if name in m {
-            return m[name];
-        }
-        return fallback;
-    }
-    mock_ctx.get_arg.side_effect = cli_no_args;
-
-    captured: list = [];
-    def capture_ctor(**kwargs: object) -> object {
-        captured.append(kwargs);
-        return MagicMock();
-    }
-    mock_server_cls = MagicMock();
-    mock_server_cls.side_effect = capture_ctor;
-
-    with patch("jaclang.project.config.get_config", return_value=mock_jac_cfg) {
-        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
-            _handle_mcp_cmd(mock_ctx);
-        }
-    }
-    assert len(captured) == 1;
-    ctor_kwargs = captured[0];
-    assert ctor_kwargs["transport"] == "stdio";
-    assert ctor_kwargs["port"] == 3001;
-    assert ctor_kwargs["host"] == "127.0.0.1";
+    kw = _run_mcp_cmd({});
+    assert kw["transport"] == "stdio";
+    assert kw["port"] == 3001;
+    assert kw["host"] == "127.0.0.1";
 }
 
 test "CLI defaults used when no jac.toml is present" {
-    import from unittest.mock { patch, MagicMock }
-    import from jac_mcp.plugin { _handle_mcp_cmd }
-
-    mock_ctx = MagicMock();
-    def cli_no_args(name: str, fallback: object = None) -> object {
-        m = {"transport": "stdio", "port": 3001, "host": "127.0.0.1", "inspect": False};
-        if name in m {
-            return m[name];
-        }
-        return fallback;
-    }
-    mock_ctx.get_arg.side_effect = cli_no_args;
-
-    captured: list = [];
-    def capture_ctor(**kwargs: object) -> object {
-        captured.append(kwargs);
-        return MagicMock();
-    }
-    mock_server_cls = MagicMock();
-    mock_server_cls.side_effect = capture_ctor;
-
-    with patch("jaclang.project.config.get_config", return_value=None) {
-        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
-            _handle_mcp_cmd(mock_ctx);
-        }
-    }
-    assert len(captured) == 1;
-    ctor_kwargs = captured[0];
-    assert ctor_kwargs["transport"] == "stdio";
-    assert ctor_kwargs["port"] == 3001;
-    assert ctor_kwargs["host"] == "127.0.0.1";
+    kw = _run_mcp_cmd(None);
+    assert kw["transport"] == "stdio";
+    assert kw["port"] == 3001;
+    assert kw["host"] == "127.0.0.1";
 }
 
 test "all prompt messages use only MCP-valid roles" {
@@ -694,84 +691,51 @@ test "all prompt messages use only MCP-valid roles" {
     }
 }
 
-test "prompt messages pass MCP SDK Pydantic validation" {
-    import from mcp.types { PromptMessage, TextContent }
-    pp = PromptProvider();
-    for prompt in pp.list_prompts() {
+test "all prompts render into well-formed MCP messages through the engine" {
+    import from jaclang.cli.mcp.protocol { build_engine }
+    engine = build_engine();
+    listed = engine.handle_message(
+        {"jsonrpc": "2.0", "id": 1, "method": "prompts/list"}
+    )["result"]["prompts"];
+    for prompt in listed {
         args: dict = {};
         for arg in prompt.get("arguments", []) {
             args[arg["name"]] = "test";
         }
-        result = pp.get_prompt(prompt["name"], args);
-        for msg in result.get("messages", []) {
-            pm = PromptMessage(
-                role=msg["role"], content=TextContent(type="text", text=msg["content"])
-            );
-            assert pm is not None , f"PromptMessage construction failed for prompt '{prompt[
+        resp = engine.handle_message(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "prompts/get",
+                "params": {"name": prompt["name"], "arguments": args}
+            }
+        );
+        for msg in resp["result"]["messages"] {
+            assert msg["role"] in ["user", "assistant"] , f"prompt '{prompt[
                 'name'
-            ]}' with role '{msg['role']}'";
+            ]}' produced invalid MCP role '{msg['role']}'";
+            assert msg["content"]["type"] == "text";
+            assert isinstance(msg["content"]["text"], str);
         }
     }
 }
 
-# ── Bundle Script Tests ──
-"""Verify every DOC_MAPPINGS entry points to a real file in docs/."""
-test "all doc mapping source files exist" {
-    import from jac_mcp.resources { find_repo_root, DOC_MAPPINGS }
-    import from pathlib { Path }
-
-    repo_root = find_repo_root();
-    if repo_root is None {
-        # Skip in non-repo (PyPI) environments
-        return;
-    }
-    docs_dir = Path(repo_root) / "docs" / "docs";
-    missing: list[str] = [];
-    for (uri, mapping) in DOC_MAPPINGS.items() {
-        (rel_path, bundled_name, desc) = mapping;
-        full_path = docs_dir / rel_path;
-        if not full_path.exists() {
-            missing.append(f"{uri} -> {rel_path}");
-        }
-    }
-    assert len(missing) == 0 , f"Missing doc files: {missing}";
-}
-
-"""Verify the bundle_docs.jac script exits 0."""
-test "bundle script runs successfully" {
-    import subprocess;
-    import from pathlib { Path }
-    import from jac_mcp.resources { find_repo_root }
-
-    repo_root = find_repo_root();
-    if repo_root is None {
-        return;
-    }
-    script = Path(repo_root) / "jac-mcp" / "scripts" / "bundle_docs.jac";
-    if not script.exists() {
-        return;
-    }
-    result = subprocess.run(
-        ["jac", "run", str(script)], capture_output=True, text=True, timeout=60
-    );
-    assert result.returncode == 0 , f"bundle_docs.jac failed:\n{result.stdout}\n{result.stderr}";
-}
-
-"""Verify no two DOC_MAPPINGS entries share the same bundled filename."""
-test "doc mappings have unique bundled names" {
-    import from jac_mcp.resources { DOC_MAPPINGS }
-
-    seen: dict[str, str] = {};
-    dupes: list[str] = [];
-    for (uri, mapping) in DOC_MAPPINGS.items() {
-        bundled_name = mapping[1];
-        if bundled_name in seen {
-            dupes.append(f"{bundled_name}: {seen[bundled_name]} vs {uri}");
-        } else {
-            seen[bundled_name] = uri;
-        }
-    }
-    assert len(dupes) == 0 , f"Duplicate bundled names: {dupes}";
+# ── Knowledge Map Coverage ──
+"""Every guide URI the knowledge map advertises must actually resolve."""
+test "knowledge map guide URIs all resolve" {
+    rp = ResourceProvider();
+    rp.index_resources();
+    km = rp.read_resource("jac://guide/understand");
+    import re;
+    refs = set(re.findall(r"jac://guide/[a-z0-9-]+", km));
+    # The curated content guides + every guide_store skill should be present.
+    uris = {r["uri"] for r in rp.list_resources()};
+    missing = [
+        u
+        for u in sorted(refs)
+        if u not in uris
+    ];
+    assert len(missing) == 0 , f"Knowledge map references unknown guides: {missing}";
 }
 
 # ── Compiler Bridge — New Tool Tests ──
@@ -848,7 +812,10 @@ test "run snippet large output is truncated" {
     # A snippet that would produce ~5 MB of output if uncapped (200 000 lines
     # × 26 chars). The returned stdout must be bounded by MAX_OUTPUT_SIZE and
     # carry the truncation marker.
-    import from jac_mcp.compiler_bridge { MAX_OUTPUT_SIZE, OUTPUT_TRUNCATION_MARKER }
+    import from jaclang.cli.mcp.compiler_bridge {
+        MAX_OUTPUT_SIZE,
+        OUTPUT_TRUNCATION_MARKER
+    }
     result = CompilerBridge.run_snippet(
         "with entry { for i in range(200000) { print(\"0123456789012345678901234\"); } }"
     );
@@ -860,7 +827,10 @@ test "run snippet large output is truncated" {
 test "run snippet output exactly at cap has no truncation marker" {
     # Output that is exactly MAX_OUTPUT_SIZE bytes must not be falsely marked as
     # truncated -- _cap_read reads one extra byte to confirm overflow.
-    import from jac_mcp.compiler_bridge { MAX_OUTPUT_SIZE, OUTPUT_TRUNCATION_MARKER }
+    import from jaclang.cli.mcp.compiler_bridge {
+        MAX_OUTPUT_SIZE,
+        OUTPUT_TRUNCATION_MARKER
+    }
     # Produce exactly MAX_OUTPUT_SIZE bytes. Each `print` of 24 chars emits 25
     # bytes (24 + newline), so the iteration count is derived from the cap
     # rather than hardcoded, keeping the test correct if MAX_OUTPUT_SIZE changes.
@@ -875,7 +845,10 @@ test "run snippet output exactly at cap has no truncation marker" {
 
 test "run snippet output one byte over cap is truncated" {
     # One byte beyond the cap must trigger the marker.
-    import from jac_mcp.compiler_bridge { MAX_OUTPUT_SIZE, OUTPUT_TRUNCATION_MARKER }
+    import from jaclang.cli.mcp.compiler_bridge {
+        MAX_OUTPUT_SIZE,
+        OUTPUT_TRUNCATION_MARKER
+    }
     # 4097 iterations × 25 bytes = 102425 bytes > 102400.
     snippet = "with entry { for i in range(4097) { print(\"000000000000000000000000\"); } }";
     result = CompilerBridge.run_snippet(snippet);
@@ -885,7 +858,10 @@ test "run snippet output one byte over cap is truncated" {
 }
 
 test "run snippet large stderr is truncated" {
-    import from jac_mcp.compiler_bridge { MAX_OUTPUT_SIZE, OUTPUT_TRUNCATION_MARKER }
+    import from jaclang.cli.mcp.compiler_bridge {
+        MAX_OUTPUT_SIZE,
+        OUTPUT_TRUNCATION_MARKER
+    }
     # Write to stderr via sys.stderr.write.
     snippet = "import sys; with entry { for i in range(200000) { sys.stderr.write(\"0123456789012345678901234\\n\"); } }";
     result = CompilerBridge.run_snippet(snippet);
@@ -1044,7 +1020,7 @@ test "get command missing name returns error" {
     assert "error" in result;
 }
 
-test "understand returns knowledge map with key sections and size hints" {
+test "understand returns knowledge map with key sections and guide URIs" {
     tp = ToolProvider();
     result = tp.call_tool("understand_jac_and_jaseci", {});
     assert "knowledge_map" in result;
@@ -1052,16 +1028,16 @@ test "understand returns knowledge map with key sections and size hints" {
     assert "Language Syntax" in km
     and "Object-Spatial Programming" in km
     and "Full-Stack Development" in km;
-    assert "jac://guide/pitfalls" in km and "jac://docs/osp" in km;
-    assert "[S]" in km and "[M]" in km and "[L]" in km;
+    assert "jac://guide/pitfalls" in km and "jac://guide/jac-walker-patterns" in km;
+    assert "jac://docs/" not in km;
 }
 
 test "get resource fetches valid URIs and rejects invalid ones" {
     tp = ToolProvider();
     pitfalls = tp.call_tool("get_resource", {"uri": "jac://guide/pitfalls"});
     assert "content" in pitfalls and "WRONG" in pitfalls["content"];
-    osp = tp.call_tool("get_resource", {"uri": "jac://docs/osp"});
-    assert "content" in osp and osp["uri"] == "jac://docs/osp";
+    wp = tp.call_tool("get_resource", {"uri": "jac://guide/jac-walker-patterns"});
+    assert "content" in wp and wp["uri"] == "jac://guide/jac-walker-patterns";
     bad = tp.call_tool("get_resource", {"uri": "jac://nonexistent/fake"});
     assert "error" in bad;
     empty = tp.call_tool("get_resource", {});

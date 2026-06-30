@@ -5,7 +5,7 @@ and outputs metadata for the GitHub Actions workflow to create a release PR.
 
 Usage:
     jac run scripts/release.jac --jac-byllm patch --jac-scale minor
-    jac run scripts/release.jac --jac-mcp patch --dry-run
+    jac run scripts/release.jac --jac-scale patch --dry-run
 
 Each package flag accepts: skip (default), patch, minor, major.
 """

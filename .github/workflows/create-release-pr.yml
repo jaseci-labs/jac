@@ -22,11 +22,6 @@ on:
         type: choice
         default: skip
         options: [skip, patch, minor, major]
-      jac-mcp:
-        description: "jac-mcp bump"
-        type: choice
-        default: skip
-        options: [skip, patch, minor, major]
 
 permissions: {}
 
@@ -55,8 +50,7 @@ jobs:
           jac run scripts/validate_release.jac \
             --jaclang "${{ inputs.jaclang }}" \
             --jac-byllm "${{ inputs.jac-byllm }}" \
-            --jac-scale "${{ inputs.jac-scale }}" \
-            --jac-mcp "${{ inputs.jac-mcp }}"
+            --jac-scale "${{ inputs.jac-scale }}"
 
       - name: Bump versions
         id: release
@@ -64,8 +58,7 @@ jobs:
           jac run scripts/release.jac \
             --jaclang "${{ inputs.jaclang }}" \
             --jac-byllm "${{ inputs.jac-byllm }}" \
-            --jac-scale "${{ inputs.jac-scale }}" \
-            --jac-mcp "${{ inputs.jac-mcp }}"
+            --jac-scale "${{ inputs.jac-scale }}"
 
       - name: Configure git
         run: |

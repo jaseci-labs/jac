@@ -144,11 +144,13 @@ compiled to TypeScript/JavaScript by the client toolchain; the framework
 exposes its capabilities through core's built-in provider system rather than a
 curated re-export module.
 
-### jac-mcp (`jac-mcp/jac_mcp/`)
+### mcp (`jac/jaclang/cli/mcp/`)
 
-No `lib.jac`. The package is structured around a plugin entry point
-(`plugin.jac`) plus modules for `server.jac`, `tools.jac`, `resources.jac`,
-`prompts.jac`, `mode.jac`, and `compiler_bridge.jac`.
+Built into jaclang core (formerly the standalone `jac-mcp` plugin). No
+`lib.jac`. The `jac mcp` command registers from `jac/jaclang/cli/commands/mcp.jac`;
+the package holds `server.jac`, `protocol.jac` (a stdlib JSON-RPC engine with
+stdio/HTTP/SSE transports, replacing the external `mcp` SDK), `tools.jac`,
+`resources.jac`, `prompts.jac`, `mode.jac`, and `compiler_bridge.jac`.
 
 ---
 
