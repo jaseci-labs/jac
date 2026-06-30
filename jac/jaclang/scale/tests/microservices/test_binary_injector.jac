@@ -3,7 +3,14 @@ import io;
 import tarfile;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.scale.injector.binary { pack_toolchain, host_repo_root }
+import from unittest.mock { patch, MagicMock }
+import from jaclang.scale.injector.binary {
+    pack_toolchain,
+    host_repo_root,
+    build_release_binary,
+    resolve_pod_build_target,
+    pod_zig_target
+}
 import from jaclang.scale.injector.binary_injector { BinaryInjector }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
 import from jaclang.scale.deploy.target.kubernetes.runtime_bootstrap {
@@ -47,6 +54,44 @@ test "experimental still builds in-pod (ship_binary defaults off, no regression)
     joined = " && ".join(cmds);
     assert "zig build" in joined;
     assert f"{TOOLCHAIN_SUBDIR}/bin/jac" not in joined;
+}
+
+
+test "a non-linux host cross-compiles the pod binary with -Dtarget" {
+    # Pods run linux. A native build off a non-linux host produces a Mach-O
+    # binary that cannot exec in the container, so we must cross-compile.
+    assert pod_zig_target("arm64") == "aarch64-linux";
+    assert pod_zig_target() == "x86_64-linux";
+
+    # On a linux host the native build already targets the pod; no -Dtarget.
+    with patch("platform.system", return_value="Linux") {
+        with patch("jaclang.scale.injector.binary.host_arch", return_value="x86_64") {
+            assert resolve_pod_build_target() is None;
+        }
+    }
+    # Off a non-linux host we cross-compile to the (default amd64) pod platform.
+    with patch("platform.system", return_value="Darwin") {
+        assert resolve_pod_build_target() == "x86_64-linux";
+    }
+
+    # build_release_binary threads the target into the zig build as -Dtarget.
+    recorded: list = [];
+    def _fake_run(cmd: list, **kw: any) -> any {
+        recorded.append(cmd);
+        return MagicMock(returncode=0);
+    }
+    with patch("subprocess.run", _fake_run) {
+        with patch("pathlib.Path.is_file", return_value=True) {
+            build_release_binary(Path("/repo"), target="x86_64-linux");
+        }
+    }
+    zig_builds = [
+        c
+        for c in recorded
+        if "build" in c and "fetch-llvm" not in c
+    ];
+    assert zig_builds , "expected a zig build invocation";
+    assert "-Dtarget=x86_64-linux" in zig_builds[0];
 }
 
 

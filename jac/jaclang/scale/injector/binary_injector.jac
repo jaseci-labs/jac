@@ -2,6 +2,7 @@ import from jaclang.scale.injector.pvc_injector { PvcInjector, bundle_pvc_path }
 import from jaclang.scale.injector.binary {
     host_repo_root,
     build_release_binary,
+    resolve_pod_build_target,
     precompile_plugins,
     pack_toolchain,
     toolchain_object_key
@@ -16,7 +17,9 @@ obj BinaryInjector(PvcInjector) {
     def prepare(app_name: str, namespace: str, project_dir: str) {
         super.prepare(app_name, namespace, project_dir);
         repo_root = host_repo_root();
-        binary = build_release_binary(repo_root);
+        # Pods are linux; cross-compile when building from a non-linux host so we
+        # never ship a binary that cannot exec in the container.
+        binary = build_release_binary(repo_root, target=resolve_pod_build_target());
 
         precompile_plugins(repo_root);
         raw = pack_toolchain(repo_root, binary);

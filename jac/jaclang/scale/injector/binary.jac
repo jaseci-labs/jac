@@ -23,13 +23,37 @@ def host_arch -> str {
 }
 
 
-def build_release_binary(repo_root: Path) -> Path {
+def pod_zig_target(arch: str = "x86_64") -> str {
+    # Pods run linux; map a node arch to the zig target triple. Defaults to
+    # x86_64 (amd64), the common cloud node arch.
+    norm = "aarch64" if arch in ("arm64", "aarch64") else "x86_64";
+    return f"{norm}-linux";
+}
+
+
+def resolve_pod_build_target(node_arch: str = "x86_64") -> str | None {
+    # A native build only produces a pod-runnable binary when the host is itself
+    # linux. From a non-linux host (e.g. macOS) the native build is a Mach-O
+    # binary that cannot exec in a linux container, so cross-compile to the pod
+    # platform instead. Returns None when no cross-compile is needed.
+    if platform.system() == "Linux" and host_arch() in ("x86_64", "amd64", "aarch64") {
+        return None;
+    }
+    return pod_zig_target(node_arch);
+}
+
+
+def build_release_binary(repo_root: Path, target: str | None = None) -> Path {
     jac_dir = repo_root / "jac";
     prefix = jac_dir / _SHIP_PREFIX;
     subprocess.run(["zig", "build", "fetch-llvm"], cwd=str(jac_dir), check=True);
-    subprocess.run(
-        ["zig", "build", "--prefix", str(prefix)], cwd=str(jac_dir), check=True
-    );
+    build_cmd = ["zig", "build", "--prefix", str(prefix)];
+    if target {
+        # Cross-compile for the pod platform so a non-linux host does not ship a
+        # binary that cannot exec in the (linux) container.
+        build_cmd.append(f"-Dtarget={target}");
+    }
+    subprocess.run(build_cmd, cwd=str(jac_dir), check=True);
     binary = prefix / "bin" / "jac";
     if not binary.is_file() {
         raise RuntimeError(f"zig build reported success but no binary at {binary}");
