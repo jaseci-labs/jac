@@ -1,0 +1,49 @@
+import from _bz2_native { bz2_compress, bz2_decompress }
+
+glob BZ_OK: int = 0,
+     BZ_OUTBUFF_FULL: int = -8;
+
+
+def:pub compress(data: bytes, compresslevel: int = 9) -> bytes {
+    source_len: int = len(data);
+
+    bound: int = source_len + (source_len // 100) + 600;
+    dest = b"\x00" * bound;
+    dest_len = bound.to_bytes(4, "little");
+    rc: int = bz2_compress(dest, dest_len, data, source_len, compresslevel);
+    if rc != BZ_OK {
+        raise ValueError("bz2.compress: libbz2 error code " + str(rc));
+    }
+    return dest[0:int.from_bytes(dest_len, "little")];
+}
+
+
+def:pub decompress(data: bytes) -> bytes {
+    source_len: int = len(data);
+    if source_len == 0 {
+        return b"";
+    }
+    cap: int = source_len * 4;
+    if cap < 256 {
+        cap = 256;
+    }
+
+    ceiling: int = (source_len * 1024) + 67108864;
+    while True {
+        dest = b"\x00" * cap;
+        dest_len = cap.to_bytes(4, "little");
+        rc: int = bz2_decompress(dest, dest_len, data, source_len);
+        if rc == BZ_OK {
+            return dest[0:int.from_bytes(dest_len, "little")];
+        }
+        if rc == BZ_OUTBUFF_FULL and cap < ceiling {
+            cap = cap * 2;
+            continue;
+        }
+        raise ValueError(
+            "bz2.decompress: invalid or truncated stream (libbz2 error code " + str(
+                rc
+            ) + ")"
+        );
+    }
+}

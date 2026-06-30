@@ -109,6 +109,18 @@ Two conventions make foreign byte I/O work:
   `crc32`) would shadow it. Bind the non-colliding variant instead; the floor
   uses `crc32_z` / `adler32_z`.
 
+`bz2` (#6978 Phase 2) follows the same two-file split over the bundled
+`libbz2.a`: `_bz2_native.na.jac` wraps the one-shot `BZ2_bzBuffToBuffCompress` /
+`BZ2_bzBuffToBuffDecompress` buffer API (logical name `bz2` -> `libbz2`), and
+`bz2.na.jac` is the Python-shaped `compress(data, compresslevel=9)` /
+`decompress(data)` surface. `compress` produces a single bzip2 stream
+byte-identical to CPython's (same default `workFactor`); note `libbz2` takes the
+in/out `destLen` as `unsigned int*` (a 4-byte cell), unlike zlib's 8-byte
+`uLongf*`, so the surface allocates a 4-byte length buffer. SCOPE: the one-shot
+buffer API only -- `decompress` handles a single stream (CPython additionally
+concatenates multiple streams), and incremental `BZ2Compressor` /
+`BZ2Decompressor` and the file API are out of scope.
+
 Mechanism-F modules are native-host only: a wasm target gets a clean link error
 rather than silent breakage.
 
