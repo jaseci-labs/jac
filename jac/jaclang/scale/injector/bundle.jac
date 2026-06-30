@@ -62,28 +62,41 @@ def is_excluded(rel: Path) -> bool {
 }
 
 
+def _is_secret_path(name: str) -> bool {
+    # The secrets sub-table in either supported config form
+    # ([plugins.scale.secrets] or [scale.secrets]) and any of its nested tables.
+    return name == "plugins.scale.secrets"
+    or name.startswith("plugins.scale.secrets.")
+    or name == "scale.secrets"
+    or name.startswith("scale.secrets.");
+}
+
+
 def sanitized_jac_toml(base: Path) -> (str | None) {
+    # Strip only the secrets sub-table (in both [plugins.scale.secrets] and
+    # [scale.secrets] forms) from the bundled jac.toml; the rest of the scale
+    # config (database, storage, monitoring, tracing, kubernetes, ...) must
+    # survive so the pod's `jac install` can resolve the capability intents.
     src = base / "jac.toml";
     if not src.is_file() {
         return None;
     }
     out: list[str] = [];
-    in_scale_section = False;
+    in_secret_section = False;
     at_top_level = True;
     for line in src.read_text().splitlines() {
         stripped = line.lstrip();
         if stripped.startswith("[") {
             header = stripped.lstrip("[").split("]")[0].strip();
-            in_scale_section = header == "plugins.scale"
-            or header.startswith("plugins.scale.");
+            in_secret_section = _is_secret_path(header);
             at_top_level = False;
-            if in_scale_section {
+            if in_secret_section {
                 continue;
             }
-        } elif at_top_level and stripped.startswith("plugins.scale.") {
+        } elif at_top_level and _is_secret_path(stripped.split("=")[0].strip()) {
             continue;
         }
-        if not in_scale_section {
+        if not in_secret_section {
             out.append(line);
         }
     }
