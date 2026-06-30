@@ -11,7 +11,9 @@ glob _SHIP_PREFIX: str = ".ship-out",
 
 
 def host_repo_root -> Path {
-    return Path(str(__file__)).resolve().parent.parent.parent.parent;
+    # This file lives at <repo>/jac/jaclang/scale/injector/binary.jac, so the
+    # repo root (which holds jac/, jac-scale/, jac-byllm/) is 5 parents up.
+    return Path(str(__file__)).resolve().parent.parent.parent.parent.parent;
 }
 
 
