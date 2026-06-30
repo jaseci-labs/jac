@@ -590,6 +590,7 @@ impl SqliteMemory._ensure_connection -> None {
     self.__conn__ = sqlite3.connect(self.path, check_same_thread=False);
     self.__conn__.execute("PRAGMA journal_mode=WAL");
     self.__conn__.execute("PRAGMA synchronous=NORMAL");
+    self.__conn__.execute("PRAGMA busy_timeout=5000");
 
     if _is_new_schema(self.__conn__) {
         _create_new_schema(self.__conn__);
