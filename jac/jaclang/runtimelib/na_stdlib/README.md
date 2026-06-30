@@ -43,6 +43,17 @@ bundled one. A bundled module links through the existing cross-module machinery
   `minute`/`second`, `weekday()`, and `isoformat()` match CPython. SCOPE: UTC /
   fixed-offset only (no tz database, DST, leap seconds, or microseconds).
 
+- **`base64.na.jac`** (#6978 Phase 3) -- self-contained RFC 4648
+  base16/base32/base64 (`b16`/`b32`/`b64` encode+decode, `altchars`,
+  `standard_`/`urlsafe_` variants) plus RFC 1924 base85 (`b85encode`/`b85decode`,
+  the alphabet CPython's `base64.b85encode` uses). A big-endian bit-accumulator
+  over `bytes` primitives -- no FFI floor, no big-int -- growing the result in a
+  `list[int]` and converting once with `bytes(...)`. Output is byte-identical to
+  CPython and round-trips it; `b16`/`b32` decode take `casefold`. SCOPE:
+  decoders validate the alphabet and decode well-formed input congruently;
+  strict length/padding validation (`validate=`/`binascii.Error`) and the
+  Ascii85 (`a85`) variant are follow-ups.
+
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, ...) are Mechanism-A/H compiler intercepts, reached via the
 flat `import os`, not bundled here (see
