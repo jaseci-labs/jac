@@ -10,7 +10,6 @@ set -euo pipefail
 declare -A FOLDER_TO_FRAGMENTS=(
     ["jac/jaclang/"]="docs/docs/community/release_notes/unreleased/jaclang/"
     ["jac-byllm/byllm/"]="docs/docs/community/release_notes/unreleased/byllm/"
-    ["jac-mcp/jac_mcp/"]="docs/docs/community/release_notes/unreleased/jac-mcp/"
 )
 
 # Determine changed files based on context

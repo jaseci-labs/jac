@@ -64,12 +64,10 @@ def build_runtime_install_commands(
 
         # scale is built into the shipped jac binary (jaclang.scale); no separate
         # install. The app's runtime capability closure is materialized by the
-        # app-level `jac install`.
+        # app-level `jac install`. byllm is optional; the MCP server is likewise
+        # built into the jac binary now.
         commands.append(
             f'[ ! -d "{tc}/jac-byllm" ] || jac install -e "{tc}/jac-byllm" --global'
-        );
-        commands.append(
-            f'[ ! -d "{tc}/jac-mcp" ] || jac install -e "{tc}/jac-mcp" --global'
         );
     } elif experimental {
         commands.append('cd "$HOME"');
@@ -113,7 +111,6 @@ def build_runtime_install_commands(
         # The app's runtime capability closure (serve + configured backends) is
         # materialized by `jac install` in the app dir below.
         commands.append('[ ! -d ./jac-byllm ] || jac install -e ./jac-byllm --global');
-        commands.append('[ ! -d ./jac-mcp ] || jac install -e ./jac-mcp --global');
         commands.append('cd ..');
         commands.append(
             'ln -sf "$HOME/jaseci/jac/zig-out/bin/jac" "$HOME/.local/bin/jac"'
@@ -122,7 +119,6 @@ def build_runtime_install_commands(
         packages = config.plugin_versions or {};
         jaclang_v = packages.get('jaclang', 'latest');
         byllm_v = packages.get('jac_byllm', 'latest');
-        mcp_v = packages.get('jac_mcp', 'latest');
         install_jac = (
             'curl -fsSL https://raw.githubusercontent.com/jaseci-labs/'
             'jaseci/main/scripts/install.sh | bash'
@@ -148,13 +144,6 @@ def build_runtime_install_commands(
                 commands.append('jac install byllm --global');
             } else {
                 commands.append(f'jac install byllm=={byllm_v} --global');
-            }
-        }
-        if mcp_v and mcp_v != 'none' {
-            if mcp_v == 'latest' {
-                commands.append('jac install jac-mcp --global');
-            } else {
-                commands.append(f'jac install jac-mcp=={mcp_v} --global');
             }
         }
     }

@@ -130,8 +130,7 @@ jobs:
         with:
           path: |
             jac-byllm/byllm/_precompiled
-            jac-mcp/jac_mcp/_precompiled
-          key: plugin-jir-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac-byllm/byllm/**', 'jac-mcp/**') }}
+          key: plugin-jir-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac-byllm/byllm/**') }}
 
       - name: Show cluster info
         run: |

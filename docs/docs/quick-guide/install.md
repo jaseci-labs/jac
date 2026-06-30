@@ -43,15 +43,18 @@ Re-run the install command to upgrade to the latest version. The installer repla
 
 ## Installing Plugins
 
-The `jac` binary is the language core. Add plugins -- AI integration, deployment, the MCP server -- with the binary's own installer once `jac` is on your PATH:
+The `jac` binary is the language core. Add plugins -- AI integration, deployment -- with the binary's own installer once `jac` is on your PATH:
 
 ```bash
 # AI/LLM integration
 jac install byllm
 
-# MCP server for AI-assisted Jac development
-jac install jac-mcp
+# The MCP server and the production deployment & scaling subsystem ship built
+# into the jac binary (no install): run `jac mcp`, and use `jac start` /
+# `jac start --scale`. Scale's optional deps install per-project via jac.toml.
 ```
+
+The MCP server for AI-assisted Jac development is built into the binary -- run `jac mcp` directly, no install needed (see [Agent Skills and MCP](agent-skills-and-mcp.md)).
 
 `jac install` resolves plugins from PyPI into your project environment; jaclang itself is provided by the binary, so it is never reinstalled. See the [CLI reference](../reference/cli/index.md#jac-install) for all options.
 

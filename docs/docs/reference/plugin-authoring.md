@@ -2,7 +2,7 @@
 
 This guide is for developers who want to write a Jaclang plugin: a Python (or Jac) package that extends the `jac` CLI, replaces parts of the runtime, ships project templates, or otherwise customizes how Jac behaves on a user's machine. If you just want to *use* the built-in deployment subsystem, see the [Scale Reference](plugins/jac-scale.md) instead.
 
-The real subsystems in the Jaclang monorepo -- the built-in [scale](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/scale) deployment provider (`jaclang.scale`), plus the separate [jac-byllm](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-byllm) and [jac-mcp](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-mcp) plugins -- between them exercise every extension point in this guide. Scale and the client/desktop framework now ship built into `jaclang` core as built-in providers (rather than separately-installed packages), but they still register through the same hooks shown here, so they remain useful worked examples. Where a recipe references one of them, the file:line citations point to the canonical implementation you can read alongside the explanation.
+The real subsystems in the Jaclang monorepo -- the built-in [scale](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/scale) deployment provider (`jaclang.scale`) and the built-in [`jac mcp` server](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/cli/mcp), plus the separate [jac-byllm](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-byllm) plugin -- between them exercise every extension point in this guide. Scale, the MCP server, and the client/desktop framework now ship built into `jaclang` core as built-in providers (rather than separately-installed packages), but they still register through the same hooks and `@registry.command` mechanism shown here, so they remain useful worked examples. Where a recipe references one of them, the file:line citations point to the canonical implementation you can read alongside the explanation.
 
 ## What a plugin can do
 
@@ -58,7 +58,7 @@ There are three "layers" of hooks a plugin can implement, defined as classes in 
 | **Runtime** | `JacRuntimeInterface` (and its mixins: `JacAPIServer`, `JacConsole`, `JacClientBundle`, `JacByLLM`, …) | Many hooks called throughout program execution. Plugins override individual methods (`get_user_manager`, `create_server`, `get_console`, …) to swap in their own implementations. |
 | **Config / packaging** | `JacPluginConfig` | Metadata, jac.toml schema, project templates, and custom dependency types. Called by `jac plugins`, `jac create`, `jac add`, and config validation. |
 
-A plugin class implements whatever subset of hooks it needs. You don't have to implement all three layers -- `jac-byllm` only implements LLM-related runtime hooks, and `jac-mcp` only adds a CLI command.
+A plugin class implements whatever subset of hooks it needs. You don't have to implement all three layers -- `jac-byllm` only implements LLM-related runtime hooks, and the built-in `jac mcp` command (now part of core) only adds a single CLI command.
 
 ## Recipes
 
@@ -414,7 +414,7 @@ The `type` field accepts `"str"`, `"int"`, `"float"`, `"bool"`, `"list"`, or `"d
 
 - [jac-byllm's config schema](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-byllm/byllm/plugin_config.jac#L25-L103) -- concise example with model selection, API keys, and LiteLLM passthrough.
 - [scale's config schema](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/scale/config/plugin_config.jac) -- large, multi-section schema (`jwt`, `sso`, `database`, `kubernetes`, `secrets`, `monitoring`, `sandbox`).
-- [jac-mcp's three-tier fallback](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-mcp/jac_mcp/plugin.jac#L78-L97) -- pre-hook that resolves CLI arg → jac.toml → CLI default in priority order.
+- [the built-in `jac mcp` command's three-tier fallback](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/cli/commands/impl/mcp.impl.jac) -- command body that resolves CLI arg → jac.toml → CLI default in priority order.
 
 ### Recipe 5: Ship a project template
 
@@ -797,7 +797,7 @@ Each subsystem in the monorepo exercises a different subset of the extension sur
 |---|---|---|
 | [**scale** (built into core)](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/scale) | Cloud deployment, FastAPI server, JWT/SSO auth, MongoDB/Redis storage, Kubernetes deploys via `--scale`. | The "replace a CLI command via pre-hook" pattern (`_scale_pre_hook` for `jac start`), the most extensive runtime-hook overrides (`get_user_manager`, `create_server`, `store`), and a multi-section config schema with secrets and env-var resolution. |
 | [**jac-byllm**](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-byllm) | The `by llm()` language feature -- annotate a function and have an LLM implement it at runtime. | Pure runtime-hook plugin with no CLI commands. Shows how to bridge compile-time IR to runtime via `get_mtir`, and how a single hook (`call_llm`) can dispatch across many providers via LiteLLM. |
-| [**jac-mcp**](https://github.com/Jaseci-Labs/jaseci/tree/main/jac-mcp) | An MCP (Model Context Protocol) server that exposes the Jac project to AI coding assistants. | Single new CLI command (`jac mcp`) with the "module-level `@registry.command` + pre-hook" pattern, three-tier config fallback (CLI arg → `jac.toml` → default), and an `--inspect` mode that dumps the server's resources/tools/prompts. |
+| [**`jac mcp`** (built into core)](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/cli/mcp) | An MCP (Model Context Protocol) server that exposes the Jac project to AI coding assistants. Once the separate `jac-mcp` plugin, now part of jaclang core. | A single new CLI command via `@registry.command` with decl/impl separation (`commands/mcp.jac` + `commands/impl/mcp.impl.jac`), three-tier config fallback (CLI arg → `jac.toml` → default), and an `--inspect` mode that dumps the server's resources/tools/prompts. |
 
 ## See also
 

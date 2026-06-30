@@ -38,7 +38,7 @@ This repository houses the Jaseci stack -- the core libraries and tooling that m
 
 - **[`jaclang`](jac/):** The Jac programming language -- compiles to Python bytecode, JavaScript, and native machine code. Ships with the built-in full-stack web/desktop app framework (React-like `cl` components, server, and bundler with full access to the entire npm/node ecosystem) and the built-in `scale` subsystem (`jaclang.scale`) for fully abstracted and automated deployment and scaling with FastAPI, Redis, MongoDB, and Kubernetes integration. Distributed as the self-contained `jac` binary (see [install below](#installation--setup)).
 - **[`byllm`](jac-byllm/):** Plugin for Jac enabling easy integration of large language models into your applications through the innovative [Meaning Typed Programming](https://arxiv.org/pdf/2405.08965) concept. (`jac install byllm`)
-- **[`jac-mcp`](jac-mcp/):** Plugin for Jac providing an MCP server for AI-assisted Jac development with validation, formatting, and documentation tools. (`jac install jac-mcp`)
+- **`mcp`:** Built into the `jac` binary (no install) -- an MCP server for AI-assisted Jac development with validation, formatting, and documentation tools. Start it with `jac mcp`.
 - **[`jac VSCE`](https://github.com/jaseci-labs/jac-vscode/blob/main/README.md):** The official VS Code extension for Jac.
 
 ---
@@ -181,7 +181,8 @@ Then add plugins as you need them:
 
 ```bash
 jac install byllm        # AI/LLM integration
-jac install jac-mcp      # MCP server for AI-assisted development
+# MCP server for AI-assisted development is built in: run `jac mcp` (no install)
+# Production deployment & scaling is built in as the `scale` subsystem (no install)
 ```
 
 Production deployment & scaling ships built into the `jac` binary as the `scale` subsystem (no separate install); its optional deps (MongoDB, Redis, Kubernetes, ...) are pulled per-project via `[scale.*]` config + `jac install`.
