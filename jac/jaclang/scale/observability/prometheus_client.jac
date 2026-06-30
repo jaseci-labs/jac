@@ -1,8 +1,6 @@
 import os;
 import math;
 import logging;
-import requests;
-import from requests.exceptions { RequestException }
 
 glob logger = logging.getLogger(__name__);
 
@@ -21,6 +19,15 @@ def resolve_prometheus_url -> str | None {
 def query(promql: str, timeout: float = 3.0) -> list[any] | None {
     base = resolve_prometheus_url();
     if not base {
+        return None;
+    }
+    # requests is not in the base serve closure; import it lazily so the serve
+    # mixins that pull this module in do not eager-import an uninstalled dep.
+    try {
+        import requests;
+        import from requests.exceptions { RequestException }
+    } except ImportError {
+        logger.warning("Prometheus query skipped: 'requests' is not installed");
         return None;
     }
     try {
@@ -67,6 +74,13 @@ def query_range(
 ) -> list[any] | None {
     base = resolve_prometheus_url();
     if not base {
+        return None;
+    }
+    try {
+        import requests;
+        import from requests.exceptions { RequestException }
+    } except ImportError {
+        logger.warning("Prometheus query_range skipped: 'requests' is not installed");
         return None;
     }
     try {
