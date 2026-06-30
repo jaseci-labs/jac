@@ -11,8 +11,32 @@ glob _SHIP_PREFIX: str = ".ship-out",
 
 
 def host_repo_root -> Path {
-    # This file lives at <repo>/jac/jaclang/scale/injector/binary.jac, so the
-    # repo root (which holds jac/, jac-scale/, jac-byllm/) is 5 parents up.
+    # The monorepo source root (the dir containing jac/build.zig) needed to
+    # host-build the shipped binary. The running module's __file__ may live in
+    # the bundled jac runtime cache rather than the checkout (e.g. the
+    # --experimental e2e runs under the jac binary, so __file__ is under
+    # .cache/jac/rt/<hash>/site/...), which a fixed __file__-relative guess
+    # mis-resolves. Prefer an explicit override, then search upward from cwd and
+    # __file__ for the jac/build.zig marker, and only then fall back.
+    import os;
+    override = os.environ.get("JAC_REPO_ROOT");
+    if override {
+        return Path(override).resolve();
+    }
+    seen: set = set();
+    for start in [Path.cwd(), Path(str(__file__)).resolve()] {
+        for cand in [start, *start.parents] {
+            if cand in seen {
+                continue;
+            }
+            seen.add(cand);
+            if (cand / "jac" / "build.zig").is_file() {
+                return cand;
+            }
+        }
+    }
+    # Last resort: this file is at <repo>/jac/jaclang/scale/injector/binary.jac,
+    # so the monorepo root is 5 parents up.
     return Path(str(__file__)).resolve().parent.parent.parent.parent.parent;
 }
 

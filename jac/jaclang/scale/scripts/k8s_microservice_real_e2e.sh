@@ -41,6 +41,11 @@ DELETE_TIMEOUT="${DELETE_TIMEOUT:-300s}"
 # levels up.
 REPO_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 
+# The --experimental host build resolves the source checkout to run `zig build`.
+# Under the jac binary, jaclang.scale runs from the runtime cache (not this
+# checkout), so hand it the real repo root explicitly.
+export JAC_REPO_ROOT="${REPO_ROOT}"
+
 # The no-Docker `--experimental` path ships the LOCAL scale source (built into
 # jaclang as jaclang.scale): PyPI lags the K-track rearchitecture, so PR-time CI
 # must exercise the in-repo code.

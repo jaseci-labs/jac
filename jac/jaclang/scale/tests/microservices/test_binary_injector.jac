@@ -3,6 +3,7 @@ import io;
 import tarfile;
 import tempfile;
 import from pathlib { Path }
+import from unittest.mock { patch }
 import from jaclang.scale.injector.binary { pack_toolchain, host_repo_root }
 import from jaclang.scale.injector.binary_injector { BinaryInjector }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
@@ -47,6 +48,37 @@ test "experimental still builds in-pod (ship_binary defaults off, no regression)
     joined = " && ".join(cmds);
     assert "zig build" in joined;
     assert f"{TOOLCHAIN_SUBDIR}/bin/jac" not in joined;
+}
+
+
+test "host_repo_root prefers JAC_REPO_ROOT, then the jac/build.zig marker" {
+    # The --experimental host build resolves the source checkout from here. Under
+    # the jac binary, __file__ lives in the runtime cache (not the checkout), so a
+    # fixed __file__-relative guess mis-resolves; an explicit override and an
+    # upward search for jac/build.zig must win instead.
+    with tempfile.TemporaryDirectory() as d {
+        repo = Path(d).resolve();
+        (repo / "jac").mkdir();
+        (repo / "jac" / "build.zig").write_text("");
+        nested = repo / "a" / "b";
+        nested.mkdir(parents=True);
+        # explicit override wins
+        with patch.dict(os.environ, {"JAC_REPO_ROOT": str(repo)}) {
+            assert host_repo_root() == repo;
+        }
+        # with no override, the upward search from cwd finds the build.zig marker
+        old_cwd = os.getcwd();
+        saved = os.environ.pop("JAC_REPO_ROOT", None);
+        try {
+            os.chdir(str(nested));
+            assert host_repo_root() == repo;
+        } finally {
+            os.chdir(old_cwd);
+            if saved is not None {
+                os.environ["JAC_REPO_ROOT"] = saved;
+            }
+        }
+    }
 }
 
 
