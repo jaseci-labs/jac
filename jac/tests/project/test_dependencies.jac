@@ -2,6 +2,7 @@
 
 import os;
 import sys;
+import subprocess;
 import tempfile;
 import shutil;
 import from pathlib { Path }
@@ -128,6 +129,32 @@ test "DependencyInstaller ensure_venv creates" {
             mock_builder_class.assert_called_once();
             mock_builder.create.assert_called_once_with(str(venv_dir));
         }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "DependencyInstaller ensure_venv seeds the build backend" {
+    # ensurepip on Python 3.12+ gives a fresh venv pip but NOT setuptools, so
+    # source-only (sdist) deps that build via setuptools.build_meta failed in
+    # pods. ensure_venv must seed the backend itself so `jac install` is
+    # self-sufficient (no caller-side `pip install setuptools wheel` needed).
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        installer = DependencyInstaller(config=config);
+        installer.ensure_venv();
+        venv_dir = project_dir / ".jac" / "venv";
+        py_name = "python.exe" if sys.platform == "win32" else "python";
+        venv_python = str(get_venv_bin_dir(venv_dir) / py_name);
+        result = subprocess.run(
+            [venv_python, "-c", "import setuptools.build_meta"],
+            capture_output=True,
+            text=True
+        );
+        assert result.returncode == 0 , result.stderr;
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
