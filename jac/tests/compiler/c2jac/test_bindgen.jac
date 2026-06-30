@@ -123,3 +123,51 @@ test "Phase 2 resolves a user scalar typedef alias through the typedef map" {
     (out, rep) = _bind("bindgen/stdint.h", "si");
     assert "def si_scale(x: f64, k: f64) -> f64;" in out , out;  # real_t → double → f64
 }
+
+# ---------------------------------------------------------------------------- #
+# Phase 3 — struct layout bindings                                              #
+# ---------------------------------------------------------------------------- #
+test "Phase 3 emits obj for a plain named struct with int fields" {
+    (out, rep) = _bind("bindgen/structs.h", "geo");
+    assert "obj Point { has x: i32 = 0; has y: i32 = 0; }" in out , out;
+}
+
+test "Phase 3 emits obj for a typedef'd anonymous struct with float fields" {
+    (out, rep) = _bind("bindgen/structs.h", "geo");
+    assert "obj Color { has r: f32 = 0.0; has g: f32 = 0.0; has b: f32 = 0.0; }" in out , out;
+}
+
+test "Phase 3 resolves struct-by-value params to the struct name" {
+    (out, rep) = _bind("bindgen/structs.h", "geo");
+    assert "def pt_add(a: Point, b: Point) -> Point;" in out , out;
+    assert "def pt_dot(a: Point, b: Point) -> i32;" in out , out;
+}
+
+test "Phase 3 resolves typedef'd struct params to the typedef name" {
+    (out, rep) = _bind("bindgen/structs.h", "geo");
+    assert "def color_blend(a: Color, b: Color, t: f32) -> Color;" in out , out;
+}
+
+test "Phase 3 keeps struct-pointer params as int" {
+    (out, rep) = _bind("bindgen/structs.h", "geo");
+    assert "def pt_translate(p: int, dx: i32, dy: i32) -> None;" in out , out;
+}
+
+test "Phase 3 counts structs and functions separately in the report" {
+    (out, rep) = _bind("bindgen/structs.h", "geo");
+    assert rep.structs == 2 , f"expected 2 structs, got {rep.structs}";
+    assert rep.functions == 4 , f"expected 4 functions, got {rep.functions}";
+}
+
+test "Phase 3 struct blocks appear before function bindings" {
+    (out, rep) = _bind("bindgen/structs.h", "geo");
+    obj_pos = out.index("obj Point");
+    fn_pos = out.index("def pt_add");
+    assert obj_pos < fn_pos , "struct obj must appear before function defs";
+}
+
+test "Phase 3 blocklist suppresses a struct" {
+    (out, rep) = _bind("bindgen/structs.h", "geo", block=["Point"]);
+    assert "obj Point" not in out , out;
+    assert "obj Color" in out , out;
+}

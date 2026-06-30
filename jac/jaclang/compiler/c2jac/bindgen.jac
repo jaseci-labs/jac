@@ -36,6 +36,7 @@ glob _FFI_SCALARS: set = {
 
 obj BindReport {
     has functions: int = 0,
+        structs: int = 0,
         constants: int = 0,
         variadic: int = 0,
         skipped: int = 0;
@@ -110,7 +111,7 @@ def _scalar_for_names(names: list, typedefs: dict, depth: int = 0) -> str {
     return ffi_prim(names);
 }
 
-def _ptr_ffi(ptr_decl: object, typedefs: dict) -> str {
+def _ptr_ffi(ptr_decl: object, typedefs: dict, structs: (set | None) = None) -> str {
     inner = ptr_decl.type;
     if isinstance(inner, c_ast.TypeDecl) {
         names = inner.type?.names or [];
@@ -124,7 +125,7 @@ def _ptr_ffi(ptr_decl: object, typedefs: dict) -> str {
     return "int";
 }
 
-def ffi_type(decl_type: object, typedefs: dict | None = None) -> str {
+def ffi_type(decl_type: object, typedefs: dict | None = None, structs: (set | None) = None) -> str {
     tds = typedefs or {};
     t = decl_type;
     while not isinstance(t, c_ast.TypeDecl) {
@@ -132,7 +133,7 @@ def ffi_type(decl_type: object, typedefs: dict | None = None) -> str {
             return "int";
         }
         if isinstance(t, c_ast.PtrDecl) {
-            return _ptr_ffi(t, tds);
+            return _ptr_ffi(t, tds, structs);
         }
         if isinstance(t, c_ast.FuncDecl) {
             t = t.type;
@@ -143,7 +144,13 @@ def ffi_type(decl_type: object, typedefs: dict | None = None) -> str {
             return "int";
         }
     }
+    if isinstance(t.type, c_ast.Struct) and t.type.name and structs and t.type.name in structs {
+        return t.type.name;
+    }
     names = t.type?.names or ["int"];
+    if names and len(names) == 1 and structs and names[0] in structs {
+        return names[0];
+    }
     return _scalar_for_names(names, tds);
 }
 
@@ -162,7 +169,7 @@ def _is_void_params(params: list) -> bool {
     return False;
 }
 
-def _func_signature(funcdecl: object, typedefs: dict) -> tuple {
+def _func_signature(funcdecl: object, typedefs: dict, structs: (set | None) = None) -> tuple {
     pl = funcdecl.args;
     if pl is None {
         return ("", False);
@@ -181,7 +188,7 @@ def _func_signature(funcdecl: object, typedefs: dict) -> tuple {
             continue;
         }
         pname = jac_id(p.name or f"arg{idx}");
-        parts.append(f"{pname}: {ffi_type(p.type, typedefs)}");
+        parts.append(f"{pname}: {ffi_type(p.type, typedefs, structs)}");
         idx += 1;
     }
     return (", ".join(parts), is_var);
@@ -199,6 +206,100 @@ def _lib_token(lib: str) -> str {
 
 def _emit_func_block(lib: str, name: str, sig: str, ret: str) -> str {
     return f"import from {_lib_token(lib)} {{ def {jac_id(name)}({sig}) -> {ret}; }}\n";
+}
+
+def _struct_field_default(ffi_t: str) -> str {
+    if ffi_t in ("f32", "f64") {
+        return "0.0";
+    }
+    if ffi_t == "str" {
+        return "\"\"";
+    }
+    if ffi_t == "bytes" {
+        return "b\"\"";
+    }
+    if ffi_t == "bool" {
+        return "False";
+    }
+    return "0";
+}
+
+def _emit_struct_block(lib: str, name: str, fields: list) -> str {
+    parts = [f"has {fn}: {ft} = {_struct_field_default(ft)}" for (fn, ft) in fields];
+    inner = "; ".join(parts);
+    return f"import from {_lib_token(lib)} {{ obj {jac_id(name)} {{ {inner}; }} }}\n";
+}
+
+def _struct_fields_from_node(snode: object, typedefs: dict, known_structs: set) -> list {
+    out: list = [];
+    for decl in (snode.decls or []) {
+        fname = jac_id(decl.name or "_f");
+        ft = ffi_type(decl.type, typedefs, known_structs);
+        out.append((fname, ft));
+    }
+    return out;
+}
+
+def _collect_struct_defs(file_ast: object, typedefs: dict) -> tuple {
+    # Returns (emit_defs, all_names) where:
+    #   emit_defs: list[(canonical_name, fields)] — one entry per physical struct to emit
+    #   all_names: set — every name (canonical + tag aliases) ffi_type may recognize
+    emit_defs: list = [];
+    all_names: set = set();
+    for ext in file_ast.ext {
+        if isinstance(ext, c_ast.Typedef) {
+            inner = ext.type;
+            if not (isinstance(inner, c_ast.TypeDecl) and isinstance(inner.type, c_ast.Struct)) {
+                continue;
+            }
+            snode = inner.type;
+            if snode.decls is None {
+                continue;
+            }
+            if ext.name in all_names {
+                continue;
+            }
+            fields = _struct_fields_from_node(snode, typedefs, all_names);
+            emit_defs.append((ext.name, fields));
+            all_names.add(ext.name);
+            if snode.name {
+                all_names.add(snode.name);
+            }
+        } elif isinstance(ext, c_ast.Decl) {
+            t = ext.type;
+            if not (isinstance(t, c_ast.Struct) and t.name and t.decls is not None) {
+                continue;
+            }
+            if t.name in all_names {
+                continue;
+            }
+            fields = _struct_fields_from_node(t, typedefs, all_names);
+            emit_defs.append((t.name, fields));
+            all_names.add(t.name);
+        }
+    }
+    return (emit_defs, all_names);
+}
+
+def _emit_structs(
+    lib: str,
+    emit_defs: list,
+    block_set: set,
+    rep: BindReport
+) -> str {
+    lines: list[str] = [];
+    for (name, fields) in emit_defs {
+        if name in block_set {
+            rep.skipped += 1;
+            continue;
+        }
+        lines.append(_emit_struct_block(lib, name, fields));
+        rep.structs += 1;
+    }
+    if not lines {
+        return "";
+    }
+    return "\n# Struct layout bindings.\n" + "".join(lines);
 }
 
 def _func_node(ext: object) -> object {
@@ -338,7 +439,9 @@ def _emit_bindings(
     allow_set = set(allow) if allow else None;
     block_set = set(block) if block else set();
     typedefs = _collect_typedefs(file_ast);
+    (emit_defs, struct_names) = _collect_struct_defs(file_ast, typedefs);
     rep = BindReport();
+    struct_section = _emit_structs(lib, emit_defs, block_set, rep);
     blocks: list[str] = [];
     fn_names: set[str] = set();
     for ext in file_ast.ext {
@@ -352,8 +455,8 @@ def _emit_bindings(
             continue;
         }
         funcdecl = fn.type;
-        (sig, is_var) = _func_signature(funcdecl, typedefs);
-        ret = ffi_type(funcdecl.type, typedefs);
+        (sig, is_var) = _func_signature(funcdecl, typedefs, struct_names);
+        ret = ffi_type(funcdecl.type, typedefs, struct_names);
         blocks.append(_emit_func_block(lib, name, sig, ret));
         fn_names.add(name);
         rep.functions += 1;
@@ -363,7 +466,7 @@ def _emit_bindings(
     }
     consts = _emit_consts(file_ast, macros, allow_set, block_set, rep, fn_names);
     header = f"# Native FFI bindings for `{lib}`, generated by `jac cbindgen`.\n" + "# Do not edit by hand — regenerate from the C header.\n\n";
-    return (header + "".join(blocks) + consts, rep);
+    return (header + struct_section + "".join(blocks) + consts, rep);
 }
 
 def bindings_from_source(

@@ -1,6 +1,6 @@
 # cbindgen - C-header to native-FFI binding generator
 
-> Status: P0-P2 shipped; P3 (aggregates / globals) open pending a design call.
+> Status: P0-P3 shipped; P4 (global-variable externs) open.
 > Sibling tool to c2jac (see `PLAN.md` / `IMPLEMENTATION.md`). Where c2jac
 > transpiles a C *translation unit* into idiomatic Jac, cbindgen reads a C
 > *header* and emits a thin native-FFI binding so Jac can call into a prebuilt
@@ -32,6 +32,7 @@ flattened TU  +  object-like macro table  --+
    v
 pycparser C AST
    |  _emit_bindings
+   |    - structs:   _collect_struct_defs / _emit_structs / _emit_struct_block
    |    - functions: _func_node / _func_signature / ffi_type
    |    - constants: _emit_consts (enum AST + macro table)
    |    - types:     _collect_typedefs + _scalar_for_names
@@ -98,19 +99,41 @@ share a name, two Jac module globals cannot).
 - **P2 - typedef + fixed-width scalars:** DONE. `_STDINT_SCALARS` name map and
   the same-TU typedef table (section 3), so `uint32_t` / `size_t` / user aliases
   bind to real FFI scalars instead of collapsing to `int`.
-- **P3 - aggregates and globals:** OPEN, blocked on a design call (section 6).
-  Candidates: struct / union typedefs, global-variable externs.
+- **P3 - struct layout bindings:** DONE. Named and typedef'd C structs to
+  `import from <lib> { obj Name { has field: type = default; } }` (section 6).
+  Fields resolve through the same `ffi_type` pipeline as function params. Struct
+  pointers remain opaque `int` handles. `BindReport.structs` added. Struct
+  blocks appear before function blocks in the output.
+- **P4 - global-variable externs:** OPEN. Candidate: `extern int errno;` and
+  similar file-scope variable declarations.
 
-## 6. Open question for P3
+## 6. Struct layout bindings (P3)
 
-Before binding structs, settle how native FFI represents them. The hand-written
-`na_stdlib` FFI files never bind a struct *layout*; struct pointers are passed
-as opaque `int` handles. So "struct binding" may mean emitting an opaque alias
-(or nothing) rather than a Jac `obj` with fields. Resolve by spiking what
-`import from <lib> { ... }` accepts for a non-function data symbol and whether
-nacompile can express field offsets, then scope P3 to what is actually callable.
-Until then cbindgen treats every struct/union pointer as an opaque `int`, which
-is correct (if coarse) for the handle-passing idiom those libraries use.
+`_collect_struct_defs` walks `file_ast.ext` looking for struct definitions:
+
+- `struct Tag { fields... };` → canonical name is `Tag`.
+- `typedef struct { fields... } Name;` → canonical name is `Name`; the tag (if
+  any) is registered as an alias so it resolves correctly in `ffi_type` when
+  a function uses `struct Tag` syntax. Only one `obj` block is emitted per
+  physical struct.
+
+Field types resolve through `ffi_type` (same scalar/pointer/typedef rules as
+function params). Struct-valued fields whose type is another known struct use
+that struct's name; everything else collapses to the usual scalar default.
+
+`_emit_struct_block` emits:
+
+```jac
+import from <lib> { obj Name { has f1: t1 = d1; has f2: t2 = d2; } }
+```
+
+where defaults are `0` for integers, `0.0` for floats, `""` for `str`,
+`b""` for `bytes`, and `False` for `bool`.
+
+`--block` suppresses individual struct names (matching constant/function
+behavior). `--allow` does not filter structs; they are support types that
+functions depend on, so excluding them by default when an allow-list is set
+would silently break the callers.
 
 ## 7. Tests
 
@@ -124,6 +147,8 @@ suite is portable regardless of how pycparser was installed):
   (decimal/hex/negative), skipped string + function-like macros (P1).
 - `stdint.h` - fixed-width typedefs, a deliberately-wrong-width fake proving the
   name map wins, a user scalar alias (P2).
+- `structs.h` - plain named struct, typedef'd anonymous struct, struct-by-value
+  params/returns, struct-pointer params (remain `int`), blocklist (P3).
 
 ## References
 
