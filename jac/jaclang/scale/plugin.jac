@@ -595,7 +595,32 @@ class JacScalePlugin {
     static def get_api_server_class -> type | None {
         try {
             import from .server.serve { JacAPIServer }
-        } except ImportError {
+        } except ImportError as e {
+            import logging;
+            # The base serve closure (fastapi / uvicorn / pyjwt / pydantic) being
+            # absent is the expected decline that falls back to core's stdlib
+            # server. Any OTHER missing module means a serve mixin eager-imported a
+            # dep outside the closure (e.g. requests); surface it as a warning so
+            # the otherwise-cryptic incompatible-server fallback is diagnosable
+            # instead of silent.
+            missing = e?.name or "";
+            base_closure = {
+                "fastapi",
+                "uvicorn",
+                "jwt",
+                "pydantic",
+                "fastapi_sso",
+                "starlette"
+            };
+            msg = (
+                "scale API server unavailable, falling back to core server: "
+                f"missing module '{missing}' ({e})"
+            );
+            if missing.split(".")[0] in base_closure {
+                logging.getLogger(__name__).debug(msg);
+            } else {
+                logging.getLogger(__name__).warning(msg);
+            }
             return None;
         }
         return JacAPIServer;
