@@ -214,7 +214,7 @@ test "transient mid-stream drop retried on same model, output de-duplicated" {
 test "streaming generator survives consumption from a foreign Context" {
     # Regression test: a streaming by llm() generator must be safe to consume
     # from a different contextvars.Context than the one that created it — e.g. a
-    # thread-pool worker, which is how jac-scale's sse_frame_stream drives SSE.
+    # thread-pool worker, which is how the scale backend's sse_frame_stream drives SSE.
     # Pre-fix, the wrapper reset a ContextVar Token across Context boundaries and
     # raised "Token was created in a different Context", killing the stream.
     captured_output = io.StringIO();
