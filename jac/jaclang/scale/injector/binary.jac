@@ -9,7 +9,8 @@ import from urllib.request { urlopen }
 import from jaclang.scale.injector.bundle { TOOLCHAIN_SUBDIR }
 
 glob _SHIP_PREFIX: str = ".ship-out",
-     BINARY_ARCNAME: str = "bin/jac";
+     BINARY_ARCNAME: str = "bin/jac",
+     _HTTP_TIMEOUT: int = 60;
 
 
 def host_repo_root -> Path {
@@ -62,7 +63,10 @@ def node_arch -> str {
 
 
 def _http_get_bytes(url: str) -> bytes {
-    resp = urlopen(url);
+    # timeout bounds inactivity (no bytes for _HTTP_TIMEOUT s), not total
+    # download time, so a slow but progressing large-binary fetch is fine while a
+    # stalled connection fails fast instead of hanging the deploy forever.
+    resp = urlopen(url, timeout=_HTTP_TIMEOUT);
     try {
         return bytes(resp.read());
     } finally {

@@ -46,6 +46,15 @@ test "bare [dev] resolves to the rolling dev prerelease channel" {
 }
 
 
+test "whitespace [ dev ] table still resolves to the dev channel" {
+    # The cheap fast-path guard must catch TOML whitespace variants, not just the
+    # bare `[dev]` spelling, or the section would be silently ignored.
+    d = _write_toml("[ dev ]\ntest_jobs = \"auto\"\n");
+    dev = resolve_dev_deploy(d);
+    assert dev.channel == CHANNEL_DEV;
+}
+
+
 test "[dev] repo/branch resolves to the in-pod build-from-branch channel" {
     d = _write_toml(
         "[dev]\nrepo = \"https://github.com/jaseci-labs/jaseci\"\nbranch = \"wip\"\n"

@@ -64,8 +64,12 @@ def resolve_dev_deploy(project_dir: str) -> DevDeploy {
         return DevDeploy();
     }
     raw = toml.read_bytes();
-    # Cheap guard: skip the tomllib parse unless a `[dev]` table is present.
-    if b"[dev]" not in raw {
+    # Cheap guard: skip the tomllib parse unless the word `dev` appears at all.
+    # Deliberately loose (a substring, not `[dev]`) so no table spelling - bare
+    # `[dev]`, whitespace `[ dev ]`, or dotted `[dev.x]` - is ever missed; the
+    # real decision is `data.get("dev")` below, so false positives only cost a
+    # parse, never a wrong channel.
+    if b"dev" not in raw {
         return DevDeploy();
     }
     data = tomllib.loads(raw.decode("utf-8"));

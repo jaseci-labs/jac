@@ -9,7 +9,7 @@ import from jaclang.scale.injector.binary {
     toolchain_object_key
 }
 import from jaclang.scale.injector.bundle { content_address }
-import from jaclang.scale.config.dev_config { DevDeploy, CHANNEL_LOCAL }
+import from jaclang.scale.config.dev_config { DevDeploy, CHANNEL_LOCAL, CHANNEL_STABLE }
 
 glob logger = logging.getLogger(__name__);
 
@@ -19,7 +19,7 @@ obj BinaryInjector(PvcInjector) {
     # of the app source PvcInjector already seeds. The binary is either downloaded
     # from a published release (stable/dev) or host-built from a local checkout
     # (local); either way the pod skips the in-pod jaclang build.
-    has channel: str = "",
+    has channel: str = CHANNEL_STABLE,
         _toolchain_object_key: str = "",
         _toolchain_bytes: bytes = b"";
 
