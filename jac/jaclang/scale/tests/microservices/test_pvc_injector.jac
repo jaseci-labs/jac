@@ -50,6 +50,22 @@ test "the bundle pvc is ReadWriteMany so every pod can mount it" {
 }
 
 
+test "the bundle pvc fails fast when RWX is requested without a storage class" {
+    # An empty storage class would fall back to the cluster default StorageClass,
+    # which is RWO on most EKS clusters (gp3) and cannot satisfy RWX.
+    raised = False;
+    try {
+        build_bundle_pvc("orders", "prod", "5Gi", "");
+    } except ValueError as e {
+        raised = True;
+        assert "orders-bundles" in str(e);
+        assert "ReadWriteMany" in str(e);
+        assert "bundle_storage_class" in str(e);
+    }
+    assert raised , "Expected ValueError for an RWX bundle PVC without a storage class";
+}
+
+
 test "prepare + mutate_pod_spec wires the pvc, an init container, and the app mount" {
     with tempfile.TemporaryDirectory() as project {
         with open(os.path.join(project, "app.jac"), "w") as handle {
