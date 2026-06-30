@@ -422,8 +422,53 @@ impl check_pods_restarted(namespace: str, app_name: str) -> bool {
     v1 = client.CoreV1Api();
     app_labels = [app_name + d[0] for d in COMPANION_DEFS];
     selector = "app in ({})".format(", ".join(app_labels));
+
+    current_hashes: set = set();
+    use_hash_filter = False;
+    try {
+        apps_v1 = client.AppsV1Api();
+        rs_items = apps_v1.list_namespaced_replica_set(
+            namespace=namespace, label_selector=selector
+        ).items;
+        best_rev: dict = {};
+        best_rs: dict = {};
+        for rs in rs_items {
+            app_val = (rs.metadata.labels or {}).get("app", "");
+            if not app_val {
+                continue;
+            }
+            rev_str = (rs.metadata.annotations or {}).get(
+                "deployment.kubernetes.io/revision", "0"
+            );
+            try {
+                rev = int(rev_str);
+            } except ValueError {
+                rev = 0;
+            }
+            if app_val not in best_rev or rev > best_rev[app_val] {
+                best_rev[app_val] = rev;
+                best_rs[app_val] = rs;
+            }
+        }
+        for rs in best_rs.values() {
+            h = (rs.metadata.labels or {}).get("pod-template-hash");
+            if h {
+                current_hashes.add(h);
+                use_hash_filter = True;
+            }
+        }
+    } except Exception {
+        ;
+    }
+
     pods = v1.list_namespaced_pod(namespace=namespace, label_selector=selector);
     for pod in pods.items {
+        if use_hash_filter {
+            pod_hash = (pod.metadata.labels or {}).get("pod-template-hash");
+            if pod_hash not in current_hashes {
+                continue;
+            }
+        }
         statuses = (pod.status.init_container_statuses or []) + (
             pod.status.container_statuses or []
         );
