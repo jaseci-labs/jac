@@ -2,7 +2,18 @@ import os;
 import math;
 import logging;
 
-glob logger = logging.getLogger(__name__);
+glob logger = logging.getLogger(__name__),
+     # Keys already warned about, so a repeated condition (e.g. requests missing on a
+     # polling path) logs once instead of on every call.
+     _warned_once: set = set();
+
+
+def _warn_once(key: str, msg: str) {
+    if key not in _warned_once {
+        _warned_once.add(key);
+        logger.warning(msg);
+    }
+}
 
 def resolve_prometheus_url -> str | None {
     override_url: str | None = os.environ.get("PROMETHEUS_URL");
@@ -27,7 +38,9 @@ def query(promql: str, timeout: float = 3.0) -> list[any] | None {
         import requests;
         import from requests.exceptions { RequestException }
     } except ImportError {
-        logger.warning("Prometheus query skipped: 'requests' is not installed");
+        _warn_once(
+            "requests-missing", "Prometheus query skipped: 'requests' is not installed"
+        );
         return None;
     }
     try {
@@ -80,7 +93,10 @@ def query_range(
         import requests;
         import from requests.exceptions { RequestException }
     } except ImportError {
-        logger.warning("Prometheus query_range skipped: 'requests' is not installed");
+        _warn_once(
+            "requests-missing",
+            "Prometheus query_range skipped: 'requests' is not installed"
+        );
         return None;
     }
     try {
