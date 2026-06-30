@@ -28,6 +28,8 @@ glob COMPANION_DEFS: list = [
 
      ];
 
+def _resolve_current_rs_hashes(namespace: str, selector: str) -> set;
+
 def check_pods_restarted(
     namespace: str, app_name: str, _rs_hashes: (set | None) = None
 ) -> bool;

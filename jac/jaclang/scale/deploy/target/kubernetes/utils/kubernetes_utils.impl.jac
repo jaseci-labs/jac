@@ -413,6 +413,40 @@ impl get_cluster_provider -> ClusterProvider {
     return LocalProvider();
 }
 
+impl _resolve_current_rs_hashes(namespace: str, selector: str) -> set {
+    apps_v1 = client.AppsV1Api();
+    rs_items = apps_v1.list_namespaced_replica_set(
+        namespace=namespace, label_selector=selector
+    ).items;
+    best: dict = {};
+    for rs in rs_items {
+        app_val = (rs.metadata.labels or {}).get("app", "");
+        if not app_val {
+            continue;
+        }
+        rev_str = (rs.metadata.annotations or {}).get(
+            "deployment.kubernetes.io/revision", "0"
+        );
+        try {
+            rev = int(rev_str);
+        } except (ValueError, TypeError) {
+            rev = 0;
+        }
+        prev = best.get(app_val);
+        if prev is None or rev > prev[0] {
+            best[app_val] = (rev, rs);
+        }
+    }
+    pending: set = set();
+    for (_, rs) in best.values() {
+        h = (rs.metadata.labels or {}).get("pod-template-hash");
+        if h {
+            pending.add(h);
+        }
+    }
+    return pending;
+}
+
 impl check_pods_restarted(
     namespace: str, app_name: str, _rs_hashes: (set | None) = None
 ) -> bool {
@@ -430,39 +464,11 @@ impl check_pods_restarted(
         current_hashes = _rs_hashes;
     } else {
         try {
-            apps_v1 = client.AppsV1Api();
-            rs_items = apps_v1.list_namespaced_replica_set(
-                namespace=namespace, label_selector=selector
-            ).items;
-            best: dict = {};
-            for rs in rs_items {
-                app_val = (rs.metadata.labels or {}).get("app", "");
-                if not app_val {
-                    continue;
-                }
-                rev_str = (rs.metadata.annotations or {}).get(
-                    "deployment.kubernetes.io/revision", "0"
-                );
-                try {
-                    rev = int(rev_str);
-                } except (ValueError, TypeError) {
-                    rev = 0;
-                }
-                prev = best.get(app_val);
-                if prev is None or rev > prev[0] {
-                    best[app_val] = (rev, rs);
-                }
-            }
-            pending: set = set();
-            for (_, rs) in best.values() {
-                h = (rs.metadata.labels or {}).get("pod-template-hash");
-                if h {
-                    pending.add(h);
-                }
-            }
-            current_hashes = pending;
-        } except Exception {
-            ;
+            current_hashes = _resolve_current_rs_hashes(namespace, selector);
+        } except Exception as exc {
+            console.print(
+                f"[warn] RS hash lookup failed, falling back to broad pod scan: {exc}"
+            );
         }
     }
 
@@ -574,49 +580,24 @@ impl check_deployment_status(
     } else {
         url = f"http://localhost:{node_port}{path}";
     }
-    rs_hashes: (set | None) = None;
     try {
         config.load_kube_config();
     } except ConfigException {
         config.load_incluster_config();
     }
+    _app_labels = [app_name + d[0] for d in COMPANION_DEFS];
+    _selector = "app in ({})".format(", ".join(_app_labels));
+    rs_hashes: (set | None) = None;
     try {
-        _apps_v1 = client.AppsV1Api();
-        _app_labels = [app_name + d[0] for d in COMPANION_DEFS];
-        _selector = "app in ({})".format(", ".join(_app_labels));
-        _rs_items = _apps_v1.list_namespaced_replica_set(
-            namespace=namespace, label_selector=_selector
-        ).items;
-        _best: dict = {};
-        for _rs in _rs_items {
-            _app_val = (_rs.metadata.labels or {}).get("app", "");
-            if not _app_val {
-                continue;
-            }
-            _rev_str = (_rs.metadata.annotations or {}).get(
-                "deployment.kubernetes.io/revision", "0"
-            );
-            try {
-                _rev = int(_rev_str);
-            } except (ValueError, TypeError) {
-                _rev = 0;
-            }
-            _prev = _best.get(_app_val);
-            if _prev is None or _rev > _prev[0] {
-                _best[_app_val] = (_rev, _rs);
-            }
-        }
-        _pending: set = set();
-        for (_, _rs) in _best.values() {
-            _h = (_rs.metadata.labels or {}).get("pod-template-hash");
-            if _h {
-                _pending.add(_h);
-            }
-        }
-        rs_hashes = _pending;
-    } except Exception {
-        ;
+        rs_hashes = _resolve_current_rs_hashes(namespace, _selector);
+    } except Exception as exc {
+        console.print(
+            f"[warn] RS hash lookup failed, falling back to broad pod scan: {exc}"
+        );
     }
+    # rs_hashes is stable for a single rollout window; a concurrent second deploy
+    # would introduce a new RS hash not captured here, but that scenario is outside
+    # the scope of a single check_deployment_status call.
     for attempt in range(1, (max_retries + 1)) {
         try {
             response = requests.get(url, timeout=10);
