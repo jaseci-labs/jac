@@ -21,7 +21,7 @@ def _resolve_storage_env(suffix: str, env_prefix: str) -> (str | None) {
 }
 
 class StorageFactory {
-    static def default_storage_type() -> StorageType {
+    static def default_storage_type -> StorageType {
         jac_config = get_config();
         storage_type_str = os.environ.get("JAC_STORAGE_TYPE");
         if not storage_type_str and jac_config and jac_config.storage {
