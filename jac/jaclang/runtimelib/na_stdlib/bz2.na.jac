@@ -29,6 +29,12 @@ def:pub decompress(data: bytes) -> bytes {
     }
 
     ceiling: int = (source_len * 1024) + 67108864;
+    if ceiling > 4294967295 {
+        ceiling = 4294967295;
+    }
+    if cap > ceiling {
+        cap = ceiling;
+    }
     while True {
         dest = b"\x00" * cap;
         dest_len = cap.to_bytes(4, "little");
@@ -38,6 +44,9 @@ def:pub decompress(data: bytes) -> bytes {
         }
         if rc == BZ_OUTBUFF_FULL and cap < ceiling {
             cap = cap * 2;
+            if cap > ceiling {
+                cap = ceiling;
+            }
             continue;
         }
         raise ValueError(
