@@ -34,6 +34,7 @@ exclude = [
     "*/scale/*",
     # Folded-in byllm subsystem (the `by llm()` feature): same rationale as scale.
     "*/byllm/*",
+    "jac-py/*",
     "console.impl.jac",
     "cli_boot.jac",
     # Files whose comments/docstrings are load-bearing, so they are NOT deslopped:
