@@ -2,15 +2,16 @@
 
 The routing decision streams token-by-token to a `stream_handler` (exactly how
 the jac ai --ui firehose consumes it) while the structured edge selection still
-drives the walker to the chosen successor. For a `list[int]` return byLLM wraps
-the value under `schema_object_wrapper`; index 1 here selects the GreenNode.
+drives the walker to the chosen successor. The routing call returns a
+`list[RouteChoice]` of candidate handles wrapped under `schema_object_wrapper`;
+the descriptive handle "GreenNode" here selects that successor.
 """
 import from byllm.lib { MockLLM }
 import from byllm.types { StreamEvent }
 
 glob llm: MockLLM = MockLLM(
          model_name="mockllm",
-         config={"outputs": ['{"schema_object_wrapper": [1]}']}
+         config={"outputs": ['{"schema_object_wrapper": ["GreenNode"]}']}
      );
 
 glob streamed_chunks: list = [];

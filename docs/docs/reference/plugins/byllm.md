@@ -2447,6 +2447,84 @@ walker AIAgent {
 }
 ```
 
+### LLM-Guided Traversal (`visit ... by llm`)
+
+A plain `visit [-->]` queues **every** matching successor. Add `by llm()` and the
+model decides which successor(s) the walker should visit next. This is useful when the
+next hop depends on the meaning of each edge/node rather than a hard-coded filter.
+
+In its simplest form you add nothing but `by llm()`:
+
+```jac
+walker dispatcher {
+    has request: str = "urgent escalation";
+
+    can route with Desk entry {
+        visit [-->] by llm();
+    }
+}
+```
+
+With no parameters, the model routes from context alone. Each candidate is rendered as
+an **(edge, node) pair** relative to the current node, so the model can condition on the
+connecting edge's type and attributes, not just node data. The walker's own state plus
+the current node are injected automatically (no need to smuggle them through
+`incl_info`). Candidate, field, and ability descriptions are sourced from
+[semstrings](#semantic-strings-semstrings). By default `select` is `"all"`, so the
+walker visits **every** successor the model picks.
+
+This bare form leans entirely on those descriptions, so it works best when your edges,
+nodes, and the walker carry meaningful `sem` strings. The two parameters below sharpen
+the decision.
+
+#### Steering the choice with `intent`
+
+`intent` is free-text shown to the model describing what the traversal is trying to
+achieve. It is the main lever for guiding routing:
+
+```jac
+walker dispatcher {
+    can route with Desk entry {
+        visit [-->] by llm(intent="Route along the highest-priority edge");
+    }
+}
+```
+
+#### Constraining how many nodes are visited
+
+The `select` parameter caps the cardinality of the result. The model is told the
+constraint in its prompt **and** the returned selection is truncated to honor it:
+
+| `select` value | Meaning |
+|----------------|---------|
+| `"all"` *(default)* | Visit every successor the model chooses (no cap). |
+| `1` | Visit **exactly one** successor (the single best match). |
+| `k` *(int)* | Visit **exactly `k`** successors. |
+| `(min, max)` *(tuple)* | Visit **between `min` and `max`** successors, inclusive. |
+
+```jac
+walker explorer {
+    can branch with Page entry {
+        # Pick the single best next node
+        visit [-->] by llm(select=1, intent="Go to the most relevant section");
+
+        # Fan out to at most three, at least one
+        visit [-->] by llm(select=(1, 3), intent="Explore the promising branches");
+
+        # Take exactly two
+        visit [-->] by llm(select=2, intent="Compare the two strongest candidates");
+    }
+}
+```
+
+!!! note
+    `select` bounds the count; it does not force it upward when too few candidates
+    qualify. With `select=2` but only one sensible successor, the walker visits one.
+    For `(min, max)`, `max` is a **hard cap** (the result is truncated to it), but
+    `min` is **advisory**: the model is *asked* to pick at least `min`, yet routing
+    can only visit candidates the model actually chose (and there may be fewer than
+    `min` available), so a shortfall is surfaced as a warning rather than enforced.
+
 ### Tool-Using Agents
 
 Agents combine LLM reasoning with tool functions. The LLM decides which tools to call and in what order (ReAct loop):
