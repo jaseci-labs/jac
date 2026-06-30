@@ -15,7 +15,6 @@ on:
     # it won't leave a PR waiting on a check that never reports.
     paths:
       - 'jac/**'
-      - 'jac-scale/**'
       - '.github/workflows/k8s-microservice-real-e2e.yml'
 
 # Cancel superseded PR runs; never cancel a run for a commit on main.
@@ -44,8 +43,20 @@ jobs:
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac
 
-      - name: Install jac-scale[deploy] (global so the e2e app can import it)
-        run: jac install -e jac-scale --extras deploy --global
+      - name: Install scale deploy deps (global; scale ships with jaclang)
+        # Scale is built into jaclang (jaclang.scale); install its deploy + data
+        # + serve closure so the e2e app can import it. Pins mirror
+        # jac/jaclang/project/capabilities.jac.
+        run: |
+          jac install \
+            "fastapi>=0.121.3,<0.122.0" "uvicorn[standard]>=0.38.0,<0.39.0" \
+            "pyjwt>=2.10.1,<2.11.0" "fastapi-sso>=0.21.0,<1.0.0" \
+            "python-multipart>=0.0.21,<1.0.0" "bcrypt>=4.0.0,<5.0.0" \
+            "aiohttp>=3.9.0,<4.0.0" "sqlalchemy>=2.0.0,<3.0.0" \
+            "email-validator>=2.3.0,<3.0.0" "python-dotenv>=1.2.1,<2.0.0" \
+            "pymongo>=4.15.4,<5.0.0" "redis>=7.1.0,<8.0.0" \
+            "kubernetes>=34.1.0,<35.0.0" "docker>=7.1.0,<8.0.0" \
+            --global
 
       - name: Set up microk8s
         run: |
@@ -113,13 +124,13 @@ jobs:
       - name: Cache precompiled plugin JIRs (_precompiled)
         # precompile_plugins() is idempotent (skips JIRs that still validate), so
         # restoring the bundle turns the host precompile into fast key-checks.
+        # Scale is built into jaclang now (jaclang.scale), so its JIRs precompile
+        # as part of jac and are keyed via 'jac/jaclang/**'.
         uses: actions/cache@v4
         with:
           path: |
-            jac-scale/jac_scale/_precompiled
             jac-byllm/byllm/_precompiled
-            jac-mcp/jac_mcp/_precompiled
-          key: plugin-jir-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac-scale/jac_scale/**', 'jac-byllm/byllm/**', 'jac-mcp/**') }}
+          key: plugin-jir-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/jaclang/**', 'jac-byllm/byllm/**') }}
 
       - name: Show cluster info
         run: |
@@ -132,8 +143,8 @@ jobs:
         env:
           CLUSTER_TYPE: microk8s
         run: |
-          bash jac-scale/scripts/k8s_microservice_real_e2e.sh \
-              jac-scale/jac_scale/tests/fixtures/k8s_e2e
+          bash jac/jaclang/scale/scripts/k8s_microservice_real_e2e.sh \
+              jac/jaclang/scale/tests/fixtures/k8s_e2e
 
       - name: Dump kubectl state on failure
         if: failure()

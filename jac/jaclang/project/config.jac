@@ -196,6 +196,7 @@ obj JacConfig {
     def apply_profile_overlay(profile_name: str | None = None) -> None;
     def get_plugin_deps(dep_type: str) -> dict[str, any];
     def get_plugin_config(plugin_name: str) -> dict[str, any];
+    def get_section(name: str) -> dict[str, any] | None;
     def get_build_dir -> Path;
     def get_cache_dir -> Path;
     def get_venv_dir -> Path;

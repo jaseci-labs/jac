@@ -3,7 +3,7 @@ name: jac-sv-deploy
 description: Running a Jac server in production - jac start flags, database backends (SQLite/Mongo/Redis), secrets, Kubernetes deploys (--scale, TLS, autoscaling, jac status/destroy), webhooks, WebSockets, S3 storage, metrics, distributed locks. Load when moving a server beyond local dev or wiring external services in. Pair with `jac-sv-endpoints`, `jac-sv-microservices` (multi-service k8s), `jac-config`.
 ---
 
-Production serving is jac-scale's job: `jac install jac-scale` (or `jac install 'jac-scale[all]'`), then `jac plugins enable scale` if it isn't already active (`jac plugins` to check).
+Production serving is the built-in `scale` subsystem's job. Scale ships inside `jaclang` -- there is no `jac-scale` package to install and no plugin to enable. Its optional heavier deps (pymongo, redis, kubernetes, docker, prometheus-client, ...) are pulled per-project: declare the matching `[scale.*]` config in `jac.toml`, then run `jac install` to resolve them into `.jac/venv` (a `--scale` deploy also resolves its deps on first run).
 
 ## jac start
 

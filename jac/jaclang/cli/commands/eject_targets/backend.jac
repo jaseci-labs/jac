@@ -6,7 +6,7 @@ import from jaclang.cli.console { console }
 glob _IMPLICIT_PY_DEPS: dict = {"byllm": "byllm"},
      _SQLDB_BACKEND_SRC: str = '''"""Vendored SQLAlchemy persistence backend for the ejected Jac app.
 Registered via jaclang\'s get_persistent_memory hook; defaults to a local SQLite
-file (set JAC_DB_URL for Postgres/MySQL). Single-writer; use jac-scale to scale."""
+file (set JAC_DB_URL for Postgres/MySQL). Single-writer; use the built-in scale backend to scale."""
 from __future__ import annotations
 
 import json

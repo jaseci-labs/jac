@@ -62,7 +62,7 @@ nav:
               - Desktop App: "tutorials/fullstack/desktop.md"
               - Mobile App: "tutorials/fullstack/mobile.md"
       - Deployment & Scaling:
-          - jac-scale Reference: "reference/plugins/jac-scale.md"
+          - Scale Reference: "reference/plugins/jac-scale.md"
           - Learn by Doing:
               - Local API Server: "tutorials/production/local.md"
               - Microservices with sv import: "tutorials/production/microservices.md"

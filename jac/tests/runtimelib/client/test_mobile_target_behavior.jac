@@ -1,7 +1,7 @@
 """Behavioral tests for mobile target end-to-end correctness.
 
 Each test captures a concrete bug observed in QA:
-1. `jac setup mobile` pre-hook gets dropped when a higher-priority plugin (jac-scale)
+1. `jac setup mobile` pre-hook gets dropped when a higher-priority plugin (the scale plugin)
    replaces the `setup` command — making the documented flow unreachable.
 2. Android dep check only probes `java` (JRE), missing `javac` (JDK) — so JRE-only
    installs are certified green and then Gradle fails downstream.
@@ -35,16 +35,16 @@ import from jaclang.runtimelib.client.targets.mobile.dev {
 
 
 # =============================================================================
-# Bug #1: pre_hook for jac-client's setup is lost when jac-scale (higher priority)
+# Bug #1: pre_hook for jac-client's setup is lost when the scale plugin (higher priority)
 # replaces the setup command spec.
 # =============================================================================
 test "registry preserves pre_hooks across higher-priority spec replacement" {
     # Simulates the order plugin discovery hits in the real `jac` CLI:
     #   1. jac-client registers `setup` (CORE) at module load.
     #   2. jac-client's create_cmd attaches a pre_hook via extend_command.
-    #   3. jac-scale's create_cmd then re-registers `setup` with PLUGIN priority,
+    #   3. the scale plugin's create_cmd then re-registers `setup` with PLUGIN priority,
     #      replacing the spec. Without preservation, the pre_hook is silently
-    #      dropped and `jac setup mobile` falls through to jac-scale's body,
+    #      dropped and `jac setup mobile` falls through to the scale plugin's body,
     #      which rejects it with "Unknown setup type: 'mobile'".
     import from jaclang.cli.command {
         CommandPriority,
@@ -86,7 +86,7 @@ test "registry preserves pre_hooks across higher-priority spec replacement" {
         h is _client_pre_hook for (h, _src) in r.commands["__qa_setup__"].pre_hooks
     );
 
-    # Now simulate jac-scale registering the same command at higher priority.
+    # Now simulate the scale plugin registering the same command at higher priority.
     r.command(
         name="__qa_setup__",
         help="scale setup",
