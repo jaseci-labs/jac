@@ -12,6 +12,8 @@ nodes and reuses the mapper's single-sourced for-body), so it never translates a
 C operator. Each operator therefore carries only its CPython `ast` encoding.
 """
 
+import keyword;
+import from jaclang.jac0core.constant { TOKEN_MAP }
 import from jaclang.vendor.pycparser { c_ast }
 
 # --- C binary operators -------------------------------------------------- #
@@ -390,4 +392,33 @@ def jac_prim_zero(jac: str) -> tuple {
         return (False, "False");
     }
     return (0, "0");
+}
+
+glob _JAC_KW_IDS: set = set(TOKEN_MAP.values()) | set(keyword.kwlist);
+
+def jac_id(name: str) -> str {
+    return f"`{name}`" if name in _JAC_KW_IDS else name;
+}
+
+def enumerator_value(en: object, counter: int) -> tuple {
+    if en.value is None {
+        return (counter, True);
+    }
+    if isinstance(en.value, c_ast.Constant) and en.value.type == "int" {
+        v = parse_c_int(en.value.value);
+        return (v, True) if v is not None else (0, False);
+    }
+    if (
+        isinstance(en.value, c_ast.UnaryOp)
+        and en.value.op in ("-", "+")
+        and isinstance(en.value.expr, c_ast.Constant)
+        and en.value.expr.type == "int"
+    ) {
+        v = parse_c_int(en.value.expr.value);
+        if v is None {
+            return (0, False);
+        }
+        return (-v, True) if en.value.op == "-" else (v, True);
+    }
+    return (0, False);
 }
