@@ -353,6 +353,10 @@ jobs:
       if: matrix.group == 'data'
       # Each file in its own process to avoid importlib double-load pollution.
       # test_firestore_e2e is omitted: needs FIRESTORE_EMULATOR_HOST.
+      # Serial (JAC_TEST_JOBS=0): these tests share one relative shelf_db_path,
+      # so xdist workers contend on the same SQLite file ("database is locked").
+      env:
+        JAC_TEST_JOBS: "0"
       run: |
         jac test jac-scale/jac_scale/tests/test_gcs_storage.jac -x
         jac test jac-scale/jac_scale/tests/test_firestore_db.jac -x
