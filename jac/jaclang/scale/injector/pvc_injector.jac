@@ -28,8 +28,25 @@ def bundle_pvc_path(object_key: str) -> str {
 def build_bundle_pvc(
     app_name: str, namespace: str, size: str, storage_class: str
 ) -> dict[str, any] {
+    access_modes = ["ReadWriteMany"];
+    # A RWX bundle PVC with no explicit storage class falls back to the cluster
+    # default StorageClass, which on most clouds (EKS gp3 / ebs.csi.aws.com) is
+    # ReadWriteOnce and cannot satisfy RWX. The bundle-loader pod then stays
+    # Pending and the deploy times out with an opaque message; fail up front
+    # with an actionable one instead.
+    if "ReadWriteMany" in access_modes and not storage_class {
+        raise ValueError(
+            f"Bundle PVC '{bundle_pvc_name(app_name)}' requests accessModes "
+            "[ReadWriteMany] but no bundle_storage_class is set, so it would use "
+            "the cluster default StorageClass. Most cloud defaults (e.g. EKS gp3 / "
+            "ebs.csi.aws.com) are ReadWriteOnce and cannot provision a "
+            "ReadWriteMany volume, leaving the bundle-loader pod Pending. Set "
+            "'bundle_storage_class' under [plugins.scale.kubernetes] to a "
+            "RWX-capable StorageClass (e.g. 'efs-sc')."
+        );
+    }
     spec: dict[str, any] = {
-        "accessModes": ["ReadWriteMany"],
+        "accessModes": access_modes,
         "resources": {"requests": {"storage": size}}
     };
     if storage_class {
