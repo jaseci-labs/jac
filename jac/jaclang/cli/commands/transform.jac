@@ -17,3 +17,16 @@ def c2jac(
     force_include: list | None = None,
     nostdinc: bool = False
 ) -> int;
+
+def cbindgen(
+    filename: str,
+    lib: str | None = None,
+    incdir: list | None = None,
+    define: list | None = None,
+    undef: list | None = None,
+    force_include: list | None = None,
+    nostdinc: bool = False,
+    allow: list | None = None,
+    block: list | None = None,
+    output: str | None = None
+) -> int;

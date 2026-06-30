@@ -3,7 +3,6 @@ import ast as ast3;
 import from jaclang.cli.console { console }
 import from jaclang.cli.commands.cli_helpers { flatten_append }
 
-"""Convert Python to Jac."""
 impl py2jac(filename: str) -> int {
     import jaclang.jac0core.unitree as uni;
     import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
@@ -37,7 +36,6 @@ impl py2jac(filename: str) -> int {
     return 0;
 }
 
-"""Convert C to Jac."""
 impl c2jac(
     filename: str,
     incdir: list | None = None,
@@ -69,9 +67,7 @@ impl c2jac(
     }
     console.print(jac_str, markup=False, highlight=False);
     import from jaclang.compiler.c2jac.comments { tier_b_site_count }
-    # Report the authoritative site count (distinct header rows), not the raw
-    # tag count — the latter includes empty-reason container tags the header
-    # suppresses and would contradict the inline record (§3 honest report).
+
     n_tier_b = tier_b_site_count(tags);
     if n_tier_b {
         console.warning(
@@ -83,7 +79,93 @@ impl c2jac(
     return 0;
 }
 
-"""Convert Jac to Python."""
+def _csv_symbols(groups: list | None) -> list | None {
+    flat = flatten_append(groups);
+    if not flat {
+        return None;
+    }
+    out: list = [];
+    for raw in flat {
+        for piece in raw.split(",") {
+            sym = piece.strip();
+            if sym {
+                out.append(sym);
+            }
+        }
+    }
+    return out or None;
+}
+
+impl cbindgen(
+    filename: str,
+    lib: str | None = None,
+    incdir: list | None = None,
+    define: list | None = None,
+    undef: list | None = None,
+    force_include: list | None = None,
+    nostdinc: bool = False,
+    allow: list | None = None,
+    block: list | None = None,
+    output: str | None = None
+) -> int {
+    import from jaclang.compiler.c2jac.bindgen { generate_bindings }
+    if not (
+        filename.endswith(".h") or filename.endswith(".c") or filename.endswith(".i")
+    ) {
+        console.error("Not a .h, .c, or .i file.");
+        return 1;
+    }
+    if not lib {
+        console.error("cbindgen needs a target library: pass --lib <name>.");
+        return 1;
+    }
+    try {
+        (na_str, report) = generate_bindings(
+            filename,
+            lib,
+            include_dirs=flatten_append(incdir),
+            defines=flatten_append(define),
+            undefines=flatten_append(undef),
+            force_includes=flatten_append(force_include),
+            nostdinc=nostdinc,
+            allow=_csv_symbols(allow),
+            block=_csv_symbols(block),
+        );
+    } except OSError as e {
+        console.error(f"Cannot read {filename}: {e}");
+        return 1;
+    } except Exception as e {
+        console.error(f"Binding generation failed: {e}");
+        return 1;
+    }
+    if output {
+        try {
+            with open(output, "w") as f {
+                f.write(na_str);
+            }
+        } except OSError as e {
+            console.error(f"Cannot write {output}: {e}");
+            return 1;
+        }
+        console.print(f"[cbindgen] wrote {report.functions} binding(s) to {output}");
+    } else {
+        console.print(na_str, markup=False, highlight=False);
+    }
+    if report.functions == 0 {
+        console.warning(
+            "[cbindgen] no extern function prototypes were bound — check -I "
+            "include paths, --allow/--block filters, or that the header declares "
+            "externs (Phase 0 binds functions only; structs/enums land in Phase 1)"
+        );
+    } elif report.variadic {
+        console.warning(
+            f"[cbindgen] {report.variadic} variadic binding(s) emit `*rest`: "
+            f"va_list/va_arg semantics are not modelled — verify each call site"
+        );
+    }
+    return 0;
+}
+
 impl jac2py(filename: str) -> int {
     import from jaclang.jac0core.program { JacProgram }
     if filename.endswith('.jac') {

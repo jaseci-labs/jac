@@ -4,13 +4,22 @@ import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 
 impl tool(tool: str, args: list = []) -> int {
     import from jaclang.utils.lang_tools { AstTool }
-    if tool in ("jac2py", "py2jac", "jac2js", "c2jac") {
-        import from jaclang.cli.commands.transform { jac2py, py2jac, jac2js, c2jac }
+    if tool in ("jac2py", "py2jac", "jac2js", "c2jac", "cbindgen") {
+        import from jaclang.cli.commands.transform {
+            jac2py, py2jac, jac2js, c2jac, cbindgen
+        }
         if not args {
             console.error(f"Usage: jac tool {tool} <file>");
             return 1;
         }
-        fwd = {"jac2py": jac2py, "py2jac": py2jac, "jac2js": jac2js, "c2jac": c2jac};
+        fwd = {
+            "jac2py": jac2py,
+            "py2jac": py2jac,
+            "jac2js": jac2js,
+            "c2jac": c2jac,
+            "cbindgen": cbindgen
+
+        };
         return fwd[tool](args[0]);
     }
     if tool == "grammar" {
