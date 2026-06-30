@@ -16,15 +16,13 @@ import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
 
 
 test "host_repo_root resolves to the buildable jac source tree" {
-    # The repo root must be the jaclang package dir's grandparent; a wrong
-    # parent count makes host_repo_root land on <root>/jac instead.
-    import jaclang;
+    # host_repo_root must land on a checkout we can host-build from - one whose
+    # jac/build.zig exists - rather than tracking the running module's __file__,
+    # which is in the bundled runtime cache (not the checkout) under the jac
+    # binary. The CI runner runs the suite with the checkout as cwd, so the
+    # build.zig marker is found there.
     repo_root = Path(str(host_repo_root()));
-    pkg = Path(str(jaclang.__file__)).resolve().parent;
-    assert repo_root == pkg.parent.parent;
-    if (repo_root / "jac").is_dir() {
-        assert (repo_root / "jac" / "build.zig").is_file();
-    }
+    assert (repo_root / "jac" / "build.zig").is_file();
 }
 
 
