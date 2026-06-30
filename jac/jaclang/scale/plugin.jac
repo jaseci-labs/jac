@@ -604,43 +604,14 @@ class JacScalePlugin {
             import from .server.serve { JacAPIServer }
         } except ImportError as e {
             import logging;
-            # The base serve closure (fastapi / uvicorn / pyjwt / pydantic) being
-            # absent is the expected decline that falls back to core's stdlib
-            # server. Any OTHER missing module means a serve mixin eager-imported a
-            # dep outside the closure (e.g. requests); surface it as a warning so
-            # the otherwise-cryptic incompatible-server fallback is diagnosable
-            # instead of silent.
-            missing = e?.name or "";
-            # Best-effort heuristic: the serve runtime closure and its common
-            # transitive deps. The level choice only affects log verbosity (a
-            # drifted entry downgrades a debug to a warning, never a failure), so
-            # extend this as the closure evolves.
-            base_closure = {
-                "fastapi",
-                "uvicorn",
-                "jwt",
-                "pydantic",
-                "pydantic_core",
-                "fastapi_sso",
-                "starlette",
-                "anyio",
-                "sniffio",
-                "h11",
-                "httptools",
-                "websockets",
-                "multipart",
-                "dotenv",
-                "click"
-            };
-            msg = (
+            # Do not swallow silently: log which module was missing so the
+            # otherwise-cryptic fallback to the core stdlib server is diagnosable.
+            # debug (not warning) because declining when the serve closure is
+            # simply absent is the normal non-scale path.
+            logging.getLogger(__name__).debug(
                 "scale API server unavailable, falling back to core server: "
-                f"missing module '{missing}' ({e})"
+                f"missing module '{e?.name or ''}' ({e})"
             );
-            if missing.split(".")[0] in base_closure {
-                logging.getLogger(__name__).debug(msg);
-            } else {
-                logging.getLogger(__name__).warning(msg);
-            }
             return None;
         }
         return JacAPIServer;
