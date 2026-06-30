@@ -60,7 +60,10 @@ jobs:
 
       - name: Set up microk8s
         run: |
-          sudo snap install microk8s --classic --channel=1.30/stable
+          # 1.31 to match the test-scale-k8s job, which deploys real pods and
+          # passes. 1.30's bundled calico has been observed wedging (felix 503)
+          # on these runners, which left app pods without networking.
+          sudo snap install microk8s --classic --channel=1.31/stable
           sudo microk8s status --wait-ready --timeout 180
           # hostpath-storage provides the default StorageClass. Without it the
           # bundle PVC (nil storageClassName -> needs a default SC) never binds
