@@ -70,3 +70,19 @@ test "candidate nodes with identical field values are distinct visit targets" {
 
     assert stdout_value.count("VISIT") == 2;
 }
+
+
+test "routing dispatches the LLM call through the call_llm plugin hook" {
+    captured_output = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured_output;
+    try {
+        jac_import("routing_call_llm_hook", base_path=FIXTURE_DIR + "/");
+    } finally {
+        sys.stdout = old_stdout;
+    }
+    stdout_value = captured_output.getvalue();
+
+    assert "HOOK_CALLS:1" in stdout_value;
+    assert "VISITED:a" in stdout_value;
+}

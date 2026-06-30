@@ -67,6 +67,7 @@ glob ET_DYN = 3;
 
 glob STB_LOCAL = 0,
      STB_GLOBAL = 1,
+     STB_WEAK = 2,
      STT_NOTYPE = 0,
      STT_OBJECT = 1,
      STT_FUNC = 2,
@@ -83,6 +84,7 @@ glob R_X86_64_64 = 1,
      R_X86_64_GOTPCREL = 9,
      R_X86_64_32 = 10,
      R_X86_64_32S = 11,
+     R_X86_64_TPOFF32 = 23,
      R_X86_64_REX_GOTPCRELX = 42;
 
 glob R_AARCH64_PREL32 = 261,
@@ -310,6 +312,26 @@ def _x86_64_apply_reloc(
         return True;
     } elif rtype == R_X86_64_GOTPCREL or rtype == R_X86_64_REX_GOTPCRELX {
         val = sym_addr + addend - patch_vaddr;
+        struct.pack_into("<i", patch_buf, patch_off, val);
+        return True;
+    } elif rtype == R_X86_64_32 {
+        val = sym_addr + addend;
+        if val < 0 or val > 0xFFFFFFFF {
+            raise ValueError(
+                "R_X86_64_32 overflow: " + hex(val) + " does not fit in unsigned "
+                "32-bit (the image must load inside the low 4 GiB)"
+            );
+        }
+        struct.pack_into("<I", patch_buf, patch_off, val);
+        return True;
+    } elif rtype == R_X86_64_32S {
+        val = sym_addr + addend;
+        if val < -(1 << 31) or val > (1 << 31) - 1 {
+            raise ValueError(
+                "R_X86_64_32S overflow: " + hex(val) + " does not fit in signed "
+                "32-bit (the image must load inside the low 2 GiB)"
+            );
+        }
         struct.pack_into("<i", patch_buf, patch_off, val);
         return True;
     }
@@ -2559,7 +2581,16 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes, merge_ns: int = 0) ->
             existing_idx = existing_syms[crt_sym.name];
             existing_sym = linker.symbols[existing_idx];
 
-            if existing_sym.shndx == SHN_UNDEF and crt_sym.shndx != SHN_UNDEF {
+            existing_def = existing_sym.shndx != SHN_UNDEF;
+            new_def = crt_sym.shndx != SHN_UNDEF;
+            override = (not existing_def and new_def)
+            or (
+                existing_def
+                and existing_sym.bind == STB_WEAK
+                and new_def
+                and crt_sym.bind == STB_GLOBAL
+            );
+            if override {
                 new_shndx = sec_idx_map.get(crt_sym.shndx, crt_sym.shndx);
                 linker.symbols[existing_idx] = ElfSymbol(
                     name=crt_sym.name,
@@ -2628,16 +2659,387 @@ def _merge_crt_object(linker: ElfLinker, crt_bytes: bytes, merge_ns: int = 0) ->
 }
 
 
+impl ElfLinker.build_static_executable -> bytes {
+    arch = self.arch;
+    BASE_VADDR = arch.base_vaddr;
+    PAGE_SIZE = arch.page_size;
+    SHF_TLS = 0x400;
+    PT_TLS = 7;
+    PT_GNU_STACK = 0x6474e551;
+
+    code_data = bytearray();
+    rodata_blob = bytearray();
+    data_blob = bytearray();
+    tls_blob = bytearray();
+
+    code_sections: dict[str, tuple[int, int]] = {};
+    rodata_sections: dict[str, tuple[int, int]] = {};
+    data_sections: dict[str, tuple[int, int]] = {};
+    section_placement: dict[int, tuple[str, int]] = {};
+
+    code_align: int = 16;
+    rodata_align: int = 16;
+    data_align: int = 16;
+    tls_align: int = 1;
+    sec_idx = 0;
+    for sec in self.sections {
+        if sec.flags & SHF_TLS {
+            off = _append_to_blob(tls_blob, sec.data, sec.align, sec.mem_size);
+            section_placement[sec_idx] = ("tls", off);
+            if sec.align > tls_align {
+                tls_align = sec.align;
+            }
+        } elif sec.typ == SHT_PROGBITS and (sec.flags & SHF_EXECINSTR) {
+            if len(sec.data) > 0 {
+                off = _append_to_blob(code_data, sec.data, sec.align, len(sec.data));
+                code_sections[sec.name] = (off, len(sec.data));
+                section_placement[sec_idx] = ("code", off);
+                if sec.align > code_align {
+                    code_align = sec.align;
+                }
+            }
+        } elif sec.typ == SHT_PROGBITS
+        and (sec.flags & SHF_ALLOC)
+        and not (sec.flags & SHF_WRITE) {
+            if len(sec.data) > 0 {
+                off = _append_to_blob(rodata_blob, sec.data, sec.align, len(sec.data));
+                rodata_sections[sec.name] = (off, len(sec.data));
+                section_placement[sec_idx] = ("rodata", off);
+                if sec.align > rodata_align {
+                    rodata_align = sec.align;
+                }
+            }
+        } elif (sec.flags & SHF_WRITE) and (sec.flags & SHF_ALLOC) {
+            alloc_size = sec.mem_size;
+            if alloc_size > 0 {
+                off = _append_to_blob(data_blob, sec.data, sec.align, alloc_size);
+                data_sections[sec.name] = (off, alloc_size);
+                section_placement[sec_idx] = ("data", off);
+                if sec.align > data_align {
+                    data_align = sec.align;
+                }
+            }
+        }
+        sec_idx += 1;
+    }
+    tls_file_size = len(tls_blob);
+    tls_mem_size = len(tls_blob);
+    has_tls = tls_file_size > 0;
+
+    tls_block_size = _align(tls_mem_size, max(tls_align, 1));
+
+    local_sym_map: dict[str, tuple[str, int]] = {};
+    sym_idx_placement: dict[int, tuple[str, int]] = {};
+    defined_names: set[str] = set();
+    for sym in self.symbols {
+        if sym.shndx != SHN_UNDEF and sym.shndx < len(self.sections) and sym.name {
+            defined_names.add(sym.name);
+        }
+    }
+    sym_i = 0;
+    for sym in self.symbols {
+        if sym.shndx != SHN_UNDEF and sym.shndx < len(self.sections) {
+            placement = section_placement.get(sym.shndx);
+            if placement is not None {
+                if sym.name {
+                    local_sym_map[sym.name] = (placement[0], placement[1] + sym.value);
+                }
+                sym_idx_placement[sym_i] = (placement[0], placement[1] + sym.value);
+            }
+        }
+        sym_i += 1;
+    }
+
+    got_syms: list[str] = [];
+    got_seen: set[str] = set();
+    for rela in self.relocations {
+        if rela.rtype in arch.gotpcrel_rtypes
+        and rela.sym_name
+        and rela.sym_name not in got_seen {
+            got_syms.append(rela.sym_name);
+            got_seen.add(rela.sym_name);
+        }
+    }
+    got_size = len(got_syms) * 8;
+
+    ehdr_size = 64;
+    num_phdrs = 4 + (1 if has_tls else 0);
+    phdr_size = num_phdrs * 56;
+
+    cur = ehdr_size + phdr_size;
+    cur = _align(cur, code_align);
+    text_foff = cur;
+    cur += len(code_data);
+    cur = _align(cur, rodata_align);
+    rodata_foff = cur;
+    cur += len(rodata_blob);
+    code_seg_size = cur;
+
+    data_seg_foff = _align(cur, PAGE_SIZE);
+    data_seg_vaddr = BASE_VADDR + data_seg_foff;
+    cur = data_seg_foff;
+    tls_foff = cur;
+    cur += tls_file_size;
+    cur = _align(cur, 8);
+    got_foff = cur;
+    cur += got_size;
+    cur = _align(cur, data_align);
+    data_foff = cur;
+    cur += len(data_blob);
+    data_seg_size = cur - data_seg_foff;
+    total_file_size = cur;
+
+    text_vaddr = BASE_VADDR + text_foff;
+    rodata_vaddr = BASE_VADDR + rodata_foff;
+    tls_vaddr = BASE_VADDR + tls_foff;
+    got_vaddr = BASE_VADDR + got_foff;
+    data_vaddr = BASE_VADDR + data_foff;
+
+    got_slot: dict[str, int] = {};
+    got_data = bytearray(b"\x00" * got_size);
+    for gi in range(len(got_syms)) {
+        nm = got_syms[gi];
+        got_slot[nm] = got_vaddr + gi * 8;
+        place = local_sym_map.get(nm);
+        if place is not None {
+            abs_va = _resolve_seg_vaddr(
+                place[0], place[1], text_vaddr, rodata_vaddr, data_vaddr
+            );
+            struct.pack_into("<Q", got_data, gi * 8, abs_va & 0xFFFFFFFFFFFFFFFF);
+        }
+    }
+
+    code_bytes = bytearray(code_data);
+    rodata_bytes = bytearray(rodata_blob);
+    data_bytes = bytearray(data_blob);
+
+    missing: set[str] = set();
+    for rela in self.relocations {
+        if arch.e_machine == 62 and rela.rtype == R_X86_64_TPOFF32 {
+            tls_off = 0;
+            tls_place = local_sym_map.get(rela.sym_name) if rela.sym_name else None;
+            if tls_place is None {
+                tls_place = sym_idx_placement.get(rela.sym_idx);
+            }
+            if tls_place is not None and tls_place[0] == "tls" {
+                tls_off = tls_place[1];
+            }
+            tls_site = _resolve_patch_site(
+                rela.offset,
+                rela.target_sec,
+                code_sections,
+                rodata_sections,
+                data_sections,
+                code_bytes,
+                rodata_bytes,
+                data_bytes,
+                text_vaddr,
+                rodata_vaddr,
+                data_vaddr
+            );
+            if tls_site is not None {
+                (_tb, _to, _tv) = tls_site;
+                struct.pack_into(
+                    "<i", _tb, _to, tls_off + rela.addend - tls_block_size
+                );
+            }
+            continue;
+        }
+        sym_addr = 0;
+        if rela.rtype in arch.gotpcrel_rtypes {
+            sym_addr = got_slot.get(rela.sym_name, 0);
+        } else {
+            local = local_sym_map.get(rela.sym_name) if rela.sym_name else None;
+            if local is None {
+                local = sym_idx_placement.get(rela.sym_idx);
+            }
+            if local is not None {
+                sym_addr = _resolve_seg_vaddr(
+                    local[0], local[1], text_vaddr, rodata_vaddr, data_vaddr
+                );
+            } elif rela.sym_name and rela.sym_name not in defined_names {
+                missing.add(rela.sym_name);
+            }
+        }
+
+        site = _resolve_patch_site(
+            rela.offset,
+            rela.target_sec,
+            code_sections,
+            rodata_sections,
+            data_sections,
+            code_bytes,
+            rodata_bytes,
+            data_bytes,
+            text_vaddr,
+            rodata_vaddr,
+            data_vaddr
+        );
+        if site is None {
+            continue;
+        }
+        (patch_buf, patch_off, patch_vaddr) = site;
+        applied = arch.apply_reloc(
+            rela.rtype, patch_buf, patch_off, sym_addr, rela.addend, patch_vaddr
+        );
+        if not applied {
+            raise ValueError(
+                f"ELF static linker: no handler for relocation type {rela.rtype} "
+                f"(symbol '{rela.sym_name}', section '{rela.target_sec}', "
+                f"e_machine {arch.e_machine})."
+            );
+        }
+    }
+    if missing {
+        sys.stderr.write(
+            "  Warning: static link left undefined references resolved to 0: " + ", ".join(
+                sorted(missing)
+            ) + "\n"
+        );
+    }
+
+    _ia = data_sections.get(".init_array");
+    _ia_vaddr = (data_vaddr + _ia[0]) if _ia is not None else 0;
+    _ia_count = (_ia[1] // 8) if _ia is not None else 0;
+    _ia_sym = local_sym_map.get("__jac_init_array");
+    _ic_sym = local_sym_map.get("__jac_init_count");
+    if _ia_sym is not None and _ia_sym[0] == "data" {
+        struct.pack_into("<Q", data_bytes, _ia_sym[1], _ia_vaddr);
+    }
+    if _ic_sym is not None and _ic_sym[0] == "data" {
+        struct.pack_into("<Q", data_bytes, _ic_sym[1], _ia_count);
+    }
+
+    entry_vaddr = _find_entry_vaddr(local_sym_map, text_vaddr);
+
+    output = bytearray(total_file_size);
+    ident = bytearray(16);
+    ident[0:4] = ELFMAG;
+    ident[4] = ELFCLASS64;
+    ident[5] = ELFDATA2LSB;
+    ident[6] = 1;
+    ident[7] = 0;
+    struct.pack_into("16s", output, 0, bytes(ident));
+    struct.pack_into(
+        "<HHIQQQIHHHHHH",
+        output,
+        16,
+        ET_EXEC,
+        arch.e_machine,
+        1,
+        entry_vaddr,
+        ehdr_size,
+        0,
+        0,
+        ehdr_size,
+        56,
+        num_phdrs,
+        0,
+        0,
+        0
+    );
+
+    phdr_off = ehdr_size;
+    struct.pack_into(
+        "<IIQQQQQQ",
+        output,
+        phdr_off,
+        PT_PHDR,
+        PF_R,
+        ehdr_size,
+        BASE_VADDR + ehdr_size,
+        BASE_VADDR + ehdr_size,
+        phdr_size,
+        phdr_size,
+        8
+    );
+    phdr_off += 56;
+    struct.pack_into(
+        "<IIQQQQQQ",
+        output,
+        phdr_off,
+        PT_LOAD,
+        PF_R | PF_X,
+        0,
+        BASE_VADDR,
+        BASE_VADDR,
+        code_seg_size,
+        code_seg_size,
+        PAGE_SIZE
+    );
+    phdr_off += 56;
+    struct.pack_into(
+        "<IIQQQQQQ",
+        output,
+        phdr_off,
+        PT_LOAD,
+        PF_R | PF_W,
+        data_seg_foff,
+        data_seg_vaddr,
+        data_seg_vaddr,
+        data_seg_size,
+        data_seg_size,
+        PAGE_SIZE
+    );
+    phdr_off += 56;
+    if has_tls {
+        struct.pack_into(
+            "<IIQQQQQQ",
+            output,
+            phdr_off,
+            PT_TLS,
+            PF_R,
+            tls_foff,
+            tls_vaddr,
+            tls_vaddr,
+            tls_file_size,
+            tls_mem_size,
+            max(tls_align, 1)
+        );
+        phdr_off += 56;
+    }
+    struct.pack_into(
+        "<IIQQQQQQ", output, phdr_off, PT_GNU_STACK, PF_R | PF_W, 0, 0, 0, 0, 0, 16
+    );
+
+    output[text_foff:text_foff + len(code_bytes)] = bytes(code_bytes);
+    if len(rodata_bytes) > 0 {
+        output[rodata_foff:rodata_foff + len(rodata_bytes)] = bytes(rodata_bytes);
+    }
+    if tls_file_size > 0 {
+        output[tls_foff:tls_foff + tls_file_size] = bytes(tls_blob);
+    }
+    if got_size > 0 {
+        output[got_foff:got_foff + got_size] = bytes(got_data);
+    }
+    if len(data_bytes) > 0 {
+        output[data_foff:data_foff + len(data_bytes)] = bytes(data_bytes);
+    }
+
+    for (sname, place) in local_sym_map.items() {
+        va = _resolve_seg_vaddr(
+            place[0], place[1], text_vaddr, rodata_vaddr, data_vaddr
+        );
+        if sname {
+            self.sym_vaddrs[sname] = va;
+        }
+    }
+
+    return bytes(output);
+}
+
+
 impl ElfLinker.link(
     obj_bytes: bytes,
     output_path: str,
-    needed_libs: list[str] = ["libc.so.6"],
+    needed_libs: list[str] = [],
     crt_objects: list[bytes] = [],
     shared: bool = False,
     export_symbols: list[str] = [],
     init_funcs: list[str] = [],
     soname: str = "",
-    archive_members: list[bytes] = []
+    archive_members: list[bytes] = [],
+    static_link: bool = False
 ) -> bool {
     linker = ElfLinker(
         obj_data=obj_bytes,
@@ -2672,7 +3074,13 @@ impl ElfLinker.link(
 
     _allocate_common(linker);
 
-    exe_bytes = linker.build_shared_object() if shared else linker.build_executable();
+    if static_link {
+        exe_bytes = linker.build_static_executable();
+    } elif shared {
+        exe_bytes = linker.build_shared_object();
+    } else {
+        exe_bytes = linker.build_executable();
+    }
     if not exe_bytes {
         return False;
     }
