@@ -125,12 +125,17 @@ detect_platform() {
     esac
 
     # musl hosts (Alpine) need the -musl asset; a glibc binary won't run there.
-    # Detect via the musl loader or ldd's banner.
+    # ldd's banner names the primary libc and is authoritative even when both
+    # loaders are installed; the loader-file globs are only a fallback for
+    # minimal containers without ldd.
     LIBC=""
     if [[ "$OS" == "linux" ]]; then
-        if ls /lib/ld-musl-*.so* >/dev/null 2>&1 \
-            || ls /lib/libc.musl-*.so* >/dev/null 2>&1 \
-            || (ldd --version 2>&1 | grep -qi musl); then
+        ldd_out="$(ldd --version 2>&1 || true)"
+        if printf '%s' "$ldd_out" | grep -qi musl; then
+            LIBC="-musl"
+        elif printf '%s' "$ldd_out" | grep -qiE 'glibc|gnu libc'; then
+            LIBC=""
+        elif ls /lib/ld-musl-*.so* >/dev/null 2>&1 || ls /lib/libc.musl-*.so* >/dev/null 2>&1; then
             LIBC="-musl"
         fi
     fi

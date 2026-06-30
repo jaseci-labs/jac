@@ -66,16 +66,24 @@ def _find_shim() -> str {
 }
 
 
+glob _shim_available_cache: bool | None = None;
+
+
 """Whether the LLVM shim is locatable, without dlopening it. The codegen
 schedule uses this to skip the native passes when no shim is bundled (the musl
-build has no LLVM) rather than crash in NativeCompilePass.postinit."""
+build has no LLVM) rather than crash in NativeCompilePass.postinit. Cached: shim
+presence is fixed for the process, and this runs per compiled module."""
 def shim_available() -> bool {
-    try {
-        _find_shim();
-        return True;
-    } except OSError {
-        return False;
+    global _shim_available_cache;
+    if _shim_available_cache is None {
+        try {
+            _find_shim();
+            _shim_available_cache = True;
+        } except OSError {
+            _shim_available_cache = False;
+        }
     }
+    return _shim_available_cache;
 }
 
 
