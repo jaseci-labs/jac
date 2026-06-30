@@ -553,18 +553,42 @@ jobs:
         key: jac-gpt-faiss-v1
 
     - name: Probe OpenAI reachability
-      # jac-gpt rebuilds its FAISS index at startup on a cache miss, which needs
-      # a live OpenAI call. This probe disambiguates the two failure modes the
-      # server-start step otherwise hides: a bad/empty key (HTTP 401) vs. the
-      # runner being unable to reach api.openai.com at all (UNREACHABLE).
+      # jac-gpt rebuilds its FAISS index at startup on a cache miss, which embeds
+      # docs via the OpenAI client running in jac-gpt's installed venv. That
+      # client fails with APIConnectionError even when the key is valid and the
+      # runner's curl reaches OpenAI -- a TLS/CA problem inside the jac runtime,
+      # not egress. Probe BOTH layers so the log says which it is:
+      #   1. system curl  -> runner-level egress + key
+      #   2. jac runtime  -> the Python/httpx path that actually fails, with the
+      #      raw exception + the CA bundle it resolves (certifi/SSL_CERT_FILE).
       continue-on-error: true
+      working-directory: jac-gpt
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       run: |
-        curl -sS --max-time 15 -o /dev/null -w "openai HTTP %{http_code}\n" \
+        echo "--- layer 1: system curl ---"
+        curl -sS --max-time 15 -o /dev/null -w "curl openai HTTP %{http_code}\n" \
           https://api.openai.com/v1/models \
           -H "Authorization: Bearer $OPENAI_API_KEY" \
-          || echo "OPENAI UNREACHABLE FROM RUNNER"
+          || echo "curl: OPENAI UNREACHABLE FROM RUNNER"
+        echo "--- layer 2: jac runtime python (httpx/openai) ---"
+        jac - <<'PYEOF' || echo "jac-python probe raised (see above)"
+        import ssl, os
+        try:
+            import certifi
+            print("certifi:", certifi.where())
+        except Exception as e:
+            print("certifi: MISSING", e)
+        print("ssl default verify paths:", ssl.get_default_verify_paths())
+        print("SSL_CERT_FILE:", os.environ.get("SSL_CERT_FILE"))
+        print("REQUESTS_CA_BUNDLE:", os.environ.get("REQUESTS_CA_BUNDLE"))
+        import httpx
+        try:
+            r = httpx.get("https://api.openai.com/v1/models", timeout=15)
+            print("httpx openai HTTP", r.status_code)
+        except Exception as e:
+            print("httpx FAILED:", type(e).__name__, repr(e))
+        PYEOF
 
     - name: Start jac-gpt server in background
       working-directory: jac-gpt
