@@ -130,6 +130,7 @@ obj CMapper {
     def _expr_prim(c_node: object) -> str | None;
     def _binop_operand(operand: object, sibling: object) -> object;
     def c_UnaryOp(nd: object) -> object;
+    def _pre_incdec_walrus(nd: object) -> object | None;
     def c_ID(nd: object) -> object;
     def c_Constant(nd: object) -> object;
     def c_StructRef(nd: object) -> object;

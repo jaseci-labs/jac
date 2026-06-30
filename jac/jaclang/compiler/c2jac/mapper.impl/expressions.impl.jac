@@ -79,7 +79,14 @@ impl CMapper.c_UnaryOp(nd: object) -> object {
         return self._stamp(u, nd, text=nd.op);
     }
 
-    if nd.op in ("p++", "++", "p--", "--") {
+    if nd.op in ("++", "--") {
+        walrus = self._pre_incdec_walrus(nd);
+        if walrus is not None {
+            return walrus;
+        }
+        return self._surrogate_expr(nd);
+    }
+    if nd.op in ("p++", "p--") {
         return self._surrogate_expr(nd);
     }
     if nd.op == "*" {
@@ -100,6 +107,37 @@ impl CMapper.c_UnaryOp(nd: object) -> object {
         return self._surrogate_expr(nd);
     }
     return self._surrogate_expr(nd);
+}
+
+impl CMapper._pre_incdec_walrus(nd: object) -> object | None {
+    if not isinstance(nd.expr, c_ast.ID) {
+        return None;
+    }
+    if self._expr_prim(nd.expr) not in ("int", "float") {
+        return None;
+    }
+    name = nd.expr.name;
+    (line, col) = self._loc(nd);
+    target = self._stamp_manual(
+        ast3.Name(id=name, ctx=ast3.Store()), line, col, text=name
+    );
+    load = self._stamp_manual(
+        ast3.Name(id=name, ctx=ast3.Load()), line, col, text=name
+    );
+    one = self._stamp_manual(ast3.Constant(value=1), line, col, text="1");
+    op_obj = ast3.Add() if nd.op == "++" else ast3.Sub();
+    binop = self._stamp_manual(
+        ast3.BinOp(left=load, op=op_obj, right=one), line, col, text=nd.op
+    );
+    walrus = ast3.NamedExpr(target=target, value=binop);
+    self._stamp_manual(walrus, line, col, text=":=");
+    self._mark_tier_a(
+        nd,
+        Idiom.PRE_INCDEC,
+        "pre-inc/dec → Jac walrus `(x := x ± 1)` — faithful: the prefix value "
+        "is the new value, exactly what `:=` yields",
+    );
+    return walrus;
 }
 
 impl CMapper.c_ID(nd: object) -> object {
