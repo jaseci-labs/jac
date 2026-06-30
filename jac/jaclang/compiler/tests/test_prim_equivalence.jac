@@ -228,6 +228,28 @@ test "json bundled" {
     run_with_both("prim_json.jac", "json_py", "json_cl", "json_na", require=["na"]);
 }
 
+test "textwrap bundled" {
+    run_with_both(
+        "prim_textwrap.jac", "textwrap_py", "textwrap_cl", "textwrap_na", require=["na"]
+    );
+}
+
+test "csv bundled" {
+    run_with_both("prim_csv.jac", "csv_py", "csv_cl", "csv_na", require=["na"]);
+}
+
+test "pprint bundled" {
+    run_with_both(
+        "prim_pprint.jac", "pprint_py", "pprint_cl", "pprint_na", require=["na"]
+    );
+}
+
+test "difflib bundled" {
+    run_with_both(
+        "prim_difflib.jac", "difflib_py", "difflib_cl", "difflib_na", require=["na"]
+    );
+}
+
 test "native call resolves bundled stdlib signature, not typeshed (#7037)" {
     (eng, _) = compile_native("bundled_stdlib_sig.jac");
     pos = get_func(eng, "dumps_pos_len", ctypes.c_int64);

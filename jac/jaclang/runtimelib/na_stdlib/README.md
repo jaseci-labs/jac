@@ -42,6 +42,35 @@ bundled one. A bundled module links through the existing cross-module machinery
   intercept, so it is exact for a fixed timestamp; `year`/`month`/`day`/`hour`/
   `minute`/`second`, `weekday()`, and `isoformat()` match CPython. SCOPE: UTC /
   fixed-offset only (no tz database, DST, leap seconds, or microseconds).
+- **`textwrap.na.jac`** (#6978 Phase 3) -- the greedy line wrapper (`wrap`,
+  `fill`) plus `dedent` and `indent`, a faithful port of CPython's
+  `TextWrapper._wrap_chunks`/`_handle_long_word` over primitives. SCOPE:
+  `break_on_hyphens=False` semantics (words split on whitespace only, the one
+  divergence from CPython's default), all other excel/TextWrapper defaults
+  matched (`expand_tabs`, `replace_whitespace`, `drop_whitespace`,
+  `break_long_words`, empty indents, no `max_lines`); `indent` splits on `"\n"`;
+  `shorten`/`TextWrapper` not provided.
+- **`csv.na.jac`** (#6978 Phase 3) -- `reader` for the default **excel** dialect
+  (delimiter `,`, quotechar `"`, `doublequote=True`, `skipinitialspace=False`,
+  QUOTE_MINIMAL). Field parsing matches CPython exactly (quoted fields, doubled
+  quotes, a quote opening a field only at its start, literal mid-field quotes,
+  unterminated quotes, empty line -> `[]`). SCOPE: eager `list[list[str]]`
+  (congruent with `list(csv.reader(...))`), one record per input string (no
+  embedded-newline records); `writer`/`DictReader`/`DictWriter`/custom dialects
+  not provided.
+- **`pprint.na.jac`** (#6978 Phase 3) -- `pformat` rendering a single-line repr
+  with dict keys sorted (CPython `sort_dicts=True`) and Python `repr`
+  conventions for str/int/bool/None/list/dict. SCOPE: compact objects only
+  (congruent with CPython for representations that fit the default `width=80` on
+  one line; width-driven multi-line wrapping not implemented), string dict keys,
+  no floats (the `json` `str(float)` `%g` divergence).
+- **`difflib.na.jac`** (#6978 Phase 3) -- `SequenceMatcher`
+  (`ratio`/`get_matching_blocks`/`set_seq1`/`set_seq2`) and `get_close_matches`,
+  a port of CPython's longest-match DP and matching-block recursion. SCOPE:
+  string sequences; `isjunk` accepted but ignored and no autojunk pruning (which
+  CPython only applies at `len(b) >= 200`, so congruent for shorter inputs);
+  `ratio` is the same IEEE-double value (only its `str` rendering would differ);
+  `get_opcodes`/`unified_diff`/`ndiff`/`Differ`/`HtmlDiff` not provided.
 
 The syscall-backed `os` / `os.path` entry points (`makedirs`, `realpath`,
 `mkdir`, `exists`, ...) are Mechanism-A/H compiler intercepts, reached via the
