@@ -44,7 +44,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 # The no-Docker `--experimental` path ships the LOCAL scale source (built into
 # jaclang as jaclang.scale): PyPI lags the K-track rearchitecture, so PR-time CI
 # must exercise the in-repo code.
-if [ ! -f "${REPO_ROOT}/jac/jaclang/scale/__init__.py" ]; then
+if [ ! -f "${REPO_ROOT}/jac/jaclang/scale/plugin.jac" ]; then
     echo "FAIL: jaclang.scale source not found under ${REPO_ROOT}" >&2
     exit 1
 fi
