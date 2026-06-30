@@ -611,13 +611,26 @@ class JacScalePlugin {
             # the otherwise-cryptic incompatible-server fallback is diagnosable
             # instead of silent.
             missing = e?.name or "";
+            # Best-effort heuristic: the serve runtime closure and its common
+            # transitive deps. The level choice only affects log verbosity (a
+            # drifted entry downgrades a debug to a warning, never a failure), so
+            # extend this as the closure evolves.
             base_closure = {
                 "fastapi",
                 "uvicorn",
                 "jwt",
                 "pydantic",
+                "pydantic_core",
                 "fastapi_sso",
-                "starlette"
+                "starlette",
+                "anyio",
+                "sniffio",
+                "h11",
+                "httptools",
+                "websockets",
+                "multipart",
+                "dotenv",
+                "click"
             };
             msg = (
                 "scale API server unavailable, falling back to core server: "
