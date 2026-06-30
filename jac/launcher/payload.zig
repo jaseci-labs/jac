@@ -92,11 +92,16 @@ const LlvmRelease = struct {
 fn llvmRelease() ?LlvmRelease {
     return switch (builtin.os.tag) {
         .linux => switch (builtin.cpu.arch) {
+            // x86_64 links the libc++ LLVM slice so the shim builds with `zig c++`
+            // at a 2.17 floor (#7082). TODO(#7082): fill manifest_sha256/zip_size
+            // from the published llvm-22.1.8-x86_64-linux-libcxx slice once
+            // jaseci-labs/llvm-slice#2 builds and publishes it (the values below
+            // are placeholders; fetch-llvm fails the checksum until updated).
             .x86_64 => .{
-                .dirname = "LLVM-22.1.8-Linux-X64",
-                .triple = "x86_64-linux",
-                .manifest_sha256 = "353ec23280b6453595714bd4db3fa3339fdcec96c8fb0ccfe4f8fa4de455b64a",
-                .zip_size = 970350875,
+                .dirname = "LLVM-22.1.8-Linux-X64-libcxx",
+                .triple = "x86_64-linux-libcxx",
+                .manifest_sha256 = "0000000000000000000000000000000000000000000000000000000000000000",
+                .zip_size = 0,
             },
             .aarch64 => .{
                 .dirname = "LLVM-22.1.8-Linux-ARM64",

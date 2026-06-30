@@ -32,12 +32,15 @@ jobs:
         # self-contained; build.zig fetches the per-target python-build-standalone
         # and (for the native backend) the per-target LLVM release.
         include:
-          # zig_target pins each Linux binary's glibc floor (2.34) regardless of
-          # the runner's glibc, so the asset runs on glibc 2.34+ (e.g. Ubuntu
-          # 22.04). macOS omits it and builds host-native.
+          # zig_target pins each Linux binary's glibc floor regardless of the
+          # runner's glibc. x86_64 is pinned to 2.17 to match CPython/PBS and the
+          # libc++ LLVM shim slice (#7082), so the whole binary shares one floor
+          # (Ubuntu 20.04+, RHEL 8+). aarch64 stays at 2.34 until its libc++ slice
+          # exists (its libstdc++ shim is the real ceiling there). macOS omits it
+          # and builds host-native.
           - os: ubuntu-latest
             platform: linux-x86_64
-            zig_target: x86_64-linux-gnu.2.34
+            zig_target: x86_64-linux-gnu.2.17
           - os: ubuntu-24.04-arm
             platform: linux-aarch64
             zig_target: aarch64-linux-gnu.2.34
