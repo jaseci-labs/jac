@@ -9,7 +9,8 @@ import from jaclang.cli.commands {
     eject,
     tools,
     config,
-    nacompile
+    nacompile,
+    mcp
 }
 
 def start_cli -> None;

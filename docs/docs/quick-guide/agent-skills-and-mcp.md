@@ -3,7 +3,7 @@
 AI coding assistants are good at Jac's *ideas* but often wrong about its *syntax* -- the language has evolved, and models routinely confuse Jac with Python or JSX. The `jac` CLI ships the corrective reference built in, so there is nothing to install.
 
 - **`jac guide`** -- curated reference guides bundled with the compiler. They are the authoritative spec for writing correct, idiomatic Jac, and any agent that can run a shell command can read them.
-- **The `jac-mcp` server** -- a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives your assistant live compiler tools: validate, format, lint, run, transpile, and search the docs. It also serves the same guides as MCP resources.
+- **The `jac mcp` server** -- a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives your assistant live compiler tools: validate, format, lint, run, transpile, and search the docs. It also serves the same guides as MCP resources.
 
 The two are complementary: the guides tell the model *how* Jac works; MCP lets it *verify* what it wrote against the real compiler.
 
@@ -48,7 +48,7 @@ Claude Code, Cursor, and the Claude Agent SDK can *auto-load* [Agent Skills](htt
 
 ## MCP server (any MCP client)
 
-The `jac-mcp` plugin runs a Model Context Protocol server that exposes the Jac compiler -- grammar, documentation, examples, the bundled guides, and tools to validate, format, lint, run, and transpile Jac -- to any MCP-capable assistant.
+The built-in `jac mcp` server runs a Model Context Protocol server that exposes the Jac compiler -- grammar, documentation, examples, the bundled guides, and tools to validate, format, lint, run, and transpile Jac -- to any MCP-capable assistant.
 
 Start it with:
 
@@ -65,18 +65,18 @@ claude mcp add jac -- jac mcp
 Other clients (Claude Desktop, Cursor, Windsurf, VS Code) use a JSON configuration block. The **[MCP Server reference](../reference/mcp.md)** has copy-paste configuration for every supported client, the full tool and resource catalog, transport options, and troubleshooting.
 
 !!! tip
-    Already installed Jac via the install script? `jac-mcp` is likely bundled -- run `jac --version` to check. If it is missing, install it with `jac install jac-mcp`.
+    The MCP server is built into the `jac` binary -- there is nothing to install. Just run `jac mcp`. (It has no third-party dependencies; the protocol is implemented on the Python standard library.)
 
 ## Which to use
 
-| | `jac guide` | `jac guide --export` | MCP (`jac-mcp`) |
+| | `jac guide` | `jac guide --export` | MCP (`jac mcp`) |
 |---|---|---|---|
 | Provides | Reference knowledge, on demand | Auto-loading Agent Skills | Reference + live compiler tools |
 | Discovery | Agent runs the CLI | Assistant loads by frontmatter | Client lists MCP resources/tools |
 | Setup | None -- built in | One `--export` command | Run a server, register it |
 | Best for | Any agent that runs a shell | Claude Code, Cursor, Agent SDK | Any MCP client; verifying code |
 
-For the strongest setup, export the guides so your assistant *writes* idiomatic Jac, and connect `jac-mcp` so it can *validate and run* what it writes against the real compiler before handing the code back to you.
+For the strongest setup, export the guides so your assistant *writes* idiomatic Jac, and connect `jac mcp` so it can *validate and run* what it writes against the real compiler before handing the code back to you.
 
 ---
 

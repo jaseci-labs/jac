@@ -7,7 +7,7 @@ Example PR title: "release: jaclang 1.2.3, jac-byllm 2.0.0"
 
 The output matrix includes tier info for dependency-aware publishing:
   - Tier 0: jaclang -- the release anchor; ships as the native binary, not PyPI
-  - Tier 2: jac-byllm, jac-scale, jac-mcp (plugins published to PyPI)
+  - Tier 2: jac-byllm, jac-scale (plugins published to PyPI)
 """
 import from __future__ { annotations }
 import argparse;

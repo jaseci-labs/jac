@@ -15,13 +15,9 @@
 
 ## Installation
 
-`jac-mcp` is a plugin that runs on top of the `jac` binary, which provides the jaclang runtime. Install the binary first (see the [installation guide](https://docs.jaseci.org/quick-guide/install/)), then add the plugin:
+The MCP server is **built into the `jac` binary** -- there is nothing to install. Install the binary (see the [installation guide](https://docs.jaseci.org/quick-guide/install/)) and run `jac mcp`.
 
-```bash
-jac install jac-mcp
-```
-
-> `jaclang` is provided by the `jac` binary at runtime (a host dependency); it is not pulled from PyPI.
+> The protocol (JSON-RPC 2.0 over stdio, streamable-HTTP, and SSE) is implemented on the Python standard library, so the server has no third-party dependencies. It was formerly the separate `jac-mcp` PyPI plugin.
 
 ## Quick Start
 

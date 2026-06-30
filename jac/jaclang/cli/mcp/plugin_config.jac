@@ -1,16 +1,6 @@
-"""Plugin configuration hooks for jac-mcp.
-
-This module implements JacConfig hooks to integrate with core's
-configuration system, registering:
-- Plugin metadata (name, version)
-- Config schema for [plugins.mcp] section
-"""
-
 import from jaclang.jac0core.runtime { hookimpl }
 
-"""Plugin configuration hooks for jac-mcp."""
 class JacMcpPluginConfig {
-    """Return plugin metadata."""
     @hookimpl
     static def get_plugin_metadata -> dict[str, any] {
         return {
@@ -20,7 +10,6 @@ class JacMcpPluginConfig {
         };
     }
 
-    """Return the plugin's configuration schema for [plugins.mcp]."""
     @hookimpl
     static def get_config_schema -> dict[str, any] {
         return {
@@ -46,10 +35,10 @@ class JacMcpPluginConfig {
                     "default": True,
                     "description": "Expose jac.spec language grammar as resource"
                 },
-                "expose_docs": {
+                "expose_guides": {
                     "type": "bool",
                     "default": True,
-                    "description": "Expose reference documentation as resources"
+                    "description": "Expose the jac://guide/* reference guides as resources"
                 },
                 "expose_examples": {
                     "type": "bool",

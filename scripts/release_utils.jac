@@ -60,15 +60,6 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
              submodules=True,
              extra_build_cmd="jac run scripts/build_admin_ui.jac",
              needs_nodejs=True
-         ),
-         "jac-mcp": PackageInfo(
-             dir="jac-mcp",
-             pypi="jac-mcp",
-             tier=2,
-             release_notes="docs/docs/community/release_notes/jac-mcp.md",
-             notes_display="jac-mcp",
-             submodules=True,
-             extra_build_cmd="jac run scripts/bundle_docs.jac"
          )
      },
      # Internal version pins between released packages. Plugins consume jaclang
@@ -78,8 +69,7 @@ glob PACKAGES: dict[(str, PackageInfo)] = {
      INTERNAL_DEPS: dict[(str, list[str])] = {
          "jaclang": [],
          "byllm": [],
-         "jac-scale": [],
-         "jac-mcp": []
+         "jac-scale": []
      },
      DEPENDENTS: dict[(str, list[str])] = {};
 

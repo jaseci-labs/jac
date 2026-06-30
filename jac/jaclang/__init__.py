@@ -102,6 +102,31 @@ def _register_builtin_shadcn_provider() -> None:
 
 _register_builtin_shadcn_provider()
 
+
+def _register_builtin_mcp_provider() -> None:
+    """Register the built-in MCP server's config provider.
+
+    This shipped as the separate ``jac-mcp`` plugin; it is now part of core and
+    registers directly (no entry point, no separate package, and -- since the
+    protocol is reimplemented on the standard library in ``jaclang.cli.mcp`` --
+    no external ``mcp``/pydantic/starlette/uvicorn dependency). The ``jac mcp``
+    command itself auto-registers when ``jaclang.cli.commands.mcp`` is imported
+    during CLI init; registering the plugin class here contributes the
+    ``[plugins.mcp]`` config schema and plugin metadata.
+    """
+    try:
+        from jaclang.cli.mcp.plugin_config import JacMcpPluginConfig
+    except Exception as exc:  # keep core usable if the MCP provider fails to import
+        import warnings
+
+        warnings.warn(f"Built-in MCP provider unavailable: {exc}", stacklevel=2)
+        return
+    if not plugin_manager.is_registered(JacMcpPluginConfig):
+        plugin_manager.register(JacMcpPluginConfig)
+
+
+_register_builtin_mcp_provider()
+
 # Schedule deferred native acceleration if autonative is enabled in jac.toml
 try:
     from jaclang.project.config import get_config as _get_jac_config
