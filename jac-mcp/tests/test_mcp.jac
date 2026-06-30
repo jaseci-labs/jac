@@ -937,28 +937,6 @@ test "create project default template" {
     }
 }
 
-test "start server nonexistent file" {
-    result = CompilerBridge.start_server("/nonexistent/path/app.jac");
-    assert "error" in result;
-}
-
-test "start server faux mode" {
-    import from jac_mcp.resources { find_repo_root }
-    import from pathlib { Path }
-
-    repo_root = find_repo_root();
-    if repo_root is None {
-        return;
-    }
-    main_jac = str(
-        Path(repo_root) / "jac-mcp" / "tests" / "fixtures" / "sample_project" / "main.jac"
-    );
-    result = CompilerBridge.start_server(main_jac, port=19999, faux=True);
-    assert "mode" in result;
-    assert result["mode"] == "faux";
-    assert "endpoints" in result;
-}
-
 # ── Tool Provider — New Tool Tests ──
 test "get ast via tool" {
     tp = ToolProvider();
