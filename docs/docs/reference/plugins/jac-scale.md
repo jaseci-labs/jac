@@ -1,56 +1,38 @@
-# jac-scale Reference
+# Scale Reference
 
-jac-scale generates REST endpoints from your Jac walkers and functions. Running `jac start` with this plugin turns every `:pub` or `:priv` walker into an API endpoint backed by FastAPI, with automatic Swagger docs, SQLite persistence, and built-in authentication.
+Scale generates REST endpoints from your Jac walkers and functions. Running `jac start` turns every `:pub` or `:priv` walker into an API endpoint backed by FastAPI, with automatic Swagger docs, SQLite persistence, and built-in authentication.
 
 For production, the `--scale` flag automates Docker image builds and Kubernetes deployment -- generating Dockerfiles, manifests, and service configurations from your code. This reference covers server startup options, endpoint generation, authentication, database persistence, Kubernetes deployment, and the CLI flags for each mode.
 
+Scale ships **built into `jaclang` core** as the `scale` subsystem (importable as `jaclang.scale`) -- there is no separate `jac-scale` package to install. The serving and deployment machinery is always present; only the heavier optional third-party libraries it can use (MongoDB, Redis, Kubernetes, Prometheus, ...) are pulled in per-project, on demand.
+
 ---
 
-## Installation
+## Optional dependencies
 
-jac-scale is lightweight by default. Install only the extras you need:
-
-```bash
-# Core only - FastAPI server, auth, CLI (no heavy dependencies)
-pip install jac-scale
-
-# Add MongoDB + Redis for persistent storage and distributed cache
-pip install jac-scale[data]
-
-# Add Prometheus metrics and observability
-pip install jac-scale[monitoring]
-
-# Add APScheduler for cron and background task scheduling
-pip install jac-scale[scheduler]
-
-# Add Kubernetes + Docker for deployment and image building
-pip install jac-scale[deploy]
-
-# Everything - recommended for production or if unsure
-pip install jac-scale[all]
-```
-
-Groups are combinable: `pip install jac-scale[data,monitoring]`
-
-After installing, enable the plugin:
+Scale's core path -- the FastAPI server, JWT auth, and CLI flags -- works out of the box with nothing extra to install. Heavier capabilities (Mongo/Redis storage, Kubernetes deploys, Prometheus metrics, scheduling) rely on third-party libraries that are **not** bundled into the `jac` binary. You enable them per-project by declaring the matching `[scale.*]` config in `jac.toml` and running `jac install`, which resolves the libraries that intent requires into the project's `.jac/venv`.
 
 ```bash
-jac plugins enable scale
+# After configuring the capabilities you need in jac.toml, install the
+# resolved dependencies into this project's .jac/venv:
+jac install
 ```
+
+For example, configuring a Mongo database under `[scale.database]` makes `jac install` pull in `pymongo`/`redis`; configuring `[scale.kubernetes]` (or using `jac start --scale`) pulls in `kubernetes`/`docker`; enabling `[scale.monitoring]` pulls in `prometheus-client`.
 
 !!! note
-    When a feature is used without its dependency installed, you get a clear error with the exact install command:
-    `ImportError: 'pymongo' is required for this feature. Install it with: pip install jac-scale[data]`
+    When a feature is used without its dependency present, you get a clear error telling you to declare the relevant `[scale.*]` config and run `jac install`:
+    `ImportError: 'pymongo' is required for this feature. Configure '[scale.database]' and run 'jac install'.`
 
-| Group | What it adds | When you need it |
+| Capability | What it needs | When you need it |
 |-------|-------------|-----------------|
-| _(core)_ | FastAPI, uvicorn, JWT auth, CLI | Always included |
-| `[data]` | pymongo, redis | Using MongoDB/Redis for storage (`jac start` with database config) |
-| `[aws]` | boto3 | Using S3-compatible cloud storage |
-| `[monitoring]` | prometheus-client | Prometheus `/metrics` endpoint |
-| `[scheduler]` | apscheduler | `@schedule(trigger=...)` on walkers/functions |
-| `[deploy]` | kubernetes, docker | `jac start --scale` or `jac start --build` |
-| `[all]` | All of the above | Production, or when you want everything |
+| _(core serving)_ | FastAPI, uvicorn, JWT auth | Always available -- ships with `jaclang` |
+| Mongo/Redis storage | pymongo, redis | Using MongoDB/Redis for storage (`jac start` with `[scale.database]`) |
+| Firestore | google-cloud-firestore | Using Firestore with `kvstore(db_type='firestore')` |
+| Cloud object storage | boto3 | Using S3-compatible cloud storage |
+| Monitoring | prometheus-client | Prometheus `/metrics` endpoint |
+| Scheduling | apscheduler | `@schedule(trigger=...)` on walkers/functions |
+| Deployment | kubernetes, docker | `jac start --scale` or `jac start --build` |
 
 ---
 
@@ -90,7 +72,7 @@ jac start
 # Custom port
 jac start --port 3000
 
-# Development with HMR (requires jac-client)
+# Development with HMR (client framework built into jaclang core)
 jac start --dev
 
 # API only -- skip client bundling
@@ -967,7 +949,7 @@ Errors: `400 INVALID_TOKEN`.
 
 ## Emailer
 
-jac-scale's `Emailer` is a thin abstraction (`jac_scale.abstractions.emailer.Emailer`) used by the framework to send verification and password-reset emails. It ships with a built-in SMTP implementation and accepts any user-supplied subclass via `jac.toml` -- no jac-scale code changes required.
+jac-scale's `Emailer` is a thin abstraction (`jaclang.scale.emailer.emailer.Emailer`) used by the framework to send verification and password-reset emails. It ships with a built-in SMTP implementation and accepts any user-supplied subclass via `jac.toml` -- no jac-scale code changes required.
 
 ### Configuration
 
@@ -1025,7 +1007,7 @@ Subclass `Emailer` and point `provider` at your class. The factory imports it dy
 
 ```python
 # myapp/email.py
-from jac_scale.abstractions.emailer import Emailer
+from jaclang.scale.emailer.emailer import Emailer
 import os, sendgrid
 
 class SendGridEmailer(Emailer):
@@ -1109,7 +1091,7 @@ Use this when you want SendGrid's REST API instead of SMTP (better deliverabilit
 
 ```python
 # myapp/email.py
-from jac_scale.abstractions.emailer import Emailer
+from jaclang.scale.emailer.emailer import Emailer
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 import os, logging
@@ -1314,7 +1296,7 @@ Walkers have two access levels when served as API endpoints (`:priv` is the expl
 | Access | Description |
 |--------|-------------|
 | Public (`:pub`) | Accessible without authentication. Anonymous callers run on the shared guest graph (`root.shared`); a caller presenting a valid token runs on their own root. |
-| Protected (default) and Private (`:priv`) | Require JWT authentication; per-user isolated (each user operates on their own graph). The unmarked default and `:priv` behave identically. |
+| Default, Protected (`:protect`), and Private (`:priv`) | Require JWT authentication; per-user isolated (each user operates on their own graph). For endpoint auth these behave identically -- **only `:pub` is exempt**. `:protect` is _not_ a middle auth tier; its three-way gradient applies to source-level [visibility](../language/access-modifiers.md), not to authentication. |
 
 ### Permission Functions Reference
 
@@ -1977,7 +1959,7 @@ Configuration priority: environment variables > `jac.toml` > defaults.
 For advanced use cases, you can use `StorageFactory` directly instead of the `store()` builtin:
 
 ```jac
-import from jac_scale.factories.storage_factory { StorageFactory }
+import from jaclang.scale.storage.factory { StorageFactory }
 
 # Create with explicit type and config
 glob config = {"base_path": "./my-files", "create_dirs": True};
@@ -2043,18 +2025,37 @@ walker async_processor {
 
 ## Direct Database Access (kvstore)
 
-Direct database operations without graph layer abstraction. Supports MongoDB (document queries) and Redis (key-value with TTL/atomic ops).
+Direct database operations without graph layer abstraction. Supports MongoDB (document queries), Firestore (Firebase-style document CRUD), and Redis (key-value with TTL/atomic ops).
 
 ```jac
-import from jac_scale.lib { kvstore }
+import from jaclang.scale.persistence.lib { kvstore }
 
 with entry {
     mongo_db = kvstore(db_name='my_app', db_type='mongodb');
+    firestore_db = kvstore(db_name='my_app', db_type='firestore');
     redis_db = kvstore(db_name='cache', db_type='redis');
 }
 ```
 
-**Parameters:** `db_name` (str), `db_type` ('mongodb'|'redis'), `uri` (str|None - priority: explicit → `MONGODB_URI`/`REDIS_URL` env vars → jac.toml)
+**Parameters:** `db_name` (str), `db_type` ('mongodb'|'firestore'|'redis'), `uri` (str|None - priority: explicit → env vars → jac.toml)
+
+### Firestore Configuration
+
+```toml
+[plugins.scale.database]
+type = "firestore"
+project_id = "my-firebase-project"
+```
+
+Or via environment variable:
+
+```bash
+export FIREBASE_PROJECT_ID="my-firebase-project"
+# Subsystem override (optional):
+# export FIRESTORE_PROJECT_ID="my-firebase-project"
+```
+
+`FIREBASE_PROJECT_ID` is the shared fallback for Auth SSO, Firestore, and Storage. Subsystem-specific vars override it when set.
 
 ---
 
@@ -2066,7 +2067,7 @@ with entry {
 **Example:**
 
 ```jac
-import from jac_scale.lib { kvstore }
+import from jaclang.scale.persistence.lib { kvstore }
 
 with entry {
     db = kvstore(db_name='my_app', db_type='mongodb');
@@ -2101,6 +2102,42 @@ with entry{
 
 ---
 
+## Firestore Operations
+
+**Common Methods:** `get()`, `set()`, `delete()`, `exists()`
+**Query Methods:** `find_one()`, `find()`, `insert_one()`, `insert_many()`, `update_one()`, `update_many()`, `delete_one()`, `delete_many()`, `find_by_id()`, `update_by_id()`, `delete_by_id()`
+
+**Example:**
+
+```jac
+import from jaclang.scale.lib { kvstore }
+
+with entry {
+    db = kvstore(db_name='my_app', db_type='firestore');
+
+    db.insert_one('users', {'name': 'Alice', 'role': 'admin', 'age': 30});
+    db.insert_one('users', {'name': 'Bob', 'role': 'user', 'age': 25});
+
+    alice = db.find_one('users', {'name': 'Alice'});
+    admins = list(db.find('users', {'role': 'admin'}));
+    older = list(db.find('users', {'age': {'$gte': 25}}));
+
+    todo = db.insert_one('todos', {'title': 'Buy milk', 'done': False});
+    db.update_by_id('todos', todo.inserted_id, {'$set': {'done': True}});
+    done_todos = list(db.find('todos', {'done': True}));
+}
+```
+
+**Supported filter operators:** `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$and`
+
+**Notes:**
+
+- Firestore collections are namespaced internally as `{db_name}__{col_name}`.
+- Querying by `_id` inside `find()` / `find_one()` is not supported; use `get()`, `find_by_id()`, `update_by_id()`, or `delete_by_id()`.
+- `find_nodes()` is intentionally not available for Firestore; Jac graph persistence remains on SQLite / MongoDB.
+
+---
+
 ## Redis Operations
 
 **Common Methods:** `get()`, `set()`, `delete()`, `exists()`
@@ -2109,7 +2146,7 @@ with entry{
 **Example:**
 
 ```jac
-import from jac_scale.lib { kvstore }
+import from jaclang.scale.persistence.lib { kvstore }
 
 with entry {
     cache = kvstore(db_name='cache', db_type='redis');
@@ -2150,7 +2187,7 @@ Pair `delete_if_equals` with `set_nx_with_ttl` and a unique fence token: a slow 
 import os;
 import time;
 import from uuid { uuid4 }
-import from jac_scale.lib { kvstore }
+import from jaclang.scale.persistence.lib { kvstore }
 
 glob _kv = kvstore(db_name='myapp', db_type='redis');
 
@@ -2241,13 +2278,13 @@ backoff_seconds = [1, 5, 30]
 dead_letter_suffix = ".dlq"
 ```
 
-To use Redis Streams you need the `[data]` extra: `pip install jac-scale[data]`. Without it, jac-scale silently uses `LocalEventStream` and logs a warning at startup.
+To use Redis Streams you need `redis` in the project venv -- configure `[scale.database]` (Redis) and run `jac install`. Without it, scale silently uses `LocalEventStream` and logs a warning at startup.
 
 ### Publishing
 
 ```jac
-import from jac_scale.events.publisher { publish }
-import from jac_scale.events.broker { Event }
+import from jaclang.scale.events.publisher { publish }
+import from jaclang.scale.events.broker { Event }
 
 walker place_order {
     has order_id: int;
@@ -2267,8 +2304,8 @@ walker place_order {
 ### Subscribing (push)
 
 ```jac
-import from jac_scale.events.subscriber { subscribe }
-import from jac_scale.events.broker { Event }
+import from jaclang.scale.events.subscriber { subscribe }
+import from jaclang.scale.events.broker { Event }
 
 @subscribe("orders.placed")
 def on_order_placed(event: Event) -> None {
@@ -2290,7 +2327,7 @@ def replay_all(event: Event) -> None {
 ### Consuming (pull)
 
 ```jac
-import from jac_scale.events.broker { EventStreamBroker }
+import from jaclang.scale.events.broker { EventStreamBroker }
 
 def drain(broker: EventStreamBroker) -> int {
     batch = broker.consume(
@@ -2511,6 +2548,8 @@ This is on by default whenever a Redis URL resolves. Tune it under
 |----------------|---------|-------------|
 | `redis_l1_invalidation_enabled` | `true` | Broadcast and apply cross-pod L1 evictions over Redis pub/sub. |
 | `redis_l1_invalidation_channel` | `"jac:anchor:invalidate"` | Pub/sub channel used for invalidation messages. All pods sharing a cache must agree on this value. |
+
+L1 invalidation keeps re-reads fresh, but it is a _post-commit_ signal -- it cannot stop two pods that both read an empty `[-->(?:X)]` _before_ either writes from both creating a child (the check-then-create race). That race is closed separately by node-level optimistic concurrency, which converges the loser via replay; see [Persistence -> Concurrent writes: check-then-create](../persistence.md#concurrent-writes-check-then-create-and-convergence).
 
 ---
 
@@ -2818,7 +2857,7 @@ Kubernetes uses readiness and liveness probes to decide when a pod is ready to s
 
 | TOML Key | Default | Description |
 |----------|---------|-------------|
-| `health_check_path` | Endpoint probed by both readiness and liveness checks |
+| `health_check_path` | `"/docs"` | Endpoint probed by both readiness and liveness checks |
 | `readiness_initial_delay` | `10` | Seconds to wait before first readiness check |
 | `readiness_period` | `20` | Seconds between readiness checks |
 | `liveness_initial_delay`  | `10` | Seconds to wait before first liveness check |
@@ -2841,19 +2880,26 @@ liveness_failure_threshold = 5
 
 ---
 
-### Horizontal Pod Autoscaling (HPA)
+### Autoscaling
 
-jac-scale creates a Kubernetes HPA that scales the application pod count up or down based on average CPU utilization across all pods.
+jac-scale supports two autoscaler engines selected via `autoscaler_engine`. Both engines share `min_replicas`, `max_replicas`, and `cpu_utilization_target`; they differ in what additional triggers and behaviours they support.
 
 **Defaults:**
 
 | TOML Key | Default | Description |
 |----------|---------|-------------|
-| `min_replicas` | `1` | Minimum number of pods (HPA lower bound) |
-| `max_replicas` | `3` | Maximum number of pods (HPA upper bound) |
-| `cpu_utilization_target`  | `50` | Average CPU % across pods that triggers scale-out |
+| `autoscaler_engine` | `"hpa"` | Autoscaler engine: `"hpa"` (CPU/memory, default) or `"keda"` (event-driven, scale-to-zero) |
+| `min_replicas` | `1` | Minimum number of pods |
+| `max_replicas` | `3` | Maximum number of pods |
+| `cpu_utilization_target` | `50` | Average CPU % that triggers scale-out. Seeds the CPU trigger for both engines unless explicitly overridden. |
 
-**To change in `jac.toml`:**
+> **Note:** CPU-based scaling requires `cpu_request` to be set. Without a CPU request, Kubernetes cannot compute a utilization percentage.
+
+#### HPA Engine (Default)
+
+The `"hpa"` engine creates a standard Kubernetes `HorizontalPodAutoscaler` that scales pods based on average CPU utilization.
+
+**To configure in `jac.toml`:**
 
 ```toml
 [plugins.scale.kubernetes]
@@ -2862,7 +2908,71 @@ max_replicas = 10
 cpu_utilization_target = 70   # Scale out when average CPU exceeds 70%
 ```
 
-> HPA requires `cpu_request` to be set. Without a CPU request, Kubernetes cannot compute a utilization percentage.
+#### KEDA Engine (Event-Driven Autoscaling)
+
+The `"keda"` engine creates a `ScaledObject` custom resource instead of an HPA. It supports the full [KEDA trigger catalogue](https://keda.sh/docs/latest/scalers/) (Prometheus, Redis, RabbitMQ, Kafka, HTTP, and more) and enables scale-to-zero.
+
+!!! note
+    KEDA must be installed on the cluster before using this engine. If KEDA CRDs are absent at deploy time, jac-scale emits an install warning with a link to the [KEDA installation docs](https://keda.sh/docs/latest/deploy/) and falls back to static replicas rather than failing the deploy.
+
+**Switching between engines is safe.** Each engine removes the other engine's resource (`ScaledObject` or `HPA`) on apply, so two autoscalers never compete for `spec.replicas` on the same Deployment.
+
+!!! warning "CPU/memory triggers: scale-down always takes ~5 minutes"
+    When using CPU or memory triggers, KEDA implements scaling through an internal Kubernetes `HorizontalPodAutoscaler`. Kubernetes applies a built-in 5-minute scale-down stabilization window (`stabilizationWindowSeconds = 300`) to every HPA regardless of the `autoscaler_cooldown` value set in `jac.toml`. Replicas will not decrease until CPU/memory has stayed below the target for a full 5 minutes. The `autoscaler_cooldown` setting is effective only for **event-driven triggers** (e.g. Prometheus, Redis, RabbitMQ) where KEDA directly controls the replica count without going through the HPA stabilization window.
+
+!!! tip "Startup CPU spikes causing unwanted scale-up?"
+    Pod initialization (Python imports, FastAPI startup, Jac runtime boot) can briefly spike CPU above the target, causing KEDA to scale up immediately after a fresh deploy before the app has finished starting. Set `autoscaler_initial_cooldown` to delay KEDA's first evaluation and give pods time to settle:
+    ```toml
+    autoscaler_initial_cooldown = 120  # wait 2 minutes after deploy before scaling
+    ```
+
+**KEDA-specific configuration (`[plugins.scale.kubernetes]`):**
+
+| TOML Key | Default | Description |
+|----------|---------|-------------|
+| `idle_replicas` | `null` | Replica count when all triggers go inactive. Set to `0` for scale-to-zero. Omit to fall back to `min_replicas`. |
+| `autoscaler_polling_interval` | `30` | Seconds between trigger evaluations. |
+| `autoscaler_cooldown` | `300` | Seconds of continuous inactivity before scaling down to `idle_replicas`. |
+| `autoscaler_initial_cooldown` | `0` | Seconds after a fresh deploy before scale-to-zero becomes eligible. Prevents cold-start thrash on slow-booting apps. |
+| `extra_triggers` | `[]` | Array of additional KEDA trigger tables applied to every service. See trigger entry keys below. |
+
+**Trigger entry keys (`[[plugins.scale.kubernetes.extra_triggers]]`):**
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `type` | (required) | KEDA trigger type (e.g. `"prometheus"`, `"redis"`, `"rabbitmq"`, `"kafka"`, `"http"`). See the [KEDA trigger catalogue](https://keda.sh/docs/latest/scalers/). |
+| `metadata` | `{}` | Dict of trigger-specific key/value pairs. All values are coerced to strings before being sent to KEDA. |
+| `name` | `null` | Name for this trigger. Required when using `auth.secret_refs`; used as the `TriggerAuthentication` resource name. |
+| `auth.secret_refs` | `{}` | KEDA `TriggerAuthentication` bindings. Each key is a KEDA parameter name; the value is a table with `name` (Kubernetes Secret name) and `key` (key within that Secret). |
+
+**To configure in `jac.toml`:**
+
+```toml
+[plugins.scale.kubernetes]
+autoscaler_engine = "keda"
+min_replicas = 1
+max_replicas = 10
+cpu_utilization_target = 50       # Seeds the automatic CPU trigger
+idle_replicas = 0                 # Scale to zero when all triggers are inactive
+autoscaler_polling_interval = 15
+autoscaler_cooldown = 120
+autoscaler_initial_cooldown = 30  # Wait 30s after deploy before allowing scale-to-zero
+
+# Add a Prometheus trigger alongside the automatic CPU trigger
+[[plugins.scale.kubernetes.extra_triggers]]
+type = "prometheus"
+name = "queue-depth"
+metadata = { serverAddress = "http://prometheus:9090", metricName = "job_queue_depth", threshold = "100", query = "sum(job_queue_depth)" }
+
+# Trigger with authentication: credential pulled from a Kubernetes Secret
+[[plugins.scale.kubernetes.extra_triggers]]
+type = "rabbitmq"
+name = "orders-queue"
+metadata = { queueName = "orders", mode = "QueueLength", value = "50", protocol = "amqp" }
+
+[plugins.scale.kubernetes.extra_triggers.auth.secret_refs]
+host = { name = "rabbitmq-secret", key = "host" }
+```
 
 ---
 
@@ -2936,7 +3046,7 @@ Packages are installed at pod startup before the application starts. For frequen
 
 ### Jaseci Source Pinning (Experimental)
 
-When using `--experimental` mode, Jaseci packages are installed from the GitHub repository instead of PyPI. Pin a specific branch or commit for reproducible builds.
+When using `--experimental` mode, the Jaseci plugin packages (byllm and friends) are installed from the GitHub repository instead of PyPI. Pin a specific branch or commit for reproducible builds. (The jaclang runtime itself -- which includes the `scale` subsystem -- always comes from the pod's `jac` binary base image, so it is never installed from PyPI in either mode.)
 
 **Defaults:**
 
@@ -2958,7 +3068,11 @@ jaseci_commit = "a1b2c3d4"
 
 ### Package Version Pinning
 
-Pin specific PyPI versions for Jaseci packages installed inside the pod. Use `"none"` to skip a package entirely.
+Pin specific PyPI versions for the Jaseci plugin packages installed inside the pod. Use `"none"` to skip a package entirely.
+
+> The pod's base image provides the `jac` binary, which is the jaclang runtime -- so jaclang (and the built-in `scale` subsystem) is host-provided and is never pinned or `pip install`ed here. Only the separate plugins below are installed into the pod.
+>
+> **Note:** `jaclang` is no longer on PyPI, so the pod image must install the `jac` binary (e.g. via the install script). The cluster deploy code is being migrated to this model; until then, deploys that expect a PyPI `jaclang` will not resolve.
 
 **Defaults:** all packages default to `"latest"` from PyPI.
 
@@ -2966,26 +3080,22 @@ Pin specific PyPI versions for Jaseci packages installed inside the pod. Use `"n
 
 ```toml
 [plugins.scale.kubernetes.plugin_versions]
-jaclang = "0.1.5"      # Pin to a specific version
-jac_scale = "latest"   # Latest from PyPI (default)
-jac_client = "0.1.0"   # Specific version
 jac_byllm = "none"     # Skip installation entirely
 jac_mcp = "latest"     # Optional MCP server plugin
 ```
 
 | Package | Description |
 |---------|-------------|
-| `jaclang` | Core Jac language runtime |
-| `jac_scale` | This scaling plugin |
-| `jac_client` | Frontend/client support |
 | `jac_byllm` | LLM integration (set to `"none"` to exclude) |
 | `jac_mcp` | MCP server plugin (set to `"none"` to exclude) |
+
+> Scale itself is part of `jaclang` core and arrives with the `jac` binary in the pod image, so there is no `jac_scale` package to pin here. The frontend/client framework is likewise built into core.
 
 ---
 
 ### Monitoring Stack
 
-jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-state-metrics + node-exporter, and optionally Loki + Grafana Alloy for log aggregation) into the same namespace as your application.
+Scale can deploy a full observability stack (Prometheus + Grafana + kube-state-metrics + node-exporter, and optionally Loki + Grafana Alloy for log aggregation) into the same namespace as your application.
 
 | Component | Purpose |
 |-----------|---------|
@@ -3082,7 +3192,7 @@ All Kubernetes resources created by jac-scale are labeled `managed: jac-scale` f
 kubectl get all -l managed=jac-scale -A
 ```
 
-Tagged resource types: Deployments, StatefulSets, Services, ConfigMaps, Secrets, PersistentVolumeClaims, HorizontalPodAutoscalers.
+Tagged resource types: Deployments, StatefulSets, Services, ConfigMaps, Secrets, PersistentVolumeClaims, HorizontalPodAutoscalers, ScaledObjects (KEDA engine), TriggerAuthentications (KEDA engine).
 
 ---
 
@@ -3431,7 +3541,7 @@ Outside Kubernetes, sv-to-sv calls find peer providers via auto-spawn (single-pr
 JAC_SV_<PEER_MODULE>_URL=http://<peer>-service.<namespace>.svc.cluster.local:<container_port>
 ```
 
-The env-var key uses the raw module name (the value to the right of `sv import from`) upper-cased and joined with `JAC_SV_…_URL`. The URL host uses the Kubernetes Service name with DNS-1123 normalization (so `jac_coder_sv` becomes `jac-coder-sv-service`). Self is skipped (no service points env at itself).
+The env-var key uses the raw module name (the value to the right of `sv import from`) upper-cased and joined with `JAC_SV_..._URL`. The URL host uses the Kubernetes Service name with DNS-1123 normalization (so `jac_coder_sv` becomes `jac-coder-sv-service`). Self is skipped (no service points env at itself).
 
 You do not write these env vars by hand in `--scale` K8s mode; K-track derives them from `[plugins.scale.microservices.routes]` and the configured namespace.
 
@@ -3447,9 +3557,10 @@ Each microservice entry takes optional per-service overrides under `[plugins.sca
 | `rpc_timeout` | float (seconds) | Per-service sv-to-sv RPC timeout. Default 10s, fine for CRUD; bump to 120-300s for LLM workers. |
 | `image_tag` | str | Override the image tag for just this service (rare; most apps use the same image and select via `JAC_SV_NAME`). |
 | `env` | dict | Extra env vars merged into the pod spec. `JAC_SV_NAME` and `JAC_SV_*_URL` are protected (cannot be overridden). |
-| `hpa.enabled` | bool | Set to `false` to fix replicas at the configured `replicas` count. |
-| `hpa.min` / `hpa.max` | int | HPA replica bounds. |
-| `hpa.cpu_target` | int (percent) | Target CPU utilization for HPA. Default 70%. |
+| `hpa.enabled` | bool | Set to `false` to fix replicas at the configured `replicas` count. Applies to both `"hpa"` and `"keda"` engines. |
+| `hpa.min` / `hpa.max` | int | Autoscaler replica bounds. Applies to both engines. |
+| `hpa.cpu_target` | int (percent) | Target CPU utilization percentage. Default 70%. Applies to both engines. |
+| `[[services.NAME.triggers]]` | list | Per-service KEDA event-driven triggers. Each entry: `type` (str), `metadata` (dict), optional `name` (str), optional `auth.secret_refs` (dict). Requires `autoscaler_engine = "keda"` in `[plugins.scale.kubernetes]`. |
 
 ```toml
 # Example: scale jac_coder_sv hot during LLM workloads, fix the gateway at 2.
@@ -3460,6 +3571,12 @@ hpa = { enabled = true, min = 2, max = 10, cpu_target = 60 }
 [plugins.scale.microservices.services.__gateway__]
 replicas = 2
 hpa = { enabled = false }
+
+# KEDA per-service trigger (requires autoscaler_engine = "keda" in [plugins.scale.kubernetes])
+[[plugins.scale.microservices.services.orders_app.triggers]]
+type = "prometheus"
+name = "order-queue"
+metadata = { serverAddress = "http://prometheus:9090", metricName = "pending_orders", threshold = "20", query = "sum(pending_orders_total)" }
 ```
 
 ### Centralised Logs
@@ -3688,7 +3805,7 @@ Configuration priority: environment variables > `jac.toml` > defaults.
 Use `SandboxFactory` to create and manage sandboxes in your Jac code:
 
 ```jac
-import from jac_scale.factories.sandbox_factory { SandboxFactory }
+import from jaclang.scale.factories.sandbox_factory { SandboxFactory }
 
 # Create sandbox using jac.toml config
 glob sandbox = SandboxFactory.get_default();
@@ -4045,11 +4162,17 @@ Browser → Load Balancer → Wildcard Ingress (*.preview.example.com) → Proxy
 - `service.yaml` -- ClusterIP Service on port 8080
 - `ingress.yaml` -- Wildcard Ingress (replace `*.example.com` with your domain)
 
-The proxy itself is a Jac application at `jac-scale/providers/proxy/sandbox_proxy.jac`. Build it with the provided Dockerfile at `jac-scale/targets/kubernetes/templates/sandbox-proxy.Dockerfile`:
+The proxy itself is a Jac application. Build it with a Dockerfile that installs the self-contained `jac` binary (which provides the jaclang runtime, including the built-in `scale` subsystem), then layers in the extra deps it needs:
 
 ```dockerfile
 FROM python:3.12-slim
-RUN pip install --no-cache-dir aiohttp kubernetes_asyncio jaclang "jac-scale[all]"
+# Install the `jac` binary -- no PyPI jaclang; the binary provides the runtime
+# (and scale, which is built into core).
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
+ENV PATH="/root/.local/bin:${PATH}"
+RUN jac install aiohttp kubernetes_asyncio docker
 COPY sandbox_proxy.jac /app/sandbox_proxy.jac
 WORKDIR /app
 EXPOSE 8080

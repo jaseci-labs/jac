@@ -1,13 +1,3 @@
-"""Implementation of the `jac code` command group.
-
-Every subcommand is a thin shim over a single `CodeIntelligence` query: build
-the facade at the autodiscovered project root, run the query, and emit the
-result as JSON (default) or `render()`ed text (`--text`). The query logic
-itself lives in `CodeIntelligence`; the JSON shape lives in each record's
-`to_dict`. This module only routes and serialises, so the CLI, the `jac ai`
-agent, and the language server all read the project through one compiler.
-"""
-
 import json;
 import os;
 import sys;
@@ -15,24 +5,15 @@ import from jaclang.cli.console { console }
 import from jaclang.compiler.code_intel { CodeIntelligence }
 import from jaclang.project.config { find_project_root }
 
-# Bumped only on a breaking change to any `jac code` payload shape, so an
-# agent can pin to a version rather than treat field names as load-bearing.
 glob _SCHEMA_VERSION = 1,
-     # The subcommands `jac code` understands, in help order.
      _ACTIONS: list[str] = ["symbol", "uses", "map", "walkers", "slice", "diag"];
 
 
-"""Write text verbatim to stdout, followed by a newline.
-
-JSON payloads and multi-line `render()` output must reach the pipe byte-exact;
-`console.print`'s Rich backend reflows long lines and would corrupt both.
-"""
 def _emit(text: str) {
     sys.stdout.write(text + "\n");
 }
 
 
-"""Serialise and emit a JSON payload, tagged with the schema version."""
 def _emit_json(command: str, payload: dict) {
     body: dict = {"schema_version": _SCHEMA_VERSION, "command": command};
     body.update(payload);
@@ -40,11 +21,6 @@ def _emit_json(command: str, payload: dict) {
 }
 
 
-"""Report a usage/runtime error in the active output mode; returns exit code 1.
-
-JSON callers get a parseable `{"error": ...}` object so a pipeline never has
-to special-case stderr; humans (`--text`) get a styled console message.
-"""
 def _fail(command: str, message: str, text: bool) -> int {
     if text {
         console.error(message);
@@ -55,23 +31,6 @@ def _fail(command: str, message: str, text: bool) -> int {
 }
 
 
-"""Build and compile a `CodeIntelligence` rooted at the enclosing project.
-
-Walks up to the nearest `jac.toml` (like `jac check`); with no project it
-falls back to the current directory so `jac code` still works on a loose file.
-
-Compilation cost is a ladder, and each command pays only its rung:
-
-- `map` / `walkers` read archetype declarations straight off the AST, so they
-  run `structural` (parse-only) -- no import resolution, no symbol or type
-  passes. The cheapest rung, and the discovery commands an agent reaches for
-  first.
-- `uses` / `symbol` need the def/use chains, and those are only complete once
-  type inference has resolved member access (`x.field`, `obj.method()`) to its
-  declaration -- a parse or even a plain symbol build links bare names but
-  misses every use reached through a typed receiver. So they type-check.
-- `slice` / `diag` surface or report types directly, so they type-check too.
-"""
 def _load_ci(type_check: bool, structural: bool = False) -> CodeIntelligence {
     found = find_project_root();
     proj_dir = str(found[0]) if found is not None else os.getcwd();
@@ -83,8 +42,6 @@ def _load_ci(type_check: bool, structural: bool = False) -> CodeIntelligence {
 }
 
 
-#-- subcommand handlers -------------------------------------------------------
-"""`jac code symbol <name>`: definition(s) of a symbol plus where it is used."""
 def _code_symbol(ci: CodeIntelligence, name: str, text: bool) -> int {
     defs = ci.lookup(name);
     uses = [
@@ -125,7 +82,6 @@ def _code_symbol(ci: CodeIntelligence, name: str, text: bool) -> int {
 }
 
 
-"""`jac code uses <name>`: every definition and use, def/use-precise."""
 def _code_uses(ci: CodeIntelligence, name: str, text: bool) -> int {
     refs = ci.references(name);
     if not refs {
@@ -145,7 +101,6 @@ def _code_uses(ci: CodeIntelligence, name: str, text: bool) -> int {
 }
 
 
-"""`jac code map [kind]`: structural overview of project archetypes."""
 def _code_map(ci: CodeIntelligence, kind: str, text: bool) -> int {
     archs = ci.archetypes(kind);
     if not archs and kind {
@@ -172,7 +127,6 @@ def _code_map(ci: CodeIntelligence, kind: str, text: bool) -> int {
 }
 
 
-"""`jac code walkers <node-type>`: walker entry points that traverse a node."""
 def _code_walkers(ci: CodeIntelligence, node_type: str, text: bool) -> int {
     eps = ci.walkers_visiting(node_type);
     if not eps {
@@ -195,7 +149,6 @@ def _code_walkers(ci: CodeIntelligence, node_type: str, text: bool) -> int {
 }
 
 
-"""`jac code slice <name>`: typed neighbourhood of a symbol for prompt use."""
 def _code_slice(ci: CodeIntelligence, name: str, depth: int, text: bool) -> int {
     sl = ci.slice_for(name, depth);
     if sl.target is None {
@@ -215,11 +168,6 @@ def _code_slice(ci: CodeIntelligence, name: str, depth: int, text: bool) -> int 
 }
 
 
-"""`jac code diag [path]`: structured compiler errors and warnings.
-
-A report, not a query: exit 0 even when diagnostics exist (the payload counts
-carry the signal). `--text` renders one diagnostic per line.
-"""
 def _code_diag(ci: CodeIntelligence, file: str, text: bool) -> int {
     diags = ci.diagnostics(file);
     errors = len(
@@ -257,7 +205,6 @@ def _code_diag(ci: CodeIntelligence, file: str, text: bool) -> int {
 }
 
 
-"""Print the discovery surface: what `jac code` is and its subcommands."""
 def _print_usage {
     console.print();
     console.print("jac code -- ask the compiler about your code", style="bold");
@@ -283,12 +230,6 @@ def _print_usage {
 }
 
 
-"""Route `jac code <action> [target]` to its handler.
-
-JSON is the default for every subcommand (each payload carries a
-`schema_version`); `--text` switches to the `render()` form. Exit codes:
-0 = ok, 1 = usage/runtime error, 2 = nothing found for the query.
-"""
 impl code(
     action: str = "", target: str = "", text: bool = False, depth: int = 1
 ) -> int {
@@ -303,13 +244,11 @@ impl code(
             text
         );
     }
-    # Subcommands that operate on a named symbol or node type require a target.
+
     if action in ["symbol", "uses", "walkers", "slice"] and not target {
         return _fail(action, f"`jac code {action}` needs a name argument.", text);
     }
-    # The cost ladder (see `_load_ci`): map/walkers parse only; everything else
-    # type-checks, because the def/use chains uses/symbol report are only
-    # complete after type inference resolves member access.
+
     structural = action in ["map", "walkers"];
     wants_types = not structural;
     try {

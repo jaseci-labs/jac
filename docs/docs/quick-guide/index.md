@@ -85,7 +85,7 @@ This single file defines a persistent data model, an AI-powered categorizer, a R
     Install Jac, set your API key, and run:
 
     ```bash
-    pip install jaseci
+    curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
     export ANTHROPIC_API_KEY="your-key-here"
     jac start
     ```
@@ -130,7 +130,7 @@ This philosophy rests on three pillars.
 
     Your code doesn't change when you move from laptop to cloud. Declare `node` types and connect them to `root` -- the runtime handles persistence automatically. Run `jac start --scale` and your app deploys to Kubernetes with Redis, MongoDB, load balancing, and health checks provisioned for you. Zero DevOps.
 
-    [:octicons-arrow-right-24: How Persistence Works](what-makes-jac-different.md#2-how-does-jac-fully-abstract-away-database-organization-and-interactions-and-the-complexity-of-multiuser-persistent-data) · [:octicons-arrow-right-24: Deployment Reference](../reference/plugins/jac-scale.md) · [:octicons-arrow-right-24: jac-scale Plugin](../reference/plugins/jac-scale.md)
+    [:octicons-arrow-right-24: How Persistence Works](what-makes-jac-different.md#2-how-does-jac-fully-abstract-away-database-organization-and-interactions-and-the-complexity-of-multiuser-persistent-data) · [:octicons-arrow-right-24: Deployment Reference](../reference/plugins/jac-scale.md) · [:octicons-arrow-right-24: Scale Reference](../reference/plugins/jac-scale.md)
 
 </div>
 
@@ -224,10 +224,10 @@ The runtime handles database schemas, user authentication (per-user graph isolat
 ### Step 1: Install
 
 ```bash
-pip install jaseci
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 ```
 
-This installs the complete Jac ecosystem: `jaclang` (compiler), `byllm` (AI integration), `jac-client` (frontend), `jac-scale` (deployment), and `jac-super` (enhanced console).
+This installs the self-contained `jac` binary -- no Python, pip, or uv required. It includes the compiler, the built-in full-stack frontend/desktop framework, and the built-in `scale` subsystem for serving and deployment. Add AI integration with `jac install byllm`; scale's optional deps (MongoDB, Redis, Kubernetes, ...) are pulled per-project by your `[scale.*]` config plus `jac install`.
 
 Verify your installation:
 

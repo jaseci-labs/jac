@@ -126,7 +126,7 @@ Wire it in the entry: `def:pub app() -> JsxElement { return <AppProvider><AppShe
 
 ## jac-shadcn project layout
 
-When the project has `components/ui/` (jac-shadcn primitives are pre-installed): `components/ui/` holds the managed primitives (`button.cl.jac`, `card.cl.jac`, ...) - **import only, never edit**; your composite components and shells sit above them in `components/` and `pages/` exactly as in the layout above. Load `jac-shadcn-components` for import patterns and the component selection table.
+When the project has `components/ui/` (jac-shadcn primitives are pre-installed): `components/ui/` holds the managed primitives (`button.cl.jac`, `card.cl.jac`, ...) - **import only, never edit**; your composite components and shells sit above them in `components/` and `pages/` exactly as in the layout above. Load `jac-shadcn-components` for import patterns and the component selection table, `jac-shadcn-blocks` for multi-component composition patterns.
 
 ## Rules
 
@@ -146,3 +146,4 @@ When the project has `components/ui/` (jac-shadcn primitives are pre-installed):
 - `jac-impl-files` - the `.impl.jac` handler annex the shell pattern relies on
 - `jac-cl-components` - single-component shape, props/`Callable` typing, state, events
 - `jac-fullstack-patterns` - cl→sv import rules inside shells and hooks
+- `jac-shadcn-blocks` - composition patterns for auth cards, app shells, data tables, and more

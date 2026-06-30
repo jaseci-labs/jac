@@ -5,7 +5,6 @@ impl Align.treeprint(level: int = 0) -> str {
     return header + '\n' + '\n'.join(children_repr);
 }
 
-"""Return a string representation of the Align object."""
 impl Align.__str__ -> str {
     return f"Align({self.n}, {self.contents})";
 }
@@ -20,7 +19,6 @@ impl IfBreak.treeprint(level: int = 0) -> str {
     return header + '\n' + '\n'.join(break_repr) + '\n' + '\n'.join(flat_repr);
 }
 
-"""Return a string representation of the IfBreak object."""
 impl IfBreak.__str__ -> str {
     return f"IfBreak({self.break_contents}, {self.flat_contents})";
 }
@@ -32,7 +30,6 @@ impl Concat.treeprint(level: int = 0) -> str {
     return header + '\n' + '\n'.join(children_repr);
 }
 
-"""Return a string representation of the Concat object."""
 impl Concat.__str__ -> str {
     return f"Concat({self.parts})";
 }
@@ -44,7 +41,6 @@ impl Indent.treeprint(level: int = 0) -> str {
     return header + '\n' + '\n'.join(children_repr);
 }
 
-"""Return a string representation of the Indent object."""
 impl Indent.__str__ -> str {
     return f"Indent({self.contents})";
 }
@@ -56,7 +52,6 @@ impl Group.treeprint(level: int = 0) -> str {
     return header + '\n' + '\n'.join(children_repr);
 }
 
-"""Return a string representation of the Group object."""
 impl Group.__str__ -> str {
     return f"Group({self.contents})";
 }
@@ -73,7 +68,6 @@ impl Line.treeprint(level: int = 0) -> str {
     return f"{indent}Line({', '.join(attrs)})";
 }
 
-"""Return a string representation of the Line object."""
 impl Line.__str__ -> str {
     attrs: list[str] = [];
     if self.hard {
@@ -93,23 +87,19 @@ impl Text.treeprint(level: int = 0) -> str {
     return f'{indent}Text("{self.text}"){token_info}';
 }
 
-"""Return a string representation of the Text object."""
 impl Text.__str__ -> str {
     return f'Text("{self.text}")';
 }
 
-"""Return an indented string representation of the Doc object."""
 impl Doc.treeprint(level: int = 0) -> str {
     indent = '  ' * level;
     return f"{indent}{self.__class__.__name__}";
 }
 
-"""Return a string representation of the Doc object."""
 impl Doc.__repr__ -> str {
     return self.treeprint();
 }
 
-"""Return a string representation of the Doc object."""
 impl Doc.__str__ -> str {
     return self.__class__.__name__;
 }

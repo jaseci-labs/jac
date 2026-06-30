@@ -1,6 +1,6 @@
 # Kubernetes Deployment
 
-Moving from a local API server to a production Kubernetes deployment typically requires writing Dockerfiles, Kubernetes manifests, configuring databases, and setting up monitoring. The `jac-scale` plugin eliminates this boilerplate: `jac start --scale` generates and applies all the necessary Kubernetes resources automatically -- your application, a MongoDB instance for graph persistence, Redis for caching, and optionally Prometheus/Grafana for monitoring.
+Moving from a local API server to a production Kubernetes deployment typically requires writing Dockerfiles, Kubernetes manifests, configuring databases, and setting up monitoring. Jac's built-in `scale` subsystem eliminates this boilerplate: `jac start --scale` generates and applies all the necessary Kubernetes resources automatically -- your application, a MongoDB instance for graph persistence, Redis for caching, and optionally Prometheus/Grafana for monitoring.
 
 This tutorial covers deploying to a local Kubernetes cluster (minikube or Docker Desktop), but the same command works for cloud providers (EKS, GKE, AKS) with `kubectl` properly configured.
 
@@ -9,10 +9,10 @@ This tutorial covers deploying to a local Kubernetes cluster (minikube or Docker
 > - Completed: [Local API Server](local.md)
 > - Kubernetes cluster running (minikube, Docker Desktop, or cloud provider)
 > - `kubectl` configured
-> - jac-scale installed and enabled:
+> - Deployment dependencies installed into your project: the `scale` subsystem ships with `jaclang`, but `jac start --scale` needs `kubernetes`/`docker` in the project venv. Configure `[scale.kubernetes]` in `jac.toml` (or just run the deploy once -- the first `--scale` run resolves them) and:
 >
 >   ```bash
->   pip install jac-scale
+>   jac install
 >   ```
 >
 > - Time: ~10 minutes
@@ -62,7 +62,7 @@ walker:pub add_todo {
 
     can create with Root entry {
         todo = here ++> Todo(title=self.title);
-        report {"title": todo[0].title, "done": todo[0].done};
+        report {"title": todo.title, "done": todo.done};
     }
 }
 
@@ -177,6 +177,38 @@ Configure deployment via environment variables in `.env`:
 
 ---
 
+## Autoscaling
+
+By default scale creates a Kubernetes `HorizontalPodAutoscaler` that scales pods based on average CPU utilization. Configure the bounds in `jac.toml`:
+
+```toml
+[plugins.scale.kubernetes]
+min_replicas = 2
+max_replicas = 10
+cpu_utilization_target = 70   # Scale out when average CPU exceeds 70%
+```
+
+For event-driven scaling or scale-to-zero, switch to the KEDA engine:
+
+```toml
+[plugins.scale.kubernetes]
+autoscaler_engine = "keda"
+min_replicas = 1              # default 1; floor while triggers are active
+max_replicas = 10             # default 3; ceiling for scale-out
+cpu_utilization_target = 50   # default 50; seeds a CPU trigger (requires cpu_request)
+idle_replicas = 0             # default null (uses min_replicas); set 0 for scale-to-zero
+autoscaler_polling_interval = 30   # default 30; seconds between trigger evaluations
+autoscaler_cooldown = 300          # default 300; seconds of inactivity before scaling down
+autoscaler_initial_cooldown = 0    # default 0; seconds after deploy before scale-to-zero kicks in
+```
+
+!!! note
+    KEDA must be installed on your cluster before setting `autoscaler_engine = "keda"`. See the [KEDA installation guide](https://keda.sh/docs/latest/deploy/).
+
+For the full list of autoscaling options (including event triggers, polling intervals, cooldown tuning, and authenticated triggers), see the [Scale Reference](../../reference/plugins/jac-scale.md#autoscaling).
+
+---
+
 ## Remote Clusters and Image Registry
 
 Local clusters (Docker Desktop, Minikube, k3d, kind) load the built image directly into the cluster's container runtime. **Remote clusters (EKS, GKE, AKS, anything you reach over the network) cannot do this** -- they pull images from a registry the cluster has IAM/auth to read.
@@ -253,7 +285,7 @@ kubectl get pods
 kubectl get services
 ```
 
-All jac-scale resources are labeled with `managed: jac-scale`, so you can list everything it owns:
+All scale-managed resources are labeled with `managed: jac-scale`, so you can list everything it owns:
 
 ```bash
 kubectl get all -l managed=jac-scale
@@ -267,7 +299,7 @@ kubectl logs -l app=jaseci -f
 
 ### Clean Up
 
-Remove all Kubernetes resources created by jac-scale:
+Remove all Kubernetes resources created by scale:
 
 ```bash
 jac destroy main.jac
@@ -373,7 +405,7 @@ jac status main.jac
 # Describe a pod for events
 kubectl describe pod <pod-name>
 
-# Get all jac-scale managed resources
+# Get all scale-managed resources
 kubectl get all -l managed=jac-scale
 
 # Check events
@@ -386,7 +418,7 @@ kubectl get events --sort-by='.lastTimestamp'
 
 ```bash
 # Create a new full-stack project
-jac create todo --use client
+jac create todo --use web-static
 cd todo
 
 # Deploy to Kubernetes
@@ -405,4 +437,4 @@ Access:
 
 - [Local API Server](local.md) - Development without Kubernetes
 - [Authentication](../fullstack/auth.md) - Add user authentication
-- [jac-scale Reference](../../reference/plugins/jac-scale.md) - Full configuration options
+- [Scale Reference](../../reference/plugins/jac-scale.md) - Full configuration options

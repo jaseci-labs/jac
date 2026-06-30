@@ -3,7 +3,7 @@
 import contextlib;
 import os;
 import sys;
-import from pathlib { Path }
+import from tests.support { JAC_ROOT }
 
 import jaclang.lsp.types as lspt;
 
@@ -12,8 +12,9 @@ import from jaclang.langserve.engine { JacLangServer }
 import from jaclang.lsp { uris }
 import from jaclang.lsp.server { Workspace }
 
-glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures"),
+glob FIXTURE_DIR = os.path.join(
+         os.path.dirname(os.path.abspath(__file__)), "fixtures"
+     ),
      EXAMPLES_DIR = os.path.join(JAC_ROOT, "examples"),
      PASSES_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
@@ -266,16 +267,16 @@ test "test_go_to_definition_md_path" {
             (7, 17, "typing.pyi:0:0-0:0"),
             (9, 18, "jaclang/jac0core/__init__.py:0:0-0:0"),
             (9, 25, "jaclang/jac0core/unitree.jac:0:0-0:0"),
-            (10, 34, "jac/jaclang/__init__.py:22:"),
+            (10, 34, "jaclang/__init__.py:22:"),
             (11, 35, "jaclang/jac0core/constant.jac:0:0-0:0"),
-            (11, 47, "jaclang/jac0core/constant.jac:4:5-4:15"),
+            (11, 47, "jaclang/jac0core/constant.jac:2:5-2:15"),
             (13, 47, "jaclang/compiler/type_system/type_utils.jac:0:0-0:0"),
             (14, 34, "jaclang/compiler/type_system/__init__.py:0:0-0:0"),
-            (18, 5, "compiler/type_system/types.jac:61:4-61:12"),
+            (18, 5, "compiler/type_system/types.jac:38:4-38:12"),
             (20, 34, "jaclang/jac0core/unitree.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
             (23, 28, "jaclang/lsp/uris.jac:0:0-0:0"),
-            (24, 40, "jaclang/lsp/server.jac:115:4-115:18"),
+            (24, 40, "jaclang/lsp/server.jac:92:4-92:18"),
             (26, 31, "jaclang/lsp/types.jac:0:0-0:0"),
 
         ];

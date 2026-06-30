@@ -202,6 +202,29 @@ test "streaming + conversation persists assistant message and emits dicts" {
     assert "STREAM_CONV_PASS" in stdout_value;
 }
 
+test "transient mid-stream drop retried on same model, output de-duplicated" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("stream_retry", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "STREAM_RETRY_PASS" in stdout_value;
+}
+
+test "streaming generator survives consumption from a foreign Context" {
+    # Regression test: a streaming by llm() generator must be safe to consume
+    # from a different contextvars.Context than the one that created it — e.g. a
+    # thread-pool worker, which is how the scale backend's sse_frame_stream drives SSE.
+    # Pre-fix, the wrapper reset a ContextVar Token across Context boundaries and
+    # raised "Token was created in a different Context", killing the stream.
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("streaming_cross_context", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "CROSS_CONTEXT_PASS" in stdout_value;
+}
+
 test "by expr" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;

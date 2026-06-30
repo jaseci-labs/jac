@@ -103,9 +103,10 @@ export JAC_OPT_LEVEL=0
 export PYTHONFAULTHANDLER=1
 
 # ── Compute expected symmap path from source file ─────────────────────────
-# The Jac compiler writes a .symmap file into <src_dir>/.jac_ir/<stem>.symmap
-# during JIT compilation when JAC_NATIVE_DEBUG=1.  We pre-compute its path
-# so GDB can auto-load it after a crash.
+# The Jac compiler writes a .symmap file into the module's native cache dir
+# (.jac/cache/native/<stem>.symmap next to a standalone source) during JIT
+# compilation when JAC_NATIVE_DEBUG=1.  We pre-compute its path so GDB can
+# auto-load it after a crash; the helper also globs for it as a fallback.
 SRC_FILE="$1"
 SRC_ABS="$(readlink -f "$SRC_FILE" 2>/dev/null || realpath "$SRC_FILE" 2>/dev/null || echo "$SRC_FILE")"
 SRC_DIR="$(dirname "$SRC_ABS")"
@@ -113,7 +114,7 @@ SRC_BASENAME="$(basename "$SRC_ABS")"
 # Strip ONLY the last extension to match Python's os.path.splitext():
 #   foo.na.jac → foo.na   (compiler uses splitext, which strips one ext)
 STEM="${SRC_BASENAME%.*}"
-SYMMAP_PATH="${SRC_DIR}/.jac_ir/${STEM}.symmap"
+SYMMAP_PATH="${SRC_DIR}/.jac/cache/native/${STEM}.symmap"
 export JAC_SYMMAP_PATH="$SYMMAP_PATH"
 
 # ── Transpile the Jac GDB helper to Python ────────────────────────────────

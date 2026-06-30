@@ -20,8 +20,7 @@ walker CreateTask {
     has priority: int = 1;
 
     can create with Root entry {
-        task_list = here ++> Task(title=self.title, priority=self.priority);
-        task = task_list[0];
+        task = here ++> Task(title=self.title, priority=self.priority);
         if task {
             print("Created task: " + task.title);
             report task ;

@@ -1,15 +1,7 @@
-"""Implementation for schema_rules constructs."""
-
 import threading;
 
-# Collector state is thread-local so registrations from concurrent imports
-# can't cross-pollinate; rule-collection itself is a stack to tolerate a
-# __jac_schema__ that (indirectly) triggers another class registration.
 glob _tls = threading.local(),
-     # Definer-level rules keyed by "module.ClassName" of the defining class.
      _collected: dict[str, SchemaRules] = {},
-     # MRO-merged view keyed by class object; cleared whenever a new
-     # definer's rules are collected (class creation is rare and cheap).
      _merged_cache: dict = {};
 
 
@@ -98,8 +90,7 @@ impl merged_rules_for(cls: type) -> (SchemaRules | None) {
         return _merged_cache[cls];
     }
     merged: (SchemaRules | None) = None;
-    # Base-first so a subclass's own rules run after (and can build on) the
-    # repairs its bases declared.
+
     for base in reversed(cls.__mro__) {
         definer_rules = _collected.get(_owner_key(base));
         if definer_rules is None {
@@ -111,8 +102,6 @@ impl merged_rules_for(cls: type) -> (SchemaRules | None) {
         merged.aliases.extend(definer_rules.aliases);
         merged.drops.extend(definer_rules.drops);
         merged.upgrades.extend(definer_rules.upgrades);
-        # was_names intentionally excluded: definer-only (handled at
-        # registration via Serializer.register_alias).
     }
     if merged is not None and merged.is_empty() {
         merged = None;
@@ -205,11 +194,6 @@ impl apply_rules(data: dict, rules: SchemaRules) -> tuple {
             steps.append(f"rename {a.stored_name} -> {a.new_name}");
             changed = True;
         } else {
-            # Both keys present: a dual-written document, not drift. An
-            # equal shadow strips silently (it regenerates on save, so no
-            # step => no write-back churn). A differing shadow means an
-            # old-version writer raced an upgraded doc: the new name wins
-            # deterministically and the conflicting value is preserved.
             shadow = out.pop(a.stored_name);
             changed = True;
             if shadow != out[a.new_name] {
@@ -224,13 +208,10 @@ impl apply_rules(data: dict, rules: SchemaRules) -> tuple {
     for u in rules.upgrades {
         fn_name = getattr(u.fn, '__name__', '<fn>');
         try {
-            # Predicates get a copy too (like the callback below): rules
-            # must never observe or mutate the engine's in-flight dict.
             if u.when is not None and not u.when(dict(out)) {
                 continue;
             }
-            # The callback gets a copy and must return the replacement dict;
-            # a raise or a non-dict return leaves `out` untouched.
+
             result = u.fn(dict(out));
             if isinstance(result, dict) {
                 out = result;

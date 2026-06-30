@@ -1,5 +1,3 @@
-"""Jaclang Language Server."""
-
 import asyncio;
 import sys;
 import time;
@@ -18,17 +16,14 @@ import jaclang.lsp.types as lspt;
 
 def debug(msg: str) -> None;
 
-"""Check syntax on change."""
 async def did_open(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) {
     ls.type_check(params.text_document.uri);
 }
 
-"""Check syntax on change."""
 async def did_save(ls: JacLangServer, params: lspt.DidOpenTextDocumentParams) {
     ls.type_check(params.text_document.uri);
 }
 
-"""Check syntax on change with debouncing."""
 async def did_change(ls: JacLangServer, params: lspt.DidChangeTextDocumentParams) {
     debug(f"Did change: Type checking started.");
     ls.type_check(params.text_document.uri);
@@ -42,7 +37,6 @@ def lintfix_formatting(
     ls: JacLangServer, params: lspt.DocumentFormattingParams
 ) -> list[lspt.TextEdit];
 
-"""Check syntax on file creation."""
 def did_create_files(ls: JacLangServer, params: lspt.CreateFilesParams) { }
 
 def did_rename_files(ls: JacLangServer, params: lspt.RenameFilesParams) -> None;
@@ -51,7 +45,6 @@ def did_close(ls: JacLangServer, params: lspt.DidCloseTextDocumentParams) -> Non
 
 def did_delete_files(ls: JacLangServer, params: lspt.DeleteFilesParams) -> None;
 
-"""Provide completion."""
 async def completion(
     ls: JacLangServer, params: lspt.CompletionParams
 ) -> lspt.CompletionList {

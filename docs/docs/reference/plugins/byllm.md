@@ -60,7 +60,7 @@ This means your Jac type system functions as the LLM's output schema. Declaring 
 ## Installation
 
 ```bash
-pip install byllm
+jac install byllm
 ```
 
 For local inference without an API key, byLLM supports two paths -- pick the one that fits your environment (see [Built-in Local Models](#built-in-local-models) for the full discussion):
@@ -78,18 +78,18 @@ For local inference without an API key, byLLM supports two paths -- pick the one
 
 === "In-process `local:*` (opt-in extra)"
     ```bash
-    pip install 'byllm[local]'
+    jac install 'byllm[local]'
     ```
     ```toml
     [plugins.byllm.model]
     default_model = "local:gemma-4-e4b"
     ```
-    No daemon, single `pip install`, fully in-process. Adds `llama-cpp-python` and `huggingface_hub` as dependencies. See [Built-in Local Models](#built-in-local-models) for bundled aliases, GPU build flags, and the `jac model` cache CLI.
+    No daemon, single `jac install`, fully in-process. Adds `llama-cpp-python` and `huggingface_hub` as dependencies. See [Built-in Local Models](#built-in-local-models) for bundled aliases, GPU build flags, and the `jac model` cache CLI.
 
 For video support, install with the `video` extra:
 
 ```bash
-pip install byllm[video]
+jac install 'byllm[video]'
 ```
 
 ---
@@ -254,16 +254,16 @@ You can also override per-file with `glob llm = Model(...)` (see [Per-module ove
 ## Built-in Local Models
 
 !!! tip "Most users want Ollama, not this."
-    Ollama is the recommended local-first path: native installer, automatic GPU detection across CUDA/Metal/Vulkan, curated registry of quantized models, and full byLLM compatibility through litellm (`default_model = "ollama/<model>"`). It works without anything from this section. The `local:*` route below is for users who specifically don't want a separate daemon -- everything stays inside the Python process and a single `pip install`.
+    Ollama is the recommended local-first path: native installer, automatic GPU detection across CUDA/Metal/Vulkan, curated registry of quantized models, and full byLLM compatibility through litellm (`default_model = "ollama/<model>"`). It works without anything from this section. The `local:*` route below is for users who specifically don't want a separate daemon -- everything stays inside the Python process and a single `jac install`.
 
 Any model name prefixed with `local:` runs in-process via `llama.cpp`, with weights pulled from HuggingFace on first use and cached under `~/.cache/jac/models/<alias>/`. No API key, no separate daemon, and no proxy server -- the GGUF is loaded directly into the Jac process. Activate by installing the `[local]` extra:
 
 ```bash
-pip install 'byllm[local]' \
+jac install 'byllm[local]' \
   --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 ```
 
-The `--extra-index-url` flag points pip at `llama-cpp-python`'s prebuilt wheel index. Without it, pip falls back to the PyPI source tarball and runs a 30-60 second C++ build (`llama-cpp-python` does not publish wheels on PyPI). Use `/cu124`, `/metal`, `/vulkan` etc. for the matching GPU build (see [GPU Acceleration](#gpu-acceleration) below).
+The `--extra-index-url` flag points the installer at `llama-cpp-python`'s prebuilt wheel index. Without it, it falls back to the PyPI source tarball and runs a 30-60 second C++ build (`llama-cpp-python` does not publish wheels on PyPI). Use `/cu124`, `/metal`, `/vulkan` etc. for the matching GPU build (see [GPU Acceleration](#gpu-acceleration) below).
 
 The `local:*` route bypasses LiteLLM and replicates what cloud providers do server-side: it flattens multimodal content blocks for `llama.cpp`'s chat templates, rewrites OpenAI-style `json_schema` response formats into the GBNF grammar shape `llama.cpp` understands, and injects schema descriptions (e.g. `1=WORK, 2=PERSONAL, ...`) into the prompt so small open-weight models see the same constraints frontier models receive natively.
 
@@ -279,7 +279,7 @@ def categorize(title: str) -> Category by llm();
 default_model = "local:gemma-4-e4b"
 ```
 
-After `pip install 'byllm[local]'` (see [Installation](#installation)), the first `by llm()` call downloads the GGUF (interactive TTY prompts; non-TTY contexts require `BYLLM_AUTO_DOWNLOAD=1` or a prior `jac model pull`).
+After `jac install 'byllm[local]'` (see [Installation](#installation)), the first `by llm()` call downloads the GGUF (interactive TTY prompts; non-TTY contexts require `BYLLM_AUTO_DOWNLOAD=1` or a prior `jac model pull`).
 
 ### Bundled Aliases
 
@@ -365,7 +365,7 @@ When no model is explicitly set, byLLM picks one in this order:
 1. `BYLLM_DEFAULT_MODEL` environment variable
 2. `[plugins.byllm.model].default_model` in `jac.toml`
 3. **Auto-detect** -- if any provider API key is present (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `TOGETHER_API_KEY`, `DEEPSEEK_API_KEY`), falls through to `gpt-4o-mini`
-4. Otherwise, falls back to `local:<default_alias>` if the `[local]` extra is installed -- the bundled in-process runtime takes over so `by llm()` works offline out of the box. If `[local]` isn't installed and no key is set, byLLM raises a `ConfigurationError` listing the three concrete fixes (set an API key, configure `default_model` explicitly with an Ollama or other model, or `pip install 'byllm[local]'`).
+4. Otherwise, falls back to `local:<default_alias>` if the `[local]` extra is installed -- the bundled in-process runtime takes over so `by llm()` works offline out of the box. If `[local]` isn't installed and no key is set, byLLM raises a `ConfigurationError` listing the three concrete fixes (set an API key, configure `default_model` explicitly with an Ollama or other model, or `jac install 'byllm[local]'`).
 
 ### Managing the Cache
 
@@ -1522,7 +1522,7 @@ with entry {
 ```
 
 !!! note "Video requires extra dependency"
-    Video support requires `pip install byllm[video]`.
+    Video support requires `jac install 'byllm[video]'`.
 
 #### Video Parameters
 
@@ -2228,7 +2228,7 @@ For virtual key generation, see [LiteLLM Virtual Keys](https://docs.litellm.ai/d
 
 ### Enabling Telemetry in LiteLLM Proxy Server
 
-When using jac-scale (`jac start`), LLM telemetry is automatically enabled. The server registers both a **litellm CustomLogger** (for per-call token/cost tracking) and a **byLLM agent callback** (for per-invocation metadata), then exposes REST endpoints for querying the collected data.
+When serving with the built-in scale subsystem (`jac start`), LLM telemetry is automatically enabled. The server registers both a **litellm CustomLogger** (for per-call token/cost tracking) and a **byLLM agent callback** (for per-invocation metadata), then exposes REST endpoints for querying the collected data.
 
 The telemetry endpoints are:
 
@@ -2446,6 +2446,84 @@ walker AIAgent {
     }
 }
 ```
+
+### LLM-Guided Traversal (`visit ... by llm`)
+
+A plain `visit [-->]` queues **every** matching successor. Add `by llm()` and the
+model decides which successor(s) the walker should visit next. This is useful when the
+next hop depends on the meaning of each edge/node rather than a hard-coded filter.
+
+In its simplest form you add nothing but `by llm()`:
+
+```jac
+walker dispatcher {
+    has request: str = "urgent escalation";
+
+    can route with Desk entry {
+        visit [-->] by llm();
+    }
+}
+```
+
+With no parameters, the model routes from context alone. Each candidate is rendered as
+an **(edge, node) pair** relative to the current node, so the model can condition on the
+connecting edge's type and attributes, not just node data. The walker's own state plus
+the current node are injected automatically (no need to smuggle them through
+`incl_info`). Candidate, field, and ability descriptions are sourced from
+[semstrings](#semantic-strings-semstrings). By default `select` is `"all"`, so the
+walker visits **every** successor the model picks.
+
+This bare form leans entirely on those descriptions, so it works best when your edges,
+nodes, and the walker carry meaningful `sem` strings. The two parameters below sharpen
+the decision.
+
+#### Steering the choice with `intent`
+
+`intent` is free-text shown to the model describing what the traversal is trying to
+achieve. It is the main lever for guiding routing:
+
+```jac
+walker dispatcher {
+    can route with Desk entry {
+        visit [-->] by llm(intent="Route along the highest-priority edge");
+    }
+}
+```
+
+#### Constraining how many nodes are visited
+
+The `select` parameter caps the cardinality of the result. The model is told the
+constraint in its prompt **and** the returned selection is truncated to honor it:
+
+| `select` value | Meaning |
+|----------------|---------|
+| `"all"` *(default)* | Visit every successor the model chooses (no cap). |
+| `1` | Visit **exactly one** successor (the single best match). |
+| `k` *(int)* | Visit **exactly `k`** successors. |
+| `(min, max)` *(tuple)* | Visit **between `min` and `max`** successors, inclusive. |
+
+```jac
+walker explorer {
+    can branch with Page entry {
+        # Pick the single best next node
+        visit [-->] by llm(select=1, intent="Go to the most relevant section");
+
+        # Fan out to at most three, at least one
+        visit [-->] by llm(select=(1, 3), intent="Explore the promising branches");
+
+        # Take exactly two
+        visit [-->] by llm(select=2, intent="Compare the two strongest candidates");
+    }
+}
+```
+
+!!! note
+    `select` bounds the count; it does not force it upward when too few candidates
+    qualify. With `select=2` but only one sensible successor, the walker visits one.
+    For `(min, max)`, `max` is a **hard cap** (the result is truncated to it), but
+    `min` is **advisory**: the model is *asked* to pick at least `min`, yet routing
+    can only visit candidates the model actually chose (and there may be fewer than
+    `min` available), so a shortfall is surfaced as a warning rather than enforced.
 
 ### Tool-Using Agents
 

@@ -63,10 +63,10 @@ remaining rows.
 | # | Direction | Boundary kind | Mechanism | What crosses | Synthesised by |
 |---|-----------|---------------|-----------|--------------|----------------|
 | 1 | **`sv → sv`** (in-process) | Free | Direct Python call | Live CPython objects (by ref) | -- (plain `import`) |
-| 2 | **`sv → sv`** (microservice) | Marshalled | HTTP `POST` between deployments | JSON (`_to_wire`/`_from_wire`) | `PyastGenPass` (`sv import` stub) + `jac-scale` |
+| 2 | **`sv → sv`** (microservice) | Marshalled | HTTP `POST` between deployments | JSON (`_to_wire`/`_from_wire`) | `PyastGenPass` (`sv import` stub) + `jaclang.scale` |
 | 3 | **`cl → cl`** | Free | Direct JS call | JS values (by ref) | -- (`cl import`) |
 | 4 | **`na → na`** | Free | Linker symbol reference | Native values / pointers | `NativeCompilePass` relocation |
-| 5 | **`cl → sv`** | Marshalled | HTTP `POST /walker/*` or `/function/*` | JSON envelope | `EsastGenPass` (`__jacSpawn`/`__jacCallFunction`) + `jac-scale` |
+| 5 | **`cl → sv`** | Marshalled | HTTP `POST /walker/*` or `/function/*` | JSON envelope | `EsastGenPass` (`__jacSpawn`/`__jacCallFunction`) + `jaclang.scale` |
 | 6 | **`sv → cl`** | Marshalled (one-shot) | Static bundle + bootstrap JSON (CSR) | The compiled JS bundle + init payload | `PyastGenPass` static route + Vite/Bun bundler |
 | 7 | **`sv → na`** | Marshalled | `ctypes.CFUNCTYPE` over the JIT address (or AOT `.so`) | C-ABI scalars; Jac objects as zero-copy views | `PyastGenPass` ctypes stub + `NaIRGenPass` C-ABI export |
 | 8 | **`na → sv`** | Marshalled | Python callback registered as a JIT symbol | C-ABI scalars | `interop_bridge` (`llvm.add_symbol`) |
@@ -136,7 +136,7 @@ walker:pub PostMessage {
         reports: list[Message] = [];   # typed result the client sees
 
     can post with Root entry {
-        report (here ++> Message(author=self.author, text=self.text))[0];
+        report here ++> Message(author=self.author, text=self.text);
     }
 }
 ```
@@ -185,8 +185,8 @@ deduped, *writer* endpoints fetch then invalidate overlapping readers
 
 ### The server endpoint
 
-The HTTP server is **not** in the compiler -- it is the `jac-scale` plugin
-(`jac-scale/jac_scale/jserver/`, a FastAPI/uvicorn binding written in Jac).
+The HTTP server is **not** in the compiler -- it is the built-in `scale` subsystem
+(`jac/jaclang/scale/jserver/`, a FastAPI/uvicorn binding written in Jac).
 `jac start` brings it up. For every public walker it registers two routes
 (`register_walkers_endpoints`):
 
@@ -293,7 +293,7 @@ can cross -- the exception being Python-style monkey-patched classes.
 
 `jac run --autonative` JITs `jac_entry` directly when a module is
 `native_compat` (and silently falls back to the Python path otherwise). The
-*ahead-of-time* counterpart is the **`na → C host`** shared-library export
+*ahead-of-time* counterpart is the **`na → C host`** native-lib export
 path (below), where the native side is packaged as a real `.so` and a host (Python via `ctypes`, or C) loads
 it across the process boundary.
 
@@ -435,7 +435,7 @@ sv import from billing { ChargeCard }   # billing may be a different process
 
 At runtime the provider URL comes from `JAC_SV_<MODULE>_URL`, else an
 auto-started loopback sibling. This is the only place a `.jac` → Python
-lowering converts an import into an RPC; it is consumed by `jac-scale`.
+lowering converts an import into an RPC; it is consumed by the built-in `scale` subsystem.
 
 ---
 
@@ -462,9 +462,11 @@ verbatim into the Python AST (server backend only).
 
 ### Python importing Jac
 
-A `.pth`-installed meta-path finder makes `.jac` modules first-class to
-CPython. `jaclang.pth` runs `import _jac_finder; _jac_finder.install()` at
-interpreter startup, installing `JacMetaImporter`
+A lazily-installed meta-path finder makes `.jac` modules first-class to
+CPython. The `jac` binary's launcher runs `import _jac_finder;
+_jac_finder.install()` at interpreter startup (see `launcher/launcher.zig`
+`BOOT_SRC`); on the first `.jac` import the lazy finder bootstraps jaclang and
+installs `JacMetaImporter`
 ([`meta_importer.py`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/meta_importer.py)).
 Its `find_spec` probes for `__init__.jac` / `<name>.jac` / `<name>.sv.jac`,
 and `exec_module` runs `exec(codeobj, module.__dict__)` -- so a compiled Jac
@@ -542,8 +544,8 @@ list.
 
 A Jac **desktop app** is the most integrated use of the matrix: it bundles
 the `cl` UI, a native (`na`) host binary, the OS's own webview, and an
-embedded CPython into a single shippable artefact. The plugin is
-`jac-desktop` (`jac-desktop/jac_desktop/`).
+embedded CPython into a single shippable artefact. The desktop target is
+built into `jaclang` core (`jac/jaclang/runtimelib/client/targets/desktop/`).
 
 > **Status note.** Older release notes mention a "PyTauri shell +
 > PyInstaller sidecar" and a `jac desktop` CLI -- those are **stale**. The
@@ -573,9 +575,9 @@ jac start --client desktop   # build if needed, then launch the native window
 (cd .jac/client/desktop && ./my-app)   # or run the binary directly
 ```
 
-`--client desktop` resolves through jac-client's target registry
+`--client desktop` resolves through the client framework's target registry
 (`get_target_type("desktop") → TargetType.DESKTOP`), which lazy-loads the
-plugin-registered `NativeDesktopTarget`. There is no separate CLI verb -- the
+core-registered `NativeDesktopTarget`. There is no separate CLI verb -- the
 core `build`/`start` commands delegate to the target.
 
 ### How the targets combine
@@ -638,16 +640,16 @@ RPC to the backend). It is the matrix in miniature.
 |---------|-------|
 | Boundary discovery | `jac0core/passes/impl/boundary_analysis_pass.impl.jac`; `InteropAnalysisPass`; [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/codeinfo.jac) (`InteropBinding`, `InteropManifest`) |
 | Context split / coercion | [`compiler.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/compiler.jac) (`_coerce_module`); `constant.jac` (`CodeContext`) |
-| `cl → sv` | `compiler/passes/ecmascript/impl/esast_gen_pass.impl.jac` (`__jacSpawn`/`__jacCallFunction`); `runtimelib/impl/client_runtime.impl.jac`; `jac-scale/jac_scale/impl/serve.endpoints.impl.jac` |
+| `cl → sv` | `compiler/passes/ecmascript/impl/esast_gen_pass.impl.jac` (`__jacSpawn`/`__jacCallFunction`); `runtimelib/impl/client_runtime.impl.jac`; `jac/jaclang/scale/server/impl/serve.endpoints.impl.jac` |
 | `sv → cl` | `runtimelib/client/impl/{compiler,vite_bundler}.impl.jac`; `runtimelib/impl/server.impl.jac`; `passes/ast_gen/impl/jsx_processor.impl.jac` |
 | `sv ↔ na` | `jac0core/{interop_bridge,native_marshal}.jac`; `passes/impl/pyast_gen_pass.impl.jac` (`_gen_native_interop_stubs`, `_generate_sv_to_sv_stubs`); `passes/native/impl/na_compile_pass.impl.jac` |
 | `na ↔ C` | `compiler/targets/{foreign,abi}.jac`; `passes/native/na_ir_gen_pass.impl/{clib_abi,clib_vtable}.impl.jac` |
 | `na → C host` | `cli/commands/impl/nacompile.impl.jac` (`_inject_shared_init`); `passes/native/impl/{elf,macho,pe}_linker.impl.jac` |
 | `na ↔ cl` (wasm) | `passes/native/{wasm_build,wasm_linker}.jac`; `runtimelib/client/impl/compiler.impl.jac` |
-| Python interop | [`meta_importer.py`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/meta_importer.py); `jaclang.pth`; `passes/impl/pyast_gen_pass.impl.jac` (`exit_import`, `exit_py_inline_code`) |
+| Python interop | [`meta_importer.py`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/meta_importer.py); `_jac_finder.py` (launcher `BOOT_SRC`); `passes/impl/pyast_gen_pass.impl.jac` (`exit_import`, `exit_py_inline_code`) |
 | Marshalling | `runtimelib/impl/{serializer,server,transport}.impl.jac` |
 | Capability boundary | `compiler/passes/main/capability_check_pass.jac`; [`diagnostics.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/jac0core/diagnostics.jac) (`E5090`) |
-| Desktop | `jac-desktop/jac_desktop/targets/native_desktop_target.jac` (+ impl); `jac-desktop/jac_desktop/native/webview/webview.na.jac`; `jac-client/.../targets/registry.jac` |
+| Desktop | `runtimelib/client/targets/desktop/native_desktop_target.jac` (+ impl); `runtimelib/client/targets/desktop/native/webview/webview.na.jac`; `runtimelib/client/targets/registry.jac` |
 
 ---
 

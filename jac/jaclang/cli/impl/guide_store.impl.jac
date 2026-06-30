@@ -1,29 +1,20 @@
-"""Implementation of the shared guide store."""
-
 import from pathlib { Path }
 
-# Diagnostic codes that map directly to a specific guide. A code listed here
-# wins over the category fallback below. Only add a code when the named guide
-# actually discusses it -- the hint must lead somewhere useful.
 glob _CODE_GUIDE_MAP: dict[str, str] = {
-         "E0077": "jac-impl-files",  # duplicate declaration -> decl/impl split
-         "W0060": "jac-core-cheatsheet",  # docstring placement rule
-         "W0061": "jac-sv-persistence",  # deprecated (?:...) filter syntax
-         "E1050": "jac-walker-patterns",  # required params at call/spawn site
-         "E1102": "jac-cl-components",  # component requires prop
-         "E1104": "jac-npm-packages",  # spread into component expects dict
-         "E2004": "jac-has-fields",  # non-default has-field after default
-         "E2025": "jac-npm-packages",  # Ref[...] field needs '= Ref()'
-         "W2075": "jac-sv-persistence",  # redundant '== True' in filters
-         "W3037": "jac-types",  # unnecessary '-> None' annotation
+         "E0077": "jac-impl-files",
+         "W0060": "jac-core-cheatsheet",
+         "W0061": "jac-sv-persistence",
+         "E1050": "jac-walker-patterns",
+         "E1102": "jac-cl-components",
+         "E1104": "jac-npm-packages",
+         "E2004": "jac-has-fields",
+         "E2025": "jac-npm-packages",
+         "W2075": "jac-sv-persistence",
+         "W3037": "jac-types",
 
      },
-     # Fallback by diagnostic Category value when no exact code match is found.
      _CATEGORY_GUIDE_MAP: dict[str, str] = {"type": "jac-types",};
 
-# Listing groups, in display order. A guide's group comes from the explicit
-# name map first, then the prefix rules, then "Other" -- so a newly bundled
-# guide always lands somewhere and is never dropped from the listing.
 glob GUIDE_GROUP_ORDER: list[str] = [
          "Start here",
          "Language",
@@ -36,7 +27,6 @@ glob GUIDE_GROUP_ORDER: list[str] = [
          "Other",
 
      ],
-     # "Start here" keeps this curated reading order instead of alphabetical.
      _START_HERE_ORDER: list[str] = ["jac-project-kinds", "jac-core-cheatsheet"],
      _GUIDE_GROUP_MAP: dict[str, str] = {
          "jac-project-kinds": "Start here",
@@ -125,8 +115,7 @@ impl list_guides -> list[Guide] {
         return [];
     }
     guides: list[Guide] = [];
-    # Sort by stem, not filename: "jac-native.md" must precede
-    # "jac-native-shared.md" ('-' sorts before '.').
+
     for f in sorted(gdir.glob("*.md"), key=lambda p: Path : p.stem) {
         g = parse_guide(f);
         if g is not None {
@@ -155,7 +144,7 @@ impl guide_group(name: str) -> str {
 
 impl grouped_guides -> list[tuple[str, list[Guide]]] {
     buckets: dict[str, list[Guide]] = {};
-    # list_guides is name-sorted, so each bucket stays alphabetical.
+
     for g in list_guides() {
         buckets.setdefault(guide_group(g.name), []).append(g);
     }

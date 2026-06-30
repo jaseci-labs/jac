@@ -25,7 +25,7 @@ The language spec covers all core Jac constructs:
 
 ## Deployment & Scaling
 
-- **[jac-scale Reference](plugins/jac-scale.md)** - Production deployment, API generation, Kubernetes, monitoring
+- **[Scale Reference](plugins/jac-scale.md)** - Production deployment, API generation, Kubernetes, monitoring (built into `jaclang` core)
 
 ## Tools & Config
 
@@ -48,11 +48,11 @@ The language spec covers all core Jac constructs:
 ## Quick Start
 
 ```bash
-# 1. Install
-pip install jaseci
+# 1. Install the jac binary
+curl -fsSL https://raw.githubusercontent.com/jaseci-labs/jaseci/main/scripts/install.sh | bash
 
 # 2. Scaffold a new project
-jac create myapp --use client
+jac create myapp --use web-static
 
 # 3. Run
 jac start
@@ -122,10 +122,9 @@ The `jac` command is your primary interface to the Jac toolchain. For the full r
 
 | Plugin | Package | Description |
 |--------|---------|-------------|
-| byllm | `pip install byllm` | LLM integration |
-| jac-client | `pip install jac-client` | Full-stack web development |
-| jac-scale | `pip install jac-scale` | Production deployment |
-| jac-super | `pip install jac-super` | Enhanced console output |
+| byllm | `jac install byllm` | LLM integration |
+
+(Production deployment & scaling -- formerly the `jac-scale` plugin -- now ships built into `jaclang` core as the `scale` subsystem; no separate install. Its optional deps are pulled per-project via `[scale.*]` config + `jac install`. Full-stack web and native-desktop app building -- formerly the `jac-client` / `jac-desktop` plugins -- likewise ship with `jaclang` core.)
 
 ### Managing Plugins
 

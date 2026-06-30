@@ -1,6 +1,5 @@
 import from jaclang.cli.console { console }
 
-"""Construct a Vite client bundle builder for a project (shared construction)."""
 impl make_client_bundle_builder(
     base_path: (Path | None) = None
 ) -> ViteClientBundleBuilder {
@@ -37,7 +36,6 @@ impl make_client_bundle_builder(
     );
 }
 
-"""Clean up the compiled directory and its contents."""
 impl ViteClientBundleBuilder.cleanup_temp_dir(self: ViteClientBundleBuilder) -> None {
     if (not self.vite_package_json or not self.vite_package_json.exists()) {
         return;
@@ -53,7 +51,6 @@ impl ViteClientBundleBuilder.cleanup_temp_dir(self: ViteClientBundleBuilder) -> 
     }
 }
 
-"""Override to use Vite bundling instead of simple concatenation."""
 impl ViteClientBundleBuilder._compile_bundle(
     self: ViteClientBundleBuilder, module: ModuleType, module_path: Path
 ) -> ClientBundle {
@@ -70,7 +67,6 @@ impl ViteClientBundleBuilder._compile_bundle(
     );
 }
 
-"""Get or create the Vite compiler instance."""
 impl ViteClientBundleBuilder._get_compiler(
     self: ViteClientBundleBuilder
 ) -> ViteCompiler {
@@ -96,7 +92,6 @@ impl ViteClientBundleBuilder._get_compiler(
     return self._compiler;
 }
 
-"""Initialize the Vite-enhanced bundle builder."""
 impl ViteClientBundleBuilder.init(
     self: ViteClientBundleBuilder,
     runtime_path: (Path | None) = None,

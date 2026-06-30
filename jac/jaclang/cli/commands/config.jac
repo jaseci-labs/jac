@@ -1,14 +1,8 @@
-"""Config commands: config, plugins.
-
-Commands for managing Jac configuration and plugins.
-"""
-
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
 
 glob registry = get_registry();
 
-"""Manage Jac configuration."""
 @registry.command(
     name="config",
     help="Manage Jac configuration",
@@ -51,7 +45,6 @@ def config(
     output: str = "table"
 ) -> int;
 
-"""Manage Jac plugins."""
 @registry.command(
     name="plugins",
     help="Manage Jac plugins",

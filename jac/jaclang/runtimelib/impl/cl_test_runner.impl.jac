@@ -1,5 +1,3 @@
-"""Implementation of the client (`cl`) test runner."""
-
 import json;
 import os;
 import re;
@@ -31,14 +29,27 @@ impl compile_cl_module(filepath: str) -> tuple[str, list, dict] {
 
 impl _compile_runtime_js -> str {
     import from jaclang.jac0core.modresolver { resolve_jac_virtual_module_path }
-    # `@jac/runtime` is baked into the language and resolves to core's
-    # client_runtime.cl.jac -- the same file the bundler and type checker use.
-    # We compile that single source of truth rather than reaching into a plugin.
+
     runtime_src = resolve_jac_virtual_module_path("@jac/runtime");
     if (not runtime_src) or (not Path(runtime_src).exists()) {
         raise RuntimeError("could not resolve @jac/runtime to a client runtime source");
     }
     (js, _tests, _imports, _server_imports) = compile_cl_module(runtime_src);
+    return js;
+}
+
+impl _compile_runtime_core_js -> str {
+    import from jaclang.jac0core.modresolver { resolve_jac_virtual_module_path }
+
+    runtime_src = resolve_jac_virtual_module_path("@jac/runtime");
+    if (not runtime_src) or (not Path(runtime_src).exists()) {
+        raise RuntimeError("could not resolve @jac/runtime to a client runtime source");
+    }
+    core_path = Path(runtime_src).parent / "client_runtime_core.cl.jac";
+    if not core_path.exists() {
+        raise RuntimeError("could not resolve client_runtime_core sibling source");
+    }
+    (js, _tests, _imports, _server_imports) = compile_cl_module(str(core_path));
     return js;
 }
 
@@ -66,7 +77,7 @@ impl _stub_npm_imports(js_sources: list[str]) -> tuple[list, str, bool] {
                 }
             }
         }
-        # A leading bare identifier before any `{`/`*` is a default import.
+
         head = clause.split("{")[0].split(",")[0].strip();
         if head and (not head.startswith("*")) {
             state["needs_default"] = True;
@@ -131,8 +142,7 @@ impl find_server_entry(
         }
         return str(cand) if cand.exists() else None;
     }
-    # Explicit, in-code declaration wins: boot the backend the test `sv import`s.
-    # Resolved by import path, so the test stays correct wherever it lives.
+
     existing = [
         p
         for p in (server_imports or [])
@@ -147,8 +157,7 @@ impl find_server_entry(
         }
         return existing[0];
     }
-    # Fallback: filename convention in the test's own directory. Announce it so a
-    # rename can't silently swap which backend boots.
+
     for name in _SERVER_ENTRY_NAMES {
         cand = test_dir / name;
         if cand.exists() {
@@ -163,15 +172,11 @@ impl find_server_entry(
 }
 
 impl _serve_in_background(server_entry: str, base_path: str) -> Iterator[int] {
-    # Pick a free ephemeral port for the child to bind.
     sock = socket.socket();
     sock.bind(("127.0.0.1", 0));
     port = sock.getsockname()[1];
     sock.close();
 
-    # Isolate persistence to the throwaway base dir for both the base runtime
-    # (honors JAC_DATA_PATH) and jac-scale (cwd-relative shelf db); never touch a
-    # real Mongo the developer happens to have configured.
     env = dict(os.environ);
     env["JAC_DATA_PATH"] = base_path;
     env.pop("MONGODB_URI", None);
@@ -204,11 +209,6 @@ impl _serve_in_background(server_entry: str, base_path: str) -> Iterator[int] {
     }
 
     try {
-        # Wait until the server accepts TCP connections (server-class agnostic),
-        # failing fast if the child dies first. A cold-cache start compiles the
-        # fixture and any uncached package modules through full type inference
-        # (typed-tree contract), which can exceed 30s on slower CI runners, so
-        # give the boot a generous budget; warm starts connect within seconds.
         boot_budget = 90.0;
         deadline = time.monotonic() + boot_budget;
         while True {
@@ -242,8 +242,6 @@ impl _serve_in_background(server_entry: str, base_path: str) -> Iterator[int] {
         }
         yield port;
     } finally {
-        # Teardown must never mask test results. SIGTERM lets jac-scale drain
-        # gracefully; fall back to a hard kill if it lingers.
         with suppress(Exception) {
             proc.terminate();
             try {
@@ -319,8 +317,7 @@ impl _run_harness(
     timeout: float
 ) -> list[ClTestResult] {
     import from jaclang.runtimelib.client.bun_installer { get_bun }
-    # Reuse core's bun resolver -- the same one the client bundler uses -- which
-    # locates bun on PATH / in .jac/bin and auto-downloads it when missing.
+
     bun = get_bun();
     if bun is None {
         raise RuntimeError(
@@ -332,24 +329,44 @@ impl _run_harness(
     work_dir = Path(tempfile.mkdtemp(prefix="jac_cl_test_"));
     try {
         if "@jac/runtime" in imports {
-            import from jaclang.runtimelib.client_surface { with_runtime_globals }
+            import from jaclang.runtimelib.client_surface {
+                prepend_active_runtime_globals
+            }
             runtime_js = _compile_runtime_js();
-            # Add the runtime-global import the compiler relies on, the same way
-            # every bundle path does -- so `root spawn` / JSX resolve here too.
-            module_js = with_runtime_globals(module_js);
-            # Point the `@jac/runtime` specifier at the runtime we just compiled
-            # alongside the harness (both quote styles the codegen may emit).
+
+            module_js = prepend_active_runtime_globals(module_js);
+
             module_js = module_js.replace('"@jac/runtime"', '"./jac_runtime.js"');
             module_js = module_js.replace("'@jac/runtime'", "'./jac_runtime.js'");
-            # Redirect React/etc. npm imports (unused by the fetch/auth path) to
-            # a generated stub so bun resolves without a real install.
-            (rewritten, stub_js, changed) = _stub_npm_imports([module_js, runtime_js]);
+
+            core_specifier = "./jaclang/runtimelib/client_runtime_core.js";
+            core_js = None;
+            if core_specifier in runtime_js {
+                core_js = _compile_runtime_core_js();
+                runtime_js = runtime_js.replace(
+                    core_specifier, "./client_runtime_core.js"
+                );
+            }
+
+            sources = [module_js, runtime_js];
+            if core_js is not None {
+                sources.append(core_js);
+            }
+            (rewritten, stub_js, changed) = _stub_npm_imports(sources);
             module_js = rewritten[0];
             runtime_js = rewritten[1];
+            if core_js is not None {
+                core_js = rewritten[2];
+            }
             if changed {
                 (work_dir / _NPM_STUB_FILE).write_text(stub_js, encoding="utf-8");
             }
             (work_dir / "jac_runtime.js").write_text(runtime_js, encoding="utf-8");
+            if core_js is not None {
+                (work_dir / "client_runtime_core.js").write_text(
+                    core_js, encoding="utf-8"
+                );
+            }
         }
 
         harness = _build_harness(
@@ -368,8 +385,6 @@ impl _run_harness(
 
         results = _parse_results(proc.stdout, tests);
         if results is None {
-            # The harness never produced a result line -- treat as a hard
-            # failure for every test, surfacing bun's stderr for diagnosis.
             detail = (proc.stderr or proc.stdout or "no output").strip();
             return [
                 ClTestResult(
@@ -404,16 +419,18 @@ impl _parse_results(stdout: str, tests: list) -> (list[ClTestResult] | None) {
 }
 
 impl is_cl_test_file(filepath: str) -> bool {
+    import from jaclang.jac0core.ext_registry { is_client_module }
     name = os.path.basename(str(filepath));
-    return name.endswith(".cl.jac");
+    return is_client_module(name);
 }
 
 impl is_cl_test_file_for_discovery(filepath: str) -> bool {
+    import from jaclang.jac0core.ext_registry { is_client_module, is_client_test }
     name = os.path.basename(str(filepath));
-    if not name.endswith(".cl.jac") {
+    if not is_client_module(name) {
         return False;
     }
-    return name.startswith("test_") or name.endswith(".test.cl.jac");
+    return name.startswith("test_") or is_client_test(name);
 }
 
 impl register_results_into_jactestcheck(filepath: str, results: list) -> None {
